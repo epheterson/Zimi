@@ -68,6 +68,7 @@ from zimi.creator import (
     _try_register,
     report_blocked,
     resolve_language,
+    scratch_dir,
 )
 from zimi.warc import WarcWriter
 from zimi.zimwriter import _slug, scraper_string
@@ -188,9 +189,10 @@ class AliveCapture:
         self._note = note or (lambda _m: None)
         # The archive lives beside the eventual ZIM, never in /tmp — which is
         # RAM on more than one machine Zimi runs on, and a site recording is
-        # the last thing that should be held there.
-        work_dir = work_dir or _srv.ZIM_DIR
-        os.makedirs(work_dir, exist_ok=True)
+        # the last thing that should be held there. scratch_dir creates what it
+        # picks and warns if it ever has to reach the temp fallback, so that
+        # rule is enforced rather than merely written down.
+        work_dir = scratch_dir(work_dir)
         made_warc = warc_path is None
         if warc_path is None:
             fd, warc_path = tempfile.mkstemp(
@@ -391,7 +393,7 @@ def create_alive_page_zim(
 
     out_dir = out_dir or _srv.ZIM_DIR
     capture = AliveCapture(
-        work_dir=out_dir,
+        work_dir=scratch_dir(out_dir, out_path),
         note=note,
         extra_wait=extra_wait,
         block_ads=block_ads,
@@ -541,7 +543,7 @@ def create_alive_site_zim(
     out_dir = out_dir or _srv.ZIM_DIR
     budget = ByteBudget(max_bytes)
     capture = AliveCapture(
-        work_dir=out_dir,
+        work_dir=scratch_dir(out_dir, out_path),
         budget=budget,
         note=note,
         extra_wait=extra_wait,

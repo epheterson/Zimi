@@ -177,3 +177,58 @@ def test_shutdown_sessions_kills_every_registered_browser(tmp_path):
             os.kill(proc.pid, signal.SIGKILL)
         except OSError:
             pass
+
+
+# ── where the working files go ──────────────────────────────────────────────
+
+
+def test_the_scratch_directory_is_beside_the_output_not_in_the_library(
+    tmp_path, monkeypatch
+):
+    """The defect: ``out_dir or _srv.ZIM_DIR``, written at eight call sites.
+
+    Pass ``out_path`` and no ``out_dir`` — the ordinary CLI shape — and every
+    one of them aimed the scratch files at a library folder the caller never
+    mentioned, may not have, and may not be able to write. ``mkdtemp`` then
+    raised FileNotFoundError from three frames down, which reads as a bug in
+    the renderer rather than a directory nobody chose.
+    """
+    import zimi.creator as creator
+    import zimi.server as _srv
+
+    missing = str(tmp_path / "not-a-library")
+    monkeypatch.setattr(_srv, "ZIM_DIR", missing)
+    out = tmp_path / "beside" / "page.zim"
+    out.parent.mkdir()
+
+    assert creator.scratch_dir(None, str(out)) == str(out.parent)
+    # And it got there without inventing the library folder on the way.
+    assert not os.path.exists(missing)
+
+
+def test_an_explicit_working_directory_still_wins(tmp_path, monkeypatch):
+    import zimi.creator as creator
+    import zimi.server as _srv
+
+    monkeypatch.setattr(_srv, "ZIM_DIR", str(tmp_path / "library"))
+    asked = tmp_path / "asked-for"
+    asked.mkdir()
+    out = tmp_path / "elsewhere" / "page.zim"
+    out.parent.mkdir()
+    assert creator.scratch_dir(str(asked), str(out)) == str(asked)
+
+
+def test_a_configured_but_unmade_library_is_created_not_skipped(
+    tmp_path, monkeypatch
+):
+    """A ZIM_DIR that is configured and does not exist yet is an ordinary state
+    on a fresh install. Falling past it to the machine's temp would scatter a
+    user's working files somewhere they never pointed at — and /tmp is a RAM
+    disk on some of the machines Zimi runs on."""
+    import zimi.creator as creator
+    import zimi.server as _srv
+
+    library = tmp_path / "library-to-be"
+    monkeypatch.setattr(_srv, "ZIM_DIR", str(library))
+    assert creator.scratch_dir(None, None) == str(library)
+    assert library.is_dir()

@@ -38,6 +38,7 @@ import pathlib
 import posixpath
 import re
 import sys
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -222,6 +223,46 @@ def _finish_output(out_dir, out_path, base):
         return out_path
     os.makedirs(out_dir, exist_ok=True)
     return _output_path(out_dir, base)
+
+
+def scratch_dir(out_dir=None, out_path=None):
+    """A directory a capture can put its working files in, which is not the
+    same question as where the finished ZIM goes.
+
+    ``out_dir or _srv.ZIM_DIR`` was written at eight call sites and is wrong at
+    every one of them the moment somebody passes ``out_path`` alone: the ZIM is
+    destined for a directory nobody consulted, and the scratch files are aimed
+    at a library folder that a CLI user may not have, may not be able to write,
+    and did not ask to be involved. ``mkdtemp`` then raises FileNotFoundError
+    from somewhere three frames down.
+
+    So: whoever was named, then the finished file's own directory, then the
+    library, then the machine's temp. A named directory that does not exist yet
+    is CREATED — a configured-but-not-yet-made ZIM_DIR is an ordinary state on a
+    fresh install, and falling past it to /tmp would scatter a user's working
+    files somewhere they never pointed at.
+
+    The temp fallback is genuinely last. /tmp is a RAM disk on more than one
+    machine Zimi runs on, and a site recording is the last thing that should be
+    held there — so reaching it is worth a warning, not a shrug. It stays in the
+    list because a total function beats a FileNotFoundError three frames down."""
+    named = os.path.dirname(os.path.abspath(out_path)) if out_path else None
+    for candidate in (out_dir, named, _srv.ZIM_DIR):
+        if not candidate:
+            continue
+        try:
+            os.makedirs(candidate, exist_ok=True)
+        except OSError:
+            continue
+        if os.path.isdir(candidate) and os.access(candidate, os.W_OK):
+            return candidate
+    fallback = tempfile.gettempdir()
+    log.warning(
+        "no writable working directory (tried out_dir, output's own folder, "
+        "ZIM_DIR) — falling back to %s, which is a RAM disk on some systems",
+        fallback,
+    )
+    return fallback
 
 
 def _try_register(path):
@@ -1816,7 +1857,7 @@ def create_page_zim(
         timeout=timeout,
         max_redirects=max_redirects,
         note=note,
-        work_dir=out_dir or _srv.ZIM_DIR,
+        work_dir=scratch_dir(out_dir, out_path),
         block_ads=block_ads,
         capture_variants=capture_variants,
     )
@@ -2056,7 +2097,7 @@ def create_pages_zim(
         timeout=timeout,
         max_redirects=max_redirects,
         note=note,
-        work_dir=out_dir or _srv.ZIM_DIR,
+        work_dir=scratch_dir(out_dir, out_path),
         block_ads=block_ads,
         capture_variants=capture_variants,
     )

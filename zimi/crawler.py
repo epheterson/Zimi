@@ -88,6 +88,7 @@ from zimi.creator import (
     looks_like_spa,
     report_blocked,
     resolve_language,
+    scratch_dir,
     site_illustration,
     spool_target,
 )
@@ -669,7 +670,7 @@ def create_site_zim(
         max_redirects=max_redirects,
         budget=budget,
         note=note,
-        work_dir=out_dir or _srv.ZIM_DIR,
+        work_dir=scratch_dir(out_dir, out_path),
         block_ads=block_ads,
         capture_variants=capture_variants,
     )
