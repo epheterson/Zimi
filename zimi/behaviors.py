@@ -129,12 +129,20 @@ def reset():
 # when the behaviors are done — which for an infinite feed is never, hence the
 # race against a timer. Losing that race is a normal outcome and not an error:
 # the page has still been made to reveal whatever it managed in the time given.
-RUN_JS = """(seconds) => new Promise((done) => {
+#
+# `autofetch` is a PARAMETER rather than a constant because it is the one option
+# here that spends somebody else's budget. It pulls resources the browser never
+# asked for — which is the same thing Zimi's own variant sweep does, under a cap
+# the operator sets. Hard-coding it true meant a capture with the sweep turned
+# off still fetched extra image sizes, so the setting reported a bound it did
+# not hold. A ceiling that a subcontractor walks past is not a ceiling, so the
+# caller passes what its budget actually allows.
+RUN_JS = """({seconds, autofetch}) => new Promise((done) => {
   const finish = (how) => done(how);
   try {
     if (!self.__bx_behaviors) return finish('not-loaded');
     self.__bx_behaviors.init({
-      autofetch: true,      // pull the images a behavior reveals
+      autofetch: !!autofetch,  // only when Zimi's own fetch budget is open
       autoplay: false,      // a captured video is a file, not a performance
       autoscroll: true,     // the generic behavior, better than a plain loop
       siteSpecific: true,   // the whole reason this is here

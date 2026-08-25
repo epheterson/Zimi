@@ -1170,7 +1170,20 @@ class RenderedSession:
         if source:
             try:
                 page.add_script_tag(content=source)
-                how = page.evaluate(RUN_JS, DEFAULT_RUN_SECONDS)
+                how = page.evaluate(
+                    RUN_JS,
+                    {
+                        "seconds": DEFAULT_RUN_SECONDS,
+                        # The behaviors' autofetch pulls resources the browser
+                        # never requested — the same job, and the same cost, as
+                        # our own variant sweep. So it answers to the same
+                        # budget. With the sweep off or its ceiling at zero,
+                        # "record what the browser asked for and nothing else"
+                        # has to mean that, or the setting is decoration.
+                        "autofetch": bool(self._capture_variants)
+                        and ALIVE_MAX_VARIANTS > 0,
+                    },
+                )
             except Exception as e:
                 # Anything at all here is survivable: the page is already
                 # loaded, and a revealed page is a bonus over a captured one,
