@@ -208,6 +208,22 @@ def ensure_sidecar(sink=None):
     venv = sidecar_dir()
     exe = _venv_bin(venv, "warc2zim")
     if _installed(venv):
+        # An ALREADY-installed sidecar gets the patch check too, not just a
+        # freshly built one. Hooking only the install path meant every machine
+        # that had run an import before the fix kept the shredding
+        # zimscraperlib forever — prod's sidecar lives in a persistent volume,
+        # so it survived every deploy and every alive capture there came out
+        # with its images pointing at fragments of a query string while the
+        # same capture ran clean locally.
+        #
+        # Cheap and idempotent: reads one file, and returns "not needed" the
+        # moment upstream ships the fix. Recorded in the marker either way, so
+        # `zimi import --status` can say what this machine is actually running.
+        state = _patch_srcset_comma_bug(venv, say)
+        if state == "applied":
+            marker = _read_marker(venv)
+            marker["srcset_patch"] = state
+            _write_marker(venv, **marker)
         return exe
     if is_offline():
         raise CreateError(OFFLINE_PRESEED_MSG.format(dir=venv))
