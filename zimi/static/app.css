@@ -1846,10 +1846,15 @@
   .share-row-skeleton .sk-line { height: 12px; border-radius: 4px; background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%); background-size: 200% 100%; animation: dc-shimmer 1.5s ease-in-out infinite; }
   .share-row-skeleton .sk-line-wide { width: 45%; }
   .share-row-skeleton .sk-line-narrow { width: 70%; height: 10px; opacity: 0.6; }
+  /* (.share-row-text is declared with the sharing hero below, once.) */
   .share-bt-state { font-size: 12px; color: var(--text2); }
   .share-mirror-progress { margin-top: 6px; color: var(--amber); }
-  /* Toggles pin to the top-right of tall cards; status tucks under */
-  .share-row { align-items: flex-start; }
+  /* Toggles pin to the top-right of tall cards; status tucks under.
+     (A `.share-row { align-items: flex-start }` sat here and had never once
+     applied — the sharing hero further down declares the same bare selector
+     with align-items:center, same specificity and later in the file, so this
+     one lost every time. The pinning that DOES happen is the right column's
+     own flex-end below.) */
   .share-row-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; margin-top: 2px; }
   /* Shared status light for BT + Mirror — same spot (under each toggle,
      right column) so the two cards' dots line up. */
@@ -1870,7 +1875,10 @@
      muted colour on a recessed fill instead — still clearly inactive, but the
      number (e.g. an env-locked 16881) stays legible. */
   .share-num-input:disabled { opacity: 1; color: var(--text2); background: var(--bg); border-color: var(--border); cursor: not-allowed; }
-  .peer-name-input { width: 160px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: monospace; font-size: 12px; padding: 3px 8px; text-align: left; }
+  /* (.peer-name-input is styled with the sharing hero below. A second, older
+     definition sat here asking for monospace at 12px in a 160px box; the later
+     rule declares every one of those properties again — `font: inherit` covers
+     the family and the size together — so none of it had ever rendered.) */
   /* Ring so the status dot stays visible even when its colour is a low-key grey
      (unknown / env-locked reachability) sitting on a same-tone field. */
   .share-port-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 1px rgba(127, 127, 127, 0.32); }
@@ -1896,7 +1904,6 @@
   /* What Remove means — files stay on disk. Quiet, its own grid row. */
   .dl-seed-hint { grid-column: 1 / -1; font-size: 11px; color: var(--text3); margin: -2px 0 2px; }
   /* Sharing cards on phones: text keeps its width, fields wrap cleanly */
-  .share-row-text { flex: 1; min-width: 0; }
   /* UPnP + dot + retry wrap as one unit, never leaving the retry circle
      stranded on its own line */
   .share-port-group { display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; }
@@ -3026,9 +3033,20 @@
 
 /* The site's mark beside its name while a capture runs. Fixed box so a
    tall or wide favicon cannot push the two text lines around, and the
-   header stays one row on a phone. */
-.create-head { display: flex; align-items: center; gap: 12px; }
-.create-head-text { min-width: 0; flex: 1; }
+   header stays one row on a phone.
+   SCOPED to the run header on purpose. This was written as a bare
+   `.create-head { align-items: center; gap: 12px }`, which is the same
+   selector as the page header's rule far above — same specificity, later
+   in the file, so it half-overwrote it and neither header ended up as
+   either author had drawn it. The page header silently took a 12px gap
+   it did not want; the run header kept `flex-direction: column` from the
+   rule it was overriding and so laid its icon ABOVE the title and, with
+   align-items:center, shrank the text block to the title's own width and
+   centred it — leaving the mode line ("Web page · cnn.com") flush left
+   under a centred title. That is what read as off-centre: two rules for
+   two different components wearing one class name. */
+.create-run .create-head { flex-direction: row; align-items: center; gap: 12px; }
+.create-run .create-head-text { min-width: 0; flex: 1; }
 .create-head-icon {
   width: 32px; height: 32px; flex: 0 0 32px;
   border-radius: 6px; object-fit: contain;
