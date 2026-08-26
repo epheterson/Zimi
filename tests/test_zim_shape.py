@@ -17,16 +17,24 @@ of consecutive ids rather than scattered — entries near each other in id order
 are near each other on disk, so sixty runs of a hundred cost about sixty seeks
 where six thousand scattered reads would cost six thousand.
 
-Three things are pinned here, and the third is the one that matters most:
+Four things are pinned here, and the third is the one that matters most:
 
   * the sampler covers the whole id space, in order, without repeats;
   * a small ZIM is still measured exactly, because sampling one is pointless;
   * a sampled answer SAYS it is sampled. An estimate printed in the same voice
-    as a measurement is the exact failure this release spent a day removing.
+    as a measurement is the exact failure this release spent a day removing;
+  * and the answer is memoized PER ZIM, against the file's own identity, so a
+    library is measured once — but a ZIM replaced under the same name is a
+    different file and gets measured again. (Eric asked whether the bar is
+    cached per ZIM. It is, and the half of that worth testing is not the hit,
+    it is the miss: a cache that never invalidates is how the icon ETag two
+    directories over came to serve a week-old picture.)
 """
 
+import json
 import os
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -226,6 +234,125 @@ class TestBreakdown(unittest.TestCase):
         import zimi.zimwriter as zw
 
         self.assertIsNone(zw.zim_content_breakdown("/definitely/not/a.zim"))
+
+
+class TestShapeCache(unittest.TestCase):
+    """Measured once per ZIM, and again when the ZIM changes.
+
+    Reading the shape is the expensive part — a sample is sixty seeks, an exact
+    walk is one per entry — so it is memoized against the file's identity, in
+    memory and on disk, and the memo outlives a restart.
+
+    The interesting case is the MISS. A ZIM replaced under the same name (an
+    auto-update, a re-run capture) is a different file at the same address, and
+    a cache keyed on the name alone would serve the old answer for ever. That
+    is precisely the bug this release fixed in the icon ETag; it must not be
+    reintroduced one directory over."""
+
+    def setUp(self):
+        import zimi.http as http
+        import zimi.server as server
+
+        self.http = http
+        self.server = server
+        self.tmp = tempfile.mkdtemp(prefix="zimi-shape-cache-")
+        self.zim = os.path.join(self.tmp, "x.zim")
+        with open(self.zim, "wb") as f:
+            f.write(b"not really a zim")
+        self.calls = []
+
+        self._saved = {
+            "list_zims": server.list_zims,
+            "get_zim_files": server.get_zim_files,
+            "ZIMI_DATA_DIR": server.ZIMI_DATA_DIR,
+        }
+        server.list_zims = lambda: [{"name": "x", "file": "x.zim"}]
+        server.get_zim_files = lambda: {"x": self.zim}
+        server.ZIMI_DATA_DIR = self.tmp
+
+        import zimi.zimwriter as zw
+
+        self._saved_breakdown = zw.zim_content_breakdown
+
+        def counting_breakdown(path, **kw):
+            self.calls.append(path)
+            return {
+                "file_bytes": 1,
+                "entries": 1,
+                "breakdown": [{"key": "pages", "size_bytes": 1, "count": 1}],
+            }
+
+        zw.zim_content_breakdown = counting_breakdown
+        http._shape_cache = None  # a fresh process, as far as the cache knows
+
+    def tearDown(self):
+        import zimi.zimwriter as zw
+
+        for name, orig in self._saved.items():
+            setattr(self.server, name, orig)
+        zw.zim_content_breakdown = self._saved_breakdown
+        self.http._shape_cache = None
+        import shutil
+
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _cache_keys(self):
+        with open(os.path.join(self.tmp, "zim_shapes.json"), encoding="utf-8") as f:
+            return list(json.load(f))
+
+    def test_the_file_is_read_once_per_zim(self):
+        self.assertIsNotNone(self.http._zim_shape("x"))
+        self.assertIsNotNone(self.http._zim_shape("x"))
+        self.assertIsNotNone(self.http._zim_shape("x"))
+        self.assertEqual(len(self.calls), 1, "the ZIM was re-read on a cache hit")
+
+    def test_the_memo_outlives_the_process(self):
+        self.http._zim_shape("x")
+        self.http._shape_cache = None  # restart: memory gone, the file remains
+        self.assertIsNotNone(self.http._zim_shape("x"))
+        self.assertEqual(len(self.calls), 1, "a restart re-measured the library")
+
+    def test_a_replaced_zim_is_measured_again(self):
+        """The miss that matters. Same name, same path, different bytes."""
+        self.http._zim_shape("x")
+        before = self._cache_keys()
+        os.utime(self.zim, (2_000_000_000, 2_000_000_000))
+        self.http._shape_cache = None
+        self.http._zim_shape("x")
+        self.assertEqual(len(self.calls), 2, "a replaced ZIM served a stale shape")
+        self.assertNotEqual(
+            before, self._cache_keys(), "the key did not follow the file"
+        )
+
+    def test_a_grown_zim_is_measured_again(self):
+        """Size is in the key too, so a file that changed within the same
+        second — plausible on a fast disk — is still a different file."""
+        self.http._zim_shape("x")
+        with open(self.zim, "ab") as f:
+            f.write(b"more")
+        self.http._shape_cache = None
+        self.http._zim_shape("x")
+        self.assertEqual(len(self.calls), 2)
+
+    def test_the_stale_record_is_dropped(self):
+        """A library churned through a hundred captures must not accumulate a
+        hundred dead records."""
+        self.http._zim_shape("x")
+        os.utime(self.zim, (2_000_000_000, 2_000_000_000))
+        self.http._shape_cache = None
+        self.http._zim_shape("x")
+        self.assertEqual(len(self._cache_keys()), 1, "the old record was kept")
+
+    def test_a_zim_that_is_not_installed_has_no_shape(self):
+        self.assertIsNone(self.http._zim_shape("nope"))
+        self.assertEqual(self.calls, [], "an unknown ZIM still hit the disk")
+
+    def test_a_zim_the_requester_may_not_see_has_no_shape(self):
+        """Gated by list_zims, which is where the per-request allowlist lives —
+        a ZIM somebody may not list does not get to have its shape read."""
+        self.server.list_zims = lambda: []
+        self.assertIsNone(self.http._zim_shape("x"))
+        self.assertEqual(self.calls, [])
 
 
 if __name__ == "__main__":
