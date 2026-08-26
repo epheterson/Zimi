@@ -15,8 +15,15 @@ jobs:
         with:
           python-version: "3.11"
 
+      # `mcp` too, so the MCP tests RUN rather than skip. They were skipping
+      # invisibly — which is the same failure as not having them, and this
+      # install line is also the only place CI exercises the extras a PyPI user
+      # actually resolves. It caught `mcp = ["mcp>=1.0.0"]` in pyproject having
+      # no upper bound while requirements.txt correctly pinned <2.0: anyone
+      # running `pip install zimi[mcp]` got mcp 2.x, which dropped the vendored
+      # FastMCP, and their MCP server refused to start.
       - name: Install package
-        run: pip install -e ".[pdf]" pytest
+        run: pip install -e ".[pdf,mcp]" pytest
 
       # THE WHOLE SUITE. This used to name two files, which collected 305 of
       # 2469 tests — so 88% of the suite only ran when somebody remembered to
@@ -75,11 +82,28 @@ jobs:
           mkdir -p zims
           docker compose up -d --build
 
-          # Wait for server (up to 60s — first start can be slow)
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:8899/health > /dev/null 2>&1; then break; fi
+          # Wait for the server, and SAY SO if it never arrives.
+          #
+          # This waited 60s and then fell through regardless, so a server that
+          # was still booting produced a JSONDecodeError from the smoke test's
+          # `json.load` on an empty body — a stack trace about JSON for a
+          # problem that was nothing to do with JSON. The image grew Node and
+          # Playwright, boot passed 60s, and that is exactly what happened on
+          # the first run.
+          #
+          # Longer budget, and on expiry it prints the container's own logs and
+          # fails here, where the message can name the actual problem.
+          for i in $(seq 1 180); do
+            if curl -sf http://localhost:8899/health > /dev/null 2>&1; then
+              echo "  server up after ${i}s"
+              exit 0
+            fi
             sleep 1
           done
+          echo "::error::server did not answer /health within 180s"
+          docker compose ps
+          docker compose logs --tail 80
+          exit 1
 
       - name: Smoke test Docker
         run: |

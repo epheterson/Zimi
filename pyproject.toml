@@ -50,7 +50,12 @@ dependencies = [
 [project.optional-dependencies]
 bt = ["libtorrent==2.0.*"]
 pdf = ["PyMuPDF>=1.23.0"]
-mcp = ["mcp>=1.0.0"]
+# <2.0 for the same reason requirements.txt pins it: mcp 2.0 dropped the
+# vendored FastMCP this server is built on, moving it to a separate `fastmcp`
+# distribution. Without the ceiling, `pip install zimi[mcp]` resolves to 2.x and
+# the MCP server refuses to start -- issue #52, which was fixed in
+# requirements.txt and missed HERE, where PyPI users actually get their pins.
+mcp = ["mcp>=1.0,<2.0"]
 # The rendered capture engine (zimi/renderer.py): a headless Chromium run as a
 # CHILD PROCESS of the server, for pages whose content is built in JavaScript.
 # Deliberately not in `all`: this package is only half the install — the browser
@@ -59,7 +64,7 @@ mcp = ["mcp>=1.0.0"]
 # The Docker image ships both. Without it, `--engine rendered` refuses with the
 # two commands that fix it and every other capture works untouched.
 browser = ["playwright>=1.40"]
-all = ["PyMuPDF>=1.23.0", "mcp>=1.0.0", "libtorrent==2.0.*"]
+all = ["PyMuPDF>=1.23.0", "mcp>=1.0,<2.0", "libtorrent==2.0.*"]
 
 [project.scripts]
 zimi = "zimi.server:main"
