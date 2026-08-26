@@ -95,12 +95,31 @@ import certifi
 from libzim.reader import Archive
 from libzim.suggestion import SuggestionSearcher
 
+# PyMuPDF, for reading PDFs embedded in ZIM files.
+#
+# `pymupdf` is the module's real name; `fitz` is the historical alias, and
+# importing it on a current PyMuPDF PRINTS to stdout:
+#
+#     warning: The `fitz` API is deprecated and will be removed in future.
+#
+# stdout is a protocol channel for the MCP server and a parseable channel for
+# the CLI, so that line corrupted the JSON-RPC handshake and turned up inside
+# `zimi config` output. Both of those were caught as "JSON decode error", which
+# names the symptom and hides the cause — a library's deprecation notice.
+#
+# Importing the current name is also the fix for the deprecation itself, rather
+# than a way to silence it: `fitz` is scheduled to go away.
 try:
-    import fitz  # PyMuPDF — for reading PDFs embedded in ZIM files
+    import pymupdf as fitz
 
     HAS_PYMUPDF = True
 except ImportError:
-    HAS_PYMUPDF = False
+    try:
+        import fitz  # PyMuPDF older than 1.24.3, which had no `pymupdf` name
+
+        HAS_PYMUPDF = True
+    except ImportError:
+        HAS_PYMUPDF = False
 
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
@@ -2446,7 +2465,9 @@ def load_cache(force=False):
             flush=True,
         )
     elif scanned > 0:
-        _boot_say(f"  Cache built: {len(info)} ZIMs scanned in {elapsed:.1f}s", flush=True)
+        _boot_say(
+            f"  Cache built: {len(info)} ZIMs scanned in {elapsed:.1f}s", flush=True
+        )
     elif len(info) > 0:
         _boot_say(
             f"  Cache loaded: {len(info)} ZIMs from disk cache in {elapsed:.1f}s",

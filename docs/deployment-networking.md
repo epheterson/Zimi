@@ -249,6 +249,14 @@ services:
       - ./zimi.json:/config/zimi.json:ro
 ```
 
+**The config directory has to be writable by uid 1000.** The image runs as a non-root user, and Docker creates a bind-mount target that does not exist yet owned by root — so the container cannot write its own data dir, and since `ZIMI_DATA_DIR` is set explicitly, Zimi refuses to start rather than quietly putting your state somewhere you did not choose. Create it first:
+
+```bash
+sudo mkdir -p /srv/zimi-config && sudo chown 1000:1000 /srv/zimi-config
+```
+
+The bind mount is what lets you drop `zimi.json` in. If you do not need to reach the directory from the host, a named volume avoids the question entirely — Docker creates those with the container user's ownership.
+
 One caveat specific to the official image, and it follows directly from the precedence rules. The image sets `ZIM_DIR=/zims` and `ZIMI_DATA_DIR=/config` as environment variables and starts with `serve --port 8899`, so those three values are already spoken for by a higher layer: a mounted config file cannot move a running container's ZIMs, its state, or its port. That is the compatibility rule doing its job rather than a limitation to work around, and inside a container the volume mounts are the natural place to say where things live anyway. The shipped image also sets `ZIMI_MANAGE=1`, so `"manage": false` in a mounted file does not disable management in Docker for the same reason — override it in compose (`ZIMI_MANAGE=0`) rather than in the file.
 
 If you do want the file to own them, override the layer that is winning. A Dockerfile `ENV` cannot be unset from compose, so set it to the value you want instead; and drop the `--port` flag by overriding `command`:

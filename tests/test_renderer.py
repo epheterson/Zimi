@@ -830,10 +830,17 @@ def test_a_browser_can_be_killed_from_another_thread(tmp_path):
     holder["dead"].set()
 
 
+@browser
 def test_a_fresh_thread_can_render_after_a_kill(tmp_path):
     # The production guarantee behind the watchdog: killing a wedged job's
     # browser must not cost the NEXT job its browser. Each web job runs in a
     # fresh worker thread, so a fresh thread starting cleanly is the contract.
+    #
+    # The marker was missing while its neighbour above had it. Without a
+    # browser, RenderedSession().start() raises inside the worker thread, the
+    # exception dies with the daemon, and the assertion below fails as
+    # KeyError: 'pid' -- which names a dict key rather than the real answer,
+    # "there is no browser on this machine".
     scratch = {}
 
     def sacrifice():

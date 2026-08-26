@@ -8,9 +8,27 @@ services:
     # docs/deployment-networking.md for tradeoffs and alternatives.
     network_mode: host
     volumes:
+      # ZIMs stay a bind mount: they are YOUR files and you need to drop .zim
+      # files in beside them.
       - ./zims:/zims
-      - ./zimi-config:/config
+      # Config is a NAMED VOLUME, not `./zimi-config:/config`.
+      #
+      # A bind mount to a path that does not exist yet is created by Docker
+      # owned by root, and this image runs as USER zimi (uid 1000). The
+      # container therefore could not write its own data dir. Through 1.8 that
+      # was silently tolerated; 1.9 checks, finds an EXPLICIT ZIMI_DATA_DIR it
+      # cannot write, and correctly refuses to start rather than scattering
+      # state somewhere nobody asked for — so a fresh `docker compose up` went
+      # into a crash loop on the very first run.
+      #
+      # A named volume is created with the container user's ownership, so this
+      # works on a clean clone with no chown and no mkdir. The data is still
+      # reachable: `docker volume inspect zimi_config`.
+      - zimi_config:/config
     environment:
       - ZIM_DIR=/zims
       - ZIMI_DATA_DIR=/config
       - ZIMI_MANAGE=1
+
+volumes:
+  zimi_config:

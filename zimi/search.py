@@ -882,7 +882,12 @@ def extract_pdf_text(pdf_bytes, max_length=None):
     if not _srv.HAS_PYMUPDF:
         return "[PDF content — install PyMuPDF to extract text]"
     try:
-        import fitz
+        # The current module name; `fitz` warns to stdout on import and is
+        # going away. See the import guard in server.py.
+        try:
+            import pymupdf as fitz
+        except ImportError:
+            import fitz
 
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         text = ""
