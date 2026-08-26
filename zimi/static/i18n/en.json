@@ -1489,6 +1489,7 @@
   "zi_file": "File",
   "zi_flavour": "Flavour",
   "zi_history": "History",
+  "zi_shape_sampled": "Estimated from {n} of {total} entries.",
   "zi_identifier": "Identifier",
   "zi_kind_alive": "Alive",
   "zi_kind_bookmarks": "Bookmarks",

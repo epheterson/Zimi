@@ -1489,6 +1489,7 @@
   "zi_file": "קובץ",
   "zi_flavour": "גרסה",
   "zi_history": "היסטוריה",
+  "zi_shape_sampled": "הערכה מתוך {n} מ-{total} רשומות.",
   "zi_identifier": "מזהה",
   "zi_kind_alive": "חי",
   "zi_kind_bookmarks": "סימניות",

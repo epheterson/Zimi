@@ -1489,6 +1489,7 @@
   "zi_file": "Archivo",
   "zi_flavour": "Variante",
   "zi_history": "Historial",
+  "zi_shape_sampled": "Estimado a partir de {n} de {total} entradas.",
   "zi_identifier": "Identificador",
   "zi_kind_alive": "Vivo",
   "zi_kind_bookmarks": "Marcadores",

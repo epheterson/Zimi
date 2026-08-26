@@ -970,6 +970,30 @@ function _createRowAsStatus(row) {
   };
 }
 
+// Is this status reply about a job that belongs to this page?
+//
+// The server holds ONE slot and a job stays in it after it finishes, until the
+// next one takes the slot. So a poll made between "we submitted" and "our job
+// starts" is answered with the PREVIOUS job — done, ok, result attached — and
+// a page that had just started watching would adopt it, paint a stranger's
+// completion screen over the capture its admin was waiting on, then flip back
+// when their own job finally started. (Eric, mid-CNN: "it showed the old one
+// your test I think the completion screen it was weird then back to progress
+// on mine.")
+//
+// An ACTIVE job is ours whoever started it: picking a run up from another tab
+// is the point of polling at all, and there is only ever one running. A
+// FINISHED one is ours only if we were watching it — the job already on
+// screen, or our own submission waiting its turn in the queue.
+//
+// A reply with no id at all is the server saying "no job", which every page is
+// entitled to hear.
+function _createForeignReply(data, jobId, queuedId) {
+  if (!data || !data.id) return false;
+  if (data.active || !data.done) return false;
+  return data.id !== jobId && data.id !== queuedId;
+}
+
 // The table the server just sent, taken whole and remembered.
 //
 // Every row, live ones included. The poll used to drop running and queued jobs
@@ -2059,11 +2083,14 @@ function _createIngest(data) {
       CREATE_FIELDS.capture_variants.on = data.capture_defaults.capture_variants;
     }
   }
-  // The server holds one job at a time and hands it an id. A different id is a
-  // different job — our queued submission reaching the front, or someone else's
-  // run starting — and nothing of the last one's tree, tail or counters belongs
-  // on top of it.
-  if (data.id && data.id !== _createJobId) {
+  // Whose job is this reply about? See _createForeignReply: a finished job the
+  // server still has in its one slot may belong to somebody else entirely.
+  var foreign = _createForeignReply(data, _createJobId, _createQueuedId);
+  // A different id is a different job — our queued submission reaching the
+  // front, or someone else's run starting — and nothing of the last one's tree,
+  // tail or counters belongs on top of it. Not taken from a foreign reply,
+  // whose id and log lines are not ours to adopt.
+  if (!foreign && data.id && data.id !== _createJobId) {
     _createJobId = data.id;
     _createResetRun();
   }
@@ -2076,7 +2103,11 @@ function _createIngest(data) {
   // proves the job is no longer waiting. A queue strip nobody can clear is the
   // eternal spinner wearing a different hat.
   if (Array.isArray(data.queue)) _createQueue = data.queue;
-  else if (data.active || data.done) _createQueue = [];
+  // The fallback for a server too old to send a queue at all. `foreign` is
+  // excluded because somebody else's job finishing says nothing about whether
+  // OUR submission is still waiting — and clearing the strip on it would take
+  // the admin's queue position off the screen while they were in it.
+  else if (data.active || (data.done && !foreign)) _createQueue = [];
 
   if (data.active) {
     _createAdopted = true;
@@ -2093,19 +2124,26 @@ function _createIngest(data) {
     _createQueuedId = null;
   }
 
-  var lines = _createMergeLines(_createLines, _createCursor, data);
-  if (lines.cursor < _createCursor) _createLogCursor = 0;
-  _createLines = lines.lines;
-  _createCursor = lines.cursor;
+  // A foreign job's log lines and tree events are not ours to merge either —
+  // they would land in our tail and our tree, under our job's heading.
+  if (!foreign) {
+    var lines = _createMergeLines(_createLines, _createCursor, data);
+    if (lines.cursor < _createCursor) _createLogCursor = 0;
+    _createLines = lines.lines;
+    _createCursor = lines.cursor;
 
-  var events = _createMergeEvents(_createEventCursor, data);
-  if (events.supported) _createEventsOk = true;
-  if (events.reset) { _createViz = _createNewViz(); _createTreeMounted = false; }
-  _createEventCursor = events.cursor;
-  var moved = _createApplyEvents(_createViz, events.events);
-  _createVizChanges = _createVizChanges ? _createMergeChanges(_createVizChanges, moved) : moved;
+    var events = _createMergeEvents(_createEventCursor, data);
+    if (events.supported) _createEventsOk = true;
+    if (events.reset) { _createViz = _createNewViz(); _createTreeMounted = false; }
+    _createEventCursor = events.cursor;
+    var moved = _createApplyEvents(_createViz, events.events);
+    _createVizChanges = _createVizChanges ? _createMergeChanges(_createVizChanges, moved) : moved;
+  }
 
-  _createStatus = _createAdopted ? data : null;
+  // Null on a foreign reply, which is the truth: this page has no job on the
+  // server right now. The run pane comes down, the picker comes back, and the
+  // queue strip — untouched above — still shows where our submission is.
+  _createStatus = (_createAdopted && !foreign) ? data : null;
 }
 
 // Two batches of pending DOM work, combined — a render that was skipped (the
@@ -2632,18 +2670,10 @@ function _createCountLabel(metric, n) {
 // breakdown uses (_segBarHtml, app.js) — one component, so the two never
 // drift. Colors are per content kind and each segment states its size and
 // count as text in the legend, never color alone.
-var _CREATE_KIND_COLORS = {
-  images: '#f59e0b',
-  video: '#a78bfa',
-  audio: '#c084fc',
-  pages: '#60a5fa',
-  documents: '#38bdf8',
-  data: '#22d3ee',
-  fonts: '#34d399',
-  styles: '#f472b6',
-  scripts: '#fbbf24',
-  other: '#6e6e7a',
-};
+// (The colour per kind lives in app.js beside _segBarHtml, because the About
+// panel draws this same bar for ZIMs that were never made here and app.js is
+// always loaded while this file is not. Two copies would be two things to keep
+// in step for no gain.)
 
 function _createInsideHtml(shape) {
   if (!shape || !shape.breakdown || !shape.breakdown.length) return '';

@@ -1489,6 +1489,7 @@
   "zi_file": "الملف",
   "zi_flavour": "النكهة",
   "zi_history": "السجل",
+  "zi_shape_sampled": "تقدير من {n} من أصل {total} مدخل.",
   "zi_identifier": "المُعرِّف",
   "zi_kind_alive": "حيّ",
   "zi_kind_bookmarks": "العلامات المرجعية",

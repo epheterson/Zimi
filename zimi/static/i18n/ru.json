@@ -1489,6 +1489,7 @@
   "zi_file": "Файл",
   "zi_flavour": "Вариант",
   "zi_history": "История",
+  "zi_shape_sampled": "Оценка по {n} записям из {total}.",
   "zi_identifier": "Идентификатор",
   "zi_kind_alive": "Живой",
   "zi_kind_bookmarks": "Закладки",

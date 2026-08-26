@@ -2852,6 +2852,10 @@
     margin: 18px 0 10px; font-size: 10px; font-weight: 600; color: var(--text2);
     text-transform: uppercase; letter-spacing: 0.06em;
   }
+  /* "Estimated from 6,000 of 6,400,000 entries." A ZIM too large to weigh
+     whole is sampled, and the panel says so under the bar rather than letting
+     an estimate stand in the same voice as a measurement. */
+  .zi-shape-note { margin-top: 8px; font-size: 11px; color: var(--text2); opacity: 0.85; }
   /* The provenance timeline: one entry per record, oldest first, joined by a
      rule down the left so a ZIM's life reads as a sequence rather than a list. */
   .zi-timeline { list-style: none; margin: 0; padding: 0 0 0 16px; border-inline-start: 1px solid var(--border); }

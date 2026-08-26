@@ -1489,6 +1489,7 @@
   "zi_file": "文件",
   "zi_flavour": "版本",
   "zi_history": "历史",
+  "zi_shape_sampled": "根据 {total} 条目中的 {n} 条估算。",
   "zi_identifier": "标识符",
   "zi_kind_alive": "实况",
   "zi_kind_bookmarks": "书签",

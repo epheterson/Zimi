@@ -3468,11 +3468,63 @@ function _ziBodyHtml(info) {
       info.history.map(_ziRecordHtml).join('') + '</ul>'
     : '<div class="zi-none">' + tH('zi_no_history') + '</div>';
   var warn = info.readable ? '' : '<div class="zi-warn">' + tH('zi_unreadable') + '</div>';
+  // An empty slot for what this ZIM is MADE of, filled in by a second fetch.
+  // Empty because that answer may have to read the file, and a description
+  // should not wait behind a measurement (see /zim-shape).
+  var shape = '<div id="zi-shape"></div>';
   // Whatever else the publisher wrote goes last, under its own keys: a field
   // this build has no row for is still a field the file carries, but it is a
   // footnote to the story the timeline tells, not a preface to it.
-  return warn + head + rows + history + _ziOtherHtml(info.other);
+  return warn + head + rows + shape + history + _ziOtherHtml(info.other);
 }
+
+// What the ZIM is made of, as the same segmented bar the create page's done
+// card and the cache breakdown use — one component (_segBarHtml), so the three
+// never drift apart. Eric: "I want the file breakdown bar chart in about this
+// zim for all zims."
+//
+// A sampled answer SAYS it is sampled. Reading six thousand entries out of six
+// million gives proportions worth drawing and totals that are estimates, and a
+// panel that printed the estimate in the same voice as a measurement would be
+// doing the thing this release spent a day removing.
+function _ziShapeHtml(shape) {
+  if (!shape || !shape.breakdown || !shape.breakdown.length) return '';
+  if (typeof _segBarHtml !== 'function') return '';
+  var segs = shape.breakdown.slice().sort(function (a, b) {
+    return (b.size_bytes || 0) - (a.size_bytes || 0);
+  });
+  // The bar is proportional to what is INSIDE; the file on disk is smaller,
+  // because a ZIM is compressed. Two honest numbers rather than one bar
+  // pretending its segments add up to the file size.
+  var inner = segs.reduce(function (a, x) { return a + (x.size_bytes || 0); }, 0);
+  var bar = _segBarHtml(segs, inner, _CREATE_KIND_COLORS, function (k) {
+    return tH('create_kind_' + k);
+  }, t('create_inside_title'));
+  if (!bar) return '';
+  var note = shape.sampled
+    ? '<div class="zi-shape-note">' + tH('zi_shape_sampled', {
+        n: (shape.sampled_entries || 0).toLocaleString(),
+        total: (shape.total_entries || 0).toLocaleString()
+      }) + '</div>'
+    : '';
+  return '<div class="zi-sec">' + tH('create_inside_title') + '</div>' + bar + note;
+}
+
+// The colours the create page's done card uses, so one ZIM looks the same
+// whichever surface describes it. Defined here because app.js always loads and
+// create.js is lazy — the About panel must not depend on having opened Create.
+var _CREATE_KIND_COLORS = {
+  images: '#f59e0b',
+  video: '#a78bfa',
+  audio: '#c084fc',
+  pages: '#60a5fa',
+  documents: '#38bdf8',
+  data: '#22d3ee',
+  fonts: '#34d399',
+  styles: '#f472b6',
+  scripts: '#fbbf24',
+  other: '#6e6e7a',
+};
 
 function _ziKeydown(e) {
   if (e.key === 'Escape') { e.preventDefault(); _closeZimAbout(); }
@@ -3492,6 +3544,9 @@ function _openZimAbout(zim) {
   var ov = document.createElement('div');
   ov.className = 'zi-overlay';
   ov.id = _ZI_OVERLAY_ID;
+  // Which ZIM this panel is about, so a slow second fetch can tell whether the
+  // panel it is about to write into is still the one that asked.
+  ov.dataset.zim = zim;
   ov.innerHTML =
     '<div class="zi-panel" role="dialog" aria-modal="true" aria-label="' + escAttr(t('about_zim')) + '">' +
     '<div class="zi-head"><span class="zi-head-title">' + tH('about_zim') + '</span>' +
@@ -3511,8 +3566,27 @@ function _openZimAbout(zim) {
       if (!r.ok) throw new Error('zim-info ' + r.status);
       return r.json();
     })
-    .then(function (info) { write(_ziBodyHtml(info)); })
+    .then(function (info) { write(_ziBodyHtml(info)); _ziFillShape(zim); })
     .catch(function () { write('<div class="zi-none">' + tH('zi_load_failed') + '</div>'); });
+}
+
+// Second fetch, after the panel is already readable. Separate because it can
+// cost a read of the file itself: metadata is in the library cache, but what a
+// ZIM is MADE of is not written down anywhere for a ZIM this instance did not
+// make. The slot simply stays empty if the answer never comes — a bar is worth
+// having and not worth an error message.
+function _ziFillShape(zim) {
+  serverFetch('/zim-shape?zim=' + encodeURIComponent(zim))
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (shape) {
+      // Re-find the slot rather than closing over it: the panel may have been
+      // closed, or reopened on a DIFFERENT ZIM, while this was in flight.
+      var overlay = document.getElementById(_ZI_OVERLAY_ID);
+      var slot = overlay && overlay.querySelector('#zi-shape');
+      if (!slot || overlay.dataset.zim !== zim) return;
+      slot.innerHTML = _ziShapeHtml(shape);
+    })
+    .catch(function () {});
 }
 
 function renderCardGrid(items, showStars, showCategory) {

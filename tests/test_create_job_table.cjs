@@ -247,5 +247,49 @@ const FAILED  = { id: 'j1', mode: 'page', source: 'https://c.test/', state: 'fai
   eq(sandbox._createHistory.length, CREATE_JOBS_MAX, 'the table is capped');
 }
 
+// ── whose job is the server talking about ───────────────────────────────────
+//
+// The other half of "one slot, many watchers". The server keeps a finished job
+// in its single slot until the next one takes it, so a page that submits while
+// the previous capture is still sitting there gets told about a DONE job that
+// is not its own — and, having just started watching, used to adopt it. Eric
+// saw his CNN run replaced by the completion screen of an earlier test job and
+// then flipped back: "it showed the old one your test I think the completion
+// screen it was weird then back to progress on mine."
+{
+  const { sandbox } = load();
+  const { _createForeignReply } = sandbox;
+
+  const done = (id) => ({ id, done: true, active: false, ok: true });
+  const live = (id) => ({ id, done: false, active: true });
+
+  check(_createForeignReply(done('other'), 'mine', null),
+    "a finished job we never watched is not ours");
+  check(!_createForeignReply(done('mine'), 'mine', null),
+    'our own finished job is ours');
+  check(!_createForeignReply(done('q1'), null, 'q1'),
+    'and so is the submission we are waiting on in the queue');
+
+  // Adopting a RUNNING job is deliberate — it is how a second tab, or a reload
+  // mid-capture, picks the job back up. There is only ever one running.
+  check(!_createForeignReply(live('other'), 'mine', null),
+    'a running job is ours whoever started it');
+  check(!_createForeignReply(live('other'), null, null),
+    'including when this page has no job of its own');
+
+  // "No job" is an answer every page is entitled to hear.
+  check(!_createForeignReply({ done: false, active: false }, 'mine', null),
+    'a reply with no job at all is not foreign');
+  check(!_createForeignReply(null, 'mine', null), 'and neither is no reply');
+
+  // The exact shape of Eric's sequence, in order: our submission is queued
+  // behind a capture that has just finished, so the next poll is about theirs.
+  check(_createForeignReply(done('theirs'), null, 'ours'),
+    "while OUR job waits in the queue, THEIR finished job is still foreign");
+  // ...and the moment ours starts, it is ours.
+  check(!_createForeignReply(live('ours'), 'ours', null),
+    'and when ours starts, the run pane is ours again');
+}
+
 console.log(failures === 0 ? '\nAll checks passed' : `\n${failures} check(s) failed`);
 process.exit(failures ? 1 : 0);

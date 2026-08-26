@@ -788,14 +788,64 @@ def _content_bucket(mimetype):
     return "other"
 
 
-def zim_content_breakdown(path):
-    """What a written ZIM is actually made of: total file size on disk, entry
-    count, and per-bucket byte totals and counts.
+# Reading a ZIM's shape when the ZIM is enormous.
+#
+# A freshly captured page has a few hundred entries and is walked whole. English
+# Wikipedia has millions, and walking it means millions of item lookups — every
+# one a seek somewhere in ninety gigabytes. Nobody is going to hold a panel open
+# for that, and on the spinning disks these libraries actually live on it is far
+# worse than the entry count suggests.
+#
+# But the bar is a question about PROPORTION — "what is this made of" — and
+# proportion is exactly what a sample answers. So a large ZIM is sampled.
+#
+# In RUNS rather than at random, and that is the important part. Entries near
+# each other in id order are near each other on disk, so a hundred consecutive
+# entries cost about one seek and a short read, while a hundred scattered ones
+# cost a hundred seeks. Spreading a few dozen runs evenly across the id space
+# keeps the sample representative of the whole file while paying for a few dozen
+# seeks instead of thousands.
+SHAPE_EXACT_MAX = 20_000  # at or below this, no sampling: walk it all
+SHAPE_SAMPLE_ENTRIES = 6_000  # entries examined when sampling
+SHAPE_SAMPLE_RUNS = 60  # spread across this many places in the file
+
+
+def _sample_ids(entry_count, sample, runs):
+    """Ids to examine: `runs` evenly spaced blocks of consecutive entries,
+    together about `sample` of them. Yields ints, in increasing order, so the
+    read walks forward through the file rather than jumping about."""
+    runs = max(1, min(runs, sample, entry_count))
+    per_run = max(1, sample // runs)
+    stride = entry_count / float(runs)
+    seen_to = -1
+    for r in range(runs):
+        start = int(r * stride)
+        if start <= seen_to:
+            start = seen_to + 1
+        stop = min(start + per_run, entry_count)
+        for i in range(start, stop):
+            yield i
+        seen_to = stop - 1
+        if seen_to >= entry_count - 1:
+            return
+
+
+def zim_content_breakdown(path, exact_max=SHAPE_EXACT_MAX):
+    """What a ZIM is actually made of: total file size on disk, entry count,
+    and per-bucket byte totals and counts.
 
     Answers the question a capture leaves open — "382 assets" says nothing about
     whether that is mostly pictures or mostly fonts, and a number with no shape
-    is not information. Best effort: a ZIM that will not open returns None
-    rather than failing whatever is reporting."""
+    is not information. Eric asked for the same bar on every ZIM in the library,
+    not just the ones made here, which is what the sampling above is for.
+
+    A sampled answer says so: `sampled` is True and the per-bucket figures are
+    scaled estimates. Estimates presented as measurements is the failure mode
+    this whole release has been about, so the flag is not optional decoration —
+    the panel prints it.
+
+    Best effort throughout: a ZIM that will not open returns None rather than
+    failing whatever is reporting."""
     try:
         from libzim.reader import Archive
     except ImportError:
@@ -805,10 +855,22 @@ def zim_content_breakdown(path):
     except Exception as e:
         log.debug("could not open %s for a content breakdown: %s", path, e)
         return None
+    try:
+        entry_count = int(archive.entry_count)
+    except Exception:
+        return None
+    sampled = entry_count > max(0, exact_max)
+    ids = (
+        _sample_ids(entry_count, SHAPE_SAMPLE_ENTRIES, SHAPE_SAMPLE_RUNS)
+        if sampled
+        else range(entry_count)
+    )
     sizes, counts = {}, {}
     entries = 0
+    examined = 0
     try:
-        for i in range(archive.entry_count):
+        for i in ids:
+            examined += 1
             try:
                 entry = archive._get_entry_by_id(i)
                 if entry.is_redirect:
@@ -822,12 +884,21 @@ def zim_content_breakdown(path):
             entries += 1
     except Exception as e:
         log.debug("content breakdown of %s stopped early: %s", path, e)
+    # Scale a sample up to the whole file. Redirects are deliberately in the
+    # denominator: they are entries that were looked at and contributed nothing,
+    # so counting them keeps the ratio honest about how much of the file the
+    # sample stood for.
+    scale = (float(entry_count) / examined) if (sampled and examined) else 1.0
+    if sampled:
+        sizes = {k: int(v * scale) for k, v in sizes.items()}
+        counts = {k: int(round(v * scale)) for k, v in counts.items()}
+        entries = int(round(entries * scale))
     try:
         total = os.path.getsize(path)
     except OSError:
         total = 0
     order = [k for k, _p in _CONTENT_BUCKETS] + ["other"]
-    return {
+    shape = {
         "file_bytes": total,
         "entries": entries,
         "breakdown": [
@@ -836,6 +907,11 @@ def zim_content_breakdown(path):
             if sizes.get(k)
         ],
     }
+    if sampled:
+        shape["sampled"] = True
+        shape["sampled_entries"] = examined
+        shape["total_entries"] = entry_count
+    return shape
 
 
 def _output_path(zim_dir, base):

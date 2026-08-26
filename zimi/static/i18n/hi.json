@@ -1489,6 +1489,7 @@
   "zi_file": "फ़ाइल",
   "zi_flavour": "संस्करण",
   "zi_history": "इतिहास",
+  "zi_shape_sampled": "{total} में से {n} प्रविष्टियों से अनुमानित।",
   "zi_identifier": "पहचानकर्ता",
   "zi_kind_alive": "जीवंत",
   "zi_kind_bookmarks": "बुकमार्क",

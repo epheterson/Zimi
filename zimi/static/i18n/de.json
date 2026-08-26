@@ -1489,6 +1489,7 @@
   "zi_file": "Datei",
   "zi_flavour": "Variante",
   "zi_history": "Verlauf",
+  "zi_shape_sampled": "Geschätzt aus {n} von {total} Einträgen.",
   "zi_identifier": "Kennung",
   "zi_kind_alive": "Lebend",
   "zi_kind_bookmarks": "Lesezeichen",

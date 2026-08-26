@@ -884,6 +884,105 @@ def _zim_file_sig(entry):
     return (entry or {}).get("file", ""), (entry or {}).get("size_bytes", 0)
 
 
+# ── what a ZIM is made of, for any ZIM ──────────────────────────────────────
+#
+# The composition bar started life on the create page's done card, where the
+# ZIM had just been written and its shape was already in hand. Eric wanted it on
+# every ZIM in the library: "I want the file breakdown bar chart in about this
+# zim for all zims."
+#
+# An installed ZIM carries no such record, so the shape has to be read off the
+# file — which is fine for a captured page and unthinkable for English
+# Wikipedia, hence the sampling in zim_content_breakdown. What is left is not
+# paying even that twice: the answer is memoized against the file's identity,
+# in memory and on disk, so a library is measured once and stays measured
+# across restarts. A ZIM replaced under the same name changes size or mtime and
+# is therefore a different key, which is the same lesson as the icon ETag one
+# directory over — identity is what the bytes say, not what the name says.
+_SHAPE_CACHE_FILE = "zim_shapes.json"
+_shape_lock = threading.Lock()
+_shape_cache = None  # key -> shape dict, loaded lazily
+
+
+def _shape_cache_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, _SHAPE_CACHE_FILE)
+
+
+def _shape_path(name):
+    """The file behind a ZIM name. The list entry's ``file`` is a BASENAME —
+    what the panel prints — so the path comes from the loader's own map."""
+    try:
+        return _srv.get_zim_files().get(name, "")
+    except Exception:
+        return ""
+
+
+def _shape_key(name):
+    """A ZIM's identity for this purpose: where it is, how big, how old. Any
+    replacement changes at least one, and a changed key is simply a miss."""
+    path = _shape_path(name)
+    if not path:
+        return ""
+    try:
+        st = os.stat(path)
+        return "%s|%d|%d" % (path, st.st_size, int(st.st_mtime))
+    except OSError:
+        return ""
+
+
+def _shape_cache_load():
+    global _shape_cache
+    if _shape_cache is not None:
+        return _shape_cache
+    try:
+        with open(_shape_cache_path(), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        _shape_cache = data if isinstance(data, dict) else {}
+    except Exception:
+        _shape_cache = {}
+    return _shape_cache
+
+
+def _zim_shape(name):
+    """The composition of one installed ZIM, or None.
+
+    Gated by _zim_list_entry, which applies the per-request allowlist: a ZIM
+    somebody may not see does not get to have its shape read either."""
+    from zimi import zimwriter as _zw
+
+    if _zim_list_entry(name) is None:
+        return None
+    key = _shape_key(name)
+    if not key:
+        return None
+    with _shape_lock:
+        cache = _shape_cache_load()
+        hit = cache.get(key)
+    if hit is not None:
+        return hit
+    # Outside the lock: this reads the file, and two panels asking about two
+    # different ZIMs must not queue behind each other. The cost of two requests
+    # racing on the SAME ZIM is one wasted read, which is cheaper than
+    # serializing every read in the library behind one mutex.
+    shape = _zw.zim_content_breakdown(_shape_path(name))
+    if shape is None:
+        return None
+    with _shape_lock:
+        cache = _shape_cache_load()
+        cache[key] = shape
+        # Drop entries for files that are no longer here, so a library churned
+        # through a hundred captures does not accumulate a hundred dead records.
+        live = {_shape_key(z.get("name", "")) for z in _srv.list_zims()}
+        live.discard("")
+        for stale in [k for k in cache if k not in live]:
+            del cache[stale]
+        try:
+            _srv._atomic_write_json(_shape_cache_path(), cache)
+        except Exception:
+            log.debug("could not persist the ZIM shape cache", exc_info=True)
+    return shape
+
+
 def _read_zim_metadata(archive):
     """Every TEXT metadata entry of an open archive, decoded and stripped.
 
@@ -1853,6 +1952,21 @@ class ZimHandler(BaseHTTPRequestHandler):
                     return self._json(404, {"error": f"ZIM '{zim}' not found"})
                 return self._json(200, info)
 
+            elif parsed.path == "/zim-shape":
+                # What the ZIM is made of. Its own route rather than a field on
+                # /zim-info because the two cost different things: /zim-info is
+                # metadata the cache already holds, this one may have to read
+                # the file. The panel paints from the first and fills the bar in
+                # when the second arrives, so a big library never pays for a
+                # measurement to see a description.
+                zim = param("zim")
+                if not zim:
+                    return self._json(400, {"error": "missing ?zim= parameter"})
+                shape = _zim_shape(zim)
+                if shape is None:
+                    return self._json(404, {"error": f"ZIM '{zim}' not found"})
+                return self._json(200, shape)
+
             elif parsed.path == "/whoami":
                 return self._handle_whoami()
 
@@ -2536,22 +2650,48 @@ class ZimHandler(BaseHTTPRequestHandler):
             return self._dispatch_error(e)
 
     def _serve_zim_icon(self, zim_name, archive):
-        """Serve the ZIM's 48x48 illustration as a PNG."""
+        """Serve the ZIM's 48x48 illustration as a PNG.
+
+        A ZIM NAME is not a version. This used to tag the response
+        ``"icon-<name>"`` and mark it ``immutable`` for a week — a promise that
+        the bytes behind this URL can never change. They can: replacing a ZIM
+        with a newer build, or re-running a capture that writes the same
+        filename, puts different content at the same address. `immutable` tells
+        the browser not even to ASK, so the old icon (or a remembered miss)
+        stayed on screen for seven days, in that browser only. Eric made a ZIM
+        and its icon was missing in the window he made it from and present in a
+        private one — which is a cache report, not an icon report.
+
+        So the tag is the CONTENT's, and the response is revalidated. The
+        digest costs a hash of a couple of kilobytes on a cache miss; the
+        revalidation costs a 304 with no body. Neither is worth a week of
+        showing the wrong picture."""
         try:
             icon_data = bytes(archive.get_metadata("Illustration_48x48@1"))
         except Exception as e:
             log.debug("No icon metadata for %s: %s", zim_name, e)
+            # And a MISS is never remembered. A ZIM that gains an illustration
+            # — rebuilt, replaced, re-captured — must not stay iconless in the
+            # one browser that happened to ask a moment too early.
             self.send_response(404)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", "0")
             self.end_headers()
             return
-        etag = f'"icon-{zim_name}"'
+        etag = '"icon-%s"' % hashlib.sha256(icon_data).hexdigest()[:16]
         if self.headers.get("If-None-Match") == etag:
             self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "public, max-age=0, must-revalidate")
             self.end_headers()
             return
         self.send_response(200)
         self.send_header("Content-Type", "image/png")
-        self.send_header("Cache-Control", "public, max-age=604800, immutable")
+        # max-age=0 + must-revalidate: reuse the cached bytes, but ask first.
+        # The ask is an ETag comparison the server answers with a 304, which is
+        # what makes this correct AND cheap — a page full of source tiles costs
+        # a handful of empty replies rather than a handful of images.
+        self.send_header("Cache-Control", "public, max-age=0, must-revalidate")
         self.send_header("ETag", etag)
         self.send_header("Content-Length", str(len(icon_data)))
         self.end_headers()
