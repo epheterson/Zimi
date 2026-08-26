@@ -2195,6 +2195,12 @@ class _CreateJob:
         self.cancelled = False
         self.cancel_requested = False
         self.stalled = False
+        # The watchdog's verdict, published the moment it decides and BEFORE it
+        # kills anything, because killing the browser is what un-wedges the
+        # worker thread and sends it here with an error of its own. Whoever
+        # closes the job out, this is the sentence the operator gets: see the
+        # precedence rule in _create_finish.
+        self.stall_error = ""
         self.error = ""
         self.result = None
         # Finish-early (site mode): the admin asked the crawl to stop fetching
@@ -3167,6 +3173,17 @@ def _create_finish(job, **outcome):
     with _create_lock:
         if job.done:
             return False
+        # A stalled job's verdict outranks whatever the worker thread says next.
+        #
+        # The watchdog cannot kill a Python thread, so it kills the BROWSER —
+        # and that is precisely what un-blocks the wedged worker, which then
+        # raises "Target page, context or browser has been closed" and races
+        # here to close the job with it. It usually won: the operator was told
+        # a browser closed, by the code that closed it, instead of "no progress
+        # for 10 minutes". Whoever arrives first now, the sentence is the one
+        # the watchdog published before it touched anything.
+        if job.stall_error and not outcome.get("stalled"):
+            outcome = dict(outcome, stalled=True, error=job.stall_error)
         for key, value in outcome.items():
             setattr(job, key, value)
         if job.phase != "done":
@@ -3212,27 +3229,29 @@ def _create_watch(job):
         if time.time() - since < CREATE_STALL_SECONDS:
             continue
         job.cancel_requested = True
+        minutes = int(CREATE_STALL_SECONDS // 60) or 1
+        verdict = (
+            f"no progress for {minutes} minutes — giving up on this job. "
+            "Whatever it was waiting for never answered. Nothing has been "
+            "added to the library."
+        )
+        # Published BEFORE anything is killed, and that order is the whole
+        # point. Killing the browser is what frees the wedged worker to raise
+        # its own error and reach _create_finish first; by then this sentence
+        # is already on the job and _create_finish knows to keep it.
+        job.stall_error = verdict
         # A cooperative cancel lands at the engine's next progress line, and a
         # wedged job by definition may never reach one. A browser is the one
         # thing that can be stopped from out here regardless: it is a child
         # process, and a signal does not need the job's thread to cooperate.
         _create_kill_browsers()
-        minutes = int(CREATE_STALL_SECONDS // 60) or 1
         log.warning(
             "create job %s (%s) made no progress for %ss — abandoning it",
             job.id,
             job.mode,
             int(CREATE_STALL_SECONDS),
         )
-        _create_finish(
-            job,
-            stalled=True,
-            error=(
-                f"no progress for {minutes} minutes — giving up on this job. "
-                "Whatever it was waiting for never answered. Nothing has been "
-                "added to the library."
-            ),
-        )
+        _create_finish(job, stalled=True, error=verdict)
         return
 
 

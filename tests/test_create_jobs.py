@@ -329,6 +329,67 @@ def test_a_stalled_job_hands_the_slot_to_the_queue(
     release.set()
 
 
+def test_the_watchdogs_verdict_outranks_the_error_its_own_kill_caused(
+    tmp_path, monkeypatch, quick_watchdog
+):
+    """The watchdog kills the browser; the browser dying is what un-wedges the
+    worker; the worker then reports that a browser closed.
+
+    That is a loop, and for as long as the worker won the race to the finish
+    line it was the loop the operator was shown. A capture wedged on a CDN that
+    never answered came back as::
+
+        cannot read https://apple.com after rendering it: Page.evaluate:
+        Target page, context or browser has been closed
+
+    — a true sentence about a browser that Zimi itself had just closed, and a
+    complete red herring about why the job failed. The verdict is published
+    before anything is killed for exactly this reason, so it does not matter
+    which thread arrives first.
+
+    The kill is stubbed slow so the worker RELIABLY wins here; the assertion is
+    the invariant either way."""
+    from zimi.creator import CreateError
+
+    killed = threading.Event()
+
+    def slow_kill():
+        killed.set()
+        time.sleep(0.3)  # hand the worker its head start, deterministically
+
+    def wedged_run(job, opts):
+        killed.wait(10)  # a worker freed by the kill, not by finishing
+        raise CreateError(
+            "cannot read https://apple.com after rendering it: Page.evaluate: "
+            "Target page, context or browser has been closed"
+        )
+
+    monkeypatch.setattr(manage, "_create_kill_browsers", slow_kill)
+    monkeypatch.setattr(manage, "_create_run", wedged_run)
+    _start_job("wedged")
+    body = _wait_done()
+    assert body["stalled"] is True
+    assert "no progress" in body["error"]
+    assert "Nothing has been added to the library" in body["error"]
+    assert "browser has been closed" not in body["error"]
+    assert {r["state"] for r in _journal(tmp_path)} == {"stalled"}
+
+
+def test_a_published_stall_verdict_survives_whoever_closes_the_job(
+    tmp_path, held_engine
+):
+    """The precedence rule on its own, without the threads: once the watchdog
+    has published its verdict, any other outcome arriving at the finish line
+    keeps that sentence and is recorded as the stall it is."""
+    _start_job("running")
+    job = manage._create_job
+    job.stall_error = "no progress for 10 minutes — giving up on this job."
+    assert manage._create_finish(job, error="Target page has been closed") is True
+    assert job.error == "no progress for 10 minutes — giving up on this job."
+    assert job.stalled is True
+    held_engine["go"] = True
+
+
 def test_a_job_finished_twice_only_counts_once(tmp_path, held_engine):
     """The watchdog and the worker can both reach the finish line for the same
     job. If both counted, the queue would advance twice and two creations would

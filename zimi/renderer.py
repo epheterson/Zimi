@@ -245,6 +245,29 @@ ALIVE_VARIANT_MAX_BYTES = 64 * 1024 * 1024
 # One variant is a picture on a page that has already finished loading. It gets
 # less patience than a whole video and more than nothing.
 ALIVE_VARIANT_TIMEOUT = 20.0
+# And a bound on the WHOLE sweep, which is the one the other two do not give.
+#
+# A count cap and a per-item timeout look like a limit and multiply into one
+# nobody chose: 240 attempts against a host that hangs every request is 80
+# minutes, per page. That is what apple.com did — the CDN throttles a headless
+# client, every fetch rides its timeout out, and the capture sat mute for long
+# enough that the stall watchdog killed it as dead. It was not dead. It was
+# obeying two limits that were never meant to be multiplied.
+#
+# So the sweep gets a clock. Ninety seconds is chosen against what it is for: a
+# host that answers gives back several hundred variants well inside it (CNN's
+# front page runs the whole 240 in under ten), and a host that does not answer
+# is not going to start. The page is already captured when this begins, so the
+# cost of stopping early is some image SIZES, and the cost of not stopping is
+# the entire job.
+ALIVE_VARIANT_BUDGET = 90.0
+# How often the sweep says where it is. Every fetch would be 240 log lines for
+# a step nobody is watching; never was the bug. Between the two: the sweep
+# reports on a clock, so a page whose variants are answering instantly stays
+# quiet and a page grinding through timeouts announces itself — which is also
+# the only thing that tells the stall watchdog this job is working rather than
+# wedged, and the only cancellation checkpoint inside the sweep.
+ALIVE_SWEEP_HEARTBEAT = 15.0
 # How many elements the computed-style sweep looks at. Bounded because the
 # sweep is the one part of the enumeration whose cost scales with the DOM
 # rather than with the number of images, and a 50,000-node page is a real thing.
@@ -1413,10 +1436,15 @@ class RenderedSession:
         answer — which is the whole of what a person sees as "the images are
         missing", and it is why this sweep is not an optimisation.
 
-        Bounded three ways and none of them is a failure: the count cap, the
-        byte cap here, and the crawl's own byte budget underneath. Every miss
-        is a debug line — the page is already captured and nothing downstream
-        depends on this."""
+        Bounded four ways and none of them is a failure: the count cap, the
+        byte cap here, the clock, and the crawl's own byte budget underneath.
+        Every miss is a debug line — the page is already captured and nothing
+        downstream depends on this.
+
+        The clock is the one that had to be added. Count and per-item timeout
+        read as limits and multiply into 240 × 20s = 80 minutes against a host
+        that hangs, which is not a bound anybody set. A bound you arrive at by
+        multiplication is not a bound; it is an accident with a ceiling."""
         # Switched off means this screen only: the archive keeps the candidates
         # the navigation actually fetched and nothing else. The provenance is
         # unaffected either way — the counts have always reported what was
@@ -1432,10 +1460,13 @@ class RenderedSession:
         except Exception as e:
             log.debug("could not enumerate image candidates: %s", _playwright_reason(e))
             return
+        candidates = list(candidates or ())
         spent = 0
         tried = 0
         found = 0
-        for url in candidates or []:
+        began = time.monotonic()
+        spoke = began
+        for url in candidates:
             if url in self._archived or url.startswith(ALIVE_SKIP_SCHEMES):
                 continue
             # A candidate on the blocklist is not fetched and is not counted as
@@ -1448,7 +1479,12 @@ class RenderedSession:
             # candidates all 404 costs exactly as many round trips as one whose
             # candidates all exist, and it is the round trips that need the
             # ceiling.
-            if tried >= ALIVE_MAX_VARIANTS or spent >= ALIVE_VARIANT_MAX_BYTES:
+            elapsed = time.monotonic() - began
+            if (
+                tried >= ALIVE_MAX_VARIANTS
+                or spent >= ALIVE_VARIANT_MAX_BYTES
+                or elapsed >= ALIVE_VARIANT_BUDGET
+            ):
                 # Said out loud, not just logged. A sweep that stops here has
                 # left image sizes out of the archive, and the person reading
                 # this ZIM on a phone is the one who finds out — an image whose
@@ -1457,18 +1493,44 @@ class RenderedSession:
                 # it reads as completion; CNN's front page offers close to four
                 # hundred candidates and this stopped at the ceiling on every
                 # run, silently, which is how it stayed invisible.
-                stopped = "images" if tried >= ALIVE_MAX_VARIANTS else "bytes"
+                if tried >= ALIVE_MAX_VARIANTS:
+                    stopped = "images"
+                elif spent >= ALIVE_VARIANT_MAX_BYTES:
+                    stopped = "bytes"
+                else:
+                    stopped = "time"
                 self._note(
                     f"stopped sweeping extra image sizes at its {stopped} limit "
                     f"— some sizes are not in this archive"
                 )
-                log.debug("variant sweep stopped at its cap on %s", page.url)
+                log.debug(
+                    "variant sweep stopped on %s after %d attempt(s) in %.1fs (%s)",
+                    page.url,
+                    tried,
+                    elapsed,
+                    stopped,
+                )
                 break
             tried += 1
             written = self._fetch_into_archive(url, ALIVE_VARIANT_TIMEOUT)
             if written:
                 found += 1
                 spent += written
+            # Say where we are, on a clock. Silence here is what made a working
+            # sweep indistinguishable from a wedged job: the watchdog watches
+            # for progress lines, this step emitted none for as long as it ran,
+            # and so the one part of a capture that can legitimately take
+            # minutes was also the one part that looked dead while doing it.
+            now = time.monotonic()
+            if now - spoke >= ALIVE_SWEEP_HEARTBEAT:
+                spoke = now
+                # Raises _CreateCancelled if a cancel is pending — which is the
+                # second thing this buys: before it, Cancel during a sweep had
+                # no checkpoint to land on for the whole 240 fetches.
+                self._note(
+                    f"fetching extra image sizes — {found} archived, "
+                    f"{tried} of {len(candidates)} checked"
+                )
         if found:
             self._note(f"archived {found} image variant{'s' if found != 1 else ''}")
 
