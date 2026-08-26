@@ -291,5 +291,65 @@ const FAILED  = { id: 'j1', mode: 'page', source: 'https://c.test/', state: 'fai
     'and when ours starts, the run pane is ours again');
 }
 
+// ── counters that arrive in bursts ──────────────────────────────────────────
+//
+// The page polls every two seconds and applies everything since the last poll
+// at once, so a crawl fetching twenty assets a second shows a number that sits
+// still and then jumps by forty. The work was smooth; the reporting was lumpy.
+// Eric: "counters roll in bursts, want smoother realtime."
+//
+// The display walks toward the measurement. The invariant that makes this
+// smoothing rather than fabrication is that it only ever LAGS — every number
+// shown was true at some moment, and none is larger than what the server last
+// reported.
+{
+  const { sandbox } = load();
+  const { _createCountStep, CREATE_COUNT_EASE_MS } = sandbox;
+
+  check(typeof _createCountStep === 'function', '_createCountStep is testable');
+
+  // THE invariant. A counter that overshot would be printing work that has not
+  // happened — the exact failure this release has been about.
+  let shown = 0;
+  for (let i = 0; i < 500; i++) {
+    shown = _createCountStep(shown, 40, 16);
+    if (shown > 40) break;
+  }
+  check(shown <= 40, 'the display never passes the measurement');
+  eq(shown, 40, 'and does reach it');
+
+  // It must ARRIVE, and roughly within a poll — a display still catching up
+  // when the next burst lands never settles.
+  let s = 0, ms = 0;
+  while (s < 40 && ms < 5000) { s = _createCountStep(s, 40, 16); ms += 16; }
+  eq(s, 40, 'a burst of 40 is absorbed');
+  check(ms < 2000, `and inside a poll interval (took ${ms}ms)`);
+
+  // Integer displays: an approach that only ever covers a fraction of a
+  // shrinking gap creeps for ever one count short.
+  let one = 0, spins = 0;
+  while (one < 1 && spins < 1000) { one = _createCountStep(one, 1, 16); spins++; }
+  eq(one, 1, 'a gap of one closes');
+
+  // Never downward. A counter falls only when a new job resets it, and watching
+  // the last job's numbers count down into the new one is worse than no
+  // animation at all.
+  eq(_createCountStep(500, 0, 16), 0, 'a reset snaps to zero rather than easing down');
+  eq(_createCountStep(40, 40, 16), 40, 'a counter that has not moved does not move');
+
+  // First sight of a counter is not an animation from nowhere.
+  eq(_createCountStep(undefined, 17, 16), 17, 'a counter appears at its real value');
+
+  // Time-based, so a slow device sees the same pace rather than a slower crawl.
+  const fast = _createCountStep(0, 1000, 16);
+  const slow = _createCountStep(0, 1000, 160);
+  check(slow > fast, 'a longer frame advances further');
+  check(CREATE_COUNT_EASE_MS > 0 && CREATE_COUNT_EASE_MS < 2000,
+    'the time constant is inside one poll');
+
+  // A zero-length frame must not stall the loop or move anything.
+  eq(_createCountStep(5, 10, 0), 6, 'a zero-duration frame still advances by one');
+}
+
 console.log(failures === 0 ? '\nAll checks passed' : `\n${failures} check(s) failed`);
 process.exit(failures ? 1 : 0);

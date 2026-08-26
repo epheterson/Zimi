@@ -636,6 +636,41 @@ function _createMergeEvents(cursor, payload) {
   };
 }
 
+// Counters that ARRIVE in bursts and should not READ as bursts.
+//
+// The page polls every two seconds and applies everything that happened in
+// between at once, so a crawl fetching twenty assets a second shows a number
+// that sits still and then jumps by forty. The work was smooth; only the
+// reporting was lumpy. (Eric: "counters roll in bursts, want smoother
+// realtime.")
+//
+// So the DISPLAYED number walks toward the measured one instead of snapping to
+// it. It only ever LAGS: every value shown was true at some moment, and the
+// number on screen is never larger than the number the server last reported.
+// That is the whole difference between smoothing a measurement and inventing
+// one — a counter that extrapolated would print totals that had not happened
+// yet, which is the kind of thing this release has spent its time removing.
+//
+// Time-based rather than per-frame, so a slow device sees the same pace as a
+// fast one instead of a slower crawl.
+var CREATE_COUNT_EASE_MS = 420;
+
+function _createCountStep(shown, target, dt) {
+  if (typeof target !== 'number') return shown;
+  if (typeof shown !== 'number') return target;   // first sight: just be right
+  // Never animate DOWNWARD. A counter only falls when a new job resets it, and
+  // watching the last job's numbers count down into the new one is worse than
+  // no animation at all.
+  if (target <= shown) return target;
+  var k = 1 - Math.exp(-Math.max(0, dt) / CREATE_COUNT_EASE_MS);
+  var next = shown + (target - shown) * k;
+  // Land exactly, and never stall: with an integer display, an approach that
+  // only ever covers a fraction of a shrinking gap would creep for ever a
+  // count short.
+  if (target - next < 1) return target;
+  return Math.max(next, shown + 1);
+}
+
 // The visualization's whole state, as data. Kept separate from the DOM so the
 // renderer can be incremental — a tree that is rebuilt from scratch on every
 // two-second poll would restart every animation and lose the scroll position of
@@ -1945,6 +1980,14 @@ function _createClearFinished() {
 }
 
 function _createResetRun() {
+  // The counters' DISPLAY, not their values — those live in the viz, which is
+  // rebuilt below. Left behind, the new job's counters would start wherever the
+  // last job's happened to be sitting and then walk down to zero.
+  _createCountShown = {};
+  if (_createCountRaf && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(_createCountRaf);
+  }
+  _createCountRaf = 0;
   _createLines = [];
   _createCursor = 0;
   _createLogCursor = 0;
@@ -2392,13 +2435,19 @@ function _createSyncMetrics(s) {
     var what = CREATE_COUNT_KEYS[i];
     var c = counts[what];
     if (!c) continue;
-    var value = what === 'bytes' ? _fmtBytes(c.n) : Number(c.n).toLocaleString();
+    // The number this markup carries is where the DISPLAY currently is, not
+    // where the server is — see _createCountStep. Whenever a job is finished,
+    // being cancelled, or the reader has asked for less motion, they are the
+    // same thing, because there is nothing left to smooth toward.
+    var shown = _createCountShownValue(what, c.n, s);
+    var value = what === 'bytes' ? _fmtBytes(shown) : Number(shown).toLocaleString();
     var of = (typeof c.total === 'number' && c.total > 0)
       ? '<span class="create-metric-of">/ ' +
         (what === 'bytes' ? esc(_fmtBytes(c.total)) : esc(c.total.toLocaleString())) + '</span>'
       : '';
     html += '<div class="create-metric">' +
-      '<span class="create-metric-n">' + esc(value) + '</span>' + of +
+      '<span class="create-metric-n" data-count="' + escAttr(what) + '">' +
+        esc(value) + '</span>' + of +
       // Singular when there is one of it, here as on the done card ("1 asset",
       // not "1 assets" — Eric caught it in the live counters too). Bytes has no
       // singular partner; the helper falls back to the plural key.
@@ -2425,6 +2474,58 @@ function _createSyncMetrics(s) {
       '<span>' + msg + (since ? ' <span class="create-elapsed">' + esc(since) + '</span>' : '') + '</span></div>';
   }
   if (host.innerHTML !== html) host.innerHTML = html;
+  _createCountsAnimate(s);
+}
+
+// Where each counter's DISPLAY currently sits. The structure above is rebuilt
+// only when it changes; these values are then walked forward frame by frame
+// below, writing text into the spans rather than rebuilding the markup — a full
+// re-render sixty times a second would fight the tree renderer for exactly the
+// reason that one is incremental.
+var _createCountShown = {};
+var _createCountRaf = 0;
+var _createCountAt = 0;
+
+// True when there is nothing to smooth toward: a job that has stopped should
+// show its real final numbers at once rather than easing into them, and a
+// reader who asked for less motion should never be shown a number in transit.
+function _createCountsSnap(s) {
+  return !s || !s.active || !!s.done || _createReduceMotion();
+}
+
+function _createCountShownValue(what, target, s) {
+  if (_createCountsSnap(s)) { _createCountShown[what] = target; return target; }
+  if (typeof _createCountShown[what] !== 'number') _createCountShown[what] = target;
+  return Math.round(_createCountShown[what]);
+}
+
+function _createCountsAnimate(s) {
+  if (_createCountRaf) return;                 // one loop, not one per poll
+  if (_createCountsSnap(s)) return;
+  if (typeof requestAnimationFrame !== 'function') return;
+  _createCountAt = 0;
+  var tick = function (now) {
+    _createCountRaf = 0;
+    var host = document.getElementById('create-metrics');
+    if (!host) return;
+    var dt = _createCountAt ? (now - _createCountAt) : 16;
+    _createCountAt = now;
+    var moving = false;
+    var spans = host.querySelectorAll('.create-metric-n[data-count]');
+    for (var i = 0; i < spans.length; i++) {
+      var what = spans[i].getAttribute('data-count');
+      var c = _createViz.counts[what];
+      if (!c || typeof c.n !== 'number') continue;
+      var next = _createCountStep(_createCountShown[what], c.n, dt);
+      _createCountShown[what] = next;
+      var text = what === 'bytes'
+        ? _fmtBytes(next) : Number(Math.round(next)).toLocaleString();
+      if (spans[i].textContent !== text) spans[i].textContent = text;
+      if (next < c.n) moving = true;
+    }
+    if (moving) _createCountRaf = requestAnimationFrame(tick);
+  };
+  _createCountRaf = requestAnimationFrame(tick);
 }
 
 // ── the tree ────────────────────────────────────────────────────────────────
