@@ -850,6 +850,12 @@ function _createPhaseStep(phase) {
 // a bug in a URL that was fine.
 function _createHistoryState(h) {
   if (!h) return '';
+  // Answered first, because the fallbacks below read `ok` — and a job that has
+  // not finished has ok:false for the plainest possible reason. Falling through
+  // would call a running capture "failed" while it was still running. Nothing
+  // does today (every render skips live rows first), and this is here so that
+  // remains a property of the state machine rather than of one call site.
+  if (_createHistoryLive(h)) return h.state;
   if (h.state && CREATE_HISTORY_KEYS[h.state]) return h.state;
   if (h.interrupted) return 'interrupted';
   if (h.cancelled) return 'cancelled';
@@ -872,7 +878,13 @@ var CREATE_HISTORY_KEYS = {
   failed: 'create_failed',
   cancelled: 'create_cancelled',
   stalled: 'create_stalled',
-  interrupted: 'create_hist_interrupted'
+  interrupted: 'create_hist_interrupted',
+  // In the table but not normally on this list: a running job is the run pane's
+  // to draw. Mapped so that a row which does reach the list has a true sentence
+  // instead of a missing one. (`queued` is deliberately absent — its string
+  // takes a queue position, which a plain row does not have; an unmapped state
+  // renders no sentence, which is the honest thing to render.)
+  running: 'create_running'
 };
 
 // What a history row is called. The admin's own title wins, then the ZIM's
@@ -882,6 +894,120 @@ function _createHistoryLabel(h) {
   if (!h) return '';
   return String(h.title || h.result || h.source ||
     (h.mode ? t('create_mode_' + h.mode) : '') || '');
+}
+
+// ── the job table, remembered ───────────────────────────────────────────────
+//
+// ONE table holds every job this browser has been told about, in whatever
+// state it is in. A job that is running is a row like any other whose `state`
+// happens to be `running`; which SURFACE draws a row — the run pane, the queue
+// strip, the Recent list — follows from its state, and nothing has to keep two
+// lists agreeing about the same job. (Eric: "Store the active job same as the
+// history table and just different states.")
+//
+// The server has always modelled it this way: `_create_job_state` answers
+// running/queued for a live job and its record goes in the same journal as the
+// finished ones. It was this client that split them, dropping the live rows on
+// arrival — so the table it kept could never answer "what was happening when I
+// last looked", and the page had nothing to draw until a round trip came back.
+//
+// Remembering the table is what makes the page instant. A cached row is a HINT
+// with no authority: the first poll's answer replaces the whole table, and a
+// job that finished while the tab was closed simply reappears finished. That
+// is why nothing here is gated on freshness — a stale row is not a wrong row,
+// it is an old row about to be corrected, and the correction is one poll away.
+var CREATE_JOBS_KEY = 'zimi_create_jobs';
+// A little more than the Recent list shows, so the live rows the list filters
+// out cannot push finished ones off the end of what is remembered.
+var CREATE_JOBS_MAX = CREATE_RECENT_MAX + 4;
+
+// Read defensively, exactly as _createCapsLoad does and for the same reason:
+// this file's pure prefix is evaluated in the .cjs sandbox, where there is no
+// localStorage at all, and an unreadable cache is simply no cache.
+function _createJobsLoad() {
+  try {
+    var saved = JSON.parse(localStorage.getItem(CREATE_JOBS_KEY) || 'null');
+    if (saved && Array.isArray(saved.jobs)) return saved.jobs;
+  } catch (e) {}
+  return [];
+}
+
+// Written when the table CHANGES, not on every poll. A running job polls every
+// two seconds and its record carries a live phase, so writing unconditionally
+// would put a synchronous disk write on that tick for the whole of a capture.
+var _createJobsWritten = '';
+
+function _createJobsSave(jobs) {
+  var body;
+  try {
+    body = JSON.stringify({ v: 1, jobs: jobs });
+  } catch (e) { return; }
+  if (body === _createJobsWritten) return;
+  _createJobsWritten = body;
+  try {
+    localStorage.setItem(CREATE_JOBS_KEY, body);
+  } catch (e) {}
+}
+
+// The row the run pane should be drawing, if the table says one is running.
+// Single slot by construction, so the first is the only.
+function _createLiveRow(jobs) {
+  for (var i = 0; i < (jobs || []).length; i++) {
+    if (jobs[i] && jobs[i].state === 'running') return jobs[i];
+  }
+  return null;
+}
+
+// A remembered running row, dressed as the status payload the run pane reads.
+// Only the identity fields are real — the header can be drawn from them, and
+// the phase strip, counters and tree stay empty until the poll fills them.
+// Nothing here invents progress: an empty strip that fills in is honest, a
+// remembered percentage would not be.
+function _createRowAsStatus(row) {
+  return {
+    id: row.id, mode: row.mode, source: row.source, title: row.title,
+    phase: row.phase, active: true, done: false, fromCache: true
+  };
+}
+
+// The table the server just sent, taken whole and remembered.
+//
+// Every row, live ones included. The poll used to drop running and queued jobs
+// as they arrived, on the grounds that they are already on screen as the run
+// pane or a queue row — true, and it is still true, which is why the Recent
+// list skips them when it draws. But doing it HERE meant the table could not
+// say "a job was running when you last looked", so it was not worth
+// remembering, so the page had nothing to draw until the network answered.
+// Deciding at render time instead costs one skip per row and buys the entire
+// first paint.
+function _createAdoptHistory(rows) {
+  _createHistory = rows.slice(0, CREATE_JOBS_MAX);
+  _createJobsSave(_createHistory);
+}
+
+// Draw what this browser was last told, before asking anything.
+//
+// Everything set here is provisional and all of it is replaceable by the first
+// poll, which is why there is no freshness check: a remembered row that has
+// since finished is not a wrong answer, it is last frame's answer, and the next
+// frame is one round trip away. What it must NOT do is invent progress — the
+// run pane gets identity only, so its phase strip and counters stay empty until
+// the server says otherwise. A remembered percentage would be a lie shaped
+// exactly like a fact.
+function _createHydrate() {
+  if (_createHistory.length || _createStatus) return;  // a live session wins
+  var jobs = _createJobsLoad();
+  if (!jobs.length) return;
+  _createHistory = jobs;
+  var live = _createLiveRow(jobs);
+  if (!live) return;
+  _createStatus = _createRowAsStatus(live);
+  _createJobId = live.id || null;
+  // NOT _createSawActive: that flag means "this tab watched a job run", and it
+  // is what turns a job's disappearance into the "interrupted by a restart"
+  // notice. A remembered row is not something this tab watched — so if the
+  // server has no job, the page simply opens on the picker, which is the truth.
+  _createAdopted = true;
 }
 
 // ── state ───────────────────────────────────────────────────────────────────
@@ -1036,10 +1162,19 @@ function _openCreateInner(replaceState) {
   // still going is left alone, because picking that up from another tab is
   // exactly what the poll below is for.
   _createForgetFinished();
+  // What this browser was last told, drawn before anything is asked for. The
+  // page used to open empty and stay empty for a round trip — on a NAS across
+  // a LAN that is long enough to read as "nothing here", which is the wrong
+  // answer when a capture is running (Eric: "The recently created and current
+  // running one don't show fast on create page load but should be instant").
+  // Ordered after _createForgetFinished on purpose: that clears out a run that
+  // ENDED, and this puts back one that had not.
+  _createHydrate();
   _renderCreate();
   // First poll carries probe=1 and history=1: the one call that pays for the
   // sidecar check and the recent list, and the one that picks up a job already
-  // running from another tab.
+  // running from another tab. Its answer REPLACES everything hydrated above —
+  // the cache is a first frame, never a source of truth.
   _createPoll(true);
 }
 
@@ -1081,6 +1216,13 @@ function _renderCreate() {
   _createIdleKey = null;
   _renderCreateModes();
   _renderCreatePanel();
+  // And whatever the table already says. These used to be reached only from
+  // the poll, so the shell above was the whole of the first frame and the page
+  // stood empty until the network answered — which was fine while the table
+  // could only ever be empty at this point, and stopped being fine the moment
+  // it could be remembered. Both are no-ops when there is nothing to draw.
+  _renderCreateQueue();
+  _renderCreateRun();
 }
 
 // The chips. Compact by design: a mode is a name and a glyph, and the sentence
@@ -1925,16 +2067,7 @@ function _createIngest(data) {
     _createJobId = data.id;
     _createResetRun();
   }
-  if (Array.isArray(data.history)) {
-    var recent = [];
-    for (var h = 0; h < data.history.length && recent.length < CREATE_RECENT_MAX; h++) {
-      // A job that is running or still waiting is already on screen as the run
-      // pane or a queue row; listing it under "Recent" as well would be the
-      // same job twice, described two different ways.
-      if (!_createHistoryLive(data.history[h])) recent.push(data.history[h]);
-    }
-    _createHistory = recent;
-  }
+  if (Array.isArray(data.history)) _createAdoptHistory(data.history);
   // The recent list is fetched when the page opens, so a job that finishes
   // while you watch would otherwise leave it a poll out of date forever.
   if (_createStatus && _createStatus.active && data.done) _createWantHistory = true;
@@ -2634,17 +2767,33 @@ function _renderCreateRecent() {
   if (!host) return;
   // Recent belongs to the picker. While a run pane is up it would list the very
   // job whose progress fills the screen above it.
-  if (!_createHistory.length || _createStatus) { host.innerHTML = ''; return; }
+  //
+  // The test is the run pane's own — active or done — and not merely "a status
+  // object exists". Those were the same thing while a status could only arrive
+  // from a poll about a live job; they stopped being the same once a remembered
+  // row could seed one, and a status that describes NO running job would have
+  // blanked the Recent list for the rest of the session.
+  var busy = !!_createStatus && (_createStatus.active || _createStatus.done);
+  if (!_createHistory.length || busy) { host.innerHTML = ''; return; }
   var rows = '';
-  for (var i = 0; i < _createHistory.length; i++) {
+  var shown = 0;
+  for (var i = 0; i < _createHistory.length && shown < CREATE_RECENT_MAX; i++) {
     var h = _createHistory[i];
+    // The live rows are in the table because the table holds every job, and
+    // they are skipped here because the run pane and the queue strip are
+    // already drawing them. Same job twice, described two different ways, is
+    // what this skip exists to prevent — it was done at ingest before, which
+    // is why the table could not be remembered.
+    if (_createHistoryLive(h)) continue;
+    shown++;
     var state = _createHistoryState(h);
     rows +=
       '<div class="create-hist" data-state="' + escAttr(state) + '">' +
         '<span class="create-hist-dot" aria-hidden="true"></span>' +
         '<span class="create-hist-body">' +
           '<span class="create-hist-name">' + esc(_createHistoryLabel(h)) + '</span>' +
-          '<span class="create-hist-why">' + tH(CREATE_HISTORY_KEYS[state]) +
+          '<span class="create-hist-why">' +
+            (CREATE_HISTORY_KEYS[state] ? tH(CREATE_HISTORY_KEYS[state]) : '') +
             (state === 'failed' && h.error ? ' — ' + esc(h.error) : '') +
           '</span>' +
         '</span>' +

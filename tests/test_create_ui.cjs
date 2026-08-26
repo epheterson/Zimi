@@ -858,8 +858,21 @@ for (const state of ['ok', 'failed', 'cancelled', 'stalled', 'interrupted']) {
 check(_createHistoryState({ ok: true }) === 'ok',
   'a record with only booleans still resolves');
 check(_createHistoryState({ ok: false }) === 'failed', 'and defaults to failed');
-check(_createHistoryState({ state: 'running' }) === 'failed',
-  'a live state is not one of the four endings');
+// This used to assert that a running job reads as 'failed', under the label "a
+// live state is not one of the four endings" — a label that argues against its
+// own assertion, since `failed` is one of the endings. What it was really
+// describing is that the fallback chain ends in `failed`, and a job that has
+// not finished has ok:false because it has not finished.
+//
+// It was harmless while live rows were thrown away as they arrived. Once the
+// table holds every job in whatever state it is in — which is how the server
+// has always modelled it — the state machine has to answer for them honestly,
+// or a capture that is running fine gets called failed by anything that draws
+// it. The endings are for jobs that ended.
+check(_createHistoryState({ state: 'running' }) === 'running',
+  'a running job reads as running, not as one of the endings');
+check(_createHistoryState({ state: 'queued' }) === 'queued',
+  'and a queued job reads as queued');
 
 eq(_createHistoryLabel({ title: 'My Book', result: 'my_book', source: 'http://x/' }), 'My Book',
   'the admin\'s own title names the row');
