@@ -34,11 +34,17 @@ function ok(label, cond, detail) {
 
 // Translation stub: returns the key, so "localized" is visible as the i18n key
 // while an untranslated pass-through shows the raw category name.
-const sandbox = { t: (k) => k };
+// `_zimKinds` is the made-here index _zimCat consults before falling back to
+// Other. It arrived with the Created bucket and this sandbox was never told
+// about it, so every call threw ReferenceError — invisible because .cjs tests
+// are not collected by pytest and nobody was running them by hand. null is the
+// honest default: no ZIM here was made by Zimi.
+const sandbox = { t: (k) => k, _zimKinds: null };
 vm.createContext(sandbox);
 vm.runInContext(
   // const at vm top level does not attach to the sandbox — rewrite to var.
   extract(/const OTHER_CAT = '__other__';/, 'OTHER_CAT').replace('const ', 'var ') + '\n' +
+  extract(/var CREATED_CAT = '[^']*';/, 'CREATED_CAT') + '\n' +
   extract(/const BROWSE_CATEGORIES = \[[\s\S]*?\n\];/, 'BROWSE_CATEGORIES').replace('const ', 'var ') + '\n' +
   extract(/const _CAT_TO_BROWSE_KEY = \{[\s\S]*?\n\};/, '_CAT_TO_BROWSE_KEY').replace('const ', 'var ') + '\n' +
   extract(/function _zimCat\(z\)\s*\{[\s\S]*?\n\}/, '_zimCat') + '\n' +

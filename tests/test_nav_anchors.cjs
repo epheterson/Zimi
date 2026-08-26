@@ -105,8 +105,22 @@ for (const fn of ['_spaCardClick', '_spaSourceClick']) {
 }
 
 // ── 3. The nested-link exception ─────────────────────────────────────────
-check(/const cardTag = dlHtml \? 'div' : 'a'/.test(appSrc),
-  'export tiles (which embed a download <a>) stay divs — HTML forbids nested links');
+// The invariant is "a tile is a link and contains no second link". It used to
+// be kept by making export tiles divs, because they embedded a download <a>:
+//
+//     const cardTag = dlHtml ? 'div' : 'a'
+//
+// c930b02 kept the invariant a better way — it removed the download pill from
+// the card altogether ("no big buttons... it's rare to need"), so every tile
+// can be a plain anchor and there is no second link to nest. Verified against
+// the live DOM: 77 cards, 77 anchors, 0 `a a`.
+//
+// Asserting the ternary was asserting one implementation of the rule, so the
+// test failed for a change that HONOURED the rule. Assert the rule.
+check(/const cardTag = 'a'/.test(appSrc),
+  'every tile is a real anchor');
+check(!/cardTag \+ '[^']*"' \+[\s\S]{0,400}?dlHtml/.test(appSrc),
+  'the tile embeds no download <a> — HTML forbids nested links');
 check(/event\.preventDefault\(\);event\.stopPropagation\(\);toggleFavorite/.test(appSrc),
   'the star button inside anchor tiles preventDefaults (a button in a link otherwise follows the href)');
 

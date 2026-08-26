@@ -25,6 +25,8 @@ worth having if something runs all of it.
 import os
 import pathlib
 import re
+import shutil
+import subprocess
 
 import pytest
 
@@ -92,6 +94,37 @@ def test_the_standalone_js_tests_are_all_reached():
     ), "ci.yml no longer globs tests/*.cjs — a new .cjs test would never run"
     present = sorted(p.name for p in (ROOT / "tests").glob("*.cjs"))
     assert present, "no .cjs tests found; has the glob outlived its files?"
+
+
+def test_the_standalone_js_tests_pass():
+    """Run the .cjs suite from pytest, so `pytest tests/` means everything.
+
+    These are not collected by pytest, so for as long as CI was the only thing
+    running them, "the suite is green" locally meant "the Python half is
+    green". Two .cjs tests were broken on this branch and stayed broken through
+    a full day of work because every local run was `pytest tests/` — the exact
+    blind spot the CI-coverage fix above was about, one level closer to home.
+
+    Skipped rather than failed when node is absent: a Python-only contributor
+    should not be blocked by a missing runtime, and CI always has one."""
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed here; CI runs these")
+    scripts = sorted((ROOT / "tests").glob("*.cjs"))
+    assert scripts, "no .cjs tests found"
+    broken = []
+    for script in scripts:
+        done = subprocess.run(
+            [node, str(script)], capture_output=True, text=True, cwd=ROOT, timeout=180
+        )
+        if done.returncode != 0:
+            tail = (done.stdout + done.stderr).strip().splitlines()
+            hint = next(
+                (ln for ln in tail if "FAIL" in ln or "Error" in ln),
+                tail[-1] if tail else "",
+            )
+            broken.append(f"{script.name}: {hint[:160]}")
+    assert not broken, "standalone JS tests failed:\n  " + "\n  ".join(broken)
 
 
 def test_deploy_does_not_hide_a_failed_build():
