@@ -61,6 +61,9 @@ _SIDECAR_MARKER = ".zimi-sidecar.json"
 ARCHIVE_EXTS = (".warc", ".warc.gz", ".wacz")
 # warc2zim's flag for appending to the Scraper metadata it writes.
 SCRAPER_SUFFIX_FLAG = "--scraper-suffix"
+# The shelf icon, for the ZIMs warc2zim writes rather than zimwriter. Probed
+# like every other flag: an older sidecar simply is not asked.
+ILLUSTRATION_FLAG = "--illustration"
 
 OFFLINE_PRESEED_MSG = (
     "ZIMI_OFFLINE is set — installing the warc2zim sidecar needs the network "
@@ -397,6 +400,7 @@ def convert_archive(
     tags=None,
     creator_name=None,
     source=None,
+    illustration=None,
     sink=None,
 ):
     """Run the sidecar over one archive and land the ZIM at ``out``.
@@ -449,6 +453,18 @@ def convert_archive(
     # this suffix to its own, so the ZIM still says which Zimi made it.
     if _supports_flag(exe, SCRAPER_SUFFIX_FLAG):
         cmd += [SCRAPER_SUFFIX_FLAG, scraper_string()]
+    # The shelf icon. Every ZIM zimwriter builds gets one — the site's favicon,
+    # or a generated identicon — but these are written by warc2zim, which was
+    # never handed anything, so an alive or zimit capture arrived in the library
+    # as a blank tile among named neighbours. Same illustration the other
+    # engines use, handed over as a file because that is what the flag takes.
+    illo_dir = None
+    if illustration and _supports_flag(exe, ILLUSTRATION_FLAG):
+        illo_dir = tempfile.mkdtemp(prefix=".zimi-illo-")
+        illo_path = os.path.join(illo_dir, "illustration.png")
+        with open(illo_path, "wb") as f:
+            f.write(illustration)
+        cmd += [ILLUSTRATION_FLAG, illo_path]
     try:
         say(f"converting {os.path.basename(archive)} with warc2zim…")
         # Keep the last few output lines riding along with the failure. The
@@ -473,6 +489,8 @@ def convert_archive(
         os.replace(staged, out)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
+        if illo_dir:
+            shutil.rmtree(illo_dir, ignore_errors=True)
     return out
 
 

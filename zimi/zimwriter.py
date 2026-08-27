@@ -810,10 +810,13 @@ SHAPE_SAMPLE_ENTRIES = 6_000  # entries examined when sampling
 SHAPE_SAMPLE_RUNS = 60  # spread across this many places in the file
 
 
-def _sample_ids(entry_count, sample, runs):
-    """Ids to examine: `runs` evenly spaced blocks of consecutive entries,
-    together about `sample` of them. Yields ints, in increasing order, so the
-    read walks forward through the file rather than jumping about."""
+def _sample_runs(entry_count, sample, runs):
+    """The blocks to examine, as ``(start, stop)`` pairs in increasing order.
+
+    Runs rather than individual ids because the RUN is the unit that matters
+    twice over: it is one seek on disk, and it is one short hold of the libzim
+    lock for a caller reading inside a live server. Everything downstream
+    iterates runs for that reason."""
     runs = max(1, min(runs, sample, entry_count))
     per_run = max(1, sample // runs)
     stride = entry_count / float(runs)
@@ -822,15 +825,32 @@ def _sample_ids(entry_count, sample, runs):
         start = int(r * stride)
         if start <= seen_to:
             start = seen_to + 1
+        if start >= entry_count:
+            return
         stop = min(start + per_run, entry_count)
-        for i in range(start, stop):
-            yield i
+        yield start, stop
         seen_to = stop - 1
         if seen_to >= entry_count - 1:
             return
 
 
-def zim_content_breakdown(path, exact_max=SHAPE_EXACT_MAX):
+def _whole_runs(entry_count, per_run=SHAPE_SAMPLE_ENTRIES // SHAPE_SAMPLE_RUNS):
+    """Every entry, in runs of the same size, so an exact walk releases the
+    lock as often as a sampled one does."""
+    for start in range(0, entry_count, max(1, per_run)):
+        yield start, min(start + max(1, per_run), entry_count)
+
+
+def _sample_ids(entry_count, sample, runs):
+    """The sampled ids, flattened. The runs above are the real primitive; this
+    is what a reader (and a test) wants when the question is coverage rather
+    than seeks."""
+    for start, stop in _sample_runs(entry_count, sample, runs):
+        for i in range(start, stop):
+            yield i
+
+
+def zim_content_breakdown(path, exact_max=SHAPE_EXACT_MAX, guard=None):
     """What a ZIM is actually made of: total file size on disk, entry count,
     and per-bucket byte totals and counts.
 
@@ -843,6 +863,13 @@ def zim_content_breakdown(path, exact_max=SHAPE_EXACT_MAX):
     scaled estimates. Estimates presented as measurements is the failure mode
     this whole release has been about, so the flag is not optional decoration —
     the panel prints it.
+
+    ``guard`` is a callable returning a context manager, entered around each RUN
+    of entries and left between them. A caller inside a live server passes the
+    libzim lock: reading a large ZIM then holds it for a hundred sequential
+    entries at a time rather than for the whole walk, so nothing else in the
+    server waits on a measurement. Callers with the file to themselves — a
+    capture that has just written it — pass nothing.
 
     Best effort throughout: a ZIM that will not open returns None rather than
     failing whatever is reporting."""
@@ -860,28 +887,30 @@ def zim_content_breakdown(path, exact_max=SHAPE_EXACT_MAX):
     except Exception:
         return None
     sampled = entry_count > max(0, exact_max)
-    ids = (
-        _sample_ids(entry_count, SHAPE_SAMPLE_ENTRIES, SHAPE_SAMPLE_RUNS)
+    runs = (
+        _sample_runs(entry_count, SHAPE_SAMPLE_ENTRIES, SHAPE_SAMPLE_RUNS)
         if sampled
-        else range(entry_count)
+        else _whole_runs(entry_count)
     )
     sizes, counts = {}, {}
     entries = 0
     examined = 0
     try:
-        for i in ids:
-            examined += 1
-            try:
-                entry = archive._get_entry_by_id(i)
-                if entry.is_redirect:
-                    continue
-                item = entry.get_item()
-            except Exception:
-                continue
-            bucket = _content_bucket(item.mimetype)
-            sizes[bucket] = sizes.get(bucket, 0) + int(item.size or 0)
-            counts[bucket] = counts.get(bucket, 0) + 1
-            entries += 1
+        for start, stop in runs:
+            with guard() if guard else contextlib.nullcontext():
+                for i in range(start, stop):
+                    examined += 1
+                    try:
+                        entry = archive._get_entry_by_id(i)
+                        if entry.is_redirect:
+                            continue
+                        item = entry.get_item()
+                    except Exception:
+                        continue
+                    bucket = _content_bucket(item.mimetype)
+                    sizes[bucket] = sizes.get(bucket, 0) + int(item.size or 0)
+                    counts[bucket] = counts.get(bucket, 0) + 1
+                    entries += 1
     except Exception as e:
         log.debug("content breakdown of %s stopped early: %s", path, e)
     # Scale a sample up to the whole file. Redirects are deliberately in the

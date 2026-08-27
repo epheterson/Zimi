@@ -256,6 +256,89 @@ def start_background_services(http_port):
             time.sleep(_MAINTENANCE_INTERVAL + _random_mod.uniform(0, 3600))
 
     threading.Thread(target=_maintenance_loop, daemon=True, name="maintenance").start()
+    threading.Thread(target=_shape_backfill, daemon=True, name="zim-shapes").start()
+
+
+# ── what each ZIM is made of ────────────────────────────────────────────────
+#
+# The composition bar wants one fact per ZIM: the per-kind split of what is
+# inside it. That fact is like size and entry count — true of the file, cheap to
+# remember, expensive to derive — so it lives with them in the metadata cache
+# and is read from there by everything that draws it.
+#
+# It is measured HERE and nowhere else, and that is the whole design. The first
+# attempt read the archive inside the request that drew the panel, which put a
+# disk seek behind a screen whose only job is to open instantly; measuring at
+# SCAN time instead would have moved the same cost onto boot, where a cold
+# library already takes long enough. A background thread owns it: nothing waits
+# on it, and if it never finishes, the only consequence is a panel with no bar.
+#
+# Politeness is the rest of the design. One ZIM at a time; the libzim lock taken
+# per run of entries and released between them, so a reader mid-article is never
+# behind a measurement; a pause between files so a 53-ZIM library is measured
+# over a few minutes rather than in one thrash of the disk.
+_SHAPE_SETTLE_SECONDS = 20.0  # let the server finish waking up first
+_SHAPE_PAUSE_SECONDS = 2.0  # between ZIMs
+_SHAPE_RETRY_SECONDS = 900.0  # look again for ZIMs added since
+
+
+def _shape_backfill():
+    """Fill in the missing per-ZIM composition, slowly and out of the way."""
+    from zimi import zimwriter as _zw
+
+    time.sleep(_SHAPE_SETTLE_SECONDS)
+    while True:
+        try:
+            _shape_backfill_pass(_zw)
+        except Exception:
+            log.debug("ZIM shape backfill pass failed", exc_info=True)
+        time.sleep(_SHAPE_RETRY_SECONDS)
+
+
+def _shape_backfill_pass(_zw):
+    """One sweep: measure every ZIM that has no shape yet, then persist."""
+    pending = [
+        z.get("name")
+        for z in (_zim_list_cache or [])
+        if z.get("name") and not z.get("shape")
+    ]
+    if not pending:
+        return
+    files = get_zim_files()
+    measured = {}
+    for name in pending:
+        path = files.get(name)
+        if not path:
+            continue
+        shape = _zw.zim_content_breakdown(path, guard=lambda: _zim_lock)
+        if shape:
+            measured[name] = shape
+        time.sleep(_SHAPE_PAUSE_SECONDS)
+    if measured:
+        _shape_store(measured)
+        log.info("measured what %d ZIM(s) are made of", len(measured))
+
+
+def _shape_store(measured):
+    """Write the shapes into the live list and the disk cache, together.
+
+    Both, or the answer is forgotten on restart and re-measured for ever; the
+    disk cache is keyed by FILENAME, which is what the live entry's ``file``
+    field holds."""
+    for entry in _zim_list_cache or []:
+        shape = measured.get(entry.get("name"))
+        if shape:
+            entry["shape"] = shape
+    disk = _load_disk_cache() or {}
+    touched = False
+    for entry in _zim_list_cache or []:
+        shape = measured.get(entry.get("name"))
+        cached = disk.get(entry.get("file", ""))
+        if shape and isinstance(cached, dict):
+            cached["shape"] = shape
+            touched = True
+    if touched:
+        _save_disk_cache(disk)
 
 
 def _maintenance_pass():
@@ -2402,6 +2485,12 @@ def load_cache(force=False):
             # Additive: Zimi-exported flag (bookmark exports show full dates).
             if cached.get("zimi_export"):
                 entry["zimi_export"] = True
+            # What the ZIM is made of, measured once by the background worker
+            # and remembered here. Absent until it has been — the scan does not
+            # measure, deliberately: a cold library already takes long enough to
+            # open without adding a read of every file to it.
+            if cached.get("shape"):
+                entry["shape"] = cached["shape"]
             info.append(entry)
             cached_out = dict(cached)
             if first_seen is not None:

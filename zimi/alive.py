@@ -322,9 +322,38 @@ def _convert(archive, out, *, zim_name, note, **fields):
     like a silence."""
     from zimi.importer import convert_archive
 
+    fields.setdefault("illustration", _shelf_icon(fields.get("main_url"), zim_name))
     note("converting the recording into a ZIM…")
     convert_archive(archive, out, zim_name=zim_name, sink=note, **fields)
     return out
+
+
+def _shelf_icon(url, zim_name):
+    """The 48x48 the library draws beside this ZIM's name.
+
+    Every ZIM zimwriter builds gets one, by exactly this rule: the site's own
+    favicon when it can be fetched and rescaled, a generated identicon when it
+    cannot. The ZIMs on THIS path are written by warc2zim, which was never
+    handed anything — so an alive capture arrived in the library as a blank
+    tile among named neighbours. Same rule, same two helpers, so the engine a
+    ZIM was made with stops being visible on the shelf.
+
+    Best effort by construction: an icon is decoration and a capture must never
+    fail over one."""
+    from zimi.creator import site_illustration
+    from zimi.zimwriter import default_illustration
+
+    try:
+        if url:
+            icon = site_illustration(url, ALIVE_ICON_TIMEOUT)
+            if icon:
+                return icon
+    except Exception as e:
+        log.debug("could not fetch a favicon for %s: %s", url, e)
+    try:
+        return default_illustration(zim_name)
+    except Exception:
+        return None
 
 
 # What warc2zim will accept in the two metadata fields Zimi fills, measured
@@ -334,6 +363,11 @@ def _convert(archive, out, *, zim_name, note, **fields):
 # produces it after the crawl rather than before it. "The Rust Programming
 # Language — Official Documentation" is 53 characters, which is to say this is
 # the common case and not an edge one.
+# Long enough for a favicon on a slow host, short enough that a site which
+# never answers costs the capture seconds rather than minutes. The picture is
+# decoration; the recording is the job.
+ALIVE_ICON_TIMEOUT = 8.0
+
 MAX_ZIM_TITLE = 30
 MAX_ZIM_DESCRIPTION = 80
 

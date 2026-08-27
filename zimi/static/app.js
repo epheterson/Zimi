@@ -3468,10 +3468,10 @@ function _ziBodyHtml(info) {
       info.history.map(_ziRecordHtml).join('') + '</ul>'
     : '<div class="zi-none">' + tH('zi_no_history') + '</div>';
   var warn = info.readable ? '' : '<div class="zi-warn">' + tH('zi_unreadable') + '</div>';
-  // An empty slot for what this ZIM is MADE of, filled in by a second fetch.
-  // Empty because that answer may have to read the file, and a description
-  // should not wait behind a measurement (see /zim-shape).
-  var shape = '<div id="zi-shape"></div>';
+  // What the ZIM is made of, out of the same reply as everything else. Absent
+  // until the background worker has measured this file, and absent reads as no
+  // bar — which is right, because nobody has established the fact yet.
+  var shape = _ziShapeHtml(info.shape);
   // Whatever else the publisher wrote goes last, under its own keys: a field
   // this build has no row for is still a field the file carries, but it is a
   // footnote to the story the timeline tells, not a preface to it.
@@ -3533,6 +3533,7 @@ function _ziKeydown(e) {
 function _closeZimAbout() {
   var ov = document.getElementById(_ZI_OVERLAY_ID);
   if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+  document.documentElement.classList.remove('zi-open');
   document.removeEventListener('keydown', _ziKeydown);
 }
 
@@ -3544,15 +3545,15 @@ function _openZimAbout(zim) {
   var ov = document.createElement('div');
   ov.className = 'zi-overlay';
   ov.id = _ZI_OVERLAY_ID;
-  // Which ZIM this panel is about, so a slow second fetch can tell whether the
-  // panel it is about to write into is still the one that asked.
-  ov.dataset.zim = zim;
   ov.innerHTML =
     '<div class="zi-panel" role="dialog" aria-modal="true" aria-label="' + escAttr(t('about_zim')) + '">' +
     '<div class="zi-head"><span class="zi-head-title">' + tH('about_zim') + '</span>' +
     '<button class="zi-close" aria-label="' + escAttr(t('close')) + '" onclick="_closeZimAbout()">✕</button>' +
     '</div><div class="zi-body"><div class="zi-none">' + tH('loading') + '</div></div></div>';
   document.body.appendChild(ov);
+  // Freeze the library behind the panel. Without this the page kept scrolling
+  // under a modal, which is the one thing a modal is for.
+  document.documentElement.classList.add('zi-open');
   ov.addEventListener('click', function (e) { if (e.target === ov) _closeZimAbout(); });
   document.addEventListener('keydown', _ziKeydown);
   var closeBtn = ov.querySelector('.zi-close');
@@ -3566,27 +3567,8 @@ function _openZimAbout(zim) {
       if (!r.ok) throw new Error('zim-info ' + r.status);
       return r.json();
     })
-    .then(function (info) { write(_ziBodyHtml(info)); _ziFillShape(zim); })
+    .then(function (info) { write(_ziBodyHtml(info)); })
     .catch(function () { write('<div class="zi-none">' + tH('zi_load_failed') + '</div>'); });
-}
-
-// Second fetch, after the panel is already readable. Separate because it can
-// cost a read of the file itself: metadata is in the library cache, but what a
-// ZIM is MADE of is not written down anywhere for a ZIM this instance did not
-// make. The slot simply stays empty if the answer never comes — a bar is worth
-// having and not worth an error message.
-function _ziFillShape(zim) {
-  serverFetch('/zim-shape?zim=' + encodeURIComponent(zim))
-    .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (shape) {
-      // Re-find the slot rather than closing over it: the panel may have been
-      // closed, or reopened on a DIFFERENT ZIM, while this was in flight.
-      var overlay = document.getElementById(_ZI_OVERLAY_ID);
-      var slot = overlay && overlay.querySelector('#zi-shape');
-      if (!slot || overlay.dataset.zim !== zim) return;
-      slot.innerHTML = _ziShapeHtml(shape);
-    })
-    .catch(function () {});
 }
 
 function renderCardGrid(items, showStars, showCategory) {

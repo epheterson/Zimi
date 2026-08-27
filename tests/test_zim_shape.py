@@ -236,123 +236,150 @@ class TestBreakdown(unittest.TestCase):
         self.assertIsNone(zw.zim_content_breakdown("/definitely/not/a.zim"))
 
 
-class TestShapeCache(unittest.TestCase):
-    """Measured once per ZIM, and again when the ZIM changes.
+class TestBackfill(unittest.TestCase):
+    """Measurement happens in ONE place, and that place is not a request.
 
-    Reading the shape is the expensive part — a sample is sixty seeks, an exact
-    walk is one per entry — so it is memoized against the file's identity, in
-    memory and on disk, and the memo outlives a restart.
+    The first version of this feature read the archive inside the request that
+    drew the About panel — a screen whose only job is to open instantly — and
+    did it without the libzim lock. Measuring at scan time instead would have
+    moved the same cost onto boot, where a cold library already takes long
+    enough. So a background worker owns it: nothing waits on it, and the only
+    consequence of it never running is a panel with no bar.
 
-    The interesting case is the MISS. A ZIM replaced under the same name (an
-    auto-update, a re-run capture) is a different file at the same address, and
-    a cache keyed on the name alone would serve the old answer for ever. That
-    is precisely the bug this release fixed in the icon ETag; it must not be
-    reintroduced one directory over."""
+    What is pinned: it measures only what is missing, it writes where the fact
+    belongs so a restart does not re-measure, and it holds the libzim lock in
+    short runs rather than for the length of a file."""
 
     def setUp(self):
-        import zimi.http as http
         import zimi.server as server
 
-        self.http = http
         self.server = server
-        self.tmp = tempfile.mkdtemp(prefix="zimi-shape-cache-")
-        self.zim = os.path.join(self.tmp, "x.zim")
-        with open(self.zim, "wb") as f:
-            f.write(b"not really a zim")
-        self.calls = []
-
         self._saved = {
-            "list_zims": server.list_zims,
+            "_zim_list_cache": server._zim_list_cache,
             "get_zim_files": server.get_zim_files,
-            "ZIMI_DATA_DIR": server.ZIMI_DATA_DIR,
+            "_load_disk_cache": server._load_disk_cache,
+            "_save_disk_cache": server._save_disk_cache,
+            "_SHAPE_PAUSE_SECONDS": server._SHAPE_PAUSE_SECONDS,
         }
-        server.list_zims = lambda: [{"name": "x", "file": "x.zim"}]
-        server.get_zim_files = lambda: {"x": self.zim}
-        server.ZIMI_DATA_DIR = self.tmp
-
-        import zimi.zimwriter as zw
-
-        self._saved_breakdown = zw.zim_content_breakdown
-
-        def counting_breakdown(path, **kw):
-            self.calls.append(path)
-            return {
-                "file_bytes": 1,
-                "entries": 1,
-                "breakdown": [{"key": "pages", "size_bytes": 1, "count": 1}],
-            }
-
-        zw.zim_content_breakdown = counting_breakdown
-        http._shape_cache = None  # a fresh process, as far as the cache knows
+        server._SHAPE_PAUSE_SECONDS = 0.0
+        self.saved_disk = {}
+        server._load_disk_cache = lambda: self.saved_disk
+        server._save_disk_cache = lambda d: self.saved_disk.update(d)
 
     def tearDown(self):
-        import zimi.zimwriter as zw
-
         for name, orig in self._saved.items():
             setattr(self.server, name, orig)
-        zw.zim_content_breakdown = self._saved_breakdown
-        self.http._shape_cache = None
-        import shutil
 
-        shutil.rmtree(self.tmp, ignore_errors=True)
+    def _fake_zw(self, calls):
+        class _ZW:
+            @staticmethod
+            def zim_content_breakdown(path, guard=None, **kw):
+                calls.append((path, guard))
+                return {
+                    "file_bytes": 1,
+                    "entries": 1,
+                    "breakdown": [{"key": "pages", "size_bytes": 1, "count": 1}],
+                }
 
-    def _cache_keys(self):
-        with open(os.path.join(self.tmp, "zim_shapes.json"), encoding="utf-8") as f:
-            return list(json.load(f))
+        return _ZW
 
-    def test_the_file_is_read_once_per_zim(self):
-        self.assertIsNotNone(self.http._zim_shape("x"))
-        self.assertIsNotNone(self.http._zim_shape("x"))
-        self.assertIsNotNone(self.http._zim_shape("x"))
-        self.assertEqual(len(self.calls), 1, "the ZIM was re-read on a cache hit")
+    def test_only_the_unmeasured_are_measured(self):
+        """A library measured yesterday must not be re-read today."""
+        self.server._zim_list_cache = [
+            {"name": "a", "file": "a.zim"},
+            {"name": "b", "file": "b.zim", "shape": {"breakdown": []}},
+        ]
+        self.server.get_zim_files = lambda: {"a": "/z/a.zim", "b": "/z/b.zim"}
+        calls = []
+        self.server._shape_backfill_pass(self._fake_zw(calls))
+        self.assertEqual([c[0] for c in calls], ["/z/a.zim"])
 
-    def test_the_memo_outlives_the_process(self):
-        self.http._zim_shape("x")
-        self.http._shape_cache = None  # restart: memory gone, the file remains
-        self.assertIsNotNone(self.http._zim_shape("x"))
-        self.assertEqual(len(self.calls), 1, "a restart re-measured the library")
+    def test_nothing_to_do_reads_nothing(self):
+        # A real shape always carries file_bytes/entries, so it is always
+        # truthy; an empty dict would (correctly) be treated as "not measured".
+        measured = {"file_bytes": 1, "entries": 1, "breakdown": []}
+        self.server._zim_list_cache = [
+            {"name": "a", "file": "a.zim", "shape": measured}
+        ]
+        self.server.get_zim_files = lambda: {"a": "/z/a.zim"}
+        calls = []
+        self.server._shape_backfill_pass(self._fake_zw(calls))
+        self.assertEqual(calls, [])
 
-    def test_a_replaced_zim_is_measured_again(self):
-        """The miss that matters. Same name, same path, different bytes."""
-        self.http._zim_shape("x")
-        before = self._cache_keys()
-        os.utime(self.zim, (2_000_000_000, 2_000_000_000))
-        self.http._shape_cache = None
-        self.http._zim_shape("x")
-        self.assertEqual(len(self.calls), 2, "a replaced ZIM served a stale shape")
-        self.assertNotEqual(
-            before, self._cache_keys(), "the key did not follow the file"
-        )
+    def test_the_libzim_lock_is_handed_over_not_ignored(self):
+        """The lock is the whole reason this is safe to run against a library
+        that is being read at the same time. It is passed as a per-RUN guard,
+        so a reader mid-article waits for a hundred entries, never for a file."""
+        self.server._zim_list_cache = [{"name": "a", "file": "a.zim"}]
+        self.server.get_zim_files = lambda: {"a": "/z/a.zim"}
+        calls = []
+        self.server._shape_backfill_pass(self._fake_zw(calls))
+        self.assertEqual(len(calls), 1)
+        guard = calls[0][1]
+        self.assertTrue(callable(guard), "no guard was handed to the breakdown")
+        self.assertIs(guard(), self.server._zim_lock)
 
-    def test_a_grown_zim_is_measured_again(self):
-        """Size is in the key too, so a file that changed within the same
-        second — plausible on a fast disk — is still a different file."""
-        self.http._zim_shape("x")
-        with open(self.zim, "ab") as f:
-            f.write(b"more")
-        self.http._shape_cache = None
-        self.http._zim_shape("x")
-        self.assertEqual(len(self.calls), 2)
+    def test_the_answer_lands_where_it_survives_a_restart(self):
+        """Both the live list and the disk cache. Only the first, and every
+        restart re-measures the library for ever."""
+        self.server._zim_list_cache = [{"name": "a", "file": "a.zim"}]
+        self.server.get_zim_files = lambda: {"a": "/z/a.zim"}
+        self.saved_disk = {"a.zim": {"name": "a"}}
+        self.server._load_disk_cache = lambda: self.saved_disk
+        self.server._shape_backfill_pass(self._fake_zw([]))
+        self.assertIn("shape", self.server._zim_list_cache[0])
+        self.assertIn("shape", self.saved_disk["a.zim"])
 
-    def test_the_stale_record_is_dropped(self):
-        """A library churned through a hundred captures must not accumulate a
-        hundred dead records."""
-        self.http._zim_shape("x")
-        os.utime(self.zim, (2_000_000_000, 2_000_000_000))
-        self.http._shape_cache = None
-        self.http._zim_shape("x")
-        self.assertEqual(len(self._cache_keys()), 1, "the old record was kept")
+    def test_a_zim_with_no_file_is_skipped_not_fatal(self):
+        self.server._zim_list_cache = [{"name": "ghost", "file": "ghost.zim"}]
+        self.server.get_zim_files = lambda: {}
+        calls = []
+        self.server._shape_backfill_pass(self._fake_zw(calls))
+        self.assertEqual(calls, [])
 
-    def test_a_zim_that_is_not_installed_has_no_shape(self):
-        self.assertIsNone(self.http._zim_shape("nope"))
-        self.assertEqual(self.calls, [], "an unknown ZIM still hit the disk")
 
-    def test_a_zim_the_requester_may_not_see_has_no_shape(self):
-        """Gated by list_zims, which is where the per-request allowlist lives —
-        a ZIM somebody may not list does not get to have its shape read."""
-        self.server.list_zims = lambda: []
-        self.assertIsNone(self.http._zim_shape("x"))
-        self.assertEqual(self.calls, [])
+class TestRunsAreLockable(unittest.TestCase):
+    """The guard must be entered once per run and left between runs — the
+    difference between a brief pause for other readers and a long one."""
+
+    def test_the_guard_wraps_each_run(self):
+        import zimi.zimwriter as zw
+
+        entered = []
+
+        class _Guard:
+            def __enter__(self_inner):
+                entered.append("in")
+
+            def __exit__(self_inner, *a):
+                entered.append("out")
+
+        archive = _FakeArchive([_FakeEntry("text/html", 10) for _ in range(500)])
+
+        class _FakeReader:
+            Archive = staticmethod(lambda p: archive)
+
+        import builtins
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *a, **kw):
+            if name == "libzim.reader":
+                return _FakeReader
+            return real_import(name, *a, **kw)
+
+        saved_import, saved_getsize = builtins.__import__, os.path.getsize
+        builtins.__import__ = fake_import
+        os.path.getsize = lambda p: 1
+        try:
+            zw.zim_content_breakdown("/fake/x.zim", exact_max=10_000, guard=_Guard)
+        finally:
+            builtins.__import__ = saved_import
+            os.path.getsize = saved_getsize
+
+        self.assertGreater(entered.count("in"), 1, "the whole file was one hold")
+        self.assertEqual(entered.count("in"), entered.count("out"))
+        self.assertEqual(entered[-1], "out", "the lock was left held")
 
 
 if __name__ == "__main__":

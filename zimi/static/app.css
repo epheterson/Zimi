@@ -2791,7 +2791,17 @@
     position: fixed; inset: 0; z-index: 10000; display: flex;
     align-items: center; justify-content: center;
     background: rgba(0,0,0,0.5); padding: 20px;
+    /* A modal that lets the page scroll underneath is not modal. `contain`
+       stops a flick that reaches the panel's end from handing the rest of the
+       gesture to the library behind it — the chaining a phone does by default,
+       and the reason this read as "I can scroll while that thing is loading".
+       The body itself is frozen by .zi-open below. */
+    overscroll-behavior: contain;
   }
+  /* Set on <html> while the panel is up. Frozen rather than hidden: a plain
+     overflow:hidden on the body makes the page jump to the top and lose the
+     reader's place, which is a worse bug than the one being fixed. */
+  html.zi-open, html.zi-open body { overflow: hidden; }
   .zi-panel {
     background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
     width: min(520px, 100%); max-height: 84vh; display: flex; flex-direction: column;
