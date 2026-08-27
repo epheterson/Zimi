@@ -1066,3 +1066,163 @@ def test_the_recording_pass_is_bounded_and_says_so():
     # The watchdog gives up at 600s of silence; a heartbeat far under that is
     # the whole point of having one.
     assert renderer.ALIVE_RECORD_HEARTBEAT <= 60
+
+
+def test_a_zim_with_no_front_door_is_refused(tmp_path):
+    """warc2zim picks its main page by matching ``--url`` against a URL it
+    recorded. When nothing matches it does not fail: it writes a complete ZIM
+    with no main entry and exits 0. Opening one shows nothing, and the job that
+    made it reported success — a capture of cnn.com landed in the library that
+    way while apple.com, whose URL did match, was fine.
+
+    Checked before the staged file is moved into place, so a ZIM nobody can
+    open is never registered as a successful capture."""
+    from unittest import mock
+
+    from zimi.creator import CreateError
+    from zimi.importer import _require_front_door
+
+    def archive(has_main):
+        return mock.Mock(return_value=mock.Mock(has_main_entry=has_main))
+
+    with mock.patch("libzim.reader.Archive", archive(True)):
+        _require_front_door(str(tmp_path / "fine.zim"))  # passes silently
+
+    with mock.patch("libzim.reader.Archive", archive(False)):
+        with pytest.raises(CreateError) as caught:
+            _require_front_door(str(tmp_path / "empty.zim"))
+    assert "no main page" in str(caught.value)
+    assert "open on nothing" in str(caught.value)
+
+
+# The other half of the same wedge, found by converting a real cnn.com
+# recording by hand: the ZIM held 341 entries — every image on the page — and
+# no page. warc2zim had been handed a 200 for https://www.cnn.com/ with a body
+# of zero bytes, and it discards an empty HTML record without a word, so the
+# archive came out with no main entry and the job still reported success.
+#
+# The empty record was ours. Chromium drops large response bodies once a page
+# settles; `response.body()` then raises, and `_body` answered None, which
+# `_record` turned into `body = b""` and archived. apple.com's homepage is
+# small enough to survive in the cache, which is the entire reason one site
+# worked and the other did not.
+
+
+def test_an_evicted_body_is_refetched_rather_than_archived_empty():
+    """A body the browser has thrown away must not become a 200 with no bytes.
+
+    An empty record is worse than no record: it is indistinguishable from a
+    page that really is empty, and it takes the front door down with it."""
+    from zimi.renderer import _BodyEvicted, _BodyStalled, _body
+
+    class _Request:
+        timing = {"responseEnd": 41.0}  # finished — asking cost nothing
+
+    class _Evicted:
+        url = "https://www.cnn.com/"
+        request = _Request()
+
+        def body(self):
+            raise RuntimeError("Response body is unavailable")
+
+    with pytest.raises(_BodyEvicted):
+        _body(_Evicted())
+    # And it is a stall to everyone who only cares that there are no bytes, so
+    # every existing re-fetch path picks it up unchanged.
+    assert issubclass(_BodyEvicted, _BodyStalled)
+
+
+def test_an_eviction_does_not_count_toward_stopping_early():
+    """The recording pass gives up after a run of stalls, because a run of
+    stalls means a far end still streaming. An eviction answered instantly and
+    says nothing about the far end, so a page whose bodies were merely dropped
+    for being large must still be recorded to the end."""
+    from zimi.renderer import ALIVE_MAX_BODY_STALLS, RenderedSession
+
+    class _Request:
+        timing = {"responseEnd": 3.0}
+        resource_type = "image"
+        method = "GET"
+        all_headers = staticmethod(dict)
+
+    class _Evicted:
+        status = 200
+        request = _Request()
+
+        def __init__(self, n):
+            self.url = f"https://example.test/{n}.webp"
+
+        def body(self):
+            raise RuntimeError("Response body is unavailable")
+
+        def all_headers(self):
+            return {"content-type": "image/webp"}
+
+    written = []
+
+    class _Recorder:
+        def write_exchange(self, url, **kw):
+            written.append((url, kw.get("body")))
+            return "response"
+
+    capture = RenderedSession.__new__(RenderedSession)
+    capture._recorder = _Recorder()
+    capture._context = None  # so the whole-file re-fetch is a no-op here
+    capture._budget = None
+    capture.recorded = 0
+    capture._archived = set()
+    capture._landed = None
+    capture._note = lambda _m: None
+
+    count = ALIVE_MAX_BODY_STALLS * 3
+    capture._record([_Evicted(n) for n in range(count)])
+
+    # Not one empty record, and the pass never stopped early: every response
+    # was looked at, and every one was sent to be fetched whole instead.
+    assert written == []
+    assert capture.recorded == 0
+
+
+def test_the_pages_own_body_survives_an_eviction():
+    """Everything else can be asked for again; the document cannot — cnn.com
+    answers a plain re-fetch of its homepage with something that is not the
+    homepage. So the copy taken at navigation is what gets archived, and the
+    ZIM has a front door."""
+    from zimi.renderer import RenderedSession
+
+    class _Request:
+        timing = {"responseEnd": 1.0}
+        resource_type = "document"
+        method = "GET"
+
+    class _Gone:
+        url = "https://www.cnn.com/"
+        status = 200
+        request = _Request()
+
+        def body(self):
+            raise RuntimeError("Response body is unavailable")
+
+        def all_headers(self):
+            return {"content-type": "text/html; charset=utf-8"}
+
+    written = []
+
+    class _Recorder:
+        def write_exchange(self, url, **kw):
+            written.append((url, kw["body"]))
+            return "response"
+
+    capture = RenderedSession.__new__(RenderedSession)
+    capture._recorder = _Recorder()
+    capture._context = None
+    capture._budget = None
+    capture.recorded = 0
+    capture._archived = set()
+    capture._landed = ("https://www.cnn.com/", b"<html>the real page</html>")
+    capture._note = lambda _m: None
+
+    doc_bytes = capture._record([_Gone()])
+
+    assert written == [("https://www.cnn.com/", b"<html>the real page</html>")]
+    assert doc_bytes == len(b"<html>the real page</html>")

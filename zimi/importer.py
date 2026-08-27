@@ -486,12 +486,43 @@ def convert_archive(
         staged = os.path.join(staging, os.path.basename(out))
         if not os.path.exists(staged):
             raise CreateError("warc2zim reported success but produced no ZIM file")
+        _require_front_door(staged)
         os.replace(staged, out)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
         if illo_dir:
             shutil.rmtree(illo_dir, ignore_errors=True)
     return out
+
+
+def _require_front_door(path):
+    """Refuse a ZIM with no main entry.
+
+    warc2zim picks its main page by matching ``--url`` against a URL it
+    recorded. When nothing matches it does not fail — it writes a complete ZIM
+    with no front door, and exits 0. Opening one shows nothing at all, and the
+    job that produced it reported success: a capture of cnn.com landed in the
+    library that way while apple.com, whose URL did match, was fine.
+
+    Checked before the staged file is moved into place, so a ZIM nobody can
+    open is never registered."""
+    try:
+        from libzim.reader import Archive
+    except ImportError:
+        return
+    try:
+        has_main = Archive(path).has_main_entry
+    except Exception:
+        # Only the stated invariant is enforced here. A file this cannot open
+        # at all is a different failure with its own reporting, and claiming it
+        # under this message would send the reader after the wrong cause.
+        return
+    if not has_main:
+        raise CreateError(
+            "the conversion produced a ZIM with no main page, so it would open "
+            "on nothing. This happens when the address asked for is not one the "
+            "recording holds — try the address the site actually settles on."
+        )
 
 
 def import_archive(
