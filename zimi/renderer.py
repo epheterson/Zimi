@@ -223,6 +223,22 @@ ALIVE_SKIP_SCHEMES = ("data:", "blob:", "about:", "chrome-extension:", "file:")
 # subresource deserves and shorter than forever: this is a whole video file,
 # and the capture is already finished waiting for everything else.
 ALIVE_REFETCH_TIMEOUT = 60.0
+# How long one response body may take to arrive before the recording gives up
+# on it, and how long the whole recording pass may spend collecting them.
+#
+# Both exist for the same reason the variant sweep's budget does, learned the
+# same way: a stage with no clock is a stage that can take forever, and one
+# response the browser started and never finished is enough to do it. Twenty
+# seconds is generous for a body the browser already has; a body it does not
+# have after twenty is one it is still streaming, and waiting changes nothing.
+#
+# The consecutive-stall ceiling is the cheaper exit. A page still holding
+# connections open will hold them open for every remaining response too, so
+# after a few in a row the honest move is to stop asking and archive what is
+# in hand rather than pay the timeout several hundred more times.
+ALIVE_RECORD_BUDGET = 240.0
+ALIVE_RECORD_HEARTBEAT = 15.0
+ALIVE_MAX_BODY_STALLS = 5
 
 # The RESPONSIVE VARIANTS a recording must hold and a navigation never fetches.
 #
@@ -1326,7 +1342,30 @@ class RenderedSession:
         if recorder is None:
             return doc_bytes
         partial = []
+        began = time.monotonic()
+        spoke = began
+        stalls = 0
+        seen = 0
+        total = len(responses)
         for response in responses:
+            seen += 1
+            # The pass gets a clock, like the sweep does. A page with two
+            # thousand responses and a slow far end is not a failure, but it is
+            # not allowed to be unbounded either.
+            if time.monotonic() - began >= ALIVE_RECORD_BUDGET:
+                self._note(
+                    f"stopped collecting responses at its time limit — "
+                    f"{seen} of {total} are in this archive"
+                )
+                break
+            # And it says where it is. This was the other long silent stage:
+            # several hundred bodies fetched one at a time with nothing said
+            # about it, which is indistinguishable from wedged — to a person
+            # and to the stall watchdog, whose only signal is a progress line.
+            now = time.monotonic()
+            if now - spoke >= ALIVE_RECORD_HEARTBEAT:
+                spoke = now
+                self._note(f"storing the recording — {seen} of {total} responses")
             try:
                 url = response.url
                 status = response.status
@@ -1371,7 +1410,27 @@ class RenderedSession:
             # part of how the page behaves, and a replay that answers it with
             # nothing behaves differently.
             if status not in (204, 304) and not (300 <= status < 400):
-                body = _body(response) or b""
+                try:
+                    body = _body(response) or b""
+                    stalls = 0
+                except _BodyStalled:
+                    # The browser started this and never finished it, so it has
+                    # no bytes to give. Send it down the road a RANGE already
+                    # takes: remembered here and fetched WHOLE below, through
+                    # the context, which has a timeout of its own. Better than
+                    # an empty record — the archive ends up with the real file
+                    # rather than a 200 with nothing in it.
+                    stalls += 1
+                    log.debug("body not available for %s; refetching whole", url)
+                    if url not in partial:
+                        partial.append(url)
+                    if stalls >= ALIVE_MAX_BODY_STALLS:
+                        self._note(
+                            f"the site was still streaming its remaining files "
+                            f"— {seen} of {total} looked at, the rest fetched whole"
+                        )
+                        break
+                    continue
                 if len(body) > ALIVE_MAX_RESPONSE_BYTES:
                     log.debug("not archiving %s: %d bytes", url, len(body))
                     continue
@@ -1606,7 +1665,13 @@ class RenderedSession:
             if kind not in KEPT_RESOURCE_TYPES or url in resources:
                 continue
             mime = _mimetype_of(response, url)
-            body = None if status == PARTIAL_CONTENT else _body(response)
+            try:
+                body = None if status == PARTIAL_CONTENT else _body(response)
+            except _BodyStalled:
+                # Treated exactly like a 206: the browser will not hand this
+                # over, so ask for the whole thing again below through the
+                # context, which has a timeout of its own.
+                body = None
             if body is None:
                 # A 206, or a body the browser will not hand back. Video is the
                 # whole reason this branch exists: Chromium streams media in
@@ -1783,7 +1848,52 @@ def _refused_page(page):
     )
 
 
+class _BodyStalled(Exception):
+    """The browser does not have this body and asking would block for ever."""
+
+
+def _finished(response):
+    """Whether the browser has this response in full.
+
+    ``response.body()`` blocks until it does, and for a response the page
+    STARTED and never finished — a media stream, a long-poll, a range the
+    player abandoned — that is not a slow call, it is a permanent one.
+    Playwright's sync API offers no timeout to bound it with, and it cannot be
+    bounded from another thread either: the sync API is greenlet-bound to the
+    thread that opened the connection, and calling into it from a second one
+    fails with `cannot switch to a different thread`. (Learned by trying. The
+    suite refused it in under four minutes.)
+
+    So ask instead of wait. `responseEnd` is -1 until the request completes,
+    and reading it is a dictionary lookup on an object we already hold — no
+    round trip, no blocking, no thread. Unknown counts as finished, which
+    keeps the old behaviour for anything this cannot see."""
+    try:
+        timing = response.request.timing
+        if "responseEnd" not in timing:
+            # Not something that can answer the question. Playwright's own
+            # responses always carry the key (it is initialised to -1), so this
+            # is only reached for something else wearing the shape — and the
+            # permissive answer keeps the old behaviour for it. A MISSING key
+            # and a key saying -1 are different facts: "cannot tell" and
+            # "definitely still in flight".
+            return True
+        return float(timing["responseEnd"]) >= 0
+    except Exception:
+        return True
+
+
 def _body(response):
+    """One response's bytes, or None. Never blocks on a body that is not there.
+
+    This was the apple.com wedge. Every other stage of a recording is bounded —
+    network-quiet 12s, scroll-quiet 8s, image settle 6s, the variant sweep's
+    90s budget — and this one call was not, so a capture sat inside it until
+    the stall watchdog gave up ten minutes later. Found by running a real
+    capture against a real NAS and watching the WARC stop growing at 4,313,574
+    bytes while the job went on insisting it was working."""
+    if not _finished(response):
+        raise _BodyStalled(getattr(response, "url", "?"))
     try:
         return response.body()
     except Exception as e:  # a redirect, a 204, a body already evicted
@@ -1792,7 +1902,13 @@ def _body(response):
 
 
 def _body_length(response):
-    body = _body(response)
+    # A body that never arrives has no length worth waiting for. The snapshot
+    # engine calls this while sizing the document; a stall here would freeze
+    # the SAME way the recording pass did.
+    try:
+        body = _body(response)
+    except _BodyStalled:
+        return 0
     return len(body) if body else 0
 
 

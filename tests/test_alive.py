@@ -968,3 +968,101 @@ def test_the_variant_sweep_says_when_it_stopped_early(tmp_path, monkeypatch):
     assert any("not in this archive" in n for n in notes), notes
     # And it still reports what it DID archive — the cap note replaces nothing.
     assert any("archived" in n for n in notes), notes
+
+
+# ── the apple.com wedge ─────────────────────────────────────────────────────
+#
+# A capture of apple.com sat perfectly still for the full ten-minute watchdog
+# window, on a real NAS, with the WARC frozen at 4,313,574 bytes and the job
+# still claiming to work. It was not the variant sweep (bounded that morning,
+# and its heartbeat was verified present in the running container and silent).
+# It was one call in the recording pass:
+#
+#     def _body(response):
+#         return response.body()      # no timeout, no bound, nothing
+#
+# Playwright blocks there until the browser HAS that body. For a response the
+# page started and never finished — a media stream, a long-poll, a range the
+# player abandoned — that is not slow, it is permanent. Every other stage of a
+# recording is bounded; this one was not, and it is the one it sat in.
+#
+# It cannot be bounded with a thread: Playwright's sync API is greenlet-bound
+# to the thread that opened the connection and answers a second one with
+# "cannot switch to a different thread". So the fix asks instead of waits —
+# `responseEnd` is -1 until a request completes, and reading it is a dict
+# lookup on an object already in hand.
+
+
+def test_an_unfinished_response_is_never_waited_on():
+    """The wedge, in one assertion. A body that is not there must raise rather
+    than block, because blocking here costs the entire capture."""
+    from zimi.renderer import _BodyStalled, _body
+
+    class _Timing(dict):
+        pass
+
+    class _Request:
+        timing = {"responseEnd": -1}  # still in flight
+
+    class _Never:
+        url = "https://example.test/stream.mp4"
+        request = _Request()
+
+        def body(self):  # pragma: no cover - reaching this IS the bug
+            raise AssertionError("body() was called on an unfinished response")
+
+    try:
+        _body(_Never())
+    except _BodyStalled:
+        return
+    raise AssertionError("an unfinished response did not raise _BodyStalled")
+
+
+def test_a_finished_response_is_read_normally():
+    """And the ordinary case still works — a bound that refuses everything
+    would 'fix' the wedge by capturing nothing."""
+    from zimi.renderer import _body
+
+    class _Request:
+        timing = {"responseEnd": 12.5}
+
+    class _Done:
+        url = "https://example.test/a.css"
+        request = _Request()
+
+        def body(self):
+            return b"body{}"
+
+    assert _body(_Done()) == b"body{}"
+
+
+def test_a_response_that_cannot_say_is_read_rather_than_skipped():
+    """Unknown counts as finished. Anything this cannot see keeps the old
+    behaviour, so the bound never silently drops resources it could have had."""
+    from zimi.renderer import _body
+
+    class _Request:
+        timing = {}
+
+    class _Odd:
+        url = "https://example.test/b.js"
+        request = _Request()
+
+        def body(self):
+            return b"ok"
+
+    assert _body(_Odd()) == b"ok"
+
+
+def test_the_recording_pass_is_bounded_and_says_so():
+    """The other half: the pass itself gets a clock and a voice, for the same
+    reason the variant sweep did — several hundred bodies fetched one at a time
+    with nothing said about it is indistinguishable from wedged, to a person
+    and to the stall watchdog, whose only signal is a progress line."""
+    import zimi.renderer as renderer
+
+    assert renderer.ALIVE_RECORD_BUDGET > 0
+    assert renderer.ALIVE_RECORD_HEARTBEAT < renderer.ALIVE_RECORD_BUDGET
+    # The watchdog gives up at 600s of silence; a heartbeat far under that is
+    # the whole point of having one.
+    assert renderer.ALIVE_RECORD_HEARTBEAT <= 60
