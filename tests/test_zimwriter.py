@@ -5,6 +5,7 @@ importorskip so the suite still collects where the writer is absent.
 """
 
 import os
+import posixpath
 import pathlib
 import re
 import struct
@@ -683,3 +684,45 @@ def test_short_description_ships_alone(tmp_path):
     # Nothing was cut, so there is no longer description to tell — and the
     # spec's optional field stays off rather than repeating the short one.
     assert "LongDescription" not in arc.metadata_keys
+
+
+def test_every_internal_link_in_an_export_resolves(tmp_path):
+    """Resolved the way a browser resolves them — relative to the entry the
+    link is written in, not to the root.
+
+    Articles live at A/<n>_<slug> while the index lives at the root, so the
+    back-links, written as a bare "index", pointed at A/index and every one of
+    them was dead. Nothing noticed: the export succeeded, the ZIM opened, and
+    the index reached the articles fine — only the way back was broken. This
+    walks every HTML entry rather than the index alone, which is the only way
+    that asymmetry shows up."""
+    out = zw.build_bookmarks_zim(_bookmarks(), str(tmp_path), reader=_fake_reader)
+    arc = _archive(out)
+
+    paths = set()
+    for i in range(arc.all_entry_count):
+        try:
+            paths.add(arc._get_entry_by_id(i).path)
+        except Exception:
+            pass
+
+    dangling = []
+    for path in sorted(paths):
+        try:
+            item = arc.get_entry_by_path(path).get_item()
+            if not item.mimetype.startswith("text/html"):
+                continue
+            html = bytes(item.content).decode("utf-8", "replace")
+        except Exception:
+            continue
+        for ref in re.findall(r"href=['\"]([^'\"#]+)", html):
+            # Off-ZIM destinations are not this test's business: absolute URLs,
+            # protocol-relative ones, and non-http schemes all leave the file.
+            if ref.startswith(("http", "//", "data:", "mailto:")):
+                continue
+            base = posixpath.dirname(path)
+            target = posixpath.normpath(posixpath.join(base, ref) if base else ref)
+            if target not in paths:
+                dangling.append(f"{path} -> {ref} (resolves to {target})")
+
+    assert not dangling, "dangling internal links: " + "; ".join(dangling)

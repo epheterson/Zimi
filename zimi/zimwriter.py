@@ -638,6 +638,14 @@ def _export_article_path(index, title):
     return f"A/{index}_{_slug(title, str(index))}"
 
 
+# How an article links back to the index, which lives at the root while every
+# article lives one level down under A/ (see _export_article_path). A bare
+# "index" resolves to A/index, which nothing writes — so both back-links in
+# every exported article led nowhere. Defined beside the path that decides the
+# depth, so the two cannot drift apart again.
+_EXPORT_INDEX_HREF = "../index"
+
+
 def _export_link_map(bookmarks):
     """``{(source zim, source path): in-export article path}`` covering every
     bookmark, keyed on the path as given AND on its namespace-stripped form."""
@@ -773,9 +781,10 @@ def _article_html(title, source_zim, source_path, body, extra_css="", source_url
         + src
         + "</strong>"
         f" · <code>{spath}</code> · "
-        "<a href='index'>&#8592; Bookmarks index</a></header>"
+        f"<a href='{_EXPORT_INDEX_HREF}'>&#8592; Bookmarks index</a></header>"
         f"<main>{body}</main>"
-        "<footer class='zimi-nav'><a href='index'>&#8592; Back to index</a>"
+        f"<footer class='zimi-nav'><a href='{_EXPORT_INDEX_HREF}'>"
+        "&#8592; Back to index</a>"
         "</footer></body></html>"
     ).encode("utf-8")
 
