@@ -273,13 +273,57 @@ def start_background_services(http_port):
 # library already takes long enough. A background thread owns it: nothing waits
 # on it, and if it never finishes, the only consequence is a panel with no bar.
 #
-# Politeness is the rest of the design. One ZIM at a time; the libzim lock taken
-# per run of entries and released between them, so a reader mid-article is never
-# behind a measurement; a pause between files so a 53-ZIM library is measured
-# over a few minutes rather than in one thrash of the disk.
+# Politeness is the rest of the design, and the first attempt at it was not
+# polite enough to matter. It took the libzim lock for a run of a hundred
+# entries and called that brief — true on a laptop's SSD, false on the spinning
+# disks a 220 GB library actually lives on, where a hundred sequential entry
+# reads is most of a second. Measured against the real library while it ran: the
+# About panel went from 6ms to a median of 631ms, worst case 2.6 SECONDS. The
+# work had been moved off the request path and was still landing on the reader,
+# through the one lock they share.
+#
+# So it does not merely pause between files; it YIELDS. While anyone is using
+# the library it does not take the lock at all, and it resumes when they stop.
+# The cost is a library measured later. The benefit is that measuring cannot be
+# felt, which is the only acceptable amount for a background job to be felt.
 _SHAPE_SETTLE_SECONDS = 20.0  # let the server finish waking up first
+_SHAPE_IDLE_SECONDS = 4.0  # quiet for this long before touching the lock
+_SHAPE_IDLE_POLL_SECONDS = 1.0  # how often to re-check for quiet
+_SHAPE_RUN_ENTRIES = 25  # entries per lock hold: short even on a slow disk
+_SHAPE_BREATH_SECONDS = 0.05  # released between every run, unconditionally
 _SHAPE_PAUSE_SECONDS = 2.0  # between ZIMs
 _SHAPE_RETRY_SECONDS = 900.0  # look again for ZIMs added since
+
+# Stamped by the HTTP layer on every request (http._record_metric). A worker
+# that intends to be invisible has to know when somebody is there.
+LAST_REQUEST_AT = 0.0
+
+
+def _wait_until_idle():
+    """Block until nobody has asked the server for anything recently."""
+    while time.time() - LAST_REQUEST_AT < _SHAPE_IDLE_SECONDS:
+        time.sleep(_SHAPE_IDLE_POLL_SECONDS)
+
+
+class _PoliteGuard:
+    """The libzim lock, taken for one short run and handed straight back.
+
+    Entered once per run of entries by zim_content_breakdown, so a reader who
+    arrives mid-file waits for 25 entries and never for the file. Between runs
+    it waits for quiet again — a burst of traffic stops the measurement rather
+    than queueing behind it."""
+
+    def __enter__(self):
+        _wait_until_idle()
+        _zim_lock.acquire()
+        return self
+
+    def __exit__(self, *_exc):
+        _zim_lock.release()
+        # Unconditional, so a request that arrived while the lock was held gets
+        # it before this worker asks for it again.
+        time.sleep(_SHAPE_BREATH_SECONDS)
+        return False
 
 
 def _shape_backfill():
@@ -296,7 +340,14 @@ def _shape_backfill():
 
 
 def _shape_backfill_pass(_zw):
-    """One sweep: measure every ZIM that has no shape yet, then persist."""
+    """One sweep: measure every ZIM that has no shape yet.
+
+    Persisted per ZIM rather than per sweep. The first version collected the
+    whole library and wrote once at the end, which meant a restart part-way
+    through threw away everything it had done and the panel showed nothing until
+    the slowest file in the library had been read. One at a time costs one small
+    JSON write per ZIM, once ever, and each ZIM's bar appears as soon as it is
+    known."""
     pending = [
         z.get("name")
         for z in (_zim_list_cache or [])
@@ -305,18 +356,22 @@ def _shape_backfill_pass(_zw):
     if not pending:
         return
     files = get_zim_files()
-    measured = {}
+    done = 0
     for name in pending:
         path = files.get(name)
         if not path:
             continue
-        shape = _zw.zim_content_breakdown(path, guard=lambda: _zim_lock)
+        _wait_until_idle()
+        shape = _zw.zim_content_breakdown(
+            path, guard=_PoliteGuard, run_entries=_SHAPE_RUN_ENTRIES
+        )
         if shape:
-            measured[name] = shape
+            _shape_store({name: shape})
+            done += 1
+            log.debug("measured %s: %s", name, shape.get("entries"))
         time.sleep(_SHAPE_PAUSE_SECONDS)
-    if measured:
-        _shape_store(measured)
-        log.info("measured what %d ZIM(s) are made of", len(measured))
+    if done:
+        log.info("measured what %d ZIM(s) are made of", done)
 
 
 def _shape_store(measured):

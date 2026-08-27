@@ -35,6 +35,8 @@ import json
 import os
 import sys
 import tempfile
+import threading
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -307,9 +309,9 @@ class TestBackfill(unittest.TestCase):
         self.assertEqual(calls, [])
 
     def test_the_libzim_lock_is_handed_over_not_ignored(self):
-        """The lock is the whole reason this is safe to run against a library
-        that is being read at the same time. It is passed as a per-RUN guard,
-        so a reader mid-article waits for a hundred entries, never for a file."""
+        """The lock is why this is safe to run against a library somebody is
+        reading. It goes in as a per-RUN guard, so a reader who arrives
+        mid-file waits for a couple of dozen entries and never for the file."""
         self.server._zim_list_cache = [{"name": "a", "file": "a.zim"}]
         self.server.get_zim_files = lambda: {"a": "/z/a.zim"}
         calls = []
@@ -317,7 +319,52 @@ class TestBackfill(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         guard = calls[0][1]
         self.assertTrue(callable(guard), "no guard was handed to the breakdown")
-        self.assertIs(guard(), self.server._zim_lock)
+        # It really takes and returns the libzim lock, rather than being some
+        # object that merely looks like a context manager.
+        self.server.LAST_REQUEST_AT = 0.0
+        with guard():
+            self.assertFalse(
+                self.server._zim_lock.acquire(blocking=False),
+                "the guard did not actually hold the libzim lock",
+            )
+        self.assertTrue(
+            self.server._zim_lock.acquire(blocking=False),
+            "the guard did not give the libzim lock back",
+        )
+        self.server._zim_lock.release()
+
+    def test_the_worker_waits_while_somebody_is_using_the_library(self):
+        """The bug this exists to prevent, measured on the real NAS: holding
+        the lock in 'short' runs still took the About panel from 6ms to a
+        median of 631ms, because a short run on a spinning disk is not short.
+        So the worker does not merely pause between files — it does not take
+        the lock at all while anyone is there."""
+        self.server._zim_list_cache = [{"name": "a", "file": "a.zim"}]
+        self.server.get_zim_files = lambda: {"a": "/z/a.zim"}
+        calls = []
+        self.server._shape_backfill_pass(self._fake_zw(calls))
+        guard = calls[0][1]
+
+        self.server.LAST_REQUEST_AT = time.time()  # somebody is here, right now
+        self.server._SHAPE_IDLE_POLL_SECONDS = 0.02
+        self.server._SHAPE_IDLE_SECONDS = 0.30
+
+        entered = threading.Event()
+
+        def take():
+            with guard():
+                entered.set()
+
+        t = threading.Thread(target=take, daemon=True)
+        t.start()
+        self.assertFalse(
+            entered.wait(0.15), "the worker took the lock while a reader was active"
+        )
+        self.server.LAST_REQUEST_AT = 0.0  # they left
+        self.assertTrue(
+            entered.wait(2.0), "the worker never resumed once it went quiet"
+        )
+        t.join(timeout=2.0)
 
     def test_the_answer_lands_where_it_survives_a_restart(self):
         """Both the live list and the disk cache. Only the first, and every

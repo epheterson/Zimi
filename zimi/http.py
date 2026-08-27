@@ -326,6 +326,12 @@ _METRIC_ENDPOINT_CAP = 64
 
 def _record_metric(endpoint, latency, error=False):
     """Record a request metric."""
+    # When somebody last wanted something. Read by the shape worker, which will
+    # not touch the libzim lock while a person is using the library — see
+    # server._shape_backfill. Written without a lock on purpose: it is a float
+    # nobody coordinates on, and putting the metrics mutex on the fast path of
+    # every request to keep a heartbeat exact would cost more than it buys.
+    _srv.LAST_REQUEST_AT = time.time()
     with _metrics_lock:
         known = endpoint in _metrics["requests"]
         if known or len(_metrics["requests"]) < _METRIC_ENDPOINT_CAP:

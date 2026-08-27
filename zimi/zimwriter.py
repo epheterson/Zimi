@@ -841,6 +841,18 @@ def _whole_runs(entry_count, per_run=SHAPE_SAMPLE_ENTRIES // SHAPE_SAMPLE_RUNS):
         yield start, min(start + max(1, per_run), entry_count)
 
 
+def _split_runs(runs, size):
+    """Chop runs down to at most ``size`` entries each.
+
+    The sampler's own runs are sized for SEEKS; a caller holding a lock needs
+    them sized for TIME. Splitting keeps the seek pattern identical — the pieces
+    are still consecutive — while giving the lock back that much more often."""
+    size = max(1, int(size))
+    for start, stop in runs:
+        for piece in range(start, stop, size):
+            yield piece, min(piece + size, stop)
+
+
 def _sample_ids(entry_count, sample, runs):
     """The sampled ids, flattened. The runs above are the real primitive; this
     is what a reader (and a test) wants when the question is coverage rather
@@ -850,7 +862,9 @@ def _sample_ids(entry_count, sample, runs):
             yield i
 
 
-def zim_content_breakdown(path, exact_max=SHAPE_EXACT_MAX, guard=None):
+def zim_content_breakdown(
+    path, exact_max=SHAPE_EXACT_MAX, guard=None, run_entries=None
+):
     """What a ZIM is actually made of: total file size on disk, entry count,
     and per-bucket byte totals and counts.
 
@@ -865,11 +879,15 @@ def zim_content_breakdown(path, exact_max=SHAPE_EXACT_MAX, guard=None):
     the panel prints it.
 
     ``guard`` is a callable returning a context manager, entered around each RUN
-    of entries and left between them. A caller inside a live server passes the
-    libzim lock: reading a large ZIM then holds it for a hundred sequential
-    entries at a time rather than for the whole walk, so nothing else in the
-    server waits on a measurement. Callers with the file to themselves — a
-    capture that has just written it — pass nothing.
+    of entries and left between them, and ``run_entries`` is how many entries a
+    run holds it for. A caller inside a live server passes both: the libzim lock
+    and a run short enough that a reader who arrives mid-file waits for a couple
+    of dozen entries rather than for the file. Callers with the file to
+    themselves — a capture that has just written it — pass neither.
+
+    The run size is the caller's because only the caller knows the disk. Twenty-
+    five entries is nothing on an SSD and most of a second on the spinning disk
+    a 220 GB library lives on, and this function cannot tell which it is on.
 
     Best effort throughout: a ZIM that will not open returns None rather than
     failing whatever is reporting."""
@@ -892,6 +910,8 @@ def zim_content_breakdown(path, exact_max=SHAPE_EXACT_MAX, guard=None):
         if sampled
         else _whole_runs(entry_count)
     )
+    if run_entries:
+        runs = _split_runs(runs, int(run_entries))
     sizes, counts = {}, {}
     entries = 0
     examined = 0
