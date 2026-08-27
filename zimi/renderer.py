@@ -226,16 +226,12 @@ ALIVE_REFETCH_TIMEOUT = 60.0
 # How long one response body may take to arrive before the recording gives up
 # on it, and how long the whole recording pass may spend collecting them.
 #
-# Both exist for the same reason the variant sweep's budget does, learned the
-# same way: a stage with no clock is a stage that can take forever, and one
-# response the browser started and never finished is enough to do it. Twenty
-# seconds is generous for a body the browser already has; a body it does not
-# have after twenty is one it is still streaming, and waiting changes nothing.
+# A stage with no clock is a stage that can take forever, and one response the
+# browser started and never finished is enough to do it.
 #
-# The consecutive-stall ceiling is the cheaper exit. A page still holding
+# The consecutive-stall ceiling is the cheaper exit: a page still holding
 # connections open will hold them open for every remaining response too, so
-# after a few in a row the honest move is to stop asking and archive what is
-# in hand rather than pay the timeout several hundred more times.
+# after a few in a row the honest move is to archive what is in hand.
 ALIVE_RECORD_BUDGET = 240.0
 ALIVE_RECORD_HEARTBEAT = 15.0
 ALIVE_MAX_BODY_STALLS = 5
@@ -513,20 +509,51 @@ _IMAGE_CANDIDATES_JS = r"""(maxElements) => {
     seen.add(href);
     out.push(href);
   };
-  const addSrcset = (value, base) => {
-    if (!value) return;
-    splitSrcset(value).forEach(c => add(c.url, base));
+  // One candidate per slot, at up to MAX_DPR. A srcset offers the same picture
+  // at several widths so a live browser can choose per device; an archive only
+  // needs the one a reader will be served. `slotWidth` is the element's own
+  // rendered width where there is one, so a thumbnail keeps a thumbnail rather
+  // than the full-bleed version of itself.
+  const MAX_DPR = 2;
+  const pickSrcset = (value, slotWidth) => {
+    const candidates = splitSrcset(value);
+    if (!candidates.length) return null;
+    const target = Math.max(1, slotWidth || 0) * MAX_DPR;
+    const widths = [], densities = [];
+    candidates.forEach(c => {
+      const d = String(c.descriptor || '').trim().toLowerCase();
+      const n = parseFloat(d);
+      if (d.endsWith('w') && isFinite(n)) widths.push([n, c.url]);
+      else if (d.endsWith('x') && isFinite(n)) densities.push([n, c.url]);
+      else densities.push([1, c.url]);
+    });
+    if (widths.length) {
+      widths.sort((a, b) => a[0] - b[0]);
+      const fit = widths.find(w => w[0] >= target);
+      return (fit || widths[widths.length - 1])[1];
+    }
+    densities.sort((a, b) => a[0] - b[0]);
+    const ok = densities.filter(d => d[0] <= MAX_DPR);
+    return (ok.length ? ok[ok.length - 1] : densities[0])[1];
+  };
+  const addSrcset = (value, base, slotWidth) => {
+    const url = value ? pickSrcset(value, slotWidth) : null;
+    if (url) add(url, base);
   };
 
   document.querySelectorAll('img').forEach(img => {
     add(img.getAttribute('src'));
-    addSrcset(img.getAttribute('srcset'));
+    addSrcset(img.getAttribute('srcset'), null, img.getBoundingClientRect().width);
     if (img.currentSrc) add(img.currentSrc);
   });
-  document.querySelectorAll('source[srcset]').forEach(s => addSrcset(s.getAttribute('srcset')));
+  document.querySelectorAll('source[srcset]').forEach(s => {
+    const slot = s.parentElement && s.parentElement.getBoundingClientRect
+      ? s.parentElement.getBoundingClientRect().width : 0;
+    addSrcset(s.getAttribute('srcset'), null, slot);
+  });
   document.querySelectorAll('link[as="image"][href], link[imagesrcset]').forEach(l => {
     add(l.getAttribute('href'));
-    addSrcset(l.getAttribute('imagesrcset'));
+    addSrcset(l.getAttribute('imagesrcset'), null, innerWidth);
   });
   document.querySelectorAll('[poster]').forEach(el => add(el.getAttribute('poster')));
 
@@ -1859,15 +1886,14 @@ def _finished(response):
     STARTED and never finished — a media stream, a long-poll, a range the
     player abandoned — that is not a slow call, it is a permanent one.
     Playwright's sync API offers no timeout to bound it with, and it cannot be
-    bounded from another thread either: the sync API is greenlet-bound to the
-    thread that opened the connection, and calling into it from a second one
-    fails with `cannot switch to a different thread`. (Learned by trying. The
-    suite refused it in under four minutes.)
+    bounded from another thread: the sync API is greenlet-bound to the thread
+    that opened the connection and answers a second one with `cannot switch to
+    a different thread`.
 
     So ask instead of wait. `responseEnd` is -1 until the request completes,
-    and reading it is a dictionary lookup on an object we already hold — no
-    round trip, no blocking, no thread. Unknown counts as finished, which
-    keeps the old behaviour for anything this cannot see."""
+    and reading it is a dictionary lookup on an object already in hand — no
+    round trip, no blocking, no thread. Unknown counts as finished, which keeps
+    the old behaviour for anything this cannot see."""
     try:
         timing = response.request.timing
         if "responseEnd" not in timing:
@@ -1886,12 +1912,10 @@ def _finished(response):
 def _body(response):
     """One response's bytes, or None. Never blocks on a body that is not there.
 
-    This was the apple.com wedge. Every other stage of a recording is bounded —
-    network-quiet 12s, scroll-quiet 8s, image settle 6s, the variant sweep's
-    90s budget — and this one call was not, so a capture sat inside it until
-    the stall watchdog gave up ten minutes later. Found by running a real
-    capture against a real NAS and watching the WARC stop growing at 4,313,574
-    bytes while the job went on insisting it was working."""
+    Every other stage of a recording is bounded — network-quiet 12s,
+    scroll-quiet 8s, image settle 6s, the variant sweep's 90s budget — and this
+    one was not, so a capture of a page that keeps a connection open sat here
+    until the stall watchdog gave up ten minutes later."""
     if not _finished(response):
         raise _BodyStalled(getattr(response, "url", "?"))
     try:

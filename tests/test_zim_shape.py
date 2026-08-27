@@ -493,3 +493,66 @@ class TestCreationHandsOverItsShape(unittest.TestCase):
         finally:
             for name, orig in saved.items():
                 setattr(server, name, orig)
+
+
+class TestWorkingFileSweep(unittest.TestCase):
+    """Spools a dead capture left behind.
+
+    Every engine writes beside its output under a `.zimi-` prefix and clears up
+    in a `finally`; a process that dies between those two leaves it there for
+    ever. One abandoned recording on a real NAS was 2.6 GB."""
+
+    def setUp(self):
+        import zimi.server as server
+
+        self.server = server
+        self.tmp = tempfile.mkdtemp(prefix="zimi-sweep-")
+        self._saved = {
+            "ZIM_DIR": server.ZIM_DIR,
+            "_SHAPE_SETTLE_SECONDS": server._SHAPE_SETTLE_SECONDS,
+        }
+        server.ZIM_DIR = self.tmp
+        server._SHAPE_SETTLE_SECONDS = 0.0
+
+    def tearDown(self):
+        import shutil
+
+        for name, orig in self._saved.items():
+            setattr(self.server, name, orig)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _make(self, name, age_hours, directory=False):
+        path = os.path.join(self.tmp, name)
+        if directory:
+            os.makedirs(path, exist_ok=True)
+        else:
+            with open(path, "wb") as f:
+                f.write(b"x" * 32)
+        old = time.time() - age_hours * 3600
+        os.utime(path, (old, old))
+        return path
+
+    def test_an_abandoned_spool_is_removed(self):
+        stale = self._make(".zimi-alive-abc.warc.gz", 48)
+        self.server._sweep_working_files()
+        self.assertFalse(os.path.exists(stale))
+
+    def test_an_abandoned_spool_directory_is_removed(self):
+        stale = self._make(".zimi-crawl-xyz", 48, directory=True)
+        self.server._sweep_working_files()
+        self.assertFalse(os.path.exists(stale))
+
+    def test_a_running_jobs_spool_is_left_alone(self):
+        """The whole safety argument. A live job's spool is minutes old — the
+        stall watchdog gives up at ten — so age is what makes this safe."""
+        fresh = self._make(".zimi-alive-live.warc.gz", 0)
+        self.server._sweep_working_files()
+        self.assertTrue(os.path.exists(fresh))
+
+    def test_it_touches_nothing_that_is_not_ours(self):
+        keep = []
+        for name in ("wikipedia_en_all.zim", ".zimi_cache.json", "notes.txt"):
+            keep.append(self._make(name, 999))
+        self.server._sweep_working_files()
+        for path in keep:
+            self.assertTrue(os.path.exists(path), f"{path} was removed")

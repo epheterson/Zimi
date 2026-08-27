@@ -257,6 +257,66 @@ def start_background_services(http_port):
 
     threading.Thread(target=_maintenance_loop, daemon=True, name="maintenance").start()
     threading.Thread(target=_shape_backfill, daemon=True, name="zim-shapes").start()
+    threading.Thread(target=_sweep_working_files, daemon=True, name="zim-sweep").start()
+
+
+# Working files a capture left behind.
+#
+# Every engine spools beside its output under a `.zimi-` prefix and removes it
+# in a `finally`. A process that dies between those two — a container restart,
+# an OOM kill, a watchdog that gave up on a wedged browser — leaves the spool
+# on disk with nothing that will ever come back for it. One abandoned recording
+# on the real NAS was 2.6 GB.
+#
+# Old enough is the whole safety argument: a live job's spool is minutes old at
+# most (the stall watchdog gives up at ten), so nothing this removes can belong
+# to anything still running.
+_WORKING_PREFIX = ".zimi-"
+_WORKING_MAX_AGE = 6 * 3600
+
+
+def _sweep_working_files():
+    """Remove abandoned capture spools from the directories Zimi writes to."""
+    import shutil
+
+    time.sleep(_SHAPE_SETTLE_SECONDS)
+    cutoff = time.time() - _WORKING_MAX_AGE
+    freed = 0
+    for folder in _working_file_dirs():
+        try:
+            names = os.listdir(folder)
+        except OSError:
+            continue
+        for name in names:
+            if not name.startswith(_WORKING_PREFIX):
+                continue
+            path = os.path.join(folder, name)
+            try:
+                if os.path.getmtime(path) > cutoff:
+                    continue
+                if os.path.isdir(path):
+                    shutil.rmtree(path, ignore_errors=True)
+                else:
+                    freed += os.path.getsize(path)
+                    os.remove(path)
+            except OSError as e:
+                log.debug("could not remove %s: %s", path, e)
+    if freed:
+        log.info("removed %.1f MB of abandoned capture files", freed / 1e6)
+
+
+def _working_file_dirs():
+    """Where captures spool: the library, and the folder created ZIMs land in."""
+    dirs = [ZIM_DIR]
+    try:
+        from zimi.manage import _create_root
+
+        root = _create_root()
+        if root:
+            dirs.append(root)
+    except Exception:
+        pass
+    return [d for d in dict.fromkeys(dirs) if d and os.path.isdir(d)]
 
 
 # ── what each ZIM is made of ────────────────────────────────────────────────
@@ -273,19 +333,16 @@ def start_background_services(http_port):
 # library already takes long enough. A background thread owns it: nothing waits
 # on it, and if it never finishes, the only consequence is a panel with no bar.
 #
-# Politeness is the rest of the design, and the first attempt at it was not
-# polite enough to matter. It took the libzim lock for a run of a hundred
-# entries and called that brief — true on a laptop's SSD, false on the spinning
-# disks a 220 GB library actually lives on, where a hundred sequential entry
-# reads is most of a second. Measured against the real library while it ran: the
-# About panel went from 6ms to a median of 631ms, worst case 2.6 SECONDS. The
-# work had been moved off the request path and was still landing on the reader,
-# through the one lock they share.
+# Politeness is the rest of the design, and holding the lock for a "short" run
+# is not enough of it. A hundred sequential entry reads is nothing on an SSD
+# and most of a second on the spinning disks a 220 GB library lives on: with
+# that, the About panel measured a median of 631ms and a worst case of 2.6
+# seconds against 6ms idle. Work moved off the request path still reaches the
+# reader through the one lock they share.
 #
-# So it does not merely pause between files; it YIELDS. While anyone is using
-# the library it does not take the lock at all, and it resumes when they stop.
-# The cost is a library measured later. The benefit is that measuring cannot be
-# felt, which is the only acceptable amount for a background job to be felt.
+# So it YIELDS rather than pauses. While anyone is using the library it does
+# not take the lock at all, and resumes when they stop. The cost is a library
+# measured later; the benefit is that measuring cannot be felt.
 _SHAPE_SETTLE_SECONDS = 20.0  # let the server finish waking up first
 _SHAPE_IDLE_SECONDS = 4.0  # quiet for this long before touching the lock
 _SHAPE_IDLE_POLL_SECONDS = 1.0  # how often to re-check for quiet

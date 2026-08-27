@@ -291,6 +291,52 @@ def _split_srcset(value):
     return out
 
 
+# One image per slot, at up to twice the display density.
+#
+# A srcset offers the same picture at four or five widths so a live browser can
+# pick per device. An archive is not choosing — it is storing — and storing all
+# of them means four copies of every picture for the one a reader will be
+# served. CNN's front page cost 835 images and 62 MB that way. Above 2x there
+# is also nothing to see: no display Zimi is read on resolves it.
+VARIANT_MAX_DPR = 2
+# The width to aim at, in device pixels: a comfortable reading column at 2x.
+VARIANT_TARGET_WIDTH = 1600
+
+
+def pick_srcset(candidates, target_width=VARIANT_TARGET_WIDTH, max_dpr=VARIANT_MAX_DPR):
+    """The single ``(url, descriptor)`` worth keeping, or None.
+
+    Width descriptors win on the smallest candidate that still covers the
+    target, so a picture is never upscaled on the page it came from. Density
+    descriptors win on the largest at or under the cap. A candidate with no
+    descriptor is a 1x candidate, which is what the spec says it is."""
+    widths, densities = [], []
+    for url, descriptor in candidates:
+        text = (descriptor or "").strip().lower()
+        try:
+            if text.endswith("w"):
+                widths.append((float(text[:-1]), url, descriptor))
+                continue
+            if text.endswith("x"):
+                densities.append((float(text[:-1]), url, descriptor))
+                continue
+        except ValueError:
+            pass
+        densities.append((1.0, url, descriptor))
+    if widths:
+        widths.sort()
+        for width, url, descriptor in widths:
+            if width >= target_width:
+                return url, descriptor
+        return widths[-1][1], widths[-1][2]
+    if not densities:
+        return None
+    densities.sort()
+    affordable = [c for c in densities if c[0] <= max_dpr]
+    chosen = affordable[-1] if affordable else densities[0]
+    return chosen[1], chosen[2]
+
+
 def _remote_asset_name(url, mime):
     """A stable, collision-resistant in-ZIM filename for a cross-origin asset:
     the URL hashed, with a sensible extension (from the URL path, else the

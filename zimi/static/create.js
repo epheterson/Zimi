@@ -2037,8 +2037,29 @@ async function _createOpenResult(name) {
     zimsCache = await _fetchList();
     _rebuildZimsMap();
   } catch (e) {}
+  // Recent is a log, and a log outlives what it describes: a ZIM made last
+  // week and deleted since still has a row, and its Open button used to walk
+  // into an empty source view. Ask the refreshed list first and say so plainly
+  // instead.
+  if (!(zimsCache || []).some(function (z) { return z.name === name; })) {
+    _createMarkGone(name);
+    return;
+  }
   closeCreate();
   enterSource(name, true);
+}
+
+// Turn a Recent row into what it now is: a record of something that was made
+// and is no longer here. The row stays — it happened — and stops offering a
+// door to nowhere.
+function _createMarkGone(name) {
+  for (var i = 0; i < _createHistory.length; i++) {
+    if (_createHistory[i] && _createHistory[i].result === name) {
+      _createHistory[i] = Object.assign({}, _createHistory[i], { gone: true });
+    }
+  }
+  _createJobsSave(_createHistory);
+  _renderCreateRecent();
 }
 
 // ── polling ─────────────────────────────────────────────────────────────────
@@ -2924,11 +2945,12 @@ function _renderCreateRecent() {
         '<span class="create-hist-body">' +
           '<span class="create-hist-name">' + esc(_createHistoryLabel(h)) + '</span>' +
           '<span class="create-hist-why">' +
-            (CREATE_HISTORY_KEYS[state] ? tH(CREATE_HISTORY_KEYS[state]) : '') +
+            (h.gone ? tH('create_hist_gone')
+              : (CREATE_HISTORY_KEYS[state] ? tH(CREATE_HISTORY_KEYS[state]) : '')) +
             (state === 'failed' && h.error ? ' — ' + esc(h.error) : '') +
           '</span>' +
         '</span>' +
-        (state === 'ok' && h.result
+        (state === 'ok' && h.result && !h.gone
           ? '<button type="button" class="ms-btn" onclick="_createOpenResult(\'' +
             escJs(h.result) + '\')">' + tH('create_open') + '</button>'
           : '') +

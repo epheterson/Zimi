@@ -986,13 +986,17 @@ def _relativize_html(page, variants):
             # here shredded one URL into three bogus candidates before the asset
             # carrier ever saw the tag, and a phone then picked the garbage and
             # showed a broken image (Eric, on-device).
-            from zimi.zimwriter import _SRCSET_RE, _split_srcset
+            #
+            # Reduced to ONE candidate here, which is the only place it can be
+            # done once: everything downstream — the asset carrier, the size
+            # estimate, the preview — reads the rewritten tag, so pruning here
+            # prunes all of them and no other stage needs to know the rule.
+            from zimi.zimwriter import _split_srcset, pick_srcset
 
-            parts = []
-            for url, descriptor in _split_srcset(val):
-                fixed = _strip_origin(url, variants)
-                parts.append((fixed + " " + descriptor).strip())
-            val = ", ".join(parts)
+            picked = pick_srcset(_split_srcset(val))
+            if picked:
+                url, descriptor = picked
+                val = (_strip_origin(url, variants) + " " + descriptor).strip()
         else:
             val = _strip_origin(val, variants)
         # Always quoted on the way out; escaped because this value came
@@ -2301,9 +2305,12 @@ def page_asset_refs(page, final_url):
     Cross-origin refs count. They used to be skipped because the engine could
     not carry them; it carries them now — a page's images mostly live on a
     sibling CDN — and counting only same-origin ones reported "24 assets" for a
-    page that lands 400. Every srcset CANDIDATE counts too: each is its own
-    file and a modern page ships two or three per image."""
-    from zimi.zimwriter import _SRCSET_RE, _split_srcset
+    page that lands 400.
+
+    A srcset counts ONCE, for the candidate the capture will keep: counting all
+    of them was right when all of them were fetched and became an over-estimate
+    the moment that stopped being true."""
+    from zimi.zimwriter import _SRCSET_RE, _split_srcset, pick_srcset
 
     _origin, variants = _origin_variants(final_url)
     refs = set()
@@ -2312,10 +2319,12 @@ def page_asset_refs(page, final_url):
         if ref and not ref.startswith(("#", "data:")):
             refs.add(ref)
     for m in _SRCSET_RE.finditer(page):
-        for url, _descriptor in _split_srcset(m.group("val")):
-            ref = _strip_origin(url.strip(), variants)
-            if ref and not ref.startswith(("#", "data:")):
-                refs.add(ref)
+        picked = pick_srcset(_split_srcset(m.group("val")))
+        if not picked:
+            continue
+        ref = _strip_origin(picked[0].strip(), variants)
+        if ref and not ref.startswith(("#", "data:")):
+            refs.add(ref)
     return refs
 
 

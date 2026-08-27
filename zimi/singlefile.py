@@ -34,6 +34,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import urllib.parse
 
@@ -97,28 +98,65 @@ def singlefile_version():
     return out.splitlines()[0] if out else None
 
 
+# Where Playwright keeps its downloads, and where the binary sits inside one.
+# Read off disk rather than asked of the library: `sync_playwright()` starts a
+# driver subprocess, and starting one only to read a path failed on the NAS —
+# the context threw on teardown, the except below swallowed it, SingleFile was
+# handed no browser and reported "Chromium executable not found" on a machine
+# that had one. Naming a file should not require launching anything.
+#
+# Two package names, in preference order. A full `chromium-*` is what SingleFile
+# wants; `chromium_headless_shell-*` is the stripped build modern Playwright
+# installs for headless work, and on a machine that only has that one it is
+# still a browser SingleFile can drive.
+_CHROMIUM_PACKAGES = ("chromium-", "chromium_headless_shell-")
+_CHROMIUM_BINARIES = (
+    "chrome-linux64/chrome",
+    "chrome-linux/chrome",
+    "chrome-mac/Chromium.app/Contents/MacOS/Chromium",
+    "chrome-win/chrome.exe",
+    "chrome-headless-shell-linux64/chrome-headless-shell",
+    "chrome-headless-shell-mac-x64/chrome-headless-shell",
+    "chrome-headless-shell-mac-arm64/chrome-headless-shell",
+    "chrome-headless-shell-win64/chrome-headless-shell.exe",
+)
+
+
+def _playwright_browsers_dir():
+    configured = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    if configured and configured != "0":
+        return configured
+    if sys.platform == "darwin":
+        return os.path.expanduser("~/Library/Caches/ms-playwright")
+    if os.name == "nt":
+        return os.path.expandvars(r"%LOCALAPPDATA%\ms-playwright")
+    return os.path.expanduser("~/.cache/ms-playwright")
 
 
 def chromium_path():
     """Where a usable Chromium is, or ''.
 
     Playwright's first, because if Zimi can render a page at all then that is
-    the browser it renders with, and using a second one would mean two
-    installs and two behaviours for one job. Playwright is asked directly —
-    it owns the download and knows the layout — and only if that fails do we
-    fall back to whatever is on PATH.
+    the browser it renders with, and a second install would mean two browsers
+    and two behaviours for one job. Newest build first: the directories sort by
+    revision, and an older one left behind by an upgrade is not the one the
+    renderer uses.
 
-    Returns '' rather than raising: SingleFile can still find a system browser
+    Returns '' rather than raising — SingleFile can still find a system browser
     by itself, and a guess of ours must not stop it trying."""
+    root = _playwright_browsers_dir()
     try:
-        from playwright.sync_api import sync_playwright
-
-        with sync_playwright() as pw:
-            found = pw.chromium.executable_path
-            if found and os.path.exists(found):
-                return found
-    except Exception as e:
-        log.debug("playwright could not name its chromium: %s", e)
+        present = os.listdir(root)
+    except OSError:
+        present = []
+    for package in _CHROMIUM_PACKAGES:
+        for build in sorted(
+            (d for d in present if d.startswith(package)), reverse=True
+        ):
+            for suffix in _CHROMIUM_BINARIES:
+                candidate = os.path.join(root, build, suffix)
+                if os.path.exists(candidate):
+                    return candidate
     for name in ("chromium", "chromium-browser", "google-chrome", "chrome"):
         found = shutil.which(name)
         if found:
@@ -244,7 +282,9 @@ class SingleFileCapture:
     known only once it exists.
     """
 
-    def __init__(self, *, note=None, block_ads=None, work_dir=None, timeout=DEFAULT_TIMEOUT):
+    def __init__(
+        self, *, note=None, block_ads=None, work_dir=None, timeout=DEFAULT_TIMEOUT
+    ):
         self._note = note or (lambda _m: None)
         self._block_ads = True if block_ads is None else bool(block_ads)
         self._work_dir = work_dir
