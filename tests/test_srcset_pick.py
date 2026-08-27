@@ -166,6 +166,22 @@ class TestAPageIsNotAnAsset(unittest.TestCase):
         self.assertIsNone(carrier._carry_remote("https://cdn.test/looks-like.png"))
         self.assertEqual(added, [])
 
+    def test_same_origin_html_is_refused_too(self):
+        """The commoner way in: a news site's own markup points <source>/<link>
+        refs at its own articles, so they arrive through the same-origin
+        carrier, not the remote one. A guard on only one of the two is a guard
+        on neither."""
+        from zimi.zimwriter import _AssetCarrier, make_asset_item
+
+        added = []
+
+        def read(zim, resolved):
+            return b"<html><body>an article</body></html>", "text/html"
+
+        carrier = _AssetCarrier(added.append, make_asset_item, read)
+        self.assertIsNone(carrier._carry("z", "2026/07/18/politics/story"))
+        self.assertEqual(added, [])
+
     def test_an_image_is_still_carried(self):
         from zimi.zimwriter import _AssetCarrier, make_asset_item
 

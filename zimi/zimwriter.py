@@ -407,6 +407,14 @@ class _AssetCarrier:
         if not data or len(data) > _MAX_ASSET_BYTES:
             self._carried[key] = None
             return None
+        # Same rule as _carry_remote: a media reference is not allowed to be a
+        # page. Same-origin is the commoner way in — a news site's own markup
+        # points <source>/<link> refs at its own articles — and a guard on only
+        # one of the two carriers is a guard on neither.
+        if (mime or "").split(";")[0].strip().lower() in _NOT_AN_ASSET:
+            log.debug("not carrying %s: it answered with %s", resolved, mime)
+            self._carried[key] = None
+            return None
         # Namespace per source ZIM so two ZIMs' "I/x.png" can't collide.
         in_path = "_assets/" + _slug(zim, "z") + "/" + resolved
         # CSS may itself pull fonts/images — carry those one level deep first.
