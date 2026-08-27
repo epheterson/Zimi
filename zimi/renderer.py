@@ -869,6 +869,9 @@ class RenderedSession:
         # before it fetches anything, so a page that already loaded an image at
         # one size is never asked for it a second time.
         self._archived = set()
+        # ``(url, bytes)`` of the page the current navigation landed on, taken
+        # while the browser still had it. See _landed_body.
+        self._landed = None
         self._pw = None
         self._browser = None
         self._context = None
@@ -1136,11 +1139,21 @@ class RenderedSession:
         page.on("response", lambda response: responses.append(response))
         try:
             try:
-                page.goto(
+                landed = page.goto(
                     url, wait_until="domcontentloaded", timeout=int(NAV_TIMEOUT * 1000)
                 )
             except Exception as e:
                 raise CreateError(f"cannot render {url}: {_playwright_reason(e)}")
+            # The page's own bytes, taken now rather than after the settling.
+            #
+            # Recording reads bodies at the END, a minute or so later, and by
+            # then Chromium has dropped the big ones — cnn.com's 3.9 MB
+            # homepage among them. Every other resource survives that because
+            # it can be asked for again; the document cannot, since CNN answers
+            # a plain re-fetch of its homepage with something other than the
+            # page. So the one record a capture must not lose is taken while it
+            # is certainly still there.
+            self._landed = _landed_body(landed)
             # Asked before the settling, not after: there is nothing to wait
             # for on a page the server refused, and fifteen seconds of quiet
             # timeouts and lazy-scrolling an error string is fifteen seconds
@@ -1440,24 +1453,38 @@ class RenderedSession:
                 try:
                     body = _body(response) or b""
                     stalls = 0
-                except _BodyStalled:
-                    # The browser started this and never finished it, so it has
-                    # no bytes to give. Send it down the road a RANGE already
-                    # takes: remembered here and fetched WHOLE below, through
-                    # the context, which has a timeout of its own. Better than
-                    # an empty record — the archive ends up with the real file
-                    # rather than a 200 with nothing in it.
-                    stalls += 1
-                    log.debug("body not available for %s; refetching whole", url)
-                    if url not in partial:
-                        partial.append(url)
-                    if stalls >= ALIVE_MAX_BODY_STALLS:
-                        self._note(
-                            f"the site was still streaming its remaining files "
-                            f"— {seen} of {total} looked at, the rest fetched whole"
-                        )
-                        break
-                    continue
+                except _BodyStalled as gap:
+                    # The browser has no bytes to give — either it never
+                    # finished this, or it finished and threw them away.
+                    #
+                    # The page's own document is the one record with no second
+                    # source, so the copy taken at navigation time stands in.
+                    # Everything else goes down the road a RANGE already takes:
+                    # remembered here and fetched WHOLE below, through the
+                    # context, which has a timeout of its own. Either beats an
+                    # empty record, which warc2zim discards outright.
+                    landed = self._landed
+                    if landed and landed[0] == url:
+                        body = landed[1]
+                        stalls = 0
+                        log.debug("used the body taken at navigation for %s", url)
+                    else:
+                        # Only a genuine stall counts toward stopping early. An
+                        # eviction answered instantly and says nothing about
+                        # how the far end is behaving; counting it would cut a
+                        # recording short over a page that is merely large.
+                        stalls = 0 if isinstance(gap, _BodyEvicted) else stalls + 1
+                        log.debug("body not available for %s; refetching whole", url)
+                        if url not in partial:
+                            partial.append(url)
+                        if stalls >= ALIVE_MAX_BODY_STALLS:
+                            self._note(
+                                f"the site was still streaming its remaining "
+                                f"files — {seen} of {total} looked at, the "
+                                f"rest fetched whole"
+                            )
+                            break
+                        continue
                 if len(body) > ALIVE_MAX_RESPONSE_BYTES:
                     log.debug("not archiving %s: %d bytes", url, len(body))
                     continue
@@ -1876,7 +1903,22 @@ def _refused_page(page):
 
 
 class _BodyStalled(Exception):
-    """The browser does not have this body and asking would block for ever."""
+    """The browser will not hand this body over. Ask the network again."""
+
+
+class _BodyEvicted(_BodyStalled):
+    """The response finished, but the browser no longer holds its bytes.
+
+    Chromium drops large response bodies once a page has settled. cnn.com's
+    homepage is 3.9 MB of HTML and is gone by the time the recording pass asks
+    for it; apple.com's is small enough to still be there — which is exactly
+    why one of them archived a front door and the other did not.
+
+    A subclass because every caller that wants "no body from the browser"
+    should treat the two identically and re-fetch. Only the recording pass
+    tells them apart, and only to count: a stall means a far end still
+    streaming, which is a reason to stop early, and an eviction costs nothing
+    and is no reason to stop at all."""
 
 
 def _finished(response):
@@ -1921,8 +1963,28 @@ def _body(response):
     try:
         return response.body()
     except Exception as e:  # a redirect, a 204, a body already evicted
-        log.debug("no body for %s: %s", getattr(response, "url", "?"), e)
+        # Never None here. Returning it archived a 200 with no bytes, and an
+        # empty HTML record is one warc2zim discards without a word — which is
+        # how a cnn.com capture produced a ZIM holding every image on the page
+        # and no page.
+        raise _BodyEvicted(getattr(response, "url", "?")) from e
+
+
+def _landed_body(response):
+    """``(url, bytes)`` for the response a navigation landed on, or None.
+
+    Read immediately, while the browser certainly still holds it. Failing here
+    is not an error: the recording pass asks for this body again in the normal
+    way, and this is only the copy it falls back to."""
+    if response is None:
         return None
+    try:
+        body = _body(response)
+    except _BodyStalled:
+        return None
+    if not body:
+        return None
+    return getattr(response, "url", "") or "", body
 
 
 def _body_length(response):
