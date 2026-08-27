@@ -21,6 +21,14 @@ Full tool signatures: see `zimi/mcp_server.py`.
 
 ## Installing
 
+The MCP server needs one extra dependency, which a plain `pip install zimi` does not pull in:
+
+```bash
+pip install "zimi[mcp]"
+```
+
+The Docker image already has it. To check any install, run `python3 -m zimi.mcp_server` — it should sit there waiting on stdin rather than exiting with an ImportError.
+
 ### Direct subprocess (same machine)
 
 ```json
