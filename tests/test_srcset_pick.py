@@ -121,3 +121,59 @@ class TestTheRewriteKeepsOne(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTheCarrierAppliesTheRule(unittest.TestCase):
+    """The rewrite prunes the tag; the CARRIER is what downloads. The rule has
+    to hold in both or it does not hold — a cross-origin srcset reaches the
+    carrier with all its candidates intact."""
+
+    def _carrier(self, fetched):
+        from zimi.zimwriter import _AssetCarrier, make_asset_item
+
+        def reader(url):
+            fetched.append(url)
+            return b"\x89PNG\r\n\x1a\n", "image/png"
+
+        added = []
+        return _AssetCarrier(added.append, make_asset_item, None, remote_reader=reader)
+
+    def test_only_the_chosen_candidate_is_fetched(self):
+        fetched = []
+        carrier = self._carrier(fetched)
+        html = (
+            '<img srcset="https://cdn.test/a.png 400w, '
+            'https://cdn.test/b.png 1600w, https://cdn.test/c.png 3200w">'
+        )
+        carrier.rewrite_media(None, "A/index", html)
+        self.assertEqual(fetched, ["https://cdn.test/b.png"])
+
+
+class TestAPageIsNotAnAsset(unittest.TestCase):
+    """A media reference that answers with a web page is not a media asset.
+    Storing what came back put thirty-four four-megabyte articles into a
+    single-page capture, filed as images."""
+
+    def test_html_is_refused(self):
+        from zimi.zimwriter import _AssetCarrier, make_asset_item
+
+        added = []
+
+        def reader(url):
+            return b"<html><body>a whole article</body></html>", "text/html"
+
+        carrier = _AssetCarrier(added.append, make_asset_item, None, remote_reader=reader)
+        self.assertIsNone(carrier._carry_remote("https://cdn.test/looks-like.png"))
+        self.assertEqual(added, [])
+
+    def test_an_image_is_still_carried(self):
+        from zimi.zimwriter import _AssetCarrier, make_asset_item
+
+        added = []
+
+        def reader(url):
+            return b"\x89PNG\r\n\x1a\n", "image/png"
+
+        carrier = _AssetCarrier(added.append, make_asset_item, None, remote_reader=reader)
+        self.assertIsNotNone(carrier._carry_remote("https://cdn.test/real.png"))
+        self.assertEqual(len(added), 1)

@@ -2445,10 +2445,18 @@ class TestCrossOriginMediaCarry(unittest.TestCase):
             'https://media.cnn.com/b.jpg 800w">'
         )
         out = c.rewrite_media("z", "A/index", html)
+        # The point of this test: nothing cross-origin is left pointing at the
+        # network. That has not changed.
         self.assertNotIn("media.cnn.com", out)
-        self.assertEqual(out.count("../_assets/_remote/"), 3)
-        self.assertIn("320w", out)  # srcset descriptors preserved
-        self.assertEqual(len(self.added), 3)
+        # Two carried, not three: the src, plus ONE srcset candidate. A srcset
+        # is the same picture at several widths and the archive keeps the one a
+        # reader is served (see pick_srcset) — it used to keep all of them,
+        # which is how a single page came to hold 835 images.
+        self.assertEqual(out.count("../_assets/_remote/"), 2)
+        self.assertEqual(len(self.added), 2)
+        # Neither candidate reaches the 1600px target, so the largest wins.
+        self.assertIn("800w", out)
+        self.assertNotIn("320w", out)
 
     def test_a_srcset_url_containing_commas_survives(self):
         # CNN's image API puts commas INSIDE the URL

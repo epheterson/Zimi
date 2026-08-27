@@ -144,6 +144,12 @@ _ANCHOR_TITLE_RE = attr_re("title")
 _MAX_ASSET_BYTES = 5 * 1024 * 1024  # per single asset
 _MAX_TOTAL_ASSET_BYTES = 80 * 1024 * 1024  # per whole ZIM
 _MAX_ASSETS = 1200  # per whole ZIM
+# What a media reference must never turn out to be. A page is content, not an
+# asset: carrying one stores a whole article under an image's name, and a
+# capture that did it thirty-four times filed 130 MB of articles as pictures.
+_NOT_AN_ASSET = frozenset(
+    {"text/html", "application/xhtml+xml", "text/xml", "application/xml"}
+)
 
 # Export state for the poll endpoint. `file`/`files` surface the written ZIMs.
 _export_lock = threading.Lock()
@@ -449,6 +455,15 @@ class _AssetCarrier:
         if not data or len(data) > _MAX_ASSET_BYTES:
             self._carried[key] = None
             return None
+        # A media reference that answers with a WEB PAGE is not a media asset.
+        # CNN's markup points some <source>/<link> refs at article URLs, and
+        # storing what came back put thirty-four four-megabyte articles in a
+        # single-page capture — a hundred and thirty megabytes of pages nobody
+        # asked for, filed as images.
+        if (mime or "").split(";")[0].strip().lower() in _NOT_AN_ASSET:
+            log.debug("not carrying %s: it answered with %s", url, mime)
+            self._carried[key] = None
+            return None
         in_path = "_assets/_remote/" + _remote_asset_name(url, mime)
         self._carried[key] = in_path
         self.total_bytes += len(data)
@@ -536,12 +551,17 @@ class _AssetCarrier:
                 return f'{m.group("pre")}"{in_zim_ref(in_path)}"'
 
             def fix_srcset(m):
-                parts = []
-                for url, descriptor in _split_srcset(m.group("val")):
-                    in_path = carry_ref(url)
-                    ref = in_zim_ref(in_path) if in_path else url
-                    parts.append((ref + " " + descriptor).strip())
-                return f'{m.group("pre")}"{attr_quote(", ".join(parts))}"'
+                # One candidate, chosen before anything is fetched. This is the
+                # stage that actually downloads, so the rule has to hold here or
+                # it does not hold at all.
+                picked = pick_srcset(_split_srcset(m.group("val")))
+                if not picked:
+                    return m.group(0)
+                url, descriptor = picked
+                in_path = carry_ref(url)
+                ref = in_zim_ref(in_path) if in_path else url
+                value = (ref + " " + descriptor).strip()
+                return f'{m.group("pre")}"{attr_quote(value)}"'
 
             tag = _SRC_RE.sub(fix_src, tag)
             tag = _SRCSET_RE.sub(fix_srcset, tag)
