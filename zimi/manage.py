@@ -3131,6 +3131,16 @@ def _create_worker(job, opts):
             shape = zim_content_breakdown(result.get("path"))
             if shape:
                 outcome["result"]["shape"] = shape
+                # And into the library, where every OTHER surface reads it from.
+                # Without this the done card showed the composition while About
+                # showed no bar at all for the same ZIM, seconds apart, until
+                # the background worker came round — the two disagreeing about
+                # a file that had just been measured. The measurement is in
+                # hand; handing it over costs nothing and re-reading the file
+                # to learn it again would cost the read.
+                name = _create_name_of(result.get("path"))
+                if name:
+                    _srv._shape_store({name: shape})
         except Exception:
             log.debug("content breakdown skipped", exc_info=True)
         # Totals only the finished run knows: no line carried them, so they are

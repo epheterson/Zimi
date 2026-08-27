@@ -431,3 +431,65 @@ class TestRunsAreLockable(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCreationHandsOverItsShape(unittest.TestCase):
+    """A ZIM that was just made knows what it is made of. The library should
+    not have to find out again.
+
+    Driving a real capture surfaced this: the done card showed the composition
+    the moment CNN finished, and the About panel for that same ZIM showed no
+    bar at all, seconds apart, because creation kept its measurement in the job
+    result and the library only learned it when the background worker came
+    round. Two surfaces disagreeing about a file that had just been measured."""
+
+    def test_the_store_accepts_a_shape_for_a_named_zim(self):
+        import zimi.server as server
+
+        saved = {
+            "_zim_list_cache": server._zim_list_cache,
+            "_load_disk_cache": server._load_disk_cache,
+            "_save_disk_cache": server._save_disk_cache,
+        }
+        disk = {"made.zim": {"name": "made"}}
+        server._zim_list_cache = [{"name": "made", "file": "made.zim"}]
+        server._load_disk_cache = lambda: disk
+        server._save_disk_cache = lambda d: disk.update(d)
+        try:
+            shape = {"file_bytes": 9, "entries": 2, "breakdown": []}
+            server._shape_store({"made": shape})
+            self.assertEqual(server._zim_list_cache[0]["shape"], shape)
+            self.assertEqual(disk["made.zim"]["shape"], shape)
+        finally:
+            for name, orig in saved.items():
+                setattr(server, name, orig)
+
+    def test_the_worker_will_not_re_measure_what_creation_handed_over(self):
+        """The point of handing it over: the background sweep skips it."""
+        import zimi.server as server
+
+        saved = {
+            "_zim_list_cache": server._zim_list_cache,
+            "get_zim_files": server.get_zim_files,
+            "_SHAPE_PAUSE_SECONDS": server._SHAPE_PAUSE_SECONDS,
+        }
+        server._SHAPE_PAUSE_SECONDS = 0.0
+        server._zim_list_cache = [
+            {"name": "made", "file": "made.zim",
+             "shape": {"file_bytes": 9, "entries": 2, "breakdown": []}}
+        ]
+        server.get_zim_files = lambda: {"made": "/z/made.zim"}
+        calls = []
+
+        class _ZW:
+            @staticmethod
+            def zim_content_breakdown(path, **kw):
+                calls.append(path)
+                return {"file_bytes": 1, "entries": 1, "breakdown": []}
+
+        try:
+            server._shape_backfill_pass(_ZW)
+            self.assertEqual(calls, [], "a ZIM measured at creation was measured again")
+        finally:
+            for name, orig in saved.items():
+                setattr(server, name, orig)
