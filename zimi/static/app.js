@@ -16473,7 +16473,13 @@ function _updateLibraryBtnIcon() {
   var panelBtn = document.getElementById('bm-panel-btn');
   if (panelBtn) {
     panelBtn.innerHTML = _libClockSvg;
-    panelBtn.title = t('library');
+    // The GLYPH is shared with library-btn on purpose (above). The name is
+    // not: this one opens the panel on the BOOKMARKS tab, under B. It used to
+    // be handed t('library') along with the icon, so its tooltip read
+    // "Library (H)" — the wrong name and a shortcut belonging to a different
+    // button — while its aria-label still said Bookmarks. Two names for one
+    // control, and neither audience got the true one.
+    panelBtn.title = t('bookmarks');
   }
 }
 function openArticle(zim, path, title, opts) {

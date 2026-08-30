@@ -1195,6 +1195,48 @@ var _createTreeShown = 0;
 var _createTreeElided = 0;
 var _createDoneMounted = false;
 
+// Three judgements the surface below makes about what a number means. They sit
+// up here, above the DOM, because each one was got wrong in a way no unit test
+// could reach while it lived inside a render function — every one of them was
+// found by a person looking at the screen.
+
+// Which figure the done card shows for the file it just added. The card names
+// the ZIM and says it is in the library, so the size beside that name has to
+// be the size of the FILE — the same number the composition bar under it draws
+// from, and the same one the library will show. It used to be bytes CARRIED,
+// everything fetched on the way, which read 29.6 MB directly above a bar
+// saying 29.9 MB for one file, and 6 MB apart on a site capture.
+function _createDoneBytes(result, carriedFallback) {
+  var shape = result && result.shape;
+  var onDisk = shape && Number(shape.file_bytes);
+  if (onDisk > 0) return onDisk;
+  var stated = result && Number(result.bytes);
+  if (stated > 0) return stated;
+  return Number(carriedFallback) > 0 ? Number(carriedFallback) : 0;
+}
+
+// Whether a live counter is telling the truth in this mode. A crawl reports
+// assets and bytes PER PAGE, starting over at each one, so they sawtooth —
+// apple.com read 192 assets / 32.3 MB, then 146 / 9.2 MB — beside a pages
+// counter that only climbs. There is no honest cumulative to show instead: the
+// job's final totals are deduplicated across pages (821, where summing each
+// page's final gives 850) and that is not known until the end. The per-page
+// figure is already on screen and labelled, in the tree row it belongs to.
+function _createMetricLive(what, mode, active) {
+  if (!active || mode !== 'site') return true;
+  return what !== 'assets' && what !== 'bytes';
+}
+
+// Whether a remembered row still has a ZIM behind it. Recent lives in this
+// browser, the library lives on the server, and they part company the moment
+// something is deleted anywhere. `known` is false only when the caller has a
+// library list to check against — an unloaded list must never be read as an
+// empty one, or a cold open declares every row dead.
+function _createRowGone(job, known) {
+  if (!job || !job.result || job.gone) return false;
+  return !known;
+}
+
 // ── the surface ─────────────────────────────────────────────────────────────
 
 // ``replaceState`` true means this history entry IS Create — a cold load of
@@ -2049,6 +2091,32 @@ async function _createOpenResult(name) {
   enterSource(name, true);
 }
 
+// Every remembered row checked against the library, before Recent is drawn.
+//
+// Recent lives in this browser and the library lives on the server, so the two
+// drift apart the moment a ZIM is deleted from anywhere. Marking a row gone
+// when its Open button failed — which is all this used to do — fixes exactly
+// one row, and only for whoever walked into the dead end. After clearing out
+// every made-here ZIM, nine rows still read "Added to the library" and still
+// offered a door, each one waiting to disappoint somebody individually.
+//
+// No request: zimsCache is the library list this client already holds for the
+// home grid and search. An empty cache means it has not loaded yet, not that
+// the library is empty, so nothing is marked until there is something to
+// compare against — otherwise a cold open would declare every row dead.
+function _createReconcileGone() {
+  if (!(zimsCache || []).length) return;
+  var changed = false;
+  for (var i = 0; i < _createHistory.length; i++) {
+    var h = _createHistory[i];
+    if (_createHistoryLive(h)) continue;
+    if (!_createRowGone(h, !!_zimInfo(h && h.result))) continue;
+    _createHistory[i] = Object.assign({}, h, { gone: true });
+    changed = true;
+  }
+  if (changed) _createJobsSave(_createHistory);
+}
+
 // Turn a Recent row into what it now is: a record of something that was made
 // and is no longer here. The row stays — it happened — and stops offering a
 // door to nowhere.
@@ -2456,6 +2524,8 @@ function _createSyncMetrics(s) {
     var what = CREATE_COUNT_KEYS[i];
     var c = counts[what];
     if (!c) continue;
+    // See _createMetricLive: a crawl's per-page counters would sawtooth here.
+    if (!_createMetricLive(what, s.mode, s.active)) continue;
     // The number this markup carries is where the DISPLAY currently is, not
     // where the server is — see _createCountStep. Whenever a job is finished,
     // being cancelled, or the reader has asked for less motion, they are the
@@ -2861,10 +2931,8 @@ function _createMountDone(s) {
 // How big it turned out. The status reply may carry it; otherwise the last
 // bytes counter the job emitted is the same number by a different route.
 function _createResultBytes(s) {
-  var fromResult = s.result && Number(s.result.bytes);
-  if (fromResult > 0) return fromResult;
   var c = _createViz.counts.bytes;
-  return c && c.n > 0 ? c.n : 0;
+  return _createDoneBytes(s.result, c && c.n);
 }
 
 function _createRollBytes(el, to) {
@@ -2927,6 +2995,7 @@ function _renderCreateRecent() {
   // blanked the Recent list for the rest of the session.
   var busy = !!_createStatus && (_createStatus.active || _createStatus.done);
   if (!_createHistory.length || busy) { host.innerHTML = ''; return; }
+  _createReconcileGone();
   var rows = '';
   var shown = 0;
   for (var i = 0; i < _createHistory.length && shown < CREATE_RECENT_MAX; i++) {
