@@ -1417,7 +1417,44 @@ MAX_POST_BODY = 65536  # max bytes accepted in POST requests (64KB — handles ~
 # users, history and every per-user blob. They get their own ceiling so the tight
 # 64 KB cap keeps guarding every other endpoint.
 MAX_BACKUP_BODY = 8 * 1024 * 1024  # 8 MB — backup import + /userdata save
-_BYTES_PER_GB = 1024**3
+# Sizes are DECIMAL everywhere Zimi prints one: a kB is 1000 bytes, an MB is
+# 1000 kB, a GB is 1000 MB.
+#
+# It used to divide by 1024 and print "GB", which is a GiB wearing the wrong
+# name, and the gap is not academic at the sizes this program deals in:
+# wikipedia_en_all_maxi is 123,980,647,016 bytes, which Zimi called 115 GB
+# while the NAS, Finder, df and the Kiwix library page all called it 124 GB.
+# Nine gigabytes of disagreement on one row of a screen whose entire job is
+# answering "will this fit".
+#
+# Everything derives from these three and nothing divides by hand, so there is
+# one place to be wrong. format_bytes() below turns them into text, and the
+# browser's fmtBytes() is the same function — tests_size_units holds the two to
+# a single table of expected strings.
+_BYTES_PER_KB = 1000
+_BYTES_PER_MB = 1000**2
+_BYTES_PER_GB = 1000**3
+
+# Where GB stops being written to one decimal. Below ten, a tenth is real
+# information about a ZIM; above it, "115 GB" beats "115.5 GB" in a list.
+_GB_WHOLE_FROM = 10
+
+
+def format_bytes(n):
+    """One byte count as display text. The single spelling of a size.
+
+    Matches ``fmtBytes`` in the browser exactly, including the thresholds and
+    the decimal places, so the same file reads the same in the web UI, the CLI,
+    the MCP tool listing and this server's own logs."""
+    n = max(0, int(n or 0))
+    if n < _BYTES_PER_KB:
+        return f"{n} B"
+    if n < _BYTES_PER_MB:
+        return f"{n / _BYTES_PER_KB:.1f} KB"
+    if n < _BYTES_PER_GB:
+        return f"{n / _BYTES_PER_MB:.1f} MB"
+    gb = n / _BYTES_PER_GB
+    return f"{gb:.0f} GB" if gb >= _GB_WHOLE_FROM else f"{gb:.1f} GB"
 
 
 def _atomic_write_json(path, data, indent=None):
@@ -2130,7 +2167,7 @@ def list_zims(use_cache=True):
         entry = {
             "name": name,
             "file": os.path.basename(path),
-            "size_gb": round(size_bytes / (1024**3), 3),
+            "size_gb": round(size_bytes / _BYTES_PER_GB, 3),
             "size_bytes": size_bytes,
             "entries": entry_count,
         }
@@ -2206,7 +2243,7 @@ def _extract_zim_date(filename):
 def _extract_zim_metadata(name, path):
     """Open a ZIM archive and extract its metadata. Returns (info_dict, archive)."""
     size_bytes = os.path.getsize(path)
-    size_gb = size_bytes / (1024**3)
+    size_gb = size_bytes / _BYTES_PER_GB
     meta_title = name
     meta_desc = ""
     meta_date = ""
@@ -2563,7 +2600,7 @@ def load_cache(force=False):
             entry = {
                 "name": name,
                 "file": filename,
-                "size_gb": cached.get("size_gb", round(size / (1024**3), 3)),
+                "size_gb": cached.get("size_gb", round(size / _BYTES_PER_GB, 3)),
                 # Exact bytes straight from stat — peers verify pulled ZIMs
                 # against this, so it must be present even on a cache hit
                 # (older disk caches predate the field).
@@ -3587,7 +3624,8 @@ def main():
         for z in zims:
             entries = z["entries"] if isinstance(z["entries"], int) else 0
             print(
-                f"  {z['name']:40s} {z['size_gb']:>8.1f} GB  {entries:>10} entries  ({z['file']})"
+                f"  {z['name']:40s} {format_bytes(z['size_bytes']):>10s}  "
+                f"{entries:>10} entries  ({z['file']})"
             )
 
     elif args.command == "backup":

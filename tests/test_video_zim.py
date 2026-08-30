@@ -478,10 +478,13 @@ def test_create_cli_routes_video_urls_to_video_path(monkeypatch, tmp_path, capsy
 
 
 def test_parse_size():
-    assert video.parse_size("4G") == 4 * 1024**3
-    assert video.parse_size("500M") == 500 * 1024**2
+    """Decimal unless the spelling says binary — same rule as the crawler's
+    parse_size and as every size Zimi prints, so a budget and the file it
+    produces are quoted in one unit."""
+    assert video.parse_size("4G") == 4 * 1000**3
+    assert video.parse_size("500M") == 500 * 1000**2
     assert video.parse_size("1024") == 1024
-    assert video.parse_size("1.5g") == int(1.5 * 1024**3)
+    assert video.parse_size("1.5g") == int(1.5 * 1000**3)
     assert video.parse_size("2GiB") == 2 * 1024**3
     with pytest.raises(video.CreateError, match="cannot parse"):
         video.parse_size("lots")

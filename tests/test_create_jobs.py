@@ -474,7 +474,10 @@ def test_a_crawl_line_becomes_a_page_node_a_count_and_a_byte_total(stub_engine):
         "label": "/docs/a?page=2",
         "state": "done",
     }.items() <= events[1].items()
-    assert {"t": "count", "what": "bytes", "n": 2048, "total": None}.items() <= events[
+    # "2.0 KB" means 2000 bytes now: the engines format with the one decimal
+    # rule and this reads it back with the same one, so the printed string
+    # and the number behind it are quoted in a single unit.
+    assert {"t": "count", "what": "bytes", "n": 2000, "total": None}.items() <= events[
         2
     ].items()
     assert {

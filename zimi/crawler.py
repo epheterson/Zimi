@@ -1241,9 +1241,17 @@ def create_zimit_zim(
 
 def parse_size(text):
     """A byte count, plainly or with a unit suffix: ``512MiB``, ``2g``,
-    ``1048576``. Raises ``CreateError`` on anything else."""
+    ``1048576``. Raises ``CreateError`` on anything else.
+
+    The ``i`` is respected rather than discarded: ``512MiB`` is 536,870,912 and
+    ``512MB`` is 512,000,000, which is what those two spellings mean. Both used
+    to be read as binary, so a budget written 500M produced a file the rest of
+    Zimi then reported as 524 MB — the same units disagreement, arriving from
+    the one direction where the user had actually said what they meant."""
     raw = str(text).strip().lower().replace("_", "")
-    units = {"": 1, "b": 1, "k": 1024, "m": 1024**2, "g": 1024**3, "t": 1024**4}
+    binary = "i" in raw
+    base = 1024 if binary else 1000
+    units = {"": 1, "b": 1, "k": base, "m": base**2, "g": base**3, "t": base**4}
     for suffix in ("ib", "b"):
         if raw.endswith(suffix) and len(raw) > len(suffix):
             raw = raw[: -len(suffix)]

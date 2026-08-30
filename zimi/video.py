@@ -170,16 +170,21 @@ def wants_url(url, args):
 
 # ── small helpers ───────────────────────────────────────────────────────────
 
-_SIZE_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([kmgt]?)i?b?\s*$", re.IGNORECASE)
-_SIZE_MULT = {"": 1, "k": 1024, "m": 1024**2, "g": 1024**3, "t": 1024**4}
+_SIZE_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([kmgt]?)(i?)b?\s*$", re.IGNORECASE)
 
 
 def parse_size(text):
-    """'4G' / '500M' / '123' → bytes. CreateError on anything else."""
+    """'4G' / '500M' / '123' → bytes. CreateError on anything else.
+
+    Decimal unless the spelling says otherwise: 500M is 500,000,000 and 500MiB
+    is 524,288,000. Same rule as the crawler's parse_size and as every size
+    Zimi prints, so a budget and the file it produces are quoted in one unit."""
     m = _SIZE_RE.match(str(text))
     if not m:
         raise CreateError(f"cannot parse size {text!r} — try e.g. 500M or 4G")
-    return int(float(m.group(1)) * _SIZE_MULT[m.group(2).lower()])
+    base = 1024 if m.group(3) else 1000
+    mult = {"": 1, "k": base, "m": base**2, "g": base**3, "t": base**4}
+    return int(float(m.group(1)) * mult[m.group(2).lower()])
 
 
 def _fmt_duration(seconds):

@@ -260,7 +260,7 @@ def test_advanced_site_options_reach_the_engine(stub_engine):
     _wait_done()
     opts = stub_engine["opts"]
     assert opts["max_depth"] == 2
-    assert opts["max_bytes"] == 2 * 1024**3
+    assert opts["max_bytes"] == 2 * 1000**3  # decimal: see crawler.parse_size
     assert opts["delay"] == 1.5
     assert opts["ignore_robots"] is True
     # Case is the admin's business; the metadata field is lowercase.
@@ -437,7 +437,7 @@ def test_set_options_arrive_as_engine_keywords(monkeypatch):
     _wait_done()
     assert seen["max_pages"] == 12
     assert seen["max_depth"] == 1
-    assert seen["max_bytes"] == 10 * 1024**2
+    assert seen["max_bytes"] == 10 * 1000**2  # decimal: see crawler.parse_size
     assert seen["delay"] == 0.25
     assert seen["language"] == "spa"
     assert seen["ignore_robots"] is True
@@ -464,7 +464,7 @@ def test_the_video_preset_arrives_as_the_engines_fmt_keyword(monkeypatch):
     )
     _wait_done()
     assert seen["fmt"] == manage.CREATE_VIDEO_FORMATS["480p"]
-    assert seen["max_bytes"] == 1024**3
+    assert seen["max_bytes"] == 1000**3  # decimal: see crawler.parse_size
 
 
 # ── one job at a time ───────────────────────────────────────────────────────

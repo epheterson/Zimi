@@ -680,13 +680,13 @@ def _get_title_index_stats():
             indexes.append(
                 {
                     "name": name,
-                    "size_mb": round(size / (1024 * 1024), 1),
+                    "size_mb": round(size / _srv._BYTES_PER_MB, 1),
                     "entries": entry_count,
                     "has_fts": has_fts,
                 }
             )
 
-    status["total_size_gb"] = round(total_size / (1024**3), 1)
+    status["total_size_gb"] = round(total_size / _srv._BYTES_PER_GB, 1)
     status["index_count"] = len(indexes)
     # Use live counts: ready = indexes on disk, total = ZIM files
     status["ready"] = len(indexes)
@@ -815,7 +815,7 @@ def _build_all_title_indexes_inner():
             continue
         db_path = _title_index_path(name)
         try:
-            size_mb = os.path.getsize(db_path) / (1024 * 1024)
+            size_mb = os.path.getsize(db_path) / _srv._BYTES_PER_MB
         except OSError:
             continue
         if size_mb < _FTS5_AUTO_BUILD_MAX_MB:

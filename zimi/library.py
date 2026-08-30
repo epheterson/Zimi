@@ -748,7 +748,7 @@ def _refuse_for_disk_space(size_bytes, dest=None):
 
 
 def _fmt_gb(n):
-    return f"{n / 1024**3:.1f} GB"
+    return _srv.format_bytes(n)
 
 
 def _torrent_info_hash(data):

@@ -209,10 +209,19 @@ def test_looks_like_a_page_screens_by_extension():
 
 
 def test_parse_size_accepts_the_usual_spellings():
-    assert crawler.parse_size("1048576") == 1024**2
+    """And means what each spelling says.
+
+    The `i` used to be stripped and ignored, so 500M and 500MiB were the same
+    number and a budget written 500M produced a file the rest of Zimi then
+    reported as 524 MB. Sizes are decimal everywhere Zimi prints one; they are
+    decimal here too, and MiB stays binary because that is what MiB means."""
+    assert crawler.parse_size("1048576") == 1048576  # a plain count is itself
+    assert crawler.parse_size("2G") == 2 * 1000**3
+    assert crawler.parse_size("500M") == 500 * 1000**2
+    assert crawler.parse_size("1.5k") == 1500
+    # The binary spellings keep binary meaning.
     assert crawler.parse_size("512MiB") == 512 * 1024**2
-    assert crawler.parse_size("2G") == 2 * 1024**3
-    assert crawler.parse_size("1.5k") == 1536
+    assert crawler.parse_size("2GiB") == 2 * 1024**3
     with pytest.raises(creator.CreateError, match="not a byte size"):
         crawler.parse_size("lots")
     with pytest.raises(creator.CreateError, match="positive"):

@@ -715,12 +715,46 @@ function _updateSearchPlaceholder() {
   }
 }
 
-function fmtSize(gb, html) {
+// Sizes are DECIMAL, everywhere, and this is the only place that says so.
+//
+// The app used to divide by 1024 and print "GB" — a GiB wearing the wrong
+// name — in five separate hand-rolled formatters that did not even agree with
+// each other. At these file sizes the gap is not academic:
+// wikipedia_en_all_maxi is 123,980,647,016 bytes, which Zimi called 115 GB
+// while the NAS, Finder, df and Kiwix's own library page all called it 124 GB.
+// Nine gigabytes of disagreement, on the screen whose job is answering "will
+// this fit".
+//
+// The Python side's format_bytes() is this same function, thresholds and
+// decimal places included, and tests/test_size_units.py holds the two to one
+// table of expected strings so they cannot drift apart again.
+var BYTES_PER_KB = 1000;
+var BYTES_PER_MB = 1000 * 1000;
+var BYTES_PER_GB = 1000 * 1000 * 1000;
+// Where GB stops carrying a decimal: below ten a tenth says something about a
+// ZIM, above it "115 GB" reads better than "115.5 GB" down a list.
+var GB_WHOLE_FROM = 10;
+
+function fmtBytes(bytes, html) {
+  var b = Math.max(0, Number(bytes) || 0);
   var n, u;
-  if (gb < 0.1) { n = Math.max(1, Math.round(gb * 1024)); u = ' MB'; }
-  else if (gb < 10) { n = gb.toFixed(1); u = ' GB'; }
-  else { n = Math.round(gb); u = ' GB'; }
+  if (b < BYTES_PER_KB) { n = String(Math.round(b)); u = ' B'; }
+  else if (b < BYTES_PER_MB) { n = (b / BYTES_PER_KB).toFixed(1); u = ' KB'; }
+  else if (b < BYTES_PER_GB) { n = (b / BYTES_PER_MB).toFixed(1); u = ' MB'; }
+  else {
+    var gb = b / BYTES_PER_GB;
+    n = gb >= GB_WHOLE_FROM ? String(Math.round(gb)) : gb.toFixed(1);
+    u = ' GB';
+  }
   return html ? '<span class="num">' + n + '</span>' + u : n + u;
+}
+
+// The same size, for the callers that only ever held a GB figure (the API's
+// size_gb, which is now decimal GB computed from the same constant). One
+// entry point too many, but zero implementations too many: it lands in
+// fmtBytes like everything else, so nothing can quote a different number.
+function fmtSize(gb, html) {
+  return fmtBytes((Number(gb) || 0) * BYTES_PER_GB, html);
 }
 // Localized count line for a ZIM's card/info panel. Prefers the real article
 // count (libzim `article_count`, added by the metadata cache) and falls back to
@@ -7678,12 +7712,7 @@ function categorizeZim(name) {
   return 'Other';
 }
 
-function formatSize(bytes) {
-  if (!bytes) return '0 MB';
-  const mb = bytes / (1024 ** 2);
-  if (mb >= 900) return (bytes / (1024 ** 3)).toFixed(1) + ' GB';
-  return Math.round(mb) + ' MB';
-}
+function formatSize(bytes) { return fmtBytes(bytes); }
 
 // Bold download arrow for catalog buttons — the ↓ glyph reads too thin.
 const _DL_ARROW_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v13M6 11l6 6 6-6"/></svg>';
@@ -8440,7 +8469,7 @@ function _actRowHtml(r) {
     : (_ACT_GLYPHS[r.type] || _ACT_FALLBACK_GLYPH);
 
   var meta = ['<span class="act-verb' + (r.outcome === 'ok' ? '' : ' bad') + '">' + esc(_actVerb(r)) + '</span>'];
-  if (r.bytes) meta.push('<span>' + fmtSize(r.bytes / 1073741824) + '</span>');
+  if (r.bytes) meta.push('<span>' + fmtBytes(r.bytes) + '</span>');
   if (r.count && _ACT_COUNT_LABEL[r.type]) {
     meta.push('<span>' + esc(t(_ACT_COUNT_LABEL[r.type], {n: r.count})) + '</span>');
   }
@@ -8600,7 +8629,7 @@ async function renderActivityTab() {
         h += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
         h += '<div style="font-size:12px;color:var(--text2);margin-bottom:4px">' + tH('fts_hint') + '</div>';
         for (const idx of noFts) {
-          const sizeLbl = idx.size_mb >= 1024 ? (idx.size_mb / 1024).toFixed(1) + ' GB' : Math.round(idx.size_mb) + ' MB';
+          const sizeLbl = fmtBytes((idx.size_mb || 0) * BYTES_PER_MB);
           const estMin = Math.max(1, Math.ceil(idx.size_mb / 500));
           const timeLbl = estMin >= 60 ? Math.round(estMin / 60) + ' hr' : '~' + estMin + ' min';
           h += '<div class="mc-row" style="align-items:center"><span class="mc-label">' + esc(idx.name) + ' <span style="color:var(--text2);font-weight:400">(' + sizeLbl + ', ' + timeLbl + ')</span></span>';
@@ -9618,7 +9647,7 @@ function _creatorMadeHtml(d) {
         ' data-zim="' + escAttr(z.name) + '" onclick="return _spaSourceClick(event, this)">' +
         esc(z.title || z.name) + '</a></td>' +
       '<td>' + tH(_CREATOR_TYPE_KEYS[z.type] || 'zi_kind_zimi') + '</td>' +
-      '<td class="cr-made-num">' + (z.size_bytes ? fmtSize(z.size_bytes / (1024 * 1024 * 1024)) : '') + '</td>' +
+      '<td class="cr-made-num">' + (z.size_bytes ? fmtBytes(z.size_bytes) : '') + '</td>' +
       '<td class="cr-made-num">' + (z.created_ts ? _relTime(z.created_ts) : '') + '</td>' +
     '</tr>';
   }).join('');
@@ -9841,12 +9870,9 @@ function _msLibraryHtml() {
   return h;
 }
 
-function _fmtBytes(b) {
-  if (b < 1024) return b + ' B';
-  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
-  if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
-  return (b / 1073741824).toFixed(1) + ' GB';
-}
+// Kept as a name because create.js and the About panel call it; the one
+// implementation lives in fmtBytes.
+function _fmtBytes(b) { return fmtBytes(b); }
 
 // ── Library health report ──
 var _healthPoll = null;
@@ -12748,7 +12774,7 @@ async function _refreshDownloadsInner(useCache) {
       : visibleDls;
     for (const dl of renderDls) {
       const title = dlTitle(dl);
-      const fmtBytes = (b) => { const gb = b / (1024 ** 3); return gb >= 1 ? gb.toFixed(1) + ' GB' : (b / (1024 ** 2)).toFixed(0) + ' MB'; };
+      // one formatter, defined once — see fmtBytes near fmtSize.
       const totalStr = dl.total_bytes ? fmtBytes(dl.total_bytes) : '?';
       const dlStr = fmtBytes(dl.downloaded_bytes);
       // Total unknown = BT still fetching metadata / finding peers. Show a

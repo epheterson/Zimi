@@ -262,7 +262,8 @@ def list_sources() -> str:
     for z in sources:
         entries = z["entries"] if isinstance(z["entries"], int) else 0
         lines.append(
-            f"- **{z.get('title', z['name'])}** (`{z['name']}`) — {entries:,} entries, {z['size_gb']} GB"
+            f"- **{z.get('title', z['name'])}** (`{z['name']}`) — "
+            f"{entries:,} entries, {zimi.format_bytes(z.get('size_bytes', 0))}"
         )
     return "\n".join(lines)
 
