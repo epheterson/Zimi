@@ -114,3 +114,33 @@ def _have_node():
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestADerivedSizeIsNeverCached(unittest.TestCase):
+    """size_gb is a view of size_bytes, and views do not go in caches.
+
+    When the unit changed, 43 of 67 ZIMs on the live server went on serving the
+    old binary size_gb straight from .zimi_cache.json while freshly scanned
+    ones served decimal — the library quoting two different numbers for the
+    same kind of thing, which is the exact complaint the change set out to fix.
+    Deleting the cache would have papered over it; not storing a derived value
+    means it cannot happen again.
+    """
+
+    def test_the_cache_hit_path_recomputes_rather_than_reads(self):
+        src = open(os.path.join(HERE, "..", "zimi", "server.py"), encoding="utf-8").read()
+        self.assertNotIn(
+            'cached.get("size_gb"',
+            src,
+            "size_gb is being read from the metadata cache again — derive it "
+            "from size_bytes, which is the fact and is free from stat()",
+        )
+
+    def test_a_stale_unit_in_the_cache_is_ignored(self):
+        """The regression, exactly: an entry cached under the old binary rule."""
+        size = 123980647016
+        stale = {"size_gb": round(size / 1024**3, 3), "entries": 7}  # 115.466
+        self.assertNotAlmostEqual(stale["size_gb"], round(size / 1000**3, 3), places=1)
+        # What the scan must produce for that same file, whatever the cache says.
+        self.assertAlmostEqual(round(size / server._BYTES_PER_GB, 3), 123.981, places=3)
+        self.assertEqual(server.format_bytes(size), "124 GB")

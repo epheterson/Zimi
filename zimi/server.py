@@ -2600,7 +2600,15 @@ def load_cache(force=False):
             entry = {
                 "name": name,
                 "file": filename,
-                "size_gb": cached.get("size_gb", round(size / _BYTES_PER_GB, 3)),
+                # Derived from the bytes on every read, NEVER taken from the
+                # cache. A stored size_gb is a stored UNIT, and the day the
+                # unit changed, 43 of 67 ZIMs went on serving the old one from
+                # disk while freshly scanned ones served the new — the library
+                # quoting two different numbers for the same kind of thing,
+                # which is the whole complaint. Bytes are the fact and stat is
+                # free; anything divided out of them is a view, and a view has
+                # no business surviving in a cache.
+                "size_gb": round(size / _BYTES_PER_GB, 3),
                 # Exact bytes straight from stat — peers verify pulled ZIMs
                 # against this, so it must be present even on a cache hit
                 # (older disk caches predate the field).
