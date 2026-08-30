@@ -70,7 +70,29 @@ _BODY_RE = re.compile(r"<body[^>]*>(.*)</body>", re.IGNORECASE | re.DOTALL)
 #
 # This is deliberately not an HTML parser. It reads one attribute out of one
 # tag that a caller has already isolated, which is the whole job.
-_ATTR_VALUE = r"""(?P<q>["'])?(?P<val>(?(q).*?|[^\s"'=<>`]*))(?(q)(?P=q))"""
+#
+# A BARE value may not begin with an entity quote. That is never really a bare
+# value — it is the inside of a serialized fragment a page parked in a data-*
+# attribute, where the delimiters are entities rather than characters:
+#
+#     data-source-html="<a href=&quot;https://www.cnn.com/&quot;>CNN</a>"
+#
+# Without this the inner href matched with `&quot;…&quot;` swallowed into the
+# value, and every rewriter here re-emits values in REAL double quotes — so it
+# came back out as href="&quot;https://www.cnn.com/&quot;", whose quotes close
+# data-source-html early. The remainder of the tag then lands on the page as
+# visible text. cnn.com's homepage did that in a shipped capture.
+#
+# Refusing the match leaves the fragment untouched, which is what we want: it
+# is markup for JavaScript to inject later, no rewrite makes it more offline
+# than it already is, and a fragment we cannot rewrite safely is one to leave
+# exactly as the site wrote it.
+_ENTITY_QUOTE = r"&quot;|&#0*34;|&apos;|&#0*39;"
+_ATTR_VALUE = (
+    r"""(?P<q>["'])?(?P<val>(?(q).*?|(?!"""
+    + _ENTITY_QUOTE
+    + r""")[^\s"'=<>`]*))(?(q)(?P=q))"""
+)
 _ATTR_RE_CACHE = {}
 
 

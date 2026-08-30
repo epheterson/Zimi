@@ -193,3 +193,64 @@ class TestAPageIsNotAnAsset(unittest.TestCase):
         carrier = _AssetCarrier(added.append, make_asset_item, None, remote_reader=reader)
         self.assertIsNotNone(carrier._carry_remote("https://cdn.test/real.png"))
         self.assertEqual(len(added), 1)
+
+
+class TestSerializedFragmentsAreLeftAlone(unittest.TestCase):
+    """A page can park serialized markup inside a data-* attribute, where the
+    inner delimiters are entities rather than characters. Rewriting those
+    breaks the document.
+
+    From a shipped capture of cnn.com's homepage:
+
+        data-source-html="<a href=&quot;https://www.cnn.com/&quot;>CNN</a>"
+
+    The inner href matched with the entities swallowed into the value, and
+    every rewriter here re-emits in REAL double quotes, so it came back as
+    href="&quot;https://www.cnn.com/&quot;" — quotes that close
+    data-source-html early. The rest of the tag rendered as visible text on the
+    page: readers saw raw attribute soup down the middle of the article."""
+
+    def test_an_entity_quoted_href_is_not_matched(self):
+        from zimi.zimwriter import _HREF_RE
+
+        fragment = (
+            "<span> • Source: "
+            "<a target=&quot;_self&quot; href=&quot;https://www.cnn.com/&quot; "
+            "class=&quot;video-resource__source-url&quot;>CNN</a></span>"
+        )
+        self.assertIsNone(_HREF_RE.search(fragment))
+
+    def test_an_entity_quoted_src_is_not_matched(self):
+        from zimi.zimwriter import _SRC_RE
+
+        self.assertIsNone(_SRC_RE.search("<img src=&quot;https://ex.test/a.png&quot;>"))
+
+    def test_the_apostrophe_entity_counts_too(self):
+        from zimi.zimwriter import _HREF_RE
+
+        self.assertIsNone(_HREF_RE.search("<a href=&#39;https://ex.test/a&#39;>"))
+        self.assertIsNone(_HREF_RE.search("<a href=&#039;https://ex.test/a&#039;>"))
+
+    def test_the_four_real_quotings_still_match(self):
+        """A guard that refuses everything would 'fix' this by rewriting
+        nothing, so the ordinary shapes are asserted alongside it."""
+        from zimi.zimwriter import _HREF_RE
+
+        for html in (
+            '<a href="https://ex.test/a">',
+            "<a href='https://ex.test/a'>",
+            "<a href=https://ex.test/a>",
+            "<a href = 'https://ex.test/a' >",
+        ):
+            m = _HREF_RE.search(html)
+            self.assertIsNotNone(m, html)
+            self.assertEqual(m.group("val"), "https://ex.test/a", html)
+
+    def test_an_ampersand_in_a_normal_value_is_untouched(self):
+        """Only a value that STARTS with an entity quote is refused — query
+        strings full of &amp; are ordinary values and must still rewrite."""
+        from zimi.zimwriter import _HREF_RE
+
+        m = _HREF_RE.search('<a href="/x?a=1&amp;b=2">')
+        self.assertIsNotNone(m)
+        self.assertEqual(m.group("val"), "/x?a=1&amp;b=2")
