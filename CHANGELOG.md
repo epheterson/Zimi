@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.9.0] - 2026-08-20
+## [1.9.0] - 2026-08-31
 
 Zimi makes ZIMs now. Point it at a folder, a web page, a whole site, a video playlist, or an archive from any crawler, and it becomes a ZIM in your library: from the command line with `zimi create` and `zimi import`, or from a new + button that previews what you will get before anything runs. Underneath, this is also the release where Zimi grows up operationally: it discovers a folder of ZIMs with zero configuration on a USB stick, proves itself silent when told it is offline, exposes Prometheus metrics, backs itself up and restores from nothing, signs people in through Cloudflare Access without a password, and validates every one of those claims with a functional release gate before shipping.
 
