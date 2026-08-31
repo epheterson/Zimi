@@ -31,6 +31,7 @@ ZIM written into the library directory shows up without a full rescan.
 import base64
 import hashlib
 import html as _html
+import http.client
 import logging
 import mimetypes
 import os
@@ -1093,8 +1094,24 @@ def _http_remote_reader(timeout):
 
     def read(url):
         cap = _zw._MAX_ASSET_BYTES
-        req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
         try:
+            # A URL that cannot be requested at all raises something that is
+            # NOT an OSError, and so used to travel straight out of here and
+            # end the whole job:
+            #
+            #     http.client.InvalidURL  — control characters in the path;
+            #                               HTTPException, not OSError
+            #     ValueError              — an unknown url type
+            #
+            # (urllib.error.URLError, the ordinary "could not reach it", IS an
+            # OSError, which is why the narrow clause looked sufficient for so
+            # long.) One nonsense reference on one page took down a fifteen-
+            # page sqlite.org crawl after 3.1 seconds. No single asset gets to
+            # do that; the worst an unusable reference may cost is itself.
+            #
+            # Request() is inside the try because construction can raise too,
+            # for a different set of malformed inputs than urlopen does.
+            req = urllib.request.Request(url, headers={"User-Agent": _user_agent()})
             with _urlopen_retry(req, timeout) as resp:
                 mime = (
                     (resp.headers.get("Content-Type") or "")
@@ -1107,7 +1124,7 @@ def _http_remote_reader(timeout):
                 if mime and not _REMOTE_MEDIA_MIME_RE.match(mime):
                     return None
                 data = resp.read(cap + 1)
-        except OSError as e:
+        except (OSError, ValueError, http.client.HTTPException) as e:
             log.debug("remote asset fetch failed %s: %s", url, e)
             return None
         if not data or len(data) > cap:

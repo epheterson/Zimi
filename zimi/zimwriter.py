@@ -138,6 +138,67 @@ def attr_re(*names):
     return rx
 
 
+# ── raw text is not markup ──────────────────────────────────────────────────
+#
+# <script> and <style> hold TEXT. The HTML spec calls them raw text elements:
+# a browser stops parsing tags at the opening tag and resumes at the closing
+# one, so `<img src='...'>` inside a script is a string, not an image.
+#
+# Scanning those bodies anyway is how sqlite.org killed a whole site crawl on
+# its first page. The homepage builds its sponsor logos in JavaScript, by
+# concatenation:
+#
+#     h += "'><img src='images/foreignlogos/";
+#     h += sponsors[i].src + "'";
+#
+# The page therefore literally contains the characters `<img src='images/…`,
+# our matcher saw the opening quote, and — with DOTALL on, because real
+# attributes do wrap across lines — ran to the next quote three lines later.
+# The "URL" it produced had a newline in it, urlopen refused it, and the
+# resulting exception ended a fifteen-page crawl after one page.
+#
+# Same family as the cnn.com fragment above, one level out: that was markup
+# hiding inside an attribute, this is markup hiding inside a script. In both
+# cases the answer is to leave alone the bytes that were never ours to rewrite.
+#
+# The mask blanks the BODIES to spaces and keeps the tags. Same length is the
+# whole design: a match found on the mask has the same offsets and the same
+# text as the original everywhere outside a blanked body, so callers can match
+# on the mask and splice into the real thing.
+_RAW_TEXT_RE = re.compile(
+    r"(?is)(?P<open><(?P<tag>script|style)\b[^>]*>)(?P<body>.*?)(?P<close></(?P=tag)\s*>)"
+)
+_COMMENT_RE = re.compile(r"(?s)(?P<open><!--)(?P<body>.*?)(?P<close>-->)")
+
+
+def _blank_body(m):
+    return m.group("open") + " " * len(m.group("body")) + m.group("close")
+
+
+def mask_raw_text(html):
+    """``html`` with script/style bodies and comment bodies blanked to spaces.
+
+    Byte-for-byte identical everywhere else, and exactly as long, so offsets
+    and group text taken from the mask are valid against the original."""
+    return _COMMENT_RE.sub(_blank_body, _RAW_TEXT_RE.sub(_blank_body, html))
+
+
+def sub_markup(rx, repl, html):
+    """``rx.sub(repl, html)`` restricted to the parts that are really markup.
+
+    Matching happens on the mask and splicing on the original, which is safe
+    precisely because the two are the same length and agree everywhere the
+    mask did not blank."""
+    mask = mask_raw_text(html)
+    out, last = [], 0
+    for m in rx.finditer(mask):
+        out.append(html[last : m.start()])
+        out.append(repl(m) if callable(repl) else repl)
+        last = m.end()
+    out.append(html[last:])
+    return "".join(out)
+
+
 # Asset carrying. `src` on media tags + `href` on stylesheet links; `url()` in
 # CSS. Kept deliberately simple/bounded — a bookmark ZIM is not a full mirror.
 _STYLESHEET_RE = re.compile(r"<link\b[^>]*>", re.IGNORECASE)
@@ -597,13 +658,13 @@ class _AssetCarrier:
             tag = _SRCSET_RE.sub(fix_srcset, tag)
             return tag
 
-        return _MEDIA_TAG_RE.sub(fix_tag, html)
+        return sub_markup(_MEDIA_TAG_RE, fix_tag, html)
 
     def collect_styles(self, zim, article_path, html):
         """Read the article's stylesheets and return their CSS text to inline
         into the export article head (url() refs already rewritten)."""
         css_chunks = []
-        for linkm in _STYLESHEET_RE.finditer(html):
+        for linkm in _STYLESHEET_RE.finditer(mask_raw_text(html)):
             tag = linkm.group(0)
             relm = _REL_RE.search(tag)
             if not relm or "stylesheet" not in relm.group("val").lower():
@@ -749,7 +810,7 @@ def _rewrite_links(
         )
         return f"<a{rewritten}>{text}</a>"
 
-    return _ANCHOR_RE.sub(fix, html)
+    return sub_markup(_ANCHOR_RE, fix, html)
 
 
 def _extract_body(raw_html):

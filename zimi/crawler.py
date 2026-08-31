@@ -99,6 +99,7 @@ from zimi.zimwriter import (
     add_standard_metadata,
     atomic_zim_creator,
     history_record,
+    mask_raw_text,
     media_tags,
     scraper_string,
     zim_name,
@@ -222,7 +223,10 @@ def extract_links(page, base_url):
     would make links and assets disagree about what a relative reference
     means."""
     out = []
-    for tagm in _A_TAG_RE.finditer(page):
+    # Blind to <script>/<style> bodies: a page that writes markup from
+    # JavaScript otherwise hands the crawl links that were never on it. See
+    # mask_raw_text — sqlite.org is the case that proved it.
+    for tagm in _A_TAG_RE.finditer(mask_raw_text(page)):
         hrefm = _HREF_RE.search(tagm.group(0))
         if not hrefm:
             continue
