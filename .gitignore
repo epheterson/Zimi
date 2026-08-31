@@ -53,3 +53,8 @@ ui-review/
 PLAN.md
 CLAUDE.md
 .claude/
+
+# Build/tooling artifacts. uv is not this project's package manager — the
+# local pre-commit hook shells out to it, which leaves these behind.
+zimi.egg-info/
+uv.lock
