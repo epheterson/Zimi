@@ -20,6 +20,7 @@ from the same writer the create engines use, so a regression in carrying,
 rewriting or serving lands here rather than on somebody's phone.
 """
 
+import functools
 import http.server
 import socket
 import threading
@@ -45,14 +46,18 @@ def _need_browser():
 
 def browser(fn):
     """Marker kept as a decorator so the tests read the same as the rest of
-    the suite, but the probe is deferred into the call."""
+    the suite, but the probe is deferred into the call.
 
+    functools.wraps, not a hand-copied __name__: pytest reads the signature to
+    decide which fixtures to inject, and a bare *a/**kw wrapper advertises none
+    — so tmp_path never arrived and both tests died on a missing argument.
+    wraps sets __wrapped__, which is what pytest follows to the real one."""
+
+    @functools.wraps(fn)
     def wrapper(*a, **kw):
         _need_browser()
         return fn(*a, **kw)
 
-    wrapper.__name__ = fn.__name__
-    wrapper.__doc__ = fn.__doc__
     return wrapper
 
 # Enough images that lazy-loading and scroll behaviour actually matter. CNN's

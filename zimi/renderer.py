@@ -536,9 +536,35 @@ _IMAGE_CANDIDATES_JS = r"""(maxElements) => {
     const ok = densities.filter(d => d[0] <= MAX_DPR);
     return (ok.length ? ok[ok.length - 1] : densities[0])[1];
   };
+  // EVERY candidate inside the ceiling, not just the best one.
+  //
+  // The fast engine may keep a single variant because it also rewrites the
+  // srcset down to that variant — markup and archive agree. The alive engine
+  // cannot: its HTML is rewritten by warc2zim, so the replayed page still
+  // offers the whole srcset, and a screen whose pixel ratio picks a candidate
+  // we declined to store gets a hole. That is the exact defect the variant
+  // sweep exists for, seen on apple.com on a 2x display.
+  //
+  // So MAX_DPR is a ceiling on waste — no 3x, no 4x — and not an instruction
+  // to keep one file. Within it, whatever the markup can ask for is stored.
   const addSrcset = (value, base, slotWidth) => {
-    const url = value ? pickSrcset(value, slotWidth) : null;
-    if (url) add(url, base);
+    if (!value) return;
+    const candidates = splitSrcset(value);
+    if (!candidates.length) return;
+    let kept = 0;
+    candidates.forEach(c => {
+      const d = String(c.descriptor || '').trim().toLowerCase();
+      const n = parseFloat(d);
+      if (d.endsWith('x') && isFinite(n) && n > MAX_DPR) return;  // 3x and up
+      add(c.url, base);
+      kept += 1;
+    });
+    // Width descriptors have no density ceiling to apply, so fall back to the
+    // single best fit rather than hauling in every width a CDN advertises.
+    if (!kept) {
+      const url = pickSrcset(value, slotWidth);
+      if (url) add(url, base);
+    }
   };
 
   document.querySelectorAll('img').forEach(img => {
