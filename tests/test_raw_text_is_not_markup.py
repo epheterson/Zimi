@@ -143,6 +143,53 @@ class TestStyleAndComments(unittest.TestCase):
         self.assertEqual(mask_raw_text(page), page)
 
 
+class TestNothingIsLazyOffline(unittest.TestCase):
+    """A captured page is not on a network; deferring a local read is loss.
+
+    Measured on the real cnn.com capture: 117 images, 45 painted. All 72 that
+    did not were loading="lazy", and 59 of those had a zero-sized box, because
+    the page's rails collapse when its JavaScript never runs. Zero HTTP
+    failures — the browser simply never asked. Scrolling cannot fix it: an
+    image in a zero-height container never approaches the viewport.
+    """
+
+    def test_lazy_is_dropped(self):
+        from zimi.zimwriter import _load_eagerly
+
+        self.assertEqual(
+            _load_eagerly("<img src='a.png' loading='lazy' alt='x'>"),
+            "<img src='a.png' alt='x'>",
+        )
+
+    def test_every_spelling_of_lazy(self):
+        from zimi.zimwriter import _load_eagerly
+
+        for tag in (
+            '<img loading="lazy" src="a.png">',
+            "<img loading=lazy src='a.png'>",
+            '<img LOADING="LAZY" src="a.png">',
+            '<source loading=" lazy " srcset="a.png">',
+        ):
+            with self.subTest(tag=tag):
+                self.assertNotIn("lazy", _load_eagerly(tag).lower())
+                self.assertIn("a.png", _load_eagerly(tag))
+
+    def test_eager_is_left_exactly_as_the_page_wrote_it(self):
+        """Only lazy is a problem. An explicit eager is already what we want,
+        and rewriting attributes we do not need to touch is how pages break."""
+        from zimi.zimwriter import _load_eagerly
+
+        for tag in ('<img src="a.png" loading="eager">', '<img src="a.png">'):
+            with self.subTest(tag=tag):
+                self.assertEqual(_load_eagerly(tag), tag)
+
+    def test_a_lazy_attribute_on_a_data_prefixed_name_is_not_ours(self):
+        from zimi.zimwriter import _load_eagerly
+
+        tag = '<img src="a.png" data-loading="lazy">'
+        self.assertEqual(_load_eagerly(tag), tag)
+
+
 class TestNoAssetCanEndAJob(unittest.TestCase):
     def test_a_url_python_refuses_to_request_is_a_skipped_asset(self):
         """The second guard, independent of the first.

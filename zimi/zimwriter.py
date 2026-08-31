@@ -207,6 +207,33 @@ _REL_RE = attr_re("rel")
 _MEDIA_TAG_RE = re.compile(r"<(img|source)\b[^>]*>", re.IGNORECASE)
 _SRC_RE = attr_re("src")
 _SRCSET_RE = attr_re("srcset")
+_LOADING_RE = attr_re("loading")
+
+
+def _load_eagerly(tag):
+    """Drop ``loading="lazy"`` from a media tag.
+
+    Lazy loading is a bandwidth optimisation for the live web: don't fetch a
+    picture until the reader is nearly looking at it. Offline the bytes are
+    already on disk, so deferring buys nothing — and it costs correctness,
+    because "nearly looking at it" is decided from the layout.
+
+    cnn.com's homepage is the proof. Captured, 72 of its 117 images never
+    decoded no matter how far the page was scrolled. All 72 were lazy, and 59
+    of them had a zero-sized box: the page is a JavaScript application, its
+    rails and carousels collapse to nothing when that JavaScript never runs,
+    and an image inside a zero-height container never enters the viewport. It
+    is not slow to arrive, it is never requested at all. Every one of those
+    files was sitting in the ZIM, correctly referenced, unread.
+
+    Eager is the only honest setting for an archive: the reader has already
+    paid for these bytes."""
+    return _LOADING_RE.sub(
+        lambda m: "" if m.group("val").strip().lower() == "lazy" else m.group(0),
+        tag,
+    )
+
+
 _CSS_URL_RE = re.compile(r"""url\(\s*(['"]?)([^'")]+)\1\s*\)""", re.IGNORECASE)
 
 # Link rewriting. The scheme list is explicit rather than a general
@@ -656,7 +683,7 @@ class _AssetCarrier:
 
             tag = _SRC_RE.sub(fix_src, tag)
             tag = _SRCSET_RE.sub(fix_srcset, tag)
-            return tag
+            return _load_eagerly(tag)
 
         return sub_markup(_MEDIA_TAG_RE, fix_tag, html)
 
