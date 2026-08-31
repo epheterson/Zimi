@@ -8,7 +8,15 @@ version = "1.9.0"
 description = "Offline knowledge server for ZIM files — search and read Wikipedia, Stack Overflow and 50+ sources with no internet"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.9"
+# Matches libzim, which is not optional and is the real constraint: it
+# publishes >=3.10,<3.15. mcp wants >=3.10 too, and the package itself uses
+# `X | Y` type syntax in fifteen places, which is 3.10 and up.
+#
+# It used to claim >=3.9, which was never true. A 3.9 user did not get a clean
+# "needs a newer Python" — they got a dependency resolver failing on something
+# else entirely, and so did any tool resolving across the declared range (uv
+# could not build an environment for this project at all).
+requires-python = ">=3.10,<3.15"
 authors = [{name = "Eric Pheterson"}]
 keywords = ["zim", "kiwix", "offline", "wikipedia", "search", "knowledge-base", "rag", "mcp", "self-hosted"]
 classifiers = [
@@ -19,7 +27,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
