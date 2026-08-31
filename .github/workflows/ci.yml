@@ -25,6 +25,19 @@ jobs:
       - name: Install package
         run: pip install -e ".[pdf,mcp]" pytest
 
+      # A real browser, so the paint gate actually runs somewhere.
+      #
+      # tests/test_reader_paints.py opens a made ZIM, scrolls it end to end and
+      # asks every image whether it decoded. That check exists because a
+      # capture passed every byte-level assertion in this suite — entries
+      # present, hrefs resolving, counts right — and still looked broken to a
+      # reader. Without chromium here it skips, and a gate that skips
+      # everywhere is not a gate.
+      - name: Install chromium for the paint gate
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+
       # THE WHOLE SUITE. This used to name two files, which collected 305 of
       # 2469 tests — so 88% of the suite only ran when somebody remembered to
       # run it by hand, and a green tick here meant almost nothing.
