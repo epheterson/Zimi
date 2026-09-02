@@ -226,6 +226,11 @@ def carried_link_rels(tag):
 # which reads as a second, blank header. The slot is hidden. The match is a
 # class-token PREFIX (start of the attribute, or after a space), never a
 # substring: "thread-slot" contains the letters and is not an advertisement.
+#
+# The reader's own settle rule (app.js _settleCapturedChrome) hides ad boxes
+# that are `:empty`, and CNN's band is not: it is four nested wrappers around
+# one empty div, and only the innermost matched. Stamping the rule into the
+# capture also means a ZIM read outside Zimi gets it.
 AD_SLOT_STYLE_ID = "zimi-ad-slots"
 _AD_SLOT_STYLE = (
     f'<style id="{AD_SLOT_STYLE_ID}">'
