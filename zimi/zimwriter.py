@@ -204,6 +204,50 @@ def sub_markup(rx, repl, html):
 _STYLESHEET_RE = re.compile(r"<link\b[^>]*>", re.IGNORECASE)
 _HREF_RE = attr_re("href")
 _REL_RE = attr_re("rel")
+# The <link rel> values that name a file a reader still needs offline. Both
+# capture engines carry exactly these — the fast engine once carried only the
+# stylesheet, and Eric's cnn.com capture came out with the right logo on its
+# library tile (the ZIM illustration is fetched separately) and no favicon on
+# the page, because its two icon links still pointed at a root-relative
+# address that resolves against Zimi's own origin and 404s.
+CARRIED_LINK_RELS = frozenset({"stylesheet", "icon", "apple-touch-icon", "mask-icon"})
+
+
+def carried_link_rels(tag):
+    """The ``rel`` tokens of a ``<link>`` tag, lower-cased; empty if it has none."""
+    m = _REL_RE.search(tag)
+    return m.group("val").lower().split() if m else []
+
+
+# An advertisement is served live, by JavaScript, into a slot the markup
+# reserves for it. Offline the slot is always empty — no engine carries the
+# ad — and a reserved box keeps whatever size and colour the site gave it.
+# cnn.com's header slot is 50px of #0c0c0c directly under Zimi's own topbar,
+# which reads as a second, blank header. The slot is hidden. The match is a
+# class-token PREFIX (start of the attribute, or after a space), never a
+# substring: "thread-slot" contains the letters and is not an advertisement.
+AD_SLOT_STYLE_ID = "zimi-ad-slots"
+_AD_SLOT_STYLE = (
+    f'<style id="{AD_SLOT_STYLE_ID}">'
+    '[class^="ad-slot"],[class*=" ad-slot"],.adsbygoogle,[id^="div-gpt-ad"]'
+    "{display:none!important}</style>"
+)
+_HEAD_OPEN_RE = re.compile(r"<head\b[^>]*>", re.IGNORECASE)
+
+
+def collapse_ad_slots(html):
+    """``html`` with the ad-slot hiding rule in its ``<head>``, added once.
+
+    A page without a ``<head>`` gets the rule prepended; a page that already
+    carries it is returned unchanged, so re-rendering is idempotent."""
+    if AD_SLOT_STYLE_ID in html:
+        return html
+    m = _HEAD_OPEN_RE.search(html)
+    if m:
+        return html[: m.end()] + _AD_SLOT_STYLE + html[m.end() :]
+    return _AD_SLOT_STYLE + html
+
+
 _MEDIA_TAG_RE = re.compile(r"<(img|source)\b[^>]*>", re.IGNORECASE)
 _SRC_RE = attr_re("src")
 _SRCSET_RE = attr_re("srcset")

@@ -52,7 +52,9 @@ from zimi.zimwriter import (
     _HREF_RE,
     _REL_RE,
     _STYLESHEET_RE,
+    CARRIED_LINK_RELS,
     _AssetCarrier,
+    collapse_ad_slots,
     _output_path,
     _page_head,
     _plural,
@@ -1147,11 +1149,12 @@ _RESOURCE_HINT_RELS = frozenset(
 
 
 def _carry_stylesheets(carrier, label, page_path, page):
-    """Carry each same-origin ``<link rel=stylesheet>`` into the ZIM and
-    point the link at the carried copy. The carrier rewrites the CSS's own
-    url() refs relative to its carried location, so fonts and background
-    images resolve naturally. Cross-origin sheets are left alone — external
-    refs, honestly absent offline."""
+    """Carry each same-origin ``<link>`` that names a file the reader needs
+    offline — a stylesheet, the page's own icons (CARRIED_LINK_RELS) — into
+    the ZIM and point the link at the carried copy. The carrier rewrites a
+    CSS file's own url() refs relative to its carried location, so fonts and
+    background images resolve naturally. Cross-origin files are left alone —
+    external refs, honestly absent offline."""
 
     def fix(m):
         tag = m.group(0)
@@ -1174,7 +1177,7 @@ def _carry_stylesheets(carrier, label, page_path, page):
         # also stops the two engines disagreeing about what a capture contains.
         if _RESOURCE_HINT_RELS.intersection(rels):
             return ""
-        if "stylesheet" not in rels:
+        if not CARRIED_LINK_RELS.intersection(rels):
             return tag
         hrefm = _HREF_RE.search(tag)
         if not hrefm:
@@ -1531,7 +1534,7 @@ def render_captured_page(carrier, page, *, final_url, resolve_link=None):
     page = _carry_inline_styles(carrier, label, page_path, page)
     page = carrier.rewrite_media(label, page_path, page)
     page = _externalize_links(page, final_url, resolve_link)
-    return _normalize_charset(_strip_scripts(page))
+    return _normalize_charset(collapse_ad_slots(_strip_scripts(page)))
 
 
 # ── capture engines ─────────────────────────────────────────────────────────

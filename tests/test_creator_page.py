@@ -779,16 +779,83 @@ def test_a_resource_hint_does_not_ship_a_404(tmp_path):
         '<link rel="preload" href="/fonts/cnn/x.woff2" as="font" crossorigin>'
         '<link rel="dns-prefetch" href="//cdn.example">'
         '<link rel="icon" href="/favicon.ico">'
-        '<p>body</p>'
+        "<p>body</p>"
     )
     out = _carry_stylesheets(_Carrier(), "lbl", "https://e.com/a", page)
     assert "preload" not in out, out
     assert "dns-prefetch" not in out, out
-    # A hint is not the same as a real relation: the icon link is left alone.
+    # A hint is not the same as a real relation: the icon link stays a link.
     assert 'rel="icon"' in out, out
     assert "<p>body</p>" in out
     # And the set is the same one the renderer strips.
     assert "preload" in _RESOURCE_HINT_RELS and "prefetch" in _RESOURCE_HINT_RELS
+
+
+def test_the_pages_own_icon_is_carried(tmp_path):
+    """A page's ``<link rel=icon>`` is an asset, and it travels with the page.
+
+    Eric's cnn.com capture had the real CNN logo as its ZIM illustration (the
+    library tile was right) and NO favicon on the page itself: the two icon
+    links were left pointing at ``/media/sites/cnn/favicon.ico``, a root-
+    relative address that resolves against Zimi's own origin and 404s. The
+    rendered engine has carried icon rels all along; the fast engine carried
+    only stylesheets. Same page, two answers, and Eric saw the wrong one."""
+    from zimi.creator import _carry_stylesheets
+
+    carried = []
+
+    class _Carrier:
+        def _carry(self, _label, url):
+            carried.append(url)
+            return "_assets/e.com/" + url.rsplit("/", 1)[-1]
+
+    page = (
+        '<link rel="shortcut icon" type="image/x-icon" href="/media/favicon.ico">'
+        '<link href="/media/apple-touch-icon.png" rel="apple-touch-icon">'
+        '<link rel="mask-icon" href="/pin.svg" color="#c00">'
+        '<link rel="stylesheet" href="/site.css">'
+        '<link rel="canonical" href="https://e.com/a">'
+    )
+    out = _carry_stylesheets(_Carrier(), "lbl", "https://e.com/a", page)
+    # The carrier is handed same-origin paths, resolved against the page.
+    assert carried == [
+        "media/favicon.ico",
+        "media/apple-touch-icon.png",
+        "pin.svg",
+        "site.css",
+    ], carried
+    # Every carried link now points one level up, into the archive.
+    assert 'href="../_assets/e.com/favicon.ico"' in out, out
+    assert 'href="../_assets/e.com/apple-touch-icon.png"' in out, out
+    assert 'href="../_assets/e.com/pin.svg"' in out, out
+    assert 'href="../_assets/e.com/site.css"' in out, out
+    # A relation that names no file is not touched.
+    assert 'href="https://e.com/a"' in out, out
+
+
+def test_an_empty_ad_slot_does_not_ship_as_a_black_bar():
+    """An advertisement is served live, by JavaScript. Offline the slot it was
+    going to fill is an empty box — and CNN's header slot is a 50px box painted
+    #0c0c0c, which reads as a second, blank header under Zimi's own. The slot
+    is hidden; nothing else with "ad" in its class is guessed at."""
+    from zimi.zimwriter import collapse_ad_slots
+
+    page = (
+        "<html><head><title>t</title></head><body>"
+        '<div class="ad-slot-header__wrapper"></div>'
+        '<div class="thread-slot">a real thing</div>'
+        "</body></html>"
+    )
+    out = collapse_ad_slots(page)
+    assert out.count("<style") == 1, out
+    style = out[out.index("<style") : out.index("</style>")]
+    # Token-prefix match, so a class that merely CONTAINS the letters is safe.
+    assert '[class^="ad-slot"]' in style and '[class*=" ad-slot"]' in style, style
+    assert "thread-slot" not in style
+    assert "display:none" in style
+    # Lands in <head>, once, and is not added twice.
+    assert out.index("<style") < out.index("</head>")
+    assert collapse_ad_slots(out) == out
 
 
 def test_singlefile_refuses_an_address_that_reads_as_an_option():
@@ -811,7 +878,7 @@ def test_singlefile_refuses_an_address_that_reads_as_an_option():
         "file:///etc/passwd",
         "javascript:alert(1)",
         "ftp://e.com/x",
-        "http://",          # a scheme with no host is not an address
+        "http://",  # a scheme with no host is not an address
         "",
         None,
     ):

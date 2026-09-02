@@ -86,10 +86,13 @@ from zimi.zimwriter import (
     _MAX_ASSET_BYTES,
     _MAX_ASSETS,
     _MAX_TOTAL_ASSET_BYTES,
+    CARRIED_LINK_RELS,
     _slug,
     _split_srcset,
     attr_quote,
     attr_re,
+    carried_link_rels,
+    collapse_ad_slots,
     make_asset_item,
 )
 
@@ -332,12 +335,11 @@ _STYLE_ATTR_RE = attr_re("style")
 _STYLE_ELEM_RE = re.compile(
     r"(<style\b[^>]*>)(.*?)(</style\s*>)", re.IGNORECASE | re.DOTALL
 )
-# Which <link rel> values name something a reader still needs offline. Anything
-# else a link element points at (preload, prefetch, dns-prefetch) is an
-# instruction to a live browser about a file it is about to want, and offline it
-# is a dangling reference at best.
-_CARRIED_LINK_RELS = ("stylesheet", "icon", "apple-touch-icon", "mask-icon")
-_REL_ATTR_RE = attr_re("rel")
+# Which <link rel> values name something a reader still needs offline is
+# decided once, in zimwriter (CARRIED_LINK_RELS), so the two engines cannot
+# drift apart again. Anything else a link element points at (preload,
+# prefetch, dns-prefetch) is an instruction to a live browser about a file it
+# is about to want, and offline it is a dangling reference at best.
 
 
 # Was a second, quoted-only copy of this with its own cache. It could not see
@@ -2350,7 +2352,7 @@ def render_rendered_page(assets, html, *, final_url, resolve_link=None):
     html = _rewrite_style_blocks(assets, html, final_url)
     html = _rewrite_style_attrs(assets, html, final_url)
     html = _externalize_links(html, final_url, resolve_link)
-    return _normalize_charset(_strip_scripts(html))
+    return _normalize_charset(collapse_ad_slots(_strip_scripts(html)))
 
 
 def _in_zim_ref(in_path):
@@ -2373,11 +2375,7 @@ def _rewrite_asset_tags(assets, html):
 
 
 def _carried_link(tag):
-    m = _REL_ATTR_RE.search(tag)
-    if not m:
-        return False
-    rels = m.group("val").lower().split()
-    return any(rel in _CARRIED_LINK_RELS for rel in rels)
+    return bool(CARRIED_LINK_RELS.intersection(carried_link_rels(tag)))
 
 
 def _fix_ref(assets, m):
