@@ -84,7 +84,8 @@ def test_the_shipped_matchers_all_read_a_bare_attribute():
     page = "<link rel=stylesheet href=/a.css>"
     assert zimwriter._REL_RE.search(page).group("val") == "stylesheet"
     assert zimwriter._HREF_RE.search(page).group("val") == "/a.css"
-    assert renderer._REL_ATTR_RE.search(page).group("val") == "stylesheet"
+    # The renderer reads rel through the one shared reader now.
+    assert renderer.carried_link_rels(page) == ["stylesheet"]
     assert creator._LINK_HREF_RE.search(page).group("val") == "/a.css"
 
     media = "<img src=/hero.png srcset=/hero_2x.png>"
