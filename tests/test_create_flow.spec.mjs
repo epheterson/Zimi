@@ -943,3 +943,60 @@ test.describe('a late reply about the previous job', () => {
     expect(flips).toBe(0);
   });
 });
+
+// ── a job that finishes before the first poll ───────────────────────────────
+//
+// A one-page capture of a small site is over inside a second. The first poll
+// then says "done" for the job's id — an id the page used to learn only from a
+// poll that said "active", so it had never recorded it and read the reply as
+// somebody else's finished job: no run pane, the form back with the probe
+// card (survey finding F15). The POST response carries the id; it is ours.
+test.describe('a job that finishes before the first poll', () => {
+  test.use({ serviceWorkers: 'block' });
+
+  test('still shows its result, not the form', async ({ page }) => {
+    // Hold every status poll back long enough for the fixture job to finish.
+    await page.route('**/manage/create/status*', async route => {
+      const res = await route.fetch();
+      await new Promise(r => setTimeout(r, 1500));
+      await route.fulfill({ response: res });
+    });
+    await openCreate(page);
+    await pickMode(page, 'page');
+    await page.fill('#create-source', fixtureUrl);
+    await page.click('#create-start');
+    await expect(page.locator('.create-done')).toBeVisible({ timeout: 20000 });
+    await expect(page.locator('#create-source')).toBeHidden();
+  });
+});
+
+// ── a stale "nothing running" reply ─────────────────────────────────────────
+//
+// The poll the page fires when it opens carries probe=1 and, on a cold server,
+// takes seconds. Tap Create in that window and its reply — issued before the
+// job existed, so "no job at all" — lands after the job started, was adopted,
+// even finished. The page used to believe it: result gone, form back (survey
+// finding F15, the restart case). A reply from an earlier run keeps nothing
+// about the run.
+test.describe('a stale reply from before the job', () => {
+  test.use({ serviceWorkers: 'block' });
+
+  test('cannot take the result off the screen', async ({ page }) => {
+    await page.route('**/manage/create/status*probe=1*', async route => {
+      const res = await route.fetch();
+      const body = await res.json();
+      await new Promise(r => setTimeout(r, 3000));
+      // What a fresh server says before anything has run.
+      await route.fulfill({ response: res, json: { ...body, id: null, active: false, done: false, phase: null, lines: [], events: [] } });
+    });
+    await openCreate(page);
+    await pickMode(page, 'page');
+    await page.fill('#create-source', fixtureUrl);
+    await page.click('#create-start');
+    await expect(page.locator('.create-done')).toBeVisible({ timeout: 20000 });
+    // Outlive the stale reply.
+    await page.waitForTimeout(4000);
+    await expect(page.locator('.create-done')).toBeVisible();
+    await expect(page.locator('#create-source')).toBeHidden();
+  });
+});

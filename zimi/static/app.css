@@ -742,6 +742,8 @@
   .create-step-dot { position: relative; z-index: 1; width: 11px; height: 11px; border-radius: 50%; border: 1px solid var(--border-strong); background: var(--surface2); }
   .create-step[data-state="done"] { color: var(--text2); }
   .create-step[data-state="done"] .create-step-dot { border-color: var(--amber-border); background: var(--amber-border); }
+  .create-step[data-state="failed"] { color: var(--error); }
+  .create-step[data-state="failed"] .create-step-dot { border-color: var(--error); background: var(--error); }
   .create-step[data-state="active"] { color: var(--amber); }
   .create-step[data-state="active"] .create-step-dot { border-color: var(--amber); background: var(--amber); animation: createPulse 1.6s ease-in-out infinite; }
   .create-phase-detail { min-height: 16px; font-size: 12px; color: var(--text2); text-align: center; overflow-wrap: anywhere; }
@@ -754,7 +756,11 @@
      guide line is the parent's own border and no arithmetic can get it wrong.
      Bounded height, and bounded node count in create.js — a five-thousand-page
      crawl keeps counting and stops drawing. */
-  .create-tree-wrap { display: flex; flex-direction: column; gap: 6px; }
+  .create-tree-wrap { display: block; }
+  .create-tree-wrap > .create-tree-more { margin-top: 6px; }
+  .create-tree-summary { cursor: pointer; font-size: 12px; color: var(--text2); padding: 6px 2px; }
+  .create-tree-summary[hidden] { display: none; }
+  .create-tree-wrap[open] > .create-tree-summary { margin-bottom: 6px; }
   .create-tree { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); }
   .create-node-kids { margin-left: 7px; padding-left: 10px; border-left: 1px solid var(--border); }
   .create-node-kids:empty { display: none; }
@@ -806,14 +812,6 @@
   .create-inside-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
   .create-inside-title { font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text3); }
   .create-inside-total { font-size: 13px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
-  .create-done-anim { animation: createDoneIn 0.32s cubic-bezier(0.2, 0.8, 0.3, 1.2) both; }
-  .create-done-anim .create-done-icon { animation: createIconIn 0.42s cubic-bezier(0.2, 0.9, 0.25, 1.35) both; }
-  .create-done-anim .create-done-body { animation: createSettleIn 0.36s ease both 0.14s; }
-  .create-done-anim .create-done-open { animation: createSoftIn 0.3s ease both 0.5s; }
-  @keyframes createDoneIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-  @keyframes createIconIn { from { opacity: 0; transform: scale(0.5) rotate(-8deg); } to { opacity: 1; transform: none; } }
-  @keyframes createSettleIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-  @keyframes createSoftIn { from { opacity: 0; } to { opacity: 1; } }
   /* ── Recent jobs and the queue ──
      Before round 3 a crawl that finished while the tab was closed left no trace
      on this page at all, and a job the server restart took left a spinner that
@@ -835,17 +833,12 @@
     .create-view.open { animation: none; }
     .create-chip { transition: none; }
     .create-adv > summary::before, .create-logbox > summary::before { transition: none; }
-    /* Everything the run pane does to celebrate or to draw attention. The
-       arrival animations resolve to their finished state; the two pulses stop
-       being pulses. create.js also skips the byte roll-up under this setting,
-       so the done card is simply COMPLETE in one frame rather than fast. */
+    /* Everything the run pane does to draw attention: the arrival animation
+       of a tree row resolves to its finished state; the two pulses stop being
+       pulses. The result card has no entrance animation at any setting. */
     .create-node-new > .create-node-row,
     .create-step[data-state="active"] .create-step-dot,
-    .create-node[data-state="active"] > .create-node-row .create-node-dot,
-    .create-done-anim,
-    .create-done-anim .create-done-icon,
-    .create-done-anim .create-done-body,
-    .create-done-anim .create-done-open { animation: none; }
+    .create-node[data-state="active"] > .create-node-row .create-node-dot { animation: none; }
     .create-node-bar > i { transition: none; }
   }
 

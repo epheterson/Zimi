@@ -2192,6 +2192,10 @@ class _CreateJob:
         self.progressed = None
         self.done = False
         self.ok = False
+        # The phase a failed job was in when it failed. ``phase`` itself
+        # reads "done" afterwards, like any finished job's, so without this
+        # the run pane could only mark Ready as the step that went wrong.
+        self.failed_phase = None
         self.cancelled = False
         self.cancel_requested = False
         self.stalled = False
@@ -3098,11 +3102,12 @@ def _create_worker(job, opts):
             "ok": True,
             "result": {
                 "name": _create_name_of(result.get("path")),
-                # What the admin asked this ZIM to be called, when they said.
-                # The library lists ZIMs by title, so a done card that only
-                # showed the filename would name it differently from where it
-                # just landed.
-                "title": job.title,
+                # What the admin asked this ZIM to be called, when they said;
+                # otherwise the title the capture found. The library lists
+                # ZIMs by title, so a done card that only showed the filename
+                # would name it differently from where it just landed
+                # ("sive_rs_n-12" where the library says "Hell Yeah or No").
+                "title": job.title or str(result.get("title") or ""),
                 "path": result.get("path"),
                 "registered": bool(result.get("registered")),
             },
@@ -3196,6 +3201,8 @@ def _create_finish(job, **outcome):
             outcome = dict(outcome, stalled=True, error=job.stall_error)
         for key, value in outcome.items():
             setattr(job, key, value)
+        if not outcome.get("ok") and job.phase != "done":
+            job.failed_phase = job.phase
         if job.phase != "done":
             job.phase = "done"
         job.finished = time.time()
@@ -3444,6 +3451,7 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
                 "ok": job.ok,
                 "cancelled": job.cancelled,
                 "stalled": job.stalled,
+                "failed_phase": job.failed_phase,
                 "cancelling": job.cancel_requested and not job.done,
                 "error": job.error,
                 "result": job.result,

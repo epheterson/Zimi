@@ -112,7 +112,7 @@ var CREATE_MODE_DEFS = [
   },
   {
     id: 'site', network: true,
-    label: 'create_label_site_url', placeholder: 'create_ph_url',
+    label: 'create_label_site_url', placeholder: 'create_ph_site_url',
     flags: ['engine', 'max_pages'],
     advanced: ['max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
       'language', 'ignore_robots'],
@@ -2027,6 +2027,14 @@ function _createStartWatching(data) {
   _createAdopted = true;
   _createInterrupted = false;
   _createQueuedId = (data && data.status === 'queued' && data.id) ? data.id : null;
+  // The id of the job we just started is ours from this moment, not from the
+  // first poll that happens to say "active". A one-page capture of a small
+  // site finishes inside a second — before that poll — and its first reply
+  // says done for an id this page had never recorded, which
+  // _createForeignReply then read as somebody else's finished job: the run
+  // pane never appeared and the form came back with the probe card (survey
+  // finding F15).
+  if (data && data.status === 'started' && data.id) _createJobId = data.id;
   if (data && data.status === 'queued' && typeof data.position === 'number') {
     _createQueue = [{ id: data.id, position: data.position, mode: data.mode }];
     _renderCreateQueue();
@@ -2195,6 +2203,15 @@ async function _createPoll(first) {
   var url = '/manage/create/status?since=' + _createCursor +
     '&events_since=' + _createEventCursor +
     (first ? '&probe=1' : '') + (wantHistory ? '&history=1' : '');
+  // The run this poll was issued for. A reply that lands after a NEW run
+  // began (Create was tapped while it was in flight) describes the world
+  // before that run, and may say "no job at all": the opening poll carries
+  // probe=1, which on a cold server takes seconds, and its "nothing running"
+  // used to arrive after our job had started, been adopted, even finished —
+  // and the page believed it, dropped the result and showed the form
+  // (survey finding F15, the restart case). Such a reply keeps only what
+  // cannot go stale: the recent list.
+  var seq = _createRunSeq;
   try {
     var res = await authedFetch(url);
     if (!res.ok) {
@@ -2205,6 +2222,11 @@ async function _createPoll(first) {
     }
     var data = await res.json();
     _createPollMs = CREATE_POLL_MS;
+    if (seq !== _createRunSeq) {
+      if (Array.isArray(data.history)) _createAdoptHistory(data.history);
+      _renderCreateRecent();
+      return;
+    }
     _createIngest(data);
     _renderCreateQueue();
     _renderCreateRun();
@@ -2415,12 +2437,16 @@ function _createRunShellHtml(s) {
     _createPhaseStripHtml() +
     '<div class="create-phase-detail" id="create-phase-detail" aria-live="polite"></div>' +
     '<div class="create-metrics" id="create-metrics"></div>' +
-    '<div class="create-tree-wrap" id="create-tree-wrap" hidden>' +
-      '<div class="create-tree" id="create-tree"></div>' +
-      '<div class="create-tree-more" id="create-tree-more" hidden></div>' +
-    '</div>' +
+    // The result sits ABOVE the page list: on a 40-page crawl the card with
+    // Open used to land under the whole tree, two screens down on a phone.
+    // At the finish the list folds to one line and opens on a tap.
     '<div id="create-done-slot"></div>' +
     '<div id="create-fail-slot"></div>' +
+    '<details class="create-tree-wrap" id="create-tree-wrap" hidden open>' +
+      '<summary class="create-tree-summary" id="create-tree-summary" hidden></summary>' +
+      '<div class="create-tree" id="create-tree"></div>' +
+      '<div class="create-tree-more" id="create-tree-more" hidden></div>' +
+    '</details>' +
     // Actions directly under the progress, log disclosure LAST and pushed
     // well clear of them: the log summary used to sit one row above Stop
     // early / Cancel, and a finger reaching to watch progress could end the
@@ -2517,11 +2543,19 @@ function _createSyncPhases(s) {
   // failed in Fetch must not leave the strip claiming it is still fetching, and
   // one that succeeded is Ready even if "done" never arrived as an event.
   if (s.done && s.ok) step = CREATE_STEP_KEYS.length - 1;
+  // A failed job reports its phase as "done" as well; the dot that goes red
+  // is the phase the server says it failed in, never Ready.
+  if (s.done && !s.ok && !s.cancelled) {
+    var failedAt = _createPhaseStep(s.failed_phase);
+    step = failedAt >= 0 ? failedAt : Math.max(0, Math.min(viz.step, CREATE_STEP_KEYS.length - 2));
+  }
   if (step < 0 && !_createEventsOk) { strip.hidden = true; return; }
   strip.hidden = false;
   var kids = strip.children;
   for (var i = 0; i < kids.length; i++) {
-    var state = i < step ? 'done' : (i === step ? (s.done ? 'done' : 'active') : 'pending');
+    var failed = s.done && !s.ok && !s.cancelled;
+    var state = i < step ? 'done'
+      : (i === step ? (failed ? 'failed' : (s.done ? 'done' : 'active')) : 'pending');
     kids[i].setAttribute('data-state', state);
     if (state === 'active') kids[i].setAttribute('aria-current', 'step');
     else kids[i].removeAttribute('aria-current');
@@ -2682,8 +2716,13 @@ function _createSyncTree() {
   var root = document.getElementById('create-tree');
   if (!wrap || !root) return;
   var viz = _createViz;
-  if (!viz.order.length) { wrap.hidden = true; return; }
+  var status = _createStatus || {};
+  // One page is not a list: its one row only repeated the heading above it.
+  var single = status.mode === 'page' && viz.order.length <= 1 &&
+    !(viz.counts.entries && viz.counts.entries.n > 1);
+  if (!viz.order.length || single) { wrap.hidden = true; return; }
   wrap.hidden = false;
+  _createFoldTree(wrap, status);
   var atBottom = root.scrollTop + root.clientHeight >= root.scrollHeight - 24;
   if (!_createTreeMounted) {
     root.innerHTML = '';
@@ -2840,6 +2879,25 @@ async function _createFinishNow() {
 
 // The end of the story: the card, or the reason there is no card. Mounted once
 // — re-running this every poll would restart the arrival animation forever.
+// At the finish the page list folds to one line ("40 pages") under the result;
+// while the job runs it stays open, because watching it is the point then.
+function _createFoldTree(wrap, s) {
+  var summary = document.getElementById('create-tree-summary');
+  if (!summary) return;
+  var over = !!(s && s.done);
+  if (over) {
+    var n = _createViz.counts.entries && _createViz.counts.entries.n;
+    var text = n ? Number(n).toLocaleString() + ' ' + _createCountLabel('entries', n, s.mode) : tH('create_log');
+    if (summary.textContent !== text) summary.textContent = text;
+    summary.hidden = false;
+    if (wrap.open && !wrap._foldedOnce) { wrap.open = false; wrap._foldedOnce = true; }
+  } else {
+    summary.hidden = true;
+    wrap.open = true;
+    wrap._foldedOnce = false;
+  }
+}
+
 function _createSyncOutcome(s) {
   if (!s.done || _createDoneMounted) return;
   _createDoneMounted = true;
@@ -2945,13 +3003,16 @@ function _createMountDone(s) {
   // window one screen held two sizes for one file (survey finding F1).
   if (bytes) facts += '<span class="create-done-fact" id="create-done-bytes">' + esc(_fmtBytes(bytes)) + '</span>';
   host.innerHTML =
-    '<div class="create-done' + (_createReduceMotion() ? '' : ' create-done-anim') + '">' +
+    // No entrance animation: the file already exists, and the first sighting
+    // of the result should be its best, not a card whose text cannot be read.
+    '<div class="create-done">' +
       '<span class="create-done-icon">' + _CREATE_ICONS.zim + '</span>' +
       '<div class="create-done-body">' +
         '<div class="create-caption">' + tH('create_done_title') + '</div>' +
         '<div class="create-done-name">' + esc(r.title || r.name) + '</div>' +
         '<div class="create-done-facts">' +
-          '<span class="create-done-fact">' + esc(r.name) + '.zim</span>' + facts +
+          // The title is the thing; the filename is the library manager's.
+          facts +
         '</div>' +
         // A crawl that stopped at a bound — the finish button, a page cap, a
         // byte budget — says so on the card: "40 pages" without "and I stopped

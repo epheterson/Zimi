@@ -849,6 +849,7 @@
   "create_ph_folder": "/srv/documents",
   "create_ph_title": "يُؤخذ من المصدر إذا تُرك فارغًا",
   "create_ph_url": "https://example.org/article",
+  "create_ph_site_url": "https://example.org/",
   "create_ph_video": "https://example.org/playlist",
   "create_pv_address": "الرابط",
   "create_pv_bookmarks": "محفوظة",

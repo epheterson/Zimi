@@ -1948,6 +1948,7 @@ def create_page_zim(
     registered = _try_register(out) if register else False
     return {
         "path": out,
+        "title": zim_title,
         "pages": 1,
         "assets": capture.count,
         "main": "A/index",
@@ -2255,6 +2256,7 @@ def create_pages_zim(
 
     return {
         "path": out,
+        "title": zim_title,
         "pages": len(entries),
         "assets": asset_count,
         "engine": capture.name,

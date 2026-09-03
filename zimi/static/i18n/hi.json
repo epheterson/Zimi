@@ -849,6 +849,7 @@
   "create_ph_folder": "/srv/documents",
   "create_ph_title": "खाली छोड़ने पर स्रोत से लिया जाएगा",
   "create_ph_url": "https://example.org/article",
+  "create_ph_site_url": "https://example.org/",
   "create_ph_video": "https://example.org/playlist",
   "create_pv_address": "पता",
   "create_pv_bookmarks": "सहेजे गए",

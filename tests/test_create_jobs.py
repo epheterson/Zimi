@@ -783,3 +783,43 @@ def test_cancelling_during_packaging_leaves_nothing_behind(fixture_site, tmp_pat
     # spool: everything a cancelled capture touched is gone.
     leftovers = sorted(os.listdir(str(out_dir)))
     assert leftovers == [], f"a cancelled capture left {leftovers} behind"
+
+
+# ── what the finished status says about how it finished ─────────────────────
+
+
+def test_a_failed_job_says_which_phase_it_failed_in(tmp_path, monkeypatch):
+    """After a failure the job's phase reads "done" like any finished job's,
+    so the run pane could only ever mark Ready as the step that went wrong.
+    The phase at the moment of failure travels separately."""
+    from zimi.creator import CreateError
+
+    def dies_fetching(job, opts):
+        job.note("fetching https://example.test/x")
+        raise CreateError("the site refused it")
+
+    monkeypatch.setattr(manage, "_create_run", dies_fetching)
+    _start_job("x")
+    body = _wait_done()
+    assert body["ok"] is False
+    assert body["phase"] == "done"
+    assert body["failed_phase"] == "fetch"
+
+
+def test_a_finished_job_is_named_by_what_the_capture_found(tmp_path, monkeypatch):
+    """With no title typed, the finished card used to show the library NAME
+    (sive_rs_n-12) where the library itself shows the page's title."""
+
+    def finds_a_title(job, opts):
+        return {"path": "/zims/sive_rs_n.zim", "title": "Hell Yeah or No", "registered": False}
+
+    monkeypatch.setattr(manage, "_create_run", finds_a_title)
+    _start_job("untitled")
+    body = _wait_done()
+    assert body["ok"] is True
+    assert body["result"]["title"] == "Hell Yeah or No"
+
+    # A title the person typed wins over the one the capture found.
+    _post("/manage/create", {"mode": "site", "source": "https://example.test/named", "title": "My name"})
+    body = _wait_done()
+    assert body["result"]["title"] == "My name"
