@@ -11,16 +11,16 @@ import os
 import re
 import time
 
-# Markup that has no business in rendered text. The first four are the
-# attribute soup a captured cnn.com front page once opened on; the last two
-# are the general case.
+# Markup that has no business in rendered text: the attribute soup a captured
+# cnn.com front page once opened on. Bare tags like "<div" are NOT markers —
+# react.dev's tutorial prints them in code samples, honestly, as text.
 LEAK_MARKERS = [
     "data-fave-thumbnails",
     "data-source-html",
     'href="&quot;',
     "&quot;https://",
-    "<div",
-    "</a>",
+    'class="',
+    "srcset=",
 ]
 
 _COUNT_RE = re.compile(r"(\d[\d,]*)\s+(assets|pages|images|entries|variants|queued)")
