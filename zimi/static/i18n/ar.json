@@ -821,6 +821,8 @@
   "create_metric_bytes": "الحجم",
   "create_metric_entries": "صفحات",
   "create_metric_entries_one": "صفحة",
+  "create_metric_videos": "videos",
+  "create_metric_videos_one": "video",
   "create_mode_bookmarks": "العلامات المرجعية",
   "create_mode_bookmarks_desc": "الصفحات التي حفظتها، محزومة في ملف ZIM واحد. يعمل دون اتصال.",
   "create_mode_folder": "مجلد على هذا الخادم",

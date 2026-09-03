@@ -821,6 +821,8 @@
   "create_metric_bytes": "size",
   "create_metric_entries": "pages",
   "create_metric_entries_one": "page",
+  "create_metric_videos": "videos",
+  "create_metric_videos_one": "video",
   "create_mode_bookmarks": "Bookmarks",
   "create_mode_bookmarks_desc": "The pages you saved, packaged as one ZIM. Works offline.",
   "create_mode_folder": "Folder on this server",

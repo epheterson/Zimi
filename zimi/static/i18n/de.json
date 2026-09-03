@@ -821,6 +821,8 @@
   "create_metric_bytes": "Größe",
   "create_metric_entries": "Seiten",
   "create_metric_entries_one": "Seite",
+  "create_metric_videos": "videos",
+  "create_metric_videos_one": "video",
   "create_mode_bookmarks": "Lesezeichen",
   "create_mode_bookmarks_desc": "Die von Ihnen gespeicherten Seiten als ein ZIM. Funktioniert offline.",
   "create_mode_folder": "Ordner auf diesem Server",

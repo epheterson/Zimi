@@ -821,6 +821,8 @@
   "create_metric_bytes": "大小",
   "create_metric_entries": "页面",
   "create_metric_entries_one": "页面",
+  "create_metric_videos": "videos",
+  "create_metric_videos_one": "video",
   "create_mode_bookmarks": "书签",
   "create_mode_bookmarks_desc": "你保存的页面，打包成一个 ZIM。可离线使用。",
   "create_mode_folder": "此服务器上的文件夹",

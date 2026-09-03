@@ -52,9 +52,6 @@ var CREATE_PROBE_CAP = 12;
 // the structure stays readable and the numbers stay true. The ceiling is well
 // clear of any crawl a browser tab is a sensible place to watch.
 var CREATE_TREE_MAX_NODES = 300;
-// How long the finished ZIM's byte total takes to roll up. Long enough to read
-// as movement, short enough that nobody waits for it.
-var CREATE_ROLL_MS = 700;
 // Recent jobs shown under the picker. The server bounds its own history; this
 // is the client refusing to draw a wall of them if it ever stops.
 var CREATE_RECENT_MAX = 10;
@@ -2598,7 +2595,7 @@ function _createSyncMetrics(s) {
       // Singular when there is one of it, here as on the done card ("1 asset",
       // not "1 assets" — Eric caught it in the live counters too). Bytes has no
       // singular partner; the helper falls back to the plural key.
-      '<span class="create-metric-k">' + _createCountLabel(what, c.n) + '</span>' +
+      '<span class="create-metric-k">' + _createCountLabel(what, c.n, s.mode) + '</span>' +
     '</div>';
   }
   // Packaging (and warc2zim's convert) write one big file and emit no per-item
@@ -2885,8 +2882,10 @@ function _createElapsedText(s) {
 // "1 entry", not "1 entries" (Eric). Every counted metric carries a singular
 // partner key; anything without one falls back to the plural rather than
 // inventing grammar for a language this file cannot reason about.
-function _createCountLabel(metric, n) {
-  var key = 'create_metric_' + metric;
+function _createCountLabel(metric, n, mode) {
+  // A video job's entries are videos; "1 / 17 page" over a playlist was the
+  // page-mode word on the wrong job (survey finding F14).
+  var key = 'create_metric_' + (metric === 'entries' && mode === 'video' ? 'videos' : metric);
   if (Number(n) !== 1) return tH(key);
   // Not every metric HAS a singular partner (bytes is a size, not a count).
   // A missing key must fall back to the plural rather than print the key.
@@ -2939,9 +2938,12 @@ function _createMountDone(s) {
   var facts = '';
   if (entries && entries.n) {
     facts += '<span class="create-done-fact">' +
-      esc(Number(entries.n).toLocaleString()) + ' ' + _createCountLabel('entries', entries.n) + '</span>';
+      esc(Number(entries.n).toLocaleString()) + ' ' + _createCountLabel('entries', entries.n, s.mode) + '</span>';
   }
-  if (bytes) facts += '<span class="create-done-fact" id="create-done-bytes">' + esc(_fmtBytes(0)) + '</span>';
+  // The file's size, final at once. It used to roll up from 0 B over most of a
+  // second while WHAT'S INSIDE beneath it already showed the total, so for that
+  // window one screen held two sizes for one file (survey finding F1).
+  if (bytes) facts += '<span class="create-done-fact" id="create-done-bytes">' + esc(_fmtBytes(bytes)) + '</span>';
   host.innerHTML =
     '<div class="create-done' + (_createReduceMotion() ? '' : ' create-done-anim') + '">' +
       '<span class="create-done-icon">' + _CREATE_ICONS.zim + '</span>' +
@@ -2962,7 +2964,6 @@ function _createMountDone(s) {
         ' onclick="_createOpenResult(\'' + escJs(r.name) + '\')">' + tH('create_open') + '</button>' +
     '</div>' +
     _createInsideHtml(r.shape);
-  if (bytes) _createRollBytes(document.getElementById('create-done-bytes'), bytes);
 }
 
 // How big it turned out. The status reply may carry it; otherwise the last
@@ -2970,20 +2971,6 @@ function _createMountDone(s) {
 function _createResultBytes(s) {
   var c = _createViz.counts.bytes;
   return _createDoneBytes(s.result, c && c.n);
-}
-
-function _createRollBytes(el, to) {
-  if (!el) return;
-  if (_createReduceMotion()) { el.textContent = _fmtBytes(to); return; }
-  var start = 0;
-  var step = function(now) {
-    if (!start) start = now;
-    var p = Math.min(1, (now - start) / CREATE_ROLL_MS);
-    var eased = 1 - Math.pow(1 - p, 3);
-    el.textContent = _fmtBytes(Math.round(to * eased));
-    if (p < 1) requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
 }
 
 // ── the queue ───────────────────────────────────────────────────────────────

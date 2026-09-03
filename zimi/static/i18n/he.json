@@ -821,6 +821,8 @@
   "create_metric_bytes": "גודל",
   "create_metric_entries": "עמודים",
   "create_metric_entries_one": "עמוד",
+  "create_metric_videos": "videos",
+  "create_metric_videos_one": "video",
   "create_mode_bookmarks": "סימניות",
   "create_mode_bookmarks_desc": "הדפים ששמרתם, ארוזים כ-ZIM אחד. עובד גם ללא אינטרנט.",
   "create_mode_folder": "תיקייה בשרת הזה",
