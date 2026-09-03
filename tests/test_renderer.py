@@ -1252,3 +1252,82 @@ def test_a_reference_read_back_out_of_html_is_unescaped_before_lookup(tmp_path):
     # a second name, which is the other way this could have been "fixed".
     assert assets.carry(url) == got
     assert len(sink.items) == 1
+
+
+# ── the scroll says what it is doing, and hurries when nothing is lazy ──────
+#
+# Survey finding O3: "starting a headless browser…" and then nothing for 45 s
+# while the renderer walked peps.python.org's 30,000 px index at a fixed
+# pause per screen, on a page with nothing lazy to reveal. The pause exists
+# for pages that request pictures as you scroll; a screen that requested
+# nothing has nothing to wait for.
+
+LAZY_PAGE = (
+    "<!doctype html><html><body style='margin:0'>"
+    + "".join(
+        f"<div style='height:900px'>block {i}<img loading='lazy' src='/pic{i}.png' "
+        "width='40' height='40'></div>"
+        for i in range(24)
+    )
+    + "</body></html>"
+).encode()
+PNG_1PX = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+    "0000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082"
+)
+
+
+@browser
+def test_a_page_with_nothing_lazy_is_scrolled_quickly_and_reported(tmp_path):
+    srv, url = _server({"/": ("text/html", TALL_PAGE)})
+    session = renderer.RenderedSession(work_dir=str(tmp_path))
+    notes = []
+    session._note = notes.append
+    try:
+        session.start()
+        page = session._context.new_page()
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        page.evaluate(
+            "() => { window.__maxY = 0; addEventListener('scroll', () => {"
+            " window.__maxY = Math.max(window.__maxY, window.scrollY); }); }"
+        )
+        import time as _t
+
+        started = _t.monotonic()
+        session._lazy_scroll(page)
+        elapsed = _t.monotonic() - started
+        reached = page.evaluate("() => window.__maxY || 0")
+        page.close()
+    finally:
+        session.close()
+        srv.shutdown()
+        srv.server_close()
+    assert reached >= 30000, reached
+    # Forty screens at the full 0.35 s pause is 14 s; a page that requested
+    # nothing while scrolling is walked in well under half of that.
+    assert elapsed < 8, elapsed
+    # And it said so on the way down, not only at a time bound.
+    assert any("scrolling" in n and "px" in n for n in notes), notes
+
+
+@browser
+def test_a_lazy_page_still_gets_every_picture_asked_for(tmp_path):
+    routes = {"/": ("text/html", LAZY_PAGE)}
+    for i in range(24):
+        routes[f"/pic{i}.png"] = ("image/png", PNG_1PX)
+    srv, url = _server(routes)
+    session = renderer.RenderedSession(work_dir=str(tmp_path))
+    try:
+        session.start()
+        page = session._context.new_page()
+        asked = []
+        page.on("request", lambda r: asked.append(r.url) if "/pic" in r.url else None)
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        session._lazy_scroll(page)
+        page.wait_for_timeout(600)
+        page.close()
+    finally:
+        session.close()
+        srv.shutdown()
+        srv.server_close()
+    assert len(set(asked)) == 24, sorted(set(asked))

@@ -147,6 +147,13 @@ SETTLE = 1.2
 # a screen every time one is revealed would otherwise never end, and neither
 # bound cares how tall a viewport happens to be.
 SCROLL_PAUSE = 0.35
+# The wait after a screen that requested nothing: long enough for a lazy
+# request to be ISSUED (they come within milliseconds of the scroll), and no
+# longer. The full pause above is only paid once one was seen.
+SCROLL_QUICK_PAUSE = 0.08
+# How often the scroll says where it is. Under this, a person reads the run
+# pane as stuck; the 45 s walk down a tall static page used to say nothing.
+SCROLL_NOTE_SECONDS = 3.0
 MAX_SCROLL_PX = 150_000
 MAX_SCROLL_SECONDS = 45.0
 # A second quiet wait AFTER the scroll, shorter than the first: the scroll's
@@ -1319,15 +1326,33 @@ class RenderedSession:
         IntersectionObserver, so an image that was never scrolled past was
         never requested, and a capture that skipped this would be missing
         exactly the pictures a person remembers the page for."""
+        # The pause after each screen exists for pages that request pictures
+        # as you scroll. A screen that requested nothing has nothing to wait
+        # for, so the full pause is only paid when a request was seen — which
+        # is what turned a 45 s silent walk down peps.python.org's 30,000 px
+        # index (nothing lazy on it) into a few seconds (survey finding O3).
+        # Requests are counted, not responses: the request is issued within
+        # milliseconds of the scroll and the response may not be, and the
+        # short wait is long enough to see the one and not the other.
+        requested = [0]
+
+        def _saw_request(_request):
+            requested[0] += 1
+
+        page.on("request", _saw_request)
         try:
             height = page.evaluate(
                 "() => document.body ? document.body.scrollHeight : 0"
             )
             step = max(1, int(self._viewport[1] * 0.9))
             position = 0
-            deadline = time.monotonic() + MAX_SCROLL_SECONDS
+            started = time.monotonic()
+            deadline = started + MAX_SCROLL_SECONDS
+            next_note = started + SCROLL_NOTE_SECONDS
+            seen = requested[0]
             while position < (height or 0) and position < MAX_SCROLL_PX:
-                if time.monotonic() > deadline:
+                now = time.monotonic()
+                if now > deadline:
                     # A feed that grows a screen for every screen revealed is
                     # not a page with a bottom. Say so: a capture that quietly
                     # stopped early is how the last one lost 90% of its images.
@@ -1337,15 +1362,39 @@ class RenderedSession:
                     )
                     log.debug("lazy-load scroll hit its time bound at %spx", position)
                     break
+                if now > next_note:
+                    # Silence is what a person reads as "stuck".
+                    self._note(
+                        f"scrolling — {position:,} of {height:,}px, "
+                        f"{requested[0]} files asked for so far"
+                    )
+                    next_note = now + SCROLL_NOTE_SECONDS
                 position += step
                 page.evaluate("(y) => window.scrollTo(0, y)", position)
-                _sleep(SCROLL_PAUSE)
+                _sleep(SCROLL_QUICK_PAUSE)
+                if requested[0] != seen:
+                    _sleep(SCROLL_PAUSE - SCROLL_QUICK_PAUSE)
+                    seen = requested[0]
                 height = page.evaluate(
                     "() => document.body ? document.body.scrollHeight : 0"
                 )
+            else:
+                if position < (height or 0):
+                    # Out by the length bound, not the time bound: a feed that
+                    # kept growing faster than a quick walk could reach the
+                    # end of. Same rule as above — say so.
+                    self._note(
+                        f"still scrolling at {position:,}px of a page that keeps "
+                        f"growing — keeping the first {position:,}px"
+                    )
             page.evaluate("() => window.scrollTo(0, 0)")
         except Exception as e:  # a page that refuses to scroll is still a page
             log.debug("lazy-load scroll pass failed: %s", e)
+        finally:
+            try:
+                page.remove_listener("request", _saw_request)
+            except Exception:
+                pass
 
     def _image_settle(self, page):
         """Wait, bounded, until every <img> the DOM holds has finished loading.
