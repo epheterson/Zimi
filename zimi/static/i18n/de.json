@@ -883,6 +883,8 @@
   "create_step_package": "Verpacken",
   "create_step_ready": "Fertig",
   "create_stopped_early": "Vorzeitig gestoppt — enthalten ist alles, was bis zum Stopp erfasst wurde.",
+  "create_stopped_page_cap": "Reached the {n}-page limit — a bigger limit captures more.",
+  "create_stopped_byte_budget": "Reached the {size} size budget — everything up to it is here.",
   "create_tree_more": "+{n} weitere Seiten erfasst",
   "create_unavailable_offline": "Die Erstellungsseite ist noch nicht zwischengespeichert — einmal verbinden, um sie offline zu nutzen.",
   "create_uncancellable": "Dieser Vorgang läuft nach dem Start bis zum Ende.",

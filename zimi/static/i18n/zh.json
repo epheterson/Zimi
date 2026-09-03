@@ -883,6 +883,8 @@
   "create_step_package": "打包",
   "create_step_ready": "完成",
   "create_stopped_early": "提前停止 — 已包含停止前捕获的全部内容。",
+  "create_stopped_page_cap": "Reached the {n}-page limit — a bigger limit captures more.",
+  "create_stopped_byte_budget": "Reached the {size} size budget — everything up to it is here.",
   "create_tree_more": "另有 {n} 个页面已抓取",
   "create_unavailable_offline": "创建页面尚未缓存 — 请联网一次以便离线使用。",
   "create_uncancellable": "此项一旦开始就会运行到结束。",

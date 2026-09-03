@@ -883,6 +883,8 @@
   "create_step_package": "تحزيم",
   "create_step_ready": "جاهز",
   "create_stopped_early": "توقف مبكرًا — تم تضمين كل ما تم التقاطه حتى لحظة التوقف.",
+  "create_stopped_page_cap": "Reached the {n}-page limit — a bigger limit captures more.",
+  "create_stopped_byte_budget": "Reached the {size} size budget — everything up to it is here.",
   "create_tree_more": "و{n} صفحة أخرى تم التقاطها",
   "create_unavailable_offline": "صفحة الإنشاء غير مخزَّنة مؤقتًا بعد — اتصل مرة واحدة لاستخدامها دون اتصال.",
   "create_uncancellable": "هذا يكمل حتى النهاية بمجرد أن يبدأ.",

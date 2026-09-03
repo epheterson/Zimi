@@ -883,6 +883,8 @@
   "create_step_package": "Empaqueter",
   "create_step_ready": "Prêt",
   "create_stopped_early": "Arrêt anticipé — tout ce qui a été capturé jusqu'à l'arrêt est inclus.",
+  "create_stopped_page_cap": "Reached the {n}-page limit — a bigger limit captures more.",
+  "create_stopped_byte_budget": "Reached the {size} size budget — everything up to it is here.",
   "create_tree_more": "+{n} pages capturées en plus",
   "create_unavailable_offline": "La page de création n'est pas encore en cache — connectez-vous une fois pour l'utiliser hors ligne.",
   "create_uncancellable": "Une fois lancé, ceci va jusqu'au bout.",

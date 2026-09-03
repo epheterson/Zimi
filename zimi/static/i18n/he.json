@@ -883,6 +883,8 @@
   "create_step_package": "אריזה",
   "create_step_ready": "מוכן",
   "create_stopped_early": "נעצר מוקדם — כל מה שנלכד עד העצירה כלול.",
+  "create_stopped_page_cap": "Reached the {n}-page limit — a bigger limit captures more.",
+  "create_stopped_byte_budget": "Reached the {size} size budget — everything up to it is here.",
   "create_tree_more": "עוד {n} עמודים נלכדו",
   "create_unavailable_offline": "דף היצירה עדיין לא נשמר במטמון — התחברו פעם אחת כדי להשתמש בו במצב לא מקוון.",
   "create_uncancellable": "אחרי שזה מתחיל, זה רץ עד הסוף.",

@@ -883,6 +883,8 @@
   "create_step_package": "Упаковка",
   "create_step_ready": "Готово",
   "create_stopped_early": "Остановлено досрочно — включено всё, что было захвачено до остановки.",
+  "create_stopped_page_cap": "Reached the {n}-page limit — a bigger limit captures more.",
+  "create_stopped_byte_budget": "Reached the {size} size budget — everything up to it is here.",
   "create_tree_more": "ещё {n} страниц захвачено",
   "create_unavailable_offline": "Страница создания ещё не сохранена в кэше — подключитесь один раз, чтобы работать с ней автономно.",
   "create_uncancellable": "Начатое здесь доводится до конца.",

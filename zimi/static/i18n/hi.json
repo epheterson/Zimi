@@ -883,6 +883,8 @@
   "create_step_package": "पैकेजिंग",
   "create_step_ready": "तैयार",
   "create_stopped_early": "जल्दी रोका गया — रोक तक कैप्चर की गई हर चीज़ शामिल है।",
+  "create_stopped_page_cap": "Reached the {n}-page limit — a bigger limit captures more.",
+  "create_stopped_byte_budget": "Reached the {size} size budget — everything up to it is here.",
   "create_tree_more": "{n} और पृष्ठ कैप्चर किए गए",
   "create_unavailable_offline": "बनाने वाला पेज अभी कैश नहीं हुआ — ऑफ़लाइन उपयोग के लिए एक बार कनेक्ट करें।",
   "create_uncancellable": "यह शुरू होने के बाद अंत तक चलता है।",

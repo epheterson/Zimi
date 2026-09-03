@@ -883,6 +883,8 @@
   "create_step_package": "Package",
   "create_step_ready": "Ready",
   "create_stopped_early": "Stopped early — this is everything captured up to the stop.",
+  "create_stopped_page_cap": "Reached the {n}-page limit — a bigger limit captures more.",
+  "create_stopped_byte_budget": "Reached the {size} size budget — everything up to it is here.",
   "create_tree_more": "+{n} more pages captured",
   "create_unavailable_offline": "The Create page has not been cached yet — connect once to use it offline.",
   "create_uncancellable": "This one runs to the end once it starts.",

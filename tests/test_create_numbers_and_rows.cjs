@@ -35,7 +35,7 @@ const sandbox = { localStorage: { getItem: () => null, setItem() {}, removeItem(
                   t: (k) => k };
 vm.createContext(sandbox);
 vm.runInContext(SRC.slice(0, cut), sandbox);
-const { _createDoneBytes, _createMetricLive, _createRowGone } = sandbox;
+const { _createDoneBytes, _createMetricLive, _createRowGone, _createStoppedText, _createChipTarget } = sandbox;
 
 let failures = 0;
 function check(ok, label) {
@@ -94,6 +94,29 @@ function eq(got, want, label) {
   check(!_createRowGone({ state: 'failed', ok: false }, false),
         'a job that never produced a ZIM is not "gone" — it never arrived');
   check(!_createRowGone(null, false), 'nothing is not a row');
+}
+
+// What ended a crawl, in the person's words (survey finding F10): a crawl
+// that reached the limit it was given was not "stopped early" by anyone.
+{
+  check(_createStoppedText('page cap (40)') === 'Reached the 40-page limit — a bigger limit captures more.',
+        'a page cap says the limit was reached, with the number: ' + _createStoppedText('page cap (40)'));
+  check(_createStoppedText('byte budget (500 MB)') === 'Reached the 500 MB size budget — everything up to it is here.',
+        'a byte budget says which budget: ' + _createStoppedText('byte budget (500 MB)'));
+  check(_createStoppedText('interrupted') === 'Stopped early — this is everything captured up to the stop.',
+        'a Stop from the person still reads as stopped early');
+  check(_createStoppedText(null) === '' && _createStoppedText('') === '', 'nothing ended it: no caption');
+}
+
+// The bytes chip becomes the file's size once the job is over (F2, F9); the
+// other chips, and a live bytes chip, keep counting what they count.
+{
+  const done = { done: true, active: false, result: { shape: { file_bytes: 498229 } } };
+  check(_createChipTarget('bytes', 769, done) === 498229, 'a finished bytes chip is the file size');
+  check(_createChipTarget('entries', 10, done) === 10, 'entries are left alone');
+  check(_createChipTarget('bytes', 769, { done: false, active: true }) === 769, 'a live bytes chip keeps counting');
+  check(_createChipTarget('bytes', 769, { done: true, active: false, result: null }) === 769,
+        'a failed job has no file; the chip keeps its last honest number');
 }
 
 if (failures) { console.error(`\n${failures} failure(s)`); process.exit(1); }

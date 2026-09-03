@@ -1237,6 +1237,54 @@ function _createRowGone(job, known) {
   return !known;
 }
 
+// Copy this build introduces ahead of its i18n keys (the locale files belong
+// to another change): t() falls back to the raw key, and a raw key on a
+// button is worse than English. A translation added later wins automatically,
+// because the key is still asked for first.
+// "Stop early", not "Finish now": the button ends the crawl before its
+// bounds, and calling that finishing reads as if the run were completing on
+// its own terms (Eric: "it's not like finish finish it's like end early").
+var CREATE_FALLBACK_TEXT = {
+  create_finish_now: 'Stop early',
+  create_finishing: 'Stopping…',
+  create_stopped_early: 'Stopped early — this is everything captured up to the stop.',
+  create_stopped_page_cap: 'Reached the {n}-page limit — a bigger limit captures more.',
+  create_stopped_byte_budget: 'Reached the {size} size budget — everything up to it is here.',
+  create_starting: 'Starting…'
+};
+
+function _createT(key) {
+  var out = t(key);
+  return out === key && CREATE_FALLBACK_TEXT[key] ? CREATE_FALLBACK_TEXT[key] : out;
+}
+
+// What ended a crawl, in the person's words. The server names the bound that
+// ended it — "page cap (40)", "byte budget (500 MB)", "interrupted" — and the
+// card used to say "Stopped early" for all three. Nobody stopped a crawl that
+// reached the limit it was given; that one reached it (survey finding F10).
+function _createStoppedText(stopped) {
+  var why = String(stopped || '');
+  if (!why) return '';
+  var cap = why.match(/^page cap \((\d+)\)/);
+  if (cap) return _createT('create_stopped_page_cap').replace('{n}', Number(cap[1]).toLocaleString());
+  var budget = why.match(/^byte budget \((.+)\)/);
+  if (budget) return _createT('create_stopped_byte_budget').replace('{size}', budget[1]);
+  return _createT('create_stopped_early');
+}
+
+// What a live counter chip shows once the job is over. The bytes chip counts
+// what was CARRIED while the run was on, which is the right number to watch
+// climb and the wrong one to leave beside a finished file: "769 B size" next to
+// a 498 KB result, "2.3 MB" beside a 573 KB one (survey findings F2, F9). At
+// the end it becomes the file's own size, the number the card and the
+// composition bar already agree on.
+function _createChipTarget(what, n, s) {
+  if (what === 'bytes' && s && s.done && !s.active && s.result) {
+    return _createDoneBytes(s.result, n);
+  }
+  return n;
+}
+
 // ── the surface ─────────────────────────────────────────────────────────────
 
 // ``replaceState`` true means this history entry IS Create — a cold load of
@@ -2538,7 +2586,7 @@ function _createSyncMetrics(s) {
     // where the server is — see _createCountStep. Whenever a job is finished,
     // being cancelled, or the reader has asked for less motion, they are the
     // same thing, because there is nothing left to smooth toward.
-    var shown = _createCountShownValue(what, c.n, s);
+    var shown = _createCountShownValue(what, _createChipTarget(what, c.n, s), s);
     var value = what === 'bytes' ? _fmtBytes(shown) : Number(shown).toLocaleString();
     var of = (typeof c.total === 'number' && c.total > 0)
       ? '<span class="create-metric-of">/ ' +
@@ -2749,25 +2797,6 @@ function _createSyncLog() {
 
 // ── actions and outcome ─────────────────────────────────────────────────────
 
-// Copy this build introduces ahead of its i18n keys (the locale files belong
-// to another change): t() falls back to the raw key, and a raw key on a
-// button is worse than English. A translation added later wins automatically,
-// because the key is still asked for first.
-// "Stop early", not "Finish now": the button ends the crawl before its
-// bounds, and calling that finishing reads as if the run were completing on
-// its own terms (Eric: "it's not like finish finish it's like end early").
-var CREATE_FALLBACK_TEXT = {
-  create_finish_now: 'Stop early',
-  create_finishing: 'Stopping…',
-  create_stopped_early: 'Stopped early — this is everything captured up to the stop.',
-  create_starting: 'Starting…'
-};
-
-function _createT(key) {
-  var out = t(key);
-  return out === key && CREATE_FALLBACK_TEXT[key] ? CREATE_FALLBACK_TEXT[key] : out;
-}
-
 function _createSyncActions(s) {
   var host = document.getElementById('create-run-actions');
   if (!host) return;
@@ -2926,7 +2955,7 @@ function _createMountDone(s) {
         // byte budget — says so on the card: "40 pages" without "and I stopped
         // there" reads like a capture that believes it got everything.
         (r.stopped
-          ? '<div class="create-caption">' + esc(_createT('create_stopped_early')) + '</div>'
+          ? '<div class="create-caption">' + esc(_createStoppedText(r.stopped)) + '</div>'
           : '') +
       '</div>' +
       '<button type="button" class="ms-btn ms-btn-primary create-done-open"' +
