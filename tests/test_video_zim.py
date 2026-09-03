@@ -520,3 +520,63 @@ def test_crawl_intent_beats_video_route(monkeypatch):
         )
         is False
     )
+
+
+# ── subtitles are a wish, not a condition ───────────────────────────────────
+#
+# Survey finding F13. Asking yt-dlp for subtitles in ``all`` languages made it
+# fetch auto-captions in a hundred of them per video; YouTube answered the
+# Abkhazian one with 429 and yt-dlp raised, which ended the whole capture five
+# seconds in with "could not download". A caption is decoration on a video;
+# the video is the point.
+
+
+def test_subtitles_are_asked_for_in_a_few_languages_not_all(monkeypatch, tmp_path):
+    fake = _install_fake_ytdlp(monkeypatch, _videos())
+    seen = []
+    Orig = fake.YoutubeDL
+
+    class Recording(Orig):
+        def __init__(self, opts=None):
+            seen.append(dict(opts or {}))
+            super().__init__(opts)
+
+    fake.YoutubeDL = Recording
+    video.create_video_zim(
+        PLAYLIST_URL, out_dir=str(tmp_path / "out"), work_dir=str(tmp_path), language="es"
+    )
+    downloads = [o for o in seen if o.get("writesubtitles")]
+    assert downloads, "no download asked for subtitles at all"
+    for opts in downloads:
+        langs = opts["subtitleslangs"]
+        assert "all" not in langs, langs
+        assert any(l.startswith("en") for l in langs), langs
+        assert any(l.startswith("es") for l in langs), "the requested language is wanted too"
+        assert len(langs) <= 4, langs
+
+
+def test_a_subtitle_refusal_does_not_end_the_video(monkeypatch, tmp_path):
+    fake = _install_fake_ytdlp(monkeypatch, _videos())
+    Orig = fake.YoutubeDL
+    attempts = []
+
+    class Flaky(Orig):
+        def extract_info(self, url, download=False):
+            if download:
+                attempts.append(bool(self.opts.get("writesubtitles")))
+                if self.opts.get("writesubtitles"):
+                    raise Exception(
+                        "ERROR: Unable to download video subtitles for 'ab': "
+                        "HTTP Error 429: Too Many Requests"
+                    )
+            return super().extract_info(url, download=download)
+
+    fake.YoutubeDL = Flaky
+    info = video.create_video_zim(
+        PLAYLIST_URL, out_dir=str(tmp_path / "out"), work_dir=str(tmp_path)
+    )
+    assert info["videos"] == 3, info
+    # Each video was tried with captions, refused, and carried without them.
+    assert attempts == [True, False] * 3, attempts
+    arc = Archive(info["path"])
+    assert bytes(arc.get_entry_by_path("media/v1.mp4").get_item().content) == b"MP41" * 250

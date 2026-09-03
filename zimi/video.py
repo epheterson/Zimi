@@ -275,9 +275,28 @@ def _flat_entries(mod, url, limit):
     return info, entries
 
 
-def _download_entry(mod, entry, workdir, *, fmt, audio_only):
+def _subtitle_langs(language):
+    """The caption languages worth asking for: English, and the language the
+    person asked the ZIM to be in. yt-dlp reads each entry as a pattern, so
+    ``en.*`` takes en, en-US and en-orig alike.
+
+    This used to be ``["all"]``, which on YouTube means auto-captions in a
+    hundred-odd languages, one request each, per video. The site answered the
+    Abkhazian one with 429 and the whole capture ended five seconds in."""
+    langs = ["en.*"]
+    if language and language != LANGUAGE_AUTO:
+        code = str(language).strip().lower()
+        if code and not code.startswith("en"):
+            langs.append(code + ".*")
+    return langs
+
+
+def _download_entry(mod, entry, workdir, *, fmt, audio_only, language=None):
     """Download one entry (media + subtitles + thumbnail) into its own
-    workdir. Returns the full per-video info dict."""
+    workdir. Returns the full per-video info dict.
+
+    Captions are decoration on a video, never a condition of having it: a
+    refusal that names subtitles is retried once without them."""
     url = entry.get("url") or entry.get("webpage_url") or entry.get("original_url")
     if not url:
         raise CreateError("yt-dlp returned a playlist entry with no URL")
@@ -290,12 +309,22 @@ def _download_entry(mod, entry, workdir, *, fmt, audio_only):
         "writesubtitles": True,
         "writeautomaticsub": True,
         "subtitlesformat": "vtt",
-        "subtitleslangs": ["all"],
+        "subtitleslangs": _subtitle_langs(language),
         "writethumbnail": not audio_only,
     }
     try:
-        with mod.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+        try:
+            with mod.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+        except Exception as e:
+            if "subtitle" not in str(e).lower():
+                raise
+            log.info(
+                "captions refused for %s (%s) — carrying the video without them", url, e
+            )
+            opts.update(writesubtitles=False, writeautomaticsub=False)
+            with mod.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=True)
     except Exception as e:
         # yt-dlp raises DownloadError for everything a video site can do to
         # refuse: a 403 on the media stream, an age gate, a geo block, a video
@@ -614,7 +643,9 @@ def create_video_zim(
             say(f"[{i}/{len(entries)}] {label}")
             workdir = os.path.join(staging, str(i))
             os.makedirs(workdir)
-            info = _download_entry(mod, entry, workdir, fmt=fmt, audio_only=audio_only)
+            info = _download_entry(
+                mod, entry, workdir, fmt=fmt, audio_only=audio_only, language=language
+            )
             media, subs, thumb = _collect_downloads(workdir, info)
             size = (
                 os.path.getsize(media)
