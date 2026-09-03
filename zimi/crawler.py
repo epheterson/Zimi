@@ -197,6 +197,26 @@ def _origin_of(url):
     return f"{parts.scheme.lower()}://{parts.netloc.lower()}"
 
 
+def upgrade_scheme(url, origin):
+    """``url`` with its scheme raised to https when it names the crawl's own
+    host over plain http and the crawl is https. Same host, weaker scheme is
+    how an old site links to itself (planetmath.org's index links 9,173
+    entries that way); following it over https is following the site, and
+    following it over http would be the downgrade same_origin refuses. Any
+    other difference — host, an explicit port, https-to-http — is left alone
+    for same_origin to judge."""
+    u, o = urllib.parse.urlsplit(url), urllib.parse.urlsplit(origin)
+    if (
+        u.scheme.lower() == "http"
+        and o.scheme.lower() == "https"
+        and (u.hostname or "").lower() == (o.hostname or "").lower()
+        and u.port in (None, 80)
+        and o.port in (None, 443)
+    ):
+        return urllib.parse.urlunsplit(("https", u.hostname.lower(), u.path, u.query, u.fragment))
+    return url
+
+
 def same_origin(url, origin):
     """Strict same-origin: scheme AND host AND port. An http link on an https
     site is a different origin and stays external — the alternative is
@@ -413,7 +433,7 @@ def _crawl(
         for link in links:
             if len(seen) >= max_pages * FRONTIER_FACTOR:
                 return
-            key = normalize_url(link)
+            key = normalize_url(upgrade_scheme(link, origin))
             if (
                 key in seen
                 or not same_origin(key, origin)
@@ -903,7 +923,7 @@ def probe_site(url, *, ignore_robots=False, timeout=PROBE_TIMEOUT):
         nonlocal truncated
         listed = 0
         for link in extract_links(text, base_url):
-            key = normalize_url(link)
+            key = normalize_url(upgrade_scheme(link, origin))
             if (
                 key in seen
                 or not same_origin(key, origin)

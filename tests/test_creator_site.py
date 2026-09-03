@@ -1089,3 +1089,26 @@ def test_a_link_with_an_escaped_query_is_followed_to_the_real_url():
         "https://e.com/x?u=1&v=2",
     ], got
     assert not any("&amp;" in url for url in got)
+
+
+def test_an_http_link_on_an_https_site_is_upgraded_not_dropped():
+    """planetmath.org's alphabetical index links 9,173 entries as
+    ``http://planetmath.org/...`` on a site served over https. Strict
+    same-origin called every one of them another origin and the crawl ended
+    at three pages where Kiwix's ZIM has 18,553 (survey finding O10). Same
+    host, weaker scheme: follow it over https, never over http."""
+    assert (
+        crawler.upgrade_scheme("http://e.com/a?x=1", "https://e.com/")
+        == "https://e.com/a?x=1"
+    )
+    # The reverse is a downgrade and stays what it is (and same_origin then
+    # keeps it external).
+    assert crawler.upgrade_scheme("https://e.com/a", "http://e.com/") == "https://e.com/a"
+    # Another host is not touched.
+    assert crawler.upgrade_scheme("http://other.com/a", "https://e.com/") == "http://other.com/a"
+    # An explicit non-default port is a different origin; leave it.
+    assert crawler.upgrade_scheme("http://e.com:8080/a", "https://e.com/") == "http://e.com:8080/a"
+    # And the strict test is unchanged: http on https is still not the same origin
+    # until it has been upgraded.
+    assert not crawler.same_origin("http://e.com/a", "https://e.com/")
+    assert crawler.same_origin(crawler.upgrade_scheme("http://e.com/a", "https://e.com/"), "https://e.com/")
