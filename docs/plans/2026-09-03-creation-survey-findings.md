@@ -24,6 +24,18 @@ Each item names what a person sees, where it comes from, and what to do. Ordered
 | F15 | After the video job failed, the page went back to the form with the probe card ("Videos 12+ · Playlist Django & React…") rather than a failure card with the reason. Seen on the second run; the first run showed "Creation failed …" with Create another. | Traced with a render log on a third failing video job: the failure card rendered and stayed ("Creation failed — could not download … HTTP 403"). The one form-after-failure was on a server restarted seconds earlier; not reproduced since. | Watch for it in the phone-path gate; nothing to change on evidence so far. | not reproduced |
 | F16 | YouTube now answers this Mac's media downloads with 403 after the caption blast; the real video re-run has to wait for the throttle to lift. | External. | Re-run later; the fix is unit-tested. | waiting |
 
+## Against the released ZIMs (size and coherence)
+
+Five of the six compare sites have a Kiwix zimit ZIM under 2 GB (cheatography's is 11.4 GB and was skipped). Ours are 25-page crawls; theirs are whole sites, so the honest comparison is the home page, and size per page.
+
+| site | released | ours (Fast, 25 pages) | home page text, theirs / ours | verdict |
+|---|---|---|---|---|
+| solar.lowtechmagazine.com | 700.6 MB, 1,468 pages, 477 KB/page | 2.9 MB, 117 KB/page | 2,992 / 2,820 chars, 0 images in both | coherent; the site's own low-battery page has no images |
+| peps.python.org | 9.1 MB, 754 pages, 12 KB/page | 0.8 MB, 30 KB/page | 68,274 / 68,413 | coherent; ours carries the site stylesheet and fonts once per ZIM, which dominates at 25 pages |
+| planetmath.org | 40.0 MB, 18,553 pages, 2 KB/page | 0.6 MB, **3 pages** before O10, 25 after | 1,232 / 1,232 | O10 fixed |
+| foss.cooking | 24.2 MB, 719 pages | origin answered 522 during the survey | 1,510 / 881 (Rendered) | re-run when the origin is up |
+| sh1.org | 36.1 MB, 115 pages, 314 KB/page | 2.1 MB, 86 KB/page | 1,969 / 305 | O11: their main entry is a fuller page; our home page is the real one |
+
 ## Engines: what the survey should decide (Eric, 09-03: "Should we just have fast and alive? When should I use rendered? Maybe we should prod the site and suggest which automatically.")
 
 Keep three, stop making people choose. Fast for the static web (most of it, and the most durable file). Rendered for pages whose content is built by JavaScript: the finished DOM in a plain file any reader opens. Alive only when the JavaScript itself must keep running offline. The probe the create page already runs (title, robots) can add "built by JavaScript" from the fast fetch's own SPA-shell test in `creator.py`, pick the engine, and say why in one line; the picker becomes a disclosure. The Fast-versus-Rendered columns of the survey table are the evidence for which sites need it.
@@ -40,4 +52,6 @@ Keep three, stop making people choose. Fast for the static web (most of it, and 
 | O6 | Wikipedia article, Fast: 18 of 24 images painted (Rendered 26 of 26). | Six article thumbnails whose `src` fetch failed transiently while their 2x srcset candidate was carried; the tag kept a web-pointing src beside an in-ZIM srcset. | Covered by one-slot-one-file: the src is the picked file. Re-captured on the fixed code: 24 tags, 0 pointing at the web. | `29892aa` |
 | O7 | cheatography.com: 21 of 22 in every engine. | The one is `<img src="#" width=32 height=32>`, a placeholder the site fills by script. | Nothing. | not a bug |
 | O8 | sh1.org 305 chars, planetmath.org 1232 chars, sqlite.org 1036 chars, xkcd 1171 chars. | Home pages that are mostly navigation or a single comic; text is honest. | Nothing. | not a bug |
+| O10 | planetmath.org whole site: 3 pages captured where Kiwix's ZIM has 18,553. | The alphabetical index links 9,173 entries as `http://planetmath.org/…` on an https site; strict same-origin called each one another origin and queued none. | Same host over plain http is raised to https before the origin test; a downgrade is still never followed. Re-crawled: 25 of 25 pages, 98 queued after the second page. | `225695a` |
+| O11 | sh1.org home page: 305 characters of text in ours, 1,969 in the released ZIM. | The home page really is 377 characters of markup-stripped text (a frameset-era welcome page); zimit's main entry is a different, fuller page. | Nothing. | not a bug |
 | O9 | foss.cooking: HTTP 522 in Fast; Alive fails with "warc2zim failed (exit 4)" and a log dump. | Origin down at survey time; Alive's failure surfaces a tool trace rather than "the site was down". | Alive: when the recorded session has no 200 for the main page, say the site did not answer; never show the trace. | open |
