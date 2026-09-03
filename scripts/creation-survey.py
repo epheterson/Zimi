@@ -23,6 +23,7 @@ import json
 import os
 import sys
 import time
+import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -130,31 +131,58 @@ def released_name(catalog_name):
     return None
 
 
+# How each released ZIM is found in the Kiwix catalog: its search is by title
+# words, and a site's hostname is not always among them.
+CATALOG_QUERY = {
+    "lowtech": "solar-powered",
+    "peps": "PEPs",
+    "planetmath": "Planet Math",
+    "cheatography": "Cheatography",
+    "fosscooking": "FOSS cooking",
+    "sh1": "sh1",
+}
+
+
+def catalog_item(site):
+    """The catalog record for ``site.released``, or None."""
+    q = urllib.parse.quote(CATALOG_QUERY.get(site.key, site.released))
+    try:
+        got = api(f"/manage/catalog?count=50&q={q}")
+    except Exception as e:
+        print("catalog lookup failed", site.key, e, flush=True)
+        return None
+    for item in got.get("items") or []:
+        if item.get("name") == site.released:
+            return item
+    return None
+
+
 def compare(ctx, results):
-    cat = api("/catalog?count=500")
-    items = (
-        cat if isinstance(cat, list) else (cat.get("items") or cat.get("entries") or [])
-    )
     for s in [s for s in SITES if s.released]:
         key = "released/" + s.key
         if key in results:
             continue
-        item = next((i for i in items if i.get("name") == s.released), None)
+        item = catalog_item(s)
         if not item:
             results[key] = {"ok": False, "error": "not in catalog"}
+            save(results)
             continue
         size = item.get("size_bytes") or 0
         if size > RELEASED_CAP_BYTES:
             results[key] = {"ok": False, "error": f"skipped: {size / 1e9:.1f} GB"}
+            save(results)
             continue
+        # The catalog hands out a metalink; the file is the same address
+        # without the .meta4 suffix.
+        url = (item.get("download_url") or "").removesuffix(".meta4")
         dest = os.path.join(RELEASED_DIR, s.released + ".zim")
         if not os.path.exists(dest):
             os.makedirs(RELEASED_DIR, exist_ok=True)
-            print("downloading", item["download_url"], flush=True)
-            urllib.request.urlretrieve(item["download_url"], dest + ".part")
+            print("downloading", url, f"({size / 1e6:.0f} MB)", flush=True)
+            urllib.request.urlretrieve(url, dest + ".part")
             os.replace(dest + ".part", dest)
         name = None
-        for _ in range(20):  # the server rescans its library on its own
+        for _ in range(40):  # the server rescans its library on its own
             name = released_name(s.released)
             if name:
                 break
@@ -164,6 +192,7 @@ def compare(ctx, results):
                 "ok": False,
                 "error": "downloaded but the library never listed it",
             }
+            save(results)
             continue
         page = ctx.new_page()
         try:
