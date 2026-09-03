@@ -2218,15 +2218,23 @@ function _createIngest(data) {
   // Whose job is this reply about? See _createForeignReply: a finished job the
   // server still has in its one slot may belong to somebody else entirely.
   var foreign = _createForeignReply(data, _createJobId, _createQueuedId);
+  if (Array.isArray(data.history)) _createAdoptHistory(data.history);
+  // A reply about somebody else's finished job says nothing about ours, and
+  // it used to be allowed to say a great deal: it nulled the status and the
+  // screen fell back to the form for one poll. The page's opening poll
+  // carries probe=1, which takes seconds while it checks the sidecars, so on
+  // a fresh page a person who taps Create straight away gets that stale
+  // answer AFTER their own job is on screen — job, form, job, inside three
+  // seconds (survey finding F7). Capabilities and the recent list above are
+  // still worth taking from it; nothing about the run is.
+  if (foreign) return;
   // A different id is a different job — our queued submission reaching the
   // front, or someone else's run starting — and nothing of the last one's tree,
-  // tail or counters belongs on top of it. Not taken from a foreign reply,
-  // whose id and log lines are not ours to adopt.
-  if (!foreign && data.id && data.id !== _createJobId) {
+  // tail or counters belongs on top of it.
+  if (data.id && data.id !== _createJobId) {
     _createJobId = data.id;
     _createResetRun();
   }
-  if (Array.isArray(data.history)) _createAdoptHistory(data.history);
   // The recent list is fetched when the page opens, so a job that finishes
   // while you watch would otherwise leave it a poll out of date forever.
   if (_createStatus && _createStatus.active && data.done) _createWantHistory = true;

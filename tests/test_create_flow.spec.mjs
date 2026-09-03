@@ -904,3 +904,42 @@ test.describe('with reduced motion', () => {
     }
   });
 });
+
+// ── a late reply about the previous job ─────────────────────────────────────
+//
+// The page's opening poll carries probe=1 and takes seconds while the server
+// checks its sidecars. A person who opens Create and taps the button at once
+// therefore gets that reply AFTER their own job is on screen, and it describes
+// the PREVIOUS job, finished. Ingesting it used to null the status and drop the
+// screen back to the form for one poll: job, form, job (survey finding F7).
+test.describe('a late reply about the previous job', () => {
+  test.use({ serviceWorkers: 'block' });
+
+  test('does not blank the job on screen', async ({ page }) => {
+    // Hold the opening (probe) poll back so it lands after the job started.
+    await page.route('**/manage/create/status*probe=1*', async route => {
+      const res = await route.fetch();
+      await new Promise(r => setTimeout(r, 2500));
+      await route.fulfill({ response: res });
+    });
+    await openCreate(page);
+    await pickMode(page, 'page');
+    await page.fill('#create-source', fixtureUrl);
+    await page.click('#create-start');
+    await page.waitForSelector('#create-source', { state: 'hidden', timeout: 10000 });
+    // Once the run pane is up, the form must not come back while the job is
+    // alive — sample for the window the late reply can land in.
+    const flips = await page.evaluate(() => new Promise(resolve => {
+      let seen = 0;
+      const t0 = Date.now();
+      const tick = () => {
+        const src = document.getElementById('create-source');
+        if (src && src.offsetParent !== null && window._createStatus === null) seen++;
+        if (Date.now() - t0 > 4500) return resolve(seen);
+        setTimeout(tick, 100);
+      };
+      tick();
+    }));
+    expect(flips).toBe(0);
+  });
+});
