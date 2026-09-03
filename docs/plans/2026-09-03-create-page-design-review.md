@@ -60,6 +60,6 @@ D8, D4, D5, D3, D6, D7 are each an hour or less and land first. D1 lands next, a
 | D6 no tree for one page | `38625de` |
 | D7 the failed phase's dot goes red | `38625de`, with `failed_phase` from the server |
 | D8 site placeholder is a root | `38625de` |
-| D1 the probe chooses the engine | open; the probe already reports `spa` |
+| D1 the probe chooses the engine | `95a559c`; excalidraw.com picks Rendered with the note "This page builds itself in JavaScript, so the rendered engine is what will capture it."; sqlite.org and react.dev stay Fast; the picker reads "Capture engine · Rendered (runs a browser) · Change" |
 | D2 address first | open |
 | D9 "up to 200 pages" wording | open, least important |

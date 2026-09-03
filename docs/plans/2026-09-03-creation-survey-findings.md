@@ -40,6 +40,8 @@ Five of the six compare sites have a Kiwix zimit ZIM under 2 GB (cheatography's 
 
 Keep three, stop making people choose. Fast for the static web (most of it, and the most durable file). Rendered for pages whose content is built by JavaScript: the finished DOM in a plain file any reader opens. Alive only when the JavaScript itself must keep running offline. The probe the create page already runs (title, robots) can add "built by JavaScript" from the fast fetch's own SPA-shell test in `creator.py`, pick the engine, and say why in one line; the picker becomes a disclosure. The Fast-versus-Rendered columns of the survey table are the evidence for which sites need it.
 
+Done in `95a559c`: the probe's `spa` verdict picks Rendered when a browser is there, the preview says why, and the picker folds to "Capture engine · Fast (no JavaScript) · Change". Of the twenty survey sites none is a JavaScript shell to the probe (cnn.com and react.dev are server-rendered, thin or not); excalidraw.com and mastodon.social are, and they now get Rendered without a decision.
+
 ## Output (from the survey table; filled as rows land)
 
 | # | what a person sees | where it comes from | do | status |
