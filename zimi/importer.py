@@ -42,6 +42,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 import sys
 import tempfile
 
@@ -87,9 +88,19 @@ def _run_capture(cmd, timeout=60):
     return p.returncode, (p.stdout or "").strip()
 
 
-def _run_stream(cmd, sink):
+HEARTBEAT_SECONDS = 15.0
+
+
+def _run_stream(cmd, sink, heartbeat_s=HEARTBEAT_SECONDS):
     """Run a command, streaming every combined-output line through ``sink``.
-    No timeout — warc2zim over a multi-GB WARC legitimately runs for hours."""
+    No timeout — warc2zim over a multi-GB WARC legitimately runs for hours.
+
+    When the command prints nothing for ``heartbeat_s``, a line saying it is
+    still running goes through ``sink`` instead: warc2zim converted cnn.com's
+    recording for 86 s without a word, and a run pane that says nothing for
+    that long reads as stuck (survey finding O3)."""
+    import threading
+
     try:
         proc = subprocess.Popen(
             cmd,
@@ -101,8 +112,23 @@ def _run_stream(cmd, sink):
     except OSError as e:
         sink(f"cannot run {cmd[0]}: {e}")
         return 1
-    for line in proc.stdout or ():
-        sink(line.rstrip("\n"))
+    started = time.monotonic()
+    last = [started]
+    done = threading.Event()
+
+    def beat():
+        while not done.wait(heartbeat_s / 4):
+            if time.monotonic() - last[0] >= heartbeat_s:
+                sink(f"still converting… {int(time.monotonic() - started)}s")
+                last[0] = time.monotonic()
+
+    threading.Thread(target=beat, daemon=True).start()
+    try:
+        for line in proc.stdout or ():
+            last[0] = time.monotonic()
+            sink(line.rstrip("\n"))
+    finally:
+        done.set()
     return proc.wait()
 
 
