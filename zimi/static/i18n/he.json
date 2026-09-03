@@ -771,6 +771,7 @@
   "create_engine_alive": "חי (מקליט את ההפעלה)",
   "create_engine_alive_desc": "מקליט את הסשן כך שה-JavaScript של האתר השמור עדיין רץ לא-מקוון — קרוסלות מסתובבות, תפריטים נפתחים. יוצר את הקבצים הגדולים ביותר.",
   "create_engine_fast": "מהיר (ללא JavaScript)",
+  "create_engine_change": "Change",
   "create_engine_fast_desc": "קל — עובד בכל מקום. דפים שנבנים ב-JavaScript יוצאים ריקים.",
   "create_engine_missing": "לא מותקן בשרת הזה. כדי להפעיל:",
   "create_engine_rendered": "מרונדר (מפעיל דפדפן)",

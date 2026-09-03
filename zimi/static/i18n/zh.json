@@ -771,6 +771,7 @@
   "create_engine_alive": "存活（录制会话）",
   "create_engine_alive_desc": "记录会话，使保存站点的 JavaScript 离线仍可运行——轮播滚动、菜单展开。生成的文件最大。",
   "create_engine_fast": "快速（不执行 JavaScript）",
+  "create_engine_change": "Change",
   "create_engine_fast_desc": "轻量，随处可用。由 JavaScript 构建的页面会是空白。",
   "create_engine_missing": "此服务器尚未安装。启用方法：",
   "create_engine_rendered": "渲染（启动浏览器）",

@@ -771,6 +771,7 @@
   "create_engine_alive": "Vivo (grava a sessão)",
   "create_engine_alive_desc": "Grava a sessão para que o JavaScript do site guardado continue a funcionar offline — carrosséis giram, menus abrem. Gera os maiores ficheiros.",
   "create_engine_fast": "Rápido (sem JavaScript)",
+  "create_engine_change": "Change",
   "create_engine_fast_desc": "Leve — funciona em qualquer lado. Páginas feitas com JavaScript saem vazias.",
   "create_engine_missing": "Não está instalado neste servidor. Para o ativar:",
   "create_engine_rendered": "Renderizado (abre um navegador)",

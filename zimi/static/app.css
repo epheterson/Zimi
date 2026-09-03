@@ -657,6 +657,11 @@
      server cannot run is dimmed rather than removed — see _createEngineHtml. */
   .create-seg-field { flex: 1 0 100%; display: flex; flex-direction: column; gap: 6px; }
   .create-seg-label { font-size: 13px; color: var(--text2); }
+  .create-engine-fold > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+  .create-engine-fold > summary::-webkit-details-marker { display: none; }
+  .create-engine-fold > summary b { font-weight: 600; color: var(--text); }
+  .create-engine-change { color: var(--amber); font-size: 12px; }
+  .create-engine-fold[open] .create-engine-change { display: none; }
   .create-seg { display: flex; flex-wrap: wrap; gap: 8px; }
   .create-seg-opt { flex: 1 1 220px; display: grid; grid-template-columns: auto 1fr;
     align-items: start; gap: 2px 8px; padding: 10px 12px; border: 1px solid var(--border);

@@ -1282,6 +1282,16 @@ function _createChipTarget(what, n, s) {
   return n;
 }
 
+// Which engine a page wants, from what the probe saw. A page that builds
+// itself in JavaScript comes out of the fast engine as an empty shell, and the
+// probe already knows that; the person should not have to. Rendered when the
+// server can run a browser, else Fast and the probe's own warning stands. The
+// alive engine is never picked here: it is the one you reach for on purpose.
+function _createEngineFor(p, browserReady) {
+  if (!p || (p.mode !== 'page' && p.mode !== 'site')) return '';
+  return p.spa && browserReady ? 'rendered' : '';
+}
+
 // ── the surface ─────────────────────────────────────────────────────────────
 
 // ``replaceState`` true means this history entry IS Create — a cold load of
@@ -1618,8 +1628,13 @@ function _createCapabilityMissing(name) {
 // command the caption prints. Hiding them would leave someone believing Zimi
 // cannot do this at all.
 function _createEngineHtml(f) {
-  var html = '<div class="create-seg-field">' +
-    '<div class="create-seg-label">' + tH(f.label) + '</div>' +
+  // Folded: the probe picks the engine (see _createAutoPickEngine), and the
+  // summary states the pick. The three options, thirty words each, used to be
+  // the largest thing on the form, on a decision most people cannot make.
+  var html = '<details class="create-seg-field create-engine-fold" id="create-engine-fold">' +
+    '<summary class="create-seg-label"><span>' + tH(f.label) + '</span> ' +
+      '<b id="create-engine-pick">' + tH(f.options[0].k) + '</b> ' +
+      '<span class="create-engine-change">' + tH('create_engine_change') + '</span></summary>' +
     '<div class="create-seg" id="' + f.id + '" role="radiogroup"' +
     ' aria-label="' + escAttr(t(f.label)) + '">';
   var commands = [];
@@ -1630,7 +1645,7 @@ function _createEngineHtml(f) {
     html += '<label class="create-seg-opt' + (off ? ' is-off' : '') + '">' +
       '<input type="radio" name="' + f.id + '" value="' + escAttr(o.v) + '"' +
       (i === 0 ? ' checked' : '') + (off ? ' disabled' : '') +
-      ' onchange="_createSyncEngine()">' +
+      ' onchange="_createEngineChosen()">' +
       '<span class="create-seg-name">' + tH(o.k) + '</span>' +
       '<span class="create-seg-desc">' + tH(o.d) + '</span>' +
     '</label>';
@@ -1643,7 +1658,7 @@ function _createEngineHtml(f) {
     }
     html += '<div class="create-caption">' + tH('create_engine_missing') + code + '</div>';
   }
-  return html + '</div>';
+  return html + '</details>';
 }
 
 // Append one unmet capability's install commands to the caption's list: the
@@ -1805,7 +1820,48 @@ function _createSyncFormat() {
 // Zimi does that this machine has not installed, and saying so is useful. Ad
 // blocking under the fast engine is not installable; it is not a thing at all,
 // and a permanently greyed control would only invite the question.
+// Whether the person has picked an engine by hand this time. Until they do,
+// the probe's answer picks it (D1 of the design review); once they have, it
+// is theirs and the probe keeps its opinion to the preview.
+var _createEngineTouched = false;
+var _createAutoProbing = false;
+
+function _createAutoPickEngine(p) {
+  if (_createEngineTouched || _createAutoProbing) return false;
+  var want = _createEngineFor(p, _createCapabilityReady('browser') === true);
+  var have = _createCheckedRadio(CREATE_FIELDS.engine.id);
+  if (want === have) return false;
+  var input = document.querySelector('input[name="' + CREATE_FIELDS.engine.id + '"][value="' + want + '"]');
+  if (!input || input.disabled) return false;
+  input.checked = true;
+  _createSyncEngine();
+  // The verdict is the engine's: ask again with the one that will run, so the
+  // preview says "the rendered engine is what will capture it" rather than
+  // the fast engine's refusal.
+  _createAutoProbing = true;
+  _createPreviewSource = '';
+  _createProbeSource().finally(function() { _createAutoProbing = false; });
+  return true;
+}
+
+function _createEngineChosen() {
+  _createEngineTouched = true;
+  _createSyncEngine();
+}
+
+function _createSyncEngineSummary(engine) {
+  var pick = document.getElementById('create-engine-pick');
+  if (!pick) return;
+  var opt = null;
+  for (var i = 0; i < CREATE_ENGINE_OPTIONS.length; i++) {
+    if (CREATE_ENGINE_OPTIONS[i].v === engine) opt = CREATE_ENGINE_OPTIONS[i];
+  }
+  var text = opt ? t(opt.k) : '';
+  if (pick.textContent !== text) pick.textContent = text;
+}
+
 function _createSyncEngine() {
+  _createSyncEngineSummary(_createCheckedRadio(CREATE_FIELDS.engine.id));
   var engine = _createCheckedRadio(CREATE_FIELDS.engine.id);
   for (var key in CREATE_FIELDS) {
     if (!Object.prototype.hasOwnProperty.call(CREATE_FIELDS, key)) continue;
@@ -1945,6 +2001,7 @@ async function _createProbeSource() {
       _createHeadIcon = (data && typeof data.icon === 'string' && data.icon) || null;
       _createFormError('');
       _createApplyDetectedLanguage(data);
+      if (_createAutoPickEngine(data)) return;  // re-probing with the engine it wants
     }
   } catch (e) {
     if (mode === _createSelected) _createPreview = null;
@@ -2258,6 +2315,9 @@ function _createIngest(data) {
   if (typeof data.browser_ready === 'boolean') {
     _createBrowserReady = data.browser_ready;
     _createRemember('browser', data.browser_ready);
+    // The probe can answer before this does (the opening poll is the slow
+    // one): a preview judged with the browser unknown is judged again now.
+    if (_createPreview) _createAutoPickEngine(_createPreview);
   }
   if (typeof data.alive_ready === 'boolean') {
     _createAliveReady = data.alive_ready;

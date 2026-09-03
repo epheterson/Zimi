@@ -378,6 +378,7 @@ test.describe('the capture engine', () => {
     await openCreate(page);
     await page.waitForFunction(() => window._createBrowserReady === true);
     await pickMode(page, 'site');
+    await page.locator('#create-engine-fold').evaluate(d => { d.open = true; });  // the picker is folded now
     await page.check('#create-engine input[value="rendered"]');
 
     // Catch the submission rather than run it: what this test is about is the
@@ -418,7 +419,8 @@ test.describe('the capture engine', () => {
       await openCreate(page);
       await page.waitForFunction(() => window._createBrowserReady === true);
       await pickMode(page, 'site');
-      await page.check('#create-engine input[value="rendered"]');
+      await page.locator('#create-engine-fold').evaluate(d => { d.open = true; });  // the picker is folded now
+    await page.check('#create-engine input[value="rendered"]');
       await pickMode(page, 'page');
       await expect(page.locator('#create-engine input[value=""]')).toBeChecked();
       await pickMode(page, 'site');
@@ -998,5 +1000,70 @@ test.describe('a stale reply from before the job', () => {
     await page.waitForTimeout(4000);
     await expect(page.locator('.create-done')).toBeVisible();
     await expect(page.locator('#create-source')).toBeHidden();
+  });
+});
+
+// ── the probe picks the engine ──────────────────────────────────────────────
+//
+// Design review D1. The probe already knew a page was a JavaScript shell and
+// turned that into a refusal the person had to work around by finding the
+// engine picker. Now the page acts on it: Rendered is picked, the picker's
+// summary says so, and the preview carries the rendered verdict. A hand-picked
+// engine is left alone.
+test.describe('the probe picks the engine', () => {
+  test.use({ serviceWorkers: 'block' });
+
+  async function probeSaysSpa(page, spa) {
+    await page.route('**/manage/create/probe', async route => {
+      const res = await route.fetch();
+      const body = await res.json();
+      body.spa = spa;
+      if (spa) { body.ok = false; body.warning_key = 'create_warn_spa'; }
+      await route.fulfill({ response: res, json: body });
+    });
+    await page.route('**/manage/create/status*', async route => {
+      const res = await route.fetch();
+      const body = await res.json();
+      if (typeof body.browser_ready === 'boolean') body.browser_ready = true;
+      await route.fulfill({ response: res, json: body });
+    });
+  }
+
+  test('a JavaScript shell gets Rendered, and the summary says so', async ({ page }) => {
+    await probeSaysSpa(page, true);
+    await openCreate(page);
+    await page.waitForFunction(() => window._createBrowserReady === true);
+    await pickMode(page, 'page');
+    await page.fill('#create-source', fixtureUrl);
+    await page.locator('#create-source').blur();
+    await expect(page.locator('#create-engine input[value="rendered"]')).toBeChecked({ timeout: 15000 });
+    await expect(page.locator('#create-engine-pick')).toContainText('Rendered');
+    // The picker is folded; the radios are there but not in the way.
+    expect(await page.locator('#create-engine-fold').evaluate(d => d.open)).toBe(false);
+  });
+
+  test('a static page keeps Fast', async ({ page }) => {
+    await probeSaysSpa(page, false);
+    await openCreate(page);
+    await pickMode(page, 'page');
+    await page.fill('#create-source', fixtureUrl);
+    await page.locator('#create-source').blur();
+    await expect(page.locator('.create-preview-box')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('#create-engine input[value=""]')).toBeChecked();
+    await expect(page.locator('#create-engine-pick')).toContainText('Fast');
+  });
+
+  test('a hand-picked engine is not overridden by the probe', async ({ page }) => {
+    await probeSaysSpa(page, true);
+    await openCreate(page);
+    await page.waitForFunction(() => window._createBrowserReady === true);
+    await pickMode(page, 'page');
+    await page.locator('#create-engine-fold').evaluate(d => { d.open = true; });
+    await page.check('#create-engine input[value=""]');
+    await page.evaluate(() => window._createEngineChosen());
+    await page.fill('#create-source', fixtureUrl);
+    await page.locator('#create-source').blur();
+    await expect(page.locator('.create-preview-box')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('#create-engine input[value=""]')).toBeChecked();
   });
 });

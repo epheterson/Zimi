@@ -771,6 +771,7 @@
   "create_engine_alive": "حيّ (يسجّل الجلسة)",
   "create_engine_alive_desc": "يسجّل الجلسة ليظل JavaScript الخاص بالموقع المحفوظ يعمل دون اتصال — تدور المعارض وتفتح القوائم. ينتج أكبر الملفات.",
   "create_engine_fast": "سريع (بدون JavaScript)",
+  "create_engine_change": "Change",
   "create_engine_fast_desc": "خفيف — يعمل في أي مكان. الصفحات المبنية بـ JavaScript تخرج فارغة.",
   "create_engine_missing": "غير مثبَّت على هذا الخادم. لتفعيله:",
   "create_engine_rendered": "بالعرض (يشغّل متصفحًا)",

@@ -771,6 +771,7 @@
   "create_engine_alive": "Lebendig (zeichnet die Sitzung auf)",
   "create_engine_alive_desc": "Zeichnet die Sitzung auf, damit das JavaScript der gespeicherten Seite offline weiterläuft — Karussells drehen sich, Menüs öffnen. Erzeugt die größten Dateien.",
   "create_engine_fast": "Schnell (ohne JavaScript)",
+  "create_engine_change": "Change",
   "create_engine_fast_desc": "Leicht — läuft überall. Per JavaScript gebaute Seiten bleiben leer.",
   "create_engine_missing": "Auf diesem Server nicht installiert. So aktivieren Sie es:",
   "create_engine_rendered": "Gerendert (startet einen Browser)",

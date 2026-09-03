@@ -771,6 +771,7 @@
   "create_engine_alive": "Живой (записывает сеанс)",
   "create_engine_alive_desc": "Записывает сессию, чтобы JavaScript сохранённого сайта работал офлайн — карусели крутятся, меню открываются. Создаёт самые большие файлы.",
   "create_engine_fast": "Быстрый (без JavaScript)",
+  "create_engine_change": "Change",
   "create_engine_fast_desc": "Лёгкий — работает везде. Страницы на JavaScript выходят пустыми.",
   "create_engine_missing": "Не установлен на этом сервере. Чтобы включить:",
   "create_engine_rendered": "С отрисовкой (запускает браузер)",

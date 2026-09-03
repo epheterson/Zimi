@@ -771,6 +771,7 @@
   "create_engine_alive": "Vivant (enregistre la session)",
   "create_engine_alive_desc": "Enregistre la session pour que le JavaScript du site enregistré s'exécute encore hors ligne — carrousels et menus fonctionnent. Produit les plus gros fichiers.",
   "create_engine_fast": "Rapide (sans JavaScript)",
+  "create_engine_change": "Change",
   "create_engine_fast_desc": "Léger — fonctionne partout. Les pages construites en JavaScript ressortent vides.",
   "create_engine_missing": "Non installé sur ce serveur. Pour l'activer :",
   "create_engine_rendered": "Rendu (lance un navigateur)",

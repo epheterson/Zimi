@@ -771,6 +771,7 @@
   "create_engine_alive": "Alive (records the session)",
   "create_engine_alive_desc": "Records the session so the saved site's JavaScript still runs offline — carousels turn, menus open. Makes the biggest files.",
   "create_engine_fast": "Fast (no JavaScript)",
+  "create_engine_change": "Change",
   "create_engine_fast_desc": "Light — runs anywhere. Pages built by JavaScript come out empty.",
   "create_engine_missing": "Not installed on this server. To enable it:",
   "create_engine_rendered": "Rendered (runs a browser)",

@@ -35,7 +35,7 @@ const sandbox = { localStorage: { getItem: () => null, setItem() {}, removeItem(
                   t: (k) => k };
 vm.createContext(sandbox);
 vm.runInContext(SRC.slice(0, cut), sandbox);
-const { _createDoneBytes, _createMetricLive, _createRowGone, _createStoppedText, _createChipTarget } = sandbox;
+const { _createDoneBytes, _createMetricLive, _createRowGone, _createStoppedText, _createChipTarget, _createEngineFor } = sandbox;
 
 let failures = 0;
 function check(ok, label) {
@@ -117,6 +117,18 @@ function eq(got, want, label) {
   check(_createChipTarget('bytes', 769, { done: false, active: true }) === 769, 'a live bytes chip keeps counting');
   check(_createChipTarget('bytes', 769, { done: true, active: false, result: null }) === 769,
         'a failed job has no file; the chip keeps its last honest number');
+}
+
+// The probe picks the engine (design review D1): a JavaScript shell wants
+// Rendered when a browser is there; everything else is Fast; the alive engine
+// is never picked for anyone.
+{
+  check(_createEngineFor({ mode: 'page', spa: true }, true) === 'rendered', 'a JS shell with a browser: rendered');
+  check(_createEngineFor({ mode: 'site', spa: true }, true) === 'rendered', 'same for a site');
+  check(_createEngineFor({ mode: 'page', spa: true }, false) === '', 'no browser: fast, and the probe warning stands');
+  check(_createEngineFor({ mode: 'page', spa: false }, true) === '', 'a static page: fast');
+  check(_createEngineFor({ mode: 'video', spa: true }, true) === '', 'video has no engine');
+  check(_createEngineFor(null, true) === '', 'no probe: fast');
 }
 
 if (failures) { console.error(`\n${failures} failure(s)`); process.exit(1); }
