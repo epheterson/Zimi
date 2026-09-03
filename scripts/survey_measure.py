@@ -132,7 +132,8 @@ def page_facts(page, base, name, shots_dir):
             page.screenshot(path=shots[-1], timeout=20000)
     page.wait_for_timeout(2000)
     facts = page.evaluate(_PAGE_JS)
-    leaked = [m for m in LEAK_MARKERS if m in facts.pop("text_head")]
+    text_head = facts.pop("text_head")
+    leaked = [m for m in LEAK_MARKERS if m in text_head]
     facts.update(
         load_s=load_s,
         leaked=leaked,
