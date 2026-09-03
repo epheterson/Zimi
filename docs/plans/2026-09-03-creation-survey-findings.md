@@ -30,4 +30,14 @@ Keep three, stop making people choose. Fast for the static web (most of it, and 
 
 ## Output (from the survey table; filled as rows land)
 
-_pending the matrix_
+| # | what a person sees | where it comes from | do | status |
+|---|---|---|---|---|
+| O1 | react.dev Quick Start, Fast: every diagram a broken image (0 of 9 painted; Rendered 9 of 9). | Images are `/_next/image?url=…&amp;w=828`, nothing but query string; the same-origin resolver dropped the query and the carrier asked for `/_next/image`. Entities were also left as `&amp;`. | A same-origin reference with a query is fetched whole through the remote reader; entities unescaped before any reference is an address. Re-captured: 9 of 9 rewritten and present. | `29892aa` |
+| O2 | theverge.com front page, Fast: 83.8 MB for one page (Rendered: 3.6 MB). | Each `<img>`'s src and its picked srcset candidate were two different files, both carried; 222 files for 140 images. | src rewritten to the picked file. Re-captured: 37.7 MB, 121 files. Still heavy: `VARIANT_TARGET_WIDTH` 1600 picks a 1600 px file for every slot on a page a phone reads at 780 device px. Candidate: 1200. | `29892aa`, target width open |
+| O3 | Rendered and Alive go silent for 50–86 s (peps 51 s, sivers 49 s, cnn 67 s and 86 s, verge 70 s): no line, no counter, nothing moves. | The browser phase reports nothing between "starting a headless browser" and the result. | Flow: emit what the browser is doing (loaded, settled, scrolled, N requests seen, serialising) at least every few seconds. | open |
+| O4 | solar.lowtechmagazine.com: no images in any engine (0 of 0). | The page itself has no `<img>` tags: the solar site serves a text-only page when its battery is low ("Battery used / Battery charging" in the markup). | Not ours. Compare against the released ZIM for coherence. | not a bug |
+| O5 | medium.com article: 227 characters of text in every engine. | Medium's wall; the page served to a non-browser and to a headless one is the same gate. | Say so at capture time: a page whose text is under a few hundred characters gets a plain warning in the log and on the card ("this looks like a login or consent wall"). | open |
+| O6 | Wikipedia article, Fast: 18 of 24 images painted (Rendered 26 of 26). | Six references not carried; likely the sister-project footer logos (task 51) plus others. | Trace which six. | open |
+| O7 | cheatography.com: 21 of 22 in every engine. | One image never resolves in any engine; likely blocked or dead upstream. | Trace the one. | open |
+| O8 | sh1.org 305 chars, planetmath.org 1232 chars, sqlite.org 1036 chars, xkcd 1171 chars. | Home pages that are mostly navigation or a single comic; text is honest. | Nothing. | not a bug |
+| O9 | foss.cooking: HTTP 522 in Fast; Alive fails with "warc2zim failed (exit 4)" and a log dump. | Origin down at survey time; Alive's failure surfaces a tool trace rather than "the site was down". | Alive: when the recorded session has no 200 for the main page, say the site did not answer; never show the trace. | open |
