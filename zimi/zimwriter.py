@@ -528,10 +528,18 @@ class _AssetCarrier:
         asset_reader,
         remote_reader=None,
         on_progress=None,
+        page_url=None,
     ):
         self._add = add_item
         self._make = item_factory  # (path, mimetype, bytes) -> libzim Item
         self._read = asset_reader
+        # The page's own absolute URL, when the carrier is fetching over HTTP.
+        # A same-origin reference that carries a query string is an address
+        # only the server can interpret — react.dev's images are all
+        # ``/_next/image?url=…&w=828`` — so it is fetched whole, through the
+        # remote reader, rather than as the path the resolver would leave.
+        # None on the export path, where a query means nothing.
+        self._page_url = page_url
         # Optional (absolute_url) -> (bytes, mime) | None. When present, a media
         # ref that isn't same-origin (a CDN-hosted <img>) is fetched through it
         # instead of dropped. None on the bookmark-export path, whose reader
@@ -689,33 +697,37 @@ class _AssetCarrier:
             # _resolve_ref, which would mis-read //host/x as same-origin /host/x
             # and 404 it. Only carried when this carrier has a remote reader
             # (the create path) — a no-op on the export path.
-            r = ref.strip()
-            low = r.lower()
             # An attribute value is HTML-encoded, so a tracking query arrives as
-            # ?a=1&amp;b=2 — unescape before it becomes a fetch URL, or the &amp;
-            # goes on the wire and the CDN 404s (Wikipedia's sister-project
-            # logos carry exactly this).
+            # ?a=1&amp;b=2 — unescape before it becomes an address of any kind,
+            # or the &amp; goes on the wire and the server 404s (Wikipedia's
+            # sister-project logos carry exactly this; so do react.dev's).
+            r = _html.unescape(ref.strip())
+            low = r.lower()
             if low.startswith("http://") or low.startswith("https://"):
-                return self._carry_remote(_html.unescape(r))
+                return self._carry_remote(r)
             if r.startswith("//"):
-                return self._carry_remote("https:" + _html.unescape(r))
+                return self._carry_remote("https:" + r)
+            # Same-origin with a query string: the query IS the address (a
+            # Next.js image is ``/_next/image?url=…&w=828``, nothing else), so
+            # it is fetched whole through the remote reader when the page's
+            # URL is known. _resolve_ref would drop the query and ask for a
+            # path that answers nothing.
+            if "?" in r.split("#", 1)[0] and self._page_url:
+                return self._carry_remote(urllib.parse.urljoin(self._page_url, r))
             # Same-origin: resolve against the article and carry from source.
-            resolved = _resolve_ref(article_path, ref)
+            resolved = _resolve_ref(article_path, r)
             if resolved:
                 return self._carry(zim, resolved)
             return None
 
         def fix_tag(tagm):
             tag = tagm.group(0)
-
-            # Always written back quoted, whatever shape it arrived in: a
-            # rewritten ref is a ZIM path we chose, and quoting it is correct
-            # regardless of what the source page did.
-            def fix_src(m):
-                in_path = carry_ref(m.group("val"))
-                if not in_path:
-                    return m.group(0)
-                return f'{m.group("pre")}"{in_zim_ref(in_path)}"'
+            # One slot, one file. Every browser that reads srcset is served the
+            # picked candidate, never the src — so the src is rewritten to that
+            # same file instead of carried as a second one. theverge.com's
+            # front page was 83.8 MB for 140 images that way: a src and a
+            # picked candidate per slot, two files where one is ever shown.
+            picked_in_path = [None]
 
             def fix_srcset(m):
                 # One candidate, chosen before anything is fetched. This is the
@@ -726,12 +738,22 @@ class _AssetCarrier:
                     return m.group(0)
                 url, descriptor = picked
                 in_path = carry_ref(url)
+                picked_in_path[0] = in_path
                 ref = in_zim_ref(in_path) if in_path else url
                 value = (ref + " " + descriptor).strip()
                 return f'{m.group("pre")}"{attr_quote(value)}"'
 
-            tag = _SRC_RE.sub(fix_src, tag)
+            # Always written back quoted, whatever shape it arrived in: a
+            # rewritten ref is a ZIM path we chose, and quoting it is correct
+            # regardless of what the source page did.
+            def fix_src(m):
+                in_path = picked_in_path[0] or carry_ref(m.group("val"))
+                if not in_path:
+                    return m.group(0)
+                return f'{m.group("pre")}"{in_zim_ref(in_path)}"'
+
             tag = _SRCSET_RE.sub(fix_srcset, tag)
+            tag = _SRC_RE.sub(fix_src, tag)
             return _load_eagerly(tag)
 
         return sub_markup(_MEDIA_TAG_RE, fix_tag, html)

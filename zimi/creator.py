@@ -1354,6 +1354,7 @@ def http_asset_carrier(
         read,
         remote_reader=remote_read,
         on_progress=on_progress,
+        page_url=final_url,
     )
     if carried is not None:
         carrier._carried = carried
