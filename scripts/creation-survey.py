@@ -181,8 +181,13 @@ def compare(ctx, results):
             print("downloading", url, f"({size / 1e6:.0f} MB)", flush=True)
             urllib.request.urlretrieve(url, dest + ".part")
             os.replace(dest + ".part", dest)
+        # Tell the library a file arrived; then wait for it to be listed.
+        try:
+            api("/manage/refresh", {})
+        except Exception as e:
+            print("refresh failed", e, flush=True)
         name = None
-        for _ in range(40):  # the server rescans its library on its own
+        for _ in range(40):
             name = released_name(s.released)
             if name:
                 break
