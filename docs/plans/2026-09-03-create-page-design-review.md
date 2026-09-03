@@ -49,3 +49,17 @@ Each: the element, what the eye does, the pass it fails, the change.
 ## Order of work
 
 D8, D4, D5, D3, D6, D7 are each an hour or less and land first. D1 lands next, as one commit with its probe field. D2 is the reorder and lands last, alone, because it is the change a person will notice most.
+
+## Status
+
+| item | state |
+|---|---|
+| D3 result above the list, list folds to "40 pages" | `38625de`, verified on a phone: card at the top of the pane, Open beside it |
+| D4 no entrance animation | `38625de` |
+| D5 the card names the page, not the file | `38625de`, the server hands back the title the capture found |
+| D6 no tree for one page | `38625de` |
+| D7 the failed phase's dot goes red | `38625de`, with `failed_phase` from the server |
+| D8 site placeholder is a root | `38625de` |
+| D1 the probe chooses the engine | open; the probe already reports `spa` |
+| D2 address first | open |
+| D9 "up to 200 pages" wording | open, least important |
