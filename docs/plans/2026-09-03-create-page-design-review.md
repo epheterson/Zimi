@@ -61,5 +61,5 @@ D8, D4, D5, D3, D6, D7 are each an hour or less and land first. D1 lands next, a
 | D7 the failed phase's dot goes red | `38625de`, with `failed_phase` from the server |
 | D8 site placeholder is a root | `38625de` |
 | D1 the probe chooses the engine | `95a559c`; excalidraw.com picks Rendered with the note "This page builds itself in JavaScript, so the rendered engine is what will capture it."; sqlite.org and react.dev stay Fast; the picker reads "Capture engine · Rendered (runs a browser) · Change" |
-| D2 address first | open |
+| D2 address first | deferred to 1.9.1: the address control lives inside each mode's panel with its own per-mode state, so putting one address above the chips means unifying three inputs and deriving the mode from the probe; a day of form-state work with the highest regression risk on the page, hours before a cut. D1 already removed the decision people could not make. |
 | D9 "up to 200 pages" wording | open, least important |
