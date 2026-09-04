@@ -55,6 +55,7 @@ from zimi.zimwriter import (
     CARRIED_LINK_RELS,
     _AssetCarrier,
     collapse_ad_slots,
+    sub_markup,
     drop_integrity,
     _output_path,
     _page_head,
@@ -1236,6 +1237,42 @@ def _carry_inline_styles(carrier, label, page_path, page):
     return _STYLE_ELEM_RE.sub(fix_block, page)
 
 
+_STYLE_ATTR_RE = attr_re("style")
+
+
+def _carry_style_attrs(carrier, label, page_path, page):
+    """Carry url() assets referenced from ``style="…"`` attributes, the way
+    inline <style> blocks already are. A story's picture set as an inline
+    background is common (solar.lowtechmagazine.com does it for every one),
+    and it used to be left pointing at the web: a blank where the picture
+    belonged. Refs rewrite relative to the article (``../<in-zim path>``)."""
+
+    def fix_url(u):
+        quote, ref = u.group(1), u.group(2).strip()
+        low = ref.lower()
+        if not ref or low.startswith(("data:", "#")):
+            return u.group(0)
+        in_path = None
+        if low.startswith(("http://", "https://")) or ref.startswith("//"):
+            absolute = ("https:" + ref) if ref.startswith("//") else ref
+            in_path = carrier._carry_remote(_html.unescape(absolute))
+        else:
+            resolved = _resolve_ref(page_path, _html.unescape(ref))
+            if resolved:
+                in_path = carrier._carry(label, resolved)
+        if not in_path:
+            return u.group(0)
+        return "url(" + quote + "../" + in_path + quote + ")"
+
+    def fix_attr(m):
+        value = m.group("val")
+        if "url(" not in value.lower():
+            return m.group(0)
+        return f'{m.group("pre")}"{attr_quote(_CSS_URL_RE.sub(fix_url, _html.unescape(value)))}"'
+
+    return sub_markup(_STYLE_ATTR_RE, fix_attr, page)
+
+
 def _externalize_links(page, base_url, resolve=None):
     """Resolve every ``<a href>`` against the page's final URL.
 
@@ -1552,6 +1589,7 @@ def render_captured_page(carrier, page, *, final_url, resolve_link=None):
     page = _relativize_html(page, variants)
     page = _carry_stylesheets(carrier, label, page_path, page)
     page = _carry_inline_styles(carrier, label, page_path, page)
+    page = _carry_style_attrs(carrier, label, page_path, page)
     page = carrier.rewrite_media(label, page_path, page)
     page = _externalize_links(page, final_url, resolve_link)
     return _normalize_charset(collapse_ad_slots(_strip_scripts(page)))

@@ -851,6 +851,8 @@ def test_an_empty_ad_slot_does_not_ship_as_a_black_bar():
     style = out[out.index("<style") : out.index("</style>")]
     # Token-prefix match, so a class that merely CONTAINS the letters is safe.
     assert '[class^="ad-slot"]' in style and '[class*=" ad-slot"]' in style, style
+    # bbc.com's slot is camel-cased by styled-components.
+    assert '[class*="AdSlot"]' in style, style
     assert "thread-slot" not in style
     assert "display:none" in style
     # Lands in <head>, once, and is not added twice.

@@ -239,6 +239,9 @@ def carried_link_rels(tag):
 # which reads as a second, blank header. The slot is hidden. The match is a
 # class-token PREFIX (start of the attribute, or after a space), never a
 # substring: "thread-slot" contains the letters and is not an advertisement.
+# bbc.com names its slot in camel case through styled-components
+# ("AdSlot-styles__AdSlotContainerStyled-sc-…"), and that spelling cannot be
+# part of an ordinary word, so it is matched anywhere in the attribute.
 #
 # The reader's own settle rule (app.js _settleCapturedChrome) hides ad boxes
 # that are `:empty`, and CNN's band is not: it is four nested wrappers around
@@ -247,7 +250,8 @@ def carried_link_rels(tag):
 AD_SLOT_STYLE_ID = "zimi-ad-slots"
 _AD_SLOT_STYLE = (
     f'<style id="{AD_SLOT_STYLE_ID}">'
-    '[class^="ad-slot"],[class*=" ad-slot"],.adsbygoogle,[id^="div-gpt-ad"]'
+    '[class^="ad-slot"],[class*=" ad-slot"],[class*="AdSlot"],[class*="adSlot"],'
+    '.adsbygoogle,[id^="div-gpt-ad"]'
     "{display:none!important}</style>"
 )
 _HEAD_OPEN_RE = re.compile(r"<head\b[^>]*>", re.IGNORECASE)

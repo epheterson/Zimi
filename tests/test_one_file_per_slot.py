@@ -85,5 +85,33 @@ class TestQueryStringsAreTheAddress(unittest.TestCase):
         self.assertEqual(out, html)
 
 
+
+class TestInlineStyleBackgrounds(unittest.TestCase):
+    """solar.lowtechmagazine.com sets every story's picture as
+    ``<div class="featured-img" style="background-image: url('https://…png')">``.
+    The fast engine carried <style> blocks and stylesheets and never looked at
+    a style attribute, so the front page opened with a 350 px blank where each
+    picture belonged (seen in the browser, 2026-09-03 UI pass)."""
+
+    def test_a_background_in_a_style_attribute_is_carried(self):
+        from zimi.creator import _carry_style_attrs
+
+        asked = []
+
+        def remote(url):
+            asked.append(url)
+            return (b"PNG", "image/png")
+
+        c, added = _carrier(remote, page_url="https://solar.lowtechmagazine.com/")
+        page = (
+            '<div class="featured-img" style="background-image: url(\'https://solar.lowtechmagazine.com/2026/04/x/images/dithers/a.png\');"></div>'
+            '<p style="color:red">plain</p>'
+        )
+        out = _carry_style_attrs(c, "lbl", "https://solar.lowtechmagazine.com/", page)
+        self.assertEqual(len(added), 1, added)
+        self.assertIn("url('../_assets/_remote/", out)
+        self.assertNotIn("https://solar.lowtechmagazine.com/2026", out)
+        self.assertIn('<p style="color:red">plain</p>', out)
+
 if __name__ == "__main__":
     unittest.main()
