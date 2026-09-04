@@ -74,3 +74,33 @@ class TestARemoteStylesheetIsCarried(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestACarriedLinkDropsItsIntegrityHash(unittest.TestCase):
+    """docs.docker.com ships ``<link rel=stylesheet integrity="sha256-…">``.
+    The sheet was carried and its url() refs rewritten, so the bytes no
+    longer matched the hash, and the browser refused the sheet: the page
+    opened naked. A carried file is ours; the hash was for the original."""
+
+    def test_integrity_and_crossorigin_go_when_the_href_is_rewritten(self):
+        added = []
+        c = _AssetCarrier(
+            added.append,
+            lambda p, m, d: (p, m, d),
+            lambda zim, resolved: (b"body{}", "text/css"),
+            page_url="https://docs.docker.com/",
+        )
+        page = (
+            '<link rel="stylesheet" href="/css/style.abc.css" '
+            'integrity="sha256-UTrFJFvzc760IwLh3EvF6f4iHPczuDnlbHaRFP&#43;O8Wk=" crossorigin="anonymous">'
+        )
+        out = _carry_stylesheets(c, "lbl", "https://docs.docker.com/get-started/", page)
+        self.assertIn('href="../_assets/', out)
+        self.assertNotIn("integrity", out)
+        self.assertNotIn("crossorigin", out)
+        self.assertIn('rel="stylesheet"', out)
+
+    def test_a_link_left_alone_keeps_its_attributes(self):
+        c = _AssetCarrier(lambda i: None, lambda p, m, d: (p, m, d), lambda z, r: None)
+        page = '<link rel="stylesheet" href="/x.css" integrity="sha256-abc">'
+        self.assertEqual(_carry_stylesheets(c, "lbl", "https://e.com/", page), page)

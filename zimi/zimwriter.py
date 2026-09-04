@@ -213,6 +213,19 @@ _REL_RE = attr_re("rel")
 CARRIED_LINK_RELS = frozenset({"stylesheet", "icon", "apple-touch-icon", "mask-icon"})
 
 
+_INTEGRITY_RE = re.compile(r"""\s+(?:integrity|crossorigin)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)""", re.IGNORECASE)
+
+
+def drop_integrity(tag):
+    """``tag`` without its ``integrity`` and ``crossorigin`` attributes.
+
+    A subresource-integrity hash is for the file the page shipped with. A
+    carried stylesheet has had its url() refs rewritten, so its bytes no
+    longer match, and a browser that finds the hash refuses the whole sheet:
+    docs.docker.com opened naked with its stylesheet sitting in the ZIM."""
+    return _INTEGRITY_RE.sub("", tag)
+
+
 def carried_link_rels(tag):
     """The ``rel`` tokens of a ``<link>`` tag, lower-cased; empty if it has none."""
     m = _REL_RE.search(tag)

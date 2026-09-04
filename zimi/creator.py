@@ -55,6 +55,7 @@ from zimi.zimwriter import (
     CARRIED_LINK_RELS,
     _AssetCarrier,
     collapse_ad_slots,
+    drop_integrity,
     _output_path,
     _page_head,
     _plural,
@@ -1143,7 +1144,9 @@ def _http_remote_reader(timeout):
 
 
 def _replace_href(tag, new_ref):
-    return _HREF_RE.sub(lambda m: f'{m.group("pre")}"{new_ref}"', tag, count=1)
+    # The file behind the new href is ours, and an integrity hash was for
+    # the original (see drop_integrity).
+    return drop_integrity(_HREF_RE.sub(lambda m: f'{m.group("pre")}"{new_ref}"', tag, count=1))
 
 
 # Link relations that are advice to a live browser, never content. Offline a

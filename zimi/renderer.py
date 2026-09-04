@@ -93,6 +93,7 @@ from zimi.zimwriter import (
     attr_re,
     carried_link_rels,
     collapse_ad_slots,
+    drop_integrity,
     make_asset_item,
 )
 
@@ -2417,6 +2418,8 @@ def _rewrite_asset_tags(assets, html):
             return tag
         for attr in ("src", "poster", "data") if not is_link else ("href",):
             tag = _attr_re(attr).sub(lambda am: _fix_ref(assets, am), tag)
+        if is_link and "../" in tag:
+            tag = drop_integrity(tag)  # the sheet is ours now; the hash was for theirs
         tag = _attr_re("srcset").sub(lambda am: _fix_srcset(assets, am), tag)
         return tag
 
