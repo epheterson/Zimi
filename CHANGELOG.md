@@ -11,6 +11,7 @@ Zimi grows up: it runs from a folder of ZIMs with no configuration, proves itsel
 
 ### Added
 
+- **ZIM creation (beta).** Paste an address and get a ZIM: one page, a list of pages, a whole site (bounded, polite, robots-aware), a video playlist or channel, your bookmarks, or a folder on the server. Three engines — a plain fetch, a real browser laying the page out, or a recorded browser session that keeps the site's own JavaScript working offline — and the page picks one for you after looking at the address. Pages come out looking like the site: stylesheets from a CDN, pictures set by CSS or loaded lazily, and a layout that fits a phone. Ads and trackers are refused at capture time. Every ZIM carries openZIM-conformant metadata, an icon, and a birth record naming the tools that made it. `zimi create` and `zimi import` do the same from the command line; `zimi import` converts WARC and WACZ from any crawler. Marked beta in the app, with a link that files an issue about a site that captured badly.
 - **Zero-configuration serving.** `zimi serve` in or beside a folder of ZIMs just works: the directory is discovered, state lands in a `.zimi` folder beside the content or in a per-user cache when the media is read-only. `zimi config` prints every effective setting and exactly where it came from — flag, environment, config file, discovery, or default.
 - **The config file grew up.** manage, credentials, API token, offline, hot ZIMs and index throttle join the path and bind settings in `zimi.json`, with environment variables always winning and secrets masked in `zimi config` output.
 - **`ZIMI_OFFLINE=1`, a provable air gap.** No torrent stack, no NAT probing, no update checks, no catalog or thumbnail fetches — verified by a test that records every outbound socket. `scripts/make-airgap-bundle.sh` builds a wheels-only installer that refuses to include anything needing a network to install.
@@ -19,8 +20,6 @@ Zimi grows up: it runs from a folder of ZIMs with no configuration, proves itsel
 - **App update awareness (#76).** Manage shows the current version and checks for releases on demand, with instructions matched to how Zimi was installed. Two channels, Latest and Beta, and an update delay that holds a release until it has been public for a chosen number of days.
 - **Folders are categories.** A subfolder of the library files its folder name as a library section, no configuration, with per-ZIM overrides still winning. Quarantine and staging folders are excluded by a deny list and a `.nozim` marker.
 - **In-article bookmarks (#65).** The reader chrome gains a bookmark button that opens your tree over the article.
-- **ZIM creation (beta).** Paste an address and get a ZIM: one page, a list of pages, a whole site (bounded, polite, robots-aware), a video playlist or channel, your bookmarks, or a folder on the server. Three engines — a plain fetch, a real browser laying the page out, or a recorded browser session that keeps the site's own JavaScript working offline — and the page picks one for you after looking at the address. `zimi create` and `zimi import` do the same from the command line; `zimi import` converts WARC and WACZ from any crawler. Ads and trackers are refused at capture time. Every ZIM carries openZIM-conformant metadata, an icon, and a birth record naming the tools that made it.
-- **Creation is marked beta in the app,** with a link that files an issue about a site that captured badly. It has met twenty-six sites; the web is bigger.
 - **Sharing created and exported ZIMs.** Export cards carry a Download button, and other Zimi instances on the LAN list them under On nearby devices.
 - **A release gate.** `scripts/release-gate.sh` boots real servers against a real fixture library and drives search, reading, cross-ZIM resolution, language switching, creation, export, deletion, offline silence and authentication end to end before any release is tagged.
 - **Sign-in through Cloudflare Access** (optional, off until configured): Zimi verifies the tunnel's signed identity header and signs people into ordinary Zimi accounts.
@@ -30,7 +29,7 @@ Zimi grows up: it runs from a folder of ZIMs with no configuration, proves itsel
 - **Same-name collisions pick the richest build.** Two editions of one source resolve by flavor (maxi over nopic over mini) then by newer date, instead of by accidental alphabetical order.
 - **Media serving is bounded.** A large video is served in windows, with Range, instead of being materialized in memory while every other reader waits.
 - **Deleting a ZIM is a splice,** not a re-scan of every archive under the global lock.
-- **Entry mimetypes are spec-clean,** satisfying the ZIM Counter grammar and removing a latent mojibake risk for non-UTF-8 captures.
+- **Entry mimetypes are spec-clean.** Every ZIM Zimi writes, bookmark exports included, declares a bare text/html and puts the charset in the document, satisfying the ZIM Counter grammar.
 - **`/manage/stats` is cheap by default,** with the expensive per-index walk behind a detail flag.
 
 ### Security
@@ -48,10 +47,6 @@ Zimi grows up: it runs from a folder of ZIMs with no configuration, proves itsel
 - **The orrery obeys the time machine (#48).**
 - **Exported bookmarks never dangle.** A link to an article left out of an export becomes that article's canonical address, which resolves back into the installed source ZIM when read inside Zimi.
 - **Cross-ZIM link resolution actually reaches the browser.** The domain map behind it was an import-time snapshot a normal boot never refreshed; the whole class of staleness is now prevented structurally.
-- **Captured pages look like the site.** Stylesheets on a CDN, pictures set by CSS, lazy-loaded pictures, picture variants, meta refreshes and references that climb above the site root are all handled; a page with no viewport meta is scaled to fit a phone; a captured site keeps its own colours in dark mode.
-- **A capture cannot take the server down.** A pathological inline stylesheet made an attribute scan quadratic and stalled the server for twenty minutes in testing; it is linear now, with a timing test.
-- **Captured video plays from its first byte,** instead of after the whole file has loaded.
-- **A site that is down says so,** and a page that is really a login or consent wall is named as one.
 - **Seeding shows the live upload rate** next to connected peers, with the lifetime total in one place.
 - **Idle instances with torrenting enabled no longer fetch the catalog at boot,** and a disconnecting reader is a debug line rather than a stack trace.
 
