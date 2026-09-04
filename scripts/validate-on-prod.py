@@ -140,6 +140,8 @@ def look(page, name):
         imgs: d.images.length, painted: [...d.images].filter(i => i.naturalWidth > 0).length,
         text: (d.body.innerText || '').length,
         innerTitle: d.title,
+        darken: !!d.getElementById('zimi-article-darken'),
+        bodyBg: w.getComputedStyle(d.body).backgroundColor,
       };
     }""")
     page.remove_listener("response", on_resp)
@@ -231,6 +233,26 @@ def main():
         old = page.evaluate(
             "(() => { const d=document.querySelector('iframe').contentDocument; return {title:d.title, imgs:d.images.length}; })()"
         )
+        # Eric's phone is Safari in dark mode. Eleven gates passed in light
+        # mode while CNN opened black with no pictures and Apple's portraits
+        # came out as negatives on his phone (2026-09-03): the reader's dark
+        # invert filter. A captured site keeps its own colours; every picture
+        # still paints.
+        dark_ctx = browser.new_context(
+            viewport=PHONE, extra_http_headers=HDR, device_scale_factor=2, color_scheme="dark"
+        )
+        dark_ctx.add_init_script(STANDALONE_SHIM)
+        dpage = dark_ctx.new_page()
+        dfacts, dt_load, dt_all, dnreq, dtotal = look(dpage, name)
+        dpage.screenshot(path="/tmp/validate-cnn-dark.png")
+        verdict(
+            "dark mode, the way Eric's phone opens it",
+            (not dfacts["darken"]) and dfacts["painted"] == dfacts["imgs"] and dfacts["topbars"] == 1,
+            f"invert filter {'ON' if dfacts['darken'] else 'off'}, page body {dfacts['bodyBg']}, "
+            f"images {dfacts['painted']}/{dfacts['imgs']}, load {dt_load:.1f}s, painted {dt_all:.1f}s",
+        )
+        dark_ctx.close()
+
         verdict(
             "yesterday's capture still opens", "CNN" in old["title"], json.dumps(old)
         )
