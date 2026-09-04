@@ -212,3 +212,25 @@ class TestNoAssetCanEndAJob(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTheMaskIsNotAWhitespaceDesert(unittest.TestCase):
+    """cnn.com's page carries a 2.5 MB inline stylesheet. Masking it to
+    spaces handed every attribute scanner a run of 2.5 million spaces, and a
+    pattern with a leading ``\\s*`` walks such a run quadratically: the
+    style-attribute carry never returned, the create job never finished, and
+    the server stopped answering (prod, 2026-09-03, 18:02). The mask keeps
+    its length and hides its markup, in a filler no pattern wants."""
+
+    def test_a_masked_megabyte_scans_in_well_under_a_second(self):
+        import time
+
+        from zimi.zimwriter import attr_re
+
+        page = "<div style='color:red'>" + "<style>" + "a{}" * 700_000 + "</style>" + '<p style="x:url(a.png)">t</p>'
+        masked = mask_raw_text(page)
+        self.assertEqual(len(masked), len(page))
+        t = time.monotonic()
+        hits = [m.group("val") for m in attr_re("style").finditer(masked)]
+        self.assertLess(time.monotonic() - t, 1.0)
+        self.assertEqual(hits, ["color:red", "x:url(a.png)"])

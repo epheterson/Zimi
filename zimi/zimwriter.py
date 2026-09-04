@@ -171,8 +171,17 @@ _RAW_TEXT_RE = re.compile(
 _COMMENT_RE = re.compile(r"(?s)(?P<open><!--)(?P<body>.*?)(?P<close>-->)")
 
 
+# The filler is NOT a space. cnn.com's page carries a 2.5 MB inline stylesheet;
+# masked to spaces it handed every attribute scanner a run of 2.5 million
+# spaces, and a pattern with a leading \s* walks such a run quadratically —
+# the style-attribute carry never returned and the server stopped answering
+# (prod, 2026-09-03). A tilde is not whitespace, not a quote, not a bracket
+# and not a word character, so no scanner has any reason to step into it.
+MASK_FILLER = "~"
+
+
 def _blank_body(m):
-    return m.group("open") + " " * len(m.group("body")) + m.group("close")
+    return m.group("open") + MASK_FILLER * len(m.group("body")) + m.group("close")
 
 
 def mask_raw_text(html):
