@@ -14782,6 +14782,34 @@ function openReader(url) {
       ]).concat([
         '#zimi-top{position:fixed;bottom:20px;right:20px;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;border:none;font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:9999;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}'
       ]).join('');
+      // A page with no viewport meta was laid out for a desktop: xkcd's comic
+      // sits in a 780px table. A phone browser shows such a page zoomed out to
+      // fit; inside this frame it was clipped at the right edge instead, half
+      // the comic gone (seen 2026-09-03). Scale the document to the frame the
+      // way the phone would, only when the page did not say it is responsive.
+      // Measured BEFORE the overflow rule below hides the overflow it measures.
+      try {
+        var _d = frame.contentDocument, _w = frame.contentWindow;
+        if (!_isWebMirror && !_d.querySelector('meta[name="viewport"]')) {
+          // The page's real width is the furthest right edge anything reaches
+          // (a centred fixed-width table overflows both sides equally, and the
+          // document's scrollWidth reports only the right-hand spill).
+          var _wide = _d.documentElement.scrollWidth, _have = _w.innerWidth;
+          var _all = _d.body ? _d.body.getElementsByTagName('*') : [];
+          for (var _i = 0; _i < _all.length && _i < 3000; _i++) {
+            var _r = _all[_i].getBoundingClientRect();
+            // Its extent, counting spill to the left of the frame (a centred
+            // table spills both ways). Anything parked far off-screen — a
+            // skip link at -9999px — is not layout and is ignored.
+            if (_r.width <= 0 || _r.left < -_have * 2 || _r.right > _have * 6) continue;
+            var _extent = _r.right - Math.min(_r.left, 0);
+            if (_extent > _wide) _wide = _extent;
+          }
+          if (_wide > _have + 8 && _have > 0) {
+            _d.documentElement.style.zoom = String(_have / _wide);
+          }
+        }
+      } catch(e) {}
       frame.contentDocument.head.appendChild(_rStyle);
       var _topBtn = frame.contentDocument.createElement('button');
       _topBtn.id = 'zimi-top';
