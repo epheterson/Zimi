@@ -1542,5 +1542,5 @@
   "create_warn_thin_page": "可读文本仅 {n} 个字符：这可能是登录、同意或付费墙页面，而不是文章本身。",
   "create_report_site": "告诉我们这个网站的情况",
   "create_beta_tag": "测试版",
-  "create_beta_note": "1.9 新增。已在二十六个网站上测试；网络远不止这些。如果某个网站抓取效果不好，"
+  "create_beta_issues": "查看问题"
 }
