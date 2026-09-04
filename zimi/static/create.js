@@ -1365,11 +1365,9 @@ function _renderCreate() {
       // isn't beta, just that feature").
       '<div class="create-beta">' +
         '<span class="create-beta-tag">' + tH('create_beta_tag') + '</span>' +
-        '<span class="create-beta-note">' +
-          '<a href="' + escAttr(CREATE_ISSUES_LIST_URL) + '" target="_blank" rel="noopener">' +
-            tH('create_beta_issues') + '</a> · ' +
+        '<span class="create-beta-note">' + tH('create_beta_ask') + ' ' +
           '<a href="' + escAttr(CREATE_ISSUES_URL + '?title=' + encodeURIComponent('Capture: ')) + '" target="_blank" rel="noopener">' +
-            tH('create_report_site') + '</a></span>' +
+            tH('create_beta_report') + '</a>.</span>' +
       '</div>' +
       '<div id="create-picker" class="create-picker">' +
         // The address is the job, so it is the first field, and there is one
@@ -3014,7 +3012,6 @@ function _createFoldTree(wrap, s) {
 // The link fills the issue in — address, how it was asked for, what it said —
 // and opens GitHub in a new tab. Nothing is sent by itself.
 var CREATE_ISSUES_URL = 'https://github.com/epheterson/Zimi/issues/new';
-var CREATE_ISSUES_LIST_URL = 'https://github.com/epheterson/Zimi/issues';
 
 function _createReportUrl(s, what) {
   var source = (s && s.source) || '';

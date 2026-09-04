@@ -1542,5 +1542,6 @@
   "create_warn_thin_page": "केवल {n} अक्षरों का पठनीय पाठ: यह लेख के बजाय लॉगिन, सहमति या पेवॉल पृष्ठ हो सकता है।",
   "create_report_site": "हमें इस साइट के बारे में बताएं",
   "create_beta_tag": "बीटा",
-  "create_beta_issues": "समस्याएँ देखें"
+  "create_beta_ask": "कोई समस्या दिखी?",
+  "create_beta_report": "हमें बताएं कि कौन सी साइट है"
 }

@@ -1542,5 +1542,6 @@
   "create_warn_thin_page": "Seulement {n} caractères de texte lisible : il s’agit peut-être d’une page de connexion, de consentement ou d’un mur payant plutôt que de l’article.",
   "create_report_site": "Signalez-nous ce site",
   "create_beta_tag": "Bêta",
-  "create_beta_issues": "Voir les problèmes"
+  "create_beta_ask": "Un problème ?",
+  "create_beta_report": "Dites-nous de quel site il s’agit"
 }

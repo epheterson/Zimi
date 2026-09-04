@@ -1542,5 +1542,6 @@
   "create_warn_thin_page": "Apenas {n} caracteres de texto legível: pode ser uma página de login, consentimento ou paywall em vez do artigo.",
   "create_report_site": "Conte-nos sobre este site",
   "create_beta_tag": "Beta",
-  "create_beta_issues": "Ver problemas"
+  "create_beta_ask": "Viu problemas?",
+  "create_beta_report": "Conte-nos de que site se trata"
 }
