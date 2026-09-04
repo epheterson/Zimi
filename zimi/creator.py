@@ -1202,6 +1202,13 @@ def _carry_stylesheets(carrier, label, page_path, page):
             remote = ("https:" + href) if href.startswith("//") else href
             in_path = carrier._carry_remote(remote)
             return _replace_href(tag, "../" + in_path) if in_path else tag
+        # Same origin with a query string: the query IS the address
+        # (Wikipedia's sheet is /w/load.php?modules=…); fetched whole, like
+        # a picture with one (see _AssetCarrier.rewrite_media).
+        page_url = getattr(carrier, "_page_url", None)
+        if "?" in href.split("#", 1)[0] and page_url:
+            in_path = carrier._carry_remote(urllib.parse.urljoin(page_url, href))
+            return _replace_href(tag, "../" + in_path) if in_path else tag
         resolved = _resolve_ref(page_path, href)
         if not resolved:
             return tag

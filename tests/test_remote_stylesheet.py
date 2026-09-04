@@ -104,3 +104,28 @@ class TestACarriedLinkDropsItsIntegrityHash(unittest.TestCase):
         c = _AssetCarrier(lambda i: None, lambda p, m, d: (p, m, d), lambda z, r: None)
         page = '<link rel="stylesheet" href="/x.css" integrity="sha256-abc">'
         self.assertEqual(_carry_stylesheets(c, "lbl", "https://e.com/", page), page)
+
+
+class TestAQueryStringStylesheetIsCarried(unittest.TestCase):
+    """en.wikipedia.org's stylesheet is ``/w/load.php?lang=en&modules=…``:
+    same origin, nothing but query string. The stylesheet carrier resolved
+    it to ``w/load.php`` and carried the wrong thing, and the article opened
+    naked (seen in the browser, 2026-09-03 UI pass). Same rule as pictures:
+    the query is the address, fetch it whole."""
+
+    def test_the_sheet_is_fetched_whole_and_the_link_rewritten(self):
+        asked = []
+
+        def remote(url):
+            asked.append(url)
+            return (b"body{color:red}", "text/css")
+
+        c = _AssetCarrier(
+            lambda i: None, lambda p, m, d: (p, m, d), lambda z, r: None,
+            remote_reader=remote, page_url="https://en.wikipedia.org/wiki/Water_purification",
+        )
+        page = '<link rel="stylesheet" href="/w/load.php?lang=en&amp;modules=site.styles&amp;only=styles&amp;skin=vector-2022">'
+        out = _carry_stylesheets(c, "lbl", "https://en.wikipedia.org/wiki/Water_purification", page)
+        self.assertEqual(asked, ["https://en.wikipedia.org/w/load.php?lang=en&modules=site.styles&only=styles&skin=vector-2022"])
+        self.assertIn('href="../_assets/_remote/', out)
+        self.assertNotIn("load.php", out)
