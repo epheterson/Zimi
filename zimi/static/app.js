@@ -202,10 +202,21 @@ var _ARTICLE_DARKEN_CSS = [
   'html{background:#ffffff !important;filter:invert(1) hue-rotate(180deg) !important;',
     '-webkit-filter:invert(1) hue-rotate(180deg) !important}',
   // Counter-invert media + anything painting its own image so photos, diagrams,
-  // maps and icons keep true colour under the root flip.
-  'img,video,picture,canvas,svg,image,embed,object,iframe,',
-  '[style*="background-image"]{filter:invert(1) hue-rotate(180deg) !important;',
+  // maps and icons keep true colour under the root flip. Filters COMPOUND down
+  // the tree: a counter-inverted <picture> holding a counter-inverted <img>
+  // flipped the photo back to a negative — apple.com's portraits on Eric's
+  // phone (2026-09-03). So <picture> is not in the list (its <img> is what
+  // paints), and nothing inside a counter-inverted element is filtered again.
+  // Elements whose STYLESHEET paints a picture (a hero as a class background)
+  // are marked by _applyArticleDarken, since a selector cannot see computed
+  // style.
+  'img,video,canvas,svg,image,embed,object,iframe,',
+  '[style*="background-image"],[data-zimi-bgimg]{filter:invert(1) hue-rotate(180deg) !important;',
     '-webkit-filter:invert(1) hue-rotate(180deg) !important}',
+  '[style*="background-image"] img,[style*="background-image"] video,[style*="background-image"] svg,',
+  '[style*="background-image"] canvas,[data-zimi-bgimg] img,[data-zimi-bgimg] video,',
+  '[data-zimi-bgimg] svg,[data-zimi-bgimg] canvas,[data-zimi-bgimg] [data-zimi-bgimg],',
+  '[style*="background-image"] [style*="background-image"]{filter:none !important;-webkit-filter:none !important}',
   // MediaWiki math is black line-art on a TRANSPARENT ground — an <img> fallback
   // (caught by the img rule above) or an inline <svg>. It must invert WITH the
   // page like text, NOT be counter-inverted, or the glyphs stay black on the dark
@@ -238,9 +249,40 @@ function _articleDeclaresDark(doc) {
   } catch (e) {}
   return false;
 }
+// A picture painted by a stylesheet rule (apple.com's hero is a class with a
+// background image) is invisible to the counter-invert selector, which can
+// only see inline style. Mark such elements so the stylesheet rule can find
+// them. Bounded walk; a gradient is not a picture.
+var _BGIMG_SCAN_MAX = 4000;
+function _markStylesheetPictures(doc) {
+  try {
+    var win = doc.defaultView;
+    var all = doc.body ? doc.body.getElementsByTagName('*') : [];
+    for (var i = 0; i < all.length && i < _BGIMG_SCAN_MAX; i++) {
+      var el = all[i];
+      if (el.hasAttribute('data-zimi-bgimg')) continue;
+      var st = el.getAttribute('style') || '';
+      if (st.indexOf('background-image') !== -1) continue;   // the selector sees it
+      var bg = win.getComputedStyle(el).backgroundImage;
+      if (bg && bg !== 'none' && bg.indexOf('url(') !== -1) el.setAttribute('data-zimi-bgimg', '1');
+    }
+  } catch (e) {}
+}
 // Apply or remove the dark adaptation on a raw article document. No-op for
 // Reader View (it owns its themes), PDF/static viewer pages, and pages that ship
 // their own dark scheme. Idempotent — safe to call on any frame.onload or toggle.
+// A website Zimi captured is a designed page, not an article to adapt: cnn.com
+// and apple.com on Eric's phone in dark mode (2026-09-03) came out as a black
+// page with no pictures and a hero with negative portraits, after a gate in
+// light mode had passed them. The invert is for wiki-style article ZIMs whose
+// pages have no design of their own. Created ZIMs and bookmark exports keep
+// their colours; the app chrome around them stays dark.
+function _articleIsWebCapture() {
+  try {
+    var z = currentArticle && _zimsByName && _zimsByName.get(currentArticle.zim);
+    return !!(z && (z.category === 'Created' || z.zimi_export));
+  } catch (e) { return false; }
+}
 function _applyArticleDarken(doc) {
   if (!doc || !doc.documentElement) return;
   var existing = doc.getElementById(_ARTICLE_DARKEN_STYLE_ID);
@@ -249,6 +291,7 @@ function _applyArticleDarken(doc) {
     var loc = '';
     try { loc = doc.defaultView.location.pathname; } catch (e) {}
     if (loc.indexOf('/static/') === 0) want = false;         // pdf.js / viewers
+    else if (_articleIsWebCapture()) want = false;            // a site keeps its design
     else if (_articleDeclaresDark(doc)) want = false;         // already dark
   }
   if (want) {
@@ -258,6 +301,7 @@ function _applyArticleDarken(doc) {
       st.textContent = _ARTICLE_DARKEN_CSS;
       doc.head.appendChild(st);
     }
+    _markStylesheetPictures(doc);
   } else if (existing && existing.parentNode) {
     existing.parentNode.removeChild(existing);
   }
