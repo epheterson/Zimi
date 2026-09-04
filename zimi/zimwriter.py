@@ -537,7 +537,17 @@ def _resolve_ref(base_path, ref):
     if ref.startswith("/"):
         return ref.lstrip("/")
     base_dir = posixpath.dirname(base_path)
-    return posixpath.normpath(posixpath.join(base_dir, ref)).lstrip("/")
+    resolved = posixpath.normpath(posixpath.join(base_dir, ref)).lstrip("/")
+    # A reference that climbs above the site root stops at the root, as it
+    # does in a browser: permacomputing.net's front page says
+    # ``<img src="../pmclogo-neau.png">`` and every browser shows the logo
+    # from /pmclogo-neau.png. Left as ``../…`` the carrier fetched nothing and
+    # the reader showed the alt text (survey, 09-03).
+    while resolved.startswith("../"):
+        resolved = resolved[3:]
+    if resolved in ("", ".", ".."):
+        return None
+    return resolved
 
 
 # Extensions worth keeping on a hashed remote-asset name when the URL path

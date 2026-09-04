@@ -94,6 +94,16 @@ ROUTES = {
         b'<meta http-equiv="refresh" content="10; url=/blog/post.html">'
         b"</head><body><p>We have moved. You will be taken there in ten seconds.</p></body></html>",
     ),
+    "/top.html": (
+        200,
+        "text/html; charset=utf-8",
+        (
+            "<html><head><title>Top</title></head><body>"
+            f"<p>{FILLER}</p>"
+            '<img src="../logo.png" alt="permaflower"></body></html>'
+        ).encode(),
+    ),
+    "/logo.png": (200, "image/png", b"LOGOBYTES"),
     "/spa.html": (200, "text/html; charset=utf-8", SPA.encode()),
     "/static/style.css": (
         200,
@@ -969,3 +979,20 @@ def test_meta_refresh_spellings():
     assert t('<meta http-equiv="refresh" content="30">', base) is None
     assert t('<meta http-equiv="refresh" content="900; url=/again">', base) is None
     assert t('<meta name="refresh" content="0; url=/no">', base) is None
+
+
+def test_a_reference_that_climbs_above_the_root_stops_at_the_root(fixture_server, tmp_path):
+    """permacomputing.net's front page: ``<img src="../pmclogo-neau.png">``.
+    Every browser shows /pmclogo-neau.png; the capture carried nothing and the
+    reader showed the alt text (survey, 09-03)."""
+    from zimi.zimwriter import _resolve_ref
+
+    assert _resolve_ref("index.html", "../logo.png") == "logo.png"
+    assert _resolve_ref("a/b.html", "../../../x/y.png") == "x/y.png"
+    assert _resolve_ref("a/b.html", "../c.png") == "c.png"
+    assert _resolve_ref("index.html", "..") is None
+    info = creator.create_page_zim(f"{BASE}/top.html", out_dir=str(tmp_path))
+    arc = Archive(info["path"])
+    page = _entry_text(arc, "A/index")
+    assert 'src="../_assets/127_0_0_1/logo.png"' in page, page
+    assert bytes(arc.get_entry_by_path("_assets/127_0_0_1/logo.png").get_item().content) == b"LOGOBYTES"
