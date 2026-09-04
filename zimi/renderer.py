@@ -1190,6 +1190,9 @@ class RenderedSession:
             # page. So the one record a capture must not lose is taken while it
             # is certainly still there.
             self._landed = _landed_body(landed)
+            refusal = _refused_status(url, landed)
+            if refusal:
+                raise CreateError(refusal)
             # Asked before the settling, not after: there is nothing to wait
             # for on a page the server refused, and fifteen seconds of quiet
             # timeouts and lazy-scrolling an error string is fifteen seconds
@@ -1945,6 +1948,22 @@ def _playwright_reason(exc):
     text = str(exc or "").strip()
     first = text.splitlines()[0] if text else "the browser gave no reason"
     return first[:200]
+
+
+def _refused_status(url, landed):
+    """A main document the server would not serve, said in the site's terms.
+
+    foss.cooking answered 522 during the survey (2026-09-03). The fast engine
+    said so; the alive engine recorded the error page, handed it to warc2zim,
+    and surfaced ``warc2zim failed (exit 4)`` with a tool trace — a site that
+    was down, reported as a converter bug. The status of the navigation is
+    known the moment it lands, and a 4xx/5xx document is not the page."""
+    status = getattr(landed, "status", None) if landed is not None else None
+    if not isinstance(status, int) or status < 400:
+        return ""
+    host = urllib.parse.urlsplit(url).netloc or url
+    what = "did not answer" if status >= 500 else "refused the request"
+    return f"{host} {what} (HTTP {status}); nothing was captured"
 
 
 def _refused_page(page):

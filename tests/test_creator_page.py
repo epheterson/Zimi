@@ -74,6 +74,12 @@ LEGACY = (
 
 ROUTES = {
     "/blog/post.html": (200, "text/html; charset=utf-8", PAGE.encode()),
+    "/gate.html": (
+        200,
+        "text/html; charset=utf-8",
+        b"<html><head><title>Sign in</title></head><body>"
+        b"<form><input name=email><button>Continue</button></form></body></html>",
+    ),
     "/spa.html": (200, "text/html; charset=utf-8", SPA.encode()),
     "/static/style.css": (
         200,
@@ -893,3 +899,31 @@ def test_singlefile_refuses_an_address_that_reads_as_an_option():
     # And a real address is not caught by the guard.
     _check_url("https://www.apple.com/")
     _check_url("http://127.0.0.1:8899/w/x")
+
+
+def test_a_page_with_almost_no_text_is_named_as_a_gate(fixture_server, tmp_path):
+    """medium.com served 227 characters to every engine (survey, 09-03): the
+    capture finished green and the person found the wall by opening the ZIM.
+    The wall is named in the job's own log, at capture time."""
+    said = []
+    info = creator.create_page_zim(
+        f"{BASE}/gate.html", out_dir=str(tmp_path), progress=said.append
+    )
+    assert os.path.exists(info["path"])
+    gate = [m for m in said if "characters of text" in m]
+    assert gate and "gate" in gate[0], said
+    # A real article says nothing of the kind.
+    said.clear()
+    creator.create_page_zim(
+        f"{BASE}/blog/post.html", out_dir=str(tmp_path), progress=said.append
+    )
+    assert not [m for m in said if "characters of text" in m], said
+
+
+def test_the_wall_line_is_a_count_not_a_guess():
+    from zimi.creator import WALL_TEXT_CHARS, wall_note
+
+    assert wall_note("<html><body><p>hi</p></body></html>").startswith("only 2 characters")
+    assert wall_note("<p>" + "x" * WALL_TEXT_CHARS + "</p>") is None
+    # Script and style bodies are not text a reader sees.
+    assert wall_note("<script>" + "x" * 5000 + "</script><p>hi</p>") is not None

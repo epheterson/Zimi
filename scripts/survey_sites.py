@@ -1,6 +1,6 @@
-"""The 20 sites and 74 jobs of the creation survey. Data only.
+"""The 26 sites and 104 jobs of the creation survey. Data only.
 
-Chosen so every failure mode has a representative: six sites Kiwix publishes
+Chosen so every failure mode has a representative: twelve sites Kiwix publishes
 a zimit-made ZIM for (size and coherence can be compared), five static docs
 and blogs, five JavaScript-heavy or news homepages, four awkward shapes.
 """
@@ -27,6 +27,12 @@ SITES = [
     ),
     Site("fosscooking", "https://foss.cooking/", "released", "foss.cooking_en_all"),
     Site("sh1", "https://sh1.org/", "released", "sh1.org_en_all"),
+    Site("gobyexample", "https://gobyexample.com/", "released", "gobyexample.com_en_all"),
+    Site("devhints", "https://devhints.io/", "released", "devhints.io_en_all"),
+    Site("basedcooking", "https://based.cooking/", "released", "based.cooking_en_all"),
+    Site("grimgrains", "https://grimgrains.com/", "released", "grimgrains_en_all"),
+    Site("bootstrap", "https://getbootstrap.com/", "released", "getbootstrap.com_en_all"),
+    Site("permacomputing", "https://permacomputing.net/", "released", "permacomputing.net_en_all"),
     Site("sqlite", "https://www.sqlite.org/", "static", ""),
     Site("sivers", "https://sive.rs/n", "static", ""),
     Site("pg", "https://paulgraham.com/articles.html", "static", ""),

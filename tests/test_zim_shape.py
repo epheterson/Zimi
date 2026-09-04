@@ -173,8 +173,23 @@ class TestBreakdown(unittest.TestCase):
         self.assertNotIn("sampled", shape)
         self.assertEqual(shape["entries"], 100)
         by = {b["key"]: b for b in shape["breakdown"]}
-        self.assertEqual(by["images"]["size_bytes"], 5000)
+        # 5,000 of 5,500 content bytes are images; the file (1,000,000 bytes
+        # here) is what the bar divides, so images are 5000/5500 of the file.
+        self.assertEqual(shape["content_bytes"], 5500)
+        self.assertEqual(by["images"]["size_bytes"], round(1_000_000 * 5000 / 5500))
         self.assertEqual(by["images"]["count"], 50)
+
+    def test_the_parts_add_up_to_the_file(self):
+        """Eric's gate on the done card: WHAT'S INSIDE listed 552.5 KB of parts
+        inside a 498.2 KB whole. Parts were content bytes, the whole was the
+        compressed file, and nothing said so. The parts are shares of the file."""
+        entries = [_FakeEntry("image/png", 300) for _ in range(10)]
+        entries += [_FakeEntry("text/html", 100) for _ in range(10)]
+        entries += [_FakeEntry("text/css", 50) for _ in range(10)]
+        shape = self._breakdown(entries, exact_max=1000)
+        parts = sum(b["size_bytes"] for b in shape["breakdown"])
+        self.assertLessEqual(abs(parts - shape["file_bytes"]), len(shape["breakdown"]))
+        self.assertEqual(shape["content_bytes"], 4500)
 
     def test_redirects_are_not_counted_as_content(self):
         entries = [_FakeEntry("text/html", 10) for _ in range(10)]
@@ -198,8 +213,10 @@ class TestBreakdown(unittest.TestCase):
         entries = [_FakeEntry("image/png", 100) for _ in range(50_000)]
         shape = self._breakdown(entries, exact_max=1000)
         by = {b["key"]: b for b in shape["breakdown"]}
-        # Truth is 50,000 × 100 = 5,000,000 bytes across 50,000 entries.
-        self.assertAlmostEqual(by["images"]["size_bytes"] / 5_000_000, 1.0, delta=0.05)
+        # Truth is 50,000 × 100 = 5,000,000 content bytes across 50,000
+        # entries, all of it images — so images are the whole 1,000,000-byte file.
+        self.assertAlmostEqual(shape["content_bytes"] / 5_000_000, 1.0, delta=0.05)
+        self.assertAlmostEqual(by["images"]["size_bytes"] / 1_000_000, 1.0, delta=0.05)
         self.assertAlmostEqual(by["images"]["count"] / 50_000, 1.0, delta=0.05)
         self.assertAlmostEqual(shape["entries"] / 50_000, 1.0, delta=0.05)
 
@@ -475,8 +492,11 @@ class TestCreationHandsOverItsShape(unittest.TestCase):
         }
         server._SHAPE_PAUSE_SECONDS = 0.0
         server._zim_list_cache = [
-            {"name": "made", "file": "made.zim",
-             "shape": {"file_bytes": 9, "entries": 2, "breakdown": []}}
+            {
+                "name": "made",
+                "file": "made.zim",
+                "shape": {"file_bytes": 9, "entries": 2, "breakdown": []},
+            }
         ]
         server.get_zim_files = lambda: {"made": "/z/made.zim"}
         calls = []

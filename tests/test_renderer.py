@@ -1331,3 +1331,20 @@ def test_a_lazy_page_still_gets_every_picture_asked_for(tmp_path):
         srv.shutdown()
         srv.server_close()
     assert len(set(asked)) == 24, sorted(set(asked))
+
+
+def test_a_main_document_the_server_would_not_serve_is_said_in_the_sites_terms():
+    """foss.cooking answered 522 (survey, 09-03). The alive engine recorded the
+    error page and surfaced ``warc2zim failed (exit 4)`` with a tool trace: a
+    site that was down, reported as a converter bug."""
+
+    class _Landed:
+        def __init__(self, status):
+            self.status = status
+
+    down = renderer._refused_status("https://foss.cooking/", _Landed(522))
+    assert down == "foss.cooking did not answer (HTTP 522); nothing was captured", down
+    gone = renderer._refused_status("https://ex.com/x", _Landed(404))
+    assert gone.startswith("ex.com refused the request (HTTP 404)"), gone
+    assert renderer._refused_status("https://ex.com/", _Landed(200)) == ""
+    assert renderer._refused_status("https://ex.com/", None) == ""

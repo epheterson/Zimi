@@ -1485,9 +1485,18 @@ def zim_content_breakdown(
         total = os.path.getsize(path)
     except OSError:
         total = 0
+    # Item sizes are the content as stored, before the cluster compression the
+    # file is made of, so the parts of a 498 KB file added up to 552 KB on the
+    # card (Eric's gate, 09-03: the parts must agree with the whole). The bar
+    # answers "what is this FILE made of", so each part is its share of the
+    # file; the raw content total is kept beside it for anyone who wants it.
+    content = sum(sizes.values())
+    if total and content:
+        sizes = {k: int(round(v * total / content)) for k, v in sizes.items()}
     order = [k for k, _p in _CONTENT_BUCKETS] + ["other"]
     shape = {
         "file_bytes": total,
+        "content_bytes": content,
         "entries": entries,
         "breakdown": [
             {"key": k, "size_bytes": sizes[k], "count": counts[k]}

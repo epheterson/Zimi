@@ -194,6 +194,27 @@ _META_CONTENT_RE = re.compile(
 # ── shared helpers ──────────────────────────────────────────────────────────
 
 
+# Under this much readable text, a "page" is more likely a gate than a page.
+# medium.com serves 227 characters to anything that is not a signed-in
+# browser; a consent wall or a login form is the same shape. The capture is
+# not refused — the person may want exactly what they got — but it is named
+# at capture time rather than discovered later by opening the ZIM.
+WALL_TEXT_CHARS = 300
+
+
+def wall_note(page):
+    """A one-line warning when a fetched page has almost no text, or None."""
+    from zimi.previews import strip_html
+
+    chars = len(strip_html(page))
+    if chars >= WALL_TEXT_CHARS:
+        return None
+    return (
+        f"only {chars} characters of text on this page: it may be a login, "
+        "consent or paywall gate rather than the article"
+    )
+
+
 def _page_title_from_html(text, fallback):
     """<title>, else first <h1>, else the fallback (filename stem)."""
     for rx in (_TITLE_TAG_RE, _H1_RE):
@@ -1966,6 +1987,9 @@ def create_page_zim(
         blocked = report_blocked(capture, note)
         if capture.refuses_spa and looks_like_spa(page):
             raise CreateError(SPA_REFUSAL)
+        wall = wall_note(page)
+        if wall:
+            note(wall)
         language, language_source = resolve_language(language, page, clang)
 
         parsed = urllib.parse.urlsplit(final_url)
