@@ -46,6 +46,49 @@ _DONE_JS = """() => {
           steps: [...document.querySelectorAll('.create-step')].map(e => e.dataset.state)};
 }"""
 
+SCREENS = 4
+
+_SCROLLER_JS = """() => { const d = document.querySelector('iframe').contentDocument; const w = document.querySelector('iframe').contentWindow;
+  let best = {el: null, h: d.documentElement.scrollHeight};
+  for (const e of d.querySelectorAll('*')) { const cs = w.getComputedStyle(e);
+    if (/(auto|scroll)/.test(cs.overflowY) && e.scrollHeight > e.clientHeight + 50 && e.scrollHeight > best.h) best = {el: e, h: e.scrollHeight}; }
+  window.__scroller = best.el; return best.h; }"""
+
+
+def scroll_strip(page, prefix, screens):
+    """``screens`` screenshots down the opened page, stitched side by side into
+    ``<prefix>.png``. Scrolls whichever element actually scrolls: the document,
+    or an inner container when the document does not (Wikipedia's skin)."""
+    from PIL import Image
+
+    height = page.evaluate(_SCROLLER_JS) or 0
+    step = max(1, (height - 844) // max(1, screens - 1)) if height > 844 else 844
+    shots = []
+    for i in range(screens):
+        y = min(i * step, max(0, height - 844))
+        page.evaluate(
+            "y => { const f = document.querySelector('iframe'); if (window.__scroller) window.__scroller.scrollTop = y; else f.contentWindow.scrollTo(0, y); }",
+            y,
+        )
+        page.wait_for_timeout(900)
+        path = f"{prefix}-{i}.png"
+        page.screenshot(path=path)
+        shots.append(path)
+        if height <= 844:
+            break
+    page.evaluate(
+        "() => { const f = document.querySelector('iframe'); if (window.__scroller) window.__scroller.scrollTop = 0; else f.contentWindow.scrollTo(0, 0); }"
+    )
+    ims = [Image.open(x).convert("RGB") for x in shots]
+    strip = Image.new("RGB", (sum(i.width for i in ims), ims[0].height), "white")
+    x = 0
+    for im in ims:
+        strip.paste(im, (x, 0))
+        x += im.width
+    strip.save(prefix + ".png")
+    return {"height": height, "screens": len(shots), "path": prefix + ".png"}
+
+
 _READER_JS = """() => {
   const fr = document.querySelector('iframe'); if (!fr || !fr.contentDocument) return null;
   const d = fr.contentDocument;
@@ -112,18 +155,56 @@ def one(page, base, site, mode, out, cap_s):
         if reader and reader["text"] > 0:
             break
     page.wait_for_timeout(1500)
-    page.evaluate(
-        "() => { const f = document.querySelector('iframe'); if (f && f.contentWindow) f.contentWindow.scrollTo(0, 700); }"
-    )
-    page.wait_for_timeout(1200)
-    page.evaluate(
-        "() => { const f = document.querySelector('iframe'); if (f && f.contentWindow) f.contentWindow.scrollTo(0, 0); }"
-    )
-    page.wait_for_timeout(600)
+    strip = scroll_strip(page, os.path.join(shots, "3-open"), SCREENS)
     reader = page.evaluate(_READER_JS) or {}
-    rec.update(open_s=round(time.time() - t2, 1), reader=reader)
-    page.screenshot(path=os.path.join(shots, "3-open.png"))
+    rec.update(open_s=round(time.time() - t2, 1), reader=reader, strip=strip)
     return rec
+
+
+def compare(browser, base, token_file, out, rows):
+    """For every site with a released Kiwix ZIM already in the survey server's
+    library, open that ZIM's main page the same way and take the same strip,
+    then put ours above theirs in one image per site."""
+    import json as _json
+    import urllib.request
+
+    from PIL import Image, ImageDraw
+
+    tok = open(token_file).read().strip()
+    req = urllib.request.Request(base + "/list", headers={"Authorization": "Bearer " + tok})
+    items = _json.loads(urllib.request.urlopen(req, timeout=60).read())
+    items = items if isinstance(items, list) else items.get("zims", [])
+    for site in SITES:
+        if not site.released:
+            continue
+        theirs = next((z for z in items if (z.get("file") or "").endswith(site.released + ".zim")), None)
+        ours = next((r for r in rows if r["site"] == site.key and r["mode"] == "page" and r.get("strip")), None)
+        if not theirs or not ours:
+            print("compare: skipping", site.key, "(no released ZIM)" if not theirs else "(no strip of ours)", flush=True)
+            continue
+        page = browser.new_page(viewport=PHONE, extra_http_headers={"Authorization": "Bearer " + tok})
+        try:
+            page.goto(base + "/w/" + theirs["name"], wait_until="load", timeout=120000)
+            page.wait_for_timeout(2500)
+            shots = os.path.join(out, f"{site.key}-released")
+            os.makedirs(shots, exist_ok=True)
+            their_strip = scroll_strip(page, os.path.join(shots, "3-open"), SCREENS)
+            reader = page.evaluate(_READER_JS) or {}
+        finally:
+            page.close()
+        a = Image.open(ours["strip"]["path"]).convert("RGB")
+        b = Image.open(their_strip["path"]).convert("RGB")
+        w = max(a.width, b.width)
+        sheet = Image.new("RGB", (w, a.height + b.height + 44), "white")
+        d = ImageDraw.Draw(sheet)
+        rd = ours.get("reader") or {}
+        d.text((4, 4), f"OURS {site.key} (page): {ours.get('card_facts', '')} | imgs {rd.get('painted')}/{rd.get('images')} | text {rd.get('text')}", fill="black")
+        sheet.paste(a, (0, 22))
+        d.text((4, a.height + 26), f"THEIRS {site.released}: {(theirs.get('size_bytes') or 0) / 1e6:.1f} MB | {theirs.get('article_count', '?')} articles | imgs {reader.get('painted')}/{reader.get('images')} | text {reader.get('text')}", fill="black")
+        sheet.paste(b, (0, a.height + 44))
+        path = os.path.join(out, f"compare-{site.key}.png")
+        sheet.save(path)
+        print("compare:", path, flush=True)
 
 
 def contact_sheet(out, rows):
@@ -166,6 +247,8 @@ def main():
     ap.add_argument("--only")
     ap.add_argument("--modes", default="page")
     ap.add_argument("--cap", type=int, default=600)
+    ap.add_argument("--compare-base", help="the survey server holding the released ZIMs")
+    ap.add_argument("--compare-token", help="its Bearer credential file")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     path = os.path.join(a.out, "results.json")
@@ -200,6 +283,8 @@ def main():
                     json.dumps({k: v for k, v in rec.items() if k not in ("preview",)}),
                     flush=True,
                 )
+        if a.compare_base and a.compare_token:
+            compare(browser, a.compare_base, a.compare_token, a.out, rows)
         browser.close()
     sheet = contact_sheet(a.out, rows)
     print("contact sheet:", sheet)
