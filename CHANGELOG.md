@@ -5,18 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.9.0] - 2026-09-04
+## [1.9.0] - 2026-09-04 — the Production Edition
 
-Zimi grows up: it runs from a folder of ZIMs with no configuration, proves itself silent when told it is offline, exposes metrics, backs itself up, gains named permissions, and closes a first-run admin takeover. It also makes ZIMs now.
+Zimi runs from a folder of ZIMs with no configuration, on a stick or a NAS or a fleet, and it makes ZIMs now.
 
 ### Added
 
-- **ZIM creation (beta).** Paste an address and get a ZIM: one page, a list of pages, a whole site (bounded, polite, robots-aware), a video playlist or channel, your bookmarks, or a folder on the server. Three engines — a plain fetch, a real browser laying the page out, or a recorded browser session that keeps the site's own JavaScript working offline — and the page picks one for you after looking at the address. Pages come out looking like the site: stylesheets from a CDN, pictures set by CSS or loaded lazily, and a layout that fits a phone. Ads and trackers are refused at capture time. Every ZIM carries openZIM-conformant metadata, an icon, and a birth record naming the tools that made it. `zimi create` and `zimi import` do the same from the command line; `zimi import` converts WARC and WACZ from any crawler. Marked beta in the app, with a link that files an issue about a site that captured badly.
-- **Zero-configuration serving.** `zimi serve` in or beside a folder of ZIMs just works: the directory is discovered, state lands in a `.zimi` folder beside the content or in a per-user cache when the media is read-only. `zimi config` prints every effective setting and exactly where it came from — flag, environment, config file, discovery, or default.
+- **ZIM creation (beta).** Paste an address and get a ZIM: one page, a list of pages, a whole site, a video playlist or channel, your bookmarks, or a folder on the server. Three engines (a plain fetch, a real browser laying the page out, or a recorded browser session that keeps the site's own JavaScript working offline), and the page picks one for you. Pages come out looking like the site. Ads and trackers are refused at capture time, and every ZIM carries openZIM-conformant metadata, an icon, and a record of the tools that made it. `zimi create` and `zimi import` do the same from the command line. Marked beta in the app, with a link for reporting a site that captured badly.
+- **Zero-configuration serving.** `zimi serve` in or beside a folder of ZIMs just works: the directory is discovered, state lands in a `.zimi` folder beside the content or in a per-user cache when the media is read-only. `zimi config` prints every effective setting and where it came from: flag, environment, config file, discovery, or default.
 - **The config file grew up.** manage, credentials, API token, offline, hot ZIMs and index throttle join the path and bind settings in `zimi.json`, with environment variables always winning and secrets masked in `zimi config` output.
-- **`ZIMI_OFFLINE=1`, a provable air gap.** No torrent stack, no NAT probing, no update checks, no catalog or thumbnail fetches — verified by a test that records every outbound socket. `scripts/make-airgap-bundle.sh` builds a wheels-only installer that refuses to include anything needing a network to install.
-- **Ops surface.** `/metrics` in Prometheus exposition format (admin-gated). `zimi backup` and `zimi restore` round-trip settings, bookmarks, collections and user data in one 0600 file. Reference docker-compose and Kubernetes manifests in `deploy/`.
-- **Making things is a permission.** An account can be given the creator role: it makes ZIMs and manages what it made, without being an admin. A Creator pane shows a sortable inventory of everything this server has made, with a composition breakdown per file.
+- **`ZIMI_OFFLINE=1`, a provable air gap.** No torrent stack, no NAT probing, no update checks, no catalog or thumbnail fetches, verified by a test that records every outbound socket. `scripts/make-airgap-bundle.sh` builds a wheels-only installer that refuses to include anything needing a network.
+- **Ops surface.** `/metrics` in Prometheus exposition format (admin-gated). `zimi backup` and `zimi restore` round-trip settings, bookmarks, collections and user data through one 0600 file, on demand. Reference docker-compose and Kubernetes manifests in `deploy/`.
+- **Making things is a permission.** An account can be given the creator role: it makes ZIMs and manages what it made, without being an admin. A Creator pane shows a sortable inventory of everything this server has made.
 - **App update awareness (#76).** Manage shows the current version and checks for releases on demand, with instructions matched to how Zimi was installed. Two channels, Latest and Beta, and an update delay that holds a release until it has been public for a chosen number of days.
 - **Folders are categories.** A subfolder of the library files its folder name as a library section, no configuration, with per-ZIM overrides still winning. Quarantine and staging folders are excluded by a deny list and a `.nozim` marker.
 - **In-article bookmarks (#65).** The reader chrome gains a bookmark button that opens your tree over the article.
@@ -34,7 +34,7 @@ Zimi grows up: it runs from a folder of ZIMs with no configuration, proves itsel
 
 ### Security
 
-- **First-run admin takeover closed (GHSA-5mw2-53vv-9pw6, CWE-306).** On a passwordless instance, claiming the first admin password was allowed to any private-tier client — the whole LAN, a Docker bridge, a tailnet — so an adjacent device could race the owner and lock them out. Bootstrap now has exactly two doors: the machine running Zimi sets the first password with no secret, and any other device must present a one-time setup key the server prints on first start and invalidates the moment a password is set. Reported by EQSTLab.
+- **First-run admin takeover closed (GHSA-5mw2-53vv-9pw6, CWE-306).** On a passwordless instance, claiming the first admin password was allowed to any private-tier client: the whole LAN, a Docker bridge, a tailnet. An adjacent device could race the owner and lock them out. Bootstrap now has two doors: the machine running Zimi sets the first password with no secret, and any other device must present a one-time setup key the server prints on first start and invalidates the moment a password is set. Reported by EQSTLab.
 - **Downloads authorize by one-time ticket,** and a claimed domain never leaks into an unresolved link.
 
 ### Fixed
@@ -46,13 +46,13 @@ Zimi grows up: it runs from a folder of ZIMs with no configuration, proves itsel
 - **The MCP server survives `mcp` 2.0 (#52),** and `zimi[mcp]` resolves to a package that still has FastMCP.
 - **The orrery obeys the time machine (#48).**
 - **Exported bookmarks never dangle.** A link to an article left out of an export becomes that article's canonical address, which resolves back into the installed source ZIM when read inside Zimi.
-- **Cross-ZIM link resolution actually reaches the browser.** The domain map behind it was an import-time snapshot a normal boot never refreshed; the whole class of staleness is now prevented structurally.
+- **Cross-ZIM link resolution actually reaches the browser.** The domain map behind it was an import-time snapshot a normal boot never refreshed; that class of staleness is now prevented structurally.
 - **Seeding shows the live upload rate** next to connected peers, with the lifetime total in one place.
 - **Idle instances with torrenting enabled no longer fetch the catalog at boot,** and a disconnecting reader is a debug line rather than a stack trace.
 
 ### Credit
 
-Creation stands on other people's work: [yt-dlp](https://github.com/yt-dlp/yt-dlp) for video, [warc2zim](https://github.com/openzim/warc2zim) and [zimit](https://github.com/openzim/zimit) from openZIM for archive conversion and browser-based crawling, [Playwright](https://playwright.dev) and Chromium for the rendered and recording engines, [SingleFile](https://github.com/gildas-lormeau/SingleFile) and [browsertrix-behaviors](https://github.com/webrecorder/browsertrix-behaviors) as optional engines and helpers, and [StevenBlack/hosts](https://github.com/StevenBlack/hosts) for the ad and tracker list. The whole library rests on [Kiwix](https://kiwix.org) and [libzim](https://github.com/openzim/libzim).
+Creation stands on other people's work: [yt-dlp](https://github.com/yt-dlp/yt-dlp) for video, [warc2zim](https://github.com/openzim/warc2zim) and [zimit](https://github.com/openzim/zimit) from openZIM for archive conversion and browser-based crawling, [Playwright](https://playwright.dev) and Chromium for the rendered and recording engines, [SingleFile](https://github.com/gildas-lormeau/SingleFile) and [browsertrix-behaviors](https://github.com/webrecorder/browsertrix-behaviors) as optional engines, and [StevenBlack/hosts](https://github.com/StevenBlack/hosts) for the ad and tracker list. The library rests on [Kiwix](https://kiwix.org) and [libzim](https://github.com/openzim/libzim).
 
 ## [1.8.2] - 2026-08-07
 
