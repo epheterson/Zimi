@@ -1082,9 +1082,15 @@ def _http_asset_reader(origin, variants, timeout):
 # The Fast engine is same-origin for scripts and CSS on purpose, but a page's
 # images almost always live on a sibling CDN host (media.cnn.com, i.imgur.com),
 # so a same-origin-only image rule drops most of the modern web's pictures. This
-# reader carries those — and ONLY media (image/video/audio), so an <img> that
-# resolves to an HTML error page is not silently pulled in as a "picture".
-_REMOTE_MEDIA_MIME_RE = re.compile(r"^(image|video|audio)/", re.IGNORECASE)
+# reader carries those — and ONLY what a page's look is made of (pictures,
+# video, audio, stylesheets, fonts), so an <img> that resolves to an HTML
+# error page is not silently pulled in as a "picture". Stylesheets joined the
+# list when cheatography.com, whose only real sheet is on its CDN, opened as
+# a naked list of links.
+_REMOTE_MEDIA_MIME_RE = re.compile(
+    r"^(image|video|audio|font)/|^text/css\b|^application/(x-)?font-|^application/vnd\.ms-fontobject",
+    re.IGNORECASE,
+)
 
 
 def _http_remote_reader(timeout):
