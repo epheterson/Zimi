@@ -4096,6 +4096,20 @@ def _probe_video(source, limit):
 # that form is a directory-disclosure surface with no purpose left on screen.
 
 
+def _probe_claims_video(source):
+    """Whether a real yt-dlp extractor recognises the address. False when
+    yt-dlp is absent or the source is a list of addresses."""
+    if not source or "\n" in str(source).strip():
+        return False
+    try:
+        from zimi.video import claims_url, video_available
+
+        return video_available() and claims_url(str(source).strip())
+    except Exception:
+        log.debug("video claim check failed for %r", source, exc_info=True)
+        return False
+
+
 def _create_probe(data):
     """Validate the request exactly as a real run would, then look. Returns
     ``(payload, status)``."""
@@ -4114,6 +4128,16 @@ def _create_probe(data):
         # network. One at a time here too.
         return {"error": "a ZIM is being created — wait for it to finish"}, 409
     try:
+        # The address comes first on the page now and the mode follows from
+        # it: a YouTube or PeerTube address typed under Web page is a video,
+        # and yt-dlp is the authority on that. Answer as the video probe, with
+        # the mode it belongs to; the page moves its chip to match.
+        if mode in ("page", "site") and _probe_claims_video(source):
+            mode = "video"
+        elif mode == "video" and not _probe_claims_video(source):
+            # And back: the chip moved to Video for the last address, and
+            # this one is a page. yt-dlp's catch-all would only fail on it.
+            mode = "page"
         if mode == "video":
             result = _probe_video(source, opts.get("limit"))
         elif mode == "page":

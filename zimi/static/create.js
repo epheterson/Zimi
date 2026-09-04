@@ -1360,6 +1360,17 @@ function _renderCreate() {
         '<div class="create-title">' + tH('create_zim') + '</div>' +
       '</div>' +
       '<div id="create-picker" class="create-picker">' +
+        // The address is the job, so it is the first field, and there is one
+        // of it: the mode follows from the address (video is detected from
+        // it; page-versus-site is a question about the address just typed),
+        // so the chips sit under it as "what to make of this", not above it
+        // as a decision taken blind (design review D2, 09-03).
+        '<div class="create-address" id="create-address">' +
+          '<label class="ms-form-label" for="create-source" id="create-address-label"></label>' +
+          '<textarea rows="1" class="create-field" id="create-source" spellcheck="false"' +
+            ' autocapitalize="none" autocorrect="off"></textarea>' +
+          '<div class="create-caption" id="create-address-note" hidden></div>' +
+        '</div>' +
         '<div class="create-modes" id="create-modes" role="tablist"' +
           ' aria-label="' + escAttr(t('create_zim')) + '"></div>' +
         '<div id="create-panel"></div>' +
@@ -1368,6 +1379,7 @@ function _renderCreate() {
       '<div id="create-run"></div>' +
       '<div id="create-recent"></div>' +
     '</div>';
+  _createWireAddress();
   _createRunKey = null;
   _createIdleKey = null;
   _renderCreateModes();
@@ -1478,8 +1490,11 @@ function _createSelectMode(id) {
   _createSelected = id;
   _renderCreateModes();
   _renderCreatePanel();
-  var input = document.getElementById('create-source');
-  if (input) input.focus();
+  // The address is already there; what it means may have changed (a site
+  // probe reads robots, a page probe does not). Ask again only when the
+  // answer on file is not about this address in this mode.
+  var def = _createDef(id);
+  if (def && !def.client) _createProbeSource();
 }
 
 // ── per-mode state ──────────────────────────────────────────────────────────
@@ -1498,11 +1513,11 @@ function _createStashMode() {
   var def = _createDef(_createSelected);
   if (!def || def.client) return;
   var state = _createStateFor(def.id);
-  var src = document.getElementById('create-source');
   var title = document.getElementById('create-title');
-  if (!src && !title) return;   // the panel is not mounted; nothing to read
-  if (src) state.source = src.value;
-  if (title) state.title = title.value;
+  if (!title) return;   // the panel is not mounted; nothing to read
+  // The address is not stashed: there is one, above the chips, and it
+  // belongs to whatever you decide to make of it.
+  state.title = title.value;
   var keys = _createModeFields(def);
   for (var i = 0; i < keys.length; i++) {
     var f = CREATE_FIELDS[keys[i]];
@@ -1527,8 +1542,6 @@ function _createRestoreMode() {
   _createPreview = state ? (state.preview || null) : null;
   _createPreviewSource = state ? (state.previewSource || '') : '';
   if (!state) return;
-  var src = document.getElementById('create-source');
-  if (src && state.source !== undefined) src.value = state.source;
   var title = document.getElementById('create-title');
   if (title && state.title !== undefined) title.value = state.title;
   for (var key in state.values) {
@@ -1705,16 +1718,48 @@ function _createCreditHtml(modeId) {
     '</div>';
 }
 
-// The source control. Two shapes, one decision: a list of addresses needs
-// room to be a list, everything else is one line.
-function _createSourceControlHtml(def) {
-  var attrs = ' class="create-field" id="create-source" spellcheck="false"' +
-    ' autocapitalize="none" autocorrect="off" placeholder="' + escAttr(t(def.placeholder)) + '"';
-  if (def.multiline) {
-    return '<textarea rows="3"' + attrs + '></textarea>' +
-      '<div class="create-caption">' + tH('create_pages_note') + '</div>';
-  }
-  return '<input type="text"' + attrs + '>';
+// The one address field, wired once when the page mounts. It outlives every
+// mode switch: what you typed is what you are making a ZIM of, whichever
+// way you decide to make it.
+function _createWireAddress() {
+  var src = document.getElementById('create-source');
+  if (!src) return;
+  src.addEventListener('keydown', function(e) {
+    // In a list of addresses, Enter starts the next one; anywhere else it
+    // starts the job.
+    var def = _createDef(_createSelected);
+    if (e.key === 'Enter' && !(def && def.multiline)) { e.preventDefault(); _createSubmit(); }
+  });
+  // 'change' rather than 'input': it fires when the value has settled and
+  // focus leaves, which is exactly when the question "what is there?" becomes
+  // answerable without probing every keystroke.
+  src.addEventListener('change', function() {
+    // Typing a new address over a finished run means "make THAT one" — the
+    // done card for the last capture must not sit there looking like the
+    // answer to it (Eric: typing apple.com after CNN "reloaded the completed
+    // page for the last one").
+    _createClearFinished();
+    _createProbeSource();
+  });
+}
+
+// The address field dressed for the mode that is lit: its label, its
+// placeholder, room for a list when the mode takes one. The value is never
+// touched here. A mode with no address (bookmarks) hides the field.
+function _renderCreateAddress() {
+  var wrap = document.getElementById('create-address');
+  var src = document.getElementById('create-source');
+  var label = document.getElementById('create-address-label');
+  var note = document.getElementById('create-address-note');
+  if (!wrap || !src) return;
+  var def = _createDef(_createSelected);
+  var takesAddress = !!(def && !def.client);
+  wrap.hidden = !takesAddress;
+  if (!takesAddress) return;
+  if (label) label.textContent = t(def.label);
+  src.placeholder = t(def.placeholder);
+  src.rows = def.multiline ? 3 : 1;
+  if (note) { note.textContent = def.multiline ? t('create_pages_note') : ''; note.hidden = !def.multiline; }
 }
 
 // The one panel. Everything the selected mode needs, once, in the order you
@@ -1728,6 +1773,7 @@ function _renderCreatePanel() {
   if (!def) { host.innerHTML = ''; return; }
   var live = _createModeAvailable(def, _createOffline, _createImportReady);
   var desc = '<div class="create-panel-desc">' + tH('create_mode_' + def.id + '_desc') + '</div>';
+  _renderCreateAddress();
   if (!live) {
     host.innerHTML = '<div class="create-panel">' + desc +
       '<div class="create-panel-blocked">' +
@@ -1740,8 +1786,6 @@ function _renderCreatePanel() {
   host.innerHTML =
     '<div class="create-panel">' +
       desc +
-      '<label class="ms-form-label" for="create-source">' + tH(def.label) + '</label>' +
-      _createSourceControlHtml(def) +
       '<div id="create-preview"></div>' +
       '<label class="ms-form-label" for="create-title">' + tH('create_label_title') + '</label>' +
       '<input type="text" class="create-field" id="create-title" placeholder="' + escAttr(t('create_ph_title')) + '">' +
@@ -1758,24 +1802,6 @@ function _renderCreatePanel() {
         '<div class="create-error" id="create-form-error"></div>' +
       '</div>' +
     '</div>';
-  var src = document.getElementById('create-source');
-  if (src) {
-    src.addEventListener('keydown', function(e) {
-      // In a list of addresses, Enter starts the next one.
-      if (e.key === 'Enter' && !def.multiline) { e.preventDefault(); _createSubmit(); }
-    });
-    // 'change' rather than 'input': it fires when the value has settled and
-    // focus leaves, which is exactly when the question "what is there?" becomes
-    // answerable without probing every keystroke.
-    src.addEventListener('change', function() {
-      // Typing a new address over a finished run means "make THAT one" — the
-      // done card for the last capture must not sit there looking like the
-      // answer to it (Eric: typing apple.com after CNN "reloaded the completed
-      // page for the last one").
-      _createClearFinished();
-      _createProbeSource();
-    });
-  }
   _createRestoreMode();
   _createSyncFormat();
   _createSyncEngine();
@@ -1993,6 +2019,19 @@ async function _createProbeSource() {
       // where the run's refusals go rather than in the preview box.
       _createPreview = null;
       _createFormError(data.error || t('create_error_generic'));
+    } else if (data.mode && data.mode !== mode && _createDef(data.mode) &&
+        _createModeInList(_createVisibleModes(), data.mode)) {
+      // The server looked and saw something else: a YouTube or PeerTube
+      // address typed under Web page is a video, and yt-dlp said so. The
+      // chip moves to what the address is; the answer is kept under it.
+      var was = mode;
+      _createProbing = false;
+      _createSelectMode(data.mode);
+      _createPreview = data;
+      _createPreviewSource = body.source;
+      var left = _createStateFor(was);
+      left.preview = null;
+      left.previewSource = '';
     } else {
       _createPreview = data;
       // Remembered here, at the moment it is known: the probe finds the icon
@@ -2958,6 +2997,28 @@ function _createFoldTree(wrap, s) {
   }
 }
 
+// Where a failed site gets reported. The web is bigger than the survey that
+// shaped these engines; a site that fails is a fixture we do not have yet.
+// The link fills the issue in — address, how it was asked for, what it said —
+// and opens GitHub in a new tab. Nothing is sent by itself.
+var CREATE_ISSUES_URL = 'https://github.com/epheterson/Zimi/issues/new';
+
+function _createReportUrl(s, what) {
+  var source = (s && s.source) || '';
+  var host = '';
+  try { host = new URL(source.split('\n')[0]).host; } catch (e) { host = source.slice(0, 60); }
+  var title = 'Capture: ' + (host || 'a site') + ' (' + ((s && s.mode) || 'page') + ')';
+  var body = 'Address: ' + source + '\nMode: ' + ((s && s.mode) || '') +
+    (s && s.engine ? '\nEngine: ' + s.engine : '') +
+    '\n\nWhat happened:\n' + (what || '') + '\n\nWhat I expected:\n';
+  return CREATE_ISSUES_URL + '?title=' + encodeURIComponent(title) + '&body=' + encodeURIComponent(body);
+}
+
+function _createReportLinkHtml(s, what) {
+  return '<a class="create-report" href="' + escAttr(_createReportUrl(s, what)) + '"' +
+    ' target="_blank" rel="noopener">' + tH('create_report_site') + '</a>';
+}
+
 function _createSyncOutcome(s) {
   if (!s.done || _createDoneMounted) return;
   _createDoneMounted = true;
@@ -2972,7 +3033,8 @@ function _createSyncOutcome(s) {
     // ten minutes of silence reads like a bug in what you typed.
     fail.innerHTML =
       '<div class="create-status">' + tH(s.stalled ? 'create_stalled' : 'create_failed') + '</div>' +
-      (s.error ? '<div class="create-error">' + esc(s.error) + '</div>' : '');
+      (s.error ? '<div class="create-error">' + esc(s.error) + '</div>' : '') +
+      '<div class="create-caption">' + _createReportLinkHtml(s, s.error || '') + '</div>';
   }
 }
 
@@ -3087,6 +3149,7 @@ function _createMountDone(s) {
         (r.thin_page
           ? '<div class="create-caption create-done-warn">' +
               esc(_createT('create_warn_thin_page').replace('{n}', Number(r.text_chars || 0).toLocaleString())) +
+              ' ' + _createReportLinkHtml(s, 'Only ' + Number(r.text_chars || 0) + ' characters of text came back.') +
             '</div>'
           : '') +
       '</div>' +

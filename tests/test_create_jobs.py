@@ -823,3 +823,35 @@ def test_a_finished_job_is_named_by_what_the_capture_found(tmp_path, monkeypatch
     _post("/manage/create", {"mode": "site", "source": "https://example.test/named", "title": "My name"})
     body = _wait_done()
     assert body["result"]["title"] == "My name"
+
+
+def test_a_video_address_typed_under_web_page_probes_as_a_video(monkeypatch):
+    """Address first (design review D2): the mode follows from the address.
+    A YouTube or PeerTube address typed under Web page is answered by the
+    video probe, with the mode it belongs to, and the page moves its chip."""
+    import zimi.manage as manage
+
+    monkeypatch.setattr(manage, "_probe_claims_video", lambda src: "youtube.com" in src)
+    seen = {}
+
+    def fake_video(source, limit):
+        seen["video"] = source
+        return {"ok": True, "videos": 3, "title": "Playlist"}
+
+    def fake_url(source, **kw):
+        seen["url"] = source
+        return {"ok": True, "title": "A page"}
+
+    monkeypatch.setattr(manage, "_probe_video", fake_video)
+    monkeypatch.setattr(manage, "_probe_url", fake_url)
+    monkeypatch.setattr(manage, "_create_job", None)
+    out, status = manage._create_probe(
+        {"mode": "page", "source": "https://www.youtube.com/watch?v=abc"}
+    )
+    assert status == 200 and out["mode"] == "video" and out["videos"] == 3, out
+    assert "url" not in seen
+    out, status = manage._create_probe({"mode": "page", "source": "https://sqlite.org/"})
+    assert status == 200 and out["mode"] == "page", out
+    # And back: a page address typed while the Video chip is lit is a page.
+    out, status = manage._create_probe({"mode": "video", "source": "https://sqlite.org/"})
+    assert status == 200 and out["mode"] == "page" and seen["url"] == "https://sqlite.org/", out

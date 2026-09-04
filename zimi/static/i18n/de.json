@@ -1539,5 +1539,6 @@
   "zim_disk_usage": "ZIM-Speichernutzung",
   "zim_files": "ZIM-Dateien",
   "zim_folder": "ZIM-Ordner",
-  "create_warn_thin_page": "Nur {n} Zeichen lesbarer Text: das ist womöglich eine Anmelde-, Einwilligungs- oder Bezahlschranke statt des Artikels."
+  "create_warn_thin_page": "Nur {n} Zeichen lesbarer Text: das ist womöglich eine Anmelde-, Einwilligungs- oder Bezahlschranke statt des Artikels.",
+  "create_report_site": "Sag uns Bescheid zu dieser Website"
 }

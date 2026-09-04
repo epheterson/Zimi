@@ -180,7 +180,7 @@ test.describe('the shared panel', () => {
     await openCreate(page);
     // Round 2 rendered these per mode; six copies of one control is the
     // complaint this layout exists to answer.
-    for (const mode of ['page', 'site', 'video', 'import']) {
+    for (const mode of ['page', 'site', 'video']) {
       await pickMode(page, mode);
       await expect(page.locator('#create-title')).toHaveCount(1);
       await expect(page.locator('.create-panel')).toHaveCount(1);
@@ -213,29 +213,36 @@ test.describe('the shared panel', () => {
     await expect(page.locator('.create-chip.active')).toContainText('Video');
   });
 
-  test('every mode keeps its own answers across a switch', async ({ page }) => {
+  test('one address above the chips; every mode keeps its own answers across a switch', async ({ page }) => {
     await openCreate(page);
+    // The address is the first field and there is one of it (design review
+    // D2): what you typed is what you are making a ZIM of, whichever way you
+    // decide to make it. Everything else a mode asks stays with that mode.
+    const addr = page.locator('#create-address');
+    const modes = page.locator('.create-modes');
+    expect((await addr.boundingBox()).y).toBeLessThan((await modes.boundingBox()).y);
 
     await pickMode(page, 'page');
     await page.fill('#create-source', 'https://example.org/one\nhttps://example.org/two');
     await page.fill('#create-title', 'My Pages');
 
     await pickMode(page, 'site');
+    expect(await fieldValue(page, 'create-source'))
+      .toBe('https://example.org/one\nhttps://example.org/two');
     await page.fill('#create-source', 'https://example.org/');
     await page.fill('#create-max-pages', '37');
 
-    // Peek at two other modes, including the client-only one, then come back.
+    // Peek at two other modes, including the one with no address, then come back.
     await pickMode(page, 'video');
-    expect(await fieldValue(page, 'create-source')).toBe('');
+    expect(await fieldValue(page, 'create-source')).toBe('https://example.org/');
     await pickMode(page, 'bookmarks');
+    await expect(page.locator('#create-address')).toBeHidden();
 
     await pickMode(page, 'page');
-    expect(await fieldValue(page, 'create-source'))
-      .toBe('https://example.org/one\nhttps://example.org/two');
+    expect(await fieldValue(page, 'create-source')).toBe('https://example.org/');
     expect(await fieldValue(page, 'create-title')).toBe('My Pages');
 
     await pickMode(page, 'site');
-    expect(await fieldValue(page, 'create-source')).toBe('https://example.org/');
     expect(await fieldValue(page, 'create-max-pages')).toBe('37');
   });
 
@@ -355,7 +362,7 @@ test.describe('the capture engine', () => {
       await expect(page.locator('.create-seg')).toContainText('Rendered');
     }
     // The modes that do not capture a web page do not offer the choice.
-    for (const mode of ['video', 'import']) {
+    for (const mode of ['video']) {
       await pickMode(page, mode);
       await expect(page.locator('#create-engine')).toHaveCount(0);
     }
