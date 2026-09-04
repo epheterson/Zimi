@@ -1182,7 +1182,17 @@ def _carry_stylesheets(carrier, label, page_path, page):
         hrefm = _HREF_RE.search(tag)
         if not hrefm:
             return tag
-        resolved = _resolve_ref(page_path, hrefm.group("val"))
+        href = _html.unescape(hrefm.group("val").strip())
+        low = href.lower()
+        # A sheet on another host is still the page's sheet: carried through
+        # the remote reader like a CDN-hosted picture, its own url() refs one
+        # level deep. It used to be left pointing at the web, and a page whose
+        # only stylesheet is on its CDN opened as a naked list of links.
+        if low.startswith(("http://", "https://")) or href.startswith("//"):
+            remote = ("https:" + href) if href.startswith("//") else href
+            in_path = carrier._carry_remote(remote)
+            return _replace_href(tag, "../" + in_path) if in_path else tag
+        resolved = _resolve_ref(page_path, href)
         if not resolved:
             return tag
         in_path = carrier._carry(label, resolved)

@@ -610,7 +610,7 @@ class _AssetCarrier:
         except Exception as e:  # progress must never break a capture
             log.debug("asset progress hook failed: %s", e)
 
-    def _carry_remote(self, url):
+    def _carry_remote(self, url, depth=0):
         """Carry a cross-origin media URL (a CDN-hosted <img>/<source>) and
         return its in-ZIM path, or None. Same budget and caps as a same-origin
         asset; a no-op when no ``remote_reader`` was supplied (export path)."""
@@ -640,6 +640,12 @@ class _AssetCarrier:
             self._carried[key] = None
             return None
         in_path = "_assets/_remote/" + _remote_asset_name(url, mime)
+        # A stylesheet pulls fonts and pictures of its own; carried one level
+        # deep, like a same-origin sheet. cheatography.com's only real
+        # stylesheet lives on its CDN and the page opened naked without it.
+        is_css = "css" in (mime or "").lower() or urllib.parse.urlsplit(url).path.lower().endswith(".css")
+        if depth == 0 and is_css:
+            data = self._rewrite_remote_css(url, data)
         self._carried[key] = in_path
         self.total_bytes += len(data)
         self.count += 1
@@ -652,6 +658,29 @@ class _AssetCarrier:
         self.mimetypes.add(mime or "application/octet-stream")
         self._note_progress()
         return in_path
+
+    def _rewrite_remote_css(self, css_url, data):
+        """The url() refs of a cross-origin stylesheet, resolved against the
+        sheet's own address, carried, and written as siblings: every remote
+        asset lands in _assets/_remote, the sheet included."""
+        try:
+            text = data.decode("utf-8", errors="replace")
+        except Exception:
+            return data
+
+        def repl(m):
+            quote, ref = m.group(1), m.group(2).strip()
+            if not ref or ref.lower().startswith(("data:", "#", "about:")):
+                return m.group(0)
+            absolute = urllib.parse.urljoin(css_url, _html.unescape(ref))
+            if not absolute.lower().startswith(("http://", "https://")):
+                return m.group(0)
+            in_path = self._carry_remote(absolute, depth=1)
+            if not in_path:
+                return m.group(0)
+            return "url(" + quote + posixpath.basename(in_path) + quote + ")"
+
+        return _CSS_URL_RE.sub(repl, text).encode("utf-8")
 
     def carried_path(self, zim, resolved):
         """Where an already-carried source entry lives in the export, or None.
