@@ -56,6 +56,7 @@ from zimi.zimwriter import (
     _AssetCarrier,
     collapse_ad_slots,
     collapse_image_set,
+    collapse_variant_props,
     sub_markup,
     drop_integrity,
     _output_path,
@@ -1276,7 +1277,7 @@ def _carry_style_attrs(carrier, label, page_path, page):
         value = m.group("val")
         if "url(" not in value.lower():
             return m.group(0)
-        css = collapse_image_set(_html.unescape(value))
+        css = collapse_image_set(collapse_variant_props(_html.unescape(value)))
         return f'{m.group("pre")}"{attr_quote(_CSS_URL_RE.sub(fix_url, css))}"'
 
     return sub_markup(_STYLE_ATTR_RE, fix_attr, page)

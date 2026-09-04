@@ -178,5 +178,41 @@ class TestImageSetIsOneFilePerSlot(unittest.TestCase):
         self.assertEqual(collapse_image_set(css2), 'a{background:url("s@2x.webp")}')
 
 
+class TestVariantCustomPropertiesAreOneSlot(unittest.TestCase):
+    """cnn.com hands each <img> nine CSS custom properties —
+    --image-desktop-url, -2x, -3x, tablet, mobile — a srcset spelled as
+    variables, for the stylesheet to pick from by media query. Carrying every
+    one of them took nine files per picture and a 34 MB capture became 60 MB
+    (2026-09-03). They are one slot: the mobile 2x candidate (1600 device
+    pixels, the variant policy's target) is carried once and every property
+    in the group points at it."""
+
+    def test_nine_properties_carry_one_file(self):
+        from zimi.creator import _carry_style_attrs
+
+        c, added = _carrier(lambda url: (b"JPG", "image/jpeg"), page_url="https://www.cnn.com/")
+        props = []
+        for dev in ("desktop", "tablet", "mobile"):
+            for dens in ("", "-2x", "-3x"):
+                props.append(f"--image-{dev}-url{dens}:url(&quot;https://m.cnn.com/{dev}{dens or '-1x'}.jpg&quot;)")
+        page = '<img src="https://m.cnn.com/src.jpg" style="' + "; ".join(props) + '">'
+        out = _carry_style_attrs(c, "lbl", "https://www.cnn.com/", page)
+        # One file for the nine properties (the src is rewrite_media's job).
+        self.assertEqual(len(added), 1, [p for p, _m, _d in added])
+        self.assertIn("mobile-2x", "".join(u for u in c._carried))
+        self.assertEqual(out.count("../_assets/_remote/"), 9, out)
+        self.assertNotIn("m.cnn.com/desktop", out)
+
+    def test_from_the_helper_alone(self):
+        from zimi.zimwriter import collapse_variant_props
+
+        css = "--a-desktop-url:url(d.jpg); --a-desktop-url-2x:url(d2.jpg); --a-mobile-url:url(m.jpg); --a-mobile-url-2x:url(m2.jpg); color:red; --lone:url(x.png)"
+        out = collapse_variant_props(css)
+        self.assertEqual(out.count("m2.jpg"), 4)
+        self.assertNotIn("d2.jpg", out)
+        self.assertIn("color:red", out)
+        self.assertIn("--lone:url(x.png)", out)
+
+
 if __name__ == "__main__":
     unittest.main()

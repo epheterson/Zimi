@@ -549,6 +549,45 @@ _IMAGE_SET_CANDIDATE_RE = re.compile(
 )
 
 
+_VARIANT_PROP_RE = re.compile(
+    r"""(?P<name>--[\w-]+?)(?P<dev>-(?:desktop|tablet|mobile))?(?:-url)?(?P<dens>-\dx)?\s*:\s*url\(\s*(?P<q>['"]?)(?P<url>[^'")]+)(?P=q)\s*\)""",
+    re.IGNORECASE,
+)
+# The candidate a phone at 2x would be served, then the next best. Desktop is
+# last: the variant policy stores one picture at up to 1600 device pixels.
+_VARIANT_ORDER = ("mobile-2x", "tablet-2x", "desktop-2x", "mobile", "tablet", "desktop", "mobile-3x", "tablet-3x", "desktop-3x", "-2x", "", "-3x")
+
+
+def collapse_variant_props(css):
+    """Custom properties that are one picture at several sizes — cnn.com's
+    ``--image-desktop-url``, ``-2x``, ``-3x``, tablet, mobile, nine per <img>
+    — collapsed to one file: every property in the group is pointed at the
+    mobile 2x candidate (the variant policy's 1600 device pixels), or the
+    next best. A property with no siblings is left alone."""
+    groups = {}
+    for m in _VARIANT_PROP_RE.finditer(css):
+        key = (m.group("name") or "").lower()
+        tag = ((m.group("dev") or "").lstrip("-") + (m.group("dens") or "")).lower()
+        groups.setdefault(key, []).append((tag, m.group("url")))
+    picks = {}
+    for key, cands in groups.items():
+        if len(cands) < 2:
+            continue
+        by_tag = {t: u for t, u in cands}
+        chosen = next((by_tag[t] for t in _VARIANT_ORDER if t in by_tag), cands[0][1])
+        picks[key] = chosen
+
+    def repl(m):
+        key = (m.group("name") or "").lower()
+        if key not in picks:
+            return m.group(0)
+        q = m.group("q")
+        head = m.group(0)[: m.group(0).lower().index("url(")]
+        return head + "url(" + q + picks[key] + q + ")"
+
+    return _VARIANT_PROP_RE.sub(repl, css) if picks else css
+
+
 def collapse_image_set(css):
     """Every ``image-set(...)`` in ``css`` reduced to one ``url(...)``.
 
