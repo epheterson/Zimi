@@ -1366,21 +1366,69 @@ def _normalize_charset(page):
 # ── the shared per-page pipeline (single page AND every page of a crawl) ────
 
 
+# A meta refresh this quick is a redirect the server chose to write in HTML.
+# grimgrains.com's front page is nothing but one (0; url=site/home.html): the
+# capture landed on it, packaged twenty lines of head, and the reader opened
+# "This page wasn't captured". A browser would have been on the home page
+# before anyone saw the blank. Anything slower is a page in its own right
+# that also moves on (a "you will be redirected in 10 seconds" notice).
+MAX_META_REFRESH_DELAY = 5
+_META_REFRESH_RE = re.compile(
+    r"""<meta\b[^>]*\bhttp-equiv\s*=\s*["']?\s*refresh\b[^>]*>""", re.IGNORECASE
+)
+_REFRESH_URL_RE = re.compile(
+    r"""^\s*(\d+(?:\.\d+)?)\s*(?:[;,]\s*url\s*=\s*)?(.*)$""", re.IGNORECASE
+)
+
+
+def meta_refresh_target(html, base_url, max_delay=MAX_META_REFRESH_DELAY):
+    """Where a ``<meta http-equiv=refresh>`` sends the page at once, or None."""
+    content_re = attr_re("content")
+    for m in _META_REFRESH_RE.finditer(html[:65536]):
+        c = content_re.search(m.group(0))
+        if not c:
+            continue
+        spec = _html.unescape(c.group("val") or "").strip()
+        parts = _REFRESH_URL_RE.match(spec)
+        if not parts:
+            continue
+        try:
+            delay = float(parts.group(1))
+        except ValueError:
+            continue
+        target = parts.group(2).strip().strip("'\"").strip()
+        if delay > max_delay or not target:
+            continue
+        return urllib.parse.urljoin(base_url, target)
+    return None
+
+
 def _fetch_html(url, *, timeout, max_redirects):
     """Fetch one URL as an HTML document. Returns
     ``(final_url, page_text, byte_count, content_language)`` — the header rides
     along because it is the last resort of language detection and re-fetching
     the page to read one header would be absurd. Raises ``CreateError`` for a
-    transport failure or for a response that is not HTML."""
-    final_url, data, ctype, clang = _fetch_page(
-        url, timeout=timeout, max_redirects=max_redirects
-    )
-    if ctype and "html" not in ctype.lower():
-        raise CreateError(
-            f"not an HTML page (Content-Type: {ctype.split(';')[0]}) — "
-            "only web pages can be captured this way"
+    transport failure or for a response that is not HTML.
+
+    An immediate meta refresh counts as one more redirect hop, against the
+    same ceiling."""
+    seen = set()
+    for _hop in range(max_redirects + 1):
+        final_url, data, ctype, clang = _fetch_page(
+            url, timeout=timeout, max_redirects=max_redirects
         )
-    return final_url, _decode_page(data, ctype), len(data), clang
+        if ctype and "html" not in ctype.lower():
+            raise CreateError(
+                f"not an HTML page (Content-Type: {ctype.split(';')[0]}) — "
+                "only web pages can be captured this way"
+            )
+        page = _decode_page(data, ctype)
+        onward = meta_refresh_target(page, final_url)
+        if not onward or onward == final_url or onward in seen:
+            return final_url, page, len(data), clang
+        seen.add(final_url)
+        url = onward
+    raise CreateError(f"too many redirects (more than {max_redirects}) fetching {url}")
 
 
 def _url_page_path(final_url):

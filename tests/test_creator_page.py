@@ -80,6 +80,20 @@ ROUTES = {
         b"<html><head><title>Sign in</title></head><body>"
         b"<form><input name=email><button>Continue</button></form></body></html>",
     ),
+    "/hop.html": (
+        200,
+        "text/html; charset=utf-8",
+        b"<html><head><title>Grimgrains</title>"
+        b'<meta http-equiv = "refresh" content = "0; url=blog/post.html" />'
+        b"</head><body></body></html>",
+    ),
+    "/slow-hop.html": (
+        200,
+        "text/html; charset=utf-8",
+        b"<html><head><title>Moved</title>"
+        b'<meta http-equiv="refresh" content="10; url=/blog/post.html">'
+        b"</head><body><p>We have moved. You will be taken there in ten seconds.</p></body></html>",
+    ),
     "/spa.html": (200, "text/html; charset=utf-8", SPA.encode()),
     "/static/style.css": (
         200,
@@ -927,3 +941,31 @@ def test_the_wall_line_is_a_count_not_a_guess():
     assert wall_note("<p>" + "x" * WALL_TEXT_CHARS + "</p>") is None
     # Script and style bodies are not text a reader sees.
     assert wall_note("<script>" + "x" * 5000 + "</script><p>hi</p>") is not None
+
+
+def test_an_immediate_meta_refresh_is_followed_like_a_redirect(fixture_server, tmp_path):
+    """grimgrains.com's front page is a zero-second meta refresh to
+    site/home.html (survey, 09-03). The capture packaged the refresh page and
+    the reader opened "This page wasn't captured"."""
+    info = creator.create_page_zim(f"{BASE}/hop.html", out_dir=str(tmp_path))
+    assert info["url"].endswith("/blog/post.html"), info["url"]
+    arc = Archive(info["path"])
+    assert "Test Page" in _entry_text(arc, "A/index")
+
+
+def test_a_slow_meta_refresh_is_a_page_in_its_own_right(fixture_server, tmp_path):
+    info = creator.create_page_zim(f"{BASE}/slow-hop.html", out_dir=str(tmp_path))
+    assert info["url"].endswith("/slow-hop.html"), info["url"]
+    assert "ten seconds" in _entry_text(Archive(info["path"]), "A/index")
+
+
+def test_meta_refresh_spellings():
+    from zimi.creator import meta_refresh_target as t
+
+    base = "https://g.com/"
+    assert t('<meta http-equiv = "refresh" content = "0; url=site/home.html" />', base) == "https://g.com/site/home.html"
+    assert t("<META HTTP-EQUIV=Refresh CONTENT=\"0;URL='/x/'\">", base) == "https://g.com/x/"
+    assert t('<meta http-equiv="refresh" content="3;url=https://o.org/p">', base) == "https://o.org/p"
+    assert t('<meta http-equiv="refresh" content="30">', base) is None
+    assert t('<meta http-equiv="refresh" content="900; url=/again">', base) is None
+    assert t('<meta name="refresh" content="0; url=/no">', base) is None
