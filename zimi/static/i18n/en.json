@@ -1540,5 +1540,7 @@
   "zim_files": "ZIM files",
   "zim_folder": "ZIM folder",
   "create_warn_thin_page": "Only {n} characters of readable text: this may be a login, consent or paywall gate rather than the article.",
-  "create_report_site": "Tell us about this site"
+  "create_report_site": "Tell us about this site",
+  "create_beta_tag": "Beta",
+  "create_beta_note": "New in 1.9. Tested on twenty-six sites; the web is bigger. If a site captures badly,"
 }

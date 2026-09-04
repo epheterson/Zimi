@@ -1540,5 +1540,7 @@
   "zim_files": "Arquivos ZIM",
   "zim_folder": "Pasta ZIM",
   "create_warn_thin_page": "Apenas {n} caracteres de texto legível: pode ser uma página de login, consentimento ou paywall em vez do artigo.",
-  "create_report_site": "Conte-nos sobre este site"
+  "create_report_site": "Conte-nos sobre este site",
+  "create_beta_tag": "Beta",
+  "create_beta_note": "Novo na 1.9. Testado em vinte e seis sites; a web é maior. Se um site for mal capturado,"
 }

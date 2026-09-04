@@ -618,6 +618,9 @@
   .create-content { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding: 24px 16px 40px; overscroll-behavior: contain; }
   .create-inner { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
   .create-head { display: flex; flex-direction: column; gap: 4px; }
+  .create-beta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin-top: -4px; font-size: 13px; color: var(--text2); }
+  .create-beta-tag { font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--amber); border: 1px solid var(--amber-border); background: var(--amber-glow); padding: 2px 7px; border-radius: 999px; }
+  .create-beta-note a { color: var(--amber2); }
   .create-title { font-size: 20px; font-weight: 600; color: var(--text); }
   /* Mode chips. A chip is a name and a glyph; the sentence explaining the mode
      belongs to the panel of the one you picked, not to five you did not. */

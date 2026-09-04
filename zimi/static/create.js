@@ -1359,6 +1359,16 @@ function _renderCreate() {
       '<div class="create-head">' +
         '<div class="create-title">' + tH('create_zim') + '</div>' +
       '</div>' +
+      // The feature is new in 1.9 and has met twenty-six sites; the web is
+      // bigger. The release is final, the feature says it is a beta, and says
+      // where to send a site that fails (Eric, 09-04: "the whole release
+      // isn't beta, just that feature").
+      '<div class="create-beta">' +
+        '<span class="create-beta-tag">' + tH('create_beta_tag') + '</span>' +
+        '<span class="create-beta-note">' + tH('create_beta_note') + ' ' +
+          '<a href="' + escAttr(CREATE_ISSUES_URL) + '" target="_blank" rel="noopener">' +
+            tH('create_report_site') + '</a></span>' +
+      '</div>' +
       '<div id="create-picker" class="create-picker">' +
         // The address is the job, so it is the first field, and there is one
         // of it: the mode follows from the address (video is detected from

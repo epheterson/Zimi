@@ -1540,5 +1540,7 @@
   "zim_files": "Archivos ZIM",
   "zim_folder": "Carpeta ZIM",
   "create_warn_thin_page": "Solo {n} caracteres de texto legible: puede ser una pantalla de inicio de sesión, consentimiento o pago en lugar del artículo.",
-  "create_report_site": "Cuéntanos sobre este sitio"
+  "create_report_site": "Cuéntanos sobre este sitio",
+  "create_beta_tag": "Beta",
+  "create_beta_note": "Nuevo en 1.9. Probado en veintiséis sitios; la web es más grande. Si un sitio se captura mal,"
 }
