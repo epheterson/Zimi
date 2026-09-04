@@ -936,12 +936,15 @@ def test_a_page_with_almost_no_text_is_named_as_a_gate(fixture_server, tmp_path)
     assert os.path.exists(info["path"])
     gate = [m for m in said if "characters of text" in m]
     assert gate and "gate" in gate[0], said
+    # And the summary the done card is drawn from says the same thing.
+    assert info["thin_page"] is True and info["text_chars"] < creator.WALL_TEXT_CHARS
     # A real article says nothing of the kind.
     said.clear()
-    creator.create_page_zim(
+    info = creator.create_page_zim(
         f"{BASE}/blog/post.html", out_dir=str(tmp_path), progress=said.append
     )
     assert not [m for m in said if "characters of text" in m], said
+    assert info["thin_page"] is False and info["text_chars"] >= creator.WALL_TEXT_CHARS
 
 
 def test_the_wall_line_is_a_count_not_a_guess():

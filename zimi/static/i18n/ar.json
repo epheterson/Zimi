@@ -1538,5 +1538,6 @@
   "zim_corrupted": "قد يكون ملف ZIM تالفًا أو فارغًا",
   "zim_disk_usage": "مساحة ZIM على القرص",
   "zim_files": "ملفات ZIM",
-  "zim_folder": "مجلد ZIM"
+  "zim_folder": "مجلد ZIM",
+  "create_warn_thin_page": "‏{n} حرفًا فقط من النص المقروء: قد تكون هذه صفحة تسجيل دخول أو موافقة أو جدار دفع بدلًا من المقال."
 }

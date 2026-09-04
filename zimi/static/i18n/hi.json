@@ -1538,5 +1538,6 @@
   "zim_corrupted": "ZIM फ़ाइल दूषित या खाली हो सकती है",
   "zim_disk_usage": "ZIM डिस्क उपयोग",
   "zim_files": "ZIM फ़ाइलें",
-  "zim_folder": "ZIM फ़ोल्डर"
+  "zim_folder": "ZIM फ़ोल्डर",
+  "create_warn_thin_page": "केवल {n} अक्षरों का पठनीय पाठ: यह लेख के बजाय लॉगिन, सहमति या पेवॉल पृष्ठ हो सकता है।"
 }

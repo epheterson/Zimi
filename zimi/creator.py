@@ -202,10 +202,14 @@ _META_CONTENT_RE = re.compile(
 WALL_TEXT_CHARS = 300
 
 
+def strip_html(page):
+    from zimi.previews import strip_html as _strip
+
+    return _strip(page)
+
+
 def wall_note(page):
     """A one-line warning when a fetched page has almost no text, or None."""
-    from zimi.previews import strip_html
-
     chars = len(strip_html(page))
     if chars >= WALL_TEXT_CHARS:
         return None
@@ -2039,6 +2043,7 @@ def create_page_zim(
         if wall:
             note(wall)
         language, language_source = resolve_language(language, page, clang)
+        text_chars = len(strip_html(page))
 
         parsed = urllib.parse.urlsplit(final_url)
         zim_title = title or _page_title_from_html(page, parsed.netloc + parsed.path)
@@ -2094,6 +2099,10 @@ def create_page_zim(
         "title": zim_title,
         "pages": 1,
         "assets": capture.count,
+        # How much readable text the page had, and whether that is so little
+        # the done card should say "this may be a gate" beside the result.
+        "text_chars": text_chars,
+        "thin_page": bool(wall),
         "main": "A/index",
         "registered": registered,
         "url": final_url,

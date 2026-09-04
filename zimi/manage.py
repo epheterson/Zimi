@@ -3115,9 +3115,23 @@ def _create_worker(job, opts):
         # What the run counted, when it counted anything: every engine returns a
         # different subset, and a done card that can say "40 pages, 118 assets"
         # should not have to read it back out of the log.
-        for key in ("pages", "assets", "bytes", "files", "videos", "entries"):
+        for key in (
+            "pages",
+            "assets",
+            "bytes",
+            "files",
+            "videos",
+            "entries",
+            "text_chars",
+        ):
             if isinstance(result.get(key), int):
                 outcome["result"][key] = result[key]
+        # A page with almost no readable text is more likely a login, consent
+        # or paywall gate than the article (medium.com: 227 characters to
+        # every engine). The job log said so; the card says so too, because
+        # nobody opens the log of a job that finished green.
+        if result.get("thin_page"):
+            outcome["result"]["thin_page"] = True
         # The bound that ended a crawl early ("interrupted", "page cap (200)"),
         # when one did. The done card owes the admin that honesty — a ZIM that
         # says "40 pages" without saying "and I stopped there on purpose" reads

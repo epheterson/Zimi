@@ -1538,5 +1538,6 @@
   "zim_corrupted": "El archivo ZIM puede estar corrupto o vacío",
   "zim_disk_usage": "Uso de disco ZIM",
   "zim_files": "Archivos ZIM",
-  "zim_folder": "Carpeta ZIM"
+  "zim_folder": "Carpeta ZIM",
+  "create_warn_thin_page": "Solo {n} caracteres de texto legible: puede ser una pantalla de inicio de sesión, consentimiento o pago en lugar del artículo."
 }

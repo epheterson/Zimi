@@ -1538,5 +1538,6 @@
   "zim_corrupted": "ZIM 文件可能已损坏或为空",
   "zim_disk_usage": "ZIM 磁盘占用",
   "zim_files": "ZIM 文件",
-  "zim_folder": "ZIM 文件夹"
+  "zim_folder": "ZIM 文件夹",
+  "create_warn_thin_page": "可读文本仅 {n} 个字符：这可能是登录、同意或付费墙页面，而不是文章本身。"
 }

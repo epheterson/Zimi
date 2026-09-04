@@ -3080,6 +3080,15 @@ function _createMountDone(s) {
         (r.stopped
           ? '<div class="create-caption">' + esc(_createStoppedText(r.stopped)) + '</div>'
           : '') +
+        // A page with almost no readable text is more likely a login, consent
+        // or paywall gate than the article (medium.com: 227 characters to
+        // every engine, survey finding O5). Said here, on the card, because
+        // nobody opens the server log of a job that finished green.
+        (r.thin_page
+          ? '<div class="create-caption create-done-warn">' +
+              esc(_createT('create_warn_thin_page').replace('{n}', Number(r.text_chars || 0).toLocaleString())) +
+            '</div>'
+          : '') +
       '</div>' +
       '<button type="button" class="ms-btn ms-btn-primary create-done-open"' +
         ' onclick="_createOpenResult(\'' + escJs(r.name) + '\')">' + tH('create_open') + '</button>' +

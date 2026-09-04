@@ -1538,5 +1538,6 @@
   "zim_corrupted": "Le fichier ZIM est peut-être corrompu ou vide",
   "zim_disk_usage": "Espace disque ZIM",
   "zim_files": "Fichiers ZIM",
-  "zim_folder": "Dossier ZIM"
+  "zim_folder": "Dossier ZIM",
+  "create_warn_thin_page": "Seulement {n} caractères de texte lisible : il s’agit peut-être d’une page de connexion, de consentement ou d’un mur payant plutôt que de l’article."
 }

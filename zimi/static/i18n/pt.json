@@ -1538,5 +1538,6 @@
   "zim_corrupted": "O arquivo ZIM pode estar corrompido ou vazio",
   "zim_disk_usage": "Uso de disco ZIM",
   "zim_files": "Arquivos ZIM",
-  "zim_folder": "Pasta ZIM"
+  "zim_folder": "Pasta ZIM",
+  "create_warn_thin_page": "Apenas {n} caracteres de texto legível: pode ser uma página de login, consentimento ou paywall em vez do artigo."
 }

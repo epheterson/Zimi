@@ -1538,5 +1538,6 @@
   "zim_corrupted": "Die ZIM-Datei ist möglicherweise beschädigt oder leer",
   "zim_disk_usage": "ZIM-Speichernutzung",
   "zim_files": "ZIM-Dateien",
-  "zim_folder": "ZIM-Ordner"
+  "zim_folder": "ZIM-Ordner",
+  "create_warn_thin_page": "Nur {n} Zeichen lesbarer Text: das ist womöglich eine Anmelde-, Einwilligungs- oder Bezahlschranke statt des Artikels."
 }
