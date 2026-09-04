@@ -144,5 +144,39 @@ class TestAPlaceholderSourceIsNotAPicture(unittest.TestCase):
         self.assertEqual(len(added), 2)
 
 
+class TestImageSetIsOneFilePerSlot(unittest.TestCase):
+    """cnn.com's cards set their picture as
+    ``style="background-image: image-set(url(a.webp) 1x, url(b.webp) 2x, …)"``
+    with six or seven variants each. Carrying every url() in a style attribute
+    took all of them: 665 files for 100 cards, and a 34 MB capture became 60 MB
+    (2026-09-03). An image-set is a srcset by another name; one candidate, at
+    up to 2x, the way pick_srcset already chooses."""
+
+    def test_an_image_set_in_a_style_attribute_carries_one_variant(self):
+        from zimi.creator import _carry_style_attrs
+
+        c, added = _carrier(lambda url: (b"WEBP", "image/webp"), page_url="https://www.cnn.com/")
+        page = (
+            '<div style="background-image: image-set(url(\'https://m.cnn.com/a-1x.webp\') 1x, '
+            'url(\'https://m.cnn.com/a-2x.webp\') 2x, url(\'https://m.cnn.com/a-3x.webp\') 3x);"></div>'
+        )
+        out = _carry_style_attrs(c, "lbl", "https://www.cnn.com/", page)
+        self.assertEqual(len(added), 1, added)
+        self.assertNotIn("a-1x", out)
+        self.assertNotIn("a-3x", out)
+        self.assertIn("url(", out)
+        self.assertNotIn("image-set(", out)
+
+    def test_collapse_image_set_rewrites_css_text(self):
+        from zimi.zimwriter import collapse_image_set
+
+        css = ".x{background:image-set(url(a.png) 1x, url(b.png) 2x)} .y{background:url(c.png)}"
+        out = collapse_image_set(css)
+        self.assertEqual(out, ".x{background:url(b.png)} .y{background:url(c.png)}")
+        # -webkit- prefixed and type() candidates are the same set.
+        css2 = "a{background:-webkit-image-set(url(\"s.webp\") type(\"image/webp\") 1x, url(\"s@2x.webp\") 2x)}"
+        self.assertEqual(collapse_image_set(css2), 'a{background:url("s@2x.webp")}')
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -55,6 +55,7 @@ from zimi.zimwriter import (
     CARRIED_LINK_RELS,
     _AssetCarrier,
     collapse_ad_slots,
+    collapse_image_set,
     sub_markup,
     drop_integrity,
     _output_path,
@@ -1239,7 +1240,7 @@ def _carry_inline_styles(carrier, label, page_path, page):
                 return u.group(0)
             return "url(" + quote + "../" + in_path + quote + ")"
 
-        return open_tag + _CSS_URL_RE.sub(fix_url, css) + close_tag
+        return open_tag + _CSS_URL_RE.sub(fix_url, collapse_image_set(css)) + close_tag
 
     return _STYLE_ELEM_RE.sub(fix_block, page)
 
@@ -1275,7 +1276,8 @@ def _carry_style_attrs(carrier, label, page_path, page):
         value = m.group("val")
         if "url(" not in value.lower():
             return m.group(0)
-        return f'{m.group("pre")}"{attr_quote(_CSS_URL_RE.sub(fix_url, _html.unescape(value)))}"'
+        css = collapse_image_set(_html.unescape(value))
+        return f'{m.group("pre")}"{attr_quote(_CSS_URL_RE.sub(fix_url, css))}"'
 
     return sub_markup(_STYLE_ATTR_RE, fix_attr, page)
 

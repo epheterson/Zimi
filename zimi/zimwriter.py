@@ -543,6 +543,48 @@ def pick_srcset(candidates, target_width=VARIANT_TARGET_WIDTH, max_dpr=VARIANT_M
     return chosen[1], chosen[2]
 
 
+_IMAGE_SET_OPEN_RE = re.compile(r"(?:-webkit-)?image-set\(", re.IGNORECASE)
+_IMAGE_SET_CANDIDATE_RE = re.compile(
+    r"""url\(\s*(['"]?)(?P<url>[^'")]+)\1\s*\)(?P<rest>[^,]*)""", re.IGNORECASE
+)
+
+
+def collapse_image_set(css):
+    """Every ``image-set(...)`` in ``css`` reduced to one ``url(...)``.
+
+    An image-set is a srcset by another name: the same picture at several
+    densities for a live browser to choose from. An archive stores, it does
+    not choose, and storing every candidate meant six or seven files per card
+    on cnn.com (665 for 100 cards; a 34 MB capture became 60 MB). The pick is
+    pick_srcset's: the largest at or under 2x."""
+    out, pos = [], 0
+    while True:
+        m = _IMAGE_SET_OPEN_RE.search(css, pos)
+        if not m:
+            out.append(css[pos:])
+            break
+        out.append(css[pos : m.start()])
+        depth, i = 1, m.end()
+        while i < len(css) and depth:
+            depth += {"(": 1, ")": -1}.get(css[i], 0)
+            i += 1
+        inner = css[m.end() : i - 1]
+        candidates = []
+        for c in _IMAGE_SET_CANDIDATE_RE.finditer(inner):
+            rest = c.group("rest")
+            descriptor = re.sub(r"type\([^)]*\)", "", rest).strip()
+            candidates.append((c.group("url").strip(), descriptor))
+        picked = pick_srcset(candidates) if candidates else None
+        if picked:
+            url = picked[0]
+            quote = '"' if '"' in inner[: inner.find(url)] else ("'" if "'" in inner[: inner.find(url)] else "")
+            out.append("url(" + quote + url + quote + ")")
+        else:
+            out.append(css[m.start() : i])
+        pos = i
+    return "".join(out)
+
+
 def _remote_asset_name(url, mime):
     """A stable, collision-resistant in-ZIM filename for a cross-origin asset:
     the URL hashed, with a sensible extension (from the URL path, else the
@@ -705,7 +747,7 @@ class _AssetCarrier:
         sheet's own address, carried, and written as siblings: every remote
         asset lands in _assets/_remote, the sheet included."""
         try:
-            text = data.decode("utf-8", errors="replace")
+            text = collapse_image_set(data.decode("utf-8", errors="replace"))
         except Exception:
             return data
 
@@ -731,7 +773,7 @@ class _AssetCarrier:
 
     def _rewrite_css(self, zim, css_path, data):
         try:
-            text = data.decode("utf-8", errors="replace")
+            text = collapse_image_set(data.decode("utf-8", errors="replace"))
         except Exception:
             return data
 
