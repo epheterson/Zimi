@@ -185,6 +185,8 @@ class TestUncapturedPage(unittest.TestCase):
         # And offered as a link OUT, which is the only way to leave.
         self.assertIn('href="https://www.apple.com/mac/"', body)
         self.assertIn("wasn't captured", body)
+        # The stand-in names itself so the reader's bookmark button declines it.
+        self.assertIn('data-zimi-uncaptured="1"', body)
         # No JSON error survives anywhere in it.
         self.assertNotIn('{"error"', body)
 

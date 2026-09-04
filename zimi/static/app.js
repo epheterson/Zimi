@@ -16485,6 +16485,13 @@ async function _revealExportedZim(file) {
 }
 function toggleBookmark() {
   if (!currentArticle) return;
+  // The reader's own "This page wasn't captured" stand-in is not an article:
+  // bookmarked, it went into a bookmarks export as a page titled exactly
+  // that (seen 2026-09-03). The stand-in marks itself; nothing to save.
+  try {
+    var doc = _readerFrameDoc();
+    if (doc && doc.body && doc.body.hasAttribute('data-zimi-uncaptured')) return;
+  } catch (e) {}
   var zim = currentArticle.zim, path = currentArticle.path;
   var title = document.title.replace(/ — Zimi$/, '');
   if (title === 'Zimi' || !title) title = _titleFromPath(path);

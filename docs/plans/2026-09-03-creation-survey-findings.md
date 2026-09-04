@@ -79,6 +79,14 @@ YouTube refuses this Mac's media downloads since the afternoon's caption blast (
 
 Folder and import modes are CLI-only by design (no web door onto the server's disk); bookmarks export is the fourth web mode, below.
 
+## Bookmarks mode, through the create page (late 09-03)
+
+Three pages bookmarked in the reader, Create → Bookmarks → "Choose folders…" → the export sheet (folder tree, name, count) → Export. Status "Created 1 ZIM, added to your library" in one second; the ZIM opens on an index of the three, each article inside with its pictures (Paul Graham's essays page: 706/706).
+
+| # | what I saw | cause | fix | status |
+|---|---|---|---|---|
+| B1 | One of the three entries was "This page wasn't captured — grimgrains_com": the reader had let me bookmark its own stand-in, and the export packaged it as an article. | `toggleBookmark` saved whatever the frame showed. | The stand-in marks its body (`data-zimi-uncaptured`); the bookmark button declines it. Checked in Chrome: the stand-in cannot be bookmarked, a real page still can. | `fixed 09-03 late` |
+
 ## Engines: what the survey should decide (Eric, 09-03: "Should we just have fast and alive? When should I use rendered? Maybe we should prod the site and suggest which automatically.")
 
 Keep three, stop making people choose. Fast for the static web (most of it, and the most durable file). Rendered for pages whose content is built by JavaScript: the finished DOM in a plain file any reader opens. Alive only when the JavaScript itself must keep running offline. The probe the create page already runs (title, robots) can add "built by JavaScript" from the fast fetch's own SPA-shell test in `creator.py`, pick the engine, and say why in one line; the picker becomes a disclosure. The Fast-versus-Rendered columns of the survey table are the evidence for which sites need it.

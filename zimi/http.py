@@ -1230,7 +1230,7 @@ _UNCAPTURED_PAGE = """<!DOCTYPE html>
   a.btn:focus-visible, button.btn:focus-visible {{ outline:2px solid var(--amber);
     outline-offset:2px; }}
 </style></head>
-<body><main>
+<body data-zimi-uncaptured="1"><main>
   <h1 data-i18n="uncaptured_title">{title}</h1>
   <p data-i18n="uncaptured_body">{body}</p>
   <span class="label" data-i18n="uncaptured_url_label">{url_label}</span>
