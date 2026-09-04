@@ -113,5 +113,36 @@ class TestInlineStyleBackgrounds(unittest.TestCase):
         self.assertNotIn("https://solar.lowtechmagazine.com/2026", out)
         self.assertIn('<p style="color:red">plain</p>', out)
 
+class TestAPlaceholderSourceIsNotAPicture(unittest.TestCase):
+    """apple.com's product tiles are ``<picture>`` elements whose first
+    ``<source>`` is a one-pixel transparent GIF matching every width, put
+    there for JavaScript to swap out. Without JavaScript the browser honours
+    it and the tile is a blank grey box; the real picture sits in the
+    ``<img src>`` behind it (Eric: "close but squished")."""
+
+    def test_the_placeholder_source_is_dropped_and_the_real_picture_carried(self):
+        c, added = _carrier(lambda url: (b"JPG", "image/jpeg"))
+        page = (
+            '<picture class="static" data-anim-lazy-image="">'
+            '<source data-empty="" srcset="data:image/gif;base64,R0lGODlhAQABAHAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==" media="(min-width:0px)" />'
+            '<img src="https://www.apple.com/v/home/hero.jpg" alt="Students">'
+            "</picture>"
+        )
+        out = c.rewrite_media("z", "A/index", page)
+        self.assertNotIn("<source", out, out)
+        self.assertEqual(len(added), 1)
+        self.assertIn('src="../_assets/_remote/', out)
+
+    def test_a_real_source_stays(self):
+        c, added = _carrier(lambda url: (b"JPG", "image/jpeg"))
+        page = (
+            '<picture><source srcset="https://m.example/a-small.jpg 1x" media="(max-width:734px)">'
+            '<img src="https://m.example/a-large.jpg"></picture>'
+        )
+        out = c.rewrite_media("z", "A/index", page)
+        self.assertIn("<source", out)
+        self.assertEqual(len(added), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

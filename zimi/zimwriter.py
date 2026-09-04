@@ -276,6 +276,21 @@ _SRCSET_RE = attr_re("srcset")
 _LOADING_RE = attr_re("loading")
 
 
+def _placeholder_source(tag):
+    """True for a ``<source>`` whose srcset holds nothing but data: URIs, or
+    that a site marked ``data-empty``: a stand-in for a script to replace."""
+    if _DATA_EMPTY_RE.search(tag):
+        return True
+    m = _SRCSET_RE.search(tag)
+    if not m:
+        return False
+    candidates = [url for url, _d in _split_srcset(m.group("val"))]
+    return bool(candidates) and all(u.lower().startswith("data:") for u in candidates)
+
+
+_DATA_EMPTY_RE = re.compile(r"\sdata-empty(?:\s|=|>|/)", re.IGNORECASE)
+
+
 def _load_eagerly(tag):
     """Drop ``loading="lazy"`` from a media tag.
 
@@ -768,6 +783,14 @@ class _AssetCarrier:
 
         def fix_tag(tagm):
             tag = tagm.group(0)
+            # A <source> whose only candidate is a data: placeholder is not a
+            # picture, it is a promise that a script would swap one in.
+            # apple.com puts a one-pixel GIF source matching every width in
+            # front of each product tile; offline the browser honours it and
+            # the tile is a blank box over the real <img> behind it. Gone, so
+            # the <img> shows.
+            if tag.lower().startswith("<source") and _placeholder_source(tag):
+                return ""
             # One slot, one file. Every browser that reads srcset is served the
             # picked candidate, never the src — so the src is rewritten to that
             # same file instead of carried as a second one. theverge.com's
