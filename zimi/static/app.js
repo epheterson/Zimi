@@ -17619,6 +17619,10 @@ var OVERLAY_WATCH_MS = 15000;        // how long a rebuilt wall still gets caugh
 // captured CNN front page. Conventional names, matched on a substring because
 // every framework spells them slightly differently (skeleton-item, isLoading,
 // shimmer__bar); aria-busy is the one the platform itself defines.
+// Below this an empty box is a gap in the design, not a hole; a standard ad
+// unit is 250px and the slots that hold one start there.
+var HOLLOW_BLOCK_MIN_PX = 200;
+
 var SKELETON_SELECTOR = [
   '[class*="skeleton" i]', '[class*="shimmer" i]', '[class*="placeholder" i]',
   '[class*="loading" i]', '[class*="-loader" i]', '[class*="loader-" i]',
@@ -17701,6 +17705,30 @@ function _settleCapturedChrome(frame) {
       var el = skeletons[s];
       if (_isHollow(el)) el.remove();
       else el.style.setProperty('animation', 'none', 'important');
+    }
+  } catch (e) {}
+
+  // A tall box with nothing in it — no text, no picture, no background — is a
+  // hole where a script was going to put something. The ad-slot rule catches
+  // the ones with honest names; theverge.com's are 250px divs named o1ls9x,
+  // and the front page read as stories separated by white voids. Collapsed,
+  // not removed: a page that later fills one by script (an alive capture)
+  // gets its box back.
+  try {
+    var blocks = doc.body.querySelectorAll('div, section, aside');
+    for (var b = 0; b < blocks.length; b++) {
+      var box = blocks[b];
+      var rect = box.getBoundingClientRect();
+      if (rect.height < HOLLOW_BLOCK_MIN_PX || rect.width < 100) continue;
+      if (!_isHollow(box)) continue;
+      var cs = win.getComputedStyle(box);
+      if (cs.backgroundImage !== 'none' || cs.position === 'fixed') continue;
+      if (box.querySelector('iframe, canvas, object, embed')) continue;
+      box.style.setProperty('height', '0', 'important');
+      box.style.setProperty('min-height', '0', 'important');
+      box.style.setProperty('padding', '0', 'important');
+      box.style.setProperty('margin', '0', 'important');
+      box.style.setProperty('overflow', 'hidden', 'important');
     }
   } catch (e) {}
 }
