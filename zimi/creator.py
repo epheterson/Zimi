@@ -59,6 +59,7 @@ from zimi.zimwriter import (
     collapse_variant_props,
     sub_markup,
     drop_integrity,
+    wake_lazy,
     _output_path,
     _page_head,
     _plural,
@@ -1149,7 +1150,9 @@ def _http_remote_reader(timeout):
 def _replace_href(tag, new_ref):
     # The file behind the new href is ours, and an integrity hash was for
     # the original (see drop_integrity).
-    return drop_integrity(_HREF_RE.sub(lambda m: f'{m.group("pre")}"{new_ref}"', tag, count=1))
+    return drop_integrity(
+        _HREF_RE.sub(lambda m: f'{m.group("pre")}"{new_ref}"', tag, count=1)
+    )
 
 
 # Link relations that are advice to a live browser, never content. Offline a
@@ -1597,6 +1600,7 @@ def render_captured_page(carrier, page, *, final_url, resolve_link=None):
     page_path = _url_page_path(final_url)
     label = urllib.parse.urlsplit(final_url).hostname or "page"
     page = _relativize_html(page, variants)
+    page = wake_lazy(page)
     page = _carry_stylesheets(carrier, label, page_path, page)
     page = _carry_inline_styles(carrier, label, page_path, page)
     page = _carry_style_attrs(carrier, label, page_path, page)

@@ -233,7 +233,7 @@ def contact_sheet(out, rows):
         x, y = (i % cols) * w, (i // cols) * (h + 18)
         sheet.paste(im, (x, y + 18))
         rd = r.get("reader") or {}
-        label = f"{r['site']}/{r['mode']} {r['engine']} {rd.get('painted','-')}/{rd.get('images','-')} {r['job_s']}s"
+        label = f"{r['site']}/{r['mode']} {r.get('engine','')} {rd.get('painted','-')}/{rd.get('images','-')} {r.get('job_s','-')}s"
         draw.text((x + 3, y + 3), label[:34], fill="black")
     path = os.path.join(out, "contact-sheet.png")
     sheet.save(path)

@@ -222,7 +222,9 @@ _REL_RE = attr_re("rel")
 CARRIED_LINK_RELS = frozenset({"stylesheet", "icon", "apple-touch-icon", "mask-icon"})
 
 
-_INTEGRITY_RE = re.compile(r"""\s+(?:integrity|crossorigin)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)""", re.IGNORECASE)
+_INTEGRITY_RE = re.compile(
+    r"""\s+(?:integrity|crossorigin)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)""", re.IGNORECASE
+)
 
 
 def drop_integrity(tag):
@@ -322,6 +324,101 @@ def _load_eagerly(tag):
         lambda m: "" if m.group("val").strip().lower() == "lazy" else m.group(0),
         tag,
     )
+
+
+# Where a lazy-loading script keeps the real address. jQuery Lazy Load (2011,
+# still on cheatography.com) uses ``data-original``; lazysizes and the
+# WordPress plugins use ``data-src`` / ``data-srcset``; a few say
+# ``data-lazy-src``. On an element that is not an image the same attribute
+# names a background picture — ``data-bg`` is lazysizes' spelling of that.
+_LAZY_SRC_ATTRS = ("data-src", "data-lazy-src", "data-original")
+_LAZY_SRCSET_ATTRS = ("data-srcset", "data-lazy-srcset")
+_LAZY_BG_ATTRS = (
+    "data-bg",
+    "data-background",
+    "data-background-image",
+    "data-original",
+)
+_LAZY_MEDIA_TAGS = {"img", "source", "video", "audio"}
+_TAG_RE = re.compile(r"<([a-zA-Z][a-zA-Z0-9-]*)\b[^<>]*>")
+_LAZY_CLASS_RE = re.compile(r"(?<![-\w])lazyload(?![-\w])")
+
+
+def _lazy_value(m):
+    """The address a lazy attribute holds, or None when it is not one."""
+    val = _html.unescape(m.group("val") or "").strip() if m else ""
+    if not val or val.lower().startswith("data:"):
+        return None
+    return m.group("val").strip()
+
+
+def _drop_attr(tag, rx):
+    return rx.sub("", tag)
+
+
+def _set_attr(tag, name, value):
+    """``name="value"`` on the tag, replacing the attribute if it is there."""
+    rx = attr_re(name)
+    quoted = f'{name}="{attr_quote(value)}"'
+    if rx.search(tag):
+        return rx.sub(
+            lambda m: (m.group("pre") or "").split(name)[0] + quoted, tag, count=1
+        )
+    end = tag.rstrip(">").rstrip("/").rstrip()
+    close = tag[len(end) :]
+    return f"{end} {quoted}{close}"
+
+
+def _wake_tag(tag_m):
+    tag = tag_m.group(0)
+    if "data-" not in tag:
+        return tag
+    name = tag_m.group(1).lower()
+    if name in _LAZY_MEDIA_TAGS:
+        for attrs, target in ((_LAZY_SRC_ATTRS, "src"), (_LAZY_SRCSET_ATTRS, "srcset")):
+            rx = attr_re(*attrs)
+            m = rx.search(tag)
+            val = _lazy_value(m)
+            if val is None:
+                continue
+            tag = _set_attr(_drop_attr(tag, rx), target, val)
+            tag = _LAZY_CLASS_RE.sub("lazyloaded", tag)
+        return tag
+    rx = attr_re(*_LAZY_BG_ATTRS)
+    m = rx.search(tag)
+    val = _lazy_value(m)
+    if val is None:
+        return tag
+    tag = _drop_attr(tag, rx)
+    image = f"background-image:url('{val.replace(chr(39), '%27')}')"
+    style_rx = attr_re("style")
+    sm = style_rx.search(tag)
+    if sm:
+        existing = (sm.group("val") or "").strip().rstrip(";")
+        tag = _set_attr(tag, "style", f"{existing};{image}" if existing else image)
+    else:
+        tag = _set_attr(tag, "style", image)
+    return _LAZY_CLASS_RE.sub("lazyloaded", tag)
+
+
+def wake_lazy(html):
+    """Do what the page's lazy-loading script would have done, once, now.
+
+    cheatography.com's cards (seen 2026-09-03): every thumbnail a spinner,
+    because the address lived in ``data-original`` for jQuery Lazy Load to
+    paint as a background when the card scrolled near. The fast engine drops
+    the script, so nothing ever painted it — while the carrier, which reads
+    every ``src``-shaped attribute, had already put the file in the ZIM.
+
+    On an image, the lazy address becomes ``src`` (``srcset`` likewise); on
+    anything else it becomes a ``background-image`` at the end of the inline
+    style, where it wins over the placeholder the shorthand set. lazysizes'
+    ``lazyload`` class becomes ``lazyloaded``, the class its stylesheet shows.
+    A value that is empty or a ``data:`` stand-in is left alone. Runs before
+    the carrier so the address it wakes is the one that gets carried."""
+    if "data-" not in html:
+        return html
+    return _TAG_RE.sub(_wake_tag, html)
 
 
 _CSS_URL_RE = re.compile(r"""url\(\s*(['"]?)([^'")]+)\1\s*\)""", re.IGNORECASE)
@@ -555,7 +652,20 @@ _VARIANT_PROP_RE = re.compile(
 )
 # The candidate a phone at 2x would be served, then the next best. Desktop is
 # last: the variant policy stores one picture at up to 1600 device pixels.
-_VARIANT_ORDER = ("mobile-2x", "tablet-2x", "desktop-2x", "mobile", "tablet", "desktop", "mobile-3x", "tablet-3x", "desktop-3x", "-2x", "", "-3x")
+_VARIANT_ORDER = (
+    "mobile-2x",
+    "tablet-2x",
+    "desktop-2x",
+    "mobile",
+    "tablet",
+    "desktop",
+    "mobile-3x",
+    "tablet-3x",
+    "desktop-3x",
+    "-2x",
+    "",
+    "-3x",
+)
 
 
 def collapse_variant_props(css):
@@ -616,7 +726,11 @@ def collapse_image_set(css):
         picked = pick_srcset(candidates) if candidates else None
         if picked:
             url = picked[0]
-            quote = '"' if '"' in inner[: inner.find(url)] else ("'" if "'" in inner[: inner.find(url)] else "")
+            quote = (
+                '"'
+                if '"' in inner[: inner.find(url)]
+                else ("'" if "'" in inner[: inner.find(url)] else "")
+            )
             out.append("url(" + quote + url + quote + ")")
         else:
             out.append(css[m.start() : i])
@@ -765,7 +879,9 @@ class _AssetCarrier:
         # A stylesheet pulls fonts and pictures of its own; carried one level
         # deep, like a same-origin sheet. cheatography.com's only real
         # stylesheet lives on its CDN and the page opened naked without it.
-        is_css = "css" in (mime or "").lower() or urllib.parse.urlsplit(url).path.lower().endswith(".css")
+        is_css = "css" in (mime or "").lower() or urllib.parse.urlsplit(
+            url
+        ).path.lower().endswith(".css")
         if depth == 0 and is_css:
             data = self._rewrite_remote_css(url, data)
         self._carried[key] = in_path
