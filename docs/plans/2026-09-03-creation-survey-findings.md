@@ -66,6 +66,19 @@ Eleven of the twelve compare sites have a Kiwix zimit ZIM under 2 GB (cheatograp
 | getbootstrap.com | 49.1 MB, 1,475 pages | 308.1 KB (page), 4.1 MB (25 pages) | 9,395 / 9,395 | identical, hero to footer |
 | permacomputing.net | 0.6 MB, 254 pages | 68.3 KB (page) | 1,797 / 1,795 | P15 first; after it, identical but for the title colour the site changed since June |
 
+## Video mode, through the create page (late 09-03, Eric: "the other _types_ of zims? video and whatnot? Through the site, working?")
+
+YouTube refuses this Mac's media downloads since the afternoon's caption blast (F16), so the run used a PeerTube channel (tilvids.com, The Linux Experiment, two videos, 720p cap) and an archive.org film, both through the create page at phone width, opened in the reader, and played in real Chrome (headless Chromium has no H.264 decoder, which stalled the first harness).
+
+| # | what I saw | cause | fix | status |
+|---|---|---|---|---|
+| V1 | Channel index: thumbnails 60–90 px wide and each a different size, titles misaligned. | `.zimi-vid img{max-width:35%}`: the link shrank to the picture and the picture to 35% of that. | The box belongs to the link: a 36% / 180 px 16:9 box, filled, per row. Re-captured: uniform. | `fixed 09-03 late` |
+| V2 | **The video never played.** The reader spun for 16 s, then the player sat at readyState 0, duration unknown, for as long as I watched. | yt-dlp's file is a fragmented MP4 (moov, then hundreds of sidx/moof/mdat pieces — PeerTube's plain file, and what a merged DASH download is too). Chrome's `<video>` scans such a file end to end before it knows the duration: a new `bytes=N-` request every 300 KB, each one aborted, 114 MB of them. | With ffmpeg, every video is stream-copied once with `-movflags +faststart` (yt-dlp's `FFmpegCopyStream`), and the default format may merge split streams (YouTube above 360p). Without ffmpeg the file is kept and the job log says what that means. **ffmpeg added to the Docker image.** Re-captured: metadata 0.3 s after the click, plays, seeks to the middle and keeps playing. | `fixed 09-03 late` |
+| V3 | Each of those aborted requests copied a 50 MB window out of libzim under the lock. | `MAX_SERVE_BYTES` doubled as the streaming window. | `STREAM_WINDOW_BYTES` = 8 MB for streamable entries; the too-large refusal keeps its 50 MB. | `fixed 09-03 late` |
+| V4 | archive.org's Big Buck Bunny: 14 s job, 332 MB, opens. | — | — | ok |
+
+Folder and import modes are CLI-only by design (no web door onto the server's disk); bookmarks export is the fourth web mode, below.
+
 ## Engines: what the survey should decide (Eric, 09-03: "Should we just have fast and alive? When should I use rendered? Maybe we should prod the site and suggest which automatically.")
 
 Keep three, stop making people choose. Fast for the static web (most of it, and the most durable file). Rendered for pages whose content is built by JavaScript: the finished DOM in a plain file any reader opens. Alive only when the JavaScript itself must keep running offline. The probe the create page already runs (title, robots) can add "built by JavaScript" from the fast fetch's own SPA-shell test in `creator.py`, pick the engine, and say why in one line; the picker becomes a disclosure. The Fast-versus-Rendered columns of the survey table are the evidence for which sites need it.

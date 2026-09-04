@@ -1411,6 +1411,13 @@ MAX_CONTENT_BYTES = (
 MAX_SERVE_BYTES = (
     50 * 1024 * 1024
 )  # 50 MB — refuse to serve entries larger than this (prevents OOM)
+# The most of a streamable entry (video, audio) handed out per request. A
+# browser's player asks for `bytes=N-`, reads what it needs and aborts, then
+# asks again a little further on — Chrome did that every 300 KB through a
+# 114 MB video (2026-09-03), and each answer was a 50 MB copy out of libzim
+# under the lock. Eight megabytes is a few seconds of 720p, more than a
+# player reads before its next request, and a sixth of the copying.
+STREAM_WINDOW_BYTES = 8 * 1024 * 1024
 MAX_POST_BODY = 65536  # max bytes accepted in POST requests (64KB — handles ~500 URLs for batch resolve)
 # Backup bundles and per-user data blobs (bookmarks/history/preferences) are the
 # one class of POST that legitimately runs large — a full-server backup carries

@@ -64,6 +64,27 @@ log = logging.getLogger("zimi.video")
 DEFAULT_MAX_ZIM_BYTES = 4 * 1024**3  # total budget: keep video ZIMs shareable
 # Progressive-first ~720p: no merge step, so ffmpeg is never required.
 DEFAULT_VIDEO_FORMAT = "best[height<=720][ext=mp4]/best[height<=720]/best"
+# With ffmpeg on the box the same cap can be met by merging a video-only and
+# an audio-only stream, which is the only way YouTube offers anything above
+# 360p now, and the result is remuxed once so the index sits at the front.
+DEFAULT_VIDEO_FORMAT_MERGED = (
+    "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/" + DEFAULT_VIDEO_FORMAT
+)
+# A fragmented MP4 — what PeerTube serves as its plain file, and what a
+# merged DASH download is before remuxing — carries no whole-file index, so
+# a browser's <video> reads it start to end before it knows the duration.
+# The Linux Experiment (2026-09-03): 114 MB scanned in 300 KB steps, each
+# step a new range request the player aborted, and readyState 0 for a
+# minute; on a NAS over Wi-Fi that is minutes. One stream copy with the
+# index moved to the front (`-movflags +faststart`) and the same file plays
+# from its first range. Only possible with ffmpeg; without it the file is
+# kept as it came and the job log says what that means.
+FFMPEG_FASTSTART_ARGS = ["-movflags", "+faststart"]
+NO_FFMPEG_NOTE = (
+    "ffmpeg is not installed: videos are kept as the site serves them, so a "
+    "fragmented file plays only after it has loaded completely, and sites "
+    "that split video and audio are capped at their single-file quality"
+)
 DEFAULT_AUDIO_FORMAT = "bestaudio[ext=m4a]/bestaudio/best"
 SUBTITLE_MIME = "text/vtt"
 # Per-socket ceiling for the metadata-only playlist read. Bounds the preview
@@ -87,9 +108,18 @@ _MEDIA_MIME_FALLBACK = {
     ".weba": "audio/webm",
 }
 
+# The thumbnail is sized by its LINK, never by a percentage of itself: with
+# `img{max-width:35%}` the link shrank to the picture and the picture to 35%
+# of that, so a channel's thumbnails came out 60–90 px wide and each a
+# different size (The Linux Experiment, seen 2026-09-03). Every row now gets
+# the same 16:9 box, filled, and the text column takes the rest.
 _INDEX_CSS = (
-    ".zimi-vid{display:flex;gap:12px;margin:12px 0;align-items:flex-start}"
-    ".zimi-vid img{width:160px;max-width:35%;border-radius:6px}"
+    ".zimi-index{list-style:none;padding:0;margin:0}"
+    ".zimi-vid{display:flex;gap:12px;margin:14px 0;align-items:flex-start}"
+    ".zimi-vid>a:first-child{flex:0 0 36%;max-width:180px}"
+    ".zimi-vid>div{flex:1;min-width:0}"
+    ".zimi-vid img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;"
+    "border-radius:6px;background:#ddd}"
     ".zimi-vid-meta{color:#888;font-size:.9em}"
     "video,audio{width:100%;max-width:840px}"
 )
@@ -291,15 +321,24 @@ def _subtitle_langs(language):
     return langs
 
 
-def _download_entry(mod, entry, workdir, *, fmt, audio_only, language=None):
-    """Download one entry (media + subtitles + thumbnail) into its own
-    workdir. Returns the full per-video info dict.
+def ffmpeg_available():
+    """Whether yt-dlp can merge and remux here."""
+    return shutil.which("ffmpeg") is not None
 
-    Captions are decoration on a video, never a condition of having it: a
-    refusal that names subtitles is retried once without them."""
-    url = entry.get("url") or entry.get("webpage_url") or entry.get("original_url")
-    if not url:
-        raise CreateError("yt-dlp returned a playlist entry with no URL")
+
+def default_video_format(ffmpeg=None):
+    """The format string for a video capture on this box."""
+    if ffmpeg is None:
+        ffmpeg = ffmpeg_available()
+    return DEFAULT_VIDEO_FORMAT_MERGED if ffmpeg else DEFAULT_VIDEO_FORMAT
+
+
+def download_opts(workdir, *, fmt, audio_only, language=None, ffmpeg=None):
+    """yt-dlp options for one entry. With ffmpeg, every video is stream-copied
+    once with its index moved to the front (see FFMPEG_FASTSTART_ARGS);
+    without it, the file is kept exactly as downloaded."""
+    if ffmpeg is None:
+        ffmpeg = ffmpeg_available()
     opts = {
         "quiet": True,
         "no_warnings": True,
@@ -312,6 +351,23 @@ def _download_entry(mod, entry, workdir, *, fmt, audio_only, language=None):
         "subtitleslangs": _subtitle_langs(language),
         "writethumbnail": not audio_only,
     }
+    if ffmpeg and not audio_only:
+        opts["merge_output_format"] = "mp4"
+        opts["postprocessors"] = [{"key": "FFmpegCopyStream"}]
+        opts["postprocessor_args"] = {"copystream": list(FFMPEG_FASTSTART_ARGS)}
+    return opts
+
+
+def _download_entry(mod, entry, workdir, *, fmt, audio_only, language=None):
+    """Download one entry (media + subtitles + thumbnail) into its own
+    workdir. Returns the full per-video info dict.
+
+    Captions are decoration on a video, never a condition of having it: a
+    refusal that names subtitles is retried once without them."""
+    url = entry.get("url") or entry.get("webpage_url") or entry.get("original_url")
+    if not url:
+        raise CreateError("yt-dlp returned a playlist entry with no URL")
+    opts = download_opts(workdir, fmt=fmt, audio_only=audio_only, language=language)
     try:
         try:
             with mod.YoutubeDL(opts) as ydl:
@@ -622,7 +678,9 @@ def create_video_zim(
     if max_bytes <= 0:
         raise CreateError("--max-bytes must be positive")
     say = progress or (lambda _msg: None)
-    fmt = fmt or (DEFAULT_AUDIO_FORMAT if audio_only else DEFAULT_VIDEO_FORMAT)
+    fmt = fmt or (DEFAULT_AUDIO_FORMAT if audio_only else default_video_format())
+    if not audio_only and not ffmpeg_available():
+        say(NO_FFMPEG_NOTE)
 
     head, entries = _flat_entries(mod, url, limit)
     zim_title = title or head.get("title") or "Videos"

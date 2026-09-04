@@ -580,3 +580,36 @@ def test_a_subtitle_refusal_does_not_end_the_video(monkeypatch, tmp_path):
     assert attempts == [True, False] * 3, attempts
     arc = Archive(info["path"])
     assert bytes(arc.get_entry_by_path("media/v1.mp4").get_item().content) == b"MP41" * 250
+
+
+def test_every_thumbnail_on_the_index_is_the_same_size():
+    """The Linux Experiment (2026-09-03): thumbnails 60–90 px wide and each
+    a different size, because the image was capped at a percentage of its own
+    link, which had shrunk to the image. The box belongs to the link."""
+    from zimi.video import _INDEX_CSS
+
+    assert ".zimi-vid>a:first-child{flex:0 0 36%" in _INDEX_CSS
+    assert "aspect-ratio:16/9;object-fit:cover" in _INDEX_CSS
+    assert "max-width:35%" not in _INDEX_CSS
+
+
+def test_with_ffmpeg_a_video_is_remuxed_with_its_index_in_front(monkeypatch):
+    """The Linux Experiment (2026-09-03): a fragmented MP4 that Chrome had to
+    read end to end, in 300 KB range requests, before it knew the duration.
+    One stream copy with -movflags +faststart and it plays from the first
+    range. Only possible with ffmpeg; without it the file is kept as it came
+    and the job log says what that means."""
+    opts = video.download_opts("/w", fmt="best", audio_only=False, ffmpeg=True)
+    assert opts["merge_output_format"] == "mp4"
+    assert opts["postprocessors"] == [{"key": "FFmpegCopyStream"}]
+    assert opts["postprocessor_args"] == {"copystream": ["-movflags", "+faststart"]}
+    bare = video.download_opts("/w", fmt="best", audio_only=False, ffmpeg=False)
+    assert "postprocessors" not in bare and "merge_output_format" not in bare
+    audio = video.download_opts("/w", fmt="best", audio_only=True, ffmpeg=True)
+    assert "postprocessors" not in audio
+    # The default format merges only when something can do the merging.
+    assert video.default_video_format(ffmpeg=True).startswith("bestvideo[height<=720]")
+    assert video.default_video_format(ffmpeg=False) == video.DEFAULT_VIDEO_FORMAT
+    monkeypatch.setattr(video.shutil, "which", lambda _n: None)
+    assert video.ffmpeg_available() is False
+    assert "fragmented file plays only after" in video.NO_FFMPEG_NOTE

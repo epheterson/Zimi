@@ -2902,17 +2902,16 @@ class ZimHandler(BaseHTTPRequestHandler):
                         range_start, range_end = self._parse_range(
                             range_header, total_size
                         )
+                    window = min(_srv.STREAM_WINDOW_BYTES, _srv.MAX_SERVE_BYTES)
                     if range_start is None or range_end is None:
                         # No Range, or one too malformed to honour.
                         range_start = range_end = None
-                        if total_size > _srv.MAX_SERVE_BYTES:
-                            range_start, range_end = 0, _srv.MAX_SERVE_BYTES - 1
+                        if total_size > window:
+                            range_start, range_end = 0, window - 1
                     else:
                         # A satisfiable range still gets clamped — bytes=0- is
                         # a request for the whole item through the ranged door.
-                        range_end = min(
-                            range_end, range_start + _srv.MAX_SERVE_BYTES - 1
-                        )
+                        range_end = min(range_end, range_start + window - 1)
                     if range_start is not None and range_end is not None:
                         content = bytes(item.content[range_start : range_end + 1])
                     else:

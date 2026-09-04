@@ -107,8 +107,12 @@ RUN pip install --no-cache-dir "yt-dlp>=2024.1.1"
 # binds it at import). Without it every WARC conversion — the alive engine's
 # exit — dies before reading a byte. Its own layer, after the browser layer,
 # so it never invalidates the 400MB Chromium download above.
+# ffmpeg rides in the same layer: without it yt-dlp cannot merge YouTube's
+# split video and audio (everything above 360p) and cannot move a fragmented
+# file's index to the front, which is what lets a browser play it from the
+# first byte range instead of after a full download (2026-09-03).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libmagic1 \
+ && apt-get install -y --no-install-recommends libmagic1 ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
