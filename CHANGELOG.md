@@ -7,56 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.9.0] - 2026-09-04
 
-Zimi grows up in 1.9. It serves a folder of ZIMs with zero configuration, from a USB stick or a NAS; it proves itself silent when told it is offline; it exposes metrics, backs itself up and restores from nothing; it signs people in through Cloudflare Access without a password; folders become categories; bookmarks live inside the article; the app knows when a newer Zimi exists and how you installed it; and the first-run admin takeover is closed. And Zimi makes ZIMs now: paste an address and get a ZIM of a page, a whole site, a video playlist, or your bookmarks, opened in the same reader as your Wikipedia. Creation is new and marked beta. Every claim here is checked by a functional release gate before the tag.
-
-**Creation is a beta.** It has been driven through twenty-six sites and set beside the ZIMs Kiwix ships for the same pages, and the web is bigger than that. When a site captures badly, the create page has a link that files an issue with the address filled in. A site that fails is a fixture we do not have yet.
+Zimi grows up: it runs from a folder of ZIMs with no configuration, proves itself silent when told it is offline, exposes metrics, backs itself up, gains named permissions, and closes a first-run admin takeover. It also makes ZIMs now.
 
 ### Added
 
-- **ZIM creation (beta).** `zimi create` turns a folder, a web page, a list of pages, or a whole site into a ZIM: images, styles and fonts carried in, cross-file links intact, provenance written. Three engines: Fast fetches the page as served, Rendered lets a real browser lay it out first, Alive records the browser session so the site's own JavaScript keeps working offline. A bounded, polite crawl for whole sites: page, depth and byte budgets, robots.txt honored, Ctrl-C still writes a valid ZIM. Ads and trackers are refused at capture time and the file says so.
-- **Video ZIMs.** A playlist or channel URL builds a video ZIM through yt-dlp: an index with thumbnails and durations, one page per video, subtitles as tracks, audio-only mode, a size budget that stops cleanly, and files that play from the first byte. The Docker image ships ffmpeg.
-- **Web archive import.** `zimi import` converts WARC and WACZ files from ArchiveBox, browsertrix, Webrecorder or HTTrack into library ZIMs through a managed warc2zim sidecar, with an offline pre-seed path for air-gapped machines. Powered by warc2zim.
-- **The + button.** Creation in the web app, for admins and for accounts given the creator permission. Paste an address; the page looks first and says what it found, picks the engine, then runs with a live log, a page tree, honest counters, a cancel that cancels, and a card at the end that names the page, the file and what is inside it. Bookmarks export from the same page.
-- **Provenance in every created ZIM.** Name, title, description, language, tags, an icon (the site's own favicon when available, a generated identicon otherwise) and a Scraper line all follow the openZIM metadata specification, validated with zimcheck. Each ZIM additionally carries X-Zimi-Source and an X-Zimi-History birth record: when, which Zimi version, which tools, how many pages and bytes. Local paths never leak into metadata; ZIMs are meant to be shared.
-- **Sign-in through Cloudflare Access.** Set a team domain and application audience and Zimi verifies the tunnel's signed identity header (RS256 against your team's published keys, algorithm pinned, audience and issuer checked) and signs people into ordinary Zimi accounts created on first visit. Pure standard library, stateless, revocation at the edge is immediate, and a JWKS outage can never weaken password or token auth. Off until explicitly configured.
-- **Zero-configuration serving.** `zimi serve` in or beside a folder of ZIMs just works: the directory is discovered, state lands in a `.zimi` folder next to the content or in a per-user cache when the media is read-only, and `zimi config` prints every effective setting with exactly where it came from: flag, environment, config file, discovery, or default.
+- **Zero-configuration serving.** `zimi serve` in or beside a folder of ZIMs just works: the directory is discovered, state lands in a `.zimi` folder beside the content or in a per-user cache when the media is read-only. `zimi config` prints every effective setting and exactly where it came from — flag, environment, config file, discovery, or default.
 - **The config file grew up.** manage, credentials, API token, offline, hot ZIMs and index throttle join the path and bind settings in `zimi.json`, with environment variables always winning and secrets masked in `zimi config` output.
-- **Ops surface.** `/metrics` in Prometheus exposition format (admin-gated). `zimi backup` and `zimi restore` round-trip settings, bookmarks, collections and user data in one 0600 file. `ZIMI_OFFLINE=1` is a provable air-gap switch: no torrent stack, no NAT probing, no update checks, no catalog or thumbnail fetches, verified by a test that records every outbound socket. Reference docker-compose and Kubernetes manifests ship in `deploy/`, and `scripts/make-airgap-bundle.sh` builds a wheels-only offline installer that refuses to include anything requiring a network to install.
-- **App update awareness (#76).** Manage shows the current version and checks for releases on demand with instructions matched to how Zimi was installed. Two channels: Latest (finished releases, the default) and Beta (prereleases too). An update delay setting holds any release until it has been public for a chosen number of days, reported honestly as out now, offering later.
-- **Folders are categories.** ZIMs in a subfolder of the library file their folder name as a library section, no configuration, with per-ZIM overrides still winning. Quarantine and staging folders are excluded by a deny list and a `.nozim` marker file.
+- **`ZIMI_OFFLINE=1`, a provable air gap.** No torrent stack, no NAT probing, no update checks, no catalog or thumbnail fetches — verified by a test that records every outbound socket. `scripts/make-airgap-bundle.sh` builds a wheels-only installer that refuses to include anything needing a network to install.
+- **Ops surface.** `/metrics` in Prometheus exposition format (admin-gated). `zimi backup` and `zimi restore` round-trip settings, bookmarks, collections and user data in one 0600 file. Reference docker-compose and Kubernetes manifests in `deploy/`.
+- **Making things is a permission.** An account can be given the creator role: it makes ZIMs and manages what it made, without being an admin. A Creator pane shows a sortable inventory of everything this server has made, with a composition breakdown per file.
+- **App update awareness (#76).** Manage shows the current version and checks for releases on demand, with instructions matched to how Zimi was installed. Two channels, Latest and Beta, and an update delay that holds a release until it has been public for a chosen number of days.
+- **Folders are categories.** A subfolder of the library files its folder name as a library section, no configuration, with per-ZIM overrides still winning. Quarantine and staging folders are excluded by a deny list and a `.nozim` marker.
 - **In-article bookmarks (#65).** The reader chrome gains a bookmark button that opens your tree over the article.
-- **Sharing created and exported ZIMs.** Export cards carry a Download button, and other Zimi instances on the LAN list them under On nearby devices in the catalog.
+- **ZIM creation (beta).** Paste an address and get a ZIM: one page, a list of pages, a whole site (bounded, polite, robots-aware), a video playlist or channel, your bookmarks, or a folder on the server. Three engines — a plain fetch, a real browser laying the page out, or a recorded browser session that keeps the site's own JavaScript working offline — and the page picks one for you after looking at the address. `zimi create` and `zimi import` do the same from the command line; `zimi import` converts WARC and WACZ from any crawler. Ads and trackers are refused at capture time. Every ZIM carries openZIM-conformant metadata, an icon, and a birth record naming the tools that made it.
+- **Creation is marked beta in the app,** with a link that files an issue about a site that captured badly. It has met twenty-six sites; the web is bigger.
+- **Sharing created and exported ZIMs.** Export cards carry a Download button, and other Zimi instances on the LAN list them under On nearby devices.
 - **A release gate.** `scripts/release-gate.sh` boots real servers against a real fixture library and drives search, reading, cross-ZIM resolution, language switching, creation, export, deletion, offline silence and authentication end to end before any release is tagged.
-- **Almanac.** The solar system view obeys the time machine, timezone geometry rebuilt from the 2026c timezone-boundary-builder dataset (real Antarctic station zones, Kathmandu +5:45, post-2014 Russian zones), civil-time layers fade out of the map before 1840 during deep time travel, month navigation glides, and Chinese calendar dates from 1920 to 1986 now match the Hong Kong Observatory's published conversion tables.
+- **Sign-in through Cloudflare Access** (optional, off until configured): Zimi verifies the tunnel's signed identity header and signs people into ordinary Zimi accounts.
 
 ### Changed
 
-- **Same-name collisions pick the richest build.** Two editions of the same source in one folder resolve by flavor (maxi over nopic over mini) then by newer date, in the scan and at download registration, instead of by accidental alphabetical order. A root-level file still always beats a subfolder copy.
-- **Media serving is bounded.** A request for a large video without a Range header gets the first slice with an invitation to range onward, instead of the whole file materialized in memory while every other reader waits.
-- **Deleting a ZIM is a splice.** Removal updates the live library in place instead of re-scanning every archive under the global lock, the same fix the download path received for #51.
-- **Entry mimetypes are spec-clean.** HTML entries carry a bare text/html with the charset declared in the document itself, satisfying the ZIM Counter grammar and fixing a latent mojibake risk for non-UTF-8 captures along the way.
-- **`/manage/stats` is cheap by default,** with the expensive per-index walk behind an explicit detail flag, and disk usage memoized.
+- **Same-name collisions pick the richest build.** Two editions of one source resolve by flavor (maxi over nopic over mini) then by newer date, instead of by accidental alphabetical order.
+- **Media serving is bounded.** A large video is served in windows, with Range, instead of being materialized in memory while every other reader waits.
+- **Deleting a ZIM is a splice,** not a re-scan of every archive under the global lock.
+- **Entry mimetypes are spec-clean,** satisfying the ZIM Counter grammar and removing a latent mojibake risk for non-UTF-8 captures.
+- **`/manage/stats` is cheap by default,** with the expensive per-index walk behind a detail flag.
 
 ### Security
 
-- **First-run admin takeover closed (GHSA-5mw2-53vv-9pw6, CWE-306).** On a passwordless instance, claiming the first admin password was allowed to any private-tier client — the whole LAN, a Docker bridge, a Tailscale tailnet — so an adjacent device could race the owner and lock them out. Bootstrap now has exactly two doors: the machine running Zimi sets the first password with no secret, and any other device must present a one-time setup key the server prints to its log on first start and invalidates the moment a password is set. Reported by EQSTLab.
+- **First-run admin takeover closed (GHSA-5mw2-53vv-9pw6, CWE-306).** On a passwordless instance, claiming the first admin password was allowed to any private-tier client — the whole LAN, a Docker bridge, a tailnet — so an adjacent device could race the owner and lock them out. Bootstrap now has exactly two doors: the machine running Zimi sets the first password with no secret, and any other device must present a one-time setup key the server prints on first start and invalidates the moment a password is set. Reported by EQSTLab.
+- **Downloads authorize by one-time ticket,** and a claimed domain never leaks into an unresolved link.
 
 ### Fixed
 
-- **The Raspberry Pi crash (#51).** A finished download re-hashed the whole file and then re-scanned all installed archives while holding the lock every reader needs; on a Pi with a NAS mount that read as a crash. Registration is now incremental: worst lock wait measured from 10.6s down to 0.45s, archives opened from 53 down to 1. The same bug class was then hunted out of bookmark export and deletion.
-- **Flavor identity in the catalog (#50).** MDWiki's maxi and video builds no longer collide into two cards both claiming Full, installed detection matches whole names instead of prefixes, and Update can no longer quietly fetch a ten gigabyte video edition you never installed.
-- **Real links everywhere (#49).** The logo, source tiles, search results and the Almanac card are genuine anchors: middle-click, right-click and open-in-new-tab behave like the web.
-- **The orrery obeys the time machine (#48).** Traveling moves the planets; returning restores the live clock.
-- **Exported bookmarks never dangle.** Links to articles left out of an export become that article's canonical web address, which resolves straight back into the installed source ZIM when read inside Zimi and is an honest external link anywhere else. Exports pass zimcheck's full sweep.
-- **Cross-ZIM link resolution actually reaches the browser.** The domain map behind `/resolve?domains=1` was an import-time snapshot that a normal boot never refreshed, so the client's resolver had been quietly dead; the whole class of such staleness is now prevented structurally and pinned by tests.
-- **Seeding display** shows the live upload rate next to connected peers, with the lifetime total in one place instead of two.
-- **A disconnecting reader is a debug line,** not a stack trace and a 500 in the log.
-- **Idle instances with torrenting enabled no longer fetch the catalog at boot.**
-- **The MCP server survives `mcp` 2.0 (#52).** The 2.0 release moved FastMCP out of the `mcp` package; the dependency is pinned to the line that still ships it, and the import falls back to the standalone `fastmcp` package otherwise.
-- **Captured pages look like the site.** Stylesheets on a CDN, pictures set by CSS, lazy-loaded pictures, picture variants, meta refreshes and links that climb above the root are all handled; a page with no viewport meta is scaled to fit a phone; a captured site keeps its own colours in dark mode.
-- **A capture cannot take the server down.** A pathological inline stylesheet stalled the server for twenty minutes during testing; the scan is linear now and a timing test pins it.
-- **Large media is served in windows.** A player that asks for `bytes=N-` gets 8 MB at a time, not a 50 MB copy per request.
-- **A site that is down says so**, and a page that is really a login or consent wall is named as one on the card.
+- **The Raspberry Pi crash (#51).** A finished download re-hashed the file and re-scanned every installed archive while holding the lock readers need. Registration is incremental now: worst lock wait 10.6s down to 0.45s, archives opened 53 down to 1. The same pattern was hunted out of bookmark export and deletion.
+- **Flavor identity in the catalog (#50).** MDWiki's maxi and video builds no longer collide into two cards both claiming Full, and Update can no longer quietly fetch a ten gigabyte edition you never installed.
+- **Real links everywhere (#49).** Logo, source tiles, search results and cards are genuine anchors: middle-click, right-click and open-in-new-tab behave like the web.
+- **The snap launches (#55).** It was built against a newer glibc than its own base, so it died at startup for everyone; the build runner is pinned to the base it ships.
+- **The MCP server survives `mcp` 2.0 (#52),** and `zimi[mcp]` resolves to a package that still has FastMCP.
+- **The orrery obeys the time machine (#48).**
+- **Exported bookmarks never dangle.** A link to an article left out of an export becomes that article's canonical address, which resolves back into the installed source ZIM when read inside Zimi.
+- **Cross-ZIM link resolution actually reaches the browser.** The domain map behind it was an import-time snapshot a normal boot never refreshed; the whole class of staleness is now prevented structurally.
+- **Captured pages look like the site.** Stylesheets on a CDN, pictures set by CSS, lazy-loaded pictures, picture variants, meta refreshes and references that climb above the site root are all handled; a page with no viewport meta is scaled to fit a phone; a captured site keeps its own colours in dark mode.
+- **A capture cannot take the server down.** A pathological inline stylesheet made an attribute scan quadratic and stalled the server for twenty minutes in testing; it is linear now, with a timing test.
+- **Captured video plays from its first byte,** instead of after the whole file has loaded.
+- **A site that is down says so,** and a page that is really a login or consent wall is named as one.
+- **Seeding shows the live upload rate** next to connected peers, with the lifetime total in one place.
+- **Idle instances with torrenting enabled no longer fetch the catalog at boot,** and a disconnecting reader is a debug line rather than a stack trace.
+
+### Credit
+
+Creation stands on other people's work: [yt-dlp](https://github.com/yt-dlp/yt-dlp) for video, [warc2zim](https://github.com/openzim/warc2zim) and [zimit](https://github.com/openzim/zimit) from openZIM for archive conversion and browser-based crawling, [Playwright](https://playwright.dev) and Chromium for the rendered and recording engines, [SingleFile](https://github.com/gildas-lormeau/SingleFile) and [browsertrix-behaviors](https://github.com/webrecorder/browsertrix-behaviors) as optional engines and helpers, and [StevenBlack/hosts](https://github.com/StevenBlack/hosts) for the ad and tracker list. The whole library rests on [Kiwix](https://kiwix.org) and [libzim](https://github.com/openzim/libzim).
 
 ## [1.8.2] - 2026-08-07
 
