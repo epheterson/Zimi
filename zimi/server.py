@@ -86,6 +86,7 @@ import sys
 import tempfile
 import threading
 import time
+import socketserver
 from http.server import ThreadingHTTPServer
 import ssl
 from typing import Any, NoReturn
@@ -1885,6 +1886,29 @@ _zim_files_cache = None  # {name: path} — cached at startup, ZIM dir is read-o
 
 # ── Per-request ZIM allow context (multi-user v1) ────────────────────────────
 # When a named USER (not admin, not anonymous) is logged in, the request's ZIM
+class ZimiHTTPServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer that does not ask DNS who it is.
+
+    The stdlib's ``server_bind`` calls ``socket.getfqdn(host)`` purely to fill
+    in ``server_name``, which only CGI ever reads. That is a reverse lookup,
+    and on a machine whose resolver has no answer it blocks for the full
+    resolver timeout before the socket is usable. Zimi is offline-first: an
+    air-gapped box, a boat, a bunker, a laptop on a captive-portal network is
+    the normal case, not the edge. A start that hangs half a minute there
+    looks like a hung app.
+
+    Found when the 1.9.0 desktop build failed on all four runners: the server
+    printed its whole startup banner and then took longer than thirty seconds
+    to emit READY, on machines with no reverse DNS. Nothing in Zimi reads
+    ``server_name``; the address is what it binds to."""
+
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = port
+
+
 # view is restricted to their allowlist. ThreadingHTTPServer runs one thread per
 # request, so a thread-local is naturally request-scoped; http.do_GET/do_POST set
 # it from zimi.users.request_allow() and clear it in a finally. A value of None
@@ -3751,7 +3775,7 @@ def main():
 
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
-        server = ThreadingHTTPServer((host, port), ZimHandler)
+        server = ZimiHTTPServer((host, port), ZimHandler)
         # Emit READY <actual-port> so wrapper scripts (CI smoke tests, the
         # desktop launcher) can capture the bound port — important when
         # --port 0 is used to let the OS pick a free port.

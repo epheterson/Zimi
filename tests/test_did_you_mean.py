@@ -676,8 +676,29 @@ class BudgetTests(unittest.TestCase):
         self.assertIsNone(out)
 
 
+def _mcp_server_importable():
+    """Whether the optional MCP extra is installed here."""
+    try:
+        import zimi.mcp_server  # noqa: F401
+
+        return True
+    except BaseException:
+        # BaseException, not Exception: zimi/mcp_server.py exits with an
+        # install hint when neither `mcp` nor `fastmcp` is importable, and a
+        # SystemExit at collection takes pytest itself down.
+        return False
+
+
+@unittest.skipUnless(
+    _mcp_server_importable(),
+    "the mcp extra is not installed (pip install 'zimi[mcp]')",
+)
 class McpPassthroughTests(unittest.TestCase):
-    """The MCP search tool surfaces did_you_mean when the core returns it."""
+    """The MCP search tool surfaces did_you_mean when the core returns it.
+
+    Skipped rather than failed when the extra is absent: the desktop release
+    workflow installs only the desktop requirements, and these three failing
+    there is what turned a green product into a red release build."""
 
     def _run(self, fake_result):
         import zimi.mcp_server as mcp_server
