@@ -857,6 +857,19 @@ def test_a_video_address_typed_under_web_page_probes_as_a_video(monkeypatch):
     assert status == 200 and out["mode"] == "page" and seen["url"] == "https://sqlite.org/", out
 
 
+def _yt_dlp_present():
+    """Whether yt-dlp is installed here. The two tests below are about which
+    addresses it claims, so without it they are meaningless rather than
+    failing (the desktop release workflow installs no optional extras)."""
+    try:
+        import yt_dlp  # noqa: F401
+
+        return True
+    except BaseException:
+        return False
+
+
+@pytest.mark.skipif(not _yt_dlp_present(), reason="yt-dlp is not installed")
 def test_a_news_article_is_not_hijacked_into_video_mode(monkeypatch):
     """Found in review before 1.9.0 was published: the probe moved the mode
     chip to Video for any address a yt-dlp extractor claimed, and yt-dlp
@@ -898,6 +911,7 @@ def test_a_news_article_is_not_hijacked_into_video_mode(monkeypatch):
         assert status == 200 and out["mode"] == "video", (video, out)
 
 
+@pytest.mark.skipif(not _yt_dlp_present(), reason="yt-dlp is not installed")
 def test_a_video_host_is_video_and_a_page_host_is_not():
     from zimi.video import claims_url, claims_video_host
 
