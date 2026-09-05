@@ -106,9 +106,21 @@ jobs:
         with:
           python-version: "3.12"
 
+      # The same system libraries the release build installs on Linux: the
+      # bundle links GTK and WebKit through PyGObject, and PyInstaller
+      # collects what is present at build time.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgirepository-2.0-dev \
+            gir1.2-gtk-3.0 \
+            gir1.2-webkit2-4.1 \
+            gcc libcairo2-dev pkg-config python3-dev
+
       - name: Install desktop dependencies
         run: |
-          pip install -r desktop/requirements-desktop.txt pytest
+          pip install -r desktop/requirements-desktop.txt pytest PyGObject
           pip install "libtorrent==2.0.*" || echo "::warning::no libtorrent wheel here"
 
       - name: Run the test suite as the desktop build runs it
@@ -122,20 +134,13 @@ jobs:
           pip install pyinstaller
           pyinstaller --noconfirm desktop/zimi_desktop.spec
 
+      # The same script the release runs, in the same headless server mode.
+      # The bundle opens a window without it, and there is no display here.
       - name: The built binary starts and answers
         shell: bash
-        run: |
-          BIN=$(find dist -maxdepth 2 -type f -perm -u+x -name 'Zimi*' | head -1)
-          test -n "$BIN" || { echo "no binary in dist/"; ls -R dist | head -40; exit 1; }
-          "$BIN" --port 0 > /tmp/zimi-boot.log 2>&1 &
-          for i in $(seq 1 30); do
-            PORT=$(sed -n 's/^READY \([0-9]*\).*/\1/p' /tmp/zimi-boot.log | head -1)
-            [ -n "$PORT" ] && break
-            sleep 1
-          done
-          test -n "$PORT" || { echo "no READY within 30s"; cat /tmp/zimi-boot.log; exit 1; }
-          curl -fsS "http://127.0.0.1:$PORT/health" | head -c 200; echo
-          kill %1 || true
+        env:
+          SMOKE_EXPECT_BT: '1'
+        run: ci/smoke_binary.sh "dist/Zimi/Zimi"
 
   docker:
     runs-on: ubuntu-latest
