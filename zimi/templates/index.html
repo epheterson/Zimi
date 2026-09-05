@@ -65,6 +65,16 @@
   // visible first — CSS hides #main-view and shows the dark almanac shell
   // until almanac.js takes over and removes the class (_openAlmanacInner).
   if (location.hash === '#almanac') el.classList.add('almanac-boot');
+  // Same contract for the Create page (#create): a URL you can send someone
+  // has to LAND on that page, not show the library and then swap. The class
+  // holds the library back until create.js takes over (_openCreateInner).
+  if (location.hash === '#create') el.classList.add('create-boot');
+  // And for Manage (?manage=… in the query). Manage renders INTO #main-view and
+  // is admin-gated, so a cold boot would paint the library, resolve the auth
+  // probe, then swap to manage — the flash Eric flagged. The gate hides
+  // #main-view until enterManage has rendered manage in place (or, if this
+  // client may not manage, reveals the library instead).
+  if (/[?&]manage(=|&|$)/.test(location.search)) el.classList.add('manage-boot');
   window.addEventListener('pageshow', function(e){ if (e.persisted) apply(); });
 })();
 </script>
@@ -77,9 +87,9 @@
 
 <nav class="topbar" aria-label="Main navigation" data-i18n-aria="aria_main_nav">
   <div class="topbar-breadcrumb" onclick="bcClick(event)">
-    <a id="logo" class="logo" onclick="goHome(event)" title="Home" data-i18n-title="home" aria-label="Home" data-i18n-aria="home">Zimi</a>
+    <a id="logo" class="logo" href="/" onclick="goHome(event)" title="Home" data-i18n-title="home" aria-label="Home" data-i18n-aria="home">Zimi</a>
     <span id="bc-sep" class="bc-sep" style="display:none">/</span>
-    <span id="bc-icon" class="bc-icon" style="display:none"></span>
+    <a id="bc-icon" class="bc-icon" style="display:none"></a>
   </div>
   <button id="back-btn" class="back-btn" aria-label="Go back" data-i18n-aria="go_back" style="display:none">&#x2190;</button>
   <div id="history-trail"></div>
@@ -91,8 +101,12 @@
     <span class="kbd">/</span>
     <div id="suggest-dropdown" class="suggest-dropdown"></div>
   </div>
+  <!-- Create a ZIM. Home view only, and only for an admin — it writes to the
+       library. updateTopbar() owns the visibility; it ships hidden so a
+       non-admin never sees it flash during boot. -->
   <a href="#" id="random-btn" class="random-btn" title="Random article (R)" data-i18n-title="random_article" aria-label="Random article" data-i18n-aria="random_article" onclick="randomArticle(event)"><span class="dice" aria-hidden="true">&#x1F3B2;</span></a>
   <button id="library-btn" class="library-btn" title="Library (H)" data-i18n-title="library" aria-label="Library" data-i18n-aria="library" onclick="if(readerOpen){toggleBookmark();_updateLibraryBtnIcon()}else{toggleLibraryPanel()}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>
+  <button id="bm-panel-btn" class="reader-btn" style="display:none" title="Bookmarks" data-i18n-title="kbd_bookmark" aria-label="Bookmarks" data-i18n-aria="kbd_bookmark" onclick="toggleLibraryPanel('bookmarks')"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="11 3 11 11 14 8 17 11 17 3"/></svg></button>
   <button id="lang-selector-btn" class="lang-selector-btn" title="Language" data-i18n-title="language" onclick="toggleLangDropdown(event)" aria-label="Language" data-i18n-aria="language"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg></button>
   <div id="lang-dropdown" class="lang-dropdown"></div>
   <a href="#" id="manage-btn" class="manage-btn" title="Library Manager" data-i18n-title="library_manager" aria-label="Library Manager" data-i18n-aria="library_manager" onclick="toggleManage(event)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a>
@@ -195,6 +209,11 @@
 </div>
 <div id="almanac-view" class="almanac-view">
   <div class="almanac-content" id="almanac-content"></div>
+</div>
+<!-- Create a ZIM (create.js, lazy-loaded on first open) — same shell shape as
+     the Almanac: an empty surface the module renders into. -->
+<div id="create-view" class="create-view">
+  <div class="create-content" id="create-content"></div>
 </div>
 <div id="zim-ctx-menu"></div>
 <div id="link-ctx-menu" class="zimi-ctx"></div>

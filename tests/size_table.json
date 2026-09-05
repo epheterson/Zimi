@@ -1,0 +1,20 @@
+{
+  "_why": "The one table of sizes. Python's server.format_bytes and the browser's fmtBytes are the same function; both are checked against this file so they cannot drift apart. Edit here, never in one language only.",
+  "cases": [
+    [0, "0 B"],
+    [1, "1 B"],
+    [999, "999 B"],
+    [1000, "1.0 KB"],
+    [1500, "1.5 KB"],
+    [999999, "1000.0 KB"],
+    [1000000, "1.0 MB"],
+    [31322407, "31.3 MB"],
+    [999999999, "1000.0 MB"],
+    [1000000000, "1.0 GB"],
+    [9500000000, "9.5 GB"],
+    [9999999999, "10.0 GB"],
+    [10000000000, "10 GB"],
+    [123980647016, "124 GB"],
+    [85440590, "85.4 MB"]
+  ]
+}

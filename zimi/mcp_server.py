@@ -35,7 +35,24 @@ Claude Code config (Docker via SSH):
 
 import json
 
-from mcp.server.fastmcp import FastMCP
+# FastMCP is the high-level server API this file is built on. It shipped inside
+# the `mcp` package through 1.x at `mcp.server.fastmcp`; `mcp` 2.0 dropped that
+# vendored copy and moved FastMCP to its own `fastmcp` distribution. requirements
+# pins `mcp<2.0` so the first import always resolves, but a user who upgraded mcp
+# by hand (issue #52: crashed under mcp 2.0 via OpenWebUI) falls through to the
+# standalone package, and if neither is present gets a fixable message instead of
+# a bare ModuleNotFoundError.
+try:
+    from mcp.server.fastmcp import FastMCP
+except ModuleNotFoundError:
+    try:
+        from fastmcp import FastMCP
+    except ModuleNotFoundError as exc:
+        raise SystemExit(
+            "Zimi's MCP server needs FastMCP. Install a compatible mcp with "
+            "`pip install 'mcp<2.0'`, or add the standalone package with "
+            "`pip install fastmcp`."
+        ) from exc
 
 from zimi import server as zimi
 
@@ -50,6 +67,23 @@ threading.Thread(target=zimi.warm_indexes, daemon=True).start()
 mcp = FastMCP(
     "zimi", instructions="Search and read articles from offline ZIM knowledge archives."
 )
+
+# Report ZIMI's version, not FastMCP's.
+#
+# The low-level server carries `version=None`, and the library then answers the
+# handshake with its OWN version — so a client asking what it just connected to
+# was told "zimi 1.26.0" while Zimi was 1.9.0. Harmless until somebody files a
+# bug report with that number in it, or an agent records which server answered.
+#
+# Set after construction because FastMCP's __init__ signature differs between
+# the vendored `mcp.server.fastmcp` and the standalone `fastmcp` distribution
+# (this file already supports both), and only one of them takes `version`.
+# Guarded: a private attribute that moves should cost us a wrong version
+# string, never a server that will not start.
+try:
+    mcp._mcp_server.version = zimi.ZIMI_VERSION
+except Exception:  # pragma: no cover - shape changed upstream
+    pass
 
 
 @mcp.tool()
@@ -228,7 +262,8 @@ def list_sources() -> str:
     for z in sources:
         entries = z["entries"] if isinstance(z["entries"], int) else 0
         lines.append(
-            f"- **{z.get('title', z['name'])}** (`{z['name']}`) — {entries:,} entries, {z['size_gb']} GB"
+            f"- **{z.get('title', z['name'])}** (`{z['name']}`) — "
+            f"{entries:,} entries, {zimi.format_bytes(z.get('size_bytes', 0))}"
         )
     return "\n".join(lines)
 

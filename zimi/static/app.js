@@ -11,6 +11,10 @@ var SK = {
   ALMANAC_LOC: 'zimi_almanac_location',
   ALMANAC_HL: 'zimi_almanac_highlights',
   HIDE_LANG_CHOOSER: 'zimi_hide_lang_chooser',
+  // Last KNOWN answer to "may this browser create ZIMs?" — a boot-time hint so
+  // the + can be drawn before the manage probe lands, never an authority. See
+  // _createCanShow for why optimism here is safe in one direction only.
+  CAN_CREATE: 'zimi_can_create',
   HIDE_XZIM_LINKS: 'zimi_hide_cross_zim_links',
   // When set, ZIM article HTML is run through the server-side a11y
   // rewriter (alt="" on images, h1 promotion, html lang). Off by
@@ -45,9 +49,6 @@ var SK = {
   // One-shot: set once the "tap again for reading settings" coachmark has been
   // shown, so the hint never nags a returning reader.
   READER_COACH: 'zimi_reader_settings_coach',
-  // One-shot: set once the "select any word to define it" tip has been shown (or
-  // the moment the reader first uses Define), so the tip appears at most once.
-  DEFINE_HINT: 'zimi_define_hint_seen',
   // Last-rendered SHARING rows (Server pane) — restored synchronously on
   // pane open so the section doesn't pop in after the status fetches.
   SHARE_ROWS: 'zimi_share_rows',
@@ -201,10 +202,21 @@ var _ARTICLE_DARKEN_CSS = [
   'html{background:#ffffff !important;filter:invert(1) hue-rotate(180deg) !important;',
     '-webkit-filter:invert(1) hue-rotate(180deg) !important}',
   // Counter-invert media + anything painting its own image so photos, diagrams,
-  // maps and icons keep true colour under the root flip.
-  'img,video,picture,canvas,svg,image,embed,object,iframe,',
-  '[style*="background-image"]{filter:invert(1) hue-rotate(180deg) !important;',
+  // maps and icons keep true colour under the root flip. Filters COMPOUND down
+  // the tree: a counter-inverted <picture> holding a counter-inverted <img>
+  // flipped the photo back to a negative — apple.com's portraits on Eric's
+  // phone (2026-09-03). So <picture> is not in the list (its <img> is what
+  // paints), and nothing inside a counter-inverted element is filtered again.
+  // Elements whose STYLESHEET paints a picture (a hero as a class background)
+  // are marked by _applyArticleDarken, since a selector cannot see computed
+  // style.
+  'img,video,canvas,svg,image,embed,object,iframe,',
+  '[style*="background-image"],[data-zimi-bgimg]{filter:invert(1) hue-rotate(180deg) !important;',
     '-webkit-filter:invert(1) hue-rotate(180deg) !important}',
+  '[style*="background-image"] img,[style*="background-image"] video,[style*="background-image"] svg,',
+  '[style*="background-image"] canvas,[data-zimi-bgimg] img,[data-zimi-bgimg] video,',
+  '[data-zimi-bgimg] svg,[data-zimi-bgimg] canvas,[data-zimi-bgimg] [data-zimi-bgimg],',
+  '[style*="background-image"] [style*="background-image"]{filter:none !important;-webkit-filter:none !important}',
   // MediaWiki math is black line-art on a TRANSPARENT ground — an <img> fallback
   // (caught by the img rule above) or an inline <svg>. It must invert WITH the
   // page like text, NOT be counter-inverted, or the glyphs stay black on the dark
@@ -237,9 +249,40 @@ function _articleDeclaresDark(doc) {
   } catch (e) {}
   return false;
 }
+// A picture painted by a stylesheet rule (apple.com's hero is a class with a
+// background image) is invisible to the counter-invert selector, which can
+// only see inline style. Mark such elements so the stylesheet rule can find
+// them. Bounded walk; a gradient is not a picture.
+var _BGIMG_SCAN_MAX = 4000;
+function _markStylesheetPictures(doc) {
+  try {
+    var win = doc.defaultView;
+    var all = doc.body ? doc.body.getElementsByTagName('*') : [];
+    for (var i = 0; i < all.length && i < _BGIMG_SCAN_MAX; i++) {
+      var el = all[i];
+      if (el.hasAttribute('data-zimi-bgimg')) continue;
+      var st = el.getAttribute('style') || '';
+      if (st.indexOf('background-image') !== -1) continue;   // the selector sees it
+      var bg = win.getComputedStyle(el).backgroundImage;
+      if (bg && bg !== 'none' && bg.indexOf('url(') !== -1) el.setAttribute('data-zimi-bgimg', '1');
+    }
+  } catch (e) {}
+}
 // Apply or remove the dark adaptation on a raw article document. No-op for
 // Reader View (it owns its themes), PDF/static viewer pages, and pages that ship
 // their own dark scheme. Idempotent — safe to call on any frame.onload or toggle.
+// A website Zimi captured is a designed page, not an article to adapt: cnn.com
+// and apple.com on Eric's phone in dark mode (2026-09-03) came out as a black
+// page with no pictures and a hero with negative portraits, after a gate in
+// light mode had passed them. The invert is for wiki-style article ZIMs whose
+// pages have no design of their own. Created ZIMs and bookmark exports keep
+// their colours; the app chrome around them stays dark.
+function _articleIsWebCapture() {
+  try {
+    var z = currentArticle && _zimsByName && _zimsByName.get(currentArticle.zim);
+    return !!(z && (z.category === 'Created' || z.zimi_export));
+  } catch (e) { return false; }
+}
 function _applyArticleDarken(doc) {
   if (!doc || !doc.documentElement) return;
   var existing = doc.getElementById(_ARTICLE_DARKEN_STYLE_ID);
@@ -248,6 +291,7 @@ function _applyArticleDarken(doc) {
     var loc = '';
     try { loc = doc.defaultView.location.pathname; } catch (e) {}
     if (loc.indexOf('/static/') === 0) want = false;         // pdf.js / viewers
+    else if (_articleIsWebCapture()) want = false;            // a site keeps its design
     else if (_articleDeclaresDark(doc)) want = false;         // already dark
   }
   if (want) {
@@ -257,6 +301,7 @@ function _applyArticleDarken(doc) {
       st.textContent = _ARTICLE_DARKEN_CSS;
       doc.head.appendChild(st);
     }
+    _markStylesheetPictures(doc);
   } else if (existing && existing.parentNode) {
     existing.parentNode.removeChild(existing);
   }
@@ -411,6 +456,7 @@ let _managePwRequired = false; // server is password-protected and we have no to
 // Passwordless instance reached over a non-private hop: management is LAN-only
 // and there is no password to enter, so we explain instead of prompting (#36).
 let _managePublicLocked = false;
+let _manageNeedsSetupKey = false;
 let _manageUnlocked = true; // manage is always available (auth via env var only)
 
 // May we hit ambient /manage/* endpoints (activity bar, peer discovery)?
@@ -536,6 +582,40 @@ function tPluralH(base, n, vars) {
   return tPlural(base, n, vars).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function _loadingHtml(key) { return '<div class="loading"><span class="spinner-inline"></span>' + tH(key || 'loading') + '</div>'; }
+
+// In-app confirmation — replaces window.confirm everywhere (Eric: "Delete
+// confirmation should be in app ui"). Reuses the password overlay's shell so
+// it themes correctly on both palettes. Resolves true only on the primary
+// button; overlay tap, Cancel, and Escape all resolve false.
+function _appConfirm(message, okLabel) {
+  return new Promise(function(resolve) {
+    var overlay = document.createElement('div');
+    overlay.className = 'pw-overlay open';
+    overlay.innerHTML =
+      '<div class="pw-box" role="alertdialog" aria-modal="true">' +
+        '<h3>' + esc(message) + '</h3>' +
+        '<div class="pw-actions">' +
+          '<button type="button" id="ac-cancel">' + tH('cancel') + '</button>' +
+          '<button type="button" class="pw-primary" id="ac-ok">' + esc(okLabel || t('ok')) + '</button>' +
+        '</div>' +
+      '</div>';
+    function done(answer) {
+      overlay.remove();
+      document.removeEventListener('keydown', onKey, true);
+      resolve(answer);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') { e.stopPropagation(); done(false); }
+    }
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) done(false); });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(overlay);
+    overlay.querySelector('#ac-cancel').onclick = function() { done(false); };
+    var ok = overlay.querySelector('#ac-ok');
+    ok.onclick = function() { done(true); };
+    ok.focus();
+  });
+}
 
 async function _loadI18n(lang) {
   if (lang === 'en') {
@@ -679,20 +759,81 @@ function _updateSearchPlaceholder() {
   }
 }
 
-function fmtSize(gb, html) {
+// Sizes are DECIMAL, everywhere, and this is the only place that says so.
+//
+// The app used to divide by 1024 and print "GB" — a GiB wearing the wrong
+// name — in five separate hand-rolled formatters that did not even agree with
+// each other. At these file sizes the gap is not academic:
+// wikipedia_en_all_maxi is 123,980,647,016 bytes, which Zimi called 115 GB
+// while the NAS, Finder, df and Kiwix's own library page all called it 124 GB.
+// Nine gigabytes of disagreement, on the screen whose job is answering "will
+// this fit".
+//
+// The Python side's format_bytes() is this same function, thresholds and
+// decimal places included, and tests/test_size_units.py holds the two to one
+// table of expected strings so they cannot drift apart again.
+var BYTES_PER_KB = 1000;
+var BYTES_PER_MB = 1000 * 1000;
+var BYTES_PER_GB = 1000 * 1000 * 1000;
+// Where GB stops carrying a decimal: below ten a tenth says something about a
+// ZIM, above it "115 GB" reads better than "115.5 GB" down a list.
+var GB_WHOLE_FROM = 10;
+
+function fmtBytes(bytes, html) {
+  var b = Math.max(0, Number(bytes) || 0);
   var n, u;
-  if (gb < 0.1) { n = Math.max(1, Math.round(gb * 1024)); u = ' MB'; }
-  else if (gb < 10) { n = gb.toFixed(1); u = ' GB'; }
-  else { n = Math.round(gb); u = ' GB'; }
+  if (b < BYTES_PER_KB) { n = String(Math.round(b)); u = ' B'; }
+  else if (b < BYTES_PER_MB) { n = (b / BYTES_PER_KB).toFixed(1); u = ' KB'; }
+  else if (b < BYTES_PER_GB) { n = (b / BYTES_PER_MB).toFixed(1); u = ' MB'; }
+  else {
+    var gb = b / BYTES_PER_GB;
+    n = gb >= GB_WHOLE_FROM ? String(Math.round(gb)) : gb.toFixed(1);
+    u = ' GB';
+  }
   return html ? '<span class="num">' + n + '</span>' + u : n + u;
+}
+
+// The same size, for the callers that only ever held a GB figure (the API's
+// size_gb, which is now decimal GB computed from the same constant). One
+// entry point too many, but zero implementations too many: it lands in
+// fmtBytes like everything else, so nothing can quote a different number.
+function fmtSize(gb, html) {
+  return fmtBytes((Number(gb) || 0) * BYTES_PER_GB, html);
 }
 // Localized count line for a ZIM's card/info panel. Prefers the real article
 // count (libzim `article_count`, added by the metadata cache) and falls back to
 // the raw entry count for stale caches that predate the field. Empty string
 // when neither is a number (e.g. an unreadable ZIM whose entries is '?').
 function _zimCountHtml(z) {
-  const n = (z && typeof z.article_count === 'number') ? z.article_count : (z ? z.entries : undefined);
-  return typeof n === 'number' ? t('n_entries', {n: n.toLocaleString()}) : '';
+  const n = _zimCount(z);
+  // tPlural, not t: this line read "1 entries" on the home screen for every
+  // single-article library — a 67MB medical collection announcing itself with
+  // a grammar mistake. The helper has been here the whole time and this was
+  // the one count that did not use it.
+  return typeof n === 'number' ? tPlural('n_entries', n, {n: n.toLocaleString()}) : '';
+}
+
+// How many things a ZIM holds, as a person would count them.
+//
+// `article_count` is libzim's, and libzim only counts what the ZIM declares an
+// ARTICLE. That is right for an encyclopedia and wrong for a document
+// collection: every zimgit library — food preparation, knots, medicine,
+// post-disaster, water — declares ONE article, its index, and keeps its
+// hundreds of PDFs as ordinary entries. So the home screen introduced a 645MB
+// survival library as "1 entry".
+//
+// A Zimi-made capture is the case where 1 is the truth: one page, plus the
+// images and stylesheets that page needs. Those are marked, so they keep the
+// article count and everything else falls back to entries when the article
+// count is obviously not describing the ZIM.
+function _zimCount(z) {
+  if (!z) return undefined;
+  const articles = typeof z.article_count === 'number' ? z.article_count : undefined;
+  const entries = typeof z.entries === 'number' ? z.entries : undefined;
+  if (articles === undefined) return entries;
+  if (z.zimi_export) return articles;      // a capture really is one page
+  if (articles <= 1 && entries > 1) return entries;
+  return articles;
 }
 // True for ZIMs Zimi itself exported (bookmark exports). Server flags them
 // from Creator metadata; the description sniff covers caches built before the
@@ -743,7 +884,9 @@ let _pwReject = null;
 // ── Multi-user session (v1.8) ──
 // A logged-in NAMED USER (not admin). The session cookie does the actual
 // server-side filtering; this just shapes the client chrome (hide the admin
-// gear, show name + logout). null = admin or anonymous. {name, restricted}.
+// gear, show name + logout). null = admin or anonymous.
+// {name, restricted, canCreate} — canCreate mirrors the account's per-user
+// create permission (/whoami can_create); the server gates regardless.
 let _userSession = null;
 // When true, the password modal is in "sign in" mode (POST /login: user OR
 // admin) rather than the admin-only manage-retry flow.
@@ -778,8 +921,8 @@ function doLogin(username, password, remember) {
 
 // Apply a user session to the UI. Server-side filtering is already live via the
 // cookie; here we hide manage and reload the (now restricted) library view.
-function _applyUserSession(name) {
-  _userSession = { name: name, restricted: true };
+function _applyUserSession(name, canCreate) {
+  _userSession = { name: name, restricted: true, canCreate: !!canCreate };
   // A user is never admin — drop any admin token so ambient manage polls stop.
   _manageToken = ''; _clearManageToken();
   if (manageBtnEl) manageBtnEl.style.display = 'none';
@@ -845,7 +988,7 @@ async function _bootAuthGate() {
   // reads it to show "Default username: admin".
   _defaultUsernameHint = (j && j.default_username) || '';
   if (j && j.role === 'user') {
-    _userSession = { name: j.name, restricted: !!j.restricted };
+    _userSession = { name: j.name, restricted: !!j.restricted, canCreate: !!j.can_create };
     if (manageBtnEl) manageBtnEl.style.display = 'none';
     return false;
   }
@@ -1084,7 +1227,7 @@ function submitPw() {
         // state so the whole app boots with the session's filtered view.
         if (_loginRequired) { _exitLoginGate(); location.reload(); return; }
         closePwModal();
-        _applyUserSession(res.j.name);
+        _applyUserSession(res.j.name, !!res.j.can_create);
         return;
       }
       // Admin via the sign-in modal. A SECONDARY admin authenticates to a
@@ -1147,12 +1290,17 @@ function updateTopbar() {
     bcIcon.style.display = 'inline-flex';
     bcIcon.title = t('almanac');
     bcIcon.innerHTML = _ALMANAC_BC_ICON;
+    // Identity only — no destination behind it, so no link affordance either.
+    bcIcon.removeAttribute('href');
   } else if (activeSource) {
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
     const info = _zimInfo(activeSource);
     const title = _zimTitle(activeSource);
     bcIcon.title = title;
+    // Real link (#49): the source view has a true URL, so right/middle/
+    // modifier clicks can open it in a new tab; bcClick keeps plain clicks SPA.
+    bcIcon.setAttribute('href', '/w/' + encodeURIComponent(activeSource));
     if (info && info.has_icon) {
       bcIcon.innerHTML = '<img src="/w/' + encodeURIComponent(activeSource) + '/-/icon" alt="" width="22" height="22" alt="' + escAttr(title) + '">';
     } else {
@@ -1162,19 +1310,28 @@ function updateTopbar() {
     bcSep.style.display = 'none';
     bcIcon.style.display = 'none';
     bcIcon.title = '';
+    bcIcon.removeAttribute('href');
   }
 
   // Manage/Almanac: gear → X close. Reader open: gear → X close reader.
   // Always show this button so topbar has a stable 4-icon layout.
   var _closeSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-  if (mode === 'manage') {
-    manageBtnEl.style.display = 'flex';
+  // Every "this slot is now a close X" case differs only in what the click does
+  // and whether the button is highlighted, so they share one setter.
+  var _setCloseBtn = function(onclick, highlighted) {
     manageBtnEl.innerHTML = _closeSvg;
     manageBtnEl.title = t('close');
-    manageBtnEl.style.color = 'var(--amber)';
-    manageBtnEl.style.borderColor = 'var(--amber-border)';
-    manageBtnEl.style.background = 'var(--amber-glow)';
-    manageBtnEl.onclick = function(e) { toggleManage(e); };
+    manageBtnEl.style.color = highlighted ? 'var(--amber)' : '';
+    manageBtnEl.style.borderColor = highlighted ? 'var(--amber-border)' : '';
+    manageBtnEl.style.background = highlighted ? 'var(--amber-glow)' : '';
+    manageBtnEl.onclick = onclick;
+  };
+  if (mode === 'manage') {
+    manageBtnEl.style.display = 'flex';
+    _setCloseBtn(function(e) { toggleManage(e); }, true);
+  } else if (_createOpen) {
+    manageBtnEl.style.display = 'flex';
+    _setCloseBtn(closeCreate, false);
   } else if (_almanacOpen || readerOpen) {
     // Hide X when another button takes the 4th slot (save on desktop, pop-out on
     // web). On mobile .manage-btn is hidden anyway (close is the back-btn /
@@ -1186,12 +1343,7 @@ function updateTopbar() {
     // (the close X takes the slot back).
     var hasNewtab = !_almanacOpen && readerOpen && _isStandalonePWA();
     manageBtnEl.style.display = (hasSaveBtn || hasNewtab) ? 'none' : 'flex';
-    manageBtnEl.innerHTML = _closeSvg;
-    manageBtnEl.title = t('close');
-    manageBtnEl.style.color = '';
-    manageBtnEl.style.borderColor = '';
-    manageBtnEl.style.background = '';
-    manageBtnEl.onclick = _almanacOpen ? closeAlmanac : function() { closeReader(); goHome(); };
+    _setCloseBtn(_almanacOpen ? closeAlmanac : function() { closeReader(); goHome(); }, false);
   } else {
     manageBtnEl.style.display = 'flex';
     manageBtnEl.innerHTML = _gearSvg;
@@ -1208,10 +1360,23 @@ function updateTopbar() {
   // reader isn't the active surface — and read-aloud never appears at all
   // when unsupported, so no dead button.
   var _readingArticle = readerOpen && !_almanacOpen;
+  // On a phone the reader topbar was carrying nine controls. Font size and
+  // Read aloud are the two least-reached, and both already live in the ⋯
+  // menu's reader group — so on a narrow viewport they fold there and leave
+  // the inline row to the essentials (Eric: reconsider what's behind ⋯, we
+  // have a lot going on). Desktop keeps them inline; the space is there.
+  var _foldReaderExtras = _readingArticle && _isNarrow();
   var fontBtn = document.getElementById('font-btn');
-  if (fontBtn) fontBtn.style.display = _readingArticle ? 'flex' : 'none';
+  if (fontBtn) fontBtn.style.display = (_readingArticle && !_foldReaderExtras) ? 'flex' : 'none';
+  // Bookmarks-panel opener — reader only (#65). Everywhere else the library
+  // button already opens the panel, but while reading it becomes the
+  // save-bookmark toggle, which left the bookmark tree unreachable without
+  // leaving the article. Deliberately NOT folded into the ⋯ menu: reaching a
+  // saved article should stay one tap from the page you're on.
+  var bmPanelBtn = document.getElementById('bm-panel-btn');
+  if (bmPanelBtn) bmPanelBtn.style.display = _readingArticle ? 'flex' : 'none';
   var ttsBtn = document.getElementById('tts-btn');
-  if (ttsBtn) ttsBtn.style.display = (_readingArticle && _TTS_AVAILABLE) ? 'flex' : 'none';
+  if (ttsBtn) ttsBtn.style.display = (_readingArticle && _TTS_AVAILABLE && !_foldReaderExtras) ? 'flex' : 'none';
   _syncReaderViewBtn(); // book/reader-view glyph — gated on extractable content
   // Desktop: show save button when viewing a downloadable file (PDF, EPUB)
   var saveBtn = document.getElementById('save-btn');
@@ -1220,8 +1385,22 @@ function updateTopbar() {
       /\.(pdf|epub)$/i.test(currentArticle.path || '');
     saveBtn.style.display = showSave ? 'flex' : 'none';
   }
-  randomBtn.style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
-  document.getElementById('library-btn').style.display = (mode !== 'manage' && !_almanacOpen) ? 'flex' : 'none';
+  randomBtn.style.display = (mode !== 'manage' && !_almanacOpen && !_createOpen) ? 'flex' : 'none';
+  document.getElementById('library-btn').style.display = (mode !== 'manage' && !_almanacOpen && !_createOpen) ? 'flex' : 'none';
+  // Create-a-ZIM lives in the ⋯ menu at every width — creation is an
+  // occasional, deliberate act, so it stays out of the primary topbar. The ⋯
+  // trigger is CSS-hidden on a wide viewport at rest, so reveal it (inline
+  // style; the mobile !important rules still win) whenever the menu would
+  // carry the Create row. See _buildTopbarMenuHtml.
+  _createRememberCanShow();
+  // Also revealed while the Create page itself is up: with + gone from the
+  // topbar, the ⋯ menu is the only route OUT of that page (Manage, Language)
+  // on a wide viewport — hiding it there strands the admin.
+  var moreBtn = document.querySelector('.topbar-more');
+  if (moreBtn) {
+    moreBtn.style.display = (_createMenuRowAvailable() || _createOpen) ? 'flex' : '';
+    _syncTopbarMoreSolo(moreBtn);
+  }
   document.getElementById('lang-selector-btn').style.display =
     _getStorageFlag(SK.HIDE_LANG_CHOOSER) ? 'none' : '';
   _updateLibraryBtnIcon();
@@ -1271,7 +1450,9 @@ function updateTopbar() {
 
 function bcClick(e) {
   // Clicking the icon in the breadcrumb goes to the source view
-  if (e.target.id === 'logo') return;
+  if (e.target.closest && e.target.closest('#logo')) return; // the logo's own handler navigates
+  if (_anchorNativeClick(e)) return; // bc-icon is a real link (#49) — new-tab gestures stay native
+  e.preventDefault();
   if (_almanacOpen) return; // the Almanac breadcrumb is identity only — no nav into the ZIM behind it
   if (currentSource && (readerOpen || mode === 'search')) {
     if (readerOpen) closeReader();
@@ -1554,6 +1735,13 @@ async function init() {
   _manageProbe = _probeManageAuth();
 
   _bindConnEvents();
+  // Paint the topbar BEFORE blocking on /list. The shell is fully interactive
+  // from here on — the ⋯ menu (Create rides the remembered hint), search — so a
+  // tap during a slow library load reaches a live control instead of landing on
+  // a button that has not been drawn yet. updateTopbar runs again with real
+  // authority once /list and the manage probe land, and corrects anything the
+  // hint got wrong.
+  updateTopbar();
   output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading_library') + '</div>';
   // Only block on /list — everything else loads in background.
   // A failure here must NOT collapse into "the library is empty": zimsCache
@@ -1615,6 +1803,14 @@ async function _probeManageAuth() {
       // so surface an explanation instead of a bogus prompt (#36). manage stays
       // "enabled" so the tab is reachable and renders the locked banner.
       _managePublicLocked = true;
+      // Bootstrap-from-remote: the server has no password AND we are not on the
+      // host, so the door is the setup key it printed to its log, not a
+      // password (GHSA-5mw2-53vv-9pw6). Remember which locked state this is so
+      // the banner asks for the right thing.
+      try {
+        var _ld = await mres.clone().json();
+        _manageNeedsSetupKey = !!(_ld && _ld.needs_setup_key);
+      } catch (e) { _manageNeedsSetupKey = false; }
     } else if (mres.status === 401) {
       // Stored token went stale — drop BOTH copies (leaving the persisted
       // one meant every future load retried it, 401'd, and re-prompted).
@@ -1652,6 +1848,14 @@ async function _initSecondary() {
   ]);
   // Always update topbar after secondary data (manage status determines gear visibility)
   updateTopbar();
+  // Create was opened before we could know whether this client may create —
+  // either from a cold /#create load or from a tap during the library fetch.
+  // Now we know. If the answer is no, leave rather than sit on a page whose
+  // every button the server will refuse.
+  if (_createOpen && !_canCreate()) {
+    closeCreate();
+    _showToast(t('create_needs_admin'));
+  }
   // Re-check URL for ?manage now that manageEnabled is known (route() ran before this resolved)
   var params = new URLSearchParams(location.search);
   if (params.get('manage') !== null && manageEnabled && mode !== 'manage') {
@@ -1683,6 +1887,33 @@ function route(push) {
     }, 8000);
     return;
   }
+  // Same for the Create page (#create). Opened optimistically: whether this
+  // client may create is not known until the manage probe lands, and every
+  // /manage/create* route is admin-gated server-side anyway — so the page
+  // opens now and _initSecondary closes it if the answer comes back no. The
+  // alternative, waiting, is the home-then-switch flash Eric asked us to kill.
+  if (location.hash === '#create') {
+    enterHome(false);
+    openCreate(true);
+    setTimeout(function () {
+      if (!_createOpen) document.documentElement.classList.remove('create-boot');
+    }, 8000);
+    return;
+  }
+  // Booting straight into Manage (?manage in the URL). Same no-flash contract
+  // as #create: the head bootstrap stamped html.manage-boot to hold the library
+  // back, so open manage optimistically now — enterManage awaits the auth probe
+  // and drops the gate once it has rendered manage in place. If this client may
+  // not manage, enterManage reveals the library and the backstop drops the gate.
+  if (params.get('manage') !== null && document.documentElement.classList.contains('manage-boot')) {
+    enterManage(null, _validMsSection(params.get('manage')));
+    setTimeout(function () {
+      if (mode !== 'manage') document.documentElement.classList.remove('manage-boot');
+    }, 8000);
+    return;
+  }
+  // A view the user opened during a slow boot is not something to route over.
+  if (_createOpen) return;
   if (params.get('manage') !== null && manageEnabled) { enterManage(null, _validMsSection(params.get('manage'))); return; }
   // Article deep link: /?a=<zim>/<path>. Root path always boots the SPA, so this
   // reliably opens full Zimi chrome on the target article regardless of browser
@@ -1832,8 +2063,12 @@ function _openInBrowser() {
 
 // ── Navigation ──
 function goHome(e) {
+  // The logo is a real <a href="/"> (#49): keep modified/non-primary clicks
+  // native so open-in-new-tab works; only a plain left click stays SPA.
+  if (e && _anchorNativeClick(e)) return;
   if (e) e.preventDefault();
   if (typeof _almReturnScroll !== 'undefined') _almReturnScroll = null; // explicit Home cancels almanac return
+  if (_createOpen) closeCreate();
   if (_almanacOpen) closeAlmanac();
   // Clear manage auth when leaving manage
   if (mode === 'manage' && !_hasStoredManageToken()) _manageToken = '';
@@ -1853,6 +2088,7 @@ function goHome(e) {
 }
 
 function goBack() {
+  if (_createOpen) { closeCreate(); return; }
   if (_almanacOpen) { closeAlmanac(); return; }
   if (readerOpen) {
     // Step back through article history before closing reader
@@ -1895,10 +2131,12 @@ function _showHistoryTrail() {
   var h = '';
   for (var i = articleHistory.length - 1; i >= 0; i--) {
     var item = articleHistory[i];
-    h += '<div class="history-item" data-idx="' + i + '">';
+    // Real links (#49): each trail entry has a true deep-link URL, so
+    // right/middle/modifier clicks can open it in a new tab natively.
+    h += '<a class="history-item" href="' + escAttr(_articleDeepLinkPath(item.zim, item.path)) + '" data-idx="' + i + '">';
     h += '<span class="hi-source">' + esc(_zimTitle(item.zim)) + '</span>';
     h += '<span class="hi-title">' + esc(item.title || item.path) + '</span>';
-    h += '</div>';
+    h += '</a>';
   }
   _historyTrail.innerHTML = h;
   // Position below the back button
@@ -1925,8 +2163,13 @@ function _navigateHistoryItem(el) {
   return true;
 }
 
-// Click on trail item (for right-click-then-click flow)
-_historyTrail.addEventListener('click', function(e) { _navigateHistoryItem(e.target); });
+// Click on trail item (for right-click-then-click flow). Items are real
+// links (#49): keep new-tab gestures native, intercept plain clicks for SPA.
+_historyTrail.addEventListener('click', function(e) {
+  if (_anchorNativeClick(e)) return;
+  e.preventDefault();
+  _navigateHistoryItem(e.target);
+});
 
 // Hover highlight during long-press drag
 _historyTrail.addEventListener('mouseover', function(e) {
@@ -2101,13 +2344,29 @@ function _orderSections(sections) {
   return out;
 }
 
+// The bucket a ZIM Zimi itself made files under when nobody filed it anywhere
+// else. The literal matches what the created/ subfolder derives ('Created' via
+// _folder_category server-side), so folder-filed and loose creations share ONE
+// section instead of splitting on where the file happens to sit.
+var CREATED_CAT = 'Created';
+
 // A ZIM's effective category for grouping/ordering: its override/heuristic value,
 // or OTHER_CAT for the uncategorized catch-all (empty value, or the explicit
 // force-Other sentinel). One source of truth so home, the Installed list and the
 // reorder list bucket a ZIM identically.
+//
+// One insertion between those two: a ZIM with Zimi-made provenance (the kinds
+// map the type badges already fetch) and NO filing of its own — no category
+// from a folder, no heuristic hit, no override (an override, including the
+// force-Other sentinel, always arrives as a category and is respected) — files
+// under Created. This is what folds CLI creations and pre-created/-folder
+// captures into the same section the created/ folder feeds, with zero server
+// cost.
 function _zimCat(z) {
   if (!z) return OTHER_CAT;
-  return (z.category && z.category !== OTHER_CAT) ? z.category : OTHER_CAT;
+  if (z.category && z.category !== OTHER_CAT) return z.category;
+  if (!z.category && _zimKinds && z.name && _zimKinds[z.name]) return CREATED_CAT;
+  return OTHER_CAT;
 }
 
 // The unified {key,label} list of reorderable home sections — collections
@@ -2817,6 +3076,10 @@ function renderHome(filter) {
   }
   output.innerHTML = h;
   _placeViewToggle();
+  // The library is on screen; only now go find out what made each of these
+  // ZIMs. Deliberately after the paint — reading provenance opens archives, and
+  // no card should wait on that. A no-op once the map has arrived.
+  _loadZimKinds();
   if (_showDiscover) {
     if (_prevDiscoverHtml) {
       // Restore cached discover DOM — avoid re-fetch flash
@@ -3015,18 +3278,394 @@ function _placeViewToggle() {
   heading.insertAdjacentHTML('beforeend', _libViewToggleHtml());
 }
 
+// ── About this ZIM: provenance badges, and the panel behind them ────────────
+//
+// Every ZIM carries its own description in metadata, and the ones Zimi made
+// carry a provenance history besides. Two surfaces read it, both from
+// /zim-info: a quiet type badge on the card (what this ZIM IS), and a panel on
+// right-click/long-press (everything the file says about itself). Neither
+// invents a row — a ZIM published by somebody else shows its publisher's own
+// fields and no history, because that is the truth about it.
+//
+// The badge is derived from METADATA and never from the title. A capture whose
+// title happens to read "(alive)" gets no badge for it; a capture whose Tags
+// carry zimi:alive does.
+
+// {name: {mode, engine, edits, ts, counts, blocked}} for the ZIMs Zimi made.
+// A name absent from the map gets no badge — which is every Kiwix ZIM.
+var _zimKinds = null;
+var _zimKindsPending = false;
+
+// A creation mode → the badge's label key. `import` is the one mode no history
+// record states: it is inferred server-side from the converter that wrote the
+// file (see _zimi_kind in http.py).
+var _PROV_MODE_KEYS = {
+  folder: 'zi_kind_folder',
+  page: 'zi_kind_page',
+  pages: 'zi_kind_pages',
+  site: 'zi_kind_site',
+  video: 'zi_kind_video',
+  bookmarks: 'zi_kind_bookmarks',
+  import: 'zi_kind_import',
+};
+// The engine outranks the mode where the two differ: a replay ZIM opens into a
+// replay shell and behaves unlike an article ZIM, whatever it captured.
+function _provKindKey(kind) {
+  if (!kind) return '';
+  if (kind.engine === 'alive') return 'zi_kind_alive';
+  return _PROV_MODE_KEYS[kind.mode] || 'zi_kind_zimi';
+}
+
+// The badge's tooltip: one sentence saying where this ZIM came from. Whole
+// sentences per case rather than glued fragments, so every language can put the
+// clauses in its own order.
+function _provSummary(kind) {
+  if (!kind) return '';
+  var when = kind.ts ? _relTime(kind.ts) : '';
+  if (!when) return t('zi_tip_made');
+  if (kind.edits > 0) return tPlural('zi_tip_edited', kind.edits, { when: when });
+  return t('zi_tip_made_when', { when: when });
+}
+
+// The badge for a kind — no kind, no badge, which is every ZIM Zimi did not
+// make. The panel renders from the kind its own fetch returned; the cards
+// render from the map (below), so neither has to wait on the other.
+function _provBadgeFor(kind) {
+  if (!kind) return '';
+  return '<span class="prov-badge' + (kind.engine === 'alive' ? ' prov-alive' : '') +
+    '" title="' + escAttr(_provSummary(kind)) + '">' + tH(_provKindKey(kind)) + '</span>';
+}
+
+function _provBadgeHtml(name) {
+  return _provBadgeFor(_zimKinds && _zimKinds[name]);
+}
+
+// Fetched once per page load, after the first paint: reading provenance means
+// opening archives, and no card should wait on that. Every render after this
+// resolves includes the badges inline; the cards already on screen get them
+// from _paintProvBadges.
+function _loadZimKinds() {
+  if (_zimKinds || _zimKindsPending) return;
+  _zimKindsPending = true;
+  serverFetch('/zim-info?kinds=1')
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      _zimKinds = (d && d.kinds) || {};
+      _paintProvBadges();
+      _refreshCreatedBuckets();
+    })
+    .catch(function () { _zimKinds = {}; })
+    .finally(function () { _zimKindsPending = false; });
+}
+
+// Kinds land after the first paint. If any uncategorized ZIM just gained its
+// Created filing (see _zimCat), repaint whichever list view is actually on
+// screen once, so home and the manage Library agree from the first look. Uses
+// the same view guard the connectivity-restore path uses: never repaint over
+// an open reader or source view.
+function _refreshCreatedBuckets() {
+  var moved = (zimsCache || []).some(function(z) {
+    return !z.category && _zimKinds && _zimKinds[z.name];
+  });
+  if (!moved) return;
+  if (mode === 'manage') {
+    if (manageTab === 'installed') renderInstalled();
+  } else if (!readerOpen && !currentSource && !readerSource) {
+    renderHome();
+  }
+}
+
+// No-op on a card that already carries its badge, so this is safe to call after
+// any render.
+function _paintProvBadges() {
+  if (!_zimKinds) return;
+  document.querySelectorAll('.stat-card[data-zim]').forEach(function (card) {
+    if (card.querySelector('.prov-badge')) return;
+    var html = _provBadgeHtml(card.dataset.zim);
+    if (!html) return;
+    var nameRow = card.querySelector('.name');
+    if (nameRow) nameRow.insertAdjacentHTML('beforeend', html);
+  });
+}
+
+// ── The panel ──
+
+var _ZI_OVERLAY_ID = 'zim-about';
+// Which count keys a provenance record can carry, and what each one is called.
+var _ZI_COUNT_KEYS = { pages: 'zi_n_pages', assets: 'zi_n_assets', videos: 'zi_n_videos' };
+var _ZI_OP_KEYS = { created: 'zi_op_created', edited: 'zi_op_edited', truncated: 'zi_op_truncated' };
+// The mode the truncation marker carries — a bookkeeping value, not a capture
+// mode, so it never gets a chip of its own.
+var _ZI_HISTORY_MODE = 'history';
+
+// Absolute local date-time for a provenance timestamp. The relative form rides
+// in the tooltip, where it explains the absolute one instead of replacing it.
+function _ziWhen(tsSec) {
+  var d = new Date(tsSec * 1000);
+  try {
+    return d.toLocaleString(_currentLang || 'en',
+      { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    return d.toLocaleString();
+  }
+}
+
+function _ziRow(labelKey, valueHtml) {
+  if (!valueHtml) return '';
+  return '<div class="zi-row"><span class="zi-k">' + tH(labelKey) + '</span>' +
+    '<span class="zi-v">' + valueHtml + '</span></div>';
+}
+
+// A Source is linked only when it IS a URL — openZIM's own rule for the field,
+// and the reason a folder name stays plain text here.
+function _ziSourceHtml(source) {
+  if (!source) return '';
+  if (!/^https?:\/\//i.test(source)) return esc(source);
+  return '<a href="' + escAttr(source) + '" target="_blank" rel="noopener noreferrer">' + esc(source) + '</a>';
+}
+
+function _ziTagsHtml(tags) {
+  if (!tags || !tags.length) return '';
+  return tags.map(function (tag) {
+    return '<span class="zi-tag">' + esc(tag) + '</span>';
+  }).join('');
+}
+
+// The numbers a record knows, in one line. Only the keys actually present are
+// named — a record that never counted assets must not claim zero of them.
+function _ziCountsText(counts) {
+  if (!counts) return '';
+  var out = [];
+  for (var key in _ZI_COUNT_KEYS) {
+    if (typeof counts[key] === 'number') out.push(tPlural(_ZI_COUNT_KEYS[key], counts[key]));
+  }
+  if (typeof counts.records === 'number') out.push(tPlural('zi_n_records', counts.records));
+  if (typeof counts.bytes === 'number') out.push(_fmtBytes(counts.bytes));
+  return out.join(' · ');
+}
+
+// What a capture REFUSED, when it refused anything. The list identity belongs
+// beside the number: "214 blocked" is a fact about the capture, and which
+// published list said so is what makes it reproducible.
+function _ziBlockedHtml(blocked) {
+  if (!blocked || !blocked.requests) return '';
+  var base = blocked.list
+    ? tPlural('zi_blocked', blocked.requests, { list: blocked.list })
+    : tPlural('zi_blocked_bare', blocked.requests);
+  var sub = [];
+  if (blocked.domains) sub.push(tPlural('zi_n_domains', blocked.domains));
+  if (blocked.snapshot) sub.push(t('zi_blocked_snapshot', { date: blocked.snapshot }));
+  if (blocked.override) sub.push(t('zi_blocked_override'));
+  return '<div class="zi-ev-fact zi-ev-blocked">' + esc(base) + '</div>' +
+    (sub.length ? '<div class="zi-ev-fact zi-ev-sub">' + esc(sub.join(' · ')) + '</div>' : '');
+}
+
+// The engines that ran, named with their versions — plus Zimi's own version,
+// which every record stamps.
+function _ziToolsText(record) {
+  var out = [];
+  if (record.zimi) out.push('Zimi ' + record.zimi);
+  var tools = record.tools || {};
+  for (var name in tools) out.push(name + ' ' + tools[name]);
+  return out.join(' · ');
+}
+
+function _ziRecordHtml(record) {
+  var op = _ZI_OP_KEYS[record.op] ? t(_ZI_OP_KEYS[record.op]) : (record.op || '');
+  var mode = record.mode && record.mode !== _ZI_HISTORY_MODE
+    ? '<span class="zi-ev-mode">' + tH(_PROV_MODE_KEYS[record.mode] || 'zi_kind_zimi') + '</span>'
+    : '';
+  var when = record.ts
+    ? '<span class="zi-ev-when" title="' + escAttr(_relTime(record.ts)) + '">' + esc(_ziWhen(record.ts)) + '</span>'
+    : '';
+  var counts = _ziCountsText(record.counts);
+  var tools = _ziToolsText(record);
+  return '<li class="zi-ev">' +
+    '<div class="zi-ev-head"><span class="zi-ev-op">' + esc(op) + '</span>' + mode + when + '</div>' +
+    // The detail sentence is what the FILE says, written when the ZIM was made.
+    // It is provenance, not UI copy, so it is shown verbatim and never
+    // translated — a record that changed wording per reader would be worthless.
+    (record.detail ? '<div class="zi-ev-detail">' + esc(record.detail) + '</div>' : '') +
+    (counts ? '<div class="zi-ev-fact">' + esc(counts) + '</div>' : '') +
+    _ziBlockedHtml(record.blocked) +
+    (tools ? '<div class="zi-ev-fact zi-ev-sub">' + esc(tools) + '</div>' : '') +
+    '</li>';
+}
+
+// Metadata fields with no row of their own, listed under their own keys. The
+// keys are the file's, not the UI's, so they are shown verbatim rather than
+// translated or title-cased.
+function _ziOtherHtml(other) {
+  var keys = other ? Object.keys(other) : [];
+  if (!keys.length) return '';
+  return '<div class="zi-sec">' + tH('zi_other') + '</div><div class="zi-rows">' +
+    keys.map(function (key) {
+      return '<div class="zi-row"><span class="zi-k zi-k-raw">' + esc(key) + '</span>' +
+        '<span class="zi-v">' + esc(other[key]) + '</span></div>';
+    }).join('') + '</div>';
+}
+
+function _ziBodyHtml(info) {
+  // Same icon rule the cards follow: the ZIM's own illustration when it has
+  // one, its initial otherwise. An empty frame would read as a broken image.
+  var iconHtml = '<span class="zi-icon">' + (info.has_icon
+    ? '<img src="/w/' + encodeURIComponent(info.name) + '/-/icon" alt="" width="48" height="48">'
+    : '<span class="zi-letter">' + (esc(info.title || info.name)[0] || '?').toUpperCase() + '</span>') +
+    '</span>';
+  // Articles and entries are different numbers (entries count redirects and
+  // assets too), and the panel is the one place precise enough to say both.
+  var num = function (v) { return typeof v === 'number' ? esc(v.toLocaleString()) : ''; };
+  var head = '<div class="zi-id">' + iconHtml +
+    // From the kind this fetch returned, not the cards' map: the panel opens
+    // from surfaces the map was never loaded for.
+    '<div class="zi-id-text"><div class="zi-title">' + esc(info.title || info.name) +
+    _provBadgeFor(info.kind) + '</div>' +
+    (info.description ? '<div class="zi-desc">' + esc(info.description) + '</div>' : '') +
+    '</div></div>';
+  var rows =
+    (info.long_description ? '<div class="zi-long">' + esc(info.long_description) + '</div>' : '') +
+    '<div class="zi-rows">' +
+    _ziRow('zi_identifier', esc(info.name)) +
+    _ziRow('zi_file', esc(info.file)) +
+    _ziRow('language', info.language ? esc(_langDisplayName(info.language) || info.language) : '') +
+    _ziRow('zi_articles', num(info.article_count)) +
+    _ziRow('zi_entries', num(info.entries)) +
+    _ziRow('zi_size', info.size_bytes ? esc(_fmtBytes(info.size_bytes)) : '') +
+    _ziRow('zi_date', esc(info.date)) +
+    _ziRow('zi_creator', esc(info.creator)) +
+    _ziRow('zi_publisher', esc(info.publisher)) +
+    _ziRow('zi_source', _ziSourceHtml(info.source)) +
+    _ziRow('zi_scraper', esc(info.scraper)) +
+    _ziRow('zi_flavour', esc(info.flavour)) +
+    _ziRow('zi_tags', _ziTagsHtml(info.tags)) +
+    '</div>';
+  // A ZIM Zimi did not make has no history, and says so plainly rather than
+  // showing an empty heading or inventing rows from its publisher's fields.
+  var history = (info.history && info.history.length)
+    ? '<div class="zi-sec">' + tH('zi_history') + '</div><ul class="zi-timeline">' +
+      info.history.map(_ziRecordHtml).join('') + '</ul>'
+    : '<div class="zi-none">' + tH('zi_no_history') + '</div>';
+  var warn = info.readable ? '' : '<div class="zi-warn">' + tH('zi_unreadable') + '</div>';
+  // What the ZIM is made of, out of the same reply as everything else. Absent
+  // until the background worker has measured this file, and absent reads as no
+  // bar — which is right, because nobody has established the fact yet.
+  var shape = _ziShapeHtml(info.shape);
+  // Whatever else the publisher wrote goes last, under its own keys: a field
+  // this build has no row for is still a field the file carries, but it is a
+  // footnote to the story the timeline tells, not a preface to it.
+  return warn + head + rows + shape + history + _ziOtherHtml(info.other);
+}
+
+// What the ZIM is made of, as the same segmented bar the create page's done
+// card and the cache breakdown use — one component (_segBarHtml), so the three
+// never drift apart. Eric: "I want the file breakdown bar chart in about this
+// zim for all zims."
+//
+// A sampled answer SAYS it is sampled. Reading six thousand entries out of six
+// million gives proportions worth drawing and totals that are estimates, and a
+// panel that printed the estimate in the same voice as a measurement would be
+// doing the thing this release spent a day removing.
+function _ziShapeHtml(shape) {
+  if (!shape || !shape.breakdown || !shape.breakdown.length) return '';
+  if (typeof _segBarHtml !== 'function') return '';
+  var segs = shape.breakdown.slice().sort(function (a, b) {
+    return (b.size_bytes || 0) - (a.size_bytes || 0);
+  });
+  // The bar is proportional to what is INSIDE; the file on disk is smaller,
+  // because a ZIM is compressed. Two honest numbers rather than one bar
+  // pretending its segments add up to the file size.
+  var inner = segs.reduce(function (a, x) { return a + (x.size_bytes || 0); }, 0);
+  var bar = _segBarHtml(segs, inner, _CREATE_KIND_COLORS, function (k) {
+    return tH('create_kind_' + k);
+  }, t('create_inside_title'));
+  if (!bar) return '';
+  var note = shape.sampled
+    ? '<div class="zi-shape-note">' + tH('zi_shape_sampled', {
+        n: (shape.sampled_entries || 0).toLocaleString(),
+        total: (shape.total_entries || 0).toLocaleString()
+      }) + '</div>'
+    : '';
+  return '<div class="zi-sec">' + tH('create_inside_title') + '</div>' + bar + note;
+}
+
+// The colours the create page's done card uses, so one ZIM looks the same
+// whichever surface describes it. Defined here because app.js always loads and
+// create.js is lazy — the About panel must not depend on having opened Create.
+var _CREATE_KIND_COLORS = {
+  images: '#f59e0b',
+  video: '#a78bfa',
+  audio: '#c084fc',
+  pages: '#60a5fa',
+  documents: '#38bdf8',
+  data: '#22d3ee',
+  fonts: '#34d399',
+  styles: '#f472b6',
+  scripts: '#fbbf24',
+  other: '#6e6e7a',
+};
+
+function _ziKeydown(e) {
+  if (e.key === 'Escape') { e.preventDefault(); _closeZimAbout(); }
+}
+
+function _closeZimAbout() {
+  var ov = document.getElementById(_ZI_OVERLAY_ID);
+  if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+  document.documentElement.classList.remove('zi-open');
+  document.removeEventListener('keydown', _ziKeydown);
+}
+
+// Opens the panel immediately with a loading line, then fills it — the fetch
+// opens the archive, and on a cold library that is not instant. Every write
+// re-finds the body, so a panel closed mid-flight is never resurrected.
+function _openZimAbout(zim) {
+  _closeZimAbout();
+  var ov = document.createElement('div');
+  ov.className = 'zi-overlay';
+  ov.id = _ZI_OVERLAY_ID;
+  ov.innerHTML =
+    '<div class="zi-panel" role="dialog" aria-modal="true" aria-label="' + escAttr(t('about_zim')) + '">' +
+    '<div class="zi-head"><span class="zi-head-title">' + tH('about_zim') + '</span>' +
+    '<button class="zi-close" aria-label="' + escAttr(t('close')) + '" onclick="_closeZimAbout()">✕</button>' +
+    '</div><div class="zi-body"><div class="zi-none">' + tH('loading') + '</div></div></div>';
+  document.body.appendChild(ov);
+  // Freeze the library behind the panel. Without this the page kept scrolling
+  // under a modal, which is the one thing a modal is for.
+  document.documentElement.classList.add('zi-open');
+  ov.addEventListener('click', function (e) { if (e.target === ov) _closeZimAbout(); });
+  document.addEventListener('keydown', _ziKeydown);
+  var closeBtn = ov.querySelector('.zi-close');
+  if (closeBtn) closeBtn.focus();
+  var write = function (html) {
+    var body = document.querySelector('#' + _ZI_OVERLAY_ID + ' .zi-body');
+    if (body) body.innerHTML = html;
+  };
+  serverFetch('/zim-info?zim=' + encodeURIComponent(zim))
+    .then(function (r) {
+      if (!r.ok) throw new Error('zim-info ' + r.status);
+      return r.json();
+    })
+    .then(function (info) { write(_ziBodyHtml(info)); })
+    .catch(function () { write('<div class="zi-none">' + tH('zi_load_failed') + '</div>'); });
+}
+
 function renderCardGrid(items, showStars, showCategory) {
   if (!items || !items.length) return '';
   const favs = (collectionsCache && collectionsCache.favorites) || [];
   const isTiles = _getLibraryView() === 'tiles';
   const gridCls = isTiles ? 'stats-grid tiles' : 'stats-grid';
+  // Export cards carry a download slot that fills only when peer-share is live
+  // (see _fillCardDlSlots) — probed after the caller's synchronous insert.
+  // Download-this-ZIM is right-click / Manage-⋯ only; no card pill.
   return '<div class="' + gridCls + '">' + items.map(z => {
     const icon = z.has_icon
       ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="48" height="48" loading="lazy">'
       : '<span class="icon-letter">' + esc(z.title || z.name)[0].toUpperCase() + '</span>';
     const isFav = favs.includes(z.name);
+    // preventDefault too: the card is now an anchor (#49), and a button click
+    // inside a link otherwise still follows the link's href.
     const starHtml = showStars
-      ? '<button class="star-btn' + (isFav ? ' starred' : '') + '" onclick="event.stopPropagation();toggleFavorite(\'' + escAttr(z.name) + '\')" title="' + escAttr(isFav ? t('remove_from_favorites') : t('add_to_favorites')) + '">' + (isFav ? '\u2605' : '\u2606') + '</button>'
+      ? '<button class="star-btn' + (isFav ? ' starred' : '') + '" onclick="event.preventDefault();event.stopPropagation();toggleFavorite(\'' + escAttr(z.name) + '\')" title="' + escAttr(isFav ? t('remove_from_favorites') : t('add_to_favorites')) + '">' + (isFav ? '\u2605' : '\u2606') + '</button>'
       : '';
     const catPrefix = showCategory && z.category ? '<span class="card-cat">' + esc(z.category) + '</span> &middot; ' : '';
     const badge = _langBadge(z, false, isTiles);
@@ -3038,7 +3677,13 @@ function renderCardGrid(items, showStars, showCategory) {
     const newHtml = badgeInfo
       ? '<span class="new-badge' + (isUpd ? ' updated-badge' : '') + '" title="' + escAttr(t(isUpd ? 'recently_updated' : 'recently_installed')) + '">' + tH(isUpd ? 'updated_badge' : 'new_badge') + '</span>'
       : '';
-    return '<div class="stat-card' + (newHtml ? ' is-new' : '') + '" data-zim="' + escAttr(z.name) + '" tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)">' +
+    // Every card is a real link (#49): right/middle/modifier clicks open the
+    // source natively. Downloading the raw .zim is a rare, deliberate act —
+    // it lives on right-click and the Manage row's ⋯ menu, never as a pill
+    // taking space on the card (Eric: "no big buttons... it's rare to need").
+    const cardTag = 'a';
+    const cardNav = ' href="/w/' + encodeURIComponent(z.name) + '" onclick="return _spaSourceClick(event, this)"';
+    return '<' + cardTag + ' class="stat-card' + (newHtml ? ' is-new' : '') + '" data-zim="' + escAttr(z.name) + '"' + cardNav + '>' +
       starHtml +
       '<div class="card-icon">' + icon + '</div>' +
       '<div class="card-info">' +
@@ -3047,13 +3692,13 @@ function renderCardGrid(items, showStars, showCategory) {
         // The title text is wrapped in .zt so the tile layout can clamp it to two
         // lines independently and drop the language chip onto its own line below
         // (in the list the .zt span is inline, so nothing changes there).
-        '<div class="name">' + newHtml + '<span class="zt">' + esc(z.title || z.name) + '</span>' + badge + qidIcon + '</div>' +
+        '<div class="name">' + newHtml + '<span class="zt">' + esc(z.title || z.name) + '</span>' + badge + qidIcon + _provBadgeHtml(z.name) + '</div>' +
         (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
         '<div class="detail">' + catPrefix + _zimCountHtml(z) +
         ' &middot; ' + fmtSize(z.size_gb) +
         (_isZimiExport(z) && z.date ? ' &middot; ' + esc(z.date) : '') +
         '</div>' +
-      '</div></div>';
+      '</div></' + cardTag + '>';
   }).join('') + '</div>';
 }
 
@@ -3465,6 +4110,105 @@ function _renderTodayCard() {
     '</div>';
 }
 
+// -- Create a ZIM (lazy-loaded from /static/create.js) --
+// Same shape as the Almanac below: a full-page surface over the library, its
+// module fetched only when an admin actually opens it. The module overrides
+// _openCreateInner and closeCreate; what lives here is the shell.
+var _createOpen = false;
+var _createLoaded = false;
+
+// ``replaceState`` true means "this history entry IS Create" (a cold load of
+// /#create), false means "Create is a step forward from where we were".
+function openCreate(replaceState) {
+  // Modifier-click: open Create in a new browser tab, like the Almanac.
+  if (_isModClick()) {
+    _lastMouseEvent = null;
+    window.open('/#create', '_blank');
+    return;
+  }
+  if (_createOpen) return;
+  if (_createLoaded) { _openCreateInner(replaceState); return; }
+  var el = document.createElement('script');
+  el.src = '/static/create.js?v=1';
+  el.onload = function() { _createLoaded = true; _openCreateInner(replaceState); };
+  // Offline with a cold cache: the module was never fetched. Say so rather
+  // than leaving a button that appears to do nothing.
+  el.onerror = function() {
+    // Drop the boot gate too, or a cold load of /#create leaves the library
+    // hidden behind a shell that is never going to fill in.
+    document.documentElement.classList.remove('create-boot');
+    _showToast(t('create_unavailable_offline'));
+  };
+  document.head.appendChild(el);
+}
+
+// Both overridden by create.js once it loads.
+function _openCreateInner() {}
+
+function closeCreate() {
+  if (!_createOpen) return;
+  _createOpen = false;
+  document.getElementById('create-view').classList.remove('open');
+  mainView.classList.remove('hidden');
+  _setWindowTitle('Zimi');
+  _dropCreateHash();
+  updateTopbar();
+}
+
+// Strip #create without adding a history entry — the almanac's contract, so
+// closing Create leaves the URL as the page behind it rather than a hash that
+// would reopen on reload.
+function _dropCreateHash() {
+  if (location.hash !== '#create') return;
+  try {
+    history.replaceState(history.state, '', location.pathname + location.search);
+  } catch (e) {}
+}
+
+// True when THIS client may create ZIMs: management is on, and the viewer is
+// either an admin (holds credentials or needs none) or a signed-in user whose
+// account carries the per-user create permission (/whoami can_create). The
+// server enforces the answer regardless of what this returns.
+function _canCreate() {
+  if (!manageEnabled) return false;
+  if (_userSession) return !!_userSession.canCreate;
+  return !_managePwRequired && !_managePublicLocked;
+}
+
+// Whether to DRAW the + before we can prove the answer.
+//
+// _canCreate() needs the manage probe, which lands after /list on a cold boot —
+// so on a big library the + was simply missing for as long as the library took
+// to arrive, and a tap in that window hit nothing. A dead button is worse than
+// an early one, so the last KNOWN answer is remembered and used until the real
+// one arrives; _createRememberCanShow reconciles it every time updateTopbar
+// runs with authority.
+//
+// The optimism is one-directional and that is the whole safety argument: the
+// hint is only ever written by an authoritative check, so a browser that was
+// never an admin never shows a +. The only wrong state possible is an admin
+// who has since been demoted seeing the button for the length of one probe,
+// and every /manage/create* route is admin-gated server-side regardless.
+function _createCanShow() {
+  return _manageProbed ? _canCreate() : _getStorageFlag(SK.CAN_CREATE);
+}
+
+function _createRememberCanShow() {
+  if (!_manageProbed) return;  // nothing authoritative to record yet
+  try {
+    if (_canCreate()) localStorage.setItem(SK.CAN_CREATE, '1');
+    else localStorage.removeItem(SK.CAN_CREATE);
+  } catch (e) {}
+}
+
+// Whether the ⋯ menu should carry the Create-a-ZIM row right now: the home
+// screen, and a client the last authoritative answer (or the remembered boot
+// hint — see _createCanShow) says may create. One predicate, shared by the
+// menu builder and by updateTopbar's decision to reveal the ⋯ trigger.
+function _createMenuRowAvailable() {
+  return mode === 'home' && !readerOpen && !_almanacOpen && !_createOpen && _createCanShow();
+}
+
 // -- Almanac mini-app (lazy-loaded from /static/almanac.js) --
 var _almanacOpen = false;
 var _almanacLoaded = false;
@@ -3758,7 +4502,7 @@ function _renderDiscover(el, items) {
         }
       }
       var _teaser = _todayTeaser();
-      h += '<div class="discover-card" onclick="openAlmanac()">' +
+      h += '<a class="discover-card" href="/#almanac" onclick="return _spaNav(event, openAlmanac)">' +
         _renderTodayCard() +
         '<div class="dc-body">' +
           '<div class="dc-source"><span>' + tH('today') + '</span></div>' +
@@ -3766,7 +4510,7 @@ function _renderDiscover(el, items) {
           '<div class="dc-blurb">' + _localMoonName(_m.name) + (_seasonStr ? ' \u00b7 ' + _seasonStr : '') + '</div>' +
           '<div class="dc-blurb">' + _m.illumination + '% ' + tH('alm_illuminated') + '</div>' +
           (_teaser ? '<div class="dc-blurb" style="color:var(--amber)">' + _teaser + '</div>' : '') +
-        '</div></div>';
+        '</div></a>';
       continue;
     }
 
@@ -3840,25 +4584,25 @@ function _renderDiscover(el, items) {
       var attrLine = (attrName && attrName !== cleanQuote)
         ? '<div class="dc-attribution">\u2014 ' + esc(attrName) + '</div>'
         : '';
-      h += '<div class="discover-card dc-quote-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
+      h += '<a class="discover-card dc-quote-card" href="' + escAttr(_articleDeepLinkPath(it.zim, it.path)) + '" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="return _spaCardClick(event, this)">' +
         '<div class="dc-body">' +
           '<div class="dc-header">' + iconHtml + '<span>' + esc(sourceLabel || t('quote_of_day')) + '</span></div>' +
           '<div class="dc-quote-mark">\u201C</div>' +
           '<div class="dc-blurb dc-quote">' + esc(cleanQuote) + '</div>' +
           attrLine +
-        '</div></div>';
+        '</div></a>';
 
     // ─── Card: Word of the Day ──────────────────────────────────────
     // Full-width card with headword, part of speech, and definition.
     // Used for Wiktionary content.
     } else if (/wiktionary/i.test(it.zim || '')) {
-      h += '<div class="discover-card dc-quote-card dc-word-card" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
+      h += '<a class="discover-card dc-quote-card dc-word-card" href="' + escAttr(_articleDeepLinkPath(it.zim, it.path)) + '" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="return _spaCardClick(event, this)">' +
         '<div class="dc-body">' +
           '<div class="dc-header">' + iconHtml + '<span>' + esc(sourceLabel) + '</span></div>' +
           '<div class="dc-headword">' + esc(displayTitle) + '</div>' +
           (it.part_of_speech ? '<div class="dc-pos">' + esc(it.part_of_speech) + '</div>' : '') +
           (it.blurb ? '<div class="dc-def">' + esc(it.blurb) + '</div>' : '') +
-        '</div></div>';
+        '</div></a>';
 
     // ─── Card: Standard ─────────────────────────────────────────────
     // Thumbnail + source + title + blurb. Used for APOD, On This Day,
@@ -3896,14 +4640,14 @@ function _renderDiscover(el, items) {
       var _isVid = _isVideoZim(it.zim);
       var playBadge = _isVid ? '<span class="dc-play-badge" aria-hidden="true"></span>' : '';
       var vidAttrs = _isVid ? ' data-video="1" aria-label="' + escAttr(t('play_video') + ': ' + displayTitle) + '"' : '';
-      h += '<div class="discover-card' + (_isVid ? ' dc-video-card' : '') + '" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '"' + vidAttrs + ' onclick="openArticle(\'' + escJs(it.zim) + '\',\'' + escJs(it.path) + '\',\'' + escJs(it.title || '') + '\')">' +
+      h += '<a class="discover-card' + (_isVid ? ' dc-video-card' : '') + '" href="' + escAttr(_articleDeepLinkPath(it.zim, it.path)) + '" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '"' + vidAttrs + ' onclick="return _spaCardClick(event, this)">' +
         thumbHtml + playBadge +
         '<div class="dc-body">' +
           '<div class="dc-source">' + iconHtml + '<span>' + esc(sourceLabel) + '</span>' + badgeHtml + dateHtml + '</div>' +
           '<div class="dc-title">' + esc(displayTitle) + '</div>' +
           speakerHtml +
           showBlurb +
-        '</div></div>';
+        '</div></a>';
     }
   }
   h += '</div></div>';
@@ -4254,8 +4998,18 @@ function _moveZimTo(zim, category) {
 
   function showMainMenu() {
     var zim = _ctxZim;
+    // About belongs on EVERY library card, so both menu shapes carry it — the
+    // compact gear menu (an Installed row) as much as the full card menu.
+    var aboutItem = '<div class="ctx-item" data-action="about">' + tH('about_zim') + '</div>';
+    // Download the raw .zim — the plainest way to carry a made-here ZIM to
+    // another machine. Admin-gated like delete: /dl/ answers the admin
+    // regardless of the sharing switches.
+    var dlItem = manageEnabled
+      ? '<div class="ctx-item" data-action="download-zim">' + tH('ctx_download_zim') + '</div>'
+      : '';
     if (_ctxCompact) {
-      menu.innerHTML = _layoutItemsHtml(zim);
+      var layout = _layoutItemsHtml(zim);
+      menu.innerHTML = aboutItem + dlItem + (layout ? '<div class="ctx-sep"></div>' + layout : '');
       posMenu(_ctxX, _ctxY);
       return;
     }
@@ -4279,6 +5033,7 @@ function _moveZimTo(zim, category) {
     h += '</div></div>';
     var layoutItems = _layoutItemsHtml(zim);
     if (layoutItems) { h += '<div class="ctx-sep"></div>' + layoutItems; }
+    h += '<div class="ctx-sep"></div>' + aboutItem + dlItem;
     if (manageEnabled) {
       h += '<div class="ctx-sep"></div>';
       h += '<div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
@@ -4307,17 +5062,22 @@ function _moveZimTo(zim, category) {
     posMenu(x, y);
   };
 
+  // Right-click resolves its ZIM through _lpHit, the same way long-press does.
+  // It used to read the name out of the card's `onclick` attribute, which only
+  // the export variant still has: since cards became real links (#49) an
+  // ordinary ZIM has an href and no onclick, so right-click silently did
+  // nothing on almost every card in the library while touch kept working. One
+  // resolver, both input types, and neither can rot without the other.
   document.addEventListener('contextmenu', function(e) {
-    var card = e.target.closest('.stat-card');
-    if (!card) { closeCtx(); return; }
+    var hit = _lpHit(e.target);
+    if (!hit) { closeCtx(); return; }
     e.preventDefault();
     // Prevent text selection
     window.getSelection().removeAllRanges();
-    var m = (card.getAttribute('onclick') || '').match(/enterSource\('([^']+)'/);
-    if (!m) return;
-    _ctxZim = m[1];
-    _ctxCard = card;
+    _ctxZim = hit.zim;
+    _ctxCard = hit.card;
     _ctxCompact = false;
+    _ctxCustomAction = null;
     _ctxX = e.clientX + 2;
     _ctxY = e.clientY + 2;
     showMainMenu();
@@ -4447,6 +5207,8 @@ function _moveZimTo(zim, category) {
 
     if (action === 'open') {
       closeCtx(); enterSource(zim, true);
+    } else if (action === 'about') {
+      closeCtx(); _openZimAbout(zim);
     } else if (action === 'newtab') {
       closeCtx(); window.open('/w/' + encodeURIComponent(zim), '_blank');
     } else if (action === 'move-to') {
@@ -4486,11 +5248,29 @@ function _moveZimTo(zim, category) {
           collectionsCache = c; renderHome();
         });
       });
+    } else if (action === 'download-zim') {
+      closeCtx();
+      var zdl = _zimInfo(zim);
+      var dlFile = (zdl && zdl.file) || zim;
+      // A navigation carries no auth headers, so authorization travels as a
+      // one-time two-minute ticket minted here (POST /manage/dl-ticket) and
+      // spent by the URL — without it a passworded instance answered the
+      // navigation with an HTML refusal Safari saved as name.zim.html.
+      manageFetch('/manage/dl-ticket', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({file: dlFile})
+      }).then(function(r) { return r.json(); }).then(function(d) {
+        location.href = '/dl/' + encodeURIComponent(dlFile) +
+          (d && d.ticket ? '?t=' + encodeURIComponent(d.ticket) : '');
+      }).catch(function() {
+        location.href = '/dl/' + encodeURIComponent(dlFile);
+      });
     } else if (action === 'delete') {
       closeCtx();
       var zinfo = _zimInfo(zim);
       if (!zinfo || !zinfo.file) return;
-      if (!confirm(t('delete_zim_confirm', {name: zinfo.title || zim}))) return;
+      _appConfirm(t('delete_zim_confirm', {name: zinfo.title || zim}), t('delete')).then(function(sure) {
+      if (!sure) return;
       // Optimistic: remove card immediately
       if (card) card.style.display = 'none';
       zimsCache = zimsCache.filter(function(z) { return z.name !== zim; });
@@ -4501,6 +5281,7 @@ function _moveZimTo(zim, category) {
       }).then(function() {
         renderHome();
       });
+      });
     }
   });
 
@@ -4509,11 +5290,14 @@ function _moveZimTo(zim, category) {
 })();
 
 // Markup for a "Download this ZIM" link (peer-share /dl/ endpoint, direct HTTP
-// range). Shared by the source header and every manage-list row so the pill is
-// defined once. `cls` lets each context match its neighbours' styling.
+// range). Shared by the source header and every download slot so the pill is
+// defined once. `cls` lets each context match its neighbours' styling. The
+// stopPropagation keeps the click off the card/row the pill sits inside —
+// /dl/ answers Content-Disposition: attachment, so the anchor's own default
+// saves the file without navigating.
 function _dlPillHtml(file, cls) {
   return '<a class="' + (cls || 'pill dl-pill') + '" href="/dl/' + encodeURIComponent(file) +
-    '" download="' + escAttr(file) + '">⬇ ' + tH('download_zim') + '</a>';
+    '" download="' + escAttr(file) + '" onclick="event.stopPropagation()">⬇ ' + tH('download_zim') + '</a>';
 }
 
 // Probe the peer-share endpoint once and cache whether it will serve files to
@@ -4556,18 +5340,33 @@ async function _probeZimDownload(name, info) {
   box.hidden = false;
 }
 
-// Reveal a download pill on every installed manage-list row, gated by a single
-// global peer-share probe (see _probeDlShare) — not one probe per row.
-function _fillInstalledDownloads(el) {
-  const slots = el.querySelectorAll('.ci-dl[data-file]');
+// Fill hidden download slots with a pill ONLY when the peer-share endpoint is
+// live for this client — one global probe gates every slot (see _probeDlShare),
+// and a gated client simply never sees a download affordance (no button that
+// nags to turn sharing on). `prefix` lets a slot carry its own separator so an
+// unfilled slot renders nothing at all.
+function _fillDlSlots(root, selector, cls, prefix) {
+  const slots = root.querySelectorAll(selector);
   if (!slots.length) return;
   _probeDlShare(slots[0].getAttribute('data-file')).then(function(ok) {
     if (!ok) return;
     slots.forEach(function(slot) {
       const file = slot.getAttribute('data-file');
-      if (file) { slot.innerHTML = _dlPillHtml(file, 'ci-installed-badge dl-pill'); slot.hidden = false; }
+      if (file) { slot.innerHTML = (prefix || '') + _dlPillHtml(file, cls); slot.hidden = false; }
     });
   });
+}
+
+// Reveal a download pill on every installed manage-list row.
+function _fillInstalledDownloads(el) {
+  _fillDlSlots(el, '.ci-dl[data-file]', 'ci-installed-badge dl-pill');
+}
+
+// Same reveal for the export cards on the home grid. renderCardGrid returns a
+// string its callers insert synchronously, so a 0-tick defer lands after the
+// slots are in the DOM.
+function _fillCardDlSlots() {
+  _fillDlSlots(document, '.card-dl-slot[data-file]', 'card-dl-pill', ' &middot; ');
 }
 
 // Jump straight into a source's homepage article in the reader (skip the
@@ -4590,25 +5389,24 @@ var _zimgitZimName = '';   // ZIM they belong to (for the filter's re-render)
 
 function _zimgitDocHtml(name, d, i) {
   var hasPath = !!d.path;
-  var call = hasPath
-    ? "openArticle('" + escJs(name) + "', '" + escJs(d.path) + "', '" + escJs(d.title || '') + "')"
-    : '';
-  var clickAttr = hasPath
-    ? ' onclick="' + call + '" onkeydown="if(event.key===\'Enter\')' + call + '"'
+  // With a path the row is a real link (#49) — new-tab gestures work natively,
+  // and the anchor is focusable/Enter-activatable without div scaffolding.
+  var tag = hasPath ? 'a' : 'div';
+  var navAttrs = hasPath
+    ? ' href="' + escAttr(_articleDeepLinkPath(name, d.path)) + '" data-zim="' + escAttr(name) + '" data-path="' + escAttr(d.path) + '" data-title="' + escAttr(d.title || '') + '" onclick="return _spaCardClick(event, this)"'
     : '';
   var meta = [];
   if (d.author) meta.push(esc(d.author));
   if (d.size) meta.push(_fmtBytes(d.size));
   var metaHtml = meta.length ? '<div class="zg-meta">' + meta.join(' · ') + '</div>' : '';
-  return '<div class="result zg-doc"' +
-    (hasPath ? ' tabindex="0" role="button" data-zim="' + escAttr(name) + '" data-path="' + escAttr(d.path) + '" data-title="' + escAttr(d.title || '') + '"' : '') +
-    ' style="animation-delay:' + (i * 0.04) + 's"' + clickAttr + '>' +
+  return '<' + tag + ' class="result zg-doc"' + navAttrs +
+    ' style="animation-delay:' + (i * 0.04) + 's">' +
     '<div class="zg-icon" aria-hidden="true">PDF</div>' +
     '<div class="result-body">' +
       '<div class="title">' + esc(d.title) + '</div>' +
       (d.description ? '<div class="snippet">' + esc(d.description) + '</div>' : '') +
       metaHtml +
-    '</div></div>';
+    '</div></' + tag + '>';
 }
 
 function _renderZimgitCatalog(name, docs) {
@@ -4670,7 +5468,6 @@ async function renderSource(name) {
       '<div class="sh-meta">' + _zimCountHtml(info) +
       ' &middot; ' + fmtSize(info.size_gb) + collectionChip + '</div>' +
       (info.description ? '<div class="sh-desc">' + esc(info.description) + '</div>' : '') +
-      '<div class="sh-actions" id="sh-download" hidden></div>' +
     '</div></div>';
 
   // For ZIMs with a homepage, go straight to reader (skip intermediate page)
@@ -4685,10 +5482,8 @@ async function renderSource(name) {
   sourceHeaderEl.style.display = '';
   output.innerHTML = _loadingHtml();
 
-  // Reveal a "Download this ZIM" link only if the peer-share endpoint (/dl/)
-  // will actually serve this file to this client. Probed once per panel open —
-  // never per render tick — so the WAN (403) never sees a dead button.
-  _probeZimDownload(name, info);
+  // No download link in the source header \u2014 the raw .zim is a rare,
+  // deliberate grab that lives on right-click / the Manage \u22ef menu.
 
   // Try catalog (zimgit PDF collections show document list)
   try {
@@ -4861,6 +5656,7 @@ async function doSearch(query, push) {
 
   // Close reader or almanac if open
   if (readerOpen) closeReader();
+  if (_createOpen) closeCreate();
   if (_almanacOpen) closeAlmanac();
 
   mainView.classList.remove('hidden');
@@ -5144,14 +5940,16 @@ function renderSearchResults(data, scope) {
         const icon = z.has_icon
           ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="48" height="48" loading="lazy">'
           : '<span class="icon-letter">' + esc(z.title || z.name)[0].toUpperCase() + '</span>';
-        return '<div class="stat-card" tabindex="0" role="button" onclick="enterSource(\'' + escJs(z.name) + '\', true)" onkeydown="if(event.key===\'Enter\')enterSource(\'' + escJs(z.name) + '\', true)">' +
+        // Real link (#49) — and data-zim keeps the long-press context menu
+        // working now that there is no enterSource(...) onclick to parse.
+        return '<a class="stat-card" data-zim="' + escAttr(z.name) + '" href="/w/' + encodeURIComponent(z.name) + '" onclick="return _spaSourceClick(event, this)">' +
           '<div class="card-icon">' + icon + '</div>' +
           '<div class="card-info">' +
             '<div class="name">' + esc(z.title || z.name) + '</div>' +
             (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
             '<div class="detail">' + _zimCountHtml(z) +
             ' &middot; ' + fmtSize(z.size_gb) + '</div>' +
-          '</div></div>';
+          '</div></a>';
       }).join('') + '</div>';
     }
   }
@@ -5165,12 +5963,14 @@ function renderSearchResults(data, scope) {
       ? '<div class="result-source">' + _sourceIconHtml(r.zim, 20) +
         '<span class="rs-name">' + esc(_zimTitle(r.zim)) + '</span></div>'
       : '';
-    return '<div class="result" tabindex="0" role="button" data-zim="' + escAttr(r.zim) + '" data-path="' + escAttr(r.path) + '" data-title="' + escAttr(r.title || '') + '" style="animation-delay:' + (Math.min(i, 5) * 0.04) + 's" onclick="openArticle(\'' + escJs(r.zim) + '\', \'' + escJs(r.path) + '\', \'' + escJs(r.title || '') + '\')" onkeydown="if(event.key===\'Enter\')openArticle(\'' + escJs(r.zim) + '\', \'' + escJs(r.path) + '\', \'' + escJs(r.title || '') + '\')">' +
+    // Real link (#49): anchors are natively focusable and Enter-activatable,
+    // so the tabindex/role/onkeydown scaffolding a div needed goes away.
+    return '<a class="result" href="' + escAttr(_articleDeepLinkPath(r.zim, r.path)) + '" data-zim="' + escAttr(r.zim) + '" data-path="' + escAttr(r.path) + '" data-title="' + escAttr(r.title || '') + '" style="animation-delay:' + (Math.min(i, 5) * 0.04) + 's" onclick="return _spaCardClick(event, this)">' +
       '<div class="result-thumb" data-needs-thumb="1"></div>' +
       '<div class="result-body">' + sourceRow +
       '<div class="title">' + esc(r.title) + '</div>' +
       (r.snippet ? '<div class="snippet">' + esc(r.snippet) + '</div>' : '<div class="snippet" data-needs-snippet="1"></div>') +
-      '</div></div>';
+      '</div></a>';
   }).join('') + '</div>';
 
   if (remaining > 0) {
@@ -5483,7 +6283,9 @@ function toggleManage(e) {
     _manageToken = '';
     // Use history.back() to trigger popstate, which restores reader if saved
     if (_manageSavedReader) { history.back(); return; }
-    goHome(e); return;
+    // null, not e: this is a close action, not link navigation — a modifier
+    // held during the click must not make goHome defer to a native gesture.
+    goHome(null); return;
   }
   enterManage(e);
 }
@@ -5517,10 +6319,10 @@ async function enterManage(e, section) {
     // manage-auth probe has set manageEnabled we must not leave the button
     // dead (#44). Resolve the probe on demand (cheap, lock-free endpoint) and
     // only bail if management is genuinely disabled.
-    if (_manageProbed) return;            // probe already finished: disabled
+    if (_manageProbed) { _dropManageBoot(); return; }   // probe finished: disabled
     if (!_manageProbe) _manageProbe = _probeManageAuth();
     await _manageProbe;
-    if (!manageEnabled) return;           // resolved to disabled
+    if (!manageEnabled) { _dropManageBoot(); return; }  // resolved to disabled
   }
   // Decide which settings section to land on: an explicit arg (deep link /
   // ?manage=<section>) wins, else a section a caller already staged in
@@ -5528,6 +6330,13 @@ async function enterManage(e, section) {
   // this session, else Library. renderManage honors _pendingMsSection.
   var _msTarget = _validMsSection(section) || _pendingMsSection || _lastMsSection() || 'library';
   _pendingMsSection = _msTarget;
+  // Manage is reachable from the Create page's ⋯ menu. Create is a full-page
+  // surface that hides #main-view — left open, Manage renders under a dead
+  // Create page (Eric, mobile: "go to manage from create view it doesn't
+  // load right"). closeCreate no-ops when the surface is down.
+  if (_createOpen && typeof closeCreate === 'function') {
+    try { closeCreate(); } catch (err) {}
+  }
   // The History/Bookmarks side panel floats over the right edge; close it so
   // it doesn't overlap and truncate the full Manage view.
   _closeLibraryPanel();
@@ -5565,6 +6374,23 @@ async function enterManage(e, section) {
   history.pushState({ mode: 'manage' }, '', _msSectionUrl(_msTarget));
   updateTopbar();
   renderManage();
+  // Manage is now painted in #main-view — drop the cold-boot gate so it shows
+  // (no-op on the normal in-SPA path, where the class was never set).
+  document.documentElement.classList.remove('manage-boot');
+  // Warm the Creator inventory while the user reads whatever section greeted
+  // them, so opening the Creator tab is instant instead of waiting on the walk
+  // (#47). _creatorLoadInventory caches for the session and its DOM fill no-ops
+  // until the Creator pane is actually on screen.
+  if (typeof _creatorLoadInventory === 'function') _creatorLoadInventory();
+}
+
+// Reveal the library after a cold boot into ?manage that resolved to "you may
+// not manage": the manage-boot gate was hiding #main-view, so drop it and paint
+// home. A no-op when the gate was never set (the normal in-SPA path).
+function _dropManageBoot() {
+  if (!document.documentElement.classList.contains('manage-boot')) return;
+  document.documentElement.classList.remove('manage-boot');
+  enterHome(false);
 }
 
 let manageTab = 'installed';
@@ -6123,6 +6949,12 @@ let _catalogInstalledNames = new Set();
 // after catalog loads. Empty when no peers / not yet loaded.
 let _catalogPeerStems = new Map();  // stem → [peerName, ...]  (display)
 let _catalogPeerFiles = new Map();  // stem → [{peer, file, size}]  (download)
+// Everything every peer advertises, flat. Feeds the "Nearby" catalog section:
+// peer ZIMs that match NO catalog item (bookmark exports, custom imports)
+// would otherwise be invisible — the stem maps above only annotate items the
+// Kiwix catalog already knows about.
+let _peerZimEntries = [];           // [{peer, file, size, title, export, stems:[...]}]
+let _peerMatchedStems = new Set();  // stems _enrichCatalogPeers found a catalog item for
 let _peersLoadedAt = 0;
 const PEER_LIST_REFRESH_MS = 60_000;
 
@@ -6149,9 +6981,11 @@ async function _loadPeerData() {
   }
   const newMap = new Map();
   const newFiles = new Map();
+  const newEntries = [];
   if (!peers.length) {
     _catalogPeerStems = newMap;
     _catalogPeerFiles = newFiles;
+    _peerZimEntries = newEntries;
     _peersLoadedAt = Date.now();
     return false;
   }
@@ -6180,16 +7014,26 @@ async function _loadPeerData() {
           if (!newFiles.has(key)) newFiles.set(key, []);
           if (file) newFiles.get(key).push(entry);
         }
+        if (file) {
+          newEntries.push({
+            peer: p.name, file: file, size: z.size_bytes,
+            title: z.title || z.name || fb,
+            export: !!z.zimi_export,
+            stems: [stem, dated],
+          });
+        }
       }
     } catch (_) {}
   }));
   _catalogPeerStems = newMap;
   _catalogPeerFiles = newFiles;
+  _peerZimEntries = newEntries;
   _peersLoadedAt = Date.now();
   return true;
 }
 
 function _enrichCatalogPeers(items) {
+  _peerMatchedStems = new Set();
   if (!_catalogPeerStems.size) {
     for (const it of items) { it.peer_names = []; it.peer_entries = []; }
     return;
@@ -6206,11 +7050,71 @@ function _enrichCatalogPeers(items) {
     let entries = [];
     for (const c of candidates) {
       const hit = _catalogPeerStems.get(c);
-      if (hit && hit.length) { names = hit; entries = _catalogPeerFiles.get(c) || []; break; }
+      if (hit && hit.length) {
+        names = hit;
+        entries = _catalogPeerFiles.get(c) || [];
+        _peerMatchedStems.add(c);
+        break;
+      }
     }
     it.peer_names = names;
     it.peer_entries = entries;
   }
+}
+
+// Peer ZIMs the Kiwix catalog knows nothing about, grouped by file across
+// peers. This is how another device's bookmark exports (or custom imports)
+// surface here at all. Files already in the local library are kept but
+// badged installed, matching how catalog rows treat what you have.
+function _peerOnlyEntries() {
+  if (!_peerZimEntries.length) return [];
+  const localFiles = new Set((zimsCache || []).map(z => z.file));
+  const byFile = new Map();
+  for (const e of _peerZimEntries) {
+    if (e.stems.some(s => _peerMatchedStems.has(s))) continue;
+    let g = byFile.get(e.file);
+    if (!g) {
+      g = {file: e.file, title: e.title, size: e.size, export: e.export,
+           peers: [], installed: localFiles.has(e.file)};
+      byFile.set(e.file, g);
+    }
+    if (!g.peers.includes(e.peer)) g.peers.push(e.peer);
+  }
+  return [...byFile.values()]
+    .sort((a, b) => (a.title || a.file).localeCompare(b.title || b.file));
+}
+
+// "Nearby" catalog section: rows for peer-only ZIMs, pullable over the LAN
+// via the same /manage/download-from-peer path the peer pills use. Empty
+// string when every advertised file matched a catalog item (the common case).
+function _nearbyPeerSectionHtml() {
+  const entries = _peerOnlyEntries();
+  if (!entries.length) return '';
+  let rows = '';
+  for (const e of entries) {
+    const peerNames = e.peers.map(p => p.replace(/^zimi-/, '')).join(', ');
+    const action = e.installed
+      ? '<span class="ci-installed-badge">' + tH('installed_badge') + '</span>'
+      : '<button class="ci-add-btn" onclick="event.stopPropagation();_downloadFromPeer(\'' +
+          escJs(e.peers[0]) + '\', \'' + escJs(e.file) + '\')">' +
+          // _fmtBytes, not formatSize: exports are typically well under the
+          // 1 MB floor formatSize rounds to ("Download 0 MB" reads broken).
+          (e.size ? tH('download_size', {size: esc(_fmtBytes(e.size))}) : tH('download')) +
+        '</button>';
+    rows += '<div class="catalog-item" style="margin-bottom:4px">' +
+      '<div class="ci-icon" style="width:32px;text-align:center;display:flex;align-items:center;justify-content:center;color:var(--text2)">' +
+        (e.export ? '🔖' : '📡') + '</div>' +
+      '<div class="ci-info" style="flex:1;min-width:0">' +
+        '<div class="ci-title" style="font-size:13px">' + esc(e.title) + '</div>' +
+        '<div class="ci-meta"><span>' + tH('nearby_on_device', {peers: esc(peerNames)}) + '</span></div>' +
+      '</div>' +
+      '<div class="ci-actions">' + action + '</div>' +
+    '</div>';
+  }
+  return '<div class="featured-section" style="padding:0 0 8px">' +
+    '<div class="ci-section-label">📡 ' + tH('nearby_section') + '</div>' +
+    rows +
+  '</div>';
 }
 
 function _peerHint(item) {
@@ -6401,14 +7305,19 @@ function _enrichCatalogInstalled(items) {
   // "canadian_prep_winterprepping" for a file actually named
   // "canadian_prepper_winterprepping_en_2026-02.zim"). Falling back to the
   // prefix derived from the download URL recovers those cases.
+  //
+  // Two passes over the items. Prefix alone conflates flavor editions:
+  // "mdwiki_en_all" prefix-matches the installed mdwiki_en_all_maxi_* file,
+  // so the unsuffixed video-build entry claimed a maxi install (and vice
+  // versa) — the badge, delete button, and update pick all pointed at the
+  // wrong edition (#50). Pass 1 therefore requires the filename flavor token
+  // to agree. Pass 2 is the loose fallback for files NO entry claimed, so an
+  // install whose exact flavor Kiwix has since delisted still shows as
+  // installed instead of inviting a duplicate download.
   if (!zimsCache) return;
-  for (const item of items) {
-    item.installed = false;
-    item._installedDate = null;
-    item._installedFile = null;
-    item._installedName = null;
-    item._installedSizeGb = null;
 
+  const claimed = new Set();
+  const tryMatch = (item, strict) => {
     // Build candidate prefixes to match installed filenames against.
     const prefixes = [item.name];
     if (item.download_url) {
@@ -6419,20 +7328,32 @@ function _enrichCatalogInstalled(items) {
       const urlPrefix = fname.replace(/_\d{4}-\d{2}$/, '');
       if (urlPrefix && urlPrefix !== item.name) prefixes.push(urlPrefix);
     }
-
+    const itemTok = _flavorToken(item.download_url || item.name);
     for (const z of zimsCache) {
       const fb = (z.file || '').replace(/\.zim$/, '');
-      const hit = prefixes.some(p => fb === p || fb.startsWith(p + '_'));
-      if (hit) {
-        item.installed = true;
-        const m = fb.match(/(\d{4}-\d{2})$/);
-        item._installedDate = m ? m[1] : null;
-        item._installedFile = z.file;
-        item._installedName = z.name;
-        item._installedSizeGb = z.size_gb;
-        break;
-      }
+      if (!prefixes.some(p => fb === p || fb.startsWith(p + '_'))) continue;
+      if (strict ? _flavorToken(fb) !== itemTok : claimed.has(z.file)) continue;
+      item.installed = true;
+      const m = fb.match(/(\d{4}-\d{2})$/);
+      item._installedDate = m ? m[1] : null;
+      item._installedFile = z.file;
+      item._installedName = z.name;
+      item._installedSizeGb = z.size_gb;
+      claimed.add(z.file);
+      return;
     }
+  };
+
+  for (const item of items) {
+    item.installed = false;
+    item._installedDate = null;
+    item._installedFile = null;
+    item._installedName = null;
+    item._installedSizeGb = null;
+    tryMatch(item, true);
+  }
+  for (const item of items) {
+    if (!item.installed) tryMatch(item, false);
   }
 }
 
@@ -6517,8 +7438,10 @@ function buildFeaturedCarousel(items) {
       || allMatches.find(function(g) { return (g.language || '').startsWith('en'); });
     if (!best) continue;
     var variants = best.variants || [best];
+    // Sibling URLs keep colliding labels apart (unsuffixed vs maxi, #50).
+    var vUrls = variants.map(function(v) { return v.download_url; });
     var withLabels = variants.filter(function(v) { return v.download_url; }).map(function(v) {
-      return { label: variantLabel(v.download_url) || t('full'), size: formatSize(v.size_bytes), url: v.download_url, bytes: v.size_bytes || 0 };
+      return { label: variantLabel(v.download_url, vUrls) || t('full'), size: formatSize(v.size_bytes), url: v.download_url, bytes: v.size_bytes || 0 };
     });
     withLabels.sort(function(a, b) { return _flavorOrder(b.url) - _flavorOrder(a.url); }); // Full first
     if (!withLabels.length) continue;
@@ -6653,6 +7576,9 @@ function renderBrowseGallery() {
     // Language pills from full (unfiltered) catalog
     h += _renderLangPills(_countLangsByCategory(items, null), 'filterCatalogLang');
     if (!manageLangFilter) h += buildFeaturedCarousel(items);
+    // Peer-only ZIMs (bookmark exports, custom imports) have no language
+    // metadata worth filtering on — Nearby shows whenever peers offer them.
+    h += _nearbyPeerSectionHtml();
     h += '<div class="browse-grid">';
 
     for (const cat of BROWSE_CATEGORIES) {
@@ -6830,12 +7756,7 @@ function categorizeZim(name) {
   return 'Other';
 }
 
-function formatSize(bytes) {
-  if (!bytes) return '0 MB';
-  const mb = bytes / (1024 ** 2);
-  if (mb >= 900) return (bytes / (1024 ** 3)).toFixed(1) + ' GB';
-  return Math.round(mb) + ' MB';
-}
+function formatSize(bytes) { return fmtBytes(bytes); }
 
 // Bold download arrow for catalog buttons — the ↓ glyph reads too thin.
 const _DL_ARROW_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v13M6 11l6 6 6-6"/></svg>';
@@ -6885,40 +7806,75 @@ function groupVariants(items) {
     if (item.article_count > (groups[key].article_count || 0)) groups[key].article_count = item.article_count;
     if (item.summary && !groups[key].summary) groups[key].summary = item.summary;
     if (item.icon_url && !groups[key].icon_url) groups[key].icon_url = item.icon_url;
+    // The card's date tag should reflect the group's NEWEST edition, not
+    // whichever entry the catalog happened to list first.
+    if ((item.date || '') > (groups[key].date || '')) groups[key].date = item.date;
   }
+  // Same name + same flavor token = two DATE EDITIONS of one build, not two
+  // flavors. Rendering both gives identically-labeled rows that invite a
+  // second, redundant download (#50) — keep only the newest edition of each.
+  for (const g of Object.values(groups)) g.variants = _newestPerFlavor(g.variants);
   return Object.values(groups);
 }
 
-function variantLabel(url) {
+// Flavor token from a ZIM filename or download URL — the client twin of
+// library.py's _detect_flavor. The token in the filename is the only flavor
+// signal the client and server share; the OPDS `flavour` field is unreliable
+// (empty on Kiwix's unsuffixed complete builds). null = the unsuffixed build.
+function _flavorToken(url) {
+  const f = ((url || '').split('/').pop() || '').replace(/\.zim(\.meta4)?$/, '');
+  if (/(^|_)maxi(_|$)/.test(f)) return 'maxi';
+  if (/(^|_)nopic(_|$)/.test(f)) return 'nopic';
+  if (/(^|_)mini(_|$)/.test(f)) return 'mini';
+  return null;
+}
+
+// Collapse same-flavor-token entries (date editions of one build) down to the
+// newest edition. Items must carry download_url + date (OPDS shape).
+function _newestPerFlavor(list) {
+  const out = [];
+  for (const item of list) {
+    // No URL = nothing downloadable to conflate; never merge those, and never
+    // let one displace a real entry (that would drop the group's only URL).
+    const i = item.download_url
+      ? out.findIndex(v => v.download_url && _flavorToken(v.download_url) === _flavorToken(item.download_url))
+      : -1;
+    if (i < 0) out.push(item);
+    else if ((item.date || '') > (out[i].date || '')) out[i] = item;
+  }
+  return out;
+}
+
+// siblingUrls (optional): download URLs of the other variants in the same
+// group. Needed to disambiguate Kiwix's unsuffixed complete build: alone it
+// reads as the default "Full", but next to a maxi sibling (mdwiki_en_all,
+// wikipedia_en_100, ...) both would say "Full" while differing by gigabytes
+// of video (#50) — so the unsuffixed one must say what it adds.
+function variantLabel(url, siblingUrls) {
   if (!url) return '';
-  const f = url.split('/').pop() || '';
-  if (f.includes('_maxi_')) return t('full');
-  if (f.includes('_nopic_')) return t('no_images');
-  if (f.includes('_mini_')) return t('mini');
+  const tok = _flavorToken(url);
+  if (tok === 'maxi') return t('full');
+  if (tok === 'nopic') return t('no_images');
+  if (tok === 'mini') return t('mini');
+  if (siblingUrls && siblingUrls.some(u => u && u !== url && _flavorToken(u) === 'maxi')) {
+    return t('full_video');
+  }
   return '';
 }
 
 // Higher = preferred. Highest score belongs to the user's preferred flavor.
 // Used by sort callers — DESC sort puts the preferred flavor first.
+// maxi outranks the unsuffixed complete build under the "full" preference:
+// that preference promises articles+images, not a surprise multi-GB video
+// edition — the video build stays an explicit dropdown choice (#50).
+const _FLAVOR_RANKS = {
+  full:  { maxi: 4, plain: 3, nopic: 2, mini: 1 },
+  nopic: { nopic: 4, maxi: 3, plain: 2, mini: 1 },
+  mini:  { mini: 4, nopic: 3, maxi: 2, plain: 1 },
+};
 function _flavorOrder(url) {
-  const isMini = url.includes('_mini_');
-  const isNopic = url.includes('_nopic_');
-  const isFull = !isMini && !isNopic;
-  const pref = _getPrefFlavor();
-  if (pref === 'mini') {
-    if (isMini) return 3;
-    if (isNopic) return 2;
-    return 1;
-  }
-  if (pref === 'nopic') {
-    if (isNopic) return 3;
-    if (isFull) return 2;
-    return 1;
-  }
-  // default 'full'
-  if (isFull) return 3;
-  if (isNopic) return 2;
-  return 1;
+  const ranks = _FLAVOR_RANKS[_getPrefFlavor()] || _FLAVOR_RANKS.full;
+  return ranks[_flavorToken(url) || 'plain'];
 }
 
 function renderCatalogItem(group) {
@@ -6943,11 +7899,17 @@ function renderCatalogItem(group) {
   let actionsHtml = '';
   if (anyInstalled) {
     const instVariant = variants.find(v => v.installed) || item;
-    const hasUpdate = instVariant._installedDate && item.date && instVariant._installedDate < item.date.substring(0, 7);
+    // An update must be the SAME flavor edition as the installed file. The
+    // old "first non-installed variant" pick could hand a maxi install the
+    // group's unsuffixed video build — a 10+ GB different edition downloaded
+    // ALONGSIDE the existing one instead of replacing it (#50, echoes #16).
+    const instTok = _flavorToken(instVariant._installedFile || '');
+    const updVariant = variants.find(v => v.download_url && _flavorToken(v.download_url) === instTok) || instVariant;
+    const hasUpdate = instVariant._installedDate && updVariant.date && updVariant.download_url
+      && instVariant._installedDate < updVariant.date.substring(0, 7);
     if (hasUpdate) {
       // Update available — show update button (same style as manage view)
-      const updUrl = variants.find(v => v.download_url && !v.installed);
-      actionsHtml = '<button class="ci-update-btn" onclick="downloadZim(\'' + escAttr((updUrl || item).download_url) + '\', this, true)" title="' + escAttr(t('from_to_update', {from: instVariant._installedDate, to: item.date})) + '">' +
+      actionsHtml = '<button class="ci-update-btn" onclick="downloadZim(\'' + escAttr(updVariant.download_url) + '\', this, true)" title="' + escAttr(t('from_to_update', {from: instVariant._installedDate, to: updVariant.date})) + '">' +
         tH('update') + '</button>';
     } else {
       actionsHtml = '<span class="ci-installed-badge">' + tH('installed_badge') + '</span>';
@@ -6956,8 +7918,11 @@ function renderCatalogItem(group) {
       actionsHtml += '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(instVariant._installedFile) + '\', this)" title="' + escAttr(t('delete_zim')) + '">\u00D7</button>';
     }
   } else {
+    // Sibling URLs disambiguate colliding labels (unsuffixed vs maxi → both
+    // "Full" without them, see variantLabel).
+    const vUrls = variants.map(v => v.download_url);
     const withLabels = variants.filter(v => v.download_url).map(v => {
-      const label = variantLabel(v.download_url) || t('full');
+      const label = variantLabel(v.download_url, vUrls) || t('full');
       const size = formatSize(v.size_bytes);
       return { label, size, url: v.download_url, bytes: v.size_bytes || 0 };
     });
@@ -7154,8 +8119,8 @@ function switchManageTab(tab) {
     renderCollectionsTab();
   } else if (tab === 'history') {
     q.placeholder = t('search_placeholder');
-    _histShowAll = false;  // re-entering the tab defaults back to the capped view
-    renderHistoryTab();
+    _act.showAll = false;   // re-entering the tab defaults back to the capped view
+    renderActivityLog();
   } else if (tab === 'activity') {
     q.placeholder = t('search_placeholder');
     renderActivityTab();
@@ -7304,108 +8269,290 @@ async function toggleCollZim(collName, zimName) {
 }
 
 // ── History tab ──
-function _historyZimInfo(ev) {
-  // Prefer the live library record — it carries has_icon and a clickable
-  // name. The event's cached copy (_fromEvent) is the fallback for ZIMs
-  // that no longer exist; it renders a letter icon and isn't clickable.
-  var filename = ev.filename;
-  if (zimsCache) {
-    var z = zimsCache.find(function(z) { return z.file === filename; });
-    if (z) return z;
-  }
-  // Strip date suffix to match by name prefix
-  var name = (filename || '').replace(/\.zim$/, '').replace(/_\d{4}-\d{2}$/, '');
-  var z2 = _zimInfo(name) || (ev.name ? _zimInfo(ev.name) : null);
-  if (z2) return z2;
-  // Cached ZIM info from the event (survives deletion)
-  if (ev.title) return { title: ev.title, name: ev.name || '', has_icon: ev.has_icon, language: ev.language || '', _fromEvent: true };
-  // Try catalog cache for downloads that never completed
-  if (_catalogCache) {
-    var catMatch = _catalogCache.find(function(it) {
-      return it.download_url && it.download_url.split('/').pop() === filename;
-    });
-    if (catMatch) return { title: catMatch.title, name: catMatch.name || name, has_icon: false, language: catMatch.language || '', _fromEvent: true };
-  }
-  return null;
+// ── Activity ────────────────────────────────────────────────────────────────
+// Everything that has happened to this library, in one list: a download, an
+// auto-update, a creation run, an export, a deletion — each line saying what it
+// was, how it went and WHO did it. A ZIM updated by the auto-updater and the
+// same ZIM updated by a person are the same transfer and different events, and
+// only one of them means somebody made a decision.
+//
+// The server keeps the journal (/manage/activity-log, last 200 records). The
+// fetch here is deliberately unfiltered: 200 records is one small read, and
+// filtering in the client is what lets the type and actor boxes be multi-select
+// and repaint with no round trip. The endpoint takes ?type= / ?actor= for API
+// callers who want the server to do it.
+
+var _ACT_RENDER_CAP = 50;  // rows before the "Show all" expander
+
+// One glyph per type, so the list is scannable before a word of it is read.
+function _actGlyph(d) {
+  return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>';
+}
+var _ACT_GLYPHS = {
+  download: _actGlyph('<path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/>'),
+  update:   _actGlyph('<path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4h-4"/>'),
+  create:   _actGlyph('<path d="M12 5v14"/><path d="M5 12h14"/>'),
+  import:   _actGlyph('<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>'),
+  export:   _actGlyph('<path d="M12 21V9"/><path d="M8 13l4-4 4 4"/><path d="M4 9V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4"/>'),
+  delete:   _actGlyph('<path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/>'),
+  health:   _actGlyph('<path d="M3 12h4l2-5 3 10 2-5h7"/>'),
+  restore:  _actGlyph('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 8v4l3 2"/>')
+};
+var _ACT_FALLBACK_GLYPH = _actGlyph('<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>');
+
+// A record with no subject is about the server itself, not about one ZIM —
+// named here so it is named in the reader's language.
+var _ACT_SUBJECT_FALLBACK = {
+  health: 'act_subject_library',
+  restore: 'act_subject_backup',
+  export: 'act_subject_bookmarks'
+};
+// What the optional count counts, per type.
+var _ACT_COUNT_LABEL = {export: 'act_n_bookmarks', restore: 'act_n_sections'};
+
+// View state. Filters are stored as what is turned ON — the pills come up
+// deselected, which means "show everything", exactly like the Library view's
+// category pills: nothing is lit until you tap, a tap selects one value to
+// filter by, a second tap lets go of it. An empty selection on an axis is no
+// filter on that axis, so a type that first appears in the journal after the
+// view was opened is always visible.
+var _act = {
+  records: [], types: [], actors: [],
+  selTypes: {}, selActors: {},
+  showAll: false
+};
+
+// The filter value for a record's actor: a username, or the kind. Mirrors the
+// server's _activity_actor_key so both sides group the same way.
+function _actActorKey(r) {
+  // A named person is the notable case. Everything else — an explicit server
+  // action, or a pre-tracking record with no actor at all — is the server's
+  // own doing, so it groups as one "Server" rather than splitting into a
+  // mysterious dash beside it (Eric: "replace my '-' with Server... why are
+  // they not grouping like that already?").
+  var a = r.actor || {};
+  return (a.kind === 'user' && a.name) ? a.name : 'server';
+}
+// Pre-1.9 history has no actor, and "Unknown" read as an accusation — as
+// though somebody had done this and Zimi would not say who. An em-dash is the
+// truthful shape: there is nothing in this column, because nothing was ever
+// recorded there. The sentence explaining that lives in the tooltip, where a
+// sentence fits, and the chip stays dim so the eye skips it.
+var ACT_ACTOR_NONE = '—';
+
+function _actActorLabel(key) {
+  if (key === 'server') return t('act_actor_server');
+  if (key === 'unknown') return ACT_ACTOR_NONE;
+  return key;
 }
 
-// Activity tab render cap. History is newest-first and server-capped at 500;
-// showing all of it makes the tab scroll forever, so render the most recent
-// _HIST_RENDER_CAP and expose the rest behind a "Show all" expander (per-view
-// flag, reset on tab re-entry via switchManageTab so it defaults back to capped).
-var _HIST_RENDER_CAP = 50;
-var _histShowAll = false;
-async function renderHistoryTab() {
+// The hover sentence for an actor chip, or '' for one that needs none. Two
+// values are jargon to everyone who did not build this: the em-dash, and
+// "admin" — which is not a username but the password holder, and is worth
+// distinguishing from a person with an account of that name.
+function _actActorTitle(key) {
+  if (key === 'unknown') return t('act_actor_unknown_hint');
+  if (key === 'admin') return t('act_actor_admin_hint');
+  return '';
+}
+function _actTypeLabel(type) {
+  var key = 'act_type_' + type;
+  var label = t(key);
+  return label === key ? type : label;
+}
+// The verb for a row: past tense when it worked ("Downloaded"), the noun plus
+// what went wrong when it didn't ("Download · Failed").
+function _actVerb(r) {
+  if (r.outcome === 'ok') {
+    var key = 'act_ev_' + r.type;
+    var verb = t(key);
+    return verb === key ? _actTypeLabel(r.type) : verb;
+  }
+  return _actTypeLabel(r.type) + ' · ' + t('act_out_' + r.outcome);
+}
+
+function _actFilterCount() {
+  return Object.keys(_act.selTypes).length + Object.keys(_act.selActors).length;
+}
+function _actVisibleRecords() {
+  var anyType = Object.keys(_act.selTypes).length > 0;
+  var anyActor = Object.keys(_act.selActors).length > 0;
+  return _act.records.filter(function(r) {
+    return (!anyType || _act.selTypes[r.type]) &&
+           (!anyActor || _act.selActors[_actActorKey(r)]);
+  });
+}
+
+// The live library record for a journal subject, when the ZIM is still here —
+// it carries the icon and makes the row clickable. Matched on title first
+// (what the journal stores) and on name second (what an older record or a
+// filename-derived subject looks like).
+function _actZim(subject) {
+  if (!subject || !zimsCache) return null;
+  return zimsCache.find(function(z) { return z.title === subject; }) ||
+         zimsCache.find(function(z) { return z.name === subject; }) || null;
+}
+
+async function renderActivityLog(refetch) {
   const el = document.getElementById('manage-history');
   if (!el) return;
-  el.innerHTML = _loadingHtml();
-  try {
-    const res = await manageFetch('/manage/history');
-    const data = await res.json();
-    const allEvents = data.history || [];
-    if (!allEvents.length) {
-      el.innerHTML = '<div class="empty"><p>' + tH('no_history') + '</p><p class="hint">' + tH('history_hint') + '</p></div>';
+  if (refetch !== false || !_act.records.length) {
+    el.innerHTML = _loadingHtml();
+    try {
+      const res = await manageFetch('/manage/activity-log');
+      const data = await res.json();
+      _act.records = data.records || [];
+      _act.types = data.types || [];
+      _act.actors = data.actors || [];
+    } catch (e) {
+      el.innerHTML = '<div class="empty"><p>' + tH('could_not_load') + '</p></div>';
       return;
     }
-    const capped = !_histShowAll && allEvents.length > _HIST_RENDER_CAP;
-    const events = capped ? allEvents.slice(0, _HIST_RENDER_CAP) : allEvents;
-    // Group by day
-    const days = {};
-    for (const ev of events) {
-      const d = new Date(ev.ts * 1000);
-      const key = d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-      if (!days[key]) days[key] = [];
-      days[key].push(ev);
-    }
-    let h = '';
-    for (const [day, evts] of Object.entries(days)) {
-      h += '<div style="margin-bottom:20px">';
-      h += '<div class="ci-section-label">' + esc(day) + '</div>';
-      for (const ev of evts) {
-        const time = new Date(ev.ts * 1000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        const zim = _historyZimInfo(ev);
-        const title = zim ? (zim.title || zim.name) : (ev.filename || '').replace(/\.zim$/, '').replace(/_\d{4}-\d{2}$/, '').replace(/_/g, ' ');
-        const canShowIcon = zim && zim.has_icon && zim.name && !zim._fromEvent;
-        const iconHtml = canShowIcon
-          ? '<img src="/w/' + encodeURIComponent(zim.name) + '/-/icon" alt="" width="40" height="40" loading="lazy">'
-          : '<span class="ci-letter">' + (esc(title)[0] || '?').toUpperCase() + '</span>';
-
-        let label = '', labelColor = 'var(--text2)';
-        if (ev.event === 'updated') { label = t('event_updated'); }
-        else if (ev.event === 'download') { label = t('event_downloaded'); }
-        else if (ev.event === 'download_failed') { label = t('event_failed'); labelColor = 'var(--error)'; }
-        else if (ev.event === 'deleted') { label = t('event_deleted'); }
-        else { label = ev.event; }
-
-        const meta = [];
-        if (ev.size_bytes) meta.push(fmtSize(ev.size_bytes / (1024 * 1024 * 1024)));
-        meta.push(time);
-
-        const clickable = zim && !zim._fromEvent;
-        var evLangTag = zim ? _catLangTag(zim.language, zim.name) : '';
-        h += '<div class="catalog-item"' + (clickable ? ' style="cursor:pointer" onclick="enterSource(\'' + escJs(zim.name) + '\',true)"' : '') + '>' +
-          '<div class="ci-icon">' + iconHtml + '</div>' +
-          '<div class="ci-info">' +
-            '<div class="ci-title">' + esc(title) + evLangTag + '</div>' +
-            '<div class="ci-meta">' + meta.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
-          '</div>' +
-          '<div class="ci-actions"><span style="font-size:12px;font-weight:600;color:' + labelColor + '">' + label + '</span></div>' +
-        '</div>';
-      }
-      h += '</div>';
-    }
-    if (capped) {
-      h += '<button class="dl-clear-btn hist-show-all" onclick="_histRevealAll()">' +
-        tH('show_all_n', {n: allEvents.length}) + '</button>';
-    }
-    el.innerHTML = h;
-  } catch(e) {
-    el.innerHTML = '<div class="empty"><p>' + tH('could_not_load') + '</p></div>';
   }
+  el.innerHTML = _actHeaderHtml() + _actListHtml();
 }
 
-// "Show all (N)" expander for the activity tab — drop the render cap and repaint.
-function _histRevealAll() { _histShowAll = true; renderHistoryTab(); }
+// The filters, as two rows of pills across the top rather than a popover.
+//
+// A popover was the wrong container for this. Filtering here is the normal way
+// to read the journal, not an occasional adjustment — "what did the
+// auto-updater do" and "what did I do" are the two questions the view exists
+// to answer — and a filter you have to open, read, tick and dismiss makes the
+// normal case the expensive one. It also hid its own state: the button showed
+// a count, so the only way to see WHICH four things were off was to reopen the
+// box. Pills are the state and the control at once, and they are the pattern
+// the rest of the app already filters with.
+function _actHeaderHtml() {
+  // Nothing to filter yet: an empty journal gets the empty state, not a row of
+  // pills with nothing behind them.
+  if (!_act.records.length) return '';
+  return '<div class="act-filters">' +
+    _actPillRow(tH('act_filter_types'), _act.types, _act.selTypes, 'type', _actTypeLabel) +
+    _actPillRow(tH('act_filter_who'), _act.actors, _act.selActors, 'actor', _actActorLabel) +
+  '</div>';
+}
+
+// How many records carry one value on one axis, over the WHOLE journal rather
+// than the filtered slice — the same rule the server follows for the
+// vocabulary itself. A count that moved as you filtered would be telling you
+// about your own clicks instead of about the library.
+function _actAxisCount(kind, value) {
+  var n = 0;
+  for (var i = 0; i < _act.records.length; i++) {
+    var r = _act.records[i];
+    if ((kind === 'type' ? r.type : _actActorKey(r)) === value) n++;
+  }
+  return n;
+}
+
+// One axis. `sel` is the map of SELECTED values; empty means no filter, which
+// is how the row comes up — every pill dark, everything showing, the Library
+// view's own pill grammar. A lit pill is a filter you chose; tapping it again
+// lets it go, so there is no All pill to keep true.
+function _actPillRow(title, values, sel, kind, label) {
+  if (!values.length) return '';
+  var h = '<div class="act-filter-row">' +
+    '<span class="act-filter-label">' + title + '</span>' +
+    '<div class="pills-row act-filter-pills">';
+  for (var i = 0; i < values.length; i++) {
+    var v = values[i];
+    var on = !!sel[v];
+    var title2 = kind === 'actor' ? _actActorTitle(v) : '';
+    // escJs, not escAttr: an entity-escaped quote decodes back to a live quote
+    // inside the onclick JS string, and an actor value is a username somebody
+    // else chose.
+    h += '<button class="pill act-pill' + (on ? ' active' : '') + '"' +
+      ' aria-pressed="' + (on ? 'true' : 'false') + '"' +
+      (title2 ? ' title="' + escAttr(title2) + '"' : '') +
+      ' onclick="_actToggleFilter(\'' + kind + '\', \'' + escJs(v) + '\')">' +
+      esc(label(v)) + ' <span class="pill-count">' + _actAxisCount(kind, v) + '</span>' +
+    '</button>';
+  }
+  return h + '</div></div>';
+}
+
+function _actListHtml() {
+  var all = _actVisibleRecords();
+  if (!all.length) {
+    if (_actFilterCount()) {
+      return '<div class="empty"><p>' + tH('act_empty_filtered') + '</p>' +
+        '<p class="hint"><a href="#" onclick="_actClearFilters();return false">' + tH('act_filter_clear') + '</a></p></div>';
+    }
+    return '<div class="empty"><p>' + tH('act_empty') + '</p><p class="hint">' + tH('act_empty_hint') + '</p></div>';
+  }
+  var capped = !_act.showAll && all.length > _ACT_RENDER_CAP;
+  var records = capped ? all.slice(0, _ACT_RENDER_CAP) : all;
+  var h = '';
+  var day = null;
+  for (var i = 0; i < records.length; i++) {
+    var r = records[i];
+    var d = new Date((r.ts || 0) * 1000);
+    var key = d.toLocaleDateString(_currentLang || 'en', {year: 'numeric', month: 'short', day: 'numeric'});
+    if (key !== day) {
+      if (day !== null) h += '</div>';
+      h += '<div class="act-day"><div class="ci-section-label">' + esc(key) + '</div>';
+      day = key;
+    }
+    h += _actRowHtml(r);
+  }
+  if (day !== null) h += '</div>';
+  if (capped) {
+    h += '<button class="dl-clear-btn hist-show-all" onclick="_actRevealAll()">' +
+      tH('show_all_n', {n: all.length}) + '</button>';
+  }
+  return h;
+}
+
+function _actRowHtml(r) {
+  var fallback = _ACT_SUBJECT_FALLBACK[r.type];
+  var subject = r.subject || (fallback ? t(fallback) : _actTypeLabel(r.type));
+  var zim = _actZim(r.subject);
+  var icon = (zim && zim.has_icon && zim.name)
+    ? '<img src="/w/' + encodeURIComponent(zim.name) + '/-/icon" alt="" width="40" height="40" loading="lazy">'
+    : (_ACT_GLYPHS[r.type] || _ACT_FALLBACK_GLYPH);
+
+  var meta = ['<span class="act-verb' + (r.outcome === 'ok' ? '' : ' bad') + '">' + esc(_actVerb(r)) + '</span>'];
+  if (r.bytes) meta.push('<span>' + fmtBytes(r.bytes) + '</span>');
+  if (r.count && _ACT_COUNT_LABEL[r.type]) {
+    meta.push('<span>' + esc(t(_ACT_COUNT_LABEL[r.type], {n: r.count})) + '</span>');
+  }
+  if (r.detail) meta.push('<span class="act-detail">' + esc(r.detail) + '</span>');
+
+  var actorKey = _actActorKey(r);
+  var actorTitle = _actActorTitle(actorKey);
+  var chip = '<span class="act-chip act-chip-' + esc(actorKey === 'server' || actorKey === 'unknown' ? actorKey : 'user') + '"' +
+    (actorTitle ? ' title="' + escAttr(actorTitle) + '"' : '') + '>' +
+    esc(_actActorLabel(actorKey)) + '</span>';
+
+  return '<div class="catalog-item act-row"' +
+      (zim ? ' style="cursor:pointer" onclick="enterSource(\'' + escJs(zim.name) + '\',true)"' : '') + '>' +
+    '<div class="ci-icon act-icon">' + icon + '</div>' +
+    '<div class="ci-info">' +
+      '<div class="ci-title">' + esc(subject) + '</div>' +
+      '<div class="ci-meta">' + meta.join(' &middot; ') + '</div>' +
+    '</div>' +
+    '<div class="ci-actions act-side">' + chip +
+      '<span class="act-time">' + esc(_relTime(r.ts)) + '</span>' +
+    '</div>' +
+  '</div>';
+}
+
+// Repaint from the records already in hand — filtering never re-fetches.
+function _actRepaint() { renderActivityLog(false); }
+
+function _actToggleFilter(kind, value) {
+  var sel = kind === 'type' ? _act.selTypes : _act.selActors;
+  if (sel[value]) delete sel[value]; else sel[value] = true;
+  _actRepaint();
+}
+function _actClearFilters() {
+  _act.selTypes = {};
+  _act.selActors = {};
+  _actRepaint();
+}
+
+function _actRevealAll() { _act.showAll = true; _actRepaint(); }
 
 // ── Stats tab (merged server stats + usage) ──
 async function renderActivityTab() {
@@ -7414,7 +8561,9 @@ async function renderActivityTab() {
   el.innerHTML = _loadingHtml();
   try {
     const [statsRes, usageRes] = await Promise.all([
-      manageFetch('/manage/stats').catch(() => null),
+      // detail=1: this is the one view that renders the per-index list, and
+      // the only caller worth the walk over every title index on disk.
+      manageFetch('/manage/stats?detail=1').catch(() => null),
       manageFetch('/manage/usage').catch(() => null)
     ]);
     let h = '';
@@ -7524,7 +8673,7 @@ async function renderActivityTab() {
         h += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
         h += '<div style="font-size:12px;color:var(--text2);margin-bottom:4px">' + tH('fts_hint') + '</div>';
         for (const idx of noFts) {
-          const sizeLbl = idx.size_mb >= 1024 ? (idx.size_mb / 1024).toFixed(1) + ' GB' : Math.round(idx.size_mb) + ' MB';
+          const sizeLbl = fmtBytes((idx.size_mb || 0) * BYTES_PER_MB);
           const estMin = Math.max(1, Math.ceil(idx.size_mb / 500));
           const timeLbl = estMin >= 60 ? Math.round(estMin / 60) + ' hr' : '~' + estMin + ' min';
           h += '<div class="mc-row" style="align-items:center"><span class="mc-label">' + esc(idx.name) + ' <span style="color:var(--text2);font-weight:400">(' + sizeLbl + ', ' + timeLbl + ')</span></span>';
@@ -7567,6 +8716,31 @@ async function renderActivityTab() {
 // Passwordless instance reachable from a non-private network: there is no
 // password to enter, so explain the LAN-only state instead of prompting (#36).
 function _renderManagePublicLocked() {
+  // Two locked shapes. Without a password AND off-host, the door is the
+  // one-time setup key the server logged — so offer a field for it, which on
+  // success sets the first admin password in the same step. Otherwise (the
+  // pre-existing #36 case) just explain the LAN-only state.
+  if (_manageNeedsSetupKey) {
+    output.innerHTML =
+      '<div class="manage-wrap"><div class="lang-welcome-card manage-locked-card">' +
+        '<div class="lang-welcome-text">' +
+          '<strong>' + tH('manage_setup_key_title') + '</strong>' +
+          '<p>' + tH('manage_setup_key_body') + '</p>' +
+          '<div class="ms-user-add" style="max-width:340px;margin-top:12px">' +
+            '<input type="text" id="setup-key-input" autocomplete="off" spellcheck="false" ' +
+              'autocapitalize="characters" placeholder="XXXX-XXXX-XXXX">' +
+            '<input type="password" id="setup-pw-input" autocomplete="new-password" ' +
+              'placeholder="' + escAttr(tH('manage_setup_key_pw_ph')) + '" style="margin-top:8px">' +
+            '<div class="pw-actions" style="margin-top:10px">' +
+              '<button class="ms-btn ms-btn-primary" onclick="_submitSetupKey()">' +
+                tH('manage_setup_key_submit') + '</button>' +
+            '</div>' +
+            '<div class="pw-error" id="setup-key-error"></div>' +
+          '</div>' +
+        '</div>' +
+      '</div></div>';
+    return;
+  }
   output.innerHTML =
     '<div class="manage-wrap">' +
       '<div class="lang-welcome-card manage-locked-card">' +
@@ -7576,6 +8750,39 @@ function _renderManagePublicLocked() {
         '</div>' +
       '</div>' +
     '</div>';
+}
+
+// Spend the setup key: set the first admin password with the key as the
+// bearer authorization the bootstrap gate accepts, then sign in with the
+// password just set. One gesture from a locked remote client to full admin.
+async function _submitSetupKey() {
+  var key = (document.getElementById('setup-key-input') || {}).value || '';
+  var pw = (document.getElementById('setup-pw-input') || {}).value || '';
+  var err = document.getElementById('setup-key-error');
+  key = key.trim();
+  if (!key || !pw) {
+    if (err) { err.textContent = tH('manage_setup_key_needboth'); err.style.display = 'block'; }
+    return;
+  }
+  try {
+    var res = await fetch('/manage/set-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Zimi-Setup-Key': key },
+      body: JSON.stringify({ password: pw })
+    });
+    if (!res.ok) {
+      if (err) { err.textContent = tH('manage_setup_key_bad'); err.style.display = 'block'; }
+      return;
+    }
+    // Password is set; the key is spent. Authenticate with it and enter.
+    _manageNeedsSetupKey = false;
+    _managePublicLocked = false;
+    _manageToken = pw;
+    _saveManageToken(pw);
+    location.reload();
+  } catch (e) {
+    if (err) { err.textContent = tH('manage_setup_key_bad'); err.style.display = 'block'; }
+  }
 }
 
 async function renderManage() {
@@ -7601,6 +8808,7 @@ async function renderManage() {
       '<div class="ms-nav" id="ms-nav">' +
         '<button class="ms-nav-item active" data-ms="library" onclick="switchMs(\'library\')">' + tH('ms_library') + '</button>' +
         '<button class="ms-nav-item" data-ms="preferences" onclick="switchMs(\'preferences\')">' + tH('ms_display') + '</button>' +
+        '<button class="ms-nav-item" data-ms="creator" onclick="switchMs(\'creator\')">' + tH('ms_creator') + '</button>' +
         '<button class="ms-nav-item" data-ms="server" onclick="switchMs(\'server\')">' + tH('ms_server') + '</button>' +
         '<button class="ms-nav-item" data-ms="users" onclick="switchMs(\'users\')">' + tH('ms_users') + '</button>' +
       '</div>' +
@@ -7652,7 +8860,7 @@ async function renderManage() {
   } else if (manageTab === 'collections') {
     renderCollectionsTab();
   } else if (manageTab === 'history') {
-    renderHistoryTab();
+    renderActivityLog();
   } else if (manageTab === 'activity') {
     renderActivityTab();
   } else {
@@ -7741,7 +8949,7 @@ function _prefetchServerSettings() {
 
 // Manage settings sections + the URL/session plumbing that lets a reload (or a
 // fresh tap on Manage) land back on the section the user last had open.
-var _MS_SECTIONS = ['library', 'preferences', 'server', 'users'];
+var _MS_SECTIONS = ['library', 'preferences', 'creator', 'server', 'users'];
 function _validMsSection(s) { return _MS_SECTIONS.indexOf(s) >= 0 ? s : null; }
 function _msSectionUrl(section) { return (!section || section === 'library') ? '/?manage' : '/?manage=' + section; }
 function _lastMsSection() {
@@ -7766,13 +8974,18 @@ function switchMs(section) {
   switch(section) {
     case 'library': pane.innerHTML = _msLibraryHtml(); break;
     case 'preferences': pane.innerHTML = _msPreferencesHtml(); break;
+    case 'creator': pane.innerHTML = _msCreatorHtml(); break;
     case 'server': pane.innerHTML = _msServerHtml(); break;
     case 'users': _renderMsUsers(); break;
   }
   // The library pane owns the Updates line — refresh it on every mount so a
   // re-entry (nav away and back) never re-renders "Checking…" and then strands
   // there. checkForUpdates repaints instantly from cache when it's fresh.
-  if (section === 'library') { _renderUpdatesSummary(); checkForUpdates(); }
+  if (section === 'library') {
+    _renderUpdatesSummary();
+    checkForUpdates();
+    _renderAutoUpdateSection();
+  }
 }
 
 // ── Users management (admin-only, multi-user v1) ──
@@ -7875,6 +9088,9 @@ function _msUsersHtml() {
       var seen = u.last_login
         ? tH('users_last_login') + ' ' + esc(_relTime(u.last_login))
         : tH('users_last_never');
+      // Surface the create grant on the row itself — the toggle lives in the
+      // ⋯ menu, but a permission nobody can see is a permission nobody audits.
+      if (u.can_create && u.role !== 'admin') seen += ' · ' + tH('users_can_create');
       var menuAttr = canManage
         ? 'onclick="event.stopPropagation();_openUserMenu(this,' + escAttr(JSON.stringify(u.name)) + ')" title="' + escAttr(t('users_options')) + '" aria-label="' + escAttr(t('users_options')) + '" aria-haspopup="menu"'
         : '';
@@ -7891,6 +9107,15 @@ function _msUsersHtml() {
       '<div class="ms-form-label">' + tH('users_access_label') + '</div>' +
       _rolePills('new-user', 'user', isPrimary) +
       '<div id="new-user-allowlist" style="display:none;margin-top:8px">' + _allowlistPicker([]) + '</div>' +
+      // Creation, as its own labeled line: a regular user defaults to NOT
+      // creating and the checkbox is the explicit grant. The WHOLE section
+      // disappears when the admin role is picked — admin means everything, so
+      // a creation control there is noise (Eric: "Admin means all we get it").
+      '<div id="new-user-creation">' +
+        '<div class="ms-form-label">' + tH('users_creation_label') + '</div>' +
+        '<label class="ms-check-row"><input type="checkbox" id="new-user-can-create"> ' +
+          tH('users_can_create') + '</label>' +
+      '</div>' +
       '<div id="new-user-error" class="pw-error" style="display:none"></div>' +
       '<div class="ms-actions">' +
         '<button class="ms-btn ms-btn-primary" onclick="_createUser()">' + tH('users_create') + '</button>' +
@@ -7929,12 +9154,20 @@ function _openUserMenu(btn, name) {
   if (u.role === 'limited') {
     h += '<div class="ctx-item" data-action="allowlist">' + tH('users_edit_allowlist') + '</div>';
   }
+  // Creation is a per-user grant only for non-admins — an admin creates
+  // everything, so the row simply isn't there for them (no explanatory
+  // subtitle either; admin means all).
+  if (u.role !== 'admin') {
+    h += '<div class="ctx-sep"></div>';
+    h += '<div class="ctx-item" data-action="can-create">' + (u.can_create ? '✓ ' : '') + tH('users_can_create') + '</div>';
+  }
   h += '<div class="ctx-sep"></div><div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
   var r = btn.getBoundingClientRect();
   window._openMenuAt(h, r.left, r.bottom + 2, function(action, item) {
     if (action === 'set-pw') _setUserPassword(name);
     else if (action === 'role') _setUserRole(name, item.dataset.role);
     else if (action === 'allowlist') _editUserAllowlist(name);
+    else if (action === 'can-create') _setUserCanCreate(name, !u.can_create);
     else if (action === 'delete') _deleteUser(name);
   });
 }
@@ -8019,6 +9252,10 @@ function _selectRole(idPrefix, role) {
   // Allowlist editor only makes sense for the limited role.
   var al = document.getElementById(idPrefix + '-allowlist');
   if (al) al.style.display = role === 'limited' ? 'block' : 'none';
+  // Creation is meaningless for an admin (admin creates everything), so the
+  // whole section disappears rather than turning into a subtitle.
+  var creation = document.getElementById(idPrefix + '-creation');
+  if (creation) creation.style.display = role === 'admin' ? 'none' : '';
 }
 
 function _selectedRole(idPrefix) {
@@ -8223,16 +9460,26 @@ function _createUser() {
   if (!name || !pw) { errEl.textContent = t('users_need_name_pw'); errEl.style.display = 'block'; return; }
   var payload = { action: 'create', name: name, password: pw, role: role };
   if (role === 'limited') payload.allowlist = _collectAllowlist('new-user-allowlist');
+  var cb = document.getElementById('new-user-can-create');
+  var grantCreate = !!(cb && cb.checked && role !== 'admin');
   _usersPost(payload).then(function(r) {
     if (!r.ok) { errEl.textContent = t('users_create_failed'); errEl.style.display = 'block'; return; }
-    _usersData = r.j; _refreshUsersPane();
+    if (!grantCreate) { _usersData = r.j; _refreshUsersPane(); return; }
+    // The form's Creation checkbox rides the existing set-can-create action —
+    // the account exists either way, so refresh from whichever answer is last.
+    _usersPost({ action: 'set-can-create', name: name, can_create: true }).then(function(r2) {
+      _usersData = (r2.ok && r2.j) ? r2.j : r.j;
+      _refreshUsersPane();
+    });
   });
 }
 
 function _deleteUser(name) {
-  if (!confirm(t('users_delete_confirm').replace('{name}', name))) return;
+  _appConfirm(t('users_delete_confirm').replace('{name}', name), t('delete')).then(function(sure) {
+  if (!sure) return;
   _usersPost({ action: 'delete', name: name }).then(function(r) {
     if (r.ok) { _usersData = r.j; _refreshUsersPane(); }
+  });
   });
 }
 
@@ -8245,6 +9492,14 @@ function _setUserRole(name, role) {
   var payload = { action: 'set-role', name: name, role: role };
   if (role === 'limited') payload.allowlist = (u && u.allowlist) || [];
   _usersPost(payload).then(function(r) {
+    if (r.ok) { _usersData = r.j; _refreshUsersPane(); }
+  });
+}
+
+// Grant or revoke the per-user create permission from the ⋯ menu. Admin-role
+// accounts never show the item (they create implicitly).
+function _setUserCanCreate(name, on) {
+  _usersPost({ action: 'set-can-create', name: name, can_create: !!on }).then(function(r) {
     if (r.ok) { _usersData = r.j; _refreshUsersPane(); }
   });
 }
@@ -8269,6 +9524,352 @@ function _saveUserAllowlist(name) {
   });
 }
 
+// ── Creator settings ────────────────────────────────────────────────────────
+//
+// What this server can capture with, where it may write, what it refuses by
+// default, and what is waiting. Every one of these facts already existed — but
+// only inside the create page's own status poll, which meant the only way for
+// an admin to learn that the browser engine was missing was to open the create
+// form and notice an option greyed out. Capabilities of the SERVER belong with
+// the server's other settings; the create form should be where you use them,
+// not where you discover them.
+//
+// Read-only on purpose. Every value here is set by an install or an env var,
+// and a control that looked editable but wasn't would be worse than a row.
+
+// A yes/no capability as a coloured word rather than a checkbox — nothing here
+// is settable from this pane, so a control would be a lie.
+function _creatorStateHtml(ready, hint) {
+  var cls = ready ? 'app-update-badge' : 'app-update-quiet';
+  var text = tH(ready ? 'creator_installed' : 'creator_not_installed');
+  return '<span class="' + cls + '"' + (hint ? ' title="' + escAttr(hint) + '"' : '') + '>' + text + '</span>';
+}
+
+// The one command that fixes a missing part. Shown under the row it belongs
+// to, and only when that part is actually missing.
+function _creatorInstallHtml(ready, cmd) {
+  return ready ? '' : '<code class="app-update-cmd">' + esc(cmd) + '</code>';
+}
+
+// The last /manage/creator payload, for the life of the page. The pane paints
+// from this INSTANTLY on every re-entry (the two subprocess-backed probes made
+// each entry flash "Loading…" for as long as the server took) and refreshes
+// silently behind that paint, patching only the leaves that changed — the same
+// scoped-update discipline the app-update block keeps (never rebuild a pane
+// that is already on screen).
+var _creatorData = null;
+
+function _msCreatorHtml() {
+  // No technical "Capture engines / decided by what is installed" lead — the
+  // nav tab already says Creator, and that engine-status block reads as debug
+  // output (Eric: "starts with CAPTURE ENGINES... very weird"). The pane now
+  // opens with what you've made and the defaults; capabilities sit last.
+  var h = '<div id="ms-creator" class="ms-creator">' +
+    // First-ever open: the app's styled loading line, never bare browser text.
+    (_creatorData ? _creatorHtml(_creatorData) : _loadingHtml()) +
+    '</div>';
+  setTimeout(function() {
+    if (_msSection !== 'creator') return;
+    _renderCreatorSection();
+  }, 0);
+  return h;
+}
+
+// The sidecar's value cell: version first, muted, then the verdict — so the
+// verdict word right-aligns flush with every other row's, instead of the
+// version breaking the status column (Eric: "The version isn't aligned").
+function _creatorSidecarHtml(sidecar) {
+  return (sidecar.version ? '<span class="app-update-quiet">' + esc(sidecar.version) + '</span> ' : '') +
+    _creatorStateHtml(sidecar.installed);
+}
+
+// A capture-default switch — the app's own .switch control, wired to the
+// admin-only POST half of /manage/creator so the choice persists server-side.
+function _creatorDefaultSwitch(key, labelKey, on) {
+  return '<label class="switch"><input type="checkbox" role="switch" id="ms-cr-' + key + '"' +
+    (on ? ' checked' : '') +
+    ' aria-label="' + escAttr(t(labelKey)) + '"' +
+    ' onchange="_setCreatorDefault(\'' + key + '\', this)"><span class="switch-slider"></span></label>';
+}
+
+function _creatorQueueHtml(queue) {
+  return queue
+    ? esc(t('creator_queue_n', { n: queue }))
+    : '<span class="app-update-quiet">' + tH('creator_queue_empty') + '</span>';
+}
+
+function _creatorHtml(d) {
+  var sidecar = d.sidecar || {};
+  var sep = '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
+
+  // Defaults a new capture starts with — the control you actually touch.
+  var h = '<div class="ms-section-label">' + tH('creator_defaults') + '</div>' +
+    _mcRow(tH('create_block_ads'), _creatorDefaultSwitch('block_ads', 'create_block_ads', d.block_ads_default)) +
+    _mcRow(tH('create_capture_variants'), _creatorDefaultSwitch('capture_variants', 'create_capture_variants', d.capture_variants_default)) +
+    '<div class="ms-hint">' + tH('creator_defaults_hint') + '</div>';
+
+  // The queue, when it matters.
+  h += sep + '<div class="ms-section-label">' + tH('creator_queue') + '</div>' +
+    _mcRow(tH('creator_queued'), '<span id="ms-cr-queue">' + _creatorQueueHtml(d.queue) + '</span>');
+
+  // Capabilities — the "what's installed" report.
+  h += sep + '<div class="ms-section-label">' + tH('creator_engines') + '</div>' +
+    '<div class="ms-hint" style="margin-bottom:10px">' + tH('creator_engines_hint') + '</div>' +
+    _mcRow(tH('creator_browser'), '<span id="ms-cr-browser">' + _creatorStateHtml(d.browser_ready) + '</span>') +
+    '<div id="ms-cr-browser-cmd">' + _creatorInstallHtml(d.browser_ready, "pip install 'zimi[browser]' && playwright install chromium") + '</div>' +
+    _mcRow(tH('creator_sidecar'), '<span id="ms-cr-sidecar">' + _creatorSidecarHtml(sidecar) + '</span>') +
+    '<div id="ms-cr-sidecar-cmd">' + _creatorInstallHtml(sidecar.installed, 'zimi import --setup') + '</div>' +
+    _mcRow(tH('creator_alive'), '<span id="ms-cr-alive">' + _creatorStateHtml(d.alive_ready) + '</span>');
+
+  // Made here LAST — an unbounded, growing list, and the slow half to gather
+  // (a provenance walk of the library), so it never blocks the pane. It fills
+  // in from its own request; until then a spinner sits in its slot.
+  h += sep + '<div class="ms-section-label">' + tH('creator_made') + '</div>' +
+    '<div id="ms-cr-made">' + _loadingHtml() + '</div>';
+  _creatorLoadInventory();
+  return h;
+}
+
+// The made-here inventory rides its own request so the Creator pane can paint
+// instantly. Cached for the session; a background create/delete invalidates it
+// through _renderCreatorSection's refresh.
+var _creatorInventory = null;
+function _creatorLoadInventory() {
+  var fill = function() {
+    var el = document.getElementById('ms-cr-made');
+    if (el && _msSection === 'creator') el.innerHTML = _creatorMadeHtml(_creatorInventory || {});
+  };
+  if (_creatorInventory) { fill(); return; }
+  manageFetch('/manage/creator/inventory').then(function(r) { return r.json(); }).then(function(d) {
+    _creatorInventory = d;
+    fill();
+  }).catch(function() {
+    var el = document.getElementById('ms-cr-made');
+    if (el) el.innerHTML = '<div class="ms-hint">' + tH('creator_made_empty') + '</div>';
+  });
+}
+
+// The provenance types, in the order the breakdown reads them, paired with the
+// i18n key for each label. A type with a zero count is left out of the chip
+// row entirely — a wall of "0 · 0 · 0" is noise, not information.
+var _CREATOR_TYPE_KEYS = {
+  page: 'zi_kind_page', site: 'zi_kind_site', video: 'zi_kind_video',
+  import: 'zi_kind_import', folder: 'zi_kind_folder',
+  export: 'zi_kind_export', edit: 'zi_kind_edit'
+};
+var _creatorSort = { key: 'created_ts', dir: -1 };  // newest first by default
+
+// The by-type counts as amber chips, then a sortable table of everything Zimi
+// made. Client-side sort — the server sends the rows unsorted with every field
+// the header needs. Empty when nothing has been created here yet.
+function _creatorMadeHtml(d) {
+  var counts = d.created_counts || {};
+  var list = (d.created_list || []).slice();
+  if (!list.length) {
+    return '<div class="ms-hint">' + tH('creator_made_empty') + '</div>';
+  }
+  var chips = '';
+  Object.keys(_CREATOR_TYPE_KEYS).forEach(function(t) {
+    var n = counts[t] || 0;
+    if (!n) return;
+    chips += '<span class="cr-made-chip"><b>' + n + '</b> ' + tH(_CREATOR_TYPE_KEYS[t]) + '</span>';
+  });
+  var s = _creatorSort;
+  list.sort(function(a, b) {
+    var av = a[s.key], bv = b[s.key];
+    if (s.key === 'title') { av = (av || a.name || '').toLowerCase(); bv = (bv || b.name || '').toLowerCase(); }
+    else { av = av || 0; bv = bv || 0; }
+    return av < bv ? -s.dir : av > bv ? s.dir : 0;
+  });
+  var arrow = function(k) { return s.key === k ? (s.dir < 0 ? ' ↓' : ' ↑') : ''; };
+  var th = function(k, label) {
+    return '<th class="cr-made-th" onclick="_creatorSortBy(\'' + k + '\')">' + tH(label) + arrow(k) + '</th>';
+  };
+  var rows = list.map(function(z) {
+    return '<tr>' +
+      '<td class="cr-made-name"><a href="/w/' + encodeURIComponent(z.name) + '"' +
+        ' data-zim="' + escAttr(z.name) + '" onclick="return _spaSourceClick(event, this)">' +
+        esc(z.title || z.name) + '</a></td>' +
+      '<td>' + tH(_CREATOR_TYPE_KEYS[z.type] || 'zi_kind_zimi') + '</td>' +
+      '<td class="cr-made-num">' + (z.size_bytes ? fmtBytes(z.size_bytes) : '') + '</td>' +
+      '<td class="cr-made-num">' + (z.created_ts ? _relTime(z.created_ts) : '') + '</td>' +
+    '</tr>';
+  }).join('');
+  return '<div class="cr-made-chips">' + chips + '</div>' +
+    '<div class="cr-made-wrap"><table class="cr-made-table"><thead><tr>' +
+      th('title', 'creator_col_name') + th('type', 'creator_col_type') +
+      th('size_bytes', 'creator_col_size') + th('created_ts', 'creator_col_when') +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+// Re-sort in place: same column flips direction, a new column sorts descending
+// (numbers big-first, names A-Z on the flip). Only the made-here block repaints.
+function _creatorSortBy(key) {
+  if (_creatorSort.key === key) _creatorSort.dir = -_creatorSort.dir;
+  else _creatorSort = { key: key, dir: key === 'title' ? 1 : -1 };
+  var el = document.getElementById('ms-cr-made');
+  if (el && _creatorInventory) el.innerHTML = _creatorMadeHtml(_creatorInventory);
+}
+
+// Scoped background refresh: leaf nodes only, so a visible pane never rebuilds
+// under the reader (or under a finger halfway to a switch).
+function _patchCreatorSection(d) {
+  var sidecar = d.sidecar || {};
+  var put = function(id, html) {
+    var el = document.getElementById(id);
+    if (el && el.innerHTML !== html) el.innerHTML = html;
+  };
+  put('ms-cr-browser', _creatorStateHtml(d.browser_ready));
+  put('ms-cr-browser-cmd', _creatorInstallHtml(d.browser_ready, "pip install 'zimi[browser]' && playwright install chromium"));
+  put('ms-cr-sidecar', _creatorSidecarHtml(sidecar));
+  put('ms-cr-sidecar-cmd', _creatorInstallHtml(sidecar.installed, 'zimi import --setup'));
+  put('ms-cr-alive', _creatorStateHtml(d.alive_ready));
+  put('ms-cr-queue', _creatorQueueHtml(d.queue));
+  ['block_ads', 'capture_variants'].forEach(function(key) {
+    var input = document.getElementById('ms-cr-' + key);
+    if (input) input.checked = !!d[key + '_default'];
+  });
+}
+
+function _renderCreatorSection() {
+  if (!document.getElementById('ms-creator')) return;
+  manageFetch('/manage/creator').then(function(r) { return r.json(); }).then(function(d) {
+    var first = !_creatorData;
+    var changed = first || JSON.stringify(_creatorData) !== JSON.stringify(d);
+    _creatorData = d;
+    var slot = document.getElementById('ms-creator');
+    if (!slot || _msSection !== 'creator') return;
+    if (first) { slot.innerHTML = _creatorHtml(d); return; }
+    if (changed) _patchCreatorSection(d);
+  }).catch(function() {
+    var slot = document.getElementById('ms-creator');
+    // A cached paint stays up through a failed refresh — stale beats blank.
+    if (slot && !_creatorData) slot.innerHTML = '<div class="ms-hint">' + tH('could_not_load') + '</div>';
+  });
+}
+
+// A capture-default toggle flipped: persist server-side, and settle the switch
+// on whatever the server answers (revert on failure — the control must never
+// show a state the file does not hold).
+function _setCreatorDefault(key, input) {
+  var want = !!input.checked;
+  input.disabled = true;
+  var body = {};
+  body[key] = want;
+  manageFetch('/manage/creator', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(_msJson).then(function(d) {
+    if (_creatorData) {
+      _creatorData.block_ads_default = d.block_ads_default;
+      _creatorData.capture_variants_default = d.capture_variants_default;
+    }
+    input.checked = !!d[key + '_default'];
+    _showToast(t('saved'));
+  }).catch(function() {
+    input.checked = !want;
+    _showToast(t('error'));
+  }).finally(function() { input.disabled = false; });
+}
+
+// ── ZIM auto-update ─────────────────────────────────────────────────────────
+//
+// Was one select. A select is a fine control and a terrible report: it said
+// how often the updater is *supposed* to run and nothing about whether it ever
+// had, what it did, or when it would go again — so the only way to find out
+// was to notice a ZIM's date changing. Everything here already existed on the
+// server; none of it had a place to be read.
+//
+// The coverage line is the part that earns the section. Zimi has no per-ZIM
+// opt-out; what it has is a reach — the updater matches an installed file to a
+// newer edition by the date in its filename, so an undated ZIM is invisible to
+// it. That is most of what `zimi create` writes, and a file that silently
+// never updates is exactly the kind of thing a library owner should not have
+// to deduce.
+var AU_FREQUENCIES = ['disabled', 'daily', 'weekly', 'monthly'];
+var _AU_SELECT_CSS = 'font-size:12px;padding:3px 8px;border-radius:4px;' +
+  'border:1px solid var(--border);background:var(--surface2);color:var(--text)';
+
+// The frequency control. Same id, same handler, same env lock as before — the
+// poll gating and two other renderers read #auto-update-freq by name.
+function _autoUpdateSelectHtml(au) {
+  var cur = au.enabled ? (au.frequency || 'weekly') : 'disabled';
+  var opts = AU_FREQUENCIES.map(function(f) {
+    return '<option value="' + f + '"' + (f === cur ? ' selected' : '') + '>' +
+      esc(t('au_' + f)) + '</option>';
+  }).join('');
+  var lock = au.locked
+    ? ' disabled title="' + escAttr(t('au_controlled_by_env')) + '" style="' + _AU_SELECT_CSS + ';opacity:0.5"'
+    : ' style="' + _AU_SELECT_CSS + '"';
+  return '<select id="auto-update-freq" onchange="toggleAutoUpdate()"' + lock + '>' + opts + '</select>';
+}
+
+// One label/value row, which is the shape every settings row in these panes
+// already has.
+function _mcRow(label, value) {
+  return '<div class="mc-row"><span class="mc-label">' + label +
+    '</span><span class="mc-value">' + value + '</span></div>';
+}
+
+// What the last pass did: the timestamp, plain. The detail lives in the
+// Activity journal, where anyone curious will look anyway — a deep-link from
+// this row read as noise, not as help.
+function _autoUpdateLastHtml(au) {
+  if (!au.last_check) {
+    // Not "never": the stamp is process memory, so a restart erases it while
+    // the updater's history stays in the journal. Saying "never" would be a
+    // claim about the library that this field cannot support.
+    return '<span style="color:var(--text2)">' + tH('au_not_this_session') + '</span>';
+  }
+  return esc(_relTime(au.last_check));
+}
+
+function _autoUpdateNextHtml(au) {
+  if (!au.enabled) return '<span style="color:var(--text2)">' + tH('au_disabled') + '</span>';
+  // Enabled but never run this session: the loop's first pass is 30 seconds
+  // after it starts, so there is no useful time to print — only "imminently".
+  if (!au.next_check) return '<span style="color:var(--text2)">' + tH('au_next_soon') + '</span>';
+  return esc(_relTime(au.next_check));
+}
+
+// How the library splits for the updater: catalog ZIMs it can check against a
+// newer edition, versus local or custom ones (created here, or with no dated
+// edition to match) that there is simply nothing to check. Two plain counts,
+// no wall of filenames — those names read as debug output, not information.
+function _autoUpdateCoverageHtml(coverage) {
+  if (!coverage) return '';
+  var tracked = (coverage.tracked || []).length;
+  var custom = (coverage.skipped || []).length;
+  // Nothing local or custom → nothing worth explaining: every source is a
+  // catalog ZIM the updater checks, which is the quiet, expected state.
+  if (!custom) return '';
+  return _mcRow(tH('au_from_catalog'),
+      esc(t('au_from_catalog_n', { n: tracked, total: tracked + custom }))) +
+    _mcRow(tH('au_local_custom'), esc(String(custom)));
+}
+
+function _autoUpdateHtml(au, coverage) {
+  // Frequency + what the library splits into for the updater. The last-run /
+  // next-run clock rows are gone — operational noise the operator did not ask
+  // for; what they want to know is how much of the library is even checkable
+  // (Eric: "why not say how many are local/custom instead").
+  return '<div class="ms-section-label">' + tH('auto_update') + '</div>' +
+    _mcRow(tH('au_frequency'), _autoUpdateSelectHtml(au)) +
+    _autoUpdateCoverageHtml(coverage);
+}
+
+// Repaint the section from server truth. The library pane draws it once from
+// the status payload it already has (so the select is never missing while a
+// second request is in flight), then this fills in last/next/coverage.
+function _renderAutoUpdateSection() {
+  var el = document.getElementById('ms-auto-update');
+  if (!el) return;
+  manageFetch('/manage/auto-update').then(function(r) { return r.json(); }).then(function(d) {
+    var slot = document.getElementById('ms-auto-update');
+    if (slot) slot.innerHTML = _autoUpdateHtml(d, d.coverage);
+  }).catch(function() {});
+}
+
 function _msLibraryHtml() {
   var d = _manageStatusData;
   if (!d) return '<div class="loading"><span class="spinner-inline"></span>Loading\u2026</div>';
@@ -8281,19 +9882,9 @@ function _msLibraryHtml() {
       '<span class="mc-label">' + tH('updates') + '</span>' +
       '<span class="mc-value" style="color:var(--text2)"><span class="spinner-inline"></span>' + tH('updates_checking') + '</span></div>' +
     '<div id="updates-detail" class="updates-detail" style="display:none"></div>' +
-    '<div class="mc-row" style="align-items:center">' +
-      '<span class="mc-label">' + tH('auto_update') + '</span>' +
-      '<span class="mc-value">' +
-        (function() {
-          var au = (d.auto_update || {});
-          var cur = au.enabled ? (au.frequency || 'weekly') : 'disabled';
-          var opts = [['disabled',t('au_disabled')],['daily',t('au_daily')],['weekly',t('au_weekly')],['monthly',t('au_monthly')]];
-          var optHtml = opts.map(function(o) { return '<option value="' + o[0] + '"' + (o[0] === cur ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
-          var extra = au.locked ? ' disabled title="' + escAttr(t('au_controlled_by_env')) + '" style="font-size:12px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);opacity:0.5"' : ' style="font-size:12px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text)"';
-          return '<select id="auto-update-freq" onchange="toggleAutoUpdate()"' + extra + '>' + optHtml + '</select>';
-        })() +
-      '</span>' +
-    '</div>' +
+    // Space before the ZIM auto-update block so its header doesn't crowd the
+    // app-update line above it (Eric: "no spacing after Updates line").
+    '<div id="ms-auto-update" style="margin-top:16px">' + _autoUpdateHtml(d.auto_update || {}, null) + '</div>' +
     '<div class="ms-actions">' +
       '<button class="manage-btn-action" onclick="manageImportZim()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('import_zim') + '</button>' +
       '<button id="refresh-cache-btn" class="manage-btn-action" onclick="settingsRefreshCache()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('refresh_cache') + '</button>' +
@@ -8323,12 +9914,9 @@ function _msLibraryHtml() {
   return h;
 }
 
-function _fmtBytes(b) {
-  if (b < 1024) return b + ' B';
-  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
-  if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
-  return (b / 1073741824).toFixed(1) + ' GB';
-}
+// Kept as a name because create.js and the About panel call it; the one
+// implementation lives in fmtBytes.
+function _fmtBytes(b) { return fmtBytes(b); }
 
 // ── Library health report ──
 var _healthPoll = null;
@@ -8487,6 +10075,37 @@ function _cacheSegLabel(key) {
   };
   return m[key] || key;
 }
+// The segmented proportion bar + its legend, shared by the cache breakdown
+// (Server settings) and the create page's finished-capture summary. One
+// component so the two never drift: same geometry, same accessibility contract
+// — every segment carries its label and value as TEXT in the legend and in its
+// own title, so the bar is never the only thing saying what is what.
+//
+// segs:   [{key, size_bytes, count}] — caller sorts; zero-size entries dropped
+// colors: {key: css color}, labelFn: key -> human label
+// Returns '' when there is nothing to show.
+function _segBarHtml(segs, total, colors, labelFn, ariaLabel) {
+  if (!total || !segs || !segs.length) return '';
+  var bars = '', legend = '', aria = [];
+  segs.forEach(function(s) {
+    if (!s.size_bytes) return;
+    var pct = s.size_bytes / total * 100;
+    var color = colors[s.key] || 'var(--text2)';
+    var label = labelFn(s.key);
+    var val = _fmtBytes(s.size_bytes);
+    // A count, where the caller tracked one: "images 50.9 MB · 410".
+    var countTxt = (typeof s.count === 'number' && s.count > 0) ? ' · ' + s.count : '';
+    bars += '<span class="cache-seg" style="width:' + pct.toFixed(2) + '%;background:' + color +
+      '" title="' + escAttr(label + ' — ' + val + countTxt) + '"></span>';
+    legend += '<span class="cache-legend-item"><span class="cache-legend-swatch" style="background:' + color + '"></span>' +
+      esc(label) + ' <b>' + val + '</b>' + (countTxt ? '<span class="cache-legend-n">' + esc(countTxt) + '</span>' : '') + '</span>';
+    aria.push(label + ' ' + val + countTxt);
+  });
+  if (!bars) return '';
+  return '<div class="cache-bar" role="img" aria-label="' + escAttr((ariaLabel || '') + ': ' + aria.join(', ')) + '">' + bars + '</div>' +
+    '<div class="cache-legend">' + legend + '</div>';
+}
+
 function _cacheBreakdownHtml(d) {
   // Sort segments largest→smallest so the bar reads high-to-low and the legend
   // order matches. Copy first — never mutate the fetched payload.
@@ -8497,26 +10116,13 @@ function _cacheBreakdownHtml(d) {
   var titleRow = '<div class="mc-section-title">' + tH('cache_storage_title') +
     (total ? ' · ' + _fmtBytes(total) : '') + '</div>';
   if (!total) return titleRow + '<div class="ms-hint" style="margin:2px 0 8px">' + tH('cache_empty') + '</div>';
-  var bars = '', legend = '', aria = [];
-  segs.forEach(function(s) {
-    if (!s.size_bytes) return;
-    var pct = s.size_bytes / total * 100;
-    var color = _CACHE_SEG_COLORS[s.key] || 'var(--text2)';
-    var label = _cacheSegLabel(s.key);
-    var val = _fmtBytes(s.size_bytes);
-    bars += '<span class="cache-seg" style="width:' + pct.toFixed(2) + '%;background:' + color + '" title="' + escAttr(label + ' — ' + val) + '"></span>';
-    legend += '<span class="cache-legend-item"><span class="cache-legend-swatch" style="background:' + color + '"></span>' +
-      esc(label) + ' <b>' + val + '</b></span>';
-    aria.push(label + ' ' + val);
-  });
+  var barHtml = _segBarHtml(segs, total, _CACHE_SEG_COLORS, _cacheSegLabel, t('cache_storage_title'));
   var top = '';
   if (d.top_zims && d.top_zims.length) {
     top = '<div class="cache-top-zims"><span class="cache-top-label">' + tH('cache_top_zims') + ':</span> ' +
       d.top_zims.map(function(z) { return esc(z.name) + ' (' + _fmtBytes(z.size_bytes) + ')'; }).join(', ') + '</div>';
   }
-  return titleRow +
-    '<div class="cache-bar" role="img" aria-label="' + escAttr(t('cache_storage_title') + ': ' + aria.join(', ')) + '">' + bars + '</div>' +
-    '<div class="cache-legend">' + legend + '</div>' + top;
+  return titleRow + barHtml + top;
 }
 
 async function cleanupTmpFiles() {
@@ -8613,31 +10219,309 @@ function _msPreferencesHtml() {
   return h;
 }
 
+// ---- App updates (Manage ▸ Server) ----------------------------------------
+// The Zimi APPLICATION's own release check — a different feature from the
+// "Auto-update" toggle elsewhere in Manage, which refreshes ZIM content.
+// Shell snippets are deliberately NOT i18n'd: commands are commands.
+var _APP_UPDATE_CMDS = {
+  docker: 'docker compose pull && docker compose up -d',
+  pip: 'pip install --upgrade zimi',
+  homebrew: 'brew upgrade --cask zimi'
+};
+
+function _appUpdateReleasesLink(d) {
+  return '<a class="app-update-link" href="' + escAttr(d.releases_url || 'https://github.com/epheterson/Zimi/releases') +
+    '" target="_blank" rel="noopener">' + tH('app_update_releases') + '</a>';
+}
+
+// The per-install-type upgrade instruction, shown only when an update exists.
+function _appUpdateHowHtml(d) {
+  var type = d.install_type || '';
+  var cmd = _APP_UPDATE_CMDS[type];
+  if (cmd) {
+    var hintKey = type === 'docker' ? 'app_update_how_docker'
+      : type === 'homebrew' ? 'app_update_how_brew' : 'app_update_how_pip';
+    return '<div class="ms-hint">' + tH(hintKey) + '</div>' +
+      '<code class="app-update-cmd">' + esc(cmd) + '</code>';
+  }
+  if (type === 'snap') return '<div class="ms-hint">' + tH('app_update_how_snap') + '</div>';
+  if (type === 'desktop-mac' || type === 'desktop-windows') {
+    // Sparkle/WinSparkle self-updates — unless offline mode disabled the
+    // appcast, in which case the releases page is the only path.
+    return d.offline
+      ? '<div class="ms-hint">' + tH('app_update_how_releases') + ' ' + _appUpdateReleasesLink(d) + '</div>'
+      : '<div class="ms-hint">' + tH('app_update_how_desktop') + '</div>';
+  }
+  // appimage, plain frozen linux, and anything unrecognized: point at releases.
+  return '<div class="ms-hint">' + tH('app_update_how_releases') + ' ' + _appUpdateReleasesLink(d) + '</div>';
+}
+
+// Latest vs beta, and how long a release must have been public before this
+// instance is offered it. Locked (ZIMI_UPDATE_CHANNEL / ZIMI_UPDATE_DELAY_DAYS)
+// renders the same select, disabled with the standard env-controlled note, so
+// the setting stays visible instead of vanishing on the deployments most
+// likely to set it.
+var _APP_UPDATE_CHANNEL_LABELS = {
+  latest: 'app_update_channel_latest',
+  beta: 'app_update_channel_beta'
+};
+var _APP_UPDATE_SELECT_CSS = 'font-size:12px;padding:3px 8px;border-radius:4px;' +
+  'border:1px solid var(--border);background:var(--surface2);color:var(--text)';
+
+// One row shape for both update selects: label, <select>, and either the
+// setting's hint or the env-controlled note when the env var owns it.
+function _appUpdateSelectRow(o) {
+  var lockNote = t('env_controlled', { v: o.envVar });
+  return '<div class="mc-row" style="align-items:center">' +
+      '<span class="mc-label">' + esc(t(o.labelKey)) + '</span>' +
+      '<span class="mc-value"><select id="' + escAttr(o.id) + '" style="' + _APP_UPDATE_SELECT_CSS +
+        (o.locked ? ';opacity:0.5' : '') + '"' +
+        (o.locked ? ' disabled title="' + escAttr(lockNote) + '"' : '') +
+        ' onchange="' + escAttr(o.onchange) + '">' + o.options + '</select></span></div>' +
+    '<div class="ms-hint">' + esc(o.locked ? lockNote : t(o.hintKey)) + '</div>';
+}
+
+// String(value) matters: escAttr() turns a falsy value into '', which would
+// give the zero-day option an empty value and post a NaN delay.
+function _appUpdateOption(value, label, selected) {
+  return '<option value="' + escAttr(String(value)) + '"' + (selected ? ' selected' : '') + '>' +
+    esc(label) + '</option>';
+}
+
+function _appUpdateChannelHtml(d) {
+  var cur = d.channel || 'latest';
+  var opts = (d.channels || ['latest', 'beta']).map(function(c) {
+    var key = _APP_UPDATE_CHANNEL_LABELS[c];
+    return _appUpdateOption(c, key ? t(key) : c, c === cur);
+  }).join('');
+  return _appUpdateSelectRow({
+    id: 'app-update-channel',
+    labelKey: 'app_update_channel',
+    hintKey: 'app_update_channel_hint',
+    envVar: d.channel_env || 'ZIMI_UPDATE_CHANNEL',
+    locked: !!d.channel_locked,
+    onchange: '_appUpdateSetChannel(this.value)',
+    options: opts
+  });
+}
+
+// A saved delay the presets don't cover (set over the API or by an env var)
+// gets its own option rather than being silently rounded to a preset.
+function _appUpdateDelayHtml(d) {
+  var cur = d.delay_days || 0;
+  var choices = (d.delay_choices || [0, 1, 3, 7, 14, 30]).slice();
+  if (choices.indexOf(cur) < 0) choices.push(cur);
+  choices.sort(function(a, b) { return a - b; });
+  var opts = choices.map(function(n) {
+    return _appUpdateOption(n, n === 0 ? t('app_update_delay_none') : tPlural('app_update_delay_days', n), n === cur);
+  }).join('');
+  return _appUpdateSelectRow({
+    id: 'app-update-delay',
+    labelKey: 'app_update_delay',
+    hintKey: 'app_update_delay_hint',
+    envVar: d.delay_env || 'ZIMI_UPDATE_DELAY_DAYS',
+    locked: !!d.delay_days_locked,
+    onchange: '_appUpdateSetDelay(this.value)',
+    options: opts
+  });
+}
+
+var _MS_PER_DAY = 86400000;
+
+// Days still to wait before a held release is offered — always at least 1, so
+// the last hours read "1 day" rather than "0 days".
+function _appUpdateHeldDays(d) {
+  var ms = (d.held_until || 0) * 1000 - Date.now();
+  return Math.max(1, Math.ceil(ms / _MS_PER_DAY));
+}
+
+// The app-update block, as three independently repaintable slots.
+//
+// It used to be one string, and "Check now" replaced the whole of it with a
+// single "Checking…" line: the block collapsed from five rows to one, shoving
+// everything below it up the pane and back down a moment later, and the two
+// selects were destroyed and rebuilt around a request that could not change
+// them. That read as the pane reloading itself. Now a check touches the status
+// slot alone, so the block keeps its height and its controls keep their
+// identity — and a settings save repaints the same way, instead of deleting
+// the select the admin just used.
+var _APP_UPDATE_ID = 'ms-app-update';
+var _APP_UPDATE_STATUS_ID = 'ms-app-update-status';
+var _APP_UPDATE_HOW_ID = 'ms-app-update-how';
+var _APP_UPDATE_SETTINGS_ID = 'ms-app-update-settings';
+
+// The last payload, kept so the checking state can be drawn over the version
+// and the settings that are still true while the request is in flight.
+var _appUpdateData = null;
+
+// Write into a slot only when the markup actually differs. A <select> that is
+// re-assigned identical HTML is still a NEW element — it loses focus and shuts
+// an open dropdown — so "no change" has to mean "do not touch it".
+function _setHtmlIfChanged(id, html) {
+  var el = document.getElementById(id);
+  if (el && el.innerHTML !== html) el.innerHTML = html;
+}
+
+// The version row and the status row: the two lines a check can change.
+// `checking` swaps the verdict for the in-flight line and the button for a
+// spinner, keeping both rows exactly where they were.
+function _appUpdateStatusHtml(d, checking) {
+  var status = checking
+    ? '<span class="app-update-quiet">' + tH('app_update_checking') + '</span>'
+    : _appUpdateVerdictHtml(d);
+  var action = checking
+    ? '<span class="spinner-inline" aria-hidden="true"></span>'
+    : (d.offline ? '' : '<button class="pill" onclick="_appUpdateCheckNow()">' +
+        tH('app_update_check_now') + '</button>');
+  return '<div class="mc-row"><span class="mc-label">' + tH('app_update_version') + '</span>' +
+    '<span class="mc-value">' + esc(d.current || '?') + '</span></div>' +
+    '<div class="mc-row"><span class="mc-label">' + status + '</span>' +
+    '<span class="mc-value">' + action + '</span></div>';
+}
+
+function _appUpdateHowSlot(d) {
+  return d.update_available ? _appUpdateHowHtml(d) : '';
+}
+
+// Offline mode does no checking at all, so these would be controls with
+// nothing behind them.
+function _appUpdateSettingsSlot(d) {
+  return d.offline ? '' : _appUpdateChannelHtml(d) + _appUpdateDelayHtml(d);
+}
+
+function _appUpdateHtml(d) {
+  return '<div id="' + _APP_UPDATE_STATUS_ID + '">' + _appUpdateStatusHtml(d, false) + '</div>' +
+    '<div id="' + _APP_UPDATE_HOW_ID + '">' + _appUpdateHowSlot(d) + '</div>' +
+    '<div id="' + _APP_UPDATE_SETTINGS_ID + '">' + _appUpdateSettingsSlot(d) + '</div>';
+}
+
+// Repaint from a payload: the whole block on first mount, and slot by slot
+// after that, so nothing that did not change is rebuilt.
+function _appUpdatePaint(d) {
+  _appUpdateData = d;
+  var host = document.getElementById(_APP_UPDATE_ID);
+  if (!host) return;
+  if (!document.getElementById(_APP_UPDATE_STATUS_ID)) {
+    host.innerHTML = _appUpdateHtml(d);
+    return;
+  }
+  _setHtmlIfChanged(_APP_UPDATE_STATUS_ID, _appUpdateStatusHtml(d, false));
+  _setHtmlIfChanged(_APP_UPDATE_HOW_ID, _appUpdateHowSlot(d));
+  _setHtmlIfChanged(_APP_UPDATE_SETTINGS_ID, _appUpdateSettingsSlot(d));
+}
+
+// One line of the status slot: what this build is, relative to what is out
+// there. Split out of the block so a check can redraw the verdict alone.
+function _appUpdateVerdictHtml(d) {
+  var status;
+  if (d.update_available) {
+    status = '<span class="app-update-badge">' + tH('app_update_available', { v: d.latest }) + '</span>' +
+      (d.prerelease ? ' <span class="app-update-quiet">' + tH('app_update_prerelease') + '</span>' : '');
+  } else if (d.update_held) {
+    // The release exists and we know it — say so quietly instead of showing
+    // "up to date", which would be a lie the user could check.
+    status = '<span class="app-update-quiet">' +
+      tH('app_update_held', { v: d.latest, d: tPlural('app_update_delay_days', _appUpdateHeldDays(d)) }) + '</span>';
+  } else if (d.offline) {
+    status = '<span class="app-update-quiet">' + tH('app_update_offline') + '</span>';
+  } else if (d.latest && !d.error) {
+    // Up to date: one quiet line, no celebration.
+    status = '<span class="app-update-quiet">' + tH('app_update_up_to_date') + '</span>';
+  } else {
+    status = '<span class="app-update-quiet">' + tH(d.error ? 'app_update_failed' : 'app_update_never') + '</span>';
+  }
+  return status;
+}
+
+// Show the in-flight state without moving anything: the status row alone
+// changes, and only when the block is already mounted. On a cold mount there
+// is no shape to preserve and the loading placeholder is still right.
+function _appUpdateShowChecking() {
+  if (!document.getElementById(_APP_UPDATE_STATUS_ID)) return;
+  _setHtmlIfChanged(_APP_UPDATE_STATUS_ID,
+    _appUpdateStatusHtml(_appUpdateData || {}, true));
+}
+
+// A failed check must not take the settings down with it. The verdict line
+// says so and everything else stays put — the channel and delay the admin set
+// are still true, whatever the network did.
+function _appUpdateShowError() {
+  var host = document.getElementById(_APP_UPDATE_ID);
+  if (!host) return;
+  if (!document.getElementById(_APP_UPDATE_STATUS_ID)) {
+    host.innerHTML = '<div class="ms-hint">' + tH('app_update_failed') + '</div>';
+    return;
+  }
+  var d = _appUpdateData || {};
+  _setHtmlIfChanged(_APP_UPDATE_STATUS_ID,
+    _appUpdateStatusHtml({ current: d.current, offline: d.offline, error: true }, false));
+}
+
+function _renderAppUpdate(force) {
+  if (!document.getElementById(_APP_UPDATE_ID)) return;
+  if (force) _appUpdateShowChecking();
+  var req = force
+    ? manageFetch('/manage/app-update-check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    : manageFetch('/manage/app-update');
+  req.then(function(r) { return r.json(); })
+    .then(_appUpdatePaint)
+    .catch(_appUpdateShowError);
+}
+
+function _appUpdateCheckNow() { _renderAppUpdate(true); }
+
+// Both update settings answer with the full app-update payload, so the
+// response IS the repainted state. The only reachable error is the env lock
+// (the select is disabled then, so that means a second browser raced a config
+// change) — say so and repaint from server truth.
+function _appUpdateSaveSetting(path, body, envVar) {
+  if (!document.getElementById(_APP_UPDATE_ID)) return;
+  _appUpdateShowChecking();
+  manageFetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d && d.error) { _showToast(t('env_controlled', { v: envVar })); _renderAppUpdate(false); return; }
+    _appUpdatePaint(d);
+  }).catch(function() { _renderAppUpdate(false); });
+}
+
+// Switching channel re-checks server-side (the cached answer belongs to the
+// other channel); the delay is applied when the payload is built, so neither
+// needs a follow-up fetch.
+function _appUpdateSetChannel(channel) {
+  _appUpdateSaveSetting('/manage/app-update-channel', { channel: channel }, 'ZIMI_UPDATE_CHANNEL');
+}
+
+function _appUpdateSetDelay(days) {
+  _appUpdateSaveSetting('/manage/app-update-delay', { delay_days: parseInt(days, 10) }, 'ZIMI_UPDATE_DELAY_DAYS');
+}
+
 function _msServerHtml() {
   // Sharing is the star of v1.7 — it leads the Server pane. Render the
   // last-known rows immediately (stale toggles beat a blank slab that
   // pops in); _renderMirrorSection repaints from server truth right after.
   var shareCached = '';
   try { shareCached = localStorage.getItem(SK.SHARE_ROWS) || ''; } catch (e) {}
-  var h = '<div class="ms-section-label">' + tH('sharing_section') + '</div>' +
-    '<div id="ms-mirror-status" class="share-rows-slot">' +
-      (shareCached || _shareSkeletonHtml()) + '</div>' +
-    '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
-  // Downloads: nightly window scheduler + the global download speed cap.
-  h += '<div class="ms-section-label">' + tH('downloads_section') + '</div>' +
-    '<div id="ms-dl-schedule" class="ms-dl-schedule">' + tH('loading') + '</div>' +
-    '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
-  // Backup & export hub — two self-titled cards (My data + Server backup), so no
-  // extra "Backup" group heading is needed above them.
-  h += '<div id="ms-backup" class="ms-backup">' + _backupHubHtml() + '</div>' +
-    '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
-  h += '<div class="ms-section-label">' + tH('storage_section') + '</div>' +
-    '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
-    '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '"></div>';
+  var sep = '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
+
+  // App updates FIRST — the thing an operator opens Server settings to check.
+  // NOT the ZIM-content "Auto-update" toggle; ids stay app_update-prefixed.
+  var updatesSec = '<div class="ms-section-label">' + tH('app_update_section') + '</div>' +
+    '<div id="' + _APP_UPDATE_ID + '" class="ms-app-update">' + tH('loading') + '</div>';
+
+  var sharingSec = '<div class="ms-section-label">' + tH('sharing_section') + '</div>' +
+    '<div id="ms-mirror-status" class="share-rows-slot">' + (shareCached || _shareSkeletonHtml()) + '</div>';
+
+  var downloadsSec = '<div class="ms-section-label">' + tH('downloads_section') + '</div>' +
+    '<div id="ms-dl-schedule" class="ms-dl-schedule">' + tH('loading') + '</div>';
+
+  // Storage owns its desktop variant so the section can move freely — the old
+  // reorder-fragile string split is gone.
+  var storageSec = '<div class="ms-section-label">' + tH('storage_section') + '</div>';
   if (IS_DESKTOP) {
-    // Desktop: add browse buttons for folder selection + port + save.
-    // Keep the sharing hero on top — rebuild only the fields part.
-    h = h.split('<div class="ms-field">')[0] +
+    storageSec +=
       '<div class="ms-field"><label>' + tH('zim_folder') + '</label>' +
       '<div style="display:flex;gap:8px"><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
       '<button class="manage-btn-action" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="msChooseZimFolder()">' + tH('choose_folder') + '</button></div></div>' +
@@ -8649,11 +10533,27 @@ function _msServerHtml() {
         '<button class="manage-btn-action" onclick="settingsSaveInline()" style="margin-inline-start:auto">' + tH('save') + '</button></div>' +
       '<div class="ms-hint">' + tH('restart_hint') + '</div>';
   } else {
-    h += '<div class="ms-hint">' + tH('configured_via_env') + '</div>';
+    storageSec +=
+      '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
+      '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
+      '<div class="ms-hint">' + tH('configured_via_env') + '</div>';
   }
-  // Security: password + API token
-  h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
-    '<div id="ms-security">' + tH('loading') + '</div></div>';
+
+  // My data + Server backups — two self-titled cards, no extra heading.
+  var backupSec = '<div id="ms-backup" class="ms-backup">' + _backupHubHtml() + '</div>';
+
+  var tokenSec = '<div id="ms-security">' + tH('loading') + '</div>';
+
+  var hotSec = '<div class="ms-section-label">' + tH('hot_zims') + '</div>' +
+    '<div class="ms-hint">' + tH('hot_zims_hint') + '</div>' +
+    '<div id="ms-hot-zims" style="margin-top:10px">' + tH('loading') + '</div>' +
+    '<div style="margin-top:14px" id="ms-cache-info-wrap">' +
+      '<div id="ms-cache-info" style="color:var(--text2);font-size:12px">' + tH('loading') + '</div></div>';
+
+  // Sharing, Downloads, Storage, My Data / Server Backups, then App Updates
+  // just before the API Token, and Hot ZIMs + cache last (Eric moved Updates
+  // down from the top on the second pass).
+  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec].join(sep);
   // Async fill security
   Promise.all([
     fetch('/manage/has-password').then(function(r) { return r.json(); }).catch(function() { return {}; }),
@@ -8673,12 +10573,6 @@ function _msServerHtml() {
     sh += '</span></div>';
     el.innerHTML = sh;
   });
-  // Hot ZIMs section — pre-warmed at startup; cold ZIMs stay lazy.
-  h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
-    '<div class="ms-section-label">' + tH('hot_zims') + '</div>' +
-    '<div class="ms-hint">' + tH('hot_zims_hint') + '</div>' +
-    '<div id="ms-hot-zims" style="margin-top:10px">' + tH('loading') + '</div>' +
-    '</div>';
   // These populate elements by id, so they must run AFTER this HTML is in
   // the DOM — not mid-string. Deferring one tick also lets the cached
   // sharing rows paint first, so the section never flashes empty.
@@ -8688,10 +10582,8 @@ function _msServerHtml() {
     _renderSeedingSection();
     _renderMirrorSection();
     _renderDownloadSchedule();
+    _renderAppUpdate();
   }, 0);
-  // Cache info section
-  h += '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
-    '<div id="ms-cache-info" style="color:var(--text2);font-size:12px">' + tH('loading') + '</div></div>';
   _msFetch('/manage/cache-info').then(function(d) {
     var el = document.getElementById('ms-cache-info');
     if (!el || !d.caches) return;
@@ -9871,17 +11763,14 @@ async function toggleAutoUpdate() {
       body: JSON.stringify({enabled: enabled, frequency: enabled ? val : 'weekly'})
     });
   } catch(e) { /* ignore */ }
-  // Update timer icon next to update count
-  const el = document.getElementById('update-status');
-  if (el) {
-    const timer = _autoUpdateTimerHtml();
-    const count = Object.keys(_availableUpdates).length;
-    if (count > 0) {
-      el.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--amber)">' + timer + tH('updates_available', {n: count}) + '</span>';
-    } else {
-      el.innerHTML = '<span class="mc-label">' + tH('updates') + '</span><span class="mc-value" style="color:var(--text2)">' + tH('all_up_to_date') + '</span>';
-    }
-  }
+  // The summary line carries the auto-update timer glyph, so it restates
+  // itself when the frequency changes. Through the single writer rather than
+  // the hand-patch that used to live here: that copy rebuilt the row without
+  // its caret or its click handler, so changing the frequency while updates
+  // were pending silently made the "3 updates available" row unopenable.
+  _renderUpdatesSummary();
+  // Last run and next run both move when the schedule does.
+  _renderAutoUpdateSection();
   // Start fast polling when enabling — server starts downloads after 30s delay
   if (enabled && !_dlTimer) {
     _dlTimer = setTimeout(refreshDownloads, 3000);
@@ -10062,9 +11951,12 @@ function renderInstalled(filterText) {
       // stay on the YYYY-MM release stamp.
       const dateStr = z.date ? (_isZimiExport(z) ? z.date : z.date.substring(0, 7)) : null;
       if (dateStr) meta.push(dateStr);
-      // Flavor badge from filename
-      const flavor = variantLabel(z.file);
+      // Flavor badge from filename. When catalog variants exist, the current
+      // variant's label is group-aware — an installed unsuffixed build shows
+      // "Full + video" next to a maxi sibling instead of a second "Full" (#50).
       const variants = getFlavorVariants(z);
+      const _curVariant = variants.find(v => v.current);
+      const flavor = _curVariant ? _curVariant.label : variantLabel(z.file);
       // Show flavor as clickable pill if alternatives exist, otherwise just text
       if (variants.length > 1) {
         const vid = '_fv_' + z.name;
@@ -10087,8 +11979,8 @@ function renderInstalled(filterText) {
         actionsHtml = '<span class="ci-installed-badge">' + tH('installed_badge') + '</span>' +
           '<button class="ci-delete-btn" onclick="deleteZim(\'' + escAttr(z.file) + '\', this)" title="' + escAttr(t('delete_zim')) + '">\u00D7</button>';
       }
-      // Download slot \u2014 filled by _fillInstalledDownloads only when peer-share is live.
-      actionsHtml += '<span class="ci-dl" data-file="' + escAttr(z.file) + '" hidden></span>';
+      // No inline download pill: the raw .zim lives on the row's \u22ef menu
+      // (Download ZIM file), which the peer-share gate still governs.
       // Same Move to\u2026 gear the catalog rows carry \u2014 the Installed tab is where
       // a user organizes their library, so it needs the entry point too. data-zim
       // + delegated handler, one submenu impl, no user strings in inline onclick.
@@ -10108,6 +12000,10 @@ function renderInstalled(filterText) {
   if (!items_h) items_h = '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
 
   el.innerHTML = getInstalledPillsHtml() + items_h;
+  // Provenance kinds feed the Created bucket (see _zimCat); a deep link that
+  // lands on Manage without ever painting home still needs them. No-op once
+  // the map has arrived.
+  _loadZimKinds();
   // Pointer DnD: drag a row onto a section header to move that ZIM there (#37).
   // Assigned per render (idempotent) since innerHTML above replaced the children.
   el.ondragstart = _installedDragStart;
@@ -10115,7 +12011,7 @@ function renderInstalled(filterText) {
   el.ondragleave = _installedDragLeave;
   el.ondrop = _installedDrop;
   el.ondragend = _installedDragEnd;
-  _fillInstalledDownloads(el);
+  // (installed download pills removed \u2014 \u22ef menu carries it)
 }
 
 // ── Installed-list drag-to-move (#37) ──
@@ -10268,37 +12164,41 @@ async function _generateToken() {
 }
 
 async function _regenerateToken() {
-  if (!confirm(t('confirm_regenerate_token'))) return;
+  if (!(await _appConfirm(t('confirm_regenerate_token')))) return;
   await manageFetch('/manage/revoke-token', { method: 'POST' });
   _generateToken();
 }
 
 async function _revokeToken() {
-  if (!confirm(t('confirm_revoke_token'))) return;
+  if (!(await _appConfirm(t('confirm_revoke_token')))) return;
   await manageFetch('/manage/revoke-token', { method: 'POST' });
   switchMs('server');
 }
 
 function getFlavorVariants(installedZim) {
-  // Find catalog variants that match this installed ZIM's base name
+  // Find catalog variants that match this installed ZIM's base name.
+  // Same-token date editions collapse to the newest — two dropdown rows for
+  // one build would both read as the same flavor (#50).
   if (!_catalogCache) return [];
   // Installed file: "wikipedia_en_all_maxi_2024-05.zim" → base: "wikipedia_en_all"
   const fb = (installedZim.file || '').replace(/\.zim$/, '');
-  const matching = _catalogCache.filter(item => {
+  const matching = _newestPerFlavor(_catalogCache.filter(item => {
     return fb.startsWith(item.name + '_') || fb === item.name;
-  });
+  }));
   if (matching.length <= 1) return [];
-  // Build variant list with labels and sizes
-  const currentFlavor = variantLabel(installedZim.file) || 'Full';
+  // "Current" compares filename flavor TOKENS, not rendered labels: label
+  // equality marked BOTH mdwiki builds current (both read "Full"), leaving
+  // two checkmarks and nothing switchable (#50). Sorting by token (not the
+  // English label strings) also survives translation.
+  const instTok = _flavorToken(installedZim.file);
+  const urls = matching.map(item => item.download_url);
+  const rank = u => ({ mini: 0, nopic: 1, maxi: 2 })[_flavorToken(u)] ?? 3;
   return matching.map(item => ({
-    label: variantLabel(item.download_url) || 'Full',
+    label: variantLabel(item.download_url, urls) || t('full'),
     size: formatSize(item.size_bytes),
     url: item.download_url,
-    current: (variantLabel(item.download_url) || 'Full') === currentFlavor,
-  })).sort((a, b) => {
-    const order = { 'Mini': 0, 'No images': 1, 'Full': 2 };
-    return (order[a.label] ?? 1) - (order[b.label] ?? 1);
-  });
+    current: _flavorToken(item.download_url) === instTok,
+  })).sort((a, b) => rank(a.url) - rank(b.url));
 }
 
 function showFlavorPicker(btn, zimName, variants) {
@@ -10314,7 +12214,7 @@ function showFlavorPicker(btn, zimName, variants) {
   const popup = document.createElement('div');
   popup.className = 'flavor-popup';
   popup.id = 'flavor-popup';
-  let html = '<div class="flavor-popup-title">Choose flavor</div>';
+  let html = '<div class="flavor-popup-title">' + tH('choose_flavor') + '</div>';
   for (const v of variants) {
     if (v.current) {
       html += '<div class="flavor-option current">' +
@@ -10536,6 +12436,11 @@ async function deleteZim(filename, btn) {
     }
     if (card) card.remove();
     _catalogCache = null;
+    // A deleted ZIM may be one Zimi made — drop the cached made-here inventory
+    // so it (and the freed capture name) refresh, instead of lingering in the
+    // Creator list (Eric: "after I delete they still live there").
+    _creatorInventory = null;
+    if (typeof _creatorLoadInventory === 'function' && _msSection === 'creator') _creatorLoadInventory();
     zimsCache = await _fetchList();
     _rebuildZimsMap();
     const tabBtn = document.querySelector('.manage-tab[data-tab="installed"]');
@@ -10808,14 +12713,19 @@ async function _refreshDownloadsInner(useCache) {
     // Bulk controls — only meaningful with more than one download; single items
     // have their own per-row controls. Pause/Resume all appear only when there's
     // something in that state to act on; Delete all always confirms first.
+    // Bulk Pause/Resume only — each acts on a real, reversible download state.
+    // The old "Delete all" was removed: it wiped the visible list (and came
+    // back on reload), which read as broken rather than useful. Per-row
+    // controls remove a single download when that is actually what you want.
     if (dls.length >= 2) {
       const pausableCount = downloadingDls.filter(d => !d.paused && !d.scheduled).length;
       const resumableCount = dls.filter(d => d.paused).length;
-      h += '<div class="dl-bulk-bar">';
-      if (pausableCount) h += '<button class="dl-bulk-btn" onclick="pauseAllDownloads()">' + tH('dl_pause_all') + '</button>';
-      if (resumableCount) h += '<button class="dl-bulk-btn" onclick="resumeAllDownloads()">' + tH('dl_resume_all') + '</button>';
-      h += '<button class="dl-bulk-btn dl-bulk-danger" onclick="deleteAllDownloads()">' + tH('dl_delete_all') + '</button>';
-      h += '</div>';
+      if (pausableCount || resumableCount) {
+        h += '<div class="dl-bulk-bar">';
+        if (pausableCount) h += '<button class="dl-bulk-btn" onclick="pauseAllDownloads()">' + tH('dl_pause_all') + '</button>';
+        if (resumableCount) h += '<button class="dl-bulk-btn" onclick="resumeAllDownloads()">' + tH('dl_resume_all') + '</button>';
+        h += '</div>';
+      }
     }
     h += '<div class="dl-grid">';
     // Background-operation cards ride at the top of the default view only —
@@ -10854,8 +12764,11 @@ async function _refreshDownloadsInner(useCache) {
         // "Sharing" reads as a state a person understands. Idle = nobody's
         // pulling right now (not broken); active = show what's going out.
         // (Replaces the old "waiting for requests" copy that confused.)
-        const idle = !sd.uploaded_bytes && !sd.up_speed;
-        const upNow = sd.up_speed > 1024 ? ' · ↑ ' + (sd.up_speed / (1024 * 1024)).toFixed(1) + ' MB/s' : '';
+        // Idle = nothing moving right now, even for a seed that has uploaded
+        // plenty before. The meta line carries the LIVE rate; the lifetime
+        // total lives on the goal line below — it used to appear in both,
+        // which read as the same number printed twice.
+        const idle = !sd.up_speed;
         // Lifetime uploaded bytes vs the goal (ratio cap x file size). Mirror
         // seeds run uncapped, so they show uploaded + an ∞ label instead.
         const up = sd.cumulative_uploaded_bytes != null ? sd.cumulative_uploaded_bytes : (sd.uploaded_bytes || 0);
@@ -10871,7 +12784,7 @@ async function _refreshDownloadsInner(useCache) {
           ? tH('seed_paused_note')
           : idle
             ? tH('seed_waiting', {n: connected})
-            : tH('seed_active', {up: _fmtBytes(up), n: connected}) + upNow;
+            : tH('seed_active', {speed: _fmtBytes(sd.up_speed), n: connected});
         h += '<div class="dl-item dl-seed-item">' +
           '<div class="dl-row">' +
           '<span class="dl-seed-icon">' + _sourceIconHtml(zimName, 22) + '</span>' +
@@ -10905,7 +12818,7 @@ async function _refreshDownloadsInner(useCache) {
       : visibleDls;
     for (const dl of renderDls) {
       const title = dlTitle(dl);
-      const fmtBytes = (b) => { const gb = b / (1024 ** 3); return gb >= 1 ? gb.toFixed(1) + ' GB' : (b / (1024 ** 2)).toFixed(0) + ' MB'; };
+      // one formatter, defined once — see fmtBytes near fmtSize.
       const totalStr = dl.total_bytes ? fmtBytes(dl.total_bytes) : '?';
       const dlStr = fmtBytes(dl.downloaded_bytes);
       // Total unknown = BT still fetching metadata / finding peers. Show a
@@ -11212,15 +13125,6 @@ async function resumeAllDownloads() {
   await _bulkDownloadAction('/manage/resume', targets);
   refreshDownloads();
 }
-async function deleteAllDownloads() {
-  if (!confirm(t('dl_delete_all_confirm'))) return;
-  // Cancel everything still in flight, then clear the finished rows.
-  const active = (_dlLastDls || []).filter(d => !d.done);
-  await _bulkDownloadAction('/manage/cancel', active);
-  try { await manageFetch('/manage/clear-downloads', { method: 'POST' }); } catch (e) {}
-  refreshDownloads();
-}
-
 // Bulk seed controls: fan out the existing per-seed pause/resume endpoint over
 // the last-rendered seed list (same pattern as _bulkDownloadAction — seed
 // counts are small, and each call is one independent engine flag, so a batch
@@ -12207,13 +14111,33 @@ function _bindVideoError(frame) {
       box.lastChild.textContent = t('video_not_included');
       v.parentNode.insertBefore(box, v);
       v.style.display = 'none';
+      v.__zimiErrBox = box;
+    }
+    function recover() {
+      // NETWORK_NO_SOURCE was not a final verdict: on a page whose own JS
+      // attaches sources late (an alive-engine capture of apple.com does),
+      // the video can come good AFTER the overlay went up. A real error
+      // never fires loadeddata, so this only ever unwinds false alarms.
+      if (!shown || !v.__zimiErrBox) return;
+      if (v.__zimiErrBox.parentNode) v.__zimiErrBox.parentNode.removeChild(v.__zimiErrBox);
+      v.__zimiErrBox = null;
+      v.style.display = '';
+      shown = false;
     }
     // Capture so a failing <source> child's error (which doesn't bubble) is seen.
     v.addEventListener('error', show, true);
     v.addEventListener('stalled', show);
     v.addEventListener('emptied', show);
-    // Catch sources that already resolved to nothing before we bound.
-    if (failed()) show(); else setTimeout(show, 1500);
+    v.addEventListener('loadeddata', recover);
+    v.addEventListener('canplay', recover);
+    // Catch sources that already resolved to nothing before we bound — but a
+    // no-source state gets a second look before it is believed: scripts that
+    // build their <source> list at runtime are legitimate, not broken.
+    if (v.error) show();
+    else setTimeout(function () {
+      if (v.error) { show(); return; }
+      if (v.networkState === 3) setTimeout(show, 1500);
+    }, 1500);
   })(vids[i]);
 }
 
@@ -12860,10 +14784,26 @@ function openReader(url) {
     // wiktionary ZIM is installed). Works in the normal reader AND Reader View
     // (same document, listeners attached once per load survive the transform).
     try { _defineAttachToDoc(frame); } catch(e) {}
+    // A consent wall that the ARCHIVE rebuilds every time it is opened.
+    try { _sweepBlockingOverlays(frame); } catch(e) {}
+    // A captured page's JS-driven chrome, put back in its place.
+    try { _settleCapturedChrome(frame); } catch(e) {}
     // Inject responsive CSS + scroll-to-top button for mobile
     try {
+      // Web-mirror pages (alive engine, zimit) ship a browser's-eye recording of
+      // a real site: their own viewport meta, their own responsive CSS, their own
+      // replay shim (wombat). The mwoffliner first-aid below actively BREAKS them
+      // — max-width:100% on img squishes apple.com's 734px container-cropped
+      // tiles into the 393px viewport while the site's height rule holds, so
+      // every tile distorts. Wombat's presence in the document IS the web-mirror
+      // signal: such pages get only the scroll-to-top button, never the corset.
+      var _isWebMirror = false;
+      try {
+        _isWebMirror = !!(frame.contentWindow._wb_wombat ||
+          frame.contentDocument.querySelector('script[src*="wombat"]'));
+      } catch(e) { _isWebMirror = false; }
       var _rStyle = frame.contentDocument.createElement('style');
-      _rStyle.textContent = [
+      _rStyle.textContent = (_isWebMirror ? [] : [
         // Horizontal containment for raw mwoffliner pages: the whole viewport must
         // never scroll sideways on a phone (e.g. wikipedia/Caribbean's wide country
         // tables + locator map). Genuinely-wide content (tables, <pre>) keeps its
@@ -12882,9 +14822,38 @@ function openReader(url) {
         // floated infoboxes) that carry an inline pixel width wider than a phone —
         // rein them into the column so they don't force page-level overflow.
         '.thumb,.thumbinner,figure,.gallery,.mw-kartographer-map,.mw-kartographer-maplink,' +
-          '.floatright,.floatleft,.tright,.tleft{max-width:100%!important}',
+          '.floatright,.floatleft,.tright,.tleft{max-width:100%!important}'
+      ]).concat([
         '#zimi-top{position:fixed;bottom:20px;right:20px;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;border:none;font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:9999;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}'
-      ].join('');
+      ]).join('');
+      // A page with no viewport meta was laid out for a desktop: xkcd's comic
+      // sits in a 780px table. A phone browser shows such a page zoomed out to
+      // fit; inside this frame it was clipped at the right edge instead, half
+      // the comic gone (seen 2026-09-03). Scale the document to the frame the
+      // way the phone would, only when the page did not say it is responsive.
+      // Measured BEFORE the overflow rule below hides the overflow it measures.
+      try {
+        var _d = frame.contentDocument, _w = frame.contentWindow;
+        if (!_isWebMirror && !_d.querySelector('meta[name="viewport"]')) {
+          // The page's real width is the furthest right edge anything reaches
+          // (a centred fixed-width table overflows both sides equally, and the
+          // document's scrollWidth reports only the right-hand spill).
+          var _wide = _d.documentElement.scrollWidth, _have = _w.innerWidth;
+          var _all = _d.body ? _d.body.getElementsByTagName('*') : [];
+          for (var _i = 0; _i < _all.length && _i < 3000; _i++) {
+            var _r = _all[_i].getBoundingClientRect();
+            // Its extent, counting spill to the left of the frame (a centred
+            // table spills both ways). Anything parked far off-screen — a
+            // skip link at -9999px — is not layout and is ignored.
+            if (_r.width <= 0 || _r.left < -_have * 2 || _r.right > _have * 6) continue;
+            var _extent = _r.right - Math.min(_r.left, 0);
+            if (_extent > _wide) _wide = _extent;
+          }
+          if (_wide > _have + 8 && _have > 0) {
+            _d.documentElement.style.zoom = String(_have / _wide);
+          }
+        }
+      } catch(e) {}
       frame.contentDocument.head.appendChild(_rStyle);
       var _topBtn = frame.contentDocument.createElement('button');
       _topBtn.id = 'zimi-top';
@@ -12920,6 +14889,16 @@ function openReader(url) {
         var href = a.getAttribute('href') || '';
         // Hash-only links (#/route, #heading): let iframe handle natively (SPA routing, anchors)
         if (href.startsWith('#')) return;
+        // The interstitial's own "Open on the live web" button. Without this
+        // bypass the stay-in-archive fallback below would catch it — the
+        // domain maps to the very ZIM that just missed — and navigate back to
+        // the same interstitial: a button that visibly does nothing (Eric,
+        // on exactly that button: "when I click open it isn't opening").
+        if (a.dataset && a.dataset.zimiLive === '1') {
+          e.preventDefault();
+          window.open(a.href, '_blank');
+          return;
+        }
         // Wombat (zimit-scraped ZIMs) rewrites <a href> ATTRIBUTES to look
         // like the original archived URL (e.g. "https://ersatztv.org/docs/")
         // and ALSO installs its own click handler that re-resolves them.
@@ -12977,13 +14956,30 @@ function openReader(url) {
             return;
           }
           var fromZim = readerSource || (currentArticle && currentArticle.zim) || '';
+          // When resolve says "not captured" but the domain BELONGS to an
+          // installed ZIM, stay in the archive: navigate to the mirrored
+          // path so the reader serves the page if it exists and the
+          // not-captured interstitial (with its explicit live-web link) if
+          // it does not. Leaving the archive is always a stated choice, so
+          // window.open(live) is reserved for domains no ZIM claims.
+          var _mapped = _domainZimMap[linkHost] || _domainZimMap[linkBare] || '';
+          function _stayInArchive() {
+            try {
+              var u = new URL(fullUrl);
+              openArticle(_mapped, u.hostname + u.pathname + (u.search || ''));
+              return true;
+            } catch (ex) { return false; }
+          }
           fetch('/resolve?url=' + encodeURIComponent(fullUrl) + (fromZim ? '&from=' + encodeURIComponent(fromZim) : ''))
             .then(function(r) { return r.json(); })
             .then(function(data) {
               if (data.found) openArticle(data.zim, data.path);
+              else if (_mapped && _stayInArchive()) return;
               else window.open(fullUrl, '_blank');
             })
-            .catch(function() { window.open(fullUrl, '_blank'); });
+            .catch(function() {
+              if (!(_mapped && _stayInArchive())) window.open(fullUrl, '_blank');
+            });
         }
       };
       // capture: true so we run before wombat's own click interceptor.
@@ -13199,27 +15195,38 @@ function _histDateGroup(ts) {
   if (d >= weekAgo) return t('this_week');
   return t('older');
 }
+// Both panel openers (the app-wide library button and the reader's bookmarks
+// button, #65) mirror the panel's open state with the same class.
+function _libPanelBtnState(open) {
+  // The panel-open highlight belongs to the button that OPENS the panel. In
+  // the reader the topbar library-btn is the bookmark-this-article toggle, not
+  // the panel opener, so it must never light up when the panel opens (Eric:
+  // tapping the bookmarks view highlighted the bookmark button). bm-panel-btn
+  // is the reader's panel opener and always reflects the state.
+  var bmBtn = document.getElementById('bm-panel-btn');
+  if (bmBtn) bmBtn.classList.toggle('panel-open', open);
+  var libBtn = document.getElementById('library-btn');
+  if (libBtn) libBtn.classList.toggle('panel-open', open && !readerOpen);
+}
 function toggleLibraryPanel(forceTab) {
   var panel = document.getElementById('history-panel');
-  var btn = document.getElementById('library-btn');
   var isOpen = panel.classList.contains('open');
   if (isOpen && (!forceTab || forceTab === _getLibraryTab())) {
     // Close if already open on same tab (or no tab specified)
     panel.classList.remove('open');
-    if (btn) btn.classList.remove('panel-open');
+    _libPanelBtnState(false);
   } else {
     // Open (or switch tabs if already open on different tab)
     if (forceTab) { _setLibraryTab(forceTab); _updateLibraryBtnIcon(); }
     renderLibraryPanel();
     panel.classList.add('open');
-    if (btn) btn.classList.add('panel-open');
+    _libPanelBtnState(true);
   }
 }
 function _closeLibraryPanel() {
   var panel = document.getElementById('history-panel');
-  var btn = document.getElementById('library-btn');
   if (panel) panel.classList.remove('open');
-  if (btn) btn.classList.remove('panel-open');
+  _libPanelBtnState(false);
 }
 function _switchLibraryTab(tab) {
   _setLibraryTab(tab);
@@ -14522,6 +16529,13 @@ async function _revealExportedZim(file) {
 }
 function toggleBookmark() {
   if (!currentArticle) return;
+  // The reader's own "This page wasn't captured" stand-in is not an article:
+  // bookmarked, it went into a bookmarks export as a page titled exactly
+  // that (seen 2026-09-03). The stand-in marks itself; nothing to save.
+  try {
+    var doc = _readerFrameDoc();
+    if (doc && doc.body && doc.body.hasAttribute('data-zimi-uncaptured')) return;
+  } catch (e) {}
   var zim = currentArticle.zim, path = currentArticle.path;
   var title = document.title.replace(/ — Zimi$/, '');
   if (title === 'Zimi' || !title) title = _titleFromPath(path);
@@ -14550,9 +16564,27 @@ function _updateLibraryBtnIcon() {
     btn.style.color = '';
     btn.title = t('bookmark_add');
   } else {
-    btn.innerHTML = (tab === 'bookmarks') ? _libBookmarkSvg : _libClockSvg;
+    // On the home grid the library button OPENS the panel. It carries the one
+    // library glyph — the same glyph the reader's bm-panel-btn carries — so
+    // "open the library" looks identical wherever you are (Eric: consistent
+    // icon on home and in zims). The open tab no longer changes the icon.
+    btn.innerHTML = _libClockSvg;
     btn.style.color = '';
-    btn.title = (tab === 'bookmarks') ? t('bookmarks') : t('history');
+    btn.title = t('library');
+  }
+  // Keep the reader's panel opener on the very same glyph, so it reads as
+  // "open the library" and never as a second bookmark button next to the
+  // add-bookmark toggle (library-btn) beside it.
+  var panelBtn = document.getElementById('bm-panel-btn');
+  if (panelBtn) {
+    panelBtn.innerHTML = _libClockSvg;
+    // The GLYPH is shared with library-btn on purpose (above). The name is
+    // not: this one opens the panel on the BOOKMARKS tab, under B. It used to
+    // be handed t('library') along with the icon, so its tooltip read
+    // "Library (H)" — the wrong name and a shortcut belonging to a different
+    // button — while its aria-label still said Bookmarks. Two names for one
+    // control, and neither audience got the true one.
+    panelBtn.title = t('bookmarks');
   }
 }
 function openArticle(zim, path, title, opts) {
@@ -14858,6 +16890,8 @@ function _isNarrow() {
 // Compact SVGs reused by the reader controls when they migrate into the ... menu.
 var _TBM_TTS_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
 var _TBM_NEWTAB_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+// The same + the inline button draws, at menu-row weight.
+var _TBM_CREATE_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
 
 // Keep the font + TTS menu rows (if the menu is open) in sync with live state.
 // _cycleReaderFont / _ttsSetSpeaking call this so the label updates in place
@@ -14939,7 +16973,19 @@ function _buildTopbarMenuHtml() {
   // viewport Random / Language / Manage stay inline, so re-listing them here
   // would double them up (the desktop reader duplication bug).
   var navGroup = '';
-  if (_isNarrow()) {
+  // Create a ZIM — a ⋯ menu row at EVERY width (there is no inline + button):
+  // creation is an occasional act, so it lives out of the way but first in the
+  // list. Visible on the home screen to an admin/creator; _createCanShow()
+  // carries the boot-time hint, so the row is there on a cold load instead of
+  // appearing a second later. The /#create URL keeps working regardless.
+  if (_createMenuRowAvailable()) {
+    navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();openCreate()">' +
+      _TBM_CREATE_ICON + ' ' + tH('create_zim') + '</button>';
+  }
+  // The Create page hides the inline Random/Language/gear buttons at every
+  // width, so while it is open the ⋯ menu must carry the nav group even on a
+  // wide viewport — otherwise a desktop admin has no route to Manage at all.
+  if (_isNarrow() || _createOpen) {
     navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH('random') + '</button>';
     if (!_getStorageFlag(SK.HIDE_LANG_CHOOSER)) navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
     // Manage row: while downloads are active, carry the count and route the tap
@@ -14967,6 +17013,63 @@ function _buildTopbarMenuHtml() {
   if (readerGroup && navGroup) h += '<div class="topbar-menu-divider" role="separator"></div>';
   h += navGroup;
   return h;
+}
+
+// ── The one-item rule ────────────────────────────────────────────────────────
+// An overflow menu that would hold exactly ONE plain action is no menu at all
+// ("No ⋯ menu for a single item"): the trigger becomes that action — its icon,
+// its label, its click — and goes back to being ⋯ the moment a second row
+// exists. The rule is structural (it counts what the builder would render), so
+// any future state that leaves one row inherits it. Rows that are not plain
+// actions — a switch, a settings block, a signed-in label — keep the menu:
+// they need its chrome to live in.
+function _topbarMenuSoloItem() {
+  var probe = document.createElement('div');
+  probe.innerHTML = _buildTopbarMenuHtml();
+  if (probe.querySelector('.tbm-reader-settings, .topbar-menu-label, [role="switch"]')) return null;
+  var items = probe.querySelectorAll('.topbar-menu-item');
+  return items.length === 1 ? items[0] : null;
+}
+
+// The trigger's stock ⋯ face, captured from the markup the first time so the
+// restore path never hard-codes what index.html renders.
+var _topbarMoreDefault = null;
+var _topbarMoreIsSolo = false;
+function _syncTopbarMoreSolo(btn) {
+  if (!_topbarMoreDefault) {
+    // Clone-and-strip: the activity badge is a child _applyActivityBadge owns;
+    // baking a serialized copy of it into the stock face would duplicate it.
+    var stock = btn.cloneNode(true);
+    var badge = stock.querySelector('.topbar-badge');
+    if (badge) badge.remove();
+    _topbarMoreDefault = {
+      html: stock.innerHTML,
+      aria: btn.getAttribute('data-i18n-aria'),
+      label: btn.getAttribute('aria-label') || 'More'
+    };
+  }
+  var solo = _topbarMenuSoloItem();
+  if (solo) {
+    var label = (solo.textContent || '').trim();
+    var icon = solo.querySelector('svg, .dice');
+    btn.innerHTML = icon ? icon.outerHTML : _topbarMoreDefault.html;
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+    // Park the i18n hook: the language applier would stamp "More" back over
+    // the action's own name on the next language pass.
+    btn.removeAttribute('data-i18n-aria');
+    btn.onclick = function(e) { e.stopPropagation(); solo.click(); };
+    _topbarMoreIsSolo = true;
+  } else if (_topbarMoreIsSolo) {
+    btn.innerHTML = _topbarMoreDefault.html;
+    btn.title = '';
+    btn.setAttribute('aria-label', _topbarMoreDefault.label);
+    if (_topbarMoreDefault.aria) btn.setAttribute('data-i18n-aria', _topbarMoreDefault.aria);
+    // The solo assignment shadowed the inline attribute handler; hand the
+    // stock behaviour back explicitly.
+    btn.onclick = _toggleTopbarMenu;
+    _topbarMoreIsSolo = false;
+  }
 }
 
 function _toggleTopbarMenu(event) {
@@ -15020,6 +17123,7 @@ function _migrateBookmarks() {
 // ── Random ──
 async function randomArticle(event) {
   if (event) event.preventDefault();
+  if (_createOpen) closeCreate();
   if (_almanacOpen) closeAlmanac();
   if (mode === 'manage') { mode = 'home'; updateTopbar(); }
   var btn = document.getElementById('random-btn');
@@ -15080,6 +17184,7 @@ document.addEventListener('keydown', e => {
     var _hp = document.getElementById('history-panel');
     if (_hp && _hp.classList.contains('open')) { _closeLibraryPanel(); return; }
     if (suggestDropdown.style.display !== 'none') { hideSuggest(); return; }
+    if (_createOpen) { closeCreate(); return; }
     if (_almanacOpen) { closeAlmanac(); return; }
     if (readerOpen) { goBack(); return; }
     if (q.value) { q.value = ''; hideSuggest(); clearSearch(); return; }
@@ -15103,6 +17208,7 @@ document.addEventListener('keydown', e => {
 window.addEventListener('popstate', (e) => {
   hideSuggest();
   _hideHistoryTrail();
+  if (_createOpen) { closeCreate(); return; }
   // Close Space if open
   if (_almanacOpen) { closeAlmanac(); return; }
   // Restore reader when navigating back from manage view
@@ -15201,12 +17307,44 @@ function _isModClick() {
   return e.metaKey || e.ctrlKey || e.button === 1;
 }
 
+// ── Real-anchor SPA navigation (#49) ──
+// Primary navigation with a true URL is a real <a href>, so the browser's own
+// link affordances work: right-click → open in new tab, middle-click,
+// cmd/ctrl/shift-click, copy link, drag. Only a plain left click is
+// intercepted for in-app navigation.
+function _anchorNativeClick(e) {
+  return !!(e && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey ||
+    (e.button != null && e.button !== 0)));
+}
+// Inline-handler shim: `onclick="return _spaNav(event, fn)"` — true lets the
+// browser follow the href natively, false cancels it after running the SPA
+// navigation instead.
+function _spaNav(e, fn) {
+  if (_anchorNativeClick(e)) return true;
+  e.preventDefault();
+  fn();
+  return false;
+}
+// Anchor-card variants reading the data-* the card already carries, so the
+// zim/path/title triple isn't escaped into the markup a second time.
+function _spaCardClick(e, el) {
+  return _spaNav(e, function () {
+    openArticle(el.getAttribute('data-zim'), el.getAttribute('data-path'), el.getAttribute('data-title') || '');
+  });
+}
+function _spaSourceClick(e, el) {
+  return _spaNav(e, function () { enterSource(el.getAttribute('data-zim'), true); });
+}
+
 // ── Middle-click (auxclick) handler for search results, discover cards, etc. ──
 // onclick doesn't fire on middle-click — auxclick does.
 document.addEventListener('auxclick', function(e) {
   if (e.button !== 1) return; // Only handle middle-click
   var el = e.target.closest('[data-zim][data-path]');
   if (!el) return;
+  // Real-link cards (#49): the browser's own middle-click already opens the
+  // href (the SPA deep link) — don't shadow it with a second tab.
+  if (el.tagName === 'A' && el.hasAttribute('href')) return;
   e.preventDefault();
   var zim = el.getAttribute('data-zim');
   var path = el.getAttribute('data-path');
@@ -15400,8 +17538,6 @@ function _defineShowTrigger(frame, word, wikt, rect) {
 function _defineRun() {
   var st = _defineState;
   if (!st) return;
-  // The reader has now used Define — retire the one-shot discovery tip for good.
-  try { localStorage.setItem(SK.DEFINE_HINT, '1'); } catch (e) {}
   _definePopover.innerHTML = '<div class="define-card"><div class="define-word">' +
     esc(st.word) + '</div><div class="define-status">' + tH('define_loading') +
     '</div></div>';
@@ -15506,6 +17642,192 @@ function _defineConsider(frame) {
   if (rect) _defineShowTrigger(frame, word, wikt, rect);
 }
 
+// ── Consent walls that the archive rebuilds ──
+//
+// The capture engines strip a blocking overlay when they serialize a page, but
+// the ALIVE engine cannot: it records the WARC before serialization on purpose
+// (serializing mutates the page, and the recording is meant to hold what the
+// site did, not what Zimi provoked), then warc2zim replays those responses with
+// the site's own JavaScript still running. That JS rebuilds the modal every
+// time the ZIM is opened. Alive's whole promise is that the scripts still run,
+// so the fix cannot be "stop running them" — it has to happen here, in the
+// document, after they have run.
+//
+// Same rule as the renderer's, for the same reason and with the same limits:
+// `fixed` only (a sticky masthead is page furniture and stays), covering most
+// of the viewport, plus empty fixed boxes of any size — an ad slot whose ad was
+// blocked at capture time, which renders as a black bar over the headline.
+//
+// This removes; it never clicks. No consent is given, no cookie is set, no
+// request is sent. The element being deleted is one whose buttons call scripts
+// that no longer exist.
+var OVERLAY_VIEWPORT_SHARE = 0.55;   // must match renderer.py's constant
+var OVERLAY_WATCH_MS = 15000;        // how long a rebuilt wall still gets caught
+
+// What a site calls the grey box it shows while waiting for a fetch. In an
+// archive that fetch never happens, so the box is a promise of content that
+// cannot arrive — it pulses at the reader forever, which is what Eric saw on a
+// captured CNN front page. Conventional names, matched on a substring because
+// every framework spells them slightly differently (skeleton-item, isLoading,
+// shimmer__bar); aria-busy is the one the platform itself defines.
+// Below this an empty box is a gap in the design, not a hole; a standard ad
+// unit is 250px and the slots that hold one start there.
+var HOLLOW_BLOCK_MIN_PX = 200;
+
+var SKELETON_SELECTOR = [
+  '[class*="skeleton" i]', '[class*="shimmer" i]', '[class*="placeholder" i]',
+  '[class*="loading" i]', '[class*="-loader" i]', '[class*="loader-" i]',
+  '[aria-busy="true"]'
+].join(',');
+
+// Whether an element holds anything a reader would miss. Text or media counts;
+// a box of empty boxes does not. Shared by the overlay sweep and the skeleton
+// settle because both are answering the same question — is there anything here
+// worth keeping — and answering it two ways is how they drift apart.
+function _isHollow(el) {
+  return !(el.innerText || '').trim() &&
+         !el.querySelector('img, video, canvas, svg, iframe');
+}
+
+// ── a page captured without its JavaScript ──
+//
+// The fast engine stores the markup and drops every script, which is what
+// makes it fast and what makes its archives readable in twenty years. The cost
+// arrives in the chrome, because on a modern page the chrome is JavaScript:
+//
+//  * An ad slot reserves its height in CSS and waits for a script to fill or
+//    collapse it. No script ever comes, so a captured CNN front page opens on
+//    five hundred pixels of nothing (Eric: "Huge space above the header?").
+//  * A sticky header is positioned by a scroll handler. Without one it stays
+//    pinned at the offset it had when the snapshot was taken, so it floats in
+//    the middle of the article as you scroll past (Eric: "that header doesn't
+//    move when i scroll the page very weird").
+//  * A skeleton placeholder pulses until its content arrives. It never
+//    arrives, so it pulses forever (Eric: "There's some pulsing content").
+//
+// None of that is the page being captured badly — every one of those elements
+// is faithfully stored. It is chrome that only ever made sense with a script
+// behind it, and in a static archive the honest thing is to let it settle.
+//
+// Runs on every ZIM. Each rule only fires on the exact condition it names, and
+// a Wikipedia article has no empty ad slots, nothing sticky that matters, and
+// nothing that pulses.
+function _settleCapturedChrome(frame) {
+  var doc = frame.contentDocument;
+  var win = frame.contentWindow;
+  if (!doc || !win || !doc.body) return;
+
+  var css = doc.createElement('style');
+  css.setAttribute('data-zimi', 'settle');
+  css.textContent = [
+    // An animation that repeats forever is waiting for something. Let it
+    // finish its first pass and stop, rather than pulse at the reader all day.
+    '*, *::before, *::after { animation-iteration-count: 1 !important; }',
+    // A reserved box with nothing in it is a hole where an ad was going to be.
+    '[class*="ad-"]:empty, [class*="-ad"]:empty, [class*="advert"]:empty,',
+    '[id*="ad-"]:empty, [id*="-ad"]:empty, ins:empty { display: none !important; }'
+  ].join('\n');
+  (doc.head || doc.documentElement).appendChild(css);
+
+  // Sticky needs a scroll handler that is no longer here. Static puts the
+  // element back in the flow it was written for, which is where a reader
+  // expects to find it. Done in JS because CSS cannot select on a computed
+  // position, and only for elements that really are sticky.
+  try {
+    var all = doc.querySelectorAll('body *');
+    for (var i = 0; i < all.length; i++) {
+      var cs = win.getComputedStyle(all[i]);
+      if (cs && cs.position === 'sticky') all[i].style.setProperty('position', 'static', 'important');
+    }
+  } catch (e) {}
+
+  // Skeletons. `animation-iteration-count: 1` above already stops the pulse,
+  // but stopping it is not the same as resolving it: what is left is a grey bar
+  // frozen mid-shimmer, still claiming an article is on its way.
+  //
+  // Empty ones go. A placeholder for content that cannot arrive is not
+  // information, and closing the gap reads better than a hole that looks like a
+  // bug. One that DOES hold something keeps its content and only loses the
+  // animation — the class name is a hint about intent, never permission to
+  // throw away text somebody wrote.
+  try {
+    var skeletons = doc.querySelectorAll(SKELETON_SELECTOR);
+    for (var s = 0; s < skeletons.length; s++) {
+      var el = skeletons[s];
+      if (_isHollow(el)) el.remove();
+      else el.style.setProperty('animation', 'none', 'important');
+    }
+  } catch (e) {}
+
+  // A tall box with nothing in it — no text, no picture, no background — is a
+  // hole where a script was going to put something. The ad-slot rule catches
+  // the ones with honest names; theverge.com's are 250px divs named o1ls9x,
+  // and the front page read as stories separated by white voids. Collapsed,
+  // not removed: a page that later fills one by script (an alive capture)
+  // gets its box back.
+  try {
+    var blocks = doc.body.querySelectorAll('div, section, aside');
+    for (var b = 0; b < blocks.length; b++) {
+      var box = blocks[b];
+      var rect = box.getBoundingClientRect();
+      if (rect.height < HOLLOW_BLOCK_MIN_PX || rect.width < 100) continue;
+      if (!_isHollow(box)) continue;
+      var cs = win.getComputedStyle(box);
+      if (cs.backgroundImage !== 'none' || cs.position === 'fixed') continue;
+      if (box.querySelector('iframe, canvas, object, embed')) continue;
+      box.style.setProperty('height', '0', 'important');
+      box.style.setProperty('min-height', '0', 'important');
+      box.style.setProperty('padding', '0', 'important');
+      box.style.setProperty('margin', '0', 'important');
+      box.style.setProperty('overflow', 'hidden', 'important');
+    }
+  } catch (e) {}
+}
+
+function _sweepBlockingOverlays(frame) {
+  var doc = frame.contentDocument;
+  var win = frame.contentWindow;
+  if (!doc || !win || !doc.body) return;
+
+  var sweep = function() {
+    var covered = win.innerWidth * win.innerHeight * OVERLAY_VIEWPORT_SHARE;
+    var hit = 0;
+    var all = doc.querySelectorAll('body *');
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      var cs;
+      try { cs = win.getComputedStyle(el); } catch (e) { continue; }
+      if (!cs || cs.position !== 'fixed') continue;
+      var r = el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) continue;
+      var blocking = r.width * r.height >= covered;
+      if (!blocking && !_isHollow(el)) continue;
+      el.remove();
+      hit++;
+    }
+    // A modal locks the page behind it and the lock outlives the modal: a body
+    // left at overflow:hidden is an article nobody can scroll.
+    if (hit) {
+      [doc.documentElement, doc.body].forEach(function(el) {
+        if (el) el.style.setProperty('overflow', 'visible', 'important');
+      });
+    }
+    return hit;
+  };
+
+  sweep();
+  // The wall usually arrives AFTER load — that is what makes it a replay
+  // problem rather than a markup one. Watch for it, then stop: an observer
+  // that lives as long as the article is a cost every reader pays for a
+  // problem almost no archive has.
+  if (typeof win.MutationObserver !== 'function') return;
+  var obs = new win.MutationObserver(function() { sweep(); });
+  try {
+    obs.observe(doc.documentElement, { childList: true, subtree: true });
+    win.setTimeout(function() { obs.disconnect(); }, OVERLAY_WATCH_MS);
+  } catch (e) {}
+}
+
 function _defineAttachToDoc(frame) {
   var doc = frame.contentDocument;
   if (!doc) return;
@@ -15534,33 +17856,10 @@ function _defineAttachToDoc(frame) {
   // dismiss it (like a native selection callout) rather than leave it stranded at
   // a stale position. Covers both the raw frame and Reader View (same window).
   try { frame.contentWindow.addEventListener('scroll', _defineHideOnScroll, { passive: true }); } catch (e) {}
-  // First article open with a wiktionary installed → one-shot discovery tip.
-  _maybeShowDefineHint(doc);
-}
-
-// ── Define discoverability ──
-// A one-shot teaching tip layered on top of the select-a-word / double-tap
-// gesture, which is the only surface for Define. Shows at most once per browser.
-// Skipped entirely when no wiktionary is installed (feature dormant) or the
-// reader has already met Define.
-function _maybeShowDefineHint(doc) {
-  if (_getStorageFlag(SK.DEFINE_HINT)) return;
-  if (!readerOpen) return;
-  if (!_defineFindWiktionary(_ttsLang(doc))) return; // dormant: nothing to teach
-  try { localStorage.setItem(SK.DEFINE_HINT, '1'); } catch (e) {}
-  var tip = document.createElement('div');
-  tip.className = 'define-hint';
-  tip.setAttribute('role', 'status');
-  tip.innerHTML = '<span class="define-hint-icon">' + _DEFINE_BOOK_ICON + '</span>' +
-    '<span>' + tH('define_hint') + '</span>';
-  document.body.appendChild(tip);
-  requestAnimationFrame(function() { tip.classList.add('visible'); });
-  var kill = function() {
-    tip.classList.remove('visible');
-    setTimeout(function() { if (tip.parentNode) tip.remove(); }, 220);
-  };
-  var timer = setTimeout(kill, 6000);
-  tip.addEventListener('click', function() { clearTimeout(timer); kill(); });
+  // No discovery tip. It was rate-limited twice and Eric still met it twice
+  // more; a teaching aid that has to be tuned that often is one nobody wanted.
+  // Define is still there on a selection or a double-tap, and it is now found
+  // the way every other text gesture on a phone is found — by trying it.
 }
 
 // Close context menu on click anywhere
@@ -15885,7 +18184,16 @@ async function _pollActivity() {
     const res = await authedFetch('/manage/activity', { credentials: 'same-origin' });
     if (res.ok) {
       const data = await res.json();
+      // What the LAST poll saw, read before this one repaints the badge.
+      const wasActive = !!(_activityBadge && _activityBadge.active);
       const stillActive = _renderActivity(data);
+      // Background work just finished while the Activity view is open — the
+      // journal gained a line the reader is looking straight at. This is the
+      // only moment worth a refetch: the badge poll already told us something
+      // ended, so the list costs one small read instead of a timer of its own.
+      if (wasActive && !stillActive && mode === 'manage' && manageTab === 'history') {
+        renderActivityLog();
+      }
       _scheduleNextActivityPoll(!stillActive);
       return;
     }

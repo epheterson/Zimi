@@ -118,6 +118,10 @@
 .orrery-ctrl-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); border-radius: 6px; width: 32px; height: 28px; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; flex-shrink: 0; }
 .orrery-ctrl-btn:hover { color: var(--amber); border-color: var(--amber-border); }
 .orrery-slider { flex: 1; min-width: 60px; height: 4px; -webkit-appearance: none; appearance: none; background: var(--surface2); border-radius: 2px; outline: none; cursor: pointer; }
+/* While the time machine owns the clock the local controls are inert — say so. */
+.orrery-slider:disabled { opacity: 0.35; cursor: default; }
+.orrery-slider:disabled::-webkit-slider-thumb { background: var(--text3); cursor: default; box-shadow: none; }
+.orrery-slider:disabled::-moz-range-thumb { background: var(--text3); cursor: default; }
 .orrery-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--amber); border: none; cursor: pointer; box-shadow: 0 0 4px rgba(255,180,60,0.3); }
 .orrery-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--amber); border: none; cursor: pointer; }
 .orrery-speed-end { color: var(--text3); font-size: 9px; flex-shrink: 0; user-select: none; }
@@ -223,6 +227,13 @@
 .alm-today-btn { position: absolute; right: 0; background: none; border: 1px solid var(--border); color: var(--amber); font-size: 11px; cursor: pointer; padding: 3px 10px; border-radius: 10px; opacity: 0.7; transition: opacity 0.15s; }
 .alm-today-btn:hover { opacity: 1; background: var(--surface2); }
 .alm-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+/* Month glide (#75) — the incoming grid slides in the direction of travel when
+   browsing lands on a different month. Applied by _almGlideGrid, which keeps it
+   off the time-machine scrub path entirely. */
+@keyframes alm-grid-glide-next { from { opacity: 0.3; transform: translateX(20px); } }
+@keyframes alm-grid-glide-prev { from { opacity: 0.3; transform: translateX(-20px); } }
+.alm-grid.alm-glide-next { animation: alm-grid-glide-next .2s cubic-bezier(0.25,1,0.5,1) both; }
+.alm-grid.alm-glide-prev { animation: alm-grid-glide-prev .2s cubic-bezier(0.25,1,0.5,1) both; }
 .alm-hdr { font-size: 11px; color: var(--text3); padding: 8px 0; font-weight: 500; text-align: center; background: var(--surface); }
 .alm-cell { position: relative; background: var(--surface); min-height: 64px; padding: 4px 5px; font-size: 12px; overflow: hidden; }
 /* Daily moon phase, tucked in the corner — a quiet lunar rhythm down the month. */
@@ -1024,4 +1035,6 @@
      line of their own — they are .alm-tm-key, already listed above.) */
   .alm-tm-monpop { animation: none; }
   .alm-tm.alm-tm-open { animation: none; }
+  /* Month changes repaint in place — no glide (#75). */
+  .alm-grid.alm-glide-next, .alm-grid.alm-glide-prev { animation: none; }
 }

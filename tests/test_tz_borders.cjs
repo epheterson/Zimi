@@ -4,8 +4,8 @@
 //
 //   1. Size budget — the asset is lazy-fetched on first map draw and cached by
 //      the service worker; it must stay a light touch (<= 250 KB, and in
-//      practice ~100 KB raw / ~29 KB gzip).
-//   2. Structure — {v: 2, source, lines, zones}. Every line is a flat,
+//      practice ~121 KB raw / ~37 KB gzip).
+//   2. Structure — {v: 3, source, lines, zones}. Every line is a flat,
 //      even-length [lon, lat, ...] array of at least two points; every zone is
 //      [offsetMinutes, [flat unclosed ring, ...]] with offsets on the
 //      quarter-hour grid. The renderer indexes pairs blindly, so a ragged
@@ -46,9 +46,16 @@ check(stat.size <= MAX_BYTES, `size ${stat.size} bytes <= ${MAX_BYTES} budget`);
 
 // 2. Structure
 const doc = JSON.parse(fs.readFileSync(ASSET, 'utf8'));
-check(doc.v === 2, 'version field v === 2');
-check(typeof doc.source === 'string' && /Natural Earth/i.test(doc.source),
-  'source attribution present');
+check(doc.v === 3, 'version field v === 3');
+// v3 switched from Natural Earth (public domain but politically ~2012 — 13
+// known-stale zones) to timezone-boundary-builder (ODbL, tracks the live tz
+// database). ODbL requires the attribution to actually ship: in the asset
+// header here, and in tz-borders-LICENSE.txt next to the asset.
+check(typeof doc.source === 'string' && /timezone-boundary-builder/i.test(doc.source) &&
+  /OpenStreetMap/i.test(doc.source),
+  'source attribution present (timezone-boundary-builder + OSM, per ODbL)');
+check(fs.existsSync(path.join(__dirname, '..', 'zimi', 'static', 'tz-borders-LICENSE.txt')),
+  'ODbL license file ships next to the asset');
 check(Array.isArray(doc.lines) && doc.lines.length > 0, 'lines array present');
 check(Array.isArray(doc.zones) && doc.zones.length > 100,
   `zones array present (${(doc.zones || []).length} zones)`);
@@ -147,7 +154,7 @@ check(zoneOffsetAt(-17, 179.9) === 720 && zoneOffsetAt(-17, -179.9) === 720,
   'both sides of the date line near Fiji -> UTC+12 (antimeridian parts)');
 
 // 7. Renderer contract
-check(alm.includes("fetch('/static/tz-borders.json?v=2')"), 'almanac.js lazy-fetches the v2 asset');
+check(alm.includes("fetch('/static/tz-borders.json?v=3')"), 'almanac.js lazy-fetches the v3 asset');
 check(alm.includes('_tzBordersPathFor'), 'almanac.js builds the cached border Path2D');
 check(alm.includes('_tzZonePathFor'), 'almanac.js builds the cached highlight Path2D');
 check(alm.includes('_sunMapDrawZoneHighlight'), 'almanac.js draws the true-shape highlight');
@@ -241,13 +248,39 @@ check(uncovered.length === 0,
 //   - Arctic Ocean wedges (entirely north of 66.5N) — open sea ice;
 //   - slivers under 2 deg^2 (sub-tap-size at map scale) share their offset's
 //     existing dot;
-//   - a short named list of open-ocean strips that fit none of the above.
+//   - a named list of parts that fit none of the above. The v3 partition is
+//     finer than v2's Natural Earth bands, so real regional zones that NE
+//     lumped in with a dotted neighbour now stand alone: they are enumerated
+//     here by kind rather than silently absorbed. Their offsets all remain
+//     one click away via another dot at the same offset.
 const OCEAN_EXEMPT = new Set([
-  '-540:-142:-75',  // SE Pacific between the Gambier and Chilean waters
-  '540:128:-67',    // Southern Ocean strip south of Australia
-  '-660:-172:-2',   // Palmyra/Jarvis waters (uninhabited US minor islands)
-  '-600:170:48',    // NW Pacific strip off Kamchatka
-  '300:49:-47',     // Crozet Islands (research staff only, no settlement)
+  // nominal international-waters bands and Arctic wedges (open sea, no one
+  // to dot; 66.0-latitude edges are coastline dips below the 66.5 rule)
+  '0:-5:35',        // western Mediterranean nominal +0 international waters
+  '-60:-26:-72',    // mid-Atlantic -1 band (Azores/Cape Verde parts carry the dots)
+  '-240:-67:-74',   // SW Atlantic -4 band off Argentina + peninsula waters
+  '540:128:-65',    // Southern Ocean +9 band south of Australia
+  '-660:-172:66',   // Chukchi Sea Arctic -11 wedge (coast dips to 66.0)
+  '240:53:37',      // Azerbaijani Caspian +4 waters (open sea)
+  '540:138:54',     // Sea of Okhotsk +9 west-coast waters
+  // island / archipelago zones with no _MAP_CITIES dot
+  '-540:-172:63',   // St. Lawrence Island, Alaska (-9)
+  '-600:-179:51',   // western Aleutians, Near Islands (-10, Adak zone)
+  '660:145:43',     // southern Kuril Islands (+11)
+  '720:169:6',      // Marshall Islands, Ratak chain (+12)
+  '720:165:4',      // Marshall Islands, Ralik chain (+12)
+  '720:-180:-21',   // Fiji east of the antimeridian (Suva dots the west part)
+  '-360:-113:-30',  // Easter Island (-6)
+  '-240:-72:17',    // Hispaniola/Puerto Rico (-4)
+  '-300:-89:18',    // Quintana Roo / Cancun (-5, Mexico's no-DST east coast)
+  // continental regional zones the v2 asset never drew as separate parts
+  '240:43:50',      // Russia's Samara/Saratov/Ulyanovsk +4 cluster
+  '240:51:56',      // Udmurtia/Izhevsk +4
+  '240:45:45',      // Astrakhan +4
+  '360:69:39',      // Kyrgyzstan +6 (Bishkek has no dot)
+  '360:70:53',      // Omsk +6
+  '660:141:46',     // Sakhalin Island +11
+  '660:139:58',     // Magadan + Okhotsk/East Siberian +11 waters
 ]);
 // The resolver now answers in offsets, so per-POLYGON coverage is measured by
 // driving the shipped containment predicate over each entry directly — this is
@@ -291,7 +324,7 @@ for (let zi = 0; zi < doc.zones.length; zi++) {
 check(unexempted.length === 0,
   `every tappable zone polygon holds a city dot (${polysCovered} covered, ${polysExempt} exempt` +
   (unexempted.length ? '; missing: ' + unexempted.join(' | ') : '') + ')');
-check(polysCovered >= 74, `polygon coverage count ${polysCovered} >= 74`);
+check(polysCovered >= 59, `polygon coverage count ${polysCovered} >= 59`);
 ['Minsk', 'Yakutsk', 'Vladivostok', 'Thimphu', 'Port Blair', 'McMurdo', 'Danmarkshavn'].forEach((name) => {
   check(mapCities.some((c) => c.name.indexOf(name) === 0), `representative dot present: ${name}`);
 });

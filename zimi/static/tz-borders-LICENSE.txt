@@ -1,0 +1,24 @@
+tz-borders.json — data license and attribution
+==============================================
+
+The time zone boundary data in tz-borders.json (the file shipped next to this
+notice) is a derivative database of:
+
+  timezone-boundary-builder, release 2026c
+  https://github.com/evansiroky/timezone-boundary-builder
+  (c) OpenStreetMap contributors
+
+That data is made available under the Open Database License (ODbL) 1.0:
+  https://opendatacommons.org/licenses/odbl/1-0/
+
+tz-borders.json is itself a derivative database (time zone polygons dissolved
+to standard-UTC-offset bands, simplified and quantized for an 800 px world
+map by scripts/build-tz-borders.py) and is likewise offered under ODbL 1.0.
+
+This license applies to the DATA FILE tz-borders.json only. It does not
+apply to, and does not change the license of, the Zimi source code, which
+remains MIT-licensed (see the repository's LICENSE file).
+
+Exact provenance (pinned in scripts/build-tz-borders.py):
+  source: timezones-with-oceans-now.geojson.zip from release 2026c
+  sha256: 815f5be7f01bd7c4110a1706d9afa4f8d751a6db4fe46c4d5d163941e2c38147

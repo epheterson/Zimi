@@ -51,6 +51,9 @@ def _env(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setattr(lib, "_opds_disk_loaded", True)  # isolate from disk
     monkeypatch.setattr(lib, "_thumb_prefetch_started", True)  # no thumb threads
+    # Earlier dead-network tests (test_offline_mode et al.) leave the fail
+    # cooldown armed, which silently suppresses _kick_catalog_refresh here.
+    monkeypatch.setattr(lib, "_opds_last_fail", 0.0)
     lib._opds_cache.clear()
     lib._opds_refreshing.clear()
     lib._catalog_stale_ts = None

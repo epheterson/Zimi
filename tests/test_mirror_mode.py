@@ -405,17 +405,19 @@ def test_ensure_magnets_regular_user_discards_torrent(_mirror_env, monkeypatch):
     monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
     lib._magnets_ensured = False
     (_mirror_env / "foo_2026-06.zim").write_bytes(b"x")
-    monkeypatch.setattr(
-        lib,
-        "_fetch_kiwix_catalog",
-        lambda *a, **k: (
+    # The URL map now comes from the already-cached catalog, never a fetch
+    monkeypatch.setattr(lib, "_opds_disk_loaded", True)
+    monkeypatch.setitem(
+        lib._opds_cache,
+        "|eng|500|0",
+        (
+            100.0,  # long stale — stale pages must still answer
             1,
             [
                 {
                     "download_url": "https://download.kiwix.org/zim/f/foo_2026-06.zim.meta4"
                 }
             ],
-            None,
         ),
     )
 
@@ -427,7 +429,7 @@ def test_ensure_magnets_regular_user_discards_torrent(_mirror_env, monkeypatch):
             return False
 
     monkeypatch.setattr(_ur, "urlopen", lambda *a, **k: _R(_mini_torrent()))
-    assert lib.ensure_magnets_for_installed(spacing=0) == 1
+    assert lib.ensure_magnets_for_installed(spacing=0, network_ok=True) == 1
     meta = lib._get_torrent_metadata()
     assert meta["foo_2026-06.zim"]["magnet"].startswith("magnet:?xt=urn:btih:")
     # Regular users keep the magnet, not the file
@@ -445,17 +447,18 @@ def test_ensure_magnets_mirror_keeps_torrent_file(_mirror_env, monkeypatch):
 
     lib._magnets_ensured = False
     (_mirror_env / "bar_2026-06.zim").write_bytes(b"x")
-    monkeypatch.setattr(
-        lib,
-        "_fetch_kiwix_catalog",
-        lambda *a, **k: (
+    monkeypatch.setattr(lib, "_opds_disk_loaded", True)
+    monkeypatch.setitem(
+        lib._opds_cache,
+        "|eng|500|0",
+        (
+            100.0,
             1,
             [
                 {
                     "download_url": "https://download.kiwix.org/zim/b/bar_2026-06.zim.meta4"
                 }
             ],
-            None,
         ),
     )
 
@@ -467,7 +470,7 @@ def test_ensure_magnets_mirror_keeps_torrent_file(_mirror_env, monkeypatch):
             return False
 
     monkeypatch.setattr(_ur, "urlopen", lambda *a, **k: _R(_mini_torrent()))
-    assert lib.ensure_magnets_for_installed(spacing=0) == 1
+    assert lib.ensure_magnets_for_installed(spacing=0, network_ok=True) == 1
     meta = lib._get_torrent_metadata()
     assert os.path.isfile(meta["bar_2026-06.zim"]["torrent_file"])
     lib._magnets_ensured = False

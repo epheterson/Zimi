@@ -1,4 +1,10 @@
 name: zimi
+# A base is a glibc. core22 is glibc 2.35, and `parts` below dumps a
+# PyInstaller bundle built by .github/workflows/desktop-release.yml — so that
+# workflow's Linux runner is PINNED to ubuntu-22.04 to match. Building on
+# anything newer produces a binary that needs symbols this base does not have,
+# and the snap dies at launch with `libm.so.6: version GLIBC_2.38 not found`
+# (issue #55). Move the two together or not at all.
 base: core22
 version: '1.7.1'
 summary: Offline knowledge server for ZIM files

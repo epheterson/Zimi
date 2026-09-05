@@ -1,0 +1,185 @@
+# 1.9 field guide — validate it yourself
+
+Every feature below has a two-minute check you can run with your own hands. The browser features run against the preview instance; the CLI features run on your Mac from the repo. Nothing here touches prod.
+
+**Preview instance: http://10.0.0.14:8905** — the `v1.9` branch against the real 53-ZIM library, mounted read-only, own state, torrenting off. Prod at knowledge.zosia.lan is untouched and stays 1.8.2. The preview copied prod's metadata cache and bookmarks at first boot, so it looks like home; changes you make there stay there.
+
+For CLI checks: `cd ~/Repos/zimi` (branch `v1.9`), and `alias z='python3 -m zimi'` if you like.
+
+## The USB stick story (portable discovery)
+
+```
+mkdir -p /tmp/stick && cp /tmp/zimi-empty/*.zim /tmp/stick/ && cd /tmp/stick
+python3 -m zimi serve --port 8765
+```
+
+No env, no flags, no config. Expect: it announces the discovered directory, serves the ZIMs, and state lands in `/tmp/stick/.zimi`. Then prove explicit config still wins: `ZIM_DIR=/zims python3 -m zimi config` from the same directory shows `(env: ZIM_DIR)`, not the discovery.
+
+## zimi config, and where every value comes from
+
+```
+python3 -m zimi config
+ZIMI_DATA_DIR=/var/lib/nope python3 -m zimi config
+```
+
+First: four rows, each with provenance (default / discovered). Second: same table plus a `warning:` line naming the unwritable dir and its source, exit 0. Then try `ZIMI_DATA_DIR=/var/lib/nope python3 -m zimi backup /tmp/b.json` and watch a write-command refuse with one line, exit 2.
+
+## Backup and restore, round trip
+
+```
+cd /tmp && rm -rf bk && mkdir -p bk/zims bk/data
+python3 -m zimi backup --zim-dir bk/zims --data-dir bk/data
+ls -la zimi-backup-*.json        # expect -rw------- (0600)
+rm -rf bk/data
+python3 -m zimi restore zimi-backup-*.json --zim-dir bk/zims --data-dir bk/data
+```
+
+Expect: backup prints what it captured, restore prints applied vs skipped, and the data dir is recreated from nothing.
+
+## ZIMI_OFFLINE, provable silence
+
+```
+ZIMI_OFFLINE=1 ZIMI_BT=on python3 -c "from zimi import p2p; print(p2p.is_torrent_enabled(), p2p.get_backend(data_dir='/tmp/x'))"
+```
+
+Expect `False None` even though BT was explicitly requested. For the full proof, run a server under `ZIMI_OFFLINE=1` with Little Snitch watching, or `sudo tcpdump -i any host library.kiwix.org` in another terminal: zero packets, including at boot.
+
+## The boot-time kiwix call is gone
+
+```
+rm -rf /tmp/pol && mkdir /tmp/pol
+ZIM_DIR=/tmp/zimi-empty ZIMI_DATA_DIR=/tmp/pol python3 -m zimi serve --port 8766
+# second terminal, after ~15s:
+ls /tmp/pol                       # expect NO catalog_cache.json
+```
+
+Before the fix this wrote `catalog_cache.json` about two seconds after boot, every boot, on every instance with torrenting on.
+
+## Prometheus metrics
+
+```
+curl -s http://10.0.0.14:8905/metrics | head -30
+```
+
+Expect `# HELP` / `# TYPE` pairs, `zimi_` prefixes, counters ending `_total`, and a `_sum`/`_count` latency pair per endpoint. (Preview has no admin password, so the LAN open-admin rule lets you read it; on a passworded instance it needs the API token, same as /manage.)
+
+## App update checking (#76, your ask)
+
+Preview → Manage → Server → **App updates**. Expect current version, a Check now pill, and because the preview identifies as Docker, the instruction is a `docker compose pull` snippet. `ZIMI_OFFLINE` or no network: one quiet line, no button.
+
+## The four issue fixes (browser, on preview)
+
+- **#48**: Almanac → summon the time machine → GO to 2100. The solar system's planets move; its sliders dim; its readout says Jun 2100. Return to now: sliders wake, local clock resumes.
+- **#49**: right-click the Zimi logo → "Open link in new tab" exists and works. Same on the Almanac card, source tiles, search results.
+- **#50**: Catalog → search mdwiki. One card, flavors "Maxi" and "Full + video", exactly one checkmark, and the 10.75GB video build is never the preselected default.
+- **#51**: can't be clicked on the preview (torrenting off); the evidence is the measured numbers in commit b8bd0ec: worst lock wait 10.6s → 0.45s, archives opened 53 → 1, plus a live test that a /read answers while a registration is deliberately stalled mid-extraction.
+
+## In-article bookmarks + calendar glide
+
+Preview → open any article → bookmark button in the reader chrome opens your tree over the article; Escape closes the panel, not the reader. Almanac → pick a date in another month: the grid glides instead of popping. System Settings → Reduce Motion kills the glide.
+
+## Share an exported ZIM between devices
+
+Preview → Bookmarks → Export to ZIM. The new card carries a Download button. Your iMac's Zimi should list the preview's exports under Catalog → "On nearby devices"… except the preview has torrenting and its own quirks — the honest check is between your iMac and Mac Zimi instances, where it already surfaced five real exports during testing.
+
+## Timezone map, 2026 politics
+
+Preview → Almanac → sun map. Click Moscow: +3 lights all of western Russia (was +4 politics from 2014). Kathmandu +5:45, Chatham +12:45. Click McMurdo: the +12 station zone lights with New Zealand.
+
+## Chinese calendar ΔT (the one you can't click)
+
+The proof is reference data, not our own output: `tests/test_almanac_deltat.cjs` pins all 67 Chinese New Years 1920–1986 and the 16 moved month boundaries to the Hong Kong Observatory's published conversion tables (hko.gov.hk, T-year files). Spot-check one by hand: HKO's T1954e.txt says CNY 1954 = Feb 3; we now say Feb 3; we used to say Feb 4.
+
+## The config file carries real settings now (wave 4)
+
+```
+cd /tmp && mkdir -p cfgdemo && cat > cfgdemo/zimi.json <<'EOF'
+{"zim_dir": "/tmp/zimi-empty", "manage": false, "offline": true, "hot_zims": ["wikipedia_en_all_maxi"]}
+EOF
+ZIMI_CONFIG=/tmp/cfgdemo/zimi.json python3 -m zimi config
+```
+
+Expect eleven rows, with manage/offline/hot_zims showing `(config file: ...)` as their source and the secrets masked. Then export `ZIMI_OFFLINE=0` and re-run: offline flips to `(env: ZIMI_OFFLINE)` — your environment always beats the file.
+
+## Update channels and the update delay
+
+Preview → Manage → Server → App updates now has a channel select (Latest (recommended) / Beta (early releases)). Latest is the default and behaves exactly as the check always did: finished releases, the day they ship. Beta takes whatever is newest — pre-release or final — and marks a prerelease quietly. There is no "Stable" channel by design; `stable` is accepted as a synonym for `latest` in the env var, over the API, and in a preference file written by an earlier build. Set `ZIMI_UPDATE_CHANNEL=latest` on a server and the select greys out with an env-controlled note, and writes to it return 403.
+
+Below it sits Update delay: None / 1 / 3 / 7 / 14 / 30 days. Pick 7 and a release published today is not offered until next week — Manage says "1.9.1 is out — offering it in 7 days" rather than claiming you are up to date. `ZIMI_UPDATE_DELAY_DAYS` locks it the same way the channel variable does, and accepts any whole number of days, not just the presets. `ZIMI_OFFLINE` still silences the whole feature, both controls and all.
+
+## Air-gapped install bundle
+
+```
+cd ~/Repos/zimi && ./scripts/make-airgap-bundle.sh --out /tmp/bundle
+```
+
+Expect ~34 wheels, an install.sh, INSTALL.md, SHA256SUMS, and a tarball. The install refuses to run if any file's checksum fails, and the build refuses to include a source distribution (an sdist is a promise to download build tools the target can't keep). Cross-build for a Pi with `--target linux-arm64`.
+
+## Deep time has no timezones
+
+Almanac → sun map, then time machine → GO to 1500. The zone borders, label gutter and offset chips are gone — clean continents and terminator only. Try 1885: the civil layer sits at half strength (and the Paris offset chip reads +0:09, which is not a bug, it is Paris Mean Time). Return to now: full grid back.
+
+## Export without the freeze
+
+Bookmarks → Export to ZIM on the preview. The moment the export lands, search in another tab — no stall. Before wave 4 the export finished by re-scanning all 69 ZIMs under the global lock, same bug class as the Pi crash in #51.
+
+## zimi create — a folder or a page becomes a ZIM
+
+```
+mkdir -p /tmp/pack && printf '# Field Notes\n\nWater: boil 1 min.\n' > /tmp/pack/README.md
+cp ~/Documents/*.pdf /tmp/pack/ 2>/dev/null
+python3 -m zimi create /tmp/pack --title "Field Notes" --out /tmp/pack.zim
+ZIM_DIR=/tmp your-favorite-check: python3 -m zimi list
+```
+
+Expect: a real ZIM with your markdown rendered and PDFs inside, openable in any Kiwix reader. Then try a live page: `python3 -m zimi create https://example.com --out /tmp/page.zim`. Try it on a JS-heavy SPA and it refuses with a message naming zimit instead of packaging a loading spinner. `ZIMI_OFFLINE=1` refuses URL mode outright.
+
+## The + button — making a ZIM without the command line
+
+This one needs a server that can see the folder you want to package, so run it locally rather than on the preview (the preview's filesystem is the container's, and the only interesting folder in there is the ZIM library itself).
+
+```
+mkdir -p /tmp/pack && printf '# Field Notes\n\nWater: boil 1 min.\n' > /tmp/pack/README.md
+mkdir -p /tmp/mylib && cp /tmp/zimi-empty/*.zim /tmp/mylib/ 2>/dev/null
+cd ~/Repos/zimi && ZIM_DIR=/tmp/mylib ZIMI_DATA_DIR=/tmp/mydata python3 -m zimi serve --port 8899
+```
+
+Open http://localhost:8899. A **+** sits in the title bar, immediately left of the dice. Now try to make it disappear, because that is the part worth checking: search for something and press Enter, open an article, step into a source, open Manage, open the Almanac — it is gone in every one of those and back the moment you return home. It is also admin-only. On a password-protected instance it stays hidden until you sign in as the admin, and a signed-in named user never sees it at all — nor can they reach it around the back: `POST /manage/create` answers them 401, same as every other manage write. (One quirk that is not new: with exactly one ZIM installed Zimi auto-enters that source, so home never renders and you reach the + by clicking the Zimi logo first.)
+
+Click it. Five tiles, one line each — a folder on this server, one web page, a whole site, a video or playlist, a web archive to import. Click **Folder on this server** and the form opens directly underneath that tile: one path field, an optional title, and a collapsed **Advanced** line holding the content language. That is the entire interface until you ask for more. Click through the other four and count what is on show: site adds max-pages, video adds audio-only and a video cap, page and import add nothing — and each one's Advanced holds the rest of what its engine takes (site: depth, size budget, crawl delay, language, and a robots.txt override that warns you; video: a quality preset, a size budget, language; import: a filename override). While you are on the video tile, note the line saying who does the work: **Powered by yt-dlp**, and **Powered by warc2zim** on the import form, both linked out and both matching the footer's Powered by Kiwix.
+
+Type `/tmp/pack`, title it "Field Notes", click Create. Expect a running pane with the job's output streaming into it, then a card saying **Added to your library** with the title, the `.zim` filename under it, and an Open button. Click Open: you land inside the new ZIM immediately — it registered itself as it was written, so no restart and no cache refresh.
+
+Two refusals worth provoking. Type a path that does not exist and it says "not a folder on this server" before anything starts. Start a slow job (Whole site against any real URL, max pages 200), then in a second browser tab open the + and try to start another: "a ZIM is already being created" — one job at a time, because a Pi cannot crawl and serve at once. While the crawl runs, Cancel it; it stops at the next page boundary and says nothing was added to your library. Folder and page jobs honestly say they cannot be cancelled instead of showing a button that would lie.
+
+Finally, `ZIMI_OFFLINE=1` on the same command: the web page, whole site and video tiles go grey with "Offline mode is on — this needs an internet connection." Folder stays live, and so does Import if the warc2zim helper is already installed, because that is the truth — it only needs the network for its first install.
+
+## The Create page tells you what you are getting (round 2)
+
+Round 1 of the + button was, in Eric's words, a shot in the dark: you typed a path you could not see and a language code you had to know. Same local server as the section above; this is what changed.
+
+**The folder picker.** Folder mode now has a Browse button beside the path field. It lists **directories only** — never file names — one level at a time, and walking into one and pressing "Use this folder" fills the field and immediately says what is in there. Type a path by hand and it still works; the picker is a convenience, not a gate. It is primary-admin-only, same as folder mode itself.
+
+**The preview.** Give any mode a source and tab away. Before anything runs, a box appears under the field with what the server actually found: for a folder, the file count, the total size and which file becomes the main page; for a web page, the real title, where the address finally landed and how big it is; for a whole site, whether robots.txt allows the crawl; for a playlist, how many videos are in it. Nothing has been written at this point — probe it, then walk away, and your library is untouched.
+
+**The refusal you want to see early.** Point Web page at a JavaScript app rather than an article — `http://127.0.0.1:8893/spa.html` if you built the fixture above, or any single-page app — and the preview box turns red and says Zimi cannot capture it, with the engine's own sentence naming zimit as the fix. Round 1 told you that after the job ran.
+
+**Language stopped being a memory test.** Advanced → Language is a dropdown now, opening on Auto-detect, and the preview reports what it found: capture a French page and the box reads `fra (detected)` and the dropdown has already moved there. Two detections are at work and they do different jobs — the engine decides what the finished ZIM is stamped with, the preview is what you see before committing. Pick a language by hand and neither one overrules you.
+
+**Size budgets stopped being a syntax.** Advanced → Max size is a dropdown of real amounts (100 MB through 64 GB, plus the engine's own default), and each mode arrives with a sensible one already chosen: 500 MB for a site crawl, 4 GB for videos.
+
+**Six tiles, reordered.** Folder and Bookmarks come first because they always work — no network, no configuration — then the network modes by rising cost, then Import. **Bookmarks** is new: it shows how many pages you have saved and hands off to the folder-picking export selector that already lives in the bookmarks panel, rather than growing a second one here. With no bookmarks saved the button is disabled rather than failing when you press it.
+
+**Web page takes a list.** Paste several addresses, one per line, up to twenty, and they become one ZIM with a generated index and working links between the captured pages. The preview counts them and describes the first. A line that is not a URL is named — "not an http(s) URL: nope" — before anything runs, rather than failing on page eleven. Page mode also grew a live log and a working Cancel button in the process; it had neither before.
+
+## The release gate — one command, scoreboard out
+
+```
+./scripts/release-gate.sh
+```
+
+**Expect:** about twenty seconds and a scoreboard, one line per feature — search and read, cross-ZIM links, language switching, ZIM creation, bookmark export, library operations, config provenance and offline boot, authentication. Each line boots a real server on a port the OS picks against real fixture ZIMs and drives it over HTTP the way the browser does, so a feature that is wired up correctly everywhere and still dead end to end fails here instead of in your hands. It is not part of `pytest tests/` — it runs before a release, not on every save.
+
+## What has no demo yet
+
+Identity (design only, waiting on your OIDC/Cloudflare call), k8s manifest against a real cluster, and the two P0s from the Pi audit (delete-under-lock, uncapped media serve) which are queued but not yet fixed. If it's not in this guide, treat it as unproven.

@@ -18,7 +18,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          # PINNED, and it must stay pinned. This job builds a PyInstaller
+          # bundle that snap/snapcraft.yaml then `dump`s into a snap declaring
+          # `base: core22` — and a base IS a glibc. core22 is glibc 2.35, so a
+          # binary linked on anything newer resolves symbols the base cannot
+          # provide. `ubuntu-latest` floated to 24.04 (glibc 2.39) and the snap
+          # started dying on launch with
+          #   libm.so.6: version `GLIBC_2.38' not found
+          # for everyone who installed it (issue #55, reported against 1.8.2 on
+          # Ubuntu 26 — the user's own glibc is irrelevant, the base's is what
+          # the binary gets). Nothing in the build failed; the artifact was
+          # simply unrunnable.
+          #
+          # The AppImage from this same job wants an old host for its own
+          # reason: it links against the build machine's glibc and a newer one
+          # narrows the systems it runs on. Both artifacts want the oldest
+          # supported runner, so pinning serves them together.
+          #
+          # If this runner is retired, move it and `base:` in the SAME commit.
+          - os: ubuntu-22.04
             artifact: Zimi-Linux-amd64
             asset: Zimi-Linux-amd64.AppImage
           - os: macos-15-intel
@@ -73,12 +91,19 @@ jobs:
         run: pip install pytest
 
       # ── Pre-build tests ──────────────────────────────────────────────
-
-      - name: Run unit tests
-        run: python tests/test_unit.py
-
-      - name: Run integration tests
-        run: python -m pytest tests/test_server.py -v
+      #
+      # This is a RELEASE gate, so it runs the whole suite.
+      #
+      # It previously ran two things, and one of them was not a test run at
+      # all: `python tests/test_unit.py` imports the module and exits 0 without
+      # executing any of its 245 tests, because the file has no
+      # `unittest.main()`. That step passed every build it ever gated. The
+      # other named a single file out of ~80.
+      #
+      # Tests needing a browser or a sidecar are `pytest.mark.skipif` and skip
+      # cleanly on a runner that lacks them.
+      - name: Run the test suite
+        run: python -m pytest tests/ -q
 
       # ── Build ─────────────────────────────────────────────────────────
 

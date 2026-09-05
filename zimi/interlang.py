@@ -15,7 +15,7 @@ import re
 import sqlite3
 import threading
 import time
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import urlparse, parse_qs, quote, unquote
 
 import zimi.server as _srv
 from zimi.search import _loadavg_throttle
@@ -138,7 +138,6 @@ def _detect_query_language(query):
 # This avoids a 24-hour upfront scan of the 115GB English Wikipedia while
 # still providing authoritative Q-ID matching on first use.
 
-_QID_INDEX_DIR = os.path.join(_srv.ZIMI_DATA_DIR, "qids")
 _QID_INDEX_VERSION = "3"
 _QID_RE = re.compile(rb"wikidata\.org/wiki/(Q\d+)")
 # Authority control Q-ID pattern (article's own Q-ID, not cited references)
@@ -182,12 +181,19 @@ _qid_db_pool = {}  # {zim_name: sqlite3.Connection}
 _qid_db_pool_lock = threading.Lock()
 
 
+def _qid_index_dir():
+    """Where Q-ID indexes live. A function, not a constant: ZIMI_DATA_DIR can be
+    repointed after import (CLI flag, desktop settings), and a frozen value
+    would leave these indexes behind in the old data dir."""
+    return os.path.join(_srv.ZIMI_DATA_DIR, "qids")
+
+
 def _qid_index_path(zim_name):
-    return os.path.join(_QID_INDEX_DIR, f"{zim_name}.qid.db")
+    return os.path.join(_qid_index_dir(), f"{zim_name}.qid.db")
 
 
 def _qid_cache_path():
-    return os.path.join(_QID_INDEX_DIR, "_qid_cache.db")
+    return os.path.join(_qid_index_dir(), "_qid_cache.db")
 
 
 def _get_qid_db(zim_name):
@@ -215,7 +221,7 @@ def _build_qid_index(zim_name, zim_path):
     Opens a dedicated Archive handle (not from the pool) so this is safe
     to run without _zim_lock. Only used for small ZIMs (< 200K entries).
     """
-    os.makedirs(_QID_INDEX_DIR, exist_ok=True)
+    os.makedirs(_qid_index_dir(), exist_ok=True)
     db_path = _qid_index_path(zim_name)
     tmp_path = db_path + ".tmp"
     for suffix in ("", "-shm", "-wal"):
@@ -338,7 +344,7 @@ def _get_qid_cache():
     with _qid_cache_lock:
         if _qid_cache_conn is not None:
             return _qid_cache_conn
-        os.makedirs(_QID_INDEX_DIR, exist_ok=True)
+        os.makedirs(_qid_index_dir(), exist_ok=True)
         conn = sqlite3.connect(_qid_cache_path(), timeout=5, check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
@@ -824,7 +830,7 @@ def _build_all_qid_indexes_inner():
     Phase 2: For all ZIMs without an index, sample one article to detect Q-ID support.
     Sets has_qids on _zim_list_cache entries and persists to disk cache.
     """
-    os.makedirs(_QID_INDEX_DIR, exist_ok=True)
+    os.makedirs(_qid_index_dir(), exist_ok=True)
     zims = _srv.get_zim_files()
     zim_info = {
         z.get("name"): z.get("entries", 0) for z in (_srv._zim_list_cache or [])
@@ -863,8 +869,9 @@ def _build_all_qid_indexes_inner():
 
     # Clean stale indexes + .tmp orphans from interrupted builds (SIGKILL
     # mid-build leaves <name>.qid.db.tmp files that aren't tracked anymore).
-    for f in os.listdir(_QID_INDEX_DIR):
-        full = os.path.join(_QID_INDEX_DIR, f)
+    index_dir = _qid_index_dir()
+    for f in os.listdir(index_dir):
+        full = os.path.join(index_dir, f)
         if (
             f.endswith(".qid.db.tmp")
             or f.endswith(".qid.db.tmp-shm")
@@ -1007,9 +1014,24 @@ def _build_domain_zim_map():
                 bytes(archive.get_metadata("Source")).decode("utf-8", "replace").strip()
             )
         except Exception as e:
+            # Absent Source RAISES rather than returning empty — fall through
+            # to the main-entry-path discovery below instead of giving up.
             log.debug("Failed to read Source metadata for %s: %s", name, e)
-            continue
+            source = ""
         if not source:
+            # 2b. A web-mirroring ZIM (alive/zimit) has no Source metadata —
+            # warc2zim accepts --source and writes nothing — but its MAIN
+            # ENTRY PATH literally is the site's address ("www.apple.com/").
+            # Learning the domain from it is what lets absolute links inside
+            # such a ZIM resolve back into the archive instead of leaking to
+            # the live web.
+            try:
+                main = archive.main_entry.get_item().path
+            except Exception:
+                main = ""
+            host = (main or "").split("/", 1)[0]
+            if re.match(r"^[a-z0-9-]+(\.[a-z0-9-]+)+$", host or ""):
+                _add_domain(host, name)
             continue
         try:
             if "://" in source:
@@ -1037,6 +1059,109 @@ def _build_domain_zim_map():
 
     _domain_zim_map = dmap
     log.info("Domain map: %d domains → %d ZIMs", len(dmap), len(set(dmap.values())))
+
+
+# The URL shapes Zimi knows how to translate between the live web and a ZIM's
+# entry paths. Matched as substrings of the host, longest-standing behaviour
+# preserved: the first family whose marker appears in the host wins.
+_URL_FAMILIES = (
+    (
+        "wikimedia",
+        (
+            "wikipedia.org",
+            "wiktionary.org",
+            "wikivoyage.org",
+            "wikibooks.org",
+            "wikiversity.org",
+            "wikiquote.org",
+            "wikinews.org",
+        ),
+    ),
+    (
+        "stackexchange",
+        (
+            "stackexchange.com",
+            "stackoverflow.com",
+            "serverfault.com",
+            "superuser.com",
+            "askubuntu.com",
+        ),
+    ),
+    ("mediawiki", ("rationalwiki.org", "appropedia.org")),
+    ("explainxkcd", ("explainxkcd.com",)),
+    ("wikihow", ("wikihow.com",)),
+)
+
+# The TLDs _build_domain_zim_map GUESSES at for a ZIM it could not map from
+# evidence. A guess is a fine lookup key but never a canonical answer.
+_INFERRED_TLDS = (".com", ".org", ".io", ".net")
+
+# Sub-delimiters and ":@" are legal unencoded in a URL path, and Wikipedia
+# titles are full of them — "Chlorine_(disinfectant)" should stay readable.
+_URL_PATH_SAFE = "/:@!$&'()*+,;="
+
+
+def _url_family(host):
+    """Which URL family a host belongs to: the shape of its article paths."""
+    host = (host or "").lower()
+    for family, markers in _URL_FAMILIES:
+        if any(marker in host for marker in markers):
+            return family
+    return "general"
+
+
+def zim_domain(zim_name):
+    """The web domain an installed ZIM was scraped FROM, or None.
+
+    The inverse of the domain map, with two corrections. Only EVIDENCE-backed
+    domains count: ``_build_domain_zim_map``'s third discovery method guesses
+    ``<name>.com/.org/.io/.net`` for a ZIM it could not map from a filename or
+    Source metadata, which is harmless as a lookup key (an incoming URL still
+    has to match a real entry path) but must never be handed back as a ZIM's
+    home — that would invent a website. And of the variants the map registers
+    for one real domain, the BARE one is the answer: ``www.`` and mobile
+    (``en.m.``) forms exist only so inbound links resolve.
+    """
+    candidates = [d for d, n in _domain_zim_map.items() if n == zim_name]
+    if not candidates:
+        return None
+    if sum(1 for tld in _INFERRED_TLDS if zim_name + tld in candidates) >= 2:
+        return None  # the TLD-guessing branch produced these, not evidence
+    bare = [
+        d
+        for d in candidates
+        if not d.startswith("www.") and "m" not in d.split(".")[:-2]
+    ]
+    return sorted(bare or candidates, key=lambda d: (len(d), d))[0]
+
+
+def canonical_url(zim_name, entry_path, domain=None):
+    """The live-web URL an entry in an installed ZIM came from, or None.
+
+    The inverse of ``_resolve_url_to_zim``: same host families, same path
+    shapes, run backwards. ``None`` when the ZIM has no known domain — there is
+    no honest URL to give for a ZIM whose origin Zimi never learned.
+
+    The round trip is the point. A link rewritten to this URL is a genuine
+    external link everywhere (so ``zimcheck -U`` passes and any reader reaches
+    the live article), and inside Zimi ``_resolve_url_to_zim`` maps it straight
+    back into the installed source ZIM.
+    """
+    domain = domain or zim_domain(zim_name)
+    rest = (entry_path or "").lstrip("/")
+    if rest.startswith("A/"):
+        rest = rest[2:]
+    if not domain or not rest:
+        return None
+    family = _url_family(domain)
+    if family in ("wikimedia", "mediawiki"):
+        rest = "wiki/" + rest
+    elif family == "explainxkcd":
+        rest = "wiki/index.php/" + rest
+    elif family == "general" and rest.startswith(domain + "/"):
+        # Mirrors the map's host-prefixed candidate (apod.nasa.gov/apod/...).
+        rest = rest[len(domain) + 1 :]
+    return "https://" + domain + "/" + quote(rest, safe=_URL_PATH_SAFE)
 
 
 def _resolve_url_to_zim(url_str):
@@ -1070,15 +1195,8 @@ def _resolve_url_to_zim(url_str):
 
     # Build candidate paths based on domain type
     candidates = []
-    if (
-        "wikipedia.org" in host
-        or "wiktionary.org" in host
-        or "wikivoyage.org" in host
-        or "wikibooks.org" in host
-        or "wikiversity.org" in host
-        or "wikiquote.org" in host
-        or "wikinews.org" in host
-    ):
+    family = _url_family(host)
+    if family == "wikimedia":
         # Wikimedia: /wiki/Article_Name → A/Article_Name
         rest = re.sub(r"^wiki/", "", url_path)
         # Handle ?title=Article&oldid=... style URLs (MediaWiki index.php format)
@@ -1094,17 +1212,11 @@ def _resolve_url_to_zim(url_str):
         if ns_stripped != rest:
             candidates.append(ns_stripped)
             candidates.append("A/" + ns_stripped)
-    elif (
-        "stackexchange.com" in host
-        or "stackoverflow.com" in host
-        or "serverfault.com" in host
-        or "superuser.com" in host
-        or "askubuntu.com" in host
-    ):
+    elif family == "stackexchange":
         # Stack Exchange: /questions/12345/title → A/questions/12345/title
         candidates.append("A/" + url_path)
         candidates.append(url_path)
-    elif "rationalwiki.org" in host or "appropedia.org" in host:
+    elif family == "mediawiki":
         # MediaWiki sites: /wiki/Article → Article (no A/ prefix)
         rest = re.sub(r"^wiki/", "", url_path)
         # Handle ?title=Article&oldid=... style URLs
@@ -1115,12 +1227,12 @@ def _resolve_url_to_zim(url_str):
             rest = qs["title"][0]
         candidates.append(rest)
         candidates.append("A/" + rest)
-    elif "explainxkcd.com" in host:
+    elif family == "explainxkcd":
         # /wiki/index.php/1234 → 1234:_Title (try number prefix match)
         rest = re.sub(r"^wiki/index\.php/", "", url_path)
         candidates.append(rest)
         candidates.append("A/" + rest)
-    elif "wikihow.com" in host:
+    elif family == "wikihow":
         # WikiHow: /Article-Name → A/Article-Name
         candidates.append("A/" + url_path)
         candidates.append(url_path)

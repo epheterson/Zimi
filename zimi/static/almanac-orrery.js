@@ -156,6 +156,16 @@ function _initOrrery() {
   // Cache DOM refs for RAF loop (avoids getElementById per frame)
   _orreryCanvas = canvas;
   _orreryDpr = dpr;
+  // (Re)arm the travel-tick visibility gate on this render's canvas.
+  if (_orreryViewObs) _orreryViewObs.disconnect();
+  if (typeof IntersectionObserver === 'function') {
+    _orreryViewObs = new IntersectionObserver(function (entries) {
+      _orreryInView = entries[entries.length - 1].isIntersecting;
+    });
+    _orreryViewObs.observe(canvas);
+  } else {
+    _orreryInView = true;
+  }
   _orrerySpeedLabel = document.getElementById('orrery-speed-label');
   _orrerySliderEl = document.getElementById('orrery-slider');
   _orrerySelectedKey = null;
@@ -286,8 +296,9 @@ function _initOrrery() {
     if (hit && _orreryLinkFor(hit)) _showTip(hit); else _hideTip();
   });
 
-  // Initial date display
-  _orreryUpdateDate();
+  // Initial sync, not just the date: a re-init mid-travel (deep-link return,
+  // panel rebuild) must restore the controls' overridden state too.
+  _orrerySyncToFocus();
 }
 
 // Deterministic seeded PRNG (Park-Miller minimal-standard LCG) — every
@@ -318,7 +329,7 @@ function _drawOrrery(canvas, dpr) {
   var W = canvas.width;
   var cx = W / 2, cy = W / 2;
 
-  var simTime = Date.now() + _orreryTimeOffset;
+  var simTime = _orrerySimTime();
   var JD = _dateToJD(simTime);
   var T = _jdToJulianCentury(JD);
 
@@ -753,6 +764,67 @@ var _orreryTimeOffset = 0;       // milliseconds offset from real time
 
 var _orreryLastFrame = 0;        // last rAF timestamp
 
+// ── Time-machine coupling ──
+// The almanac's travel focus (_almFocus, almanac.js) outranks the orrery's
+// local clock: while the lever is thrown — or the almanac is parked on any
+// instant other than now — the planets must sit where the time machine says,
+// not where the orrery's own speed control had wandered. Returning to now
+// hands the local clock (offset + speed slider) back, untouched. (#48)
+function _orreryTravelFocus() {
+  return (typeof _almFocus !== 'undefined' && _almFocus) ? _almFocus : null;
+}
+
+// The one clock every orrery consumer reads (planet draw, rocket launches,
+// the date readout, the Voyager card). Local time = real now plus whatever
+// offset the speed slider has accumulated.
+function _orrerySimTime() {
+  var f = _orreryTravelFocus();
+  return f ? f.getTime() : Date.now() + _orreryTimeOffset;
+}
+
+// Travel-tick visibility gate. The orrery lives well below the fold, so most
+// scrubbing happens with it offscreen — measured in headless Chromium, gating
+// those paints is the difference between 48fps and 60fps on a fast throw
+// (_drawOrrery builds belt/ring gradients per frame). IntersectionObserver
+// costs nothing per frame: no layout reads, just a flag flipped on scroll.
+var _orreryInView = true;
+var _orreryViewObs = null;
+
+// Half-rate cap for travel repaints (~30Hz). _drawOrrery rebuilds belt/ring
+// gradients every paint, and at full frame rate that alone dragged a fast
+// throw from 60fps to ~33fps in headless profiling with the canvas on screen.
+// At 30Hz the planet sweep still reads as continuous motion.
+var _ORRERY_TRAVEL_TICK_MS = 28;
+
+// Canvas-tier hook for _almTravelLive: while the orrery's own rAF loop runs it
+// already repaints with the moving focus every frame (via _orrerySimTime), so
+// this only paints when the loop is parked (speed at 1×) and the canvas is
+// actually on screen — throttled via the shared travel throttle so the cadence
+// resets on settle like every other tier. _orrerySyncToFocus paints the exact
+// settled frame either way, so scrolling down after a throw never shows a
+// stale sky.
+function _orreryTravelTick() {
+  if (_almanacOrreryRAF || !_orreryCanvas || !_orreryInView) return;
+  _almTravelThrottled('orrery', _ORRERY_TRAVEL_TICK_MS, function () {
+    _drawOrrery(_orreryCanvas, _orreryDpr);
+  });
+}
+
+// Settle-time sync (called from _almRepaintFocus): reflect the travel verdict
+// once, exactly — date readout, control availability, and a fresh frame even
+// when the rAF loop is parked. The speed slider is disabled while the time
+// machine owns the clock: under an override it would move nothing, and a dead
+// control that looks alive is worse than one that says so.
+function _orrerySyncToFocus() {
+  var overridden = !!_orreryTravelFocus();
+  var slider = document.getElementById('orrery-slider');
+  if (slider) slider.disabled = overridden;
+  var tSlider = document.getElementById('orrery-transit-slider');
+  if (tSlider) tSlider.disabled = overridden;
+  _orreryUpdateDate();
+  if (!_almanacOrreryRAF && _orreryCanvas) _drawOrrery(_orreryCanvas, _orreryDpr);
+}
+
 // The orrery always shows the interstellar probes out past Neptune — the view
 // sits at full "deep space" so they're always there and always creeping outward
 // as the clock runs. (Kept as a factor, not a hard-coded scale, so the planet-
@@ -909,11 +981,14 @@ function _orreryUpdateMissions() {
 function _orreryUpdateDate() {
   var el = document.getElementById('orrery-date');
   if (!el) return;
-  var d = new Date(Date.now() + _orreryTimeOffset);
+  var d = new Date(_orrerySimTime());
   var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
   el.textContent = d.toLocaleDateString(lang, { year: 'numeric', month: 'short', day: 'numeric' });
+  // While the time machine owns the clock, its RETURN control is the honest
+  // way back — a local "Now" would fight the almanac's focus, so hide it.
   var nowBtn = document.getElementById('orrery-now');
-  if (nowBtn) nowBtn.style.display = Math.abs(_orreryTimeOffset) > MS_PER_DAY ? '' : 'none';
+  if (nowBtn) nowBtn.style.display =
+    (!_orreryTravelFocus() && Math.abs(_orreryTimeOffset) > MS_PER_DAY) ? '' : 'none';
 }
 
 function _orreryAnimate() {
@@ -925,8 +1000,14 @@ function _orreryAnimate() {
   var dt = now - _orreryLastFrame;
   _orreryLastFrame = now;
 
+  // Time machine override: the focus IS the clock, so the local offset stops
+  // accumulating and rockets hold their positions (suspend, never interpolate
+  // across a scrub jump). The loop keeps painting — a moving focus then shows
+  // up here every frame for free via _orrerySimTime.
+  var _travelHeld = !!_orreryTravelFocus();
+
   // Auto-transit: modulate speed based on active rocket's flight progress
-  if (_orreryAutoTransit) {
+  if (_orreryAutoTransit && !_travelHeld) {
     var autoRk = _orreryGetActiveRocket();
     if (autoRk && !autoRk.arrived) {
       _orrerySpeed = _transitEffectiveSpeed(autoRk);
@@ -936,10 +1017,11 @@ function _orreryAnimate() {
   }
 
   // Advance simulated time
-  _orreryTimeOffset += dt * _orrerySpeed;
+  if (!_travelHeld) _orreryTimeOffset += dt * _orrerySpeed;
 
   // Update all rocket missions
   var hasInFlight = false;
+  if (_travelHeld) dt = 0;   // freeze mission clocks with the sim clock
   for (var ri = 0; ri < _orreryRockets.length; ri++) {
     var rk = _orreryRockets[ri];
     rk.elapsed += dt * _orrerySpeed;
@@ -993,6 +1075,10 @@ function _orreryAnimate() {
 
 function _orreryLaunchRocket(targetName) {
   if (targetName === 'Earth') return;
+  // No launches while the time machine holds the clock: the mission timer
+  // would be frozen at the focus instant, leaving a rocket welded to Earth.
+  // The tap still selects the planet, so its article stays one tap away.
+  if (_orreryTravelFocus()) return;
 
   var earthA = _PLANETS['Earth'].a;
   var targetA = _PLANETS[targetName].a;
@@ -1000,7 +1086,7 @@ function _orreryLaunchRocket(targetName) {
   var transitMs = transitDays * MS_PER_DAY;
 
   // Compute launch and arrival positions
-  var simNow = Date.now() + _orreryTimeOffset;
+  var simNow = _orrerySimTime();
   var JD = _dateToJD(simNow);
   var T = _jdToJulianCentury(JD);
   var earthPos = _planetPosition('Earth', T);
@@ -1035,7 +1121,7 @@ function _orreryLaunchRocket(targetName) {
     arrivalGlow: 0,
     pathFade: 1.0,
     trail: [],
-    _launchRealTime: Date.now() + _orreryTimeOffset,
+    _launchRealTime: _orrerySimTime(),
     departSpeed: departSpeed,
     cruiseSpeed: cruiseSpeed
   });

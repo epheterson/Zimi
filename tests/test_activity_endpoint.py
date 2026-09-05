@@ -177,7 +177,7 @@ class ActivityEndpointTests(unittest.TestCase):
 
     def test_endpoint_does_no_disk_walking(self):
         """At 1067 ZIMs polled every 5s, the activity endpoint must not call
-        _get_title_index_stats (which walks _TITLE_INDEX_DIR and opens SQLite
+        _get_title_index_stats (which walks the title index dir and opens SQLite
         DBs for each entry). It must use the brief in-memory snapshot."""
         with (
             mock.patch.object(

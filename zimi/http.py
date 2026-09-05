@@ -19,10 +19,12 @@ import sys
 import threading
 import time
 import traceback
+from html import escape
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote, quote
 
 import zimi.server as _srv
+from zimi import sso as _sso
 from zimi import users as _users
 from zimi.manage import (
     _manage_auth_challenge,
@@ -31,6 +33,13 @@ from zimi.manage import (
 )
 
 log = logging.getLogger("zimi")
+
+# A client that hangs up mid-response surfaces as one of these when the
+# handler writes to the dead socket. That is the CLIENT's doing, not a server
+# error — under load (e.g. every UI poller timing out at once, #51) treating
+# it as an error printed an interleaved traceback storm plus bogus 500s that
+# read like a crash. Every dispatch backstop routes these to one debug line.
+_DISCONNECT_ERRS = (BrokenPipeError, ConnectionResetError)
 
 # ============================================================================
 # Rate Limiting
@@ -124,6 +133,17 @@ _rate_buckets_content = {}  # {ip: [timestamps]} — /w/ content
 _rate_buckets_login = {}  # {ip: [timestamps]} — POST /login
 _rate_lock = threading.Lock()
 
+# How long a browser may reuse a ZIM entry without asking.
+#
+# The trade is staleness against round trips, and both sides have burned us. An
+# immutable 24h cache once left a deleted capture's unstyled pages on a phone
+# for an afternoon; `no-cache` then made Back to a 400-file captured page
+# revalidate 52 assets and take eight seconds. A minute is long enough that
+# going back to what you were just reading is instant, and short enough that a
+# replaced archive corrects itself before anybody files a bug — the ETag
+# carries the ZIM file's size and mtime, so the correction is automatic.
+ZIM_CONTENT_MAX_AGE = 60
+
 # Verified Bearer credentials, keyed by digest so the PBKDF2 check runs once
 # per credential per TTL — not on every polled request.
 _authed_cache = {}  # {sha256(bearer): expiry_ts}
@@ -168,6 +188,16 @@ _POLL_PATHS = frozenset(
         "/manage/mirror",
         "/manage/health",
         "/manage/export-bookmarks",
+        # /metrics is the same shape of traffic from a different client: a
+        # Prometheus scraper polling on a fixed interval (15s is the stock
+        # default, and several replicas may scrape the same target). It is a
+        # cheap in-memory read, so it belongs on the generous content bucket
+        # rather than competing with search for the 60/min API budget. It must
+        # be rate-limited AT ALL, though: it is admin-gated, and that gate can
+        # run PBKDF2 on an attacker-supplied Bearer, so leaving it unlimited
+        # would hand out a CPU-exhaustion oracle that every /manage/ path
+        # already denies.
+        "/metrics",
     )
 )
 
@@ -277,37 +307,249 @@ _metrics = {
 }
 _metrics_lock = threading.Lock()
 
+# The endpoint keys in _metrics are a CLOSED SET of source literals — every
+# _record_metric call site passes a hardcoded string ("/search", "/read",
+# "/chunks", "/suggest", "/snippet", "/random"). That invariant is what makes
+# it safe to publish them as a Prometheus label: label cardinality is bounded
+# by the number of call sites, not by traffic.
+#
+# NEVER pass a request-derived value here (parsed.path, a ZIM name, a query, a
+# user agent). A crawler walking /w/<zim>/<anything> would mint a new time
+# series per URL, and an unbounded label is how you take down the scraper's
+# TSDB from the outside. The cap below is the belt to that suspenders: once we
+# hold this many distinct endpoints, new keys stop being created (existing ones
+# keep counting), the same bounding _SEARCH_QUERY_CAP applies to query stats.
+# It cannot trigger today; it exists so a future careless call site degrades
+# into a missing series instead of a cardinality explosion.
+_METRIC_ENDPOINT_CAP = 64
+
 
 def _record_metric(endpoint, latency, error=False):
     """Record a request metric."""
+    # When somebody last wanted something. Read by the shape worker, which will
+    # not touch the libzim lock while a person is using the library — see
+    # server._shape_backfill. Written without a lock on purpose: it is a float
+    # nobody coordinates on, and putting the metrics mutex on the fast path of
+    # every request to keep a heartbeat exact would cost more than it buys.
+    _srv.LAST_REQUEST_AT = time.time()
     with _metrics_lock:
-        _metrics["requests"][endpoint] = _metrics["requests"].get(endpoint, 0) + 1
-        _metrics["latency_sum"][endpoint] = (
-            _metrics["latency_sum"].get(endpoint, 0) + latency
-        )
+        known = endpoint in _metrics["requests"]
+        if known or len(_metrics["requests"]) < _METRIC_ENDPOINT_CAP:
+            _metrics["requests"][endpoint] = _metrics["requests"].get(endpoint, 0) + 1
+            _metrics["latency_sum"][endpoint] = (
+                _metrics["latency_sum"].get(endpoint, 0) + latency
+            )
         if error:
             _metrics["errors"] += 1
 
 
-def _get_metrics():
-    """Get current metrics snapshot."""
+def _metrics_snapshot():
+    """A consistent copy of the RAW counters, taken under one lock acquisition.
+
+    Both renderers (the JSON at /manage/stats and the Prometheus exposition at
+    /metrics) build from this, so they can never disagree about what a request
+    count was, and neither holds the lock while formatting strings. Raw means
+    raw: the latency SUM, not a derived average — Prometheus needs the sum and
+    the count separately, and the JSON does its own rounding.
+    """
     with _metrics_lock:
-        uptime = time.time() - _metrics["start_time"]
-        total_reqs = sum(_metrics["requests"].values())
-        endpoints = {}
-        for ep, count in _metrics["requests"].items():
-            avg_latency = _metrics["latency_sum"].get(ep, 0) / count if count > 0 else 0
-            endpoints[ep] = {
-                "count": count,
-                "avg_latency_ms": round(avg_latency * 1000, 1),
-            }
         return {
-            "uptime_seconds": round(uptime),
-            "total_requests": total_reqs,
+            "start_time": _metrics["start_time"],
+            "requests": dict(_metrics["requests"]),
+            "latency_sum": dict(_metrics["latency_sum"]),
             "errors": _metrics["errors"],
             "rate_limited": _metrics["rate_limited"],
-            "endpoints": endpoints,
         }
+
+
+def _get_metrics():
+    """Get current metrics snapshot.
+
+    This shape is consumed by the admin UI (via /manage/stats) and is frozen —
+    /metrics adds a second rendering of the same counters, it does not replace
+    this one.
+    """
+    snap = _metrics_snapshot()
+    uptime = time.time() - snap["start_time"]
+    total_reqs = sum(snap["requests"].values())
+    endpoints = {}
+    for ep, count in snap["requests"].items():
+        avg_latency = snap["latency_sum"].get(ep, 0) / count if count > 0 else 0
+        endpoints[ep] = {
+            "count": count,
+            "avg_latency_ms": round(avg_latency * 1000, 1),
+        }
+    return {
+        "uptime_seconds": round(uptime),
+        "total_requests": total_reqs,
+        "errors": snap["errors"],
+        "rate_limited": snap["rate_limited"],
+        "endpoints": endpoints,
+    }
+
+
+# ── Prometheus text exposition (GET /metrics) ────────────────────────────────
+#
+# Why a SEPARATE PATH rather than ?format=prometheus or Accept negotiation on
+# the existing JSON:
+#
+#   * There is no JSON caller at /metrics to keep compatible. The snapshot has
+#     never had a URL of its own — it is one field of the admin-only
+#     /manage/stats payload the SPA reads. So "add a format, don't replace one"
+#     is satisfied by construction: /manage/stats is not touched.
+#   * `metrics_path` in a Prometheus scrape_config already defaults to
+#     /metrics. A separate path means an operator writes a target and nothing
+#     else. A query parameter would work (`params: {format: [prometheus]}`) but
+#     it is a stanza every operator has to know about and every copy-pasted
+#     config has to carry — a contortion for zero gain.
+#   * Accept negotiation is the worst of the three: the scraper sends its own
+#     Accept header (an OpenMetrics/text preference list), so we would be
+#     negotiating against a header we do not control, and per-scrape request
+#     headers are a recent and unevenly available Prometheus feature.
+#
+# The exposition follows text format version 0.0.4: HELP and TYPE exactly once
+# per family, counters suffixed _total, latency published as a summary's _sum
+# and _count pair. We deliberately do NOT publish a precomputed average — an
+# average is not aggregatable across instances or over time, which is the whole
+# reason the format wants sum and count. The JSON keeps its avg_latency_ms
+# because the admin UI displays exactly one instance.
+#
+# Not a histogram: a histogram would need bucket boundaries chosen up front and
+# a per-bucket counter recorded at request time, i.e. a change to what
+# _record_metric stores. That is a real upgrade (it buys you quantiles and
+# proper SLO math) and a real cost (more series, and a choice of buckets that is
+# wrong for somebody). It is a deliberate follow-up, not a silent one; today's
+# data is a sum and a count and a summary is its exact, honest mapping.
+
+_PROM_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
+
+# Label-value escaping per the exposition format. Backslash MUST be replaced
+# first, or the backslashes introduced by the quote/newline escapes would
+# themselves be doubled on a later pass.
+_PROM_LABEL_ESCAPES = (("\\", "\\\\"), ('"', '\\"'), ("\n", "\\n"))
+
+
+def _prom_escape(value):
+    """Escape a label value: backslash, double quote, newline."""
+    text = str(value)
+    for raw, escaped in _PROM_LABEL_ESCAPES:
+        text = text.replace(raw, escaped)
+    return text
+
+
+def _prom_labels(labels):
+    """Render ``{k="v",...}`` for a label mapping, or ``""`` when empty."""
+    if not labels:
+        return ""
+    return "{" + ",".join(f'{k}="{_prom_escape(v)}"' for k, v in labels.items()) + "}"
+
+
+def _prom_value(value):
+    """Format a sample value.
+
+    Integers stay exact. Floats get fixed six-decimal notation rather than
+    repr(): exponent form ("1e-05") is legal in the spec but trips naive
+    parsers and is harder to eyeball, and microsecond resolution is more than
+    enough for a latency sum measured in seconds.
+    """
+    if isinstance(value, bool) or isinstance(value, int):
+        return str(int(value))
+    return f"{float(value):.6f}"
+
+
+def _prom_family(lines, name, help_text, metric_type, samples):
+    """Append one metric family to ``lines``: its HELP/TYPE header, then its
+    samples.
+
+    ``samples`` is an iterable of ``(name_suffix, labels, value)``. The suffix
+    exists for summaries, whose samples are ``<name>_sum`` and ``<name>_count``
+    while HELP and TYPE are declared once, on the base name. Emitting the
+    header exactly once per family is not cosmetic — a second HELP or TYPE for
+    a name already seen is a hard parse error at the scraper, which drops the
+    whole scrape, not just the offending line.
+    """
+    lines.append(f"# HELP {name} {help_text}")
+    lines.append(f"# TYPE {name} {metric_type}")
+    for suffix, labels, value in samples:
+        lines.append(f"{name}{suffix}{_prom_labels(labels)} {_prom_value(value)}")
+
+
+def _prometheus_metrics(zim_count=0, version=None):
+    """Render the current counters as Prometheus text exposition (a str ending
+    in a newline — the format requires a trailing newline).
+
+    Takes ``zim_count``/``version`` as arguments rather than reading server
+    state so the renderer stays a pure function of its inputs and can be tested
+    without a ZIM library on disk.
+    """
+    snap = _metrics_snapshot()
+    lines = []
+
+    # The conventional way to expose a version: a constant-1 gauge carrying the
+    # version as a label, so a dashboard can join on it and an upgrade shows up
+    # as a label change rather than an unhelpful numeric series.
+    _prom_family(
+        lines,
+        "zimi_build_info",
+        "Zimi build information; always 1, the version lives in the label.",
+        "gauge",
+        [("", {"version": version or _srv.ZIMI_VERSION}, 1)],
+    )
+    _prom_family(
+        lines,
+        "zimi_uptime_seconds",
+        "Seconds since this Zimi process started.",
+        "gauge",
+        [("", None, int(round(time.time() - snap["start_time"])))],
+    )
+    _prom_family(
+        lines,
+        "zimi_zim_files",
+        "ZIM files currently visible to this instance.",
+        "gauge",
+        [("", None, int(zim_count))],
+    )
+
+    # Sorted so the output is stable between scrapes. Prometheus does not care
+    # about ordering, but a stable byte layout makes diffs and tests readable.
+    endpoints = sorted(snap["requests"])
+    _prom_family(
+        lines,
+        "zimi_http_requests_total",
+        "Instrumented HTTP requests handled, by endpoint.",
+        "counter",
+        [("", {"endpoint": ep}, snap["requests"][ep]) for ep in endpoints],
+    )
+    _prom_family(
+        lines,
+        "zimi_http_request_duration_seconds",
+        "Instrumented HTTP request latency, by endpoint.",
+        "summary",
+        [
+            sample
+            for ep in endpoints
+            for sample in (
+                ("_sum", {"endpoint": ep}, float(snap["latency_sum"].get(ep, 0.0))),
+                ("_count", {"endpoint": ep}, snap["requests"][ep]),
+            )
+        ],
+    )
+    _prom_family(
+        lines,
+        "zimi_http_errors_total",
+        "Instrumented requests that ended in a handler error.",
+        "counter",
+        [("", None, snap["errors"])],
+    )
+    _prom_family(
+        lines,
+        "zimi_http_rate_limited_total",
+        "Requests rejected with 429 by the rate limiter.",
+        "counter",
+        [("", None, snap["rate_limited"])],
+    )
+
+    return "\n".join(lines) + "\n"
 
 
 # ============================================================================
@@ -385,36 +627,79 @@ def _get_usage_stats():
         }
 
 
-def _get_disk_usage():
-    """Get disk usage info for ZIM directory. Works on all platforms."""
+# The space figures cost a statvfs plus a getsize() over every .zim in the
+# library — cheap on an SSD, seconds on a spun-down NAS or a Pi's SD card, and
+# several UI panes poll /manage/stats. They are gigabyte-rounded, so a half
+# minute of staleness is imperceptible and they are memoized. The partials
+# list is NOT: it is a handful of stats, and it changes the moment a download
+# starts, so a stale one would visibly lie.
+_DISK_USAGE_TTL = 30
+# (zim_dir, computed_at, payload) — one tuple, swapped atomically. The
+# directory is part of the key because it can change under a running server
+# (the desktop folder picker), and pointing at another drive must not keep
+# reporting the old one's free space.
+_disk_usage_cache = (None, 0.0, None)
+
+
+def _reset_disk_usage_cache():
+    """Drop the memoized answer. For the moments the library provably changed
+    size (a deletion), where showing the old free-space figure looks broken."""
+    global _disk_usage_cache
+    _disk_usage_cache = (None, 0.0, None)
+
+
+def _get_disk_space():
+    """The memoized half of the disk report: free/used space and library size.
+
+    A racing caller may recompute rather than wait — duplicated work is
+    harmless here, a lock held across a slow filesystem walk is not."""
+    global _disk_usage_cache
+    zim_dir, computed_at, cached = _disk_usage_cache
+    if (
+        cached is not None
+        and zim_dir == _srv.ZIM_DIR
+        and (time.time() - computed_at) < _DISK_USAGE_TTL
+    ):
+        return cached
+    space = _read_disk_space()
+    _disk_usage_cache = (_srv.ZIM_DIR, time.time(), space)
+    return space
+
+
+def _read_disk_space():
     try:
         usage = shutil.disk_usage(_srv.ZIM_DIR)
         total = usage.total
-        free = usage.free
-        used = usage.used
         zim_size = sum(
             os.path.getsize(os.path.join(_srv.ZIM_DIR, f))
             for f in os.listdir(_srv.ZIM_DIR)
             if f.endswith(".zim")
         )
-        # Only surface genuinely orphaned partials for cleanup — an active,
-        # queued, or resumable-with-progress .zim.tmp is still wanted and must
-        # never be offered for deletion.
-        from zimi import library as _lib
-
-        _protected, tmp_files = _lib.classify_partials()
         return {
             "zim_dir": _srv.ZIM_DIR,
             "data_dir": _srv.ZIMI_DATA_DIR,
             "disk_total_gb": round(total / _srv._BYTES_PER_GB, 1),
-            "disk_free_gb": round(free / _srv._BYTES_PER_GB, 1),
-            "disk_used_gb": round(used / _srv._BYTES_PER_GB, 1),
-            "disk_pct": round(used / total * 100, 1) if total > 0 else 0,
+            "disk_free_gb": round(usage.free / _srv._BYTES_PER_GB, 1),
+            "disk_used_gb": round(usage.used / _srv._BYTES_PER_GB, 1),
+            "disk_pct": round(usage.used / total * 100, 1) if total > 0 else 0,
             "zim_size_gb": round(zim_size / _srv._BYTES_PER_GB, 1),
-            "tmp_files": tmp_files,
         }
     except (OSError, AttributeError):
         return {}
+
+
+def _get_disk_usage():
+    """Get disk usage info for ZIM directory. Works on all platforms."""
+    space = _get_disk_space()
+    if not space:
+        return {}
+    # Only surface genuinely orphaned partials for cleanup — an active,
+    # queued, or resumable-with-progress .zim.tmp is still wanted and must
+    # never be offered for deletion.
+    from zimi import library as _lib
+
+    _protected, tmp_files = _lib.classify_partials()
+    return dict(space, tmp_files=tmp_files)
 
 
 # ============================================================================
@@ -533,6 +818,567 @@ def _asset_version():
 
 
 # ============================================================================
+# About this ZIM — the file's own metadata, and the provenance it carries
+# ============================================================================
+#
+# What a ZIM says about itself lives in its metadata, and every reader of the
+# library is entitled to see it: this is description, not administration, so it
+# is gated exactly like /list (allowlist-filtered, anonymous-readable on an open
+# instance) rather than like /manage/* (admin-only). Two shapes on one path:
+#
+#   /zim-info?zim=<name>  everything one ZIM knows about itself — the openZIM
+#                         fields plus, when the file carries one, the parsed
+#                         X-Zimi-History provenance records.
+#   /zim-info?kinds=1     the compact per-ZIM provenance FACTS the library cards
+#                         turn into type badges, for every ZIM Zimi made.
+#
+# Nothing here invents a field. A ZIM published by somebody else simply has no
+# history and no kind, and both shapes say so by omission.
+
+# Illustrations are PNG bytes; every other metadata value is text.
+_ILLUSTRATION_METADATA_PREFIX = "Illustration"
+_TAG_SEPARATOR = ";"
+# The tag zimi.alive writes. A replay ZIM is a genuinely different artifact from
+# an article ZIM, and this is the one place the file says which it is.
+_ALIVE_TAG = "zimi:alive"
+_ALIVE_SCRAPER_MARKER = "warc2zim"
+# Metadata keys the panel gives a row (or the timeline) of their own. Everything
+# else a publisher wrote travels in `other` and is listed verbatim, so a ZIM's
+# own extra fields are shown rather than silently dropped — the panel's whole
+# job is to say what the file says.
+_PRESENTED_METADATA_KEYS = frozenset(
+    {
+        "Title",
+        "Description",
+        "LongDescription",
+        "Language",
+        "Date",
+        "Creator",
+        "Publisher",
+        "Source",
+        "Scraper",
+        "Flavour",
+        "Tags",
+        "X-Zimi-History",
+    }
+)
+
+# Provenance facts, memoized per process: reading them means opening the
+# archive, and a large library must pay that at most once. Keyed by ZIM name,
+# invalidated by the file identity the list cache already tracks.
+_zim_kind_memo = {}
+_zim_kind_lock = threading.Lock()
+
+
+def _zim_list_entry(name):
+    """The list entry for ``name``, or None. The metadata cache already holds
+    size/date/counts, so the panel never re-stats a 100 GB file.
+
+    Deliberately via ``list_zims()`` rather than the raw ``_zim_list_cache``:
+    that is the call /list itself makes, and it is where the per-request
+    allowlist is applied. Reading the cache directly would answer for a ZIM the
+    requester may not see — the panel becoming exactly the leak the listing
+    exists to prevent."""
+    for z in _srv.list_zims():
+        if z.get("name") == name:
+            return z
+    return None
+
+
+def _zim_file_sig(entry):
+    """The file identity a memoized provenance record is valid for."""
+    return (entry or {}).get("file", ""), (entry or {}).get("size_bytes", 0)
+
+
+def _read_zim_metadata(archive):
+    """Every TEXT metadata entry of an open archive, decoded and stripped.
+
+    Illustrations are skipped (they are PNG bytes, and the reader already serves
+    them at /w/<zim>/-/icon). An entry that will not decode is dropped rather
+    than failing the read — one bad field must not cost the panel every other."""
+    out = {}
+    for key in archive.metadata_keys:
+        if key.startswith(_ILLUSTRATION_METADATA_PREFIX):
+            continue
+        try:
+            out[key] = (
+                bytes(archive.get_metadata(key)).decode("utf-8", "replace").strip()
+            )
+        except Exception as e:
+            log.debug("metadata key %r unreadable: %s", key, e)
+    return out
+
+
+def _split_tags(value):
+    """A Tags value as a list. The spec's separator is ";"."""
+    return [t.strip() for t in str(value or "").split(_TAG_SEPARATOR) if t.strip()]
+
+
+def _creation_record(history):
+    """The record that says what a ZIM IS — its creation. Later records are
+    edits to it, and a truncated history may have lost the original, in which
+    case the earliest surviving record that names a real mode stands in for it.
+
+    The truncation marker is skipped in that fallback: its ``mode`` is the
+    bookkeeping value ``history``, not a capture mode, and letting it win would
+    badge an over-edited ZIM with the name of its own overflow record."""
+    from zimi import zimwriter as _zw
+
+    for record in history:
+        if record.get("op") == "created" and record.get("mode"):
+            return record
+    for record in history:
+        if record.get("mode") and record.get("op") != _zw.TRUNCATED_OP:
+            return record
+    return None
+
+
+# The tool a rendered capture names in its creation record. One key, because
+# one browser drives the engine; a capture that ran anything else is not this.
+_RENDERED_TOOL = "chromium"
+
+
+def _rendered_engine(created):
+    """ "rendered" when the creation record names the browser that made it, "" when
+    it names none. Evidence, not inference — the alternative is telling a
+    builtin capture apart from a browser one by the shape of its metadata,
+    which the two have in common."""
+    tools = (created or {}).get("tools") or {}
+    return "rendered" if tools.get(_RENDERED_TOOL) else ""
+
+
+def _zimi_kind(meta):
+    """The provenance FACTS a Zimi-made ZIM carries, or None for one Zimi did
+    not make. Facts only — the label and the sentence are the client's job, in
+    the reader's language.
+
+    ``engine`` is "alive" for a replay capture, "rendered" for a headless-
+    browser one, and "" for the builtin fetcher. Rendered is read from the
+    creation record's named tools rather than guessed: a browser capture stamps
+    the Chromium version it actually ran, and a ZIM that names no browser was
+    not made by one. ZIMs written before that stamp existed name no tools and
+    so read as "" — the old answer, which was always the honest one for a file
+    that carries no evidence either way.
+
+    The two warc2zim-written kinds are told apart by the tag, not the Scraper:
+    `zimi import` and the alive engine both run the same converter, and only the
+    alive engine writes ``zimi:alive``. Neither leaves an X-Zimi-History, so the
+    Scraper suffix Zimi appends is the whole signal that Zimi was involved —
+    matched with its trailing space so the unrelated "zimit" scraper cannot."""
+    from zimi import zimwriter as _zw
+
+    history = _zw.parse_history(meta.get(_zw.HISTORY_METADATA_KEY, ""))
+    tags = _split_tags(meta.get("Tags"))
+    scraper = meta.get("Scraper") or ""
+    alive = _ALIVE_TAG in tags
+    converted = _ALIVE_SCRAPER_MARKER in scraper.lower()
+    made_by_zimi = bool(history) or alive or "Zimi " in scraper
+    if not made_by_zimi:
+        return None
+    created = _creation_record(history)
+    kind = {
+        # A converted archive that is not a live capture is an import, and its
+        # mode is the only one no history record ever states.
+        "mode": (created or {}).get("mode", "")
+        or ("import" if converted and not alive else ""),
+        "engine": "alive" if alive else _rendered_engine(created),
+        # How many times this ZIM was touched AFTER it was made. Zero for a
+        # freshly created file; the tooltip says so only when it isn't.
+        "edits": max(0, len(history) - 1),
+    }
+    if created:
+        if created.get("ts"):
+            kind["ts"] = created["ts"]
+        if created.get("counts"):
+            kind["counts"] = created["counts"]
+        if created.get("blocked"):
+            kind["blocked"] = created["blocked"]
+    return kind
+
+
+def _zim_metadata_for(name):
+    """``(metadata, readable)`` for one installed, permitted ZIM.
+
+    ``readable`` is False when the archive will not open — a broken or empty
+    ZIM still deserves the panel its cached facts can fill, so this reports the
+    failure instead of raising it. Takes the libzim lock for the duration of the
+    read and no longer: a library-wide walk must never hold it across files."""
+    with _srv._zim_lock:
+        archive = _srv.get_archive(name)
+        if archive is None:
+            return {}, False
+        try:
+            return _read_zim_metadata(archive), True
+        except Exception as e:
+            log.debug("metadata unreadable for %s: %s", name, e)
+            return {}, False
+
+
+def _zim_kind_for(entry):
+    """Memoized provenance facts for one list entry. Reads the archive at most
+    once per file identity per process."""
+    name = entry.get("name")
+    sig = _zim_file_sig(entry)
+    with _zim_kind_lock:
+        memo = _zim_kind_memo.get(name)
+    if memo and memo[0] == sig:
+        return memo[1]
+    meta, readable = _zim_metadata_for(name)
+    kind = _zimi_kind(meta) if readable else None
+    with _zim_kind_lock:
+        _zim_kind_memo[name] = (sig, kind)
+    return kind
+
+
+def _zim_kinds():
+    """``{name: facts}`` for every permitted ZIM that Zimi made. ZIMs published
+    by somebody else are absent rather than present-and-empty — a card with no
+    entry here gets no badge, which is the whole point."""
+    t0 = time.time()
+    entries = _srv.list_zims()
+    kinds = {}
+    for entry in entries:
+        kind = _zim_kind_for(entry)
+        if kind:
+            kinds[entry["name"]] = kind
+    elapsed = time.time() - t0
+    # Only the cold pass costs anything (every later one is memoized), and on a
+    # large library that pass is worth a line in the log.
+    if elapsed > 1:
+        log.info("provenance scan: %d ZIMs in %.1fs", len(entries), elapsed)
+    return kinds
+
+
+def _zim_info(name):
+    """Everything one ZIM knows about itself, or None when it is not installed
+    (or not permitted, which reads the same way to a restricted user).
+
+    Every field comes from the file: the openZIM metadata as written, the size
+    and counts the library cache already holds, and the parsed X-Zimi-History
+    records when the file carries them."""
+    from zimi import zimwriter as _zw
+
+    entry = _zim_list_entry(name)
+    meta, readable = _zim_metadata_for(name)
+    if entry is None and not readable:
+        return None
+    entry = entry or {"name": name}
+    history = _zw.parse_history(meta.get(_zw.HISTORY_METADATA_KEY, ""))
+    # openZIM's Source is a URL and is written only when the source IS one;
+    # X-Zimi-Source is the uniform field (folder name, playlist, archive) that
+    # Zimi writes whenever it knows the answer. Prefer the standard field.
+    source = meta.get("Source") or meta.get(_zw.SOURCE_METADATA_KEY) or ""
+    info = {
+        "name": name,
+        "file": entry.get("file", ""),
+        # The card's title/description come from the same cache, so the panel
+        # agrees with the card it opened from even for an unreadable archive.
+        "title": meta.get("Title") or entry.get("title") or name,
+        "description": meta.get("Description") or entry.get("description", ""),
+        "long_description": meta.get("LongDescription", ""),
+        # The normalized code the rest of the UI speaks (the cache resolves
+        # ISO 639-3 and the filename fallback); the raw field rides along.
+        "language": entry.get("language", ""),
+        "language_raw": meta.get("Language", ""),
+        # Whether /w/<name>/-/icon will actually serve something, so the panel
+        # falls back to the same initial-letter tile the cards use instead of
+        # painting an empty frame.
+        "has_icon": bool(entry.get("has_icon")),
+        # What the ZIM is MADE of — the composition bar's data. A FACT ABOUT THE
+        # FILE, cached beside its size and entry count and computed in the same
+        # place, which is why this line is a dict lookup and not a measurement.
+        #
+        # It was a second endpoint that read the archive on demand, and that was
+        # the wrong shape: it put a disk read behind a panel whose whole job is
+        # to open instantly, and it did it without the libzim lock. Absent here
+        # simply means "not measured yet" and the panel draws no bar, which is
+        # the honest thing for a fact nobody has established.
+        "shape": entry.get("shape"),
+        "date": meta.get("Date") or entry.get("date", ""),
+        "size_bytes": entry.get("size_bytes", 0),
+        "size_gb": entry.get("size_gb", 0),
+        "entries": entry.get("entries", "?"),
+        "creator": meta.get("Creator", ""),
+        "publisher": meta.get("Publisher", ""),
+        "source": source,
+        "scraper": meta.get("Scraper", ""),
+        "flavour": meta.get("Flavour", ""),
+        "tags": _split_tags(meta.get("Tags")),
+        "history": history,
+        "kind": _zimi_kind(meta),
+        "readable": readable,
+    }
+    if entry.get("article_count") is not None:
+        info["article_count"] = entry["article_count"]
+    if entry.get("first_seen"):
+        info["first_seen"] = entry["first_seen"]
+    if entry.get("updated_at"):
+        info["updated_at"] = entry["updated_at"]
+    # Anything else the publisher wrote, so the panel can show a ZIM's own
+    # extra fields instead of silently dropping them.
+    other = {
+        k: v
+        for k, v in sorted(meta.items())
+        if k not in _PRESENTED_METADATA_KEYS and v
+        # X-Zimi-Source is the uniform twin of Source; listing it again when it
+        # says the same thing is noise, and listing it when it does NOT is the
+        # only way to see that the two disagree.
+        and not (k == _zw.SOURCE_METADATA_KEY and v == source)
+    }
+    if other:
+        info["other"] = other
+    return info
+
+
+# ============================================================================
+# Mirrored-URL ZIMs, and the page for one that stops short
+# ============================================================================
+#
+# Most ZIMs hold ARTICLES: the entry path is a title, and a path that is not
+# there is a broken link inside the file. A ZIM written by warc2zim holds a
+# WEBSITE: every entry path is the URL it was fetched from, minus the scheme.
+# In one of those, a missing entry means something completely different and
+# much less alarming — a page of a real site that this capture did not reach —
+# and it is answerable, because the path IS the address.
+#
+# Two ways to know a ZIM is one of those, because there are two ways to get
+# one. Zimi's own alive engine writes _ALIVE_TAG (see zimi.alive._tags);
+# anything else warc2zim produced — Kiwix's zimit ZIMs, a hand-run conversion —
+# is known by the replay shell it embeds, which is a file at a fixed path.
+_REPLAY_SHELL_ENTRY = "_zim_static/wombat.js"
+# {zim name: (cache generation, answer)}. The probe is two libzim reads and the
+# answer only changes when the library is rescanned, which is exactly what the
+# generation counter marks.
+_mirrors_urls_cache = {}
+_mirrors_urls_lock = threading.Lock()
+
+# The localStorage keys the interstitial reads, owned by app.js (SK.UI_LANG and
+# SK.APP_THEME). Named here rather than repeated in the template so the day one
+# of them moves there is one place to follow it to.
+_UI_LANG_KEY = "zimi_ui_lang"
+_APP_THEME_KEY = "zimi_app_theme"
+
+# English, and the fallback for every language: the page is rendered with these
+# server-side and re-translated in the browser, so a reader with no JavaScript
+# still gets a sentence rather than a key name. The keys are the SAME ones in
+# static/i18n/*.json — one string per idea, one place to change it.
+_UNCAPTURED_STRINGS = {
+    "uncaptured_title": "This page wasn't captured",
+    "uncaptured_body": (
+        "This archive holds part of a website, and this page is not one of the "
+        "parts that was recorded. Nothing is broken — it was simply never "
+        "collected."
+    ),
+    "uncaptured_url_label": "The page you asked for",
+    "uncaptured_open": "Open on the live web",
+    "uncaptured_back": "Go back",
+}
+
+# The page for a ZIM that is not installed (deleted, renamed, or never here).
+# A person lands on this from an old bookmark, a history entry, or a link
+# minted while the source still existed; raw JSON here reads as a server
+# fault on a phone screen. Same self-contained shell as the uncaptured page.
+_GONE_STRINGS = {
+    "zim_gone_title": "This source isn't in the library",
+    "zim_gone_body": (
+        "The source this page belonged to has been removed or renamed. "
+        "Old bookmarks and history entries keep pointing here — the rest "
+        "of the library is fine."
+    ),
+    "zim_gone_home": "Back to the library",
+}
+
+# Deliberately self-contained: no app.css, no app.js. This renders inside the
+# reader's iframe, where the SPA's stylesheet would style a document it was
+# never written for, and it has to be readable when the page it replaces was
+# opened directly. The colours are app.css's, restated rather than imported —
+# both themes, because the reader has both and this page picks up whichever one
+# the reader is in.
+#
+# The external link is `rel="noreferrer"` and `target="_blank"`: leaving the
+# archive is a decision the reader makes explicitly, in a new tab, and the site
+# it lands on learns nothing about where it came from.
+_UNCAPTURED_PAGE = """<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title} — {zim}</title>
+<style>
+  :root {{ color-scheme: dark;
+    --bg:#0a0a0b; --surface:#141416; --border:#27272b;
+    --text:#e8e8ed; --text2:#8a8a94; --amber:#f59e0b; --on-amber:#000; }}
+  html[data-theme="light"] {{ color-scheme: light;
+    --bg:#f2efe8; --surface:#fbfaf6; --border:#e4dfd4;
+    --text:#26241f; --text2:#6a675e; --amber:#9d4a08; --on-amber:#fff; }}
+  body {{ margin:0; min-height:100vh; display:flex; align-items:center;
+    justify-content:center; padding:32px 20px; box-sizing:border-box;
+    background:var(--bg); color:var(--text);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif; }}
+  main {{ max-width:36rem; width:100%; }}
+  h1 {{ font-size:1.4rem; font-weight:600; margin:0 0 12px; }}
+  p {{ margin:0 0 20px; color:var(--text2); }}
+  .url {{ display:block; padding:12px 14px; margin:0 0 20px;
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+    color:var(--text); word-break:break-all; }}
+  .label {{ display:block; font-size:11px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--text2); margin:0 0 6px; }}
+  .actions {{ display:flex; flex-wrap:wrap; gap:10px; }}
+  a.btn, button.btn {{ display:inline-block; padding:9px 16px; border-radius:999px;
+    font:inherit; font-size:.95rem; cursor:pointer; text-decoration:none;
+    border:1px solid var(--border); background:transparent; color:var(--text); }}
+  a.primary {{ background:var(--amber); border-color:var(--amber); color:var(--on-amber); }}
+  a.btn:focus-visible, button.btn:focus-visible {{ outline:2px solid var(--amber);
+    outline-offset:2px; }}
+</style></head>
+<body data-zimi-uncaptured="1"><main>
+  <h1 data-i18n="uncaptured_title">{title}</h1>
+  <p data-i18n="uncaptured_body">{body}</p>
+  <span class="label" data-i18n="uncaptured_url_label">{url_label}</span>
+  <!-- dir=ltr because a URL is left-to-right text even on a right-to-left
+       page: without it the trailing slash of https://host/path/ jumps to the
+       front and the address reads as something the site never served. -->
+  <code class="url" dir="ltr">{url_text}</code>
+  <div class="actions">
+    <!-- data-zimi-live marks this as a DELIBERATE exit for the parent app's
+         link interceptor: without it the stay-in-archive fallback catches
+         the click (this domain maps to the ZIM that just missed) and
+         navigates straight back to this page. -->
+    <a class="btn primary" id="live-link" href="{url_attr}" target="_blank"
+       rel="noreferrer noopener" data-zimi-live="1"
+       data-i18n="uncaptured_open">{open_label}</a>
+    <button class="btn" onclick="history.back()"
+       data-i18n="uncaptured_back">{back_label}</button>
+  </div>
+</main>
+<script>
+(function () {{
+  // Cross-ZIM rescue: this archive missed, but ANOTHER installed source may
+  // hold the page (a fuller capture of the same site, a Wikipedia article
+  // behind a wiki URL). Ask the resolver; when it answers, offer the
+  // in-library copy as the first choice and let the live web stay the exit.
+  try {{
+    var missed = document.getElementById('live-link').getAttribute('href');
+    fetch('/resolve?url=' + encodeURIComponent(missed))
+      .then(function (r) {{ return r.ok ? r.json() : null; }})
+      .then(function (data) {{
+        if (!data || !data.found) return;
+        var live = document.getElementById('live-link');
+        var a = document.createElement('a');
+        a.className = 'btn primary';
+        a.href = '/w/' + encodeURIComponent(data.zim) + '/' +
+          data.path.split('/').map(encodeURIComponent).join('/');
+        a.setAttribute('data-i18n', 'uncaptured_in_library');
+        a.textContent = 'Read it in this library';
+        live.classList.remove('primary');
+        live.parentNode.insertBefore(a, live);
+        try {{
+          fetch('/static/i18n/' + (localStorage.getItem('{lang_key}') || 'en') + '.json')
+            .then(function (r) {{ return r.ok ? r.json() : null; }})
+            .then(function (s) {{
+              if (s && s.uncaptured_in_library) a.textContent = s.uncaptured_in_library;
+            }});
+        }} catch (e) {{}}
+      }})
+      .catch(function () {{}});
+  }} catch (e) {{}}
+}})();
+(function () {{
+  // Theme and language both live in the reader's own localStorage, which this
+  // page shares because it is served from the same origin. Everything here is
+  // best-effort: a browser that refuses storage gets the dark English page it
+  // was already sent.
+  try {{
+    var theme = localStorage.getItem('{theme_key}');
+    if (theme === 'light' || theme === 'dark') {{
+      document.documentElement.setAttribute('data-theme', theme);
+    }} else if (window.matchMedia &&
+               window.matchMedia('(prefers-color-scheme: light)').matches) {{
+      document.documentElement.setAttribute('data-theme', 'light');
+    }}
+  }} catch (e) {{}}
+  var lang;
+  try {{ lang = localStorage.getItem('{lang_key}'); }} catch (e) {{}}
+  if (!lang || lang === 'en' || !/^[a-z]{{2}}$/.test(lang)) return;
+  fetch('/static/i18n/' + lang + '.json')
+    .then(function (r) {{ return r.ok ? r.json() : null; }})
+    .then(function (strings) {{
+      if (!strings) return;
+      document.documentElement.lang = lang;
+      // The same four languages app.js turns the interface around for.
+      if (['ar', 'he', 'fa', 'ur'].indexOf(lang) >= 0) {{
+        document.documentElement.setAttribute('dir', 'rtl');
+      }}
+      document.querySelectorAll('[data-i18n]').forEach(function (el) {{
+        var s = strings[el.dataset.i18n];
+        if (s) el.textContent = s;
+      }});
+    }})
+    .catch(function () {{}});
+}})();
+</script>
+</body></html>
+"""
+
+
+def _mirrors_web_urls(zim_name, archive):
+    """Whether this ZIM's entry paths are web URLs — a warc2zim capture.
+
+    Answered from the ZIM itself rather than from its filename or its
+    registration, because the property belongs to the file: a zimit ZIM
+    downloaded from Kiwix has it and was never near this machine's capture
+    engine. Cached per library generation; any failure to read is a No, which
+    leaves the caller on the path it took before this existed."""
+    generation = _srv._cache_generation
+    with _mirrors_urls_lock:
+        cached = _mirrors_urls_cache.get(zim_name)
+    if cached is not None and cached[0] == generation:
+        return cached[1]
+    answer = False
+    try:
+        tags = bytes(archive.get_metadata("Tags")).decode("utf-8", "replace")
+        answer = _ALIVE_TAG in _split_tags(tags)
+    except Exception:
+        pass  # a ZIM without Tags is most ZIMs
+    if not answer:
+        try:
+            answer = bool(archive.has_entry_by_path(_REPLAY_SHELL_ENTRY))
+        except Exception as e:
+            log.debug("could not probe %s for a replay shell: %s", zim_name, e)
+    with _mirrors_urls_lock:
+        _mirrors_urls_cache[zim_name] = (generation, answer)
+    return answer
+
+
+def _reconstruct_source_url(archive, entry_path):
+    """The live URL a site-relative ``entry_path`` points at, built from the
+    ZIM's Source origin — so the uncaptured-page interstitial can offer the real
+    address for a link a single-page/site capture did not reach. None when the
+    ZIM records no http(s) Source (then the interstitial falls back to its own
+    scheme guess)."""
+    try:
+        source = (
+            bytes(archive.get_metadata("Source")).decode("utf-8", "replace").strip()
+        )
+    except Exception:
+        return None
+    if not source.lower().startswith(("http://", "https://")):
+        return None
+    parts = urlparse(source)
+    if not parts.netloc:
+        return None
+    path = entry_path.lstrip("/")
+    # The entry path may ALREADY be a scheme-less URL — a capture's off-site
+    # links are stored host-first ("www.cnn.com/2026/..."), and prepending the
+    # origin to that produced https://www.cnn.com/www.cnn.com/2026/... (Eric:
+    # "links out ooops ... doubled"). A first segment that looks like a host is
+    # one: give it a scheme instead of a second origin.
+    head = path.split("/", 1)[0].lower()
+    if head == parts.netloc.lower() or ("." in head and " " not in head):
+        return f"{parts.scheme}://{path}"
+    return f"{parts.scheme}://{parts.netloc}/" + path
+
+
+# ============================================================================
 # HTTP Request Handler
 # ============================================================================
 
@@ -540,6 +1386,46 @@ def _asset_version():
 class ZimHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     timeout = 30  # seconds — prevents slow-client DoS on POST bodies
+
+    def handle_one_request(self):
+        """Backstop for disconnects escaping ANY write path (rate-limit
+        responses, HEAD, auth denials…). Without this they reach
+        socketserver.handle_error, which prints a full unlocked traceback per
+        request — many threads at once interleave into unreadable noise.
+
+        Also the single place the per-request ZIM allowlist is cleared. The
+        dispatchers set it early and then have several ways out that never
+        reach their own cleanup (the private-mode 401, the 429), so the clear
+        belongs at the one point every request — of every method — passes
+        through on its way out."""
+        try:
+            super().handle_one_request()
+        except _DISCONNECT_ERRS:
+            # The connection is unusable; make the keep-alive loop stop.
+            self.close_connection = True
+            log.debug("client disconnected: %s", getattr(self, "path", "?"))
+        finally:
+            _srv.clear_request_allow()
+
+    def _dispatch_error(self, e):
+        """Terminal `except` for the do_* dispatchers. Disconnects get one
+        debug line and NO 500 — the socket is dead and writing to it would
+        just raise again. Real failures keep the traceback + generic 500."""
+        if isinstance(e, _DISCONNECT_ERRS):
+            log.debug(
+                "client disconnected mid-response: %s %s", self.command, self.path
+            )
+            return
+        traceback.print_exc()
+        try:
+            return self._json(500, {"error": "Internal server error"})
+        except _DISCONNECT_ERRS:
+            # Client vanished between the failure and the error reply.
+            log.debug(
+                "client disconnected before error reply: %s %s",
+                self.command,
+                self.path,
+            )
 
     def do_HEAD(self):
         """Handle HEAD requests (Traefik health checks, uptime monitors)."""
@@ -613,6 +1499,25 @@ class ZimHandler(BaseHTTPRequestHandler):
             return "proxy-unknown"
         return direct_ip
 
+    def _sso_block(self):
+        """Enforce trusted-header SSO. Returns True (and sends a 401) when the
+        request carries an identity header from the proxy that does not verify;
+        False to proceed.
+
+        Runs before anything else resolves identity so a bad assertion can never
+        fall through to being treated as anonymous — which, on an ``open``
+        instance, would silently serve the library to a forged or expired token
+        instead of refusing it. A request with NO header takes the (None, None)
+        path and every existing auth route is untouched.
+        """
+        _, reason = _sso.resolve(self)
+        if not reason:
+            return False
+        # The reason stays in the log. A client learns only that it must
+        # authenticate — a verifier that explains itself is a tuning oracle.
+        self._json(401, {"error": "authentication required"})
+        return True
+
     def _private_access_block(self, parsed):
         """Enforce ``private`` public-access mode. Returns True (and sends a 401)
         when an ANONYMOUS request targets anything outside the login surface;
@@ -631,8 +1536,40 @@ class ZimHandler(BaseHTTPRequestHandler):
             return False
         if _users.resolve_request_user(self) or _users._request_is_admin(self):
             return False
+        # A person who typed or clicked a URL gets the sign-in screen. A
+        # program gets JSON.
+        #
+        # This gate answered every blocked request with
+        # {"error": "authentication required"} — right for a fetch, and for
+        # somebody opening https://…/w/www_cnn_com it is a page of raw JSON
+        # where a login form belongs. Zimi HAS a login screen and simply was
+        # not showing it.
+        #
+        # The SPA shell is the answer: it boots, asks /whoami, finds nobody
+        # signed in, and shows the form. The address is untouched, so once
+        # they are in, the same boot routes them to the article they were
+        # trying to open — the request is not lost, only deferred.
+        #
+        # Still 401. The status is what it always was; only the body now suits
+        # whoever asked. `Vary` because the same URL genuinely has two correct
+        # answers depending on how it was requested.
+        if self._wants_html():
+            self._html(401, SEARCH_UI_HTML, vary="Accept, Sec-Fetch-Dest")
+            return True
         self._json(401, {"error": "authentication required", "login_required": True})
         return True
+
+    def _wants_html(self):
+        """Whether this request came from a browser navigating, not a fetch.
+
+        `Sec-Fetch-Dest: document` is the browser saying so outright and is the
+        signal every current browser sends. Accept is the fallback for anything
+        older, and it has to prefer HTML over JSON rather than merely mention
+        it — an API client that accepts anything must not be handed a page."""
+        if (self.headers.get("Sec-Fetch-Dest") or "").lower() == "document":
+            return True
+        accept = (self.headers.get("Accept") or "").lower()
+        return "text/html" in accept and "application/json" not in accept
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -641,13 +1578,19 @@ class ZimHandler(BaseHTTPRequestHandler):
         def param(key, default=None):
             return params.get(key, [default])[0]
 
+        # Trusted-header SSO: verify (once per request — a keep-alive connection
+        # reuses this handler) before any identity is resolved from it.
+        _sso.clear_request_cache(self)
+        if self._sso_block():
+            return
+
         # Multi-user: restrict this request's ZIM view to the logged-in user's
         # allowlist (None = admin/anonymous/all-access). Set FIRST so a kept-alive
-        # connection re-sets it per request; cleared in the finally for hygiene.
+        # connection re-sets it per request; handle_one_request clears it on the
+        # way out, including the early returns below.
         _srv.set_request_allow(_users.request_allow(self))
 
-        # Private mode: block anonymous reads before any handler runs. The
-        # finally below still clears the request-allow context.
+        # Private mode: block anonymous reads before any handler runs.
         try:
             if self._private_access_block(parsed):
                 return
@@ -883,8 +1826,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # Closed-set Q-ID → installed-article batch resolution for the
                 # almanac. GET form: ?qids=Q1,Q2,...&langs=en,fr (POST carries
                 # the same shape as JSON, for large batches).
-                qids = [q for q in param("qids", "").split(",") if q]
-                langs = [x for x in param("langs", "").split(",") if x]
+                qids = [q for q in (param("qids") or "").split(",") if q]
+                langs = [x for x in (param("langs") or "").split(",") if x]
                 return _almanac_links_response(self, qids, langs)
 
             elif parsed.path == "/list":
@@ -912,6 +1855,19 @@ class ZimHandler(BaseHTTPRequestHandler):
                         },
                     )
                 return self._json(200, result)
+
+            elif parsed.path == "/zim-info":
+                # Sits beside /list, and is gated by exactly the same thing: a
+                # ZIM's own description belongs to whoever may see the ZIM.
+                if param("kinds"):
+                    return self._json(200, {"kinds": _zim_kinds()})
+                zim = param("zim")
+                if not zim:
+                    return self._json(400, {"error": "missing ?zim= parameter"})
+                info = _zim_info(zim)
+                if info is None:
+                    return self._json(404, {"error": f"ZIM '{zim}' not found"})
+                return self._json(200, info)
 
             elif parsed.path == "/whoami":
                 return self._handle_whoami()
@@ -1080,6 +2036,39 @@ class ZimHandler(BaseHTTPRequestHandler):
                         "zim_count": zim_count,
                         "pdf_support": _srv.HAS_PYMUPDF,
                     },
+                )
+
+            elif parsed.path == "/metrics":
+                # Gated by the SAME admin challenge as /manage/stats, which is
+                # where these counters have always been readable. Request
+                # volumes and endpoint mix are operational intelligence about a
+                # private library; nothing here becomes public. Concretely:
+                # passwordless + private client → allowed (unchanged legacy
+                # open-admin rule); passwordless + non-private client → 403
+                # public_locked; password set → Bearer (admin password or API
+                # token) or an admin session cookie.
+                #
+                # A scraper cannot carry a session cookie, so the API token is
+                # the supported path: Prometheus `authorization: {credentials:
+                # <token>}` sends exactly the Bearer header _primary_admin_
+                # authorized already accepts. No new credential type, no
+                # metrics-only bypass — one more way in is one more thing to
+                # get wrong.
+                from zimi import manage as _manage
+
+                challenge = _manage._manage_auth_challenge(self)
+                if challenge:
+                    return self._json(*challenge)
+                body = _prometheus_metrics(
+                    zim_count=len(_srv.get_zim_files()),
+                    version=_srv.ZIMI_VERSION,
+                )
+                # no-store: a cached scrape is a lying scrape.
+                return self._send(
+                    200,
+                    body.encode("utf-8"),
+                    _PROM_CONTENT_TYPE,
+                    cache="no-store",
                 )
 
             elif parsed.path == "/random":
@@ -1298,7 +2287,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # transport: another Zimi instance pulls a ZIM directly from
                 # us, no internet/Kiwix needed. Gated to private clients by
                 # default (see _serve_zim_file).
-                return self._serve_zim_file(unquote(parsed.path[4:]))
+                _dl_q = parse_qs(parsed.query or "")
+                return self._serve_zim_file(
+                    unquote(parsed.path[4:]),
+                    ticket=(_dl_q.get("t") or [""])[0],
+                )
 
             elif parsed.path.startswith("/w/"):
                 # /w/<zim_name>/<entry_path> — serve raw ZIM content
@@ -1350,21 +2343,23 @@ class ZimHandler(BaseHTTPRequestHandler):
                             "/chunks",
                             "/suggest",
                             "/list",
+                            "/zim-info",
                             "/catalog",
                             "/health",
+                            "/metrics",
                             "/w/",
                         ],
                     },
                 )
 
         except Exception as e:
-            traceback.print_exc()
-            return self._json(500, {"error": "Internal server error"})
-        finally:
-            _srv.clear_request_allow()
+            return self._dispatch_error(e)
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        _sso.clear_request_cache(self)
+        if self._sso_block():
+            return
         _srv.set_request_allow(_users.request_allow(self))
         try:
             if self._private_access_block(parsed):
@@ -1520,14 +2515,14 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._json(404, {"error": "not found"})
 
         except Exception as e:
-            traceback.print_exc()
-            return self._json(500, {"error": "Internal server error"})
-        finally:
-            _srv.clear_request_allow()
+            return self._dispatch_error(e)
 
     def do_DELETE(self):
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
+        _sso.clear_request_cache(self)
+        if self._sso_block():
+            return
         # Rate limit write endpoints
         retry_after = _check_rate_limit(
             self._client_ip(), limit=self._rate_limit_for_request()
@@ -1554,30 +2549,180 @@ class ZimHandler(BaseHTTPRequestHandler):
             else:
                 return self._json(404, {"error": "not found"})
         except Exception as e:
-            traceback.print_exc()
-            return self._json(500, {"error": "Internal server error"})
+            return self._dispatch_error(e)
 
     def _serve_zim_icon(self, zim_name, archive):
-        """Serve the ZIM's 48x48 illustration as a PNG."""
-        try:
-            icon_data = bytes(archive.get_metadata("Illustration_48x48@1"))
-        except Exception as e:
-            log.debug("No icon metadata for %s: %s", zim_name, e)
+        """Serve the ZIM's 48x48 illustration as a PNG.
+
+        A ZIM NAME is not a version. This used to tag the response
+        ``"icon-<name>"`` and mark it ``immutable`` for a week — a promise that
+        the bytes behind this URL can never change. They can: replacing a ZIM
+        with a newer build, or re-running a capture that writes the same
+        filename, puts different content at the same address. `immutable` tells
+        the browser not even to ASK, so the old icon (or a remembered miss)
+        stayed on screen for seven days, in that browser only. Eric made a ZIM
+        and its icon was missing in the window he made it from and present in a
+        private one — which is a cache report, not an icon report.
+
+        So the tag is the CONTENT's, and the response is revalidated. The
+        digest costs a hash of a couple of kilobytes on a cache miss; the
+        revalidation costs a 304 with no body. Neither is worth a week of
+        showing the wrong picture."""
+        # @1 is the scale factor, and @1 is what openZIM's spec makes mandatory
+        # — but the library cache sets has_icon for ANY `Illustration_48x48*`
+        # key, so a ZIM carrying only @2 (a 2x asset, which some scrapers write)
+        # was advertised as having an icon and then 404'd when asked for it. The
+        # UI drew an <img> that could never load. Ask for the mandatory one,
+        # then for whatever else the file actually has.
+        icon_data = None
+        for key in ("Illustration_48x48@1", "Illustration_48x48@2"):
+            try:
+                icon_data = bytes(archive.get_metadata(key))
+                if icon_data:
+                    break
+            except Exception:
+                continue
+        if not icon_data:
+            log.debug("no 48x48 illustration in %s", zim_name)
+            # And a MISS is never remembered. A ZIM that gains an illustration
+            # — rebuilt, replaced, re-captured — must not stay iconless in the
+            # one browser that happened to ask a moment too early.
             self.send_response(404)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", "0")
             self.end_headers()
             return
-        etag = f'"icon-{zim_name}"'
+        etag = '"icon-%s"' % hashlib.sha256(icon_data).hexdigest()[:16]
         if self.headers.get("If-None-Match") == etag:
             self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "public, max-age=0, must-revalidate")
             self.end_headers()
             return
         self.send_response(200)
         self.send_header("Content-Type", "image/png")
-        self.send_header("Cache-Control", "public, max-age=604800, immutable")
+        # max-age=0 + must-revalidate: reuse the cached bytes, but ask first.
+        # The ask is an ETag comparison the server answers with a 304, which is
+        # what makes this correct AND cheap — a page full of source tiles costs
+        # a handful of empty replies rather than a handful of images.
+        self.send_header("Cache-Control", "public, max-age=0, must-revalidate")
         self.send_header("ETag", etag)
         self.send_header("Content-Length", str(len(icon_data)))
         self.end_headers()
         self.wfile.write(icon_data)
+
+    def _wants_html_document(self):
+        """Whether THIS request is a page being opened, rather than a
+        subresource being fetched by one.
+
+        The distinction decides whether a miss may be answered with a human
+        page: an HTML body handed to a `<script src>` is a syntax error and one
+        handed to a `fetch()` is garbage, so only navigations get prose.
+
+        ``Sec-Fetch-Dest`` names a subresource reliably and a NAVIGATION only
+        sometimes, which is why Accept is consulted rather than ignored: when
+        Zimi's service worker forwards the reader iframe's navigation, Chrome
+        stamps the forwarded request ``Sec-Fetch-Dest: empty`` — measured, and
+        the whole reason this is not a one-line header check. Accept survives
+        that trip intact, and a navigation's Accept (``text/html,...``) is
+        nothing like a script's (``*/*``) or an image's."""
+        dest = (self.headers.get("Sec-Fetch-Dest") or "").lower()
+        if dest in ("document", "iframe", "frame", "embed", "object"):
+            return True
+        # Anything else NAMED is a subresource and settles it. "empty" is the
+        # one value that decides nothing: it covers both fetch()/XHR and a
+        # service-worker-forwarded page load.
+        if dest and dest != "empty":
+            return False
+        return "text/html" in (self.headers.get("Accept") or "").lower()
+
+    def _send_uncaptured_page(self, zim_name, entry_path, url=None):
+        """The page shown for a link into an entry this archive does not hold.
+
+        A missing entry on a page the reader tried to OPEN is not a broken link
+        — it is a page of a real website that this capture did not reach, and
+        the reader knows both facts: which URL it was, and that the live one
+        still exists. Saying that is strictly better than the JSON 404 a person
+        used to get, which read like a server fault and named a path nobody
+        recognised as an address (Eric hit exactly this clicking a link in a
+        captured CNN page).
+
+        ``url`` is the live address to offer. For a URL-mirror ZIM (warc2zim /
+        alive) the entry path IS the URL minus its scheme, so it is derived here
+        when the caller passes None. A single-page/site capture passes the URL
+        it reconstructed from the ZIM's Source origin.
+
+        Answered 200 because the interstitial IS the answer to the request —
+        the entry is genuinely absent, and a browser handed a 4xx renders its
+        own error chrome around the explanation or replaces it outright."""
+        # https is the assumption, and the honest one: a site served over plain
+        # http in 2026 redirects to https anyway, and the reader can see the
+        # address it is being offered before choosing to follow it.
+        if not url:
+            url = "https://" + entry_path.lstrip("/")
+
+        # Text is escaped as text and the one attribute as an attribute: an
+        # entry path came off the web, and it is being shown to somebody.
+        def _text(value):
+            return escape(value, quote=False)
+
+        body = _UNCAPTURED_PAGE.format(
+            url_attr=escape(url, quote=True),
+            url_text=_text(url),
+            zim=_text(zim_name),
+            lang_key=_UI_LANG_KEY,
+            theme_key=_APP_THEME_KEY,
+            title=_text(_UNCAPTURED_STRINGS["uncaptured_title"]),
+            body=_text(_UNCAPTURED_STRINGS["uncaptured_body"]),
+            url_label=_text(_UNCAPTURED_STRINGS["uncaptured_url_label"]),
+            open_label=_text(_UNCAPTURED_STRINGS["uncaptured_open"]),
+            back_label=_text(_UNCAPTURED_STRINGS["uncaptured_back"]),
+        )
+        return self._send(
+            200,
+            body.encode("utf-8"),
+            "text/html; charset=utf-8",
+            cache="no-store",
+        )
+
+    def _send_zim_gone_page(self, zim_name):
+        """The page for a document request against a ZIM that is not
+        installed. Reuses the uncaptured page's shell (same styles, same
+        localStorage theme/language pickup) with its own three strings and a
+        single action: back to the library, top-level so it escapes the
+        reader iframe."""
+
+        def _text(value):
+            return escape(value, quote=False)
+
+        body = _UNCAPTURED_PAGE.format(
+            url_attr="/",
+            url_text=_text(zim_name),
+            zim=_text(zim_name),
+            lang_key=_UI_LANG_KEY,
+            theme_key=_APP_THEME_KEY,
+            title=_text(_GONE_STRINGS["zim_gone_title"]),
+            body=_text(_GONE_STRINGS["zim_gone_body"]),
+            url_label=_text("Source"),
+            open_label=_text(_GONE_STRINGS["zim_gone_home"]),
+            back_label=_text(_UNCAPTURED_STRINGS["uncaptured_back"]),
+        ).replace('target="_blank"', 'target="_top"')
+        return self._send(
+            200,
+            body.encode("utf-8"),
+            "text/html; charset=utf-8",
+            cache="no-store",
+        )
+
+    def _send_entry_too_large(self, total_size):
+        """413 for an entry Zimi refuses to materialize. Used by every /w/
+        branch that can't be answered with a bounded window."""
+        self.send_response(413)
+        self.send_header("Content-Type", "text/plain")
+        msg = f"Entry too large ({total_size // (1024*1024)} MB). Max: {_srv.MAX_SERVE_BYTES // (1024*1024)} MB.".encode()
+        self.send_header("Content-Length", str(len(msg)))
+        self.end_headers()
+        self.wfile.write(msg)
 
     def _serve_zim_content(self, zim_name, entry_path, *, a11y=False):
         """Serve raw ZIM content with correct MIME type for the /w/ endpoint.
@@ -1595,6 +2740,12 @@ class ZimHandler(BaseHTTPRequestHandler):
         with _srv._zim_lock:
             archive = _srv.get_archive(zim_name)
             if archive is None:
+                # A page being OPENED gets prose — a deleted source's old
+                # bookmarks and history entries land here, and raw JSON on a
+                # phone reads as a server fault (Eric hit exactly that). A
+                # script or image fetching keeps the JSON it can parse.
+                if self._wants_html_document():
+                    return self._send_zim_gone_page(zim_name)
                 return self._json(404, {"error": f"ZIM '{zim_name}' not found"})
 
             # Serve ZIM icon from metadata
@@ -1632,6 +2783,28 @@ class ZimHandler(BaseHTTPRequestHandler):
                         self.send_header("Content-Length", "0")
                         self.end_headers()
                         return
+                # In a ZIM whose paths are web addresses, a miss is a page of a
+                # real site that this capture did not reach — and a person who
+                # clicked a link deserves to be told that in words, with the
+                # address they were asking for. Only for something being OPENED:
+                # a script or an image that misses still gets the JSON, because
+                # an HTML body is not a thing either of them can use.
+                if entry_path and self._wants_html_document():
+                    if _mirrors_web_urls(zim_name, archive):
+                        return self._send_uncaptured_page(zim_name, entry_path)
+                    # A single-page or site capture (not a URL-mirror): the
+                    # reader routes a same-site link into the ZIM, and when the
+                    # target page was never captured a person deserves prose, not
+                    # the raw JSON they used to get (Eric clicked a link in a
+                    # captured CNN page). Only when the ZIM records a web Source
+                    # can the site-relative path be turned back into the live
+                    # address — an ordinary article ZIM (Wikipedia, Gutenberg)
+                    # has no such mapping and keeps the JSON below.
+                    live = _reconstruct_source_url(archive, entry_path)
+                    if live:
+                        return self._send_uncaptured_page(
+                            zim_name, entry_path, url=live
+                        )
                 return self._json(
                     404, {"error": f"Entry '{entry_path}' not found in {zim_name}"}
                 )
@@ -1668,11 +2841,20 @@ class ZimHandler(BaseHTTPRequestHandler):
                 "application/epub",
             )
             epub_filename = None
+            # Bound before the branch: the EPUB path returns without touching
+            # them, and the response phase below reads them unconditionally.
+            is_streamable = False
+            etag = ""
+            range_start = range_end = None
             if is_epub:
                 mimetype = "application/epub+zip"
                 epub_filename = os.path.basename(entry_path)
                 if not epub_filename.endswith(".epub"):
                     epub_filename += ".epub"
+                # Size check BEFORE materializing: reading first and refusing
+                # afterwards is the OOM this cap exists to prevent.
+                if total_size > _srv.MAX_SERVE_BYTES:
+                    return self._send_entry_too_large(total_size)
                 content = bytes(item.content)
             else:
                 # ETag check BEFORE reading content — avoids materializing large
@@ -1681,10 +2863,22 @@ class ZimHandler(BaseHTTPRequestHandler):
                     mimetype.startswith(t)
                     for t in ("video/", "audio/", "application/ogg")
                 )
+                # The validator is the FILE's identity (size + mtime), not the
+                # registry generation: a generation bump on ANY library change
+                # used to invalidate every cached asset of every ZIM at once,
+                # while what actually matters is whether THIS archive is still
+                # the same file. Delete-then-recreate under a reused name (or
+                # an in-place update) changes the stat and every stale copy
+                # fails validation immediately.
+                try:
+                    st = os.stat(_srv.get_zim_files().get(zim_name, ""))
+                    file_id = f"{st.st_size}-{int(st.st_mtime)}"
+                except OSError:
+                    file_id = str(_srv._cache_generation)
                 etag = (
                     '"'
                     + hashlib.md5(
-                        f"{zim_name}/{entry_path}/{_srv._cache_generation}".encode()
+                        f"{zim_name}/{entry_path}/{file_id}".encode()
                     ).hexdigest()[:16]
                     + '"'
                 )
@@ -1693,26 +2887,38 @@ class ZimHandler(BaseHTTPRequestHandler):
                     self.end_headers()
                     return
 
-                range_start = range_end = None
                 if is_streamable:
+                    # Every served window is capped at MAX_SERVE_BYTES, whether
+                    # or not the client asked for one. A media entry fetched
+                    # without a Range — curl, <a download>, a chat app's link
+                    # fetcher — used to copy the WHOLE item into a bytes object
+                    # while holding _zim_lock; on a ZIM carrying a few hundred
+                    # MB of video that is an OOM kill on a small box, with
+                    # every other libzim request blocked behind it. Answering
+                    # the first window as 206 + Accept-Ranges costs a real
+                    # player nothing: it range-requests onward immediately.
                     range_header = self.headers.get("Range")
                     if range_header:
                         range_start, range_end = self._parse_range(
                             range_header, total_size
                         )
+                    window = min(_srv.STREAM_WINDOW_BYTES, _srv.MAX_SERVE_BYTES)
+                    if range_start is None or range_end is None:
+                        # No Range, or one too malformed to honour.
+                        range_start = range_end = None
+                        if total_size > window:
+                            range_start, range_end = 0, window - 1
+                    else:
+                        # A satisfiable range still gets clamped — bytes=0- is
+                        # a request for the whole item through the ranged door.
+                        range_end = min(range_end, range_start + window - 1)
                     if range_start is not None and range_end is not None:
                         content = bytes(item.content[range_start : range_end + 1])
                     else:
                         content = bytes(item.content)
                 else:
                     if total_size > _srv.MAX_SERVE_BYTES:
-                        self.send_response(413)
-                        self.send_header("Content-Type", "text/plain")
-                        msg = f"Entry too large ({total_size // (1024*1024)} MB). Max: {_srv.MAX_SERVE_BYTES // (1024*1024)} MB.".encode()
-                        self.send_header("Content-Length", str(len(msg)))
-                        self.end_headers()
-                        self.wfile.write(msg)
-                        return
+                        return self._send_entry_too_large(total_size)
                     content = bytes(item.content)
         # Lock released — safe to do slow I/O
 
@@ -1763,7 +2969,27 @@ class ZimHandler(BaseHTTPRequestHandler):
             self.send_response(200)
 
         self.send_header("Content-Type", mimetype)
-        self.send_header("Cache-Control", "public, max-age=86400, immutable")
+        # A short window, not "ask every time" and not "immutable".
+        #
+        # `no-cache` means "store, but ASK before serving", and it was right
+        # about the danger: ZIM content is only immutable while the archive is
+        # the same file. Auto-update replaces files in place and
+        # delete-then-recreate reuses names, and a 24h immutable cache once
+        # left a deleted capture's unstyled pages on Eric's phone for an
+        # afternoon.
+        #
+        # But asking is not free when a page IS four hundred files. Going Back
+        # to a captured CNN front page revalidated 52 assets — 52 round trips
+        # for bytes the browser was already holding — and took 8.4s against
+        # 1.1s for the same page opened fresh.
+        #
+        # ZIM_CONTENT_MAX_AGE is the whole of the risk the old comment guarded
+        # against, and it is a minute rather than a day. The ETag above already
+        # carries the archive's size and mtime, so a replaced or recreated ZIM
+        # invalidates every entry the moment the window closes — the exposure
+        # is "up to a minute of stale", which is shorter than the afternoon
+        # that caused this rule and shorter than a person's patience for Back.
+        self.send_header("Cache-Control", f"private, max-age={ZIM_CONTENT_MAX_AGE}")
         self.send_header("Vary", "Sec-Fetch-Dest")
         self.send_header("ETag", etag)
 
@@ -1800,6 +3026,19 @@ class ZimHandler(BaseHTTPRequestHandler):
             return False
         return _is_trusted_net(ip)
 
+    def _is_loopback_client(self):
+        """True ONLY when the peer is the machine running Zimi (127.0.0.0/8,
+        ::1). This is the bootstrap trust boundary — being ON the host is the
+        one proof of ownership that needs no secret. A LAN or tailnet peer is
+        'private' but not the host, and must present the setup key instead
+        (GHSA-5mw2-53vv-9pw6: private-tier was too wide a door for claiming
+        the first admin password)."""
+        try:
+            ip = ipaddress.ip_address(self._client_ip())
+        except ValueError:
+            return False
+        return ip.is_loopback
+
     def _peer_share_allowed(self):
         """True if this client may pull whole ZIMs from /dl/.
 
@@ -1811,6 +3050,21 @@ class ZimHandler(BaseHTTPRequestHandler):
         """
         from zimi import p2p_discovery as _disc
 
+        # An AUTHORIZED admin downloads any ZIM regardless of the sharing
+        # switches: it is their server and their file, and right-click →
+        # Download is the plainest way to carry a made-here ZIM elsewhere.
+        # Authorized under exactly the manage rules (None = authorized —
+        # the helper returns truthy REFUSALS): a credentialed admin from
+        # anywhere, or a private client on a passwordless instance, which
+        # is already this instance's whole trust boundary. A public client
+        # on a passwordless instance stays locked here like everywhere.
+        try:
+            from zimi import manage as _manage
+
+            if _manage._check_manage_auth(self) is None:
+                return True
+        except Exception:
+            pass
         if not _disc.is_share_enabled():
             return False
         if _disc.is_public_share_enabled():
@@ -1845,15 +3099,24 @@ class ZimHandler(BaseHTTPRequestHandler):
             return RATE_LIMIT_TRUSTED
         return RATE_LIMIT
 
-    def _serve_zim_file(self, name):
+    def _serve_zim_file(self, name, ticket=""):
         """Stream a whole local .zim file to a LAN peer with Range support.
 
         Resolves `name` strictly against the known ZIM set (by ZIM name or
         file basename) so a request can never escape ZIM_DIR — there is no
         user-controlled path here. Streams from disk in chunks; never loads
         a multi-GB file into memory.
-        """
-        if not self._peer_share_allowed():
+
+        ``ticket`` is a one-time token minted by POST /manage/dl-ticket: a
+        browser NAVIGATION carries no auth headers, so right-click →
+        Download hands the authorization over in the URL, once, for this
+        file, for two minutes. No ticket → the normal sharing gates."""
+        from zimi import manage as _manage
+
+        if (
+            not (ticket and _manage.spend_dl_ticket(ticket, name))
+            and not self._peer_share_allowed()
+        ):
             return self._json(403, {"error": "peer sharing not available"})
 
         zims = _srv.get_zim_files()  # {name: path}
@@ -1999,15 +3262,26 @@ class ZimHandler(BaseHTTPRequestHandler):
             body = APP_JS_REWRITTEN.encode("utf-8")
             content_type = "application/javascript"
         else:
+            # The cache is validated against the file's mtime: one stat per
+            # request instead of one read. Without it, an edited JS/CSS file
+            # stayed invisible until restart — harmless behind a deploy that
+            # restarts the container, but a debug-cycle trap for development
+            # and long-lived Playwright servers (same class as the
+            # read-once-at-import template gotcha in CLAUDE.md).
+            base = ZimHandler._static_base_dir()
+            if not base:
+                return self._json(404, {"error": "static directory not found"})
+            probe_path = os.path.normpath(os.path.join(base, rel_path))
+            try:
+                current_mtime = os.stat(probe_path).st_mtime
+            except OSError:
+                current_mtime = None
             with ZimHandler._static_cache_lock:
                 cached = ZimHandler._static_cache.get(rel_path)
-            if cached:
-                body, content_type = cached
+            if cached and current_mtime is not None and cached[2] == current_mtime:
+                body, content_type = cached[0], cached[1]
             else:
-                base = ZimHandler._static_base_dir()
-                if not base:
-                    return self._json(404, {"error": "static directory not found"})
-                file_path = os.path.normpath(os.path.join(base, rel_path))
+                file_path = probe_path
                 # Ensure resolved path is still inside the static dir
                 if not file_path.startswith(
                     os.path.normpath(base) + os.sep
@@ -2033,7 +3307,15 @@ class ZimHandler(BaseHTTPRequestHandler):
                     )
                 # Cache in memory (vendor files are immutable, ~8MB total for pdf.js)
                 with ZimHandler._static_cache_lock:
-                    ZimHandler._static_cache[rel_path] = (body, content_type)
+                    try:
+                        stored_mtime = os.stat(file_path).st_mtime
+                    except OSError:
+                        stored_mtime = None
+                    ZimHandler._static_cache[rel_path] = (
+                        body,
+                        content_type,
+                        stored_mtime,
+                    )
 
         # Compress text-based static files (viewer.mjs, viewer.css, etc.)
         ct_base = content_type.split(";")[0]
@@ -2257,6 +3539,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                     "token": token,
                     "restricted": isinstance(allowlist, list),
                     "allowlist": allowlist if isinstance(allowlist, list) else [],
+                    "can_create": _users.user_can_create(name),
                 },
                 self._session_cookie(token, remember),
             )
@@ -2307,6 +3590,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                     "role": "user",
                     "name": name,
                     "restricted": isinstance(allowlist, list),
+                    # Per-user create permission — the client's + button and
+                    # Create page consult this (the server gates regardless).
+                    "can_create": _users.user_can_create(name),
                 },
             )
 
@@ -2315,7 +3601,10 @@ class ZimHandler(BaseHTTPRequestHandler):
             and _manage._get_manage_password_hash()
             and _manage._check_manage_auth(self) is None
         ):
-            resp = {"role": "admin", "name": _manage._get_manage_user() or "admin"}
+            resp: dict[str, object] = {
+                "role": "admin",
+                "name": _manage._get_manage_user() or "admin",
+            }
             # Ensure the header-less transports (reader iframe, plain-fetch data
             # endpoints) carry admin identity. If this admin was recognised by the
             # password Bearer but has no live admin session cookie yet — first boot

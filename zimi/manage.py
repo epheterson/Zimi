@@ -6,11 +6,17 @@ history, stats, and admin authentication. Called from ZimHandler in http.py.
 
 import hashlib
 import hmac
+import json
 import logging
 import os
 import re
+import sys
+import secrets
 import threading
 import time
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
 
 import zimi.server as _srv
 
@@ -46,9 +52,34 @@ def _verify_legacy(candidate, stored):
 
 def _upgrade_legacy_hash(candidate):
     """Re-hash a verified password from v1.5 format to PBKDF2. Called after
-    successful legacy verification to transparently migrate the password file."""
-    _set_manage_password(candidate)
-    log.info("Migrated password from v1.5 SHA-256 to PBKDF2")
+    successful legacy verification to transparently migrate the password file.
+
+    Best-effort: on read-only media the write fails soft and the legacy hash
+    simply keeps verifying on every login — migration retries next time."""
+    if _set_manage_password(candidate):
+        log.info("Migrated password from v1.5 SHA-256 to PBKDF2")
+
+
+def _atomic_write_text(path, content):
+    """Write a small credential file via tmp + os.replace. True on success.
+
+    Same error discipline as server._atomic_write_json: never raises. These
+    were the last two write paths that threw a traceback on read-only media —
+    the HTTP callers turn a False into a generic 500 JSON, and the real
+    OSError stays in the server log (repo rule: no str(e) in responses)."""
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp, path)
+        return True
+    except OSError as e:
+        log.warning("Cannot write %s: %s", path, e)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return False
 
 
 _env_pw_hash_cache = None  # cached hash for ZIMI_MANAGE_PASSWORD env var
@@ -116,9 +147,12 @@ def _set_manage_password(pw, username=None):
 
     username semantics: None preserves whatever username the file already had
     (so a plain password change never wipes it); '' clears it; a non-empty
-    string sets it. Clearing the password (pw falsy) clears username too."""
+    string sets it. Clearing the password (pw falsy) clears username too.
+
+    Returns True on success, False when the file cannot be written (read-only
+    media) — in which case nothing below (session drop, log) happens either,
+    because the old password is still the one in force."""
     pf = _password_file()
-    tmp = pf + ".tmp"
     if not pw:
         content = ""  # cleared — no hash, no username
     else:
@@ -127,9 +161,8 @@ def _set_manage_password(pw, username=None):
         content = _hash_pw(pw)
         if username and username.strip():
             content += "\n" + username.strip()
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(content)
-    os.replace(tmp, pf)
+    if not _atomic_write_text(pf, content):
+        return False
     # A password rotation must revoke old admin session cookies immediately (the
     # pre-cookie model, where the Bearer WAS the password, did so implicitly). The
     # rotating admin's own Bearer still authenticates and /whoami re-mints a fresh
@@ -141,6 +174,72 @@ def _set_manage_password(pw, username=None):
     except Exception:
         pass
     log.info("Manage password %s", "set" if pw else "cleared")
+    return True
+
+
+# ── first-run setup key (GHSA-5mw2-53vv-9pw6) ───────────────────────────────
+#
+# Bootstrap trust used to be "any private-tier client sets the first admin
+# password". On a LAN, a Docker bridge, or a tailnet that is too many hands:
+# an adjacent device could race the owner to claim admin. The fix splits the
+# bootstrap door in two — the HOST itself (loopback) needs no secret, and any
+# REMOTE client must present this setup key, which the server generates on
+# first start and prints to its own log. No third door: LAN and tailnet peers
+# without the key get the same locked response a public client does.
+def _setup_key_file():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "setup-key")
+
+
+def _read_setup_key():
+    try:
+        with open(_setup_key_file(), encoding="utf-8") as f:
+            return f.readline().strip()
+    except (FileNotFoundError, OSError):
+        return ""
+
+
+def ensure_setup_key():
+    """Guarantee a setup key exists while the instance is passwordless, and
+    return it. A no-op (returns '') once a password is set — the key's whole
+    life is the bootstrap window. Idempotent: the same key persists across
+    restarts until it is spent, so a printed code stays valid."""
+    if _get_manage_password_hash():
+        return ""
+    existing = _read_setup_key()
+    if existing:
+        return existing
+    key = "-".join(
+        secrets.token_hex(2).upper() for _ in range(3)
+    )  # e.g. 7Q2K-9F4M-XR8T shape, from a real CSPRNG
+    # 0600, best-effort: a key only the server and root can read.
+    _atomic_write_text(_setup_key_file(), key + "\n")
+    try:
+        os.chmod(_setup_key_file(), 0o600)
+    except OSError:
+        pass
+    return key
+
+
+def _clear_setup_key():
+    try:
+        os.remove(_setup_key_file())
+    except (FileNotFoundError, OSError):
+        pass
+
+
+def _bootstrap_key_ok(handler):
+    """True when a remote bootstrap request carries the valid setup key, in
+    the Authorization: Bearer header or an X-Zimi-Setup-Key header. Constant-
+    time compared. Absent key file (already spent) → nothing matches."""
+    want = _read_setup_key()
+    if not want:
+        return False
+    got = (handler.headers.get("X-Zimi-Setup-Key") or "").strip()
+    if not got:
+        auth = handler.headers.get("Authorization") or ""
+        if auth.lower().startswith("bearer "):
+            got = auth[7:].strip()
+    return bool(got) and hmac.compare_digest(got, want)
 
 
 def _api_token_file():
@@ -161,15 +260,16 @@ def _get_api_token():
 
 
 def _generate_api_token():
-    """Generate a new random API token, save to disk, return it. Uses atomic write."""
+    """Generate a new random API token, save to disk, return it.
+
+    Returns None when the token cannot be persisted (read-only media): a
+    token handed out but not on disk would stop authenticating at the next
+    restart, which is worse than a clean refusal now."""
     import secrets
 
     token = secrets.token_urlsafe(32)
-    tf = _api_token_file()
-    tmp = tf + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(token)
-    os.replace(tmp, tf)
+    if not _atomic_write_text(_api_token_file(), token):
+        return None
     log.info("API token generated")
     return token
 
@@ -312,11 +412,22 @@ def _check_manage_auth(handler):
     """
     stored_pw = _get_manage_password_hash()
     if not stored_pw:
-        # Passwordless is fine on a home network, but a passwordless
-        # instance exposed to the internet was letting anyone on Earth
-        # manage the library. LAN/loopback clients stay open; public
-        # clients must set a password first (from the LAN).
-        if handler._is_private_client():
+        # Bootstrap window (GHSA-5mw2-53vv-9pw6). Being ON the host is the one
+        # ownership proof that needs no secret; every remote client — LAN,
+        # Docker bridge, tailnet alike — must present the setup key the server
+        # printed to its log. Private-tier is no longer a free pass: it was
+        # wide enough for an adjacent device to race the owner to the first
+        # password. No password yet means no admin yet, so this same gate
+        # guards ALL of /manage, not just set-password.
+        # getattr fallback is for test doubles only: the real ZimHandler
+        # always carries _is_loopback_client, so production always takes the
+        # strict loopback path — and test_bootstrap_takeover pins that, so a
+        # refactor that lost the method would fail loudly rather than silently
+        # widen the door back to _is_private_client.
+        is_local = getattr(handler, "_is_loopback_client", handler._is_private_client)
+        if is_local():
+            return None
+        if _bootstrap_key_ok(handler):
             return None
         return PUBLIC_LOCKED
 
@@ -342,8 +453,506 @@ def _manage_auth_challenge(handler):
     if result is None:
         return None
     if result == PUBLIC_LOCKED:
+        # Passwordless and off-host. A PRIVATE-tier client — a LAN or tailnet
+        # peer who could plausibly read the server log — is told a setup key
+        # exists so the SPA prompts for it. A genuine WAN visitor gets the
+        # opaque lock: no hint a key exists, nothing to brute-force. Being on
+        # the same trust network is the price of even seeing the key prompt.
+        if not _get_manage_password_hash() and handler._is_private_client():
+            return (
+                403,
+                {
+                    "error": "needs_setup_key",
+                    "needs_password": False,
+                    "needs_setup_key": True,
+                },
+            )
         return (403, {"error": "public_locked", "needs_password": False})
     return (401, {"error": "unauthorized", "needs_password": True})
+
+
+def _creator_authorized(handler):
+    """True if the request may drive ZIM creation: any authorized admin
+    (primary or secondary, including the passwordless-private legacy admin),
+    or a signed-in named user whose account carries ``can_create``."""
+    if _check_manage_auth(handler) is None:
+        return True
+    from zimi import users as _users
+
+    name = _users.resolve_request_user(handler)
+    return bool(name) and _users.user_can_create(name)
+
+
+def _creator_denial(handler):
+    """The ``(status, body)`` refusing a create-surface request, or ``None``
+    when authorized (see ``_creator_authorized``).
+
+    A signed-in user WITHOUT the permission gets a plain 403 — they are
+    authenticated, so the admin password prompt (``needs_password``) would be
+    the wrong door to point at. Everyone else gets the standard manage
+    challenge: 401 for anonymous/wrong credentials, ``public_locked`` for the
+    passwordless-public case.
+    """
+    if _creator_authorized(handler):
+        return None
+    from zimi import users as _users
+
+    if _users.resolve_request_user(handler):
+        return (403, {"error": "creation is not enabled for this account"})
+    return _manage_auth_challenge(handler)
+
+
+# ============================================================================
+# App update check — is a newer ZIMI APPLICATION release out?
+#
+# Deliberately distinct from the ZIM-content "Auto-update" feature
+# (library.py / /manage/auto-update), which refreshes installed ZIM files.
+# Keep every name here prefixed "app_update" so the two can never be
+# conflated in code, endpoints, or UI strings.
+# ============================================================================
+
+_APP_UPDATE_URL = "https://api.github.com/repos/epheterson/Zimi/releases/latest"
+# The "beta" channel needs the full list: GitHub's /releases/latest endpoint
+# deliberately skips pre-releases, so a beta is only reachable by listing.
+# Newest-first, one page is far more history than a version check needs.
+_APP_UPDATE_LIST_URL = (
+    "https://api.github.com/repos/epheterson/Zimi/releases?per_page=20"
+)
+_APP_RELEASES_PAGE = "https://github.com/epheterson/Zimi/releases"
+# Passive reads (opening the Manage server pane) reuse the cached answer for
+# a day; a failed check backs off only an hour so one DNS hiccup doesn't
+# blind the row for 24h. "Check now" bypasses both but keeps a short flood
+# guard — GitHub's anonymous API quota is 60 req/h and a mashed button must
+# not eat it. There is NO boot-time or background caller by design: the only
+# trigger is an admin actually looking at (or poking) the Manage row.
+_APP_UPDATE_TTL = 24 * 3600
+_APP_UPDATE_ERROR_TTL = 3600
+_APP_UPDATE_FORCE_GUARD = 60
+_app_update_lock = threading.Lock()  # single-flight: concurrent admins share one fetch
+
+# Update channels. "latest" (the default, and what every install had before
+# channels existed) only ever sees finished releases, the day they ship;
+# "beta" takes whatever is newest — a pre-release or a final, whichever is
+# higher-versioned. Deliberately NOT called "stable": that word promises a
+# validation program this project does not run, and the two channels ship the
+# same code with the same testing, only at different times.
+APP_UPDATE_CHANNELS = ("latest", "beta")
+APP_UPDATE_CHANNEL_DEFAULT = "latest"
+APP_UPDATE_CHANNEL_ENV = "ZIMI_UPDATE_CHANNEL"
+# Names people reach for that mean one of the two real channels. Accepting
+# them beats rejecting a deploy because someone wrote the obvious word —
+# "stable" most of all, since it is the word everyone types for a default
+# channel and the one an earlier build of this feature wrote to disk.
+_APP_UPDATE_CHANNEL_ALIASES = {
+    "stable": "latest",
+    "stable-only": "latest",
+    "release": "latest",
+    "releases": "latest",
+    "final": "latest",
+    "betas": "beta",
+    "pre": "beta",
+    "prerelease": "beta",
+    "pre-release": "beta",
+    "edge": "beta",
+    "newest": "beta",
+}
+
+# Update delay: hold a release back until it has been public for N days, so a
+# fleet can let other people find the sharp edges first. 0 (the default, and
+# every pre-1.9 install's behavior) offers a release the moment it exists.
+# The choices the UI offers; any integer in range is still accepted over the
+# API and the env var, because a fleet policy of "11 days" is nobody's bug.
+APP_UPDATE_DELAY_ENV = "ZIMI_UPDATE_DELAY_DAYS"
+APP_UPDATE_DELAY_DEFAULT = 0
+APP_UPDATE_DELAY_CHOICES = (0, 1, 3, 7, 14, 30)
+APP_UPDATE_DELAY_MAX = 365  # a year of deferral is already an eternity
+
+# Ordering for pre-release suffixes within one numeric version. Unknown words
+# land above rc so a novel stream ("1.9.0-preview2") still moves forward, and
+# ties break on the word itself for determinism.
+_PRERELEASE_STAGES = {"alpha": 0, "a": 0, "beta": 1, "b": 1, "rc": 2, "c": 2}
+_PRERELEASE_UNKNOWN_STAGE = 3
+_FINAL_STAGE = 9  # a final release outranks every pre-release of its version
+
+
+def _app_update_cache_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "app_update.json")
+
+
+def _app_update_prefs_path():
+    """Both app-update preferences (channel + delay) share one small file. The
+    name is the one the channel-only build wrote, so an existing preference
+    survives the upgrade untouched."""
+    return os.path.join(_srv.ZIMI_DATA_DIR, "app_update_channel.json")
+
+
+def _read_app_update_prefs():
+    try:
+        with open(_app_update_prefs_path(), "r", encoding="utf-8") as f:
+            saved = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return saved if isinstance(saved, dict) else {}
+
+
+def _write_app_update_prefs(**updates):
+    """Merge into the prefs file — writing the channel must never drop the
+    delay, and vice versa."""
+    prefs = _read_app_update_prefs()
+    prefs.update(updates)
+    _srv._atomic_write_json(_app_update_prefs_path(), prefs)
+
+
+def normalize_update_channel(value):
+    """'Beta ' → 'beta', 'latest' → 'latest', 'stable' → 'latest' (the word
+    for this channel that the API, the env var and an earlier build all
+    accept), junk → None."""
+    name = (value or "").strip().lower()
+    name = _APP_UPDATE_CHANNEL_ALIASES.get(name, name)
+    return name if name in APP_UPDATE_CHANNELS else None
+
+
+def normalize_update_delay_days(value):
+    """A whole number of days in [0, APP_UPDATE_DELAY_MAX], or None for
+    anything that isn't one. Strings are accepted so an env var and a JSON
+    body can share this path; booleans are not, because True is not 1 day."""
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        days = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return days if 0 <= days <= APP_UPDATE_DELAY_MAX else None
+
+
+def is_update_channel_env_locked():
+    """True when ZIMI_UPDATE_CHANNEL names a real channel. Same contract as
+    every other env-locked setting: the environment wins and the UI says so
+    rather than offering a control that silently does nothing."""
+    return normalize_update_channel(os.environ.get(APP_UPDATE_CHANNEL_ENV)) is not None
+
+
+def is_update_delay_env_locked():
+    """True when ZIMI_UPDATE_DELAY_DAYS holds a usable number of days."""
+    return normalize_update_delay_days(os.environ.get(APP_UPDATE_DELAY_ENV)) is not None
+
+
+def get_update_channel():
+    """The channel in force: env var, then the saved preference, then latest."""
+    from_env = normalize_update_channel(os.environ.get(APP_UPDATE_CHANNEL_ENV))
+    if from_env:
+        return from_env
+    saved = normalize_update_channel(_read_app_update_prefs().get("channel"))
+    return saved or APP_UPDATE_CHANNEL_DEFAULT
+
+
+def get_update_delay_days():
+    """The delay in force: env var, then the saved preference, then none."""
+    from_env = normalize_update_delay_days(os.environ.get(APP_UPDATE_DELAY_ENV))
+    if from_env is not None:
+        return from_env
+    saved = normalize_update_delay_days(_read_app_update_prefs().get("delay_days"))
+    return APP_UPDATE_DELAY_DEFAULT if saved is None else saved
+
+
+def set_update_channel(value):
+    """Persist the channel preference. Returns (channel, error) — error is a
+    short code the caller turns into an HTTP status."""
+    channel = normalize_update_channel(value)
+    if not channel:
+        return None, "invalid_channel"
+    if is_update_channel_env_locked():
+        return None, "env_locked"
+    _write_app_update_prefs(channel=channel)
+    return channel, None
+
+
+def set_update_delay_days(value):
+    """Persist the update delay. Same (value, error) contract as the channel."""
+    days = normalize_update_delay_days(value)
+    if days is None:
+        return None, "invalid_delay"
+    if is_update_delay_env_locked():
+        return None, "env_locked"
+    _write_app_update_prefs(delay_days=days)
+    return days, None
+
+
+def _parse_app_version(tag):
+    """'v1.9.0' / '1.9' / '1.9.0-beta1' → ((1, 9, 0), 'beta1'), else None.
+
+    The numeric tuple (padded to three parts so 1.9 == 1.9.0) drives the
+    comparison; the suffix only marks pre-releases. Unparseable tags return
+    None so a garbage GitHub tag can never masquerade as an update."""
+    m = re.match(r"[vV]?(\d+(?:\.\d+)*)[-+.]?(.*)$", (tag or "").strip())
+    if not m or not m.group(1):
+        return None
+    nums = tuple(int(p) for p in m.group(1).split("."))
+    return (nums + (0,) * 3)[: max(3, len(nums))], m.group(2).strip()
+
+
+def _prerelease_rank(suffix):
+    """Sortable rank for a version suffix: '' (a final release) outranks every
+    pre-release of the same numbers, and within pre-releases alpha < beta < rc
+    < anything unrecognized, then by trailing number."""
+    if not suffix:
+        return (_FINAL_STAGE, 0, "")
+    m = re.match(r"([A-Za-z]*)[.\-_]?(\d*)", suffix)
+    word = (m.group(1) if m else "").lower()
+    num = int(m.group(2)) if m and m.group(2) else 0
+    stage = _PRERELEASE_STAGES.get(word, _PRERELEASE_UNKNOWN_STAGE)
+    return (stage, num, "" if word in _PRERELEASE_STAGES else word)
+
+
+def _app_version_sort_key(tag):
+    """(numbers, pre-release rank) for a tag, or None if it can't be parsed."""
+    parsed = _parse_app_version(tag)
+    if not parsed:
+        return None
+    nums, suffix = parsed
+    # Pad to a fixed width so (1, 9) and (1, 9, 0, 1) compare positionally.
+    return (nums + (0,) * 4)[:4], _prerelease_rank(suffix)
+
+
+def _app_version_newer(remote, current, allow_prerelease=False):
+    """True only when `remote` is a strictly newer release than `current`.
+
+    Same-number comparisons are conservative by default: a final release
+    outranks its own pre-releases, but beta-vs-beta never reports an update —
+    better to miss an edge case than nag someone already current. On the
+    "beta" channel `allow_prerelease` turns that ordering on, because
+    telling an rc1 user about rc2 is the entire point of the channel."""
+    r, c = _app_version_sort_key(remote), _app_version_sort_key(current)
+    if not r or not c:
+        return False
+    if r[0] != c[0]:
+        return r[0] > c[0]
+    r_final, c_final = r[1][0] == _FINAL_STAGE, c[1][0] == _FINAL_STAGE
+    if r_final != c_final:
+        return r_final  # a final beats its own pre-release, never the reverse
+    if not allow_prerelease:
+        return False  # pre-vs-pre off the beta channel: stay quiet
+    return r[1] > c[1]
+
+
+def detect_install_type():
+    """Best-effort: how was this Zimi installed? Drives which upgrade
+    instruction the Manage UI shows — a wrong guess only yields a suboptimal
+    instruction, so lean conservative and fall through to 'pip'.
+
+    Order matters: container/package sandboxes outrank the frozen-app flag
+    because the outermost wrapper decides how you upgrade."""
+    env = os.environ
+    declared = env.get("ZIMI_INSTALL_TYPE", "").strip().lower()
+    if declared:
+        # Escape hatch for packagers (and tests): trust an explicit label.
+        return declared
+    if (
+        os.path.exists("/.dockerenv")
+        or os.path.exists("/run/.containerenv")  # podman's marker file
+        or env.get("container")  # OCI convention (podman, systemd-nspawn)
+    ):
+        return "docker"
+    if env.get("SNAP") and env.get("SNAP_NAME"):
+        return "snap"
+    if env.get("APPIMAGE"):
+        return "appimage"
+    if getattr(sys, "frozen", False) or getattr(sys, "_MEIPASS", None):
+        if sys.platform == "darwin":
+            return "desktop-mac"
+        if sys.platform.startswith("win"):
+            return "desktop-windows"
+        return "desktop"  # frozen Linux build outside an AppImage wrapper
+    paths = "%s %s" % (sys.prefix or "", sys.executable or "")
+    if "/Cellar/" in paths or "/opt/homebrew/" in paths or "/home/linuxbrew/" in paths:
+        # Heuristic only: a plain pip install into a brew-owned Python
+        # matches too. The brew instruction is still the closest fit we can
+        # detect from inside the process.
+        return "homebrew"
+    return "pip"
+
+
+def _read_app_update_cache():
+    try:
+        with open(_app_update_cache_path(), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _github_json(url):
+    """GET a GitHub API URL and decode it. Raises on anything but success —
+    every caller is inside the check's try/except."""
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Zimi/%s (+%s)" % (_srv.ZIMI_VERSION, _APP_RELEASES_PAGE),
+            "Accept": "application/vnd.github+json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=10, context=_srv.SSL_CTX) as resp:
+        return json.loads(resp.read().decode("utf-8", "replace"))
+
+
+def _pick_newest_release(releases):
+    """The highest-versioned published release in a GitHub /releases list.
+
+    Sorting by version rather than trusting the list order matters: GitHub
+    orders by publish date, so a final patch cut after a beta would otherwise
+    hide the beta from the channel that exists to show it. Drafts and
+    unparseable tags are skipped."""
+    best, best_key = None, None
+    for rel in releases if isinstance(releases, list) else []:
+        if not isinstance(rel, dict) or rel.get("draft"):
+            continue
+        key = _app_version_sort_key(rel.get("tag_name"))
+        if key and (best_key is None or key > best_key):
+            best, best_key = rel, key
+    return best
+
+
+def _parse_release_timestamp(value):
+    """GitHub's `published_at` ('2026-08-01T12:00:00Z') → epoch seconds, or
+    None when it is missing or unparseable. A release with no usable stamp
+    can't be aged, and is treated as mature everywhere downstream: an update
+    must never become permanently invisible because a field went missing."""
+    text = (value or "").strip() if isinstance(value, str) else ""
+    if not text:
+        return None
+    try:
+        stamp = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)  # GitHub always sends UTC
+    return stamp.timestamp()
+
+
+def _update_hold_until(published_ts, delay_days, now=None):
+    """The epoch second an update this fresh becomes offerable, or None when
+    it already is (no delay set, no publish date, or the wait is over).
+
+    Evaluated on every read rather than baked into the cache, so a verdict of
+    "too fresh" ages out on its own instead of being frozen for a day by the
+    cached check that produced it."""
+    if not delay_days or not published_ts:
+        return None
+    ready_at = published_ts + delay_days * 86400
+    return ready_at if (now or time.time()) < ready_at else None
+
+
+def check_app_update(force=False, channel=None):
+    """Return {latest, checked_at, url, channel, error?}, hitting GitHub only
+    when the cached answer is stale (or `force`, for the Check-now button).
+
+    ZIMI_OFFLINE outranks everything including force and channel — zero
+    network calls. Network failures are silent by contract: one debug line,
+    the last good answer keeps serving, and the failure is stamped so passive
+    reads back off instead of re-probing a dead link on every pane visit.
+
+    A cached answer from the other channel is never reused: switching channel
+    is exactly when the admin wants a fresh look."""
+    from zimi import p2p  # is_offline() — the single air-gap switch
+
+    if p2p.is_offline():
+        return dict(_read_app_update_cache(), offline=True)
+    channel = normalize_update_channel(channel) or get_update_channel()
+    now = time.time()
+
+    def _fresh(entry):
+        # Raw comparison against the canonical name we write, deliberately not
+        # run through the alias table: a cached entry labelled with a name this
+        # build no longer writes came from a build whose channel names meant
+        # something else, and re-checking is cheaper than trusting it.
+        if entry.get("channel") != channel:
+            return False
+        age = now - entry.get("checked_at", 0)
+        if force:
+            return age < _APP_UPDATE_FORCE_GUARD
+        return age < (_APP_UPDATE_ERROR_TTL if entry.get("error") else _APP_UPDATE_TTL)
+
+    cached = _read_app_update_cache()
+    if _fresh(cached):
+        return cached
+    with _app_update_lock:
+        cached = _read_app_update_cache()  # a concurrent caller may have won
+        if _fresh(cached):
+            return cached
+        try:
+            if channel == "latest":
+                # /releases/latest is already "newest final release" — one
+                # request, and GitHub does the pre-release filtering.
+                rel = _github_json(_APP_UPDATE_URL)
+            else:
+                rel = _pick_newest_release(_github_json(_APP_UPDATE_LIST_URL))
+            if not isinstance(rel, dict):
+                raise ValueError("no usable release in feed")
+            entry = {
+                "checked_at": now,
+                # Tags arrive as "v1.9.0" — store the bare version the UI shows.
+                "latest": (rel.get("tag_name") or "").strip().lstrip("vV"),
+                "url": rel.get("html_url") or _APP_RELEASES_PAGE,
+                "channel": channel,
+                "prerelease": bool(rel.get("prerelease")),
+                # Kept raw (epoch) so the update delay is re-evaluated on every
+                # read instead of the cache freezing a "too fresh" verdict.
+                "published_ts": _parse_release_timestamp(rel.get("published_at")),
+            }
+        except Exception as e:
+            log.debug("app-update check failed: %s", e)
+            entry = dict(cached, checked_at=now, channel=channel, error=True)
+        _srv._atomic_write_json(_app_update_cache_path(), entry)
+        return entry
+
+
+def _app_update_payload(force=False):
+    """The /manage/app-update response: check state + install-type routing.
+
+    A newer release that hasn't been public long enough for the configured
+    delay reports `update_held` + `held_until` instead of `update_available`,
+    so the UI can say "1.9.1 is out, offering it in 3 days" rather than
+    pretending the release doesn't exist.
+
+    Note the two unrelated meanings of the word in this payload: the `latest`
+    field is the newest version string on whichever channel is in force, while
+    the `channel` field being "latest" names the finished-releases channel."""
+    from zimi import p2p
+
+    channel = get_update_channel()
+    delay_days = get_update_delay_days()
+    state = check_app_update(force=force, channel=channel)
+    latest = state.get("latest") or None
+    newer = bool(
+        latest
+        and _app_version_newer(
+            latest, _srv.ZIMI_VERSION, allow_prerelease=(channel == "beta")
+        )
+    )
+    held_until = (
+        _update_hold_until(state.get("published_ts"), delay_days) if newer else None
+    )
+    return {
+        "current": _srv.ZIMI_VERSION,
+        "latest": latest,
+        "update_available": newer and held_until is None,
+        "update_held": held_until is not None,
+        "held_until": held_until,
+        "delay_days": delay_days,
+        "delay_days_locked": is_update_delay_env_locked(),
+        "delay_env": APP_UPDATE_DELAY_ENV,
+        "delay_choices": list(APP_UPDATE_DELAY_CHOICES),
+        "checked_at": state.get("checked_at") or None,
+        "error": bool(state.get("error")),
+        "offline": p2p.is_offline(),
+        "install_type": detect_install_type(),
+        "releases_url": state.get("url") or _APP_RELEASES_PAGE,
+        "channel": channel,
+        "channels": list(APP_UPDATE_CHANNELS),
+        "channel_locked": is_update_channel_env_locked(),
+        "channel_env": APP_UPDATE_CHANNEL_ENV,
+        "prerelease": bool(state.get("prerelease")),
+    }
 
 
 def _cache_info_payload():
@@ -551,6 +1160,25 @@ def _apply_library_layout(overrides, order, sections=None):
 
 _BACKUP_SCHEMA = "zimi-backup"
 _BACKUP_SCHEMA_VERSION = 3
+
+# Every restorable state key a bundle can carry, in plan order. The headless
+# CLI (`zimi restore`) reports "skipped" as the bundle keys the apply plan did
+# not touch (env-locked settings, server keys riding on a device-scope
+# bundle), so this list must stay in lockstep with the labels that
+# _compute_backup and _plan_server_scope emit.
+_BUNDLE_STATE_KEYS = (
+    "collections",
+    "library_layout",
+    "users",
+    "public_access",
+    "schedule",
+    "bt_prefs",
+    "seed_intents",
+    "hot_zims",
+    "auto_update",
+    "history",
+    "user_data",
+)
 
 
 def _bundle_scope(data):
@@ -765,7 +1393,7 @@ def _compute_backup(data, overwrite):
         return None, None, "not a Zimi backup"
     scope = _bundle_scope(data)
     plan = []
-    preview = {"scope": scope}
+    preview: dict = {"scope": scope}
 
     coll = data.get("collections")
     if coll is not None:
@@ -955,13 +1583,2587 @@ def _apply_backup_bundle(data, overwrite=False):
     plan in one shot for direct callers/tests. ``result`` carries the applied
     keys plus the preview summary."""
     plan, preview, err = _compute_backup(data, overwrite)
-    if err:
+    if err or plan is None:
         return None, err
     applied = []
     for label, thunk in plan:
         thunk()
         applied.append(label)
     return {"status": "ok", "applied": applied, "preview": preview}, None
+
+
+# ============================================================================
+# The activity journal — what happened to this library, and who did it
+#
+# Every kind of change already left a trace SOMEWHERE: downloads and updates in
+# history.json, creation runs in create_jobs.json, health checks and exports in
+# a status dict that a restart forgets. None of them recorded WHO, which is the
+# question an operator actually asks of a shared server — a ZIM updated by the
+# auto-updater and the same ZIM updated by a person are the same row in the old
+# history, and only one of them means someone made a decision.
+#
+# So: one line per thing that happened, stamped where it happens, carrying the
+# actor with it. Downloads learn their actor at submission and carry it to the
+# finish line (the stamp fires in a background thread minutes later, long after
+# the request that asked for it is gone).
+#
+# The discipline is the create journal's: bounded, atomic, and soft — a journal
+# that cannot be written costs a log line, never the operation. Nothing in here
+# may raise into a caller's success path.
+# ============================================================================
+
+ACTIVITY_FILE = "activity.json"
+# Deep enough to cover a busy week of a real library, shallow enough that the
+# whole file is one small read and the view never needs paging.
+ACTIVITY_RECORDS = 200
+# The kinds of thing that happen to a library. A type outside this set is still
+# recorded — the client renders it with the generic icon — but everything Zimi
+# itself stamps is named here, and the filter is built from what is present.
+ACTIVITY_TYPES = (
+    "download",
+    "update",
+    "create",
+    "export",
+    "delete",
+    "health",
+    "restore",
+    "import",
+)
+ACTIVITY_OUTCOMES = ("ok", "failed", "cancelled", "interrupted")
+# Both are display fields; a runaway error string must not be able to grow the
+# journal past the size that keeps it a cheap read.
+ACTIVITY_SUBJECT_MAX = 160
+ACTIVITY_DETAIL_MAX = 200
+# The name a request gets when it is authenticated as the primary admin — the
+# account with a password rather than a user record, so there is no username to
+# borrow. Secondary admins and ordinary users keep their own names.
+ACTIVITY_ADMIN = "admin"
+# Work nobody asked for in the moment: the auto-updater, the download scheduler,
+# resumes after a restart. `name` stays null — "server" is the whole identity.
+ACTIVITY_SERVER_ACTOR = {"kind": "server", "name": None}
+# Pre-1.9 history has no actor, and guessing one would be worse than saying so.
+ACTIVITY_UNKNOWN_ACTOR = {"kind": "unknown", "name": None}
+# How the pre-1.9 event names map into activity types when the old history is
+# folded in (see _activity_seed).
+_ACTIVITY_FROM_HISTORY = {
+    "download": ("download", "ok"),
+    "updated": ("update", "ok"),
+    "download_failed": ("download", "failed"),
+    "deleted": ("delete", "ok"),
+}
+
+_activity_lock = threading.Lock()
+_activity = None  # list of records, oldest first; loaded once per process
+
+
+def _activity_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, ACTIVITY_FILE)
+
+
+def activity_actor(handler=None):
+    """Who is responsible for what is about to happen.
+
+    ``handler`` is the request that asked for it, or None for work the server
+    started by itself. Every caller with a request passes it — these routes are
+    admin-gated, so a request that got this far is *somebody*, and the only
+    question is whether that somebody has a name of their own.
+    """
+    if handler is None:
+        return dict(ACTIVITY_SERVER_ACTOR)
+    name = None
+    try:
+        from zimi import users as _users
+
+        name = _users.resolve_request_user(handler)
+    except Exception as e:
+        # An unreadable session store must not cost the operation its actor
+        # line, let alone the operation.
+        log.debug("Could not resolve the actor for an activity record: %s", e)
+    return {"kind": "user", "name": name or ACTIVITY_ADMIN}
+
+
+def _activity_clean_actor(actor):
+    """A stored actor dict, whatever shape the caller handed us."""
+    if not isinstance(actor, dict):
+        return dict(ACTIVITY_SERVER_ACTOR)
+    kind = actor.get("kind")
+    if kind not in ("user", "server", "unknown"):
+        kind = "server"
+    name = actor.get("name")
+    if kind != "user" or not isinstance(name, str) or not name.strip():
+        return {"kind": kind, "name": None}
+    return {"kind": "user", "name": name.strip()[:ACTIVITY_SUBJECT_MAX]}
+
+
+def _activity_seed():
+    """The journal a fresh install of 1.9 is born with: the old history.
+
+    An upgrade must not look like data loss. Everything the pre-1.9 history
+    recorded is an activity record missing exactly one field — who — so it
+    converts cleanly, and the actor it converts to is ``unknown`` rather than a
+    guess. Runs once: after this the file exists and the stamps take over.
+    """
+    seeded = []
+    try:
+        events = _srv._load_history()
+    except Exception as e:
+        log.debug("No history to seed the activity journal from: %s", e)
+        return seeded
+    # History is newest first and this journal is oldest first.
+    for event in reversed(events if isinstance(events, list) else []):
+        if not isinstance(event, dict):
+            continue
+        mapped = _ACTIVITY_FROM_HISTORY.get(str(event.get("event") or ""))
+        if not mapped:
+            continue
+        event_type, outcome = mapped
+        subject = (
+            event.get("title")
+            or event.get("name")
+            or str(event.get("filename") or "").removesuffix(".zim")
+        )
+        seeded.append(
+            _activity_record(
+                event_type,
+                subject,
+                outcome=outcome,
+                detail=str(event.get("error") or "")[:ACTIVITY_DETAIL_MAX],
+                actor=dict(ACTIVITY_UNKNOWN_ACTOR),
+                size_bytes=event.get("size_bytes"),
+                ts=event.get("ts"),
+            )
+        )
+    return seeded[-ACTIVITY_RECORDS:]
+
+
+def _activity_load():
+    """The journal, loaded once per process. Caller holds ``_activity_lock``."""
+    global _activity
+    if _activity is not None:
+        return _activity
+    records = None
+    try:
+        with open(_activity_path(), encoding="utf-8") as fh:
+            loaded = json.load(fh)
+        if isinstance(loaded, list):
+            records = [r for r in loaded if isinstance(r, dict)]
+    except FileNotFoundError:
+        pass  # fresh install, or the first boot after the upgrade
+    except (OSError, ValueError) as e:
+        # Corrupt or unreadable degrades to empty: the view is a nicety, and
+        # nothing else in the server may fail because of it.
+        log.warning("Cannot read the activity journal: %s", e)
+        records = []
+    fresh = records is None
+    if fresh:
+        records = _activity_seed()
+    trimmed = len(records) > ACTIVITY_RECORDS
+    if trimmed:
+        # Trimmed on the way in as well as out — the bound is what the file is
+        # allowed to be, not merely what this process appends to it.
+        del records[: len(records) - ACTIVITY_RECORDS]
+    _activity = records
+    if (fresh and records) or trimmed:
+        _activity_save()
+    return records
+
+
+def _activity_save():
+    """Caller holds ``_activity_lock``. Never raises: a thing that happened
+    still happened when the disk says no."""
+    _srv._atomic_write_json(_activity_path(), _activity or [])
+
+
+def _activity_record(
+    event_type,
+    subject,
+    outcome="ok",
+    detail="",
+    actor=None,
+    size_bytes=None,
+    count=None,
+    ts=None,
+):
+    """One journal record. Every field is already visible to the admin who is
+    reading it — subjects are library names and titles, never server paths.
+
+    ``detail`` is a locale-neutral FRAGMENT, not a sentence: a source URL, a
+    ratio, an error the transport handed us. The verb around it ("Downloaded",
+    "Update installed") is an i18n key on the client, because a sentence
+    written here would be the one line of the UI that cannot be translated.
+    ``bytes`` and ``count`` travel as numbers for the same reason — the client
+    formats them in the reader's locale. What ``count`` counts is fixed per
+    type: bookmarks for an export, restored sections for a restore.
+    """
+    record = {
+        "ts": round(float(ts if ts is not None else time.time()), 3),
+        "type": str(event_type or "")[:40],
+        "actor": _activity_clean_actor(actor),
+        "subject": str(subject or "")[:ACTIVITY_SUBJECT_MAX],
+        "outcome": outcome if outcome in ACTIVITY_OUTCOMES else "ok",
+        "detail": str(detail or "")[:ACTIVITY_DETAIL_MAX],
+    }
+    if isinstance(size_bytes, (int, float)) and size_bytes > 0:
+        record["bytes"] = int(size_bytes)
+    if isinstance(count, int) and count > 0:
+        record["count"] = count
+    return record
+
+
+def record_activity(
+    event_type,
+    subject,
+    outcome="ok",
+    detail="",
+    actor=None,
+    size_bytes=None,
+    count=None,
+):
+    """Append one line to the activity journal. Never raises.
+
+    Called from request handlers, from download threads long after their
+    request ended, and from the create watchdog — so it takes its own lock and
+    holds no other.
+    """
+    try:
+        record = _activity_record(
+            event_type,
+            subject,
+            outcome=outcome,
+            detail=detail,
+            actor=actor,
+            size_bytes=size_bytes,
+            count=count,
+        )
+        with _activity_lock:
+            records = _activity_load()
+            records.append(record)
+            if len(records) > ACTIVITY_RECORDS:
+                del records[: len(records) - ACTIVITY_RECORDS]
+            _activity_save()
+        return record
+    except Exception as e:
+        log.warning("Could not journal a %s activity record: %s", event_type, e)
+        return None
+
+
+# Two operations answer their caller immediately and finish on a worker thread:
+# the library health check and the bookmark export. Both report through a status
+# dict the client polls, and neither should learn about this journal — one of
+# them writes ZIMs for a living. So the route that started the work watches that
+# status instead, and files the line when it settles.
+ACTIVITY_WATCH_TICK = 1.0
+# Long enough for a health check over a 600 GB library on a spinning NAS disk,
+# short enough that a wedged worker does not leave a thread waiting forever.
+ACTIVITY_WATCH_MAX = 6 * 3600
+
+
+def _activity_after(state_fn, finish):
+    """Watch a background job's status dict; call ``finish(state)`` once it
+    leaves the running phase. Runs on its own daemon thread and never raises
+    into it."""
+
+    def _wait():
+        deadline = time.time() + ACTIVITY_WATCH_MAX
+        while time.time() < deadline:
+            time.sleep(ACTIVITY_WATCH_TICK)
+            try:
+                state = state_fn() or {}
+            except Exception as e:
+                log.debug("Activity watch could not read a job's state: %s", e)
+                return
+            if state.get("phase") == "running":
+                continue
+            try:
+                finish(state)
+            except Exception as e:
+                log.warning("Activity watch could not file its record: %s", e)
+            return
+        # Past the deadline the honest thing is silence: a record saying "ok"
+        # would be a guess, and one saying "failed" would be a lie about work
+        # that may still be running.
+        log.info("Activity watch gave up waiting for a background job to settle")
+
+    threading.Thread(target=_wait, daemon=True, name="zimi-activity-watch").start()
+
+
+def _activity_health_finish(actor):
+    """Journal a finished library health check under whoever asked for it."""
+
+    def _finish(state):
+        summary = state.get("summary") or {}
+        total = summary.get("total") or 0
+        healthy = summary.get("healthy") or 0
+        record_activity(
+            "health",
+            "",  # the whole library — the client names it in the reader's language
+            outcome="ok" if state.get("phase") == "done" else "failed",
+            detail=f"{healthy}/{total}" if total else "",
+            actor=actor,
+        )
+
+    return _finish
+
+
+def _activity_export_finish(actor, total):
+    """Journal a finished bookmark export. ``total`` is what was handed to the
+    writer — the count the person chose, which is the count they'll recognize
+    even if a source article turned out to be unreadable."""
+
+    def _finish(state):
+        files = [str(f) for f in (state.get("files") or []) if f]
+        record_activity(
+            "export",
+            ", ".join(f.removesuffix(".zim") for f in files),
+            outcome="ok" if state.get("phase") == "done" else "failed",
+            detail=str(state.get("error") or ""),
+            actor=actor,
+            count=total,
+        )
+
+    return _finish
+
+
+def _activity_actor_key(record):
+    """The filter value for a record's actor: a username, or the kind."""
+    actor = record.get("actor") or {}
+    if actor.get("kind") == "user" and actor.get("name"):
+        return actor["name"]
+    return actor.get("kind") or "server"
+
+
+def activity_payload(type_filter=None, actor_filter=None):
+    """The activity view's data: records newest first, plus the vocabulary the
+    filter is built from.
+
+    The type and actor lists are always computed over the WHOLE journal, never
+    over the filtered slice — a filter whose own options disappear the moment
+    you use one is a filter you cannot get back out of.
+    """
+    with _activity_lock:
+        records = list(_activity_load())
+    types = sorted({str(r.get("type") or "") for r in records} - {""})
+    actors = sorted({_activity_actor_key(r) for r in records})
+    if type_filter:
+        records = [r for r in records if r.get("type") == type_filter]
+    if actor_filter:
+        records = [r for r in records if _activity_actor_key(r) == actor_filter]
+    records.reverse()  # newest first, the way it is read
+    return {"records": records, "types": types, "actors": actors}
+
+
+# ============================================================================
+# ZIM creation jobs — the web face of `zimi create` / `zimi import`
+#
+# ONE job RUNS at a time, deliberately. The hardware floor for Zimi is a Pi
+# that is also serving the library; a second concurrent crawl would not go
+# twice as fast, it would make reading the library miserable while both crawl
+# badly. What a second submission gets is a place in a short FIFO queue, not a
+# refusal — "start it, I'll come back" is what people actually mean when they
+# fill the form twice, and a queue says that honestly where a 409 made them
+# babysit the tab.
+#
+# The engines (zimi.creator / crawler / video / importer) stay almost
+# untouched: each already takes a per-line progress callback, and this module
+# wires that into a bounded ring buffer the browser polls with a cursor.
+# Cancellation is cooperative through that same callback — it raises out of
+# the engine at the next line, which unwinds through ``atomic_zim_creator`` so
+# no partial ZIM is ever left under a real name. Folder mode is the one engine
+# with no callback, so it cannot be interrupted mid-run and the status says so
+# rather than pretending.
+#
+# Three things the round-3 field test asked for, and where each lives:
+#
+#   "is it stable if I close the page?"  — the job runs in a server thread and
+#       its state is server-side, so closing the tab changes nothing. What was
+#       missing is what happens when the SERVER goes away mid-job: the journal
+#       below records every job to disk, and a record still marked running at
+#       the next boot becomes an honest "interrupted", not a ghost that polls
+#       forever. The atomic writer has already removed its partial output.
+#   "can I find in-progress ones?"       — ``/manage/create/status?history=1``
+#       hands back the last CREATE_JOURNAL_RECORDS jobs, so a returning admin
+#       finds what happened while they were gone.
+#   "do multiple queue?"                 — yes; see CREATE_QUEUE_MAX.
+#
+# Alongside the human log lines, the poll carries STRUCTURED events (phase /
+# node / count) on their own cursor. They are DERIVED here by reading the same
+# lines the engines already emit — the engines do not learn a second output
+# format they would then have to keep in step, and a line this adapter cannot
+# read costs one event, never a crash.
+# ============================================================================
+
+# "folder" stays in the tuple although the web REFUSES it (Eric: "remove
+# folder, I said that would be CLI only") — recognising the mode is what lets
+# the refusal point at `zimi create <folder>` instead of shrugging "unknown
+# creation mode" at someone who read about it in the docs.
+CREATE_MODES = ("folder", "page", "site", "video", "import")
+# Which engine captures a web page. Mirrors creator.OFFERED_ENGINES — every
+# name a person may ASK for, which is a wider set than the ones that build a
+# capture object. Held here as a literal for the same reason CREATE_MAX_PAGE_URLS
+# is: validating a request must not drag the writer stack into the request
+# thread. The test below pins the two together.
+#
+# zimit IS offered here now. It wants a docker daemon, and the old reasoning was
+# that a web form is the wrong place to discover that — but a readiness probe
+# is exactly the right place, so _create_engine refuses it with the reason
+# instead of hiding a working engine from everyone who does have Docker.
+CREATE_ENGINES = ("builtin", "rendered", "alive", "singlefile", "zimit")
+# The engines that can refuse a request before it is made — the ones that drive
+# a browser. Mirrors creator.BLOCKING_ENGINES, held here for the same reason
+# CREATE_ENGINES is, and pinned to it by the same test.
+CREATE_BLOCKING_ENGINES = ("rendered", "alive")
+# What ad blocking does when the form says nothing. Mirrors
+# renderer.BLOCK_ADS_DEFAULT: the checkbox arrives checked, so a request with no
+# opinion in it is one where the field never rendered at all.
+CREATE_BLOCK_ADS = True
+# The engines that sweep up the image sizes THIS screen did not ask for. Only
+# the recording engine does: a rendered capture keeps one candidate per srcset
+# and has no archive to put the others in, so offering the switch alongside it
+# would be offering a switch over nothing. Mirrors the gate in
+# renderer.RenderedSession._record_variants, pinned by a test.
+CREATE_VARIANT_ENGINES = ("alive",)
+# What the variant sweep does when the form says nothing. Mirrors
+# renderer.VARIANT_SWEEP_DEFAULT — checked by default, so silence means the
+# field never rendered rather than "the admin unticked it".
+CREATE_CAPTURE_VARIANTS = True
+# ── Stored capture defaults ──────────────────────────────────────────────────
+# The two module constants above (CREATE_BLOCK_ADS / CREATE_CAPTURE_VARIANTS)
+# are the FACTORY defaults — what the engines do on a machine nobody has
+# configured. An admin may override either from Manage → Creator, and that
+# choice persists in the data dir like every other manage-set preference (see
+# _write_app_update_prefs for the pattern). Every reader of a default goes
+# through _create_default so a stored choice wins everywhere at once: the
+# validator applying it to a silent request, and the payload reporting it.
+
+
+def _create_defaults_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "create_defaults.json")
+
+
+def _read_create_defaults():
+    try:
+        with open(_create_defaults_path(), "r", encoding="utf-8") as f:
+            saved = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return saved if isinstance(saved, dict) else {}
+
+
+def _create_default(key, fallback):
+    """The stored default for ``key``, or ``fallback`` when nobody ever set
+    one. Only a real boolean in the file counts — a hand-edited string like
+    "yes" falls back rather than being guessed at."""
+    value = _read_create_defaults().get(key)
+    return value if isinstance(value, bool) else fallback
+
+
+def _write_create_defaults(**updates):
+    """Merge into the defaults file — setting one switch must never drop the
+    other's stored answer."""
+    prefs = _read_create_defaults()
+    prefs.update(updates)
+    _srv._atomic_write_json(_create_defaults_path(), prefs)
+
+
+# Ring-buffer depth for job output. A long crawl emits a line per page, so the
+# buffer is a live tail, not a transcript — the browser polls faster than it
+# fills and keeps everything it has already seen.
+CREATE_LOG_LINES = 500
+CREATE_MAX_SOURCE = 2048  # a path or URL longer than this is not a real one
+# Mirrors creator.MAX_PAGE_URLS. Held here as a constant rather than imported at
+# module scope so validating a request never drags in the writer stack; the
+# test below pins the two together.
+CREATE_MAX_PAGE_URLS = 20
+
+# Which jobs can actually be interrupted. Cancellation is cooperative — it
+# raises out of the engine's progress callback — so a mode belongs here exactly
+# when its engine takes one. Every mode the web still runs qualifies (folder,
+# the one engine with no progress callback, is CLI-only now), but the list and
+# the `cancellable` field stay: the client's button should keep answering to
+# the server's word rather than to an assumption a future mode could break.
+CREATE_CANCELLABLE_MODES = ("page", "site", "video", "import")
+# Which jobs can FINISH EARLY — stop fetching at the next page boundary and
+# package everything captured so far, exactly what SIGINT does to a CLI crawl.
+# Site capture alone: it is the one mode whose work is an open-ended frontier
+# with something worth keeping at every prefix. A page list or a playlist is a
+# finite order (cancel covers changing your mind), and an import has no
+# fetching to stop.
+CREATE_FINISHABLE_MODES = ("site",)
+# The phases in which finishing early still means anything: the network pass.
+# From `package`/`convert` on, the fetching is over and the button would stop
+# nothing — the client hides it the moment the server stops saying so.
+CREATE_FINISHABLE_PHASES = ("probe", "fetch", "assets")
+CREATE_MAX_TITLE = 200
+# Site crawls: what the form offers. Wider bounds live on the CLI.
+CREATE_MAX_PAGES_CEILING = 5000
+CREATE_MAX_DEPTH_CEILING = 10
+CREATE_MAX_DELAY = 60.0  # seconds between page requests
+# Video jobs: a playlist cap, same reasoning.
+CREATE_VIDEO_LIMIT_CEILING = 500
+# Size budgets. The ceiling is not a guess about disk, it is about the shape of
+# a job a browser tab is willing to watch — past this, use the CLI.
+CREATE_MAX_BYTES_CEILING = 64 * 1024**3
+CREATE_MAX_SIZE_TEXT = 32  # "512MiB" is 6; nothing real is longer than this
+_CREATE_LANGUAGE_RE = re.compile(r"^[a-z]{2,3}$")
+# The video quality the web form may ask for, as named presets mapped to yt-dlp
+# selectors. A preset name is the ONLY thing accepted over HTTP: yt-dlp's format
+# argument is an expression language, and an arbitrary expression arriving from
+# a browser is not a preference, it is an instruction to a downloader. The full
+# selector stays on `zimi create --format`, where the person typing it is at a
+# shell on the machine already.
+CREATE_VIDEO_FORMATS = {
+    "720p": None,  # the engine's own default
+    "1080p": "best[height<=1080][ext=mp4]/best[height<=1080]/best",
+    "480p": "best[height<=480][ext=mp4]/best[height<=480]/best",
+    "best": "best",
+}
+
+# How many submissions may wait behind the running one. Five is a queue an
+# admin can hold in their head; past that the honest answer is "come back
+# later" (429) rather than a backlog nobody remembers filing.
+CREATE_QUEUE_MAX = 5
+# Structured events, bounded exactly like the log lines. A long crawl emits
+# one per page twice over (fetched, then packaged), so this is a live tail too.
+CREATE_EVENT_BUFFER = 2000
+# A job that has not said anything for this long is not working, it is wedged —
+# a host that accepted a connection and never answered, a subprocess that never
+# wrote another line. Ten minutes is longer than any single legitimate step:
+# every engine reports per page, per entry or per subprocess line, and the
+# slowest of those is one HTTP fetch at DEFAULT_FETCH_TIMEOUT (30s).
+CREATE_STALL_SECONDS = 600
+CREATE_STALL_TICK = 15.0  # how often the watchdog looks
+# The on-disk job journal: how a returning admin finds out what happened while
+# they were away, and how a job that was running when the server died stops
+# being a job that is running forever.
+CREATE_JOURNAL_FILE = "create_jobs.json"
+CREATE_JOURNAL_RECORDS = 20
+# The phases a job moves through, in order. The client renders them; the
+# adapter below decides when each begins by reading the engines' own lines.
+# ``convert`` is the warc2zim subprocess: the phase where a recording (alive)
+# or an archive somebody brought (import) becomes a ZIM. It sits beside
+# ``package`` rather than replacing it because they are alternatives — a job
+# does one or the other, never both — and the client folds them onto the same
+# visible step, which is the right answer for a person watching: both of them
+# are "it is writing the file now".
+CREATE_PHASES = ("probe", "fetch", "assets", "package", "convert", "register", "done")
+# Where a mode's work starts. The URL modes fetch first; import has nothing to
+# fetch, it goes straight to writing a ZIM.
+CREATE_START_PHASE = {
+    "import": "package",
+    "page": "fetch",
+    "site": "fetch",
+    "video": "fetch",
+}
+
+_create_lock = threading.Lock()
+_create_job = None  # the one _CreateJob running (or the last one to finish)
+_create_queue = []  # [(job, opts)] waiting their turn, FIFO
+
+
+class _CreateCancelled(Exception):
+    """Raised out of a job's progress callback when the admin cancels."""
+
+
+class _CreateJob:
+    """One creation run: its identity, its output tail, and its outcome."""
+
+    def __init__(self, mode, source, title):
+        # Short, random, and only ever compared for equality: the client uses it
+        # to tell "my job" from "the job that started after mine finished", and
+        # the journal uses it to update a record in place.
+        self.id = os.urandom(6).hex()
+        self.mode = mode
+        self.source = source
+        self.title = title
+        # Whoever submitted it, for the activity journal. A job created outside
+        # a request (the CLI, a test) belongs to the server.
+        self.actor = dict(ACTIVITY_SERVER_ACTOR)
+        self.lines = []  # tail, trimmed to CREATE_LOG_LINES
+        self.emitted = 0  # total lines ever produced — the cursor space
+        self.events = []  # tail, trimmed to CREATE_EVENT_BUFFER
+        self.events_emitted = 0  # the events' own cursor space
+        self.phase = CREATE_START_PHASE.get(mode, "fetch")
+        self.queued_at = time.time()
+        self.started = None  # set when it actually leaves the queue
+        self.finished = None
+        # Last sign of life, for the watchdog. A job that has never emitted a
+        # line is measured from the moment it started, not from creation, or a
+        # long wait in the queue would count against it.
+        self.progressed = None
+        self.done = False
+        self.ok = False
+        # The phase a failed job was in when it failed. ``phase`` itself
+        # reads "done" afterwards, like any finished job's, so without this
+        # the run pane could only mark Ready as the step that went wrong.
+        self.failed_phase = None
+        self.cancelled = False
+        self.cancel_requested = False
+        self.stalled = False
+        # The watchdog's verdict, published the moment it decides and BEFORE it
+        # kills anything, because killing the browser is what un-wedges the
+        # worker thread and sends it here with an error of its own. Whoever
+        # closes the job out, this is the sentence the operator gets: see the
+        # precedence rule in _create_finish.
+        self.stall_error = ""
+        self.error = ""
+        self.result = None
+        # Finish-early (site mode): the admin asked the crawl to stop fetching
+        # and package what it has. `stop_flag` is the crawler's own stop flag,
+        # attached by _create_run once the crawl exists; the boolean is set
+        # first so a request that lands in the gap is honored when it does.
+        self.finish_requested = False
+        self.stop_flag = None
+        # A transient caption ("starting a headless browser…") is on the run
+        # pane and the next real progress event should take it down. Only ever
+        # touched from the job's own thread, inside _create_derive.
+        self.transient_detail = False
+        # Set the moment the job is closed out, whoever closes it. The watchdog
+        # waits on this rather than on a clock, so it wakes exactly once per
+        # tick while the job runs and not at all after it ends — no thread
+        # loitering behind a finished job with a sleep still to serve.
+        self.settled = threading.Event()
+
+    # -- output ------------------------------------------------------------
+    def note(self, message):
+        """Progress sink handed to the engines. Doubles as the cancellation
+        checkpoint: a pending cancel raises here, at a line boundary.
+
+        Takes a line of text, as every engine sends today, or a ready-made
+        event dict for a caller that has something structured to say and no
+        sentence to go with it. Engines only ever send text — the CLI's sink
+        prints whatever it is handed, and a dict on a terminal is not progress.
+        """
+        if self.cancel_requested:
+            raise _CreateCancelled()
+        now = time.time()
+        if isinstance(message, dict):
+            with _create_lock:
+                self.progressed = now
+                self._push_events([dict(message)])
+            return
+        text = str(message).rstrip("\n")
+        # Derived outside the lock: it parses a string and may import a module,
+        # and the sink is called from the job thread on every line.
+        events, phase = _create_derive(self, text)
+        with _create_lock:
+            self.progressed = now
+            self.lines.append(text)
+            self.emitted += 1
+            if len(self.lines) > CREATE_LOG_LINES:
+                del self.lines[: len(self.lines) - CREATE_LOG_LINES]
+            self._push_events(events)
+        if phase:
+            # A phase change is rare (four or five in a whole job) and is
+            # exactly what a returning admin wants to see, so it is worth a
+            # journal write where a per-page line would not be.
+            self.phase = phase
+            _create_journal_put(self)
+
+    def _push_events(self, events):
+        """Stamp each event with its sequence number and file it. Caller holds
+        ``_create_lock``."""
+        for event in events:
+            event["i"] = self.events_emitted
+            self.events_emitted += 1
+            self.events.append(event)
+        if len(self.events) > CREATE_EVENT_BUFFER:
+            del self.events[: len(self.events) - CREATE_EVENT_BUFFER]
+
+    def tail(self, cursor):
+        """Lines from ``cursor`` onward plus the new cursor. A cursor older
+        than the buffer silently snaps forward — dropped lines are gone, and
+        replaying nothing beats replaying the wrong window."""
+        with _create_lock:
+            first = self.emitted - len(self.lines)
+            start = max(0, cursor - first)
+            return self.lines[start:], self.emitted
+
+    def event_tail(self, cursor):
+        """The same contract as ``tail``, in the events' own cursor space."""
+        with _create_lock:
+            first = self.events_emitted - len(self.events)
+            start = max(0, cursor - first)
+            return list(self.events[start:]), self.events_emitted
+
+
+# ── structured progress events ──────────────────────────────────────────────
+#
+# The engines speak in sentences meant for a human reading a log. The Create
+# page wants a shape: which phase, which node, how many of how many. Rather
+# than teach five engines a second output format — one more thing to keep in
+# step, and one more way for a CLI sink to print a dict at somebody — this
+# reads the lines that already exist and derives the shape from them.
+#
+# Three event kinds, all carrying an ``i`` sequence number stamped on the way
+# into the buffer:
+#
+#   {"i", "t":"phase", "phase": <CREATE_PHASES>, "detail": <short>}
+#   {"i", "t":"node",  "kind":"page|asset|entry", "id", "parent", "label",
+#                      "state":"pending|active|done|failed"}
+#   {"i", "t":"count", "what":"entries|bytes|assets", "n", "total"}
+#
+# ``count`` is scoped to the phase in force when it arrives: entries during
+# ``fetch`` are pages pulled off the network, entries during ``package`` are
+# pages written into the ZIM.
+#
+# ``parent`` is set on ASSET nodes and null on page nodes, and the difference
+# is what the engine actually knows. The crawler fetches an asset because a
+# named page referenced it, so that parentage is measured. It reports which
+# page it captured but never which page linked to it, so page parentage would
+# have to be invented — and a tree the engine did not measure is a prettier lie
+# than a flat list. The client derives page parentage from the site's own
+# address space and lets a server-supplied parent win, so if the crawler ever
+# does report link provenance nothing downstream has to change.
+
+_CREATE_RE_STEP = re.compile(r"^\[(\d+)/(\d+)\]\s+(.+)$")
+_CREATE_RE_CRAWL_TAIL = re.compile(r"\s*\((\d+) queued(?:, (.+?) fetched)?\)$")
+_CREATE_RE_PACKAGED = re.compile(r"^packaged (\d+)/(\d+)\s+(.+)$")
+_CREATE_RE_PACKAGING_MANY = re.compile(r"^packaging (\d+) pages?\b")
+_CREATE_RE_FETCHING = re.compile(r"^fetching (\S+)$")
+_CREATE_RE_PACKAGING_ONE = re.compile(r"^packaging (\S+)$")
+_CREATE_RE_SKIPPED = re.compile(r"^skipped (\S+):")
+_CREATE_RE_ASSET = re.compile(r"^asset (done|failed) (\S+) for (\S+)$")
+# The Fast engine's running carry total, emitted at most once a second while it
+# fetches a page's images during the write pass. Turns the packaging phase from
+# a blank pane into live counters (Eric: "this view is still empty and lame").
+_CREATE_RE_CARRIED = re.compile(r"^carried (\d+) assets, (\d+) bytes$")
+_CREATE_RE_TITLE = re.compile(r"^title: (.+)$")
+# Both doors into warc2zim announce themselves the same way — the alive engine
+# handing over its recording, and `zimi import` handing over an archive
+# somebody else made.
+_CREATE_RE_CONVERTING = re.compile(r"^converting\b")
+# The renderer's one line between "job started" and its first page: Chromium
+# can take many seconds to boot, and without this the run pane sat silent for
+# all of them (Eric: "show something right now — I need to open the log thing
+# to see what's happening").
+_CREATE_RE_BROWSER = re.compile(r"^starting a headless browser")
+_CREATE_LABEL_MAX = 80
+
+
+def _create_short_label(target):
+    """The bit of a URL or article path worth showing in a node: the path (and
+    the query that paginates it), or the host when the path is just ``/``."""
+    text = str(target).strip()
+    if text.startswith(("http://", "https://")):
+        parts = urllib.parse.urlsplit(text)
+        path = parts.path or "/"
+        if path == "/" and parts.netloc:
+            text = parts.netloc
+        else:
+            text = path + (("?" + parts.query) if parts.query else "")
+    return text[:_CREATE_LABEL_MAX]
+
+
+def _create_parse_bytes(text):
+    """The byte count back out of a size the engines formatted ("759.0 KB").
+    ``crawler.parse_size`` already reads every spelling the CLI accepts, so it
+    reads this one too — bar the bare "N bytes" form, unwrapped here so the
+    two halves stay one dialect. None when it is not a size at all."""
+    raw = str(text).strip()
+    if raw.lower().endswith("bytes"):
+        raw = raw[:-5].strip()
+    try:
+        from zimi.crawler import parse_size
+
+        return parse_size(raw)
+    except Exception:
+        return None
+
+
+def _create_node_event(kind, node_id, state, label=None, parent=None):
+    return {
+        "t": "node",
+        "kind": kind,
+        "id": str(node_id)[:CREATE_MAX_SOURCE],
+        "parent": str(parent)[:CREATE_MAX_SOURCE] if parent else None,
+        "label": _create_short_label(label if label is not None else node_id),
+        "state": state,
+    }
+
+
+def _create_count_event(what, n, total=None):
+    return {"t": "count", "what": what, "n": int(n), "total": total}
+
+
+def _create_derive(job, text):
+    """Events (and the phase they imply) from one line of engine output.
+
+    Returns ``(events, phase_or_None)``. Never raises: a line this does not
+    recognise is simply a line with no events behind it, which is the right
+    outcome for engine output that is prose."""
+    try:
+        return _create_derive_line(job, text)
+    except Exception:  # a log line must never be able to fail a job
+        log.debug("could not derive create events from %r", text, exc_info=True)
+        return [], None
+
+
+def _create_derive_line(job, text):
+    line = text.strip()
+    events, phase = [], None
+
+    def enter(name):
+        nonlocal phase
+        # The membership check is the contract, enforced: the client renders a
+        # fixed set of phases, and a name outside it would be a phase that
+        # silently draws nothing.
+        assert name in CREATE_PHASES, name
+        if job.phase != name and phase != name:
+            phase = name
+            job.transient_detail = False  # a fresh phase brings its own detail
+            events.append({"t": "phase", "phase": name, "detail": job.mode})
+
+    def settle():
+        """Real progress after a transient caption: re-state the phase with its
+        plain detail — the client blanks detail == mode — so "starting a
+        headless browser…" comes down the moment actual work reports again."""
+        if job.transient_detail:
+            job.transient_detail = False
+            if not any(e.get("t") == "phase" for e in events):
+                events.append({"t": "phase", "phase": job.phase, "detail": job.mode})
+
+    if _CREATE_RE_BROWSER.match(line):
+        # Between a rendered/alive job starting and its first page there are
+        # 5–15 silent seconds of Chromium booting. Re-announcing the CURRENT
+        # phase with this line as its detail puts the sentence on the run pane
+        # the moment it happens — same event vocabulary, no second channel —
+        # and settle() above takes it back down at the next real progress.
+        job.transient_detail = True
+        events.append({"t": "phase", "phase": job.phase, "detail": line})
+        return events, phase
+
+    match = _CREATE_RE_PACKAGED.match(line)
+    if match:  # site capture, one page written into the ZIM
+        enter("package")
+        settle()
+        events.append(_create_node_event("entry", match.group(3), "done"))
+        events.append(
+            _create_count_event("entries", match.group(1), int(match.group(2)))
+        )
+        return events, phase
+
+    match = _CREATE_RE_CARRIED.match(line)
+    if match:  # the write pass reporting what it has pulled in so far
+        settle()
+        events.append(_create_count_event("assets", int(match.group(1))))
+        events.append(_create_count_event("bytes", int(match.group(2))))
+        return events, phase
+
+    match = _CREATE_RE_ASSET.match(line)
+    if match:  # one image, stylesheet or font, and the page that wanted it
+        state, asset_id, page_id = match.groups()
+        settle()
+        events.append(
+            _create_node_event(
+                "asset",
+                asset_id,
+                state,
+                label=asset_id.rsplit("/", 1)[-1],
+                parent=page_id,
+            )
+        )
+        return events, phase
+
+    match = _CREATE_RE_PACKAGING_MANY.match(line)
+    if match:  # site capture, the whole write pass announcing its size
+        enter("package")
+        settle()
+        events.append(_create_count_event("entries", 0, int(match.group(1))))
+        return events, phase
+
+    match = _CREATE_RE_STEP.match(line)
+    if match:
+        done, total, rest = int(match.group(1)), int(match.group(2)), match.group(3)
+        enter("fetch")
+        settle()
+        tail = _CREATE_RE_CRAWL_TAIL.search(rest)
+        if tail:  # a site crawl: the remainder is a URL plus the running totals
+            url = rest[: tail.start()].strip()
+            events.append(_create_node_event("page", url, "done"))
+            fetched = _create_parse_bytes(tail.group(2) or "")
+            if fetched is not None:
+                events.append(_create_count_event("bytes", fetched))
+        else:  # a video playlist: the remainder is a title, not an address
+            events.append(_create_node_event("entry", rest, "done"))
+        events.append(_create_count_event("entries", done, total))
+        return events, phase
+
+    match = _CREATE_RE_FETCHING.match(line)
+    if match:
+        enter("fetch")
+        settle()  # a page in flight means the browser is up
+        events.append(_create_node_event("page", match.group(1), "active"))
+        return events, phase
+
+    match = _CREATE_RE_SKIPPED.match(line)
+    if match:
+        events.append(_create_node_event("page", match.group(1), "failed"))
+        return events, phase
+
+    match = _CREATE_RE_PACKAGING_ONE.match(line)
+    if match:
+        enter("package")
+        target = match.group(1)
+        if target.startswith(("http://", "https://")):
+            # Multi-page capture writes one page at a time and says which.
+            events.append(_create_node_event("page", target, "done"))
+        return events, phase
+
+    if _CREATE_RE_CONVERTING.match(line):
+        enter("convert")
+        return events, phase
+
+    match = _CREATE_RE_TITLE.match(line)
+    if match:
+        # The engine has read what the thing it is making is called. Worth
+        # having only when nobody typed a title — an admin's own title is a
+        # decision, not a guess to be improved on. It goes straight onto the
+        # job rather than out as an event: every status reply already carries
+        # `title`, and the job's own thread is the only writer there is.
+        if not job.title:
+            job.title = match.group(1).strip()[:CREATE_MAX_TITLE]
+        return events, phase
+
+    # The engines' closing "done" line is deliberately NOT read as the done
+    # phase: only the job knows whether it finished, was cancelled or was given
+    # up on, so _create_finish is the single place that says so.
+    return events, phase
+
+
+def _create_emit(job, *events):
+    """File events that did not come from a line — the totals a finished run
+    knows and no sentence carried. Deliberately not ``job.note``: that is the
+    cancellation checkpoint, and a job that has already succeeded must not be
+    turned into a cancelled one by its own closing bookkeeping."""
+    with _create_lock:
+        job._push_events([dict(event) for event in events])
+
+
+# ── the job journal ─────────────────────────────────────────────────────────
+#
+# Jobs live in memory, which is right for a live log and wrong for the only
+# question an admin asks after a redeploy: what happened to the thing I
+# started? The journal is a small JSON file of the last CREATE_JOURNAL_RECORDS
+# jobs, rewritten at the few moments a job's state actually changes (queued,
+# started, each phase, finished) — a handful of writes per job, not one per
+# page.
+#
+# On the first read of a new process, any record still marked running or queued
+# belongs to a server that is no longer here, and becomes "interrupted". That
+# is not a guess: this process is holding the file, so nothing else is advancing
+# those jobs. Their partial output is already gone — ``atomic_zim_creator``
+# writes to ``<name>.zim.tmp`` and only renames on a clean exit, so a killed
+# process leaves a tmp file and never a half-written ZIM under a real name.
+
+_create_journal_lock = threading.Lock()
+_create_journal = None  # list of records, loaded and reconciled once
+
+
+def _create_journal_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, CREATE_JOURNAL_FILE)
+
+
+def _create_job_state(job):
+    """The one word for a job's state that the journal and the history view
+    both use. Ordered by precedence: how it ended beats that it ended."""
+    if not job.done:
+        return "running" if job.started else "queued"
+    if job.cancelled:
+        return "cancelled"
+    if job.stalled:
+        return "stalled"
+    return "ok" if job.ok else "failed"
+
+
+def _create_job_record(job):
+    """One journal record. Everything here is already visible to the admin who
+    submitted the job — no server paths beyond the source they typed, and the
+    result named the way the library names it."""
+    return {
+        "id": job.id,
+        "mode": job.mode,
+        "source": job.source[:CREATE_MAX_SOURCE],
+        "title": job.title,
+        "queued": round(job.queued_at, 3),
+        "started": round(job.started, 3) if job.started else None,
+        "finished": round(job.finished, 3) if job.finished else None,
+        "phase": job.phase,
+        "state": _create_job_state(job),
+        "ok": bool(job.ok),
+        "error": job.error,
+        "result": (job.result or {}).get("name"),
+        # What the run counted and whether it stopped short of its bounds.
+        # Without these the journal answers "did my capture finish?" with a
+        # bare ok — a crawl that died at its byte budget after 38 of a site's
+        # pages read exactly like one that got everything (Eric's apple run:
+        # diagnosing it meant re-deriving the budget math by hand).
+        "counts": {
+            k: v
+            for k, v in (job.result or {}).items()
+            if k in ("pages", "assets", "bytes", "files", "videos", "entries")
+        }
+        or None,
+        "stopped": (job.result or {}).get("stopped"),
+        "actor": _activity_clean_actor(getattr(job, "actor", None)),
+    }
+
+
+# A create job's own word for how it ended, in the activity journal's words. A
+# stalled job failed — "gave up waiting" is the detail, not a fifth outcome.
+_CREATE_ACTIVITY_OUTCOME = {
+    "ok": "ok",
+    "failed": "failed",
+    "cancelled": "cancelled",
+    "stalled": "failed",
+    "interrupted": "interrupted",
+}
+
+
+def _create_activity(job):
+    """File a settled creation run in the activity journal."""
+    result = job.result or {}
+    state = _create_job_state(job)
+    record_activity(
+        "create",
+        result.get("title") or job.title or result.get("name") or job.source,
+        outcome=_CREATE_ACTIVITY_OUTCOME.get(state, "failed"),
+        # What it was made from is the one fact the subject cannot carry: two
+        # ZIMs called "Docs" are told apart by the site they came from.
+        detail=(job.error or job.source or job.mode),
+        actor=getattr(job, "actor", None),
+        size_bytes=result.get("bytes"),
+    )
+
+
+def _create_journal_load():
+    """The journal, reconciled once per process. Caller must hold
+    ``_create_journal_lock``."""
+    global _create_journal
+    if _create_journal is not None:
+        return _create_journal
+    records = []
+    try:
+        with open(_create_journal_path(), encoding="utf-8") as fh:
+            loaded = json.load(fh)
+        if isinstance(loaded, list):
+            records = [r for r in loaded if isinstance(r, dict)]
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError) as e:
+        log.warning("Cannot read the create journal: %s", e)
+    stale = False
+    if len(records) > CREATE_JOURNAL_RECORDS:
+        # Trimmed on the way IN as well as on the way out: the bound is what
+        # this file is allowed to be, not merely what this process appends to
+        # it, and a journal that arrived oversized (an older build, a hand
+        # edit) must not be served or rewritten at that size.
+        del records[: len(records) - CREATE_JOURNAL_RECORDS]
+        stale = True
+    for record in records:
+        state = record.get("state")
+        if state == "running":
+            record["state"] = "interrupted"
+            record["error"] = "interrupted: the server restarted during this job"
+            stale = True
+        elif state == "queued":
+            record["state"] = "interrupted"
+            record["error"] = "not started: the server restarted before this job began"
+            stale = True
+        else:
+            continue
+        # A job the server lost is still something that happened to this
+        # library, and the activity view is where an operator looks to find out
+        # why last night's ZIM never appeared. Recorded once: the reconcile
+        # rewrites the state, so the next boot sees "interrupted" and no longer
+        # matches here.
+        record_activity(
+            "create",
+            record.get("title") or record.get("result") or record.get("source") or "",
+            outcome="interrupted",
+            detail=record.get("error") or "",
+            actor=record.get("actor"),
+        )
+    _create_journal = records
+    if stale:
+        _create_journal_save()
+    return records
+
+
+def _create_journal_save():
+    """Caller holds ``_create_journal_lock``. Never raises: a job that cannot
+    be journalled is still a job that ran."""
+    _srv._atomic_write_json(_create_journal_path(), _create_journal or [])
+
+
+def _create_journal_put(job):
+    """Record this job's current state, replacing its earlier record."""
+    record = _create_job_record(job)
+    with _create_journal_lock:
+        records = _create_journal_load()
+        for index, existing in enumerate(records):
+            if existing.get("id") == job.id:
+                records[index] = record
+                break
+        else:
+            records.append(record)
+        if len(records) > CREATE_JOURNAL_RECORDS:
+            del records[: len(records) - CREATE_JOURNAL_RECORDS]
+        _create_journal_save()
+
+
+def _create_history():
+    """The recent jobs, newest first — what a returning admin came back for."""
+    with _create_journal_lock:
+        return list(reversed(_create_journal_load()))
+
+
+def _create_name_of(path):
+    """The library name for a freshly written ZIM: its filename without the
+    extension, which is exactly how the rest of the app addresses it."""
+    base = os.path.basename(path or "")
+    return base[:-4] if base.lower().endswith(".zim") else base
+
+
+def _create_validate(data):
+    """Validate a create request. Returns ``(mode, source, title, opts)`` or
+    raises ValueError whose message is safe to send to the client — every one
+    of them names something the admin typed, never anything internal."""
+    mode = str(data.get("mode") or "").strip().lower()
+    if mode not in CREATE_MODES:
+        raise ValueError("unknown creation mode")
+    source = str(data.get("source") or "").strip()
+    if not source:
+        raise ValueError("missing source")
+    # Page mode takes a LIST — one address per line — so its ceiling is the cap
+    # times a URL, not a single URL.
+    ceiling = CREATE_MAX_SOURCE * (CREATE_MAX_PAGE_URLS if mode == "page" else 1)
+    if len(source) > ceiling:
+        raise ValueError("source is too long")
+    title = str(data.get("title") or "").strip()[:CREATE_MAX_TITLE]
+    page_urls = []
+
+    if mode == "folder":
+        # CLI-only, by decree (Eric, round 3: "remove folder, I said that
+        # would be CLI only"). The engine (creator.create_folder_zim) is
+        # untouched — someone at a shell already has the filesystem this mode
+        # reads. What is gone is the web door, and the refusal names the one
+        # that is still open.
+        raise ValueError(
+            "folder capture is CLI-only — run `zimi create <folder>` "
+            "on the server itself"
+        )
+    elif mode == "import":
+        # CLI-only, by the same decree that took folder capture off the web
+        # (Eric: "remove archive as well only in cli"). The engine
+        # (importer.convert_archive) is untouched — `zimi import <file>` on the
+        # machine itself still runs it. What is gone is the web door that read a
+        # path off the server's disk, and the refusal names the one still open.
+        raise ValueError(
+            "web archive import is CLI-only — run `zimi import <file>` "
+            "on the server itself"
+        )
+    elif mode == "page":
+        # One page or twenty, it is the same gesture: paste what you want kept.
+        # The engine sends a single URL down the single-page path itself, so
+        # nothing here has to decide which kind of capture this is.
+        page_urls = _create_page_urls(source)
+        source = page_urls[0] if len(page_urls) == 1 else "\n".join(page_urls)
+    else:
+        source = _normalize_url_scheme(source)
+        parts = urllib.parse.urlsplit(source)
+        if parts.scheme.lower() not in ("http", "https") or not parts.netloc:
+            raise ValueError("not an http(s) URL")
+
+    # Options. Numbers clamp (an absurd one means the admin misjudged a bound,
+    # and the nearest legal value is what they meant); anything that is not a
+    # number at all raises, because there is no "nearest" size or language code
+    # and quietly running with a different one is worse than a refusal.
+    opts = {}
+    if mode == "page":
+        opts["urls"] = page_urls
+    if mode in ("folder", "page", "site", "video"):
+        opts["language"] = _create_language(data.get("language"))
+    if mode in ("page", "site"):
+        # The two modes that capture a web page get to choose HOW. Refused
+        # rather than clamped, like every other named value: silently capturing
+        # the other way is the one outcome nobody asked for.
+        opts["engine"] = _create_engine(data.get("engine"))
+        # Ad and tracker blocking, but only for an engine that can do it. A
+        # form left open while the engine radio moved back to the fast one can
+        # send this; DROPPING it there is right where the CLI's refusal is
+        # right — nobody typed this, a stale checkbox did, and refusing a whole
+        # capture over a field that describes nothing would be theatre.
+        if _create_blocking_engine(opts["engine"]):
+            opts["block_ads"] = _create_bool(
+                data.get("block_ads"), _create_default("block_ads", CREATE_BLOCK_ADS)
+            )
+        # The responsive-variant sweep, on the one engine that does it, and
+        # dropped elsewhere for exactly the reason block_ads is dropped: a
+        # stale checkbox from a form whose engine radio has since moved is not
+        # a request anybody made.
+        if _create_variant_engine(opts["engine"]):
+            opts["capture_variants"] = _create_bool(
+                data.get("capture_variants"),
+                _create_default("capture_variants", CREATE_CAPTURE_VARIANTS),
+            )
+    if mode == "site":
+        opts["max_pages"] = _create_int(
+            data.get("max_pages"), 1, CREATE_MAX_PAGES_CEILING
+        )
+        opts["max_depth"] = _create_int(
+            data.get("max_depth"), 0, CREATE_MAX_DEPTH_CEILING
+        )
+        opts["max_bytes"] = _create_bytes(data.get("max_bytes"))
+        opts["delay"] = _create_float(data.get("delay"), 0.0, CREATE_MAX_DELAY)
+        opts["ignore_robots"] = bool(data.get("ignore_robots"))
+    elif mode == "video":
+        opts["audio_only"] = bool(data.get("audio_only"))
+        opts["limit"] = _create_int(data.get("limit"), 1, CREATE_VIDEO_LIMIT_CEILING)
+        opts["max_bytes"] = _create_bytes(data.get("max_bytes"))
+        opts["fmt"] = _create_video_format(data.get("format"), opts["audio_only"])
+    return mode, source, title, opts
+
+
+def _normalize_url_scheme(text):
+    """Prepend https:// when someone typed a bare host — cnn.com, example.org/x
+    — the way people actually type an address (Eric: "allow entering sites
+    without https://"). An explicit scheme, a scheme-relative //host, a host:port,
+    or a first segment with no dot (a typo or a local name) is left exactly as
+    given for the validator to judge."""
+    t = text.strip()
+    if "://" in t or t.startswith("//"):
+        return t
+    head = t.split("/", 1)[0]
+    if ":" in head:  # host:port or an unknown scheme — don't second-guess it
+        return t
+    if "." in head and " " not in head:
+        return "https://" + t
+    return t
+
+
+def _create_page_urls(source):
+    """One address per line into the list the multi-page capture takes. Blank
+    lines are skipped and duplicates collapse, because pasting a list is how
+    people produce both. Every entry is checked here so the refusal names the
+    line that is wrong rather than failing an hour later on page eleven."""
+    urls = []
+    for line in str(source).splitlines():
+        text = _normalize_url_scheme(line.strip())
+        if not text:
+            continue
+        # The whole-field ceiling is the cap times a URL, so it cannot catch a
+        # single absurd line. Each address carries the single-source bound.
+        if len(text) > CREATE_MAX_SOURCE:
+            raise ValueError("one of those addresses is too long")
+        parts = urllib.parse.urlsplit(text)
+        if parts.scheme.lower() not in ("http", "https") or not parts.netloc:
+            raise ValueError(f"not an http(s) URL: {text[:120]}")
+        if text not in urls:
+            urls.append(text)
+    if not urls:
+        raise ValueError("missing source")
+    if len(urls) > CREATE_MAX_PAGE_URLS:
+        raise ValueError(
+            f"that is {len(urls)} addresses; {CREATE_MAX_PAGE_URLS} is the most "
+            "one capture takes. A bigger set is a site crawl."
+        )
+    return urls
+
+
+def _create_int(value, low, high):
+    """Clamp an optional numeric form field into range; None when absent or
+    unparseable, which every engine reads as "use your own default"."""
+    if value in (None, ""):
+        return None
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(low, min(high, n))
+
+
+def _create_float(value, low, high):
+    """The fractional twin of ``_create_int`` — crawl delay is sub-second."""
+    if value in (None, ""):
+        return None
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return None
+    if n != n or n in (float("inf"), float("-inf")):  # NaN / inf are not delays
+        return None
+    return max(low, min(high, n))
+
+
+def _create_bytes(value):
+    """A size budget typed as ``500M`` or ``2G``, in bytes and under the web
+    ceiling. None when absent. Raises ValueError — which the route turns into a
+    400 naming the fix — when it is not a size at all, because a budget nobody
+    can read is not a budget to guess at."""
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if len(text) > CREATE_MAX_SIZE_TEXT:
+        raise ValueError("that is not a byte size")
+    # The crawler's parser is the one that already understands every form the
+    # CLI accepts (512MiB, 2G, 1048576); the web form must not invent a second
+    # dialect of the same field.
+    from zimi.crawler import parse_size
+    from zimi.creator import CreateError
+
+    try:
+        return min(CREATE_MAX_BYTES_CEILING, parse_size(text))
+    except CreateError as e:
+        raise ValueError(str(e))
+
+
+def _create_language(value):
+    """An ISO 639-3 content language for the ZIM's metadata and its full-text
+    index. Free text, so it is checked rather than clamped."""
+    if value in (None, ""):
+        return None
+    code = str(value).strip().lower()
+    if not _CREATE_LANGUAGE_RE.match(code):
+        raise ValueError("language must be a code like eng, fra or ara")
+    return code
+
+
+def _create_engine(value):
+    """Which capture engine a web capture asked for. None when nobody said,
+    which every caller reads as "the fast one" — the default lives in the
+    engines, not in three copies of the word "builtin"."""
+    if value in (None, ""):
+        return None
+    name = str(value).strip().lower()
+    if name not in CREATE_ENGINES:
+        raise ValueError("unknown capture engine")
+    # Refused HERE rather than an hour into a job: both of these are separate
+    # installs, and a form that accepts a choice this machine cannot honour is
+    # a form that lies.
+    if name == "rendered" and not _create_browser_ready():
+        raise ValueError(
+            "the rendered engine needs a browser this server does not have " "installed"
+        )
+    if name == "singlefile" and not _create_singlefile_ready():
+        raise ValueError(
+            "the singlefile engine needs the SingleFile CLI, and this server "
+            "does not have it installed"
+        )
+    if name == "zimit" and not _create_zimit_ready():
+        raise ValueError(
+            "the zimit engine runs openZIM's crawler in Docker, and this "
+            "server has no Docker it can reach"
+        )
+    if name == "alive" and not _create_alive_ready():
+        raise ValueError(
+            "the alive engine needs both a browser and the warc2zim sidecar, "
+            "and this server is missing at least one of them"
+        )
+    return name
+
+
+def _create_blocking_engine(engine):
+    """Whether the chosen engine can block anything. ``None`` is the fast
+    engine — the default lives in the engines, and it does not block."""
+    return str(engine or "").strip().lower() in CREATE_BLOCKING_ENGINES
+
+
+def _create_variant_engine(engine):
+    """Whether the chosen engine sweeps up responsive image variants, which is
+    to say whether the switch means anything. ``None`` is the fast engine."""
+    return str(engine or "").strip().lower() in CREATE_VARIANT_ENGINES
+
+
+def _create_bool(value, default):
+    """A checkbox that is CHECKED by default, read as a real bool.
+
+    Every other bool on this form is off until someone turns it on, so absence
+    and false are the same statement and ``bool(value)`` is the whole reader.
+    This one is on until someone turns it OFF, which makes absence ambiguous —
+    a client that omits the field means "I never drew this", and only an
+    explicit ``false`` means "I unticked it"."""
+    if value is None:
+        return default
+    if isinstance(value, str):
+        # A form-encoded post has no JSON booleans; "false" from one of those
+        # is a false, not a non-empty string.
+        return value.strip().lower() not in ("", "0", "false", "no", "off")
+    return bool(value)
+
+
+def _create_video_format(value, audio_only):
+    """A named quality preset from the form, as the engine's format selector.
+    Audio-only owns the format entirely, so a preset alongside it is dropped
+    rather than fought over."""
+    if audio_only or value in (None, ""):
+        return None
+    key = str(value).strip()
+    if key not in CREATE_VIDEO_FORMATS:
+        raise ValueError("unknown video quality — pick one of the offered ones")
+    return CREATE_VIDEO_FORMATS[key]
+
+
+def _create_kwargs(opts, *names):
+    """Only the options the admin actually set. Every engine defaults these
+    itself, and passing None would override the default with nothing."""
+    return {name: opts[name] for name in names if opts.get(name) is not None}
+
+
+def _create_out_dir():
+    """Web-created ZIMs land in <zim_dir>/created — the folder the library
+    files as its Created section, which is where an admin who just watched a
+    job finish goes looking. A ZIM dropped in the library root instead is
+    filed under its language with everything else and reads as missing (found
+    the hard way: Eric's first real capture "didn't show in the created
+    list"). The CLI keeps the root default; --out keeps winning there."""
+    return os.path.join(_srv.ZIM_DIR, "created")
+
+
+def _create_run(job, opts):
+    """Drive the engine for one job. Imports are deferred to here: the writer
+    stack and yt-dlp are heavy, and a server that never creates a ZIM should
+    never pay for them. (Neither folder nor archive import reaches here — the
+    web refuses both at validation; `zimi create <folder>` and `zimi import
+    <file>` are their only doors.)"""
+    if job.mode == "page":
+        # create_pages_zim hands a single URL to create_page_zim itself, so one
+        # entry point covers both shapes — and it takes a progress callback,
+        # which is what gives page mode a live log and a cancel at all.
+        from zimi.creator import create_pages_zim
+
+        return create_pages_zim(
+            opts.get("urls") or [job.source],
+            title=job.title or None,
+            out_dir=_create_out_dir(),
+            register=True,
+            progress=job.note,
+            **_create_kwargs(
+                opts, "language", "engine", "block_ads", "capture_variants"
+            ),
+        )
+    if job.mode == "site":
+        from zimi.crawler import _StopFlag, create_site_zim
+
+        # The finish-early control's handle on the crawl: the same stop flag
+        # the CLI's SIGINT sets, owned by the job so the route can reach it.
+        # Seeded from finish_requested so a request that raced job startup is
+        # not lost in the gap.
+        stop = _StopFlag()
+        stop.hit = job.finish_requested
+        job.stop_flag = stop
+        return create_site_zim(
+            job.source,
+            title=job.title or None,
+            out_dir=_create_out_dir(),
+            register=True,
+            progress=job.note,
+            stop=stop,
+            **_create_kwargs(
+                opts,
+                "max_pages",
+                "max_depth",
+                "max_bytes",
+                "delay",
+                "ignore_robots",
+                "language",
+                "engine",
+                "block_ads",
+                "capture_variants",
+            ),
+        )
+    if job.mode == "video":
+        from zimi.video import create_video_zim
+
+        return create_video_zim(
+            job.source,
+            title=job.title or None,
+            out_dir=_create_out_dir(),
+            audio_only=opts.get("audio_only", False),
+            register=True,
+            progress=job.note,
+            **_create_kwargs(opts, "limit", "max_bytes", "fmt", "language"),
+        )
+    # Only the three URL modes reach here; validation refuses everything else
+    # (folder and archive import are CLI-only). A job that arrived with any
+    # other mode is a bug in the caller, not an input to run.
+    raise ValueError(f"no web engine for mode {job.mode!r}")
+
+
+def _create_worker(job, opts):
+    """Job thread body. Never raises — every outcome becomes job state."""
+    from zimi.creator import CreateError
+
+    outcome: dict = {}
+    try:
+        result = _create_run(job, opts)
+        outcome = {
+            "ok": True,
+            "result": {
+                "name": _create_name_of(result.get("path")),
+                # What the admin asked this ZIM to be called, when they said;
+                # otherwise the title the capture found. The library lists
+                # ZIMs by title, so a done card that only showed the filename
+                # would name it differently from where it just landed
+                # ("sive_rs_n-12" where the library says "Hell Yeah or No").
+                "title": job.title or str(result.get("title") or ""),
+                "path": result.get("path"),
+                "registered": bool(result.get("registered")),
+            },
+        }
+        # What the run counted, when it counted anything: every engine returns a
+        # different subset, and a done card that can say "40 pages, 118 assets"
+        # should not have to read it back out of the log.
+        for key in (
+            "pages",
+            "assets",
+            "bytes",
+            "files",
+            "videos",
+            "entries",
+            "text_chars",
+        ):
+            if isinstance(result.get(key), int):
+                outcome["result"][key] = result[key]
+        # A page with almost no readable text is more likely a login, consent
+        # or paywall gate than the article (medium.com: 227 characters to
+        # every engine). The job log said so; the card says so too, because
+        # nobody opens the log of a job that finished green.
+        if result.get("thin_page"):
+            outcome["result"]["thin_page"] = True
+        # The bound that ended a crawl early ("interrupted", "page cap (200)"),
+        # when one did. The done card owes the admin that honesty — a ZIM that
+        # says "40 pages" without saying "and I stopped there on purpose" reads
+        # like a capture that thinks it got everything.
+        if result.get("stopped"):
+            outcome["result"]["stopped"] = str(result["stopped"])
+        # What the finished ZIM is actually MADE of — on-disk size and the
+        # per-kind split behind it. "382 assets" says nothing about whether that
+        # is mostly pictures or mostly fonts, and a number with no shape is not
+        # information (Eric, on the done card: "show a storage breakdown, total
+        # size of the zim and its components"). Best effort by construction: a
+        # breakdown that cannot be read never costs a finished capture.
+        try:
+            from zimi.zimwriter import zim_content_breakdown
+
+            shape = zim_content_breakdown(result.get("path"))
+            if shape:
+                outcome["result"]["shape"] = shape
+                # And into the library, where every OTHER surface reads it from.
+                # Without this the done card showed the composition while About
+                # showed no bar at all for the same ZIM, seconds apart, until
+                # the background worker came round — the two disagreeing about
+                # a file that had just been measured. The measurement is in
+                # hand; handing it over costs nothing and re-reading the file
+                # to learn it again would cost the read.
+                name = _create_name_of(result.get("path"))
+                if name:
+                    _srv._shape_store({name: shape})
+        except Exception:
+            log.debug("content breakdown skipped", exc_info=True)
+        # Totals only the finished run knows: no line carried them, so they are
+        # filed straight rather than parsed back out of prose.
+        totals = [
+            _create_count_event(what, result[key])
+            for what, key in (("entries", "pages"), ("assets", "assets"))
+            if isinstance(result.get(key), int)
+        ]
+        if totals:
+            _create_emit(job, *totals)
+        if result.get("registered"):
+            _create_emit(job, {"t": "phase", "phase": "register", "detail": job.mode})
+        job.note("done")
+    except _CreateCancelled:
+        outcome = {
+            "cancelled": True,
+            "error": "cancelled — nothing was added to the library",
+        }
+    except CreateError as e:
+        # The ONE place a caught message reaches the client verbatim, and it is
+        # the point of the exception: CreateError carries the sentence that
+        # names the fix ("capture it with zimit…", "yt-dlp is not installed…").
+        # Every other exception below stays generic.
+        outcome = {"error": str(e)}
+    except Exception:
+        log.exception("ZIM creation failed (%s)", job.mode)
+        outcome = {"error": "creation failed — see the server log for details"}
+    _create_finish(job, **outcome)
+
+
+def _create_finish(job, **outcome):
+    """Close a job ONCE and hand the slot to whatever is waiting.
+
+    Both the worker thread and the watchdog can arrive here for the same job —
+    a stalled job that later unwedges, say — so the first one wins and the
+    second is a no-op. Otherwise a job could be finished twice and the queue
+    advanced twice, running two creations at once on a machine chosen for
+    being able to run one."""
+    with _create_lock:
+        if job.done:
+            return False
+        # A stalled job's verdict outranks whatever the worker thread says next.
+        #
+        # The watchdog cannot kill a Python thread, so it kills the BROWSER —
+        # and that is precisely what un-blocks the wedged worker, which then
+        # raises "Target page, context or browser has been closed" and races
+        # here to close the job with it. It usually won: the operator was told
+        # a browser closed, by the code that closed it, instead of "no progress
+        # for 10 minutes". Whoever arrives first now, the sentence is the one
+        # the watchdog published before it touched anything.
+        if job.stall_error and not outcome.get("stalled"):
+            outcome = dict(outcome, stalled=True, error=job.stall_error)
+        for key, value in outcome.items():
+            setattr(job, key, value)
+        if not outcome.get("ok") and job.phase != "done":
+            job.failed_phase = job.phase
+        if job.phase != "done":
+            job.phase = "done"
+        job.finished = time.time()
+        # Journal BEFORE done becomes visible: a status poll learns "done"
+        # from the flag, and history must already agree by then — otherwise
+        # one reply can say done while its own history says running. The
+        # journal write is a ~1KB file behind its own lock; paying it inside
+        # this lock is what makes the two truths one truth.
+        job.done = True
+        _create_journal_put(job)
+    _create_emit(job, {"t": "phase", "phase": "done", "detail": _create_job_state(job)})
+    # The create journal serves the Create page; the activity journal serves the
+    # operator asking what has been happening to this library. A settled job is
+    # one line in each — but this one is written HERE, after the done event is
+    # published and before waiters are released. Between the done FLAG going up
+    # (under the lock, with the create journal) and the done EVENT reaching the
+    # stream there must be nothing: a poll that sees done and then reads the
+    # events expects the last one to be there, and a file write in that gap is
+    # long enough to lose the race.
+    _create_activity(job)
+    job.settled.set()
+    _create_start_next()
+    return True
+
+
+def _create_watch(job):
+    """Watchdog thread. A job that has not reported for CREATE_STALL_SECONDS is
+    not slow, it is stuck on something that will never answer, and the honest
+    thing is to say so and free the slot rather than spin a progress bar until
+    somebody restarts the server.
+
+    It cannot KILL the worker — Python threads do not work that way, and the
+    thread is blocked inside a socket read. So it does both things it can: ask
+    for cancellation, which lands if the engine ever reaches another checkpoint,
+    and close the job out. Whatever the wedged step was doing carries on in the
+    background until it times out; it writes to a temp file under a name of its
+    own, so nothing it does can corrupt what the library already has."""
+    tick = min(CREATE_STALL_TICK, max(0.01, CREATE_STALL_SECONDS))
+    while not job.settled.wait(tick):
+        since = job.progressed or job.started or job.queued_at
+        if time.time() - since < CREATE_STALL_SECONDS:
+            continue
+        job.cancel_requested = True
+        minutes = int(CREATE_STALL_SECONDS // 60) or 1
+        verdict = (
+            f"no progress for {minutes} minutes — giving up on this job. "
+            "Whatever it was waiting for never answered. Nothing has been "
+            "added to the library."
+        )
+        # Published BEFORE anything is killed, and that order is the whole
+        # point. Killing the browser is what frees the wedged worker to raise
+        # its own error and reach _create_finish first; by then this sentence
+        # is already on the job and _create_finish knows to keep it.
+        job.stall_error = verdict
+        # A cooperative cancel lands at the engine's next progress line, and a
+        # wedged job by definition may never reach one. A browser is the one
+        # thing that can be stopped from out here regardless: it is a child
+        # process, and a signal does not need the job's thread to cooperate.
+        _create_kill_browsers()
+        log.warning(
+            "create job %s (%s) made no progress for %ss — abandoning it",
+            job.id,
+            job.mode,
+            int(CREATE_STALL_SECONDS),
+        )
+        _create_finish(job, stalled=True, error=verdict)
+        return
+
+
+def _create_launch(job, opts):
+    """Start a claimed job: its worker thread and its watchdog."""
+    job.started = time.time()
+    job.progressed = job.started
+    # The opening phase, so the event stream describes itself from event 0 and
+    # a client that joined late is never guessing which phase the counts below
+    # belong to.
+    _create_emit(job, {"t": "phase", "phase": job.phase, "detail": job.mode})
+    _create_journal_put(job)
+    threading.Thread(
+        target=_create_worker, args=(job, opts), daemon=True, name="zimi-create"
+    ).start()
+    threading.Thread(
+        target=_create_watch, args=(job,), daemon=True, name="zimi-create-watch"
+    ).start()
+
+
+def _create_start_next():
+    """Hand the slot to the head of the queue, if anything is waiting and the
+    slot is actually free. The free check is not belt-and-braces: dropping a
+    QUEUED job also finishes a job, and that must not start a second one on top
+    of the one already running."""
+    global _create_job
+    with _create_lock:
+        if _create_job is not None and not _create_job.done:
+            return
+        if not _create_queue:
+            return
+        job, opts = _create_queue.pop(0)
+        _create_job = job
+    _create_launch(job, opts)
+
+
+def _create_start(data, actor=None):
+    """Validate, then either claim the single job slot or take a place in the
+    queue behind whatever holds it. Returns ``(payload, status)`` ready to
+    send.
+
+    ``actor`` is whoever submitted it — captured here because the job outlives
+    its request by an hour, and the activity journal is written at the end.
+    """
+    try:
+        mode, source, title, opts = _create_validate(data)
+    except ValueError as e:
+        return {"error": str(e)}, 400
+    global _create_job
+    job = _CreateJob(mode, source, title)
+    if actor:
+        job.actor = actor
+    position = 0
+    with _create_lock:
+        running = _create_job if (_create_job and not _create_job.done) else None
+        if running is not None:
+            if len(_create_queue) >= CREATE_QUEUE_MAX:
+                return (
+                    {
+                        "error": (
+                            f"{CREATE_QUEUE_MAX} jobs are already waiting — "
+                            "let some of them finish first"
+                        ),
+                        "queued": len(_create_queue),
+                    },
+                    429,
+                )
+            _create_queue.append((job, opts))
+            position = len(_create_queue)
+        else:
+            _create_job = job
+    if running is not None:
+        _create_journal_put(job)
+        return {
+            "status": "queued",
+            "id": job.id,
+            "mode": mode,
+            "position": position,
+            # What it is waiting behind, so the reply explains itself without a
+            # second round trip.
+            "running": {"id": running.id, "mode": running.mode},
+        }, 200
+    _create_launch(job, opts)
+    return {"status": "started", "id": job.id, "mode": mode}, 200
+
+
+def _create_queue_view():
+    """The waiting jobs, in the order they will run."""
+    with _create_lock:
+        waiting = list(_create_queue)
+    return [
+        {
+            "id": job.id,
+            "mode": job.mode,
+            "source": job.source,
+            "title": job.title,
+            "position": position,
+        }
+        for position, (job, _opts) in enumerate(waiting, 1)
+    ]
+
+
+def _create_status(cursor, probe=False, events_cursor=0, history=False):
+    """Poll payload. ``cursor`` is the client's line count so far and
+    ``events_cursor`` its event count; the reply carries only what is new in
+    each, plus the cursor to send next time."""
+    job = _create_job
+    payload: dict = {"offline": _is_offline_mode(), "queue": _create_queue_view()}
+    if probe:
+        # Only on the page's first poll: one cheap subprocess, not per-second.
+        payload["import_ready"] = _create_import_ready()
+        # Whether the rendered engine's browser is installed here. Same
+        # contract as import_ready: asked once, on the page's first poll, and
+        # answered from a cache after that.
+        payload["browser_ready"] = _create_browser_ready()
+        # And whether BOTH halves of the alive engine are here. Reported as its
+        # own answer rather than left for the client to compute from the other
+        # two: what the alive engine needs is the alive engine's business, and
+        # a client that inferred it would have to be updated the day that
+        # changes.
+        payload["alive_ready"] = _create_alive_ready()
+        # And whether yt-dlp is here. This one was missing, and its absence is
+        # the whole reason the Create page offered a Video mode on an image
+        # that had no yt-dlp in it — the Pillow bug's shape exactly: a
+        # capability advertised by the client and absent from the server, with
+        # nothing in between able to notice. The parity test in
+        # tests/test_create_routes.py now fails if a mode is added without one.
+        payload["video_ready"] = _create_video_ready()
+        payload["singlefile_ready"] = _create_singlefile_ready()
+        payload["zimit_ready"] = _create_zimit_ready()
+        # The instance's stored capture defaults (Manage → Creator toggles),
+        # so the form's checkboxes start where the admin set them instead of
+        # at the factory state — the toggle would otherwise LOOK ignored.
+        payload["capture_defaults"] = {
+            "block_ads": _create_default("block_ads", CREATE_BLOCK_ADS),
+            "capture_variants": _create_default(
+                "capture_variants", CREATE_CAPTURE_VARIANTS
+            ),
+        }
+        # None, not "", when no root is configured: the client reads it as a
+        # yes/no about whether server-path capture exists on this instance at
+        # all, and an empty string is a path that happens to be blank.
+        payload["create_root"] = _create_root() or None
+    if job is None:
+        if history:
+            payload["history"] = _create_history()
+        payload.update(
+            {
+                "active": False,
+                "done": False,
+                "lines": [],
+                "cursor": 0,
+                "events": [],
+                "event_cursor": 0,
+            }
+        )
+        return payload
+    # tail()/event_tail() take _create_lock themselves — call them OUTSIDE
+    # the snapshot block below (the lock is not reentrant).
+    lines, next_cursor = job.tail(max(0, cursor))
+    events, next_events = job.event_tail(max(0, events_cursor))
+    # Snapshot the scalar fields UNDER the finish lock, and read history only
+    # after: _create_finish journals before it lets done become visible inside
+    # the same critical section, so this ordering is what guarantees one reply
+    # never says done while its own history still says running.
+    with _create_lock:
+        payload.update(
+            {
+                "id": job.id,
+                "active": not job.done,
+                "mode": job.mode,
+                "source": job.source,
+                "title": job.title,
+                "phase": job.phase,
+                "lines": lines,
+                "cursor": next_cursor,
+                "events": events,
+                "event_cursor": next_events,
+                "done": job.done,
+                "ok": job.ok,
+                "cancelled": job.cancelled,
+                "stalled": job.stalled,
+                "failed_phase": job.failed_phase,
+                "cancelling": job.cancel_requested and not job.done,
+                "error": job.error,
+                "result": job.result,
+                # See CREATE_CANCELLABLE_MODES: a cancel button on a job with
+                # no progress callback to interrupt would be a lie.
+                "cancellable": job.mode in CREATE_CANCELLABLE_MODES,
+                # The finish-early pair: whether the button means anything
+                # right now, and whether it has already been pressed. Both
+                # computed here so the client never has to know the rules.
+                "finishable": _create_finishable(job),
+                "finishing": job.finish_requested and not job.done,
+                "elapsed": round(
+                    (job.finished or time.time()) - (job.started or job.queued_at), 1
+                ),
+            }
+        )
+    if history:
+        payload["history"] = _create_history()
+    return payload
+
+
+def _create_cancel(job_id=None):
+    """Cancel the running job, or drop a queued one by id.
+
+    Cancelling the running job is cooperative: it lands at the engine's next
+    progress line, so the reply promises a request, not a stop. Dropping a
+    queued job is immediate — it has not started, so there is nothing to
+    unwind."""
+    job_id = str(job_id or "").strip()
+    if job_id:
+        with _create_lock:
+            for index, (job, _opts) in enumerate(_create_queue):
+                if job.id == job_id:
+                    del _create_queue[index]
+                    break
+            else:
+                job = None
+        if job is not None:
+            _create_finish(
+                job, cancelled=True, error="removed from the queue before it started"
+            )
+            return {"status": "dequeued", "id": job_id}, 200
+        running = _create_job
+        if running is None or running.done or running.id != job_id:
+            return {"error": "no such creation job is waiting or running"}, 409
+    job = _create_job
+    if job is None or job.done:
+        return {"error": "no creation job is running"}, 409
+    job.cancel_requested = True
+    return {
+        "status": "cancelling",
+        "id": job.id,
+        "cancellable": job.mode in CREATE_CANCELLABLE_MODES,
+    }, 200
+
+
+def _create_finishable(job):
+    """Whether "finish now" would still change anything: a site crawl that is
+    in its network pass, not already being stopped some other way. From
+    ``package``/``convert`` on the fetching is over and the offer would be
+    theatre."""
+    return (
+        job.mode in CREATE_FINISHABLE_MODES
+        and not job.done
+        and not job.cancel_requested
+        and job.phase in CREATE_FINISHABLE_PHASES
+    )
+
+
+def _create_finish_now():
+    """Stop fetching and package what is captured — the web's SIGINT.
+
+    Sets the crawl's own stop flag, so the loop ends at the next PAGE boundary
+    and everything already captured proceeds to packaging/conversion exactly as
+    a Ctrl-C'd CLI crawl does. The reply promises a request, not a stop, for
+    the same reason cancel's does: the flag is read between pages, and the page
+    in flight finishes first. Distinct from cancel in the one way that matters
+    — cancel discards, this keeps."""
+    job = _create_job
+    if job is None or job.done:
+        return {"error": "no creation job is running"}, 409
+    if job.mode not in CREATE_FINISHABLE_MODES:
+        return {"error": "only a site capture can be finished early"}, 409
+    if job.cancel_requested:
+        return {"error": "this job is already being cancelled"}, 409
+    already = job.finish_requested
+    job.finish_requested = True
+    flag = job.stop_flag
+    if flag is not None:
+        flag.hit = True
+    if not already:
+        try:
+            # Through note() so the sentence lands in the log AND the journal's
+            # progress clock moves — this is progress, of the human kind.
+            job.note(
+                "finish requested — completing the page in flight, then "
+                "packaging everything captured so far"
+            )
+        except _CreateCancelled:
+            pass  # a cancel landed in the gap above; it wins
+    return {"status": "finishing", "id": job.id}, 200
+
+
+def _is_offline_mode():
+    from zimi import p2p
+
+    return bool(p2p.is_offline())
+
+
+# ── the server-path root, now a reported fact only ──────────────────────────
+#
+# There is no web create mode that reads a path off the server's disk any more.
+# Folder capture went to the CLI in round 3, and archive import followed it
+# ("remove archive as well only in cli") — both are refused outright in
+# ``_create_validate`` before anything touches the filesystem. So the gate,
+# the containment check and the closed-by-default door that guarded that
+# surface are all gone with the modes they guarded.
+#
+# ``ZIMI_CREATE_ROOT`` survives only as a fact the create page still reports
+# (``create_root`` in the poll and the Creator payload): the server no longer
+# acts on it, but the client reads it to describe the instance.
+
+CREATE_ROOT_ENV = "ZIMI_CREATE_ROOT"
+
+
+def _create_root():
+    """The ``ZIMI_CREATE_ROOT`` directory, resolved, or "" when unset. Read at
+    call time, like every other environment-backed setting, so a config file
+    published into the environment at startup is picked up without a second
+    resolution path. Nothing on the server acts on it any more — it is reported
+    to the create page as a fact about the instance, nothing more."""
+    raw = os.environ.get(CREATE_ROOT_ENV, "").strip()
+    if not raw:
+        return ""
+    return os.path.realpath(os.path.expanduser(raw))
+
+
+def _create_import_ready():
+    """True when the warc2zim sidecar is already installed — the one thing
+    that decides whether archive import can run on a machine with no
+    internet."""
+    try:
+        from zimi.importer import sidecar_status
+
+        return bool(sidecar_status().get("installed"))
+    except Exception:
+        log.exception("warc2zim sidecar probe failed")
+        return False
+
+
+def _create_browser_ready():
+    """True when the rendered engine can actually run here — Playwright
+    importable AND a Chromium that launches.
+
+    Finding out costs a browser launch, so the renderer caches the answer for
+    the life of the process and this is a dictionary lookup after the first
+    call. It is asked on the Create page's first poll and when a request names
+    the rendered engine; never per second, and never per page."""
+    try:
+        from zimi.renderer import browser_available
+
+        return bool(browser_available())
+    except Exception:
+        log.exception("rendered-engine probe failed")
+        return False
+
+
+def _create_video_ready():
+    """True when a video capture can run here — yt-dlp is a soft dependency.
+
+    Its own probe, like the other three, because "can this machine do the thing
+    the form is offering" is a question every mode has to be able to answer for
+    itself. The day video needs a second half (ffmpeg, say), this is where that
+    gets decided and no caller changes."""
+    try:
+        from zimi.video import video_available
+
+        return bool(video_available())
+    except Exception:
+        log.exception("video-engine probe failed")
+        return False
+
+
+def _create_zimit_ready():
+    """True when a Docker this server can actually talk to exists.
+
+    zimit is not a library, it is a container, so "installed" means a daemon
+    answering — which is why this asks the CLI rather than checking a path."""
+    try:
+        from zimi.crawler import _docker_cli
+
+        return bool(_docker_cli())
+    except Exception:
+        log.exception("zimit-engine probe failed")
+        return False
+
+
+def _create_singlefile_ready():
+    """True when the SingleFile CLI is on PATH here.
+
+    Its own probe, like the other engines'. A form that offers a capture this
+    machine cannot perform is a form that lies — see the parity test."""
+    try:
+        from zimi.singlefile import singlefile_available
+
+        return bool(singlefile_available())
+    except Exception:
+        log.exception("singlefile-engine probe failed")
+        return False
+
+
+def _create_alive_ready():
+    """True when the alive engine can run here — which needs BOTH halves, the
+    browser to record with and the warc2zim sidecar to convert with.
+
+    Deliberately its own probe rather than ``browser and import`` computed at
+    the call site: the two halves are independent facts, the engine that owns
+    them is the one that should decide what "ready" means, and the client is
+    told each of the three separately so it can say which one is missing."""
+    try:
+        from zimi.alive import alive_available
+
+        return bool(alive_available())
+    except Exception:
+        log.exception("alive-engine probe failed")
+        return False
+
+
+# ── the Creator inventory: what Zimi has made, by type ──────────────────────
+#
+# The provenance a Zimi-made ZIM carries (http.py's kind machinery) names the
+# MODE it was captured with; the Creator pane groups those modes into the small
+# set of types a person thinks in. Several modes share a type: the single-page
+# and multi-page engines both stamp a page capture, and a bookmark export
+# stamps "bookmarks" — so the type the breakdown counts by is not always the
+# raw mode string. "edit" is here for the edit engine to fill; nothing stamps it
+# yet, and a bucket that is always present but sometimes zero is a stabler
+# contract than one that appears the day the first edit lands.
+
+_CREATOR_TYPES = ("page", "site", "video", "import", "folder", "export", "edit")
+
+_CREATOR_TYPE_BY_MODE = {
+    "page": "page",
+    "pages": "page",
+    "site": "site",
+    "video": "video",
+    "import": "import",
+    "folder": "folder",
+    "bookmarks": "export",
+    "edit": "edit",
+    "edited": "edit",
+}
+
+
+def _creator_type(mode, kind=None, basename=""):
+    """The Creator breakdown bucket for a made-here ZIM. The provenance
+    ``mode`` decides it when present; a warc2zim ZIM (alive engine, or an
+    import) carries no X-Zimi-History and so no mode, so we fall back to the
+    scope token the creator wrote into the filename (``..._site``, ``-page``,
+    ``-video``) and then to the recorded engine. Better an honest "Site" than
+    a bare "Zimi" on a ZIM whose own name says what it is."""
+    if mode:
+        return _CREATOR_TYPE_BY_MODE.get(mode, mode)
+    low = (basename or "").lower()
+    for token, bucket in (
+        ("video", "video"),
+        ("site", "site"),
+        ("page", "page"),
+        ("folder", "folder"),
+    ):
+        if token in low:
+            return bucket
+    engine = (kind or {}).get("engine")
+    if engine in ("alive", "rendered"):
+        return "site"  # a recorded web capture with no history record
+    return "other"
+
+
+def _creator_inventory():
+    """``(counts, rows)`` for every ZIM Zimi made, wherever it lives.
+
+    One walk of the library. The per-file provenance memo in http.py answers
+    each ZIM at most once per process, so after the cold pass this is a dict
+    walk. ``counts`` partitions the made-here ZIMs across ``_CREATOR_TYPES``
+    (every bucket present, zero when nothing of that type exists); ``rows``
+    carries one entry per ZIM with the raw sortable fields and leaves the
+    ordering to the client."""
+    from zimi import http as _http
+
+    counts = {t: 0 for t in _CREATOR_TYPES}
+    rows = []
+    for entry in _srv.list_zims():
+        kind = _http._zim_kind_for(entry)
+        if not kind:
+            continue
+        ctype = _creator_type(
+            kind.get("mode"), kind=kind, basename=entry.get("file", "")
+        )
+        if ctype in counts:
+            counts[ctype] += 1
+        rows.append(
+            {
+                "name": entry.get("name", ""),
+                "title": entry.get("title") or entry.get("name", ""),
+                "type": ctype,
+                "size_bytes": entry.get("size_bytes", 0),
+                # The creation timestamp the provenance record carries, or None
+                # for a Zimi ZIM old enough to predate the stamp — the client
+                # sorts the dated ones and leaves the rest where they fall.
+                "created_ts": kind.get("ts"),
+                "path_basename": entry.get("file", ""),
+            }
+        )
+    return counts, rows
+
+
+def _creator_payload():
+    """Everything the Manage view's Creator section shows, in one read.
+
+    Gathered here rather than left scattered across the create page's own poll
+    because these are SERVER facts — what this machine can capture with, where
+    it is allowed to write, what it refuses by default, what is waiting — and
+    an admin looking for them should not have to open the create form and infer
+    them from which options are greyed.
+
+    The two subprocess-backed probes are the reason this is its own endpoint
+    and not a field on the status poll: they are cheap but they are not free,
+    and the Manage view asks once when the section is opened."""
+    sidecar = {"installed": False, "version": None}
+    try:
+        from zimi.importer import sidecar_status
+
+        status = sidecar_status()
+        sidecar = {
+            "installed": bool(status.get("installed")),
+            "version": status.get("version"),
+        }
+    except Exception:
+        log.exception("sidecar status probe failed")
+    return {
+        "browser_ready": _create_browser_ready(),
+        "alive_ready": _create_alive_ready(),
+        "sidecar": sidecar,
+        # None, not "", when no root is configured — the same shape the create
+        # page's probe uses, so both readers treat "unset" the same way.
+        "create_root": _create_root() or None,
+        "block_ads_default": _create_default("block_ads", CREATE_BLOCK_ADS),
+        "capture_variants_default": _create_default(
+            "capture_variants", CREATE_CAPTURE_VARIANTS
+        ),
+        "queue": len(_create_queue_view()),
+        "offline": _is_offline_mode(),
+    }
+
+
+def _creator_inventory_payload():
+    """The Creator pane's made-here breakdown + sortable list, on its OWN
+    endpoint. Gathering it is a provenance walk of the whole library — the
+    slow, unbounded half of the pane — so it never rides the pane's own fast
+    payload. ``counts`` is a fixed-shape dict over _CREATOR_TYPES; ``list`` is
+    unsorted rows the client orders."""
+    counts, rows = _creator_inventory()
+    return {"created_counts": counts, "created_list": rows}
+
+
+def _auto_update_view():
+    """The ZIM auto-updater's state: whether it runs, how often, when it last
+    ran and when it runs next.
+
+    ``last_check`` is process memory — the updater stamps it at the top of each
+    cycle and nothing persists it — so it is None after a restart, and the
+    client must say "not since this server started" rather than "never".
+    ``next_check`` is derived from it rather than stored, because the loop
+    sleeps a fixed interval after each pass; None when there is nothing to
+    derive it from, which is either disabled or not-yet-run."""
+    freq = _srv._auto_update_freq
+    last = _srv._auto_update_last_check
+    interval = _srv._FREQ_SECONDS.get(freq)
+    nxt = None
+    if _srv._auto_update_enabled and last and interval:
+        nxt = last + interval
+    return {
+        "enabled": _srv._auto_update_enabled,
+        "frequency": freq,
+        "locked": _srv._auto_update_env_locked,
+        "last_check": last,
+        "next_check": nxt,
+    }
+
+
+def _auto_update_coverage():
+    """Which installed ZIMs the auto-updater can actually maintain, and why it
+    passes over the rest.
+
+    Not a preference and not an opt-out list — Zimi has neither. It is the
+    updater's real reach, made visible: matching an installed file to a newer
+    edition needs a dated filename (``…_YYYY-MM.zim``), so anything without one
+    is invisible to it. That is most locally created ZIMs, and until now the
+    only way to discover it was to notice a file never updating.
+
+    Returns ``{"tracked": [names], "skipped": [{"name", "reason"}]}``, sorted,
+    so the client can say the true sentence in the reader's language."""
+    tracked, skipped = [], []
+    for name, path in sorted(_srv.get_zim_files().items()):
+        _base, date = _srv._extract_zim_date(os.path.basename(path))
+        if date:
+            tracked.append(name)
+        else:
+            # One reason today, named rather than implied, so a second reason
+            # is a new value here and not a new shape at the call site.
+            skipped.append({"name": name, "reason": "undated"})
+    return {"tracked": tracked, "skipped": skipped}
+
+
+def _create_kill_browsers():
+    """Kill any headless browser a create job left running.
+
+    Only reached when the watchdog gives up on a job: by then the job's thread
+    is wedged somewhere that will not return, so the engine's own `finally`
+    cannot be relied on to close its browser. Imported by NAME rather than
+    directly, so a server whose jobs never render a page never loads the
+    renderer at all."""
+    module = sys.modules.get("zimi.renderer")
+    if module is None:
+        return
+    try:
+        module.shutdown_sessions()
+    except Exception:
+        log.exception("could not shut down a rendered capture's browser")
+
+
+# ============================================================================
+# Pre-flight probe — look before you leap
+#
+# The round-1 verdict on the Create page was "feels like a shot in the dark",
+# and it was fair: the form asked for a server path you cannot see, a language
+# code you have to know and a byte budget with no sense of scale, then ran for
+# an hour on whatever it got. The probe runs the half of each job that only
+# LOOKS — count a folder, fetch one page, list a playlist — and hands back what
+# the real run would find, so the answer arrives before the commitment.
+# (Folder probing left with folder mode itself — CLI-only now.)
+#
+# It writes nothing, downloads no media, and crawls no links. Every mode is
+# bounded by both a count and a clock, because a preview that outlasts your
+# patience has failed at being a preview.
+#
+# The reply is STRUCTURED, never prose: counts, byte totals and i18n KEYS for
+# any warning. Server-authored English sentences in a preview would be the one
+# corner of this app that cannot be translated.
+# ============================================================================
+
+CREATE_PROBE_TIMEOUT = 12.0
+CREATE_PROBE_MAX_EXAMPLES = 6
+CREATE_PROBE_VIDEO_LIMIT = 12
+
+_HTML_LANG_RE = re.compile(
+    r"<html[^>]*\blang\s*=\s*[\"']([a-zA-Z]{2,3}(?:[-_][a-zA-Z0-9]+)*)[\"']",
+    re.IGNORECASE,
+)
+_META_LANG_RE = re.compile(
+    r"<meta[^>]+http-equiv\s*=\s*[\"']content-language[\"'][^>]*"
+    r"content\s*=\s*[\"']([a-zA-Z]{2,3}(?:[-_][a-zA-Z0-9]+)*)",
+    re.IGNORECASE,
+)
+
+
+def _iso3_of(tag):
+    """A BCP-47-ish tag from a document (``fr``, ``en-GB``, ``fra``) as the
+    ISO 639-3 code the ZIM metadata and the full-text index both want. Returns
+    None for anything not recognised — a wrong language is worse than none,
+    because it silently stems the index against the wrong rules."""
+    if not tag:
+        return None
+    primary = re.split(r"[-_]", str(tag).strip())[0].lower()
+    if len(primary) == 3 and primary in _srv._ISO639_3_TO_1:
+        return primary
+    if len(primary) == 2:
+        for three, two in _srv._ISO639_3_TO_1.items():
+            if two == primary:
+                return three
+    return None
+
+
+def _detect_html_language(text):
+    """The document's own declaration of what language it is in. This is a
+    read of `<html lang>`, not statistical detection: it is what the author
+    said, it costs one regex, and it is right far more often than a guess over
+    a few hundred words of boilerplate would be."""
+    for pattern in (_HTML_LANG_RE, _META_LANG_RE):
+        m = pattern.search(text or "")
+        if m:
+            code = _iso3_of(m.group(1))
+            if code:
+                return code
+    return None
+
+
+def _probe_url(source, *, want_robots=False, engine=None):
+    """Fetch ONE page and report what the capture would be working with: where
+    it really landed, what it is called, whether it is an application shell
+    that would produce a ZIM full of loading spinners, and — for a crawl — what
+    the site's robots.txt has to say about the seed.
+
+    ONE plain HTTP fetch, whichever engine the job will use. Previewing a
+    rendered capture by rendering it would cost a browser launch per keystroke
+    settled, and the answers the preview gives — where the URL lands, what it
+    is called, what language it declares — are the same either way. What the
+    engine changes is the VERDICT: an application shell is a refusal for the
+    fast engine and the entire point of the rendered and alive ones."""
+    from zimi.creator import (
+        _decode_page,
+        _fetch_page,
+        _page_title_from_html,
+        looks_like_spa,
+    )
+
+    final_url, data, ctype, clang = _fetch_page(
+        source, timeout=CREATE_PROBE_TIMEOUT, max_redirects=3
+    )
+    page = _decode_page(data, ctype)
+    is_html = "html" in (ctype or "").lower()
+    spa = bool(is_html and looks_like_spa(page))
+    # Both browser engines answer the SPA question the same way, so they are
+    # one flag rather than two comparisons that could drift apart.
+    rendered = engine in ("rendered", "alive")
+    # The document's own `<html lang>` first, the Content-Language header
+    # second: the header is server configuration and is often a site-wide
+    # default, while the attribute was written about this page.
+    language = _detect_html_language(page) if is_html else None
+    out = {
+        "ok": is_html and (not spa or rendered),
+        "final_url": final_url,
+        "title": _page_title_from_html(page, "") if is_html else "",
+        "content_type": (ctype or "").split(";")[0].strip(),
+        "bytes": len(data),
+        "spa": spa,
+        "language": language or _iso3_of(clang),
+        "warning_key": None,
+    }
+    if is_html:
+        # What the preview can honestly promise. `bytes` above is the DOCUMENT's
+        # weight and the client no longer shows it as a size — CNN's is a sixth
+        # of the finished ZIM. The file count is a fact known without fetching
+        # anything, and the icon is what puts a face on a ninety-second wait.
+        #
+        # Both come from creator's helpers rather than being counted again
+        # here: this endpoint and the CLI probe answering the same question
+        # differently is exactly how one of them ended up never answering it.
+        from zimi.creator import _probe_icon_data_uri, page_asset_refs
+
+        try:
+            out["assets"] = len(page_asset_refs(page, final_url))
+        except Exception:
+            log.exception("probe could not count assets for %s", final_url)
+        out["icon"] = _probe_icon_data_uri(final_url, CREATE_PROBE_TIMEOUT, page)
+    if not is_html:
+        out["warning_key"] = "create_warn_not_html"
+    elif spa and rendered:
+        # Not a warning: a page built in JavaScript is the case these engines
+        # exist for. Said out loud anyway, because "this page has no
+        # server-rendered text" is the reason the capture will take twenty
+        # seconds instead of one — and the two engines promise different things
+        # about it, so they say different sentences.
+        out["note_key"] = (
+            "create_note_spa_alive" if engine == "alive" else "create_note_spa_rendered"
+        )
+    elif spa:
+        # The engine's own refusal, verbatim: it names zimit, which is the fix.
+        from zimi.creator import SPA_REFUSAL
+
+        out["warning_key"] = "create_warn_spa"
+        out["detail"] = SPA_REFUSAL
+    if want_robots and out["ok"]:
+        out.update(_probe_robots(final_url))
+    return out
+
+
+def _probe_robots(final_url):
+    """What the site asks crawlers to do. Reported, never enforced here — the
+    crawl itself enforces it, and the override lives in Advanced."""
+    from zimi.crawler import _origin_of, _robots_allows, load_robots
+
+    try:
+        robots = load_robots(_origin_of(final_url), timeout=CREATE_PROBE_TIMEOUT)
+    except Exception:
+        log.exception("robots probe failed")
+        return {}
+    allowed = _robots_allows(robots, final_url) if robots else True
+    return {
+        "robots_allowed": bool(allowed),
+        "warning_key": None if allowed else "create_warn_robots",
+    }
+
+
+def _probe_video(source, limit):
+    """List the playlist without downloading a frame of it."""
+    from zimi.video import _flat_entries, _yt_dlp
+
+    mod = _yt_dlp()
+    if mod is None:
+        from zimi.video import INSTALL_HINT
+
+        return {
+            "ok": False,
+            "warning_key": "create_warn_no_ytdlp",
+            "detail": INSTALL_HINT,
+        }
+    head, entries = _flat_entries(mod, source, limit or CREATE_PROBE_VIDEO_LIMIT)
+    titles = [
+        str(e.get("title") or "")
+        for e in entries[:CREATE_PROBE_MAX_EXAMPLES]
+        if isinstance(e, dict)
+    ]
+    return {
+        "ok": bool(entries),
+        "videos": len(entries),
+        "playlist": str(head.get("title") or ""),
+        "uploader": str(head.get("uploader") or head.get("channel") or ""),
+        "examples": titles,
+        "language": _iso3_of(head.get("language")),
+        "warning_key": None if entries else "create_warn_empty_playlist",
+    }
+
+
+# The folder picker (`/manage/create/browse`, `_create_browse`) lived here
+# until folder mode left the web. The route remains and refuses with the CLI
+# pointer — see handle_manage_get — because a lister whose only customer was
+# that form is a directory-disclosure surface with no purpose left on screen.
+
+
+def _probe_claims_video(source):
+    """Whether a real yt-dlp extractor recognises the address. False when
+    yt-dlp is absent or the source is a list of addresses."""
+    if not source or "\n" in str(source).strip():
+        return False
+    try:
+        from zimi.video import claims_url, video_available
+
+        return video_available() and claims_url(str(source).strip())
+    except Exception:
+        log.debug("video claim check failed for %r", source, exc_info=True)
+        return False
+
+
+def _create_probe(data):
+    """Validate the request exactly as a real run would, then look. Returns
+    ``(payload, status)``."""
+    # Imported here rather than at module scope: naming the exception is the
+    # only reason this module needs the writer stack, and a server that never
+    # previews a capture should not pay to import it.
+    from zimi.creator import CreateError
+
+    try:
+        mode, source, _title, opts = _create_validate(data)
+    except ValueError as e:
+        return {"error": str(e)}, 400
+    job = _create_job
+    if job is not None and not job.done:
+        # The probe competes with the job for the same disk and the same
+        # network. One at a time here too.
+        return {"error": "a ZIM is being created — wait for it to finish"}, 409
+    try:
+        # The address comes first on the page now and the mode follows from
+        # it: a YouTube or PeerTube address typed under Web page is a video,
+        # and yt-dlp is the authority on that. Answer as the video probe, with
+        # the mode it belongs to; the page moves its chip to match.
+        if mode in ("page", "site") and _probe_claims_video(source):
+            mode = "video"
+        elif mode == "video" and not _probe_claims_video(source):
+            # And back: the chip moved to Video for the last address, and
+            # this one is a page. yt-dlp's catch-all would only fail on it.
+            mode = "page"
+        if mode == "video":
+            result = _probe_video(source, opts.get("limit"))
+        elif mode == "page":
+            # One fetch, not twenty: the preview answers "is this the kind of
+            # thing that captures well?", and the first address answers it. The
+            # count is what makes the rest of the list visible.
+            urls = opts.get("urls") or [source]
+            result = _probe_url(urls[0], engine=opts.get("engine"))
+            result["urls"] = len(urls)
+        else:
+            result = _probe_url(
+                source, want_robots=(mode == "site"), engine=opts.get("engine")
+            )
+    except CreateError as e:
+        # Already a user-facing sentence, and the one that names the fix.
+        return {"ok": False, "mode": mode, "detail": str(e)}, 200
+    except Exception:
+        log.exception("create probe failed (%s)", mode)
+        return {
+            "ok": False,
+            "mode": mode,
+            "warning_key": "create_warn_probe_failed",
+        }, 200
+    result["mode"] = mode
+    result["source"] = source
+    return result, 200
 
 
 # ============================================================================
@@ -1015,6 +4217,13 @@ def handle_manage_get(handler, parsed, params):
             return handler._json(400, {"error": "invalid thumbnail URL"})
         data, ct = _srv._fetch_thumb(url)
         if data is None:
+            # Already-cached thumbnails still serve offline (no packets); only
+            # a miss is a dead end there, and it is a 404, not an upstream
+            # failure the client should retry.
+            from zimi import p2p as _p2p
+
+            if _p2p.is_offline():
+                return handler._json(404, {"error": "thumbnail not available offline"})
             return handler._json(502, {"error": "failed to fetch thumbnail"})
         handler.send_response(200)
         handler.send_header("Content-Type", ct)
@@ -1025,6 +4234,44 @@ def handle_manage_get(handler, parsed, params):
         handler.end_headers()
         handler.wfile.write(data)
         return
+    # The create surfaces gate themselves: a creator account (can_create) is
+    # not an admin, so these two run BEFORE the admin challenge below.
+    # Everything else on /manage/* stays admin-only exactly as before.
+    if parsed.path == "/manage/create/status":
+        denial = _creator_denial(handler)
+        if denial:
+            return handler._json(*denial)
+        # Polled ~2s while a job runs. Everything here is in-memory except the
+        # optional one-shot sidecar probe, so the poll stays cheap on a Pi.
+        return handler._json(
+            200,
+            _create_status(
+                _create_int(param("since"), 0, 2**31) or 0,
+                probe=param("probe") == "1",
+                events_cursor=_create_int(param("events_since"), 0, 2**31) or 0,
+                # Asked for when the page opens, not every poll: it reads a
+                # file, and what happened yesterday does not change per second.
+                history=param("history") == "1",
+            ),
+        )
+    if parsed.path == "/manage/create/browse":
+        # The folder picker's feed, and folder mode left the web (CLI-only, by
+        # decree) — so the lister that existed solely to make it discoverable
+        # refuses cleanly rather than keeping a directory-disclosure surface
+        # alive for a form that no longer exists. 410: it was here, it is gone,
+        # and the refusal names the door that still opens.
+        denial = _creator_denial(handler)
+        if denial:
+            return handler._json(*denial)
+        return handler._json(
+            410,
+            {
+                "error": (
+                    "the folder picker is gone — folder capture is CLI-only "
+                    "now. Run `zimi create <folder>` on the server itself."
+                )
+            },
+        )
     challenge = _manage_auth_challenge(handler)
     if challenge:
         return handler._json(*challenge)
@@ -1041,23 +4288,40 @@ def handle_manage_get(handler, parsed, params):
                 "manage_enabled": True,
                 "linked_zims": linked_zims,
                 "domain_count": len(_srv._domain_zim_map),
-                "auto_update": {
-                    "enabled": _srv._auto_update_enabled,
-                    "frequency": _srv._auto_update_freq,
-                    "locked": _srv._auto_update_env_locked,
-                },
+                "auto_update": _auto_update_view(),
             },
         )
+
+    elif parsed.path == "/manage/auto-update":
+        # The GET half of the same path the POST below writes. Everything the
+        # auto-update section renders, including the coverage list, which is
+        # the one part that walks the library and so is not on the status poll.
+        payload = _auto_update_view()
+        payload["coverage"] = _auto_update_coverage()
+        return handler._json(200, payload)
+
+    elif parsed.path == "/manage/creator":
+        return handler._json(200, _creator_payload())
+
+    elif parsed.path == "/manage/creator/inventory":
+        return handler._json(200, _creator_inventory_payload())
 
     elif parsed.path == "/manage/stats":
         metrics = _srv._get_metrics()
         disk = _srv._get_disk_usage()
-        auto_update = {
-            "enabled": _srv._auto_update_enabled,
-            "frequency": _srv._auto_update_freq,
-            "last_check": _srv._auto_update_last_check,
-        }
-        title_index = _srv._get_title_index_stats()
+        # The same view /manage/status serves. It used to be a third hand-built
+        # dict here that omitted `locked` and a second one there that omitted
+        # `last_check`, so which facts a caller got depended on which endpoint
+        # it happened to poll.
+        auto_update = _auto_update_view()
+        # The per-index walk opens every title index on disk — far too costly
+        # for the callers that only want disk paths or partial-download info.
+        # ?detail=1 is the opt-in for the one view that renders the index list.
+        title_index = (
+            _srv._get_title_index_stats()
+            if param("detail") == "1"
+            else _srv._get_title_index_status_brief()
+        )
         with _srv._xzim_refs_lock:
             xzim_refs = sorted(
                 [
@@ -1198,6 +4462,13 @@ def handle_manage_get(handler, parsed, params):
         # effect. Triggers a catalog fetch; fast when cached.
         updates = _srv._check_updates()
         return handler._json(200, {"updates": updates, "count": len(updates)})
+
+    elif parsed.path == "/manage/app-update":
+        # The Zimi APP itself — not /manage/auto-update (ZIM-content refresh)
+        # and not /manage/updates (per-ZIM update list). Passive read: serves
+        # the cached answer, refreshing at most once a day. Never runs at
+        # boot — the only trigger is an admin opening the Manage server pane.
+        return handler._json(200, _app_update_payload())
 
     elif parsed.path == "/manage/downloads":
         return handler._json(200, {"downloads": _srv._get_downloads()})
@@ -1354,6 +4625,12 @@ def handle_manage_get(handler, parsed, params):
 
     elif parsed.path == "/manage/history":
         return handler._json(200, {"history": _srv._load_history()})
+
+    elif parsed.path == "/manage/activity-log":
+        # The unified journal behind the Activity view. Named -log because
+        # /manage/activity is the live "what is happening right now" poll that
+        # feeds the topbar badge; this is "what has happened".
+        return handler._json(200, activity_payload(param("type"), param("actor")))
 
     elif parsed.path == "/manage/cache-info":
         return handler._json(200, _cache_info_payload())
@@ -1620,8 +4897,9 @@ def _handle_public_access_post(handler, data):
 
 def _handle_users_post(handler, data):
     """Admin-only user CRUD (multi-user v1). action ∈ {create, delete,
-    set-password, set-allowlist, set-role}. Errors are returned generically; on
-    success the fresh roster (no hashes) is echoed so the UI re-renders in one
+    set-password, set-allowlist, set-role, set-can-create}. Errors are
+    returned generically; on success the fresh roster (no hashes) is echoed so
+    the UI re-renders in one
     round trip. Reaching here means the admin-auth challenge already passed.
 
     Hierarchy (see ``users`` module docstring): only the PRIMARY admin may
@@ -1662,6 +4940,11 @@ def _handle_users_post(handler, data):
         ok, err = _users.set_allowlist(name, data.get("allowlist"))
     elif action == "set-role":
         ok, err = _users.set_role(name, role, data.get("allowlist"))
+    elif action == "set-can-create":
+        # Grant/revoke the per-user create permission (see users.set_can_create).
+        # The hierarchy gate above already bars a secondary admin from touching
+        # admin accounts; admins themselves are refused there (implicitly true).
+        ok, err = _users.set_can_create(name, bool(data.get("can_create")))
     else:
         return handler._json(400, {"error": "unknown action"})
     if not ok:
@@ -1672,6 +4955,26 @@ def _handle_users_post(handler, data):
 # ============================================================================
 # Manage POST Routes
 # ============================================================================
+
+
+# One-time download tickets: {token: (filename, expiry)}. Minted by an
+# authorized admin, spent by the very next /dl/ navigation, dead in two
+# minutes either way. In-memory on purpose — a restart invalidating tickets
+# is correct behavior for a credential.
+DL_TICKET_TTL_SEC = 120
+_dl_tickets: dict = {}
+_dl_ticket_lock = threading.Lock()
+
+
+def spend_dl_ticket(token, fname):
+    """True exactly once per ticket, and only for the file it was minted
+    for. Wrong file, reuse, expiry — all read as no ticket at all."""
+    if not token:
+        return False
+    now = time.time()
+    with _dl_ticket_lock:
+        entry = _dl_tickets.pop(token, None)
+    return bool(entry and entry[1] >= now and entry[0] == fname)
 
 
 def handle_manage_post(handler, parsed, data):
@@ -1714,7 +5017,15 @@ def handle_manage_post(handler, parsed, data):
         new_user = data.get("username")
         if new_user is not None and os.environ.get("ZIMI_MANAGE_USER", "").strip():
             new_user = None
-        _set_manage_password(new_pw, username=new_user)
+        if not _set_manage_password(new_pw, username=new_user):
+            # Generic on purpose: the OSError detail is already in the server
+            # log, and error bodies never carry internal paths or str(e).
+            return handler._json(
+                500, {"error": "Could not save the password (storage is not writable)"}
+            )
+        # The setup key's life ends with the bootstrap it existed for.
+        if new_pw:
+            _clear_setup_key()
         return handler._json(
             200, {"status": "password set" if new_pw else "password cleared"}
         )
@@ -1729,6 +5040,11 @@ def handle_manage_post(handler, parsed, data):
                 400, {"error": "Set a password before generating an API token"}
             )
         token = _generate_api_token()
+        if not token:
+            # Same discipline as set-password above: log has the real reason.
+            return handler._json(
+                500, {"error": "Could not save the API token (storage is not writable)"}
+            )
         return handler._json(200, {"token": token})
     if parsed.path == "/manage/revoke-token":
         challenge = _manage_auth_challenge(handler)
@@ -1736,9 +5052,88 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(*challenge)
         _revoke_api_token()
         return handler._json(200, {"status": "token revoked"})
+    if parsed.path == "/manage/dl-ticket":
+        # A browser NAVIGATION to /dl/ carries none of Zimi's auth headers, so
+        # right-click -> Download on a passworded instance used to land on an
+        # HTML refusal Safari saved as name.zim.html. The authorized client
+        # mints a one-time ticket here; the /dl/ URL spends it within 120s.
+        challenge = _manage_auth_challenge(handler)
+        if challenge:
+            return handler._json(*challenge)
+        fname = str(data.get("file") or "").strip()
+        if not fname or "/" in fname or "\\" in fname or ".." in fname:
+            return handler._json(400, {"error": "that is not a ZIM filename"})
+        ticket = secrets.token_urlsafe(24)
+        now = time.time()
+        with _dl_ticket_lock:
+            # Expired tickets leave with every mint; the dict stays tiny.
+            for t in [t for t, (_, exp) in _dl_tickets.items() if exp < now]:
+                _dl_tickets.pop(t, None)
+            _dl_tickets[ticket] = (fname, now + DL_TICKET_TTL_SEC)
+        return handler._json(200, {"ticket": ticket})
+
+    # ZIM creation — a creator account (can_create) may drive these routes
+    # without admin credentials, so they gate themselves ahead of the generic
+    # admin challenge below. Every web mode captures the web, never the
+    # server's disk: folder and archive import are both refused outright in
+    # ``_create_validate`` (CLI-only), so there is no server-path mode left to
+    # hold to the primary admin.
+    if parsed.path in (
+        "/manage/create",
+        "/manage/create/cancel",
+        "/manage/create/finish",
+        "/manage/create/probe",
+    ):
+        denial = _creator_denial(handler)
+        if denial:
+            return handler._json(*denial)
+        if parsed.path == "/manage/create/cancel":
+            # With an id: that job, wherever it is — the running one or one
+            # still waiting. Without: whatever is running.
+            payload, status = _create_cancel(data.get("id"))
+            return handler._json(status, payload)
+        if parsed.path == "/manage/create/finish":
+            # Cancel's keeping twin: stop FETCHING at the next page boundary
+            # and package everything captured so far. Same auth as cancel.
+            payload, status = _create_finish_now()
+            return handler._json(status, payload)
+        if parsed.path == "/manage/create":
+            payload, status = _create_start(data, actor=activity_actor(handler))
+        else:
+            payload, status = _create_probe(data)
+        return handler._json(status, payload)
+
     challenge = _manage_auth_challenge(handler)
     if challenge:
         return handler._json(*challenge)
+
+    if parsed.path == "/manage/creator":
+        # The write half of the Creator section: the two capture defaults the
+        # Manage toggles set. Booleans only — a request that sends anything
+        # else is a caller confused about the contract, and refusing is kinder
+        # than storing junk a future job would silently obey. Admin-gated by
+        # the challenge above, like every other manage settings write.
+        updates = {}
+        for key in ("block_ads", "capture_variants"):
+            if key in data:
+                value = data.get(key)
+                if not isinstance(value, bool):
+                    return handler._json(
+                        400, {"error": f"'{key}' must be true or false"}
+                    )
+                updates[key] = value
+        if not updates:
+            return handler._json(400, {"error": "nothing to change"})
+        _write_create_defaults(**updates)
+        return handler._json(
+            200,
+            {
+                "block_ads_default": _create_default("block_ads", CREATE_BLOCK_ADS),
+                "capture_variants_default": _create_default(
+                    "capture_variants", CREATE_CAPTURE_VARIANTS
+                ),
+            },
+        )
 
     if parsed.path == "/manage/users":
         return _handle_users_post(handler, data)
@@ -1751,7 +5146,9 @@ def handle_manage_post(handler, parsed, data):
         size_bytes = data.get("size_bytes")
         if not url:
             return handler._json(400, {"error": "missing 'url' in request body"})
-        dl_id, err = _srv._start_download(url, size_bytes=size_bytes)
+        dl_id, err = _srv._start_download(
+            url, size_bytes=size_bytes, actor=activity_actor(handler)
+        )
         if err:
             return handler._json(400, {"error": err})
         return handler._json(200, {"status": "started", "id": dl_id})
@@ -1765,6 +5162,8 @@ def handle_manage_post(handler, parsed, data):
             sizes = []
         ids = []
         errors = []
+        # One resolution for the whole batch — it is one click by one person.
+        actor = activity_actor(handler)
         for i, url in enumerate(urls):
             if not isinstance(url, str) or not url:
                 ids.append(None)
@@ -1775,7 +5174,7 @@ def handle_manage_post(handler, parsed, data):
                 if i < len(sizes) and isinstance(sizes[i], (int, float))
                 else None
             )
-            dl_id, err = _srv._start_download(url, size_bytes=sz)
+            dl_id, err = _srv._start_download(url, size_bytes=sz, actor=actor)
             ids.append(dl_id)
             errors.append(err)
         succeeded = sum(1 for x in ids if x is not None)
@@ -1791,7 +5190,9 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(400, {"error": "missing 'peer'"})
         if not isinstance(fname, str) or not fname:
             return handler._json(400, {"error": "missing 'file'"})
-        dl_id, err = _srv._start_peer_download(peer, fname)
+        dl_id, err = _srv._start_peer_download(
+            peer, fname, actor=activity_actor(handler)
+        )
         if err:
             return handler._json(400, {"error": err})
         return handler._json(200, {"status": "started", "id": dl_id})
@@ -1800,20 +5201,31 @@ def handle_manage_post(handler, parsed, data):
         url = data.get("url", "")
         if not url:
             return handler._json(400, {"error": "missing 'url' in request body"})
-        dl_id, err = _srv._start_import(url)
+        dl_id, err = _srv._start_import(url, actor=activity_actor(handler))
         if err:
             return handler._json(400, {"error": err})
         return handler._json(200, {"status": "started", "id": dl_id})
 
     elif parsed.path == "/manage/cancel":
         dl_id = data.get("id", "")
-        from zimi.library import _cancel_download
+        from zimi.library import _cancel_download, _download_by_id, download_subject
 
+        # Read the transfer's identity BEFORE cancelling it: a cancelled
+        # download leaves the queue, and the journal line still has to name
+        # what it was.
+        cancelled = _download_by_id(dl_id)
         status, code = _cancel_download(dl_id)
         if status == "not_found":
             return handler._json(404, {"error": "Download not found"})
         if status == "already_done":
             return handler._json(400, {"error": "Download already finished"})
+        if cancelled:
+            record_activity(
+                "update" if cancelled.get("is_update") else "download",
+                download_subject(cancelled),
+                outcome="cancelled",
+                actor=activity_actor(handler),
+            )
         return handler._json(code, {"status": status, "id": dl_id})
 
     elif parsed.path == "/manage/download-start-now":
@@ -1901,6 +5313,11 @@ def handle_manage_post(handler, parsed, data):
         from zimi import health as _health
 
         started, msg = _health.start_check()
+        if started:
+            _activity_after(
+                _health.get_state,
+                _activity_health_finish(activity_actor(handler)),
+            )
         return handler._json(
             200, {"status": "started" if started else "running", "detail": msg}
         )
@@ -1966,6 +5383,11 @@ def handle_manage_post(handler, parsed, data):
         if total > 2000:
             return handler._json(400, {"error": "Too many bookmarks (max 2000)"})
         started, msg = _zw.start_export(payload)
+        if started:
+            _activity_after(
+                _zw.get_export_state,
+                _activity_export_finish(activity_actor(handler), total),
+            )
         return handler._json(
             200, {"status": "started" if started else "busy", "detail": msg}
         )
@@ -1990,7 +5412,25 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(400, {"error": "Invalid filename"})
         if not filename.endswith(".zim"):
             return handler._json(400, {"error": "Only .zim files can be deleted"})
+        # A ZIM in a SUBFOLDER (everything `zimi create` writes lands in
+        # created/, and folders are categories now) is listed by its basename,
+        # so joining it onto ZIM_DIR looked in the wrong directory: the delete
+        # 404'd, the file survived, and the next scan brought it straight back
+        # (Eric: "the ones I deleted kept coming back"). Resolve through the
+        # library's own name→path map, which knows where each file actually is,
+        # and keep the traversal guard by requiring the result to live under
+        # ZIM_DIR.
         filepath = os.path.join(_srv.ZIM_DIR, filename)
+        if not os.path.exists(filepath):
+            root = os.path.realpath(_srv.ZIM_DIR)
+            for candidate in (_srv.get_zim_files() or {}).values():
+                if os.path.basename(candidate) != filename:
+                    continue
+                resolved = os.path.realpath(candidate)
+                if resolved == root or not resolved.startswith(root + os.sep):
+                    continue  # outside the library — not ours to delete
+                filepath = resolved
+                break
         if not os.path.exists(filepath):
             return handler._json(404, {"error": f"File not found: {filename}"})
         try:
@@ -2019,6 +5459,12 @@ def handle_manage_post(handler, parsed, data):
                 pass
             os.remove(filepath)
             log.info(f"Deleted ZIM: {filename}")
+            record_activity(
+                "delete",
+                zim_info.get("title") or zim_info.get("name") or filename,
+                actor=activity_actor(handler),
+                size_bytes=file_size,
+            )
             _srv._append_history(
                 {
                     "event": "deleted",
@@ -2028,11 +5474,34 @@ def handle_manage_post(handler, parsed, data):
                     **zim_info,
                 }
             )
-            with _srv._zim_lock:
-                _srv.load_cache(force=True)
+            # Splice the file out of the live library instead of rebuilding it.
+            # The old shape here — load_cache(force=True) under _zim_lock —
+            # re-opened and re-scanned every archive while holding the lock
+            # every libzim request needs, so pressing Delete froze search and
+            # reading for the length of the rescan (#51). The full rescan
+            # survives as the fallback for the cases the splice won't handle.
+            unregistered = False
+            try:
+                unregistered = _srv.unregister_zim_file(filename)
+            except Exception as e:
+                log.warning(
+                    "Incremental removal of %s failed (%s) — falling back to a "
+                    "full library rescan",
+                    filename,
+                    e,
+                )
+            if not unregistered:
+                with _srv._zim_lock:
+                    _srv.load_cache(force=True)
             _srv._search_cache_clear()
             _srv._suggest_cache_clear()
             _srv._clean_stale_title_indexes()
+            # The library just changed size — don't show the pre-delete free
+            # space for the rest of the memo window. Imported here, not at
+            # module scope: http.py imports this module.
+            from zimi import http as _http
+
+            _http._reset_disk_usage_cache()
             # Stop seeding the file we just deleted. Without this the engine
             # keeps advertising (and hash-check failing) the missing file
             # until the 12h maintenance pass or a restart. peek_backend()
@@ -2073,10 +5542,13 @@ def handle_manage_post(handler, parsed, data):
         # Trigger manual update: check for updates and start downloads
         updates = _srv._check_updates()
         started = []
+        # Eric's case exactly: this is the same work the auto-updater does, and
+        # the only difference worth recording is that a person asked for it.
+        actor = activity_actor(handler)
         for upd in updates:
             url = upd.get("download_url")
             if url:
-                dl_id, err = _srv._start_download(url)
+                dl_id, err = _srv._start_download(url, actor=actor)
                 if not err:
                     started.append({"name": upd.get("name", "?"), "id": dl_id})
         return handler._json(
@@ -2118,6 +5590,60 @@ def handle_manage_post(handler, parsed, data):
             200,
             {"enabled": _srv._auto_update_enabled, "frequency": _srv._auto_update_freq},
         )
+
+    elif parsed.path == "/manage/app-update-check":
+        # "Check now" for the Zimi APP release check — bypasses the daily
+        # cache but keeps a short flood guard (see check_app_update). Distinct
+        # from /manage/auto-update directly above, which is ZIM content.
+        return handler._json(200, _app_update_payload(force=True))
+
+    elif parsed.path == "/manage/app-update-delay":
+        # How long a release must have been public before this instance is
+        # offered it. Same env-lock contract as the channel above.
+        days, err = set_update_delay_days(data.get("delay_days"))
+        if err == "env_locked":
+            return handler._json(
+                403,
+                {
+                    "error": "Update delay is controlled by the %s env var"
+                    % APP_UPDATE_DELAY_ENV
+                },
+            )
+        if err:
+            return handler._json(
+                400,
+                {
+                    "error": "Invalid delay. Use whole days, 0 to %d"
+                    % APP_UPDATE_DELAY_MAX
+                },
+            )
+        log.info("App update delay set to %d day(s)", days)
+        # The delay is applied when the payload is built, so no re-check is
+        # needed — the cached answer is still the right answer.
+        return handler._json(200, _app_update_payload())
+
+    elif parsed.path == "/manage/app-update-channel":
+        # Latest vs beta for the APP release check. Same env-lock contract
+        # as the other settings endpoints: ZIMI_UPDATE_CHANNEL wins and the
+        # write is refused rather than silently ignored.
+        channel, err = set_update_channel(data.get("channel"))
+        if err == "env_locked":
+            return handler._json(
+                403,
+                {
+                    "error": "Update channel is controlled by the %s env var"
+                    % APP_UPDATE_CHANNEL_ENV
+                },
+            )
+        if err:
+            return handler._json(
+                400,
+                {"error": "Invalid channel. Use: %s" % ", ".join(APP_UPDATE_CHANNELS)},
+            )
+        log.info("App update channel set to %s", channel)
+        # Answer with the full payload so the pane repaints from one response;
+        # the channel switch invalidates the cache, so this re-checks.
+        return handler._json(200, _app_update_payload())
 
     elif parsed.path == "/manage/download-schedule":
         # Night-window queueing + the global download-speed cap. Same env-lock
@@ -2580,6 +6106,14 @@ def handle_manage_post(handler, parsed, data):
         overwrite = bool(data.get("overwrite"))
         if action == "apply":
             result, err = _apply_backup_bundle(data, overwrite=overwrite)
+            record_activity(
+                "restore",
+                "",  # the server's own state — named on the client
+                outcome="failed" if err else "ok",
+                detail=err or "",
+                actor=activity_actor(handler),
+                count=len((result or {}).get("applied") or []),
+            )
             if err:
                 return handler._json(400, {"error": err})
             return handler._json(200, result)

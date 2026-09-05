@@ -240,7 +240,6 @@ def _suggest_cache_restore():
 # Title Index (was section 7)
 # ---------------------------------------------------------------------------
 
-_TITLE_INDEX_DIR = os.path.join(_srv.ZIMI_DATA_DIR, "titles")
 _TITLE_INDEX_VERSION = "4"  # bump to force rebuild (v4: add FTS5 for multi-word search)
 _FTS5_ENTRY_THRESHOLD = (
     2_000_000  # skip FTS5 build for ZIMs above this (can be triggered manually)
@@ -303,8 +302,16 @@ def _close_title_db(zim_name):
     _close_pooled_db(zim_name, _title_db_pool, _title_db_pool_lock)
 
 
+def _title_index_dir():
+    """Where title indexes live. A function, not a constant: ZIMI_DATA_DIR can
+    be repointed after import (CLI flag, desktop settings), and a value frozen
+    at import time would leave this index in the old directory while the rest
+    of the state moved."""
+    return os.path.join(_srv.ZIMI_DATA_DIR, "titles")
+
+
 def _title_index_path(zim_name):
-    return os.path.join(_TITLE_INDEX_DIR, f"{zim_name}.db")
+    return os.path.join(_title_index_dir(), f"{zim_name}.db")
 
 
 def _read_zim_uuid(zim_path):
@@ -395,7 +402,7 @@ def _build_title_index(zim_name, zim_path):
     Opens a dedicated Archive handle (not from _archive_pool) so this is safe
     to run without _zim_lock. Commits in batches to keep memory low.
     """
-    os.makedirs(_TITLE_INDEX_DIR, exist_ok=True)
+    os.makedirs(_title_index_dir(), exist_ok=True)
     path_fn = getattr(_srv, "_title_index_path", _title_index_path)
     db_path = path_fn(zim_name)
     tmp_path = db_path + ".tmp"
@@ -629,18 +636,19 @@ def _get_title_index_status_brief():
 
 def _get_title_index_stats():
     """Return title index status + per-ZIM details for the stats API.
-    Walks _TITLE_INDEX_DIR and opens each index — DO NOT call on a hot
+    Walks the title index dir and opens each index — DO NOT call on a hot
     polling path. Use _get_title_index_status_brief() for that."""
     status = _get_title_index_status_brief()
 
     # Gather per-index file sizes and entry counts
     total_size = 0
     indexes = []
-    if os.path.exists(_TITLE_INDEX_DIR):
-        for f in sorted(os.listdir(_TITLE_INDEX_DIR)):
+    index_dir = _title_index_dir()
+    if os.path.exists(index_dir):
+        for f in sorted(os.listdir(index_dir)):
             if not f.endswith(".db"):
                 continue
-            db_path = os.path.join(_TITLE_INDEX_DIR, f)
+            db_path = os.path.join(index_dir, f)
             size = os.path.getsize(db_path)
             total_size += size
             name = f[:-3]
@@ -672,13 +680,13 @@ def _get_title_index_stats():
             indexes.append(
                 {
                     "name": name,
-                    "size_mb": round(size / (1024 * 1024), 1),
+                    "size_mb": round(size / _srv._BYTES_PER_MB, 1),
                     "entries": entry_count,
                     "has_fts": has_fts,
                 }
             )
 
-    status["total_size_gb"] = round(total_size / (1024**3), 1)
+    status["total_size_gb"] = round(total_size / _srv._BYTES_PER_GB, 1)
     status["index_count"] = len(indexes)
     # Use live counts: ready = indexes on disk, total = ZIM files
     status["ready"] = len(indexes)
@@ -725,7 +733,7 @@ def _build_all_title_indexes():
 
 
 def _build_all_title_indexes_inner():
-    os.makedirs(_TITLE_INDEX_DIR, exist_ok=True)
+    os.makedirs(_title_index_dir(), exist_ok=True)
     zims = _srv.get_zim_files()
 
     # Count how many are already current
@@ -807,7 +815,7 @@ def _build_all_title_indexes_inner():
             continue
         db_path = _title_index_path(name)
         try:
-            size_mb = os.path.getsize(db_path) / (1024 * 1024)
+            size_mb = os.path.getsize(db_path) / _srv._BYTES_PER_MB
         except OSError:
             continue
         if size_mb < _FTS5_AUTO_BUILD_MAX_MB:
@@ -834,11 +842,12 @@ def _clean_stale_title_indexes():
     """Remove title index DBs for ZIM files that no longer exist, plus any
     .tmp orphans from interrupted builds (SIGKILL during build leaves
     `<name>.db.tmp` files that aren't tracked by SQLite anymore)."""
-    if not os.path.exists(_TITLE_INDEX_DIR):
+    index_dir = _title_index_dir()
+    if not os.path.exists(index_dir):
         return
     zims = _srv.get_zim_files()
-    for f in os.listdir(_TITLE_INDEX_DIR):
-        full = os.path.join(_TITLE_INDEX_DIR, f)
+    for f in os.listdir(index_dir):
+        full = os.path.join(index_dir, f)
         if (
             f.endswith(".db.tmp")
             or f.endswith(".db.tmp-shm")
@@ -873,7 +882,12 @@ def extract_pdf_text(pdf_bytes, max_length=None):
     if not _srv.HAS_PYMUPDF:
         return "[PDF content — install PyMuPDF to extract text]"
     try:
-        import fitz
+        # The current module name; `fitz` warns to stdout on import and is
+        # going away. See the import guard in server.py.
+        try:
+            import pymupdf as fitz
+        except ImportError:
+            import fitz
 
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
         text = ""
@@ -1215,7 +1229,6 @@ _VOCAB_FETCH_BATCH_SIZE = 5000  # sqlite fetchmany() page size during the scan
 # this; the fraction only decides how deep the tier escalation goes.
 _VOCAB_EVICT_MIN_FRACTION = 0.10
 _VOCAB_CACHE_FILENAME = "dym_vocab.json"
-_VOCAB_CACHE_PATH = os.path.join(_srv.ZIMI_DATA_DIR, _VOCAB_CACHE_FILENAME)
 # Bump whenever the vocab-building algorithm changes in a way that makes an
 # on-disk cache from an older version invalid even though the underlying
 # title indexes haven't changed — lossy-counting admission, stride sampling,
@@ -1398,7 +1411,7 @@ def _build_vocab():
     the empty case, so a starved scan is visible in production."""
     deadline = time.monotonic() + _VOCAB_BUILD_BUDGET_S
     vocab = {}
-    index_dir = _TITLE_INDEX_DIR
+    index_dir = _title_index_dir()
     if not os.path.isdir(index_dir):
         log.info("Did-you-mean vocab: no title index dir at %s", index_dir)
         return vocab
@@ -1526,17 +1539,25 @@ def _vocab_signature(index_dir):
     return _hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 
 
+def _vocab_cache_path():
+    """Where the did-you-mean vocab is cached. A function, not a constant, for
+    the same reason as _title_index_dir(): ZIMI_DATA_DIR is not final at import
+    time, and a frozen path would strand this cache in the old data dir."""
+    return os.path.join(_srv.ZIMI_DATA_DIR, _VOCAB_CACHE_FILENAME)
+
+
 def _vocab_cache_save(vocab, sig):
     """Persist a built vocab to disk so future starts can skip the scan.
 
     Fail-soft: a write error is logged and otherwise ignored — the vocab
     still works in memory for this process, it just won't survive restart."""
     try:
-        _srv._atomic_write_json(_VOCAB_CACHE_PATH, {"sig": sig, "words": vocab})
+        path = _vocab_cache_path()
+        _srv._atomic_write_json(path, {"sig": sig, "words": vocab})
         log.info(
             "Did-you-mean vocab: persisted %d words to %s",
             len(vocab),
-            _VOCAB_CACHE_PATH,
+            path,
         )
     except Exception as e:
         log.info("Did-you-mean vocab: persist failed: %s", e)
@@ -1549,11 +1570,12 @@ def _vocab_cache_load():
     on a missing file, signature mismatch, or any error — a corrupted or
     stale cache is just treated as absent, never raised."""
     try:
-        if not os.path.exists(_VOCAB_CACHE_PATH):
+        path = _vocab_cache_path()
+        if not os.path.exists(path):
             return None
-        with open(_VOCAB_CACHE_PATH, encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
-        sig = _vocab_signature(_TITLE_INDEX_DIR)
+        sig = _vocab_signature(_title_index_dir())
         if sig is None or data.get("sig") != sig:
             return None
         words = data.get("words")
@@ -1580,7 +1602,7 @@ def _vocab_build_worker():
         log.info(
             "Did-you-mean vocab: loaded %d words from cache (%s)",
             len(cached),
-            _VOCAB_CACHE_PATH,
+            _vocab_cache_path(),
         )
         _rebuild_trigram_index(cached)
         return
@@ -1592,7 +1614,7 @@ def _vocab_build_worker():
     with _vocab_lock:
         _vocab = built if built is not None else {}
     if built:
-        sig = _vocab_signature(_TITLE_INDEX_DIR)
+        sig = _vocab_signature(_title_index_dir())
         if sig is not None:
             _vocab_cache_save(built, sig)
     _rebuild_trigram_index(_vocab)

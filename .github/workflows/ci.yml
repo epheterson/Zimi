@@ -15,14 +15,43 @@ jobs:
         with:
           python-version: "3.11"
 
+      # `mcp` too, so the MCP tests RUN rather than skip. They were skipping
+      # invisibly — which is the same failure as not having them, and this
+      # install line is also the only place CI exercises the extras a PyPI user
+      # actually resolves. It caught `mcp = ["mcp>=1.0.0"]` in pyproject having
+      # no upper bound while requirements.txt correctly pinned <2.0: anyone
+      # running `pip install zimi[mcp]` got mcp 2.x, which dropped the vendored
+      # FastMCP, and their MCP server refused to start.
       - name: Install package
-        run: pip install -e ".[pdf]" pytest
+        run: pip install -e ".[pdf,mcp]" pytest
 
-      - name: Run unit tests
-        run: python -m pytest tests/test_unit.py -v
+      # A real browser, so the paint gate actually runs somewhere.
+      #
+      # tests/test_reader_paints.py opens a made ZIM, scrolls it end to end and
+      # asks every image whether it decoded. That check exists because a
+      # capture passed every byte-level assertion in this suite — entries
+      # present, hrefs resolving, counts right — and still looked broken to a
+      # reader. Without chromium here it skips, and a gate that skips
+      # everywhere is not a gate.
+      - name: Install chromium for the paint gate
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
 
-      - name: Run integration tests
-        run: python -m pytest tests/test_server.py -v
+      # THE WHOLE SUITE. This used to name two files, which collected 305 of
+      # 2469 tests — so 88% of the suite only ran when somebody remembered to
+      # run it by hand, and a green tick here meant almost nothing.
+      #
+      # That is not theoretical. Six tests were failing on this branch for two
+      # days: two of them had caught real bugs, including one that silently ran
+      # the wrong capture engine. Every one was a test that already existed,
+      # was already correct, and that nothing was running.
+      #
+      # Tests needing a browser or a sidecar are `pytest.mark.skipif`, so they
+      # skip cleanly here instead of failing. -q because 2469 lines of -v is
+      # not something anybody reads.
+      - name: Run the test suite
+        run: python -m pytest tests/ -q
 
       # Standalone node tests (vm-extracted client logic). They are not
       # collected by pytest, so without this step they only ever run by hand
@@ -66,11 +95,28 @@ jobs:
           mkdir -p zims
           docker compose up -d --build
 
-          # Wait for server (up to 60s — first start can be slow)
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:8899/health > /dev/null 2>&1; then break; fi
+          # Wait for the server, and SAY SO if it never arrives.
+          #
+          # This waited 60s and then fell through regardless, so a server that
+          # was still booting produced a JSONDecodeError from the smoke test's
+          # `json.load` on an empty body — a stack trace about JSON for a
+          # problem that was nothing to do with JSON. The image grew Node and
+          # Playwright, boot passed 60s, and that is exactly what happened on
+          # the first run.
+          #
+          # Longer budget, and on expiry it prints the container's own logs and
+          # fails here, where the message can name the actual problem.
+          for i in $(seq 1 180); do
+            if curl -sf http://localhost:8899/health > /dev/null 2>&1; then
+              echo "  server up after ${i}s"
+              exit 0
+            fi
             sleep 1
           done
+          echo "::error::server did not answer /health within 180s"
+          docker compose ps
+          docker compose logs --tail 80
+          exit 1
 
       - name: Smoke test Docker
         run: |

@@ -18,12 +18,36 @@ ssh nas "cd /volume1/docker/kiwix && [ -f docker-compose.yml ] && cp -p docker-c
 cat docker-compose.nas.yml | ssh nas "cat > /volume1/docker/kiwix/docker-compose.yml"
 echo "  Files copied (incl. canonical NAS compose)"
 
-# Stop the running container first so the upcoming `up -d` doesn't hit a
-# name-conflict against a still-shutting-down old container.
-ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose down --remove-orphans --timeout 30" 2>&1 | tail -3
+# BUILD FIRST, then swap. The order used to be down → build → up, which meant
+# the site was off for the entire --no-cache build (>10 minutes with Node and
+# Playwright in the image) and that ANY build failure left the NAS with no
+# container at all — not the old one, none. A dropped SSH did exactly that.
+#
+# Built first, the running container keeps serving the old image the whole time
+# and a failed build changes nothing: `set -e` stops here and prod is still up.
+#
+# `| tail -3` makes the PIPELINE's status tail's, which is always 0 — so a
+# failed build reported success and left the previous image running. That is
+# how a Dockerfile that exited 127 still printed "NAS deployed", and how a
+# whole evening of "deploy=0" meant nothing. pipefail makes the build's own
+# status the one that counts, and `set -e` above then stops the script.
+set -o pipefail
 ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose build --no-cache" 2>&1 | tail -3
+
+# Only now, with a good image in hand, is it safe to take the site down. `down`
+# immediately before `up` also keeps the reason it was there in the first place:
+# no name-conflict against a still-shutting-down container.
+ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose down --remove-orphans --timeout 30" 2>&1 | tail -3
 ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose up -d" 2>&1 | tail -3
-echo "  NAS deployed"
+
+# Say it only when it is true. A container that exited on boot is not a deploy.
+sleep 10
+if ssh nas "/usr/local/bin/docker ps --filter name=zim-reader --format '{{.Names}}'" | grep -q zim-reader; then
+  echo "  NAS deployed"
+else
+  echo "  NAS DEPLOY FAILED — container is not running" >&2
+  exit 1
+fi
 
 echo ""
 echo "=== Purging Cloudflare cache ==="

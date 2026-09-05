@@ -19,7 +19,9 @@ import os
 import sys
 import tempfile
 import unittest
+from http.server import BaseHTTPRequestHandler
 from types import SimpleNamespace
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -37,18 +39,31 @@ class _FakeHandler:
 
     _session_cookie = ZimHandler._session_cookie
     _expire_cookie = ZimHandler._expire_cookie
+    # Borrowed for the same reason as the cookie builders: it reads nothing but
+    # ``self.headers``, so the double can run the REAL content negotiation
+    # rather than a guess at it. A stub returning False here would have kept
+    # these tests passing while the browser branch went untested.
+    _wants_html = ZimHandler._wants_html
 
     def __init__(self, headers=None, private=True):
         self.headers = headers or {}
         self._private = private
         self.responses = []
         self.set_cookies = []
+        self.html_responses = []
 
     def _is_private_client(self):
         return self._private
 
     def _json(self, code, data):
         self.responses.append((code, data))
+        return None
+
+    def _html(self, code, body, vary=None):
+        # The browser arm of the same refusal: a login page instead of a JSON
+        # error. Recorded separately so a test can tell WHICH refusal happened
+        # — the status is 401 either way, and that is the whole point.
+        self.html_responses.append((code, vary))
         return None
 
     def _json_cookie(self, code, data, set_cookie):
@@ -356,6 +371,61 @@ class TestLimitedLeakChecks(_AccessBase):
         _srv.get_zim_files()
         _srv.clear_request_allow()
         self.assertEqual(set(_srv.get_zim_files()), {"a", "b", "c"})
+
+
+# ── The request-allow context never outlives its request ───────────────────
+
+
+class TestRequestAllowIsAlwaysCleared(_AccessBase):
+    """The dispatchers set the allow-set early and then have several ways out
+    that skip their own body (the private-mode 401, the 429). Server threads
+    are reused, so an allow-set left parked in the thread-local is the next
+    request's view of the library. Clearing it belongs on the one path every
+    request of every method takes on its way out."""
+
+    def _handler(self):
+        h = ZimHandler.__new__(ZimHandler)
+        h.command = "GET"
+        h.path = "/list"
+        h.close_connection = False
+        h.client_address = ("127.0.0.1", 12345)
+        return h
+
+    def test_cleared_after_a_normal_request(self):
+        h = self._handler()
+        with mock.patch.object(
+            BaseHTTPRequestHandler, "handle_one_request", lambda self: None
+        ):
+            _srv.set_request_allow({"a"})
+            h.handle_one_request()
+        self.assertIsNone(_srv.current_allow())
+
+    def test_cleared_when_the_dispatcher_returns_early(self):
+        """Stands in for the 401/429 early returns: they leave the thread-local
+        set, and only the outer clear catches that."""
+        h = self._handler()
+
+        def early_return(self):
+            _srv.set_request_allow({"a"})
+
+        with mock.patch.object(
+            BaseHTTPRequestHandler, "handle_one_request", early_return
+        ):
+            h.handle_one_request()
+        self.assertIsNone(_srv.current_allow())
+
+    def test_cleared_when_the_client_disconnects(self):
+        h = self._handler()
+
+        def disconnect(self):
+            _srv.set_request_allow({"a"})
+            raise BrokenPipeError("gone")
+
+        with mock.patch.object(
+            BaseHTTPRequestHandler, "handle_one_request", disconnect
+        ):
+            h.handle_one_request()  # swallowed by the disconnect backstop
+        self.assertIsNone(_srv.current_allow())
 
 
 # ── Admin endpoints for the policy ─────────────────────────────────────────

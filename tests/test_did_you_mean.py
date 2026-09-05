@@ -56,13 +56,15 @@ class VocabBuildTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="zimi-dym-")
         _make_title_index(self.tmp, "wikipedia", TITLES)
-        self._patch = mock.patch.object(_search, "_TITLE_INDEX_DIR", self.tmp)
+        self._patch = mock.patch.object(_search, "_title_index_dir", lambda: self.tmp)
         self._patch.start()
         # Isolate the on-disk vocab cache too — _vocab_build_worker (used by
         # _ensure_vocab) now checks disk before scanning, and it must never
         # touch the real ZIMI_DATA_DIR cache during a test.
         self._patch_cache = mock.patch.object(
-            _search, "_VOCAB_CACHE_PATH", os.path.join(self.tmp, "dym_vocab.json")
+            _search,
+            "_vocab_cache_path",
+            lambda: os.path.join(self.tmp, "dym_vocab.json"),
         )
         self._patch_cache.start()
         _search._reset_vocab()
@@ -124,7 +126,7 @@ class VocabSizeOrderTests(unittest.TestCase):
         # "zzz" sorts last alphabetically but is the big index (many titles)
         # — real libraries need this one scanned first when budget is tight.
         _make_title_index(self.tmp, "zzz", [f"Big Title {i}" for i in range(200)])
-        self._patch_dir = mock.patch.object(_search, "_TITLE_INDEX_DIR", self.tmp)
+        self._patch_dir = mock.patch.object(_search, "_title_index_dir", lambda: self.tmp)
         self._patch_dir.start()
         _search._reset_vocab()
 
@@ -160,7 +162,7 @@ class VocabLoggingTests(unittest.TestCase):
     def test_empty_build_logs_at_info(self):
         empty_dir = tempfile.mkdtemp(prefix="zimi-dym-emptylog-")
         try:
-            with mock.patch.object(_search, "_TITLE_INDEX_DIR", empty_dir):
+            with mock.patch.object(_search, "_title_index_dir", lambda: empty_dir):
                 with self.assertLogs(_search.log.name, level="INFO") as cm:
                     vocab = _search._build_vocab()
             self.assertEqual(vocab, {})
@@ -173,7 +175,7 @@ class VocabLoggingTests(unittest.TestCase):
 
     def test_missing_dir_logs_at_info(self):
         missing = "/nonexistent/zimi-dym-path-xyz"
-        with mock.patch.object(_search, "_TITLE_INDEX_DIR", missing):
+        with mock.patch.object(_search, "_title_index_dir", lambda: missing):
             with self.assertLogs(_search.log.name, level="INFO") as cm:
                 vocab = _search._build_vocab()
         self.assertEqual(vocab, {})
@@ -187,7 +189,7 @@ class VocabStrideSamplingTests(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="zimi-dym-stride-")
-        self._patch_dir = mock.patch.object(_search, "_TITLE_INDEX_DIR", self.tmp)
+        self._patch_dir = mock.patch.object(_search, "_title_index_dir", lambda: self.tmp)
         self._patch_dir.start()
         _search._reset_vocab()
 
@@ -260,7 +262,7 @@ class VocabLossyCountingTests(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="zimi-dym-lossy-")
-        self._patch_dir = mock.patch.object(_search, "_TITLE_INDEX_DIR", self.tmp)
+        self._patch_dir = mock.patch.object(_search, "_title_index_dir", lambda: self.tmp)
         self._patch_dir.start()
         _search._reset_vocab()
 
@@ -353,8 +355,8 @@ class VocabCachePersistenceTests(unittest.TestCase):
         _make_title_index(self.index_dir, "wikipedia", TITLES)
         self.cache_path = os.path.join(self.tmp, "dym_vocab.json")
         self._patches = [
-            mock.patch.object(_search, "_TITLE_INDEX_DIR", self.index_dir),
-            mock.patch.object(_search, "_VOCAB_CACHE_PATH", self.cache_path),
+            mock.patch.object(_search, "_title_index_dir", lambda: self.index_dir),
+            mock.patch.object(_search, "_vocab_cache_path", lambda: self.cache_path),
         ]
         for p in self._patches:
             p.start()
@@ -561,10 +563,12 @@ class SearchAllTriggerTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="zimi-dym-sa-")
         _make_title_index(self.tmp, "wikipedia", TITLES)
-        self._patch_dir = mock.patch.object(_search, "_TITLE_INDEX_DIR", self.tmp)
+        self._patch_dir = mock.patch.object(_search, "_title_index_dir", lambda: self.tmp)
         self._patch_dir.start()
         self._patch_cache = mock.patch.object(
-            _search, "_VOCAB_CACHE_PATH", os.path.join(self.tmp, "dym_vocab.json")
+            _search,
+            "_vocab_cache_path",
+            lambda: os.path.join(self.tmp, "dym_vocab.json"),
         )
         self._patch_cache.start()
         _search._reset_vocab()
@@ -637,9 +641,11 @@ class SearchAllTriggerTests(unittest.TestCase):
         empty = tempfile.mkdtemp(prefix="zimi-dym-empty-")
         try:
             with (
-                mock.patch.object(_search, "_TITLE_INDEX_DIR", empty),
+                mock.patch.object(_search, "_title_index_dir", lambda: empty),
                 mock.patch.object(
-                    _search, "_VOCAB_CACHE_PATH", os.path.join(empty, "dym_vocab.json")
+                    _search,
+                    "_vocab_cache_path",
+                    lambda: os.path.join(empty, "dym_vocab.json"),
                 ),
             ):
                 _search._reset_vocab()

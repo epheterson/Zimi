@@ -34,7 +34,6 @@ def _start_server(zim_dir, port=0):
     zimi.ZIMI_DATA_DIR = os.path.join(zim_dir, ".zimi")
     os.makedirs(zimi.ZIMI_DATA_DIR, exist_ok=True)
     zimi.ZIMI_MANAGE = True
-    zimi._TITLE_INDEX_DIR = os.path.join(zimi.ZIMI_DATA_DIR, "titles")
     zimi.load_cache()
 
     server = ThreadingHTTPServer(("127.0.0.1", port), zimi.ZimHandler)
@@ -391,6 +390,55 @@ class TestServerEndpoints(unittest.TestCase):
         data, status = self._post("/manage/delete", {"filename": "readme.txt"})
         self.assertEqual(status, 400)
 
+    def test_manage_delete_finds_a_zim_in_a_subfolder(self):
+        """Everything `zimi create` writes lands in created/, and the library
+        lists it by BASENAME. Joining that onto ZIM_DIR looked in the wrong
+        directory, so the delete 404'd, the file survived and the next scan
+        brought it back — with the -2/-3 capture suffix climbing forever (Eric:
+        "the ones I deleted kept coming back")."""
+        import os
+        import zimi.server as _s
+
+        sub = os.path.join(_s.ZIM_DIR, "created")
+        os.makedirs(sub, exist_ok=True)
+        target = os.path.join(sub, "made_here.zim")
+        with open(target, "wb") as fh:
+            fh.write(b"not a real zim, but a real file")
+        saved = _s._zim_files_cache
+        _s._zim_files_cache = dict(saved or {})
+        _s._zim_files_cache["made_here"] = target
+        try:
+            data, status = self._post("/manage/delete", {"filename": "made_here.zim"})
+            self.assertEqual(status, 200, data)
+            self.assertFalse(os.path.exists(target), "the file must actually be gone")
+        finally:
+            _s._zim_files_cache = saved
+            if os.path.exists(target):
+                os.remove(target)
+
+    def test_manage_delete_refuses_a_path_outside_the_library(self):
+        """The name→path lookup must not become a way to delete anything the
+        library happens to point at from outside ZIM_DIR."""
+        import os
+        import tempfile
+        import zimi.server as _s
+
+        outside = os.path.join(tempfile.mkdtemp(prefix="zimi-outside-"), "evil.zim")
+        with open(outside, "wb") as fh:
+            fh.write(b"do not delete me")
+        saved = _s._zim_files_cache
+        _s._zim_files_cache = dict(saved or {})
+        _s._zim_files_cache["evil"] = outside
+        try:
+            _data, status = self._post("/manage/delete", {"filename": "evil.zim"})
+            self.assertEqual(status, 404)
+            self.assertTrue(
+                os.path.exists(outside), "must not delete outside the library"
+            )
+        finally:
+            _s._zim_files_cache = saved
+            os.remove(outside)
+
     # ── Tmp file cleanup ──
 
     def test_manage_cleanup_tmp_empty(self):
@@ -482,11 +530,19 @@ class TestServerEndpoints(unittest.TestCase):
     # ── /w/ content route ──
 
     def test_w_nonexistent_zim(self):
-        """Requesting content from a non-existent ZIM should 404."""
-        # /w/ routes serve HTML for browser nav, so request with Sec-Fetch-Dest: iframe
+        """A document request for a missing ZIM gets the styled gone-source
+        page (a deleted source's old bookmarks land here); a subresource still
+        gets the JSON 404 it can parse."""
         url = f"{self._base}/w/nonexistent_zim/A/Test"
+        # As a page being opened: prose, 200.
         req = urllib.request.Request(url)
         req.add_header("Sec-Fetch-Dest", "iframe")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            self.assertEqual(resp.status, 200)
+            self.assertIn(b"isn't in the library", resp.read())
+        # As an image subresource: JSON 404.
+        req = urllib.request.Request(url + ".png")
+        req.add_header("Sec-Fetch-Dest", "image")
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
                 status = resp.status

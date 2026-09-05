@@ -144,15 +144,21 @@ def _is_trusted_kiwix_url(url):
 
 # If ZIMI_AUTO_UPDATE env var is set, it's an admin override (UI locked).
 # If not set, the UI controls it and settings persist to disk.
-_AUTO_UPDATE_CONFIG = os.path.join(_srv.ZIMI_DATA_DIR, "auto_update.json")
 _auto_update_env_locked = "ZIMI_AUTO_UPDATE" in os.environ
+
+
+def _auto_update_config_path():
+    """Where auto-update settings persist. A function, not a constant: the data
+    dir isn't final at import time (CLI flag, desktop settings), and freezing
+    this path is how a repointed data dir used to end up split in two."""
+    return os.path.join(_srv.ZIMI_DATA_DIR, "auto_update.json")
 
 
 def _load_auto_update_config():
     """Load auto-update settings. Env var overrides; otherwise use persisted config."""
     # Look up through _srv so test monkey-patches on server.py propagate
     locked = getattr(_srv, "_auto_update_env_locked", _auto_update_env_locked)
-    config_path = getattr(_srv, "_AUTO_UPDATE_CONFIG", _AUTO_UPDATE_CONFIG)
+    config_path = _auto_update_config_path()
     if locked:
         enabled = os.environ.get("ZIMI_AUTO_UPDATE", "0") == "1"
         freq = os.environ.get("ZIMI_UPDATE_FREQ", "weekly")
@@ -167,7 +173,7 @@ def _load_auto_update_config():
 
 def _save_auto_update_config(enabled, freq):
     """Persist auto-update settings to disk."""
-    config_path = getattr(_srv, "_AUTO_UPDATE_CONFIG", _AUTO_UPDATE_CONFIG)
+    config_path = _auto_update_config_path()
     _srv._atomic_write_json(config_path, {"enabled": enabled, "frequency": freq})
 
 
@@ -347,7 +353,6 @@ def _download_rate_bps():
 # a background watcher promotes them once the window opens. Disabled by default
 # (new downloads start right away — the pre-existing behavior). Times are
 # minutes-since-local-midnight; a window may span midnight (start > end).
-_DOWNLOAD_SCHEDULE_CONFIG = os.path.join(_srv.ZIMI_DATA_DIR, "download_schedule.json")
 _DEFAULT_WINDOW_START = "01:00"
 _DEFAULT_WINDOW_END = "07:00"
 # Trickle cap (KB/s) applied to seeding when uploads are restricted to the
@@ -359,6 +364,13 @@ _schedule_watcher_thread = None
 # Last (restrict, in_window) tuple pushed to the BT session by the upload
 # restrictor, so a 60s tick only touches libtorrent on an actual transition.
 _upload_window_applied = None
+
+
+def _download_schedule_config_path():
+    """Where the download window persists. A function, not a constant, for the
+    same reason as _auto_update_config_path(): ZIMI_DATA_DIR can move after
+    import and every piece of state has to move with it."""
+    return os.path.join(_srv.ZIMI_DATA_DIR, "download_schedule.json")
 
 
 def _parse_hhmm(s):
@@ -402,7 +414,7 @@ def _load_download_schedule():
                 "upload_restrict": False,
                 "upload_trickle_kb": _DEFAULT_UPLOAD_TRICKLE_KB,
             }
-    cfg_path = getattr(_srv, "_DOWNLOAD_SCHEDULE_CONFIG", _DOWNLOAD_SCHEDULE_CONFIG)
+    cfg_path = _download_schedule_config_path()
     try:
         with open(cfg_path, encoding="utf-8") as f:
             cfg = json.loads(f.read())
@@ -458,7 +470,7 @@ def _save_download_schedule(
         trickle = max(1, int(upload_trickle_kb))
     except (ValueError, TypeError):
         trickle = _DEFAULT_UPLOAD_TRICKLE_KB
-    cfg_path = getattr(_srv, "_DOWNLOAD_SCHEDULE_CONFIG", _DOWNLOAD_SCHEDULE_CONFIG)
+    cfg_path = _download_schedule_config_path()
     try:
         _srv._atomic_write_json(
             cfg_path,
@@ -736,7 +748,7 @@ def _refuse_for_disk_space(size_bytes, dest=None):
 
 
 def _fmt_gb(n):
-    return f"{n / 1024**3:.1f} GB"
+    return _srv.format_bytes(n)
 
 
 def _torrent_info_hash(data):
@@ -778,20 +790,71 @@ def _torrent_info_hash(data):
 
 
 _magnets_ensured = False
+_magnets_lock = threading.Lock()
+
+# One-way latch: may ensure_magnets_for_installed() touch the network when
+# the caller didn't say? False for the entire boot window by construction —
+# the only code that flips it is maintenance_catalog_refresh(), which runs
+# exclusively on the jittered 12h maintenance loop, hours after startup.
+# WHY a latch instead of a parameter at the call sites: the boot call and
+# the maintenance call in server.py are textually identical
+# (ensure_magnets_for_installed() with no arguments), and server.py cannot
+# be edited from a magnet bugfix without dragging the whole startup path
+# into review. The latch encodes "a maintenance pass has happened" — the
+# earliest moment the 1.8.2 politeness contract allows background traffic.
+_magnet_network_ok = False
 
 
-def ensure_magnets_for_installed(spacing=0.4):
+def ensure_magnets_for_installed(spacing=0.4, network_ok=None):
     """Every user keeps the catalog + a magnet per installed ZIM; only
     mirrors keep the .torrent files themselves (Eric's split). For
-    installed ZIMs with no recorded infohash, fetch the matching catalog
-    .torrent, extract the infohash, store filename -> magnet in the
-    manifest — and keep the torrent bytes on disk only in mirror mode.
-    Once per run, politely paced."""
+    installed ZIMs with no recorded infohash, extract the infohash from an
+    archived .torrent when one is on disk (fully offline), else download
+    the catalog's matching .torrent — network permitting. Keeps the
+    torrent bytes on disk only in mirror mode. Once per run, politely
+    paced; re-arms itself whenever work remains.
+
+    Network discipline (the 1.8.2 promise: an idle instance makes zero
+    catalog requests — and boot makes zero network requests, period):
+
+    * The catalog is NEVER fetched from here. The filename -> torrent-URL
+      map comes exclusively from browse pages already cached on disk
+      (_cached_catalog_zim_urls), stale included. A ZIM the user already
+      holds has a fixed dated filename, so even a weeks-old page maps it
+      correctly; at worst the entry is absent and resolution waits for
+      the next trigger. This function historically called
+      _fetch_kiwix_catalog at boot, which made every default install hit
+      library.kiwix.org seconds after start — the exact traffic the
+      1.8.2 gating was built to eliminate.
+
+    * .torrent downloads happen only when network_ok resolves True:
+      passed explicitly by _kick_magnet_resolution (the catalog was just
+      fetched over the network for a real reason — piggyback on that
+      moment), or via the _magnet_network_ok maintenance latch. The boot
+      call passes nothing and predates the first maintenance pass, so it
+      is offline by construction and still harvests archived .torrent
+      files — which is all boot-time seeding of already-known torrents
+      needs."""
     global _magnets_ensured
     from zimi import p2p as _p2p
 
     if _magnets_ensured or not _p2p.is_torrent_enabled():
         return 0
+    if network_ok is None:
+        network_ok = _magnet_network_ok
+    # The piggyback thread and the maintenance pass can overlap; whoever
+    # holds the lock does the (paced, slow) work, the loser walks away —
+    # same non-blocking pattern as _mirror_sync_lock.
+    if not _magnets_lock.acquire(blocking=False):
+        return 0
+    try:
+        return _ensure_magnets_locked(spacing, network_ok, _p2p)
+    finally:
+        _magnets_lock.release()
+
+
+def _ensure_magnets_locked(spacing, network_ok, _p2p):
+    global _magnets_ensured
     _magnets_ensured = True
 
     manifest_path = _torrents_manifest_path()
@@ -806,32 +869,14 @@ def ensure_magnets_for_installed(spacing=0.4):
     if not missing:
         return 0
 
-    # Exact-filename matches from the catalog (stale copy works offline)
-    catalog_urls = {}
-    try:
-        _total, items, _err = _fetch_kiwix_catalog("", "eng", 500, 0, _internal=True)
-        if _err:
-            raise RuntimeError(_err)
-        for it in items or []:
-            u = (it.get("download_url") or "").split("?")[0]
-            if u.endswith(".meta4"):
-                u = u[: -len(".meta4")]
-            if u.endswith(".zim"):
-                catalog_urls[os.path.basename(u)] = u + ".torrent"
-    except Exception as e:
-        # Archived .torrent files still work offline — process those now,
-        # and retry the catalog-dependent rest on the next maintenance
-        # pass instead of silently never building the manifest.
-        log.info(
-            "Magnet manifest: catalog unavailable (%s) — using archived torrents only",
-            e,
-        )
-        catalog_urls = {}
-        _magnets_ensured = False
+    # Exact-filename matches from catalog pages already on disk — never a
+    # fetch, stale is fine (see docstring).
+    catalog_urls = {f: u + ".torrent" for f, u in _cached_catalog_zim_urls().items()}
 
     keep_files = _p2p.is_mirror_enabled()
     tdir = os.path.join(_srv.ZIMI_DATA_DIR, "bt", "torrents")
     updated = 0
+    unresolved = 0
     for filename in missing:
         data = None
         archived = os.path.join(tdir, filename + ".torrent")
@@ -841,7 +886,7 @@ def ensure_magnets_for_installed(spacing=0.4):
                     data = f.read()
             except OSError:
                 data = None
-        elif filename in catalog_urls:
+        elif network_ok and filename in catalog_urls:
             try:
                 req = urllib.request.Request(
                     catalog_urls[filename], headers={"User-Agent": USER_AGENT}
@@ -854,9 +899,11 @@ def ensure_magnets_for_installed(spacing=0.4):
                 data = None
             time.sleep(spacing)
         if not data:
+            unresolved += 1
             continue
         info_hash = _torrent_info_hash(data)
         if not info_hash:
+            unresolved += 1
             continue
         entry = dict(manifest.get(filename) or {})
         entry["info_hash"] = info_hash
@@ -878,6 +925,22 @@ def ensure_magnets_for_installed(spacing=0.4):
         os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
         _srv._atomic_write_json(manifest_path, manifest)
         log.info("Magnet manifest: %d installed ZIM(s) added", updated)
+    if unresolved:
+        # Re-arm the once-per-run guard: work remains, whether because
+        # this was the offline boot pass, no catalog page is cached yet,
+        # or a .torrent fetch failed transiently. The next trigger — a
+        # real catalog fetch (piggyback) or the maintenance pass — gets
+        # to retry instead of the manifest silently never completing.
+        # ZIMs that simply aren't in the Kiwix catalog (self-built) stay
+        # "unresolved" forever; each retry costs one glob and a dict
+        # lookup, no network, so that steady state is harmless.
+        _magnets_ensured = False
+        log.debug(
+            "Magnet manifest: %d pending (network_ok=%s, %d catalog URLs cached)",
+            unresolved,
+            network_ok,
+            len(catalog_urls),
+        )
     return updated
 
 
@@ -1438,11 +1501,81 @@ def _persist_opds_cache():
         log.debug("catalog cache persist failed: %s", e)
 
 
+def _catalog_zim_urls(items):
+    """filename -> canonical .zim URL for catalog items. Kiwix advertises
+    mirrored .meta4 links, sometimes with query strings — strip both so the
+    basename matches the installed file exactly. (Shared by the magnet
+    manifest, mirror sync, and the torrent archive — this mapping used to
+    be copy-pasted at all three sites.)"""
+    urls = {}
+    for it in items or []:
+        u = (it.get("download_url") or "").split("?")[0]
+        if u.endswith(".meta4"):
+            u = u[: -len(".meta4")]
+        if u.endswith(".zim"):
+            urls[os.path.basename(u)] = u
+    return urls
+
+
+def _cached_catalog_zim_urls():
+    """The filename -> .zim URL map answerable with ZERO network: the union
+    of every catalog browse page already cached (memory or the persisted
+    disk copy), stale included. This is the stale-only sibling of
+    _fetch_kiwix_catalog — that function always falls through to a fetch on
+    a cold or expired cache, which is exactly what background machinery
+    must never trigger. Reading all cached browse pages (not just page 0)
+    also covers installs whose entry sits past the first 500 catalog items,
+    which the old single-page lookup silently missed."""
+    _load_opds_disk_cache()
+    with _opds_lock:
+        pages = [v for k, v in _opds_cache.items() if _is_browse_key(k)]
+    urls = {}
+    for _ts, _total, items in pages:
+        urls.update(_catalog_zim_urls(items))
+    return urls
+
+
+def _kick_magnet_resolution():
+    """A catalog page was just fetched over the network for a real reason
+    (user browsing, auto-update, mirror sync, a wanted maintenance
+    refresh). That is the polite moment to also resolve missing magnets:
+    the instance is demonstrably not idle, and the freshly cached page is
+    the URL source, so no extra catalog request is ever made. Runs the
+    paced .torrent downloads in a background thread so the catalog caller
+    never waits on them; the guards stay synchronous and cheap (one glob,
+    one small JSON read) so instances with nothing missing — and the test
+    suite's ZIM-less fixtures — never spawn a thread at all. Returns the
+    Thread when one was started (test seam), else None."""
+    from zimi import p2p as _p2p
+
+    if _magnets_ensured or not _p2p.is_torrent_enabled():
+        return None
+    manifest = _get_torrent_metadata()
+    if not any(
+        not (manifest.get(os.path.basename(p)) or {}).get("info_hash")
+        for p in glob.glob(os.path.join(_srv.ZIM_DIR, "*.zim"))
+    ):
+        return None
+
+    def _run():
+        try:
+            ensure_magnets_for_installed(network_ok=True)
+        except Exception as e:
+            log.debug("magnet piggyback failed: %s", e)
+
+    t = threading.Thread(target=_run, daemon=True, name="magnet-resolve")
+    t.start()
+    return t
+
+
 def _thumb_dir():
     """Lazily create and return thumbnail cache directory."""
     d = os.path.join(_srv.ZIMI_DATA_DIR, "thumbs")
     os.makedirs(d, exist_ok=True)
     return d
+
+
+_THUMB_MAX_BYTES = 2 * 1024 * 1024  # ceiling on one cached catalog thumbnail
 
 
 def _fetch_thumb(url):
@@ -1462,6 +1595,14 @@ def _fetch_thumb(url):
             ct = f.read().strip() or "image/png"
         with open(cache_path, "rb") as f:
             return f.read(), ct
+    # Cache miss means the network, so the air-gap switch decides here — the
+    # catalog grid asks for dozens of these at once, and ZIMI_OFFLINE promises
+    # no packets leave the box, not that they leave and time out.
+    from zimi import p2p as _p2p
+
+    if _p2p.is_offline():
+        log.debug("Offline: skipping thumbnail fetch for %s", url)
+        return None, None
     # Fetch from Kiwix. Follow redirects only within *.kiwix.org (Kiwix
     # redirects library → opds); a redirect off-Kiwix is blocked (SSRF).
     try:
@@ -1472,7 +1613,12 @@ def _fetch_thumb(url):
             # Only serve image content types
             if not ct.startswith("image/"):
                 return None, None
-            data = resp.read()
+            # Read one byte past the ceiling so an oversized body is detected
+            # and dropped rather than written into the cache dir.
+            data = resp.read(_THUMB_MAX_BYTES + 1)
+            if len(data) > _THUMB_MAX_BYTES:
+                log.debug("Thumbnail over %d bytes, dropped: %s", _THUMB_MAX_BYTES, url)
+                return None, None
         # Write to disk cache
         with open(cache_path, "wb") as f:
             f.write(data)
@@ -1615,6 +1761,9 @@ def _fetch_kiwix_catalog(
                 _opds_cache[cache_key] = (time.time(), total, items)
             _catalog_stale_ts = None
             _persist_opds_cache()
+            # A 304 is still a real network round trip made for a real
+            # reason — as valid a piggyback moment as a 200 (below).
+            _kick_magnet_resolution()
             return total, items, None
         _opds_last_fail = time.time()
         log.warning("OPDS fetch failed: %s", e)
@@ -1763,6 +1912,12 @@ def _fetch_kiwix_catalog(
         # Warm thumbnails only off user-facing fetches; headless machinery
         # (maintenance, auto-update) should not pull images nobody views.
         _prefetch_thumbs(items)
+    # The catalog just crossed the network for a real reason — resolve any
+    # missing magnets off the back of it (never triggers its own catalog
+    # fetch; see _kick_magnet_resolution). Deliberately NOT on the
+    # stale-serve or failure paths above: those make no successful network
+    # contact, so they earn no follow-on traffic.
+    _kick_magnet_resolution()
     return total, items, None
 
 
@@ -1810,6 +1965,16 @@ def maintenance_catalog_refresh():
     standing load on kiwix.org. The stale-while-revalidate path still
     refreshes on the next real use, and a needed refresh is a conditional
     request that usually ends in a 304."""
+    global _magnet_network_ok
+    # Reaching here means a maintenance pass is underway — the earliest
+    # moment magnet resolution may use the network. Flipped even when the
+    # catalog refresh below is skipped as idle: resolving from a STALE
+    # cached page costs kiwix.org zero catalog requests, and the .torrent
+    # downloads themselves are finite (once per installed ZIM, then
+    # recorded in the manifest forever). What stays forbidden is the boot
+    # window — server startup happens daily on desktops; maintenance
+    # passes start hours later and are jittered.
+    _magnet_network_ok = True
     if not _catalog_refresh_wanted():
         log.debug("maintenance: catalog refresh skipped (idle instance)")
         return False
@@ -1915,12 +2080,7 @@ def _mirror_sync_locked(_p2p):
     catalog_urls = {}
     try:
         _total, items, _err = _fetch_kiwix_catalog("", "eng", 500, 0, _internal=True)
-        for it in items or []:
-            url = (it.get("download_url") or "").split("?")[0]
-            if url.endswith(".meta4"):
-                url = url[: -len(".meta4")]
-            if url.endswith(".zim"):
-                catalog_urls[os.path.basename(url)] = url
+        catalog_urls = _catalog_zim_urls(items)
     except Exception:
         pass
 
@@ -1979,17 +2139,11 @@ def archive_catalog_torrents(spacing=0.4, _max_bytes=5 * 1024 * 1024):
     os.makedirs(tdir, exist_ok=True)
 
     # Full catalog, all pages (English slice, as before).
-    urls = {}
     catalog = _full_catalog("eng")
     if not catalog:
         _catalog_torrents_archived = False  # retry next run
         return 0
-    for it in catalog:
-        u = (it.get("download_url") or "").split("?")[0]
-        if u.endswith(".meta4"):
-            u = u[: -len(".meta4")]
-        if u.endswith(".zim"):
-            urls[os.path.basename(u)] = u + ".torrent"
+    urls = {f: u + ".torrent" for f, u in _catalog_zim_urls(catalog).items()}
 
     fetched = 0
     fetched_bytes = 0
@@ -2538,15 +2692,23 @@ def _try_bt_download(
                 try:
                     _meta = _get_torrent_metadata().get(dl["filename"]) or {}
                     _src = _meta.get("torrent_file") or torrent_url
-                    # No per-torrent options: the engine seeds the existing
-                    # file uncapped and Zimi enforces the user's cap in
-                    # apply_seed_policy (a positive engine cap would measure
-                    # this session's DOWNLOAD — zero for a re-seed — and kill
-                    # the seed on its first uploaded piece).
+                    # seed_mode: every piece of this payload was already
+                    # hash-verified by the engine during the download and the
+                    # file was only MOVED since, so a fresh full re-hash buys
+                    # nothing — and on a Pi seeding a multi-GB ZIM from a NAS
+                    # mount it pins the disk for minutes right when the
+                    # library registers the new ZIM (#51). Still honest:
+                    # libtorrent verifies each piece on first upload and
+                    # drops out of seed mode on any mismatch. No ratio cap in
+                    # options: the engine seeds uncapped and Zimi enforces
+                    # the user's cap in apply_seed_policy (a positive engine
+                    # cap would measure this session's DOWNLOAD — zero for a
+                    # re-seed — and kill the seed on its first uploaded
+                    # piece).
                     seed_gid = backend.add_torrent(
                         _src,
                         dest_dir=os.path.dirname(dl["dest"]),
-                        options=None,
+                        options={"seed_mode": True},
                     )
                     if seed_gid:
                         tid = seed_gid  # track the library seed, not staging
@@ -3047,6 +3209,55 @@ def _title_from_filename(filename):
     return {"title": name.replace("_", " ").title(), "name": name}
 
 
+def _download_by_id(dl_id):
+    """The download record with this id — active or still queued — or None."""
+    with _download_lock:
+        dl = _active_downloads.get(dl_id)
+        if dl is not None:
+            return dl
+        return next((q for q in _download_queue if q.get("id") == dl_id), None)
+
+
+def download_subject(dl):
+    """What to call this transfer in the activity journal: the library's title
+    for the ZIM if it already knows one, else the name read off the filename.
+    Never the path — the journal is read by people, and it travels in backups.
+    """
+    filename = dl.get("filename", "")
+    try:
+        for z in _srv._zim_list_cache or []:
+            if z.get("file") == filename:
+                return z.get("title") or z.get("name") or filename
+    except Exception as e:
+        log.debug("Could not name %s from the library cache: %s", filename, e)
+    named = _title_from_filename(filename)
+    return named.get("title") or named.get("name") or filename
+
+
+def _record_download_activity(dl, outcome, detail=""):
+    """File a finished transfer in the activity journal, under whoever asked.
+
+    A download with no actor on it is one the SERVER started: the auto-updater,
+    the nightly scheduler, or a resume after a restart (the pending-downloads
+    snapshot deliberately keeps only what it takes to restart a transfer, so a
+    resumed one is genuinely the server's doing).
+    """
+    tag = dl.get("_activity") or {}
+    try:
+        from zimi import manage as _manage
+
+        _manage.record_activity(
+            tag.get("type") or ("update" if dl.get("is_update") else "download"),
+            download_subject(dl),
+            outcome=outcome,
+            detail=detail,
+            actor=tag.get("actor"),
+            size_bytes=dl.get("total_bytes") or dl.get("size_bytes"),
+        )
+    except Exception as e:
+        log.debug("Could not journal activity for %s: %s", dl.get("filename"), e)
+
+
 def _post_download_finalize(dl):
     """Bookkeeping shared by both the HTTP-mirror and BT success paths.
 
@@ -3054,6 +3265,7 @@ def _post_download_finalize(dl):
     appends to history. Idempotent — safe if dl['dest'] already exists.
     """
     # Remove older versions of the same ZIM
+    removed_versions = []
     base = re.match(r"^(.+?)_\d{4}-\d{2}\.zim$", dl["filename"])
     if base:
         prefix = base.group(1)
@@ -3066,13 +3278,31 @@ def _post_download_finalize(dl):
                 ):
                     try:
                         os.remove(os.path.join(_srv.ZIM_DIR, f))
+                        removed_versions.append(f)
                         log.info("Removed old version: %s", f)
                     except OSError:
                         pass
         except OSError:
             pass
-    with _srv._zim_lock:
-        _srv.load_cache(force=True)
+    # Register ONLY the new file. The old shape here — load_cache(force=True)
+    # under _zim_lock — re-scanned every archive in the library while holding
+    # the lock every libzim request needs; on a Pi serving a big library off a
+    # NAS mount that starved all requests for minutes and read as a crash
+    # (#51). register_zim_file extracts the new ZIM's metadata OFF the lock
+    # and only splices under it; the full rescan survives as the fallback.
+    registered = False
+    try:
+        registered = _srv.register_zim_file(dl["dest"], removed_files=removed_versions)
+    except Exception as e:
+        log.warning(
+            "Incremental registration of %s failed (%s) — falling back to a "
+            "full library rescan",
+            dl["filename"],
+            e,
+        )
+    if not registered:
+        with _srv._zim_lock:
+            _srv.load_cache(force=True)
     _srv._search_cache_clear()
     _srv._suggest_cache_clear()
     _srv._clean_stale_title_indexes()
@@ -3089,6 +3319,7 @@ def _post_download_finalize(dl):
                 break
     except Exception as e:
         log.debug("Failed to cache ZIM metadata for download history: %s", e)
+    _record_download_activity(dl, "ok")
     event_type = "updated" if dl.get("is_update") else "download"
     _srv._append_history(
         {
@@ -3184,6 +3415,7 @@ def _download_thread(dl):
         if not success:
             dl["done"] = True
             dl["error"] = f"All {len(mirrors)} mirror(s) failed. Last: {last_error}"
+            _record_download_activity(dl, "failed", str(last_error or ""))
             _srv._append_history(
                 {
                     "event": "download_failed",
@@ -3233,6 +3465,10 @@ def _download_thread(dl):
         )
         dl["error"] = "Download failed"
         if not dl.get("cancelled"):
+            # dl["error"], not str(e): the exception can name a local path and
+            # the journal is a display surface (and travels in backups). The
+            # traceback is already in the log above.
+            _record_download_activity(dl, "failed", dl["error"])
             _srv._append_history(
                 {
                     "event": "download_failed",
@@ -3359,12 +3595,15 @@ def _enqueue_zim_download(url, mirrors, filename, size_bytes=None, extra=None):
     return dl_id, None
 
 
-def _start_download(url, size_bytes=None):
+def _start_download(url, size_bytes=None, actor=None):
     """Start a background download via urllib. Returns (download_id, error).
 
     If the concurrent-download cap is reached, the download is queued.
     `size_bytes` is used to order the queue smallest-first; pass it from the
     catalog when available. Unknown sizes are dispatched after known ones.
+    `actor` is whoever asked for it (None = the server did), carried on the
+    record so the activity journal can say who when the transfer lands — an
+    hour later, on a thread that never saw the request.
     """
     # Validate URL — only allow Kiwix-controlled hosts (download.kiwix.org,
     # lbo.download.kiwix.org load-balanced origin, dumps.wikimedia.org/kiwix
@@ -3390,20 +3629,26 @@ def _start_download(url, size_bytes=None):
         meta4_url = url
         url = url[: -len(".meta4")]
 
+    # A rejected name always comes back as (None, error) — testing the name
+    # rather than the message is the same check, and leaves no None to carry
+    # into the download record.
     filename, err = _validate_zim_filename(url.split("/")[-1])
-    if err:
+    if filename is None:
         log.info("download rejected: %s (url=%.120r)", err, url)
         return None, err
+    extra = {"_activity": {"actor": actor}}
+    if meta4_url:
+        extra["_meta4"] = meta4_url
     return _enqueue_zim_download(
         url,
         [url],
         filename,
         size_bytes=size_bytes,
-        extra={"_meta4": meta4_url} if meta4_url else None,
+        extra=extra,
     )
 
 
-def _start_peer_download(peer_name, filename, size_bytes=None):
+def _start_peer_download(peer_name, filename, size_bytes=None, actor=None):
     """Download a ZIM directly from a discovered LAN peer over HTTP.
 
     Gated on the share toggle in BOTH directions — with sharing off the
@@ -3420,7 +3665,7 @@ def _start_peer_download(peer_name, filename, size_bytes=None):
     from zimi import p2p_discovery as _disc
 
     filename, err = _validate_zim_filename(filename)
-    if err:
+    if filename is None:
         return None, err
 
     if not _disc.is_share_enabled():
@@ -3451,11 +3696,15 @@ def _start_peer_download(peer_name, filename, size_bytes=None):
         [url],
         filename,
         size_bytes=size_bytes,
-        extra={"_source": "peer", "peer_name": peer_name},
+        extra={
+            "_source": "peer",
+            "peer_name": peer_name,
+            "_activity": {"actor": actor},
+        },
     )
 
 
-def _start_import(url, size_bytes=None):
+def _start_import(url, size_bytes=None, actor=None):
     """Start a background download from any HTTPS URL. Returns download ID."""
     global _download_counter
     if not url.startswith("https://"):
@@ -3491,6 +3740,9 @@ def _start_import(url, size_bytes=None):
             "error": None,
             "is_update": False,
             "size_bytes": size_bytes,
+            # An import is its own kind of event in the activity journal: the
+            # admin pointed at a URL nobody's catalog knows about.
+            "_activity": {"actor": actor, "type": "import"},
         }
         _enqueue_or_start(dl)
     return dl_id, None

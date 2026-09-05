@@ -248,20 +248,29 @@ def probe(bt_port: int, *, try_upnp: bool = True) -> dict:
     Slow (seconds) — callers run it off the request thread except for the
     explicit recheck button.
     """
+    # ZIMI_OFFLINE: no SSDP multicast, no SOAP to the gateway, no external
+    # port check — not even the localhost listen probe. Every caller is
+    # already torrent-gated (and torrent is forced off when offline), but
+    # the air-gap promise must hold inside this module too, not depend on
+    # caller discipline. Report an honest "nothing was checked".
+    from zimi.p2p import is_offline
+
+    offline = is_offline()
     result = {
         "bt_port": bt_port,
-        "listening": _port_listening(bt_port),
+        "listening": False if offline else _port_listening(bt_port),
         "upnp": "off",
         "external_ip": None,
         "reachable": None,
         "checked_at": time.time(),
     }
-    if try_upnp:
-        mapped = add_port_mapping(bt_port)
-        result["upnp"] = "mapped" if mapped else "unavailable"
-        if mapped:
-            result["external_ip"] = get_external_ip()
-    result["reachable"] = _port_reachable_external(bt_port)
+    if not offline:
+        if try_upnp:
+            mapped = add_port_mapping(bt_port)
+            result["upnp"] = "mapped" if mapped else "unavailable"
+            if mapped:
+                result["external_ip"] = get_external_ip()
+        result["reachable"] = _port_reachable_external(bt_port)
     with _status_lock:
         _last_status.clear()
         _last_status.update(result)

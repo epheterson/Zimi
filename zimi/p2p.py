@@ -6,7 +6,9 @@
 The interface stays abstract because the test fakes subclass it, but
 there is now exactly one real engine. BT-first downloads are ON by
 default so the install base shares distribution load with the Kiwix
-mirrors; ZIMI_TORRENT=0 opts out entirely.
+mirrors; ZIMI_TORRENT=0 opts out entirely, and ZIMI_OFFLINE=1 (the
+air-gap switch, see is_offline) forces the same thing plus every other
+internet-bound subsystem.
 
 Smart defaults: if libtorrent isn't importable on this install, we log
 + skip silently rather than crashing. The HTTP path keeps working
@@ -44,6 +46,26 @@ def _bool_env(key: str, default: bool = False) -> bool:
     if raw in ("0", "false", "no", "off"):
         return False
     return default
+
+
+def is_offline() -> bool:
+    """ZIMI_OFFLINE=1 — the single air-gap switch.
+
+    One env var kills every internet-bound subsystem, no matter what the
+    rest of the config says: the BT engine (and with it DHT, trackers,
+    peer traffic, and the boot-time magnet fetch that rides the BT path),
+    the UPnP/SSDP + portcheck NAT probe, and the desktop Sparkle /
+    WinSparkle appcast (the desktop launcher and zimi_winsparkle parse
+    the same variable — they can't import this module from a frozen
+    bundle that failed to ship the package, so the parse is duplicated
+    there on purpose).
+
+    mDNS LAN discovery (p2p_discovery) deliberately stays ON: it is
+    link-local multicast that never leaves the local network, it works
+    on a fully air-gapped LAN, and offline peer-to-peer ZIM sharing is a
+    headline feature exactly in that setting. "Offline" means no
+    *internet*, not no *network*."""
+    return _bool_env("ZIMI_OFFLINE", default=False)
 
 
 # ============================================================================
@@ -188,6 +210,11 @@ def is_torrent_enabled() -> bool:
     torrent takes load off the Kiwix mirrors. ZIMI_BT (or legacy
     ZIMI_TORRENT) wins and locks the UI switch; otherwise the persisted
     UI preference. Installs without libtorrent silently use HTTP."""
+    # ZIMI_OFFLINE outranks everything, including an explicit ZIMI_BT=on:
+    # the air-gap switch must mean "no outbound traffic", never "on
+    # unless some other knob overrides it".
+    if is_offline():
+        return False
     conf = _bt_conf()
     if "enabled" in conf:
         return bool(conf["enabled"])
@@ -197,7 +224,11 @@ def is_torrent_enabled() -> bool:
 
 
 def is_torrent_env_locked() -> bool:
-    return "enabled" in _bt_conf() or _env_explicitly_set("ZIMI_TORRENT")
+    # Offline counts as an env lock: the UI toggle would otherwise look
+    # flippable while ZIMI_OFFLINE silently vetoes it on every read.
+    return (
+        is_offline() or "enabled" in _bt_conf() or _env_explicitly_set("ZIMI_TORRENT")
+    )
 
 
 def get_bt_port() -> int:
@@ -975,6 +1006,15 @@ class LibtorrentBackend(BTBackend):
         # forever (never downloads, never seeds). Clear paused so it starts;
         # Zimi drives pause()/resume() explicitly from here on.
         atp.flags &= ~lt.torrent_flags.paused
+        if options and options.get("seed_mode"):
+            # Caller vouches the payload on disk is complete and verified —
+            # only set for the post-download library re-seed, where every
+            # piece was hash-checked as it arrived and the file was merely
+            # moved. Skips the full-file re-check a fresh add otherwise
+            # runs; libtorrent still verifies each piece before its first
+            # upload and exits seed mode on mismatch, so a wrong vouch
+            # degrades to a re-check instead of poisoning the swarm.
+            atp.flags |= getattr(lt.torrent_flags, "seed_mode", 0)
         tid = str(atp.info_hashes.v1)
         with self._lock:
             if tid in self._handles and self._handles[tid].is_valid():

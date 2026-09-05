@@ -4,11 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "zimi"
-version = "1.8.2"
+version = "1.9.0"
 description = "Offline knowledge server for ZIM files — search and read Wikipedia, Stack Overflow and 50+ sources with no internet"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.9"
+# Matches libzim, which is not optional and is the real constraint: it
+# publishes >=3.10,<3.15. mcp wants >=3.10 too, and the package itself uses
+# `X | Y` type syntax in fifteen places, which is 3.10 and up.
+#
+# It used to claim >=3.9, which was never true. A 3.9 user did not get a clean
+# "needs a newer Python" — they got a dependency resolver failing on something
+# else entirely, and so did any tool resolving across the declared range (uv
+# could not build an environment for this project at all).
+requires-python = ">=3.10,<3.15"
 authors = [{name = "Eric Pheterson"}]
 keywords = ["zim", "kiwix", "offline", "wikipedia", "search", "knowledge-base", "rag", "mcp", "self-hosted"]
 classifiers = [
@@ -19,7 +27,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -50,8 +57,21 @@ dependencies = [
 [project.optional-dependencies]
 bt = ["libtorrent==2.0.*"]
 pdf = ["PyMuPDF>=1.23.0"]
-mcp = ["mcp>=1.0.0"]
-all = ["PyMuPDF>=1.23.0", "mcp>=1.0.0", "libtorrent==2.0.*"]
+# <2.0 for the same reason requirements.txt pins it: mcp 2.0 dropped the
+# vendored FastMCP this server is built on, moving it to a separate `fastmcp`
+# distribution. Without the ceiling, `pip install zimi[mcp]` resolves to 2.x and
+# the MCP server refuses to start -- issue #52, which was fixed in
+# requirements.txt and missed HERE, where PyPI users actually get their pins.
+mcp = ["mcp>=1.0,<2.0"]
+# The rendered capture engine (zimi/renderer.py): a headless Chromium run as a
+# CHILD PROCESS of the server, for pages whose content is built in JavaScript.
+# Deliberately not in `all`: this package is only half the install — the browser
+# itself is another ~150MB fetched by `playwright install chromium` — and a
+# browser is not something anybody should acquire by asking for "everything".
+# The Docker image ships both. Without it, `--engine rendered` refuses with the
+# two commands that fix it and every other capture works untouched.
+browser = ["playwright>=1.40"]
+all = ["PyMuPDF>=1.23.0", "mcp>=1.0,<2.0", "libtorrent==2.0.*"]
 
 [project.scripts]
 zimi = "zimi.server:main"
@@ -74,6 +94,10 @@ zimi = ["templates/**", "static/**", "assets/**"]
 # over time, so failures there are signal about ZIM data, not code.
 # Run it explicitly with `pytest tests/test_article_languages.py` when needed.
 addopts = "--ignore=tests/test_article_languages.py"
+# tests_release/ is the pre-release gate (scripts/release-gate.sh): it boots
+# real servers and takes minutes, so a bare `pytest` must not pick it up.
+# Naming it explicitly still runs it.
+testpaths = ["tests"]
 markers = [
     "real_engine: opts a test out of the autouse libtorrent guard (may start a live libtorrent session)",
 ]

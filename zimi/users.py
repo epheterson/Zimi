@@ -274,8 +274,12 @@ def list_users():
             {
                 "name": rec.get("name", ""),
                 "role": _effective_role(rec),
+                # How the account authenticates. Absent on every 1.8 record, so
+                # a local password account keeps reporting "local" untouched.
+                "auth": rec.get("auth") or "local",
                 "all_access": allowlist is None,
                 "allowlist": allowlist if isinstance(allowlist, list) else [],
+                "can_create": _rec_can_create(rec),
                 "flags": rec.get("flags", {}) or {},
                 "created": rec.get("created", 0),
                 "last_login": rec.get("last_login", 0),
@@ -394,6 +398,185 @@ def is_admin_user(name):
     """True if ``name`` is a stored SECONDARY-admin account (role=admin)."""
     rec = _load_users().get(_key(name))
     return bool(rec) and _effective_role(rec) == "admin"
+
+
+# ============================================================================
+# Create permission — a non-admin account that may make ZIMs from the web
+# ============================================================================
+#
+# ``can_create`` is an ADDITIVE per-user key: absent on every pre-1.9 record
+# (absent → False), written only when granted, removed again when revoked — so
+# users.json stays at schema version 1 and a roster that never uses the feature
+# is byte-for-byte identical to what 1.8 wrote. (Bumping the version would make
+# ``_load_users`` blank the roster on older code; see the federated-accounts
+# note below for why that rule is absolute.)
+#
+# Admins (any role=admin record) create implicitly — the flag exists so a plain
+# or limited account can capture the web WITHOUT any manage powers. The scope
+# is deliberately narrower than admin creation: manage.py grants such an
+# account only the URL modes; folder/import (server-path reads) and the folder
+# browser stay primary-admin-only.
+
+
+def _rec_can_create(rec):
+    """Whether a stored record may create ZIMs: admins implicitly, everyone
+    else by the additive ``can_create`` flag."""
+    if not isinstance(rec, dict):
+        return False
+    if _effective_role(rec) == "admin":
+        return True
+    return rec.get("can_create") is True
+
+
+def user_can_create(name):
+    """True if the named account may create ZIMs (see ``_rec_can_create``)."""
+    return _rec_can_create(_load_users().get(_key(name)))
+
+
+def set_can_create(name, value):
+    """Grant or revoke the create permission. Returns (ok, error).
+
+    Revoking REMOVES the key (never writes ``false``) so an ungranted record
+    stays byte-identical to a 1.8 one. Admin-role accounts are refused: they
+    create implicitly, and a stored flag on them would silently spring back to
+    life on a later role change nobody intended to carry it through.
+    """
+    with _lock:
+        users = _load_users()
+        rec = users.get(_key(name))
+        if not rec:
+            return False, "user not found"
+        if _effective_role(rec) == "admin":
+            return False, "admins can always create"
+        if value:
+            rec["can_create"] = True
+        else:
+            rec.pop("can_create", None)
+        _save_users(users)
+    log.info("User can_create set: %s -> %s", name, bool(value))
+    return True, None
+
+
+# ============================================================================
+# Federated accounts — created by an external identity provider (see sso.py)
+# ============================================================================
+#
+# A federated record is an ordinary user record with two additions and one
+# subtraction: ``auth`` names the mechanism, ``flags.sso`` carries the identity
+# it belongs to, and ``pw`` is None — there is no password to verify because the
+# proxy already authenticated the person. Everything downstream (allowlists,
+# roles, sessions, per-user data, the manage hierarchy) treats it as the plain
+# user record it is.
+#
+# Both fields are additive, so users.json stays at version 1 and a 1.8 record is
+# byte-for-byte unchanged. That matters more than it looks: ``_load_users``
+# returns {} on a version mismatch, so bumping the version would empty every
+# existing install's user list.
+
+_FEDERATED_FLAG = "sso"
+
+
+def federated_identity(rec):
+    """The stored identity of a federated record, or None for a local account."""
+    if not isinstance(rec, dict):
+        return None
+    flags = rec.get("flags")
+    ident = flags.get(_FEDERATED_FLAG) if isinstance(flags, dict) else None
+    return ident if isinstance(ident, dict) else None
+
+
+def _same_identity(stored, identity):
+    """True when a stored identity and an incoming one are the same person.
+
+    Same issuer, then either the same email (the value the account name was
+    derived from) or the same subject (so a person who changes their email at
+    the IdP keeps their account instead of colliding with it).
+    """
+    if not stored or stored.get("iss") != identity.get("iss"):
+        return False
+    stored_email = (stored.get("email") or "").casefold()
+    email = (identity.get("email") or "").casefold()
+    if stored_email and stored_email == email:
+        return True
+    sub = identity.get("sub") or ""
+    return bool(sub) and stored.get("sub") == sub
+
+
+def find_federated_user(identity):
+    """The display name of the account owning ``identity``, or None.
+
+    Looked up by identity rather than by name so an account's name is fixed at
+    creation: a rename at the IdP can never move an existing account, and a
+    local account can never be adopted by a claim that matches its name.
+    """
+    for rec in _load_users().values():
+        if isinstance(rec, dict) and _same_identity(federated_identity(rec), identity):
+            return rec.get("name")
+    return None
+
+
+def create_federated_user(name, role, identity):
+    """Create a password-less account owned by ``identity``. Returns (ok, error)."""
+    if not _valid_name(name):
+        return False, "invalid name"
+    if not isinstance(identity, dict) or not identity.get("email"):
+        return False, "invalid identity"
+    role, allow, err = _resolve_role_allowlist(role, None)
+    if err:
+        return False, err
+    with _lock:
+        users = _load_users()
+        if _key(name) in users:
+            return False, "user already exists"
+        users[_key(name)] = {
+            "name": name.strip(),
+            "role": role,
+            "pw": None,  # federated: authenticate() refuses this record outright
+            "allowlist": allow,
+            "auth": _FEDERATED_FLAG,
+            "flags": {_FEDERATED_FLAG: dict(identity)},
+            "created": int(time.time()),
+            "last_login": int(time.time()),
+        }
+        _save_users(users)
+    log.info("Federated user created: %s (role=%s)", name.strip(), role)
+    return True, None
+
+
+#: How coarse a federated account's ``last_login`` is allowed to be. Bounds the
+#: write rate for an identity that arrives on every single request.
+_LOGIN_STAMP_S = 300
+
+
+def touch_federated_user(name, identity):
+    """Refresh a federated record's stored identity and login stamp.
+
+    Best-effort and rate-limited to one write per login stamp granularity: this
+    runs on every request that carries a proxy identity, and a users.json write
+    per request would be absurd.
+    """
+    with _lock:
+        users = _load_users()
+        rec = users.get(_key(name))
+        if not rec:
+            return
+        stored = federated_identity(rec) or {}
+        now = int(time.time())
+        try:
+            last = int(rec.get("last_login") or 0)
+        except (TypeError, ValueError):
+            last = 0  # hand-edited record: re-stamp it rather than fail the login
+        changed = {k: v for k, v in identity.items() if stored.get(k) != v}
+        if not changed and now - last < _LOGIN_STAMP_S:
+            return
+        flags = rec.get("flags")
+        if not isinstance(flags, dict):
+            flags = {}
+            rec["flags"] = flags
+        flags[_FEDERATED_FLAG] = dict(stored, **identity)
+        rec["auth"] = _FEDERATED_FLAG
+        rec["last_login"] = now
+        _save_users(users)
 
 
 # ============================================================================
@@ -694,7 +877,13 @@ def authenticate(name, password):
     rec = _load_users().get(_key(name))
     if not rec:
         return None
-    if _verify_pw(password, rec.get("pw", "")):
+    stored = rec.get("pw")
+    if not isinstance(stored, str) or not stored:
+        # A federated account has no password. Refuse explicitly rather than
+        # hand ``None`` to the hash comparison and trust it to fail politely —
+        # the whole point of a password-less record is that this path is closed.
+        return None
+    if _verify_pw(password, stored):
         return rec.get("name", name)
     return None
 
@@ -852,10 +1041,22 @@ def _bearer_token(handler):
 def resolve_request_user(handler):
     """Resolve the logged-in USER for a request, or None (admin/anonymous).
 
-    Checks the Bearer token first (API/XHR), then the session cookie (iframe /w/).
-    Only USER session tokens resolve here — the admin password is not a session
-    token, so admin requests return None and get the unrestricted view.
+    Checks a trusted-proxy identity header first (SSO), then the Bearer token
+    (API/XHR), then the session cookie (iframe /w/). Only USER session tokens
+    resolve here — the admin password is not a session token, so admin requests
+    return None and get the unrestricted view.
+
+    SSO comes first because the proxy authenticated this request *now*: when a
+    request carries both, the edge's verdict is the fresher one, and it is the
+    only one an operator can revoke centrally. It resolves to an ordinary
+    account name, so every caller downstream — the allowlist choke point, the
+    manage hierarchy, /whoami, per-user data — is unchanged.
     """
+    from zimi import sso as _sso
+
+    sso_name, _ = _sso.resolve(handler)
+    if sso_name:
+        return sso_name
     name = resolve_session(_bearer_token(handler))
     if name:
         return name

@@ -18,6 +18,9 @@ class torrent_flags:
     auto_managed = 1 << 1
     update_subscribe = 1 << 2
     upload_mode = 1 << 3
+    # Real libtorrent: skip the initial full-file hash check and trust the
+    # payload (pieces still verified lazily before first upload).
+    seed_mode = 1 << 4
 
 
 class torrent_status:

@@ -34,6 +34,7 @@ _zc = None
 _service_info = None
 _browser = None
 _self_service_name: str | None = None
+_refresh_stop: threading.Event | None = None
 
 
 def _import_zeroconf():
@@ -253,6 +254,29 @@ def get_peers() -> list[dict]:
     return fresh
 
 
+def _refresh_loop(zc, listener, stop_evt):
+    """Keep known peers' last_seen fresh while they stay reachable.
+
+    Zeroconf fires update_service only when a record CHANGES; a healthy,
+    quiet peer emits nothing after its initial announce, so every peer used
+    to hit PEER_STALE_SECONDS and vanish from get_peers() two minutes after
+    discovery — taking the Nearby pills, the peer-only catalog section and
+    peer pulls with it. Re-confirm each cached service on a cadence:
+    add_service re-queries its info and stamps last_seen; a peer that has
+    genuinely gone answers nothing and ages out through the stale cutoff.
+    """
+    while not stop_evt.wait(BROWSE_REFRESH_SECONDS):
+        with _peers_lock:
+            names = list(_peers.keys())
+        for name in names:
+            if stop_evt.is_set():
+                return
+            try:
+                listener.add_service(zc, SERVICE_TYPE, name)
+            except Exception as e:  # pragma: no cover — refresh must outlive hiccups
+                log.debug("peer refresh failed for %s: %s", name, e)
+
+
 _last_start_args: dict = {}
 
 
@@ -277,6 +301,7 @@ def start(
     """Start advertising + browsing. Returns True on success, False if
     zeroconf is unavailable or already started."""
     global _zc, _service_info, _browser, _self_service_name, _last_start_args
+    global _refresh_stop
     _last_start_args = {
         "http_port": http_port,
         "bt_port": bt_port,
@@ -319,6 +344,13 @@ def start(
         zc.register_service(si)
         listener = _PeerListener(self_name=instance)
         browser = mod.ServiceBrowser(zc, SERVICE_TYPE, listener)
+        _refresh_stop = threading.Event()
+        threading.Thread(
+            target=_refresh_loop,
+            args=(zc, listener, _refresh_stop),
+            daemon=True,
+            name="zimi-peer-refresh",
+        ).start()
 
         _zc, _service_info, _browser = zc, si, browser
         log.info(
@@ -338,7 +370,10 @@ def start(
 
 
 def stop() -> None:
-    global _zc, _service_info, _browser, _self_service_name
+    global _zc, _service_info, _browser, _self_service_name, _refresh_stop
+    if _refresh_stop is not None:
+        _refresh_stop.set()
+        _refresh_stop = None
     if _zc is None:
         return
     try:
@@ -401,9 +436,12 @@ def fetch_peer_list(peer_name: str):
 def _reset_for_tests() -> None:
     """Test-only: clear all module state without trying to close real
     Zeroconf instances. Tests use mocks so we just zero everything."""
-    global _zc, _service_info, _browser, _self_service_name
+    global _zc, _service_info, _browser, _self_service_name, _refresh_stop
     with _peers_lock:
         _peers.clear()
+    if _refresh_stop is not None:
+        _refresh_stop.set()
+    _refresh_stop = None
     _zc = None
     _service_info = None
     _browser = None

@@ -123,9 +123,29 @@ class PeerShareGateTests(unittest.TestCase):
         os.environ["ZIMI_PEER_SHARE_PUBLIC"] = "1"
         self.assertTrue(self._allowed("8.8.8.8"))
 
-    def test_sharing_disabled_blocks_even_lan(self):
+    def test_sharing_disabled_still_admits_the_passwordless_lan_admin(self):
+        """Sharing off no longer blocks a passwordless private client: on a
+        passwordless instance the LAN already IS the admin (it can delete any
+        ZIM through manage), and right-click -> Download rides that same trust
+        boundary. Everything weaker stays blocked below."""
         os.environ["ZIMI_PEER_SHARE"] = "0"
-        self.assertFalse(self._allowed("10.0.0.149"))
+        self.assertTrue(self._allowed("10.0.0.149"))
+
+    def test_sharing_disabled_blocks_lan_once_a_password_exists(self):
+        """The moment a manage password exists, an uncredentialed LAN client
+        is not the admin, and sharing-off means what it says."""
+        os.environ["ZIMI_PEER_SHARE"] = "0"
+        os.environ["ZIMI_MANAGE_PASSWORD"] = "gate-test-pw"
+        try:
+            import zimi.manage as _m
+
+            _m._env_pw_hash_cache = None
+            self.assertFalse(self._allowed("10.0.0.149"))
+        finally:
+            del os.environ["ZIMI_MANAGE_PASSWORD"]
+            import zimi.manage as _m2
+
+            _m2._env_pw_hash_cache = None
 
     def test_garbage_ip_blocked(self):
         self.assertFalse(self._allowed("not-an-ip"))

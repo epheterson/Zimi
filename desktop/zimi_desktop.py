@@ -89,6 +89,11 @@ class ConfigManager:
         "data_dir": "",  # empty = use ZIM_DIR/.zimi (backward compat)
         "port": 8899,
         "auto_open_browser": True,
+        # Opt-out for the Sparkle/WinSparkle launch-time appcast check.
+        # True by default so existing installs keep updating; no UI toggle
+        # yet (that needs i18n across 10 locale files + design), so this is
+        # config.json / env only for now.
+        "auto_update_check": True,
         "window_width": 1200,
         "window_height": 800,
         "window_x": None,
@@ -124,6 +129,25 @@ class ConfigManager:
     @property
     def is_first_run(self):
         return not os.path.exists(self.path)
+
+
+def _discover_portable_zim_dir(config):
+    """Zero-config portable discovery for the desktop app, or None.
+
+    Gated by the 1.9 compatibility contract: only a FIRST run (no config.json,
+    so `zim_dir` is nothing but the hardcoded ~/Zimi fallback) with no explicit
+    ZIM_DIR in the environment may be redirected to ZIMs found next to the app
+    bundle / executable or in the launch folder. A folder the user ever chose
+    in Settings — even one equal to the default — lives in config.json and
+    therefore always wins.
+    """
+    if not config.is_first_run or "ZIM_DIR" in os.environ:
+        return None
+    # Imported here, not at module top: the zimi package is heavy, and every
+    # non-first-run launch should skip it until ServerThread needs it.
+    from zimi.server import discover_zim_dir
+
+    return discover_zim_dir()
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +200,6 @@ class ServerThread(threading.Thread):
             zimi.ZIMI_DATA_DIR = self.data_dir
             os.makedirs(zimi.ZIMI_DATA_DIR, exist_ok=True)
             zimi.ZIMI_MANAGE = True
-            zimi._TITLE_INDEX_DIR = os.path.join(zimi.ZIMI_DATA_DIR, "titles")
             zimi.load_cache()
             zimi._migrate_data_files()
 
@@ -391,8 +414,43 @@ def _set_macos_app_identity(window_ref=None):
             pass
 
 
+def _env_offline():
+    """ZIMI_OFFLINE=1 — the same air-gap switch the server honors (see
+    zimi/p2p.py is_offline). Parsed locally, not imported from zimi: the
+    updater gate must hold even in a frozen bundle where the embedded
+    server package fails to import."""
+    return os.environ.get("ZIMI_OFFLINE", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _auto_update_allowed(config=None):
+    """May the platform auto-updater initialize AT ALL?
+
+    False means Sparkle/WinSparkle is never loaded — no framework load, no
+    background scheduler, no appcast fetch — not "check and discard the
+    result". ZIMI_OFFLINE outranks the persisted ``auto_update_check``
+    config key; the key defaults to True so existing installs keep their
+    behavior. ``config`` is optional because the Sparkle init runs via
+    AppHelper.callAfter with no arguments — env-only when absent, the
+    config gate then lives at the call site."""
+    if _env_offline():
+        return False
+    if config is not None and not config.get("auto_update_check"):
+        return False
+    return True
+
+
 def _init_sparkle_updater():
     """Initialize Sparkle auto-updater on macOS. Must be called on the main thread."""
+    # Checked before anything else (even the platform sniff): under
+    # ZIMI_OFFLINE this function must be a pure no-op — no objc import,
+    # no framework load.
+    if not _auto_update_allowed():
+        return
     if platform.system() != "Darwin":
         return
     try:
@@ -419,10 +477,18 @@ def _init_sparkle_updater():
             "Sparkle", bundle_path=bundle_path, module_globals=globals()
         )
 
-        # SPUStandardUpdaterController manages the full update lifecycle
+        # SPUStandardUpdaterController manages the full update lifecycle.
+        # startingUpdater:False — configure first, start second. The old
+        # code started the updater and THEN set the feed URL; that only
+        # worked because both calls ran back-to-back on the main thread
+        # (Sparkle can't fire a check until the runloop turns) and because
+        # Sparkle resolves the feed lazily at check time. Passing False and
+        # calling startUpdater() after configuration is the pattern Sparkle
+        # documents for exactly this case, and it stops an arm64 build from
+        # ever being registered against the Info.plist's intel feed.
         SPUStandardUpdaterController = objc.lookUpClass("SPUStandardUpdaterController")
         controller = SPUStandardUpdaterController.alloc().initWithStartingUpdater_updaterDelegate_userDriverDelegate_(
-            True,  # startingUpdater: begin checking for updates immediately
+            False,  # startingUpdater: configure the feed before starting
             None,  # updaterDelegate
             None,  # userDriverDelegate
         )
@@ -435,6 +501,7 @@ def _init_sparkle_updater():
         arch_suffix = "arm64" if arch == "arm64" else "intel"
         feed_url = f"https://raw.githubusercontent.com/epheterson/Zimi/main/appcast-{arch_suffix}.xml"
         controller.updater().setFeedURL_(NSURL.URLWithString_(feed_url))
+        controller.startUpdater()
 
         # Keep a strong reference to prevent garbage collection
         _init_sparkle_updater._controller = controller
@@ -585,6 +652,14 @@ def _run():
 
     config = ConfigManager()
     zim_dir = config.get("zim_dir")
+    discovered = _discover_portable_zim_dir(config)
+    if discovered:
+        zim_dir = discovered
+        # In-memory only, never saved here: persisting would promote a
+        # discovery into a "user choice" that then shadows the stick (or its
+        # absence) on every later launch. The settings UI reads this value,
+        # and saving from there is the moment it becomes a real choice.
+        config.set("zim_dir", zim_dir)
     os.makedirs(zim_dir, exist_ok=True)
 
     # Set macOS Dock icon and process name before creating any windows
@@ -622,21 +697,25 @@ def _run():
         # Initialize the platform auto-updater. macOS uses Sparkle.framework
         # (main-thread init so the menu setup can find the controller); Windows
         # uses WinSparkle.dll via ctypes. Both soft-fail to no-updater.
-        if platform.system() == "Darwin":
-            try:
-                from PyObjCTools import AppHelper
+        # Gated up front: ZIMI_OFFLINE or auto_update_check=false means the
+        # updater machinery is never even imported, so a disabled updater
+        # produces zero network traffic and zero framework state.
+        if _auto_update_allowed(config):
+            if platform.system() == "Darwin":
+                try:
+                    from PyObjCTools import AppHelper
 
-                AppHelper.callAfter(_init_sparkle_updater)
-            except Exception:
-                pass
-        elif platform.system() == "Windows":
-            try:
-                import zimi_winsparkle
-                from zimi.server import ZIMI_VERSION
+                    AppHelper.callAfter(_init_sparkle_updater)
+                except Exception:
+                    pass
+            elif platform.system() == "Windows":
+                try:
+                    import zimi_winsparkle
+                    from zimi.server import ZIMI_VERSION
 
-                zimi_winsparkle.init_updater(ZIMI_VERSION)
-            except Exception:
-                pass
+                    zimi_winsparkle.init_updater(ZIMI_VERSION)
+                except Exception:
+                    pass
 
         # Add native macOS menu items now that the app menu bar exists
         _set_macos_app_identity(window_ref)
@@ -728,6 +807,12 @@ def _serve_headless():
     if zim_dir is None:
         config = ConfigManager()
         zim_dir = config.get("zim_dir")
+        # Same portable discovery as the GUI path — a --zim-dir flag above
+        # skipped this entirely, and the gate inside refuses unless this is a
+        # true first run with no ZIM_DIR env.
+        discovered = _discover_portable_zim_dir(config)
+        if discovered:
+            zim_dir = discovered
 
     os.environ["ZIM_DIR"] = zim_dir
     os.environ["ZIMI_MANAGE"] = "1"
@@ -741,7 +826,6 @@ def _serve_headless():
     zimi.ZIMI_DATA_DIR = data_dir
     os.makedirs(zimi.ZIMI_DATA_DIR, exist_ok=True)
     zimi.ZIMI_MANAGE = True
-    zimi._TITLE_INDEX_DIR = os.path.join(zimi.ZIMI_DATA_DIR, "titles")
     zimi.load_cache()
     zimi._migrate_data_files()
 

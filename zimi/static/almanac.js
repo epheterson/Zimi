@@ -604,9 +604,10 @@ function _almSafePanel(fn, containerId) {
 }
 
 // Repaint every panel that describes a moment, in place, for the focused
-// instant. Two things deliberately stay out of it: the world clock (it is a
-// clock — it should always read now) and the orrery, which carries its own
-// date and speed and operates on a completely different time scale.
+// instant. One thing deliberately stays out of it: the world clock (it is a
+// clock — it should always read now). The orrery follows the focus too (#48):
+// its local speed/date controls only own the clock while the almanac is at
+// now — _orrerySyncToFocus below settles that precedence.
 function _almRepaintFocus() {
   var focus = _almFocusInstant();
   var loc = _getLocation();
@@ -637,6 +638,9 @@ function _almRepaintFocus() {
   _almSafePanel(function () { _renderMeteorShowers(focus, m); }, 'almanac-meteors');
   _almSafePanel(function () { _renderCelestialEvents(focus); }, 'almanac-events');
   _almSafePanel(function () { _renderDeepTime(focus); }, 'almanac-deeptime');
+  // Orrery: one exact frame + control state for the settled focus (or the
+  // handover back to its local clock when the focus returns to now).
+  _almSafePanel(function () { if (typeof _orrerySyncToFocus === 'function') _orrerySyncToFocus(); }, null);
   // Re-seeding the sky scene cancels the previous RAF, so loops don't stack.
   // animateMoon=true: this repaint always follows a focus-time change (scrub
   // settle, wheel/key step, "Go", Back to Now) -- let the moon glide onward
@@ -1002,10 +1006,11 @@ function _almLiveHeadCards(focus) {
 // lever is held, and _almScrubSettle recomputes everything exactly the moment
 // motion stops.
 //
-// Panels below the fold stay deferred to _almScrubSettle: the orrery, meteor
+// Panels below the fold stay deferred to _almScrubSettle: the meteor
 // countdowns, deep-time, tonight's-sky planet ephemeris, sun-map terminator,
 // star chart and analemma are each a full innerHTML rebuild and/or resolve Q-ID
-// deep-links — and none of them shares a screen with the instrument.
+// deep-links — and none of them shares a screen with the instrument. The
+// orrery is the exception (#48): it is a canvas, so it rides the visual tier.
 function _almTravelLive(focus) {
   // Visual tier — every frame.
   var m = null;
@@ -1018,9 +1023,14 @@ function _almTravelLive(focus) {
   // pass was most of the remaining scrub jank. A month trailing the clock by
   // up to ~300ms at multi-month-per-second speeds is imperceptible, and
   // _almScrubSettle redraws it exactly the moment motion stops.
+  // The orrery is a canvas too (#48): its own rAF loop already repaints with
+  // the moving focus every frame, so this tick only paints when that loop is
+  // parked at 1× speed. Its date readout is DOM text — it rides the DOM tier.
+  if (typeof _orreryTravelTick === 'function') _orreryTravelTick();
   _almTravelThrottled('dom', _ALM_TRAVEL_DOM_MS, function () {
     _almScrubClock(focus);
     _almLiveHeadCards(focus);
+    if (typeof _orreryUpdateDate === 'function' && !_almanacOrreryRAF) _orreryUpdateDate();
   });
   _almTravelThrottled('grid', _ALM_TRAVEL_GRID_MS, _almSyncSelectedToFocus);
 }
@@ -2334,7 +2344,7 @@ function _updateVoyagerCard() {
   var el = document.getElementById('voyager-card');
   if (!el) return;
   var v = _VOYAGERS[_voyagerCardIdx];
-  var simTime = Date.now() + _orreryTimeOffset;
+  var simTime = _orrerySimTime();
   var dist = _voyagerDist(v, simTime);
   var yearsInSpace = ((simTime - v.launch) / (365.25 * MS_PER_DAY));
   var speed = v.vel * 149597870.7 / (365.25 * 24 * 3600);
@@ -2614,6 +2624,56 @@ var _sunMapFlashTimer = 0;
 function _sunMapLonToX(lon, W) { return (lon + 180) / 360 * W; }
 function _sunMapLatToY(lat, H) { return (90 - lat) / 180 * H; }
 
+// ── Deep time: the civil-time layer fades with the era ──
+// Time zones are a 19th-century invention, not a feature of the planet. Travel
+// the almanac to 1500 and the map should show the world the sun lights, not the
+// borders a railway timetable drew three centuries later — a UTC+5:30 label
+// over Mughal India is a category error, not a detail. So the map splits in
+// two: coastlines, the terminator and the subsolar point are physics and draw
+// at every date; the zone borders, the UTC label strip and the picked zone's
+// highlight are civil constructs and ramp away as the focus date leaves the
+// civil-time era.
+//
+// The ramp spans the adoption curve rather than snapping at one date, because
+// standard time arrived in stages:
+//   1840  the Great Western Railway puts every station on London time —
+//         "railway time", the first clocks on Earth to stop meaning local solar
+//         noon. Britain alone for the next forty years.
+//   1883  North American railroads adopt the four US/Canada zones (Nov 18).
+//   1884  the International Meridian Conference settles on Greenwich.
+//   1918  the US Standard Time Act puts the zones into law.
+//   1929  hourly offsets are near-universal; the zone geometry on this map is
+//         recognisably the one it draws today.
+// Smoothstep between the ends rather than a straight line: real adoption was
+// S-shaped (one country, then most of the industrial world inside twenty
+// years), and easing at both ends also means scrubbing across either threshold
+// has no visible kink.
+var _MAP_TZ_ERA_DAWN_YEAR = 1840;
+var _MAP_TZ_ERA_FULL_YEAR = 1929;
+
+// 0 at or before the dawn year, 1 at or after the full year, smoothstep
+// between. Takes a fractional year so a scrub through the ramp is continuous
+// rather than stepping once each January 1.
+function _mapTzEraOpacity(year) {
+  var t = (year - _MAP_TZ_ERA_DAWN_YEAR) / (_MAP_TZ_ERA_FULL_YEAR - _MAP_TZ_ERA_DAWN_YEAR);
+  if (!(t > 0)) return 0;          // the negation also catches NaN
+  if (t >= 1) return 1;
+  return t * t * (3 - 2 * t);
+}
+
+// The same value for an instant. A missing or broken date means "now", which
+// is fully modern — the overlay must never vanish because of a bad argument.
+function _mapTzEraOpacityAt(date) {
+  if (!date || isNaN(date.getTime())) return 1;
+  var y = date.getUTCFullYear();
+  if (y <= _MAP_TZ_ERA_DAWN_YEAR) return 0;
+  if (y >= _MAP_TZ_ERA_FULL_YEAR) return 1;
+  // Inside the ramp the year is always four digits, so Date.UTC needs no
+  // setUTCFullYear dance to dodge its 0-99 -> 1900s fold.
+  var start = Date.UTC(y, 0, 1), next = Date.UTC(y + 1, 0, 1);
+  return _mapTzEraOpacity(y + (date.getTime() - start) / (next - start));
+}
+
 // ── Real time zone boundaries ──
 // The actual, irregular civil zone borders — China spanning one zone, India's
 // half-hour band, Australia's three-way split, the jagged date line — not the
@@ -2644,17 +2704,15 @@ function _sunMapLabelStep(W, dpr) {
   return step;
 }
 
-// The map's unchanging layer: background, world image and the zone borders.
-// None of it moves as time travels, so it is rendered once per size into an
-// offscreen canvas and blitted each frame — which costs less than the old code
-// paid to re-rasterise the SVG on every redraw, borders or not. The key
-// carries the border-data flag so the layer rebuilds once when the lazy
-// fetch lands.
+// The map's geography layer: background and world image. Physics and
+// coastlines only — nothing here depends on the era or the focus date, so it is
+// rendered once per size into an offscreen canvas and blitted each frame, which
+// costs less than the old code paid to re-rasterise the SVG on every redraw.
 var _sunMapBase = null;
 var _sunMapBaseKey = '';
 
-function _sunMapBaseLayer(W, H, dpr) {
-  var key = W + 'x' + H + ':' + dpr + ':' + (_sunMapLoaded ? '1' : '0') + ':' + (_tzBorders ? '1' : '0');
+function _sunMapBaseLayer(W, H) {
+  var key = W + 'x' + H + ':' + (_sunMapLoaded ? '1' : '0');
   if (_sunMapBase && _sunMapBaseKey === key) return _sunMapBase;
   var cv = _sunMapBase || document.createElement('canvas');
   cv.width = W; cv.height = H;
@@ -2670,9 +2728,30 @@ function _sunMapBaseLayer(W, H, dpr) {
     c.drawImage(_sunMapImg, 0, 0, W, H);
     c.globalAlpha = 1;
   }
-  _sunMapDrawTzBorders(c, W, H, dpr);
   _sunMapBase = cv;
   _sunMapBaseKey = key;
+  return cv;
+}
+
+// The map's political layer: the zone borders and the label gutter they sit
+// over. Kept in its own canvas rather than baked into the geography above so
+// the era fade is one globalAlpha on a blit — travelling out of the civil-time
+// era never re-rasterises the world SVG, and the two layers cache
+// independently. The key carries the border-data flag so the layer rebuilds
+// once when the lazy fetch lands.
+var _sunMapPolitical = null;
+var _sunMapPoliticalKey = '';
+
+function _sunMapPoliticalLayer(W, H, dpr) {
+  var key = W + 'x' + H + ':' + dpr + ':' + (_tzBorders ? '1' : '0');
+  if (_sunMapPolitical && _sunMapPoliticalKey === key) return _sunMapPolitical;
+  var cv = _sunMapPolitical || document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  var c = cv.getContext('2d');
+  c.clearRect(0, 0, W, H);
+  _sunMapDrawTzBorders(c, W, H, dpr);
+  _sunMapPolitical = cv;
+  _sunMapPoliticalKey = key;
   return cv;
 }
 
@@ -2689,16 +2768,16 @@ function _tzBordersEnsure() {
   _tzBordersFetched = true;
   // ?v= matches the world-map.svg convention: /static/ is served immutable
   // for a year, so a regenerated asset must bump the version to bust caches.
-  fetch('/static/tz-borders.json?v=2')
+  fetch('/static/tz-borders.json?v=3')
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (data) {
       if (!data || !data.lines || !data.lines.length) return;
       _tzBorders = data.lines;
       _tzZones = (data.zones && data.zones.length) ? data.zones : null;
       _tzZonesByOffset = _tzZones ? _tzGroupByOffset(_tzZones) : null;
-      _tzZoneKey = '';       // re-resolve the highlight for the current pick
+      _tzZoneKey = '';           // re-resolve the highlight for the current pick
       _tzZonePathKey = '';
-      _sunMapBaseKey = '';   // stale key → base layer rebuilds with borders
+      _sunMapPoliticalKey = '';  // stale key → political layer rebuilds with borders
       _drawSunMap();
     })
     .catch(function () { /* offline before first cache fill — no borders */ });
@@ -3794,15 +3873,29 @@ function _drawSunMap() {
   // click-to-set-location handler.
   if (!W || !H) return;
 
-  // First draw kicks off the border fetch; when it lands the base layer is
+  // First draw kicks off the border fetch; when it lands the political layer is
   // invalidated and this repaints with the borders in place.
   _tzBordersEnsure();
 
-  // Background, world image and the real time zone borders, all cached
-  ctx.drawImage(_sunMapBaseLayer(W, H, dpr), 0, 0);
+  // _sunMapNow is the time machine's focus instant — _almRepaintFocus hands it
+  // to _renderSunMap on every settle — so it is also what decides whether civil
+  // time exists at the date being drawn.
+  var now = _sunMapNow;
+  var eraA = _mapTzEraOpacityAt(now);
+
+  // Background and world image, cached
+  ctx.drawImage(_sunMapBaseLayer(W, H), 0, 0);
+
+  // Zone borders and their label gutter, faded by era. Under the night shading,
+  // where they have always sat.
+  if (eraA > 0) {
+    ctx.save();
+    ctx.globalAlpha = eraA;
+    ctx.drawImage(_sunMapPoliticalLayer(W, H, dpr), 0, 0);
+    ctx.restore();
+  }
 
   // Compute sun subsolar point
-  var now = _sunMapNow;
   var doy = _dayOfYear(now);
   var B = _solarB(doy);
   var decl = _solarDeclination(B);
@@ -3844,10 +3937,17 @@ function _drawSunMap() {
 
   // Time zone reference — the picked zone's true shape, then the UTC offsets,
   // then the picked zone's exact offset lit amber over the strip. All sit
-  // above the night shading so none is swallowed by it.
-  _sunMapDrawZoneHighlight(ctx, W, H, dpr);
-  _sunMapDrawTzLabels(ctx, W, H, dpr);
-  _sunMapDrawSelectedOffset(ctx, W, H, dpr);
+  // above the night shading so none is swallowed by it, and all three fade with
+  // the era on the same alpha as the borders below, so the civil layer arrives
+  // and leaves as one thing rather than in pieces.
+  if (eraA > 0) {
+    ctx.save();
+    ctx.globalAlpha = eraA;
+    _sunMapDrawZoneHighlight(ctx, W, H, dpr);
+    _sunMapDrawTzLabels(ctx, W, H, dpr);
+    _sunMapDrawSelectedOffset(ctx, W, H, dpr);
+    ctx.restore();
+  }
 
   // Sub-solar point — where the sun is directly overhead right now
   var sunX = _sunMapLonToX(((sunLon + 180 + 360) % 360) - 180, W);
@@ -5866,6 +5966,38 @@ function _drawAlmanacGrid() {
   html += _almRenderCrossRef(_almSelectedJDN);
 
   el.innerHTML = html;
+  _almGlideGrid(el);
+}
+
+// -- Month glide (#75) --------------------------------------------------------
+// Which month the grid last painted, as {sys, y, m}; null until the first paint.
+var _almGridShownYM = null;
+
+// Slide the freshly painted grid in when browsing landed on a different month
+// (day pick outside the view, month plate, arrows, Today). Entry-only: the old
+// grid is a full innerHTML teardown, so there is nothing left to animate out —
+// a short directional slide-and-fade on the incoming month reads as the page
+// turning. Inert on the travel path: the lever repaints the grid on its own
+// cadence with the panel height pinned (_almTravelFrozen), and the motion face
+// means a throw is in flight even around those frames — an entry animation
+// there would fight the scrub.
+function _almGlideGrid(el) {
+  var prev = _almGridShownYM;
+  _almGridShownYM = { sys: _almSystem, y: _almYear, m: _almMonth };
+  // First paint, a same-month repaint (day pick within view, scope toggle), or
+  // a calendar-system switch (a relabelling of the same day, not a jump).
+  if (!prev || prev.sys !== _almSystem) return;
+  if (prev.y === _almYear && prev.m === _almMonth) return;
+  var tm = document.getElementById('alm-tm');
+  if (_almTravelFrozen || (tm && tm.getAttribute('data-mode') === 'motion')) return;
+  var grid = el.querySelector('.alm-grid');
+  if (!grid) return;
+  var forward = (_almYear > prev.y) || (_almYear === prev.y && _almMonth > prev.m);
+  var cls = forward ? 'alm-glide-next' : 'alm-glide-prev';
+  grid.classList.add(cls);
+  // Drop the class once the glide ends so a later same-month repaint (which
+  // reuses fresh DOM anyway) can never replay it.
+  grid.addEventListener('animationend', function () { grid.classList.remove(cls); }, { once: true });
 }
 
 function _almSwitchSystem(sys) {
@@ -6382,6 +6514,16 @@ var _CN_SYN = 29.530588861;
 var _CN_TZ = 8 / 24;   // China Standard Time offset (days)
 
 // ΔT (TT−UT) in days, Espenak–Meeus piecewise — good for 1900–2150.
+// Coefficients verbatim from Espenak & Meeus, "Polynomial Expressions for
+// Delta T (ΔT)", NASA Eclipse Web Site (Five Millennium Canon):
+// https://eclipse.gsfc.nasa.gov/SEcat5/deltatpoly.html
+//
+// 1920–1986 uses the three pieces Espenak–Meeus define for it (1920–1941,
+// 1941–1961, 1961–1986). An earlier revision stretched the 1900–1920 quartic
+// across that whole span; that quartic leaves its fitted window fast — at 1985
+// it read ≈-6787 s where the observed value is ≈+54 s, ~113 minutes of error
+// feeding straight into _cnChinaDay's midnight floor, plus an 0.08-day jump at
+// the 1986 seam.
 //
 // Each piece is only valid inside its own window, and OUTSIDE 1900–2150 the
 // answer is the Espenak–Meeus long-term parabola, not a continuation of the
@@ -6391,14 +6533,17 @@ var _CN_TZ = 8 / 24;   // China Standard Time offset (days)
 // k against that comparison, so a diverging ΔT turns its scan into an infinite
 // loop and locks the tab. The parabola stays inside ±2800 days across the whole
 // travel range and keeps _cnChinaDay strictly increasing in k, so the scan
-// always terminates. Behaviour for 1900–2150 is unchanged.
+// always terminates.
 function _cnDeltaTdays(jde) {
   var y = _jdnToGregorian(Math.floor(jde + 0.5)).year;
   var t = y - 2000, s;
   if (y >= 2005 && y <= 2050) s = 62.92 + 0.32217 * t + 0.005589 * t * t;
   else if (y >= 1986 && y < 2005) s = 63.86 + 0.3345 * t - 0.060374 * t * t + 0.0017275 * Math.pow(t, 3) + 0.000651814 * Math.pow(t, 4) + 0.00002373599 * Math.pow(t, 5);
   else if (y > 2050 && y <= 2150) { var u2 = (y - 1820) / 100; s = -20 + 32 * u2 * u2 - 0.5628 * (2150 - y); }
-  else if (y >= 1900 && y < 1986) { var w = y - 1900; s = -2.79 + 1.494119 * w - 0.0598939 * w * w + 0.0061966 * Math.pow(w, 3) - 0.000197 * Math.pow(w, 4); }
+  else if (y >= 1961 && y < 1986) { var t61 = y - 1975; s = 45.45 + 1.067 * t61 - t61 * t61 / 260 - Math.pow(t61, 3) / 718; }
+  else if (y >= 1941 && y < 1961) { var t41 = y - 1950; s = 29.07 + 0.407 * t41 - t41 * t41 / 233 + Math.pow(t41, 3) / 2547; }
+  else if (y >= 1920 && y < 1941) { var t20 = y - 1920; s = 21.20 + 0.84493 * t20 - 0.076100 * t20 * t20 + 0.0020936 * Math.pow(t20, 3); }
+  else if (y >= 1900 && y < 1920) { var w = y - 1900; s = -2.79 + 1.494119 * w - 0.0598939 * w * w + 0.0061966 * Math.pow(w, 3) - 0.000197 * Math.pow(w, 4); }
   else { var u = (y - 1820) / 100; s = -20 + 32 * u * u; }
   return s / 86400;
 }

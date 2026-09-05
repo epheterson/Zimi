@@ -27,8 +27,23 @@ Table of contents (this file: ~980 lines)
     zimi/previews.py  (~600 lines)   — content preview extraction
 
 Configuration:
-  ZIM_DIR      Path to directory containing *.zim files (default: /zims)
-  ZIMI_MANAGE  Enabled by default; set to "0" to disable management endpoints
+  ZIM_DIR        Path to directory containing *.zim files (default: /zims)
+  ZIMI_DATA_DIR  Where Zimi keeps its own state (default: <ZIM_DIR>/.zimi)
+  ZIMI_HOST      Address to bind (default: 0.0.0.0)
+  ZIMI_PORT      Port to bind (default: 8899)
+  ZIMI_CONFIG    Path to a JSON config file (default: <data dir>/zimi.json)
+  ZIMI_MANAGE    Enabled by default; set to "0" to disable management endpoints
+
+  Precedence is CLI flag > environment > config file > built-in default: the
+  file sits below the environment so adding one can never change how a running
+  deployment behaves. `zimi config` prints the resolved values and their
+  provenance.
+
+  The config file also carries settings that have no flag and are read by other
+  modules: manage, manage_user, manage_password, api_token, offline, hot_zims,
+  index_throttle (see CONFIG_ENV_SETTINGS). A value that comes from the file is
+  published into the matching environment variable at startup, so one file can
+  describe a whole instance without a click-through setup.
 
 Usage (CLI):
   zimi search "water purification" --limit 10
@@ -59,7 +74,9 @@ Usage (HTTP API):
 # ============================================================================
 
 import argparse
+import collections
 import glob
+import hashlib
 import json
 import logging
 import os
@@ -71,23 +88,43 @@ import threading
 import time
 from http.server import ThreadingHTTPServer
 import ssl
+from typing import Any, NoReturn
 
 import certifi
 
 from libzim.reader import Archive
 from libzim.suggestion import SuggestionSearcher
 
+# PyMuPDF, for reading PDFs embedded in ZIM files.
+#
+# `pymupdf` is the module's real name; `fitz` is the historical alias, and
+# importing it on a current PyMuPDF PRINTS to stdout:
+#
+#     warning: The `fitz` API is deprecated and will be removed in future.
+#
+# stdout is a protocol channel for the MCP server and a parseable channel for
+# the CLI, so that line corrupted the JSON-RPC handshake and turned up inside
+# `zimi config` output. Both of those were caught as "JSON decode error", which
+# names the symptom and hides the cause — a library's deprecation notice.
+#
+# Importing the current name is also the fix for the deprecation itself, rather
+# than a way to silence it: `fitz` is scheduled to go away.
 try:
-    import fitz  # PyMuPDF — for reading PDFs embedded in ZIM files
+    import pymupdf as fitz
 
     HAS_PYMUPDF = True
 except ImportError:
-    HAS_PYMUPDF = False
+    try:
+        import fitz  # PyMuPDF older than 1.24.3, which had no `pymupdf` name
+
+        HAS_PYMUPDF = True
+    except ImportError:
+        HAS_PYMUPDF = False
 
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.8.2"
+ZIMI_VERSION = "1.9.0"
 
 # Standing maintenance cadence: catalog TTL is 24h and UPnP leases are
 # 24h — run every 12h so both stay fresh at half-life.
@@ -95,6 +132,13 @@ _MAINTENANCE_INTERVAL = 12 * 3600
 
 
 _background_services_started = False
+
+
+def _bt_prefs_path():
+    """Where the BT/sharing prefs live. One derivation shared by the serve
+    boot and the headless backup/restore CLI — if the two disagreed, a CLI
+    backup would silently carry empty sharing prefs."""
+    return os.path.join(ZIMI_DATA_DIR, "bt", "prefs.json")
 
 
 def start_background_services(http_port):
@@ -115,7 +159,7 @@ def start_background_services(http_port):
 
     # Prefs path must be set before the first request can read/write BT
     # settings — cheap, so it stays synchronous.
-    p2p.set_prefs_path(os.path.join(ZIMI_DATA_DIR, "bt", "prefs.json"))
+    p2p.set_prefs_path(_bt_prefs_path())
 
     # Registered unconditionally, not just when the startup start succeeds:
     # the session can come up LATER (port change, mirror enable, lazy
@@ -212,6 +256,201 @@ def start_background_services(http_port):
             time.sleep(_MAINTENANCE_INTERVAL + _random_mod.uniform(0, 3600))
 
     threading.Thread(target=_maintenance_loop, daemon=True, name="maintenance").start()
+    threading.Thread(target=_shape_backfill, daemon=True, name="zim-shapes").start()
+    threading.Thread(target=_sweep_working_files, daemon=True, name="zim-sweep").start()
+
+
+# Working files a capture left behind.
+#
+# Every engine spools beside its output under a `.zimi-` prefix and removes it
+# in a `finally`. A process that dies between those two — a container restart,
+# an OOM kill, a watchdog that gave up on a wedged browser — leaves the spool
+# on disk with nothing that will ever come back for it. One abandoned recording
+# on the real NAS was 2.6 GB.
+#
+# Old enough is the whole safety argument: a live job's spool is minutes old at
+# most (the stall watchdog gives up at ten), so nothing this removes can belong
+# to anything still running.
+_WORKING_PREFIX = ".zimi-"
+_WORKING_MAX_AGE = 6 * 3600
+
+
+def _sweep_working_files():
+    """Remove abandoned capture spools from the directories Zimi writes to."""
+    import shutil
+
+    time.sleep(_SHAPE_SETTLE_SECONDS)
+    cutoff = time.time() - _WORKING_MAX_AGE
+    freed = 0
+    for folder in _working_file_dirs():
+        try:
+            names = os.listdir(folder)
+        except OSError:
+            continue
+        for name in names:
+            if not name.startswith(_WORKING_PREFIX):
+                continue
+            path = os.path.join(folder, name)
+            try:
+                if os.path.getmtime(path) > cutoff:
+                    continue
+                if os.path.isdir(path):
+                    shutil.rmtree(path, ignore_errors=True)
+                else:
+                    freed += os.path.getsize(path)
+                    os.remove(path)
+            except OSError as e:
+                log.debug("could not remove %s: %s", path, e)
+    if freed:
+        log.info("removed %.1f MB of abandoned capture files", freed / 1e6)
+
+
+def _working_file_dirs():
+    """Where captures spool: the library, and the folder created ZIMs land in."""
+    dirs = [ZIM_DIR]
+    try:
+        from zimi.manage import _create_root
+
+        root = _create_root()
+        if root:
+            dirs.append(root)
+    except Exception:
+        pass
+    return [d for d in dict.fromkeys(dirs) if d and os.path.isdir(d)]
+
+
+# ── what each ZIM is made of ────────────────────────────────────────────────
+#
+# The composition bar wants one fact per ZIM: the per-kind split of what is
+# inside it. That fact is like size and entry count — true of the file, cheap to
+# remember, expensive to derive — so it lives with them in the metadata cache
+# and is read from there by everything that draws it.
+#
+# It is measured HERE and nowhere else, and that is the whole design. The first
+# attempt read the archive inside the request that drew the panel, which put a
+# disk seek behind a screen whose only job is to open instantly; measuring at
+# SCAN time instead would have moved the same cost onto boot, where a cold
+# library already takes long enough. A background thread owns it: nothing waits
+# on it, and if it never finishes, the only consequence is a panel with no bar.
+#
+# Politeness is the rest of the design, and holding the lock for a "short" run
+# is not enough of it. A hundred sequential entry reads is nothing on an SSD
+# and most of a second on the spinning disks a 220 GB library lives on: with
+# that, the About panel measured a median of 631ms and a worst case of 2.6
+# seconds against 6ms idle. Work moved off the request path still reaches the
+# reader through the one lock they share.
+#
+# So it YIELDS rather than pauses. While anyone is using the library it does
+# not take the lock at all, and resumes when they stop. The cost is a library
+# measured later; the benefit is that measuring cannot be felt.
+_SHAPE_SETTLE_SECONDS = 20.0  # let the server finish waking up first
+_SHAPE_IDLE_SECONDS = 4.0  # quiet for this long before touching the lock
+_SHAPE_IDLE_POLL_SECONDS = 1.0  # how often to re-check for quiet
+_SHAPE_RUN_ENTRIES = 25  # entries per lock hold: short even on a slow disk
+_SHAPE_BREATH_SECONDS = 0.05  # released between every run, unconditionally
+_SHAPE_PAUSE_SECONDS = 2.0  # between ZIMs
+_SHAPE_RETRY_SECONDS = 900.0  # look again for ZIMs added since
+
+# Stamped by the HTTP layer on every request (http._record_metric). A worker
+# that intends to be invisible has to know when somebody is there.
+LAST_REQUEST_AT = 0.0
+
+
+def _wait_until_idle():
+    """Block until nobody has asked the server for anything recently."""
+    while time.time() - LAST_REQUEST_AT < _SHAPE_IDLE_SECONDS:
+        time.sleep(_SHAPE_IDLE_POLL_SECONDS)
+
+
+class _PoliteGuard:
+    """The libzim lock, taken for one short run and handed straight back.
+
+    Entered once per run of entries by zim_content_breakdown, so a reader who
+    arrives mid-file waits for 25 entries and never for the file. Between runs
+    it waits for quiet again — a burst of traffic stops the measurement rather
+    than queueing behind it."""
+
+    def __enter__(self):
+        _wait_until_idle()
+        _zim_lock.acquire()
+        return self
+
+    def __exit__(self, *_exc):
+        _zim_lock.release()
+        # Unconditional, so a request that arrived while the lock was held gets
+        # it before this worker asks for it again.
+        time.sleep(_SHAPE_BREATH_SECONDS)
+        return False
+
+
+def _shape_backfill():
+    """Fill in the missing per-ZIM composition, slowly and out of the way."""
+    from zimi import zimwriter as _zw
+
+    time.sleep(_SHAPE_SETTLE_SECONDS)
+    while True:
+        try:
+            _shape_backfill_pass(_zw)
+        except Exception:
+            log.debug("ZIM shape backfill pass failed", exc_info=True)
+        time.sleep(_SHAPE_RETRY_SECONDS)
+
+
+def _shape_backfill_pass(_zw):
+    """One sweep: measure every ZIM that has no shape yet.
+
+    Persisted per ZIM rather than per sweep. The first version collected the
+    whole library and wrote once at the end, which meant a restart part-way
+    through threw away everything it had done and the panel showed nothing until
+    the slowest file in the library had been read. One at a time costs one small
+    JSON write per ZIM, once ever, and each ZIM's bar appears as soon as it is
+    known."""
+    pending = [
+        z.get("name")
+        for z in (_zim_list_cache or [])
+        if z.get("name") and not z.get("shape")
+    ]
+    if not pending:
+        return
+    files = get_zim_files()
+    done = 0
+    for name in pending:
+        path = files.get(name)
+        if not path:
+            continue
+        _wait_until_idle()
+        shape = _zw.zim_content_breakdown(
+            path, guard=_PoliteGuard, run_entries=_SHAPE_RUN_ENTRIES
+        )
+        if shape:
+            _shape_store({name: shape})
+            done += 1
+            log.debug("measured %s: %s", name, shape.get("entries"))
+        time.sleep(_SHAPE_PAUSE_SECONDS)
+    if done:
+        log.info("measured what %d ZIM(s) are made of", done)
+
+
+def _shape_store(measured):
+    """Write the shapes into the live list and the disk cache, together.
+
+    Both, or the answer is forgotten on restart and re-measured for ever; the
+    disk cache is keyed by FILENAME, which is what the live entry's ``file``
+    field holds."""
+    for entry in _zim_list_cache or []:
+        shape = measured.get(entry.get("name"))
+        if shape:
+            entry["shape"] = shape
+    disk = _load_disk_cache() or {}
+    touched = False
+    for entry in _zim_list_cache or []:
+        shape = measured.get(entry.get("name"))
+        cached = disk.get(entry.get("file", ""))
+        if shape and isinstance(cached, dict):
+            cached["shape"] = shape
+            touched = True
+    if touched:
+        _save_disk_cache(disk)
 
 
 def _maintenance_pass():
@@ -251,10 +490,720 @@ logging.basicConfig(
     format="%(asctime)s %(message)s", datefmt="%H:%M:%S", level=logging.INFO
 )
 
-ZIM_DIR = os.environ.get("ZIM_DIR", "/zims")
+DEFAULT_ZIM_DIR = "/zims"
+DEFAULT_DATA_DIR_NAME = ".zimi"
+DEFAULT_HOST = "0.0.0.0"
+DEFAULT_PORT = 8899
+
+# ---------------------------------------------------------------------------
+# Zero-config ZIM discovery (1.9 portable mode)
+#
+# When NOTHING names a ZIM directory — no flag, no env, no config file — the
+# resolver used to fall straight to the hardcoded fallback (`/zims`, or the
+# desktop app's `~/Zimi`). Discovery slots in strictly between "nobody said
+# anything" and that fallback: it probes the directory holding the executable
+# (a frozen build on a USB stick), the folder a macOS .app bundle sits in, and
+# the working directory, for `*.zim` files or a `zims/` child holding them.
+#
+# The compatibility contract (docs/plans/2026-08-07-v19-plan.md) is why this
+# is a separate, explicitly-passed layer rather than a smarter default: an
+# explicit ZIM_DIR, --zim-dir, config-file zim_dir, or a desktop-configured
+# folder must ALWAYS beat a discovered one, and the precedence tests pin that.
+# ---------------------------------------------------------------------------
+
+DISCOVERY_ZIMS_SUBDIR = "zims"
+# The locations the last discover_zim_dir() call actually probed — surfaced in
+# the empty-library boot message so "where should I put my files?" has a
+# concrete answer for every install type, not just Docker.
+_discovery_probed = []
+
+
+def _dir_holding_zims(candidate):
+    """The directory Zimi should serve from `candidate`, or None.
+
+    A hit is `*.zim` directly in the candidate, else in a `zims/` child —
+    the two shapes a hand-assembled folder of ZIMs actually has."""
+    for d in (candidate, os.path.join(candidate, DISCOVERY_ZIMS_SUBDIR)):
+        if glob.glob(os.path.join(d, "*.zim")):
+            return d
+    return None
+
+
+def discovery_candidates():
+    """Where discovery looks, in priority order: executable dir (frozen
+    builds only — for a source checkout it would be the Python bin dir),
+    the folder a macOS .app bundle sits in, then the working directory."""
+    cands = []
+    if getattr(sys, "frozen", False) or getattr(sys, "_MEIPASS", None):
+        exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+        cands.append(exe_dir)
+        # Zimi.app/Contents/MacOS/<exe> → the folder holding Zimi.app; that is
+        # the stick root when someone drags the app next to their ZIMs.
+        if exe_dir.replace("\\", "/").endswith(".app/Contents/MacOS"):
+            cands.append(os.path.dirname(os.path.dirname(os.path.dirname(exe_dir))))
+    try:
+        cands.append(os.getcwd())
+    except OSError:
+        pass  # cwd can be deleted from under a long-lived shell
+    seen = set()
+    return [c for c in cands if not (c in seen or seen.add(c))]
+
+
+def discover_zim_dir(candidates=None):
+    """Probe the candidate locations for ZIMs. First hit wins; None if none.
+
+    Only ever consulted when zim_dir would otherwise resolve to the hardcoded
+    default — callers pass the result into resolve_settings(), which applies
+    it below every explicit source."""
+    global _discovery_probed
+    candidates = discovery_candidates() if candidates is None else list(candidates)
+    _discovery_probed = candidates
+    for cand in candidates:
+        hit = _dir_holding_zims(cand)
+        if hit:
+            return hit
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Headless configuration file
+#
+# One JSON file that describes an instance, so a deployment can be handed over
+# without click-through setup. JSON and not TOML/YAML on purpose: the package
+# supports Python 3.9 (no `tomllib`) and stays stdlib-only (no PyYAML), and
+# every other file Zimi writes is already JSON.
+#
+# Scope is deliberately small: only settings that must be known *before* the
+# server boots. Everything that already has its own state file plus an admin UI
+# (access mode, auto-update, download schedule, seeding) stays where it is —
+# folding those in is a migration question, not a config question.
+#
+# The file sits BELOW the environment in precedence, which is the whole
+# compatibility argument: a running Docker/compose deployment that sets ZIM_DIR
+# keeps winning, so dropping a config file next to an existing instance can
+# never change how it behaves. Adding config can only fill in what nobody else
+# said.
+#
+# Two families of key, resolved by the same precedence chain but delivered
+# differently:
+#
+#   * The four PATH/BIND keys (zim_dir, data_dir, host, port) are consumed by
+#     this module directly — resolve_settings() hands them to apply_data_paths()
+#     and to serve().
+#   * The ENVIRONMENT-BACKED keys below name settings that had no input other
+#     than an environment variable, read at call time by whichever module owns
+#     the feature. Rather than teaching each of those modules about the config
+#     file — one more resolution path and one more precedence bug apiece — the
+#     single resolution here PUBLISHES its answer into os.environ, but only when
+#     the answer came from the file. An environment variable is never
+#     overwritten, precedence stays exactly what resolve_settings() computed,
+#     and the owning module remains the only thing that interprets the string.
+#
+# The credential keys (manage_user, manage_password, api_token) look like an
+# exception to the scope note above, since each also has a state file and an
+# admin UI. They are not: their environment variable ALREADY outranks that file,
+# and the config file feeds that same override layer rather than adding a third
+# opinion. Provisioning credentials is also the one thing that makes headless
+# setup headless — without it, first boot is a click-through.
+#
+# The bar for adding an environment-backed key: the setting must be read at call
+# time. ZIMI_RATE_LIMIT, ZIMI_RATE_LIMIT_TRUSTED, ZIMI_RATE_LIMIT_LOGIN,
+# ZIMI_TRUST_CGNAT and ZIMI_TRUSTED_PROXIES are all frozen into module constants
+# when zimi.http is imported — which happens while this module is still being
+# imported, long before argparse can point us at a file — so publishing them
+# would be a silent no-op. They need their consumer to read them lazily first.
+# ---------------------------------------------------------------------------
+
+CONFIG_FILENAME = "zimi.json"
+CONFIG_ENV_VAR = "ZIMI_CONFIG"
+# The path/bind keys, each with its own flag and its own consumer in this file.
+CONFIG_PATH_KEYS = ("zim_dir", "data_dir", "host", "port")
+
+# kind: how a JSON value is validated and encoded into the string its
+#   environment variable would have carried ("str", "bool" or "csv").
+# default: what the report shows when nobody set it — the string form of the
+#   consumer's own built-in default. NEVER published; a default must stay
+#   indistinguishable from "unset" so consumers that treat an absent variable
+#   specially (get_hot_zims falls back to hot.json) keep doing so.
+# secret: masked in `zimi config` output, because that report is what people
+#   paste into bug threads.
+ConfigSetting = collections.namedtuple(
+    "ConfigSetting", "key env_var kind default default_note secret"
+)
+
+CONFIG_ENV_SETTINGS = (
+    ConfigSetting("manage", "ZIMI_MANAGE", "bool", "1", None, False),
+    ConfigSetting("manage_user", "ZIMI_MANAGE_USER", "str", "", "password file", True),
+    ConfigSetting(
+        "manage_password", "ZIMI_MANAGE_PASSWORD", "str", "", "password file", True
+    ),
+    ConfigSetting("api_token", "ZIMI_API_TOKEN", "str", "", "token file", True),
+    ConfigSetting("offline", "ZIMI_OFFLINE", "bool", "0", None, False),
+    ConfigSetting("hot_zims", "ZIMI_HOT_ZIMS", "csv", "", "hot.json", False),
+    ConfigSetting("index_throttle", "ZIMI_INDEX_THROTTLE", "bool", "1", None, False),
+    # The one directory tree the WEB may package a ZIM from (zimi.manage's
+    # folder and import modes, and the directory picker that feeds them).
+    # Unset — the default — means the web cannot package a server path at all;
+    # it is not a filter that starts wide open. The CLI is unaffected: someone
+    # at a shell on the machine already has the filesystem.
+    ConfigSetting("create_root", "ZIMI_CREATE_ROOT", "str", "", "web off", False),
+    # Trusted-header SSO (zimi/sso.py). Both the team domain and the audience
+    # tag must be present for the feature to switch on at all, which is what
+    # keeps a bare install from trusting an identity header anyone can send.
+    # Neither is a secret: they identify the Access org and application, and a
+    # masked value in `zimi config` would hide the most common misconfiguration.
+    ConfigSetting("sso_team", "ZIMI_SSO_TEAM", "str", "", "SSO off", False),
+    ConfigSetting("sso_aud", "ZIMI_SSO_AUD", "str", "", "SSO off", False),
+    ConfigSetting("sso_role", "ZIMI_SSO_ROLE", "str", "user", None, False),
+    ConfigSetting("sso_proxy", "ZIMI_SSO_PROXY", "csv", "", "private networks", False),
+)
+_CONFIG_ENV_BY_KEY = {s.key: s for s in CONFIG_ENV_SETTINGS}
+
+# Every key v1 understands. Anything else is warned about, never fatal:
+# failing a boot over an unknown key punishes people for a forward-compatible
+# file, but silently swallowing a typo is a support ticket.
+CONFIG_KEYS = CONFIG_PATH_KEYS + tuple(s.key for s in CONFIG_ENV_SETTINGS)
+
+# The spellings accepted for a boolean written as a string, mapped to the
+# canonical form. JSON booleans are the documented way; these exist because
+# people copy values out of a compose file.
+_CONFIG_BOOL_WORDS = {
+    "1": "1",
+    "true": "1",
+    "yes": "1",
+    "on": "1",
+    "0": "0",
+    "false": "0",
+    "no": "0",
+    "off": "0",
+}
+
+
+class ConfigError(Exception):
+    """A config file was found but cannot be used.
+
+    Always carries the offending path in the message — "invalid JSON" with no
+    filename is exactly the error someone with three mounted config files
+    cannot act on.
+    """
+
+
+def load_config_file(path):
+    """Read and validate one config file. Returns a dict of known keys.
+
+    Raises ConfigError (never a traceback) for anything a deployer can fix:
+    unreadable file, malformed JSON, a top-level array, a wrong-typed value.
+    Unknown keys are logged and dropped.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = f.read()
+    except OSError as e:
+        raise ConfigError(f"config file {path}: cannot read it ({e.strerror})")
+    # An empty file is a legitimate "I have nothing to say" — treat it as {}
+    # rather than as a JSON syntax error, since `touch zimi.json` is a normal
+    # first step and failing there is a bad first impression.
+    if not raw.strip():
+        return {}
+    try:
+        data = json.loads(raw)
+    except ValueError as e:
+        raise ConfigError(f"config file {path}: invalid JSON ({e})")
+    if not isinstance(data, dict):
+        raise ConfigError(
+            f"config file {path}: expected a JSON object, got {type(data).__name__}"
+        )
+
+    unknown = [k for k in data if k not in CONFIG_KEYS]
+    if unknown:
+        log.warning(
+            "config file %s: ignoring unknown key(s): %s (known keys: %s)",
+            path,
+            ", ".join(sorted(unknown)),
+            ", ".join(CONFIG_KEYS),
+        )
+
+    config = {}
+    for key in CONFIG_KEYS:
+        if key not in data:
+            continue
+        value = data[key]
+        origin = f"config file {path}"
+        if key == "port":
+            config[key] = _coerce_port(value, origin)
+        elif key in _CONFIG_ENV_BY_KEY:
+            config[key] = _encode_env_value(_CONFIG_ENV_BY_KEY[key], value, origin)
+        elif not isinstance(value, str):
+            raise ConfigError(
+                f"config file {path}: {key} must be a string, "
+                f"got {type(value).__name__}"
+            )
+        else:
+            config[key] = value
+    return config
+
+
+def _encode_env_value(setting, value, origin):
+    """Validate one environment-backed value and render it as the string its
+    environment variable would have carried.
+
+    Encoding at parse time (like ``_coerce_port``) is what keeps
+    ``resolve_settings`` type-agnostic: by the time precedence runs, every
+    layer — flag, env, file, default — is speaking the same string, and the
+    module that owns the feature stays the only thing that interprets it.
+    Idempotent, so re-encoding an already-encoded value is safe.
+    """
+    if setting.kind == "bool":
+        if isinstance(value, bool):
+            return "1" if value else "0"
+        word = (
+            _CONFIG_BOOL_WORDS.get(value.strip().lower())
+            if isinstance(value, str)
+            else None
+        )
+        if word is None:
+            raise ConfigError(
+                f"{origin}: {setting.key} must be true or false, got {value!r}"
+            )
+        return word
+    if setting.kind == "csv":
+        if isinstance(value, str):
+            return value
+        if isinstance(value, list) and all(isinstance(v, str) for v in value):
+            return ",".join(v.strip() for v in value if v.strip())
+        raise ConfigError(
+            f"{origin}: {setting.key} must be a list of strings (or a "
+            f"comma-separated string), got {type(value).__name__}"
+        )
+    if not isinstance(value, str):
+        raise ConfigError(
+            f"{origin}: {setting.key} must be a string, got {type(value).__name__}"
+        )
+    return value
+
+
+def _coerce_port(value, origin):
+    """Ports arrive as a JSON number, an env string, or an argparse int."""
+    if isinstance(value, bool):  # bool is an int subclass; reject it explicitly
+        raise ConfigError(f"{origin}: port must be a number, got boolean")
+    try:
+        port = int(value)
+    except (TypeError, ValueError):
+        raise ConfigError(f"{origin}: port must be a number, got {value!r}")
+    # 0 stays legal: `--port 0` is how the smoke tests ask the OS for a free one.
+    if not 0 <= port <= 65535:
+        raise ConfigError(f"{origin}: port {port} is outside 0-65535")
+    return port
+
+
+def find_config_file(config_flag=None, env=None, data_dir=None):
+    """Locate the config file: --config, else ZIMI_CONFIG, else <data dir>/zimi.json.
+
+    A path someone named explicitly must exist — a typo'd --config that boots
+    with silently different settings is worse than a refusal. The implicit
+    ``<data dir>`` location is the opposite: absence is the normal case for
+    every install that predates this feature, so it is silent.
+    """
+    env = os.environ if env is None else env
+    for value, origin in (
+        (config_flag, "--config"),
+        (env.get(CONFIG_ENV_VAR), CONFIG_ENV_VAR),
+    ):
+        if value:
+            if not os.path.isfile(value):
+                raise ConfigError(f"config file {value}: no such file ({origin})")
+            return value
+    if data_dir:
+        implicit = os.path.join(data_dir, CONFIG_FILENAME)
+        if os.path.isfile(implicit):
+            return implicit
+    return None
+
+
+def load_config(
+    zim_dir_flag=None,
+    data_dir_flag=None,
+    config_flag=None,
+    env=None,
+    discovered_zim_dir=None,
+):
+    """Discovery + read: the one impure step. Returns ``(config, path_or_None)``.
+
+    Kept separate from resolution so ``resolve_settings`` stays a pure function
+    of (flags, env, config) and the precedence matrix is testable without
+    touching a filesystem.
+
+    Note the small circularity in the implicit location: to look for
+    ``<data dir>/zimi.json`` we must first know the data dir, which is resolved
+    from flags, env and the discovery probe only. That is deliberate — a file
+    can only be *found* somewhere the flags/env/defaults (or a discovered stick,
+    whose ``<stick>/.zimi/zimi.json`` makes it self-describing) already point,
+    and a file found there may still relocate the data dir for everything else.
+    """
+    env = os.environ if env is None else env
+    _, probe_data_dir = resolve_data_paths(
+        zim_dir_flag, data_dir_flag, env, discovered_zim_dir=discovered_zim_dir
+    )
+    path = find_config_file(config_flag, env, probe_data_dir)
+    if not path:
+        return {}, None
+    return load_config_file(path), path
+
+
+def resolve_settings(
+    zim_dir_flag=None,
+    data_dir_flag=None,
+    host_flag=None,
+    port_flag=None,
+    env=None,
+    config=None,
+    config_path=None,
+    discovered_zim_dir=None,
+) -> "collections.OrderedDict[str, tuple[Any, str]]":
+    """Resolve every boot setting, with the provenance of each one.
+
+    Returns an ordered ``{key: (value, source)}`` mapping where source is a
+    human string like ``env: ZIM_DIR`` — `zimi config` prints it verbatim, and
+    "where did this value come from" is the question that actually costs people
+    time when a deployment misbehaves. The four path/bind keys come first, then
+    every environment-backed key in CONFIG_ENV_SETTINGS; those resolve through
+    the same chain with no flag layer (they have no flags) and their values are
+    always the string their environment variable carries.
+
+    Precedence, strictly: flag > environment > config file > discovered >
+    built-in default. ``discovered_zim_dir`` is the fifth, lowest layer: it
+    only ever replaces the hardcoded fallback, never a value any person or
+    file supplied — that is the 1.9 compatibility contract, and it is why
+    discovery is an argument (the impure probe stays in the caller) rather
+    than something this function goes looking for.
+    Pure: pass ``env``, ``config`` and ``discovered_zim_dir`` in, get values out.
+    """
+    env = os.environ if env is None else env
+    config = {} if config is None else config
+    file_source = f"config file: {config_path}" if config_path else "config file"
+
+    def pick(flag, flag_name, env_key, key, default, default_note=None):
+        if flag is not None:
+            return flag, f"flag: {flag_name}"
+        # `in`, not `.get()` truthiness: `ZIM_DIR=` resolves to the empty
+        # string today and must keep doing so.
+        if env_key in env:
+            return env[env_key], f"env: {env_key}"
+        if key in config:
+            return config[key], file_source
+        return default, f"default: {default_note}" if default_note else "default"
+
+    zim_dir, zim_dir_src = pick(
+        zim_dir_flag, "--zim-dir", "ZIM_DIR", "zim_dir", DEFAULT_ZIM_DIR
+    )
+    # Discovery fills in ONLY what was the hardcoded fallback: `pick` says
+    # "default" exactly when no flag, env or config named a zim_dir. Applied
+    # before the data-dir derivation below so a discovered stick carries its
+    # state (`<stick>/.zimi`) with it.
+    if discovered_zim_dir is not None and zim_dir_src.startswith("default"):
+        zim_dir, zim_dir_src = discovered_zim_dir, f"discovered: {discovered_zim_dir}"
+    # The derived `<zim dir>/.zimi` is a *default*, so an explicit data dir from
+    # any layer beats it — that is what keeps `--zim-dir /media/usb` from
+    # dragging state away from a configured ZIMI_DATA_DIR.
+    data_dir, data_dir_src = pick(
+        data_dir_flag,
+        "--data-dir",
+        "ZIMI_DATA_DIR",
+        "data_dir",
+        os.path.join(zim_dir, DEFAULT_DATA_DIR_NAME),
+        f"<zim_dir>/{DEFAULT_DATA_DIR_NAME}",
+    )
+    host, host_src = pick(host_flag, "--host", "ZIMI_HOST", "host", DEFAULT_HOST)
+    port, port_src = pick(port_flag, "--port", "ZIMI_PORT", "port", DEFAULT_PORT)
+    if not isinstance(port, int) or isinstance(port, bool):
+        port = _coerce_port(port, port_src)
+
+    # Annotated rather than inferred: from the literal below a checker deduces
+    # a key type of Literal["zim_dir", ...] and a value type that is the union
+    # of exactly these four tuples, which then rejects both the loop that adds
+    # the environment-backed keys and any caller indexing one of them. The
+    # value is genuinely per-key (port is an int, everything else a string), so
+    # `Any` is the honest element type for a heterogeneous settings map.
+    settings: "collections.OrderedDict[str, tuple[Any, str]]" = collections.OrderedDict(
+        (
+            ("zim_dir", (zim_dir, zim_dir_src)),
+            ("data_dir", (data_dir, data_dir_src)),
+            ("host", (host, host_src)),
+            ("port", (port, port_src)),
+        )
+    )
+    for setting in CONFIG_ENV_SETTINGS:
+        value, source = pick(
+            None,
+            None,
+            setting.env_var,
+            setting.key,
+            setting.default,
+            setting.default_note,
+        )
+        # Environment values and defaults are already strings; a native JSON
+        # type only survives this far when a caller hand-built `config` instead
+        # of going through load_config_file, so encode defensively — same shape
+        # as the port coercion above.
+        if not isinstance(value, str):
+            value = _encode_env_value(setting, value, source)
+        settings[setting.key] = (value, source)
+    return settings
+
+
+CONFIG_SECRET_MASK = "********"
+# An empty value gets a visible stand-in so the column never collapses and a
+# reader can tell "set to empty" from a formatting accident.
+CONFIG_EMPTY_MASK = '""'
+
+
+def _report_value(key, value):
+    """What `zimi config` shows for one value: never a secret, never blank."""
+    setting = _CONFIG_ENV_BY_KEY.get(key)
+    shown = str(value)
+    if setting is not None and setting.secret and shown:
+        return CONFIG_SECRET_MASK
+    return shown or CONFIG_EMPTY_MASK
+
+
+def format_config_report(settings):
+    """Render `zimi config` output: value plus where it came from, one per line."""
+    shown = [(key, _report_value(key, v), src) for key, (v, src) in settings.items()]
+    name_w = max(len(key) for key, _, _ in shown)
+    value_w = max(len(value) for _, value, _ in shown)
+    lines = []
+    for key, value, source in shown:
+        lines.append(f"{key:<{name_w}}  {value:<{value_w}}  ({source})")
+    return "\n".join(lines)
+
+
+def apply_env_settings(settings):
+    """Publish file-sourced settings into os.environ, and rebind ZIMI_MANAGE.
+
+    The delivery half of the environment-backed keys. Only values whose
+    provenance is the config file are written: a variable the operator actually
+    exported is never touched (it already won in ``resolve_settings``), and a
+    built-in default is never written at all, so "nobody configured this" stays
+    distinguishable from "configured to the default value" for consumers that
+    care about the difference.
+
+    Must run before anything reads these settings — ``main()`` calls it right
+    after resolution, ahead of ``_init()`` and ``serve()``. Returns the list of
+    variables written, for tests and for logging.
+    """
+    global ZIMI_MANAGE
+    published = []
+    for setting in CONFIG_ENV_SETTINGS:
+        value, source = settings[setting.key]
+        if source.startswith("config file"):
+            os.environ[setting.env_var] = value
+            published.append(setting.env_var)
+    # ZIMI_MANAGE is the one environment-backed setting this module reads into a
+    # global at import time, so publishing alone would be too late for it. The
+    # `== "1"` test is the same one the import-time read uses, which is what
+    # keeps every existing ZIMI_MANAGE spelling behaving exactly as before.
+    ZIMI_MANAGE = settings["manage"][0] == "1"
+    return published
+
+
+def resolve_data_paths(
+    zim_dir_flag=None,
+    data_dir_flag=None,
+    env=None,
+    config=None,
+    discovered_zim_dir=None,
+):
+    """Resolve ``(ZIM_DIR, ZIMI_DATA_DIR)`` from flags, environment and config.
+
+    Precedence is flag > environment > config file > discovered > default, and
+    the default data dir follows whichever ZIM dir won — so ``--zim-dir`` alone
+    moves the state with it, while an explicit ``ZIMI_DATA_DIR`` stays put.
+    Pure so the precedence rules can be tested without touching the process
+    globals.
+    """
+    settings = resolve_settings(
+        zim_dir_flag=zim_dir_flag,
+        data_dir_flag=data_dir_flag,
+        env=env,
+        config=config,
+        discovered_zim_dir=discovered_zim_dir,
+    )
+    return settings["zim_dir"][0], settings["data_dir"][0]
+
+
+# ---------------------------------------------------------------------------
+# Read-only media: automatic data-dir fallback (1.9 portable mode, phase 3)
+#
+# A ZIM library on a read-only stick/DVD/locked share used to boot with four
+# permission errors and silently lose the title index, did-you-mean and Q-ID
+# links, and rebuild the metadata cache on every start. When the data dir is
+# the DERIVED default (`<zim_dir>/.zimi`) and turns out unwritable, state is
+# rerouted to a stable per-library directory under the platform user-cache
+# location instead, so indexes persist across boots of the same library.
+#
+# Two deliberate asymmetries:
+#   * An EXPLICITLY configured data dir (--data-dir, ZIMI_DATA_DIR, config
+#     file) that is unwritable is an error, never a fallback — the user asked
+#     for that path, and dying with one clear line beats silently writing
+#     somewhere else.
+#   * If `<zim_dir>/.zimi` already EXISTS but is unwritable, its contents are
+#     ignored and the cache dir is used wholesale. Reading stick indexes while
+#     writing new state elsewhere would be a two-layer overlay; the simple
+#     rule (documented in docs/plans/2026-08-07-zero-config-portable.md) is
+#     one data dir at a time.
+# ---------------------------------------------------------------------------
+
+
+class DataDirError(Exception):
+    """An explicitly configured data dir cannot be written.
+
+    Same contract as ConfigError: an operator mistake reported as one clear
+    line (main() exits 2), never a traceback."""
+
+
+def _platform_cache_root():
+    """Per-user cache location, stdlib only (no platformdirs dependency)."""
+    if sys.platform == "darwin":
+        return os.path.expanduser(os.path.join("~", "Library", "Caches", "Zimi"))
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser(
+            os.path.join("~", "AppData", "Local")
+        )
+        return os.path.join(base, "Zimi", "Cache")
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser(
+        os.path.join("~", ".cache")
+    )
+    # Lowercase on XDG systems, capitalized on macOS/Windows — each platform's
+    # own convention for vendor dirs.
+    return os.path.join(base, "zimi")
+
+
+def fallback_data_dir(zim_dir):
+    """The stable cache-dir stand-in for an unwritable `<zim_dir>/.zimi`.
+
+    Stability is the point: indexes built on the first boot of a read-only
+    library must be found again on the next one, so the name is a pure
+    function of the library's real path — a readable prefix (the folder name,
+    sanitized) plus a hash tail that disambiguates same-named folders on
+    different mounts."""
+    real = os.path.realpath(zim_dir)
+    tail = hashlib.sha256(real.encode("utf-8", "surrogatepass")).hexdigest()[:10]
+    base = os.path.basename(real.rstrip("/\\")) or "library"
+    prefix = re.sub(r"[^A-Za-z0-9._-]+", "-", base).strip("-.")[:40] or "library"
+    return os.path.join(_platform_cache_root(), f"{prefix}-{tail}")
+
+
+def _dir_is_writable(path):
+    """Probe writability by actually writing: mkdir + tempfile + unlink.
+
+    Not os.access(): network mounts and read-only remounts routinely report
+    writable modes for directories that reject every write. If the probe had
+    to create the directory, it removes it again on the way out — `zimi
+    config` must be able to ask the question without scattering empty dirs."""
+    existed = os.path.isdir(path)
+    try:
+        os.makedirs(path, exist_ok=True)
+        fd, probe = tempfile.mkstemp(dir=path, prefix=".zimi-write-probe-")
+        os.close(fd)
+        os.remove(probe)
+        ok = True
+    except OSError:
+        ok = False
+    if not existed:
+        try:
+            os.rmdir(path)  # only succeeds when empty, so state is never lost
+        except OSError:
+            pass
+    return ok
+
+
+def _ensure_writable_data_dir():
+    """Reroute ZIMI_DATA_DIR to the per-library cache dir when the derived
+    default is unwritable. Raises DataDirError for an explicit dir instead.
+
+    Idempotent and cheap: after a reroute the bound dir IS writable, so a
+    second call (main() runs it early for the CLI exit-code contract, _init()
+    runs it for library/desktop entry points) is a silent no-op — the log
+    line below appears exactly once per boot."""
+    global ZIMI_DATA_DIR, _data_dir_fallback_from
+    if _dir_is_writable(ZIMI_DATA_DIR):
+        return
+    if not _data_dir_source.startswith("default"):
+        raise DataDirError(
+            f"data dir {ZIMI_DATA_DIR} is not writable ({_data_dir_source}); "
+            "fix its permissions or point --data-dir/ZIMI_DATA_DIR at a "
+            "writable location"
+        )
+    # A missing ZIM dir means there is no library to keep state for — keep
+    # today's fail-soft boot rather than manufacturing a cache dir for it.
+    if not os.path.isdir(ZIM_DIR):
+        return
+    stale_state = os.path.isdir(ZIMI_DATA_DIR)
+    fallback = fallback_data_dir(ZIM_DIR)
+    if not _dir_is_writable(fallback):
+        log.warning(
+            "Data dir %s is not writable and neither is the cache fallback %s; "
+            "state writes will fail soft",
+            ZIMI_DATA_DIR,
+            fallback,
+        )
+        return
+    # The one promised log line: where state went, and why. When a read-only
+    # `.zimi` already sits beside the ZIMs it is NOT read live (no two-layer
+    # overlay): the standard cross-directory migration in _migrate_data_files
+    # copies it once into a fresh fallback dir, and after that the cache dir
+    # is the sole data dir.
+    log.warning(
+        "Data dir %s is not writable (read-only media?); keeping state in %s "
+        "instead — it persists there across boots of this library%s",
+        ZIMI_DATA_DIR,
+        fallback,
+        (
+            "; the read-only state beside the ZIMs stays untouched (seeded "
+            "into the cache dir once, never read live)"
+            if stale_state
+            else ""
+        ),
+    )
+    _data_dir_fallback_from = ZIMI_DATA_DIR
+    ZIMI_DATA_DIR = fallback
+
+
+ZIM_DIR, ZIMI_DATA_DIR = resolve_data_paths()
+# Provenance of the bound data dir, kept in lockstep with the binding above and
+# in apply_data_paths(). "default: …" is the derived `<zim_dir>/.zimi`; anything
+# else marks an explicit choice, which _ensure_writable_data_dir refuses to
+# override. _data_dir_fallback_from records a reroute for `zimi config`.
+_data_dir_source = resolve_settings()["data_dir"][1]
+_data_dir_fallback_from = None
 ZIMI_MANAGE = os.environ.get("ZIMI_MANAGE", "1") == "1"
-ZIMI_DATA_DIR = os.environ.get("ZIMI_DATA_DIR", os.path.join(ZIM_DIR, ".zimi"))
 _initialized = False
+
+
+def apply_data_paths(
+    zim_dir_flag=None, data_dir_flag=None, config=None, discovered_zim_dir=None
+):
+    """Rebind the path globals from CLI flags, before anything reads them.
+
+    Every consumer resolves ``_srv.ZIM_DIR`` / ``_srv.ZIMI_DATA_DIR`` at call
+    time (no module derives a constant from either), so rebinding here is
+    enough — but only if it happens before ``_init()`` creates the data dir
+    and runs migrations. ``main()`` calls this immediately after argparse and
+    before ``load_cache()``.
+    """
+    global ZIM_DIR, ZIMI_DATA_DIR, _data_dir_source, _data_dir_fallback_from
+    settings = resolve_settings(
+        zim_dir_flag=zim_dir_flag,
+        data_dir_flag=data_dir_flag,
+        config=config,
+        discovered_zim_dir=discovered_zim_dir,
+    )
+    ZIM_DIR, ZIMI_DATA_DIR = settings["zim_dir"][0], settings["data_dir"][0]
+    # Rebinding invalidates any earlier read-only reroute: the fallback
+    # decision belongs to whichever paths are bound when _init() runs.
+    _data_dir_source = settings["data_dir"][1]
+    _data_dir_fallback_from = None
+    return ZIM_DIR, ZIMI_DATA_DIR
 
 
 def _init():
@@ -263,6 +1212,10 @@ def _init():
     if _initialized:
         return
     _initialized = True
+    # Read-only media check first, so the makedirs below (and every migration
+    # after it) already targets the rerouted dir. Raises DataDirError for an
+    # explicitly configured unwritable dir — main() converts that to exit 2.
+    _ensure_writable_data_dir()
     try:
         os.makedirs(ZIMI_DATA_DIR, exist_ok=True)
     except OSError:
@@ -458,13 +1411,57 @@ MAX_CONTENT_BYTES = (
 MAX_SERVE_BYTES = (
     50 * 1024 * 1024
 )  # 50 MB — refuse to serve entries larger than this (prevents OOM)
+# The most of a streamable entry (video, audio) handed out per request. A
+# browser's player asks for `bytes=N-`, reads what it needs and aborts, then
+# asks again a little further on — Chrome did that every 300 KB through a
+# 114 MB video (2026-09-03), and each answer was a 50 MB copy out of libzim
+# under the lock. Eight megabytes is a few seconds of 720p, more than a
+# player reads before its next request, and a sixth of the copying.
+STREAM_WINDOW_BYTES = 8 * 1024 * 1024
 MAX_POST_BODY = 65536  # max bytes accepted in POST requests (64KB — handles ~500 URLs for batch resolve)
 # Backup bundles and per-user data blobs (bookmarks/history/preferences) are the
 # one class of POST that legitimately runs large — a full-server backup carries
 # users, history and every per-user blob. They get their own ceiling so the tight
 # 64 KB cap keeps guarding every other endpoint.
 MAX_BACKUP_BODY = 8 * 1024 * 1024  # 8 MB — backup import + /userdata save
-_BYTES_PER_GB = 1024**3
+# Sizes are DECIMAL everywhere Zimi prints one: a kB is 1000 bytes, an MB is
+# 1000 kB, a GB is 1000 MB.
+#
+# It used to divide by 1024 and print "GB", which is a GiB wearing the wrong
+# name, and the gap is not academic at the sizes this program deals in:
+# wikipedia_en_all_maxi is 123,980,647,016 bytes, which Zimi called 115 GB
+# while the NAS, Finder, df and the Kiwix library page all called it 124 GB.
+# Nine gigabytes of disagreement on one row of a screen whose entire job is
+# answering "will this fit".
+#
+# Everything derives from these three and nothing divides by hand, so there is
+# one place to be wrong. format_bytes() below turns them into text, and the
+# browser's fmtBytes() is the same function — tests_size_units holds the two to
+# a single table of expected strings.
+_BYTES_PER_KB = 1000
+_BYTES_PER_MB = 1000**2
+_BYTES_PER_GB = 1000**3
+
+# Where GB stops being written to one decimal. Below ten, a tenth is real
+# information about a ZIM; above it, "115 GB" beats "115.5 GB" in a list.
+_GB_WHOLE_FROM = 10
+
+
+def format_bytes(n):
+    """One byte count as display text. The single spelling of a size.
+
+    Matches ``fmtBytes`` in the browser exactly, including the thresholds and
+    the decimal places, so the same file reads the same in the web UI, the CLI,
+    the MCP tool listing and this server's own logs."""
+    n = max(0, int(n or 0))
+    if n < _BYTES_PER_KB:
+        return f"{n} B"
+    if n < _BYTES_PER_MB:
+        return f"{n / _BYTES_PER_KB:.1f} KB"
+    if n < _BYTES_PER_GB:
+        return f"{n / _BYTES_PER_MB:.1f} MB"
+    gb = n / _BYTES_PER_GB
+    return f"{gb:.0f} GB" if gb >= _GB_WHOLE_FROM else f"{gb:.1f} GB"
 
 
 def _atomic_write_json(path, data, indent=None):
@@ -633,6 +1630,53 @@ def _categorize_zim(name):
     if n in ("gutenberg", "rationalwiki", "theworldfactbook"):
         return "Books"
     return None
+
+
+#: Ceiling on a folder-derived category name, matching the cap a hand-set
+#: category override may hold (_LAYOUT_STR_MAX) so both paths agree on what the
+#: UI and the layout file can carry.
+_FOLDER_CATEGORY_MAX = 128
+#: Separators an admin uses in folder names where a space is meant.
+_FOLDER_SEPARATORS = str.maketrans("-_.", "   ")
+
+
+def _zim_folder(path):
+    """The immediate ZIM_DIR subfolder ``path`` lives in, '' for a root file.
+
+    Pure string work on a path the scan already produced — no stat, no listdir.
+    Anything nested deeper than one level (which the scan never yields) or
+    outside ZIM_DIR resolves to '' rather than guessing at a folder name.
+    """
+    parent = os.path.dirname(os.path.normpath(path))
+    root = os.path.normpath(ZIM_DIR)
+    if parent == root or os.path.dirname(parent) != root:
+        return ""
+    return os.path.basename(parent)
+
+
+def _folder_category(folder):
+    """Display category for a raw folder name: 'dev-docs' → 'Dev Docs'.
+
+    Separators become spaces and lowercase words are capitalized. A word that
+    already carries an uppercase letter is left alone, so 'DIY' and 'McGraw'
+    survive a rule that would otherwise flatten them to 'Diy' and 'Mcgraw'.
+    """
+    words = folder.translate(_FOLDER_SEPARATORS).split()
+    pretty = " ".join(
+        w if any(c.isupper() for c in w) else w.capitalize() for w in words
+    )
+    return pretty[:_FOLDER_CATEGORY_MAX]
+
+
+def _effective_category(name, path):
+    """A ZIM's category: its subfolder if it lives in one, else the heuristic.
+
+    Folder beats heuristic because the folder is an act of organization by the
+    operator — filing a ZIM under medical/ says more than any guess made from
+    its filename. A hand-set per-ZIM override still beats both; that is applied
+    at the /list boundary, not baked in here.
+    """
+    return _folder_category(_zim_folder(path)) or _categorize_zim(name)
 
 
 # ============================================================================
@@ -974,45 +2018,100 @@ def _zim_short_name(filename):
     return name
 
 
-def _scan_zim_files():
-    """Scan filesystem for ZIM files. Returns {short_name: path} mapping.
+# Subdirectories the one-level scan must never treat as library content.
+# Learned from the first real deployment, not invented: Eric's NAS carries a
+# corrupt-quarantine/ full of ZIMs the kiwix-zim updater script deliberately
+# pulled OUT of service after failed integrity checks, and Synology mints
+# @eaDir metadata trees beside everything it touches. Serving quarantined
+# files back to readers is the exact opposite of what a quarantine means.
+_SCAN_SKIP_DIRS = {
+    "@eadir",  # Synology metadata
+    "lost+found",  # fsck droppings
+    "system volume information",  # Windows-formatted sticks
+    "corrupt-quarantine",  # kiwix-zim's convention for failed integrity checks
+    "quarantine",
+}
+_SCAN_IGNORE_MARKER = ".nozim"  # drop this file in any subfolder to opt it out
 
-    When two files produce the same short name (e.g. maxi vs mini flavors),
-    the larger file wins so the richest content is served.
+_FLAVOR_TOKEN_RE = re.compile(r"_(maxi|nopic|mini)(?:_|\.zim$)")
+_DATE_TOKEN_RE = re.compile(r"(\d{4}-\d{2}[a-z]?)\.zim$")
+# Kiwix flavors are strictly nested — maxi carries everything, nopic is full
+# text without media, mini is intros only — so richer beats newer: an old
+# maxi still contains more than this month's mini. An untagged filename is
+# a full build and slots between maxi and nopic.
+_FLAVOR_RANKS = {"maxi": 4, None: 3, "nopic": 2, "mini": 1}
+
+
+def _zim_build_rank(filename):
+    """Rank a build for same-name collisions in the same directory tier:
+    flavor richness first, then the trailing date token (newer wins)."""
+    fname = filename.lower()
+    m = _FLAVOR_TOKEN_RE.search(fname)
+    d = _DATE_TOKEN_RE.search(fname)
+    return (_FLAVOR_RANKS[m.group(1) if m else None], d.group(1) if d else "")
+
+
+def _scan_zim_files():
+    """Scan ZIM_DIR plus exactly one level of subdirectories for ZIM files.
+    Returns {short_name: path} mapping.
+
+    Subfolder eligibility: dotted names are never scanned (glob semantics, so
+    `.zimi` stays state, not content), the deny list above is skipped, and a
+    subfolder containing a `.nozim` marker file is skipped — that is the
+    documented way to keep a staging or archive folder beside the library.
+
+    Collision rule (documented, deliberate): a ROOT-level file always beats a
+    subfolder file with the same short name. The root of the library is where
+    downloads land and where the operator curates; a same-name copy in a
+    subfolder is a backup, an old edition, or a quarantined reject, and none
+    of those should ever displace the file being served. The original
+    larger-file-wins rule was retired after one real library: it would have
+    preferred a quarantined corrupt copy over the healthy root file had their
+    sizes leaned that way. Within the SAME tier (both root, or both in
+    subfolders), the richer build wins — flavor first, then newer date, per
+    _zim_build_rank — so a maxi is never shadowed by the mini beside it and
+    two editions of the same flavor resolve to the newer one. Every
+    collision is logged.
     """
-    zims = {}
-    for path in sorted(glob.glob(os.path.join(ZIM_DIR, "*.zim"))):
-        filename = os.path.basename(path)
-        name = _zim_short_name(filename)
-        if name in zims:
-            existing = zims[name]
-            try:
-                existing_size = os.path.getsize(existing)
-                new_size = os.path.getsize(path)
-            except OSError:
-                existing_size = new_size = 0
-            if new_size > existing_size:
+    zims = {}  # name -> (path, tier)
+    root_paths = sorted(glob.glob(os.path.join(ZIM_DIR, "*.zim")))
+    sub_paths = []
+    for sub in sorted(glob.glob(os.path.join(ZIM_DIR, "*", ""))):
+        base = os.path.basename(sub.rstrip(os.sep))
+        if base.lower() in _SCAN_SKIP_DIRS:
+            continue
+        if os.path.exists(os.path.join(sub, _SCAN_IGNORE_MARKER)):
+            log.info("Skipping %s (has %s marker)", base, _SCAN_IGNORE_MARKER)
+            continue
+        sub_paths.extend(sorted(glob.glob(os.path.join(sub, "*.zim"))))
+    for tier, paths in ((0, root_paths), (1, sub_paths)):
+        for path in paths:
+            filename = os.path.basename(path)
+            name = _zim_short_name(filename)
+            if name not in zims:
+                zims[name] = (path, tier)
+                continue
+            held_path, held_tier = zims[name]
+            # Root files were inserted first, so a cross-tier collision can
+            # only be a subfolder file arriving second — the root holds.
+            if held_tier == tier and _zim_build_rank(filename) > _zim_build_rank(
+                os.path.basename(held_path)
+            ):
                 log.info(
-                    "ZIM name collision '%s': %s (%.1f GB) replaces %s (%.1f GB)",
+                    "ZIM name collision '%s': keeping %s, ignoring %s",
                     name,
-                    filename,
-                    new_size / _BYTES_PER_GB,
-                    os.path.basename(existing),
-                    existing_size / _BYTES_PER_GB,
+                    os.path.relpath(path, ZIM_DIR),
+                    os.path.relpath(held_path, ZIM_DIR),
                 )
-                zims[name] = path
+                zims[name] = (path, tier)
             else:
                 log.info(
-                    "ZIM name collision '%s': keeping %s (%.1f GB), skipping %s (%.1f GB)",
+                    "ZIM name collision '%s': keeping %s, ignoring %s",
                     name,
-                    os.path.basename(existing),
-                    existing_size / _BYTES_PER_GB,
-                    filename,
-                    new_size / _BYTES_PER_GB,
+                    os.path.relpath(held_path, ZIM_DIR),
+                    os.path.relpath(path, ZIM_DIR),
                 )
-        else:
-            zims[name] = path
-    return zims
+    return {name: path for name, (path, _tier) in zims.items()}
 
 
 def get_zim_files():
@@ -1075,7 +2174,7 @@ def list_zims(use_cache=True):
         entry = {
             "name": name,
             "file": os.path.basename(path),
-            "size_gb": round(size_bytes / (1024**3), 3),
+            "size_gb": round(size_bytes / _BYTES_PER_GB, 3),
             "size_bytes": size_bytes,
             "entries": entry_count,
         }
@@ -1151,7 +2250,7 @@ def _extract_zim_date(filename):
 def _extract_zim_metadata(name, path):
     """Open a ZIM archive and extract its metadata. Returns (info_dict, archive)."""
     size_bytes = os.path.getsize(path)
-    size_gb = size_bytes / (1024**3)
+    size_gb = size_bytes / _BYTES_PER_GB
     meta_title = name
     meta_desc = ""
     meta_date = ""
@@ -1230,9 +2329,15 @@ def _extract_zim_metadata(name, path):
         "date": meta_date,
         "language": meta_lang,
         "has_icon": has_icon,
-        "category": _categorize_zim(name),
+        "category": _effective_category(name, path),
         "main_path": main_path,
     }
+    # Additive: the raw subfolder name behind a folder-derived category, so a
+    # client can tell "filed under medical/" from a name-heuristic guess. Absent
+    # for root-level files, which keep heuristic categorization untouched.
+    folder = _zim_folder(path)
+    if folder:
+        info["folder"] = folder
     if article_count is not None:
         info["article_count"] = article_count
     # Additive flag: a ZIM Zimi itself exported (bookmark exports). The UI
@@ -1367,6 +2472,26 @@ def _self_heal_update_stamps(info, file_cache):
     return repaired > 0
 
 
+def _boot_say(*args, **kwargs):
+    """Boot and status chatter, on stderr.
+
+    stdout is a PROTOCOL channel for two of the ways Zimi is run. The MCP
+    server speaks JSON-RPC over stdio, so a friendly "No ZIM files found in
+    ..." line printed to stdout lands in the middle of the handshake and a
+    strict client rejects the stream. It was doing exactly that: the first
+    thing a new Open WebUI user saw, on the run where they had not put any
+    ZIMs in place yet, was a corrupted protocol rather than an empty library.
+
+    Nothing is lost by moving it. A person running `zimi serve` sees stderr in
+    the same terminal, in the same place; only the file descriptor changes.
+    Actual command OUTPUT -- search results, `zimi list` -- still goes to
+    stdout, where a pipe can read it.
+    """
+    kwargs.setdefault("flush", True)
+    kwargs["file"] = sys.stderr
+    print(*args, **kwargs)
+
+
 def load_cache(force=False):
     """Load ZIM metadata, using persistent disk cache for instant startup.
 
@@ -1482,7 +2607,15 @@ def load_cache(force=False):
             entry = {
                 "name": name,
                 "file": filename,
-                "size_gb": cached.get("size_gb", round(size / (1024**3), 3)),
+                # Derived from the bytes on every read, NEVER taken from the
+                # cache. A stored size_gb is a stored UNIT, and the day the
+                # unit changed, 43 of 67 ZIMs went on serving the old one from
+                # disk while freshly scanned ones served the new — the library
+                # quoting two different numbers for the same kind of thing,
+                # which is the whole complaint. Bytes are the fact and stat is
+                # free; anything divided out of them is a view, and a view has
+                # no business surviving in a cache.
+                "size_gb": round(size / _BYTES_PER_GB, 3),
                 # Exact bytes straight from stat — peers verify pulled ZIMs
                 # against this, so it must be present even on a cache hit
                 # (older disk caches predate the field).
@@ -1493,11 +2626,20 @@ def load_cache(force=False):
                 "date": cached.get("date", ""),
                 "language": cached.get("language", ""),
                 "has_icon": cached.get("has_icon", False),
-                "category": _categorize_zim(name),
+                # Category and folder come from the live path, never the cache
+                # record: moving a ZIM into (or out of) a folder changes neither
+                # its mtime nor its size, so a cached copy of either would go
+                # stale on exactly the move that should re-file it. Deriving
+                # here is pure string work, so an existing library re-files on
+                # the next boot with no rescan and no extra I/O.
+                "category": _effective_category(name, path),
                 "main_path": cached.get("main_path", ""),
                 "first_seen": first_seen,
                 "updated_at": updated_at,
             }
+            folder = _zim_folder(path)
+            if folder:
+                entry["folder"] = folder
             if "has_qids" in cached:
                 entry["has_qids"] = cached["has_qids"]
             # Additive: real article count. Absent in caches built before this
@@ -1507,6 +2649,12 @@ def load_cache(force=False):
             # Additive: Zimi-exported flag (bookmark exports show full dates).
             if cached.get("zimi_export"):
                 entry["zimi_export"] = True
+            # What the ZIM is made of, measured once by the background worker
+            # and remembered here. Absent until it has been — the scan does not
+            # measure, deliberately: a cold library already takes long enough to
+            # open without adding a read of every file to it.
+            if cached.get("shape"):
+                entry["shape"] = cached["shape"]
             info.append(entry)
             cached_out = dict(cached)
             if first_seen is not None:
@@ -1565,37 +2713,403 @@ def load_cache(force=False):
 
     cached_count = len(info) - scanned
     if cached_count > 0 and scanned > 0:
-        print(
+        _boot_say(
             f"  Cache loaded: {len(info)} ZIMs ({cached_count} cached, {scanned} scanned) in {elapsed:.1f}s",
             flush=True,
         )
     elif scanned > 0:
-        print(f"  Cache built: {len(info)} ZIMs scanned in {elapsed:.1f}s", flush=True)
+        _boot_say(
+            f"  Cache built: {len(info)} ZIMs scanned in {elapsed:.1f}s", flush=True
+        )
     elif len(info) > 0:
-        print(
+        _boot_say(
             f"  Cache loaded: {len(info)} ZIMs from disk cache in {elapsed:.1f}s",
             flush=True,
         )
     else:
-        print(f"  No ZIM files found in {ZIM_DIR}", flush=True)
+        # Install-neutral empty state: this line is read by Docker admins,
+        # stick users and source checkouts alike, so it names every location
+        # that was actually searched instead of assuming a volume mount.
+        searched = [ZIM_DIR] + [p for p in _discovery_probed if p != ZIM_DIR]
+        missing = "" if os.path.isdir(ZIM_DIR) else " (directory does not exist)"
+        _boot_say(f"  No ZIM files found in {ZIM_DIR}{missing}", flush=True)
         if os.path.isdir(ZIM_DIR):
-            # Check if ZIMs are in subdirectories (common mistake)
-            import glob as _g
-
-            sub_zims = _g.glob(os.path.join(ZIM_DIR, "**", "*.zim"), recursive=True)
-            if sub_zims:
-                print(
-                    f"  Found {len(sub_zims)} ZIM file(s) in subdirectories — move them to {ZIM_DIR}/ (Zimi doesn't scan subdirectories)",
+            # The scan covers ZIM_DIR plus one level of subfolders; only files
+            # nested deeper than that are invisible now, so only they get the
+            # hint (a recursive glob at boot is fine — the library is empty).
+            deep_zims = glob.glob(os.path.join(ZIM_DIR, "**", "*.zim"), recursive=True)
+            if deep_zims:
+                _boot_say(
+                    f"  Found {len(deep_zims)} ZIM file(s) nested deeper than one folder — "
+                    f"Zimi scans {ZIM_DIR} and its immediate subfolders only",
                     flush=True,
                 )
-        else:
-            print(
-                f"  Directory {ZIM_DIR} does not exist — check your volume mount",
-                flush=True,
-            )
+        _boot_say(
+            f"  Searched: {', '.join(searched)}. Put .zim files in any of these, "
+            f"or point ZIM_DIR / --zim-dir at your ZIM folder.",
+            flush=True,
+        )
 
-    # Rebuild domain map whenever ZIM list changes
+    # Rebuild domain map whenever the ZIM list changes. The build REBINDS
+    # interlang's global; /resolve?domains=1 reads it as _srv._domain_zim_map,
+    # which resolves live through this module's __getattr__ (see the
+    # stale-alias note on the re-export block) rather than an import-time copy.
     _build_domain_zim_map()
+
+
+def _domain_map_entries_for_zim(name, filename, source_meta):
+    """Domain→ZIM entries ONE ZIM contributes, without opening any archive.
+
+    Mirrors the three discovery methods of interlang._build_domain_zim_map
+    (filename prefix, Source metadata, name-based TLD inference) plus its
+    www./mobile variant expansion — keep the two in sync. The full rebuild
+    still owns startup and manual refresh; this exists because the rebuild
+    calls get_archive() for every unmapped ZIM, and with a cold archive pool
+    that re-opens the whole library — minutes under _zim_lock on a Pi with a
+    NAS mount, the exact starvation register_zim_file removes (#51). Here the
+    Source string is read from the registration's own private handle, so the
+    merge is pure string work.
+    """
+    domains = []
+
+    def _add(domain):
+        domain = (domain or "").lower().strip()
+        if not domain or "." not in domain:
+            return
+        domains.append(domain)
+        if domain.startswith("www."):
+            domains.append(domain[4:])
+        else:
+            domains.append("www." + domain)
+        m = re.match(r"^(\w{2,3})\.(wiki\w+\.org)$", domain)
+        if m:
+            domains.append(f"{m.group(1)}.m.{m.group(2)}")
+        if domain in ("stackoverflow.com", "stackexchange.com"):
+            domains.append("m." + domain)
+
+    base = filename.split(".zim")[0]
+    m = re.match(r"^([a-zA-Z0-9.-]+\.[a-z]{2,})_", base)
+    if m:
+        _add(m.group(1))
+    elif source_meta:
+        from urllib.parse import urlparse  # local: server.py has no other use
+
+        try:
+            if "://" in source_meta:
+                _add(urlparse(source_meta).hostname or "")
+            else:
+                _add(source_meta.split("/")[0])
+        except Exception as e:
+            log.debug("Failed to parse Source %r for %s: %s", source_meta, name, e)
+    elif not name.startswith("zimgit") and "_en_" not in name:
+        for tld in (".com", ".org", ".io", ".net"):
+            _add(name + tld)
+    return {d: name for d in domains}
+
+
+def register_zim_file(path, removed_files=()):
+    """Incrementally register ONE just-downloaded ZIM into the live library.
+
+    Replaces the post-download ``load_cache(force=True)`` full rebuild, which
+    re-opened and re-scanned EVERY archive in the library while the caller
+    held ``_zim_lock``. On a small box (Raspberry Pi) serving a big library
+    from network storage that held the lock for minutes — every request that
+    touches libzim starved until the browser gave up, which reads as a server
+    crash (#51). The forced rebuild also pooled every archive at once, a
+    memory spike small boards can't absorb.
+
+    Shape: the expensive work (archive open + metadata extraction — real I/O
+    on a slow mount) runs BEFORE the lock on a private handle; ``_zim_lock``
+    is held only to splice the result into the in-memory registry. Opening a
+    private Archive off-lock is safe: libzim's hazard is two threads on ONE
+    Archive object, and this handle is not shared until after the splice
+    (same practice as the post-download validation open in library.py).
+
+    ``removed_files``: basenames of older versions the caller already deleted
+    from disk; they are dropped from the registry and disk cache in the same
+    splice.
+
+    Returns True when the library reflects the file; False when the file
+    could not be read — the caller should fall back to a full load_cache().
+    """
+    global _zim_files_cache, _zim_list_cache, _cache_generation
+    _init()
+    if _zim_files_cache is None or _zim_list_cache is None:
+        # Library was never scanned (headless/startup edge): there is nothing
+        # to splice into, and a plain load — which will pick the new file up
+        # from disk along with everything else — is the cheap normal path.
+        load_cache()
+        return True
+    filename = os.path.basename(path)
+    name = _zim_short_name(filename)
+    try:
+        st = os.stat(path)
+    except OSError as e:
+        log.warning("register_zim_file: cannot stat %s: %s", path, e)
+        return False
+
+    # Mirror _scan_zim_files' collision rule: a root-level file always beats a
+    # subfolder file for the same short name — the root is where downloads
+    # land and where the operator curates; a same-name subfolder copy is a
+    # backup, an old edition, or a quarantined reject. Registration only ever
+    # lands files in the root, so an existing ROOT holder that still stats is
+    # only displaced by this new root file, while an existing SUBFOLDER holder
+    # always yields. The routine case — an update replacing an older dated
+    # file the caller just deleted — falls through because the old path no
+    # longer stats.
+    existing_path = _zim_files_cache.get(name)
+    if existing_path and os.path.realpath(existing_path) != os.path.realpath(path):
+        try:
+            os.stat(existing_path)
+            existing_in_root = os.path.dirname(
+                os.path.realpath(existing_path)
+            ) == os.path.realpath(ZIM_DIR)
+            new_in_root = os.path.dirname(os.path.realpath(path)) == os.path.realpath(
+                ZIM_DIR
+            )
+            if existing_in_root and not new_in_root:
+                log.info(
+                    "ZIM name collision '%s': keeping root %s, new %s stays shadowed",
+                    name,
+                    os.path.basename(existing_path),
+                    filename,
+                )
+                return True  # library correctly unchanged
+            if existing_in_root == new_in_root and _zim_build_rank(
+                os.path.basename(existing_path)
+            ) > _zim_build_rank(filename):
+                # Same tier, poorer build arriving: a freshly downloaded mini
+                # must never displace the maxi already being served.
+                log.info(
+                    "ZIM name collision '%s': keeping richer %s, new %s stays shadowed",
+                    name,
+                    os.path.basename(existing_path),
+                    filename,
+                )
+                return True  # library correctly unchanged
+        except OSError:
+            pass  # existing file is gone — the new one takes over
+
+    # ---- Phase 1: metadata extraction, deliberately WITHOUT _zim_lock ----
+    entry, archive = _extract_zim_metadata(name, path)
+    if entry.get("entries") == "?":
+        # Unreadable despite the download path's libzim validation — let the
+        # caller run the full-scan fallback rather than splice a broken entry.
+        return False
+    # Source metadata feeds the domain-map merge below; read it here on the
+    # private handle so the merge itself never touches libzim.
+    try:
+        source_meta = (
+            bytes(archive.get_metadata("Source")).decode("utf-8", "replace").strip()
+        )
+    except Exception:
+        source_meta = ""
+
+    # New/Updated stamps, same semantics as load_cache: a new dated filename
+    # of an already-known ZIM inherits the ORIGINAL first_seen and stamps
+    # updated_at (badge reads "Updated"); a genuinely new ZIM derives
+    # first_seen from its own mtime (badge reads "New").
+    disk_cache = _load_disk_cache()
+    prior_first_seen = None
+    if disk_cache:
+        for _fn, _ce in disk_cache.items():
+            if _fn == filename or not isinstance(_ce, dict):
+                continue
+            if _zim_short_name(_fn) == name:
+                _fs = _ce.get("first_seen")
+                if _fs is not None and (
+                    prior_first_seen is None or _fs < prior_first_seen
+                ):
+                    prior_first_seen = _fs
+    now = time.time()
+    if prior_first_seen is not None:
+        entry["first_seen"] = prior_first_seen
+        entry["updated_at"] = now
+    else:
+        entry["first_seen"] = min(st.st_mtime, now)
+        entry["updated_at"] = None
+
+    # Disk-cache record, same shape load_cache's scan branch writes.
+    new_cached = {
+        "name": name,
+        "mtime": st.st_mtime,
+        "size": st.st_size,
+        "size_gb": entry["size_gb"],
+        "entries": entry["entries"],
+        "title": entry["title"],
+        "description": entry["description"],
+        "date": entry.get("date", ""),
+        "language": entry.get("language", ""),
+        "has_icon": entry["has_icon"],
+        "main_path": entry["main_path"],
+    }
+    for _opt in ("article_count", "zimi_export", "first_seen", "updated_at"):
+        if entry.get(_opt) is not None:
+            new_cached[_opt] = entry[_opt]
+
+    removed = {os.path.basename(f) for f in removed_files}
+
+    # ---- Phase 2: splice under _zim_lock — dict surgery + a small json ----
+    with _zim_lock:
+        # Rebind fresh containers instead of mutating: readers iterate these
+        # without the lock, and an atomic rebind can never trip them mid-walk.
+        files = dict(_zim_files_cache)
+        files[name] = path
+        _zim_files_cache = files
+        listing = [
+            z
+            for z in (_zim_list_cache or [])
+            if z.get("name") != name and z.get("file") not in removed
+        ]
+        listing.append(entry)
+        _zim_list_cache = listing
+        with _archive_lock:
+            # Hand the already-open archive to the pool (and drop any handle
+            # still pointing at a replaced file) so nothing re-opens it.
+            _archive_pool[name] = archive
+        # Invalidates /w/ entry ETags and the interlang resolution caches —
+        # cross-ZIM answers can genuinely change when a ZIM arrives.
+        _cache_generation += 1
+        # Re-read the disk cache under the lock: the phase-1 copy fed the
+        # stamp inheritance, but a concurrent full load_cache (manage
+        # refresh) may have rewritten the file since — mutate the freshest
+        # version so its work isn't clobbered.
+        disk_now = _load_disk_cache()
+        if disk_now is not None:
+            for _fn in list(disk_now):
+                if _fn in removed or _zim_short_name(_fn) == name:
+                    disk_now.pop(_fn, None)
+            disk_now[filename] = new_cached
+            _save_disk_cache(disk_now)
+        # Domain map: merge ONLY this ZIM's domains. The full rebuild
+        # (_build_domain_zim_map) opens every unmapped archive via
+        # get_archive — with a cold pool (e.g. right after a previous
+        # download's cache clear) that re-opens the whole library under this
+        # lock, the same minutes-long starvation this function exists to
+        # remove. Existing entries win, matching the rebuild's first-wins
+        # rule; the map is rebound (not mutated) in interlang, whose
+        # _resolve_url_to_zim is the live consumer.
+        import zimi.interlang as _interlang
+
+        merged = dict(_interlang._domain_zim_map)
+        for _d, _n in _domain_map_entries_for_zim(name, filename, source_meta).items():
+            merged.setdefault(_d, _n)
+        _interlang._domain_zim_map = merged
+    log.info(
+        "Registered %s (%s entries) without a library rescan",
+        filename,
+        entry.get("entries"),
+    )
+    return True
+
+
+def unregister_zim_file(filename):
+    """Incrementally drop ONE just-deleted ZIM from the live library.
+
+    The removal counterpart of ``register_zim_file``, and it exists for the
+    same reason: deleting a ZIM used to end in ``load_cache(force=True)``
+    under ``_zim_lock``, re-opening and re-scanning EVERY archive in the
+    library while holding the one lock every libzim read needs. On a small
+    box serving a big library off network storage that froze search, reading
+    and suggest for the length of the rescan — issue #51's failure mode, on
+    an ordinary button.
+
+    A removal is strictly cheaper than a registration: nothing has to be read
+    out of a ZIM, so there is no archive to open at all. Phase 1 is one
+    directory listing off the lock; phase 2 is dict surgery under it, and
+    rebinds rather than mutates so the lock-free readers of these caches can
+    never be tripped mid-walk.
+
+    ``filename`` is the basename of the file the caller already removed from
+    disk. Returns True when the library reflects the removal; False when the
+    reconciliation would need metadata Zimi doesn't have — the caller should
+    fall back to a full ``load_cache(force=True)``.
+    """
+    global _zim_files_cache, _zim_list_cache, _cache_generation
+    _init()
+    if _zim_files_cache is None or _zim_list_cache is None:
+        # Library was never scanned: a plain load sees the post-delete state
+        # of the directory anyway, and is the cheap normal path.
+        load_cache()
+        return True
+    filename = os.path.basename(filename)
+
+    # ---- Phase 1: one directory listing, deliberately WITHOUT _zim_lock ----
+    # _scan_zim_files globs ZIM_DIR and its immediate subfolders. No stat, no
+    # archive open — this is the whole cost of a removal.
+    try:
+        on_disk = _scan_zim_files()
+    except OSError as e:
+        log.warning("unregister_zim_file: cannot scan %s: %s", ZIM_DIR, e)
+        return False
+    current = _zim_files_cache
+    # The splice only handles names LEAVING the library. A name that appeared,
+    # or one whose file changed — a subfolder copy promoted out of the deleted
+    # root file's shadow, per _scan_zim_files' collision rule — needs metadata
+    # that only an archive open can supply, so hand it to the full rescan.
+    for name, path in on_disk.items():
+        if current.get(name) != path:
+            return False
+    gone = {n for n in current if n not in on_disk}
+    # Disk-cache rows to drop: the deleted file, plus every file backing a name
+    # that left. Safe to match rows by short name here precisely because the
+    # check above proved no surviving file on disk still claims one.
+    dead_files = {filename} | {os.path.basename(current[n]) for n in gone}
+
+    # ---- Phase 2: splice under _zim_lock — dict surgery + a small json ----
+    with _zim_lock:
+        if gone:
+            _zim_files_cache = {
+                n: p for n, p in _zim_files_cache.items() if n not in gone
+            }
+            _zim_list_cache = [
+                z for z in (_zim_list_cache or []) if z.get("name") not in gone
+            ]
+            # Evict the pooled handles for the deleted files. Dropping them
+            # from the dicts only stops FUTURE use: a search thread already
+            # holding one keeps a valid mapping of an unlinked file until it
+            # finishes, which is why this needs no per-ZIM lock.
+            with _archive_lock:
+                for n in gone:
+                    _archive_pool.pop(n, None)
+            with _suggest_pool_lock:
+                for n in gone:
+                    _suggest_pool.pop(n, None)
+                    _suggest_zim_locks.pop(n, None)
+            with _fts_pool_lock:
+                for n in gone:
+                    _fts_pool.pop(n, None)
+                    _fts_zim_locks.pop(n, None)
+        # Invalidates /w/ entry ETags and the interlang resolution caches —
+        # cross-ZIM answers genuinely change when a ZIM leaves.
+        _cache_generation += 1
+        # Re-read under the lock: a concurrent load_cache may have rewritten
+        # the file since phase 1, so mutate the freshest version.
+        disk_now = _load_disk_cache()
+        if disk_now is not None:
+            dropped = [
+                fn for fn in disk_now if fn in dead_files or _zim_short_name(fn) in gone
+            ]
+            if dropped:
+                for fn in dropped:
+                    disk_now.pop(fn, None)
+                _save_disk_cache(disk_now)
+        if gone:
+            # Drop this ZIM's domain claims so _resolve_url_to_zim stops
+            # answering with a name that no longer resolves. Rebound, not
+            # mutated, for the same reason as the caches above.
+            import zimi.interlang as _interlang
+
+            pruned = {
+                d: n for d, n in _interlang._domain_zim_map.items() if n not in gone
+            }
+            _interlang._domain_zim_map = pruned
+    log.info(
+        "Unregistered %s without a library rescan%s",
+        filename,
+        f" ({', '.join(sorted(gone))} left the library)" if gone else "",
+    )
+    return True
 
 
 # (HTTP Request Handler extracted to zimi/http.py)
@@ -1604,6 +3118,136 @@ def load_cache(force=False):
 # ============================================================================
 # CLI & Entry Points (ZimHandler class → zimi/http.py)
 # ============================================================================
+
+
+def _cli_die(msg) -> NoReturn:
+    """One-line CLI refusal, exit code 2 — the same convention main() uses for
+    a ConfigError. No traceback: these are operator mistakes, not bugs.
+
+    Annotated NoReturn so callers can treat it as terminal: without it a type
+    checker reads every `except: _cli_die(...)` branch as falling through, and
+    reports the variable the `try` was binding as possibly unbound."""
+    print(f"zimi: {msg}", file=sys.stderr)
+    sys.exit(2)
+
+
+def _headless_state_boot():
+    """Point the state machinery at the resolved paths WITHOUT a running
+    server. Backup-before-upgrade is the whole point of the CLI, so it must
+    work while Zimi is stopped: load_cache() runs _init() (data-dir creation +
+    migrations) and fills the library metadata cache, and the BT prefs path —
+    normally wired up by start_background_services(), which never runs here —
+    is set explicitly so sharing prefs actually reach the bundle."""
+    from zimi import p2p
+
+    p2p.set_prefs_path(_bt_prefs_path())
+    load_cache()
+
+
+def _cli_backup(file_arg):
+    """`zimi backup [FILE]` — write a server-scope bundle (the same payload as
+    GET /manage/backup?scope=server) to a local file."""
+    from zimi import manage as _manage
+
+    _headless_state_boot()
+    bundle = _manage._build_backup_bundle(scope="server")
+    path = os.path.abspath(file_arg or time.strftime("zimi-backup-%Y-%m-%d.json"))
+    payload = json.dumps(bundle, ensure_ascii=False, indent=2)
+    try:
+        # 0600 from the first byte: the bundle carries password hashes, so
+        # there must be no window in which another local user can read it. The
+        # explicit chmod covers a pre-existing file — O_CREAT's mode argument
+        # only applies when the file is actually created.
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(payload)
+        os.chmod(path, 0o600)
+    except OSError as e:
+        _cli_die(f"cannot write {path}: {e.strerror or e}")
+    pa = bundle.get("public_access") or {}
+    coll = bundle.get("collections") or {}
+    print(f"Backup written: {path}")
+    print(
+        f"  scope: server (schema v{bundle['schema_version']}, "
+        f"zimi {bundle['zimi_version']})"
+    )
+    print(
+        f"  library manifest: {len(bundle.get('library') or [])} ZIM(s) "
+        "(metadata only — ZIM files are re-downloadable, not bundled)"
+    )
+    print(
+        f"  users: {len(bundle.get('users') or {})} account(s), "
+        f"public access: {pa.get('mode', '?')}"
+    )
+    print(
+        f"  collections: {len(coll.get('collections') or {})}, "
+        f"favorites: {len(coll.get('favorites') or [])}"
+    )
+    print(
+        "  settings: download schedule, auto-update, sharing prefs, "
+        f"{len(bundle.get('seed_intents') or {})} seed intent(s), "
+        f"{len(bundle.get('hot_zims') or [])} hot ZIM(s)"
+    )
+    print(
+        f"  history: {len(bundle.get('history') or [])} event(s), "
+        f"per-user data: {len(bundle.get('user_data') or {})} user(s)"
+    )
+    print(
+        "Note: this bundle includes user password hashes; "
+        "file mode is 0600 — keep it private."
+    )
+
+
+def _cli_restore(path, overwrite):
+    """`zimi restore FILE [--overwrite]` — apply a bundle with the same
+    merge/overwrite semantics as POST /manage/backup. Headless and ungated:
+    whoever can run the CLI against the data dir already owns it."""
+    from zimi import manage as _manage
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        _cli_die(f"backup file not found: {path}")
+    except IsADirectoryError:
+        _cli_die(f"not a file: {path}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        _cli_die(f"not a valid backup (malformed JSON): {path}")
+    except OSError as e:
+        _cli_die(f"cannot read {path}: {e.strerror or e}")
+    # The HTTP route tolerates a missing schema key (hand-assembled payloads);
+    # the CLI does not — a stray JSON file (say, zimi.json) fed to `restore`
+    # must refuse outright, not half-apply.
+    if not isinstance(data, dict) or data.get("schema") != _manage._BACKUP_SCHEMA:
+        _cli_die(f"not a Zimi backup bundle: {path}")
+
+    _headless_state_boot()
+    result, err = _manage._apply_backup_bundle(data, overwrite=overwrite)
+    # `result is None` is the same condition as `err` in every current path
+    # (_apply_backup_bundle returns (None, err) on refusal), but the two are
+    # independent values — checking both is what makes the reads below safe
+    # rather than merely correct-by-convention.
+    if err or result is None:
+        _cli_die(f"restore failed: {err or 'no result'}")
+    applied = result["applied"]
+    # Present-but-untouched keys: env-locked settings (ZIMI_HOT_ZIMS,
+    # ZIMI_AUTO_UPDATE) or server keys riding on a device-scope bundle, which
+    # the plan deliberately strips. Saying so beats a silent partial restore.
+    skipped = [k for k in _manage._BUNDLE_STATE_KEYS if k in data and k not in applied]
+    preview = result["preview"]
+    print(
+        f"Restored from {path} (scope: {preview['scope']}, "
+        f"mode: {'overwrite' if overwrite else 'merge'})"
+    )
+    print("  applied: " + (", ".join(applied) if applied else "nothing (empty bundle)"))
+    if skipped:
+        print("  skipped: " + ", ".join(skipped))
+    missing = preview.get("missing_zims")
+    if missing:
+        print(
+            f"  note: {missing} ZIM(s) in the bundle's library manifest are not "
+            "installed; re-download them from the catalog"
+        )
 
 
 def main():
@@ -1627,13 +3271,255 @@ def main():
 
     sub.add_parser("list", help="List available ZIM files")
 
+    # Every path/bind flag defaults to None, not to its real default: that is
+    # how resolve_settings tells "flag omitted" (fall through to env, then the
+    # config file) from "flag given". Shared by `serve` and `config` so the
+    # latter reports exactly what the former would boot with.
+    def add_boot_flags(p):
+        p.add_argument(
+            "--port",
+            type=int,
+            default=None,
+            help=f"Port to bind (overrides ZIMI_PORT, default: {DEFAULT_PORT})",
+        )
+        p.add_argument(
+            "--zim-dir",
+            default=None,
+            help=f"Directory containing *.zim files (overrides ZIM_DIR, default: {DEFAULT_ZIM_DIR})",
+        )
+        p.add_argument(
+            "--data-dir",
+            default=None,
+            help=f"Directory for Zimi's own state (overrides ZIMI_DATA_DIR, default: <zim-dir>/{DEFAULT_DATA_DIR_NAME})",
+        )
+        p.add_argument(
+            "--host",
+            default=None,
+            help=f"Address to bind (default: {DEFAULT_HOST})",
+        )
+        p.add_argument(
+            "--config",
+            default=None,
+            help=f"Path to a JSON config file (overrides {CONFIG_ENV_VAR}, default: <data-dir>/{CONFIG_FILENAME} if present)",
+        )
+
     p_serve = sub.add_parser("serve", help="Start HTTP API server")
-    p_serve.add_argument("--port", type=int, default=8899)
+    add_boot_flags(p_serve)
     p_serve.add_argument(
         "--ui",
         action="store_true",
         help="Open in a native desktop window (requires pywebview)",
     )
+
+    p_config = sub.add_parser(
+        "config", help="Print the resolved configuration and where each value came from"
+    )
+    add_boot_flags(p_config)
+
+    # backup/restore take the same boot flags as serve/config so they operate
+    # on exactly the paths a `serve` with the same arguments would use — the
+    # point is backing up the RIGHT instance, not whichever one env defaults
+    # happen to name.
+    p_backup = sub.add_parser(
+        "backup",
+        help="Write a full-server backup bundle (users, access policy, "
+        "settings, collections) to a JSON file",
+    )
+    p_backup.add_argument(
+        "file",
+        nargs="?",
+        default=None,
+        help="Output path (default: ./zimi-backup-<date>.json)",
+    )
+    add_boot_flags(p_backup)
+
+    p_restore = sub.add_parser(
+        "restore", help="Apply a backup bundle (merges by default)"
+    )
+    p_restore.add_argument("file", help="Backup bundle (JSON) to apply")
+    p_restore.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Replace matching state wholesale instead of merging",
+    )
+    add_boot_flags(p_restore)
+
+    # create takes the boot flags for the same reason backup/restore do: the
+    # default output directory is THIS instance's ZIM dir, resolved exactly
+    # the way `serve` would resolve it.
+    # The crawl defaults belong to the crawler, and the help text has to show
+    # them, so they are read from it rather than restated here. Import cost is
+    # stdlib-only and the module is loaded for `zimi create` regardless.
+    from zimi import crawler as _crawler
+
+    p_create = sub.add_parser(
+        "create",
+        help="Create a ZIM from a folder of files (HTML/Markdown/PDF), from a "
+        "single web page, or from a bounded crawl of one site (--site)",
+    )
+    # Repeatable: several URLs are ONE ZIM holding all of those pages plus a
+    # generated index. One source keeps every existing behaviour exactly —
+    # folder, single page, --site crawl, video URL — because one page is one
+    # page and wrapping it in an index nobody asked for is a worse ZIM.
+    p_create.add_argument(
+        "source",
+        nargs="+",
+        help="Folder path, or one or more http(s):// URLs (several URLs are "
+        "captured into a single ZIM with an index page)",
+    )
+    p_create.add_argument(
+        "--title", default=None, help="ZIM title (default: folder name / page title)"
+    )
+    p_create.add_argument("--description", default=None, help="ZIM description")
+    p_create.add_argument(
+        "--language",
+        default=None,
+        help="ISO 639-3 content language for metadata and the full-text index. "
+        "Default: read it off the source — the page's own lang attribute, a "
+        "folder's HTML, the platform's video metadata — falling back to eng "
+        "when the source declares nothing",
+    )
+    p_create.add_argument(
+        "--creator", default="Zimi", help="Creator metadata (default: Zimi)"
+    )
+    p_create.add_argument(
+        "--out",
+        default=None,
+        help="Explicit output .zim path (default: the ZIM directory, with "
+        "library registration)",
+    )
+    # Crawl flags. Every one of them defaults to None rather than to its real
+    # default so the CLI can tell "the user asked for this" from "nobody
+    # said" — that difference is what lets a flag that only applies to a
+    # site crawl be refused instead of silently ignored, and what keeps a
+    # flag Zimi guessed at from being sent to another engine.
+    p_create.add_argument(
+        "--site",
+        action="store_true",
+        help="Capture a bounded same-origin crawl instead of a single page",
+    )
+    p_create.add_argument(
+        "--engine",
+        choices=("builtin", "rendered", "alive", "singlefile", "zimit"),
+        default="builtin",
+        help="Capture engine: builtin (no JavaScript, no install), rendered "
+        "(runs a headless Chromium in this process — needs "
+        "`pip install 'zimi[browser]'` and `playwright install chromium`), "
+        "alive (records the browser session to a web archive and converts it "
+        "with warc2zim, so the saved site's JavaScript still runs — needs the "
+        "browser above plus `zimi import --setup`), or zimit (openZIM's "
+        "browser-based crawler, needs docker)",
+    )
+    # On by default for the two browser engines, and the pair of flags exists
+    # so "nobody said" stays distinguishable from "somebody asked for it" —
+    # which is what lets --block-ads against the fast engine, where it would do
+    # nothing, be refused rather than quietly accepted.
+    p_create.add_argument(
+        "--block-ads",
+        dest="block_ads",
+        action="store_true",
+        default=None,
+        help="Refuse ad, tracker and consent-manager requests while capturing "
+        "(--engine rendered/alive; on by default). Smaller ZIMs, and pages "
+        "that gate themselves on those endpoints render their real content",
+    )
+    p_create.add_argument(
+        "--no-block-ads",
+        dest="block_ads",
+        action="store_false",
+        help="Capture every request the page makes, advertising included",
+    )
+    p_create.add_argument(
+        "--max-pages",
+        type=int,
+        default=None,
+        help=f"Pages to capture at most (--site default: {_crawler.DEFAULT_MAX_PAGES})",
+    )
+    p_create.add_argument(
+        "--max-depth",
+        type=int,
+        default=None,
+        help="Link hops from the starting page "
+        f"(--site default: {_crawler.DEFAULT_MAX_DEPTH})",
+    )
+    # Video-source flags (playlist/channel URLs; all substance in zimi/video.py).
+    p_create.add_argument(
+        "--format",
+        default=None,
+        help="Video sources: yt-dlp format selector (default: ~720p cap)",
+    )
+    p_create.add_argument(
+        "--audio-only",
+        action="store_true",
+        help="Video sources: keep audio only",
+    )
+    p_create.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Video sources: package at most N playlist/channel entries",
+    )
+    p_create.add_argument(
+        "--max-bytes",
+        default=None,
+        help="Total size budget, e.g. 512MiB or 4G. For --site: pages plus "
+        f"assets (default {_crawler.DEFAULT_MAX_BYTES // 1024**2}MiB); for "
+        "video sources: total media (default 4G)",
+    )
+    p_create.add_argument(
+        "--delay",
+        type=float,
+        default=None,
+        help="Seconds to wait between page requests; robots.txt Crawl-delay "
+        f"wins when it asks for more (--site default: {_crawler.DEFAULT_DELAY})",
+    )
+    p_create.add_argument(
+        "--ignore-robots",
+        action="store_true",
+        help="Crawl pages robots.txt disallows (--site only; prints a warning)",
+    )
+    p_create.add_argument(
+        "--engine-arg",
+        action="append",
+        default=None,
+        metavar="ARG",
+        help="Extra argument passed straight to the engine, repeatable "
+        "(--engine zimit only). Write it attached — --engine-arg=--workers=2 "
+        "— because argparse reads a bare flag-shaped value as a missing one",
+    )
+    add_boot_flags(p_create)
+
+    p_import = sub.add_parser(
+        "import",
+        help="Convert a web archive (.warc/.warc.gz/.wacz) into a library "
+        "ZIM via the warc2zim sidecar",
+    )
+    p_import.add_argument(
+        "file", nargs="?", default=None, help="Web archive to convert"
+    )
+    p_import.add_argument(
+        "--name", default=None, help="ZIM name (default: derived from the filename)"
+    )
+    p_import.add_argument("--title", default=None, help="ZIM title")
+    p_import.add_argument("--description", default=None, help="ZIM description")
+    p_import.add_argument(
+        "--out",
+        default=None,
+        help="Explicit output .zim path (default: the ZIM directory, with "
+        "library registration)",
+    )
+    p_import.add_argument(
+        "--status",
+        action="store_true",
+        help="Report the warc2zim sidecar's state and version",
+    )
+    p_import.add_argument(
+        "--setup",
+        action="store_true",
+        help="Install the warc2zim sidecar venv now (network; pre-seeds "
+        "offline machines)",
+    )
+    add_boot_flags(p_import)
 
     sub.add_parser(
         "desktop",
@@ -1642,7 +3528,91 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "search":
+    # Before anything can read a path: argparse runs long after the module-level
+    # env read, so the flags (and the config file, which only argparse can point
+    # us at) have to be folded back into the globals here. Done for every
+    # subcommand, not just `serve`, so one file describes the whole instance —
+    # with no config file present this resolves to exactly today's values.
+    # getattr with a default: only `serve` and `config` carry these flags, and
+    # the rest of the subcommands still want the file's zim_dir/data_dir.
+    flags = {
+        k: getattr(args, k, None)
+        for k in ("zim_dir", "data_dir", "host", "port", "config")
+    }
+    # The one impure discovery probe, shared by every resolution below so all
+    # of them agree on the same answer. Cheap (a few globs), and inert unless
+    # zim_dir would otherwise fall to the hardcoded default.
+    discovered = discover_zim_dir()
+    try:
+        config, config_path = load_config(
+            flags["zim_dir"],
+            flags["data_dir"],
+            flags["config"],
+            discovered_zim_dir=discovered,
+        )
+        settings = resolve_settings(
+            zim_dir_flag=flags["zim_dir"],
+            data_dir_flag=flags["data_dir"],
+            host_flag=flags["host"],
+            port_flag=flags["port"],
+            config=config,
+            config_path=config_path,
+            discovered_zim_dir=discovered,
+        )
+    except ConfigError as e:
+        print(f"zimi: {e}", file=sys.stderr)
+        sys.exit(2)
+    # Hand the file's answer to the modules that own each setting, before any of
+    # them is asked for it. Done for every subcommand: `backup` and `restore`
+    # have to see the same instance `serve` would.
+    apply_env_settings(settings)
+    apply_data_paths(
+        flags["zim_dir"],
+        flags["data_dir"],
+        config=config,
+        discovered_zim_dir=discovered,
+    )
+    # Read-only media check, up front for every subcommand: an explicitly
+    # configured unwritable data dir is an operator mistake (one line, exit 2,
+    # same convention as ConfigError), while an unwritable DERIVED default
+    # reroutes to the per-library cache dir — and `zimi config` must report
+    # the reroute as the provenance of the value actually in effect.
+    #
+    # EXCEPT `zimi config` itself: it is the diagnostic you reach for to debug
+    # exactly this misconfiguration, so it must never refuse to print. It
+    # reports the problem beneath the table instead of dying above it.
+    data_dir_problem = None
+    try:
+        _ensure_writable_data_dir()
+    except DataDirError as e:
+        if args.command == "config":
+            data_dir_problem = str(e)
+        else:
+            print(f"zimi: {e}", file=sys.stderr)
+            sys.exit(2)
+    if _data_dir_fallback_from:
+        settings["data_dir"] = (
+            ZIMI_DATA_DIR,
+            f"fallback: {_data_dir_fallback_from} not writable",
+        )
+    host = settings["host"][0]
+    port = settings["port"][0]
+
+    if args.command == "config":
+        print(format_config_report(settings))
+        if data_dir_problem:
+            # Diagnosis, not death: the whole point of this command is seeing
+            # the resolution that a failing serve/backup would die over.
+            print(f"\nwarning: {data_dir_problem}")
+        if not config_path:
+            # The most common config-file support question is "why is my file
+            # not being read", and the answer is nearly always that it is not
+            # where Zimi looked.
+            print(
+                f"\nno config file in use (looked for {os.path.join(ZIMI_DATA_DIR, CONFIG_FILENAME)})"
+            )
+
+    elif args.command == "search":
         results = search_all(args.query, limit=args.limit, filter_zim=args.zim)
         print(json.dumps(results, indent=2, ensure_ascii=False))
 
@@ -1669,8 +3639,25 @@ def main():
         for z in zims:
             entries = z["entries"] if isinstance(z["entries"], int) else 0
             print(
-                f"  {z['name']:40s} {z['size_gb']:>8.1f} GB  {entries:>10} entries  ({z['file']})"
+                f"  {z['name']:40s} {format_bytes(z['size_bytes']):>10s}  "
+                f"{entries:>10} entries  ({z['file']})"
             )
+
+    elif args.command == "backup":
+        _cli_backup(args.file)
+
+    elif args.command == "restore":
+        _cli_restore(args.file, args.overwrite)
+
+    elif args.command == "create":
+        from zimi import creator as _creator
+
+        _creator.cli_create(args)
+
+    elif args.command == "import":
+        from zimi import importer as _importer
+
+        _importer.cli_import(args)
 
     elif args.command == "desktop" or (args.command == "serve" and args.ui):
         try:
@@ -1691,7 +3678,7 @@ def main():
         desktop_main()
 
     elif args.command == "serve":
-        print(f"ZIM Reader API starting on port {args.port}")
+        print(f"ZIM Reader API starting on port {port}")
         print(f"ZIM directory: {ZIM_DIR}")
         load_cache()
         # Startup partial-download sweep. Keep partials that a download record
@@ -1714,7 +3701,7 @@ def main():
             except OSError:
                 pass
         warm_indexes()
-        start_background_services(args.port)
+        start_background_services(port)
         # Start auto-update thread if enabled
         global _auto_update_thread
         if _auto_update_enabled:
@@ -1734,9 +3721,28 @@ def main():
             if _get_manage_password_hash():
                 log.info("Library management enabled (password protected)")
             else:
-                log.info(
-                    "Library management enabled (no password — set one in Settings for public servers)"
+                # No admin password yet. Set one from THIS machine freely; any
+                # other device needs the setup key below (GHSA-5mw2-53vv-9pw6).
+                from zimi import manage as _mng
+
+                key = _mng.ensure_setup_key()
+                log.info("Library management enabled — no admin password set yet.")
+                print(
+                    "\n"
+                    "  ┌─ Zimi first-run setup ──────────────────────────────\n"
+                    "  │  Set the admin password from this machine, or from\n"
+                    "  │  another device using this one-time setup key:\n"
+                    "  │\n"
+                    f"  │      SETUP KEY:  {key}\n"
+                    "  │\n"
+                    "  │  (also saved to the setup-key file in the data dir;\n"
+                    "  │   it stops working the moment a password is set)\n"
+                    "  └─────────────────────────────────────────────────────\n",
+                    flush=True,
                 )
+        from zimi import sso as _sso
+
+        _sso.log_boot_state()
         # docker stop / systemd / CI teardown send SIGTERM, which by default
         # kills Python without running atexit — skipping the clean engine
         # shutdown that flushes fastresume + the final upload accounting.
@@ -1745,7 +3751,7 @@ def main():
 
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
-        server = ThreadingHTTPServer(("0.0.0.0", args.port), ZimHandler)
+        server = ThreadingHTTPServer((host, port), ZimHandler)
         # Emit READY <actual-port> so wrapper scripts (CI smoke tests, the
         # desktop launcher) can capture the bound port — important when
         # --port 0 is used to let the OS pick a free port.
@@ -1956,6 +3962,56 @@ def warm_indexes():
 # ============================================================================
 # These keep ``zimi.server.search_all`` etc. working so callers (tests,
 # mcp_server.py, handler code still in this file) need zero changes.
+#
+# THE STALE-ALIAS TRAP — read before adding a name below.
+#
+# ``from zimi.x import name`` copies the *current binding* into this module's
+# namespace once, at import time. Whether that copy stays correct depends
+# entirely on what the owning module does to the name afterwards:
+#
+#   function / class          immune. The object is never replaced.
+#   container, mutated only   safe. ``d[k] = v`` / ``d.clear()`` / ``lst.append``
+#     in place                mutate the shared object; both names still point
+#                             at it. Most caches here are this class.
+#   constant, never assigned  safe. Includes module-level values finalised
+#     after import            during the owning module's own body (e.g.
+#                             SEARCH_UI_HTML, which http.py rewrites several
+#                             times before server.py ever imports it).
+#   REBOUND after import      BROKEN. ``global name; name = something_else``
+#                             inside a function rebinds only the owning
+#                             module's global. The alias here keeps pointing
+#                             at the original object forever, and every
+#                             consumer that reads it through ``_srv.name``
+#                             sees import-time state for the life of the
+#                             process.
+#
+# That last class shipped a silent production bug: /resolve?domains=1 served
+# ``_srv._domain_zim_map``, but _build_domain_zim_map rebinds interlang's
+# global, so a normally-booted server handed the browser an empty domain map
+# forever and cross-ZIM link resolution was quietly dead.
+#
+# So rebind-class names are NOT imported by value. They are listed in
+# _REBOUND_ALIASES and resolved on every access by the module __getattr__
+# below, which cannot go stale. If you add a ``global`` rebind to a name that
+# server.py re-exports, move it into that table — tests/test_alias_freshness.py
+# re-derives the classification from the AST and fails if you don't.
+
+# Names whose owning module rebinds them at runtime. Resolved live instead of
+# copied, so ``_srv.<name>`` is always the owner's current value.
+_REBOUND_ALIASES = {
+    "_domain_zim_map": "zimi.interlang",  # rebuilt by _build_domain_zim_map
+    "_download_counter": "zimi.library",  # bumped per download / import
+    "_env_pw_hash_cache": "zimi.manage",  # memoised on first password check
+}
+
+
+def __getattr__(name):
+    """Resolve rebind-class re-exports live (PEP 562). See the trap note above."""
+    owner = _REBOUND_ALIASES.get(name)
+    if owner is not None:
+        return getattr(sys.modules[owner], name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 from zimi.search import (  # noqa: E402, F401
     # Search / suggest caches (dicts + constants + functions)
@@ -1978,6 +4034,7 @@ from zimi.search import (  # noqa: E402, F401
     # Title index
     _get_title_db,
     _close_title_db,
+    _title_index_dir,
     _title_index_path,
     _title_index_is_current,
     _build_title_index,
@@ -2035,12 +4092,13 @@ from zimi.interlang import (  # noqa: E402, F401
     # Almanac deep-links (closed-set Q-ID → article batch resolution)
     resolve_almanac_qids,
     ALMANAC_QID_BATCH_MAX,
-    # Cross-ZIM resolution
-    _domain_zim_map,
+    # Cross-ZIM resolution (_domain_zim_map is rebind-class — see _REBOUND_ALIASES)
     _xzim_refs,
     _xzim_refs_lock,
     _build_domain_zim_map,
     _resolve_url_to_zim,
+    zim_domain,
+    canonical_url,
     # Article language matching
     get_article_languages,
     _zim_project_name,
@@ -2050,7 +4108,7 @@ from zimi.interlang import (  # noqa: E402, F401
 
 from zimi.library import (  # noqa: E402, F401
     # Auto-update
-    _AUTO_UPDATE_CONFIG,
+    _auto_update_config_path,
     _auto_update_env_locked,
     _load_auto_update_config,
     _save_auto_update_config,
@@ -2063,7 +4121,7 @@ from zimi.library import (  # noqa: E402, F401
     # Downloads & catalog
     _active_downloads,
     _download_lock,
-    _download_counter,
+    # _download_counter is rebind-class — see _REBOUND_ALIASES
     _opds_cache,
     _OPDS_CACHE_TTL,
     _start_download,
@@ -2088,7 +4146,7 @@ from zimi.manage import (  # noqa: E402, F401
     # Password & authentication
     _hash_pw,
     _PW_ITERATIONS,
-    _env_pw_hash_cache,
+    # _env_pw_hash_cache is rebind-class — see _REBOUND_ALIASES
     _get_manage_password_hash,
     _api_token_file,
     _get_api_token,
