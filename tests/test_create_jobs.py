@@ -855,3 +855,68 @@ def test_a_video_address_typed_under_web_page_probes_as_a_video(monkeypatch):
     # And back: a page address typed while the Video chip is lit is a page.
     out, status = manage._create_probe({"mode": "video", "source": "https://sqlite.org/"})
     assert status == 200 and out["mode"] == "page" and seen["url"] == "https://sqlite.org/", out
+
+
+def test_a_news_article_is_not_hijacked_into_video_mode(monkeypatch):
+    """Found in review before 1.9.0 was published: the probe moved the mode
+    chip to Video for any address a yt-dlp extractor claimed, and yt-dlp
+    claims news ARTICLES because those pages embed players. A CNN or BBC
+    article typed under Web page became a video job, and moving the chip back
+    re-probed and flipped it again, so the sites this release leads with could
+    not be captured as pages at all."""
+    import zimi.manage as manage
+
+    monkeypatch.setattr(manage, "_create_job", None)
+    seen = {}
+    def _fake_video(source, limit):
+        seen["video"] = source
+        return {"ok": True}
+
+    def _fake_url(source, **kw):
+        seen["url"] = source
+        return {"ok": True}
+
+    monkeypatch.setattr(manage, "_probe_video", _fake_video)
+    monkeypatch.setattr(manage, "_probe_url", _fake_url)
+
+    for article in (
+        "https://www.cnn.com/2024/01/01/politics/story/index.html",
+        "https://www.bbc.co.uk/news/uk-123",
+    ):
+        seen.clear()
+        out, status = manage._create_probe({"mode": "page", "source": article})
+        assert status == 200 and out["mode"] == "page", (article, out)
+        assert "video" not in seen, article
+
+    for video in (
+        "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
+        "https://www.youtube.com/@Kurzgesagt/videos",
+        "https://tilvids.com/w/8wMTpekSgUu9iaLc8S5Qc3",
+    ):
+        seen.clear()
+        out, status = manage._create_probe({"mode": "page", "source": video})
+        assert status == 200 and out["mode"] == "video", (video, out)
+
+
+def test_a_video_host_is_video_and_a_page_host_is_not():
+    from zimi.video import claims_url, claims_video_host
+
+    # Video-first hosts: the chip may move by itself.
+    for u in (
+        "https://www.youtube.com/watch?v=abc",
+        "https://www.youtube.com/playlist?list=PL1",
+        "https://tilvids.com/c/thelinuxexperiment_channel/videos",
+        "https://vimeo.com/76979871",
+    ):
+        assert claims_video_host(u), u
+
+    # Pages that merely embed a player: yt-dlp still claims them, and the
+    # command line still routes them to the video path when asked, but the
+    # web form leaves the chip where the person put it.
+    for u in (
+        "https://www.cnn.com/2024/01/01/politics/story/index.html",
+        "https://www.bbc.co.uk/news/uk-123",
+        "https://archive.org/details/BigBuckBunny_124",
+    ):
+        assert not claims_video_host(u), u
+        assert claims_url(u), u

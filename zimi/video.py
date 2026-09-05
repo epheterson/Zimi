@@ -159,6 +159,72 @@ def yt_dlp_version(mod):
     return str(version) if version else None
 
 
+# Hosts whose whole purpose is video, keyed on the yt-dlp extractor name.
+#
+# `claims_url` answers "can yt-dlp get something out of this address", which
+# is the right question for `zimi create <url>` on the command line, where the
+# person typed the video flag or the bare address and meant it. It is the
+# WRONG question for moving a mode chip in the web form, because yt-dlp ships
+# extractors for news sites: a CNN or BBC ARTICLE matches, since those pages
+# embed players. The create page moved the chip to Video for
+# `cnn.com/2024/.../story/index.html` and every re-probe moved it back, so the
+# headline sites of this release could not be captured as pages at all
+# (found in review before 1.9.0 was published).
+#
+# A host on this list is one where an address is a video, not a page that
+# happens to contain one. Matching is on the extractor's own name, lowercased,
+# so a PeerTube instance (one extractor for every instance) and every YouTube
+# surface (video, playlist, channel, tab) are covered without listing domains.
+_VIDEO_FIRST_EXTRACTORS = (
+    "youtube",
+    "peertube",
+    "vimeo",
+    "dailymotion",
+    "twitch",
+    "soundcloud",
+    "bandcamp",
+    "bitchute",
+    "odysee",
+    "lbry",
+    "rumble",
+    "nebula",
+    "floatplane",
+    "mediaccc",
+    "ted",
+)
+
+
+def claims_video_host(url):
+    """True when a VIDEO-FIRST host recognizes the URL.
+
+    The question the create page asks before it moves the mode chip for you.
+    Narrower than `claims_url` on purpose: see `_VIDEO_FIRST_EXTRACTORS`."""
+    name = matching_extractor(url)
+    if not name:
+        return False
+    low = name.lower()
+    return any(low.startswith(v) or low == v for v in _VIDEO_FIRST_EXTRACTORS)
+
+
+def matching_extractor(url):
+    """The name of the real yt-dlp extractor that claims this URL, or None."""
+    if _yt_dlp() is None:
+        return None
+    try:
+        extractor = importlib.import_module("yt_dlp.extractor")
+        classes = extractor.gen_extractor_classes()
+    except Exception:
+        return None
+    for ie in classes:
+        try:
+            name = ie.IE_NAME
+            if name and name != "generic" and ie.suitable(url):
+                return str(name)
+        except Exception:
+            continue
+    return None
+
+
 def claims_url(url):
     """True when a REAL yt-dlp extractor (anything but the catch-all
     ``generic``) recognizes the URL. False when yt-dlp is absent — the

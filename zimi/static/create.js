@@ -1435,7 +1435,7 @@ function _renderCreateModes() {
         (on ? ' active' : '') + (live ? '' : ' disabled') + '"' +
         (live ? '' : ' disabled title="' + escAttr(why) + '"') +
         ' aria-selected="' + (on ? 'true' : 'false') + '"' +
-        ' onclick="_createSelectMode(\'' + def.id + '\')">' +
+        ' onclick="_createSelectMode(\'' + def.id + '\', true)">' +
         '<span class="create-chip-glyph">' + _CREATE_ICONS[def.id] + '</span>' +
         '<span class="create-chip-name">' + tH('create_mode_' + def.id) + '</span>' +
       '</button>';
@@ -1494,7 +1494,15 @@ function _createAvailabilityKey() {
     (_createViewerIsCreator() ? '1' : '0');
 }
 
-function _createSelectMode(id) {
+// Whether the person has moved the mode chip themselves. Once they have, the
+// probe stops moving it: the same rule the engine picker follows
+// (_createEngineTouched). Without it a decision the server disagrees with is
+// undoable — the chip springs back on the next probe, and every mode switch
+// re-probes (found in review before 1.9.0 was published).
+var _createModeTouched = false;
+
+function _createSelectMode(id, byHand) {
+  if (byHand) _createModeTouched = true;
   if (_createSelected === id) return;
   _createStashMode();
   _createSelected = id;
@@ -2029,7 +2037,8 @@ async function _createProbeSource() {
       // where the run's refusals go rather than in the preview box.
       _createPreview = null;
       _createFormError(data.error || t('create_error_generic'));
-    } else if (data.mode && data.mode !== mode && _createDef(data.mode) &&
+    } else if (data.mode && data.mode !== mode && !_createModeTouched &&
+        _createDef(data.mode) &&
         _createModeInList(_createVisibleModes(), data.mode)) {
       // The server looked and saw something else: a YouTube or PeerTube
       // address typed under Web page is a video, and yt-dlp said so. The

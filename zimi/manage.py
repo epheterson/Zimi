@@ -4097,14 +4097,19 @@ def _probe_video(source, limit):
 
 
 def _probe_claims_video(source):
-    """Whether a real yt-dlp extractor recognises the address. False when
-    yt-dlp is absent or the source is a list of addresses."""
+    """Whether this address belongs to a video-first host, so the create page
+    can move its own mode chip. False when yt-dlp is absent or the source is a
+    list of addresses.
+
+    Deliberately NOT `claims_url`, which is true for any yt-dlp extractor: a
+    CNN or BBC article matches one, because those pages embed a player, and
+    the page then refused to capture them as pages at all."""
     if not source or "\n" in str(source).strip():
         return False
     try:
-        from zimi.video import claims_url, video_available
+        from zimi.video import claims_video_host, video_available
 
-        return video_available() and claims_url(str(source).strip())
+        return video_available() and claims_video_host(str(source).strip())
     except Exception:
         log.debug("video claim check failed for %r", source, exc_info=True)
         return False
