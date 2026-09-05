@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.9.0] - 2026-09-04 — the Production Edition
+## [1.9.0] - 2026-09-04
 
 Zimi runs from a folder of ZIMs with no configuration, on a stick or a NAS or a fleet, and it makes ZIMs now.
 
