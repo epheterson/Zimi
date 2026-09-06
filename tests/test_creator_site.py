@@ -669,7 +669,13 @@ def test_interrupt_writes_a_valid_zim_of_what_was_captured(fixture_server, tmp_p
         said.append(message)
         if not fired and message.lstrip().startswith("[1/"):
             fired.append(True)
-            os.kill(os.getpid(), signal.SIGINT)
+            # raise_signal, not os.kill(getpid(), SIGINT). On Windows os.kill
+            # does not deliver a signal at all: it calls TerminateProcess with
+            # the number as an exit code, so this line used to kill the pytest
+            # interpreter outright, mid-suite, with no failure summary and no
+            # traceback. raise_signal runs the handler the test is about, on
+            # every platform.
+            signal.raise_signal(signal.SIGINT)
 
     info = crawler.create_site_zim(
         f"{BASE}/chain/0.html", out_dir=str(tmp_path), delay=0, progress=note
@@ -701,7 +707,9 @@ def zimit_docker(monkeypatch, tmp_path):
     def run(cmd, note, timeout=None):
         seen["runs"].append(cmd)
         note("crawl finished")
-        out_dir = cmd[cmd.index("-v") + 1].split(":")[0]
+        # rsplit: the separator is the LAST colon. A Windows host path starts
+        # "C:\\", and splitting on the first one leaves "C".
+        out_dir = cmd[cmd.index("-v") + 1].rsplit(":", 1)[0]
         with open(os.path.join(out_dir, "whatever.zim"), "wb") as fh:
             fh.write(b"ZIMITOUTPUT")
         return 0, ["crawl finished"]
@@ -800,7 +808,9 @@ def test_zimit_pull_is_announced_never_implicit(monkeypatch, tmp_path):
         if cmd[1] == "pull":
             note("Pulling from openzim/zimit")
             return 0, []
-        out_dir = cmd[cmd.index("-v") + 1].split(":")[0]
+        # rsplit: the separator is the LAST colon. A Windows host path starts
+        # "C:\\", and splitting on the first one leaves "C".
+        out_dir = cmd[cmd.index("-v") + 1].rsplit(":", 1)[0]
         with open(os.path.join(out_dir, "x.zim"), "wb") as fh:
             fh.write(b"Z")
         return 0, []

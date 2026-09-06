@@ -110,7 +110,11 @@ def test_update_under_new_dated_filename_badges_updated(tmp_path, monkeypatch):
     original_first_seen = _entry(server._zim_list_cache)["first_seen"]
     assert abs(original_first_seen - installed) < 2.0
 
-    # The update lands: old dated file replaced by a newer dated file.
+    # The update lands: old dated file replaced by a newer dated file. The
+    # updater releases the superseded edition's handles before unlinking it
+    # (Windows refuses to remove an open file); do the same here, or this
+    # stands in for a sequence the product does not use.
+    server.release_zim_handles([server._zim_short_name(os.path.basename(old_path))])
     os.remove(old_path)
     build_fixture_zim(str(zdir / "survival_en_2026-07.zim"))
     server.load_cache(force=False)  # new filename → cache miss → update-rename

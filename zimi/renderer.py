@@ -68,6 +68,7 @@ import posixpath
 import re
 import shutil
 import signal
+import sys
 import tempfile
 import threading
 import time
@@ -83,6 +84,7 @@ from zimi.creator import (
     _strip_scripts,
 )
 from zimi.zimwriter import (
+    guess_mime,
     _MAX_ASSET_BYTES,
     _MAX_ASSETS,
     _MAX_TOTAL_ASSET_BYTES,
@@ -1130,7 +1132,14 @@ class RenderedSession:
         self._driver_pid = None
         if not pid:
             return
-        for sig, grace in ((signal.SIGTERM, KILL_GRACE), (signal.SIGKILL, KILL_GRACE)):
+        # Windows has no SIGKILL, and naming it is enough to raise: this whole
+        # method was an AttributeError there, so a stalled browser could never
+        # be taken out on the one platform where the watchdog had never run.
+        # os.kill on Windows is TerminateProcess regardless of the number, so
+        # the second rung is the same rung — harmless, and the ladder stays one
+        # shape on both platforms.
+        hard = getattr(signal, "SIGKILL", signal.SIGTERM)
+        for sig, grace in ((signal.SIGTERM, KILL_GRACE), (hard, KILL_GRACE)):
             if not _process_alive(pid):
                 return
             try:
@@ -1892,6 +1901,38 @@ def shutdown_sessions():
             log.debug("could not kill a rendered session: %s", e)
 
 
+def _process_alive_windows(pid):
+    """Whether a pid is still running, asked the only way Windows allows.
+
+    Neither half of the POSIX answer exists here. os.WNOHANG is not defined,
+    and referring to it raises an AttributeError that the handler below it
+    does not catch, so this whole function was an exception on Windows and the
+    watchdog could never establish that anything had died. The fallback would
+    have been worse if it had been reached: os.kill on Windows does not send a
+    signal, it calls TerminateProcess with the number given — so the liveness
+    probe `os.kill(pid, 0)` would have killed the process it was asking about.
+
+    OpenProcess plus GetExitCodeProcess is the real question. STILL_ACTIVE is
+    259, which a process could in principle exit with; every implementation of
+    this check on this platform lives with that.
+    """
+    import ctypes
+
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    STILL_ACTIVE = 259
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+    if not handle:
+        return False  # gone, or never ours to ask about
+    try:
+        code = ctypes.c_ulong()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return False
+        return code.value == STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
+
+
 def _process_alive(pid):
     """Whether a pid is a process that is still RUNNING.
 
@@ -1899,6 +1940,8 @@ def _process_alive(pid):
     stays in the table as a zombie until somebody waits for it, and a zombie
     answers signal 0 exactly like a live process would. Asking without reaping
     is how "did the browser actually die?" gets the wrong answer forever."""
+    if sys.platform == "win32":
+        return _process_alive_windows(pid)
     try:
         reaped, _status = os.waitpid(pid, os.WNOHANG)
         if reaped == pid:
@@ -2129,8 +2172,7 @@ def _mimetype_of(response, url=""):
     mime = raw.split(";")[0].strip().lower()
     return (
         mime
-        or mimetypes.guess_type(urllib.parse.urlsplit(url).path)[0]
-        or ("application/octet-stream")
+        or guess_mime(urllib.parse.urlsplit(url).path)
     )
 
 
@@ -2191,7 +2233,7 @@ def _typed(headers, url):
     for name in headers or ():
         if str(name).strip().lower() == "content-type":
             return headers
-    guessed, _encoding = mimetypes.guess_type(urllib.parse.urlsplit(url).path)
+    guessed = guess_mime(urllib.parse.urlsplit(url).path, fallback=None)
     if not guessed:
         return headers
     out = dict(headers or {})

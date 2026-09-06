@@ -3277,11 +3277,22 @@ def _post_download_finalize(dl):
                     and f != dl["filename"]
                 ):
                     try:
+                        # Release the superseded edition's pooled handles
+                        # first. Windows will not unlink a file anyone still
+                        # has open, and the reader who triggered this update
+                        # has almost certainly had it open — so this remove
+                        # failed there, into an `except OSError: pass`, and
+                        # every update silently left its predecessor on disk.
+                        # A no-op on POSIX.
+                        try:
+                            _srv.release_zim_handles([_srv._zim_short_name(f)])
+                        except Exception as e:
+                            log.debug("Handle release before removing %s: %s", f, e)
                         os.remove(os.path.join(_srv.ZIM_DIR, f))
                         removed_versions.append(f)
                         log.info("Removed old version: %s", f)
-                    except OSError:
-                        pass
+                    except OSError as e:
+                        log.warning("Could not remove old version %s: %s", f, e)
         except OSError:
             pass
     # Register ONLY the new file. The old shape here — load_cache(force=True)

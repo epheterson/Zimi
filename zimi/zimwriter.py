@@ -20,21 +20,39 @@ thread. Source READS (article HTML and asset bytes) still touch libzim
 
 import colorsys
 import contextlib
+import gc
 import datetime
 import hashlib
 import html as _html
 import io
 import json
 import logging
+import mimetypes
 import os
 import pathlib
 import posixpath
 import re
+import shutil
 import struct
 import threading
 import time
 import urllib.parse
 import zlib
+
+# Every mimetype Zimi writes into a ZIM comes from here, and deliberately not
+# from mimetypes.guess_type. That module's table is seeded from the OS: on
+# Windows mimetypes.init() reads HKEY_CLASSES_ROOT, so the answer for .zip or
+# .css depends on what the machine has installed, and a ZIM built there could
+# carry a type no other machine would produce. A private MimeTypes() copies
+# the table Python ships and nothing else, so the same capture has the same
+# entry types on every platform.
+_MIME_DB = mimetypes.MimeTypes()
+
+
+def guess_mime(name, fallback="application/octet-stream"):
+    """The mimetype of a filename or URL path, identically on every OS."""
+    return _MIME_DB.guess_type(name)[0] or fallback
+
 
 import zimi.server as _srv
 
@@ -1596,6 +1614,56 @@ def make_asset_item(path, mimetype, data):
     return cls(path, path.rsplit("/", 1)[-1], data, mimetype=mimetype, front=False)
 
 
+def _sweep_creator_scratch(tmp_path):
+    """Remove the index scratch libzim leaves beside the file it is building.
+
+    libzim writes `<output>_title.idx`, `<output>_fulltext.idx` and a `.tmp`
+    for each, then unlinks them as it closes — which works only where the OS
+    lets a process unlink a file it still has open. Windows does not, so every
+    capture left four files of litter next to the ZIM, and a cancelled capture
+    left them in a directory the caller had been promised was untouched.
+
+    Every name is derived from tmp_path, so this can only ever remove Zimi's
+    own scratch for this one build, never a neighbouring ZIM."""
+    directory = os.path.dirname(tmp_path) or "."
+    stem = os.path.basename(tmp_path) + "_"
+    try:
+        left = [n for n in os.listdir(directory) if n.startswith(stem)]
+    except OSError:
+        return
+    if not left:
+        return
+    # The indexer's own handles close as its objects are finalized, which does
+    # not always happen before this returns: the first sweep on Windows took
+    # three of the four files and left the fulltext index, still mapped. So
+    # collect first, and give the stragglers a moment. The waits only happen
+    # when something is genuinely still held, so a POSIX build, where the
+    # unlink always succeeds first time, pays nothing for them.
+    gc.collect()
+    for delay in (0, 0.05, 0.1, 0.2, 0.4):
+        if delay:
+            time.sleep(delay)
+        stuck = []
+        for name in left:
+            target = os.path.join(directory, name)
+            try:
+                # A Xapian index is a directory, not a file: os.remove cannot
+                # delete one, and for as long as this only called os.remove
+                # the scratch survived every sweep it was given.
+                if os.path.isdir(target):
+                    shutil.rmtree(target)
+                else:
+                    os.remove(target)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                stuck.append(name)
+        left = stuck
+        if not left:
+            return
+    log.debug("index scratch still held after %s: %s", tmp_path, left)
+
+
 @contextlib.contextmanager
 def atomic_zim_creator(out_path, language="eng"):
     """Yield a libzim Creator writing to ``<out_path>.tmp``; rename over
@@ -1605,6 +1673,13 @@ def atomic_zim_creator(out_path, language="eng"):
     from libzim.writer import Creator
 
     tmp_path = out_path + ".tmp"
+    # Before, as well as after. The sweep after a build is best effort by
+    # nature: libzim's index files close when its Creator is finalized, and
+    # while the CALLER's `with` is still open the caller holds a reference,
+    # so on Windows the last of them can outlive this function. Sweeping on
+    # the way in means a directory never carries more than one build's
+    # scratch, and the next build clears the last one's.
+    _sweep_creator_scratch(tmp_path)
     try:
         # Creator takes a Path; tmp_path stays a str for os.replace below.
         with Creator(pathlib.Path(tmp_path)).config_indexing(True, language) as creator:
@@ -1617,6 +1692,8 @@ def atomic_zim_creator(out_path, language="eng"):
         except OSError:
             pass
         raise
+    finally:
+        _sweep_creator_scratch(tmp_path)
 
 
 # ── provenance ──────────────────────────────────────────────────────────────

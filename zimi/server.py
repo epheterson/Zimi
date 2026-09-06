@@ -3027,6 +3027,34 @@ def register_zim_file(path, removed_files=()):
     return True
 
 
+def release_zim_handles(names):
+    """Drop the pooled archive and index handles for these short names.
+
+    Two callers, for what is one reason on POSIX and two on Windows.
+    unregister_zim_file evicts so that no future read uses a mapping of a file
+    that is gone. The delete route evicts BEFORE it unlinks, because Windows
+    refuses to remove a file that anyone still holds open, and a pooled libzim
+    Archive is exactly that: deleting a ZIM there answered 500 "Failed to
+    delete file" every time. On POSIX the early release changes nothing —
+    unlinking an open file has always worked, the inode simply outlives it.
+
+    Best effort by construction: a search thread already inside a read holds
+    its own reference, which no eviction can take away. It finishes in
+    milliseconds, and the caller reports the failure honestly if it has not.
+    """
+    with _archive_lock:
+        for n in names:
+            _archive_pool.pop(n, None)
+    with _suggest_pool_lock:
+        for n in names:
+            _suggest_pool.pop(n, None)
+            _suggest_zim_locks.pop(n, None)
+    with _fts_pool_lock:
+        for n in names:
+            _fts_pool.pop(n, None)
+            _fts_zim_locks.pop(n, None)
+
+
 def unregister_zim_file(filename):
     """Incrementally drop ONE just-deleted ZIM from the live library.
 
@@ -3093,17 +3121,7 @@ def unregister_zim_file(filename):
             # from the dicts only stops FUTURE use: a search thread already
             # holding one keeps a valid mapping of an unlinked file until it
             # finishes, which is why this needs no per-ZIM lock.
-            with _archive_lock:
-                for n in gone:
-                    _archive_pool.pop(n, None)
-            with _suggest_pool_lock:
-                for n in gone:
-                    _suggest_pool.pop(n, None)
-                    _suggest_zim_locks.pop(n, None)
-            with _fts_pool_lock:
-                for n in gone:
-                    _fts_pool.pop(n, None)
-                    _fts_zim_locks.pop(n, None)
+            release_zim_handles(gone)
         # Invalidates /w/ entry ETags and the interlang resolution caches —
         # cross-ZIM answers genuinely change when a ZIM leaves.
         _cache_generation += 1
@@ -3274,7 +3292,54 @@ def _cli_restore(path, overwrite):
         )
 
 
+# The first-run banner is drawn in box characters, and a console that cannot
+# encode one raises rather than substituting it. Windows redirects stdout at
+# the locale encoding (cp1252, no box drawing), so on Windows the very first
+# `zimi serve > log.txt` — the run where no password is set and the setup key
+# has to be shown — died with UnicodeEncodeError before it ever reached READY.
+_BANNER_ASCII = {"┌": "+", "└": "+", "─": "-", "│": "|"}
+
+
+def _stdio_takes(text, stream=None):
+    """Whether this stream can represent `text` at its own encoding."""
+    stream = stream if stream is not None else sys.stdout
+    encoding = getattr(stream, "encoding", None) or "utf-8"
+    try:
+        text.encode(encoding)
+    except (UnicodeEncodeError, LookupError):
+        return False
+    return True
+
+
+def _printable(text):
+    """The same banner in characters this console will actually take."""
+    if _stdio_takes(text):
+        return text
+    for drawn, plain in _BANNER_ASCII.items():
+        text = text.replace(drawn, plain)
+    return text
+
+
+def _make_stdio_resilient():
+    """No character in any message may ever kill the server.
+
+    _printable keeps the banner legible; this is the layer under it, for the
+    log line, the traceback, and the message nobody thought about. Only the
+    error handler changes, never the encoding: a console that asked for cp1252
+    still gets cp1252, and an unrepresentable character arrives as an escape
+    rather than as an exception."""
+    for stream in (sys.stdout, sys.stderr):
+        encoding = (getattr(stream, "encoding", "") or "").lower().replace("-", "")
+        if encoding in ("utf8", "utf8mb3", "utf8mb4"):
+            continue
+        try:
+            stream.reconfigure(errors="backslashreplace")
+        except (AttributeError, OSError, ValueError):
+            pass
+
+
 def main():
+    _make_stdio_resilient()
     parser = argparse.ArgumentParser(description="ZIM Knowledge Base Reader")
     sub = parser.add_subparsers(dest="command")
 
@@ -3752,16 +3817,18 @@ def main():
                 key = _mng.ensure_setup_key()
                 log.info("Library management enabled — no admin password set yet.")
                 print(
-                    "\n"
-                    "  ┌─ Zimi first-run setup ──────────────────────────────\n"
-                    "  │  Set the admin password from this machine, or from\n"
-                    "  │  another device using this one-time setup key:\n"
-                    "  │\n"
-                    f"  │      SETUP KEY:  {key}\n"
-                    "  │\n"
-                    "  │  (also saved to the setup-key file in the data dir;\n"
-                    "  │   it stops working the moment a password is set)\n"
-                    "  └─────────────────────────────────────────────────────\n",
+                    _printable(
+                        "\n"
+                        "  ┌─ Zimi first-run setup ──────────────────────────────\n"
+                        "  │  Set the admin password from this machine, or from\n"
+                        "  │  another device using this one-time setup key:\n"
+                        "  │\n"
+                        f"  │      SETUP KEY:  {key}\n"
+                        "  │\n"
+                        "  │  (also saved to the setup-key file in the data dir;\n"
+                        "  │   it stops working the moment a password is set)\n"
+                        "  └─────────────────────────────────────────────────────\n",
+                    ),
                     flush=True,
                 )
         from zimi import sso as _sso

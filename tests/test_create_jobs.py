@@ -268,7 +268,30 @@ def test_an_interrupted_write_leaves_no_zim_under_its_real_name(tmp_path):
 
 @pytest.fixture
 def quick_watchdog(monkeypatch):
+    """A stall window short enough that a wedged job fails inside a test.
+
+    Only for tests asserting that a silent job IS caught. A test asserting the
+    opposite needs the window wide (see patient_watchdog): the two directions
+    have opposite tolerances for a slow machine."""
     monkeypatch.setattr(manage, "CREATE_STALL_SECONDS", 0.1)
+    monkeypatch.setattr(manage, "CREATE_STALL_TICK", 0.02)
+
+
+@pytest.fixture
+def patient_watchdog(monkeypatch):
+    """A stall window far wider than the heartbeat under test.
+
+    Proving a talking job is left alone means proving a negative, and the only
+    thing separating "the watchdog respects heartbeats" from "the machine was
+    fast" is the margin between them. At a 0.1s window and a 0.02s heartbeat
+    that margin is five ticks of scheduler noise, and the macOS Intel runner
+    ate it during the 1.9.0 release build: one late sleep, and the watchdog was
+    right to call a stall.
+
+    So the heartbeat stays at 0.02s and the window goes to 2s: a hundredfold
+    margin, still a 0.4s test. A regression here has to hold the watchdog off
+    for two seconds, which no scheduler hiccup does."""
+    monkeypatch.setattr(manage, "CREATE_STALL_SECONDS", 2.0)
     monkeypatch.setattr(manage, "CREATE_STALL_TICK", 0.02)
 
 
@@ -295,7 +318,7 @@ def test_a_job_that_stops_reporting_is_failed_not_spun(
 
 
 def test_a_job_that_keeps_reporting_is_left_alone(
-    tmp_path, monkeypatch, quick_watchdog
+    tmp_path, monkeypatch, patient_watchdog
 ):
     def chatty_run(job, opts):
         for _ in range(20):
@@ -934,3 +957,41 @@ def test_a_video_host_is_video_and_a_page_host_is_not():
     ):
         assert not claims_video_host(u), u
         assert claims_url(u), u
+
+
+def test_the_creator_sweeps_only_its_own_index_scratch(tmp_path):
+    """libzim's scratch goes, the neighbours stay.
+
+    The sweep exists because libzim unlinks `<output>_title.idx` and friends
+    as it closes, which only works where the OS permits unlinking an open
+    file. Windows does not, so a capture left four scratch files beside every
+    ZIM it made. Since the sweep deletes by prefix, what it must never do is
+    reach a file belonging to anything else — including a ZIM whose name this
+    one is a prefix of."""
+    from zimi.zimwriter import _sweep_creator_scratch
+
+    out = tmp_path / "site.zim.tmp"
+    scratch = [
+        tmp_path / "site.zim.tmp_title.idx.tmp",
+        tmp_path / "site.zim.tmp_fulltext.idx",
+    ]
+    # Xapian keeps a database in a DIRECTORY. Sweeping with os.remove alone
+    # left every one of them behind, which is what kept the scratch alive on
+    # Windows through three rounds of fixing the wrong half of this.
+    scratch_dir = tmp_path / "site.zim.tmp_title.idx"
+    scratch_dir.mkdir()
+    (scratch_dir / "iamglass").write_bytes(b"x")
+    keep = [
+        out,
+        tmp_path / "site.zim",
+        tmp_path / "site.zim.tmp2_title.idx",  # a different build
+        tmp_path / "other.zim.tmp_title.idx",  # somebody else's scratch
+    ]
+    for f in scratch + keep:
+        f.write_bytes(b"x")
+
+    _sweep_creator_scratch(str(out))
+
+    assert [f.name for f in scratch if f.exists()] == []
+    assert not scratch_dir.exists(), "an index directory survived the sweep"
+    assert sorted(f.name for f in keep if f.exists()) == sorted(f.name for f in keep)

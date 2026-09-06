@@ -48,6 +48,7 @@ from typing import Any
 import zimi.server as _srv
 from zimi.blocklist import blocked_phrase
 from zimi.zimwriter import (
+    guess_mime,
     _CSS_URL_RE,
     _HREF_RE,
     _REL_RE,
@@ -231,7 +232,7 @@ def _page_title_from_html(text, fallback):
 
 
 def _guess_mime(name):
-    return mimetypes.guess_type(name)[0] or "application/octet-stream"
+    return guess_mime(name)
 
 
 def _fmt_bytes(n):

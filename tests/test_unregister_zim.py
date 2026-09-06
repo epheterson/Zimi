@@ -67,13 +67,24 @@ def _short(filename):
 # ---------------------------------------------------------------------------
 
 
+def _delete_from_disk(path):
+    """Remove a ZIM the way every real caller of unregister_zim_file does.
+
+    Its contract is "the file is already gone", and the callers get there by
+    releasing the pooled handles first, because Windows refuses to unlink a
+    file anyone still has open. A bare os.remove here would set up a sequence
+    the product does not use, and fail on the platform that enforces it."""
+    server.release_zim_handles([server._zim_short_name(os.path.basename(path))])
+    os.remove(path)
+
+
 def test_unregister_drops_the_zim_without_a_rescan(tmp_path, monkeypatch):
     zdir = _setup_library(tmp_path, monkeypatch)
     alpha, beta = _short(ALPHA), _short(BETA)
     assert alpha in server._zim_files_cache
     gen_before = server._cache_generation
 
-    os.remove(str(zdir / ALPHA))
+    _delete_from_disk(str(zdir / ALPHA))
     monkeypatch.setattr(server, "load_cache", _no_rescan)
     # A removal needs no metadata, so nothing may be opened or extracted.
     monkeypatch.setattr(
@@ -97,7 +108,7 @@ def test_unregister_drops_the_disk_cache_row(tmp_path, monkeypatch):
     zdir = _setup_library(tmp_path, monkeypatch)
     assert ALPHA in (server._load_disk_cache() or {})
 
-    os.remove(str(zdir / ALPHA))
+    _delete_from_disk(str(zdir / ALPHA))
     monkeypatch.setattr(server, "load_cache", _no_rescan)
     assert server.unregister_zim_file(ALPHA) is True
 
@@ -116,7 +127,7 @@ def test_unregister_evicts_every_pooled_handle(tmp_path, monkeypatch):
         locks[alpha] = threading.Lock()
         locks[beta] = threading.Lock()
 
-    os.remove(str(zdir / ALPHA))
+    _delete_from_disk(str(zdir / ALPHA))
     monkeypatch.setattr(server, "load_cache", _no_rescan)
     assert server.unregister_zim_file(ALPHA) is True
 
@@ -135,7 +146,7 @@ def test_unregister_drops_the_domain_claims(tmp_path, monkeypatch):
         interlang, "_domain_zim_map", {"alpha.example": alpha, "beta.example": beta}
     )
 
-    os.remove(str(zdir / ALPHA))
+    _delete_from_disk(str(zdir / ALPHA))
     monkeypatch.setattr(server, "load_cache", _no_rescan)
     assert server.unregister_zim_file(ALPHA) is True
 
@@ -161,7 +172,7 @@ def test_unregister_of_a_shadowed_duplicate_leaves_the_library_alone(
     files = server._zim_files_cache or {}
     assert files[alpha] == str(zdir / ALPHA)
 
-    os.remove(str(sub / ALPHA))
+    _delete_from_disk(str(sub / ALPHA))
     monkeypatch.setattr(server, "load_cache", _no_rescan)
     assert server.unregister_zim_file(ALPHA) is True
 
@@ -180,7 +191,7 @@ def test_unregister_defers_when_a_shadowed_copy_would_be_promoted(
     sub = zdir / "backups"
     sub.mkdir()
     shutil.copy(str(zdir / ALPHA), str(sub / ALPHA))
-    os.remove(str(zdir / ALPHA))
+    _delete_from_disk(str(zdir / ALPHA))
 
     monkeypatch.setattr(server, "load_cache", _no_rescan)
     assert server.unregister_zim_file(ALPHA) is False
@@ -252,6 +263,43 @@ class TestDeleteRoute(unittest.TestCase):
                 return resp.status, json.loads(resp.read())
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read() or b"{}")
+
+    def test_delete_releases_the_archive_before_it_unlinks(self):
+        """Ordering, asserted where the OS does not assert it for us.
+
+        Windows refuses to unlink a file anyone still has open, so deleting a
+        ZIM answered 500 "Failed to delete file" there every time: the route
+        called os.remove first and dropped the pooled libzim Archive after.
+        POSIX does not care — the inode outlives the name — so this bug was
+        invisible on every runner that had ever executed this suite.
+
+        The fix is an ordering, so the test is an ordering: at the moment
+        os.remove is called, the pool must no longer hold this ZIM."""
+        alpha = _short(ALPHA)
+        # Open it for real first, so there is a pooled handle to release.
+        status, _ = self._request("/search?q=water&limit=5")
+        self.assertEqual(status, 200)
+        self.assertIn(alpha, server._archive_pool)
+
+        pooled_at_unlink = []
+        real_remove = os.remove
+
+        def watching_remove(path):
+            pooled_at_unlink.append(alpha in server._archive_pool)
+            return real_remove(path)
+
+        os.remove = watching_remove
+        try:
+            status, data = self._request("/manage/delete", {"filename": ALPHA})
+        finally:
+            os.remove = real_remove
+        self.assertEqual(status, 200, data)
+        self.assertEqual(
+            pooled_at_unlink,
+            [False],
+            "the delete route unlinked the file while its archive was still "
+            "pooled — Windows returns 500 for exactly this",
+        )
 
     def test_delete_never_rescans_and_the_zim_disappears(self):
         alpha = _short(ALPHA)

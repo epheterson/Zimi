@@ -19,7 +19,9 @@ from zimi import search as _search  # noqa: E402
 class LoadavgThrottleTests(unittest.TestCase):
     def test_no_sleep_when_load_below_threshold(self):
         with (
-            mock.patch.object(os, "getloadavg", return_value=(0.1, 0.1, 0.1)),
+            mock.patch.object(
+                os, "getloadavg", return_value=(0.1, 0.1, 0.1), create=True
+            ),
             mock.patch.object(os, "cpu_count", return_value=4),
             mock.patch.object(time, "sleep") as sleep_mock,
         ):
@@ -30,7 +32,9 @@ class LoadavgThrottleTests(unittest.TestCase):
         # 5-min load 4.0 / 4 cpus = 1.0 ratio. Above 0.8 threshold by 0.2.
         # Expected sleep = (1.0 - 0.8) * 2.0 = 0.4s.
         with (
-            mock.patch.object(os, "getloadavg", return_value=(4.0, 4.0, 4.0)),
+            mock.patch.object(
+                os, "getloadavg", return_value=(4.0, 4.0, 4.0), create=True
+            ),
             mock.patch.object(os, "cpu_count", return_value=4),
             mock.patch.object(time, "sleep") as sleep_mock,
         ):
@@ -42,7 +46,9 @@ class LoadavgThrottleTests(unittest.TestCase):
     def test_sleep_capped_at_max(self):
         # Massive overload: ratio = 10. Cap to max_sleep.
         with (
-            mock.patch.object(os, "getloadavg", return_value=(40.0, 40.0, 40.0)),
+            mock.patch.object(
+                os, "getloadavg", return_value=(40.0, 40.0, 40.0), create=True
+            ),
             mock.patch.object(os, "cpu_count", return_value=4),
             mock.patch.object(time, "sleep") as sleep_mock,
         ):
@@ -53,7 +59,12 @@ class LoadavgThrottleTests(unittest.TestCase):
     def test_no_op_when_getloadavg_unavailable(self):
         # Simulate Windows: AttributeError on os.getloadavg.
         with (
-            mock.patch.object(os, "getloadavg", side_effect=AttributeError),
+            # create=True: on Windows the attribute is genuinely absent, and
+            # patch.object will not patch what is not there — so the test
+            # named for simulating Windows was the one Windows failed.
+            mock.patch.object(
+                os, "getloadavg", side_effect=AttributeError, create=True
+            ),
             mock.patch.object(time, "sleep") as sleep_mock,
         ):
             _search._loadavg_throttle()
@@ -62,7 +73,9 @@ class LoadavgThrottleTests(unittest.TestCase):
     def test_disabled_via_env_var(self):
         with (
             mock.patch.dict(os.environ, {"ZIMI_INDEX_THROTTLE": "0"}, clear=False),
-            mock.patch.object(os, "getloadavg", return_value=(99.0, 99.0, 99.0)),
+            mock.patch.object(
+                os, "getloadavg", return_value=(99.0, 99.0, 99.0), create=True
+            ),
             mock.patch.object(os, "cpu_count", return_value=1),
             mock.patch.object(time, "sleep") as sleep_mock,
         ):
