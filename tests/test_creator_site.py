@@ -669,7 +669,13 @@ def test_interrupt_writes_a_valid_zim_of_what_was_captured(fixture_server, tmp_p
         said.append(message)
         if not fired and message.lstrip().startswith("[1/"):
             fired.append(True)
-            os.kill(os.getpid(), signal.SIGINT)
+            # raise_signal, not os.kill(getpid(), SIGINT). On Windows os.kill
+            # does not deliver a signal at all: it calls TerminateProcess with
+            # the number as an exit code, so this line used to kill the pytest
+            # interpreter outright, mid-suite, with no failure summary and no
+            # traceback. raise_signal runs the handler the test is about, on
+            # every platform.
+            signal.raise_signal(signal.SIGINT)
 
     info = crawler.create_site_zim(
         f"{BASE}/chain/0.html", out_dir=str(tmp_path), delay=0, progress=note

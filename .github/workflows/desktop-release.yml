@@ -90,9 +90,13 @@ jobs:
           # on BT bundling.
           pip install "libtorrent==2.0.*" || echo "::warning::no libtorrent wheel for this platform — this build runs HTTP-only"
 
+      # Pinned below 3.52, which is where PyGObject started requiring
+      # girepository-2.0 — a library that does not exist on 22.04 at any
+      # package name. This runner is pinned to 22.04 for the snap base, so an
+      # unpinned install resolves to a version that cannot build here.
       - name: Install PyGObject (Linux)
         if: runner.os == 'Linux'
-        run: pip install PyGObject
+        run: pip install "PyGObject<3.52"
 
       - name: Install pytest
         run: pip install pytest

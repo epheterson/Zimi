@@ -150,16 +150,20 @@ jobs:
           # platform means the build ships HTTP-only, never that it fails.
           pip install "libtorrent==2.0.*" || echo "::warning::no libtorrent wheel for this platform"
 
+      # Pinned below 3.52, which is where PyGObject started requiring
+      # girepository-2.0 — a library that does not exist on 22.04 at any
+      # package name. This runner is pinned to 22.04 for the snap base, so an
+      # unpinned install resolves to a version that cannot build here.
       - name: Install PyGObject (Linux)
         if: runner.os == 'Linux'
-        run: pip install PyGObject
+        run: pip install "PyGObject<3.52"
 
       # -v, not -q, and the reason is specific: a hard interpreter crash prints
       # no failure summary at all. The Windows leg of the 1.9.0 tag died at 30%
       # of the suite with nothing but an exit code, and the only way to know
       # which test was running is to have streamed its name before it ran.
       - name: Run the test suite as the desktop build runs it
-        run: python -m pytest tests/ -v -rf
+        run: python -m pytest tests/ -v -rf --tb=short
 
       # PyInstaller on the runner the AppImage and snap are actually built on.
       # This catches a bundle that stops building at all, which is the other
