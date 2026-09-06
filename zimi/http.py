@@ -2026,7 +2026,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._json(200, build_openapi())
 
             elif parsed.path == "/health":
-                zim_count = len(_srv.get_zim_files())
+                # The server's own count, not the caller's view of it: this is
+                # an unauthenticated monitoring endpoint, and a health check
+                # that answers 0 about a library of 73 is worse than no health
+                # check at all.
+                zim_count = _srv.server_zim_count()
                 return self._json(
                     200,
                     {

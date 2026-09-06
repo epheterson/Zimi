@@ -2164,6 +2164,22 @@ def get_zim_files():
     return {k: v for k, v in _zim_files_cache.items() if k in allow}
 
 
+def server_zim_count():
+    """How many ZIMs this SERVER has, ignoring who is asking.
+
+    get_zim_files() filters by the caller's allowlist, which is right for
+    every read path and wrong for a server-level fact. /health used it, so
+    from 1.8.0 — when per-user allowlists arrived and nothing revisited the
+    callers — an unauthenticated health check on any instance that restricts
+    anonymous access reported zim_count 0 while the library served 73. Three
+    releases of a monitoring endpoint answering "empty" about a full library.
+    """
+    global _zim_files_cache
+    if _zim_files_cache is None:
+        _zim_files_cache = _scan_zim_files()
+    return len(_zim_files_cache)
+
+
 def open_archive(path):
     """Open a ZIM archive."""
     return Archive(path)
