@@ -232,6 +232,35 @@ var CREATE_PART_INSTALL = {
   sidecar: 'zimi import --setup'
 };
 
+// Where this server keeps its sidecar, once a probe has said so.
+var _createSidecarDir = null;
+
+// Shell-quote a path for a command someone will paste into a terminal.
+//
+// Single quotes, not double: inside double quotes a shell still expands $HOME
+// and backticks, so a data dir containing either would paste as a different
+// path. Bare when the path has nothing a shell reads.
+function _createShellQuote(text) {
+  if (/^[A-Za-z0-9_@%+=:,.\/-]+$/.test(text)) return text;
+  return "'" + text.replace(/'/g, "'\\''") + "'";
+}
+
+// The sidecar command, aimed at THIS server's data dir.
+//
+// `zimi import --setup` resolves its own data dir from the shell it runs in,
+// so run from a terminal that lacks the service's config it installs into a
+// different library's state directory: a clean install, a happy log line, and
+// an engine still greyed out with nothing to say why. Naming the directory
+// makes the pasted command land where the server actually looks.
+function _createSidecarCommand() {
+  var base = CREATE_PART_INSTALL.sidecar;
+  if (!_createSidecarDir) return base;
+  // The server reports the venv; --data-dir wants the directory holding it.
+  var dir = _createSidecarDir.replace(/[\\/]tools[\\/]warc2zim[\\/]?$/, '');
+  if (!dir || dir === _createSidecarDir) return base;
+  return base + ' --data-dir ' + _createShellQuote(dir);
+}
+
 var CREATE_FIELDS = {
   engine: {
     id: 'create-engine', control: 'engine', label: 'create_engine',
@@ -1705,7 +1734,9 @@ function _createEngineHtml(f) {
 function _createAddCommands(into, capability) {
   var parts = CREATE_ENGINE_NEEDS[capability] || [];
   for (var i = 0; i < parts.length; i++) {
-    var cmd = CREATE_PART_INSTALL[parts[i]];
+    var cmd = parts[i] === 'sidecar'
+      ? _createSidecarCommand()
+      : CREATE_PART_INSTALL[parts[i]];
     if (cmd && _createPartReady(parts[i]) === false && into.indexOf(cmd) < 0) into.push(cmd);
   }
 }
@@ -2369,6 +2400,9 @@ function _createIngest(data) {
     _createImportReady = data.import_ready;
     _createSidecarReady = data.import_ready;
     _createRemember('sidecar', data.import_ready);
+  }
+  if (typeof data.sidecar_dir === 'string' && data.sidecar_dir) {
+    _createSidecarDir = data.sidecar_dir;
   }
   if (typeof data.browser_ready === 'boolean') {
     _createBrowserReady = data.browser_ready;

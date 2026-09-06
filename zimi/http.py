@@ -3026,18 +3026,97 @@ class ZimHandler(BaseHTTPRequestHandler):
             return False
         return _is_trusted_net(ip)
 
+    # Headers that mean "somebody forwarded this request". Presence alone
+    # disqualifies a claim of being ON the host, so the list is deliberately
+    # broader than the ones _client_ip actually reads: an unknown proxy that
+    # announces itself in any of these is still a proxy.
+    _FORWARDED_HEADERS = (
+        "X-Forwarded-For",
+        "X-Real-IP",
+        "Forwarded",
+        "CF-Connecting-IP",
+        "True-Client-IP",
+    )
+
+    def _was_forwarded(self):
+        """True when something in front of Zimi passed this request along.
+
+        Presence of the header is the whole test. Its VALUE cannot be trusted
+        — that is why _client_ip refuses a forwarded claim of a trusted-tier
+        address — but the fact that a hop announced itself is information the
+        hop had no reason to fake, and it is enough to know this request did
+        not come straight off the local network."""
+        return any(self.headers.get(h) for h in self._FORWARDED_HEADERS)
+
+    def _is_direct_private_client(self):
+        """A private-network peer that reached Zimi directly.
+
+        `_is_private_client` asks about the RESOLVED address, and behind a
+        reverse proxy on the same host that resolution falls back to the
+        proxy's own loopback address — so every client of that proxy, from
+        anywhere on the internet, resolves as private. That is tolerable for
+        the things the private tier gates (rate limits, peer sharing) and not
+        tolerable for handing someone the admin of a passwordless instance,
+        which is what `lan_admin` does.
+
+        So `lan_admin` asks this instead: a private peer, and nothing in
+        front. It is a narrower question, and it is the one the setting's own
+        wording promises."""
+        return not self._was_forwarded() and self._is_private_client()
+
     def _is_loopback_client(self):
         """True ONLY when the peer is the machine running Zimi (127.0.0.0/8,
         ::1). This is the bootstrap trust boundary — being ON the host is the
         one proof of ownership that needs no secret. A LAN or tailnet peer is
         'private' but not the host, and must present the setup key instead
         (GHSA-5mw2-53vv-9pw6: private-tier was too wide a door for claiming
-        the first admin password)."""
+        the first admin password).
+
+        A forwarded request is never the host, whatever the socket says. This
+        is the shape that reopened the advisory: a reverse proxy on the SAME
+        machine — the standard NAS deployment — connects from 127.0.0.1, and
+        _client_ip correctly refuses to let the forwarded header claim a
+        trusted-tier address, so it falls back to the direct peer. That peer
+        is loopback, and every remote client behind such a proxy read as being
+        on the host and skipped the setup key entirely.
+
+        So the question is asked of the SOCKET, not of the resolved client IP,
+        and only when nothing forwarded the request. The host's own browser
+        reaching Zimi through its own proxy is caught by this too, and that is
+        correct: it is indistinguishable from any other client of that proxy,
+        and whoever is on the host can read the setup key out of the log.
+
+        What this does NOT close, because loopback-as-proof cannot: a same-host
+        forwarder that sends no header at all — `socat`, or an nginx
+        `proxy_pass` with no `proxy_set_header` — still presents a bare
+        loopback peer, and there is nothing in the request to tell it apart
+        from the owner at the keyboard. Every mainstream reverse proxy sets a
+        forwarded header by default, so this covers the deployments people
+        actually have; closing the rest means retiring loopback-as-proof and
+        asking even the host for the setup key, which is a product decision
+        rather than a fix."""
+        if self._was_forwarded():
+            return False
         try:
-            ip = ipaddress.ip_address(self._client_ip())
+            ip = ipaddress.ip_address(self._socket_peer_ip())
         except ValueError:
             return False
         return ip.is_loopback
+
+    def _socket_peer_ip(self):
+        """The address on the other end of this TCP connection, forwarded
+        headers ignored.
+
+        A seam, and a small one on purpose: `client_address` is set per
+        connection by socketserver, so a test cannot substitute it without
+        fighting the instance attribute. Everything that asks "who is
+        physically connected" goes through here, which is also what lets the
+        bootstrap tests model a genuinely remote peer instead of stubbing the
+        function whose answer they are checking."""
+        try:
+            return self.client_address[0]
+        except (IndexError, TypeError):
+            return ''
 
     def _peer_share_allowed(self):
         """True if this client may pull whole ZIMs from /dl/.

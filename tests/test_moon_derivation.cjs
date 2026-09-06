@@ -109,5 +109,73 @@ const nw = vm.runInContext('_moonPhase(new Date(Date.UTC(2026, 0, 18, 19, 0)))',
 check(full.illumination > 97, 'known full moon reads > 97% (' + full.illumination + '%)');
 check(nw.illumination < 3, 'known new moon reads < 3% (' + nw.illumination + '%)');
 
+// ── 4. CORRECTNESS, not just agreement ──────────────────────────────────────
+//
+// Everything above checks that the four renderers compute the SAME tilt. They
+// did, and it was wrong for half of every month (issue #60): the sprite shades
+// from a Sun vector already flipped by the waxing flag, and chi carries that
+// same flip, so every waning moon was turned a further 180 degrees. The lit
+// limb sat on the wrong side and the maria were upside down. Four renderers
+// agreeing on one wrong number is exactly what a consistency test cannot see.
+//
+// The invariant with a known answer: put the Moon on the observer's meridian
+// at a quarter phase. The Sun is then roughly 90 degrees away along the
+// horizon, so the lit limb lies close to horizontal and the sprite — already
+// lit on the correct side — needs almost no rotation. True at BOTH quarters.
+function haDeg(t, lon) {
+  const eq = vm.runInContext('_moonEqCoords(new Date(' + t + '))', sandbox);
+  const gmst = (280.46061837 + 360.98564736629 * (eq.JD - 2451545.0)) % 360;
+  let ha = ((gmst + lon) - eq.ra * 180 / Math.PI) % 360;
+  if (ha > 180) ha -= 360;
+  if (ha < -180) ha += 360;
+  return ha;
+}
+function phaseAt(t) {
+  return vm.runInContext('_moonPhase(new Date(' + t + '))', sandbox).phase;
+}
+function nearestMeridianQuarter(target, lon) {
+  let best = null;
+  for (let m = 0; m < 70 * 24 * 60; m += 10) {
+    const t = Date.UTC(2026, 8, 1) + m * 60000;
+    const score = Math.abs(haDeg(t, lon)) + Math.abs(phaseAt(t) - target) * 720;
+    if (!best || score < best.score) best = { t, score };
+  }
+  return best.t;
+}
+for (const [label, target] of [['first quarter (waxing)', 0.25],
+                               ['last quarter (waning)', 0.75]]) {
+  for (const loc of [{ lat: 51.5, lon: -0.12 }, { lat: 40.7, lon: -74.0 }]) {
+    const t = nearestMeridianQuarter(target, loc.lon);
+    const raw = vm.runInContext(
+      '_moonScreenTiltDeg(new Date(' + t + '), ' + loc.lat + ', ' + loc.lon + ')', sandbox);
+    let tilt = ((raw % 360) + 360) % 360;
+    if (tilt > 180) tilt -= 360;
+    check(Math.abs(tilt) < 45,
+      label + ' on the meridian at lat ' + loc.lat + ' needs little rotation (got ' +
+      tilt.toFixed(1) + ' deg; ~180 means the disc is upside down)');
+  }
+}
+
+// The tilt may step only where the disc carries no visible phase. The waning
+// correction turns over at new moon, on a 0%-lit disc; anywhere else a jump
+// would be a real artifact somebody would watch happen on the time machine.
+let worstJump = 0, worstIllum = 100, prevTilt = null;
+for (let m = 0; m < 30 * 24 * 60; m += 5) {
+  const t = Date.UTC(2026, 8, 1) + m * 60000;
+  const v = vm.runInContext('_moonScreenTiltDeg(new Date(' + t + '), 51.5, -0.12)', sandbox);
+  if (prevTilt !== null) {
+    let d = v - prevTilt;
+    d = ((d % 360) + 540) % 360 - 180;
+    if (Math.abs(d) > 5) {
+      const illum = vm.runInContext('_moonPhase(new Date(' + t + '))', sandbox).illumination;
+      if (Math.abs(d) > worstJump) { worstJump = Math.abs(d); worstIllum = illum; }
+    }
+  }
+  prevTilt = v;
+}
+check(worstJump === 0 || worstIllum < 1,
+  'any tilt step lands on an unlit disc (worst ' + worstJump.toFixed(0) +
+  ' deg at ' + worstIllum + '% lit)');
+
 if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
 console.log('all moon derivation checks passed');

@@ -4018,7 +4018,25 @@ function _moonScreenTiltDeg(date, lat, lon) {
   var dA = raSun - eq.ra;
   var chi = Math.atan2(Math.cos(decSun) * Math.sin(dA),
     Math.sin(decSun) * Math.cos(eq.dec) - Math.cos(decSun) * Math.sin(eq.dec) * Math.cos(dA));
-  return -((chi - q) * 180 / Math.PI) - 90;
+  var tilt = -((chi - q) * 180 / Math.PI) - 90;
+  // The sprite has ALREADY put the lit limb on the correct side: it shades
+  // from a Sun vector whose sign is the waxing flag (_moonSpriteCanvas, sx).
+  // chi carries that same flip, because the bright limb genuinely swaps sides
+  // between waxing and waning — so applying both turned every waning moon by
+  // a further 180 degrees. Half of every month was drawn upside down: the lit
+  // limb on the wrong side and the maria inverted, which is what a southern
+  // hemisphere moon looks like from the north (issue #60).
+  //
+  // The correction turns over at new and full, where the sprite's own flag
+  // does. At full the disc is whole and the step is invisible; at new it is
+  // 0% lit, so what turns over is the maria on an unlit disc. That is the
+  // whole cost, and it is the reason this is a step rather than the fully
+  // continuous fix: making it continuous means giving the shading loop a
+  // real terminator angle (its Sun vector is 2D today, x and z only) and
+  // keying the sprite cache on that angle as well as the phase, which is a
+  // different and much larger change than a released bug deserves.
+  if (!_moonIsWaxing(_moonPhase(date))) tilt += 180;
+  return tilt;
 }
 
 // Waxing predicate — shared so no renderer flips the terminator side on its
