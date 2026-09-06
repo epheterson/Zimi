@@ -14826,7 +14826,16 @@ function openReader(url) {
       ]).concat([
         '#zimi-top{position:fixed;bottom:20px;right:20px;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;border:none;font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:9999;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}'
       ]).join('');
-      // A page with no viewport meta was laid out for a desktop: xkcd's comic
+      // Only a PICTURE forces a viewport-less page to be scaled down: one that
+  // would otherwise be cut off, like xkcd's comic in its 780px table, which
+  // is the case this fitting exists for. Text never is — the containment CSS
+  // injected below wraps it, clips it, or gives a <pre> or a wide table its
+  // own scrollbar. Measuring text shrank whole documents for nothing: an
+  // installed devdocs ZIM, which carries no viewport meta on any page,
+  // rendered at 81% because one footer paragraph held a long unbreakable URL
+  // (found in review before 1.9.0 was published).
+  var MIN_FIT_SCALE = 0.25;  // below this nothing is readable anyway
+  // A page with no viewport meta was laid out for a desktop: xkcd's comic
       // sits in a 780px table. A phone browser shows such a page zoomed out to
       // fit; inside this frame it was clipped at the right edge instead, half
       // the comic gone (seen 2026-09-03). Scale the document to the frame the
@@ -14835,22 +14844,20 @@ function openReader(url) {
       try {
         var _d = frame.contentDocument, _w = frame.contentWindow;
         if (!_isWebMirror && !_d.querySelector('meta[name="viewport"]')) {
-          // The page's real width is the furthest right edge anything reaches
-          // (a centred fixed-width table overflows both sides equally, and the
-          // document's scrollWidth reports only the right-hand spill).
-          var _wide = _d.documentElement.scrollWidth, _have = _w.innerWidth;
-          var _all = _d.body ? _d.body.getElementsByTagName('*') : [];
-          for (var _i = 0; _i < _all.length && _i < 3000; _i++) {
-            var _r = _all[_i].getBoundingClientRect();
-            // Its extent, counting spill to the left of the frame (a centred
-            // table spills both ways). Anything parked far off-screen — a
-            // skip link at -9999px — is not layout and is ignored.
+          // The widest PICTURE, counting spill to the left of the frame (a
+          // centred fixed-width table spills both ways). Anything parked far
+          // off-screen — a skip link at -9999px — is not layout and is ignored.
+          var _have = _w.innerWidth, _wide = _have;
+          var _shown = _d.body ? _d.body.querySelectorAll('img,video,canvas,svg,object,embed,iframe,picture') : [];
+          for (var _i = 0; _i < _shown.length && _i < 3000; _i++) {
+            var _r = _shown[_i].getBoundingClientRect();
             if (_r.width <= 0 || _r.left < -_have * 2 || _r.right > _have * 6) continue;
             var _extent = _r.right - Math.min(_r.left, 0);
             if (_extent > _wide) _wide = _extent;
           }
-          if (_wide > _have + 8 && _have > 0) {
-            _d.documentElement.style.zoom = String(_have / _wide);
+          var _scale = _have / _wide;
+          if (_wide > _have + 8 && _have > 0 && _scale >= MIN_FIT_SCALE) {
+            _d.documentElement.style.zoom = String(_scale);
           }
         }
       } catch(e) {}

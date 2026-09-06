@@ -85,6 +85,63 @@ jobs:
               print(f'Wheel OK: {len(names)} files')
           "
 
+  # The environment the DESKTOP release builds in, on every pull request.
+  #
+  # 1.9.0 was tagged, and its desktop build then failed on all four runners at
+  # this exact step: the suite had never run in this dependency set, because
+  # Desktop Release only fires on a tag and the step was added after the last
+  # one. Nothing was wrong with the code the `test` job installs; three tests
+  # needed an extra this environment does not have, and every test that boots
+  # a server timed out. Finding that after the tag is finding it too late.
+  #
+  # Deliberately NOT `pip install -e .[pdf,mcp]`: the point is the desktop
+  # requirements exactly as the release builds them, plus libtorrent, which is
+  # bundled there and nowhere else in CI.
+  desktop-env:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The same system libraries the release build installs on Linux: the
+      # bundle links GTK and WebKit through PyGObject, and PyInstaller
+      # collects what is present at build time.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgirepository-2.0-dev \
+            gir1.2-gtk-3.0 \
+            gir1.2-webkit2-4.1 \
+            gcc libcairo2-dev pkg-config python3-dev
+
+      - name: Install desktop dependencies
+        run: |
+          pip install -r desktop/requirements-desktop.txt pytest PyGObject
+          pip install "libtorrent==2.0.*" || echo "::warning::no libtorrent wheel here"
+
+      - name: Run the test suite as the desktop build runs it
+        run: python -m pytest tests/ -q
+
+      # PyInstaller on one platform. The four-platform matrix stays on the tag;
+      # this is here to catch a bundle that stops building at all, which is the
+      # other way Desktop Release fails after a merge rather than before it.
+      - name: Build with PyInstaller
+        run: |
+          pip install pyinstaller
+          pyinstaller --noconfirm desktop/zimi_desktop.spec
+
+      # The same script the release runs, in the same headless server mode.
+      # The bundle opens a window without it, and there is no display here.
+      - name: The built binary starts and answers
+        shell: bash
+        env:
+          SMOKE_EXPECT_BT: '1'
+        run: ci/smoke_binary.sh "dist/Zimi/Zimi"
+
   docker:
     runs-on: ubuntu-latest
     steps:
