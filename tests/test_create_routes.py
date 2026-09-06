@@ -59,13 +59,27 @@ def _get(path, private=True, params=None):
     return h
 
 
-def _wait_done(tries=400):
-    for _ in range(tries):
+# A deadline, not a poll count. 400 polls at 10ms looks like four seconds and
+# is not: each turn of the loop also makes an HTTP request, so the real ceiling
+# is however fast the runner happens to be. On a contended macOS runner the
+# 550-line buffer test ran out of turns and failed as "job never finished" —
+# the same commit passed on the next run, which is the signature of a limit
+# that measures the machine rather than the job.
+#
+# Time-based instead, and generous: a passing test still returns the moment the
+# job is done, so the only thing that waits 30 seconds is a job that genuinely
+# hung, which is worth 30 seconds to report honestly.
+_WAIT_DONE_SECONDS = 30
+
+
+def _wait_done(timeout=_WAIT_DONE_SECONDS):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
         body = _get("/manage/create/status").body
         if body.get("done") or not body.get("active"):
             return body
         time.sleep(0.01)
-    raise AssertionError("creation job never finished")
+    raise AssertionError(f"creation job never finished within {timeout}s")
 
 
 @pytest.fixture(autouse=True)
