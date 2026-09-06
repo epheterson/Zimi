@@ -6,15 +6,15 @@
     <description>Offline knowledge server for ZIM files</description>
     <language>en</language>
     <item>
-      <title>Version 1.8.2</title>
-      <sparkle:version>1.8.2</sparkle:version>
-      <sparkle:shortVersionString>1.8.2</sparkle:shortVersionString>
-      <pubDate>Sat, 08 Aug 2026 00:44:03 +0000</pubDate>
+      <title>Version 1.9.0</title>
+      <sparkle:version>1.9.0</sparkle:version>
+      <sparkle:shortVersionString>1.9.0</sparkle:shortVersionString>
+      <pubDate>Sun, 06 Sep 2026 06:39:09 +0000</pubDate>
       <enclosure
-        url="https://github.com/epheterson/Zimi/releases/download/v1.8.2/Zimi-windows-x64-Setup.exe"
-        length="53264795"
+        url="https://github.com/epheterson/Zimi/releases/download/v1.9.0/Zimi-windows-x64-Setup.exe"
+        length="54273683"
         type="application/octet-stream"
-        sparkle:edSignature="LRIuJ5hDEJjIlFMByU+TED3ZqKdFDqpQ+e4a5Z+sUXD0Ze55oAx2Uf9EpLViLsZcUqeVbhUGdQA0ds5Rv3/MAw==" sparkle:installerArguments="/SILENT /SP-"
+        sparkle:edSignature="4H3HKgR7T+BgCSFlG+nM/tZE0b3x0tekN/Q84uK90UjrbFV6znDf7ky4Gj7usHd/QEeU46/+Gdpvl5SZQSfiBA==" sparkle:installerArguments="/SILENT /SP-"
       />
     </item>
   </channel>
