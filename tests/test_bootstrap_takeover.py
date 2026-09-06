@@ -223,6 +223,45 @@ class BootstrapTakeoverTests(unittest.TestCase):
         finally:
             os.environ.pop("ZIMI_LAN_ADMIN", None)
 
+    def test_manage_open_asks_nobody_for_anything(self):
+        """The opt out, and the reason it does not reason about the network.
+
+        Every other answer Zimi gives to "I do not want a password" asks where
+        the request came from, and that question has now been got wrong twice
+        in two days: a LAN rule cannot see a client behind a reverse proxy, and
+        a proxy rule cannot tell that client from the internet. This one asks
+        nothing, so a forwarded request, a WAN address and the host itself all
+        get the same answer.
+        """
+        os.environ["ZIMI_MANAGE_OPEN"] = "1"
+        try:
+            # From the far side of the internet, forwarded, no credential.
+            status, body = self._get(
+                "/manage/stats", headers={"X-Forwarded-For": "8.8.8.8"}
+            )
+            self.assertEqual(status, 200, body)
+            # And a genuinely remote peer, no headers at all.
+            self._as_peer(ADJACENT)
+            status, body = self._get("/manage/stats")
+            self.assertEqual(status, 200, body)
+        finally:
+            os.environ.pop("ZIMI_MANAGE_OPEN", None)
+
+        # Off again, and the door shuts on the same client.
+        status, _ = self._get("/manage/stats")
+        self.assertEqual(status, 403)
+
+    def test_manage_open_is_off_unless_it_is_asked_for(self):
+        """It cannot be arrived at by accident: no value but an explicit
+        affirmative turns it on."""
+        from zimi import manage as _m
+
+        for value in ("", "0", "false", "no", "off", "maybe"):
+            os.environ["ZIMI_MANAGE_OPEN"] = value
+            self.assertFalse(_m.manage_open(), f"{value!r} should not open it")
+        os.environ.pop("ZIMI_MANAGE_OPEN", None)
+        self.assertFalse(_m.manage_open(), "unset must be closed")
+
     def test_a_remote_client_with_the_key_bootstraps_and_spends_it(self):
         key = manage.ensure_setup_key()
         self.assertTrue(key)

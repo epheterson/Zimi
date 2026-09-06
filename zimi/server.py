@@ -668,6 +668,20 @@ CONFIG_ENV_SETTINGS = (
     # want an admin password at all", which is a real way people run this and
     # which 1.9.0 removed with nothing in its place (issue #59).
     ConfigSetting("lan_admin", "ZIMI_LAN_ADMIN", "bool", "0", None, False),
+    # The opt out. Management asks for nothing at all: no password, no setup
+    # key, no question about where the request came from.
+    #
+    # Every other answer Zimi has given to "I do not want a password" reasons
+    # about network position, and that reasoning is what has now failed twice
+    # (GHSA-5mw2-53vv-9pw6, and again behind a same-host reverse proxy). A
+    # LAN-shaped rule cannot see a client behind a proxy, and a proxy-shaped
+    # rule cannot tell that client from the internet. This switch does not ask:
+    # it is one meaning, it cannot be spoofed or misread, and an operator who
+    # sets it has said plainly what they want.
+    #
+    # It is a real footgun on a reachable instance, so it announces itself at
+    # boot and the app says so on every management screen.
+    ConfigSetting("manage_open", "ZIMI_MANAGE_OPEN", "bool", "0", None, False),
 )
 _CONFIG_ENV_BY_KEY = {s.key: s for s in CONFIG_ENV_SETTINGS}
 
@@ -3834,7 +3848,20 @@ def main():
             _auto_update_thread.start()
         print(f"Endpoints: /search, /read, /suggest, /list, /health")
         if ZIMI_MANAGE:
-            if _get_manage_password_hash():
+            from zimi import manage as _mng_open
+
+            if _mng_open.manage_open():
+                # Never quietly. A switch that turns authentication off has to
+                # be visible in the log of anyone who inherits this instance,
+                # and the banner is where a person looks when they wonder why
+                # nothing asked them for a password.
+                log.warning(
+                    "Library management is OPEN: no password, no setup key, "
+                    "anyone who can reach this server can administer it "
+                    "(manage_open / ZIMI_MANAGE_OPEN). Turn it off if this "
+                    "instance is reachable from anywhere you do not control."
+                )
+            elif _get_manage_password_hash():
                 log.info("Library management enabled (password protected)")
             else:
                 # No admin password yet. Set one from THIS machine freely; any
