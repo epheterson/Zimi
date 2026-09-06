@@ -378,10 +378,21 @@ def _set_attr(tag, name, value):
     """``name="value"`` on the tag, replacing the attribute if it is there."""
     rx = attr_re(name)
     quoted = f'{name}="{attr_quote(value)}"'
+
+    def _replace(m):
+        # Keep the whitespace that separated this attribute from the last one,
+        # and replace everything after it. The previous form split `pre` on the
+        # attribute name, which only finds it when the markup spells it in the
+        # same case we do: `<img SRC="a.png">` has no "src" to split on, so the
+        # whole of ` SRC=` survived and the tag came out as
+        # `<img SRC=src="b.png">` — corrupt, and a broken image on any page
+        # that writes its attributes in capitals.
+        pre = m.group("pre") or ""
+        lead = pre[: len(pre) - len(pre.lstrip())]
+        return lead + quoted
+
     if rx.search(tag):
-        return rx.sub(
-            lambda m: (m.group("pre") or "").split(name)[0] + quoted, tag, count=1
-        )
+        return rx.sub(_replace, tag, count=1)
     end = tag.rstrip(">").rstrip("/").rstrip()
     close = tag[len(end) :]
     return f"{end} {quoted}{close}"
@@ -389,7 +400,10 @@ def _set_attr(tag, name, value):
 
 def _wake_tag(tag_m):
     tag = tag_m.group(0)
-    if "data-" not in tag:
+    # Case-insensitively: attribute names are, and `DATA-SRC` is markup a
+    # real CMS emits. The cheap substring test is only here to skip tags that
+    # cannot possibly be lazy, so getting it wrong skipped them for good.
+    if "data-" not in tag.lower():
         return tag
     name = tag_m.group(1).lower()
     if name in _LAZY_MEDIA_TAGS:
@@ -434,7 +448,10 @@ def wake_lazy(html):
     ``lazyload`` class becomes ``lazyloaded``, the class its stylesheet shows.
     A value that is empty or a ``data:`` stand-in is left alone. Runs before
     the carrier so the address it wakes is the one that gets carried."""
-    if "data-" not in html:
+    # .lower(): attribute names are case-insensitive and `DATA-SRC` is markup
+    # real pages emit. This test exists only to skip documents that cannot be
+    # lazy, so a case-sensitive one skipped a whole page's images for good.
+    if "data-" not in html.lower():
         return html
     return _TAG_RE.sub(_wake_tag, html)
 

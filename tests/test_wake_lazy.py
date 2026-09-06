@@ -115,3 +115,34 @@ def test_a_page_with_many_tags_wakes_in_linear_time(n):
     took = time.monotonic() - t0
     assert out.count('src="/r.jpg"') == n
     assert took < 5.0, took
+
+
+def test_attributes_in_capitals_are_replaced_not_appended_to():
+    """`<img SRC=...>` is ordinary HTML, and plenty of pages still write it.
+
+    _set_attr used to rebuild the tag by splitting the matched text on the
+    attribute name in the case WE spell it, so markup that spelled it in
+    capitals had nothing to split on: the whole of ` SRC=` survived and the
+    replacement was appended to it, producing `<img SRC=src="b.png">`. That is
+    not markup, and it is a broken image on the page it came from."""
+    from zimi.zimwriter import _set_attr
+
+    assert _set_attr('<img SRC="a.png">', "src", "b.png") == '<img src="b.png">'
+    assert _set_attr('<IMG SRC="a.png" ALT="x">', "src", "b.png") == (
+        '<IMG src="b.png" ALT="x">'
+    )
+    # Lower case, mixed case and an absent attribute all still behave.
+    assert _set_attr('<img src="a.png">', "src", "b.png") == '<img src="b.png">'
+    assert _set_attr("<img SrC=a.png>", "src", "b.png") == '<img src="b.png">'
+    assert _set_attr("<img>", "src", "b.png") == '<img src="b.png">'
+    # The space before the attribute is the one thing that must survive.
+    assert _set_attr('<img alt="x" SRC="a">', "src", "b") == '<img alt="x" src="b">'
+
+
+def test_waking_a_lazy_image_written_in_capitals():
+    """The end-to-end shape of the bug above: a lazy image whose attributes are
+    capitalised came out of wake_lazy as corrupt markup."""
+    html = '<img DATA-SRC="real.jpg" SRC="placeholder.gif">'
+    out = wake_lazy(html)
+    assert "SRC=src=" not in out, f"corrupt markup: {out}"
+    assert 'src="real.jpg"' in out
