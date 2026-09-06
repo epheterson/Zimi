@@ -37,12 +37,19 @@ from tests.test_create_routes import (  # noqa: E402,F401
 )
 
 
-def _wait(predicate, tries=600, why="condition never came true"):
-    for _ in range(tries):
+# A deadline, not a poll count — same reason as _wait_done in
+# test_create_routes.py: a fixed number of turns measures how fast the runner
+# is, not how long the job took, so a loaded machine fails a passing test.
+_WAIT_SECONDS = 30
+
+
+def _wait(predicate, timeout=_WAIT_SECONDS, why="condition never came true"):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
         if predicate():
             return True
         time.sleep(0.01)
-    raise AssertionError(why)
+    raise AssertionError(f"{why} (waited {timeout}s)")
 
 
 @pytest.fixture
