@@ -63,6 +63,19 @@ jobs:
             node "$f"
           done
 
+      # The hook only protects a clone that has run `git config core.hooksPath
+      # .githooks`. This is the backstop for one that has not.
+      - name: No session links in commit messages
+        if: github.event_name == 'pull_request'
+        run: |
+          if git log --format='%H%n%B' \
+               "origin/${{ github.base_ref }}..${{ github.event.pull_request.head.sha }}" \
+               | grep -n 'claude\.ai'; then
+            echo "::error::a commit message on this branch carries a Claude session link"
+            exit 1
+          fi
+          echo "no session links"
+
       - name: Verify CLI entry point
         run: zimi --help
 
