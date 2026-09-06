@@ -67,13 +67,24 @@ def _short(filename):
 # ---------------------------------------------------------------------------
 
 
+def _delete_from_disk(path):
+    """Remove a ZIM the way every real caller of unregister_zim_file does.
+
+    Its contract is "the file is already gone", and the callers get there by
+    releasing the pooled handles first, because Windows refuses to unlink a
+    file anyone still has open. A bare os.remove here would set up a sequence
+    the product does not use, and fail on the platform that enforces it."""
+    server.release_zim_handles([server._zim_short_name(os.path.basename(path))])
+    os.remove(path)
+
+
 def test_unregister_drops_the_zim_without_a_rescan(tmp_path, monkeypatch):
     zdir = _setup_library(tmp_path, monkeypatch)
     alpha, beta = _short(ALPHA), _short(BETA)
     assert alpha in server._zim_files_cache
     gen_before = server._cache_generation
 
-    os.remove(str(zdir / ALPHA))
+    _delete_from_disk(str(zdir / ALPHA))
     monkeypatch.setattr(server, "load_cache", _no_rescan)
     # A removal needs no metadata, so nothing may be opened or extracted.
     monkeypatch.setattr(
@@ -97,7 +108,7 @@ def test_unregister_drops_the_disk_cache_row(tmp_path, monkeypatch):
     zdir = _setup_library(tmp_path, monkeypatch)
     assert ALPHA in (server._load_disk_cache() or {})
 
-    os.remove(str(zdir / ALPHA))
+    _delete_from_disk(str(zdir / ALPHA))
     monkeypatch.setattr(server, "load_cache", _no_rescan)
     assert server.unregister_zim_file(ALPHA) is True
 
@@ -116,7 +127,7 @@ def test_unregister_evicts_every_pooled_handle(tmp_path, monkeypatch):
         locks[alpha] = threading.Lock()
         locks[beta] = threading.Lock()
 
-    os.remove(str(zdir / ALPHA))
+    _delete_from_disk(str(zdir / ALPHA))
     monkeypatch.setattr(server, "load_cache", _no_rescan)
     assert server.unregister_zim_file(ALPHA) is True
 
@@ -135,7 +146,7 @@ def test_unregister_drops_the_domain_claims(tmp_path, monkeypatch):
         interlang, "_domain_zim_map", {"alpha.example": alpha, "beta.example": beta}
     )
 
-    os.remove(str(zdir / ALPHA))
+    _delete_from_disk(str(zdir / ALPHA))
     monkeypatch.setattr(server, "load_cache", _no_rescan)
     assert server.unregister_zim_file(ALPHA) is True
 
@@ -161,7 +172,7 @@ def test_unregister_of_a_shadowed_duplicate_leaves_the_library_alone(
     files = server._zim_files_cache or {}
     assert files[alpha] == str(zdir / ALPHA)
 
-    os.remove(str(sub / ALPHA))
+    _delete_from_disk(str(sub / ALPHA))
     monkeypatch.setattr(server, "load_cache", _no_rescan)
     assert server.unregister_zim_file(ALPHA) is True
 
@@ -180,7 +191,7 @@ def test_unregister_defers_when_a_shadowed_copy_would_be_promoted(
     sub = zdir / "backups"
     sub.mkdir()
     shutil.copy(str(zdir / ALPHA), str(sub / ALPHA))
-    os.remove(str(zdir / ALPHA))
+    _delete_from_disk(str(zdir / ALPHA))
 
     monkeypatch.setattr(server, "load_cache", _no_rescan)
     assert server.unregister_zim_file(ALPHA) is False
