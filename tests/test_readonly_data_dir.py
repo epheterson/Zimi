@@ -323,7 +323,7 @@ def ro_data_dir(tmp_path):
     afterwards — the state a read-only boot WITHOUT the fallback would hit."""
     d = tmp_path / "rodata"
     d.mkdir()
-    os.chmod(d, 0o555)
+    _make_unwritable(d)
     saved = server.ZIMI_DATA_DIR
     server.ZIMI_DATA_DIR = str(d)
     manage._env_pw_hash_cache = None

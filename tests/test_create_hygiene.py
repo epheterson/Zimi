@@ -151,7 +151,7 @@ def test_kill_takes_the_driver_out_from_any_thread(tmp_path):
         assert _zimi_droppings(str(tmp_path)) == []
     finally:
         try:
-            os.kill(proc.pid, signal.SIGKILL)
+            os.kill(proc.pid, getattr(signal, 'SIGKILL', signal.SIGTERM))
         except OSError:
             pass
 
@@ -174,7 +174,7 @@ def test_shutdown_sessions_kills_every_registered_browser(tmp_path):
         assert _zimi_droppings(str(tmp_path)) == []
     finally:
         try:
-            os.kill(proc.pid, signal.SIGKILL)
+            os.kill(proc.pid, getattr(signal, 'SIGKILL', signal.SIGTERM))
         except OSError:
             pass
 

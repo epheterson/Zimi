@@ -32,7 +32,9 @@ class LoadavgThrottleTests(unittest.TestCase):
         # 5-min load 4.0 / 4 cpus = 1.0 ratio. Above 0.8 threshold by 0.2.
         # Expected sleep = (1.0 - 0.8) * 2.0 = 0.4s.
         with (
-            mock.patch.object(os, "getloadavg", return_value=(4.0, 4.0, 4.0)),
+            mock.patch.object(
+                os, "getloadavg", return_value=(4.0, 4.0, 4.0), create=True
+            ),
             mock.patch.object(os, "cpu_count", return_value=4),
             mock.patch.object(time, "sleep") as sleep_mock,
         ):
@@ -44,7 +46,9 @@ class LoadavgThrottleTests(unittest.TestCase):
     def test_sleep_capped_at_max(self):
         # Massive overload: ratio = 10. Cap to max_sleep.
         with (
-            mock.patch.object(os, "getloadavg", return_value=(40.0, 40.0, 40.0)),
+            mock.patch.object(
+                os, "getloadavg", return_value=(40.0, 40.0, 40.0), create=True
+            ),
             mock.patch.object(os, "cpu_count", return_value=4),
             mock.patch.object(time, "sleep") as sleep_mock,
         ):
@@ -69,7 +73,9 @@ class LoadavgThrottleTests(unittest.TestCase):
     def test_disabled_via_env_var(self):
         with (
             mock.patch.dict(os.environ, {"ZIMI_INDEX_THROTTLE": "0"}, clear=False),
-            mock.patch.object(os, "getloadavg", return_value=(99.0, 99.0, 99.0)),
+            mock.patch.object(
+                os, "getloadavg", return_value=(99.0, 99.0, 99.0), create=True
+            ),
             mock.patch.object(os, "cpu_count", return_value=1),
             mock.patch.object(time, "sleep") as sleep_mock,
         ):

@@ -20,6 +20,7 @@ thread. Source READS (article HTML and asset bytes) still touch libzim
 
 import colorsys
 import contextlib
+import gc
 import datetime
 import hashlib
 import html as _html
@@ -1626,15 +1627,33 @@ def _sweep_creator_scratch(tmp_path):
     directory = os.path.dirname(tmp_path) or "."
     stem = os.path.basename(tmp_path) + "_"
     try:
-        names = os.listdir(directory)
+        left = [n for n in os.listdir(directory) if n.startswith(stem)]
     except OSError:
         return
-    for name in names:
-        if name.startswith(stem):
+    if not left:
+        return
+    # The indexer's own handles close as its objects are finalized, which does
+    # not always happen before this returns: the first sweep on Windows took
+    # three of the four files and left the fulltext index, still mapped. So
+    # collect first, and give the stragglers a moment. The waits only happen
+    # when something is genuinely still held, so a POSIX build, where the
+    # unlink always succeeds first time, pays nothing for them.
+    gc.collect()
+    for delay in (0, 0.05, 0.1, 0.2, 0.4):
+        if delay:
+            time.sleep(delay)
+        stuck = []
+        for name in left:
             try:
                 os.remove(os.path.join(directory, name))
+            except FileNotFoundError:
+                pass
             except OSError:
-                pass  # still held open; the caller has bigger problems
+                stuck.append(name)
+        left = stuck
+        if not left:
+            return
+    log.debug("index scratch still held after %s: %s", tmp_path, left)
 
 
 @contextlib.contextmanager
