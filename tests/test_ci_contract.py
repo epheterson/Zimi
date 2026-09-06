@@ -205,14 +205,26 @@ def test_the_repo_refuses_commit_messages_with_session_links():
     itself from being deleted or quietly stopping working."""
     hook = ROOT / ".githooks" / "commit-msg"
     assert hook.is_file(), "the commit-msg hook is gone"
-    assert os.access(hook, os.X_OK), "the commit-msg hook is not executable"
+    if os.name != "nt":
+        assert os.access(hook, os.X_OK), "the commit-msg hook is not executable"
+
+    # Run it THROUGH sh rather than as a program. It is a `#!/bin/sh` script,
+    # and Windows does not read shebangs: executing it directly raises
+    # "[WinError 193] %1 is not a valid Win32 application". Git for Windows
+    # ships the sh that git itself uses to run hooks, so this is also how the
+    # hook actually runs on that platform.
+    shell = shutil.which("sh") or shutil.which("bash")
+    if not shell:
+        pytest.skip("no POSIX shell here to run the hook with")
 
     def run(message):
         with tempfile.NamedTemporaryFile("w", suffix=".msg", delete=False) as fh:
             fh.write(message)
             path = fh.name
         try:
-            return subprocess.run([str(hook), path], capture_output=True, text=True)
+            return subprocess.run(
+                [shell, str(hook), path], capture_output=True, text=True
+            )
         finally:
             os.unlink(path)
 
