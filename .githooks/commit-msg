@@ -1,0 +1,24 @@
+#!/bin/sh
+# Refuse a commit message carrying a Claude session link.
+#
+# Commit messages are published. A session URL in one is a link into a private
+# transcript, pasted under Eric's name, in a place that cannot be edited after
+# it lands on main. It has happened more than once, because the agent harness
+# supplies an attribution block that includes the link and a model following
+# that instruction never sees this rule.
+#
+# So it is enforced here rather than remembered: the commit fails, the message
+# is left for editing, and the fix is to delete the line.
+#
+# Install (once per clone):  git config core.hooksPath .githooks
+
+if grep -nE 'claude\.ai/(code/)?session|Claude-Session:' "$1" >/dev/null 2>&1; then
+    echo "commit-msg: this message contains a Claude session link." >&2
+    echo >&2
+    grep -nE 'claude\.ai/(code/)?session|Claude-Session:' "$1" >&2
+    echo >&2
+    echo "Commit messages are public and permanent. Remove the line and commit again." >&2
+    echo "Co-Authored-By is fine; the session URL is not." >&2
+    exit 1
+fi
+exit 0

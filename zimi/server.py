@@ -125,7 +125,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.9.0"
+ZIMI_VERSION = "1.9.1"
 
 # Standing maintenance cadence: catalog TTL is 24h and UPnP leases are
 # 24h — run every 12h so both stay fresh at half-life.
@@ -657,6 +657,17 @@ CONFIG_ENV_SETTINGS = (
     ConfigSetting("sso_aud", "ZIMI_SSO_AUD", "str", "", "SSO off", False),
     ConfigSetting("sso_role", "ZIMI_SSO_ROLE", "str", "user", None, False),
     ConfigSetting("sso_proxy", "ZIMI_SSO_PROXY", "csv", "", "private networks", False),
+    # "My LAN is my trust boundary." Off by default, and it has to be typed by
+    # someone who runs the server: with it on, a passwordless instance treats
+    # any private-network client as the primary admin, which is what Zimi did
+    # before 1.9.0 and what GHSA-5mw2-53vv-9pw6 closed.
+    #
+    # The advisory is still right — that default let an adjacent device race
+    # the owner to the first password. What it lacked was a way to say "yes, I
+    # know, this is a single-household server on a LAN I control, and I do not
+    # want an admin password at all", which is a real way people run this and
+    # which 1.9.0 removed with nothing in its place (issue #59).
+    ConfigSetting("lan_admin", "ZIMI_LAN_ADMIN", "bool", "0", None, False),
 )
 _CONFIG_ENV_BY_KEY = {s.key: s for s in CONFIG_ENV_SETTINGS}
 

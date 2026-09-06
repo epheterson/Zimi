@@ -53,15 +53,24 @@ class BootstrapTakeoverTests(unittest.TestCase):
         threading.Thread(target=self._srv.serve_forever, daemon=True).start()
         self._base = f"http://127.0.0.1:{self._srv.server_address[1]}"
         self._real_client_ip = zhttp.ZimHandler._client_ip
+        self._real_socket_peer_ip = zhttp.ZimHandler._socket_peer_ip
 
     def _as_peer(self, ip):
         """Make every request for the rest of this test appear to come from
         ``ip`` — a real non-loopback peer, which a forwarded header cannot
-        fake past the anti-spoof rule."""
+        fake past the anti-spoof rule.
+
+        The SOCKET moves too, not just the resolved client IP. Stubbing
+        _client_ip alone left the connection genuinely on loopback, so these
+        tests were modelling a remote attacker who, to the code that decides
+        who counts as the host, was sitting at the machine. That is the gap
+        the same-host reverse proxy fell through."""
         zhttp.ZimHandler._client_ip = lambda _self, _ip=ip: _ip
+        zhttp.ZimHandler._socket_peer_ip = lambda _self, _ip=ip: _ip
 
     def tearDown(self):
         zhttp.ZimHandler._client_ip = self._real_client_ip
+        zhttp.ZimHandler._socket_peer_ip = self._real_socket_peer_ip
         self._srv.shutdown()
         manage._env_pw_hash_cache = None
         import shutil
@@ -129,6 +138,90 @@ class BootstrapTakeoverTests(unittest.TestCase):
         status, body = self._post("/manage/set-password", {"password": "owner-pw"})
         self.assertEqual(status, 200, body)
         self.assertTrue(manage._get_manage_password_hash())
+
+    def test_a_same_host_reverse_proxy_does_not_make_everyone_the_host(self):
+        """The advisory's fix, reopened by the commonest deployment there is.
+
+        These tests replace _client_ip wholesale, so until this one nothing
+        ever executed the function that decides who counts as the host. In
+        production a reverse proxy on the SAME machine — Synology, nginx in
+        front of 8899, the usual NAS shape — connects from 127.0.0.1 and puts
+        the real client in X-Forwarded-For. _client_ip refuses to let that
+        header claim a trusted-tier address, so it falls back to the direct
+        peer, which is loopback: every remote client behind that proxy became
+        the host and skipped the setup key.
+
+        So this test does NOT stub the peer. The socket really is loopback,
+        exactly as it is in that deployment, and the forwarded header is the
+        only thing distinguishing it from the owner sitting at the machine.
+        """
+        for header in ("X-Forwarded-For", "X-Real-IP", "CF-Connecting-IP"):
+            with self.subTest(header=header):
+                status, body = self._post(
+                    "/manage/set-password",
+                    {"password": "attacker-owns-it"},
+                    headers={header: "192.168.1.50"},
+                )
+                self.assertEqual(status, 403, body)
+                self.assertFalse(
+                    manage._get_manage_password_hash(),
+                    f"a client forwarded by {header} claimed the first password",
+                )
+
+    def test_the_lan_can_be_trusted_but_only_on_purpose(self):
+        """Issue #59: 1.9.0 removed a way people actually run Zimi.
+
+        Before the advisory, a passwordless instance treated any private
+        client as admin, and plenty of single-household servers depended on
+        that: no password, LAN only, done. The fix was right and the
+        replacement was missing, so those users found Settings simply shut.
+
+        The opt-in has to be typed by whoever runs the server, and with it off
+        — the default, and what every other test here exercises — the LAN is
+        still refused."""
+        self._as_peer(ADJACENT)
+        status, _ = self._post("/manage/set-password", {"password": "nope"})
+        self.assertEqual(status, 403, "the default must still refuse the LAN")
+
+        os.environ["ZIMI_LAN_ADMIN"] = "1"
+        try:
+            status, body = self._get("/manage/stats")
+            self.assertEqual(status, 200, body)
+        finally:
+            os.environ.pop("ZIMI_LAN_ADMIN", None)
+
+        status, _ = self._get("/manage/stats")
+        self.assertEqual(status, 403, "switching it back off must shut the door")
+
+    def test_lan_admin_does_not_hand_the_internet_the_keys(self):
+        """The escalation `lan_admin` would otherwise carry.
+
+        Behind a reverse proxy on the same host, _client_ip cannot identify
+        the caller: it refuses the forwarded address as a trusted-tier claim
+        and falls back to the hop, which is loopback. Every client of that
+        proxy therefore resolves as "private" — including one on the far side
+        of the internet. Left at `_is_private_client`, turning on lan_admin
+        would have made all of them the admin of a passwordless server.
+        """
+        os.environ["ZIMI_LAN_ADMIN"] = "1"
+        try:
+            status, body = self._post(
+                "/manage/set-password",
+                {"password": "attacker-owns-it"},
+                headers={"X-Forwarded-For": "8.8.8.8"},
+            )
+            self.assertEqual(status, 403, body)
+            self.assertFalse(
+                manage._get_manage_password_hash(),
+                "lan_admin let a forwarded client claim the first password",
+            )
+            # And a genuinely direct private peer still gets in, which is the
+            # entire point of the setting.
+            self._as_peer(ADJACENT)
+            status, body = self._get("/manage/stats")
+            self.assertEqual(status, 200, body)
+        finally:
+            os.environ.pop("ZIMI_LAN_ADMIN", None)
 
     def test_a_remote_client_with_the_key_bootstraps_and_spends_it(self):
         key = manage.ensure_setup_key()

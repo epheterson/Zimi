@@ -27,6 +27,7 @@ import pathlib
 import re
 import shutil
 import subprocess
+import tempfile
 
 import pytest
 
@@ -190,4 +191,66 @@ def test_the_pr_gate_runs_on_every_runner_the_release_builds_on():
         f"runners. Only in the gate: {sorted(gate - release) or 'none'}. Only in "
         f"the release: {sorted(release - gate) or 'none'}. A platform in the "
         "release alone is one whose failures cannot be seen before the tag."
+    )
+
+
+def test_the_repo_refuses_commit_messages_with_session_links():
+    """A session URL in a commit message is a link into a private transcript,
+    published under the repo owner's name, in the one place that cannot be
+    edited after it lands on main.
+
+    It is enforced by a hook rather than remembered because the agent harness
+    supplies an attribution block containing that link, and anything following
+    that instruction never sees the rule. This test is what keeps the hook
+    itself from being deleted or quietly stopping working."""
+    hook = ROOT / ".githooks" / "commit-msg"
+    assert hook.is_file(), "the commit-msg hook is gone"
+    if os.name != "nt":
+        assert os.access(hook, os.X_OK), "the commit-msg hook is not executable"
+
+    # Run it THROUGH sh rather than as a program. It is a `#!/bin/sh` script,
+    # and Windows does not read shebangs: executing it directly raises
+    # "[WinError 193] %1 is not a valid Win32 application". Git for Windows
+    # ships the sh that git itself uses to run hooks, so this is also how the
+    # hook actually runs on that platform.
+    shell = shutil.which("sh") or shutil.which("bash")
+    if not shell:
+        pytest.skip("no POSIX shell here to run the hook with")
+
+    def run(message):
+        with tempfile.NamedTemporaryFile("w", suffix=".msg", delete=False) as fh:
+            fh.write(message)
+            path = fh.name
+        try:
+            return subprocess.run(
+                [shell, str(hook), path], capture_output=True, text=True
+            )
+        finally:
+            os.unlink(path)
+
+    bad = run("a change\n\nClaude-Session: https://claude.ai/code/session_x1\n")
+    assert bad.returncode != 0, "the hook let a session link through"
+
+    plain_url = run("a change\n\nsee https://claude.ai/code/session_x1 for context\n")
+    assert plain_url.returncode != 0, "the hook only catches the trailer form"
+
+    good = run(
+        "a change\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n"
+    )
+    assert good.returncode == 0, f"the hook rejected a clean message: {good.stderr}"
+
+
+def test_no_commit_on_this_branch_carries_a_session_link():
+    """The hook stops new ones; this catches any that predate it, while the
+    branch can still be rewritten."""
+    done = subprocess.run(
+        ["git", "log", "origin/main..HEAD", "--format=%H%n%B"],
+        capture_output=True, text=True, cwd=ROOT,
+    )
+    if done.returncode != 0:
+        pytest.skip("no origin/main to compare against here")
+    offenders = [ln for ln in done.stdout.splitlines() if "claude.ai" in ln]
+    assert not offenders, (
+        "commit message(s) on this branch carry a session link:\n  "
+        + "\n  ".join(offenders)
     )
