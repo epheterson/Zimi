@@ -150,3 +150,44 @@ def test_every_test_file_is_collectable():
     assert len(names) > 20, f"only found {len(names)} python test files"
     # The suite's own file is here, so this is at minimum self-consistent.
     assert os.path.basename(__file__) in names
+
+
+def _runners(name, job):
+    """Every runner a job's matrix expands to.
+
+    Both forms appear here: ``os: [a, b]`` in the CI matrix, and a list of
+    ``- os: x`` entries under ``include:`` in the release matrix."""
+    body = _text(name)
+    start = body.index(f"\n  {job}:")
+    nxt = re.search(r"\n  [a-z][a-z0-9_-]*:\n", body[start + 1 :])
+    block = body[start : start + 1 + nxt.start()] if nxt else body[start:]
+    block = "\n".join(
+        ln for ln in block.splitlines() if not ln.lstrip().startswith("#")
+    )
+    inline = re.search(r"^\s*os:\s*\[([^\]]+)\]", block, re.M)
+    if inline:
+        return {v.strip().strip("'\"") for v in inline.group(1).split(",")}
+    return {m.strip().strip("'\"") for m in re.findall(r"^\s*-?\s*os:\s*(\S+)", block, re.M)}
+
+
+def test_the_pr_gate_runs_on_every_runner_the_release_builds_on():
+    """The pull request gate IS the release matrix, not a sample of it.
+
+    1.9.0 was tagged twice and Desktop Release failed both times. The second
+    time, a gate had been added to catch exactly that — but it ran one job on
+    ubuntu-latest, and the release's Linux leg is pinned to ubuntu-22.04 where
+    an apt package has a different name. The Windows and macOS suites had not
+    run since 1.8.2 and had accumulated real failures nobody could see.
+
+    Any runner in one list and not the other is a platform whose failures only
+    a tag can find, which is after the version number is spent."""
+    gate = _runners("ci.yml", "desktop-env")
+    release = _runners("desktop-release.yml", "build")
+    assert gate, "ci.yml's desktop-env job no longer declares a runner matrix"
+    assert release, "desktop-release.yml's build job no longer declares a runner matrix"
+    assert gate == release, (
+        "the pull request gate and the release build no longer run on the same "
+        f"runners. Only in the gate: {sorted(gate - release) or 'none'}. Only in "
+        f"the release: {sorted(release - gate) or 'none'}. A platform in the "
+        "release alone is one whose failures cannot be seen before the tag."
+    )
