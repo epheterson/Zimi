@@ -39,6 +39,7 @@ Zimi runs from a folder of ZIMs with no configuration, on a stick or a NAS or a 
 
 ### Fixed
 
+- **Windows.** Deleting a ZIM answered "Failed to delete file" every time. Auto-update left every superseded edition on disk, silently. A stalled capture's browser could not be killed. Every ZIM built on Windows left four index scratch files beside it, and took its entry mimetypes from the machine's registry rather than from the spec. The cause of the first three is the same: Windows will not remove or replace a file that is still open, and Zimi released the file after acting on it rather than before. The Windows test suite had never run against a release; it now runs on every pull request, next to macOS Intel, Apple silicon, and the Linux the AppImage and snap are built on.
 - **The Raspberry Pi crash (#51).** A finished download re-hashed the file and re-scanned every installed archive while holding the lock readers need. Registration is incremental now: worst lock wait 10.6s down to 0.45s, archives opened 53 down to 1. The same pattern was hunted out of bookmark export and deletion.
 - **Flavor identity in the catalog (#50).** MDWiki's maxi and video builds no longer collide into two cards both claiming Full, and Update can no longer quietly fetch a ten gigabyte edition you never installed.
 - **Real links everywhere (#49).** Logo, source tiles, search results and cards are genuine anchors: middle-click, right-click and open-in-new-tab behave like the web.
