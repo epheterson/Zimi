@@ -6,16 +6,16 @@
     <description>Offline knowledge server for ZIM files</description>
     <language>en</language>
     <item>
-      <title>Version 1.9.0</title>
-      <sparkle:version>1.9.0</sparkle:version>
-      <sparkle:shortVersionString>1.9.0</sparkle:shortVersionString>
+      <title>Version 1.9.1</title>
+      <sparkle:version>1.9.1</sparkle:version>
+      <sparkle:shortVersionString>1.9.1</sparkle:shortVersionString>
   <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-      <pubDate>Sun, 06 Sep 2026 06:39:09 +0000</pubDate>
+      <pubDate>Sun, 06 Sep 2026 19:01:07 +0000</pubDate>
       <enclosure
-        url="https://github.com/epheterson/Zimi/releases/download/v1.9.0/Zimi-AppleSilicon.dmg"
-        length="58426729"
+        url="https://github.com/epheterson/Zimi/releases/download/v1.9.1/Zimi-AppleSilicon.dmg"
+        length="58438367"
         type="application/octet-stream"
-        sparkle:edSignature="x9Ap31/Vu8dSP5pZxQNPF2z5fb8Wvm9+aK2xcok0VpgrCItWZIesqNHRNnj7rtC0ju7xOoVXKd0lgqCmkBq+AQ=="
+        sparkle:edSignature="RwQ7T4B4Gb7SeoN5BHP5WfM4JNZK5Lbe+vxlAICB+drDhKKshRPvd33vNmUFTXlXv5X4Z3Jj22qEHYix8gtlCQ=="
       />
     </item>
   </channel>
