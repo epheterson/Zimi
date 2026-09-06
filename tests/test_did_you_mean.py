@@ -345,6 +345,25 @@ class VocabLossyCountingTests(unittest.TestCase):
         self.assertNotIn("word", vocab)  # count 1 → pruned
 
 
+def _grow_the_index(db_path):
+    """Change a title index in a way every filesystem has to record.
+
+    One inserted row often fits in a page SQLite has already allocated, so the
+    file size does not move, and then the only evidence left is mtime — which
+    a filesystem with coarse timestamp granularity may not have advanced yet
+    either. That is a flaky test, not a real signal: it failed once on a CI
+    runner and passed everywhere else. Enough rows to add a page make the
+    change observable on any filesystem, and "the index changed" is what these
+    tests are actually about."""
+    conn = sqlite3.connect(db_path)
+    conn.executemany(
+        "INSERT INTO titles VALUES (?,?,?)",
+        [(f"A/{9000 + i}", f"New Thing {i}", f"new thing {i}") for i in range(500)],
+    )
+    conn.commit()
+    conn.close()
+
+
 class VocabCachePersistenceTests(unittest.TestCase):
     """The vocab is persisted to disk and reloaded instead of rescanned,
     as long as its signature still matches the title indexes on disk."""
@@ -374,10 +393,7 @@ class VocabCachePersistenceTests(unittest.TestCase):
         sig1 = _search._vocab_signature(self.index_dir)
         # Touch: append a row, changing size and mtime.
         db_path = os.path.join(self.index_dir, "wikipedia.db")
-        conn = sqlite3.connect(db_path)
-        conn.execute("INSERT INTO titles VALUES ('A/999','New Thing','new thing')")
-        conn.commit()
-        conn.close()
+        _grow_the_index(db_path)
         sig2 = _search._vocab_signature(self.index_dir)
         self.assertNotEqual(sig1, sig2)
 
@@ -388,10 +404,7 @@ class VocabCachePersistenceTests(unittest.TestCase):
         self.assertIsNotNone(_search._vocab_cache_load())
         # Touch the index — cache is now stale and must be rejected.
         db_path = os.path.join(self.index_dir, "wikipedia.db")
-        conn = sqlite3.connect(db_path)
-        conn.execute("INSERT INTO titles VALUES ('A/999','New Thing','new thing')")
-        conn.commit()
-        conn.close()
+        _grow_the_index(db_path)
         self.assertIsNone(_search._vocab_cache_load())
 
     def test_builder_version_bump_invalidates_cache(self):

@@ -32,6 +32,7 @@ import os
 import pathlib
 import posixpath
 import re
+import shutil
 import struct
 import threading
 import time
@@ -1644,8 +1645,15 @@ def _sweep_creator_scratch(tmp_path):
             time.sleep(delay)
         stuck = []
         for name in left:
+            target = os.path.join(directory, name)
             try:
-                os.remove(os.path.join(directory, name))
+                # A Xapian index is a directory, not a file: os.remove cannot
+                # delete one, and for as long as this only called os.remove
+                # the scratch survived every sweep it was given.
+                if os.path.isdir(target):
+                    shutil.rmtree(target)
+                else:
+                    os.remove(target)
             except FileNotFoundError:
                 pass
             except OSError:
@@ -1665,6 +1673,13 @@ def atomic_zim_creator(out_path, language="eng"):
     from libzim.writer import Creator
 
     tmp_path = out_path + ".tmp"
+    # Before, as well as after. The sweep after a build is best effort by
+    # nature: libzim's index files close when its Creator is finalized, and
+    # while the CALLER's `with` is still open the caller holds a reference,
+    # so on Windows the last of them can outlive this function. Sweeping on
+    # the way in means a directory never carries more than one build's
+    # scratch, and the next build clears the last one's.
+    _sweep_creator_scratch(tmp_path)
     try:
         # Creator takes a Path; tmp_path stays a str for os.replace below.
         with Creator(pathlib.Path(tmp_path)).config_indexing(True, language) as creator:

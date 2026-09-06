@@ -972,10 +972,15 @@ def test_the_creator_sweeps_only_its_own_index_scratch(tmp_path):
 
     out = tmp_path / "site.zim.tmp"
     scratch = [
-        tmp_path / "site.zim.tmp_title.idx",
         tmp_path / "site.zim.tmp_title.idx.tmp",
         tmp_path / "site.zim.tmp_fulltext.idx",
     ]
+    # Xapian keeps a database in a DIRECTORY. Sweeping with os.remove alone
+    # left every one of them behind, which is what kept the scratch alive on
+    # Windows through three rounds of fixing the wrong half of this.
+    scratch_dir = tmp_path / "site.zim.tmp_title.idx"
+    scratch_dir.mkdir()
+    (scratch_dir / "iamglass").write_bytes(b"x")
     keep = [
         out,
         tmp_path / "site.zim",
@@ -988,4 +993,5 @@ def test_the_creator_sweeps_only_its_own_index_scratch(tmp_path):
     _sweep_creator_scratch(str(out))
 
     assert [f.name for f in scratch if f.exists()] == []
+    assert not scratch_dir.exists(), "an index directory survived the sweep"
     assert sorted(f.name for f in keep if f.exists()) == sorted(f.name for f in keep)
