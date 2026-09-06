@@ -214,7 +214,9 @@ def test_the_convert_phase_is_derived_from_the_line_the_sidecar_prints():
 
 def test_the_convert_phase_is_one_the_client_knows():
     assert "convert" in manage.CREATE_PHASES
-    with open(os.path.join(REPO_ROOT, "zimi", "static", "create.js")) as fh:
+    with open(
+        os.path.join(REPO_ROOT, "zimi", "static", "create.js"), encoding="utf-8"
+    ) as fh:
         assert "convert: 2" in fh.read()
 
 

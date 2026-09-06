@@ -19,6 +19,7 @@ import inspect
 import json
 import os
 import sys
+import tempfile
 
 import pytest
 
@@ -129,19 +130,19 @@ def test_the_fast_engine_accepts_it_and_ignores_it():
 
 
 def test_the_session_honours_off():
-    session = renderer.RenderedSession(work_dir="/tmp", capture_variants=False)
+    session = renderer.RenderedSession(work_dir=tempfile.gettempdir(), capture_variants=False)
     assert session._capture_variants is False
 
 
 def test_the_session_defaults_to_sweeping():
-    session = renderer.RenderedSession(work_dir="/tmp")
+    session = renderer.RenderedSession(work_dir=tempfile.gettempdir())
     assert session._capture_variants is renderer.VARIANT_SWEEP_DEFAULT
 
 
 def test_a_switched_off_sweep_does_not_touch_the_archive(monkeypatch):
     """The gate is checked before anything is enumerated, so an off sweep costs
     no page evaluation at all — not a sweep that runs and discards."""
-    session = renderer.RenderedSession(work_dir="/tmp", capture_variants=False)
+    session = renderer.RenderedSession(work_dir=tempfile.gettempdir(), capture_variants=False)
     # A recorder and a context would otherwise satisfy the two later guards.
     session._recorder = object()
     session._context = object()
@@ -174,11 +175,11 @@ def test_capture_tools_survives_an_engine_that_never_heard_of_it():
 def test_an_unstarted_session_claims_nothing():
     """No browser ran, so no browser version is true. Claiming one would be
     provenance invented at construction time."""
-    assert renderer.RenderedSession(work_dir="/tmp").tools == {}
+    assert renderer.RenderedSession(work_dir=tempfile.gettempdir()).tools == {}
 
 
 def test_a_started_session_names_the_browser_it_ran():
-    session = renderer.RenderedSession(work_dir="/tmp")
+    session = renderer.RenderedSession(work_dir=tempfile.gettempdir())
     session._browser_version = "140.0.7339.16"
     assert session.tools == {"chromium": "140.0.7339.16"}
     record = zimwriter.history_record("created", "page", "x", tools=session.tools)

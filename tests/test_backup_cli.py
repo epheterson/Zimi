@@ -130,8 +130,26 @@ def test_restore_reports_env_locked_auto_update_as_skipped(dirs, tmp_path):
 # ── File mode: 0600, because password hashes ──
 
 
+def _require_posix_modes(tmp_path):
+    """0600 is a POSIX guarantee, and only some platforms make it.
+
+    Windows has no mode bits on files: chmod there toggles one read-only
+    attribute and os.stat reports 0666 whatever you asked for. The bundle is
+    still protected on Windows, by the ACL it inherits from the directory it
+    is written into — a different mechanism, and not one this assertion can
+    read. Skip rather than assert a guarantee the platform never made."""
+    probe = tmp_path / ".mode-probe"
+    probe.write_text("")
+    os.chmod(probe, 0o600)
+    granted = stat.S_IMODE(os.stat(probe).st_mode)
+    probe.unlink()
+    if granted != 0o600:
+        pytest.skip("this platform does not enforce POSIX file modes")
+
+
 def test_backup_file_mode_is_0600(dirs, tmp_path):
     zim_dir, data_dir = dirs
+    _require_posix_modes(tmp_path)
     _seed_state()
     out = tmp_path / "bundle.json"
     assert (
@@ -144,6 +162,7 @@ def test_backup_tightens_a_preexisting_looser_file(dirs, tmp_path):
     """O_CREAT's mode only applies on create — overwriting an existing 0644
     file must still end at 0600, which is what the explicit chmod is for."""
     zim_dir, data_dir = dirs
+    _require_posix_modes(tmp_path)
     out = tmp_path / "bundle.json"
     out.write_text("{}")
     os.chmod(out, 0o644)

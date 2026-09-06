@@ -98,7 +98,7 @@ def test_bt_port_invalid_falls_back(monkeypatch, val):
 
 def test_staging_dir_default(monkeypatch):
     monkeypatch.delenv("ZIMI_STAGING_DIR", raising=False)
-    assert p2p.get_staging_dir("/data") == "/data/staging"
+    assert p2p.get_staging_dir("/data") == os.path.join("/data", "staging")
 
 
 def test_staging_dir_override(monkeypatch):

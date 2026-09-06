@@ -707,7 +707,9 @@ def zimit_docker(monkeypatch, tmp_path):
     def run(cmd, note, timeout=None):
         seen["runs"].append(cmd)
         note("crawl finished")
-        out_dir = cmd[cmd.index("-v") + 1].split(":")[0]
+        # rsplit: the separator is the LAST colon. A Windows host path starts
+        # "C:\\", and splitting on the first one leaves "C".
+        out_dir = cmd[cmd.index("-v") + 1].rsplit(":", 1)[0]
         with open(os.path.join(out_dir, "whatever.zim"), "wb") as fh:
             fh.write(b"ZIMITOUTPUT")
         return 0, ["crawl finished"]
@@ -806,7 +808,9 @@ def test_zimit_pull_is_announced_never_implicit(monkeypatch, tmp_path):
         if cmd[1] == "pull":
             note("Pulling from openzim/zimit")
             return 0, []
-        out_dir = cmd[cmd.index("-v") + 1].split(":")[0]
+        # rsplit: the separator is the LAST colon. A Windows host path starts
+        # "C:\\", and splitting on the first one leaves "C".
+        out_dir = cmd[cmd.index("-v") + 1].rsplit(":", 1)[0]
         with open(os.path.join(out_dir, "x.zim"), "wb") as fh:
             fh.write(b"Z")
         return 0, []

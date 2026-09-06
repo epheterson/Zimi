@@ -83,6 +83,7 @@ from zimi.creator import (
     _strip_scripts,
 )
 from zimi.zimwriter import (
+    guess_mime,
     _MAX_ASSET_BYTES,
     _MAX_ASSETS,
     _MAX_TOTAL_ASSET_BYTES,
@@ -1130,7 +1131,14 @@ class RenderedSession:
         self._driver_pid = None
         if not pid:
             return
-        for sig, grace in ((signal.SIGTERM, KILL_GRACE), (signal.SIGKILL, KILL_GRACE)):
+        # Windows has no SIGKILL, and naming it is enough to raise: this whole
+        # method was an AttributeError there, so a stalled browser could never
+        # be taken out on the one platform where the watchdog had never run.
+        # os.kill on Windows is TerminateProcess regardless of the number, so
+        # the second rung is the same rung — harmless, and the ladder stays one
+        # shape on both platforms.
+        hard = getattr(signal, "SIGKILL", signal.SIGTERM)
+        for sig, grace in ((signal.SIGTERM, KILL_GRACE), (hard, KILL_GRACE)):
             if not _process_alive(pid):
                 return
             try:
@@ -2129,8 +2137,7 @@ def _mimetype_of(response, url=""):
     mime = raw.split(";")[0].strip().lower()
     return (
         mime
-        or mimetypes.guess_type(urllib.parse.urlsplit(url).path)[0]
-        or ("application/octet-stream")
+        or guess_mime(urllib.parse.urlsplit(url).path)
     )
 
 
@@ -2191,7 +2198,7 @@ def _typed(headers, url):
     for name in headers or ():
         if str(name).strip().lower() == "content-type":
             return headers
-    guessed, _encoding = mimetypes.guess_type(urllib.parse.urlsplit(url).path)
+    guessed = guess_mime(urllib.parse.urlsplit(url).path, fallback=None)
     if not guessed:
         return headers
     out = dict(headers or {})

@@ -65,13 +65,39 @@ def cache_home(tmp_path, monkeypatch):
     return str(home)
 
 
+def _make_unwritable(path):
+    """Turn a directory read-only, or skip the test that asked for one.
+
+    Every test here rests on a premise the OS has to grant: a directory that
+    exists, lists, and cannot be written. Some platforms decline. Windows
+    ignores POSIX mode bits on directories outright, and so does root on
+    Linux, and in both cases chmod returns success and changes nothing — so
+    the fixture built a perfectly writable directory, the product correctly
+    did not fall back, and ten tests failed for being right.
+
+    Asserting the premise instead of assuming it is what makes these tests
+    honest anywhere they run."""
+    os.chmod(path, 0o555)
+    probe = os.path.join(str(path), ".zimi-write-probe")
+    try:
+        with open(probe, "w"):
+            pass
+    except OSError:
+        return  # genuinely unwritable, which is what the caller asked for
+    os.unlink(probe)
+    pytest.skip(
+        "this platform ignores a read-only directory mode, so the read-only "
+        "media these tests are about cannot be created here"
+    )
+
+
 @pytest.fixture
 def ro_zim_dir(tmp_path):
     """A ZIM dir on 'read-only media': exists, listable, not writable."""
     d = tmp_path / "stick"
     d.mkdir()
     (d / "dummy.zim").write_bytes(b"")  # looks like a library, never opened
-    os.chmod(d, 0o555)
+    _make_unwritable(d)
     yield str(d)
     os.chmod(d, 0o755)
 
@@ -154,8 +180,8 @@ def test_existing_readonly_state_is_bypassed_wholesale(
     state = stick / ".zimi"
     state.mkdir(parents=True)
     (state / "cache.json").write_text("{}")
-    os.chmod(state, 0o555)
-    os.chmod(stick, 0o555)
+    _make_unwritable(state)
+    _make_unwritable(stick)
     try:
         server.apply_data_paths(str(stick), None)
         with caplog.at_level("WARNING", logger="zimi"):

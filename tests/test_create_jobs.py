@@ -957,3 +957,35 @@ def test_a_video_host_is_video_and_a_page_host_is_not():
     ):
         assert not claims_video_host(u), u
         assert claims_url(u), u
+
+
+def test_the_creator_sweeps_only_its_own_index_scratch(tmp_path):
+    """libzim's scratch goes, the neighbours stay.
+
+    The sweep exists because libzim unlinks `<output>_title.idx` and friends
+    as it closes, which only works where the OS permits unlinking an open
+    file. Windows does not, so a capture left four scratch files beside every
+    ZIM it made. Since the sweep deletes by prefix, what it must never do is
+    reach a file belonging to anything else — including a ZIM whose name this
+    one is a prefix of."""
+    from zimi.zimwriter import _sweep_creator_scratch
+
+    out = tmp_path / "site.zim.tmp"
+    scratch = [
+        tmp_path / "site.zim.tmp_title.idx",
+        tmp_path / "site.zim.tmp_title.idx.tmp",
+        tmp_path / "site.zim.tmp_fulltext.idx",
+    ]
+    keep = [
+        out,
+        tmp_path / "site.zim",
+        tmp_path / "site.zim.tmp2_title.idx",  # a different build
+        tmp_path / "other.zim.tmp_title.idx",  # somebody else's scratch
+    ]
+    for f in scratch + keep:
+        f.write_bytes(b"x")
+
+    _sweep_creator_scratch(str(out))
+
+    assert [f.name for f in scratch if f.exists()] == []
+    assert sorted(f.name for f in keep if f.exists()) == sorted(f.name for f in keep)

@@ -122,6 +122,7 @@ def test_register_update_inherits_first_seen_and_stamps_updated(tmp_path, monkey
     # The download machinery removes older versions before registering.
     new_path = str(zdir / "existing0_en_2026-07.zim")
     build_fixture_zim(new_path)
+    server.release_zim_handles([server._zim_short_name(old_file)])
     os.remove(str(zdir / old_file))
     assert server.register_zim_file(new_path, removed_files=[old_file]) is True
 

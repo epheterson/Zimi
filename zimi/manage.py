@@ -5462,6 +5462,15 @@ def handle_manage_post(handler, parsed, data):
                     e,
                 )
                 pass
+            # Release this ZIM's pooled handles BEFORE unlinking. Windows
+            # refuses to remove a file anyone still has open, and a pooled
+            # libzim Archive is exactly that, so Delete answered 500 there
+            # every time. A no-op on POSIX, where unlink of an open file has
+            # always worked.
+            try:
+                _srv.release_zim_handles([_srv._zim_short_name(filename)])
+            except Exception as e:
+                log.debug("Handle release before deleting %s: %s", filename, e)
             os.remove(filepath)
             log.info(f"Deleted ZIM: {filename}")
             record_activity(

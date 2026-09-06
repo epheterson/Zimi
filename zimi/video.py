@@ -47,6 +47,7 @@ from zimi.creator import (
 )
 from zimi.p2p import is_offline
 from zimi.zimwriter import (
+    guess_mime,
     _page_head,
     _plural,
     _slug,
@@ -305,7 +306,7 @@ def _fmt_date(yyyymmdd):
 def _media_mime(path):
     ext = os.path.splitext(path)[1].lower()
     return (
-        mimetypes.guess_type(path)[0]
+        guess_mime(path, fallback=None)
         or _MEDIA_MIME_FALLBACK.get(ext)
         or "application/octet-stream"
     )

@@ -26,6 +26,7 @@ import html as _html
 import io
 import json
 import logging
+import mimetypes
 import os
 import pathlib
 import posixpath
@@ -35,6 +36,21 @@ import threading
 import time
 import urllib.parse
 import zlib
+
+# Every mimetype Zimi writes into a ZIM comes from here, and deliberately not
+# from mimetypes.guess_type. That module's table is seeded from the OS: on
+# Windows mimetypes.init() reads HKEY_CLASSES_ROOT, so the answer for .zip or
+# .css depends on what the machine has installed, and a ZIM built there could
+# carry a type no other machine would produce. A private MimeTypes() copies
+# the table Python ships and nothing else, so the same capture has the same
+# entry types on every platform.
+_MIME_DB = mimetypes.MimeTypes()
+
+
+def guess_mime(name, fallback="application/octet-stream"):
+    """The mimetype of a filename or URL path, identically on every OS."""
+    return _MIME_DB.guess_type(name)[0] or fallback
+
 
 import zimi.server as _srv
 
@@ -1596,6 +1612,31 @@ def make_asset_item(path, mimetype, data):
     return cls(path, path.rsplit("/", 1)[-1], data, mimetype=mimetype, front=False)
 
 
+def _sweep_creator_scratch(tmp_path):
+    """Remove the index scratch libzim leaves beside the file it is building.
+
+    libzim writes `<output>_title.idx`, `<output>_fulltext.idx` and a `.tmp`
+    for each, then unlinks them as it closes — which works only where the OS
+    lets a process unlink a file it still has open. Windows does not, so every
+    capture left four files of litter next to the ZIM, and a cancelled capture
+    left them in a directory the caller had been promised was untouched.
+
+    Every name is derived from tmp_path, so this can only ever remove Zimi's
+    own scratch for this one build, never a neighbouring ZIM."""
+    directory = os.path.dirname(tmp_path) or "."
+    stem = os.path.basename(tmp_path) + "_"
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return
+    for name in names:
+        if name.startswith(stem):
+            try:
+                os.remove(os.path.join(directory, name))
+            except OSError:
+                pass  # still held open; the caller has bigger problems
+
+
 @contextlib.contextmanager
 def atomic_zim_creator(out_path, language="eng"):
     """Yield a libzim Creator writing to ``<out_path>.tmp``; rename over
@@ -1617,6 +1658,8 @@ def atomic_zim_creator(out_path, language="eng"):
         except OSError:
             pass
         raise
+    finally:
+        _sweep_creator_scratch(tmp_path)
 
 
 # ── provenance ──────────────────────────────────────────────────────────────
