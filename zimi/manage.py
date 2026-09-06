@@ -227,6 +227,34 @@ def _clear_setup_key():
         pass
 
 
+def _lan_client(handler):
+    """A client `lan_admin` may treat as the owner: on the private network and
+    reaching Zimi directly.
+
+    Not simply `_is_private_client`. Behind a reverse proxy on the same host
+    the resolved address falls back to the proxy's own loopback one, so every
+    client of that proxy resolves as private no matter where on the internet
+    it came from — and `lan_admin` would hand each of them the admin of a
+    passwordless instance. The setting says the LAN is the boundary; this is
+    that sentence, asked exactly."""
+    direct = getattr(handler, "_is_direct_private_client", None)
+    return bool(direct() if direct else handler._is_private_client())
+
+
+def _lan_admin_allowed():
+    """Whether the operator has said their LAN is their trust boundary.
+
+    Read fresh rather than cached at import: `zimi config` publishes file
+    settings into the environment at startup, and a test that sets it wants it
+    to take effect."""
+    return os.environ.get("ZIMI_LAN_ADMIN", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def _bootstrap_key_ok(handler):
     """True when a remote bootstrap request carries the valid setup key, in
     the Authorization: Bearer header or an X-Zimi-Setup-Key header. Constant-
@@ -331,8 +359,12 @@ def _primary_admin_authorized(handler):
     """
     stored_pw = _get_manage_password_hash()
     if not stored_pw:
-        # Passwordless: LAN/loopback clients are the (only) primary admin.
-        return handler._is_private_client()
+        # Passwordless: the host itself, or any private client when the
+        # operator has opted into trusting the LAN (see _lan_admin_allowed).
+        if _lan_admin_allowed():
+            return _lan_client(handler)
+        is_local = getattr(handler, "_is_loopback_client", handler._is_private_client)
+        return is_local() or _bootstrap_key_ok(handler)
 
     # A primary-admin SESSION token (users.create_admin_session): minted when the
     # admin password verified, delivered as the HttpOnly zimi_session cookie so
@@ -428,6 +460,12 @@ def _check_manage_auth(handler):
         if is_local():
             return None
         if _bootstrap_key_ok(handler):
+            return None
+        # The operator's explicit "my LAN is my trust boundary" (issue #59).
+        # Off unless someone typed it, so the advisory's default stands; on, it
+        # restores the pre-1.9.0 behaviour for the people who ran Zimi that way
+        # deliberately and have no wish to hold an admin password.
+        if _lan_admin_allowed() and _lan_client(handler):
             return None
         return PUBLIC_LOCKED
 
@@ -3394,6 +3432,13 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
     if probe:
         # Only on the page's first poll: one cheap subprocess, not per-second.
         payload["import_ready"] = _create_import_ready()
+        # And WHERE this server keeps that sidecar, so the install command the
+        # page offers targets this instance rather than whatever data dir the
+        # operator's shell happens to resolve. `zimi import --setup` run from a
+        # shell without the service's config sets up a perfectly good sidecar
+        # for a different library, and the engine stays greyed out with nothing
+        # on screen to say why (issue #61).
+        payload["sidecar_dir"] = _create_sidecar_dir()
         # Whether the rendered engine's browser is installed here. Same
         # contract as import_ready: asked once, on the page's first poll, and
         # answered from a cache after that.
@@ -3603,6 +3648,17 @@ def _create_root():
     return os.path.realpath(os.path.expanduser(raw))
 
 
+def _create_sidecar_dir():
+    """Where THIS server looks for the warc2zim sidecar, or None."""
+    try:
+        from zimi.importer import sidecar_status
+
+        return sidecar_status().get("dir") or None
+    except Exception:
+        log.exception("sidecar dir probe failed")
+        return None
+
+
 def _create_import_ready():
     """True when the warc2zim sidecar is already installed — the one thing
     that decides whether archive import can run on a machine with no
@@ -3802,6 +3858,14 @@ def _creator_payload():
         sidecar = {
             "installed": bool(status.get("installed")),
             "version": status.get("version"),
+            # WHERE this server looks. The client pastes it into the install
+            # command, because `zimi import --setup` from a shell resolves its
+            # own data dir — and a shell that lacks the service's config
+            # resolves a different one, installs a perfectly good sidecar into
+            # it, and leaves the engine greyed out with no way to see why
+            # (issue #61: set up against the default /zims while the service
+            # served /mnt/nas/ZIM).
+            "dir": status.get("dir"),
         }
     except Exception:
         log.exception("sidecar status probe failed")

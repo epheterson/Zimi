@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.9.1] - 2026-09-06
+
+Four fixes for what the first day of 1.9.0 turned up, one of them a security fix.
+
+### Security
+
+- **A reverse proxy on the same machine could hand out the first admin password (GHSA-5mw2-53vv-9pw6, again).** The bootstrap window waives the setup key for the machine running Zimi, and asked the resolved client address whether it was on that machine. Behind a reverse proxy on the same host, which is the standard NAS deployment, the forwarded address is correctly refused as a trusted-tier claim and the resolved address falls back to the proxy's own: loopback. Every remote client through that proxy read as being on the host and skipped the key. Being the host is now asked of the socket, and a forwarded request is never the host whatever the socket says. Anyone who ran 1.9.0 behind a same-host proxy with no admin password should set one.
+
+### Added
+
+- **`lan_admin`, for running with no password at all (#59).** The advisory closed a default that let an adjacent device race the owner for the first password. It also removed a way people genuinely run Zimi: one household, one LAN, no password. `lan_admin` (or `ZIMI_LAN_ADMIN=1`) says that the private network is a boundary you trust and restores the pre-1.9.0 behaviour. Off unless you turn it on, and it applies only while no password is set. It means a direct connection from that network: a request through a reverse proxy does not qualify, since Zimi cannot tell one client of a proxy from another.
+
+### Fixed
+
+- **The moon was upside down for half of every month (#60).** The sprite shades from a Sun vector already flipped for a waning moon, and the bright-limb angle carries that same flip, so every waning moon was turned a further 180 degrees: lit limb on the wrong side, maria inverted. The month's other half was right, which is why it read as random. The four places that draw a moon all agreed with each other and all agreed on the wrong number, so the test that compared them could not see it; there is now one that checks the answer against the sky instead.
+- **`zimi import --setup` could set up a sidecar the server never looks at (#61).** It resolves its own data dir from the shell it runs in, so run from a terminal without the service's configuration it installs into a different library's state directory, reports success, and leaves the alive engine greyed out with nothing on screen to explain it. The Create page now names this server's directory in the command it gives you, so what you paste lands where the server looks.
+
 ## [1.9.0] - 2026-09-04
 
 Zimi runs from a folder of ZIMs with no configuration, on a stick or a NAS or a fleet, and it makes ZIMs now.

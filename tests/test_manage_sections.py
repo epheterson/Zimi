@@ -62,7 +62,15 @@ def test_creator_payload_answers_every_question_the_section_asks(monkeypatch):
     assert body["browser_ready"] is True
     assert body["alive_ready"] is False
     assert body["create_root"] == "/srv/zims"
-    assert set(body["sidecar"]) == {"installed", "version"}
+    # "dir" is part of the contract, not incidental: it is where THIS server
+    # looks for the sidecar, and the Create page puts it into the install
+    # command it offers. Without it the command is `zimi import --setup`, which
+    # resolves whatever data dir the operator's shell resolves — a different
+    # library's, if that shell lacks the service's config, which installs a
+    # working sidecar somewhere the server never reads (issue #61).
+    assert set(body["sidecar"]) == {"installed", "version", "dir"}
+    assert body["sidecar"]["dir"], "the server must say where it looks"
+    assert body["sidecar"]["dir"].endswith(os.path.join("tools", "warc2zim"))
     # Every type is present in the breakdown even when the library is empty, so
     # the client never has to guess a missing bucket is zero.
     inv = _get("/manage/creator/inventory").body

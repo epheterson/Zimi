@@ -223,6 +223,27 @@ Every key is optional. The four path/bind keys have matching CLI flags; the rest
 | `sso_aud` | `ZIMI_SSO_AUD` | string — the Access application's AUD tag |
 | `sso_role` | `ZIMI_SSO_ROLE` | string — `user` (default), `limited` or `admin`, given to an account on first sign-in |
 | `sso_proxy` | `ZIMI_SSO_PROXY` | list of CIDRs (a comma-separated string also works) — who may send the identity header; default any private peer |
+| `lan_admin` | `ZIMI_LAN_ADMIN` | boolean — treat any private-network client as the admin on a **passwordless** instance; off by default, see [Running without a password](#running-without-a-password) |
+
+
+### Running without a password
+
+A passwordless Zimi is a real way to run it: one household, one LAN, nothing to type. Up to 1.8.2 that is what you got — any client on a private network was the admin.
+
+That default had a hole ([GHSA-5mw2-53vv-9pw6](https://github.com/epheterson/Zimi/security/advisories)): "on a private network" includes every other device on the LAN, a Docker bridge, and anything on your tailnet, so an adjacent device could claim the first admin password before you did and lock you out of your own library. From 1.9.0 the bootstrap window is narrower: the machine running Zimi sets the first password with no secret, and any other device must present a one-time setup key the server prints on its first start.
+
+If your threat model does not include the other devices on your own network, say so explicitly:
+
+```yaml
+# zimi.json
+{ "lan_admin": true }
+```
+
+or `ZIMI_LAN_ADMIN=1`. Any private-network client is then the admin again, exactly as before 1.9.0, and no password is needed at all.
+
+It is off unless you turn it on, and it applies only while no admin password is set. Once there is a password, that password governs. Turn it on when the LAN is a boundary you trust; leave it off on a shared, office, or campus network, where "private address" and "people you trust" are not the same set.
+
+It also means a **direct** connection from your network. A request that arrived through a reverse proxy does not qualify, even one on the same machine, because Zimi cannot tell one client of that proxy from another: the forwarded address is not trustworthy, and the address it falls back to is the proxy's own. If you reach Zimi through a proxy, set an admin password rather than turning this on.
 
 A setting from the file is applied by exporting it into its environment variable at startup, and only ever when the file is the layer that won — so an environment variable you exported yourself is never overwritten, and a setting you left out stays genuinely unset rather than being pinned to its default.
 
