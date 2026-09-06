@@ -194,6 +194,11 @@ def test_moving_a_zim_into_a_folder_refiles_it_on_the_next_boot(zim_dir):
     assert _entry("wikem")["category"] == "Medical"  # heuristic, no folder yet
 
     os.makedirs(str(zim_dir / "emergency-prep"))
+    # Releasing first is what moving an open file requires on Windows, where
+    # the OS refuses it outright. Worth knowing: the same constraint lands on
+    # the in-app "keep ZIMs organised by folder" feature, which moves files
+    # for the user rather than asking them to.
+    server.release_zim_handles([server._zim_short_name("wikem_en_2026-01.zim")])
     shutil.move(
         str(zim_dir / "wikem_en_2026-01.zim"),
         str(zim_dir / "emergency-prep" / "wikem_en_2026-01.zim"),

@@ -193,3 +193,63 @@ def test_sw_asset_version_is_content_hashed():
     src = open("zimi/static/sw.js").read()
     assert "zimi-vdev" in src  # placeholder present in source
     assert token not in src  # real token only injected at serve time
+
+
+def test_serve_survives_a_console_that_cannot_encode_its_own_banner():
+    """A boot banner must never be able to kill the server.
+
+    Windows redirects stdout at the locale encoding, cp1252, which has no box
+    drawing characters — and 1.9.0's first-run security banner (the setup key
+    from GHSA-5mw2-53vv-9pw6) is drawn in them. So on Windows the very first
+    `zimi serve > log.txt`, the run where no password is set yet, died with
+    UnicodeEncodeError before READY. The whole Windows suite had never run, so
+    nothing said so.
+
+    PYTHONIOENCODING reproduces it on any platform: this test fails on Linux
+    and macOS too when the fix is reverted, which is the point. A crash that
+    only one runner can see is a crash nobody sees."""
+    tmp_zim_dir = tempfile.mkdtemp(prefix="zimi-cp1252-zims-")
+    tmp_data_dir = tempfile.mkdtemp(prefix="zimi-cp1252-data-")
+    log_fd, log_path = tempfile.mkstemp(prefix="zimi-cp1252-log-")
+    os.close(log_fd)
+
+    env = os.environ.copy()
+    env["ZIM_DIR"] = tmp_zim_dir
+    env["ZIMI_DATA_DIR"] = tmp_data_dir
+    env["ZIMI_AUTO_UPDATE"] = "0"
+    env["ZIMI_TORRENT"] = "0"
+    env["ZIMI_PEER_DISCOVERY"] = "0"
+    env["PYTHONUNBUFFERED"] = "1"
+    # The whole point: a stdout that cannot represent the banner.
+    env["PYTHONIOENCODING"] = "cp1252"
+
+    with open(log_path, "w") as log_f:
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "zimi", "serve", "--port", "0"],
+            cwd=REPO_ROOT,
+            env=env,
+            stdout=log_f,
+            stderr=subprocess.STDOUT,
+        )
+    try:
+        port = _wait_for_ready(proc, log_path)
+        assert port > 0
+        with open(log_path, "rb") as f:
+            out = f.read().decode("utf-8", errors="replace")
+        assert "UnicodeEncodeError" not in out
+        # The setup key is the reason the banner exists; it is ASCII, so it
+        # has to survive an encoding this narrow intact.
+        assert "SETUP KEY:" in out
+    finally:
+        try:
+            proc.terminate()
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=2)
+        for path in (tmp_zim_dir, tmp_data_dir):
+            shutil.rmtree(path, ignore_errors=True)
+        try:
+            os.unlink(log_path)
+        except OSError:
+            pass

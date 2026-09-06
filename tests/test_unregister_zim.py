@@ -253,6 +253,43 @@ class TestDeleteRoute(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read() or b"{}")
 
+    def test_delete_releases_the_archive_before_it_unlinks(self):
+        """Ordering, asserted where the OS does not assert it for us.
+
+        Windows refuses to unlink a file anyone still has open, so deleting a
+        ZIM answered 500 "Failed to delete file" there every time: the route
+        called os.remove first and dropped the pooled libzim Archive after.
+        POSIX does not care — the inode outlives the name — so this bug was
+        invisible on every runner that had ever executed this suite.
+
+        The fix is an ordering, so the test is an ordering: at the moment
+        os.remove is called, the pool must no longer hold this ZIM."""
+        alpha = _short(ALPHA)
+        # Open it for real first, so there is a pooled handle to release.
+        status, _ = self._request("/search?q=water&limit=5")
+        self.assertEqual(status, 200)
+        self.assertIn(alpha, server._archive_pool)
+
+        pooled_at_unlink = []
+        real_remove = os.remove
+
+        def watching_remove(path):
+            pooled_at_unlink.append(alpha in server._archive_pool)
+            return real_remove(path)
+
+        os.remove = watching_remove
+        try:
+            status, data = self._request("/manage/delete", {"filename": ALPHA})
+        finally:
+            os.remove = real_remove
+        self.assertEqual(status, 200, data)
+        self.assertEqual(
+            pooled_at_unlink,
+            [False],
+            "the delete route unlinked the file while its archive was still "
+            "pooled — Windows returns 500 for exactly this",
+        )
+
     def test_delete_never_rescans_and_the_zim_disappears(self):
         alpha = _short(ALPHA)
         status, listing = self._request("/list")

@@ -19,7 +19,9 @@ from zimi import search as _search  # noqa: E402
 class LoadavgThrottleTests(unittest.TestCase):
     def test_no_sleep_when_load_below_threshold(self):
         with (
-            mock.patch.object(os, "getloadavg", return_value=(0.1, 0.1, 0.1)),
+            mock.patch.object(
+                os, "getloadavg", return_value=(0.1, 0.1, 0.1), create=True
+            ),
             mock.patch.object(os, "cpu_count", return_value=4),
             mock.patch.object(time, "sleep") as sleep_mock,
         ):
@@ -53,7 +55,12 @@ class LoadavgThrottleTests(unittest.TestCase):
     def test_no_op_when_getloadavg_unavailable(self):
         # Simulate Windows: AttributeError on os.getloadavg.
         with (
-            mock.patch.object(os, "getloadavg", side_effect=AttributeError),
+            # create=True: on Windows the attribute is genuinely absent, and
+            # patch.object will not patch what is not there — so the test
+            # named for simulating Windows was the one Windows failed.
+            mock.patch.object(
+                os, "getloadavg", side_effect=AttributeError, create=True
+            ),
             mock.patch.object(time, "sleep") as sleep_mock,
         ):
             _search._loadavg_throttle()

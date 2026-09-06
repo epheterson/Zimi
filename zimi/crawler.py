@@ -94,6 +94,7 @@ from zimi.creator import (
 )
 from zimi.blocklist import blocked_phrase
 from zimi.zimwriter import (
+    guess_mime,
     _plural,
     _slug,
     add_standard_metadata,
@@ -229,7 +230,7 @@ def looks_like_a_page(url):
     (``.png``, ``.zip``, ``.css``). Extensionless and server-script URLs pass
     — the Content-Type check after the fetch is the real gate; this one only
     exists to avoid spending a request to learn what the name already said."""
-    guess = mimetypes.guess_type(urllib.parse.urlsplit(url).path)[0]
+    guess = guess_mime(urllib.parse.urlsplit(url).path, fallback=None)
     if not guess or guess in _PAGE_MIMES:
         return True
     return not (guess.startswith(_NON_PAGE_MAJORS) or guess in _NON_PAGE_MIMES)
