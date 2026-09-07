@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.9.2] - unreleased
+## [1.9.2] - 2026-09-07
 
 What the first two days of 1.9 turned up, and the instruments that keep it from turning up again.
 
