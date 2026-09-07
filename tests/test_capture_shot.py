@@ -205,3 +205,28 @@ def test_a_picture_is_served_without_deadlocking_the_reader(tmp_path, monkeypatc
             assert e.code == 404
     finally:
         srv.shutdown()
+
+
+def test_store_pictures_reports_what_it_stored():
+    """The done card shows the pair without a second question to the server,
+    so the writer says which of the two it kept."""
+    from zimi import creator as cr
+
+    class Engine:
+        last_shot = b"\xff\xd8live"
+
+        def shoot_packaged(self, html):
+            return b"\xff\xd8packaged"
+
+    class Nothing:
+        pass
+
+    said = []
+    assert cr._store_pictures(_Creator(), Engine(), "<p>", "u", said.append) == {
+        "live": True,
+        "zim": True,
+    }
+    assert cr._store_pictures(_Creator(), Nothing(), "<p>", "u", said.append) == {
+        "live": False,
+        "zim": False,
+    }

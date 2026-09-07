@@ -565,6 +565,19 @@ def test_the_line_buffer_is_bounded(stub_engine):
     assert body["lines"][-1] == "done"
 
 
+def test_the_result_carries_which_pictures_the_zim_keeps(stub_engine, tmp_path):
+    """The done card draws the live/packaged pair from this, not from a second
+    request: the writer says what it stored and the status reply passes it."""
+    stub_engine["result"] = {
+        "path": str(tmp_path / "shots.zim"),
+        "registered": True,
+        "pictures": {"live": True, "zim": True},
+    }
+    _post("/manage/create", {"mode": "site", "source": "https://example.org/"})
+    body = _wait_done()
+    assert body["result"]["pictures"] == {"live": True, "zim": True}
+
+
 def test_success_reports_the_new_zims_library_name(stub_engine, tmp_path):
     stub_engine["result"] = {"path": str(tmp_path / "my_notes.zim"), "registered": True}
     _post("/manage/create", {"mode": "site", "source": "https://example.org/"})

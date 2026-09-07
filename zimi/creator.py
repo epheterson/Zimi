@@ -247,11 +247,14 @@ def _store_pictures(creator, capture, html, final_url, note):
     only thing between them is what packaging lost — which is why a height
     comparison can honestly name a page whose stylesheet did not survive."""
     live, packaged = _capture_pictures(capture, html, final_url)
+    stored = {"live": False, "zim": False}
     if not add_capture_shot(creator, live):
-        return
+        return stored
+    stored["live"] = True
     note("stored a picture of the live page")
     if packaged is None or not add_packaged_shot(creator, packaged):
-        return
+        return stored
+    stored["zim"] = True
     note("stored a picture of the packaged page")
     dims, short = shot_verdict(live, packaged)
     if dims:
@@ -262,6 +265,7 @@ def _store_pictures(creator, capture, html, final_url, note):
             "something did not survive capture. Compare the two pictures in "
             "About."
         )
+    return stored
 
 
 def wall_note(page):
@@ -2234,7 +2238,7 @@ def create_page_zim(
             note(f"packaging {final_url}")
             creator.add_item(static_cls("A/index", zim_title, page.encode("utf-8")))
             creator.set_mainpath("A/index")
-            _store_pictures(creator, capture, page, final_url, note)
+            pictures = _store_pictures(creator, capture, page, final_url, note)
             add_standard_metadata(
                 creator,
                 title=zim_title,
@@ -2275,6 +2279,9 @@ def create_page_zim(
         # the done card should say "this may be a gate" beside the result.
         "text_chars": text_chars,
         "thin_page": bool(wall),
+        # Which of the two pictures the ZIM carries, so the done card can show
+        # the pair without asking the server a second question.
+        "pictures": pictures,
         "main": "A/index",
         "registered": registered,
         "url": final_url,

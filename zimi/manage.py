@@ -3195,6 +3195,8 @@ def _create_worker(job, opts):
         # nobody opens the log of a job that finished green.
         if result.get("thin_page"):
             outcome["result"]["thin_page"] = True
+        if result.get("pictures"):
+            outcome["result"]["pictures"] = dict(result["pictures"])
         # The bound that ended a crawl early ("interrupted", "page cap (200)"),
         # when one did. The done card owes the admin that honesty — a ZIM that
         # says "40 pages" without saying "and I stopped there on purpose" reads
