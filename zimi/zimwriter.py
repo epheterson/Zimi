@@ -1736,6 +1736,10 @@ def atomic_zim_creator(out_path, language="eng"):
 
 SCRAPER_METADATA_KEY = "Scraper"
 SOURCE_METADATA_KEY = "X-Zimi-Source"
+# The entry a capture's picture of the live page is written to, and the
+# metadata key that says it is there so a reader finds it without scanning.
+SHOT_ENTRY_PATH = "_zimi/shot-live.jpg"
+SHOT_METADATA_KEY = "X-Zimi-Screenshot"
 HISTORY_METADATA_KEY = "X-Zimi-History"
 
 # ── openZIM conformance ─────────────────────────────────────────────────────
@@ -2059,6 +2063,27 @@ def append_history(records, record, limit=MAX_HISTORY_RECORDS):
         counts={"records": dropped},
     )
     return [marker] + keep
+
+
+def add_capture_shot(creator, jpeg):
+    """Store a capture's picture of the live page, and say that it is there.
+
+    Written as an ordinary ZIM entry, so it travels with the file to any
+    reader, any peer, any copy on a memory stick — the same rule the rest of
+    the provenance follows. Returns True when a picture was stored.
+
+    Silent when there is no picture: the fast engine has no browser by design,
+    and a ZIM without one is not defective, it just cannot offer the
+    comparison."""
+    if not jpeg:
+        return False
+    try:
+        creator.add_item(zim_static_item_class()(SHOT_ENTRY_PATH, "", jpeg))
+        creator.add_metadata(SHOT_METADATA_KEY, SHOT_ENTRY_PATH)
+    except Exception as e:
+        log.warning("could not store the capture screenshot: %s", e)
+        return False
+    return True
 
 
 def add_standard_metadata(

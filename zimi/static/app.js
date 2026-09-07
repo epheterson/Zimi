@@ -3522,7 +3522,17 @@ function _ziBodyHtml(info) {
     _provBadgeFor(info.kind) + '</div>' +
     (info.description ? '<div class="zi-desc">' + esc(info.description) + '</div>' : '') +
     '</div></div>';
-  var rows =
+  // The capture's picture of the live page, where it kept one. It sits above
+  // the facts because it answers the question the facts cannot: is this ZIM
+  // still the page it claims to be? You are looking at the ZIM already; this
+  // is the other half of that comparison, and the half the web deletes.
+  var shotHtml = info.shot
+    ? '<a class="zi-shot" href="' + escAttr(info.shot) + '" target="_blank" rel="noopener">' +
+        '<img src="' + escAttr(info.shot) + '" alt="' + escAttr(t('zi_shot_alt')) + '" loading="lazy">' +
+        '<span class="zi-shot-cap">' + tH('zi_shot_caption') + '</span>' +
+      '</a>'
+    : '';
+  var rows = shotHtml +
     (info.long_description ? '<div class="zi-long">' + esc(info.long_description) + '</div>' : '') +
     '<div class="zi-rows">' +
     _ziRow('zi_identifier', esc(info.name)) +

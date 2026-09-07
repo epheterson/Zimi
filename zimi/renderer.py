@@ -804,13 +804,50 @@ class _Resource:
             return None
 
 
+# ── the picture of the live page ────────────────────────────────────────────
+#
+# A capture is a claim: this ZIM is that page. The claim is unfalsifiable a
+# week later, because the page has moved on — which is exactly the labour the
+# 09-03 survey did by hand, opening each capture beside the live site while it
+# still matched. Storing the live shot at capture time keeps the comparison
+# available forever, and makes "tell us about a site that captured badly" a
+# glance rather than a report.
+SHOT_WIDTH = 1280
+SHOT_MAX_HEIGHT = 4000  # a 45,000px homepage must not put megabytes in a ZIM
+SHOT_QUALITY = 68
+
+
+def _shoot(page, url):
+    """A JPEG of the settled page, or None. Never raises into the capture.
+
+    Height-capped rather than full page: cnn.com is 45,000 pixels tall, and
+    the top of a page is what tells you whether a capture is faithful. A
+    screenshot is a courtesy — a capture that succeeded must never fail
+    because a picture of it could not be taken."""
+    try:
+        return page.screenshot(
+            type="jpeg",
+            quality=SHOT_QUALITY,
+            clip={"x": 0, "y": 0, "width": SHOT_WIDTH, "height": SHOT_MAX_HEIGHT},
+        )
+    except Exception as e:
+        log.debug("no screenshot for %s: %s", url, e)
+        return None
+
+
 class RenderedPage:
     """A navigation's whole result: where it landed, the rendered DOM, and
     every subresource that came with it."""
 
-    __slots__ = ("final_url", "html", "bytes", "content_language", "resources")
+    __slots__ = ("final_url", "html", "bytes", "content_language", "resources", "shot")
 
-    def __init__(self, final_url, html, nbytes, content_language, resources):
+    def __init__(
+        self, final_url, html, nbytes, content_language, resources, shot=None
+    ):
+        # `shot`: JPEG bytes of the live page as it stood when captured, or
+        # None where no browser took one. The one thing about a capture that
+        # cannot be recovered later — the site will have changed.
+        self.shot = shot
         self.final_url = final_url
         self.html = html
         self.bytes = nbytes
@@ -1229,6 +1266,11 @@ class RenderedSession:
                 # collapses every srcset to the one candidate this viewport
                 # chose and deletes the <picture> sources outright.
                 self._record_variants(page)
+            # Now, while the page is settled and before _PREPARE_JS rewrites
+            # its srcsets: this is the page as the live web served it, and it
+            # is the half of the comparison that stops existing the moment the
+            # site changes.
+            shot = _shoot(page, url)
             try:
                 html = page.evaluate(_PREPARE_JS)
             except Exception as e:
@@ -1250,6 +1292,7 @@ class RenderedSession:
             doc_bytes or len(html.encode("utf-8", errors="replace")),
             _content_language(responses, final_url),
             resources,
+            shot=shot,
         )
 
     def _quiet(self, page, timeout):
@@ -2595,6 +2638,10 @@ class RenderedCapture:
         self.count = 0
         self._pages = {}  # final URL -> RenderedPage awaiting its render
         self._started = False
+        # The picture of the last page this engine rendered. `render` pops the
+        # RenderedPage that carried it, and the caller that writes provenance
+        # runs after that, so the shot has to outlive the page object.
+        self.last_shot = None
 
     # What the session refused, read through the engine. The callers that write
     # provenance and progress lines hold an engine, not a session, and every
@@ -2639,6 +2686,7 @@ class RenderedCapture:
         sink, item_factory = target
         page = self._pages.pop(final_url, None)
         resources = page.resources if page is not None else {}
+        self.last_shot = getattr(page, "shot", None)
         assets = RenderedAssets(
             sink,
             resources,

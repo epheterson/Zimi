@@ -48,6 +48,7 @@ from typing import Any
 import zimi.server as _srv
 from zimi.blocklist import blocked_phrase
 from zimi.zimwriter import (
+    add_capture_shot,
     guess_mime,
     _CSS_URL_RE,
     _HREF_RE,
@@ -2064,6 +2065,11 @@ def create_page_zim(
             note(f"packaging {final_url}")
             creator.add_item(static_cls("A/index", zim_title, page.encode("utf-8")))
             creator.set_mainpath("A/index")
+            # The picture of the live page, where an engine took one. It is the
+            # half of "is this capture faithful?" that stops being obtainable
+            # the moment the site changes.
+            if add_capture_shot(creator, getattr(capture, "last_shot", None)):
+                note("stored a picture of the live page")
             add_standard_metadata(
                 creator,
                 title=zim_title,

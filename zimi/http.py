@@ -1068,8 +1068,14 @@ def _zim_info(name):
     # X-Zimi-Source is the uniform field (folder name, playlist, archive) that
     # Zimi writes whenever it knows the answer. Prefer the standard field.
     source = meta.get("Source") or meta.get(_zw.SOURCE_METADATA_KEY) or ""
+    # The picture of the live page, when the capture stored one. Handed over as
+    # the entry path, not as bytes: the panel loads it through /w/ like any
+    # other entry, so a 200 KB screenshot never rides inside a JSON payload the
+    # library view fetches for every card.
+    shot = meta.get(_zw.SHOT_METADATA_KEY) or ""
     info = {
         "name": name,
+        "shot": f"/w/{name}/{shot}" if shot else "",
         "file": entry.get("file", ""),
         # The card's title/description come from the same cache, so the panel
         # agrees with the card it opened from even for an unreadable archive.

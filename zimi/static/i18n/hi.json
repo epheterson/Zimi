@@ -1543,5 +1543,7 @@
   "create_report_site": "हमें इस साइट के बारे में बताएं",
   "create_beta_tag": "बीटा",
   "create_beta_ask": "कोई समस्या दिखी?",
-  "create_beta_report": "हमें बताएं कि कौन सी साइट है"
+  "create_beta_report": "हमें बताएं कि कौन सी साइट है",
+  "zi_shot_alt": "The live page as it looked when this ZIM was made",
+  "zi_shot_caption": "The live page, when this was captured"
 }
