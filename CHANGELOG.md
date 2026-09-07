@@ -19,6 +19,7 @@ What the first two days of 1.9 turned up, and the instruments that keep it from 
 
 ### Fixed
 
+- **Darken articles did nothing on a captured site (#65).** Left to its default the checkbox lets a capture keep its own design; ticked, it now darkens the capture too, because the person asked.
 - **`/health` reported an empty library on a full server**, since 1.8.0: it counted through the caller's allowlist, so an unauthenticated monitor saw zero of 73.
 - **A page that writes its attributes in capitals** lost every lazy image and, when one was woken, came out as `<img SRC=src="...">`. Three bugs, one wrong assumption.
 - **A media entry fetched without a Range was silently truncated** to one window: curl, wget, an `<a download>` saved 8 MB of a 30 MB video with no error. A whole request now streams the whole item in windows, each read under the lock, none held at once.

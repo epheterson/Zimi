@@ -164,6 +164,23 @@ function _darkenArticlesOn() {
   if (v === '0') return false;
   return _appThemeIsDark();
 }
+// Whether the person TICKED the box, as opposed to the default following the
+// app theme. The difference matters for a captured site: left to the default,
+// a capture keeps its own design; ticked, the person has asked for dark and
+// gets it. Before this, a ticked box did nothing on a capture (#65), which on
+// a library of captures reads as a checkbox that does nothing at all.
+function _darkenArticlesExplicit() {
+  return localStorage.getItem(SK.DARKEN_ARTICLES) === '1';
+}
+// The decision, pure so it can be tested: should the darken style be in the
+// article document right now?
+function _darkenWanted(on, explicit, readerViewOn, loc, isCapture, declaresDark) {
+  if (!on || readerViewOn) return false;
+  if ((loc || '').indexOf('/static/') === 0) return false;   // pdf.js / viewers
+  if (declaresDark) return false;                            // already dark
+  if (isCapture && !explicit) return false;                  // keeps its design
+  return true;
+}
 function _setDarkenArticles(on) {
   localStorage.setItem(SK.DARKEN_ARTICLES, on ? '1' : '0');
   try { _applyArticleDarken(_readerFrameDoc()); } catch (e) {}
@@ -286,14 +303,12 @@ function _articleIsWebCapture() {
 function _applyArticleDarken(doc) {
   if (!doc || !doc.documentElement) return;
   var existing = doc.getElementById(_ARTICLE_DARKEN_STYLE_ID);
-  var want = _darkenArticlesOn() && !_readerViewOn;
-  if (want) {
-    var loc = '';
-    try { loc = doc.defaultView.location.pathname; } catch (e) {}
-    if (loc.indexOf('/static/') === 0) want = false;         // pdf.js / viewers
-    else if (_articleIsWebCapture()) want = false;            // a site keeps its design
-    else if (_articleDeclaresDark(doc)) want = false;         // already dark
-  }
+  var loc = '';
+  try { loc = doc.defaultView.location.pathname; } catch (e) {}
+  var want = _darkenWanted(
+    _darkenArticlesOn(), _darkenArticlesExplicit(), _readerViewOn, loc,
+    _articleIsWebCapture(), _articleDeclaresDark(doc)
+  );
   if (want) {
     if (!existing && doc.head) {
       var st = doc.createElement('style');
