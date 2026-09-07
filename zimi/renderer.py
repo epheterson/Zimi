@@ -337,8 +337,10 @@ _CSS_IMPORT_RE = re.compile(r"""@import\s+(["'])([^"']+)\1""", re.IGNORECASE)
 # The tags whose refs are ASSETS. `<a href>` is deliberately not here: a link
 # is resolved by the caller, which is the only party that knows whether this
 # capture holds the far end.
+# body/table/tr/td/th are here for the 1990s ``background=`` picture.
 _ASSET_TAG_RE = re.compile(
-    r"<(?:img|source|video|audio|track|embed|link|object)\b[^>]*>", re.IGNORECASE
+    r"<(?:img|source|video|audio|track|embed|link|object|body|table|tr|td|th)\b[^>]*>",
+    re.IGNORECASE,
 )
 _LINK_TAG_RE = re.compile(r"<link\b", re.IGNORECASE)
 _STYLE_ATTR_RE = attr_re("style")
@@ -725,6 +727,9 @@ _PREPARE_JS = r"""() => {
   [['a', 'href'], ['area', 'href'], ['link', 'href'], ['img', 'src'],
    ['source', 'src'], ['video', 'src'], ['video', 'poster'], ['audio', 'src'],
    ['track', 'src'], ['embed', 'src'], ['iframe', 'src'], ['object', 'data'],
+   // The 1996 way to tile a picture behind a page. spacejam.com still does it.
+   ['body', 'background'], ['table', 'background'], ['tr', 'background'],
+   ['td', 'background'], ['th', 'background'],
   ].forEach(([tag, attr]) => {
     document.querySelectorAll(tag + '[' + attr + ']').forEach(el => absolutize(el, attr));
   });
@@ -804,13 +809,89 @@ class _Resource:
             return None
 
 
+# ── the picture of the live page ────────────────────────────────────────────
+#
+# A capture is a claim: this ZIM is that page. The claim is unfalsifiable a
+# week later, because the page has moved on — which is exactly the labour the
+# 09-03 survey did by hand, opening each capture beside the live site while it
+# still matched. Storing the live shot at capture time keeps the comparison
+# available forever, and makes "tell us about a site that captured badly" a
+# glance rather than a report.
+SHOT_WIDTH = 1280
+SHOT_QUALITY = 68
+# Quality to fall back to before giving up on showing the whole page. A long
+# page compresses well at 45 and still reads at a glance, which is what this
+# picture is for.
+SHOT_QUALITY_DENSE = 45
+# What a picture may weigh. Above this the ZIM starts being mostly screenshot:
+# gobyexample packages to 65 KB, so a megabyte of picture would be absurd,
+# while a 30 MB news capture can carry one without noticing.
+SHOT_MAX_BYTES = 900_000
+# Only when even a dense full-page shot blows the budget. cnn.com's homepage
+# is around 45,000 pixels tall; the top of a page is what tells you whether a
+# capture is faithful, so a truncated picture still answers the question.
+SHOT_FALLBACK_HEIGHT = 6000
+
+
+def _shoot(page, url):
+    """A JPEG of the whole settled page, or None. Never raises into the capture.
+
+    Full page, not one viewport: the question this answers is "did the capture
+    keep the page", and a viewport-high crop of a long article cannot show
+    that the body below the fold survived.
+
+    Full page has no natural ceiling though, so the size is bounded in three
+    steps rather than by cropping first: the whole page at normal quality, the
+    whole page at a denser one, and only then the top of it. A picture is a
+    courtesy — a capture that succeeded must never fail because a picture of
+    it could not be taken."""
+    for quality in (SHOT_QUALITY, SHOT_QUALITY_DENSE):
+        try:
+            shot = page.screenshot(type="jpeg", quality=quality, full_page=True)
+        except Exception as e:
+            log.debug("no screenshot for %s: %s", url, e)
+            return None
+        if len(shot) <= SHOT_MAX_BYTES:
+            return shot
+    try:
+        # Every step above showed the whole page and every one was too heavy,
+        # so this is a genuinely enormous page. Keep the top of it.
+        clipped = page.screenshot(
+            type="jpeg",
+            quality=SHOT_QUALITY_DENSE,
+            clip={
+                "x": 0,
+                "y": 0,
+                "width": SHOT_WIDTH,
+                "height": SHOT_FALLBACK_HEIGHT,
+            },
+        )
+        log.debug(
+            "screenshot for %s truncated to %spx: the full page did not fit "
+            "in %s bytes",
+            url,
+            SHOT_FALLBACK_HEIGHT,
+            SHOT_MAX_BYTES,
+        )
+        return clipped
+    except Exception as e:
+        log.debug("no screenshot for %s: %s", url, e)
+        return None
+
+
 class RenderedPage:
     """A navigation's whole result: where it landed, the rendered DOM, and
     every subresource that came with it."""
 
-    __slots__ = ("final_url", "html", "bytes", "content_language", "resources")
+    __slots__ = ("final_url", "html", "bytes", "content_language", "resources", "shot")
 
-    def __init__(self, final_url, html, nbytes, content_language, resources):
+    def __init__(
+        self, final_url, html, nbytes, content_language, resources, shot=None
+    ):
+        # `shot`: JPEG bytes of the live page as it stood when captured, or
+        # None where no browser took one. The one thing about a capture that
+        # cannot be recovered later — the site will have changed.
+        self.shot = shot
         self.final_url = final_url
         self.html = html
         self.bytes = nbytes
@@ -1229,6 +1310,11 @@ class RenderedSession:
                 # collapses every srcset to the one candidate this viewport
                 # chose and deletes the <picture> sources outright.
                 self._record_variants(page)
+            # Now, while the page is settled and before _PREPARE_JS rewrites
+            # its srcsets: this is the page as the live web served it, and it
+            # is the half of the comparison that stops existing the moment the
+            # site changes.
+            shot = _shoot(page, url)
             try:
                 html = page.evaluate(_PREPARE_JS)
             except Exception as e:
@@ -1250,7 +1336,105 @@ class RenderedSession:
             doc_bytes or len(html.encode("utf-8", errors="replace")),
             _content_language(responses, final_url),
             resources,
+            shot=shot,
         )
+
+    def shoot_live(self, url):
+        """A picture of the live page, settled exactly as a capture settles it.
+
+        For the fast engine, which has no browser of its own: it fetched the
+        page over plain HTTP and packaged it, and this is the second, cheap
+        visit that the spec allows it when a browser happens to be installed.
+        Same blocking, same consent-wall reveal, same scroll and image settle
+        as a rendered capture, so the picture is comparable with the one the
+        packaged page will produce. None on any trouble; never a failure.
+        """
+        if self._context is None:
+            return None
+        page = None
+        try:
+            page = self._context.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=int(NAV_TIMEOUT * 1000))
+            self._quiet(page, QUIET_TIMEOUT)
+            self._reveal(page)
+            self._quiet(page, SCROLL_QUIET_TIMEOUT)
+            self._image_settle(page)
+            self._settle_further(page)
+            return _shoot(page, url)
+        except Exception as e:
+            log.debug("no live screenshot for %s: %s", url, e)
+            return None
+        finally:
+            if page is not None:
+                try:
+                    page.close()
+                except Exception:
+                    pass
+
+    def shoot_packaged(self, html, by_path, mainpath="A/index"):
+        """A picture of the page AS THE ZIM WILL SERVE IT, before it exists.
+
+        The obvious way to photograph a finished ZIM is to open the finished
+        ZIM, and it is the wrong way: the writer streams entries straight into
+        the file, so by the time one exists it is sealed, and adding a picture
+        afterwards means rewriting every byte of it to insert one image.
+
+        So the ZIM is served rather than read. Every request is answered from
+        the very bytes about to be written — the rewritten document at its main
+        path, each asset at the path it will occupy — over a synthetic origin
+        laid out exactly like the real one. Relative references resolve the way
+        they will resolve in the reader, because the shape they resolve against
+        is the same shape.
+
+        Nothing here can fail a capture: any trouble is a missing picture.
+        """
+        if self._context is None:
+            return None
+        origin = "https://zim.invalid/"
+
+        def _serve(route):
+            try:
+                path = urllib.parse.urlsplit(route.request.url).path.lstrip("/")
+                path = urllib.parse.unquote(path)
+                if path == mainpath:
+                    return route.fulfill(
+                        status=200,
+                        content_type="text/html; charset=utf-8",
+                        body=html,
+                    )
+                found = by_path.get(path)
+                if found is None:
+                    # Exactly what the reader would do with a reference the
+                    # capture did not carry, so the picture shows that too.
+                    return route.fulfill(status=404, body="")
+                mime, data = found
+                return route.fulfill(status=200, content_type=mime, body=data)
+            except Exception:
+                try:
+                    return route.abort()
+                except Exception:
+                    return None
+
+        page = None
+        try:
+            page = self._context.new_page()
+            page.route("**/*", _serve)
+            page.goto(
+                origin + mainpath,
+                wait_until="load",
+                timeout=int(NAV_TIMEOUT * 1000),
+            )
+            self._image_settle(page)
+            return _shoot(page, "the packaged ZIM")
+        except Exception as e:
+            log.debug("no packaged screenshot: %s", e)
+            return None
+        finally:
+            if page is not None:
+                try:
+                    page.close()
+                except Exception:
+                    pass
 
     def _quiet(self, page, timeout):
         """Wait for the network to go quiet, and stop waiting when it will not.
@@ -2333,6 +2517,12 @@ class RenderedAssets:
         self._resources = resources
         self.carried = {} if carried is None else carried
         self._budget = budget
+        # ZIM path -> the spooled resource that will be written there. Kept so
+        # the packaged page can be RENDERED before the ZIM exists: the browser
+        # asks for a path, this answers with the bytes that path is about to
+        # hold. The resource stays on disk, so this map costs a dict entry per
+        # asset and not a second copy of the page.
+        self.by_path = {}
         self.total_bytes = 0
         self.count = 0
         self.mimetypes = set()
@@ -2389,6 +2579,7 @@ class RenderedAssets:
             # to be found by somebody else.
             data = self._rewrite_css(url, in_path, data)
         self.carried[key] = in_path
+        self.by_path[in_path] = (mime, data)
         self.total_bytes += len(data)
         self.count += 1
         try:
@@ -2477,7 +2668,7 @@ def _rewrite_asset_tags(assets, html):
         is_link = bool(_LINK_TAG_RE.match(tag))
         if is_link and not _carried_link(tag):
             return tag
-        for attr in ("src", "poster", "data") if not is_link else ("href",):
+        for attr in ("src", "poster", "data", "background") if not is_link else ("href",):
             tag = _attr_re(attr).sub(lambda am: _fix_ref(assets, am), tag)
         if is_link and "../" in tag:
             tag = drop_integrity(tag)  # the sheet is ours now; the hash was for theirs
@@ -2595,6 +2786,11 @@ class RenderedCapture:
         self.count = 0
         self._pages = {}  # final URL -> RenderedPage awaiting its render
         self._started = False
+        # The picture of the last page this engine rendered. `render` pops the
+        # RenderedPage that carried it, and the caller that writes provenance
+        # runs after that, so the shot has to outlive the page object.
+        self.last_shot = None
+        self._last_assets = None
 
     # What the session refused, read through the engine. The callers that write
     # provenance and progress lines hold an engine, not a session, and every
@@ -2639,6 +2835,7 @@ class RenderedCapture:
         sink, item_factory = target
         page = self._pages.pop(final_url, None)
         resources = page.resources if page is not None else {}
+        self.last_shot = getattr(page, "shot", None)
         assets = RenderedAssets(
             sink,
             resources,
@@ -2646,6 +2843,8 @@ class RenderedCapture:
             carried=self.carried,
             budget=self._budget,
         )
+        # Kept so the packaged page can be photographed from the same bytes.
+        self._last_assets = assets
         try:
             out = render_rendered_page(
                 assets, html, final_url=final_url, resolve_link=resolve_link
@@ -2656,6 +2855,22 @@ class RenderedCapture:
             if page is not None:
                 self._session.release(page.discard())
         return out
+
+    def shoot_packaged(self, html, mainpath="A/index"):
+        """The picture of what the ZIM will serve, taken before it is written.
+
+        Handed the same rewritten HTML that is going into the file, and the
+        map of ZIM path to bytes the last render built."""
+        assets = self._last_assets
+        by_path = getattr(assets, "by_path", None) or {}
+        try:
+            return self._session.shoot_packaged(html, by_path, mainpath=mainpath)
+        finally:
+            # The map holds this page's asset bytes so the browser could ask
+            # for them. It has asked; let them go.
+            if assets is not None:
+                assets.by_path = {}
+            self._last_assets = None
 
     def close(self):
         for page in self._pages.values():

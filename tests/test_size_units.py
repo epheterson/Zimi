@@ -68,7 +68,9 @@ class TestTheBrowserAgrees(unittest.TestCase):
         cases = _cases()
         script = (
             block
-            + "\nconst cases = " + json.dumps([[n, s] for n, s in cases]) + ";\n"
+            + "\nconst cases = "
+            + json.dumps([[n, s] for n, s in cases])
+            + ";\n"
             + "const bad = cases.filter(([n, want]) => fmtBytes(n) !== want)"
             + ".map(([n, want]) => n + ': got ' + fmtBytes(n) + ', want ' + want);\n"
             + "console.log(JSON.stringify(bad));\n"
@@ -78,7 +80,9 @@ class TestTheBrowserAgrees(unittest.TestCase):
         )
         self.assertEqual(out.returncode, 0, out.stderr)
         mismatches = json.loads(out.stdout.strip())
-        self.assertEqual(mismatches, [], "browser and server disagree: " + str(mismatches))
+        self.assertEqual(
+            mismatches, [], "browser and server disagree: " + str(mismatches)
+        )
 
 
 class TestNobodyDividesByHand(unittest.TestCase):
@@ -128,7 +132,9 @@ class TestADerivedSizeIsNeverCached(unittest.TestCase):
     """
 
     def test_the_cache_hit_path_recomputes_rather_than_reads(self):
-        src = open(os.path.join(HERE, "..", "zimi", "server.py"), encoding="utf-8").read()
+        src = open(
+            os.path.join(HERE, "..", "zimi", "server.py"), encoding="utf-8"
+        ).read()
         self.assertNotIn(
             'cached.get("size_gb"',
             src,

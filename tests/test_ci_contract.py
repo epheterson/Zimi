@@ -43,7 +43,7 @@ def _text(name):
     path = WORKFLOWS / name
     if not path.is_file():
         pytest.skip(f"{name} is not in this checkout")
-    return path.read_text()
+    return path.read_text(encoding="utf-8")
 
 
 def _commands(name):
@@ -134,7 +134,7 @@ def test_deploy_does_not_hide_a_failed_build():
     deploy = ROOT / "deploy.sh"
     if not deploy.is_file():
         pytest.skip("deploy.sh is not in this checkout")
-    body = deploy.read_text()
+    body = deploy.read_text(encoding="utf-8")
     if "| tail" not in body and "|tail" not in body:
         return  # nothing piped, nothing to mask
     assert "set -o pipefail" in body or "set -eo pipefail" in body, (
@@ -168,7 +168,9 @@ def _runners(name, job):
     inline = re.search(r"^\s*os:\s*\[([^\]]+)\]", block, re.M)
     if inline:
         return {v.strip().strip("'\"") for v in inline.group(1).split(",")}
-    return {m.strip().strip("'\"") for m in re.findall(r"^\s*-?\s*os:\s*(\S+)", block, re.M)}
+    return {
+        m.strip().strip("'\"") for m in re.findall(r"^\s*-?\s*os:\s*(\S+)", block, re.M)
+    }
 
 
 def test_the_pr_gate_runs_on_every_runner_the_release_builds_on():
@@ -234,9 +236,7 @@ def test_the_repo_refuses_commit_messages_with_session_links():
     plain_url = run("a change\n\nsee https://claude.ai/code/session_x1 for context\n")
     assert plain_url.returncode != 0, "the hook only catches the trailer form"
 
-    good = run(
-        "a change\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n"
-    )
+    good = run("a change\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n")
     assert good.returncode == 0, f"the hook rejected a clean message: {good.stderr}"
 
 
@@ -245,12 +245,38 @@ def test_no_commit_on_this_branch_carries_a_session_link():
     branch can still be rewritten."""
     done = subprocess.run(
         ["git", "log", "origin/main..HEAD", "--format=%H%n%B"],
-        capture_output=True, text=True, cwd=ROOT,
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
     )
     if done.returncode != 0:
         pytest.skip("no origin/main to compare against here")
     offenders = [ln for ln in done.stdout.splitlines() if "claude.ai" in ln]
-    assert not offenders, (
-        "commit message(s) on this branch carry a session link:\n  "
-        + "\n  ".join(offenders)
+    assert (
+        not offenders
+    ), "commit message(s) on this branch carry a session link:\n  " + "\n  ".join(
+        offenders
+    )
+
+
+def test_every_text_file_operation_names_its_encoding():
+    """`Path.read_text()` / `write_text()` without an encoding use the platform
+    default, which on Windows is cp1252 — so a fixture holding one non-ASCII
+    character raises UnicodeEncodeError there and nowhere else. That is exactly
+    how the Windows runner failed on 1.9.2, in a test that had passed on three
+    other operating systems. UTF-8 everywhere, stated, is the whole fix."""
+    import ast
+
+    offenders = []
+    for path in sorted(ROOT.glob("tests/*.py")) + sorted(ROOT.glob("scripts/*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in ("read_text", "write_text")
+                and not any(k.arg == "encoding" for k in node.keywords)
+            ):
+                offenders.append(f"{path.relative_to(ROOT)}:{node.lineno}")
+    assert not offenders, "text file operation without an encoding:\n  " + "\n  ".join(
+        offenders
     )

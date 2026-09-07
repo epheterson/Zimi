@@ -253,3 +253,28 @@ def test_serve_survives_a_console_that_cannot_encode_its_own_banner():
             os.unlink(log_path)
         except OSError:
             pass
+
+
+def test_health_counts_the_servers_zims_not_the_callers(tmp_path, monkeypatch):
+    """/health is unauthenticated monitoring, so it must state a fact about the
+    SERVER.
+
+    get_zim_files() filters by the caller's allowlist, which is correct for
+    every read path and wrong here. /health used it, so from 1.8.0 onward an
+    anonymous health check against an instance that restricts anonymous access
+    reported zim_count 0 while the library served dozens. Nothing noticed for
+    three releases, because the endpoint kept answering 200."""
+    import zimi.server as server
+
+    monkeypatch.setattr(
+        server, "_zim_files_cache", {"alpha": "/z/alpha.zim", "beta": "/z/beta.zim"}
+    )
+    # A caller who may see nothing at all.
+    monkeypatch.setattr(server, "current_allow", lambda: set())
+    assert server.get_zim_files() == {}, "the allowlist filter still applies to reads"
+    assert server.server_zim_count() == 2, "the server's own count ignores the caller"
+
+    # And a caller allowed one of them still does not change the server fact.
+    monkeypatch.setattr(server, "current_allow", lambda: {"alpha"})
+    assert len(server.get_zim_files()) == 1
+    assert server.server_zim_count() == 2

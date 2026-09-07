@@ -917,7 +917,7 @@ def test_cli_without_site_still_captures_one_page(fixture_server, tmp_path):
 def test_cli_crawl_flags_on_a_folder_are_refused(tmp_path):
     src = tmp_path / "folder"
     src.mkdir()
-    (src / "a.md").write_text("# A\n")
+    (src / "a.md").write_text("# A\n", encoding="utf-8")
     r = _cli(tmp_path, str(src), "--site")
     assert r.returncode == 2
     assert "--site only applies to a URL capture" in r.stderr
@@ -1113,12 +1113,22 @@ def test_an_http_link_on_an_https_site_is_upgraded_not_dropped():
     )
     # The reverse is a downgrade and stays what it is (and same_origin then
     # keeps it external).
-    assert crawler.upgrade_scheme("https://e.com/a", "http://e.com/") == "https://e.com/a"
+    assert (
+        crawler.upgrade_scheme("https://e.com/a", "http://e.com/") == "https://e.com/a"
+    )
     # Another host is not touched.
-    assert crawler.upgrade_scheme("http://other.com/a", "https://e.com/") == "http://other.com/a"
+    assert (
+        crawler.upgrade_scheme("http://other.com/a", "https://e.com/")
+        == "http://other.com/a"
+    )
     # An explicit non-default port is a different origin; leave it.
-    assert crawler.upgrade_scheme("http://e.com:8080/a", "https://e.com/") == "http://e.com:8080/a"
+    assert (
+        crawler.upgrade_scheme("http://e.com:8080/a", "https://e.com/")
+        == "http://e.com:8080/a"
+    )
     # And the strict test is unchanged: http on https is still not the same origin
     # until it has been upgraded.
     assert not crawler.same_origin("http://e.com/a", "https://e.com/")
-    assert crawler.same_origin(crawler.upgrade_scheme("http://e.com/a", "https://e.com/"), "https://e.com/")
+    assert crawler.same_origin(
+        crawler.upgrade_scheme("http://e.com/a", "https://e.com/"), "https://e.com/"
+    )

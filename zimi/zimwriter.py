@@ -299,8 +299,11 @@ def collapse_ad_slots(html):
     return _AD_SLOT_STYLE + html
 
 
-_MEDIA_TAG_RE = re.compile(r"<(img|source)\b[^>]*>", re.IGNORECASE)
+# body/table/tr/td/th carry the 1990s ``background=`` picture: spacejam.com/1996
+# tiles its starfield that way, and a capture without it is a black page.
+_MEDIA_TAG_RE = re.compile(r"<(img|source|body|table|tr|td|th)\b[^>]*>", re.IGNORECASE)
 _SRC_RE = attr_re("src")
+_BACKGROUND_RE = attr_re("background")
 _SRCSET_RE = attr_re("srcset")
 _LOADING_RE = attr_re("loading")
 
@@ -308,7 +311,10 @@ _LOADING_RE = attr_re("loading")
 def _placeholder_source(tag):
     """True for a ``<source>`` whose srcset holds nothing but data: URIs, or
     that a site marked ``data-empty``: a stand-in for a script to replace."""
-    if _DATA_EMPTY_RE.search(tag):
+    # Attribute NAMES only. Blank every quoted value first, so a class
+    # token or a data attribute that happens to say data-empty is not
+    # read as the site marking this source a stand-in.
+    if _DATA_EMPTY_RE.search(_QUOTED_VALUE_RE.sub('=""', tag)):
         return True
     m = _SRCSET_RE.search(tag)
     if not m:
@@ -318,6 +324,7 @@ def _placeholder_source(tag):
 
 
 _DATA_EMPTY_RE = re.compile(r"\sdata-empty(?:\s|=|>|/)", re.IGNORECASE)
+_QUOTED_VALUE_RE = re.compile(r"""=\s*(?:"[^"]*"|'[^']*')""")
 
 
 def _load_eagerly(tag):
@@ -378,10 +385,21 @@ def _set_attr(tag, name, value):
     """``name="value"`` on the tag, replacing the attribute if it is there."""
     rx = attr_re(name)
     quoted = f'{name}="{attr_quote(value)}"'
+
+    def _replace(m):
+        # Keep the whitespace that separated this attribute from the last one,
+        # and replace everything after it. The previous form split `pre` on the
+        # attribute name, which only finds it when the markup spells it in the
+        # same case we do: `<img SRC="a.png">` has no "src" to split on, so the
+        # whole of ` SRC=` survived and the tag came out as
+        # `<img SRC=src="b.png">` — corrupt, and a broken image on any page
+        # that writes its attributes in capitals.
+        pre = m.group("pre") or ""
+        lead = pre[: len(pre) - len(pre.lstrip())]
+        return lead + quoted
+
     if rx.search(tag):
-        return rx.sub(
-            lambda m: (m.group("pre") or "").split(name)[0] + quoted, tag, count=1
-        )
+        return rx.sub(_replace, tag, count=1)
     end = tag.rstrip(">").rstrip("/").rstrip()
     close = tag[len(end) :]
     return f"{end} {quoted}{close}"
@@ -389,7 +407,10 @@ def _set_attr(tag, name, value):
 
 def _wake_tag(tag_m):
     tag = tag_m.group(0)
-    if "data-" not in tag:
+    # Case-insensitively: attribute names are, and `DATA-SRC` is markup a
+    # real CMS emits. The cheap substring test is only here to skip tags that
+    # cannot possibly be lazy, so getting it wrong skipped them for good.
+    if "data-" not in tag.lower():
         return tag
     name = tag_m.group(1).lower()
     if name in _LAZY_MEDIA_TAGS:
@@ -434,9 +455,15 @@ def wake_lazy(html):
     ``lazyload`` class becomes ``lazyloaded``, the class its stylesheet shows.
     A value that is empty or a ``data:`` stand-in is left alone. Runs before
     the carrier so the address it wakes is the one that gets carried."""
-    if "data-" not in html:
+    # .lower(): attribute names are case-insensitive and `DATA-SRC` is markup
+    # real pages emit. This test exists only to skip documents that cannot be
+    # lazy, so a case-sensitive one skipped a whole page's images for good.
+    if "data-" not in html.lower():
         return html
-    return _TAG_RE.sub(_wake_tag, html)
+    # Through the mask, like every other rewrite: a <script> that builds
+    # markup from a string holds tags that are text, and waking those
+    # rewrites the site's own JavaScript.
+    return sub_markup(_TAG_RE, _wake_tag, html)
 
 
 _CSS_URL_RE = re.compile(r"""url\(\s*(['"]?)([^'")]+)\1\s*\)""", re.IGNORECASE)
@@ -793,9 +820,17 @@ class _AssetCarrier:
         remote_reader=None,
         on_progress=None,
         page_url=None,
+        keep_bytes=False,
     ):
         self._add = add_item
         self._make = item_factory  # (path, mimetype, bytes) -> libzim Item
+        # ZIM path -> (mimetype, bytes) for everything carried, kept only when
+        # asked: it is what lets the packaged page be photographed before the
+        # ZIM exists, served from the very bytes being written. Costs a copy
+        # of the page's assets for the length of one capture, so the fast
+        # engine asks only when a browser is installed to take the picture.
+        self.keep_bytes = keep_bytes
+        self.by_path = {}
         self._read = asset_reader
         # The page's own absolute URL, when the carrier is fetching over HTTP.
         # A same-origin reference that carries a query string is an address
@@ -862,6 +897,8 @@ class _AssetCarrier:
             log.debug("asset add failed %s: %s", in_path, e)
             self._carried[key] = None
             return None
+        if self.keep_bytes:
+            self.by_path[in_path] = (mime or "application/octet-stream", data)
         self.mimetypes.add(mime or "application/octet-stream")
         self._note_progress()
         return in_path
@@ -921,6 +958,8 @@ class _AssetCarrier:
             log.debug("remote asset add failed %s: %s", in_path, e)
             self._carried[key] = None
             return None
+        if self.keep_bytes:
+            self.by_path[in_path] = (mime or "application/octet-stream", data)
         self.mimetypes.add(mime or "application/octet-stream")
         self._note_progress()
         return in_path
@@ -931,7 +970,11 @@ class _AssetCarrier:
         asset lands in _assets/_remote, the sheet included."""
         try:
             text = collapse_image_set(data.decode("utf-8", errors="replace"))
-        except Exception:
+        except Exception as e:
+            # Carried as it came, so every url() in it still names the
+            # live web and fails offline. A sheet that arrives naked is
+            # otherwise invisible; this is the one line that says so.
+            log.warning("could not rewrite stylesheet %s: %s", css_url, e)
             return data
 
         def repl(m):
@@ -957,7 +1000,8 @@ class _AssetCarrier:
     def _rewrite_css(self, zim, css_path, data):
         try:
             text = collapse_image_set(data.decode("utf-8", errors="replace"))
-        except Exception:
+        except Exception as e:
+            log.warning("could not rewrite stylesheet %s: %s", css_path, e)
             return data
 
         def repl(m):
@@ -1055,8 +1099,15 @@ class _AssetCarrier:
                     return m.group(0)
                 return f'{m.group("pre")}"{in_zim_ref(in_path)}"'
 
+            def fix_background(m):
+                in_path = carry_ref(m.group("val"))
+                if not in_path:
+                    return m.group(0)
+                return f'{m.group("pre")}"{in_zim_ref(in_path)}"'
+
             tag = _SRCSET_RE.sub(fix_srcset, tag)
             tag = _SRC_RE.sub(fix_src, tag)
+            tag = _BACKGROUND_RE.sub(fix_background, tag)
             return _load_eagerly(tag)
 
         return sub_markup(_MEDIA_TAG_RE, fix_tag, html)
@@ -1521,6 +1572,13 @@ def zim_content_breakdown(
     content = sum(sizes.values())
     if total and content:
         sizes = {k: int(round(v * total / content)) for k, v in sizes.items()}
+        # Rounding each part leaves the parts a few bytes off the whole,
+        # and a breakdown whose pieces do not add up reads as a mistake.
+        # The remainder goes to the largest bucket, where it is noise.
+        drift = total - sum(sizes.values())
+        if drift and sizes:
+            biggest = max(sizes, key=sizes.get)
+            sizes[biggest] += drift
     order = [k for k, _p in _CONTENT_BUCKETS] + ["other"]
     shape = {
         "file_bytes": total,
@@ -1719,6 +1777,18 @@ def atomic_zim_creator(out_path, language="eng"):
 
 SCRAPER_METADATA_KEY = "Scraper"
 SOURCE_METADATA_KEY = "X-Zimi-Source"
+# The entry a capture's picture of the live page is written to, and the
+# metadata key that says it is there so a reader finds it without scanning.
+# The two pictures a capture keeps, stored as METADATA rather than as entries.
+#
+# They are not content. An entry would be counted in the ZIM's article and
+# entry totals, be reachable by path, and turn up wherever entries are walked —
+# a picture of the page filed alongside the page. openZIM already stores an
+# image as metadata for exactly this reason: the mandatory Illustration_48x48@1
+# is PNG bytes under a metadata key, and Zimi already serves it at
+# /w/<zim>/-/icon. These follow that, and are served the same way.
+SHOT_METADATA_KEY = "X-Zimi-Screenshot"
+SHOT_ZIM_METADATA_KEY = "X-Zimi-Screenshot-Zim"
 HISTORY_METADATA_KEY = "X-Zimi-History"
 
 # ── openZIM conformance ─────────────────────────────────────────────────────
@@ -2042,6 +2112,99 @@ def append_history(records, record, limit=MAX_HISTORY_RECORDS):
         counts={"records": dropped},
     )
     return [marker] + keep
+
+
+# How much shorter the packaged page may be before it is worth saying so.
+# Not a fidelity score: the two pictures are taken under the SAME treatment —
+# both after ad blocking, consent-wall reveal, lazy scroll and image settle —
+# so the only thing between them is what packaging lost. A page that renders
+# is within a hair of the live one; a page whose stylesheet did not survive
+# collapses to a fraction of its height. That collapse is the failure worth
+# catching, and it is the only claim a pair of heights can honestly support.
+SHOT_SHORT_RATIO = 0.4
+SHOT_DIMS_METADATA_KEY = "X-Zimi-Screenshot-Dims"
+
+
+def jpeg_size(data):
+    """``(width, height)`` of a JPEG, or None. Reads the SOF marker; no
+    decoding, no dependency."""
+    if not data or data[:2] != b"\xff\xd8":
+        return None
+    i, n = 2, len(data)
+    try:
+        while i + 9 < n:
+            if data[i] != 0xFF:
+                i += 1
+                continue
+            marker = data[i + 1]
+            # SOF0..SOF15, excluding the four that are not frame headers.
+            if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+                height = int.from_bytes(data[i + 5 : i + 7], "big")
+                width = int.from_bytes(data[i + 7 : i + 9], "big")
+                return (width, height) if width and height else None
+            if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+                i += 2
+                continue
+            i += 2 + int.from_bytes(data[i + 2 : i + 4], "big")
+    except Exception:
+        return None
+    return None
+
+
+def shot_verdict(live, packaged):
+    """``(dims, short)`` for a pair of shots.
+
+    ``dims`` is the pair of sizes as text, worth keeping whether or not
+    anything looks wrong. ``short`` is True only when the packaged page came
+    out so much shorter than the live one that something plainly did not
+    survive — a stylesheet that never loaded, a body that never rendered.
+
+    Deliberately not a percentage. The two images differ for honest reasons no
+    number can weigh, and a score on screen becomes a grade; this answers the
+    one question a height can answer."""
+    a, b = jpeg_size(live), jpeg_size(packaged)
+    if not a or not b:
+        return "", False
+    dims = f"{a[0]}x{a[1]},{b[0]}x{b[1]}"
+    return dims, b[1] < a[1] * SHOT_SHORT_RATIO
+
+
+def add_packaged_shot(creator, jpeg):
+    """Store the picture of the page as this ZIM serves it."""
+    return _add_shot(creator, jpeg, SHOT_ZIM_METADATA_KEY)
+
+
+def _add_shot(creator, jpeg, metadata_key):
+    """The JPEG itself under a metadata key, not an entry pointing at one."""
+    if not jpeg:
+        return False
+    try:
+        creator.add_metadata(metadata_key, jpeg, mimetype="image/jpeg")
+    except TypeError:
+        # Older libzim bindings take no mimetype for metadata, the same way
+        # they accept the illustration's PNG bytes without one.
+        try:
+            creator.add_metadata(metadata_key, jpeg)
+        except Exception as e:
+            log.warning("could not store %s: %s", metadata_key, e)
+            return False
+    except Exception as e:
+        log.warning("could not store %s: %s", metadata_key, e)
+        return False
+    return True
+
+
+def add_capture_shot(creator, jpeg):
+    """Store a capture's picture of the live page, and say that it is there.
+
+    Written as an ordinary ZIM entry, so it travels with the file to any
+    reader, any peer, any copy on a memory stick — the same rule the rest of
+    the provenance follows. Returns True when a picture was stored.
+
+    Silent when there is no picture: the fast engine has no browser by design,
+    and a ZIM without one is not defective, it just cannot offer the
+    comparison."""
+    return _add_shot(creator, jpeg, SHOT_METADATA_KEY)
 
 
 def add_standard_metadata(

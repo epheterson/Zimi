@@ -119,7 +119,16 @@ def _run_stream(cmd, sink, heartbeat_s=HEARTBEAT_SECONDS):
     def beat():
         while not done.wait(heartbeat_s / 4):
             if time.monotonic() - last[0] >= heartbeat_s:
-                sink(f"still converting… {int(time.monotonic() - started)}s")
+                # The sink is the job's note(), which is also the cancellation
+                # checkpoint: it RAISES when a cancel is pending. On the job
+                # thread that unwinds the capture, which is the point; on this
+                # thread it would be an unhandled exception in a daemon and a
+                # traceback in the log for a cancel that worked. Stop beating
+                # instead — the job thread is about to notice on its own.
+                try:
+                    sink(f"still converting… {int(time.monotonic() - started)}s")
+                except Exception:
+                    return
                 last[0] = time.monotonic()
 
     threading.Thread(target=beat, daemon=True).start()
@@ -249,6 +258,7 @@ def ensure_sidecar(sink=None):
         # moment upstream ships the fix. Recorded in the marker either way, so
         # `zimi import --status` can say what this machine is actually running.
         state = _patch_srcset_comma_bug(venv, say)
+        _patch_block_scoped_globals(venv, say)
         if state == "applied":
             marker = _read_marker(venv)
             marker["srcset_patch"] = state
@@ -286,6 +296,7 @@ def ensure_sidecar(sink=None):
         )
     version = _tool_version(exe)
     patched = _patch_srcset_comma_bug(venv, say)
+    _patch_block_scoped_globals(venv, say)
     _write_marker(
         venv, warc2zim=version, python=f"{ver[0]}.{ver[1]}", srcset_patch=patched
     )
@@ -383,6 +394,75 @@ def _patch_srcset_comma_bug(venv, say):
         say(f"could not patch zimscraperlib's srcset splitter: {e}")
         return "failed"
     say("patched zimscraperlib's srcset splitter (upstream comma bug)")
+    return "applied"
+
+
+# zimscraperlib wraps any inline script that touches a global (window, self,
+# location...) in a bare block, so wombat can shadow those names with `let`
+# declarations. Upstream knows the block is wrong for globals — the code says
+# so and points at python-scraperlib#329 — because `const`, `let` and `class`
+# declared inside a bare block are block-scoped and never reach the page. A
+# page that defines its data in one inline script and reads it from another
+# therefore breaks with "X is not defined", with every byte of X sitting right
+# there in the ZIM. nerdfonts.com/cheat-sheet (issue #64) is exactly that:
+# `const glyphs = {...}` in the page, `glyphs` used by cheat-sheet.js, search
+# finds nothing.
+#
+# `var` would have leaked to global scope the way the page expects. This does
+# what `var` would have done: before the block closes, each name declared at
+# its top level is assigned onto the global the page is running under. The
+# declaring script is unchanged; the reading script finds what it was always
+# meant to find.
+_BLOCK_GLOBALS_BUG = (
+    "            new_text = self.first_buff + new_text + self.last_buff"
+)
+_BLOCK_GLOBALS_FIX = (
+    "            new_text = self.first_buff + new_text "
+    "+ _zimi_hoist_block_globals(text) + self.last_buff"
+)
+_BLOCK_GLOBALS_HELPER = '# ── Zimi patch: hoist block-scoped globals (python-scraperlib#329) ──────────\nimport re as _zimi_re\n\n_ZIMI_DECL_RX = _zimi_re.compile(r"\\b(?:const|let|class)\\s+([A-Za-z_$][\\w$]*)")\n_ZIMI_QUOTES = (\'"\', "\'", "`")\n# Never hoisted. These are the names wombat shadows with `let` inside the\n# block, plus `arguments`: a page that writes `const location = ...` gets\n# its own binding, and `self.location = location` would NAVIGATE the page.\n_ZIMI_NEVER = frozenset(\n    ("window", "globalThis", "self", "document", "location", "top",\n     "parent", "frames", "opener", "arguments")\n)\n\n\ndef _zimi_top_level_names(text):\n    """Names declared with const/let/class at brace depth 0 of `text`.\n\n    A small scanner, not a parser: it tracks {}, () and [] depth and skips\n    string, template and comment bodies so a brace inside a string does not\n    count. Regex literals are the one construct it does not model, and a\n    `{` inside one can only make it miss a declaration, never invent one."""\n    names, depth, i, n = [], 0, 0, len(text)\n    while i < n:\n        c = text[i]\n        if c in _ZIMI_QUOTES:\n            q, i = c, i + 1\n            while i < n and text[i] != q:\n                i += 2 if text[i] == "\\\\" else 1\n            i += 1\n            continue\n        if c == "/" and i + 1 < n and text[i + 1] == "/":\n            i = text.find("\\n", i)\n            if i < 0:\n                break\n            continue\n        if c == "/" and i + 1 < n and text[i + 1] == "*":\n            i = text.find("*/", i + 2)\n            if i < 0:\n                break\n            i += 2\n            continue\n        if c in "{([":\n            depth += 1\n        elif c in "})]":\n            depth = max(0, depth - 1)\n        elif depth == 0 and c in "clC":\n            m = _ZIMI_DECL_RX.match(text, i)\n            boundary = i == 0 or not (text[i - 1].isalnum() or text[i - 1] in "_$.")\n            if m and boundary:\n                names.append(m.group(1))\n                i = m.end()\n                continue\n        i += 1\n    seen, out = set(), []\n    for name in names:\n        if name in _ZIMI_NEVER:\n            continue\n        if name not in seen:\n            seen.add(name)\n            out.append(name)\n    return out\n\n\ndef _zimi_hoist_block_globals(text):\n    """The assignments that give block-scoped declarations global reach.\n\n    Appended inside wombat\'s block, before it closes, so each name is assigned\n    onto the global the page runs under — what `var` would have done."""\n    names = _zimi_top_level_names(text)\n    if not names:\n        return ""\n    return "\\n" + "".join(\n        "try{self." + n + "=" + n + ";}catch(_zimi_e){}\\n" for n in names\n    )\n'
+
+
+def _patch_block_scoped_globals(venv, say):
+    """Give wombat's block-wrapped inline scripts their globals back.
+
+    Same contract as the srcset patch: idempotent, and self-removing the day
+    upstream stops emitting the line this replaces."""
+    import glob
+
+    hits = glob.glob(
+        os.path.join(
+            venv, "lib", "*", "site-packages", "zimscraperlib", "rewriting", "js.py"
+        )
+    )
+    if not hits:
+        return "not found"
+    path = hits[0]
+    try:
+        with open(path, encoding="utf-8") as f:
+            source = f.read()
+    except OSError:
+        return "unreadable"
+    header = _BLOCK_GLOBALS_HELPER.strip().splitlines()[0]
+    if _BLOCK_GLOBALS_FIX in source:
+        if _BLOCK_GLOBALS_HELPER.strip() in source:
+            return "applied"
+        # An older helper is installed. Replace it from its header on.
+        cut = source.find(header)
+        base = source[:cut].rstrip() + "\n" if cut >= 0 else source
+        patched = base + _BLOCK_GLOBALS_HELPER
+    elif _BLOCK_GLOBALS_BUG not in source:
+        return "not needed"
+    else:
+        patched = source.replace(_BLOCK_GLOBALS_BUG, _BLOCK_GLOBALS_FIX, 1)
+        patched += _BLOCK_GLOBALS_HELPER
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(patched)
+    except OSError as e:
+        say(f"could not patch zimscraperlib's script wrapper: {e}")
+        return "failed"
+    say("patched zimscraperlib's script wrapper (block-scoped globals, #329)")
     return "applied"
 
 

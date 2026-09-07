@@ -44,15 +44,19 @@ def _make_fixture(root):
         "```sh\necho 'hello' < input\n```\n\n"
         "- alpha\n- beta\n  1. nested\n\n"
         "> Stay calm.\n\n"
-        "| Col A | Col B |\n|---|---|\n| 1 | 2 |\n"
+        "| Col A | Col B |\n|---|---|\n| 1 | 2 |\n",
+        encoding="utf-8",
     )
-    (root / "docs" / "notes.md").write_text("# Notes\n\nJust notes.\n")
+    (root / "docs" / "notes.md").write_text(
+        "# Notes\n\nJust notes.\n", encoding="utf-8"
+    )
     (root / "page.html").write_text(
         "<html><head><title>Plain Page</title></head>"
-        "<body><h1>Plain</h1><img src='assets/pic.png'></body></html>"
+        "<body><h1>Plain</h1><img src='assets/pic.png'></body></html>",
+        encoding="utf-8",
     )
     (root / "assets" / "pic.png").write_bytes(FAKE_PNG)
-    (root / "assets" / "style.css").write_text("body{color:red}")
+    (root / "assets" / "style.css").write_text("body{color:red}", encoding="utf-8")
     (root / "manual.pdf").write_bytes(FAKE_PDF)
 
 
@@ -269,9 +273,10 @@ def test_index_html_wins_over_readme(tmp_path):
     src = tmp_path / "site"
     src.mkdir()
     (src / "index.html").write_text(
-        "<html><head><title>Home</title></head><body>home</body></html>"
+        "<html><head><title>Home</title></head><body>home</body></html>",
+        encoding="utf-8",
     )
-    (src / "README.md").write_text("# Not the main page\n")
+    (src / "README.md").write_text("# Not the main page\n", encoding="utf-8")
     info = creator.create_folder_zim(str(src), out_dir=str(tmp_path / "out"))
     assert info["main"] == "index.html"
     arc = Archive(info["path"])
@@ -284,7 +289,7 @@ def test_generated_index_when_no_entry_point(tmp_path):
     src = tmp_path / "papers"
     (src / "2024").mkdir(parents=True)
     (src / "2024" / "one.pdf").write_bytes(FAKE_PDF)
-    (src / "intro.md").write_text("# Intro\n\nhello\n")
+    (src / "intro.md").write_text("# Intro\n\nhello\n", encoding="utf-8")
     info = creator.create_folder_zim(
         str(src), out_dir=str(tmp_path / "out"), title="Papers"
     )
@@ -300,11 +305,11 @@ def test_generated_index_when_no_entry_point(tmp_path):
 def test_hidden_junk_and_symlinks_skipped(tmp_path):
     src = tmp_path / "src"
     (src / ".git").mkdir(parents=True)
-    (src / ".git" / "config").write_text("secret")
+    (src / ".git" / "config").write_text("secret", encoding="utf-8")
     (src / ".DS_Store").write_bytes(b"junk")
-    (src / "real.md").write_text("# Real\n")
+    (src / "real.md").write_text("# Real\n", encoding="utf-8")
     outside = tmp_path / "outside.txt"
-    outside.write_text("beyond the folder")
+    outside.write_text("beyond the folder", encoding="utf-8")
     os.symlink(outside, src / "escape.txt")
     info = creator.create_folder_zim(str(src), out_dir=str(tmp_path / "out"))
     arc = Archive(info["path"])
@@ -345,7 +350,7 @@ def test_missing_and_empty_folder_errors(tmp_path):
 def test_explicit_out_path_no_clobber(tmp_path):
     src = tmp_path / "src"
     src.mkdir()
-    (src / "a.md").write_text("# A\n")
+    (src / "a.md").write_text("# A\n", encoding="utf-8")
     out = tmp_path / "custom.zim"
     info = creator.create_folder_zim(str(src), out_path=str(out))
     assert info["path"] == str(out) and out.exists()
@@ -358,7 +363,7 @@ def test_register_called_only_for_library_output(tmp_path, monkeypatch):
     monkeypatch.setattr(creator, "_register_exports", lambda paths: calls.extend(paths))
     src = tmp_path / "src"
     src.mkdir()
-    (src / "a.md").write_text("# A\n")
+    (src / "a.md").write_text("# A\n", encoding="utf-8")
     info = creator.create_folder_zim(
         str(src), out_dir=str(tmp_path / "zims"), register=True
     )
@@ -375,7 +380,7 @@ def test_registration_failure_does_not_fail_create(tmp_path, monkeypatch):
     monkeypatch.setattr(creator, "_register_exports", _boom)
     src = tmp_path / "src"
     src.mkdir()
-    (src / "a.md").write_text("# A\n")
+    (src / "a.md").write_text("# A\n", encoding="utf-8")
     info = creator.create_folder_zim(
         str(src), out_dir=str(tmp_path / "zims"), register=True
     )

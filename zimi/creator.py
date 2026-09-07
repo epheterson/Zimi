@@ -48,6 +48,10 @@ from typing import Any
 import zimi.server as _srv
 from zimi.blocklist import blocked_phrase
 from zimi.zimwriter import (
+    SHOT_DIMS_METADATA_KEY,
+    shot_verdict,
+    add_packaged_shot,
+    add_capture_shot,
     guess_mime,
     _CSS_URL_RE,
     _HREF_RE,
@@ -209,6 +213,61 @@ def strip_html(page):
     return _strip(page)
 
 
+def _capture_pictures(capture, html, final_url):
+    """``(live, packaged)`` from whichever engine ran, or Nones.
+
+    A rendered or alive capture took the live picture on the page it already
+    had open and photographs the packaged page from the bytes it carried. The
+    fast engine has neither until asked, and asks only when a browser is
+    installed. Either way the answer has one shape."""
+    pair = getattr(capture, "shoot_pair", None)
+    if pair is not None:
+        try:
+            return pair(html, final_url)
+        except Exception as e:
+            log.debug("pictures skipped: %s", e)
+            return None, None
+    live = getattr(capture, "last_shot", None)
+    shoot = getattr(capture, "shoot_packaged", None)
+    packaged = None
+    if live and shoot is not None:
+        try:
+            packaged = shoot(html)
+        except Exception as e:
+            log.debug("packaged picture skipped: %s", e)
+    return live, packaged
+
+
+def _store_pictures(creator, capture, html, final_url, note):
+    """Store the two pictures a capture keeps, and say when they disagree.
+
+    The live page is the half of "is this capture faithful?" that stops being
+    obtainable the moment the site changes. The packaged page is the same page
+    as this ZIM will serve it. Both are taken under the same treatment, so the
+    only thing between them is what packaging lost — which is why a height
+    comparison can honestly name a page whose stylesheet did not survive."""
+    live, packaged = _capture_pictures(capture, html, final_url)
+    stored = {"live": False, "zim": False}
+    if not add_capture_shot(creator, live):
+        return stored
+    stored["live"] = True
+    note("stored a picture of the live page")
+    if packaged is None or not add_packaged_shot(creator, packaged):
+        return stored
+    stored["zim"] = True
+    note("stored a picture of the packaged page")
+    dims, short = shot_verdict(live, packaged)
+    if dims:
+        creator.add_metadata(SHOT_DIMS_METADATA_KEY, dims)
+    if short:
+        note(
+            "warning: the packaged page is much shorter than the live one, so "
+            "something did not survive capture. Compare the two pictures in "
+            "About."
+        )
+    return stored
+
+
 def wall_note(page):
     """A one-line warning when a fetched page has almost no text, or None."""
     chars = len(strip_html(page))
@@ -217,6 +276,42 @@ def wall_note(page):
     return (
         f"only {chars} characters of text on this page: it may be a login, "
         "consent or paywall gate rather than the article"
+    )
+
+
+# How many script-driven controls a page needs before it is worth warning
+# that they will not work. A couple of buttons is a search box or a theme
+# toggle nobody will miss offline; a dozen is the page's actual interface.
+SCRIPT_UI_CONTROLS = 6
+_BUTTON_RE = re.compile(r"<button\b[^>]*>", re.I)
+_FORM_RE = re.compile(r"<form\b", re.I)
+
+
+def script_ui_note(page):
+    """A one-line warning when a page's controls need JavaScript, or None.
+
+    A capture that drops scripts keeps the page and loses the interface. On a
+    site whose content is behind its own buttons — a stepper, a tabbed
+    walkthrough, a filtered list — what lands in the ZIM is whatever happened
+    to be on screen, and every control is inert. That is not a bug in the
+    capture and it is not obvious from looking at it either, which is exactly
+    the combination worth saying out loud (issue #64: draculatheme.com's
+    contribute walkthrough is three steps behind three buttons).
+
+    A <button> inside a <form> is excluded: that one submits, and a submit
+    button is honest about being useless offline. What is counted is the
+    button that does nothing without a script."""
+    buttons = _BUTTON_RE.findall(page)
+    if len(buttons) < SCRIPT_UI_CONTROLS:
+        return None
+    if _FORM_RE.search(page) and len(buttons) < SCRIPT_UI_CONTROLS * 2:
+        return None
+    return (
+        f"{len(buttons)} of this page's controls are driven by JavaScript, and "
+        "a capture does not keep it running: they will be inert in the ZIM, "
+        "and anything they would have revealed is not in it. The alive engine "
+        "records the page with its own JavaScript working, which is the one "
+        "that keeps this kind of site usable."
     )
 
 
@@ -1454,6 +1549,7 @@ def http_asset_carrier(
     budget=None,
     item_factory=None,
     on_progress=None,
+    keep_bytes=False,
 ):
     """An ``_AssetCarrier`` that pulls same-origin assets over HTTP.
 
@@ -1498,6 +1594,7 @@ def http_asset_carrier(
         remote_reader=remote_read,
         on_progress=on_progress,
         page_url=final_url,
+        keep_bytes=keep_bytes,
     )
     if carried is not None:
         carrier._carried = carried
@@ -1769,6 +1866,7 @@ class BuiltinCapture:
         work_dir=None,
         block_ads=None,
         capture_variants=None,
+        pictures=True,
     ):
         # ``work_dir``, ``block_ads`` and ``capture_variants`` are accepted and
         # unused, the way every engine accepts the shared option set: one
@@ -1788,9 +1886,65 @@ class BuiltinCapture:
         self.carried = {} if carried is None else carried
         self.mimetypes = set()
         self.count = 0
+        # Pictures. This engine has no browser of its own, but when one is
+        # installed it gets the same two pictures a rendered capture keeps:
+        # a second, cheap visit for the live page, and the packaged page
+        # served from the bytes just written. Nothing here runs when there is
+        # no browser, and nothing here can fail the capture.
+        self._work_dir = work_dir
+        self._block_ads = block_ads
+        self._pictures = None  # a RenderedSession, started on first use
+        self._pictures_tried = False
+        # A crawl renders hundreds of pages and photographs none of them, so
+        # it says so up front: the carrier then keeps no bytes for a browser
+        # that will never be asked.
+        self._pictures_wanted = bool(pictures)
+        self._last_by_path = {}
+        self.last_shot = None
 
     def start(self):
         return self
+
+    def _can_take_pictures(self):
+        """Whether pictures are wanted AND a browser is installed here."""
+        if not self._pictures_wanted:
+            return False
+        try:
+            from zimi.renderer import browser_available
+
+            return bool(browser_available())
+        except Exception:
+            return False
+
+    def _picture_session(self):
+        if self._pictures is None and not self._pictures_tried:
+            self._pictures_tried = True
+            try:
+                from zimi.renderer import RenderedSession
+
+                self._pictures = RenderedSession(
+                    work_dir=self._work_dir,
+                    note=self._note,
+                    block_ads=self._block_ads,
+                    capture_variants=False,
+                ).start()
+            except Exception as e:
+                log.debug("no browser for the fast engine's pictures: %s", e)
+                self._pictures = None
+        return self._pictures
+
+    def shoot_pair(self, html, final_url, mainpath="A/index"):
+        """``(live, packaged)`` for the page just rendered, or ``(None, None)``."""
+        if not self._last_by_path and not self._can_take_pictures():
+            return None, None
+        session = self._picture_session()
+        if session is None:
+            return None, None
+        live = session.shoot_live(final_url)
+        packaged = session.shoot_packaged(html, self._last_by_path, mainpath=mainpath)
+        self._last_by_path = {}
+        self.last_shot = live
+        return live, packaged
 
     def fetch(self, url):
         return _fetch_html(
@@ -1819,16 +1973,25 @@ class BuiltinCapture:
             budget=self._budget,
             item_factory=item_factory,
             on_progress=_progress,
+            # Keep the bytes only when a browser is here to photograph the
+            # packaged page from them; otherwise the copy would be for nothing.
+            keep_bytes=self._can_take_pictures(),
         )
         out = render_captured_page(
             carrier, html, final_url=final_url, resolve_link=resolve_link
         )
         self.mimetypes |= carrier.mimetypes
         self.count += carrier.count
+        self._last_by_path = carrier.by_path
         return out
 
     def close(self):
-        pass
+        if self._pictures is not None:
+            try:
+                self._pictures.close()
+            except Exception:
+                pass
+            self._pictures = None
 
     def __enter__(self):
         return self.start()
@@ -1888,8 +2051,12 @@ def capture_engine(engine=DEFAULT_ENGINE, **kwargs):
     """The named engine, ready to start. Raises ``CreateError`` for a name
     nothing answers to — a typo must not silently capture the other way."""
     name = str(engine or DEFAULT_ENGINE).strip().lower()
+    # Only the fast engine takes pictures on request; the browser engines
+    # take them on the page they already have open, and neither of their
+    # constructors knows the flag.
+    pictures = kwargs.pop("pictures", True)
     if name in ("", "builtin"):
-        return BuiltinCapture(**kwargs)
+        return BuiltinCapture(pictures=pictures, **kwargs)
     if name == "rendered":
         # Imported here and nowhere else: the rendered engine reaches for
         # Playwright, and a Zimi that never renders a page never pays for the
@@ -2043,6 +2210,13 @@ def create_page_zim(
         wall = wall_note(page)
         if wall:
             note(wall)
+        # Only worth saying when this capture is not keeping the scripts. The
+        # alive engine does, so on that engine the controls will work and the
+        # warning would be a lie.
+        if not getattr(capture, "keeps_scripts", False):
+            script_ui = script_ui_note(page)
+            if script_ui:
+                note(script_ui)
         language, language_source = resolve_language(language, page, clang)
         text_chars = len(strip_html(page))
 
@@ -2064,6 +2238,7 @@ def create_page_zim(
             note(f"packaging {final_url}")
             creator.add_item(static_cls("A/index", zim_title, page.encode("utf-8")))
             creator.set_mainpath("A/index")
+            pictures = _store_pictures(creator, capture, page, final_url, note)
             add_standard_metadata(
                 creator,
                 title=zim_title,
@@ -2104,6 +2279,9 @@ def create_page_zim(
         # the done card should say "this may be a gate" beside the result.
         "text_chars": text_chars,
         "thin_page": bool(wall),
+        # Which of the two pictures the ZIM carries, so the done card can show
+        # the pair without asking the server a second question.
+        "pictures": pictures,
         "main": "A/index",
         "registered": registered,
         "url": final_url,

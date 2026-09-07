@@ -696,6 +696,8 @@ def create_site_zim(
         budget=budget,
         note=note,
         work_dir=scratch_dir(out_dir, out_path),
+        # A crawl takes no pictures; see BuiltinCapture.
+        pictures=False,
         block_ads=block_ads,
         capture_variants=capture_variants,
     )

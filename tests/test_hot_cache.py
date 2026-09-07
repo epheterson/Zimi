@@ -55,14 +55,14 @@ def test_env_var_unset_returns_empty():
 
 def test_file_config_loaded(tmp_path, monkeypatch):
     hot_file = tmp_path / "hot.json"
-    hot_file.write_text(json.dumps(["wiki_en", "ted_en"]))
+    hot_file.write_text(json.dumps(["wiki_en", "ted_en"]), encoding="utf-8")
     monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path))
     assert server.get_hot_zims() == ["wiki_en", "ted_en"]
 
 
 def test_env_var_takes_precedence_over_file(tmp_path, monkeypatch):
     hot_file = tmp_path / "hot.json"
-    hot_file.write_text(json.dumps(["from_file"]))
+    hot_file.write_text(json.dumps(["from_file"]), encoding="utf-8")
     monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("ZIMI_HOT_ZIMS", "from_env")
     assert server.get_hot_zims() == ["from_env"]
@@ -70,7 +70,7 @@ def test_env_var_takes_precedence_over_file(tmp_path, monkeypatch):
 
 def test_corrupt_file_falls_back_to_empty(tmp_path, monkeypatch):
     hot_file = tmp_path / "hot.json"
-    hot_file.write_text("{not valid json}")
+    hot_file.write_text("{not valid json}", encoding="utf-8")
     monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path))
     assert server.get_hot_zims() == []
 
@@ -78,7 +78,7 @@ def test_corrupt_file_falls_back_to_empty(tmp_path, monkeypatch):
 def test_set_hot_zims_persists_to_file(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path))
     server.set_hot_zims(["wiki_en", "stack_en"])
-    saved = json.loads((tmp_path / "hot.json").read_text())
+    saved = json.loads((tmp_path / "hot.json").read_text(encoding="utf-8"))
     assert saved == ["wiki_en", "stack_en"]
 
 
@@ -86,7 +86,7 @@ def test_set_hot_zims_empty_clears_file(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path))
     server.set_hot_zims(["wiki_en"])
     server.set_hot_zims([])
-    saved = json.loads((tmp_path / "hot.json").read_text())
+    saved = json.loads((tmp_path / "hot.json").read_text(encoding="utf-8"))
     assert saved == []
 
 
@@ -143,7 +143,7 @@ def test_set_hot_zims_rejects_non_string(tmp_path, monkeypatch):
 def test_set_hot_zims_dedupes(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path))
     server.set_hot_zims(["wiki_en", "wiki_en", "stack_en"])
-    saved = json.loads((tmp_path / "hot.json").read_text())
+    saved = json.loads((tmp_path / "hot.json").read_text(encoding="utf-8"))
     assert saved == ["wiki_en", "stack_en"]
 
 

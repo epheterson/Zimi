@@ -3072,3 +3072,59 @@
   border-radius: 6px; object-fit: contain;
   background: var(--panel, rgba(255,255,255,0.04));
 }
+
+
+/* The two pictures a capture keeps, side by side on anything wide enough and
+   stacked on a phone. Neither means much alone: the pair is the comparison. */
+.zi-shots { display: grid; gap: 10px; margin: 0 0 14px; }
+.zi-shots.pair { grid-template-columns: 1fr 1fr; }
+@media (max-width: 560px) { .zi-shots.pair { grid-template-columns: 1fr; } }
+
+/* The capture's picture of the live page, in About. Bounded height so a tall
+   homepage does not push every fact off the panel; the whole thing opens full
+   size in a tab on click. */
+.zi-shot {
+  display: block;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg2);
+  text-decoration: none;
+}
+.zi-shot img {
+  display: block;
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  object-position: top center;
+}
+.zi-shot-cap {
+  display: block;
+  padding: 6px 10px;
+  font-size: 11px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text2);
+  border-top: 1px solid var(--border);
+}
+.zi-shot:hover { border-color: var(--amber); }
+.zi-shot:hover .zi-shot-cap { color: var(--amber); }
+
+
+/* The two pictures on the Create done card: live beside packaged. Same
+   bounded height as About's, side by side where there is room. */
+.create-shots { display: grid; gap: 10px; margin: 12px 0 4px; }
+.create-shots.pair { grid-template-columns: 1fr 1fr; }
+@media (max-width: 560px) { .create-shots.pair { grid-template-columns: 1fr; } }
+.create-shot {
+  display: block; border: 1px solid var(--border); border-radius: 8px;
+  overflow: hidden; background: var(--bg2); text-decoration: none;
+}
+.create-shot img { display: block; width: 100%; max-height: 260px; object-fit: cover; object-position: top center; }
+.create-shot-cap {
+  display: block; padding: 6px 10px; font-size: 11px; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--text2); border-top: 1px solid var(--border);
+}
+.create-shot:hover { border-color: var(--amber); }
+.create-shot:hover .create-shot-cap { color: var(--amber); }

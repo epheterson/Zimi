@@ -896,9 +896,18 @@ def _read_zim_metadata(archive):
     Illustrations are skipped (they are PNG bytes, and the reader already serves
     them at /w/<zim>/-/icon). An entry that will not decode is dropped rather
     than failing the read — one bad field must not cost the panel every other."""
+    from zimi import zimwriter as _zw
+
+    binary = (_zw.SHOT_METADATA_KEY, _zw.SHOT_ZIM_METADATA_KEY)
     out = {}
     for key in archive.metadata_keys:
         if key.startswith(_ILLUSTRATION_METADATA_PREFIX):
+            continue
+        if key in binary:
+            # JPEG bytes, like the illustration. Decoding one would produce a
+            # page of mojibake in the panel; what a caller needs to know is
+            # only that it is there, and the reader serves it at -/shot-*.
+            out[key] = "1"
             continue
         try:
             out[key] = (
@@ -1068,8 +1077,16 @@ def _zim_info(name):
     # X-Zimi-Source is the uniform field (folder name, playlist, archive) that
     # Zimi writes whenever it knows the answer. Prefer the standard field.
     source = meta.get("Source") or meta.get(_zw.SOURCE_METADATA_KEY) or ""
+    # The picture of the live page, when the capture stored one. Handed over as
+    # the entry path, not as bytes: the panel loads it through /w/ like any
+    # other entry, so a 200 KB screenshot never rides inside a JSON payload the
+    # library view fetches for every card.
     info = {
         "name": name,
+        "shot": f"/w/{name}/-/shot-live" if meta.get(_zw.SHOT_METADATA_KEY) else "",
+        "shot_zim": (
+            f"/w/{name}/-/shot-zim" if meta.get(_zw.SHOT_ZIM_METADATA_KEY) else ""
+        ),
         "file": entry.get("file", ""),
         # The card's title/description come from the same cache, so the panel
         # agrees with the card it opened from even for an unreadable archive.
@@ -2026,7 +2043,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._json(200, build_openapi())
 
             elif parsed.path == "/health":
-                zim_count = len(_srv.get_zim_files())
+                # The server's own count, not the caller's view of it: this is
+                # an unauthenticated monitoring endpoint, and a health check
+                # that answers 0 about a library of 73 is worse than no health
+                # check at all.
+                zim_count = _srv.server_zim_count()
                 return self._json(
                     200,
                     {
@@ -2551,6 +2572,44 @@ class ZimHandler(BaseHTTPRequestHandler):
         except Exception as e:
             return self._dispatch_error(e)
 
+    def _serve_zim_metadata_image(self, zim_name, archive, key):
+        """Serve a JPEG held under a metadata key.
+
+        The same contract the illustration gets, and for the same reason: the
+        tag is the CONTENT's digest and the response revalidates, so replacing
+        a ZIM or re-running a capture cannot leave a stale picture on screen in
+        the one browser that asked first."""
+        # No lock here: the /w/ dispatcher holds _zim_lock across this call,
+        # exactly as it does for _serve_zim_icon, and the lock is not
+        # reentrant. Taking it again would block this thread on itself — the
+        # first request for a picture would have hung the server.
+        try:
+            data = bytes(archive.get_metadata(key))
+        except Exception:
+            data = b""
+        if not data:
+            # A miss is never remembered: a ZIM re-captured with a browser
+            # gains these, and must not stay pictureless in that browser.
+            self.send_response(404)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        etag = '"shot-%s"' % hashlib.sha256(data).hexdigest()[:16]
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "public, max-age=0, must-revalidate")
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "image/jpeg")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", "public, max-age=0, must-revalidate")
+        self.end_headers()
+        self.wfile.write(data)
+
     def _serve_zim_icon(self, zim_name, archive):
         """Serve the ZIM's 48x48 illustration as a PNG.
 
@@ -2752,6 +2811,19 @@ class ZimHandler(BaseHTTPRequestHandler):
             if entry_path == "-/icon":
                 return self._serve_zim_icon(zim_name, archive)
 
+            # The capture's two pictures, stored as metadata for the same
+            # reason the illustration is: they are about the content, not part
+            # of it. Served here so nothing has to walk entries to find them.
+            if entry_path in ("-/shot-live", "-/shot-zim"):
+                from zimi import zimwriter as _zw
+
+                key = (
+                    _zw.SHOT_METADATA_KEY
+                    if entry_path == "-/shot-live"
+                    else _zw.SHOT_ZIM_METADATA_KEY
+                )
+                return self._serve_zim_metadata_image(zim_name, archive, key)
+
             try:
                 entry = archive.get_entry_by_path(entry_path)
             except KeyError:
@@ -2844,6 +2916,11 @@ class ZimHandler(BaseHTTPRequestHandler):
             # Bound before the branch: the EPUB path returns without touching
             # them, and the response phase below reads them unconditionally.
             is_streamable = False
+            # Set when a client that sent no Range asks for a media entry
+            # bigger than one window: the whole item goes out in windows,
+            # each read under the lock, none of them held in memory at once.
+            stream_whole = False
+            window = 0  # bound below, only ever read when stream_whole is set
             etag = ""
             range_start = range_end = None
             if is_epub:
@@ -2904,16 +2981,26 @@ class ZimHandler(BaseHTTPRequestHandler):
                         )
                     window = min(_srv.STREAM_WINDOW_BYTES, _srv.MAX_SERVE_BYTES)
                     if range_start is None or range_end is None:
-                        # No Range, or one too malformed to honour.
+                        # No Range, or one too malformed to honour. This used to
+                        # answer the first window as a 206 — correct for a
+                        # player, which range-requests onward, and a silent
+                        # truncation for everything else: curl -O, wget, an
+                        # <a download>, a chat app fetching a link all took the
+                        # 206 as the file and saved 8 MB of a 30 MB video with
+                        # no error anywhere. A whole request gets the whole
+                        # item, written window by window below so the memory
+                        # ceiling that motivated the window still holds.
                         range_start = range_end = None
                         if total_size > window:
-                            range_start, range_end = 0, window - 1
+                            stream_whole = True
                     else:
                         # A satisfiable range still gets clamped — bytes=0- is
                         # a request for the whole item through the ranged door.
                         range_end = min(range_end, range_start + window - 1)
                     if range_start is not None and range_end is not None:
                         content = bytes(item.content[range_start : range_end + 1])
+                    elif stream_whole:
+                        content = b""
                     else:
                         content = bytes(item.content)
                 else:
@@ -3009,9 +3096,31 @@ class ZimHandler(BaseHTTPRequestHandler):
         compressible = any(
             mimetype.startswith(t) or mimetype == t for t in COMPRESSIBLE_TYPES
         )
-        if compressible and self._accepts_gzip() and len(content) > 256:
+        if (
+            compressible
+            and not stream_whole
+            and self._accepts_gzip()
+            and len(content) > 256
+        ):
             content = gzip.compress(content, compresslevel=4)
             self.send_header("Content-Encoding", "gzip")
+
+        if stream_whole:
+            self.send_header("Content-Length", str(total_size))
+            self.end_headers()
+            # libzim is not thread-safe, so every window is read under the
+            # lock — and the lock is released between windows, so a reader
+            # of another article is never held behind a video download.
+            sent = 0
+            while sent < total_size:
+                end = min(sent + window, total_size)
+                with _srv._zim_lock:
+                    chunk = bytes(item.content[sent:end])
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                sent = end
+            return
 
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
@@ -3116,7 +3225,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         try:
             return self.client_address[0]
         except (IndexError, TypeError):
-            return ''
+            return ""
 
     def _peer_share_allowed(self):
         """True if this client may pull whole ZIMs from /dl/.

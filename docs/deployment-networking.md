@@ -224,6 +224,7 @@ Every key is optional. The four path/bind keys have matching CLI flags; the rest
 | `sso_role` | `ZIMI_SSO_ROLE` | string — `user` (default), `limited` or `admin`, given to an account on first sign-in |
 | `sso_proxy` | `ZIMI_SSO_PROXY` | list of CIDRs (a comma-separated string also works) — who may send the identity header; default any private peer |
 | `lan_admin` | `ZIMI_LAN_ADMIN` | boolean — treat any private-network client as the admin on a **passwordless** instance; off by default, see [Running without a password](#running-without-a-password) |
+| `manage_open` | `ZIMI_MANAGE_OPEN` | boolean — management asks for no credential at all; see [Running without a password](#running-without-a-password) |
 
 
 ### Running without a password
@@ -242,6 +243,20 @@ If your threat model does not include the other devices on your own network, say
 or `ZIMI_LAN_ADMIN=1`. Any private-network client is then the admin again, exactly as before 1.9.0, and no password is needed at all.
 
 It is off unless you turn it on, and it applies only while no admin password is set. Once there is a password, that password governs. Turn it on when the LAN is a boundary you trust; leave it off on a shared, office, or campus network, where "private address" and "people you trust" are not the same set.
+
+### The opt out
+
+`lan_admin` still reasons about where a request came from, and that question is harder than it looks: a rule about your LAN cannot see you behind a reverse proxy, and a rule that trusts a proxy cannot tell you from the internet. Zimi has got it wrong twice.
+
+If you simply do not want authentication on this instance, say that instead:
+
+```json
+{ "manage_open": true }
+```
+
+or `ZIMI_MANAGE_OPEN=1`. Management then asks for nothing: no password, no setup key, no question about your address. Anyone who can reach the server can administer it, including deleting the library.
+
+That is the entire point, and it is only safe when "anyone who can reach the server" is a set you control — a machine on your own network, an air-gapped box, a laptop in a bag. On anything reachable from the internet it is a total compromise, so Zimi says so in the log at every boot and in the app on every management screen.
 
 It also means a **direct** connection from your network. A request that arrived through a reverse proxy does not qualify, even one on the same machine, because Zimi cannot tell one client of that proxy from another: the forwarded address is not trustworthy, and the address it falls back to is the proxy's own. If you reach Zimi through a proxy, set an admin password rather than turning this on.
 

@@ -3209,7 +3209,29 @@ function _createMountDone(s) {
       '<button type="button" class="ms-btn ms-btn-primary create-done-open"' +
         ' onclick="_createOpenResult(\'' + escJs(r.name) + '\')">' + tH('create_open') + '</button>' +
     '</div>' +
+    _createShotsHtml(r) +
     _createInsideHtml(r.shape);
+}
+
+// The two pictures a capture keeps, on the card, at the moment the person is
+// looking at the result: the live page as the web served it beside the same
+// page as this ZIM serves it. This is the comparison the whole feature exists
+// for, and the done card is where it is wanted most. Served from the ZIM's
+// metadata (-/shot-live, -/shot-zim), never inlined.
+function _createShotsHtml(r) {
+  var p = r && r.pictures;
+  if (!p || !p.live || !r.name) return '';
+  var base = '/w/' + encodeURIComponent(r.name) + '/-/';
+  var one = function (path, captionKey) {
+    return '<a class="create-shot" href="' + escAttr(base + path) + '" target="_blank" rel="noopener">' +
+      '<img src="' + escAttr(base + path) + '" alt="" loading="lazy">' +
+      '<span class="create-shot-cap">' + tH(captionKey) + '</span>' +
+    '</a>';
+  };
+  return '<div class="create-shots' + (p.zim ? ' pair' : '') + '">' +
+    one('shot-live', 'zi_shot_caption') +
+    (p.zim ? one('shot-zim', 'zi_shot_zim_caption') : '') +
+  '</div>';
 }
 
 // How big it turned out. The status reply may carry it; otherwise the last

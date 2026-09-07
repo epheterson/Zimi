@@ -164,6 +164,23 @@ function _darkenArticlesOn() {
   if (v === '0') return false;
   return _appThemeIsDark();
 }
+// Whether the person TICKED the box, as opposed to the default following the
+// app theme. The difference matters for a captured site: left to the default,
+// a capture keeps its own design; ticked, the person has asked for dark and
+// gets it. Before this, a ticked box did nothing on a capture (#65), which on
+// a library of captures reads as a checkbox that does nothing at all.
+function _darkenArticlesExplicit() {
+  return localStorage.getItem(SK.DARKEN_ARTICLES) === '1';
+}
+// The decision, pure so it can be tested: should the darken style be in the
+// article document right now?
+function _darkenWanted(on, explicit, readerViewOn, loc, isCapture, declaresDark) {
+  if (!on || readerViewOn) return false;
+  if ((loc || '').indexOf('/static/') === 0) return false;   // pdf.js / viewers
+  if (declaresDark) return false;                            // already dark
+  if (isCapture && !explicit) return false;                  // keeps its design
+  return true;
+}
 function _setDarkenArticles(on) {
   localStorage.setItem(SK.DARKEN_ARTICLES, on ? '1' : '0');
   try { _applyArticleDarken(_readerFrameDoc()); } catch (e) {}
@@ -286,14 +303,12 @@ function _articleIsWebCapture() {
 function _applyArticleDarken(doc) {
   if (!doc || !doc.documentElement) return;
   var existing = doc.getElementById(_ARTICLE_DARKEN_STYLE_ID);
-  var want = _darkenArticlesOn() && !_readerViewOn;
-  if (want) {
-    var loc = '';
-    try { loc = doc.defaultView.location.pathname; } catch (e) {}
-    if (loc.indexOf('/static/') === 0) want = false;         // pdf.js / viewers
-    else if (_articleIsWebCapture()) want = false;            // a site keeps its design
-    else if (_articleDeclaresDark(doc)) want = false;         // already dark
-  }
+  var loc = '';
+  try { loc = doc.defaultView.location.pathname; } catch (e) {}
+  var want = _darkenWanted(
+    _darkenArticlesOn(), _darkenArticlesExplicit(), _readerViewOn, loc,
+    _articleIsWebCapture(), _articleDeclaresDark(doc)
+  );
   if (want) {
     if (!existing && doc.head) {
       var st = doc.createElement('style');
@@ -3522,7 +3537,27 @@ function _ziBodyHtml(info) {
     _provBadgeFor(info.kind) + '</div>' +
     (info.description ? '<div class="zi-desc">' + esc(info.description) + '</div>' : '') +
     '</div></div>';
-  var rows =
+  // The capture's picture of the live page, where it kept one. It sits above
+  // the facts because it answers the question the facts cannot: is this ZIM
+  // still the page it claims to be? You are looking at the ZIM already; this
+  // is the other half of that comparison, and the half the web deletes.
+  // Side by side, because neither picture means much alone. Left is the page
+  // the live web served; right is the same page as this ZIM serves it. The
+  // difference between them IS the answer to "did the capture keep it".
+  var _shotOne = function (href, captionKey) {
+    return '<a class="zi-shot" href="' + escAttr(href) + '" target="_blank" rel="noopener">' +
+      '<img src="' + escAttr(href) + '" alt="' + escAttr(t('zi_shot_alt')) + '" loading="lazy">' +
+      '<span class="zi-shot-cap">' + tH(captionKey) + '</span>' +
+    '</a>';
+  };
+  var shotHtml = '';
+  if (info.shot || info.shot_zim) {
+    shotHtml = '<div class="zi-shots' + (info.shot && info.shot_zim ? ' pair' : '') + '">' +
+      (info.shot ? _shotOne(info.shot, 'zi_shot_caption') : '') +
+      (info.shot_zim ? _shotOne(info.shot_zim, 'zi_shot_zim_caption') : '') +
+    '</div>';
+  }
+  var rows = shotHtml +
     (info.long_description ? '<div class="zi-long">' + esc(info.long_description) + '</div>' : '') +
     '<div class="zi-rows">' +
     _ziRow('zi_identifier', esc(info.name)) +
@@ -17791,7 +17826,11 @@ function _settleCapturedChrome(frame) {
   // not removed: a page that later fills one by script (an alive capture)
   // gets its box back.
   try {
+    // Two passes, reads then writes. Reading a rect after a style write
+    // forces the browser to lay the page out again, once per block; on a
+    // front page with a few thousand divs that was a visible stall.
     var blocks = doc.body.querySelectorAll('div, section, aside');
+    var collapse = [];
     for (var b = 0; b < blocks.length; b++) {
       var box = blocks[b];
       var rect = box.getBoundingClientRect();
@@ -17799,14 +17838,31 @@ function _settleCapturedChrome(frame) {
       if (!_isHollow(box)) continue;
       var cs = win.getComputedStyle(box);
       if (cs.backgroundImage !== 'none' || cs.position === 'fixed') continue;
+      // A painted colour is content too: a hero band, a divider, a callout
+      // with no text yet. Only a box that draws nothing at all is a hole.
+      if (!_isTransparent(cs.backgroundColor)) continue;
       if (box.querySelector('iframe, canvas, object, embed')) continue;
-      box.style.setProperty('height', '0', 'important');
-      box.style.setProperty('min-height', '0', 'important');
-      box.style.setProperty('padding', '0', 'important');
-      box.style.setProperty('margin', '0', 'important');
-      box.style.setProperty('overflow', 'hidden', 'important');
+      collapse.push(box);
+    }
+    for (var c = 0; c < collapse.length; c++) {
+      var hole = collapse[c];
+      hole.style.setProperty('height', '0', 'important');
+      hole.style.setProperty('min-height', '0', 'important');
+      hole.style.setProperty('padding', '0', 'important');
+      hole.style.setProperty('margin', '0', 'important');
+      hole.style.setProperty('overflow', 'hidden', 'important');
     }
   } catch (e) {}
+}
+
+// Whether a computed background colour paints nothing. Browsers report an
+// unset background as `rgba(0, 0, 0, 0)` or `transparent`.
+function _isTransparent(color) {
+  if (!color || color === 'transparent') return true;
+  var m = /^rgba?\(([^)]+)\)$/.exec(color);
+  if (!m) return false;
+  var parts = m[1].split(',');
+  return parts.length === 4 && parseFloat(parts[3]) === 0;
 }
 
 function _sweepBlockingOverlays(frame) {

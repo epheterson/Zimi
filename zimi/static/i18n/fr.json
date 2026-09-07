@@ -1543,5 +1543,8 @@
   "create_report_site": "Signalez-nous ce site",
   "create_beta_tag": "Bêta",
   "create_beta_ask": "Un problème ?",
-  "create_beta_report": "Dites-nous de quel site il s’agit"
+  "create_beta_report": "Dites-nous de quel site il s’agit",
+  "zi_shot_alt": "The live page as it looked when this ZIM was made",
+  "zi_shot_caption": "The live page, when this was captured",
+  "zi_shot_zim_caption": "The same page, as this ZIM serves it"
 }

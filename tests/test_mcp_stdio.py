@@ -141,7 +141,9 @@ def test_every_documented_tool_is_actually_offered(server):
     offered = {t["name"] for t in _read(server)["result"]["tools"]}
     assert offered, "the server offered no tools at all"
 
-    doc = pathlib.Path(ROOT, "docs", "integrations", "openwebui.md").read_text()
+    doc = pathlib.Path(ROOT, "docs", "integrations", "openwebui.md").read_text(
+        encoding="utf-8"
+    )
     promised = set(re.findall(r"\*\*`(\w+)`\*\*", doc))
     missing = sorted(promised - offered)
     assert (

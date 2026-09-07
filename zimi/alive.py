@@ -162,6 +162,9 @@ class AliveCapture:
     entirely in ``fetch``, where the navigation's whole traffic lands in the
     archive, and ``render`` has nothing left to do."""
 
+    keeps_scripts = True
+
+
     name = ENGINE_NAME
     # Recording an application shell is the point — its scripts are what the
     # archive is for.

@@ -179,7 +179,7 @@ def test_existing_readonly_state_is_bypassed_wholesale(
     stick = tmp_path / "stick2"
     state = stick / ".zimi"
     state.mkdir(parents=True)
-    (state / "cache.json").write_text("{}")
+    (state / "cache.json").write_text("{}", encoding="utf-8")
     _make_unwritable(state)
     _make_unwritable(stick)
     try:

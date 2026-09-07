@@ -232,7 +232,9 @@ def test_overrides_too_many_400(monkeypatch, tmp_path):
 
 def test_corrupt_layout_reads_as_empty(monkeypatch, tmp_path):
     data_dir = _setup(monkeypatch, tmp_path)
-    (data_dir / "library_layout.json").write_text("{ this is not json")
+    (data_dir / "library_layout.json").write_text(
+        "{ this is not json", encoding="utf-8"
+    )
     layout = server._load_library_layout()
     assert layout == {"overrides": {}, "section_order": [], "sections": []}
 
@@ -248,7 +250,9 @@ def test_missing_layout_reads_as_empty(monkeypatch, tmp_path):
 
 def test_wrong_shape_layout_reads_as_empty(monkeypatch, tmp_path):
     data_dir = _setup(monkeypatch, tmp_path)
-    (data_dir / "library_layout.json").write_text(json.dumps([1, 2, 3]))
+    (data_dir / "library_layout.json").write_text(
+        json.dumps([1, 2, 3]), encoding="utf-8"
+    )
     assert server._load_library_layout() == {
         "overrides": {},
         "section_order": [],

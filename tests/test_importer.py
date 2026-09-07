@@ -306,7 +306,7 @@ def test_warc2zim_failure_cleans_staging(data_dir, tmp_path, monkeypatch):
 
 def test_rejects_non_archive_and_missing_file(data_dir, tmp_path):
     txt = tmp_path / "notes.txt"
-    txt.write_text("not an archive")
+    txt.write_text("not an archive", encoding="utf-8")
     with pytest.raises(importer.CreateError, match=r"\.warc"):
         importer.import_archive(str(txt))
     with pytest.raises(importer.CreateError, match="not found"):

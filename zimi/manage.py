@@ -227,6 +227,25 @@ def _clear_setup_key():
         pass
 
 
+def manage_open():
+    """Whether the operator has turned management authentication off.
+
+    The one answer to "I do not want a password" that does not reason about
+    network position. Every other one does, and that is what has failed twice:
+    a LAN rule cannot see a client behind a reverse proxy, and a proxy rule
+    cannot tell that client from the internet. This asks nothing, so there is
+    nothing to get wrong.
+
+    Read from the environment on each call so the config file's value, which
+    is published into the environment at startup, and a test's, both land."""
+    return os.environ.get("ZIMI_MANAGE_OPEN", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def _lan_client(handler):
     """A client `lan_admin` may treat as the owner: on the private network and
     reaching Zimi directly.
@@ -357,6 +376,8 @@ def _primary_admin_authorized(handler):
     The primary admin is the top of the hierarchy — the only account that can
     manage other admins and that no secondary admin can delete or demote.
     """
+    if manage_open():
+        return True  # everyone is the admin here, by the operator's choice
     stored_pw = _get_manage_password_hash()
     if not stored_pw:
         # Passwordless: the host itself, or any private client when the
@@ -441,7 +462,11 @@ def _check_manage_auth(handler):
     - Password set → Bearer token must match password or API token (PRIMARY
       admin), OR a role=admin session token (SECONDARY admin)
     - API token is optional (requires password to be set first)
+    - manage_open → nobody is asked for anything, at all
     """
+    # First, and without looking at anything else. The operator said no.
+    if manage_open():
+        return None
     stored_pw = _get_manage_password_hash()
     if not stored_pw:
         # Bootstrap window (GHSA-5mw2-53vv-9pw6). Being ON the host is the one
@@ -3170,6 +3195,8 @@ def _create_worker(job, opts):
         # nobody opens the log of a job that finished green.
         if result.get("thin_page"):
             outcome["result"]["thin_page"] = True
+        if result.get("pictures"):
+            outcome["result"]["pictures"] = dict(result["pictures"])
         # The bound that ended a crawl early ("interrupted", "page cap (200)"),
         # when one did. The done card owes the admin that honesty — a ZIM that
         # says "40 pages" without saying "and I stopped there on purpose" reads
