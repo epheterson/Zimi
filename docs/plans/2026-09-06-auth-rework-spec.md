@@ -74,3 +74,24 @@ Steps 1 to 3 are invisible to users and can land first. Step 4 is the breaking o
 ## What must not regress
 
 `tests/test_bootstrap_takeover.py` is the file that proves this, and its own history is a warning: it stubbed `_client_ip` wholesale, so for two releases it tested a double rather than the decision. Every test here drives a real socket and a real handler, or it proves nothing.
+
+---
+
+## Step 4, written out before it starts
+
+The breaking step, and the one that needs a review of its shape before code. Everything above it is invisible and has landed; this is where behaviour changes.
+
+**What changes.** While no admin password exists, the only credential that opens management is the setup key. The host stops being a proof. `identify()` loses its `host` source; `_check_manage_auth` loses its loopback branch; `_is_loopback_client` stays for the log line and for nothing else.
+
+**What it closes.** The residual 1.9.1 documented instead of fixing: a same-host forwarder that sends no forwarded header (`socat`, `proxy_pass` without `proxy_set_header`) presents a bare loopback peer that nothing can tell from the owner at the keyboard. With one door there is nothing to tell apart.
+
+**What it costs, and the answer to each.**
+
+- *The desktop app.* It runs the server in-process and gets admin by being on the host. It owns the data dir, so it reads the setup key from `setup-key` there and presents it once, then holds an admin session like any other client. One function in `desktop/`, and the app's user never sees a key.
+- *The first run at a terminal.* `zimi serve` already prints the key in a box and writes it to the data dir at 0600. The banner's wording changes from "from this machine freely, or the key" to just the key.
+- *`lan_admin`.* The quirk step 3 preserved — with it on, the LAN test is the whole passwordless answer — goes away: the key always works. `lan_admin` then means only what step 5 makes it mean, anonymous-account policy.
+- *Existing installs.* Ones with a password are untouched. Passwordless ones on the host lose free bootstrap; the key is in their log and in their data dir. Release notes say so in one line.
+
+**What proves it.** `tests/test_bootstrap_takeover.py::test_the_host_itself_bootstraps_freely` inverts: the host is refused without the key. The same-host-proxy tests stay. A new test drives `socat`'s shape — a loopback peer, no headers — and is refused. The desktop test presents the key from the data dir and gets a session.
+
+**Order.** One commit for the server side with its tests; one for the desktop app; the release note. Not before Eric has read this section.
