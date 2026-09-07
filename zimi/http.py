@@ -896,9 +896,18 @@ def _read_zim_metadata(archive):
     Illustrations are skipped (they are PNG bytes, and the reader already serves
     them at /w/<zim>/-/icon). An entry that will not decode is dropped rather
     than failing the read — one bad field must not cost the panel every other."""
+    from zimi import zimwriter as _zw
+
+    binary = (_zw.SHOT_METADATA_KEY, _zw.SHOT_ZIM_METADATA_KEY)
     out = {}
     for key in archive.metadata_keys:
         if key.startswith(_ILLUSTRATION_METADATA_PREFIX):
+            continue
+        if key in binary:
+            # JPEG bytes, like the illustration. Decoding one would produce a
+            # page of mojibake in the panel; what a caller needs to know is
+            # only that it is there, and the reader serves it at -/shot-*.
+            out[key] = "1"
             continue
         try:
             out[key] = (
@@ -1072,12 +1081,12 @@ def _zim_info(name):
     # the entry path, not as bytes: the panel loads it through /w/ like any
     # other entry, so a 200 KB screenshot never rides inside a JSON payload the
     # library view fetches for every card.
-    shot = meta.get(_zw.SHOT_METADATA_KEY) or ""
-    shot_zim = meta.get(_zw.SHOT_ZIM_METADATA_KEY) or ""
     info = {
         "name": name,
-        "shot": f"/w/{name}/{shot}" if shot else "",
-        "shot_zim": f"/w/{name}/{shot_zim}" if shot_zim else "",
+        "shot": f"/w/{name}/-/shot-live" if meta.get(_zw.SHOT_METADATA_KEY) else "",
+        "shot_zim": (
+            f"/w/{name}/-/shot-zim" if meta.get(_zw.SHOT_ZIM_METADATA_KEY) else ""
+        ),
         "file": entry.get("file", ""),
         # The card's title/description come from the same cache, so the panel
         # agrees with the card it opened from even for an unreadable archive.
@@ -2563,6 +2572,41 @@ class ZimHandler(BaseHTTPRequestHandler):
         except Exception as e:
             return self._dispatch_error(e)
 
+    def _serve_zim_metadata_image(self, zim_name, archive, key):
+        """Serve a JPEG held under a metadata key.
+
+        The same contract the illustration gets, and for the same reason: the
+        tag is the CONTENT's digest and the response revalidates, so replacing
+        a ZIM or re-running a capture cannot leave a stale picture on screen in
+        the one browser that asked first."""
+        try:
+            with _srv._zim_lock:
+                data = bytes(archive.get_metadata(key))
+        except Exception:
+            data = b""
+        if not data:
+            # A miss is never remembered: a ZIM re-captured with a browser
+            # gains these, and must not stay pictureless in that browser.
+            self.send_response(404)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        etag = '"shot-%s"' % hashlib.sha256(data).hexdigest()[:16]
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "public, max-age=0, must-revalidate")
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "image/jpeg")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", "public, max-age=0, must-revalidate")
+        self.end_headers()
+        self.wfile.write(data)
+
     def _serve_zim_icon(self, zim_name, archive):
         """Serve the ZIM's 48x48 illustration as a PNG.
 
@@ -2763,6 +2807,19 @@ class ZimHandler(BaseHTTPRequestHandler):
             # Serve ZIM icon from metadata
             if entry_path == "-/icon":
                 return self._serve_zim_icon(zim_name, archive)
+
+            # The capture's two pictures, stored as metadata for the same
+            # reason the illustration is: they are about the content, not part
+            # of it. Served here so nothing has to walk entries to find them.
+            if entry_path in ("-/shot-live", "-/shot-zim"):
+                from zimi import zimwriter as _zw
+
+                key = (
+                    _zw.SHOT_METADATA_KEY
+                    if entry_path == "-/shot-live"
+                    else _zw.SHOT_ZIM_METADATA_KEY
+                )
+                return self._serve_zim_metadata_image(zim_name, archive, key)
 
             try:
                 entry = archive.get_entry_by_path(entry_path)

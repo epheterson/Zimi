@@ -1738,11 +1738,15 @@ SCRAPER_METADATA_KEY = "Scraper"
 SOURCE_METADATA_KEY = "X-Zimi-Source"
 # The entry a capture's picture of the live page is written to, and the
 # metadata key that says it is there so a reader finds it without scanning.
-SHOT_ENTRY_PATH = "_zimi/shot-live.jpg"
+# The two pictures a capture keeps, stored as METADATA rather than as entries.
+#
+# They are not content. An entry would be counted in the ZIM's article and
+# entry totals, be reachable by path, and turn up wherever entries are walked —
+# a picture of the page filed alongside the page. openZIM already stores an
+# image as metadata for exactly this reason: the mandatory Illustration_48x48@1
+# is PNG bytes under a metadata key, and Zimi already serves it at
+# /w/<zim>/-/icon. These follow that, and are served the same way.
 SHOT_METADATA_KEY = "X-Zimi-Screenshot"
-# And the same page as this ZIM serves it. The pair is the whole point: one
-# picture says what the page looked like, two say whether the capture kept it.
-SHOT_ZIM_ENTRY_PATH = "_zimi/shot-zim.jpg"
 SHOT_ZIM_METADATA_KEY = "X-Zimi-Screenshot-Zim"
 HISTORY_METADATA_KEY = "X-Zimi-History"
 
@@ -2071,17 +2075,25 @@ def append_history(records, record, limit=MAX_HISTORY_RECORDS):
 
 def add_packaged_shot(creator, jpeg):
     """Store the picture of the page as this ZIM serves it."""
-    return _add_shot(creator, jpeg, SHOT_ZIM_ENTRY_PATH, SHOT_ZIM_METADATA_KEY)
+    return _add_shot(creator, jpeg, SHOT_ZIM_METADATA_KEY)
 
 
-def _add_shot(creator, jpeg, entry_path, metadata_key):
+def _add_shot(creator, jpeg, metadata_key):
+    """The JPEG itself under a metadata key, not an entry pointing at one."""
     if not jpeg:
         return False
     try:
-        creator.add_item(zim_static_item_class()(entry_path, "", jpeg))
-        creator.add_metadata(metadata_key, entry_path)
+        creator.add_metadata(metadata_key, jpeg, mimetype="image/jpeg")
+    except TypeError:
+        # Older libzim bindings take no mimetype for metadata, the same way
+        # they accept the illustration's PNG bytes without one.
+        try:
+            creator.add_metadata(metadata_key, jpeg)
+        except Exception as e:
+            log.warning("could not store %s: %s", metadata_key, e)
+            return False
     except Exception as e:
-        log.warning("could not store %s: %s", entry_path, e)
+        log.warning("could not store %s: %s", metadata_key, e)
         return False
     return True
 
@@ -2096,7 +2108,7 @@ def add_capture_shot(creator, jpeg):
     Silent when there is no picture: the fast engine has no browser by design,
     and a ZIM without one is not defective, it just cannot offer the
     comparison."""
-    return _add_shot(creator, jpeg, SHOT_ENTRY_PATH, SHOT_METADATA_KEY)
+    return _add_shot(creator, jpeg, SHOT_METADATA_KEY)
 
 
 def add_standard_metadata(

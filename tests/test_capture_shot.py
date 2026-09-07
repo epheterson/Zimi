@@ -34,19 +34,26 @@ class _Creator:
             raise RuntimeError("no room")
         self.items.append(item)
 
-    def add_metadata(self, key, value):
+    def add_metadata(self, key, value, mimetype=None):
         if self._fail_on == "metadata":
             raise RuntimeError("no room")
         self.metadata[key] = value
 
 
-def test_a_shot_becomes_an_entry_and_says_it_is_there():
+def test_a_shot_is_metadata_not_an_entry():
+    """The pictures are ABOUT the content, not part of it.
+
+    As entries they would be counted in the ZIM's article and entry totals,
+    reachable by path, and turn up wherever entries are walked: a picture of
+    the page filed alongside the page. openZIM already stores an image as
+    metadata for this reason — the mandatory Illustration_48x48@1 is PNG bytes
+    under a metadata key — and these follow it."""
     creator = _Creator()
     assert zw.add_capture_shot(creator, b"\xff\xd8jpegbytes") is True
-    assert len(creator.items) == 1
-    assert creator.metadata[zw.SHOT_METADATA_KEY] == zw.SHOT_ENTRY_PATH
-    # An ordinary entry, so it travels with the file to any reader or peer.
-    assert zw.SHOT_ENTRY_PATH.endswith(".jpg")
+    assert zw.add_packaged_shot(creator, b"\xff\xd8otherbytes") is True
+    assert creator.items == [], "a screenshot must not become an entry"
+    assert creator.metadata[zw.SHOT_METADATA_KEY] == b"\xff\xd8jpegbytes"
+    assert creator.metadata[zw.SHOT_ZIM_METADATA_KEY] == b"\xff\xd8otherbytes"
 
 
 def test_no_browser_means_no_picture_and_no_complaint():
@@ -59,12 +66,12 @@ def test_no_browser_means_no_picture_and_no_complaint():
     assert creator.metadata == {}
 
 
-@pytest.mark.parametrize("fail_on", ["item", "metadata"])
-def test_a_capture_is_never_lost_over_a_picture(fail_on):
+def test_a_capture_is_never_lost_over_a_picture():
     """If storing the shot raises, the capture still stands. The whole ZIM must
     not be thrown away because a courtesy failed."""
-    creator = _Creator(fail_on=fail_on)
+    creator = _Creator(fail_on="metadata")
     assert zw.add_capture_shot(creator, b"\xff\xd8jpegbytes") is False
+    assert zw.add_packaged_shot(creator, b"\xff\xd8jpegbytes") is False
 
 
 def test_the_picture_is_the_whole_page_and_still_bounded():
@@ -119,5 +126,8 @@ def test_the_shot_reaches_the_panel_as_a_path_not_as_bytes():
 
     src = inspect.getsource(zhttp._zim_info)
     assert "SHOT_METADATA_KEY" in src
-    assert '"/w/' in src, "the panel is given a URL it can load"
+    assert "-/shot-live" in src, "the panel is given a URL it can load"
     assert "b64" not in src and "base64" not in src
+    # And the JPEG is never decoded into the panel's own payload.
+    reader = inspect.getsource(zhttp._read_zim_metadata)
+    assert "SHOT_METADATA_KEY" in reader, "binary metadata must be skipped"
