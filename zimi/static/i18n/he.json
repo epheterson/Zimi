@@ -1545,5 +1545,6 @@
   "create_beta_ask": "נתקלתם בבעיה?",
   "create_beta_report": "ספרו לנו על איזה אתר מדובר",
   "zi_shot_alt": "The live page as it looked when this ZIM was made",
-  "zi_shot_caption": "The live page, when this was captured"
+  "zi_shot_caption": "The live page, when this was captured",
+  "zi_shot_zim_caption": "The same page, as this ZIM serves it"
 }

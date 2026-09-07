@@ -1740,6 +1740,10 @@ SOURCE_METADATA_KEY = "X-Zimi-Source"
 # metadata key that says it is there so a reader finds it without scanning.
 SHOT_ENTRY_PATH = "_zimi/shot-live.jpg"
 SHOT_METADATA_KEY = "X-Zimi-Screenshot"
+# And the same page as this ZIM serves it. The pair is the whole point: one
+# picture says what the page looked like, two say whether the capture kept it.
+SHOT_ZIM_ENTRY_PATH = "_zimi/shot-zim.jpg"
+SHOT_ZIM_METADATA_KEY = "X-Zimi-Screenshot-Zim"
 HISTORY_METADATA_KEY = "X-Zimi-History"
 
 # ── openZIM conformance ─────────────────────────────────────────────────────
@@ -2065,6 +2069,23 @@ def append_history(records, record, limit=MAX_HISTORY_RECORDS):
     return [marker] + keep
 
 
+def add_packaged_shot(creator, jpeg):
+    """Store the picture of the page as this ZIM serves it."""
+    return _add_shot(creator, jpeg, SHOT_ZIM_ENTRY_PATH, SHOT_ZIM_METADATA_KEY)
+
+
+def _add_shot(creator, jpeg, entry_path, metadata_key):
+    if not jpeg:
+        return False
+    try:
+        creator.add_item(zim_static_item_class()(entry_path, "", jpeg))
+        creator.add_metadata(metadata_key, entry_path)
+    except Exception as e:
+        log.warning("could not store %s: %s", entry_path, e)
+        return False
+    return True
+
+
 def add_capture_shot(creator, jpeg):
     """Store a capture's picture of the live page, and say that it is there.
 
@@ -2075,15 +2096,7 @@ def add_capture_shot(creator, jpeg):
     Silent when there is no picture: the fast engine has no browser by design,
     and a ZIM without one is not defective, it just cannot offer the
     comparison."""
-    if not jpeg:
-        return False
-    try:
-        creator.add_item(zim_static_item_class()(SHOT_ENTRY_PATH, "", jpeg))
-        creator.add_metadata(SHOT_METADATA_KEY, SHOT_ENTRY_PATH)
-    except Exception as e:
-        log.warning("could not store the capture screenshot: %s", e)
-        return False
-    return True
+    return _add_shot(creator, jpeg, SHOT_ENTRY_PATH, SHOT_METADATA_KEY)
 
 
 def add_standard_metadata(

@@ -48,6 +48,7 @@ from typing import Any
 import zimi.server as _srv
 from zimi.blocklist import blocked_phrase
 from zimi.zimwriter import (
+    add_packaged_shot,
     add_capture_shot,
     guess_mime,
     _CSS_URL_RE,
@@ -2070,6 +2071,13 @@ def create_page_zim(
             # the moment the site changes.
             if add_capture_shot(creator, getattr(capture, "last_shot", None)):
                 note("stored a picture of the live page")
+                # And the same page as this ZIM will serve it, rendered from
+                # the very bytes being written. Two pictures are what make the
+                # question answerable: one says what the page looked like, the
+                # pair says whether the capture kept it.
+                shoot = getattr(capture, "shoot_packaged", None)
+                if shoot is not None and add_packaged_shot(creator, shoot(page)):
+                    note("stored a picture of the packaged page")
             add_standard_metadata(
                 creator,
                 title=zim_title,

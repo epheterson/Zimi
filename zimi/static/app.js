@@ -3526,12 +3526,22 @@ function _ziBodyHtml(info) {
   // the facts because it answers the question the facts cannot: is this ZIM
   // still the page it claims to be? You are looking at the ZIM already; this
   // is the other half of that comparison, and the half the web deletes.
-  var shotHtml = info.shot
-    ? '<a class="zi-shot" href="' + escAttr(info.shot) + '" target="_blank" rel="noopener">' +
-        '<img src="' + escAttr(info.shot) + '" alt="' + escAttr(t('zi_shot_alt')) + '" loading="lazy">' +
-        '<span class="zi-shot-cap">' + tH('zi_shot_caption') + '</span>' +
-      '</a>'
-    : '';
+  // Side by side, because neither picture means much alone. Left is the page
+  // the live web served; right is the same page as this ZIM serves it. The
+  // difference between them IS the answer to "did the capture keep it".
+  var _shotOne = function (href, captionKey) {
+    return '<a class="zi-shot" href="' + escAttr(href) + '" target="_blank" rel="noopener">' +
+      '<img src="' + escAttr(href) + '" alt="' + escAttr(t('zi_shot_alt')) + '" loading="lazy">' +
+      '<span class="zi-shot-cap">' + tH(captionKey) + '</span>' +
+    '</a>';
+  };
+  var shotHtml = '';
+  if (info.shot || info.shot_zim) {
+    shotHtml = '<div class="zi-shots' + (info.shot && info.shot_zim ? ' pair' : '') + '">' +
+      (info.shot ? _shotOne(info.shot, 'zi_shot_caption') : '') +
+      (info.shot_zim ? _shotOne(info.shot_zim, 'zi_shot_zim_caption') : '') +
+    '</div>';
+  }
   var rows = shotHtml +
     (info.long_description ? '<div class="zi-long">' + esc(info.long_description) + '</div>' : '') +
     '<div class="zi-rows">' +

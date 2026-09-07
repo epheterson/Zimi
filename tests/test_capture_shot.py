@@ -67,14 +67,46 @@ def test_a_capture_is_never_lost_over_a_picture(fail_on):
     assert zw.add_capture_shot(creator, b"\xff\xd8jpegbytes") is False
 
 
-def test_the_height_cap_exists_and_is_sane():
-    """cnn.com's homepage is about 45,000 pixels tall. Storing all of it would
-    put megabytes of picture into a ZIM whose content is smaller than that."""
+def test_the_picture_is_the_whole_page_and_still_bounded():
+    """Full page, because a viewport-high crop of a long article cannot show
+    that the body below the fold survived the capture — which is the only
+    question the picture exists to answer.
+
+    Full page has no ceiling of its own, so the size is bounded by degrading:
+    whole page, whole page compressed harder, and only then the top of it.
+    cnn.com's homepage is about 45,000 pixels tall."""
+    import inspect
+
     from zimi import renderer
 
     assert renderer.SHOT_WIDTH == 1280
-    assert 1000 <= renderer.SHOT_MAX_HEIGHT <= 8000
     assert 50 <= renderer.SHOT_QUALITY <= 85
+    assert renderer.SHOT_QUALITY_DENSE < renderer.SHOT_QUALITY
+    assert 200_000 <= renderer.SHOT_MAX_BYTES <= 3_000_000
+    src = inspect.getsource(renderer._shoot)
+    assert "full_page=True" in src, "a viewport crop is not what this is for"
+    # Cropping is the last resort, not the first move.
+    assert src.index("full_page=True") < src.index("clip=")
+
+
+def test_the_packaged_shot_is_rendered_before_the_zim_exists():
+    """The obvious way to photograph a finished ZIM is to open it, and it is
+    the wrong way: entries stream straight into the file, so by the time one
+    exists it is sealed and adding a picture means rewriting every byte.
+
+    So it is served instead, from the bytes about to be written, over an
+    origin laid out like the real one so relative references resolve the same
+    way."""
+    import inspect
+
+    from zimi import renderer
+
+    src = inspect.getsource(renderer.RenderedSession.shoot_packaged)
+    assert "route" in src, "the packaged page is served, not read back"
+    assert "fulfill" in src
+    # A missing asset must 404 exactly as the reader would, so the picture
+    # shows the gap instead of hiding it.
+    assert "404" in src
 
 
 def test_the_shot_reaches_the_panel_as_a_path_not_as_bytes():

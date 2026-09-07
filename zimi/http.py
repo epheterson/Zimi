@@ -1073,9 +1073,11 @@ def _zim_info(name):
     # other entry, so a 200 KB screenshot never rides inside a JSON payload the
     # library view fetches for every card.
     shot = meta.get(_zw.SHOT_METADATA_KEY) or ""
+    shot_zim = meta.get(_zw.SHOT_ZIM_METADATA_KEY) or ""
     info = {
         "name": name,
         "shot": f"/w/{name}/{shot}" if shot else "",
+        "shot_zim": f"/w/{name}/{shot_zim}" if shot_zim else "",
         "file": entry.get("file", ""),
         # The card's title/description come from the same cache, so the panel
         # agrees with the card it opened from even for an unreadable archive.

@@ -3074,12 +3074,18 @@
 }
 
 
+/* The two pictures a capture keeps, side by side on anything wide enough and
+   stacked on a phone. Neither means much alone: the pair is the comparison. */
+.zi-shots { display: grid; gap: 10px; margin: 0 0 14px; }
+.zi-shots.pair { grid-template-columns: 1fr 1fr; }
+@media (max-width: 560px) { .zi-shots.pair { grid-template-columns: 1fr; } }
+
 /* The capture's picture of the live page, in About. Bounded height so a tall
    homepage does not push every fact off the panel; the whole thing opens full
    size in a tab on click. */
 .zi-shot {
   display: block;
-  margin: 0 0 14px;
+  margin: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
