@@ -337,8 +337,10 @@ _CSS_IMPORT_RE = re.compile(r"""@import\s+(["'])([^"']+)\1""", re.IGNORECASE)
 # The tags whose refs are ASSETS. `<a href>` is deliberately not here: a link
 # is resolved by the caller, which is the only party that knows whether this
 # capture holds the far end.
+# body/table/tr/td/th are here for the 1990s ``background=`` picture.
 _ASSET_TAG_RE = re.compile(
-    r"<(?:img|source|video|audio|track|embed|link|object)\b[^>]*>", re.IGNORECASE
+    r"<(?:img|source|video|audio|track|embed|link|object|body|table|tr|td|th)\b[^>]*>",
+    re.IGNORECASE,
 )
 _LINK_TAG_RE = re.compile(r"<link\b", re.IGNORECASE)
 _STYLE_ATTR_RE = attr_re("style")
@@ -725,6 +727,9 @@ _PREPARE_JS = r"""() => {
   [['a', 'href'], ['area', 'href'], ['link', 'href'], ['img', 'src'],
    ['source', 'src'], ['video', 'src'], ['video', 'poster'], ['audio', 'src'],
    ['track', 'src'], ['embed', 'src'], ['iframe', 'src'], ['object', 'data'],
+   // The 1996 way to tile a picture behind a page. spacejam.com still does it.
+   ['body', 'background'], ['table', 'background'], ['tr', 'background'],
+   ['td', 'background'], ['th', 'background'],
   ].forEach(([tag, attr]) => {
     document.querySelectorAll(tag + '[' + attr + ']').forEach(el => absolutize(el, attr));
   });
@@ -2663,7 +2668,7 @@ def _rewrite_asset_tags(assets, html):
         is_link = bool(_LINK_TAG_RE.match(tag))
         if is_link and not _carried_link(tag):
             return tag
-        for attr in ("src", "poster", "data") if not is_link else ("href",):
+        for attr in ("src", "poster", "data", "background") if not is_link else ("href",):
             tag = _attr_re(attr).sub(lambda am: _fix_ref(assets, am), tag)
         if is_link and "../" in tag:
             tag = drop_integrity(tag)  # the sheet is ours now; the hash was for theirs

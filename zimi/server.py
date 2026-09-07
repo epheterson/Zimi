@@ -2239,7 +2239,7 @@ def list_zims(use_cache=True):
         entry = {
             "name": name,
             "file": os.path.basename(path),
-            "size_gb": round(size_bytes / _BYTES_PER_GB, 3),
+            "size_gb": round(size_bytes / _BYTES_PER_GB, 6),
             "size_bytes": size_bytes,
             "entries": entry_count,
         }
@@ -2384,7 +2384,7 @@ def _extract_zim_metadata(name, path):
     info = {
         "name": name,
         "file": os.path.basename(path),
-        "size_gb": round(size_gb, 3),
+        "size_gb": round(size_gb, 6),
         # Exact byte size: peers verify a pulled .zim against this (a
         # truncated transfer is the realistic LAN failure mode).
         "size_bytes": size_bytes,
@@ -2680,7 +2680,7 @@ def load_cache(force=False):
                 # which is the whole complaint. Bytes are the fact and stat is
                 # free; anything divided out of them is a view, and a view has
                 # no business surviving in a cache.
-                "size_gb": round(size / _BYTES_PER_GB, 3),
+                "size_gb": round(size / _BYTES_PER_GB, 6),
                 # Exact bytes straight from stat — peers verify pulled ZIMs
                 # against this, so it must be present even on a cache hit
                 # (older disk caches predate the field).

@@ -299,8 +299,11 @@ def collapse_ad_slots(html):
     return _AD_SLOT_STYLE + html
 
 
-_MEDIA_TAG_RE = re.compile(r"<(img|source)\b[^>]*>", re.IGNORECASE)
+# body/table/tr/td/th carry the 1990s ``background=`` picture: spacejam.com/1996
+# tiles its starfield that way, and a capture without it is a black page.
+_MEDIA_TAG_RE = re.compile(r"<(img|source|body|table|tr|td|th)\b[^>]*>", re.IGNORECASE)
 _SRC_RE = attr_re("src")
+_BACKGROUND_RE = attr_re("background")
 _SRCSET_RE = attr_re("srcset")
 _LOADING_RE = attr_re("loading")
 
@@ -1096,8 +1099,15 @@ class _AssetCarrier:
                     return m.group(0)
                 return f'{m.group("pre")}"{in_zim_ref(in_path)}"'
 
+            def fix_background(m):
+                in_path = carry_ref(m.group("val"))
+                if not in_path:
+                    return m.group(0)
+                return f'{m.group("pre")}"{in_zim_ref(in_path)}"'
+
             tag = _SRCSET_RE.sub(fix_srcset, tag)
             tag = _SRC_RE.sub(fix_src, tag)
+            tag = _BACKGROUND_RE.sub(fix_background, tag)
             return _load_eagerly(tag)
 
         return sub_markup(_MEDIA_TAG_RE, fix_tag, html)
