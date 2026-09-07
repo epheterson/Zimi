@@ -24,9 +24,12 @@ function extractFn(s, name) {
 }
 const sandbox = { console };
 vm.createContext(sandbox);
+vm.runInContext(extractFn(src, '_articleAppearance'), sandbox);
 vm.runInContext(extractFn(src, '_darkenWanted'), sandbox);
 const wanted = (on, explicit, reader, loc, capture, dark) =>
   vm.runInContext(`_darkenWanted(${on}, ${explicit}, ${reader}, ${JSON.stringify(loc)}, ${capture}, ${dark})`, sandbox);
+const appearance = (on, explicit, reader, loc, capture, dark) =>
+  vm.runInContext(`_articleAppearance(${on}, ${explicit}, ${reader}, ${JSON.stringify(loc)}, ${capture}, ${dark})`, sandbox);
 
 let failures = 0;
 function check(ok, label) {
@@ -48,10 +51,36 @@ for (const [on, ex, rv, loc, cap, dark, expected, label] of cases) {
   check(wanted(on, ex, rv, loc, cap, dark) === expected, label);
 }
 
+// #65, the half that shipped broken in 1.9.2: the box has to work in the OTHER
+// direction too. Every modern Wikipedia ZIM follows the OS through
+// `skin-theme-clientpref-os`, so in dark mode the article is already dark and
+// the old two-answer decision had nothing to add and nothing to remove.
+const both = [
+  // on, explicit, readerView, loc, isCapture, declaresDark -> expected
+  [false, false, false, '/w/x/A/p', false, true,  'light',  'unticked on a page showing its own dark face asks for light'],
+  [false, false, false, '/w/x/A/p', false, false, 'leave',  'unticked on an already-light page: nothing to do'],
+  [true,  false, false, '/w/x/A/p', false, true,  'leave',  'ticked on a page already dark: let it be'],
+  [true,  false, false, '/w/x/A/p', false, false, 'darken', 'ticked on a light page: darken it'],
+  [true,  true,  false, '/w/x/A/p', true,  false, 'darken', 'an explicit tick still reaches a capture'],
+  [false, false, true,  '/w/x/A/p', false, true,  'leave',  'Reader View owns its themes, in both directions'],
+  [false, false, false, '/static/pdfjs/viewer.html', false, true, 'leave', 'viewers are never touched'],
+];
+for (const [on, ex, rv, loc, cap, dark, expected, label] of both) {
+  const got = appearance(on, ex, rv, loc, cap, dark);
+  check(got === expected, label + ' (got ' + got + ')');
+}
+
 // And the decision is what _applyArticleDarken actually consults.
 const apply = extractFn(src, '_applyArticleDarken');
-check(/_darkenWanted\(/.test(apply), '_applyArticleDarken asks _darkenWanted');
+check(/_articleAppearance\(/.test(apply), '_applyArticleDarken asks _articleAppearance');
 check(/_darkenArticlesExplicit\(\)/.test(apply), 'and passes whether the box was ticked');
+check(/_askArticleFor\(doc, want === 'light'/.test(apply), 'and asks the page for its light face');
+
+// The light request uses both knobs, and is reversible.
+const ask = extractFn(src, '_askArticleFor');
+check(/colorScheme/.test(ask), 'sets color-scheme, so a media-query dark mode stops matching');
+check(/skin-theme-clientpref-day/.test(ask), "swaps MediaWiki's theme class, which is not a media query");
+check(/dataset\.zimiMwTheme/.test(ask), 'remembers the original class so ticking restores it');
 
 if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
 console.log('all darken decision checks passed');

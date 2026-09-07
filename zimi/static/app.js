@@ -172,14 +172,30 @@ function _darkenArticlesOn() {
 function _darkenArticlesExplicit() {
   return localStorage.getItem(SK.DARKEN_ARTICLES) === '1';
 }
-// The decision, pure so it can be tested: should the darken style be in the
-// article document right now?
+// The decision, pure so it can be tested. Three answers, not two, because the
+// box has to work in BOTH directions (#65).
+//
+//   'darken'  inject the darkening style: a light page the person wants dark
+//   'light'   ask the page for its light face: unticked, and the page has a
+//             dark one it is showing because the browser prefers dark
+//   'leave'   touch nothing
+//
+// The two-answer version was the bug. It only ever ADDED darkening to a light
+// page, so on a page carrying its own dark mode — every modern Wikipedia ZIM
+// follows the OS through `skin-theme-clientpref-os` — ticking did nothing
+// (already dark) and unticking did nothing (we only ever add). To someone
+// reading in dark mode that is a checkbox with no function, which is exactly
+// what was reported.
 function _darkenWanted(on, explicit, readerViewOn, loc, isCapture, declaresDark) {
-  if (!on || readerViewOn) return false;
-  if ((loc || '').indexOf('/static/') === 0) return false;   // pdf.js / viewers
-  if (declaresDark) return false;                            // already dark
-  if (isCapture && !explicit) return false;                  // keeps its design
-  return true;
+  return _articleAppearance(on, explicit, readerViewOn, loc, isCapture, declaresDark) === 'darken';
+}
+function _articleAppearance(on, explicit, readerViewOn, loc, isCapture, declaresDark) {
+  if (readerViewOn) return 'leave';                          // owns its themes
+  if ((loc || '').indexOf('/static/') === 0) return 'leave';  // pdf.js / viewers
+  if (!on) return declaresDark ? 'light' : 'leave';
+  if (isCapture && !explicit) return 'leave';                // keeps its design
+  if (declaresDark) return 'leave';                          // already dark
+  return 'darken';
 }
 function _setDarkenArticles(on) {
   localStorage.setItem(SK.DARKEN_ARTICLES, on ? '1' : '0');
@@ -305,11 +321,11 @@ function _applyArticleDarken(doc) {
   var existing = doc.getElementById(_ARTICLE_DARKEN_STYLE_ID);
   var loc = '';
   try { loc = doc.defaultView.location.pathname; } catch (e) {}
-  var want = _darkenWanted(
+  var want = _articleAppearance(
     _darkenArticlesOn(), _darkenArticlesExplicit(), _readerViewOn, loc,
     _articleIsWebCapture(), _articleDeclaresDark(doc)
   );
-  if (want) {
+  if (want === 'darken') {
     if (!existing && doc.head) {
       var st = doc.createElement('style');
       st.id = _ARTICLE_DARKEN_STYLE_ID;
@@ -320,6 +336,35 @@ function _applyArticleDarken(doc) {
   } else if (existing && existing.parentNode) {
     existing.parentNode.removeChild(existing);
   }
+  _askArticleFor(doc, want === 'light' ? 'light' : '');
+}
+
+// Ask the page itself for a light face, using the two knobs a page can carry.
+// Passing '' hands it back whatever it chooses on its own.
+//
+// `color-scheme` is the standard one: it decides how `prefers-color-scheme`
+// resolves inside this document, so a page whose dark mode is a media query
+// simply stops matching it. MediaWiki does not use a media query — Vector 2022
+// stamps `skin-theme-clientpref-os` on <html> and its own CSS reads that class
+// — so the class is swapped too. That covers every Wikipedia-family ZIM, which
+// is most of a typical library.
+var _MW_THEME_RE = /\bskin-theme-clientpref-\S+/;
+function _askArticleFor(doc, mode) {
+  try {
+    var html = doc.documentElement;
+    html.style.colorScheme = mode || '';
+    if (_MW_THEME_RE.test(html.className)) {
+      if (mode === 'light') {
+        if (!html.dataset.zimiMwTheme) {
+          html.dataset.zimiMwTheme = html.className.match(_MW_THEME_RE)[0];
+        }
+        html.className = html.className.replace(_MW_THEME_RE, 'skin-theme-clientpref-day');
+      } else if (html.dataset.zimiMwTheme) {
+        html.className = html.className.replace(_MW_THEME_RE, html.dataset.zimiMwTheme);
+        delete html.dataset.zimiMwTheme;
+      }
+    }
+  } catch (e) {}
 }
 
 // Shared "dismiss on outside interaction" for menus/popovers. Registers a

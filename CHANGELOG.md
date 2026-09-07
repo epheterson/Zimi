@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.9.3] - 2026-09-07
+
+### Fixed
+
+- **Darken articles still did nothing on a normal ZIM (#65), which is what was actually reported.** 1.9.2 fixed the checkbox for captured sites and left the reported case untouched. The decision only ever *added* darkening to a light page, so on a page carrying its own dark mode — every modern Wikipedia ZIM follows the operating system through `skin-theme-clientpref-os` — ticking had nothing to add and unticking had nothing to remove. Read in dark mode, the checkbox did nothing in either direction. It now decides the article's appearance both ways: unticked, Zimi asks the page for its light face, through `color-scheme` (so a media-query dark mode stops matching) and through MediaWiki's own theme class (which is not a media query). Ticking restores exactly the class the page shipped with.
+
 ## [1.9.2] - 2026-09-07
 
 What the first two days of 1.9 turned up, and the instruments that keep it from turning up again.
