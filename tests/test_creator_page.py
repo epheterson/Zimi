@@ -999,3 +999,34 @@ def test_a_reference_that_climbs_above_the_root_stops_at_the_root(fixture_server
     page = _entry_text(arc, "A/index")
     assert 'src="../_assets/127_0_0_1/logo.png"' in page, page
     assert bytes(arc.get_entry_by_path("_assets/127_0_0_1/logo.png").get_item().content) == b"LOGOBYTES"
+
+
+def test_a_page_whose_interface_is_javascript_says_so():
+    """Issue #64: draculatheme.com/contribute is a three-step walkthrough
+    behind three buttons, and its steps are not in the served HTML at all.
+
+    A capture that drops scripts keeps the page and loses the interface: every
+    control is inert and whatever they would have revealed was never captured.
+    That is not a bug in the capture, and it is not visible by looking at the
+    result either, which is the combination worth saying out loud."""
+    from zimi.creator import SCRIPT_UI_CONTROLS, script_ui_note
+
+    many = "<html><body>" + ("<button>go</button>" * (SCRIPT_UI_CONTROLS + 2)) + "</body></html>"
+    note = script_ui_note(many)
+    assert note and "alive" in note, "the warning must name the engine that helps"
+
+    # An article with a search box is not an application.
+    assert script_ui_note("<html><body><p>words</p><button>Search</button></body></html>") is None
+
+    # A form's submit button is honest about being useless offline; it takes
+    # a lot more than that before a page is an interface.
+    form = "<html><body><form>" + ("<button>ok</button>" * SCRIPT_UI_CONTROLS) + "</form></body></html>"
+    assert script_ui_note(form) is None
+
+
+def test_the_alive_engine_is_never_warned_about_its_own_strength():
+    """The alive engine keeps a site's JavaScript running, so the inert
+    controls warning would be a lie there."""
+    from zimi.alive import AliveCapture
+
+    assert getattr(AliveCapture, "keeps_scripts", False) is True

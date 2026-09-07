@@ -224,6 +224,42 @@ def wall_note(page):
     )
 
 
+# How many script-driven controls a page needs before it is worth warning
+# that they will not work. A couple of buttons is a search box or a theme
+# toggle nobody will miss offline; a dozen is the page's actual interface.
+SCRIPT_UI_CONTROLS = 6
+_BUTTON_RE = re.compile(r"<button\b[^>]*>", re.I)
+_FORM_RE = re.compile(r"<form\b", re.I)
+
+
+def script_ui_note(page):
+    """A one-line warning when a page's controls need JavaScript, or None.
+
+    A capture that drops scripts keeps the page and loses the interface. On a
+    site whose content is behind its own buttons — a stepper, a tabbed
+    walkthrough, a filtered list — what lands in the ZIM is whatever happened
+    to be on screen, and every control is inert. That is not a bug in the
+    capture and it is not obvious from looking at it either, which is exactly
+    the combination worth saying out loud (issue #64: draculatheme.com's
+    contribute walkthrough is three steps behind three buttons).
+
+    A <button> inside a <form> is excluded: that one submits, and a submit
+    button is honest about being useless offline. What is counted is the
+    button that does nothing without a script."""
+    buttons = _BUTTON_RE.findall(page)
+    if len(buttons) < SCRIPT_UI_CONTROLS:
+        return None
+    if _FORM_RE.search(page) and len(buttons) < SCRIPT_UI_CONTROLS * 2:
+        return None
+    return (
+        f"{len(buttons)} of this page's controls are driven by JavaScript, and "
+        "a capture does not keep it running: they will be inert in the ZIM, "
+        "and anything they would have revealed is not in it. The alive engine "
+        "records the page with its own JavaScript working, which is the one "
+        "that keeps this kind of site usable."
+    )
+
+
 def _page_title_from_html(text, fallback):
     """<title>, else first <h1>, else the fallback (filename stem)."""
     for rx in (_TITLE_TAG_RE, _H1_RE):
@@ -2047,6 +2083,13 @@ def create_page_zim(
         wall = wall_note(page)
         if wall:
             note(wall)
+        # Only worth saying when this capture is not keeping the scripts. The
+        # alive engine does, so on that engine the controls will work and the
+        # warning would be a lie.
+        if not getattr(capture, "keeps_scripts", False):
+            script_ui = script_ui_note(page)
+            if script_ui:
+                note(script_ui)
         language, language_source = resolve_language(language, page, clang)
         text_chars = len(strip_html(page))
 
