@@ -61,6 +61,14 @@ _DEFAULT_ROLE = "user"
 #: avoid confusing UI labels). Compared case-insensitively.
 _RESERVED_NAMES = {"admin", "administrator", "root", "anonymous", "anon"}
 
+#: The account every request belongs to until it proves otherwise. Reserved
+#: above so nobody can register it; never stored in users.json; derived from
+#: the public-access policy so that policy has one representation instead of
+#: a mode string that five call sites each interpret for themselves.
+ANONYMOUS_NAME = "anonymous"
+#: The role that reads nothing: what `private` means, said as a role.
+ROLE_NONE = "none"
+
 #: Usernames: 1-32 chars, letters/digits/space/._- (kept permissive for kids'
 #: names + school labels, but no control chars, slashes, or newlines).
 _NAME_RE = re.compile(r"^[\w .\-]{1,32}$", re.UNICODE)
@@ -1076,6 +1084,43 @@ def _request_is_admin(handler):
         return False
 
 
+def anonymous_account():
+    """The anonymous reader as an account record.
+
+    1.10's auth rework in one sentence: everyone is an account, including
+    nobody. The public-access policy (``open`` / ``limited`` / ``private``)
+    already IS a role plus an allowlist; this says so, in the same shape
+    ``get_user`` returns, so the request path can treat "not signed in" as
+    "signed in as anonymous" and stop branching on a mode string.
+
+    Derived, not stored: ``access.json`` and the ``ZIMI_ACCESS`` override keep
+    their meaning and their precedence. Nothing changes for anyone yet — this
+    is the shape the rest of the rework builds on.
+    """
+    mode, allow = get_public_access()
+    if mode == "limited":
+        role, allowlist = "limited", list(allow)
+    elif mode == "private":
+        role, allowlist = ROLE_NONE, []
+    else:
+        role, allowlist = _DEFAULT_ROLE, None
+    return {
+        "name": ANONYMOUS_NAME,
+        "role": role,
+        "allowlist": allowlist,
+        "flags": {},
+        "anonymous": True,
+    }
+
+
+def _allow_for_record(rec):
+    """A record's allow set: ``None`` for all-access, a set otherwise."""
+    if rec.get("role") == ROLE_NONE:
+        return set()
+    allowlist = rec.get("allowlist")
+    return set(allowlist) if isinstance(allowlist, list) else None
+
+
 def request_allow(handler):
     """The request's ZIM allow set, or None for all-access.
 
@@ -1093,14 +1138,16 @@ def request_allow(handler):
         rec = get_user(name)
         if not rec:
             return None
-        allowlist = rec.get("allowlist")
-        return set(allowlist) if isinstance(allowlist, list) else None
+        return _allow_for_record(rec)
 
-    mode, allow = get_public_access()
-    if mode == "open":
-        return None  # fast path — no admin probe for the default deployment
+    # Not signed in is signed in as anonymous: one record, one rule. The
+    # admin probe stays where it was — only when the anonymous account would
+    # restrict something, because on the default deployment it never does
+    # and the probe is a file read on every request.
+    rec = anonymous_account()
+    allow = _allow_for_record(rec)
+    if allow is None:
+        return None
     if _request_is_admin(handler):
         return None
-    if mode == "limited":
-        return set(allow)
-    return set()  # private → empty library; gate returns 401 first
+    return allow
