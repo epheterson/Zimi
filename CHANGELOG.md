@@ -32,6 +32,7 @@ What the first two days of 1.9 turned up, and the instruments that keep it from 
 - **Auto-language video captures dropped the video's own captions**; the original-language track rides along.
 - **The content breakdown's parts did not add up to the whole**; the rounding remainder goes to the largest bucket.
 - **The importer's heartbeat could traceback in a daemon thread** on a cancel.
+- **A test fixture with one non-ASCII character failed only on Windows**, where the platform text encoding is cp1252. Every text file operation in the tests and scripts names UTF-8 now, and a contract test keeps it that way.
 
 ## [1.9.1] - 2026-09-06
 

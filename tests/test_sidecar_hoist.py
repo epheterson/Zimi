@@ -90,17 +90,23 @@ def test_the_patch_is_idempotent_and_self_removing(tmp_path):
     js.write_text(
         "class R:\n    def rewrite(self, text, opts):\n"
         + importer._BLOCK_GLOBALS_BUG
-        + "\n        return new_text\n"
+        + "\n        return new_text\n",
+        encoding="utf-8",
     )
     said = []
     assert importer._patch_block_scoped_globals(str(tmp_path), said.append) == "applied"
-    first = js.read_text()
+    first = js.read_text(encoding="utf-8")
     assert importer._BLOCK_GLOBALS_FIX in first
     assert "_zimi_hoist_block_globals" in first
     assert importer._patch_block_scoped_globals(str(tmp_path), said.append) == "applied"
-    assert js.read_text() == first, "a second application must change nothing"
+    assert (
+        js.read_text(encoding="utf-8") == first
+    ), "a second application must change nothing"
 
-    js.write_text("class R:\n    def rewrite(self, text, opts):\n        return text\n")
+    js.write_text(
+        "class R:\n    def rewrite(self, text, opts):\n        return text\n",
+        encoding="utf-8",
+    )
     assert (
         importer._patch_block_scoped_globals(str(tmp_path), said.append) == "not needed"
     )
@@ -123,7 +129,14 @@ def test_an_older_helper_is_refreshed_not_kept(tmp_path):
     """A sidecar patched by an earlier Zimi carries an earlier helper. The
     patcher recognises the header, cuts from there, and appends the current
     one — so a fix to the helper reaches every install on its next setup."""
-    site = tmp_path / "lib" / "python3.14" / "site-packages" / "zimscraperlib" / "rewriting"
+    site = (
+        tmp_path
+        / "lib"
+        / "python3.14"
+        / "site-packages"
+        / "zimscraperlib"
+        / "rewriting"
+    )
     site.mkdir(parents=True)
     js = site / "js.py"
     header = importer._BLOCK_GLOBALS_HELPER.strip().splitlines()[0]
@@ -134,9 +147,11 @@ def test_an_older_helper_is_refreshed_not_kept(tmp_path):
         + header
         + "\n# an older helper body\n"
     )
-    js.write_text(stale)
-    assert importer._patch_block_scoped_globals(str(tmp_path), lambda m: None) == "applied"
-    out = js.read_text()
+    js.write_text(stale, encoding="utf-8")
+    assert (
+        importer._patch_block_scoped_globals(str(tmp_path), lambda m: None) == "applied"
+    )
+    out = js.read_text(encoding="utf-8")
     assert "an older helper body" not in out
     assert "_ZIMI_NEVER" in out
     assert out.count(header) == 1

@@ -257,7 +257,9 @@ def run(sites, out_dir):
             rec.get("error") or rec.get("interaction", {}).get("detail", ""),
             flush=True,
         )
-    (out_dir / "report.json").write_text(json.dumps(records, indent=2))
+    (out_dir / "report.json").write_text(
+        json.dumps(records, indent=2), encoding="utf-8"
+    )
     return records
 
 

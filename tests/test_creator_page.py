@@ -606,11 +606,11 @@ def test_page_probe_counts_assets_without_fetching_them(fixture_server):
 def test_folder_probe_counts_two_levels_and_never_follows_a_symlink(tmp_path):
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs" / "deep").mkdir()
-    (tmp_path / "docs" / "a.html").write_text("<html></html>")
-    (tmp_path / "docs" / "b.md").write_text("# b")
+    (tmp_path / "docs" / "a.html").write_text("<html></html>", encoding="utf-8")
+    (tmp_path / "docs" / "b.md").write_text("# b", encoding="utf-8")
     (tmp_path / "docs" / "deep" / "c.pdf").write_bytes(b"%PDF-")
     (tmp_path / "pic.png").write_bytes(b"\x89PNG")
-    (tmp_path / ".hidden").write_text("x")
+    (tmp_path / ".hidden").write_text("x", encoding="utf-8")
     outside = tmp_path.parent / "outside"
     outside.mkdir()
     (tmp_path / "link").symlink_to(outside)
@@ -629,7 +629,7 @@ def test_folder_probe_counts_two_levels_and_never_follows_a_symlink(tmp_path):
 
 def test_folder_probe_stops_at_its_entry_budget(tmp_path):
     for i in range(30):
-        (tmp_path / f"f{i}.html").write_text("<html></html>")
+        (tmp_path / f"f{i}.html").write_text("<html></html>", encoding="utf-8")
     got = creator.probe_folder(str(tmp_path), max_entries=10)
     assert got["truncated"] is True
     assert got["totals"]["pages"] < 30  # a partial answer, and it says so
@@ -705,14 +705,18 @@ def test_auto_detected_video_falls_back_to_page_capture(monkeypatch):
 
 
 def test_folder_language_is_read_from_the_html_inside_it(tmp_path):
-    (tmp_path / "a.html").write_text('<html lang="fr"><body>bonjour</body></html>')
-    (tmp_path / "b.html").write_text('<html lang="fr-CA"><body>salut</body></html>')
+    (tmp_path / "a.html").write_text(
+        '<html lang="fr"><body>bonjour</body></html>', encoding="utf-8"
+    )
+    (tmp_path / "b.html").write_text(
+        '<html lang="fr-CA"><body>salut</body></html>', encoding="utf-8"
+    )
     info = creator.create_folder_zim(str(tmp_path), out_dir=str(tmp_path / "out"))
     assert (info["language"], info["language_source"]) == ("fra", "html-lang")
 
 
 def test_folder_with_nothing_to_read_is_english(tmp_path):
-    (tmp_path / "notes.md").write_text("# just markdown")
+    (tmp_path / "notes.md").write_text("# just markdown", encoding="utf-8")
     info = creator.create_folder_zim(str(tmp_path), out_dir=str(tmp_path / "out"))
     assert (info["language"], info["language_source"]) == ("eng", "fallback")
 
@@ -727,7 +731,9 @@ def test_folder_language_stops_after_a_bounded_number_of_files(tmp_path):
     for i in range(50):
         name = f"p{i:02d}.html"
         declares = ' lang="fr"' if i == 40 else ""
-        (tmp_path / name).write_text(f"<html{declares}><body>x</body></html>")
+        (tmp_path / name).write_text(
+            f"<html{declares}><body>x</body></html>", encoding="utf-8"
+        )
         files.append((str(tmp_path / name), name))
     assert creator._FOLDER_LANG_SAMPLE_FILES < 40  # the premise of this test
     assert creator.folder_language(None, files) == ("eng", "fallback")
@@ -736,7 +742,7 @@ def test_folder_language_stops_after_a_bounded_number_of_files(tmp_path):
 
 
 def test_a_language_code_nobody_can_resolve_is_a_clean_refusal(tmp_path):
-    (tmp_path / "a.html").write_text("<html><body>x</body></html>")
+    (tmp_path / "a.html").write_text("<html><body>x</body></html>", encoding="utf-8")
     with pytest.raises(creator.CreateError, match="not an ISO 639-3 language code"):
         creator.create_folder_zim(
             str(tmp_path), language="zz", out_dir=str(tmp_path / "out")
@@ -950,13 +956,17 @@ def test_a_page_with_almost_no_text_is_named_as_a_gate(fixture_server, tmp_path)
 def test_the_wall_line_is_a_count_not_a_guess():
     from zimi.creator import WALL_TEXT_CHARS, wall_note
 
-    assert wall_note("<html><body><p>hi</p></body></html>").startswith("only 2 characters")
+    assert wall_note("<html><body><p>hi</p></body></html>").startswith(
+        "only 2 characters"
+    )
     assert wall_note("<p>" + "x" * WALL_TEXT_CHARS + "</p>") is None
     # Script and style bodies are not text a reader sees.
     assert wall_note("<script>" + "x" * 5000 + "</script><p>hi</p>") is not None
 
 
-def test_an_immediate_meta_refresh_is_followed_like_a_redirect(fixture_server, tmp_path):
+def test_an_immediate_meta_refresh_is_followed_like_a_redirect(
+    fixture_server, tmp_path
+):
     """grimgrains.com's front page is a zero-second meta refresh to
     site/home.html (survey, 09-03). The capture packaged the refresh page and
     the reader opened "This page wasn't captured"."""
@@ -976,15 +986,26 @@ def test_meta_refresh_spellings():
     from zimi.creator import meta_refresh_target as t
 
     base = "https://g.com/"
-    assert t('<meta http-equiv = "refresh" content = "0; url=site/home.html" />', base) == "https://g.com/site/home.html"
-    assert t("<META HTTP-EQUIV=Refresh CONTENT=\"0;URL='/x/'\">", base) == "https://g.com/x/"
-    assert t('<meta http-equiv="refresh" content="3;url=https://o.org/p">', base) == "https://o.org/p"
+    assert (
+        t('<meta http-equiv = "refresh" content = "0; url=site/home.html" />', base)
+        == "https://g.com/site/home.html"
+    )
+    assert (
+        t("<META HTTP-EQUIV=Refresh CONTENT=\"0;URL='/x/'\">", base)
+        == "https://g.com/x/"
+    )
+    assert (
+        t('<meta http-equiv="refresh" content="3;url=https://o.org/p">', base)
+        == "https://o.org/p"
+    )
     assert t('<meta http-equiv="refresh" content="30">', base) is None
     assert t('<meta http-equiv="refresh" content="900; url=/again">', base) is None
     assert t('<meta name="refresh" content="0; url=/no">', base) is None
 
 
-def test_a_reference_that_climbs_above_the_root_stops_at_the_root(fixture_server, tmp_path):
+def test_a_reference_that_climbs_above_the_root_stops_at_the_root(
+    fixture_server, tmp_path
+):
     """permacomputing.net's front page: ``<img src="../pmclogo-neau.png">``.
     Every browser shows /pmclogo-neau.png; the capture carried nothing and the
     reader showed the alt text (survey, 09-03)."""
@@ -998,7 +1019,10 @@ def test_a_reference_that_climbs_above_the_root_stops_at_the_root(fixture_server
     arc = Archive(info["path"])
     page = _entry_text(arc, "A/index")
     assert 'src="../_assets/127_0_0_1/logo.png"' in page, page
-    assert bytes(arc.get_entry_by_path("_assets/127_0_0_1/logo.png").get_item().content) == b"LOGOBYTES"
+    assert (
+        bytes(arc.get_entry_by_path("_assets/127_0_0_1/logo.png").get_item().content)
+        == b"LOGOBYTES"
+    )
 
 
 def test_a_page_whose_interface_is_javascript_says_so():
@@ -1011,16 +1035,27 @@ def test_a_page_whose_interface_is_javascript_says_so():
     result either, which is the combination worth saying out loud."""
     from zimi.creator import SCRIPT_UI_CONTROLS, script_ui_note
 
-    many = "<html><body>" + ("<button>go</button>" * (SCRIPT_UI_CONTROLS + 2)) + "</body></html>"
+    many = (
+        "<html><body>"
+        + ("<button>go</button>" * (SCRIPT_UI_CONTROLS + 2))
+        + "</body></html>"
+    )
     note = script_ui_note(many)
     assert note and "alive" in note, "the warning must name the engine that helps"
 
     # An article with a search box is not an application.
-    assert script_ui_note("<html><body><p>words</p><button>Search</button></body></html>") is None
+    assert (
+        script_ui_note("<html><body><p>words</p><button>Search</button></body></html>")
+        is None
+    )
 
     # A form's submit button is honest about being useless offline; it takes
     # a lot more than that before a page is an interface.
-    form = "<html><body><form>" + ("<button>ok</button>" * SCRIPT_UI_CONTROLS) + "</form></body></html>"
+    form = (
+        "<html><body><form>"
+        + ("<button>ok</button>" * SCRIPT_UI_CONTROLS)
+        + "</form></body></html>"
+    )
     assert script_ui_note(form) is None
 
 

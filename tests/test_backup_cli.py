@@ -88,7 +88,7 @@ def test_backup_restore_round_trip_through_wiped_data_dir(dirs, tmp_path):
     # The hash warning is part of the contract, not decoration.
     assert "password hashes" in proc.stdout
 
-    bundle = json.loads(out.read_text())
+    bundle = json.loads(out.read_text(encoding="utf-8"))
     assert bundle["schema"] == "zimi-backup"
     assert bundle["scope"] == "server"
     assert bundle["users"]["alice"]["pw"] == "SALT$HASH"
@@ -139,7 +139,7 @@ def _require_posix_modes(tmp_path):
     is written into — a different mechanism, and not one this assertion can
     read. Skip rather than assert a guarantee the platform never made."""
     probe = tmp_path / ".mode-probe"
-    probe.write_text("")
+    probe.write_text("", encoding="utf-8")
     os.chmod(probe, 0o600)
     granted = stat.S_IMODE(os.stat(probe).st_mode)
     probe.unlink()
@@ -164,7 +164,7 @@ def test_backup_tightens_a_preexisting_looser_file(dirs, tmp_path):
     zim_dir, data_dir = dirs
     _require_posix_modes(tmp_path)
     out = tmp_path / "bundle.json"
-    out.write_text("{}")
+    out.write_text("{}", encoding="utf-8")
     os.chmod(out, 0o644)
     assert (
         _run_cli(["backup", str(out), *_path_flags(zim_dir, data_dir)]).returncode == 0
@@ -205,7 +205,7 @@ def test_restore_missing_file_refuses(dirs, tmp_path):
 def test_restore_malformed_json_refuses(dirs, tmp_path):
     zim_dir, data_dir = dirs
     bad = tmp_path / "bad.json"
-    bad.write_text("{this is not json")
+    bad.write_text("{this is not json", encoding="utf-8")
     proc = _run_cli(["restore", str(bad), *_path_flags(zim_dir, data_dir)])
     _assert_clean_refusal(proc)
     assert "malformed JSON" in proc.stderr
@@ -217,7 +217,7 @@ def test_restore_foreign_schema_refuses(dirs, tmp_path):
     zim_dir, data_dir = dirs
     for payload in ('{"schema": "something-else"}', '["not", "a", "dict"]'):
         foreign = tmp_path / "foreign.json"
-        foreign.write_text(payload)
+        foreign.write_text(payload, encoding="utf-8")
         proc = _run_cli(["restore", str(foreign), *_path_flags(zim_dir, data_dir)])
         _assert_clean_refusal(proc)
         assert "not a Zimi backup bundle" in proc.stderr

@@ -61,11 +61,11 @@ def test_migration_repoints_manifest_record(tmp_path, monkeypatch):
             "torrent_file": str(zdir / fn),  # legacy record pointing into ZIM_DIR
         }
     }
-    (tdir / "torrents.json").write_text(json.dumps(manifest))
+    (tdir / "torrents.json").write_text(json.dumps(manifest), encoding="utf-8")
 
     server._migrate_stray_torrent_files()
 
-    updated = json.loads((tdir / "torrents.json").read_text())
+    updated = json.loads((tdir / "torrents.json").read_text(encoding="utf-8"))
     new_path = updated["docs_en_2026-06.zim"]["torrent_file"]
     assert new_path == str(ddir / "bt" / "torrents" / fn)
     assert os.path.exists(new_path)

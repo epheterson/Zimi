@@ -77,7 +77,8 @@ def test_only_orphaned_partials_are_offered_for_cleanup(_env):
     }
     lib._download_queue.append({"filename": "queued_en_2026-01.zim"})
     (data_dir / "downloads.json").write_text(
-        json.dumps({"pending": [{"filename": "pending_en_2026-01.zim"}]})
+        json.dumps({"pending": [{"filename": "pending_en_2026-01.zim"}]}),
+        encoding="utf-8",
     )
 
     protected, orphaned = lib.classify_partials()
