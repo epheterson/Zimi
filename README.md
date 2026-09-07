@@ -39,9 +39,9 @@ A modern experience for your ZIM files.
 |-------------------|---------|
 | ![Languages](screenshots/language-dropdown.png) | ![Catalog](screenshots/browse-library.png) |
 
-| Sharing |
-|---------|
-| ![Sharing](screenshots/sharing.png) |
+| Sharing | Make a ZIM |
+|---------|------------|
+| ![Sharing](screenshots/sharing.png) | ![Create](screenshots/create.png) |
 
 ## Languages
 
