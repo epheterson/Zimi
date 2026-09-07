@@ -155,6 +155,8 @@ Most people set nothing: every setting below has a sensible default or lives in 
 | `ZIM_DIR` | `/zims` | Path to ZIM files (scanned for `*.zim` on startup) |
 | `ZIMI_DATA_DIR` | `/config` (Docker) or `$ZIM_DIR/.zimi` | Cache, indexes, and settings. Mount separately in Docker. |
 | `ZIMI_MANAGE_PASSWORD` | _(none)_ | Protect library management |
+| `ZIMI_MANAGE_OPEN` | `0` | `1` turns management authentication off entirely: no password, no setup key, no question about the address. Only for a network you control; it warns at every boot. |
+| `ZIMI_LAN_ADMIN` | `0` | `1` makes any direct private-network client the admin while no password is set, as before 1.9.0. Not through a proxy. |
 | `ZIMI_PUBLIC_ACCESS` | `open` | What an anonymous visitor sees: `open` (whole library), `limited` (an admin-chosen allowlist), or `private` (sign-in required). Also a UI setting; the env var wins when set. |
 | `ZIMI_BT` | `on` | BitTorrent: `off`, or `on,port=6881,ratio=2,up=2048,seed=on,mirror=off,upnp=on,dht=on,active=4,conns=200`. `seed`, `upnp`, and `dht` default on. `active` caps concurrent downloads (the rest queue; governs HTTP too, legacy `ZIMI_MAX_CONCURRENT_DOWNLOADS` still works), `conns` is the global peer-connection limit. Fields you set are locked in the UI; fields you leave out stay UI-controlled. `ratio=0` means never seed. |
 | `ZIMI_NEARBY` | `off` | LAN sharing: `off`, or `on,name=my-zimi,public=off,ip=192.168.1.20`. Controls serving *and* fetching between your Zimi devices. Set `ip=` to your host's LAN address when running Docker in bridge mode. |
