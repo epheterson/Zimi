@@ -375,57 +375,15 @@ def _primary_admin_authorized(handler):
 
     The primary admin is the top of the hierarchy — the only account that can
     manage other admins and that no secondary admin can delete or demote.
+
+    A view over ``identity.identify``: every credential this used to check
+    in-line — the open switch, the primary session, the API token, the
+    password with its configured username, the passwordless bootstrap — is
+    resolved there, in the one place that answers "who is this".
     """
-    if manage_open():
-        return True  # everyone is the admin here, by the operator's choice
-    stored_pw = _get_manage_password_hash()
-    if not stored_pw:
-        # Passwordless: the host itself, or any private client when the
-        # operator has opted into trusting the LAN (see _lan_admin_allowed).
-        if _lan_admin_allowed():
-            return _lan_client(handler)
-        is_local = getattr(handler, "_is_loopback_client", handler._is_private_client)
-        return is_local() or _bootstrap_key_ok(handler)
+    from zimi.identity import identify
 
-    # A primary-admin SESSION token (users.create_admin_session): minted when the
-    # admin password verified, delivered as the HttpOnly zimi_session cookie so
-    # header-less transports carry admin identity — the /w/ reader iframe (a
-    # browser navigation that can't send Authorization) and the plain-fetch data
-    # endpoints (/list, /search, …). Without this, a private/limited-mode admin
-    # loads an EMPTY library and blank article iframes. Checked FIRST (before the
-    # Bearer-format gate below) so a cookie-only request with no Authorization
-    # header still resolves as admin. Accepted from either the cookie (browsers)
-    # or the Bearer header (an API client may present it). As unforgeable as the
-    # password Bearer: a random token, hashed at rest.
-    from zimi import users as _users
-
-    if _users.is_admin_session(_users._cookie_token(handler)):
-        return True
-    if _users.is_admin_session(_users._bearer_token(handler)):
-        return True
-
-    auth = handler.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        return False
-    candidate = auth[7:]
-
-    # API token — a machine credential, carries no username gate (keeps
-    # existing scripts/agents working unchanged).
-    stored_token = _get_api_token()
-    if stored_token and hmac.compare_digest(candidate, stored_token):
-        return True
-
-    # Password — plus, when a username is configured, it must match.
-    if _verify_password(candidate, stored_pw):
-        configured_user = _get_manage_user()
-        if configured_user:
-            provided = handler.headers.get("X-Zimi-User", "")
-            if provided.strip().casefold() != configured_user.strip().casefold():
-                # Wrong/missing username reads exactly like a wrong password:
-                # generic denial, no username-enumeration signal.
-                return False
-        return True
-    return False
+    return bool(identify(handler)["primary"])
 
 
 def _secondary_admin_authorized(handler):
@@ -433,10 +391,10 @@ def _secondary_admin_authorized(handler):
     role=admin, authenticated by its session token (Bearer or cookie). They get
     manage powers, but the hierarchy in ``_handle_users_post`` still bars them
     from touching the primary admin or managing other admins."""
-    from zimi import users as _users
+    from zimi.identity import identify
 
-    name = _users.resolve_request_user(handler)
-    return bool(name) and _users.is_admin_user(name)
+    account = identify(handler)
+    return account["role"] == "admin" and not account["primary"]
 
 
 def admin_kind(handler):
@@ -538,12 +496,9 @@ def _creator_authorized(handler):
     """True if the request may drive ZIM creation: any authorized admin
     (primary or secondary, including the passwordless-private legacy admin),
     or a signed-in named user whose account carries ``can_create``."""
-    if _check_manage_auth(handler) is None:
-        return True
-    from zimi import users as _users
+    from zimi.identity import identify
 
-    name = _users.resolve_request_user(handler)
-    return bool(name) and _users.user_can_create(name)
+    return bool(identify(handler)["can_create"])
 
 
 def _creator_denial(handler):

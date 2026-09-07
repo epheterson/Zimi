@@ -110,13 +110,21 @@ def identify(handler):
             return _primary("password")
 
     if not stored_pw:
+        # The passwordless bootstrap, in exactly the order the old check
+        # resolved it. With lan_admin on, the LAN test is the WHOLE answer —
+        # it does not fall through to the host or the setup key. That is a
+        # quirk worth knowing (a forwarded client holding a valid key is
+        # refused while lan_admin is on) and it is preserved here on purpose:
+        # this step changes nothing; the door step decides what the door is.
+        if _manage._lan_admin_allowed():
+            if _manage._lan_client(handler):
+                return _primary("lan-admin")
+            return _anonymous(handler)
         is_local = getattr(handler, "_is_loopback_client", handler._is_private_client)
         if is_local():
             return _primary("host")
         if _manage._bootstrap_key_ok(handler):
             return _primary("setup-key")
-        if _manage._lan_admin_allowed() and _manage._lan_client(handler):
-            return _primary("lan-admin")
 
     return _anonymous(handler)
 
