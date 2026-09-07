@@ -1133,21 +1133,9 @@ def request_allow(handler):
                         depth; the http.py request gate 401s them before any
                         read handler runs).
     """
-    name = resolve_request_user(handler)
-    if name:
-        rec = get_user(name)
-        if not rec:
-            return None
-        return _allow_for_record(rec)
+    # One question, asked in one place: identify() resolves the account this
+    # request acts as — a signed-in user, the primary admin by any of its
+    # credentials, or nobody — and the allow set is a property of the account.
+    from zimi.identity import identify
 
-    # Not signed in is signed in as anonymous: one record, one rule. The
-    # admin probe stays where it was — only when the anonymous account would
-    # restrict something, because on the default deployment it never does
-    # and the probe is a file read on every request.
-    rec = anonymous_account()
-    allow = _allow_for_record(rec)
-    if allow is None:
-        return None
-    if _request_is_admin(handler):
-        return None
-    return allow
+    return identify(handler)["allow"]

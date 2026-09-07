@@ -214,3 +214,17 @@ def test_an_admin_sees_everything_whatever_the_policy(locked):
     assert users.set_public_access("private")[0]
     acct = _check(_Handler(headers={"Authorization": "Bearer hunter2"}))
     assert acct["allow"] is None
+
+
+def test_lan_admin_is_the_whole_answer_while_it_is_on(world, monkeypatch):
+    """The old check's quirk, preserved on purpose: with lan_admin on, the LAN
+    test decides, and neither the host nor a valid setup key is consulted.
+    A forwarded client holding the key is refused. The door step decides
+    whether that stays; this step changes nothing."""
+    monkeypatch.setenv("ZIMI_LAN_ADMIN", "1")
+    key = manage.ensure_setup_key()
+    forwarded_with_key = _Handler(
+        headers={"X-Zimi-Setup-Key": key}, private=True, forwarded=True
+    )
+    assert _check(forwarded_with_key)["source"] == "anonymous"
+    assert _check(_Handler(loopback=True))["source"] == "lan-admin"
