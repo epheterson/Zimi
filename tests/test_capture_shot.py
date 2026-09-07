@@ -168,3 +168,40 @@ def test_a_collapsed_packaged_page_is_called_out():
     # No picture, no claim. Never guess from one side.
     assert zw.shot_verdict(None, jpeg(1280, 600)) == ("", False)
     assert zw.shot_verdict(jpeg(1280, 600), None) == ("", False)
+
+
+def test_a_picture_is_served_without_deadlocking_the_reader(tmp_path, monkeypatch):
+    """The /w/ dispatcher holds _zim_lock across the icon and picture routes,
+    and the lock is not reentrant. The first cut of the picture route took
+    the lock again, so the very first request for one would have hung the
+    server. A timeout is the assertion: a hang is a failure, not a wait."""
+    import urllib.request
+
+    from tests.test_unregister_zim import _start_server
+    from zimi.zimwriter import atomic_zim_creator, zim_static_item_class
+
+    zdir = tmp_path / "zims"
+    zdir.mkdir()
+    jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 64
+    with atomic_zim_creator(str(zdir / "pic_en.zim"), "eng") as creator:
+        creator.add_item(zim_static_item_class()("A/index", "t", b"<p>hi</p>"))
+        creator.set_mainpath("A/index")
+        assert zw.add_capture_shot(creator, jpeg)
+    srv, port = _start_server(str(zdir))
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/w/pic_en/-/shot-live", timeout=10
+        ) as r:
+            assert r.status == 200
+            assert r.headers.get("Content-Type") == "image/jpeg"
+            assert r.read() == jpeg
+        # And a ZIM without one 404s rather than hanging or erroring.
+        try:
+            urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/w/pic_en/-/shot-zim", timeout=10
+            )
+            assert False, "a missing picture must 404"
+        except urllib.error.HTTPError as e:
+            assert e.code == 404
+    finally:
+        srv.shutdown()

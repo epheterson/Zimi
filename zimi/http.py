@@ -2579,9 +2579,12 @@ class ZimHandler(BaseHTTPRequestHandler):
         tag is the CONTENT's digest and the response revalidates, so replacing
         a ZIM or re-running a capture cannot leave a stale picture on screen in
         the one browser that asked first."""
+        # No lock here: the /w/ dispatcher holds _zim_lock across this call,
+        # exactly as it does for _serve_zim_icon, and the lock is not
+        # reentrant. Taking it again would block this thread on itself — the
+        # first request for a picture would have hung the server.
         try:
-            with _srv._zim_lock:
-                data = bytes(archive.get_metadata(key))
+            data = bytes(archive.get_metadata(key))
         except Exception:
             data = b""
         if not data:
@@ -2917,6 +2920,7 @@ class ZimHandler(BaseHTTPRequestHandler):
             # bigger than one window: the whole item goes out in windows,
             # each read under the lock, none of them held in memory at once.
             stream_whole = False
+            window = 0  # bound below, only ever read when stream_whole is set
             etag = ""
             range_start = range_end = None
             if is_epub:
@@ -3221,7 +3225,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         try:
             return self.client_address[0]
         except (IndexError, TypeError):
-            return ''
+            return ""
 
     def _peer_share_allowed(self):
         """True if this client may pull whole ZIMs from /dl/.

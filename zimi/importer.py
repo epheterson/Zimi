@@ -420,7 +420,7 @@ _BLOCK_GLOBALS_FIX = (
     "            new_text = self.first_buff + new_text "
     "+ _zimi_hoist_block_globals(text) + self.last_buff"
 )
-_BLOCK_GLOBALS_HELPER = '# ── Zimi patch: hoist block-scoped globals (python-scraperlib#329) ──────────\nimport re as _zimi_re\n\n_ZIMI_DECL_RX = _zimi_re.compile(r"\\b(?:const|let|class)\\s+([A-Za-z_$][\\w$]*)")\n_ZIMI_QUOTES = (\'"\', "\'", "`")\n\n\ndef _zimi_top_level_names(text):\n    """Names declared with const/let/class at brace depth 0 of `text`.\n\n    A small scanner, not a parser: it tracks {}, () and [] depth and skips\n    string, template and comment bodies so a brace inside a string does not\n    count. Regex literals are the one construct it does not model, and a\n    `{` inside one can only make it miss a declaration, never invent one."""\n    names, depth, i, n = [], 0, 0, len(text)\n    while i < n:\n        c = text[i]\n        if c in _ZIMI_QUOTES:\n            q, i = c, i + 1\n            while i < n and text[i] != q:\n                i += 2 if text[i] == "\\\\" else 1\n            i += 1\n            continue\n        if c == "/" and i + 1 < n and text[i + 1] == "/":\n            i = text.find("\\n", i)\n            if i < 0:\n                break\n            continue\n        if c == "/" and i + 1 < n and text[i + 1] == "*":\n            i = text.find("*/", i + 2)\n            if i < 0:\n                break\n            i += 2\n            continue\n        if c in "{([":\n            depth += 1\n        elif c in "})]":\n            depth = max(0, depth - 1)\n        elif depth == 0 and c in "clC":\n            m = _ZIMI_DECL_RX.match(text, i)\n            boundary = i == 0 or not (text[i - 1].isalnum() or text[i - 1] in "_$.")\n            if m and boundary:\n                names.append(m.group(1))\n                i = m.end()\n                continue\n        i += 1\n    seen, out = set(), []\n    for name in names:\n        if name not in seen:\n            seen.add(name)\n            out.append(name)\n    return out\n\n\ndef _zimi_hoist_block_globals(text):\n    """The assignments that give block-scoped declarations global reach.\n\n    Appended inside wombat\'s block, before it closes, so each name is assigned\n    onto the global the page runs under — what `var` would have done."""\n    names = _zimi_top_level_names(text)\n    if not names:\n        return ""\n    return "\\n" + "".join(\n        "try{self." + n + "=" + n + ";}catch(_zimi_e){}\\n" for n in names\n    )\n'
+_BLOCK_GLOBALS_HELPER = '# ── Zimi patch: hoist block-scoped globals (python-scraperlib#329) ──────────\nimport re as _zimi_re\n\n_ZIMI_DECL_RX = _zimi_re.compile(r"\\b(?:const|let|class)\\s+([A-Za-z_$][\\w$]*)")\n_ZIMI_QUOTES = (\'"\', "\'", "`")\n# Never hoisted. These are the names wombat shadows with `let` inside the\n# block, plus `arguments`: a page that writes `const location = ...` gets\n# its own binding, and `self.location = location` would NAVIGATE the page.\n_ZIMI_NEVER = frozenset(\n    ("window", "globalThis", "self", "document", "location", "top",\n     "parent", "frames", "opener", "arguments")\n)\n\n\ndef _zimi_top_level_names(text):\n    """Names declared with const/let/class at brace depth 0 of `text`.\n\n    A small scanner, not a parser: it tracks {}, () and [] depth and skips\n    string, template and comment bodies so a brace inside a string does not\n    count. Regex literals are the one construct it does not model, and a\n    `{` inside one can only make it miss a declaration, never invent one."""\n    names, depth, i, n = [], 0, 0, len(text)\n    while i < n:\n        c = text[i]\n        if c in _ZIMI_QUOTES:\n            q, i = c, i + 1\n            while i < n and text[i] != q:\n                i += 2 if text[i] == "\\\\" else 1\n            i += 1\n            continue\n        if c == "/" and i + 1 < n and text[i + 1] == "/":\n            i = text.find("\\n", i)\n            if i < 0:\n                break\n            continue\n        if c == "/" and i + 1 < n and text[i + 1] == "*":\n            i = text.find("*/", i + 2)\n            if i < 0:\n                break\n            i += 2\n            continue\n        if c in "{([":\n            depth += 1\n        elif c in "})]":\n            depth = max(0, depth - 1)\n        elif depth == 0 and c in "clC":\n            m = _ZIMI_DECL_RX.match(text, i)\n            boundary = i == 0 or not (text[i - 1].isalnum() or text[i - 1] in "_$.")\n            if m and boundary:\n                names.append(m.group(1))\n                i = m.end()\n                continue\n        i += 1\n    seen, out = set(), []\n    for name in names:\n        if name in _ZIMI_NEVER:\n            continue\n        if name not in seen:\n            seen.add(name)\n            out.append(name)\n    return out\n\n\ndef _zimi_hoist_block_globals(text):\n    """The assignments that give block-scoped declarations global reach.\n\n    Appended inside wombat\'s block, before it closes, so each name is assigned\n    onto the global the page runs under — what `var` would have done."""\n    names = _zimi_top_level_names(text)\n    if not names:\n        return ""\n    return "\\n" + "".join(\n        "try{self." + n + "=" + n + ";}catch(_zimi_e){}\\n" for n in names\n    )\n'
 
 
 def _patch_block_scoped_globals(venv, say):
@@ -443,12 +443,19 @@ def _patch_block_scoped_globals(venv, say):
             source = f.read()
     except OSError:
         return "unreadable"
+    header = _BLOCK_GLOBALS_HELPER.strip().splitlines()[0]
     if _BLOCK_GLOBALS_FIX in source:
-        return "applied"
-    if _BLOCK_GLOBALS_BUG not in source:
+        if _BLOCK_GLOBALS_HELPER.strip() in source:
+            return "applied"
+        # An older helper is installed. Replace it from its header on.
+        cut = source.find(header)
+        base = source[:cut].rstrip() + "\n" if cut >= 0 else source
+        patched = base + _BLOCK_GLOBALS_HELPER
+    elif _BLOCK_GLOBALS_BUG not in source:
         return "not needed"
-    patched = source.replace(_BLOCK_GLOBALS_BUG, _BLOCK_GLOBALS_FIX, 1)
-    patched += _BLOCK_GLOBALS_HELPER
+    else:
+        patched = source.replace(_BLOCK_GLOBALS_BUG, _BLOCK_GLOBALS_FIX, 1)
+        patched += _BLOCK_GLOBALS_HELPER
     try:
         with open(path, "w", encoding="utf-8") as f:
             f.write(patched)

@@ -1862,6 +1862,7 @@ class BuiltinCapture:
         work_dir=None,
         block_ads=None,
         capture_variants=None,
+        pictures=True,
     ):
         # ``work_dir``, ``block_ads`` and ``capture_variants`` are accepted and
         # unused, the way every engine accepts the shared option set: one
@@ -1890,6 +1891,10 @@ class BuiltinCapture:
         self._block_ads = block_ads
         self._pictures = None  # a RenderedSession, started on first use
         self._pictures_tried = False
+        # A crawl renders hundreds of pages and photographs none of them, so
+        # it says so up front: the carrier then keeps no bytes for a browser
+        # that will never be asked.
+        self._pictures_wanted = bool(pictures)
         self._last_by_path = {}
         self.last_shot = None
 
@@ -1897,7 +1902,9 @@ class BuiltinCapture:
         return self
 
     def _can_take_pictures(self):
-        """Whether a browser is installed here. Cached by the prober."""
+        """Whether pictures are wanted AND a browser is installed here."""
+        if not self._pictures_wanted:
+            return False
         try:
             from zimi.renderer import browser_available
 
@@ -2040,8 +2047,12 @@ def capture_engine(engine=DEFAULT_ENGINE, **kwargs):
     """The named engine, ready to start. Raises ``CreateError`` for a name
     nothing answers to — a typo must not silently capture the other way."""
     name = str(engine or DEFAULT_ENGINE).strip().lower()
+    # Only the fast engine takes pictures on request; the browser engines
+    # take them on the page they already have open, and neither of their
+    # constructors knows the flag.
+    pictures = kwargs.pop("pictures", True)
     if name in ("", "builtin"):
-        return BuiltinCapture(**kwargs)
+        return BuiltinCapture(pictures=pictures, **kwargs)
     if name == "rendered":
         # Imported here and nowhere else: the rendered engine reaches for
         # Playwright, and a Zimi that never renders a page never pays for the

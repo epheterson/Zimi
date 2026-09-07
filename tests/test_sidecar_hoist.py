@@ -109,3 +109,34 @@ def test_the_patch_is_idempotent_and_self_removing(tmp_path):
 
 def test_the_appended_helper_is_valid_python_on_its_own():
     compile(importer._BLOCK_GLOBALS_HELPER, "hoist_helper", "exec")
+
+
+def test_wombats_own_names_are_never_hoisted(helper):
+    """`self.location = location` would navigate the page. The names wombat
+    shadows inside the block, and `arguments`, stay where they are."""
+    src = "const location = window.location; const glyphs = {}; let self = 1; class Widget {}"
+    assert helper._zimi_top_level_names(src) == ["glyphs", "Widget"]
+    assert "location" not in helper._zimi_hoist_block_globals(src)
+
+
+def test_an_older_helper_is_refreshed_not_kept(tmp_path):
+    """A sidecar patched by an earlier Zimi carries an earlier helper. The
+    patcher recognises the header, cuts from there, and appends the current
+    one — so a fix to the helper reaches every install on its next setup."""
+    site = tmp_path / "lib" / "python3.14" / "site-packages" / "zimscraperlib" / "rewriting"
+    site.mkdir(parents=True)
+    js = site / "js.py"
+    header = importer._BLOCK_GLOBALS_HELPER.strip().splitlines()[0]
+    stale = (
+        "class R:\n    def rewrite(self, text, opts):\n"
+        + importer._BLOCK_GLOBALS_FIX
+        + "\n        return new_text\n\n\n"
+        + header
+        + "\n# an older helper body\n"
+    )
+    js.write_text(stale)
+    assert importer._patch_block_scoped_globals(str(tmp_path), lambda m: None) == "applied"
+    out = js.read_text()
+    assert "an older helper body" not in out
+    assert "_ZIMI_NEVER" in out
+    assert out.count(header) == 1
