@@ -131,3 +131,40 @@ def test_the_shot_reaches_the_panel_as_a_path_not_as_bytes():
     # And the JPEG is never decoded into the panel's own payload.
     reader = inspect.getsource(zhttp._read_zim_metadata)
     assert "SHOT_METADATA_KEY" in reader, "binary metadata must be skipped"
+
+
+def test_a_collapsed_packaged_page_is_called_out():
+    """The pair is taken under the SAME treatment — both after ad blocking,
+    consent-wall reveal, lazy scroll and image settle — so the only thing
+    between them is what packaging lost.
+
+    That is what makes a height comparison mean anything. A page that renders
+    comes out about as tall as the live one; a page whose stylesheet did not
+    survive collapses to a fraction of it, and that collapse is a failure
+    worth naming. It is deliberately not a percentage: the differences a score
+    would weigh are mostly honest ones, and a number on screen becomes a
+    grade."""
+
+    def jpeg(w, h):
+        return (
+            b"\xff\xd8\xff\xc0"
+            + (8).to_bytes(2, "big")
+            + b"\x08"
+            + h.to_bytes(2, "big")
+            + w.to_bytes(2, "big")
+            + b"\x03"
+        )
+
+    assert zw.jpeg_size(jpeg(1280, 5400)) == (1280, 5400)
+    assert zw.jpeg_size(b"not a jpeg") is None
+
+    dims, short = zw.shot_verdict(jpeg(1280, 5400), jpeg(1280, 5200))
+    assert dims == "1280x5400,1280x5200"
+    assert short is False, "a faithful capture must not be flagged"
+
+    _, short = zw.shot_verdict(jpeg(1280, 5400), jpeg(1280, 600))
+    assert short is True, "a page that lost its stylesheet should be named"
+
+    # No picture, no claim. Never guess from one side.
+    assert zw.shot_verdict(None, jpeg(1280, 600)) == ("", False)
+    assert zw.shot_verdict(jpeg(1280, 600), None) == ("", False)

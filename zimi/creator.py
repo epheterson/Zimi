@@ -48,6 +48,8 @@ from typing import Any
 import zimi.server as _srv
 from zimi.blocklist import blocked_phrase
 from zimi.zimwriter import (
+    SHOT_DIMS_METADATA_KEY,
+    shot_verdict,
     add_packaged_shot,
     add_capture_shot,
     guess_mime,
@@ -2076,8 +2078,23 @@ def create_page_zim(
                 # question answerable: one says what the page looked like, the
                 # pair says whether the capture kept it.
                 shoot = getattr(capture, "shoot_packaged", None)
-                if shoot is not None and add_packaged_shot(creator, shoot(page)):
+                packaged = shoot(page) if shoot is not None else None
+                if packaged is not None and add_packaged_shot(creator, packaged):
                     note("stored a picture of the packaged page")
+                    # Both pictures were taken under the same treatment, so the
+                    # only thing between them is what packaging lost. A page
+                    # that renders comes out about as tall as the live one; a
+                    # page whose stylesheet did not survive collapses. Say so
+                    # rather than leave it for someone to notice.
+                    dims, short = shot_verdict(capture.last_shot, packaged)
+                    if dims:
+                        creator.add_metadata(SHOT_DIMS_METADATA_KEY, dims)
+                    if short:
+                        note(
+                            "warning: the packaged page is much shorter than "
+                            "the live one, so something did not survive "
+                            "capture. Compare the two pictures in About."
+                        )
             add_standard_metadata(
                 creator,
                 title=zim_title,
