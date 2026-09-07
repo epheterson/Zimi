@@ -2913,6 +2913,10 @@ class ZimHandler(BaseHTTPRequestHandler):
             # Bound before the branch: the EPUB path returns without touching
             # them, and the response phase below reads them unconditionally.
             is_streamable = False
+            # Set when a client that sent no Range asks for a media entry
+            # bigger than one window: the whole item goes out in windows,
+            # each read under the lock, none of them held in memory at once.
+            stream_whole = False
             etag = ""
             range_start = range_end = None
             if is_epub:
@@ -2973,16 +2977,26 @@ class ZimHandler(BaseHTTPRequestHandler):
                         )
                     window = min(_srv.STREAM_WINDOW_BYTES, _srv.MAX_SERVE_BYTES)
                     if range_start is None or range_end is None:
-                        # No Range, or one too malformed to honour.
+                        # No Range, or one too malformed to honour. This used to
+                        # answer the first window as a 206 — correct for a
+                        # player, which range-requests onward, and a silent
+                        # truncation for everything else: curl -O, wget, an
+                        # <a download>, a chat app fetching a link all took the
+                        # 206 as the file and saved 8 MB of a 30 MB video with
+                        # no error anywhere. A whole request gets the whole
+                        # item, written window by window below so the memory
+                        # ceiling that motivated the window still holds.
                         range_start = range_end = None
                         if total_size > window:
-                            range_start, range_end = 0, window - 1
+                            stream_whole = True
                     else:
                         # A satisfiable range still gets clamped — bytes=0- is
                         # a request for the whole item through the ranged door.
                         range_end = min(range_end, range_start + window - 1)
                     if range_start is not None and range_end is not None:
                         content = bytes(item.content[range_start : range_end + 1])
+                    elif stream_whole:
+                        content = b""
                     else:
                         content = bytes(item.content)
                 else:
@@ -3078,9 +3092,31 @@ class ZimHandler(BaseHTTPRequestHandler):
         compressible = any(
             mimetype.startswith(t) or mimetype == t for t in COMPRESSIBLE_TYPES
         )
-        if compressible and self._accepts_gzip() and len(content) > 256:
+        if (
+            compressible
+            and not stream_whole
+            and self._accepts_gzip()
+            and len(content) > 256
+        ):
             content = gzip.compress(content, compresslevel=4)
             self.send_header("Content-Encoding", "gzip")
+
+        if stream_whole:
+            self.send_header("Content-Length", str(total_size))
+            self.end_headers()
+            # libzim is not thread-safe, so every window is read under the
+            # lock — and the lock is released between windows, so a reader
+            # of another article is never held behind a video download.
+            sent = 0
+            while sent < total_size:
+                end = min(sent + window, total_size)
+                with _srv._zim_lock:
+                    chunk = bytes(item.content[sent:end])
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                sent = end
+            return
 
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()

@@ -308,7 +308,10 @@ _LOADING_RE = attr_re("loading")
 def _placeholder_source(tag):
     """True for a ``<source>`` whose srcset holds nothing but data: URIs, or
     that a site marked ``data-empty``: a stand-in for a script to replace."""
-    if _DATA_EMPTY_RE.search(tag):
+    # Attribute NAMES only. Blank every quoted value first, so a class
+    # token or a data attribute that happens to say data-empty is not
+    # read as the site marking this source a stand-in.
+    if _DATA_EMPTY_RE.search(_QUOTED_VALUE_RE.sub('=""', tag)):
         return True
     m = _SRCSET_RE.search(tag)
     if not m:
@@ -318,6 +321,7 @@ def _placeholder_source(tag):
 
 
 _DATA_EMPTY_RE = re.compile(r"\sdata-empty(?:\s|=|>|/)", re.IGNORECASE)
+_QUOTED_VALUE_RE = re.compile(r"""=\s*(?:"[^"]*"|'[^']*')""")
 
 
 def _load_eagerly(tag):
@@ -453,7 +457,10 @@ def wake_lazy(html):
     # lazy, so a case-sensitive one skipped a whole page's images for good.
     if "data-" not in html.lower():
         return html
-    return _TAG_RE.sub(_wake_tag, html)
+    # Through the mask, like every other rewrite: a <script> that builds
+    # markup from a string holds tags that are text, and waking those
+    # rewrites the site's own JavaScript.
+    return sub_markup(_TAG_RE, _wake_tag, html)
 
 
 _CSS_URL_RE = re.compile(r"""url\(\s*(['"]?)([^'")]+)\1\s*\)""", re.IGNORECASE)
@@ -810,9 +817,17 @@ class _AssetCarrier:
         remote_reader=None,
         on_progress=None,
         page_url=None,
+        keep_bytes=False,
     ):
         self._add = add_item
         self._make = item_factory  # (path, mimetype, bytes) -> libzim Item
+        # ZIM path -> (mimetype, bytes) for everything carried, kept only when
+        # asked: it is what lets the packaged page be photographed before the
+        # ZIM exists, served from the very bytes being written. Costs a copy
+        # of the page's assets for the length of one capture, so the fast
+        # engine asks only when a browser is installed to take the picture.
+        self.keep_bytes = keep_bytes
+        self.by_path = {}
         self._read = asset_reader
         # The page's own absolute URL, when the carrier is fetching over HTTP.
         # A same-origin reference that carries a query string is an address
@@ -879,6 +894,8 @@ class _AssetCarrier:
             log.debug("asset add failed %s: %s", in_path, e)
             self._carried[key] = None
             return None
+        if self.keep_bytes:
+            self.by_path[in_path] = (mime or "application/octet-stream", data)
         self.mimetypes.add(mime or "application/octet-stream")
         self._note_progress()
         return in_path
@@ -938,6 +955,8 @@ class _AssetCarrier:
             log.debug("remote asset add failed %s: %s", in_path, e)
             self._carried[key] = None
             return None
+        if self.keep_bytes:
+            self.by_path[in_path] = (mime or "application/octet-stream", data)
         self.mimetypes.add(mime or "application/octet-stream")
         self._note_progress()
         return in_path
@@ -948,7 +967,11 @@ class _AssetCarrier:
         asset lands in _assets/_remote, the sheet included."""
         try:
             text = collapse_image_set(data.decode("utf-8", errors="replace"))
-        except Exception:
+        except Exception as e:
+            # Carried as it came, so every url() in it still names the
+            # live web and fails offline. A sheet that arrives naked is
+            # otherwise invisible; this is the one line that says so.
+            log.warning("could not rewrite stylesheet %s: %s", css_url, e)
             return data
 
         def repl(m):
@@ -974,7 +997,8 @@ class _AssetCarrier:
     def _rewrite_css(self, zim, css_path, data):
         try:
             text = collapse_image_set(data.decode("utf-8", errors="replace"))
-        except Exception:
+        except Exception as e:
+            log.warning("could not rewrite stylesheet %s: %s", css_path, e)
             return data
 
         def repl(m):
@@ -1538,6 +1562,13 @@ def zim_content_breakdown(
     content = sum(sizes.values())
     if total and content:
         sizes = {k: int(round(v * total / content)) for k, v in sizes.items()}
+        # Rounding each part leaves the parts a few bytes off the whole,
+        # and a breakdown whose pieces do not add up reads as a mistake.
+        # The remainder goes to the largest bucket, where it is noise.
+        drift = total - sum(sizes.values())
+        if drift and sizes:
+            biggest = max(sizes, key=sizes.get)
+            sizes[biggest] += drift
     order = [k for k, _p in _CONTENT_BUCKETS] + ["other"]
     shape = {
         "file_bytes": total,

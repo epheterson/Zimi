@@ -38,6 +38,12 @@ A capture is also **refused rather than packaged** when the site does not return
 
 **From the web UI.** The Create page (the topbar `+`) drives the URL-based modes — single page, `--site`, video — for admins and creator-role accounts. **Folder mode and web-archive import are CLI-only.** The web UI has no folder tile and no import tile: folder mode is refused from the web entirely, and import reads a server path, which stays a primary-admin, shell-only operation. Run `zimi create <folder>` / `zimi import <file>` from a terminal on the machine.
 
+### Two pictures
+
+Every capture keeps a picture of the live page as the web served it, and a picture of the same page as this ZIM serves it: full page, both taken after the same ad blocking, consent-wall reveal and scroll, so the only difference between them is what packaging lost. Right-click a card, **About this ZIM**, and they sit side by side. They are stored as metadata beside the illustration (not as entries, so they never count as content), and served at `/w/<zim>/-/shot-live` and `-/shot-zim`.
+
+The rendered and alive engines take them on the page they already have open. The fast engine has no browser of its own, so it takes them on a second, cheap visit when a browser is installed, and simply has none when there is not. When the packaged picture comes out a fraction of the live one's height, the job log says so: something did not survive, usually a stylesheet.
+
 ## Configure
 
 | Setting | Where | Default | Effect |
@@ -56,6 +62,8 @@ A capture is also **refused rather than packaged** when the site does not return
 | `ZIMI_CREATE_ROOT` | env / config `create_root` | unset (web off) | The one directory tree the web UI may package a server path from. Unset means the web cannot read any server path; the CLI is unaffected. |
 
 ## Troubleshoot
+
+**A site you reported.** Every site a user reports goes into `tests/sites/reported.json` and stays there. `python3 scripts/site_suite.py` captures each one, opens it through the reader, compares its two pictures, and exercises the thing that was broken; `ZIMI_SITE_SUITE=1 pytest tests/test_reported_sites.py` runs the same from the suite. If a site you use breaks, the fastest way to keep it working is to add it there with what should happen, and file the issue.
 
 - **`--engine rendered` fails to start / no Chromium** — install the browser extra: `pip install 'zimi[browser]'` then `playwright install chromium`.
 - **`--engine alive` errors on conversion** — it needs both the browser extra and the warc2zim sidecar. Run `zimi import --setup` once (network), then `zimi import --status` to confirm.

@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.9.2] - unreleased
+
+What the first two days of 1.9 turned up, and the instruments that keep it from turning up again.
+
+### Added
+
+- **`manage_open`: the opt out that does not ask where you are.** Every other answer to "I do not want a password" reasons about network position, and that has now been wrong twice. `manage_open: true` (or `ZIMI_MANAGE_OPEN=1`) means management asks for nothing: no password, no setup key, no question about the address. It announces itself in the log at every boot, because anyone who can reach the server can delete the library.
+- **Every capture keeps two pictures.** The live page as the web served it, and the same page as this ZIM serves it, both full page, both taken under the same treatment, stored as metadata beside the illustration (not as entries) and shown side by side in About. The fast engine takes them too when a browser is installed. When the packaged page comes out a fraction of the live one's height, the job log says so: not a score, a collapse detector.
+- **A page whose interface is JavaScript says so (#64).** A capture on an engine that drops scripts counts the page's script-driven controls and, when there are enough to be the interface, says they will be inert and names the alive engine.
+- **The sidecar is patched for block-scoped globals (python-scraperlib#329).** wombat wraps inline scripts in a bare block, so a `const` declared in one script never reached another and nerdfonts.com's whole glyph table sat in the ZIM unreachable. At install, the sidecar's rewriter now hoists top-level `const`/`let`/`class` names the way `var` would have.
+- **Reported sites go in a suite and stay there.** `tests/sites/reported.json` lists every site a user reported; `scripts/site_suite.py` captures each, opens it through the reader, compares the two pictures, and exercises the thing that was broken. Both #64 sites pass.
+
+### Fixed
+
+- **`/health` reported an empty library on a full server**, since 1.8.0: it counted through the caller's allowlist, so an unauthenticated monitor saw zero of 73.
+- **A page that writes its attributes in capitals** lost every lazy image and, when one was woken, came out as `<img SRC=src="...">`. Three bugs, one wrong assumption.
+- **A media entry fetched without a Range was silently truncated** to one window: curl, wget, an `<a download>` saved 8 MB of a 30 MB video with no error. A whole request now streams the whole item in windows, each read under the lock, none held at once.
+- **The hollow-block sweep collapsed painted bands** and forced a layout per block; it now checks background colour and batches its writes.
+- **`wake_lazy` rewrote tags inside script strings**; it reads markup only now.
+- **A class token named `data-empty` marked a real image source as a placeholder.**
+- **A stylesheet that could not be rewritten was carried naked and silently**; it is logged.
+- **Auto-language video captures dropped the video's own captions**; the original-language track rides along.
+- **The content breakdown's parts did not add up to the whole**; the rounding remainder goes to the largest bucket.
+- **The importer's heartbeat could traceback in a daemon thread** on a cancel.
+
 ## [1.9.1] - 2026-09-06
 
 Four fixes for what the first day of 1.9.0 turned up, one of them a security fix.

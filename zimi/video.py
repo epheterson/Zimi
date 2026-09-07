@@ -380,7 +380,10 @@ def _subtitle_langs(language):
     This used to be ``["all"]``, which on YouTube means auto-captions in a
     hundred-odd languages, one request each, per video. The site answered the
     Abkhazian one with 429 and the whole capture ended five seconds in."""
-    langs = ["en.*"]
+    # And the video's OWN language, whatever it is: YouTube tags the
+    # original-language track `xx-orig`, so one pattern takes it for a
+    # video in any language without asking for the other hundred.
+    langs = ["en.*", ".*-orig"]
     if language and language != LANGUAGE_AUTO:
         code = str(language).strip().lower()
         if code and not code.startswith("en"):

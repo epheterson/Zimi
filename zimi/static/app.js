@@ -17811,7 +17811,11 @@ function _settleCapturedChrome(frame) {
   // not removed: a page that later fills one by script (an alive capture)
   // gets its box back.
   try {
+    // Two passes, reads then writes. Reading a rect after a style write
+    // forces the browser to lay the page out again, once per block; on a
+    // front page with a few thousand divs that was a visible stall.
     var blocks = doc.body.querySelectorAll('div, section, aside');
+    var collapse = [];
     for (var b = 0; b < blocks.length; b++) {
       var box = blocks[b];
       var rect = box.getBoundingClientRect();
@@ -17819,14 +17823,31 @@ function _settleCapturedChrome(frame) {
       if (!_isHollow(box)) continue;
       var cs = win.getComputedStyle(box);
       if (cs.backgroundImage !== 'none' || cs.position === 'fixed') continue;
+      // A painted colour is content too: a hero band, a divider, a callout
+      // with no text yet. Only a box that draws nothing at all is a hole.
+      if (!_isTransparent(cs.backgroundColor)) continue;
       if (box.querySelector('iframe, canvas, object, embed')) continue;
-      box.style.setProperty('height', '0', 'important');
-      box.style.setProperty('min-height', '0', 'important');
-      box.style.setProperty('padding', '0', 'important');
-      box.style.setProperty('margin', '0', 'important');
-      box.style.setProperty('overflow', 'hidden', 'important');
+      collapse.push(box);
+    }
+    for (var c = 0; c < collapse.length; c++) {
+      var hole = collapse[c];
+      hole.style.setProperty('height', '0', 'important');
+      hole.style.setProperty('min-height', '0', 'important');
+      hole.style.setProperty('padding', '0', 'important');
+      hole.style.setProperty('margin', '0', 'important');
+      hole.style.setProperty('overflow', 'hidden', 'important');
     }
   } catch (e) {}
+}
+
+// Whether a computed background colour paints nothing. Browsers report an
+// unset background as `rgba(0, 0, 0, 0)` or `transparent`.
+function _isTransparent(color) {
+  if (!color || color === 'transparent') return true;
+  var m = /^rgba?\(([^)]+)\)$/.exec(color);
+  if (!m) return false;
+  var parts = m[1].split(',');
+  return parts.length === 4 && parseFloat(parts[3]) === 0;
 }
 
 function _sweepBlockingOverlays(frame) {

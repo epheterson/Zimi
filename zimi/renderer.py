@@ -1334,6 +1334,38 @@ class RenderedSession:
             shot=shot,
         )
 
+    def shoot_live(self, url):
+        """A picture of the live page, settled exactly as a capture settles it.
+
+        For the fast engine, which has no browser of its own: it fetched the
+        page over plain HTTP and packaged it, and this is the second, cheap
+        visit that the spec allows it when a browser happens to be installed.
+        Same blocking, same consent-wall reveal, same scroll and image settle
+        as a rendered capture, so the picture is comparable with the one the
+        packaged page will produce. None on any trouble; never a failure.
+        """
+        if self._context is None:
+            return None
+        page = None
+        try:
+            page = self._context.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=int(NAV_TIMEOUT * 1000))
+            self._quiet(page, QUIET_TIMEOUT)
+            self._reveal(page)
+            self._quiet(page, SCROLL_QUIET_TIMEOUT)
+            self._image_settle(page)
+            self._settle_further(page)
+            return _shoot(page, url)
+        except Exception as e:
+            log.debug("no live screenshot for %s: %s", url, e)
+            return None
+        finally:
+            if page is not None:
+                try:
+                    page.close()
+                except Exception:
+                    pass
+
     def shoot_packaged(self, html, by_path, mainpath="A/index"):
         """A picture of the page AS THE ZIM WILL SERVE IT, before it exists.
 

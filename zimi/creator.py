@@ -213,6 +213,57 @@ def strip_html(page):
     return _strip(page)
 
 
+def _capture_pictures(capture, html, final_url):
+    """``(live, packaged)`` from whichever engine ran, or Nones.
+
+    A rendered or alive capture took the live picture on the page it already
+    had open and photographs the packaged page from the bytes it carried. The
+    fast engine has neither until asked, and asks only when a browser is
+    installed. Either way the answer has one shape."""
+    pair = getattr(capture, "shoot_pair", None)
+    if pair is not None:
+        try:
+            return pair(html, final_url)
+        except Exception as e:
+            log.debug("pictures skipped: %s", e)
+            return None, None
+    live = getattr(capture, "last_shot", None)
+    shoot = getattr(capture, "shoot_packaged", None)
+    packaged = None
+    if live and shoot is not None:
+        try:
+            packaged = shoot(html)
+        except Exception as e:
+            log.debug("packaged picture skipped: %s", e)
+    return live, packaged
+
+
+def _store_pictures(creator, capture, html, final_url, note):
+    """Store the two pictures a capture keeps, and say when they disagree.
+
+    The live page is the half of "is this capture faithful?" that stops being
+    obtainable the moment the site changes. The packaged page is the same page
+    as this ZIM will serve it. Both are taken under the same treatment, so the
+    only thing between them is what packaging lost — which is why a height
+    comparison can honestly name a page whose stylesheet did not survive."""
+    live, packaged = _capture_pictures(capture, html, final_url)
+    if not add_capture_shot(creator, live):
+        return
+    note("stored a picture of the live page")
+    if packaged is None or not add_packaged_shot(creator, packaged):
+        return
+    note("stored a picture of the packaged page")
+    dims, short = shot_verdict(live, packaged)
+    if dims:
+        creator.add_metadata(SHOT_DIMS_METADATA_KEY, dims)
+    if short:
+        note(
+            "warning: the packaged page is much shorter than the live one, so "
+            "something did not survive capture. Compare the two pictures in "
+            "About."
+        )
+
+
 def wall_note(page):
     """A one-line warning when a fetched page has almost no text, or None."""
     chars = len(strip_html(page))
@@ -1494,6 +1545,7 @@ def http_asset_carrier(
     budget=None,
     item_factory=None,
     on_progress=None,
+    keep_bytes=False,
 ):
     """An ``_AssetCarrier`` that pulls same-origin assets over HTTP.
 
@@ -1538,6 +1590,7 @@ def http_asset_carrier(
         remote_reader=remote_read,
         on_progress=on_progress,
         page_url=final_url,
+        keep_bytes=keep_bytes,
     )
     if carried is not None:
         carrier._carried = carried
@@ -1828,9 +1881,59 @@ class BuiltinCapture:
         self.carried = {} if carried is None else carried
         self.mimetypes = set()
         self.count = 0
+        # Pictures. This engine has no browser of its own, but when one is
+        # installed it gets the same two pictures a rendered capture keeps:
+        # a second, cheap visit for the live page, and the packaged page
+        # served from the bytes just written. Nothing here runs when there is
+        # no browser, and nothing here can fail the capture.
+        self._work_dir = work_dir
+        self._block_ads = block_ads
+        self._pictures = None  # a RenderedSession, started on first use
+        self._pictures_tried = False
+        self._last_by_path = {}
+        self.last_shot = None
 
     def start(self):
         return self
+
+    def _can_take_pictures(self):
+        """Whether a browser is installed here. Cached by the prober."""
+        try:
+            from zimi.renderer import browser_available
+
+            return bool(browser_available())
+        except Exception:
+            return False
+
+    def _picture_session(self):
+        if self._pictures is None and not self._pictures_tried:
+            self._pictures_tried = True
+            try:
+                from zimi.renderer import RenderedSession
+
+                self._pictures = RenderedSession(
+                    work_dir=self._work_dir,
+                    note=self._note,
+                    block_ads=self._block_ads,
+                    capture_variants=False,
+                ).start()
+            except Exception as e:
+                log.debug("no browser for the fast engine's pictures: %s", e)
+                self._pictures = None
+        return self._pictures
+
+    def shoot_pair(self, html, final_url, mainpath="A/index"):
+        """``(live, packaged)`` for the page just rendered, or ``(None, None)``."""
+        if not self._last_by_path and not self._can_take_pictures():
+            return None, None
+        session = self._picture_session()
+        if session is None:
+            return None, None
+        live = session.shoot_live(final_url)
+        packaged = session.shoot_packaged(html, self._last_by_path, mainpath=mainpath)
+        self._last_by_path = {}
+        self.last_shot = live
+        return live, packaged
 
     def fetch(self, url):
         return _fetch_html(
@@ -1859,16 +1962,25 @@ class BuiltinCapture:
             budget=self._budget,
             item_factory=item_factory,
             on_progress=_progress,
+            # Keep the bytes only when a browser is here to photograph the
+            # packaged page from them; otherwise the copy would be for nothing.
+            keep_bytes=self._can_take_pictures(),
         )
         out = render_captured_page(
             carrier, html, final_url=final_url, resolve_link=resolve_link
         )
         self.mimetypes |= carrier.mimetypes
         self.count += carrier.count
+        self._last_by_path = carrier.by_path
         return out
 
     def close(self):
-        pass
+        if self._pictures is not None:
+            try:
+                self._pictures.close()
+            except Exception:
+                pass
+            self._pictures = None
 
     def __enter__(self):
         return self.start()
@@ -2111,33 +2223,7 @@ def create_page_zim(
             note(f"packaging {final_url}")
             creator.add_item(static_cls("A/index", zim_title, page.encode("utf-8")))
             creator.set_mainpath("A/index")
-            # The picture of the live page, where an engine took one. It is the
-            # half of "is this capture faithful?" that stops being obtainable
-            # the moment the site changes.
-            if add_capture_shot(creator, getattr(capture, "last_shot", None)):
-                note("stored a picture of the live page")
-                # And the same page as this ZIM will serve it, rendered from
-                # the very bytes being written. Two pictures are what make the
-                # question answerable: one says what the page looked like, the
-                # pair says whether the capture kept it.
-                shoot = getattr(capture, "shoot_packaged", None)
-                packaged = shoot(page) if shoot is not None else None
-                if packaged is not None and add_packaged_shot(creator, packaged):
-                    note("stored a picture of the packaged page")
-                    # Both pictures were taken under the same treatment, so the
-                    # only thing between them is what packaging lost. A page
-                    # that renders comes out about as tall as the live one; a
-                    # page whose stylesheet did not survive collapses. Say so
-                    # rather than leave it for someone to notice.
-                    dims, short = shot_verdict(capture.last_shot, packaged)
-                    if dims:
-                        creator.add_metadata(SHOT_DIMS_METADATA_KEY, dims)
-                    if short:
-                        note(
-                            "warning: the packaged page is much shorter than "
-                            "the live one, so something did not survive "
-                            "capture. Compare the two pictures in About."
-                        )
+            _store_pictures(creator, capture, page, final_url, note)
             add_standard_metadata(
                 creator,
                 title=zim_title,

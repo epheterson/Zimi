@@ -10,8 +10,8 @@ request blocked behind it. `bytes=0-` was the same hole through the ranged
 door, and the EPUB branch read the item before checking its size at all.
 
 These tests pin the replacement: every served window is clamped to
-MAX_SERVE_BYTES, an over-cap media request is answered as 206 + Accept-Ranges
-(players range-request onward), and the branches that can't be windowed check
+MAX_SERVE_BYTES, a ranged media request is answered as 206 + Accept-Ranges (players
+range-request onward) and an unranged one streams the whole item in windows, and the branches that can't be windowed check
 the size BEFORE touching content.
 """
 
@@ -149,14 +149,23 @@ class TestMediaServeCap(unittest.TestCase):
 
     # ── streamable media ───────────────────────────────────────────────────
 
-    def test_no_range_over_cap_is_capped_206(self):
+    def test_no_range_over_cap_is_the_whole_item_in_windows(self):
+        """A request with no Range is a request for the file.
+
+        This used to answer the first window as a 206 — right for a player,
+        which range-requests onward, and a silent truncation for everything
+        else: curl -O, wget, <a download>, a chat app fetching a link all
+        took the 206 as the file and saved one window of a 30 MB video with
+        no error anywhere. The memory ceiling that motivated the window still
+        holds: the item goes out window by window, each read under the lock,
+        none of them held at once."""
         status, headers, body = self._get(f"/w/{ZIM}/v/big.mp4")
-        self.assertEqual(status, 206)
-        self.assertEqual(len(body), CAP)
-        self.assertEqual(body, BIG[:CAP])
-        self.assertEqual(headers.get("Content-Range"), f"bytes 0-{CAP - 1}/{len(BIG)}")
+        self.assertEqual(status, 200)
+        self.assertEqual(body, BIG, "the whole item, byte for byte")
+        self.assertEqual(headers.get("Content-Length"), str(len(BIG)))
         self.assertEqual(headers.get("Accept-Ranges"), "bytes")
-        self.assertEqual(headers.get("Content-Length"), str(CAP))
+        self.assertIsNone(headers.get("Content-Range"))
+        self.assertIsNone(headers.get("Content-Encoding"), "media is never gzipped")
 
     def test_open_ended_range_is_clamped(self):
         # bytes=0- asks for the whole item through the ranged door.
@@ -189,12 +198,16 @@ class TestMediaServeCap(unittest.TestCase):
         self.assertEqual(status, 206)
         self.assertEqual(body, BIG[-50:])
 
-    def test_malformed_range_over_cap_still_capped(self):
+    def test_malformed_range_is_treated_as_no_range(self):
+        """RFC 7233 3.1: a Range the server cannot honour is ignored, and the
+        response is what it would be without one — here, the whole item,
+        streamed in windows. Memory stays capped; the file stays whole."""
         status, headers, body = self._get(
             f"/w/{ZIM}/v/big.mp4", {"Range": "bytes=abc-"}
         )
-        self.assertEqual(status, 206)
-        self.assertEqual(len(body), CAP)
+        self.assertEqual(status, 200)
+        self.assertEqual(body, BIG)
+        self.assertEqual(headers.get("Content-Length"), str(len(BIG)))
 
     def test_small_media_without_range_is_whole_200(self):
         status, headers, body = self._get(f"/w/{ZIM}/v/small.mp4")
@@ -204,7 +217,12 @@ class TestMediaServeCap(unittest.TestCase):
         self.assertIsNone(headers.get("Content-Range"))
 
     def test_ogg_counts_as_streamable(self):
+        # Streamable means "served in windows, ranges honoured": a plain GET
+        # gets the whole item, and a Range gets one window of it.
         status, _headers, body = self._get(f"/w/{ZIM}/a/big.ogg")
+        self.assertEqual(status, 200)
+        self.assertEqual(body, BIG)
+        status, _headers, body = self._get(f"/w/{ZIM}/a/big.ogg", {"Range": "bytes=0-"})
         self.assertEqual(status, 206)
         self.assertEqual(len(body), CAP)
 
