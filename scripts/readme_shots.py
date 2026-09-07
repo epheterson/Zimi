@@ -35,10 +35,26 @@ def _settle(page, ms=SETTLE_MS):
     page.wait_for_timeout(ms)
 
 
-def shot_homepage(page, base, out):
+def shot_homepage(page, base, out, favorites, tiles=False):
     page.set_viewport_size(DESKTOP)
     page.goto(base + "/")
     page.wait_for_selector(".card-info, .discover-card", timeout=30000)
+    if favorites:
+        # Starred through the same door the star button uses; a second run
+        # would un-star, so only names not yet starred are sent.
+        page.evaluate(
+            """async (names) => {
+                const r = await fetch('/collections'); const have = r.ok ? ((await r.json()).favorites || []) : [];
+                for (const n of names) if (!have.includes(n))
+                    await fetch('/favorites', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({zim: n})});
+            }""",
+            favorites,
+        )
+        page.reload()
+        page.wait_for_selector(".card-info, .discover-card", timeout=30000)
+    if tiles:
+        page.evaluate("_setLibraryView('tiles')")
+        page.wait_for_selector(".lib-view-btn.active[title*='ile']", timeout=10000)
     _settle(page)
     page.screenshot(path=str(out / "homepage.png"))
 
@@ -66,10 +82,13 @@ def shot_language(page, base, out, query, source):
     page.wait_for_selector("iframe", timeout=30000)
     _settle(page, 2500)
     page.click("#lang-selector-btn")
-    page.wait_for_selector(
-        "#lang-dropdown.visible",
-        timeout=10000,
-    )
+    page.wait_for_selector("#lang-dropdown.visible", timeout=10000)
+    # The ↔ markers arrive once the article's translations are resolved
+    # against the library; the menu re-renders when they land.
+    try:
+        page.wait_for_selector(".ld-interlang", timeout=30000)
+    except Exception:
+        print("language-dropdown: no translation markers (is another language's Wikipedia installed?)")
     page.wait_for_timeout(600)
     page.screenshot(path=str(out / "language-dropdown.png"))
 
@@ -142,6 +161,8 @@ def main():
     ap.add_argument(
         "--only", default="", help="comma-separated subset of: " + ", ".join(SHOTS)
     )
+    ap.add_argument("--tiles", action="store_true", help="homepage in tile view instead of list view")
+    ap.add_argument("--favorites", default="", help="comma-separated ZIM names to star before the homepage shot")
     ap.add_argument("--query", default="water purification")
     ap.add_argument(
         "--article",
@@ -178,7 +199,7 @@ def main():
         for name in want:
             t0 = time.time()
             if name == "homepage":
-                shot_homepage(page, args.base, out)
+                shot_homepage(page, args.base, out, [f for f in args.favorites.split(',') if f], args.tiles)
             elif name == "search":
                 shot_search(page, args.base, out, args.query)
             elif name == "language-dropdown":
