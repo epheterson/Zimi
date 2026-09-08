@@ -77,21 +77,40 @@ Steps 1 to 3 are invisible to users and can land first. Step 4 is the breaking o
 
 ---
 
-## Step 4, written out before it starts
+## Step 4, rewritten 2026-09-07 after Eric read it
 
-The breaking step, and the one that needs a review of its shape before code. Everything above it is invisible and has landed; this is where behaviour changes.
+The first draft made the setup key the only bootstrap door. Eric rejected it, and was right:
 
-**What changes.** While no admin password exists, the only credential that opens management is the setup key. The host stops being a proof. `identify()` loses its `host` source; `_check_manage_auth` loses its loopback branch; `_is_loopback_client` stays for the log line and for nothing else.
+> *"The no auth thing… you got it wrong. When that's set it doesn't look for static auth somewhere, it's no auth required period. Like local only on a USB stick — c'mon just let me manage my shit."*
 
-**What it closes.** The residual 1.9.1 documented instead of fixing: a same-host forwarder that sends no forwarded header (`socat`, `proxy_pass` without `proxy_set_header`) presents a bare loopback peer that nothing can tell from the owner at the keyboard. With one door there is nothing to tell apart.
+and then settled the shape of the whole thing:
 
-**What it costs, and the answer to each.**
+> *"Either no auth or password required."*
 
-- *The desktop app.* It runs the server in-process and gets admin by being on the host. It owns the data dir, so it reads the setup key from `setup-key` there and presents it once, then holds an admin session like any other client. One function in `desktop/`, and the app's user never sees a key.
-- *The first run at a terminal.* `zimi serve` already prints the key in a box and writes it to the data dir at 0600. The banner's wording changes from "from this machine freely, or the key" to just the key.
-- *`lan_admin`.* The quirk step 3 preserved — with it on, the LAN test is the whole passwordless answer — goes away: the key always works. `lan_admin` then means only what step 5 makes it mean, anonymous-account policy.
-- *Existing installs.* Ones with a password are untouched. Passwordless ones on the host lose free bootstrap; the key is in their log and in their data dir. Release notes say so in one line.
+**Two states. That is the entire model.**
 
-**What proves it.** `tests/test_bootstrap_takeover.py::test_the_host_itself_bootstraps_freely` inverts: the host is refused without the key. The same-host-proxy tests stay. A new test drives `socat`'s shape — a loopback peer, no headers — and is refused. The desktop test presents the key from the data dir and gets a session.
+| state | what it means |
+|---|---|
+| **no auth** | Nothing is asked, of anyone, for anything. No password, no key, no question about the address. It announces itself in the log at every boot. |
+| **password** | A password is required. Every other credential — an account's session, an API token — belongs to an account and is checked the same way. |
 
-**Order.** One commit for the server side with its tests; one for the desktop app; the release note. Not before Eric has read this section.
+There is no third state, and in particular **network position is never a credential**. Not loopback, not RFC1918, not "direct, unforwarded loopback". That branch is deleted rather than tightened.
+
+**Why it is deleted, not tightened.** Research into fifteen comparable projects found that every one which treated a private address as identity has shipped an authentication bypass for it. Sonarr's [CVE-2026-30975](https://github.com/Sonarr/Sonarr/security/advisories/GHSA-h5qx-5hjf-7c9r) (CVSS 8.1) is Zimi's exact design: *authentication disabled for local addresses* plus a proxy that does not handle `X-Forwarded-For` correctly. Jellyfin's [CVE-2025-32012](https://github.com/jellyfin/jellyfin/security/advisories/GHSA-qcmf-gmhm-rfv9) is the same class — "authorizes requests from any device in the same local network… an attacker is able to spoof their IP to appear as a LAN IP". Zimi already hedges its own version with `_is_direct_private_client`, and that hedge is the tell: Sonarr shipped the same hedge and got the CVE anyway.
+
+Home Assistant is the one project that does this carefully, and the cost of doing it carefully is the argument for not doing it at all: a trusted-networks list, a trusted-proxies list, a hard error when they overlap, and requests failing *closed* when the proxy configuration is incomplete. That is a lot of machinery for a question the two states above answer without asking.
+
+**What changes in the code.**
+
+- `_is_loopback_client`, `_is_direct_private_client` and `lan_admin` stop being authorization. The loopback test survives only for a log line.
+- The bootstrap setup key goes away with them. There is no window to bootstrap: either authentication is off, or a password is set.
+- The API token becomes a token *on an account*, not a parallel god-mode key. Grafana migrated global keys to owned service accounts for exactly this reason; Vaultwarden's `ADMIN_TOKEN` is the counter-example, and it only exists because the feature is absent when the token is unset.
+- "Open" becomes an explicit anonymous account with a role, which is what step 1 already built.
+
+**What the USB stick does.** Runs with authentication off, which is one setting, and manages its own library with nothing in the way. That is the case Eric named and it must stay frictionless.
+
+**What a server on a network does.** Sets a password. If the operator instead turns authentication off on a reachable address, the log says so at every boot, in the wording Syncthing uses for the same choice: this allows access without authorization, and here is the warning you asked for by setting it.
+
+**What proves it.** `tests/test_bootstrap_takeover.py` inverts: with no password and authentication not explicitly off, the host itself is refused, a private client is refused, a forwarded client is refused, and a same-host proxy is refused — all four the same way, because there is only one answer. With authentication off, all four are allowed, again the same way. The tests that drive a real socket stay; the ones that assert a network-position exception are deleted with the branch.
+
+**Migration.** An install with a password is untouched. A passwordless install that was relying on being on the host now has to choose: set a password, or turn authentication off. That is a breaking change, it is the reason this is 1.10 and not a patch, and it is one line in the release notes.
