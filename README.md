@@ -1,7 +1,7 @@
 # Zimi
 
 [![CI](https://github.com/epheterson/Zimi/actions/workflows/ci.yml/badge.svg)](https://github.com/epheterson/Zimi/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-2711-brightgreen)](#)
+[![Tests](https://img.shields.io/badge/tests-2766-brightgreen)](#)
 [![Lighthouse Accessibility](https://img.shields.io/badge/Lighthouse%20a11y-100%2F100-success?logo=lighthouse&logoColor=white)](docs/plans/2026-04-26-accessibility.md)
 [![WCAG 2.1 AA](https://img.shields.io/badge/WCAG%202.1-AA-blue)](docs/plans/2026-04-26-accessibility.md)
 [![i18n](https://img.shields.io/badge/i18n-10%20languages-blueviolet)](#languages)
@@ -15,19 +15,19 @@ A modern experience for your ZIM files.
 
 ## What is Zimi?
 
-- **The offline internet.** Entire websites, cross-ZIM linking, search engine and native browser experience.
-- **Make your own (beta).** A web page, a whole site, a video playlist, your bookmarks, or a folder on the server becomes a ZIM in your library. Three engines, from a plain fetch to a recorded browser session that keeps a site's JavaScript working offline; the page picks one for you.
-- **Search that hits everything.** One query, every source, 100M+ articles, the right answer on top. Fast.
-- **Multilingual.** Switch any article into any language it has. Ten UI languages built in.
-- **A real library.** 1,000+ archives one click away, auto-updates, collections, batch downloads, bookmarks and history.
-- **Yours or everyone's.** Serve the whole library openly, limit anonymous visitors to a chosen set of ZIMs, or require sign-in, with named accounts and per-ZIM access lists on top.
-- **Your own network.** Your machines find each other and pass ZIMs around at LAN speed, no internet needed.
-- **A good citizen.** Downloads arrive over BitTorrent and seed back to the Kiwix network. One switch makes you a full mirror.
-- **Fresh daily.** Picture of the Day, On This Day, a word, a quote, a comic, a live almanac sky. All computed locally, forever.
-- **Accessible.** If you browse by keyboard, listen by screen reader, or need high contrast, accessibility is built-in.
+- **The offline internet.** Whole sites, cross-ZIM links, real search, a browser that feels like one.
+- **Search that hits everything.** One query, every source, 100M+ articles, the right answer on top.
+- **A real library.** 1,000+ archives one click away, auto-updating, with collections and bookmarks.
+- **Multilingual.** Any article in any language it has. Ten UI languages built in.
+- **Fresh daily.** Picture of the Day, On This Day, a word, a quote, a comic, a live sky. Computed locally, forever.
+- **Your own network.** Your machines find each other and pass ZIMs around at LAN speed.
+- **A good citizen.** Downloads come over BitTorrent and seed back. One switch makes you a mirror.
+- **Manageable.** Accounts and per-ZIM access, wide open or sign-in only. One box or a fleet.
+- **Accessible.** Keyboard, screen reader, high contrast. Built in, not bolted on.
+- **A ZIM maker (beta).** A page, a site, a playlist, your bookmarks or a folder becomes a ZIM. Three engines; the page picks one.
+- **For humans and machines.** Web UI, JSON API, MCP server for agents.
 - **Anywhere.** Docker, pip, a native macOS app, or your phone as a PWA.
-- **Improving.** Regular updates with ideas from the community, GitHub and creator keep Zimi fresh. Just ask!
-- **For humans and machines.** Web UI, JSON API, MCP server for AI agents.
+- **Improving.** Regular updates, shaped by what people ask for. Just ask.
 
 ## Screenshots
 
