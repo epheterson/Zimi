@@ -70,7 +70,10 @@ var SK = {
   // Auto-darken raw (non-Reader-View) ZIM articles when the app is dark, so a
   // blinding-white ZIM page doesn't break dark mode. Tri-state: unset = follow
   // the app theme (on when dark); '1'/'0' = explicit override once toggled.
+  // Kept its 1.x name: the key stores whether to SIMULATE a dark mode on
+  // articles that have none. It used to decide darkness outright.
   DARKEN_ARTICLES: 'zimi_darken_articles',
+  ARTICLE_THEME: 'zimi_article_theme',
 };
 
 // ── Storage Helpers ──
@@ -126,13 +129,11 @@ function _setAppTheme(mode) {
   if (mode === 'auto') localStorage.removeItem(SK.APP_THEME);
   else localStorage.setItem(SK.APP_THEME, mode);
   _applyAppTheme();
-  // Repaint the segmented control's active state in place, and re-apply article
-  // darkening (its default follows the app theme, and the darken row's checked
-  // state may flip when the theme does).
+  // Repaint the segmented control's active state in place, and re-apply the
+  // article appearance: on Match Zimi, this is the setting it matches.
   var seg = document.getElementById('app-theme-seg');
   if (seg) seg.innerHTML = _appThemeSegInner();
-  var darkChk = document.getElementById('ms-darken-articles');
-  if (darkChk && localStorage.getItem(SK.DARKEN_ARTICLES) === null) darkChk.checked = _appThemeIsDark();
+  _syncSimulateDarkRow();
   try { _applyArticleDarken(_readerFrameDoc()); } catch (e) {}
   _reapplyReaderThemeIfAuto();
 }
@@ -160,47 +161,83 @@ function _bindAppThemeMedia() {
   else if (mq.addListener) mq.addListener(onFlip); // Safari <14
 }
 
-// ── Auto-darken raw articles ──
-// Whether the darken-articles adaptation should be applied to a raw ZIM page.
-// Default follows the app theme (on when dark); an explicit toggle overrides.
-function _darkenArticlesOn() {
-  var v = localStorage.getItem(SK.DARKEN_ARTICLES);
-  if (v === '1') return true;
-  if (v === '0') return false;
-  return _appThemeIsDark();
+// ── Article appearance ──
+// Two settings, and they answer different questions.
+//
+//   Article theme    WHEN articles are dark. Match Zimi (the default), or
+//                    pinned dark/light regardless.
+//   Simulate dark    WHAT to do about an article that has no dark mode of its
+//                    own — invert it, or leave it light.
+//
+// The chain is OS -> Zimi -> articles. Zimi may follow the system; articles
+// follow ZIMI. That middle link is the part that used to be missing: an
+// article with its own dark mode read prefers-color-scheme, which is the
+// SYSTEM's answer, so a dark Zimi on a light Mac served light articles.
+var ARTICLE_THEMES = ['match', 'dark', 'light'];
+function _articleTheme() {
+  var v = localStorage.getItem(SK.ARTICLE_THEME);
+  return ARTICLE_THEMES.indexOf(v) < 0 ? 'match' : v;
 }
-// Whether the person TICKED the box, as opposed to the default following the
-// app theme. The difference matters for a captured site: left to the default,
-// a capture keeps its own design; ticked, the person has asked for dark and
-// gets it. Before this, a ticked box did nothing on a capture (#65), which on
-// a library of captures reads as a checkbox that does nothing at all.
+function _articlesAreDark() {
+  var m = _articleTheme();
+  return m === 'match' ? _appThemeIsDark() : m === 'dark';
+}
+function _setArticleTheme(mode) {
+  if (ARTICLE_THEMES.indexOf(mode) < 0) mode = 'match';
+  if (mode === 'match') localStorage.removeItem(SK.ARTICLE_THEME);
+  else localStorage.setItem(SK.ARTICLE_THEME, mode);
+  var seg = document.getElementById('article-theme-seg');
+  if (seg) seg.innerHTML = _articleThemeSegInner();
+  _syncSimulateDarkRow();
+  try { _applyArticleDarken(_readerFrameDoc()); } catch (e) {}
+}
+// There is nothing to simulate on an article being drawn light, so the row
+// goes inert rather than sitting there looking live.
+function _syncSimulateDarkRow() {
+  var box = document.getElementById('ms-darken-articles');
+  if (!box) return;
+  var live = _articlesAreDark();
+  box.disabled = !live;
+  var row = box.closest('.ms-check');
+  if (row) row.classList.toggle('ms-check-inert', !live);
+}
+// Default on. Most ZIMs have no dark mode, so off would mean switching Zimi to
+// dark leaves the whole library blazing white — which is the complaint this
+// setting exists to answer.
+function _darkenArticlesOn() {
+  return localStorage.getItem(SK.DARKEN_ARTICLES) !== '0';
+}
+// Whether the person TICKED the box, as opposed to leaving it at its default.
+// The difference matters for a captured site: left alone, a capture keeps the
+// design it was captured with; ticked, the person has asked for dark and gets
+// it. Before this, a ticked box did nothing on a capture (#65), which on a
+// library of captures reads as a checkbox that does nothing at all.
 function _darkenArticlesExplicit() {
   return localStorage.getItem(SK.DARKEN_ARTICLES) === '1';
 }
-// The decision, pure so it can be tested. Three answers, not two, because the
-// box has to work in BOTH directions (#65).
+// What to ask the page to paint. Pure, so the table below can be a test.
 //
-//   'darken'  inject the darkening style: a light page the person wants dark
-//   'light'   ask the page for its light face: unticked, and the page has a
-//             dark one it is showing because the browser prefers dark
-//   'leave'   touch nothing
+//   'dark' / 'light'  push the scheme: articles follow Zimi, not the system
+//   ''                hands the page back its own judgement
 //
-// The two-answer version was the bug. It only ever ADDED darkening to a light
-// page, so on a page carrying its own dark mode — every modern Wikipedia ZIM
-// follows the OS through `skin-theme-clientpref-os` — ticking did nothing
-// (already dark) and unticking did nothing (we only ever add). To someone
-// reading in dark mode that is a checkbox with no function, which is exactly
-// what was reported.
-function _darkenWanted(on, explicit, readerViewOn, loc, isCapture, declaresDark) {
-  return _articleAppearance(on, explicit, readerViewOn, loc, isCapture, declaresDark) === 'darken';
+// Reader View and the viewers we ship under /static/ are ours and own their
+// themes; pushing a scheme at them would fight their own control.
+function _articleScheme(readerViewOn, loc, articlesDark) {
+  if (readerViewOn) return '';
+  if ((loc || '').indexOf('/static/') === 0) return '';
+  return articlesDark ? 'dark' : 'light';
 }
-function _articleAppearance(on, explicit, readerViewOn, loc, isCapture, declaresDark) {
-  if (readerViewOn) return 'leave';                          // owns its themes
-  if ((loc || '').indexOf('/static/') === 0) return 'leave';  // pdf.js / viewers
-  if (!on) return declaresDark ? 'light' : 'leave';
-  if (isCapture && !explicit) return 'leave';                // keeps its design
-  if (declaresDark) return 'leave';                          // already dark
-  return 'darken';
+// And whether to simulate one. Only ever reached for a page that was ASKED for
+// dark and came back light — `paintsDark` is measured after the ask, not
+// guessed from the markup, because "has a dark mode" is not something a
+// document reliably declares.
+function _shouldSimulateDark(articlesDark, simulate, explicit, readerViewOn, loc, isCapture, paintsDark) {
+  if (!articlesDark) return false;
+  if (_articleScheme(readerViewOn, loc, articlesDark) === '') return false;
+  if (paintsDark) return false;             // it has its own; nothing to fake
+  if (!simulate) return false;
+  if (isCapture && !explicit) return false; // a capture keeps its own design
+  return true;
 }
 function _setDarkenArticles(on) {
   localStorage.setItem(SK.DARKEN_ARTICLES, on ? '1' : '0');
@@ -223,6 +260,28 @@ function _appThemeSegInner() {
       '" onclick="_setAppTheme(\'' + m + '\')">' + _APP_THEME_ICONS[m] +
       '<span>' + tH('theme_' + m) + '</span></button>';
   }).join('');
+}
+// Article theme reuses the app-theme control's icons and chrome — same shape,
+// same language, one row below it — with `match` in the slot where the app
+// control says `auto`. Both answer "follow something else, or pin it".
+var _ARTICLE_THEME_ICONS = {
+  match: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v13M6.5 11.5 12 17l5.5-5.5M5 20h14"/></svg>',
+  dark: _APP_THEME_ICONS.dark,
+  light: _APP_THEME_ICONS.light
+};
+function _articleThemeSegInner() {
+  var cur = _articleTheme();
+  return ARTICLE_THEMES.map(function(m) {
+    var on = m === cur;
+    return '<button type="button" class="app-theme-btn' + (on ? ' active' : '') +
+      '" role="radio" aria-checked="' + (on ? 'true' : 'false') +
+      '" onclick="_setArticleTheme(\'' + m + '\')">' + _ARTICLE_THEME_ICONS[m] +
+      '<span>' + tH('article_theme_' + m) + '</span></button>';
+  }).join('');
+}
+function _articleThemeSegHtml() {
+  return '<div class="app-theme-seg" id="article-theme-seg" role="radiogroup" aria-label="' +
+    escAttr(t('article_theme')) + '">' + _articleThemeSegInner() + '</div>';
 }
 function _appThemeSegHtml() {
   return '<div class="app-theme-seg" id="app-theme-seg" role="radiogroup" aria-label="' +
@@ -340,53 +399,130 @@ function _articleIsWebCapture() {
     return !!(z && (z.category === 'Created' || z.zimi_export));
   } catch (e) { return false; }
 }
+function _dropArticleDarken(doc) {
+  var existing = doc.getElementById(_ARTICLE_DARKEN_STYLE_ID);
+  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+}
 function _applyArticleDarken(doc) {
   if (!doc || !doc.documentElement) return;
-  var existing = doc.getElementById(_ARTICLE_DARKEN_STYLE_ID);
   var loc = '';
   try { loc = doc.defaultView.location.pathname; } catch (e) {}
-  var want = _articleAppearance(
-    _darkenArticlesOn(), _darkenArticlesExplicit(), _readerViewOn, loc,
-    _articleIsWebCapture(), _articleDeclaresDark(doc)
-  );
-  if (want === 'darken') {
-    if (!existing && doc.head) {
-      var st = doc.createElement('style');
-      st.id = _ARTICLE_DARKEN_STYLE_ID;
-      st.textContent = _ARTICLE_DARKEN_CSS;
-      doc.head.appendChild(st);
-    }
-    _markStylesheetPictures(doc);
-  } else if (existing && existing.parentNode) {
-    existing.parentNode.removeChild(existing);
+  var dark = _articlesAreDark();
+  var scheme = _articleScheme(_readerViewOn, loc, dark);
+  // Our own invert would answer the question we are about to ask, so it comes
+  // off first. Nothing repaints between here and the end of this function —
+  // the browser paints between tasks, not inside one.
+  _dropArticleDarken(doc);
+  _askArticleFor(doc, scheme);
+  // Asked for dark and STILL painting light: this page has no dark mode of its
+  // own. Measured rather than assumed — an unstyled ZIM article, a MediaWiki
+  // one and a captured site are indistinguishable from the outside until you
+  // ask them.
+  if (!_shouldSimulateDark(dark, _darkenArticlesOn(), _darkenArticlesExplicit(),
+                           _readerViewOn, loc, _articleIsWebCapture(),
+                           _articleDeclaresDark(doc))) return;
+  if (doc.head) {
+    var st = doc.createElement('style');
+    st.id = _ARTICLE_DARKEN_STYLE_ID;
+    st.textContent = _ARTICLE_DARKEN_CSS;
+    doc.head.appendChild(st);
   }
-  _askArticleFor(doc, want === 'light' ? 'light' : '');
+  _markStylesheetPictures(doc);
 }
 
-// Ask the page itself for a light face, using the two knobs a page can carry.
-// Passing '' hands it back whatever it chooses on its own.
+// Ask the page itself for a face. Passing '' hands it back its own judgement.
 //
-// `color-scheme` is the standard one: it decides how `prefers-color-scheme`
-// resolves inside this document, so a page whose dark mode is a media query
-// simply stops matching it. MediaWiki does not use a media query — Vector 2022
-// stamps `skin-theme-clientpref-os` on <html> and its own CSS reads that class
-// — so the class is swapped too. That covers every Wikipedia-family ZIM, which
-// is most of a typical library.
+// Three mechanisms, because a page can carry any of them:
+//
+//   1. `color-scheme` on the root. This governs the UA surface inside the
+//      document — scrollbars, form controls, the canvas behind a transparent
+//      body — and nothing else. It does NOT decide how prefers-color-scheme
+//      resolves. The comment that used to sit here said it did; measured in
+//      Chromium (2026-09-13), setting it on the article root, on the iframe
+//      element, and on the embedder all leave the query answering the OS.
+//      So the light-face half of #65 only ever worked on MediaWiki, whose
+//      theming is a class. On a captured site with a media-query dark mode it
+//      did nothing at all, silently.
+//
+//   2. The media queries themselves, rewritten in the page's own stylesheets.
+//      prefers-color-scheme cannot be overridden from outside, so the
+//      condition is edited instead — see _retuneColorSchemeQueries.
+//
+//   3. MediaWiki's theme class. Vector 2022 stamps `skin-theme-clientpref-os`
+//      on <html> and its CSS reads the class, no query involved. That covers
+//      every Wikipedia-family ZIM, which is most of a typical library.
+//
+// A page can also switch by script and answer to none of these — that is the
+// second face the CAPTURE stores, chosen at read time by _faceForTheme.
+//
+// Rewriting somebody's media query is a liberty, so it is surgical: the
+// prefers-color-scheme term alone is swapped for one that is always or never
+// true, and the rest of the condition (a width, a print target) is left
+// standing. `not all` on the whole rule would have thrown those away.
+var _PCS_ALWAYS = '(min-width: 0px)';
+var _PCS_NEVER = '(min-width: 999999px)';
+var _PCS_DARK_RE = /\(\s*prefers-color-scheme\s*:\s*dark\s*\)/gi;
+var _PCS_LIGHT_RE = /\(\s*prefers-color-scheme\s*:\s*light\s*\)/gi;
+var _PCS_ANY_RE = /prefers-color-scheme/i;
+// Pure, so the table of conditions can be a test.
+function _retunedQuery(original, mode) {
+  if (!mode) return original;
+  return original
+    .replace(_PCS_DARK_RE, mode === 'dark' ? _PCS_ALWAYS : _PCS_NEVER)
+    .replace(_PCS_LIGHT_RE, mode === 'light' ? _PCS_ALWAYS : _PCS_NEVER);
+}
+// The original condition text, so handing the page back restores it rather
+// than leaving whichever face we last chose. Keyed by the rule, so it is
+// collected with the document.
+var _pcsOriginal = new WeakMap();
+// Bounded like the picture scan: a Wikipedia stylesheet is enormous and this
+// runs on every article load. Reassigning mediaText restyles on the spot, so
+// the walk is one pass with no layout in it.
+var _PCS_SCAN_MAX = 20000;
+function _retuneColorSchemeQueries(doc, mode) {
+  var sheets;
+  try { sheets = doc.styleSheets; } catch (e) { return; }
+  var scanned = 0;
+  for (var i = 0; i < sheets.length && scanned < _PCS_SCAN_MAX; i++) {
+    var rules;
+    try { rules = sheets[i].cssRules; } catch (e) { continue; }  // cross-origin
+    if (!rules) continue;
+    for (var j = 0; j < rules.length && scanned < _PCS_SCAN_MAX; j++) {
+      scanned++;
+      var rule = rules[j];
+      if (!rule || !rule.media) continue;
+      var original = _pcsOriginal.get(rule);
+      if (original === undefined) {
+        if (!_PCS_ANY_RE.test(rule.media.mediaText || '')) continue;
+        original = rule.media.mediaText;
+        _pcsOriginal.set(rule, original);
+      }
+      var want = _retunedQuery(original, mode);
+      if (rule.media.mediaText !== want) {
+        try { rule.media.mediaText = want; } catch (e) {}
+      }
+    }
+  }
+}
 var _MW_THEME_RE = /\bskin-theme-clientpref-\S+/;
+var _MW_THEME_CLASS = {light: 'skin-theme-clientpref-day', dark: 'skin-theme-clientpref-night'};
 function _askArticleFor(doc, mode) {
   try {
     var html = doc.documentElement;
     html.style.colorScheme = mode || '';
-    if (_MW_THEME_RE.test(html.className)) {
-      if (mode === 'light') {
-        if (!html.dataset.zimiMwTheme) {
-          html.dataset.zimiMwTheme = html.className.match(_MW_THEME_RE)[0];
-        }
-        html.className = html.className.replace(_MW_THEME_RE, 'skin-theme-clientpref-day');
-      } else if (html.dataset.zimiMwTheme) {
-        html.className = html.className.replace(_MW_THEME_RE, html.dataset.zimiMwTheme);
-        delete html.dataset.zimiMwTheme;
+    _retuneColorSchemeQueries(doc, mode);
+    if (!_MW_THEME_RE.test(html.className)) return;
+    var want = _MW_THEME_CLASS[mode];
+    if (want) {
+      // Remember what the ZIM shipped, once, so handing the page back to
+      // itself later restores `-os` rather than whichever face we last chose.
+      if (!html.dataset.zimiMwTheme) {
+        html.dataset.zimiMwTheme = html.className.match(_MW_THEME_RE)[0];
       }
+      html.className = html.className.replace(_MW_THEME_RE, want);
+    } else if (html.dataset.zimiMwTheme) {
+      html.className = html.className.replace(_MW_THEME_RE, html.dataset.zimiMwTheme);
+      delete html.dataset.zimiMwTheme;
     }
   } catch (e) {}
 }
@@ -9353,7 +9489,7 @@ function switchMs(section) {
   if (!pane) return;
   switch(section) {
     case 'library': pane.innerHTML = _msLibraryHtml(); break;
-    case 'preferences': pane.innerHTML = _msPreferencesHtml(); break;
+    case 'preferences': pane.innerHTML = _msPreferencesHtml(); _syncSimulateDarkRow(); break;
     case 'creator': pane.innerHTML = _msCreatorHtml(); break;
     case 'server': pane.innerHTML = _msServerHtml(); break;
     case 'users': _renderMsUsers(); break;
@@ -10603,12 +10739,15 @@ function _msPreferencesHtml() {
     '<div class="ms-theme-label">' + tH('app_theme') + '</div>' +
     _appThemeSegHtml() +
     '<div class="ms-hint">' + tH('app_theme_hint') + '</div>' +
-    // Reading: article-appearance options, grouped apart from the app chrome.
-    // Darken raw (non-Reader-View) articles — default follows the app theme.
+    // Reading: article appearance, grouped apart from the app chrome. WHEN
+    // articles are dark, then what to do about the ones that cannot be.
     '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_reader_section') + '</div>' +
-    '<label class="ms-check"><input type="checkbox" id="ms-darken-articles"' + (darkenOn ? ' checked' : '') +
+    '<div class="ms-theme-label">' + tH('article_theme') + '</div>' +
+    _articleThemeSegHtml() +
+    '<div class="ms-hint">' + tH('article_theme_hint') + '</div>' +
+    '<label class="ms-check" style="margin-top:12px"><input type="checkbox" id="ms-darken-articles"' + (darkenOn ? ' checked' : '') +
       ' onchange="_setDarkenArticles(this.checked)"> ' + tH('darken_articles') + '</label>' +
-    '<div class="ms-hint">' + tH('darken_articles_hint') + '</div>' +
+    '<div class="ms-hint" id="ms-darken-hint">' + tH('darken_articles_hint') + '</div>' +
     '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
     '<label class="ms-check"><input type="checkbox"' + (showDiscover ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> ' + tH('show_discover') + '</label>' +
