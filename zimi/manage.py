@@ -5016,29 +5016,28 @@ def handle_manage_get(handler, parsed, params):
             # Importable, session just not started yet — it starts at
             # boot or on first download, so report ready-to-torrent.
             status = "ready"
-        hint = None
+        hint_key, hint_vars = None, {}
         if not enabled:
-            hint = "BT downloads disabled (ZIMI_BT=off). HTTP is used instead."
+            hint_key = "bt_why_off"
+            hint_vars = {"v": "ZIMI_BT=off"}
         elif status == "unavailable":
             import sys as _sys
 
             # Give the exact next step. Wheels exist for CPython 3.9–3.13; on
             # 3.14+ there's no wheel yet, so name that specifically instead of
             # sending the user to a pip command that will fail.
+            # A KEY and its variables, never a sentence. Everything else this
+            # server sends a browser is a number or a name, and the client
+            # writes the prose in the reader's language — a sentence composed
+            # here is English in all ten of them.
             if _sys.version_info >= (3, 14):
-                fix = (
-                    f"no libtorrent wheel exists for Python "
-                    f"{_sys.version_info.major}.{_sys.version_info.minor} yet — "
-                    "run Zimi on Python 3.13 or older (or use the Docker image) "
-                    "to torrent."
-                )
+                hint_key = "bt_why_no_wheel"
+                hint_vars = {
+                    "version": f"{_sys.version_info.major}.{_sys.version_info.minor}"
+                }
             else:
-                fix = "run `pip install libtorrent` (or `pip install zimi[bt]`) to torrent."
-            hint = (
-                "libtorrent isn't importable on this install — downloads fall "
-                "back to HTTP, which works fine. To share load with the Kiwix "
-                "mirrors, " + fix
-            )
+                hint_key = "bt_why_install"
+                hint_vars = {}
 
         from zimi import p2p_nat
 
@@ -5051,7 +5050,8 @@ def handle_manage_get(handler, parsed, params):
                 "bt_port": p2p.get_bt_port(),
                 "staging_dir": p2p.get_staging_dir(_srv.ZIMI_DATA_DIR),
                 "engine_importable": engine_importable,
-                "hint": hint,
+                "hint_key": hint_key,
+                "hint_vars": hint_vars,
                 "upnp_enabled": p2p.is_upnp_enabled(),
                 "upnp_env_locked": p2p.is_upnp_env_locked(),
                 # True only when the session is actually up — "ready" alone

@@ -11226,9 +11226,20 @@ async function _renderSeedingSection() {
   // The server already works out WHY it is off — no wheel for this Python, or
   // the switch is set by the environment. Saying only "unavailable" leaves the
   // person with nothing to do about it (#70).
-  if (bt.hint) {
-    statusEl.innerHTML += '<div class="ms-hint bt-why">' + esc(bt.hint) + '</div>';
-    statusEl.title = bt.hint;
+  // A key and its variables, translated here. The server used to compose the
+  // sentence itself, which made it English in all ten languages.
+  //
+  // It goes UNDER the row's own text, where Mirror already puts its backup
+  // line — not in the toggle column beside the switch. A sentence in that
+  // column takes its width from the sentence, which left the row's description
+  // ("Download and seed ZIMs over BitTorrent.") squeezed onto two lines with a
+  // third of the card empty beside it, and the reason floating mid-row next to
+  // a switch it is not about (#74).
+  var whyEl = document.getElementById('ms-bt-why');
+  if (whyEl) {
+    var why = bt.hint_key ? t(bt.hint_key, bt.hint_vars || {}) : '';
+    whyEl.innerHTML = why ? esc(why) : '';
+    whyEl.hidden = !why;
   }
   window._btStatusHtml = statusEl.innerHTML;
   // Port reachability dot, updated in place (no row rebuild).
@@ -11253,12 +11264,20 @@ async function _renderSeedingSection() {
 // Mirror, Nearby. Env-locked settings render disabled with the env hint.
 // `inactive` greys a switch that depends on another being on (Mirror with
 // BT off): unmodifiable, but its saved state persists untouched.
-function _shareSwitch(key, on, locked, envVar, titleKey, descHtml, inactive, underSwitchHtml) {
+// noteHtml is a row-level note that must stay readable when the row is
+// inactive — the sentence saying WHY it is inactive. It sits beside the title
+// and description rather than inside them, because an inactive row dims its
+// text and a child cannot be less transparent than its parent: an exemption
+// rule nested inside the dimmed block would have been dead CSS.
+function _shareSwitch(key, on, locked, envVar, titleKey, descHtml, inactive, underSwitchHtml, noteHtml) {
   return '<div class="share-row' + (locked ? ' share-locked' : '') + (inactive ? ' share-inactive' : '') + '">' +
     '<div class="share-row-text">' +
-      '<div class="share-row-title">' + tH(titleKey) + '</div>' +
-      '<div class="share-row-desc">' + descHtml + '</div>' +
-      (locked ? '<div class="share-row-desc share-row-locknote">' + tH('env_controlled', {v: envVar}) + '</div>' : '') +
+      '<div class="share-row-dim">' +
+        '<div class="share-row-title">' + tH(titleKey) + '</div>' +
+        '<div class="share-row-desc">' + descHtml + '</div>' +
+        (locked ? '<div class="share-row-desc share-row-locknote">' + tH('env_controlled', {v: envVar}) + '</div>' : '') +
+      '</div>' +
+      (noteHtml || '') +
     '</div>' +
     '<div class="share-row-right">' +
       '<label class="switch"><input type="checkbox" role="switch"' + (on ? ' checked' : '') + ((locked || inactive) ? ' disabled' : '') +
@@ -11573,7 +11592,12 @@ async function _renderMirrorSection() {
   try { peers = await peersP; } catch (e) { peers = null; }
   const el = document.getElementById('ms-mirror-status');
   if (!el) return;
-  const btOn = !!m.torrent_enabled;
+  // Unavailable means the machine cannot do this, whatever the stored setting
+  // says. The switch showed ON beside the word "unavailable", which is the
+  // panel contradicting itself — and inviting a click that cannot work. It
+  // reads off and refuses the click; the reason underneath says why.
+  const btUsable = !bt || bt.status !== 'unavailable';
+  const btOn = !!m.torrent_enabled && btUsable;
   // disabled= when BT off OR the field is env-locked; lock= marks env-locked
   // fields so an in-place toggle never re-enables them.
   const disA = (locked) => ((!btOn || locked) ? ' disabled' : '');
@@ -11652,8 +11676,15 @@ async function _renderMirrorSection() {
 
   let h = '<div class="share-rows">' +
     _shareSwitch('torrent', btOn, m.torrent_env_locked, 'ZIMI_BT',
-      'share_bt_title', tH('share_bt_desc') + btControls,
-      false, '<div id="ms-bt-status" class="share-bt-status-right">' + (window._btStatusHtml || '') + '</div>') +
+      'share_bt_title', tH('share_bt_desc'),
+      // inactive, not locked: locked means an operator pinned it with an env
+      // var and says so. Unavailable is the machine's answer, and the reason
+      // line already gives it — claiming ZIMI_BT did this would be a lie.
+      !btUsable, '<div id="ms-bt-status" class="share-bt-status-right">' + (window._btStatusHtml || '') + '</div>',
+      // Reason first, then the fields it explains. Both sit outside the dimmed
+      // block: the reason so it stays readable, the fields because `disabled`
+      // already greys them and dimming twice reads as damage.
+      '<div class="ms-hint bt-why" id="ms-bt-why" hidden></div>' + btControls) +
     _shareSwitch('mirror', m.enabled, m.env_locked, 'ZIMI_BT',
       'share_mirror_title', tH('share_mirror_desc') + mirrorInner, !btOn, mirrorStatus) +
     _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_NEARBY',

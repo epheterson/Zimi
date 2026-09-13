@@ -1847,7 +1847,10 @@
   .share-bt-controls .peer-name-input { width: 100%; box-sizing: border-box; }
   .share-bt-controls.share-controls-off { opacity: 0.4; }
   .share-bt-controls.share-controls-off .share-port-dot { opacity: 0.5; }
-  .share-inactive { opacity: 0.5; }
+  /* Dim what is inert, not the whole row: the note that says WHY the row is
+     inactive lives outside .share-row-dim and stays at full strength. */
+  .share-inactive .share-row-dim,
+  .share-inactive .share-row-right { opacity: 0.5; }
   .share-inactive .switch { cursor: default; }
   .share-port-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 12px; color: var(--text2); flex-wrap: wrap; }
   .share-port-label { font-family: monospace; font-size: 11px; }
@@ -1882,6 +1885,10 @@
   .share-row-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; margin-top: 2px; }
   /* Shared status light for BT + Mirror — same spot (under each toggle,
      right column) so the two cards' dots line up. */
+  /* The dot and the word sit on one line and must not break. The reason under
+     them is a sentence and has to: as a plain child of an inline-flex row with
+     nowrap it was laid out BESIDE the word and forbidden to wrap, so it ran
+     off the panel (#74). flex-basis:100% gives it the next line instead. */
   .share-bt-status-right { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); white-space: nowrap; }
   .share-bt-status-right .share-port-dot { width: 8px; height: 8px; }
   /* Aligned label/control rows in the sharing cards */
@@ -2933,14 +2940,14 @@
   .dc-dismiss { background: none; border: none; color: var(--text2); font-size: 16px; cursor: pointer; padding: 0 4px; opacity: 0.4; transition: opacity 0.2s; line-height: 1; }
   .dc-dismiss:hover { opacity: 1; color: var(--text); }
   .discover-scroll { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding: 8px 2px; margin: -8px -2px; will-change: transform; }
-  /* No scrollbar under the strip. The thumb was a short line reaching about
-     halfway across, sitting under the cards and reading as an artefact rather
-     than a control (Eric: "would be nice to have it be solid so I can't see
-     it"). The row snap-scrolls and its next card is always cut off at the
-     edge, which is what actually says "there is more" — the bar said it a
-     second time, worse. */
-  .discover-scroll { scrollbar-width: none; -ms-overflow-style: none; }
-  .discover-scroll::-webkit-scrollbar { height: 0; width: 0; }
+  /* The scrollbar stays. It was hidden once on a guess about which stray line
+     was being complained about — the answer was the step rail on the create
+     page — and on a desktop with no touchscreen that left the strip with no
+     way to scroll it at all (#75). A row that can only be moved by swiping is
+     not a row most people can move. */
+  .discover-scroll::-webkit-scrollbar { height: 4px; }
+  .discover-scroll::-webkit-scrollbar-track { background: transparent; }
+  .discover-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
   .discover-card {
     flex: 0 0 260px; min-height: 200px; max-height: 320px; scroll-snap-align: start;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
@@ -3175,11 +3182,19 @@
 
 /* Why a control is disabled, beside the control rather than in a tooltip.
    A greyed-out switch whose reason is hidden reads as broken (#69, #70). */
-.ms-hint.bt-why, .ms-hint.au-why {
+/* The auto-update reason sits beside its control, right-aligned. The
+   BitTorrent one sits under the row's own text, where a sentence belongs, so
+   it reads left and takes the width the text column already has. */
+.ms-hint.au-why {
   margin-top: 4px;
   max-width: 34ch;
   text-align: right;
   line-height: 1.35;
+}
+.ms-hint.bt-why {
+  margin-top: 4px;
+  line-height: 1.35;
+  color: var(--amber);
 }
 
 /* The library order control, sharing the first section header's line with the
