@@ -190,6 +190,7 @@ function _setArticleTheme(mode) {
   if (seg) seg.innerHTML = _articleThemeSegInner();
   _syncSimulateDarkRow();
   try { _applyArticleDarken(_readerFrameDoc()); } catch (e) {}
+  _reapplyReaderThemeIfAuto();
 }
 // There is nothing to simulate on an article being drawn light, so the row
 // goes inert rather than sitting there looking live.
@@ -386,8 +387,9 @@ function _facePathFor(zimName, path) {
     // the capture is left exactly as it was asked for.
     var main = info.main_path || 'A/index';
     if (path !== main) return path;
-    var wantDark = _appThemeIsDark();
-    var want = wantDark ? 'dark' : 'light';
+    // The article theme, not the app theme: this is the article. Identical on
+    // Match Zimi, which is everyone who has not pinned it.
+    var want = _articlesAreDark() ? 'dark' : 'light';
     if (faces.other.scheme === want) return faces.other.path;
     return path;
   } catch (e) { return path; }
@@ -475,33 +477,51 @@ function _retunedQuery(original, mode) {
 // than leaving whichever face we last chose. Keyed by the rule, so it is
 // collected with the document.
 var _pcsOriginal = new WeakMap();
-// Bounded like the picture scan: a Wikipedia stylesheet is enormous and this
-// runs on every article load. Reassigning mediaText restyles on the spot, so
-// the walk is one pass with no layout in it.
-var _PCS_SCAN_MAX = 20000;
+// Bounded like the picture scan, but generously: running out part-way is the
+// expensive failure, not the cheap one. A dark block left un-rewritten means
+// the page answers "light" when asked for dark, and then gets inverted on top
+// of the dark mode it already had. Measured at 8ms cold and 1-2ms warm over a
+// 12,060-rule sheet, once per article load and off the first paint, so the
+// ceiling is here for pathology rather than for ordinary pages.
+var _PCS_SCAN_MAX = 50000;
+// A dark block is not always at the top of a sheet: @layer and @supports both
+// nest, and a modern build tool emits @layer around nearly everything. Depth
+// is capped anyway — a query buried five levels down is not a theme.
+var _PCS_MAX_DEPTH = 4;
 function _retuneColorSchemeQueries(doc, mode) {
   var sheets;
   try { sheets = doc.styleSheets; } catch (e) { return; }
-  var scanned = 0;
-  for (var i = 0; i < sheets.length && scanned < _PCS_SCAN_MAX; i++) {
+  var budget = {left: _PCS_SCAN_MAX};
+  for (var i = 0; i < sheets.length && budget.left > 0; i++) {
     var rules;
     try { rules = sheets[i].cssRules; } catch (e) { continue; }  // cross-origin
-    if (!rules) continue;
-    for (var j = 0; j < rules.length && scanned < _PCS_SCAN_MAX; j++) {
-      scanned++;
-      var rule = rules[j];
-      if (!rule || !rule.media) continue;
+    _retuneRuleList(rules, mode, budget, 0);
+  }
+}
+function _retuneRuleList(rules, mode, budget, depth) {
+  if (!rules || depth > _PCS_MAX_DEPTH) return;
+  for (var j = 0; j < rules.length && budget.left > 0; j++) {
+    budget.left--;
+    var rule = rules[j];
+    if (!rule) continue;
+    if (rule.media) {
       var original = _pcsOriginal.get(rule);
-      if (original === undefined) {
-        if (!_PCS_ANY_RE.test(rule.media.mediaText || '')) continue;
+      if (original === undefined && _PCS_ANY_RE.test(rule.media.mediaText || '')) {
         original = rule.media.mediaText;
         _pcsOriginal.set(rule, original);
       }
-      var want = _retunedQuery(original, mode);
-      if (rule.media.mediaText !== want) {
-        try { rule.media.mediaText = want; } catch (e) {}
+      if (original !== undefined) {
+        var want = _retunedQuery(original, mode);
+        if (rule.media.mediaText !== want) {
+          try { rule.media.mediaText = want; } catch (e) {}
+        }
       }
     }
+    // Grouping rules carry their own list. Reading it can throw on a rule type
+    // the browser exposes without children, so it is asked for, not assumed.
+    var inner = null;
+    try { inner = rule.cssRules; } catch (e) {}
+    if (inner && inner.length) _retuneRuleList(inner, mode, budget, depth + 1);
   }
 }
 var _MW_THEME_RE = /\bskin-theme-clientpref-\S+/;
@@ -14221,12 +14241,13 @@ function _readerThemeMode() {
   var v = localStorage.getItem(SK.READER_THEME);
   return READER_THEME_MODES.indexOf(v) >= 0 ? v : 'auto';
 }
-// The concrete palette actually painted. Auto resolves a dark app to 'dark' (the
-// reader matches the surrounding chrome) and a light app to 'sepia' (warm paper
-// out of the box, rather than a stark white page).
+// The concrete palette actually painted. Auto resolves dark articles to 'dark'
+// and light ones to 'sepia' (warm paper out of the box, rather than a stark
+// white page). Articles, not the app: on Match Zimi they are the same answer,
+// and when someone has pinned articles dark they meant this one too.
 function _readerTheme() {
   var m = _readerThemeMode();
-  if (m === 'auto') return _appThemeIsDark() ? 'dark' : 'sepia';
+  if (m === 'auto') return _articlesAreDark() ? 'dark' : 'sepia';
   return READER_THEMES.indexOf(m) >= 0 ? m : 'dark';
 }
 function _readerAuto() { return _getStorageFlag(SK.READER_AUTO); }

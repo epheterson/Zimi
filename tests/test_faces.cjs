@@ -22,13 +22,18 @@ function grab(name) {
   throw new Error('unbalanced ' + name);
 }
 
+// `dark` here is whether ARTICLES are being drawn dark, which since
+// 2026-09-13 is its own setting (Article theme: Match Zimi / Dark / Light)
+// rather than the app theme read directly. Pinning articles dark in a light
+// Zimi has to open the capture's dark face — it is the same question the rest
+// of the reader now asks.
 let dark = true;
 const info = {
   twofaced: { main_path: 'A/index', faces: { main: 'light', other: { scheme: 'dark', path: 'A/index~other' } } },
   plain: { main_path: 'A/index' },
   darkmain: { main_path: 'A/index', faces: { main: 'dark', other: { scheme: 'light', path: 'A/index~other' } } },
 };
-const sandbox = { console, _zimInfo: (n) => info[n], _appThemeIsDark: () => dark };
+const sandbox = { console, _zimInfo: (n) => info[n], _articlesAreDark: () => dark };
 vm.createContext(sandbox);
 vm.runInContext(grab('_facePathFor'), sandbox);
 const pick = (zim, p) => vm.runInContext(`_facePathFor(${JSON.stringify(zim)}, ${JSON.stringify(p)})`, sandbox);

@@ -84,6 +84,11 @@ def _atomic_write_text(path, content):
 
 _env_pw_hash_cache = None  # cached hash for ZIMI_MANAGE_PASSWORD env var
 
+# Where libtorrent publishes a wheel. Kept in step with the marker in
+# pyproject.toml, and lowercase because platform.machine() is not: it says
+# AMD64 on Windows and x86_64 on everything else that means the same thing.
+_BT_WHEEL_ARCHES = ("x86_64", "amd64", "aarch64", "arm64", "x86")
+
 
 def _password_file():
     return os.path.join(_srv.ZIMI_DATA_DIR, "password")
@@ -5021,16 +5026,25 @@ def handle_manage_get(handler, parsed, params):
             hint_key = "bt_why_off"
             hint_vars = {"v": "ZIMI_BT=off"}
         elif status == "unavailable":
+            import platform as _platform
             import sys as _sys
 
-            # Give the exact next step. Wheels exist for CPython 3.9–3.13; on
-            # 3.14+ there's no wheel yet, so name that specifically instead of
-            # sending the user to a pip command that will fail.
+            # Give the exact next step, and never one that cannot work.
+            # libtorrent publishes no sdist, so "pip install zimi[bt]" is only
+            # good advice where a wheel exists: CPython 3.9–3.13, on x86_64 or
+            # 64-bit ARM. Two ways to miss it, and they are not the same news.
+            # 3.14 is temporary and the wheel will come; 32-bit ARM — which is
+            # what plain Raspberry Pi OS still installs — has never had one and
+            # is not going to.
             # A KEY and its variables, never a sentence. Everything else this
             # server sends a browser is a number or a name, and the client
             # writes the prose in the reader's language — a sentence composed
             # here is English in all ten of them.
-            if _sys.version_info >= (3, 14):
+            machine = (_platform.machine() or "").lower()
+            if machine and machine not in _BT_WHEEL_ARCHES:
+                hint_key = "bt_why_no_arch"
+                hint_vars = {"arch": _platform.machine()}
+            elif _sys.version_info >= (3, 14):
                 hint_key = "bt_why_no_wheel"
                 hint_vars = {
                     "version": f"{_sys.version_info.major}.{_sys.version_info.minor}"

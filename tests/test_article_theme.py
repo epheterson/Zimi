@@ -64,6 +64,20 @@ MEDIAWIKI_PAGE = """<!doctype html>
 </style></head><body><p>hello</p></body></html>"""
 
 
+# A dark block nested under @layer, which is what a modern build tool emits and
+# what a top-level-only walk would silently miss.
+LAYERED_PAGE = """<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  @layer base, theme;
+  @layer base { body { background: #ffffff; color: #111; } }
+  @layer theme {
+    @supports (color: color-mix(in srgb, red, blue)) {
+      @media (prefers-color-scheme: dark) { body { background: #101014; color: #eee; } }
+    }
+  }
+</style></head><body><p>hello</p></body></html>"""
+
+
 def _need_browser():
     try:
         from playwright.sync_api import sync_playwright  # noqa: F401
@@ -113,7 +127,10 @@ ASKER = "\n".join(
         "_PCS_ANY_RE", "_pcsOriginal", "_PCS_SCAN_MAX", "_MW_THEME_RE",
     )]
     + [_SRC[_SRC.index("var _MW_THEME_CLASS ="):_SRC.index("\n", _SRC.index("var _MW_THEME_CLASS ="))]]
-    + [_function(n) for n in ("_retunedQuery", "_retuneColorSchemeQueries", "_askArticleFor")]
+    + [_statement("_PCS_MAX_DEPTH")]
+    + [_function(n) for n in (
+        "_retunedQuery", "_retuneColorSchemeQueries", "_retuneRuleList", "_askArticleFor",
+    )]
 )
 
 
@@ -210,5 +227,28 @@ def test_handing_the_page_back_restores_what_the_zim_shipped():
             assert "skin-theme-clientpref-os" in klass, klass
             # And it is following the system again: a dark OS, a dark page.
             assert _luminance(page) < 0.2
+        finally:
+            b.close()
+
+
+@browser
+@pytest.mark.parametrize("os_scheme", ["light", "dark"])
+def test_a_dark_block_nested_under_layer_is_still_found(os_scheme):
+    """@layer and @supports both nest, and a build tool wraps nearly
+    everything in the first. A walk that only visited the top level of each
+    sheet would find nothing here and report the page as having no dark mode,
+    which would then get it inverted on top of the one it has."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        b, page = _harness(pw, os_scheme, LAYERED_PAGE)
+        try:
+            _ask(page, "dark")
+            assert _luminance(page) < 0.2, "the nested dark block was never reached"
+            _ask(page, "light")
+            assert _luminance(page) > 0.8
+            _ask(page, "")
+            # Handed back: it follows the system again, at whatever depth.
+            assert (_luminance(page) < 0.2) == (os_scheme == "dark")
         finally:
             b.close()
