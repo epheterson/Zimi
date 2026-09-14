@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "zimi"
-version = "1.9.3"
+version = "1.9.4"
 description = "Offline knowledge server for ZIM files — search and read Wikipedia, Stack Overflow and 50+ sources with no internet"
 readme = "README.md"
 license = {text = "MIT"}
@@ -40,18 +40,28 @@ dependencies = [
     # LAN peer discovery (mDNS/Zeroconf). Pure-Python; the peer ZIM-sharing
     # transport runs over plain HTTP so it needs no extra binary.
     "zeroconf>=0.130.0",
-    # BitTorrent accelerator (optional at runtime, attempted by default at
-    # install). Pulled automatically wherever a prebuilt wheel exists — CPython
-    # 3.9–3.13 on manylinux + musllinux (incl. aarch64), macOS, and Windows, so
-    # glibc AND Alpine get it for free. Gated below 3.14 because no 3.14 wheel
-    # is published yet and the project ships no sdist: without the marker pip
-    # would find no distribution there and fail the WHOLE install, breaking the
-    # HTTP soft-fallback contract. On 3.14+ Zimi runs HTTP-only and logs the
-    # one-line fix. (A py≤3.13 arch with no wheel at all — rare, e.g. some BSD —
-    # would still fail the install since there's no sdist; use the Docker image
-    # or `pip install zimi` without forcing BT there.) Force it anywhere with
-    # `pip install zimi[bt]`.
-    "libtorrent==2.0.*; python_version < '3.14'",
+    # BitTorrent accelerator: attempted at install, optional at runtime.
+    #
+    # libtorrent publishes NO sdist. So on any platform where a wheel is
+    # missing, pip finds no distribution at all and fails the WHOLE install
+    # rather than skipping an optional accelerator — which would break the
+    # HTTP soft-fallback contract in the loudest possible way. The marker
+    # therefore has to name exactly where wheels exist, on both axes:
+    #
+    #   Python   CPython 3.9-3.13. No 3.14 wheel yet; this one will age out.
+    #   Machine  x86_64 and 64-bit ARM (manylinux + musllinux, so glibc AND
+    #            Alpine), macOS on both, and Windows. There has never been an
+    #            armv7l build, which is what plain 32-bit Raspberry Pi OS
+    #            still installs — not an exotic platform for a project about
+    #            offline boxes in cupboards, and `pip install zimi` used to
+    #            fail outright there.
+    #
+    # Where it is skipped, Zimi runs HTTP-only and the Sharing pane says which
+    # of the two reasons applies. Force it anywhere with `pip install zimi[bt]`.
+    """libtorrent==2.0.*; python_version < '3.14' \
+       and (platform_machine == 'x86_64' or platform_machine == 'AMD64' \
+            or platform_machine == 'aarch64' or platform_machine == 'arm64' \
+            or platform_machine == 'x86')""",
 ]
 
 [project.optional-dependencies]

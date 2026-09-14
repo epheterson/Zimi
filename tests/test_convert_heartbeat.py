@@ -28,15 +28,20 @@ def test_a_silent_command_gets_a_heartbeat_line():
 
 
 def test_a_chatty_command_gets_no_heartbeat():
+    # 10x headroom between the gap and the heartbeat. It was 2.5x, which is a
+    # margin an idle laptop clears and a loaded CI runner does not: the suite
+    # failed here once on 2026-09-13 with a browser and a server alongside it,
+    # and passed alone a second later. A timing test that fails on load is
+    # reporting the load, not the behaviour.
     lines = []
     importer._run_stream(
         [
             sys.executable,
             "-c",
-            "import time\nfor i in range(4):\n print(i, flush=True); time.sleep(0.2)",
+            "import time\nfor i in range(4):\n print(i, flush=True); time.sleep(0.1)",
         ],
         lines.append,
-        heartbeat_s=0.5,
+        heartbeat_s=1.0,
     )
     assert not [ln for ln in lines if "still converting" in ln], lines
     assert lines == ["0", "1", "2", "3"]

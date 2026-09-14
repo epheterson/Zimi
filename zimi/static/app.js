@@ -70,7 +70,10 @@ var SK = {
   // Auto-darken raw (non-Reader-View) ZIM articles when the app is dark, so a
   // blinding-white ZIM page doesn't break dark mode. Tri-state: unset = follow
   // the app theme (on when dark); '1'/'0' = explicit override once toggled.
+  // Kept its 1.x name: the key stores whether to SIMULATE a dark mode on
+  // articles that have none. It used to decide darkness outright.
   DARKEN_ARTICLES: 'zimi_darken_articles',
+  ARTICLE_THEME: 'zimi_article_theme',
 };
 
 // ── Storage Helpers ──
@@ -126,13 +129,10 @@ function _setAppTheme(mode) {
   if (mode === 'auto') localStorage.removeItem(SK.APP_THEME);
   else localStorage.setItem(SK.APP_THEME, mode);
   _applyAppTheme();
-  // Repaint the segmented control's active state in place, and re-apply article
-  // darkening (its default follows the app theme, and the darken row's checked
-  // state may flip when the theme does).
+  // Repaint the segmented control's active state in place, and re-apply the
+  // article appearance: on Match Zimi, this is the setting it matches.
   var seg = document.getElementById('app-theme-seg');
   if (seg) seg.innerHTML = _appThemeSegInner();
-  var darkChk = document.getElementById('ms-darken-articles');
-  if (darkChk && localStorage.getItem(SK.DARKEN_ARTICLES) === null) darkChk.checked = _appThemeIsDark();
   try { _applyArticleDarken(_readerFrameDoc()); } catch (e) {}
   _reapplyReaderThemeIfAuto();
 }
@@ -160,47 +160,73 @@ function _bindAppThemeMedia() {
   else if (mq.addListener) mq.addListener(onFlip); // Safari <14
 }
 
-// ── Auto-darken raw articles ──
-// Whether the darken-articles adaptation should be applied to a raw ZIM page.
-// Default follows the app theme (on when dark); an explicit toggle overrides.
-function _darkenArticlesOn() {
-  var v = localStorage.getItem(SK.DARKEN_ARTICLES);
-  if (v === '1') return true;
-  if (v === '0') return false;
-  return _appThemeIsDark();
+// ── Article appearance ──
+// Two settings, and they answer different questions.
+//
+//   Article theme    WHEN articles are dark. Match Zimi (the default), or
+//                    pinned dark/light regardless.
+//   Simulate dark    WHAT to do about an article that has no dark mode of its
+//                    own — invert it, or leave it light.
+//
+// The chain is OS -> Zimi -> articles. Zimi may follow the system; articles
+// follow ZIMI. That middle link is the part that used to be missing: an
+// article with its own dark mode read prefers-color-scheme, which is the
+// SYSTEM's answer, so a dark Zimi on a light Mac served light articles.
+var ARTICLE_THEMES = ['match', 'dark', 'light'];
+function _articleTheme() {
+  var v = localStorage.getItem(SK.ARTICLE_THEME);
+  return ARTICLE_THEMES.indexOf(v) < 0 ? 'match' : v;
 }
-// Whether the person TICKED the box, as opposed to the default following the
-// app theme. The difference matters for a captured site: left to the default,
-// a capture keeps its own design; ticked, the person has asked for dark and
-// gets it. Before this, a ticked box did nothing on a capture (#65), which on
-// a library of captures reads as a checkbox that does nothing at all.
+function _articlesAreDark() {
+  var m = _articleTheme();
+  return m === 'match' ? _appThemeIsDark() : m === 'dark';
+}
+function _setArticleTheme(mode) {
+  if (ARTICLE_THEMES.indexOf(mode) < 0) mode = 'match';
+  if (mode === 'match') localStorage.removeItem(SK.ARTICLE_THEME);
+  else localStorage.setItem(SK.ARTICLE_THEME, mode);
+  var seg = document.getElementById('article-theme-seg');
+  if (seg) seg.innerHTML = _articleThemeSegInner();
+  try { _applyArticleDarken(_readerFrameDoc()); } catch (e) {}
+  _reapplyReaderThemeIfAuto();
+}
+// Default on. Most ZIMs have no dark mode, so off would mean switching Zimi to
+// dark leaves the whole library blazing white — which is the complaint this
+// setting exists to answer.
+function _darkenArticlesOn() {
+  return localStorage.getItem(SK.DARKEN_ARTICLES) !== '0';
+}
+// Whether the person TICKED the box, as opposed to leaving it at its default.
+// The difference matters for a captured site: left alone, a capture keeps the
+// design it was captured with; ticked, the person has asked for dark and gets
+// it. Before this, a ticked box did nothing on a capture (#65), which on a
+// library of captures reads as a checkbox that does nothing at all.
 function _darkenArticlesExplicit() {
   return localStorage.getItem(SK.DARKEN_ARTICLES) === '1';
 }
-// The decision, pure so it can be tested. Three answers, not two, because the
-// box has to work in BOTH directions (#65).
+// What to ask the page to paint. Pure, so the table below can be a test.
 //
-//   'darken'  inject the darkening style: a light page the person wants dark
-//   'light'   ask the page for its light face: unticked, and the page has a
-//             dark one it is showing because the browser prefers dark
-//   'leave'   touch nothing
+//   'dark' / 'light'  push the scheme: articles follow Zimi, not the system
+//   ''                hands the page back its own judgement
 //
-// The two-answer version was the bug. It only ever ADDED darkening to a light
-// page, so on a page carrying its own dark mode — every modern Wikipedia ZIM
-// follows the OS through `skin-theme-clientpref-os` — ticking did nothing
-// (already dark) and unticking did nothing (we only ever add). To someone
-// reading in dark mode that is a checkbox with no function, which is exactly
-// what was reported.
-function _darkenWanted(on, explicit, readerViewOn, loc, isCapture, declaresDark) {
-  return _articleAppearance(on, explicit, readerViewOn, loc, isCapture, declaresDark) === 'darken';
+// Reader View and the viewers we ship under /static/ are ours and own their
+// themes; pushing a scheme at them would fight their own control.
+function _articleScheme(readerViewOn, loc, articlesDark) {
+  if (readerViewOn) return '';
+  if ((loc || '').indexOf('/static/') === 0) return '';
+  return articlesDark ? 'dark' : 'light';
 }
-function _articleAppearance(on, explicit, readerViewOn, loc, isCapture, declaresDark) {
-  if (readerViewOn) return 'leave';                          // owns its themes
-  if ((loc || '').indexOf('/static/') === 0) return 'leave';  // pdf.js / viewers
-  if (!on) return declaresDark ? 'light' : 'leave';
-  if (isCapture && !explicit) return 'leave';                // keeps its design
-  if (declaresDark) return 'leave';                          // already dark
-  return 'darken';
+// And whether to simulate one. Only ever reached for a page that was ASKED for
+// dark and came back light — `paintsDark` is measured after the ask, not
+// guessed from the markup, because "has a dark mode" is not something a
+// document reliably declares.
+function _shouldSimulateDark(articlesDark, simulate, explicit, readerViewOn, loc, isCapture, paintsDark) {
+  if (!articlesDark) return false;
+  if (_articleScheme(readerViewOn, loc, articlesDark) === '') return false;
+  if (paintsDark) return false;             // it has its own; nothing to fake
+  if (!simulate) return false;
+  if (isCapture && !explicit) return false; // a capture keeps its own design
+  return true;
 }
 function _setDarkenArticles(on) {
   localStorage.setItem(SK.DARKEN_ARTICLES, on ? '1' : '0');
@@ -223,6 +249,28 @@ function _appThemeSegInner() {
       '" onclick="_setAppTheme(\'' + m + '\')">' + _APP_THEME_ICONS[m] +
       '<span>' + tH('theme_' + m) + '</span></button>';
   }).join('');
+}
+// Article theme reuses the app-theme control's icons and chrome — same shape,
+// same language, one row below it — with `match` in the slot where the app
+// control says `auto`. Both answer "follow something else, or pin it".
+var _ARTICLE_THEME_ICONS = {
+  match: _APP_THEME_ICONS.auto,
+  dark: _APP_THEME_ICONS.dark,
+  light: _APP_THEME_ICONS.light
+};
+function _articleThemeSegInner() {
+  var cur = _articleTheme();
+  return ARTICLE_THEMES.map(function(m) {
+    var on = m === cur;
+    return '<button type="button" class="app-theme-btn' + (on ? ' active' : '') +
+      '" role="radio" aria-checked="' + (on ? 'true' : 'false') +
+      '" onclick="_setArticleTheme(\'' + m + '\')">' + _ARTICLE_THEME_ICONS[m] +
+      '<span>' + tH('article_theme_' + m) + '</span></button>';
+  }).join('');
+}
+function _articleThemeSegHtml() {
+  return '<div class="app-theme-seg" id="article-theme-seg" role="radiogroup" aria-label="' +
+    escAttr(t('article_theme')) + '">' + _articleThemeSegInner() + '</div>';
 }
 function _appThemeSegHtml() {
   return '<div class="app-theme-seg" id="app-theme-seg" role="radiogroup" aria-label="' +
@@ -327,8 +375,9 @@ function _facePathFor(zimName, path) {
     // the capture is left exactly as it was asked for.
     var main = info.main_path || 'A/index';
     if (path !== main) return path;
-    var wantDark = _appThemeIsDark();
-    var want = wantDark ? 'dark' : 'light';
+    // The article theme, not the app theme: this is the article. Identical on
+    // Match Zimi, which is everyone who has not pinned it.
+    var want = _articlesAreDark() ? 'dark' : 'light';
     if (faces.other.scheme === want) return faces.other.path;
     return path;
   } catch (e) { return path; }
@@ -340,53 +389,148 @@ function _articleIsWebCapture() {
     return !!(z && (z.category === 'Created' || z.zimi_export));
   } catch (e) { return false; }
 }
+function _dropArticleDarken(doc) {
+  var existing = doc.getElementById(_ARTICLE_DARKEN_STYLE_ID);
+  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+}
 function _applyArticleDarken(doc) {
   if (!doc || !doc.documentElement) return;
-  var existing = doc.getElementById(_ARTICLE_DARKEN_STYLE_ID);
   var loc = '';
   try { loc = doc.defaultView.location.pathname; } catch (e) {}
-  var want = _articleAppearance(
-    _darkenArticlesOn(), _darkenArticlesExplicit(), _readerViewOn, loc,
-    _articleIsWebCapture(), _articleDeclaresDark(doc)
-  );
-  if (want === 'darken') {
-    if (!existing && doc.head) {
-      var st = doc.createElement('style');
-      st.id = _ARTICLE_DARKEN_STYLE_ID;
-      st.textContent = _ARTICLE_DARKEN_CSS;
-      doc.head.appendChild(st);
-    }
-    _markStylesheetPictures(doc);
-  } else if (existing && existing.parentNode) {
-    existing.parentNode.removeChild(existing);
+  var dark = _articlesAreDark();
+  var scheme = _articleScheme(_readerViewOn, loc, dark);
+  // Our own invert would answer the question we are about to ask, so it comes
+  // off first. Nothing repaints between here and the end of this function —
+  // the browser paints between tasks, not inside one.
+  _dropArticleDarken(doc);
+  _askArticleFor(doc, scheme);
+  // Asked for dark and STILL painting light: this page has no dark mode of its
+  // own. Measured rather than assumed — an unstyled ZIM article, a MediaWiki
+  // one and a captured site are indistinguishable from the outside until you
+  // ask them.
+  if (!_shouldSimulateDark(dark, _darkenArticlesOn(), _darkenArticlesExplicit(),
+                           _readerViewOn, loc, _articleIsWebCapture(),
+                           _articleDeclaresDark(doc))) return;
+  if (doc.head) {
+    var st = doc.createElement('style');
+    st.id = _ARTICLE_DARKEN_STYLE_ID;
+    st.textContent = _ARTICLE_DARKEN_CSS;
+    doc.head.appendChild(st);
   }
-  _askArticleFor(doc, want === 'light' ? 'light' : '');
+  _markStylesheetPictures(doc);
 }
 
-// Ask the page itself for a light face, using the two knobs a page can carry.
-// Passing '' hands it back whatever it chooses on its own.
+// Ask the page itself for a face. Passing '' hands it back its own judgement.
 //
-// `color-scheme` is the standard one: it decides how `prefers-color-scheme`
-// resolves inside this document, so a page whose dark mode is a media query
-// simply stops matching it. MediaWiki does not use a media query — Vector 2022
-// stamps `skin-theme-clientpref-os` on <html> and its own CSS reads that class
-// — so the class is swapped too. That covers every Wikipedia-family ZIM, which
-// is most of a typical library.
+// Three mechanisms, because a page can carry any of them:
+//
+//   1. `color-scheme` on the root. This governs the UA surface inside the
+//      document — scrollbars, form controls, the canvas behind a transparent
+//      body — and nothing else. It does NOT decide how prefers-color-scheme
+//      resolves. The comment that used to sit here said it did; measured in
+//      Chromium (2026-09-13), setting it on the article root, on the iframe
+//      element, and on the embedder all leave the query answering the OS.
+//      So the light-face half of #65 only ever worked on MediaWiki, whose
+//      theming is a class. On a captured site with a media-query dark mode it
+//      did nothing at all, silently.
+//
+//   2. The media queries themselves, rewritten in the page's own stylesheets.
+//      prefers-color-scheme cannot be overridden from outside, so the
+//      condition is edited instead — see _retuneColorSchemeQueries.
+//
+//   3. MediaWiki's theme class. Vector 2022 stamps `skin-theme-clientpref-os`
+//      on <html> and its CSS reads the class, no query involved. That covers
+//      every Wikipedia-family ZIM, which is most of a typical library.
+//
+// A page can also switch by script and answer to none of these — that is the
+// second face the CAPTURE stores, chosen at read time by _faceForTheme.
+//
+// Rewriting somebody's media query is a liberty, so it is surgical: the
+// prefers-color-scheme term alone is swapped for one that is always or never
+// true, and the rest of the condition (a width, a print target) is left
+// standing. `not all` on the whole rule would have thrown those away.
+var _PCS_ALWAYS = '(min-width: 0px)';
+var _PCS_NEVER = '(min-width: 999999px)';
+var _PCS_DARK_RE = /\(\s*prefers-color-scheme\s*:\s*dark\s*\)/gi;
+var _PCS_LIGHT_RE = /\(\s*prefers-color-scheme\s*:\s*light\s*\)/gi;
+var _PCS_ANY_RE = /prefers-color-scheme/i;
+// Pure, so the table of conditions can be a test.
+function _retunedQuery(original, mode) {
+  if (!mode) return original;
+  return original
+    .replace(_PCS_DARK_RE, mode === 'dark' ? _PCS_ALWAYS : _PCS_NEVER)
+    .replace(_PCS_LIGHT_RE, mode === 'light' ? _PCS_ALWAYS : _PCS_NEVER);
+}
+// The original condition text, so handing the page back restores it rather
+// than leaving whichever face we last chose. Keyed by the rule, so it is
+// collected with the document.
+var _pcsOriginal = new WeakMap();
+// Bounded like the picture scan, but generously: running out part-way is the
+// expensive failure, not the cheap one. A dark block left un-rewritten means
+// the page answers "light" when asked for dark, and then gets inverted on top
+// of the dark mode it already had. Measured at 8ms cold and 1-2ms warm over a
+// 12,060-rule sheet, once per article load and off the first paint, so the
+// ceiling is here for pathology rather than for ordinary pages.
+var _PCS_SCAN_MAX = 50000;
+// A dark block is not always at the top of a sheet: @layer and @supports both
+// nest, and a modern build tool emits @layer around nearly everything. Depth
+// is capped anyway — a query buried five levels down is not a theme.
+var _PCS_MAX_DEPTH = 4;
+function _retuneColorSchemeQueries(doc, mode) {
+  var sheets;
+  try { sheets = doc.styleSheets; } catch (e) { return; }
+  var budget = {left: _PCS_SCAN_MAX};
+  for (var i = 0; i < sheets.length && budget.left > 0; i++) {
+    var rules;
+    try { rules = sheets[i].cssRules; } catch (e) { continue; }  // cross-origin
+    _retuneRuleList(rules, mode, budget, 0);
+  }
+}
+function _retuneRuleList(rules, mode, budget, depth) {
+  if (!rules || depth > _PCS_MAX_DEPTH) return;
+  for (var j = 0; j < rules.length && budget.left > 0; j++) {
+    budget.left--;
+    var rule = rules[j];
+    if (!rule) continue;
+    if (rule.media) {
+      var original = _pcsOriginal.get(rule);
+      if (original === undefined && _PCS_ANY_RE.test(rule.media.mediaText || '')) {
+        original = rule.media.mediaText;
+        _pcsOriginal.set(rule, original);
+      }
+      if (original !== undefined) {
+        var want = _retunedQuery(original, mode);
+        if (rule.media.mediaText !== want) {
+          try { rule.media.mediaText = want; } catch (e) {}
+        }
+      }
+    }
+    // Grouping rules carry their own list. Reading it can throw on a rule type
+    // the browser exposes without children, so it is asked for, not assumed.
+    var inner = null;
+    try { inner = rule.cssRules; } catch (e) {}
+    if (inner && inner.length) _retuneRuleList(inner, mode, budget, depth + 1);
+  }
+}
 var _MW_THEME_RE = /\bskin-theme-clientpref-\S+/;
+var _MW_THEME_CLASS = {light: 'skin-theme-clientpref-day', dark: 'skin-theme-clientpref-night'};
 function _askArticleFor(doc, mode) {
   try {
     var html = doc.documentElement;
     html.style.colorScheme = mode || '';
-    if (_MW_THEME_RE.test(html.className)) {
-      if (mode === 'light') {
-        if (!html.dataset.zimiMwTheme) {
-          html.dataset.zimiMwTheme = html.className.match(_MW_THEME_RE)[0];
-        }
-        html.className = html.className.replace(_MW_THEME_RE, 'skin-theme-clientpref-day');
-      } else if (html.dataset.zimiMwTheme) {
-        html.className = html.className.replace(_MW_THEME_RE, html.dataset.zimiMwTheme);
-        delete html.dataset.zimiMwTheme;
+    _retuneColorSchemeQueries(doc, mode);
+    if (!_MW_THEME_RE.test(html.className)) return;
+    var want = _MW_THEME_CLASS[mode];
+    if (want) {
+      // Remember what the ZIM shipped, once, so handing the page back to
+      // itself later restores `-os` rather than whichever face we last chose.
+      if (!html.dataset.zimiMwTheme) {
+        html.dataset.zimiMwTheme = html.className.match(_MW_THEME_RE)[0];
       }
+      html.className = html.className.replace(_MW_THEME_RE, want);
+    } else if (html.dataset.zimiMwTheme) {
+      html.className = html.className.replace(_MW_THEME_RE, html.dataset.zimiMwTheme);
+      delete html.dataset.zimiMwTheme;
     }
   } catch (e) {}
 }
@@ -1357,6 +1501,12 @@ function submitPw() {
 // match a ZIM's 22px icon, tinted by the chrome via currentColor.
 var _ALMANAC_BC_ICON = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18"/><path d="M8 2.5v4M16 2.5v4"/><path d="M12 12l.9 1.9 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2-1.5-1.4 2-.3z"/></svg>';
 
+// Breadcrumb identity for the Create page — the + that opens it, at a ZIM
+// icon's 22px. Same reason the Almanac has one: it opens over whatever you
+// were looking at, and without an identity of its own that view's icon shows
+// through as if you were still in it.
+var _CREATE_BC_ICON = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M12 8.5v7M8.5 12h7"/></svg>';
+
 // ── Topbar ──
 function updateTopbar() {
   const activeSource = currentSource || readerSource;
@@ -1372,7 +1522,16 @@ function updateTopbar() {
   // The Almanac opens as an overlay over the home/ZIM view but is its own
   // destination, so it shows its OWN identity here (icon + "Almanac"), mirroring
   // how entering a ZIM does — never the underlying ZIM's icon bleeding through.
-  if (_almanacOpen) {
+  if (_createOpen) {
+    // Was showing the last-opened ZIM's icon, and the search box its name —
+    // "Lit Docs", on the page where you make a NEW one. Both were the view
+    // underneath showing through.
+    bcSep.style.display = 'inline';
+    bcIcon.style.display = 'inline-flex';
+    bcIcon.title = t('create_zim');
+    bcIcon.innerHTML = _CREATE_BC_ICON;
+    bcIcon.removeAttribute('href');
+  } else if (_almanacOpen) {
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
     bcIcon.title = t('almanac');
@@ -1446,7 +1605,7 @@ function updateTopbar() {
   // when the browser exposes the offline Web Speech API). Hidden when the
   // reader isn't the active surface — and read-aloud never appears at all
   // when unsupported, so no dead button.
-  var _readingArticle = readerOpen && !_almanacOpen;
+  var _readingArticle = readerOpen && !_almanacOpen && !_createOpen;
   // On a phone the reader topbar was carrying nine controls. Font size and
   // Read aloud are the two least-reached, and both already live in the ⋯
   // menu's reader group — so on a narrow viewport they fold there and leave
@@ -1472,12 +1631,16 @@ function updateTopbar() {
       /\.(pdf|epub)$/i.test(currentArticle.path || '');
     saveBtn.style.display = showSave ? 'flex' : 'none';
   }
-  // The Create page keeps the topbar it had. Hiding these put a wide desktop
-  // window into the mobile shape — three controls and a ⋯ — which reads as the
-  // toolbar breaking rather than as focus (#68). Almanac still hides them: it
-  // paints its own full-screen scene and the library chrome would sit on top
-  // of it, where Create is an ordinary page under the same bar.
-  var libraryChromeOff = mode === 'manage' || _almanacOpen;
+  // Library chrome is for moving around a library. Manage, Almanac and Create
+  // are all places you went deliberately, and none of them is a ZIM — Random,
+  // the library/bookmark button and the history trail have nothing to act on
+  // in any of them.
+  //
+  // Create was briefly excluded from this, because hiding them left a wide
+  // desktop window with three controls and a ⋯, which read as a broken toolbar
+  // rather than as focus (#68). The ⋯ is what made it read that way, and it is
+  // gone now; what is left is Language and the X, which is the whole job.
+  var libraryChromeOff = mode === 'manage' || _almanacOpen || _createOpen;
   randomBtn.style.display = libraryChromeOff ? 'none' : 'flex';
   document.getElementById('library-btn').style.display = libraryChromeOff ? 'none' : 'flex';
   // Create-a-ZIM lives in the ⋯ menu at every width — creation is an
@@ -1486,12 +1649,19 @@ function updateTopbar() {
   // style; the mobile !important rules still win) whenever the menu would
   // carry the Create row. See _buildTopbarMenuHtml.
   _createRememberCanShow();
-  // Also revealed while the Create page itself is up: with + gone from the
-  // topbar, the ⋯ menu is the only route OUT of that page (Manage, Language)
-  // on a wide viewport — hiding it there strands the admin.
+  // Except on the Create page, which has no ⋯ at all (#68). Everything it
+  // offered there was either already inline a few pixels to the left (Random,
+  // Language) or one tap away behind the X that closes the page (Manage) —
+  // and if an article happened to be open behind Create, the reader group came
+  // with it: Reader View and Read aloud, on a page with no article. Five rows,
+  // two duplicated and two inert.
+  // body.creating, not an inline style: the mobile rule that shows ⋯ is
+  // !important, which no inline display can outrank.
+  document.body.classList.toggle('creating', !!_createOpen);
   var moreBtn = document.querySelector('.topbar-more');
   if (moreBtn) {
-    moreBtn.style.display = _createMenuRowAvailable() ? 'flex' : '';
+    moreBtn.style.display = _createOpen ? 'none'
+      : (_createMenuRowAvailable() ? 'flex' : '');
     _syncTopbarMoreSolo(moreBtn);
   }
   document.getElementById('lang-selector-btn').style.display =
@@ -1499,7 +1669,12 @@ function updateTopbar() {
   _updateLibraryBtnIcon();
 
   // Search placeholder
-  if (_almanacOpen) {
+  if (_createOpen) {
+    // Same treatment as the Almanac below: the box stays and takes the page's
+    // name. It used to fall through to the ZIM underneath, so the header on
+    // the page where you make a NEW ZIM read "Lit Docs".
+    q.placeholder = t('create_zim');
+  } else if (_almanacOpen) {
     q.placeholder = t('almanac');
   } else if (currentSource) {
     q.placeholder = _zimTitle(currentSource);
@@ -10603,12 +10778,15 @@ function _msPreferencesHtml() {
     '<div class="ms-theme-label">' + tH('app_theme') + '</div>' +
     _appThemeSegHtml() +
     '<div class="ms-hint">' + tH('app_theme_hint') + '</div>' +
-    // Reading: article-appearance options, grouped apart from the app chrome.
-    // Darken raw (non-Reader-View) articles — default follows the app theme.
+    // Reading: article appearance, grouped apart from the app chrome. WHEN
+    // articles are dark, then what to do about the ones that cannot be.
     '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_reader_section') + '</div>' +
-    '<label class="ms-check"><input type="checkbox" id="ms-darken-articles"' + (darkenOn ? ' checked' : '') +
+    '<div class="ms-theme-label">' + tH('article_theme') + '</div>' +
+    _articleThemeSegHtml() +
+    '<div class="ms-hint">' + tH('article_theme_hint') + '</div>' +
+    '<label class="ms-check" style="margin-top:12px"><input type="checkbox" id="ms-darken-articles"' + (darkenOn ? ' checked' : '') +
       ' onchange="_setDarkenArticles(this.checked)"> ' + tH('darken_articles') + '</label>' +
-    '<div class="ms-hint">' + tH('darken_articles_hint') + '</div>' +
+    '<div class="ms-hint" id="ms-darken-hint">' + tH('darken_articles_hint') + '</div>' +
     '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
     '<label class="ms-check"><input type="checkbox"' + (showDiscover ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> ' + tH('show_discover') + '</label>' +
@@ -11226,9 +11404,20 @@ async function _renderSeedingSection() {
   // The server already works out WHY it is off — no wheel for this Python, or
   // the switch is set by the environment. Saying only "unavailable" leaves the
   // person with nothing to do about it (#70).
-  if (bt.hint) {
-    statusEl.innerHTML += '<div class="ms-hint bt-why">' + esc(bt.hint) + '</div>';
-    statusEl.title = bt.hint;
+  // A key and its variables, translated here. The server used to compose the
+  // sentence itself, which made it English in all ten languages.
+  //
+  // It goes UNDER the row's own text, where Mirror already puts its backup
+  // line — not in the toggle column beside the switch. A sentence in that
+  // column takes its width from the sentence, which left the row's description
+  // ("Download and seed ZIMs over BitTorrent.") squeezed onto two lines with a
+  // third of the card empty beside it, and the reason floating mid-row next to
+  // a switch it is not about (#74).
+  var whyEl = document.getElementById('ms-bt-why');
+  if (whyEl) {
+    var why = bt.hint_key ? t(bt.hint_key, bt.hint_vars || {}) : '';
+    whyEl.innerHTML = why ? esc(why) : '';
+    whyEl.hidden = !why;
   }
   window._btStatusHtml = statusEl.innerHTML;
   // Port reachability dot, updated in place (no row rebuild).
@@ -11253,12 +11442,20 @@ async function _renderSeedingSection() {
 // Mirror, Nearby. Env-locked settings render disabled with the env hint.
 // `inactive` greys a switch that depends on another being on (Mirror with
 // BT off): unmodifiable, but its saved state persists untouched.
-function _shareSwitch(key, on, locked, envVar, titleKey, descHtml, inactive, underSwitchHtml) {
+// noteHtml is a row-level note that must stay readable when the row is
+// inactive — the sentence saying WHY it is inactive. It sits beside the title
+// and description rather than inside them, because an inactive row dims its
+// text and a child cannot be less transparent than its parent: an exemption
+// rule nested inside the dimmed block would have been dead CSS.
+function _shareSwitch(key, on, locked, envVar, titleKey, descHtml, inactive, underSwitchHtml, noteHtml) {
   return '<div class="share-row' + (locked ? ' share-locked' : '') + (inactive ? ' share-inactive' : '') + '">' +
     '<div class="share-row-text">' +
-      '<div class="share-row-title">' + tH(titleKey) + '</div>' +
-      '<div class="share-row-desc">' + descHtml + '</div>' +
-      (locked ? '<div class="share-row-desc share-row-locknote">' + tH('env_controlled', {v: envVar}) + '</div>' : '') +
+      '<div class="share-row-dim">' +
+        '<div class="share-row-title">' + tH(titleKey) + '</div>' +
+        '<div class="share-row-desc">' + descHtml + '</div>' +
+        (locked ? '<div class="share-row-desc share-row-locknote">' + tH('env_controlled', {v: envVar}) + '</div>' : '') +
+      '</div>' +
+      (noteHtml || '') +
     '</div>' +
     '<div class="share-row-right">' +
       '<label class="switch"><input type="checkbox" role="switch"' + (on ? ' checked' : '') + ((locked || inactive) ? ' disabled' : '') +
@@ -11573,7 +11770,12 @@ async function _renderMirrorSection() {
   try { peers = await peersP; } catch (e) { peers = null; }
   const el = document.getElementById('ms-mirror-status');
   if (!el) return;
-  const btOn = !!m.torrent_enabled;
+  // Unavailable means the machine cannot do this, whatever the stored setting
+  // says. The switch showed ON beside the word "unavailable", which is the
+  // panel contradicting itself — and inviting a click that cannot work. It
+  // reads off and refuses the click; the reason underneath says why.
+  const btUsable = !bt || bt.status !== 'unavailable';
+  const btOn = !!m.torrent_enabled && btUsable;
   // disabled= when BT off OR the field is env-locked; lock= marks env-locked
   // fields so an in-place toggle never re-enables them.
   const disA = (locked) => ((!btOn || locked) ? ' disabled' : '');
@@ -11652,8 +11854,15 @@ async function _renderMirrorSection() {
 
   let h = '<div class="share-rows">' +
     _shareSwitch('torrent', btOn, m.torrent_env_locked, 'ZIMI_BT',
-      'share_bt_title', tH('share_bt_desc') + btControls,
-      false, '<div id="ms-bt-status" class="share-bt-status-right">' + (window._btStatusHtml || '') + '</div>') +
+      'share_bt_title', tH('share_bt_desc'),
+      // inactive, not locked: locked means an operator pinned it with an env
+      // var and says so. Unavailable is the machine's answer, and the reason
+      // line already gives it — claiming ZIMI_BT did this would be a lie.
+      !btUsable, '<div id="ms-bt-status" class="share-bt-status-right">' + (window._btStatusHtml || '') + '</div>',
+      // Reason first, then the fields it explains. Both sit outside the dimmed
+      // block: the reason so it stays readable, the fields because `disabled`
+      // already greys them and dimming twice reads as damage.
+      '<div class="ms-hint bt-why" id="ms-bt-why" hidden></div>' + btControls) +
     _shareSwitch('mirror', m.enabled, m.env_locked, 'ZIMI_BT',
       'share_mirror_title', tH('share_mirror_desc') + mirrorInner, !btOn, mirrorStatus) +
     _shareSwitch('peer_share', m.peer_share, m.peer_share_env_locked, 'ZIMI_NEARBY',
@@ -14051,12 +14260,13 @@ function _readerThemeMode() {
   var v = localStorage.getItem(SK.READER_THEME);
   return READER_THEME_MODES.indexOf(v) >= 0 ? v : 'auto';
 }
-// The concrete palette actually painted. Auto resolves a dark app to 'dark' (the
-// reader matches the surrounding chrome) and a light app to 'sepia' (warm paper
-// out of the box, rather than a stark white page).
+// The concrete palette actually painted. Auto resolves dark articles to 'dark'
+// and light ones to 'sepia' (warm paper out of the box, rather than a stark
+// white page). Articles, not the app: on Match Zimi they are the same answer,
+// and when someone has pinned articles dark they meant this one too.
 function _readerTheme() {
   var m = _readerThemeMode();
-  if (m === 'auto') return _appThemeIsDark() ? 'dark' : 'sepia';
+  if (m === 'auto') return _articlesAreDark() ? 'dark' : 'sepia';
   return READER_THEMES.indexOf(m) >= 0 ? m : 'dark';
 }
 function _readerAuto() { return _getStorageFlag(SK.READER_AUTO); }
@@ -14725,7 +14935,9 @@ function _readerViewToggle() {
 
 // Reflect availability + on/off state onto the desktop button and the ... menu row.
 function _syncReaderViewBtn() {
-  var avail = _readerViewAvailable();
+  // Never on Create, whatever is open behind it: there is no article there to
+  // read a reading mode into.
+  var avail = _readerViewAvailable() && !_createOpen;
   var btn = document.getElementById('readerview-btn');
   if (btn) {
     btn.style.display = avail ? 'flex' : 'none';
@@ -17414,7 +17626,7 @@ function _buildTopbarMenuHtml() {
   //     collapsed (mobile), where those inline buttons are hidden. On a wide
   //     viewport they stay inline, so listing them here too would duplicate them.
   var readerGroup = '';
-  if (readerOpen && !_almanacOpen) {
+  if (readerOpen && !_almanacOpen && !_createOpen) {
     var rvAvail = _readerViewAvailable();
     var rvOn = _readerViewOn && rvAvail;
     // 1. Reader View toggle — always first. A switch: tapping flips it and the
@@ -17458,10 +17670,10 @@ function _buildTopbarMenuHtml() {
     navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();openCreate()">' +
       _TBM_CREATE_ICON + ' ' + tH('create_zim') + '</button>';
   }
-  // The Create page hides the inline Random/Language/gear buttons at every
-  // width, so while it is open the ⋯ menu must carry the nav group even on a
-  // wide viewport — otherwise a desktop admin has no route to Manage at all.
-  if (_isNarrow() || _createOpen) {
+  // Narrow only. The Create page used to force this group on at every width,
+  // back when it hid the inline buttons; it keeps them now, so forcing it here
+  // listed Random and Language twice in the same bar (#68).
+  if (_isNarrow()) {
     navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH('random') + '</button>';
     if (!_getStorageFlag(SK.HIDE_LANG_CHOOSER)) navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
     // Manage row: while downloads are active, carry the count and route the tap
