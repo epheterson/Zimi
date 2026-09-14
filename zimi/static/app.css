@@ -2374,6 +2374,11 @@
        menu on mobile — the topbar is too tight to hold them inline. */
     #font-btn, #tts-btn, #readerview-btn, #newtab-btn { display: none !important; }
     .topbar-more { display: flex !important; }
+    /* ...except on Create, which has no ⋯ at any width (#68). The way out is
+       the Zimi breadcrumb here, the X on desktop; everything the menu held is
+       on the other side of it. Needs !important of its own to outrank the
+       line above, which an inline style cannot. */
+    body.creating .topbar-more { display: none !important; }
     .topbar.search-focused .create-btn,
     .topbar.search-focused .topbar-more,
     .topbar.search-focused .library-btn,

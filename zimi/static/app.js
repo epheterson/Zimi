@@ -1630,12 +1630,19 @@ function updateTopbar() {
   // style; the mobile !important rules still win) whenever the menu would
   // carry the Create row. See _buildTopbarMenuHtml.
   _createRememberCanShow();
-  // Also revealed while the Create page itself is up: with + gone from the
-  // topbar, the ⋯ menu is the only route OUT of that page (Manage, Language)
-  // on a wide viewport — hiding it there strands the admin.
+  // Except on the Create page, which has no ⋯ at all (#68). Everything it
+  // offered there was either already inline a few pixels to the left (Random,
+  // Language) or one tap away behind the X that closes the page (Manage) —
+  // and if an article happened to be open behind Create, the reader group came
+  // with it: Reader View and Read aloud, on a page with no article. Five rows,
+  // two duplicated and two inert.
+  // body.creating, not an inline style: the mobile rule that shows ⋯ is
+  // !important, which no inline display can outrank.
+  document.body.classList.toggle('creating', !!_createOpen);
   var moreBtn = document.querySelector('.topbar-more');
   if (moreBtn) {
-    moreBtn.style.display = _createMenuRowAvailable() ? 'flex' : '';
+    moreBtn.style.display = _createOpen ? 'none'
+      : (_createMenuRowAvailable() ? 'flex' : '');
     _syncTopbarMoreSolo(moreBtn);
   }
   document.getElementById('lang-selector-btn').style.display =
@@ -17593,7 +17600,7 @@ function _buildTopbarMenuHtml() {
   //     collapsed (mobile), where those inline buttons are hidden. On a wide
   //     viewport they stay inline, so listing them here too would duplicate them.
   var readerGroup = '';
-  if (readerOpen && !_almanacOpen) {
+  if (readerOpen && !_almanacOpen && !_createOpen) {
     var rvAvail = _readerViewAvailable();
     var rvOn = _readerViewOn && rvAvail;
     // 1. Reader View toggle — always first. A switch: tapping flips it and the
@@ -17637,10 +17644,10 @@ function _buildTopbarMenuHtml() {
     navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();openCreate()">' +
       _TBM_CREATE_ICON + ' ' + tH('create_zim') + '</button>';
   }
-  // The Create page hides the inline Random/Language/gear buttons at every
-  // width, so while it is open the ⋯ menu must carry the nav group even on a
-  // wide viewport — otherwise a desktop admin has no route to Manage at all.
-  if (_isNarrow() || _createOpen) {
+  // Narrow only. The Create page used to force this group on at every width,
+  // back when it hid the inline buttons; it keeps them now, so forcing it here
+  // listed Random and Language twice in the same bar (#68).
+  if (_isNarrow()) {
     navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH('random') + '</button>';
     if (!_getStorageFlag(SK.HIDE_LANG_CHOOSER)) navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
     // Manage row: while downloads are active, carry the count and route the tap
