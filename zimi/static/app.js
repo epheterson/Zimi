@@ -133,7 +133,6 @@ function _setAppTheme(mode) {
   // article appearance: on Match Zimi, this is the setting it matches.
   var seg = document.getElementById('app-theme-seg');
   if (seg) seg.innerHTML = _appThemeSegInner();
-  _syncSimulateDarkRow();
   try { _applyArticleDarken(_readerFrameDoc()); } catch (e) {}
   _reapplyReaderThemeIfAuto();
 }
@@ -188,19 +187,8 @@ function _setArticleTheme(mode) {
   else localStorage.setItem(SK.ARTICLE_THEME, mode);
   var seg = document.getElementById('article-theme-seg');
   if (seg) seg.innerHTML = _articleThemeSegInner();
-  _syncSimulateDarkRow();
   try { _applyArticleDarken(_readerFrameDoc()); } catch (e) {}
   _reapplyReaderThemeIfAuto();
-}
-// There is nothing to simulate on an article being drawn light, so the row
-// goes inert rather than sitting there looking live.
-function _syncSimulateDarkRow() {
-  var box = document.getElementById('ms-darken-articles');
-  if (!box) return;
-  var live = _articlesAreDark();
-  box.disabled = !live;
-  var row = box.closest('.ms-check');
-  if (row) row.classList.toggle('ms-check-inert', !live);
 }
 // Default on. Most ZIMs have no dark mode, so off would mean switching Zimi to
 // dark leaves the whole library blazing white — which is the complaint this
@@ -266,7 +254,7 @@ function _appThemeSegInner() {
 // same language, one row below it — with `match` in the slot where the app
 // control says `auto`. Both answer "follow something else, or pin it".
 var _ARTICLE_THEME_ICONS = {
-  match: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v13M6.5 11.5 12 17l5.5-5.5M5 20h14"/></svg>',
+  match: _APP_THEME_ICONS.auto,
   dark: _APP_THEME_ICONS.dark,
   light: _APP_THEME_ICONS.light
 };
@@ -9509,7 +9497,7 @@ function switchMs(section) {
   if (!pane) return;
   switch(section) {
     case 'library': pane.innerHTML = _msLibraryHtml(); break;
-    case 'preferences': pane.innerHTML = _msPreferencesHtml(); _syncSimulateDarkRow(); break;
+    case 'preferences': pane.innerHTML = _msPreferencesHtml(); break;
     case 'creator': pane.innerHTML = _msCreatorHtml(); break;
     case 'server': pane.innerHTML = _msServerHtml(); break;
     case 'users': _renderMsUsers(); break;

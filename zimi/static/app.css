@@ -1852,8 +1852,6 @@
   .share-inactive .share-row-dim,
   .share-inactive .share-row-right { opacity: 0.5; }
   .share-inactive .switch { cursor: default; }
-  /* Same idea one pane over: a checkbox with nothing to act on. */
-  .ms-check-inert { opacity: 0.5; cursor: default; }
   .share-port-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 12px; color: var(--text2); flex-wrap: wrap; }
   .share-port-label { font-family: monospace; font-size: 11px; }
   .share-upnp { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-size: 11px; }
