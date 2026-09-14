@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.9.4] - 2026-09-13
+
+### Added
+
+- Article theme: articles follow Zimi's theme, or pin them dark or light on their own.
+
+### Fixed
+
+- "Darken articles" is now "Simulate dark mode" and does one thing: darken ZIMs that have no dark mode of their own. It no longer forces pages that DO have one back to light.
+- Articles follow Zimi rather than the operating system, so a dark Zimi on a light computer no longer opens a light article (#65).
+- The Create page keeps its own header instead of showing the last ZIM you read, and drops the overflow menu and library controls that had nothing to act on there (#68).
+- The BitTorrent reason line sits under its own description instead of stretching the column beside it (#74), and is translated rather than English in every language.
+- The BitTorrent switch reads off and refuses the click when libtorrent is unavailable, instead of showing on beside the word "unavailable".
+- The Discover strip can be scrolled again on a desktop (#75).
+- Installing on 32-bit ARM, including Raspberry Pi OS, no longer fails outright: libtorrent publishes no wheel there, and pip was failing the whole install rather than skipping the accelerator.
+- Agents reading through MCP can use the path that search printed. Reported and fixed by @TwoRobotsinaTrenchcoat.
+
 ## [1.9.3] - 2026-09-13
 
 ### Added
