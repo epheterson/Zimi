@@ -19,9 +19,18 @@ cat docker-compose.nas.yml | ssh nas "cat > /volume1/docker/kiwix/docker-compose
 echo "  Files copied (incl. canonical NAS compose)"
 
 # BUILD FIRST, then swap. The order used to be down → build → up, which meant
-# the site was off for the entire --no-cache build (>10 minutes with Node and
-# Playwright in the image) and that ANY build failure left the NAS with no
-# container at all — not the old one, none. A dropped SSH did exactly that.
+# the site was off for the entire build and that ANY build failure left the NAS
+# with no container at all — not the old one, none. A dropped SSH did exactly
+# that.
+#
+# And a CACHED build, which this was not for a long time. The Dockerfile puts
+# `COPY zimi/` second to last, after pip, Playwright's 400MB Chromium, Node and
+# yt-dlp, precisely so a code change invalidates one small layer. --no-cache
+# threw all of that away and re-downloaded a browser to ship a changed JS file:
+# measured 2026-09-13, the same deploy takes 8 SECONDS cached and over ten
+# minutes without. Reach for --no-cache only when something outside the build
+# context changed — a pinned upstream you want re-fetched, a suspect cache —
+# never for a source edit.
 #
 # Built first, the running container keeps serving the old image the whole time
 # and a failed build changes nothing: `set -e` stops here and prod is still up.
@@ -32,7 +41,7 @@ echo "  Files copied (incl. canonical NAS compose)"
 # whole evening of "deploy=0" meant nothing. pipefail makes the build's own
 # status the one that counts, and `set -e` above then stops the script.
 set -o pipefail
-ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose build --no-cache" 2>&1 | tail -3
+ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose build" 2>&1 | tail -3
 
 # Only now, with a good image in hand, is it safe to take the site down. `down`
 # immediately before `up` also keeps the reason it was there in the first place:
