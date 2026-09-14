@@ -65,6 +65,20 @@ const mobileRule = css.indexOf('.topbar-more { display: flex !important; }');
 check(mobileRule > 0 && css.indexOf('body.creating .topbar-more') > mobileRule,
       'and the override comes after it in source order');
 
+// ── and the library chrome goes with it ────────────────────────────────────
+// Random, the library/bookmark button and the history trail act on a library.
+// Create is somewhere you went on purpose and is not a ZIM, the same as Manage
+// and Almanac, so it joins them. Eric, 2026-09-13: "Bookmark button makes no
+// sense there and history too... Language and X only?"
+const sync2 = js.slice(js.indexOf('var libraryChromeOff'),
+                       js.indexOf('_updateLibraryBtnIcon();'));
+check(/var libraryChromeOff = mode === 'manage' \|\| _almanacOpen \|\| _createOpen;/.test(sync2),
+      'Create hides the library chrome, like Manage and Almanac');
+check(/var _readingArticle = readerOpen && !_almanacOpen && !_createOpen;/.test(js),
+      'and an article open BEHIND Create does not leave its reader buttons in the bar');
+check(/_readerViewAvailable\(\) && !_createOpen/.test(fn('_syncReaderViewBtn')),
+      'including the Reader View button, which has no article to act on there');
+
 console.log('');
 if (failures) {
   console.error(failures + ' create-topbar check(s) failed');
