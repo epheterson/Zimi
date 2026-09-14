@@ -1501,6 +1501,12 @@ function submitPw() {
 // match a ZIM's 22px icon, tinted by the chrome via currentColor.
 var _ALMANAC_BC_ICON = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18"/><path d="M8 2.5v4M16 2.5v4"/><path d="M12 12l.9 1.9 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2-1.5-1.4 2-.3z"/></svg>';
 
+// Breadcrumb identity for the Create page — the + that opens it, at a ZIM
+// icon's 22px. Same reason the Almanac has one: it opens over whatever you
+// were looking at, and without an identity of its own that view's icon shows
+// through as if you were still in it.
+var _CREATE_BC_ICON = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M12 8.5v7M8.5 12h7"/></svg>';
+
 // ── Topbar ──
 function updateTopbar() {
   const activeSource = currentSource || readerSource;
@@ -1516,7 +1522,16 @@ function updateTopbar() {
   // The Almanac opens as an overlay over the home/ZIM view but is its own
   // destination, so it shows its OWN identity here (icon + "Almanac"), mirroring
   // how entering a ZIM does — never the underlying ZIM's icon bleeding through.
-  if (_almanacOpen) {
+  if (_createOpen) {
+    // Was showing the last-opened ZIM's icon, and the search box its name —
+    // "Lit Docs", on the page where you make a NEW one. Both were the view
+    // underneath showing through.
+    bcSep.style.display = 'inline';
+    bcIcon.style.display = 'inline-flex';
+    bcIcon.title = t('create_zim');
+    bcIcon.innerHTML = _CREATE_BC_ICON;
+    bcIcon.removeAttribute('href');
+  } else if (_almanacOpen) {
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
     bcIcon.title = t('almanac');
@@ -1654,7 +1669,12 @@ function updateTopbar() {
   _updateLibraryBtnIcon();
 
   // Search placeholder
-  if (_almanacOpen) {
+  if (_createOpen) {
+    // Same treatment as the Almanac below: the box stays and takes the page's
+    // name. It used to fall through to the ZIM underneath, so the header on
+    // the page where you make a NEW ZIM read "Lit Docs".
+    q.placeholder = t('create_zim');
+  } else if (_almanacOpen) {
     q.placeholder = t('almanac');
   } else if (currentSource) {
     q.placeholder = _zimTitle(currentSource);

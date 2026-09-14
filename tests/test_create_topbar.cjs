@@ -79,6 +79,28 @@ check(/var _readingArticle = readerOpen && !_almanacOpen && !_createOpen;/.test(
 check(/_readerViewAvailable\(\) && !_createOpen/.test(fn('_syncReaderViewBtn')),
       'including the Reader View button, which has no article to act on there');
 
+// ── and the header says where you are ─────────────────────────────────────
+// Create opens over whatever you were looking at. Without an identity of its
+// own, that view showed through twice: the breadcrumb wore the last ZIM's icon
+// and the search box wore its name — "Lit Docs", on the page where you make a
+// new one. The Almanac already had this right, and says so in a comment:
+// "never the underlying ZIM's icon bleeding through".
+const topbar = fn('updateTopbar');
+check(/if \(_createOpen\) \{[\s\S]*?bcIcon\.innerHTML = _CREATE_BC_ICON;/.test(topbar),
+      'Create wears its own breadcrumb identity');
+check(topbar.indexOf('if (_createOpen)') < topbar.indexOf('} else if (activeSource)'),
+      'and it is asked before the underlying source, or the source still wins');
+check(/bcIcon\.removeAttribute\('href'\)/.test(topbar.slice(topbar.indexOf('if (_createOpen)'),
+                                                            topbar.indexOf('_almanacOpen) {'))),
+      'identity only — there is no destination behind it to link to');
+// The search box keeps its place and takes the page's name, exactly as the
+// Almanac does one branch below. Before, it fell through to the ZIM behind.
+check(/if \(_createOpen\) \{\s*\n[^}]*q\.placeholder = t\('create_zim'\);/.test(topbar),
+      'the search box wears the page name, not the ZIM underneath');
+check(topbar.indexOf("q.placeholder = t('create_zim')") <
+      topbar.indexOf('q.placeholder = _zimTitle(currentSource)'),
+      'and that branch is reached before the source one');
+
 console.log('');
 if (failures) {
   console.error(failures + ' create-topbar check(s) failed');
