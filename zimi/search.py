@@ -2174,6 +2174,35 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
     return result
 
 
+def unglue_zim_path(archive, zim_name, path):
+    """``path``, with a redundant "<zim>/" prefix removed only if it is one.
+
+    MCP prints a result as "zim" and "path" separately now, but an agent that
+    saw the older glued form, or that builds the string itself, still sends
+    "wikipedia/A/Whale" as the path. Without this, read() answers "not found"
+    for an article that plainly exists (openzim/Zimi#54, reported with the fix
+    by TwoRobotsinaTrenchcoat).
+
+    The archive is asked FIRST. A ZIM is free to contain an entry whose own
+    path begins with the ZIM's name, and stripping unconditionally would make
+    that entry permanently unreachable to answer a question nobody asked. The
+    cost of asking is one lookup, and only on paths that carry the prefix.
+
+    Any exception from that lookup means "not there", deliberately: libzim
+    raises KeyError for a missing entry, but this runs on a string that came
+    from outside the process and deciding what to do with it must not be the
+    thing that fails.
+    """
+    prefix = f"{zim_name}/"
+    if not path.startswith(prefix):
+        return path
+    try:
+        archive.get_entry_by_path(path)
+    except Exception:
+        return path[len(prefix) :]
+    return path
+
+
 def read_article(zim_name, article_path, max_length=None):
     """Read a specific article from a ZIM file. Returns plain text. Handles HTML and PDF."""
     if max_length is None:
@@ -2182,14 +2211,8 @@ def read_article(zim_name, article_path, max_length=None):
     if zim_name not in zims:
         return {"error": f"ZIM '{zim_name}' not found. Available: {list(zims.keys())}"}
 
-    # Defensive: strip a leading "{zim_name}/" prefix if the caller passed a
-    # glued "zim/path" string (as produced by search/suggest output formatting).
-    # Agents naturally copy the combined path; without this, read() fails with
-    # "Article not found" even though the article exists.
-    if article_path.startswith(f"{zim_name}/"):
-        article_path = article_path[len(f"{zim_name}/"):]
-
     archive = _srv.get_archive(zim_name) or _srv.open_archive(zims[zim_name])
+    article_path = unglue_zim_path(archive, zim_name, article_path)
     try:
         try:
             entry = archive.get_entry_by_path(article_path)
@@ -2314,11 +2337,8 @@ def chunk_article(
     if zim_name not in zims:
         return {"error": "not_found"}
 
-    # Defensive: strip leading "{zim_name}/" prefix (same as read_article).
-    if path.startswith(f"{zim_name}/"):
-        path = path[len(f"{zim_name}/"):]
-
     archive = _srv.get_archive(zim_name) or _srv.open_archive(zims[zim_name])
+    path = unglue_zim_path(archive, zim_name, path)
     try:
         try:
             entry = archive.get_entry_by_path(path)

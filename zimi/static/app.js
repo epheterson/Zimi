@@ -4859,6 +4859,12 @@ function _dismissDiscover() {
 // each card type is a separate file with its own render/fetch logic.
 // See FEATURED_ZIMS for the content slot registry.
 // ─────────────────────────────────────────────────────────────────────────
+// Only a dated cache key, never a setting that happens to share a prefix.
+// The stamp is a hex build fragment today. The class is wider than that on
+// purpose: if its shape ever changes, a too-narrow pattern stops matching
+// the app's OWN cache keys and they pile up forever, silently. The date is
+// what makes a key safe to delete, not the stamp.
+var _DISCOVER_CACHE_KEY_RE = /^zimi_[A-Za-z0-9.-]+_\d{4}-\d{2}-\d{2}$/;
 function _loadDiscover() {
   if (_discoverLoading) return;
   var el = document.getElementById('discover-row');
@@ -4873,12 +4879,23 @@ function _loadDiscover() {
   // of the Day all the next day.
   var today = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2) + '-' + ('0' + now.getDate()).slice(-2);
   var cacheKey = 'zimi_' + (window.__ZIMI_CONFIG && __ZIMI_CONFIG.discoverStamp || 'disc6') + '_' + today;
-  // Clean up old Discover cache keys (from previous days or old versions)
+  // Clean up old Discover cache keys (from previous days or old versions).
+  //
+  // Matched on SHAPE, not on a prefix. This used to delete anything starting
+  // "zimi_d", which is also how zimi_darken_articles, zimi_disc_scroll and
+  // zimi_dl_filter start: every Discover render quietly deleted the person's
+  // settings, so they snapped back to their defaults. That is the whole of
+  // issue #65 ("Darken articles is always set"), which we had been chasing in
+  // the darkening logic for three releases while the setting was being
+  // deleted underneath it.
+  //
+  // A cache key is zimi_<stamp>_<YYYY-MM-DD> and nothing else is, so the date
+  // is what makes it safe to remove.
   try {
     var staleKeys = [];
     for (var si = 0; si < localStorage.length; si++) {
       var k = localStorage.key(si);
-      if (k && k.indexOf('zimi_d') === 0 && k !== cacheKey) staleKeys.push(k);
+      if (k && k !== cacheKey && _DISCOVER_CACHE_KEY_RE.test(k)) staleKeys.push(k);
     }
     staleKeys.forEach(function(k) { localStorage.removeItem(k); });
   } catch(e) {}
