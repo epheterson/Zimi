@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.9.5] - 2026-09-14
+
+### Fixed
+
+- Settings stopped being deleted. Discover's cache cleanup was removing any stored key whose name began the same way its own did, which quietly reset "Darken articles", the Discover scroll position and the downloads filter every time the home screen drew (#65).
+- Agents reading through MCP can pass a path with or without the source name in front of it, on every tool that takes one.
+
 ## [1.9.4] - 2026-09-13
 
 ### Added
