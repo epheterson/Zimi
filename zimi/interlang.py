@@ -1297,6 +1297,14 @@ def get_article_languages(zim_name, article_path):
     base_path, _fragment = _srv.split_entry_fragment(article_path)
     article_path = base_path
 
+    # The fourth agent-facing entry point that takes a path, and the one the
+    # #54 fix missed. read() and get_chunks() both tolerate a glued
+    # "zim/path"; this one answered "no translations" for an article that has
+    # them, which reads as an absent feature rather than a rejected argument.
+    from zimi.search import unglue_zim_path
+
+    article_path = unglue_zim_path(archive, zim_name, article_path)
+
     # Get article title from path
     title = article_path
     if title.startswith("A/"):

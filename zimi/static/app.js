@@ -4860,7 +4860,11 @@ function _dismissDiscover() {
 // See FEATURED_ZIMS for the content slot registry.
 // ─────────────────────────────────────────────────────────────────────────
 // Only a dated cache key, never a setting that happens to share a prefix.
-var _DISCOVER_CACHE_KEY_RE = /^zimi_[a-z0-9]+_\d{4}-\d{2}-\d{2}$/;
+// The stamp is a hex build fragment today. The class is wider than that on
+// purpose: if its shape ever changes, a too-narrow pattern stops matching
+// the app's OWN cache keys and they pile up forever, silently. The date is
+// what makes a key safe to delete, not the stamp.
+var _DISCOVER_CACHE_KEY_RE = /^zimi_[A-Za-z0-9.-]+_\d{4}-\d{2}-\d{2}$/;
 function _loadDiscover() {
   if (_discoverLoading) return;
   var el = document.getElementById('discover-row');
