@@ -2187,6 +2187,11 @@ def unglue_zim_path(archive, zim_name, path):
     path begins with the ZIM's name, and stripping unconditionally would make
     that entry permanently unreachable to answer a question nobody asked. The
     cost of asking is one lookup, and only on paths that carry the prefix.
+
+    Any exception from that lookup means "not there", deliberately: libzim
+    raises KeyError for a missing entry, but this runs on a string that came
+    from outside the process and deciding what to do with it must not be the
+    thing that fails.
     """
     prefix = f"{zim_name}/"
     if not path.startswith(prefix):

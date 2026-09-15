@@ -1301,6 +1301,11 @@ def get_article_languages(zim_name, article_path):
     # #54 fix missed. read() and get_chunks() both tolerate a glued
     # "zim/path"; this one answered "no translations" for an article that has
     # them, which reads as an absent feature rather than a rejected argument.
+    #
+    # Imported HERE, not at the top: search.py imports this module (for
+    # _STOPWORDS) and this module imports search.py, so the two are already a
+    # cycle that only resolves because search's import of interlang comes late
+    # in the file. A second module-level edge would close it.
     from zimi.search import unglue_zim_path
 
     article_path = unglue_zim_path(archive, zim_name, article_path)
