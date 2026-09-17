@@ -15383,6 +15383,122 @@ function _readerPrintCleanup() {
 // opening it boots full Zimi chrome and lands straight on the article — unlike a
 // raw /w/<zim>/<path> link, which servers ambiguously serve as bare ZIM content
 // when the Sec-Fetch-Dest hint is missing (older Safari, in-app browsers).
+// ── An interactive map inside a ZIM ────────────────────────────────────────
+//
+// StreetZim publishes offline OpenStreetMap regions as ZIMs: MapLibre, vector
+// tiles, a place index, satellite and terrain, all inside the file. They work
+// in the reader, but only as a page: the URL never changes as you move, so
+// where you were was unbookmarkable, unshareable, and lost on reload. A map
+// you cannot return to a place on is a picture of a map.
+//
+// The author exposes the MapLibre instance on window, which is the whole
+// reason this is possible without a change on their side. Nothing here assumes
+// their internals beyond that handle and MapLibre's own public API.
+//
+// The position rides in the URL hash, in the same z/lat/lng order OSM has used
+// for years. One mechanism then covers everything: a shared link opens where
+// you were, a bookmark saves it because a bookmark saves a URL, and Back and
+// Forward walk between places for free.
+var _MAP_HANDLES = ['__szMap', '__streetzim_map'];
+var _MAP_HASH_RE = /(?:^|[#&])map=(\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)/;
+// Long enough that a drag writes one entry rather than forty, short enough
+// that letting go and hitting Bookmark records where you actually are.
+var _MAP_HASH_DEBOUNCE_MS = 450;
+var _mapHashTimer = null;
+var _mapWatched = null;
+
+// The map in the reader frame, or null. Every access is guarded: the frame is
+// same-origin but its contents are a third party's, and a page that defines
+// the global as something else must not break the reader.
+function _readerMap() {
+  try {
+    var frame = document.getElementById('reader-frame');
+    var win = frame && frame.contentWindow;
+    if (!win) return null;
+    for (var i = 0; i < _MAP_HANDLES.length; i++) {
+      var candidate = win[_MAP_HANDLES[i]];
+      if (candidate && typeof candidate.getCenter === 'function' &&
+          typeof candidate.getZoom === 'function' && typeof candidate.jumpTo === 'function') {
+        return candidate;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+function mapPositionHash(zoom, lat, lng) {
+  // Two decimals of zoom and five of position: about a metre, which is finer
+  // than anyone points at and short enough to read in a URL.
+  return 'map=' + (+zoom).toFixed(2) + '/' + (+lat).toFixed(5) + '/' + (+lng).toFixed(5);
+}
+
+function parseMapHash(hash) {
+  var m = _MAP_HASH_RE.exec(hash || '');
+  if (!m) return null;
+  var pos = {zoom: parseFloat(m[1]), lat: parseFloat(m[2]), lng: parseFloat(m[3])};
+  // A hash is user-editable and arrives from a shared link. Refuse anything
+  // off the globe rather than handing MapLibre a NaN or a pole.
+  if (!isFinite(pos.zoom) || !isFinite(pos.lat) || !isFinite(pos.lng)) return null;
+  if (pos.zoom < 0 || pos.zoom > 24) return null;
+  if (pos.lat < -90 || pos.lat > 90 || pos.lng < -180 || pos.lng > 180) return null;
+  return pos;
+}
+
+// Follow the map, writing where it is into the address bar.
+function _watchReaderMap() {
+  var map = _readerMap();
+  if (!map || _mapWatched === map) return;
+  _mapWatched = map;
+  var onMove = function() {
+    clearTimeout(_mapHashTimer);
+    _mapHashTimer = setTimeout(function() {
+      try {
+        var c = map.getCenter();
+        var base = location.pathname + location.search;
+        // replaceState, never push: a pan is not a navigation, and pushing
+        // would bury the page you came from under a hundred entries.
+        history.replaceState(history.state, '', base + '#' + mapPositionHash(map.getZoom(), c.lat, c.lng));
+      } catch (e) {}
+    }, _MAP_HASH_DEBOUNCE_MS);
+  };
+  try { map.on('moveend', onMove); } catch (e) {}
+}
+
+// The hash is the source of truth for where the map is, so react to it
+// changing rather than only to the frame loading. Opening a bookmarked place
+// while already on that map is the case that needs this: the article does not
+// change, so nothing reloads and the load handler never runs. It also covers
+// Back and Forward between two places, and editing the URL by hand.
+window.addEventListener('hashchange', function() {
+  var pos = parseMapHash(location.hash);
+  if (!pos) return;
+  var map = _readerMap();
+  if (!map) return;  // not a map page; the load handler will deal with it
+  try {
+    var c = map.getCenter();
+    // Already there: jumping again would fight a drag that is still settling.
+    if (Math.abs(c.lat - pos.lat) < 1e-5 && Math.abs(c.lng - pos.lng) < 1e-5 &&
+        Math.abs(map.getZoom() - pos.zoom) < 0.01) return;
+    map.jumpTo({center: [pos.lng, pos.lat], zoom: pos.zoom});
+  } catch (e) {}
+});
+
+// And put it back where the link says, once the map exists.
+var _MAP_RESTORE_TRIES = 40;
+function _restoreMapPosition(pos, tries) {
+  if (!pos) return;
+  var map = _readerMap();
+  if (!map) {
+    if ((tries || 0) >= _MAP_RESTORE_TRIES) return;
+    // The map is built after the frame loads, so there is nothing to aim at
+    // yet. Poll briefly rather than guess a delay.
+    setTimeout(function() { _restoreMapPosition(pos, (tries || 0) + 1); }, 150);
+    return;
+  }
+  try { map.jumpTo({center: [pos.lng, pos.lat], zoom: pos.zoom}); } catch (e) {}
+  _watchReaderMap();
+}
+
 function _articleDeepLinkPath(zim, path) {
   return '/?a=' + encodeURIComponent(zim + '/' + path);
 }
@@ -15571,6 +15687,10 @@ function openReader(url) {
     };
     if (_replayAlive) setTimeout(_settlePasses, REPLAY_SETTLE_MS);
     else _settlePasses();
+    // A map ZIM: put it where the link says, then follow it. Both are no-ops
+    // on every other kind of page, since neither finds a map handle.
+    _restoreMapPosition(parseMapHash(location.hash), 0);
+    setTimeout(_watchReaderMap, 400);
     // Inject responsive CSS + scroll-to-top button for mobile
     try {
       // Web-mirror pages (alive engine, zimit) ship a browser's-eye recording of
@@ -16183,6 +16303,7 @@ function _bmBookmarkRowHtml(b, depth) {
   var pad = 6 + depth * _BM_INDENT;
   return '<div class="bm-row bm-bk' + (missing ? ' bm-missing' : '') + '"' +
     ' data-zim="' + escAttr(b.zim) + '" data-path="' + escAttr(b.path) + '"' +
+    (b.pos ? ' data-pos="' + escAttr(b.pos) + '"' : '') +
     ' data-fid="' + escAttr(_bkFolderOf(b)) + '" data-depth="' + depth + '"' +
     ' style="padding-left:' + pad + 'px" role="treeitem" aria-level="' + (depth + 1) + '" tabindex="-1">' +
     // Stands in for the folder rows' twist so a bookmark sits to the RIGHT of
@@ -16515,7 +16636,18 @@ function _bmEnsureBound() {
     } else if (row.classList.contains('bm-bk')) {
       if (row.classList.contains('bm-missing')) { _showToast(t('bm_source_missing')); return; }
       _closeLibraryPanel();
-      openArticle(row.dataset.zim, row.dataset.path, row.querySelector('.bm-name') ? row.querySelector('.bm-name').textContent : '');
+      // A bookmarked map opens at the place it was bookmarked. The hash is
+      // set before openArticle so the frame's load handler, which is what
+      // actually moves the map, already sees it.
+      var bkTitle = row.querySelector('.bm-name') ? row.querySelector('.bm-name').textContent : '';
+      var bkPos = row.dataset.pos || '';
+      openArticle(row.dataset.zim, row.dataset.path, bkTitle, bkPos ? {pos: bkPos} : undefined);
+      // Already on this map: nothing reloaded, so nudge the hash to move it.
+      // Assigning fires hashchange; a replaceState would change the bar and
+      // tell nobody.
+      if (bkPos && location.hash.indexOf(bkPos) < 0) {
+        try { location.hash = bkPos; } catch (e) {}
+      }
     }
   });
 
@@ -16805,10 +16937,15 @@ function _bkFind(zim, path) {
   return _bkLoad().findIndex(function(b) { return b.zim === zim && b.path === path; });
 }
 function _bkIsBookmarked(zim, path) { return _bkFind(zim, path) >= 0; }
-function _bkAdd(zim, path, title) {
+function _bkAdd(zim, path, title, pos) {
   var bk = _bkLoad();
   if (_bkFind(zim, path) >= 0) return; // already bookmarked
-  bk.unshift({ zim: zim, path: path, title: title || _titleFromPath(path), timestamp: Date.now() });
+  var record = { zim: zim, path: path, title: title || _titleFromPath(path), timestamp: Date.now() };
+  // An offline map is one page whose whole meaning is WHERE you are, so a
+  // bookmark of it has to carry the place. Optional and absent everywhere
+  // else, so older records and every ordinary article are unchanged.
+  if (pos) record.pos = pos;
+  bk.unshift(record);
   if (bk.length > _BK_MAX) bk.length = _BK_MAX;
   _bkSave();
 }
@@ -17332,7 +17469,18 @@ function toggleBookmark() {
   if (_bkIsBookmarked(zim, path)) {
     _bkRemove(zim, path);
   } else {
-    _bkAdd(zim, path, title);
+    // Where the map is, if this is one. Read at the moment of bookmarking
+    // rather than from the URL, so it is right even if the debounce has not
+    // fired yet.
+    var pos = null;
+    try {
+      var map = _readerMap();
+      if (map) {
+        var c = map.getCenter();
+        pos = mapPositionHash(map.getZoom(), c.lat, c.lng);
+      }
+    } catch (e) {}
+    _bkAdd(zim, path, title, pos);
   }
   _updateLibraryBtnIcon();
 }
@@ -17378,6 +17526,12 @@ function _updateLibraryBtnIcon() {
   }
 }
 function openArticle(zim, path, title, opts) {
+  // Leaving a map: stop following it, and drop its position from the address
+  // so the next article does not inherit a place it has nothing to do with.
+  if (_mapWatched) {
+    _mapWatched = null;
+    clearTimeout(_mapHashTimer);
+  }
   // Any normal article open cancels a pending "return to almanac" intent; the
   // almanac deep-link path re-stamps it immediately after this call returns.
   _almReturnScroll = null;
@@ -17420,6 +17574,11 @@ function openArticle(zim, path, title, opts) {
   // and being a query on '/', not a '.pdf' path, it also sidesteps the PDF
   // raw-binary-on-reload hazard the old ?view=1 kludge guarded against.
   var canonUrl = _articleDeepLinkPath(zim, path);
+  // A place on a map travels WITH the article, in the one URL write openArticle
+  // already does. Setting the hash separately either loses it (this function
+  // rewrites the URL straight after) or races the frame load, depending on
+  // which side of the call it happens.
+  if (opts && opts.pos) canonUrl += '#' + opts.pos;
   var st = { mode: 'reader', zim: zim, path: path };
   // Deep-link boot replaces the boot entry so the history stack is exactly
   // [article] — browser Back then leaves the site instead of surfacing a phantom
@@ -17998,7 +18157,20 @@ document.addEventListener('keydown', e => {
 });
 
 // ── History ──
+// Where the URL was, ignoring the hash. Changing only the hash is not a
+// navigation, and treating it as one reloaded the reader frame: on a map that
+// meant every jump to a saved place rebuilt the map and threw you back to the
+// region's default view.
+var _lastRoutedUrl = location.pathname + location.search;
+
 window.addEventListener('popstate', (e) => {
+  var here = location.pathname + location.search;
+  if (here === _lastRoutedUrl && _readerMap()) {
+    // Same page, different place on the same map. The hashchange handler
+    // moves it; there is nothing here to route.
+    return;
+  }
+  _lastRoutedUrl = here;
   hideSuggest();
   _hideHistoryTrail();
   if (_createOpen) { closeCreate(); return; }
