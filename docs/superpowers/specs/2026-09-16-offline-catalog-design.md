@@ -94,7 +94,7 @@ The tar index is built once at first use: ~1,700 members, cheap.
 
 ### `scripts/build_catalog_snapshot.py` (new)
 
-Run in a release workflow, not on every CI run. Fetches the OPDS catalog, fetches each `.meta4`, derives infohashes, fetches and re-encodes icons, writes both assets, commits them.
+Run from `.github/workflows/catalog-snapshot.yml`, dispatched by hand before a release, never on a schedule or a push. Fetches the OPDS catalog, fetches each `.meta4`, derives infohashes, fetches and re-encodes icons, writes both assets, commits them.
 
 **Incremental, keyed on the filename.** A Kiwix ZIM's filename carries its build date (`wikipedia_en_all_2026-07.zim`), so an unchanged filename is the same bytes and therefore the same infohash. The build loads the previous snapshot and reuses the magnet and icon of every entry whose filename is unchanged, fetching only the rest.
 

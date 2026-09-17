@@ -1,0 +1,89 @@
+name: Catalog snapshot
+
+# Rebuilds the Kiwix catalog snapshot that ships inside Zimi, and opens a PR
+# with the result.
+#
+# Run it before cutting a release. tests/test_catalog_snapshot.py fails when
+# the committed snapshot is over 180 days old, so a forgotten rebuild shows up
+# as a red CI run rather than as a user finding that half the catalog's
+# download links 404.
+#
+# Not on a schedule, and not on every push. It fetches a metalink per changed
+# ZIM from Kiwix, which is polite once per release and rude every night. The
+# build is incremental: a ZIM's filename carries its build date, so an
+# unchanged filename keeps its magnet and its icon untouched. A cold build is
+# about ten minutes, a warm one about one.
+#
+# It opens a PR rather than pushing to main, because these are 2 MB of binary
+# assets and somebody should see the diffstat before they land.
+
+on:
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "Ignore the previous snapshot and refetch everything"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install Pillow
+
+      - name: Build the snapshot
+        # Through env, not interpolated into the command. Only a maintainer can
+        # dispatch this and the input is a boolean, but a workflow that pastes
+        # any input into a shell line is a habit worth not having.
+        env:
+          FULL: ${{ inputs.full }}
+        run: |
+          if [ "$FULL" = "true" ]; then
+            python3 scripts/build_catalog_snapshot.py --full
+          else
+            python3 scripts/build_catalog_snapshot.py
+          fi
+
+      - name: Open a PR if it changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git diff --quiet -- zimi/assets/; then
+            echo "The catalog has not changed since the last snapshot."
+            exit 0
+          fi
+
+          entries=$(python3 -c "
+          import sys; sys.path.insert(0, '.')
+          from zimi import catalog_snapshot as c
+          print(f'{len(c.entries())} entries, built {c.built_at()}')
+          ")
+          sizes=$(du -h zimi/assets/catalog-snapshot.json.gz zimi/assets/catalog-icons.tar | awk '{print "  " $2 ": " $1}')
+
+          branch="catalog-snapshot-$(date +%Y-%m-%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add zimi/assets/catalog-snapshot.json.gz zimi/assets/catalog-icons.tar
+          printf 'chore: rebuild the catalog snapshot\n\n%s\n\n%s\n' \
+            "$entries" "$sizes" > /tmp/msg.txt
+          git commit -F /tmp/msg.txt
+          git push -u origin "$branch"
+
+          printf '%s\n\n%s\n\nBuilt by the catalog-snapshot workflow. Every magnet is derived from the metalink Kiwix publishes, and ten real torrents were checked against their derived infohash before this was written.\n' \
+            "$entries" "$sizes" > /tmp/body.txt
+          gh pr create \
+            --title "chore: rebuild the catalog snapshot" \
+            --body-file /tmp/body.txt \
+            || echo "a PR for this branch already exists"
