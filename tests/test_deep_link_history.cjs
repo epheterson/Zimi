@@ -79,6 +79,25 @@ check(/opts && opts\.replace/.test(open) && /history\.replaceState/.test(open),
 check(/history\.pushState/.test(open),
       'and still pushes for ordinary in-app navigation');
 
+// ── popstate routes on where you landed, not which way you went ────────────
+// Forward lands on a reader state exactly as back does. Deciding from
+// direction closed the reader on a forward and replaceState'd the URL back,
+// throwing the forward entry away: Forward appeared to do nothing.
+
+const pop = src.slice(src.indexOf("addEventListener('popstate'"),
+                      src.indexOf("// ── Util ──"));
+
+check(/var target = e\.state;/.test(pop),
+      'the handler looks at the state it landed on');
+check(/target\.mode === 'reader'/.test(pop),
+      'and recognises a reader destination');
+check(pop.indexOf("target.mode === 'reader'") < pop.indexOf('if (readerOpen) closeReader();'),
+      'before any decision to close the reader, or forward closes it');
+check(/currentArticle\.zim === target\.zim/.test(pop),
+      'landing on the article already shown is not a navigation');
+check(/articleHistory\.push/.test(pop),
+      'and travelling forward records where we were, so a later Back still walks the trail');
+
 console.log('');
 if (failures) {
   console.error(failures + ' deep-link history check(s) failed');
