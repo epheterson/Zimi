@@ -175,3 +175,66 @@ def test_icons_are_stored_flat_with_no_paths(tmp_path):
         for member in tar.getmembers():
             assert "/" not in member.name
             assert not member.name.startswith(".")
+
+
+# ── the shipped assets themselves ──────────────────────────────────────────
+
+
+def test_the_shipped_snapshot_is_present_and_sane():
+    """Guards the release. A wheel built without running the build script
+    would ship a Zimi whose offline catalog is empty, and nothing else in the
+    suite would notice, because every other test generates its own fixture."""
+    catalog_snapshot._reset_for_tests()
+    try:
+        if not os.path.exists(catalog_snapshot.SNAPSHOT_PATH):
+            pytest.skip("no snapshot built in this checkout")
+        assert catalog_snapshot.available()
+        entries = catalog_snapshot.entries()
+        assert len(entries) > 1000, f"only {len(entries)} entries"
+        with_magnet = [e for e in entries if e.get("magnet")]
+        assert len(with_magnet) / len(entries) > 0.9, "most entries lost their magnet"
+        for entry in entries[:50]:
+            assert entry.get("name")
+            assert entry.get("file")
+            if entry.get("magnet"):
+                assert len(entry["magnet"]) == 40, entry["magnet"]
+    finally:
+        catalog_snapshot._reset_for_tests()
+
+
+def test_the_shipped_snapshot_is_not_stale():
+    """A snapshot ages: filenames roll over, so its download URLs start
+    404ing and its magnets point at empty swarms. It stays correct about what
+    EXISTS, which is the point, but past a couple of releases it should be
+    rebuilt. Better to fail here than to have somebody discover it."""
+    catalog_snapshot._reset_for_tests()
+    try:
+        if not os.path.exists(catalog_snapshot.SNAPSHOT_PATH):
+            pytest.skip("no snapshot built in this checkout")
+        built = catalog_snapshot.built_at()
+        assert built, "the snapshot carries no build date"
+        import datetime
+
+        age = (datetime.date.today() - datetime.date.fromisoformat(built)).days
+        assert age < 180, (
+            f"the shipped catalog snapshot is {age} days old. "
+            "Run scripts/build_catalog_snapshot.py."
+        )
+    finally:
+        catalog_snapshot._reset_for_tests()
+
+
+def test_every_icon_referenced_by_an_entry_is_in_the_tar():
+    """A dangling reference renders as a broken image on a machine that has no
+    way to fetch the real one."""
+    catalog_snapshot._reset_for_tests()
+    try:
+        if not os.path.exists(catalog_snapshot.SNAPSHOT_PATH):
+            pytest.skip("no snapshot built in this checkout")
+        have = catalog_snapshot.icon_names()
+        if not have:
+            pytest.skip("no icons built in this checkout")
+        wanted = {e["icon"] for e in catalog_snapshot.entries() if e.get("icon")}
+        assert wanted <= have, f"{len(wanted - have)} entries point at a missing icon"
+    finally:
+        catalog_snapshot._reset_for_tests()
