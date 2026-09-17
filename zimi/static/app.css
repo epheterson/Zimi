@@ -1482,14 +1482,6 @@
   .ms-pane .ms-field input[readonly] { opacity: 0.6; }
   .ms-pane .ms-hint { font-size: 12px; color: var(--text2); margin-top: 8px; }
 
-  /* A scope typed into the search box, echoed beside the result count so the
-     narrowing is visible rather than inferred from a smaller number. */
-  .scope-token {
-    display: inline-block; margin-inline-end: 6px; padding: 1px 6px;
-    border-radius: 5px; background: var(--amber-glow); color: var(--amber);
-    border: 1px solid var(--amber-border); font-size: 11px; font-weight: 600;
-  }
-
   /* Environment panel: a name, its value, and what it takes over. Monospace
      on the first two because they are literals an admin will retype into a
      unit file or a shell, where a proportional font makes that error-prone. */

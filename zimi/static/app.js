@@ -6204,115 +6204,9 @@ function applyDidYouMean(suggestion) {
   doSearch(suggestion, true);
 }
 
-// ── Typing a scope into the search box ─────────────────────────────────────
-//
-// `@name` narrows to a source, `#category` to a category, and the rest of the
-// line is what you are actually looking for:
-//
-//     @wikipedia whale        the word whale, in Wikipedia
-//     #medical aspirin        aspirin, across everything medical
-//     @lit @react hooks       hooks, in two sets of docs
-//
-// Both were already reachable through the UI. Typing them is faster, survives
-// a shared URL, and is discoverable once you have seen it once, which is the
-// whole argument for the syntax.
-//
-// Pure, because the matching rules are the part worth testing: a token that
-// matches nothing must stay in the query as ordinary words rather than
-// silently narrowing the search to nothing.
-var _SCOPE_TOKEN_RE = /(^|\s)([@#])([^\s]+)/g;
-// What the current search's typed scope resolved to. Module-level because a
-// search renders TWICE from two payloads (fast titles, then full text), and
-// hanging it off the first one left the chip flashing and then vanishing.
-var _activeScopeTokens = [];
-
-function parseSearchScope(raw, zims, categoryKeys) {
-  var result = {terms: raw, zimNames: [], tokens: []};
-  if (!raw || raw.indexOf('@') < 0 && raw.indexOf('#') < 0) return result;
-  zims = zims || [];
-  var matchedNames = [];
-  var consumed = [];
-
-  raw.replace(_SCOPE_TOKEN_RE, function(whole, lead, sigil, word) {
-    var needle = word.toLowerCase();
-    var hits = [];
-    if (sigil === '@') {
-      // A source. Exact name first, so "@lit" cannot be stolen by a longer
-      // title that happens to contain it; then a prefix, then anywhere.
-      var exact = zims.filter(function(z) { return (z.name || '').toLowerCase() === needle; });
-      var prefix = zims.filter(function(z) {
-        return (z.name || '').toLowerCase().indexOf(needle) === 0 ||
-               (z.title || '').toLowerCase().indexOf(needle) === 0;
-      });
-      var anywhere = zims.filter(function(z) {
-        return (z.name || '').toLowerCase().indexOf(needle) >= 0 ||
-               (z.title || '').toLowerCase().indexOf(needle) >= 0;
-      });
-      hits = exact.length ? exact : (prefix.length ? prefix : anywhere);
-    } else {
-      // A category. Matched on the key, so it is stable across UI languages;
-      // a localized label is a display concern and would not survive sharing.
-      var flatNeedle = needle.replace(/[^a-z0-9]+/g, '');
-      var wanted = (categoryKeys || []).filter(function(k) {
-        var kf = k.toLowerCase().replace(/[^a-z0-9]+/g, '');
-        return kf === flatNeedle || kf.indexOf(flatNeedle) === 0;
-      });
-      if (wanted.length) {
-        hits = zims.filter(function(z) {
-          return wanted.indexOf(_zimCategoryKey(z)) >= 0;
-        });
-      }
-    }
-    if (hits.length) {
-      hits.forEach(function(z) {
-        if (matchedNames.indexOf(z.name) < 0) matchedNames.push(z.name);
-      });
-      consumed.push(whole);
-      result.tokens.push({sigil: sigil, word: word, count: hits.length});
-    }
-    return whole;
-  });
-
-  if (!consumed.length) return result;
-  var terms = raw;
-  consumed.forEach(function(chunk) { terms = terms.replace(chunk, ' '); });
-  result.terms = terms.replace(/\s+/g, ' ').trim();
-  result.zimNames = matchedNames;
-  return result;
-}
-
-// A ZIM's category KEY (stable) rather than its display label. The server
-// sends a human-facing `category`; autoCategorize is what the catalog uses to
-// derive a key, and installed ZIMs carry the label instead, so both shapes
-// have to resolve here.
-function _zimCategoryKey(z) {
-  if (!z) return 'other';
-  // Compared with separators stripped from BOTH sides. The server sends a
-  // human label ("Dev Docs", "Stack Exchange") and the keys are written two
-  // different ways ("devdocs", "stack_exchange"), so normalising to one
-  // spelling on one side only gets "dev_docs" against "devdocs" and misses.
-  var flat = (z.category || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-  if (!flat) return 'other';
-  for (var i = 0; i < BROWSE_CATEGORIES.length; i++) {
-    var key = BROWSE_CATEGORIES[i].key;
-    var keyFlat = key.replace(/[^a-z0-9]+/g, '');
-    if (flat === keyFlat || flat.indexOf(keyFlat) >= 0 || keyFlat.indexOf(flat) >= 0) {
-      return key;
-    }
-  }
-  return 'other';
-}
-
 async function doSearch(query, push) {
   if (push === undefined) push = true;
   if (!query) return;
-  // @source / #category typed into the box narrow the search and drop out of
-  // the terms. Tokens that match nothing stay in the query as ordinary words,
-  // so a stray "@" never silently searches nothing.
-  var _scope = parseSearchScope(query, zimsCache || [], BROWSE_CATEGORIES.map(function(c) { return c.key; }));
-  var _typedZims = _scope.zimNames;
-  _activeScopeTokens = _scope.tokens;
-  if (_typedZims.length && _scope.terms) query = _scope.terms;
   _currentSearchQuery = query;
   clearTimeout(suggestTimer);
   hideSuggest();
@@ -6355,10 +6249,6 @@ async function doSearch(query, push) {
   if (!scope && homeScope) {
     zimParam = '&zim=' + encodeURIComponent(homeScope.zimNames.join(','));
   }
-  // A typed scope beats the ambient one: asking for "@wikipedia whale" while
-  // standing inside another source means you want Wikipedia, not a search of
-  // where you happen to be.
-  if (_typedZims.length) zimParam = '&zim=' + encodeURIComponent(_typedZims.join(','));
   const searchT0 = performance.now();
   const searchUrl = scope ? '/w/' + encodeURIComponent(scope) + '?q=' + encodeURIComponent(query) : '/?q=' + encodeURIComponent(query);
 
@@ -6595,17 +6485,7 @@ function renderSearchResults(data, scope) {
   }
 
   const displayElapsed = data._clientElapsed || (data.elapsed ? data.elapsed.toFixed(1) : null);
-  // Say what a typed @ or # did. Without this the box silently eats the token
-  // and the count drops, which reads as a broken search rather than a scoped
-  // one.
-  var scopeNote = '';
-  if (_activeScopeTokens && _activeScopeTokens.length) {
-    scopeNote = _activeScopeTokens.map(function(tok) {
-      return '<span class="scope-token">' + esc(tok.sigil + tok.word) + '</span>';
-    }).join('');
-  }
-  document.getElementById('search-count').innerHTML =
-    scopeNote + esc(t('n_results', {n: totalCount}));
+  document.getElementById('search-count').textContent = t('n_results', {n: totalCount});
   document.getElementById('search-time').textContent = displayElapsed ? t('in_time', {time: displayElapsed}) : '';
   searchMeta.style.display = items.length ? 'flex' : 'none';
 
