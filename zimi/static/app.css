@@ -1481,6 +1481,22 @@
   .ms-pane .ms-field input:focus { outline: none; border-color: var(--amber-border); }
   .ms-pane .ms-field input[readonly] { opacity: 0.6; }
   .ms-pane .ms-hint { font-size: 12px; color: var(--text2); margin-top: 8px; }
+
+  /* Environment panel: a name, its value, and what it takes over. Monospace
+     on the first two because they are literals an admin will retype into a
+     unit file or a shell, where a proportional font makes that error-prone. */
+  .env-rows { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+  .env-row { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); gap: 4px 10px; align-items: baseline; }
+  .env-name { font-size: 12px; color: var(--text); word-break: break-all; }
+  .env-value { font-size: 12px; color: var(--amber); word-break: break-all; }
+  .env-secret { color: var(--text3); font-style: italic; }
+  .env-what { grid-column: 1 / -1; font-size: 12px; color: var(--text2); }
+  .env-locks { color: var(--text3); }
+  @media (max-width: 560px) {
+    /* Value under the name rather than beside it: a long path or a proxy list
+       otherwise pushes the row sideways on a phone. */
+    .env-row { grid-template-columns: minmax(0, 1fr); }
+  }
   /* App-theme segmented control (Auto / Dark / Light). Three equal pills in a
      recessed track, amber-filled when active — mirrors the reader palette's
      control language so the two theme pickers feel like one family. */

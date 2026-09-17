@@ -1568,5 +1568,10 @@
   "sort_alpha": "Alphabétique",
   "sort_added": "Ajouts récents",
   "sort_updated": "Mises à jour récentes",
-  "sort_entries": "Plus d'articles"
+  "sort_entries": "Plus d'articles",
+  "env_section": "Environnement",
+  "env_none": "Rien n'est remplacé. Tous les réglages se contrôlent dans Zimi.",
+  "env_locks": "verrouille {v}",
+  "env_empty": "(vide)",
+  "env_hint": "Ils sont définis là où Zimi démarre et priment sur les réglages. Modifiez-les là puis redémarrez."
 }

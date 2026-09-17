@@ -1568,5 +1568,10 @@
   "sort_alpha": "Alphabetisch",
   "sort_added": "Zuletzt hinzugefügt",
   "sort_updated": "Zuletzt aktualisiert",
-  "sort_entries": "Meiste Artikel"
+  "sort_entries": "Meiste Artikel",
+  "env_section": "Umgebung",
+  "env_none": "Nichts wird überschrieben. Alle Einstellungen werden in Zimi gesteuert.",
+  "env_locks": "sperrt {v}",
+  "env_empty": "(leer)",
+  "env_hint": "Diese werden dort gesetzt, wo Zimi gestartet wird, und haben Vorrang vor den Einstellungen. Dort ändern und neu starten."
 }

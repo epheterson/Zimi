@@ -4997,6 +4997,14 @@ def handle_manage_get(handler, parsed, params):
             },
         )
 
+    elif parsed.path == "/manage/env":
+        # What the environment is overriding, so an admin can SEE it rather
+        # than deducing it from a greyed-out control (#69). Read-only by
+        # design: the environment belongs to whoever starts the process.
+        from zimi import envinfo
+
+        return handler._json(200, {"vars": envinfo.effective()})
+
     elif parsed.path == "/manage/bt-status":
         # Surface the BT engine state so the user can self-diagnose:
         # enabled? libtorrent importable on this install? session up?
