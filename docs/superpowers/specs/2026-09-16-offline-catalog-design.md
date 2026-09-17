@@ -96,15 +96,20 @@ The tar index is built once at first use: ~1,700 members, cheap.
 
 Run in a release workflow, not on every CI run. Fetches the OPDS catalog, fetches each `.meta4`, derives infohashes, fetches and re-encodes icons, writes both assets, commits them.
 
-Budget, measured: **4 to 7 minutes and 73 MB** at 8 concurrent requests. One machine, once per release, with a `User-Agent` that says what it is.
+**Incremental, keyed on the filename.** A Kiwix ZIM's filename carries its build date (`wikipedia_en_all_2026-07.zim`), so an unchanged filename is the same bytes and therefore the same infohash. The build loads the previous snapshot and reuses the magnet and icon of every entry whose filename is unchanged, fetching only the rest.
 
-Failure policy: a single entry that cannot be resolved loses its magnet or its icon and keeps its metadata. The build fails only if the catalog fetch itself fails or if fewer than 90% of entries resolved, so a bad build cannot silently ship a gutted snapshot.
+Measured churn: 477 of 2,652 entries (18%) were rebuilt in a two-month window. So a cold build is **4.2 minutes and 73 MB**, and every build after it is about **48 seconds**. One machine, once per release, with a `User-Agent` that says what it is.
+
+**A canary, not a re-proof.** The derivation is settled: verified against Kiwix's own `.torrent` on 50 entries from 0.3 MB to 22.8 GB, zero mismatches. The remaining risk is not ours, it is Kiwix changing how they generate torrents, which would silently ship 2,652 wrong magnets. So each build fetches ten real `.torrent` files at random and asserts the derived infohash matches. Ten extra requests, and a loud failure instead of a quiet one.
+
+Failure policy: a single entry that cannot be resolved loses its magnet or its icon and keeps its metadata. The build fails if the catalog fetch fails, if fewer than 90% of entries resolved, or if any canary mismatches.
 
 ## Testing
 
 | what | how |
 |---|---|
 | infohash derivation | fixture `.meta4` + its real `.torrent`, assert the hashes match; includes the hex-vs-raw trap |
+| incremental reuse | an unchanged filename reuses its magnet without a fetch; a changed one refetches |
 | snapshot reading | a tiny generated snapshot + tar, assert entries and icon lookup |
 | missing assets | `available()` false, every caller degrades, nothing raises |
 | the handover | cache present beats snapshot; a live fetch replaces the cache; snapshot is never written |
