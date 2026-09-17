@@ -710,6 +710,7 @@
   "catalog_languages_hint_short": "انقر للإضافة أو الإزالة من فلتر الكتالوج.",
   "catalog_link": "الفهرس ←",
   "catalog_offline_note": "غير متصل — عرض كتالوج {d}",
+  "catalog_snapshot_note": "المكتبة حتى {d}. ستُحدَّث أول مرة تتصل فيها بالإنترنت.",
   "catalog_tab": "الفهرس",
   "change_password": "تغيير كلمة المرور",
   "choose_flavor": "اختيار النسخة",

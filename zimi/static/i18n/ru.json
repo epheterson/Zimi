@@ -710,6 +710,7 @@
   "catalog_languages_hint_short": "Нажмите, чтобы добавить или убрать из фильтра каталога.",
   "catalog_link": "Каталог →",
   "catalog_offline_note": "Оффлайн — каталог от {d}",
+  "catalog_snapshot_note": "Библиотека по состоянию на {d}. Обновится при первом выходе в сеть.",
   "catalog_tab": "Каталог",
   "change_password": "Изменить пароль",
   "choose_flavor": "Выбрать вариант",

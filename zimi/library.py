@@ -5,6 +5,7 @@ All server state (ZIM_DIR, locks, caches) is accessed via ``zimi.server`` to
 maintain a single source of truth.
 """
 
+import datetime
 import glob
 import gzip
 import ipaddress
@@ -1665,6 +1666,130 @@ def _kick_catalog_refresh(query, lang, count, start, _internal=False):
                 _opds_refreshing.discard(cache_key)
 
     threading.Thread(target=_run, name="catalog-refresh", daemon=True).start()
+
+
+# ── The full catalog, and where it comes from ──────────────────────────────
+#
+# Three states, and a person is always in exactly one:
+#
+#   never online          the snapshot that ships in the package
+#   online once, now not  the cached catalog, dated
+#   online                the live fetch
+#
+# The handover is one rule: a successful live fetch replaces the cache
+# WHOLESALE, and the cache outranks the shipped snapshot from then on. The
+# snapshot is never written to, never merged into, and never consulted again
+# once a cache exists. Eric, 2026-09-16: "we update on first load or when first
+# getting internet seamlessly and store the new cache instead."
+#
+# Merging would be worse than either: a library half of which is six months old
+# with nothing to say which half.
+#
+# This is separate from the page cache above (catalog_cache.json), which keys
+# on query+offset and is capped at 40 keys. That is a cache of REQUESTS, so
+# what survives offline depends on which pages somebody happened to browse. The
+# full catalog is one file, written once, holding every entry.
+
+
+def _full_catalog_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "catalog_full.json")
+
+
+def persist_full_catalog(items):
+    """Write the whole catalog to disk, replacing whatever was there.
+
+    Called after a successful full fetch. Best-effort: a machine that cannot
+    write its data directory still browses fine from the live fetch, it just
+    will not survive going offline.
+    """
+    if not items:
+        return False
+    path = _full_catalog_path()
+    try:
+        _srv._atomic_write_json(
+            path,
+            {"fetched_at": time.time(), "count": len(items), "items": items},
+        )
+    except (OSError, ValueError) as e:
+        log.debug("could not cache the full catalog: %s", e)
+        return False
+    # _atomic_write_json logs and returns on failure rather than raising, so
+    # the only honest way to report success is to look. Claiming a cache that
+    # is not there would promise offline survival this machine does not have.
+    if not os.path.exists(path):
+        return False
+    log.info("Full catalog cached (%d entries)", len(items))
+    return True
+
+
+def _load_full_catalog():
+    """(items, fetched_at) from disk, or (None, 0)."""
+    try:
+        with open(_full_catalog_path(), encoding="utf-8") as f:
+            data = json.load(f)
+        items = data.get("items")
+        if isinstance(items, list) and items:
+            return items, float(data.get("fetched_at") or 0)
+    except (OSError, ValueError, TypeError):
+        pass
+    return None, 0
+
+
+def maybe_persist_full_catalog(total):
+    """Assemble the whole catalog out of the page cache and write it down.
+
+    Costs no network. The browse pages the UI just walked are already in
+    ``_opds_cache``, so once they cover ``total`` entries the full catalog can
+    be stitched together from memory and persisted. That is what makes a
+    machine that is online once stay useful forever after.
+
+    Runs on the caller's thread only long enough to notice it has everything;
+    the write itself is small and atomic. Returns True when it wrote.
+    """
+    if not total:
+        return False
+    with _opds_lock:
+        pages = [
+            (key, entry)
+            for key, entry in _opds_cache.items()
+            if _is_browse_key(key)
+        ]
+    seen, items = set(), []
+    for _key, (_ts, _total, page_items) in pages:
+        for item in page_items or []:
+            name = item.get("name")
+            if name and name not in seen:
+                seen.add(name)
+                items.append(item)
+    # Only when the cache genuinely covers the catalog. A partial write would
+    # be worse than none: it would satisfy offline_catalog() forever with half
+    # a library and no sign that it was half.
+    if len(items) < total:
+        return False
+    return persist_full_catalog(items)
+
+
+def offline_catalog():
+    """The best catalog available without touching the network.
+
+    Returns ``(items, source, as_of)`` where source is "cache", "snapshot" or
+    "none", and as_of is an ISO date for the UI to show, or "".
+
+    Cache first, always: it is the fresher of the two and it is what the
+    handover rule promises. The snapshot is the floor, not a supplement.
+    """
+    items, fetched_at = _load_full_catalog()
+    if items:
+        as_of = ""
+        if fetched_at:
+            as_of = datetime.datetime.fromtimestamp(fetched_at).date().isoformat()
+        return items, "cache", as_of
+
+    from zimi import catalog_snapshot
+
+    if catalog_snapshot.available():
+        return list(catalog_snapshot.entries()), "snapshot", catalog_snapshot.built_at()
+    return [], "none", ""
 
 
 def _fetch_kiwix_catalog(

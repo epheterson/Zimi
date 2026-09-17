@@ -710,6 +710,7 @@
   "catalog_languages_hint_short": "Cliquer pour ajouter ou retirer du filtre du catalogue.",
   "catalog_link": "Catalogue →",
   "catalog_offline_note": "Hors ligne — catalogue du {d}",
+  "catalog_snapshot_note": "Bibliothèque au {d}. Elle se mettra à jour dès votre première connexion.",
   "catalog_tab": "Catalogue",
   "change_password": "Changer le mot de passe",
   "choose_flavor": "Choisir la variante",

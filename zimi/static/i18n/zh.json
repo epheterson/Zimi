@@ -710,6 +710,7 @@
   "catalog_languages_hint_short": "点击添加或从目录筛选中移除。",
   "catalog_link": "目录 →",
   "catalog_offline_note": "离线 — 显示 {d} 的目录",
+  "catalog_snapshot_note": "库目录截至 {d}。首次联网时会自动更新。",
   "catalog_tab": "目录",
   "change_password": "更改密码",
   "choose_flavor": "选择版本",

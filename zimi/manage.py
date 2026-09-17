@@ -4644,8 +4644,32 @@ def handle_manage_get(handler, parsed, params):
         except (ValueError, TypeError):
             start = 0
         total, items, err = _srv._fetch_kiwix_catalog(query, lang, count, start)
+        offline_source = ""
+        offline_as_of = ""
         if err:
-            return handler._json(502, {"error": f"Kiwix catalog fetch failed: {err}"})
+            # A failed fetch used to be a 502, and the catalog view answered it
+            # by replacing itself with one error line. That hid the categories,
+            # the whole library, and the ZIMs a LAN peer was offering right
+            # then, none of which depend on Kiwix answering.
+            #
+            # Fall back instead: the cached catalog if this machine has ever
+            # been online, otherwise the snapshot that ships in the package.
+            # Only a machine with neither still errors.
+            from zimi import library as _offline
+
+            fallback, offline_source, offline_as_of = _offline.offline_catalog()
+            if not fallback:
+                return handler._json(502, {"error": f"Kiwix catalog fetch failed: {err}"})
+            if query:
+                needle = query.lower()
+                fallback = [
+                    it
+                    for it in fallback
+                    if needle in str(it.get("title", "")).lower()
+                    or needle in str(it.get("name", "")).lower()
+                ]
+            total = len(fallback)
+            items = fallback[start : start + count]
         # Optional client-side language filter — `ui_languages=en,fr` returns
         # only items whose normalized language code is in the set.
         ui_langs_raw = param("ui_languages", "")
@@ -4664,6 +4688,16 @@ def handle_manage_get(handler, parsed, params):
             rels = bundle_relationships(items)
             for it in items:
                 it["hierarchy"] = rels.get(it.get("name"), {})
+        # Once the browse pages in cache cover the whole catalog, write it
+        # down as one file. No extra requests: the pages are already here.
+        # This is what lets a machine that was online once browse forever.
+        if not err and total:
+            try:
+                from zimi import library as _persist
+
+                _persist.maybe_persist_full_catalog(total)
+            except Exception:
+                pass  # caching is best effort; never fail a browse over it
         resp = {"total": total, "items": items}
         # Offline: last-good catalog served from disk — tell the client so
         # it can show a quiet "catalog from <date>" note.
@@ -4672,6 +4706,13 @@ def handle_manage_get(handler, parsed, params):
         if _lib._catalog_stale_ts:
             resp["stale"] = True
             resp["fetched_at"] = _lib._catalog_stale_ts
+        if offline_source:
+            # Which of the three states this answer came from, so the UI can
+            # date it honestly rather than presenting a six-month-old library
+            # as current.
+            resp["source"] = offline_source
+            resp["as_of"] = offline_as_of
+            resp["stale"] = True
         return handler._json(200, resp)
 
     elif parsed.path == "/manage/check-updates":

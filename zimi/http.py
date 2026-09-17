@@ -2413,6 +2413,9 @@ class ZimHandler(BaseHTTPRequestHandler):
             elif parsed.path.startswith("/manage/"):
                 return handle_manage_get(self, parsed, params)
 
+            elif parsed.path.startswith("/catalog-icon/"):
+                return self._serve_catalog_icon(parsed.path[14:])
+
             elif parsed.path.startswith("/static/"):
                 return self._serve_static(parsed.path[8:])  # strip "/static/"
 
@@ -3698,6 +3701,26 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     _favicon_cache = {}
+
+    def _serve_catalog_icon(self, name):
+        """A catalog illustration from the shipped snapshot.
+
+        Content-addressed, so the bytes for a name can never change and the
+        response is immutable: a year of cache and no validator. Unknown names
+        404 rather than falling through to anything, and the name is validated
+        as a hex digest inside catalog_snapshot before any file is touched.
+        """
+        from zimi import catalog_snapshot
+
+        data = catalog_snapshot.icon(name)
+        if not data:
+            return self._json(404, {"error": "not found"})
+        self.send_response(200)
+        self.send_header("Content-Type", "image/webp")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        self.end_headers()
+        self.wfile.write(data)
 
     def _serve_favicon(self, path="/favicon.png"):
         filename = "favicon-64.png" if "64" in path else "favicon.png"

@@ -710,6 +710,7 @@
   "catalog_languages_hint_short": "לחץ כדי להוסיף או להסיר מסנן הקטלוג.",
   "catalog_link": "קטלוג ←",
   "catalog_offline_note": "לא מקוון — מציג קטלוג מ-{d}",
+  "catalog_snapshot_note": "הספרייה נכון ל-{d}. היא תתעדכן בפעם הראשונה שתהיה מקוון.",
   "catalog_tab": "קטלוג",
   "change_password": "שנה סיסמה",
   "choose_flavor": "בחרו גרסה",

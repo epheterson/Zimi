@@ -710,6 +710,7 @@
   "catalog_languages_hint_short": "कैटलॉग फ़िल्टर में जोड़ने या हटाने के लिए क्लिक करें।",
   "catalog_link": "कैटलॉग →",
   "catalog_offline_note": "ऑफ़लाइन — {d} का कैटलॉग",
+  "catalog_snapshot_note": "{d} तक की लाइब्रेरी। पहली बार ऑनलाइन होने पर यह अपडेट हो जाएगी।",
   "catalog_tab": "कैटलॉग",
   "change_password": "पासवर्ड बदलें",
   "choose_flavor": "संस्करण चुनें",

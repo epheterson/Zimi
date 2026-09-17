@@ -7391,9 +7391,21 @@ function _rerenderCatalogIfSafe() {
   else renderBrowseGallery();
 }
 
+// Where the catalog on screen came from, when it was not a live fetch.
+var _catalogSource = '';
+var _catalogAsOf = '';
+
 function _catalogStaleNote() {
-  if (!_catalogStaleAt) return '';
-  var when = new Date(_catalogStaleAt * 1000).toLocaleDateString();
+  // A catalog that may be months old says so. The shipped snapshot gets its
+  // own wording because "offline copy from <date>" implies the person once
+  // had it fresh, and on a machine that has never been online they did not.
+  if (_catalogSource === 'snapshot' && _catalogAsOf) {
+    return '<div class="ms-hint" style="text-align:center;margin:4px 0 10px">' +
+      tH('catalog_snapshot_note', {d: _fullWhen(_catalogAsOf) || _catalogAsOf}) + '</div>';
+  }
+  var at = _catalogStaleAt || (_catalogAsOf ? Date.parse(_catalogAsOf) / 1000 : 0);
+  if (!at) return '';
+  var when = new Date(at * 1000).toLocaleDateString();
   return '<div class="ms-hint" style="text-align:center;margin:4px 0 10px">' +
     tH('catalog_offline_note', {d: when}) + '</div>';
 }
@@ -7427,7 +7439,15 @@ async function _fetchCatalogItems() {
     for (const page of pages) items.push(...page);
   }
   for (const item of items) item.category = autoCategorize(item);
-  return { items: items, stale: !!data.stale, fetchedAt: data.stale ? (data.fetched_at || 0) : 0 };
+  return {
+    items: items,
+    stale: !!data.stale,
+    fetchedAt: data.stale ? (data.fetched_at || 0) : 0,
+    // Which of the three states answered: live (absent), "cache" or
+    // "snapshot". The server only sets it when it fell back.
+    source: data.source || '',
+    asOf: data.as_of || ''
+  };
 }
 
 // Enrich in place: installed flags, hierarchy, peer availability, name index.
@@ -7475,6 +7495,7 @@ function _revalidateSessionCatalog() {
     try {
       const fresh = await _fetchCatalogItems();
       _catalogStaleAt = fresh.stale ? fresh.fetchedAt : 0;
+      _catalogSource = fresh.source; _catalogAsOf = fresh.asOf;
       _enrichCatalogItems(fresh.items);
       _catalogCache = fresh.items;
       if (!fresh.stale) _saveCatalogSession(fresh.items);
@@ -7501,9 +7522,10 @@ function _kickPeerEnrichment() {
 async function loadFullCatalog() {
   if (_catalogCache) return _catalogCache;
 
-  const { items, stale, fetchedAt } = await _fetchCatalogItems();
+  const { items, stale, fetchedAt, source, asOf } = await _fetchCatalogItems();
   // Offline: server returned its last-good catalog — note it quietly
   _catalogStaleAt = stale ? fetchedAt : 0;
+  _catalogSource = source; _catalogAsOf = asOf;
   _enrichCatalogItems(items);
   _catalogCache = items;
   if (!stale) _saveCatalogSession(items);
@@ -8185,7 +8207,17 @@ function renderBrowseGallery() {
     var activePill = results.querySelector('.catalog-lang-scroll .pill.active');
     if (activePill) activePill.scrollIntoView({inline: 'center', block: 'nearest'});
   }).catch(err => {
-    results.innerHTML = '<div class="empty"><p>' + tH('failed_load_library') + '</p><div class="hint">' + esc(String(err)) + '</div></div>';
+    // Only reached now when there is no catalog at all: no live fetch, no
+    // cache, and no shipped snapshot. Everything else falls back on the
+    // server side and renders normally with a dated note.
+    //
+    // Even here, do not wipe the view. A peer on this LAN offering ZIMs is a
+    // fact about the local network and has nothing to do with whether Kiwix
+    // answered; replacing the pane with one error line used to hide that,
+    // which made an offline Zimi look emptier than it was.
+    var note = '<div class="empty"><p>' + tH('failed_load_library') + '</p>' +
+      '<div class="hint">' + esc(String(err)) + '</div></div>';
+    results.innerHTML = note + _nearbyPeerSectionHtml();
   });
 }
 

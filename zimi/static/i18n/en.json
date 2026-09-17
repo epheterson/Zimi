@@ -710,6 +710,7 @@
   "catalog_languages_hint_short": "Click to add or remove from your catalog filter.",
   "catalog_link": "Catalog →",
   "catalog_offline_note": "Offline — showing catalog from {d}",
+  "catalog_snapshot_note": "Library as of {d}. It will refresh the first time you are online.",
   "catalog_tab": "Catalog",
   "change_password": "Change password",
   "choose_flavor": "Choose flavor",
