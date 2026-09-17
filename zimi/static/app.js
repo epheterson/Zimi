@@ -11128,6 +11128,36 @@ function _appUpdateSetDelay(days) {
   _appUpdateSaveSetting('/manage/app-update-delay', { delay_days: parseInt(days, 10) }, 'ZIMI_UPDATE_DELAY_DAYS');
 }
 
+// The environment panel. Read-only, and usually empty: the common install
+// overrides nothing, and saying so plainly is the useful answer.
+async function _renderEnvSection() {
+  var rows;
+  try {
+    rows = (await _msFetch('/manage/env')).vars || [];
+  } catch (e) {
+    return; // leave the placeholder; a failed poll is not worth a red box here
+  }
+  var el = document.getElementById('ms-env');
+  if (!el) return;
+  if (!rows.length) {
+    el.innerHTML = '<div class="ms-hint">' + tH('env_none') + '</div>';
+    return;
+  }
+  // Values come from the operator's own environment, so they are escaped like
+  // any other untrusted string. Secrets arrive as the word "set" and are
+  // rendered in the same slot, so the row shape never gives away which is which.
+  el.innerHTML = '<div class="env-rows">' + rows.map(function(r) {
+    return '<div class="env-row">' +
+      '<code class="env-name">' + esc(r.name) + '</code>' +
+      '<code class="env-value' + (r.secret ? ' env-secret' : '') + '">' +
+        (r.value === '' ? tH('env_empty') : esc(r.value)) + '</code>' +
+      '<div class="env-what">' + esc(r.description) +
+        (r.locks ? ' <span class="env-locks">' + tH('env_locks', {v: r.locks}) + '</span>' : '') +
+      '</div></div>';
+  }).join('') + '</div>' +
+  '<div class="ms-hint">' + tH('env_hint') + '</div>';
+}
+
 function _msServerHtml() {
   // Sharing is the star of v1.7 — it leads the Server pane. Render the
   // last-known rows immediately (stale toggles beat a blank slab that
@@ -11180,10 +11210,17 @@ function _msServerHtml() {
     '<div style="margin-top:14px" id="ms-cache-info-wrap">' +
       '<div id="ms-cache-info" style="color:var(--text2);font-size:12px">' + tH('loading') + '</div></div>';
 
+  // What the environment is overriding. Last, under Storage's neighbours,
+  // because on most installs it says "nothing" — it is a thing you go looking
+  // for when a control will not move, not something to read past every time.
+  var envSec = '<div class="ms-section-label">' + tH('env_section') + '</div>' +
+    '<div id="ms-env">' + tH('loading') + '</div>';
+
   // Sharing, Downloads, Storage, My Data / Server Backups, then App Updates
   // just before the API Token, and Hot ZIMs + cache last (Eric moved Updates
   // down from the top on the second pass).
-  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec].join(sep);
+  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec, envSec].join(sep);
+  _renderEnvSection();
   // Async fill security
   Promise.all([
     fetch('/manage/has-password').then(function(r) { return r.json(); }).catch(function() { return {}; }),

@@ -1568,5 +1568,10 @@
   "sort_alpha": "Alphabetical",
   "sort_added": "Recently added",
   "sort_updated": "Recently updated",
-  "sort_entries": "Most articles"
+  "sort_entries": "Most articles",
+  "env_section": "Environment",
+  "env_none": "Nothing is overridden here. Every setting is controlled in Zimi.",
+  "env_locks": "locks {v}",
+  "env_empty": "(empty)",
+  "env_hint": "These are set where Zimi is started, so they win over Settings. Change them there, then restart."
 }
