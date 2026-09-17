@@ -1788,7 +1788,20 @@ def offline_catalog():
     from zimi import catalog_snapshot
 
     if catalog_snapshot.available():
-        return list(catalog_snapshot.entries()), "snapshot", catalog_snapshot.built_at()
+        # The snapshot stores an icon's CONTENT HASH, not a URL: the URL it
+        # came from points at a server this machine cannot reach, which is the
+        # whole situation. Hand the UI a local path instead, so the same
+        # rendering code works without knowing where the catalog came from.
+        #
+        # Copied, not mutated: entries() returns the module's own list.
+        shipped = []
+        for entry in catalog_snapshot.entries():
+            item = dict(entry)
+            digest = item.pop("icon", "")
+            if digest:
+                item["icon_url"] = "/catalog-icon/" + digest
+            shipped.append(item)
+        return shipped, "snapshot", catalog_snapshot.built_at()
     return [], "none", ""
 
 

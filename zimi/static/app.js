@@ -7400,8 +7400,14 @@ function _catalogStaleNote() {
   // own wording because "offline copy from <date>" implies the person once
   // had it fresh, and on a machine that has never been online they did not.
   if (_catalogSource === 'snapshot' && _catalogAsOf) {
+    // The snapshot's date is a plain YYYY-MM-DD, not a timestamp. Parsed as
+    // UTC noon so a timezone west of Greenwich does not render it as the day
+    // before, which is the classic way a date-only string slips backwards.
+    var parts = _catalogAsOf.split('-');
+    var day = new Date(Date.UTC(+parts[0], +parts[1] - 1, +parts[2], 12));
+    var shown = isNaN(day.getTime()) ? _catalogAsOf : day.toLocaleDateString();
     return '<div class="ms-hint" style="text-align:center;margin:4px 0 10px">' +
-      tH('catalog_snapshot_note', {d: _fullWhen(_catalogAsOf) || _catalogAsOf}) + '</div>';
+      tH('catalog_snapshot_note', {d: shown}) + '</div>';
   }
   var at = _catalogStaleAt || (_catalogAsOf ? Date.parse(_catalogAsOf) / 1000 : 0);
   if (!at) return '';
@@ -8495,8 +8501,15 @@ function renderCatalogItem(group) {
     metaTags.push(formatSize(sizes[0]));
   }
   const letterChar = (esc(item.title || item.name)[0] || '?').toUpperCase();
-  const iconHtml = item.icon_url
-    ? '<img src="/manage/thumb?url=' + encodeURIComponent(item.icon_url) + '" alt="" width="40" height="40" loading="lazy"' +
+  // A /catalog-icon/ path is already ours: it comes from the snapshot shipped
+  // in the package and is served locally. Proxying it through /manage/thumb
+  // would ask the server to fetch from itself, which is exactly the network
+  // round trip an offline machine cannot make.
+  const iconSrc = !item.icon_url ? ''
+    : item.icon_url.startsWith('/catalog-icon/') ? item.icon_url
+    : '/manage/thumb?url=' + encodeURIComponent(item.icon_url);
+  const iconHtml = iconSrc
+    ? '<img src="' + escAttr(iconSrc) + '" alt="" width="40" height="40" loading="lazy"' +
       ' onerror="_ciThumbFallback(this)" data-letter="' + escAttr(letterChar) + '">'
     : '<span class="ci-letter">' + letterChar + '</span>';
   const anyInstalled = variants.some(v => v.installed);
