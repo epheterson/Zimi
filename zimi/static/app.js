@@ -18543,8 +18543,52 @@ function _settleCapturedChrome(frame) {
       hole.style.setProperty('padding', '0', 'important');
       hole.style.setProperty('margin', '0', 'important');
       hole.style.setProperty('overflow', 'hidden', 'important');
+      hole.dataset.zimiCollapsed = '1';
     }
+    if (collapse.length) _watchForFilledHoles(doc, collapse);
   } catch (e) {}
+}
+
+// Give a collapsed box back when something puts content in it.
+//
+// The sweep runs on load, and an app that mounts itself a moment later is
+// indistinguishable at that instant from an ad slot nobody filled: a tall,
+// empty, transparent div. The canvas guard above cannot help, because the
+// canvas does not exist yet.
+//
+// That is how every PDF came out blank (#71) and how an offline map ZIM
+// renders as an empty page: MapLibre's container is collapsed before MapLibre
+// builds its canvas inside it. #71 was fixed by teaching the passes to skip
+// OUR pages, which left every other late-mounting app still broken.
+//
+// So: watch the boxes that were collapsed, and undo it the moment one gains
+// real content. Short-lived by design — an app mounts in the first seconds or
+// it was genuinely a hole.
+var _HOLE_WATCH_MS = 8000;
+function _watchForFilledHoles(doc, holes) {
+  var win = doc.defaultView;
+  if (!win || !win.MutationObserver) return;
+  var pending = holes.slice();
+  var observer = new win.MutationObserver(function() {
+    for (var i = pending.length - 1; i >= 0; i--) {
+      var box = pending[i];
+      if (!box.querySelector('canvas, iframe, object, embed, img, video, svg')) continue;
+      _restoreHole(box);
+      pending.splice(i, 1);
+    }
+    if (!pending.length) observer.disconnect();
+  });
+  try {
+    observer.observe(doc.body, {childList: true, subtree: true});
+  } catch (e) { return; }
+  win.setTimeout(function() { try { observer.disconnect(); } catch (e) {} }, _HOLE_WATCH_MS);
+}
+
+function _restoreHole(box) {
+  ['height', 'min-height', 'padding', 'margin', 'overflow'].forEach(function(prop) {
+    box.style.removeProperty(prop);
+  });
+  delete box.dataset.zimiCollapsed;
 }
 
 // Whether a computed background colour paints nothing. Browsers report an
