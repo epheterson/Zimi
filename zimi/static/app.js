@@ -2212,10 +2212,16 @@ function route(push) {
         doSearch(qParam, false);
         return;
       }
-      // If URL has an article path, open the article directly
+      // If URL has an article path, open the article directly.
+      //
+      // Through the same boot helper the /?a= form uses, which replaces the
+      // boot entry instead of pushing onto it. Hand-rolling it here without
+      // that flag is what made Back unusable on a /w/ deep link (#78): one
+      // navigation left three entries, and stepping back into /w/ re-served
+      // the shell, which rewrote the URL to /?a= again. The reporter arrived
+      // at it from the other end, seeing the address bar change under them.
       if (articlePath) {
-        enterSource(name, false);
-        openArticle(name, articlePath);
+        _bootDeepLinkArticle(name, articlePath);
         return;
       }
       enterSource(name, push);
@@ -18002,6 +18008,30 @@ window.addEventListener('popstate', (e) => {
   if (mode === 'manage' && _manageSavedReader) {
     _manageToken = '';
     _restoreSavedReader();
+    return;
+  }
+  // popstate says where you LANDED, not which way you went. Forward lands on a
+  // reader state exactly as back does, so deciding from direction alone closed
+  // the reader on a forward and then replaceState'd the URL back, which threw
+  // the forward entry away: pressing Forward appeared to do nothing (#78).
+  //
+  // So the destination decides. Landing on a reader state for an article that
+  // is not the one on screen means show that article, whichever direction
+  // brought us here.
+  var target = e.state;
+  if (
+    target && target.mode === 'reader' && target.zim && target.path &&
+    !(currentArticle && currentArticle.zim === target.zim &&
+      currentArticle.path === target.path)
+  ) {
+    // The in-app stack only describes backwards travel. Keep it consistent by
+    // remembering where we were, so a later Back still walks the same trail.
+    if (readerOpen && currentArticle) {
+      articleHistory.push({zim: currentArticle.zim, path: currentArticle.path});
+    }
+    _popstateNoAutoReader = true;
+    try { if (!readerOpen) enterSource(target.zim, false); } finally { _popstateNoAutoReader = false; }
+    _stepBackToArticle({zim: target.zim, path: target.path}, false);
     return;
   }
   // Step through article history when reader is open (mirrors in-app back button)
