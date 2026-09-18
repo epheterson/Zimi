@@ -1312,6 +1312,7 @@
   "remaining": "נותרו",
   "dl_eta_left": "נותרו {time}",
   "dl_eta_under_minute": "פחות מדקה",
+  "dl_verifying": "מאמת את מה שכבר בדיסק · {pct}%",
   "remember_me": "זכור אותי",
   "remove": "הסרה",
   "remove_from_favorites": "הסרה מהמועדפים",

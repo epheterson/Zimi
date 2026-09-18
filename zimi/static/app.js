@@ -13712,7 +13712,9 @@ async function _refreshDownloadsInner(useCache) {
       // until then. A paused or queued row is not moving; forget its rate so
       // resuming starts a fresh estimate rather than an ETA from stale bytes.
       let bps = 0;
-      if (dl.paused || dl.queued || dl.done) delete _dlRates[dl.id];
+      // Verifying is disk, not network: the counter climbs at disk speed and
+      // a rate taken from it would promise an ETA the swarm cannot keep.
+      if (dl.paused || dl.queued || dl.done || dl.checking) delete _dlRates[dl.id];
       else {
         const recent = useCache ? (_dlRates[dl.id] || {}).bps : _dlRecentRate(dl, _dlNow);
         bps = recent != null ? recent : (dl.elapsed > 0 && dl.downloaded_bytes > 0 ? dl.downloaded_bytes / dl.elapsed : 0);
@@ -13732,6 +13734,10 @@ async function _refreshDownloadsInner(useCache) {
         var _win = (window._dlSchedule && window._dlSchedule.start) || '';
         h += '<span class="dl-scheduled" title="' + escAttr(t('dl_scheduled_tip')) + '">\u23f0 ' +
           tH('dl_scheduled') + (_win ? ' \u00b7 ' + tH('dl_scheduled_starts', {time: esc(_win)}) : '') + '</span>';
+      } else if (dl.checking) {
+        // libtorrent re-verifying what is already on disk after a restart.
+        // Nothing is being downloaded; the bar shows how much has been read.
+        h += '<span class="dl-size">' + tH('dl_verifying', {pct: Math.round(pct)}) + '</span>';
       } else if (indeterminate) {
         h += '<span class="dl-size">' + tH('bt_connecting') + '</span>';
       } else {
@@ -13740,7 +13746,7 @@ async function _refreshDownloadsInner(useCache) {
       h += '</div>';
 
       if (!dl.done && !dl.error) {
-        h += '<div class="dl-progress' + (dl.paused ? ' dl-paused' : '') + (indeterminate ? ' dl-indeterminate' : '') +
+        h += '<div class="dl-progress' + (dl.paused ? ' dl-paused' : '') + (indeterminate ? ' dl-indeterminate' : '') + (dl.checking ? ' dl-checking' : '') +
           '"><div class="dl-progress-bar"' + (indeterminate ? '' : ' style="width:' + pct + '%"') + '></div></div>';
         var sourcePill = dl.source === 'bt'
           ? '<span class="dl-source dl-source-bt" title="' + escAttr(t('dl_via_bt_tip')) + '">' +

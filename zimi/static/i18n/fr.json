@@ -1312,6 +1312,7 @@
   "remaining": "restant",
   "dl_eta_left": "{time} restantes",
   "dl_eta_under_minute": "moins d'une minute",
+  "dl_verifying": "Vérification des données déjà présentes · {pct}%",
   "remember_me": "Se souvenir de moi",
   "remove": "Supprimer",
   "remove_from_favorites": "Retirer des favoris",

@@ -66,7 +66,8 @@ ok('nonsense input is empty, not NaN', ctx._fmtEta(NaN) === '' && ctx._fmtEta(-5
 // ── the row uses them, and seeds come after downloads ──────────────────────
 const row = src.slice(src.indexOf('for (const dl of renderDls) {'), src.indexOf("h += '</div>';  // close .dl-grid"));
 ok('the row shows the ETA', /esc\(eta\)/.test(row));
-ok('a paused or queued row forgets its rate', /if \(dl\.paused \|\| dl\.queued \|\| dl\.done\) delete _dlRates\[dl\.id\]/.test(row));
+ok('a paused, queued or verifying row forgets its rate', /if \(dl\.paused \|\| dl\.queued \|\| dl\.done \|\| dl\.checking\) delete _dlRates\[dl\.id\]/.test(row));
+ok('verifying has its own label and never a rate or ETA', /dl\.checking\) \{[\s\S]*?tH\('dl_verifying'/.test(row));
 ok('seeds are appended after the downloads', /h \+= seedHtml;\n\s*h \+= '<\/div>';  \/\/ close \.dl-grid/.test(src));
 ok('the tab is patched in place rather than rebuilt', /_morphInto\(dlEl, h\)/.test(src) && !/dlEl\.innerHTML = h;/.test(src));
 

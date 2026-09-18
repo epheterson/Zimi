@@ -1312,6 +1312,7 @@
   "remaining": "remaining",
   "dl_eta_left": "{time} left",
   "dl_eta_under_minute": "under a minute left",
+  "dl_verifying": "Verifying what is already on disk · {pct}%",
   "remember_me": "Remember me",
   "remove": "Remove",
   "remove_from_favorites": "Remove from favorites",

@@ -1312,6 +1312,7 @@
   "remaining": "restante",
   "dl_eta_left": "faltam {time}",
   "dl_eta_under_minute": "menos de um minuto",
+  "dl_verifying": "Verificando o que já está no disco · {pct}%",
   "remember_me": "Lembrar de mim",
   "remove": "Remover",
   "remove_from_favorites": "Remover dos favoritos",

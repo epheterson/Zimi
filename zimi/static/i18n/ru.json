@@ -1312,6 +1312,7 @@
   "remaining": "осталось",
   "dl_eta_left": "осталось {time}",
   "dl_eta_under_minute": "меньше минуты",
+  "dl_verifying": "Проверка уже загруженного · {pct}%",
   "remember_me": "Запомнить меня",
   "remove": "Убрать",
   "remove_from_favorites": "Убрать из избранного",
