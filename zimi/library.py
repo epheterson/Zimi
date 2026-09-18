@@ -3420,6 +3420,7 @@ def _download_thread(dl):
             dl["_source"] = "http"
             dl["bt_peers"] = 0
             dl["switch_direct"] = False
+            dl["checking"] = False  # HTTP verifies nothing; the row must not say it does
 
         success = False
         last_error = None

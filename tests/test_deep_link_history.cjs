@@ -95,8 +95,29 @@ check(pop.indexOf("target.mode === 'reader'") < pop.indexOf('if (readerOpen) clo
       'before any decision to close the reader, or forward closes it');
 check(/currentArticle\.zim === target\.zim/.test(pop),
       'landing on the article already shown is not a navigation');
-check(/articleHistory\.push/.test(pop),
-      'and travelling forward records where we were, so a later Back still walks the trail');
+check(/_historyOnLanding\(target\)/.test(pop),
+      'and the in-app stack is settled by _historyOnLanding, not by pushing on every landing');
+check(/await enterSource\(target\.zim, false\)/.test(pop) && /addEventListener\('popstate', async/.test(src),
+      'a Forward with the reader closed AWAITS enterSource with the auto-open flag held, or the ZIM home page overwrites the article');
+
+// ── the stack itself, driven ───────────────────────────────────────────────
+// popstate cannot say which way it went; the stack's top can. Home, A, B:
+// the stack holds [A]. Back lands on A: that is the top, so it comes off and
+// the reader shows A with an empty stack, so the next Back goes home. The
+// first cut pushed B on that landing, and the second Back popped it and went
+// forward again.
+const vm = require('vm');
+const ctx = { articleHistory: [{ zim: 'w', path: 'A' }], readerOpen: true, currentArticle: { zim: 'w', path: 'B' } };
+vm.createContext(ctx);
+vm.runInContext(src.match(/function _historyOnLanding\(target\) \{[\s\S]*?\n\}/)[0], ctx);
+check(ctx._historyOnLanding({ zim: 'w', path: 'A' }) === 'back', 'landing on the top of the stack is a Back');
+check(ctx.articleHistory.length === 0, 'and that entry comes off, so the next Back leaves the reader');
+ctx.currentArticle = { zim: 'w', path: 'A' };
+check(ctx._historyOnLanding({ zim: 'w', path: 'B' }) === 'forward', 'landing anywhere else is a Forward');
+check(ctx.articleHistory.length === 1 && ctx.articleHistory[0].path === 'A', 'which records the article being left');
+ctx.readerOpen = false; ctx.currentArticle = null; ctx.articleHistory = [];
+check(ctx._historyOnLanding({ zim: 'w', path: 'C' }) === 'forward' && ctx.articleHistory.length === 0,
+      'with the reader closed there is nothing to record');
 
 console.log('');
 if (failures) {

@@ -13355,12 +13355,22 @@ function _dlRecentRate(dl, now) {
   var prev = _dlRates[dl.id];
   var bytes = dl.downloaded_bytes || 0;
   var bps = null;
+  // Ids restart from 1 with the server, so a tab left open across a restart
+  // meets a new download under an old id; the filename tells them apart.
+  if (prev && prev.file !== dl.filename) prev = null;
   if (prev && now > prev.t && bytes >= prev.bytes) {
     var inst = (bytes - prev.bytes) / ((now - prev.t) / 1000);
     bps = prev.bps == null ? inst : prev.bps * _DL_RATE_SMOOTHING + inst * (1 - _DL_RATE_SMOOTHING);
   }
-  _dlRates[dl.id] = {t: now, bytes: bytes, bps: bps};
+  _dlRates[dl.id] = {t: now, bytes: bytes, bps: bps, file: dl.filename};
   return bps;
+}
+// Forget downloads that left the list, so the map does not grow for the
+// life of the tab.
+function _pruneDlRates(dls) {
+  var live = {};
+  for (var i = 0; i < dls.length; i++) live[dls[i].id] = true;
+  Object.keys(_dlRates).forEach(function(id) { if (!live[id]) delete _dlRates[id]; });
 }
 // "1h 12m left", "4m left", "under a minute left". Coarse on purpose: an ETA
 // to the second on a swarm is a number that changes faster than it can be read.
@@ -13412,6 +13422,7 @@ async function _refreshDownloadsInner(useCache) {
         try { ops = await actRes.json(); } catch (e) {}
       }
       _dlLastDls = dls; _dlLastSeeds = seedingTorrents; _dlLastSeedCap = seedingCap; _dlLastOps = ops;
+      _pruneDlRates(dls);
     }
     const opsHtml = _dlOpsCardsHtml(ops);
     if (!dls.length && !seedingTorrents.length && !opsHtml) {
@@ -18052,7 +18063,24 @@ document.addEventListener('keydown', e => {
 });
 
 // ── History ──
-window.addEventListener('popstate', (e) => {
+// The in-app stack only describes backwards travel, and a popstate cannot say
+// which way it went. The stack's top can: landing on the article on top of it
+// is a Back, so that entry comes off; landing anywhere else is a Forward, so
+// the article being left goes on. Every landing used to push, which made two
+// Backs from a second article go forward again.
+function _historyOnLanding(target) {
+  var top = articleHistory[articleHistory.length - 1];
+  if (top && top.zim === target.zim && top.path === target.path) {
+    articleHistory.pop();
+    return 'back';
+  }
+  if (readerOpen && currentArticle) {
+    articleHistory.push({zim: currentArticle.zim, path: currentArticle.path});
+  }
+  return 'forward';
+}
+
+window.addEventListener('popstate', async (e) => {
   hideSuggest();
   _hideHistoryTrail();
   if (_createOpen) { closeCreate(); return; }
@@ -18078,13 +18106,14 @@ window.addEventListener('popstate', (e) => {
     !(currentArticle && currentArticle.zim === target.zim &&
       currentArticle.path === target.path)
   ) {
-    // The in-app stack only describes backwards travel. Keep it consistent by
-    // remembering where we were, so a later Back still walks the same trail.
-    if (readerOpen && currentArticle) {
-      articleHistory.push({zim: currentArticle.zim, path: currentArticle.path});
+    _historyOnLanding(target);
+    if (!readerOpen) {
+      // Awaited with the flag held: renderSource consults the flag again
+      // after its own fetch, and an unawaited call had it reset by then, so
+      // the ZIM's main page auto-opened over the article just restored.
+      _popstateNoAutoReader = true;
+      try { await enterSource(target.zim, false); } finally { _popstateNoAutoReader = false; }
     }
-    _popstateNoAutoReader = true;
-    try { if (!readerOpen) enterSource(target.zim, false); } finally { _popstateNoAutoReader = false; }
     _stepBackToArticle({zim: target.zim, path: target.path}, false);
     return;
   }

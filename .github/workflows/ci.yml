@@ -194,6 +194,15 @@ jobs:
       # Explorer does, prove the app cannot start with the mark kept, then
       # prove it starts once it is allowed to clear the mark itself. The
       # control run is what makes the passing run evidence rather than luck.
+      # The same script the release runs, in the same headless server mode.
+      # The bundle opens a window without it, and there is no display here.
+      - name: The built binary starts and answers
+        if: matrix.os == 'ubuntu-22.04'
+        shell: bash
+        env:
+          SMOKE_EXPECT_BT: '1'
+        run: ci/smoke_binary.sh "dist/Zimi/Zimi"
+
       - name: The marked bundle fails, then clears its own mark and renders (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
