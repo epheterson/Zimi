@@ -1576,6 +1576,7 @@
   "env_none": "没有任何设置被覆盖。全部设置都在 Zimi 中控制。",
   "env_locks": "锁定{v}",
   "env_empty": "（空）",
+  "env_unavailable": "无法读取环境变量。",
   "env_from_config": "在 {path} 中设置",
   "env_hint": "它们在启动 Zimi 的地方设置，优先于设置页。请在那里修改后重启。"
 }

@@ -187,13 +187,6 @@ jobs:
           pip install pyinstaller
           pyinstaller --noconfirm desktop/zimi_desktop.spec
 
-      # The portable zip, as a person actually gets it: every file extracted
-      # from a browser download carries the mark of the web, and the .NET
-      # Framework will not load a marked assembly. 1.9.5 died on its first
-      # import that way (Spudlads, r/Kiwix). Stamp the built bundle the way
-      # Explorer does, prove the app cannot start with the mark kept, then
-      # prove it starts once it is allowed to clear the mark itself. The
-      # control run is what makes the passing run evidence rather than luck.
       # The same script the release runs, in the same headless server mode.
       # The bundle opens a window without it, and there is no display here.
       - name: The built binary starts and answers
@@ -203,6 +196,13 @@ jobs:
           SMOKE_EXPECT_BT: '1'
         run: ci/smoke_binary.sh "dist/Zimi/Zimi"
 
+      # The portable zip, as a person actually gets it: every file extracted
+      # from a browser download carries the mark of the web, and the .NET
+      # Framework will not load a marked assembly. 1.9.5 died on its first
+      # import that way (Spudlads, r/Kiwix). Stamp the built bundle the way
+      # Explorer does, prove the app cannot start with the mark kept, then
+      # prove it starts once it is allowed to clear the mark itself. The
+      # control run is what makes the passing run evidence rather than luck.
       - name: The marked bundle fails, then clears its own mark and renders (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh

@@ -39,6 +39,9 @@ function Finish-Smoke($run, [string]$label, [int]$timeoutMs) {
 }
 
 function Save-Screenshot([string]$path) {
+  # Evidence, not a gate: a runner without a desktop must not fail a build
+  # the app has already passed.
+  try {
   Add-Type -AssemblyName System.Drawing
   Add-Type -AssemblyName System.Windows.Forms
   $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
@@ -48,6 +51,7 @@ function Save-Screenshot([string]$path) {
   $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
   $g.Dispose(); $bmp.Dispose()
   Write-Host "screenshot: $path ($($b.Width)x$($b.Height))"
+  } catch { Write-Host "screenshot not taken: $_" }
 }
 
 # 1. Control: the marked bundle must fail to start.
@@ -64,15 +68,21 @@ Write-Host "control run failed as expected (exit $control) with the mark kept"
 $env:ZIMI_DESKTOP_SMOKE = 'app'
 $env:ZIMI_DESKTOP_SMOKE_DWELL = '10'
 $run = Start-Smoke "app"
-$deadline = (Get-Date).AddSeconds(90)
+# The app's own budget is up to 60s for the server, 10s for the page and
+# 60s for the view, so the watcher waits longer than that and the verdict
+# is re-read from the log after exit rather than latched mid-way.
+$deadline = (Get-Date).AddSeconds(150)
 $rendered = $false
 while ((Get-Date) -lt $deadline) {
   Start-Sleep -Milliseconds 500
   if (Select-String -Path $run.out -Pattern 'SMOKE: app rendered' -Quiet -ErrorAction SilentlyContinue) { $rendered = $true; break }
   if ($run.proc.HasExited) { break }
 }
-if ($rendered) { Start-Sleep -Seconds 2; Save-Screenshot (Join-Path (Get-Location) "zimi-windows-smoke.png") }
+if ($rendered) { Start-Sleep -Seconds 2 }
+# Either way: the picture of a failure is the point of taking one.
+Save-Screenshot (Join-Path (Get-Location) "zimi-windows-smoke.png")
 $code = Finish-Smoke $run "app" 60000
+if (-not $rendered) { $rendered = [bool](Select-String -Path $run.out -Pattern 'SMOKE: app rendered' -Quiet -ErrorAction SilentlyContinue) }
 if (-not $rendered) { throw "the app never reported a rendered home view (exit $code)" }
 if ($code -ne 0) { throw "the app rendered but exited $code" }
 if (Get-Item $runtimeDll -Stream Zone.Identifier -ErrorAction SilentlyContinue) { throw "the mark is still on Python.Runtime.dll after a successful start" }

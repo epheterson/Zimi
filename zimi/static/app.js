@@ -11132,12 +11132,15 @@ function _appUpdateSetDelay(days) {
 // overrides nothing, and saying so plainly is the useful answer.
 async function _renderEnvSection() {
   var rows;
+  var el = document.getElementById('ms-env');
   try {
     rows = (await _msFetch('/manage/env')).vars || [];
   } catch (e) {
-    return; // leave the placeholder; a failed poll is not worth a red box here
+    // This panel's one job is to answer "is something overriding my
+    // settings", and a failed poll must not look like "nothing is".
+    if (el) el.innerHTML = '<div class="ms-hint">' + tH('env_unavailable') + '</div>';
+    return;
   }
-  var el = document.getElementById('ms-env');
   if (!el) return;
   if (!rows.length) {
     el.innerHTML = '<div class="ms-hint">' + tH('env_none') + '</div>';
@@ -13352,6 +13355,7 @@ function _morphAttrs(o, w) {
 // slow poll does not swing the ETA.
 var _dlRates = {};
 var _DL_RATE_SMOOTHING = 0.6;  // weight kept from the previous estimate
+var _DL_STALL_BPS = 1024;      // under this, no ETA: it would only grow
 function _dlRecentRate(dl, now) {
   var prev = _dlRates[dl.id];
   var bytes = dl.downloaded_bytes || 0;
@@ -13636,7 +13640,9 @@ async function _refreshDownloadsInner(useCache) {
         bps = recent != null ? recent : (dl.elapsed > 0 && dl.downloaded_bytes > 0 ? dl.downloaded_bytes / dl.elapsed : 0);
       }
       const speed = (bps / 1024 / 1024).toFixed(1);
-      const eta = (bps > 0 && dl.total_bytes && dl.total_bytes > dl.downloaded_bytes)
+      // Below a kilobyte a second the transfer is stalled, and an ETA from
+      // a rate decaying toward zero grows without bound ("12d left").
+      const eta = (bps > _DL_STALL_BPS && dl.total_bytes && dl.total_bytes > dl.downloaded_bytes)
         ? _fmtEta((dl.total_bytes - dl.downloaded_bytes) / bps) : '';
 
       h += '<div class="dl-item">';

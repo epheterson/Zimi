@@ -85,7 +85,16 @@ if (
     and getattr(sys, "frozen", False)
     and os.environ.get("ZIMI_DESKTOP_KEEP_MARK") != "1"
 ):
-    _unblock_bundled_libraries(getattr(sys, "_MEIPASS", None))
+    # Said out loud, count included: a zero here next to the pythonnet crash
+    # is the difference between "the fix ran and found nothing" and "the fix
+    # never ran". The bundle has no console, but CI and a terminal launch do.
+    _unblocked = _unblock_bundled_libraries(getattr(sys, "_MEIPASS", None))
+    print(
+        "mark of the web: cleared from %d libraries under %s"
+        % (_unblocked, getattr(sys, "_MEIPASS", None)),
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -771,6 +780,11 @@ def _run():
         server.ready.wait(timeout=60)
 
         if server.error:
+            if os.environ.get("ZIMI_DESKTOP_SMOKE") == "app":
+                # Otherwise the smoke sits in the GUI loop until the watcher
+                # gives up, and a two-minute timeout says nothing about why.
+                print("SMOKE: FAIL server did not start: %s" % server.error, flush=True)
+                os._exit(1)
             window.load_html(
                 f'<html><body style="font-family:system-ui;background:#0a0a0b;color:#e8e8ed;padding:40px">'
                 f'<h2 style="color:#f59e0b">Failed to start server</h2>'

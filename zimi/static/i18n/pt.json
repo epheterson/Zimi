@@ -1576,6 +1576,7 @@
   "env_none": "Nada é substituído. Todas as definições são controladas no Zimi.",
   "env_locks": "bloqueia {v}",
   "env_empty": "(vazio)",
+  "env_unavailable": "Não foi possível ler o ambiente.",
   "env_from_config": "Definido em {path}",
   "env_hint": "São definidas onde o Zimi arranca, por isso prevalecem sobre as definições. Altere-as aí e reinicie."
 }
