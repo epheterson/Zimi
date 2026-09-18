@@ -700,6 +700,8 @@
   "cat_medical_desc": "WikiMed, MedlinePlus, CDC, NHS, फ़ील्ड मेडिसिन",
   "cat_other": "अन्य",
   "cat_other_desc": "विविध और अवर्गीकृत संग्रह",
+  "cat_maps": "मानचित्र",
+  "cat_maps_desc": "ऑफ़लाइन सड़क मानचित्र जिन्हें आप खिसका, ज़ूम और खोज सकते हैं",
   "cat_qa": "प्रश्नोत्तर समुदाय",
   "cat_qa_desc": "Stack Overflow, Ask Ubuntu, खाना पकाना, DIY, विज्ञान",
   "cat_survival": "सर्वाइवल और तैयारी",

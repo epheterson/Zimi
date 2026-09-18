@@ -700,6 +700,8 @@
   "cat_medical_desc": "WikiMed, MedlinePlus, CDC, NHS, médecine de terrain",
   "cat_other": "Autre",
   "cat_other_desc": "Archives diverses et non classées",
+  "cat_maps": "Cartes",
+  "cat_maps_desc": "Cartes routières hors ligne à parcourir, zoomer et rechercher",
   "cat_qa": "Communautés Q&R",
   "cat_qa_desc": "Stack Overflow, Ask Ubuntu, cuisine, bricolage, sciences",
   "cat_survival": "Survie & Préparation",

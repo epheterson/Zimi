@@ -1765,6 +1765,9 @@ def _categorize_zim(name):
     # Books
     if n in ("gutenberg", "rationalwiki", "theworldfactbook"):
         return "Books"
+    # Maps — Kiwix's maps2zim output keeps its maps_<lang>_<region> name
+    if n.startswith("maps_"):
+        return "Maps"
     return None
 
 
@@ -1804,15 +1807,44 @@ def _folder_category(folder):
     return pretty[:_FOLDER_CATEGORY_MAX]
 
 
-def _effective_category(name, path):
+# Scrapers whose output is a MapLibre map rather than pages. Matched as a
+# prefix of the Scraper metadata ("maps2zim v0.2.1", "streetzim/1.0").
+_MAP_SCRAPERS = ("maps2zim", "streetzim", "atlaszim")
+
+
+def _zim_kind(scraper, tags, meta_name):
+    """What a ZIM is, from its own metadata, for when its filename says nothing.
+
+    ``"map"`` for a map ZIM, else None. Kiwix ships its maps as maps_en_<region>
+    but a copy is often renamed (samoa.zim), and StreetZim names its output after
+    the region with no hint at all (osm_osm_-_hawaii). The Scraper and Tags
+    metadata survive a rename; the filename does not.
+    """
+    s = (scraper or "").lower()
+    if s.startswith(_MAP_SCRAPERS):
+        return "map"
+    if "maps" in {t.strip().lower() for t in (tags or "").split(";")}:
+        return "map"
+    if (meta_name or "").lower().startswith("maps_"):
+        return "map"
+    return None
+
+
+def _effective_category(name, path, kind=None):
     """A ZIM's category: its subfolder if it lives in one, else the heuristic.
 
     Folder beats heuristic because the folder is an act of organization by the
     operator — filing a ZIM under medical/ says more than any guess made from
     its filename. A hand-set per-ZIM override still beats both; that is applied
-    at the /list boundary, not baked in here.
+    at the /list boundary, not baked in here. Between folder and filename sits
+    what the ZIM says it is (``kind``, from its metadata): a map is a map
+    whatever the file was renamed to.
     """
-    return _folder_category(_zim_folder(path)) or _categorize_zim(name)
+    return (
+        _folder_category(_zim_folder(path))
+        or ("Maps" if kind == "map" else None)
+        or _categorize_zim(name)
+    )
 
 
 # ============================================================================
@@ -2455,6 +2487,9 @@ def _extract_zim_metadata(name, path):
     meta_date = ""
     meta_lang = ""
     meta_creator = ""
+    meta_scraper = ""
+    meta_tags = ""
+    meta_name = ""
     has_icon = False
     main_path = ""
     archive = None
@@ -2480,6 +2515,12 @@ def _extract_zim_metadata(name, path):
                     meta_date = val.decode("utf-8", errors="replace").strip()
                 elif key == "Creator":
                     meta_creator = val.decode("utf-8", errors="replace").strip()
+                elif key == "Scraper":
+                    meta_scraper = val.decode("utf-8", errors="replace").strip()
+                elif key == "Tags":
+                    meta_tags = val.decode("utf-8", errors="replace").strip()
+                elif key == "Name":
+                    meta_name = val.decode("utf-8", errors="replace").strip()
                 elif key == "Language":
                     raw_lang = val.decode("utf-8", errors="replace").strip().lower()
                     # Handle multilingual ZIMs (comma-separated codes)
@@ -2515,6 +2556,7 @@ def _extract_zim_metadata(name, path):
         if m:
             code = m.group(1)
             meta_lang = _ISO639_3_TO_1.get(code, code)
+    kind = _zim_kind(meta_scraper, meta_tags, meta_name)
     info = {
         "name": name,
         "file": os.path.basename(path),
@@ -2528,9 +2570,13 @@ def _extract_zim_metadata(name, path):
         "date": meta_date,
         "language": meta_lang,
         "has_icon": has_icon,
-        "category": _effective_category(name, path),
+        "category": _effective_category(name, path, kind),
         "main_path": main_path,
     }
+    # Additive: what the ZIM says it is, kept so a cache hit can re-derive the
+    # category without reopening the archive.
+    if kind:
+        info["kind"] = kind
     # Additive: the raw subfolder name behind a folder-derived category, so a
     # client can tell "filed under medical/" from a name-heuristic guess. Absent
     # for root-level files, which keep heuristic categorization untouched.
@@ -2838,7 +2884,7 @@ def load_cache(force=False):
                 # stale on exactly the move that should re-file it. Deriving
                 # here is pure string work, so an existing library re-files on
                 # the next boot with no rescan and no extra I/O.
-                "category": _effective_category(name, path),
+                "category": _effective_category(name, path, cached.get("kind")),
                 "main_path": cached.get("main_path", ""),
                 "first_seen": first_seen,
                 "updated_at": updated_at,
@@ -2846,6 +2892,8 @@ def load_cache(force=False):
             folder = _zim_folder(path)
             if folder:
                 entry["folder"] = folder
+            if cached.get("kind"):
+                entry["kind"] = cached["kind"]
             if "has_qids" in cached:
                 entry["has_qids"] = cached["has_qids"]
             # Both of the site's faces, when a capture kept them. Cached like
@@ -2911,6 +2959,8 @@ def load_cache(force=False):
                 new_cached["article_count"] = entry["article_count"]
             if entry.get("zimi_export"):
                 new_cached["zimi_export"] = True
+            if entry.get("kind"):
+                new_cached["kind"] = entry["kind"]
             # Only when the capture kept two: most ZIMs have one face, and a
             # cache full of nulls is noise. An older Zimi reading this record
             # ignores the key, which is what keeps a downgrade safe.

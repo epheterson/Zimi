@@ -7144,6 +7144,7 @@ const BROWSE_CATEGORIES = [
   { key: 'medical',        i18n: 'cat_medical',        icon: '\u{1FA7A}', descKey: 'cat_medical_desc' },
   { key: 'survival',       i18n: 'cat_survival',       icon: '\u{1F9ED}', descKey: 'cat_survival_desc' },
   { key: 'gaming',         i18n: 'cat_gaming',         icon: '\u{1F3AE}', descKey: 'cat_gaming_desc' },
+  { key: 'maps',           i18n: 'cat_maps',           icon: '\u{1F5FA}\uFE0F', descKey: 'cat_maps_desc' },
   { key: 'other',          i18n: 'cat_other',          icon: '\u{1F4E6}', descKey: 'cat_other_desc' },
 ];
 
@@ -7306,6 +7307,7 @@ const _OPDS_CAT_MAP = {
   'gutenberg':'gutenberg',
   'mooc':'education', 'phet':'education',
   'ifixit':'education',  // iFixit, WikiHow → Education & How-To
+  'maps':'maps',         // not set by Kiwix today (maps_en_* ship with no category); ready for when it is
 };
 
 function autoCategorize(item) {
@@ -7346,6 +7348,8 @@ function autoCategorize(item) {
   if (/dandwiki|evageeks|frackinuniverse|granbluefantasy/.test(n)) return 'gaming';
   if (/the_infosphere|zdoom|westeros/.test(n)) return 'gaming';
   if (/minecraft|pokemon|bulba|stardew|rimworld|riskofrain|whitewolf/.test(n)) return 'gaming';
+  // Maps: Kiwix's Maps2ZIM output (maps_en_<region>), StreetZim, AtlasZim
+  if (/^maps_|streetzim|atlaszim/.test(n)) return 'maps';
   return 'other';
 }
 
@@ -8357,7 +8361,7 @@ const MANAGE_CATEGORIES = [
 const _CAT_TO_BROWSE_KEY = {
   'Wikimedia': 'wikipedia', 'Stack Exchange': 'stack_exchange', 'Dev Docs': 'devdocs',
   'Education': 'education', 'Medical': 'medical', 'How-To': 'survival',
-  'Books': 'gutenberg', 'Other': 'other'
+  'Books': 'gutenberg', 'Maps': 'maps', 'Other': 'other'
 };
 
 function categorizeZim(name) {
@@ -8369,6 +8373,7 @@ function categorizeZim(name) {
   if (/wikihow|ifixit|off-the-grid/.test(n)) return 'How-To';
   if (/^wiki|^wikt/.test(n) || n === 'openstreetmap-wiki') return 'Wikimedia';
   if (/gutenberg|rationalwiki|theworldfactbook/.test(n)) return 'Books';
+  if (/^maps_|streetzim|atlaszim/.test(n)) return 'Maps';
   return 'Other';
 }
 

@@ -700,6 +700,8 @@
   "cat_medical_desc": "WikiMed、MedlinePlus、CDC、NHS、野外医学",
   "cat_other": "其他",
   "cat_other_desc": "杂项及未分类档案",
+  "cat_maps": "地图",
+  "cat_maps_desc": "可平移、缩放和搜索的离线街道地图",
   "cat_qa": "问答社区",
   "cat_qa_desc": "Stack Overflow、Ask Ubuntu、烹饪、DIY、科学",
   "cat_survival": "生存与应急准备",

@@ -700,6 +700,8 @@
   "cat_medical_desc": "WikiMed, MedlinePlus, CDC, NHS, field medicine",
   "cat_other": "Other",
   "cat_other_desc": "Miscellaneous and uncategorized archives",
+  "cat_maps": "Maps",
+  "cat_maps_desc": "Offline street maps you can pan, zoom and search",
   "cat_qa": "Q&A Communities",
   "cat_qa_desc": "Stack Overflow, Ask Ubuntu, cooking, DIY, science",
   "cat_survival": "Survival & Preparedness",

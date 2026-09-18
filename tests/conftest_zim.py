@@ -53,8 +53,11 @@ class _Article(Item):
         return {Hint.FRONT_ARTICLE: True}
 
 
-def build_fixture_zim(path: str) -> str:
-    """Write a 3-article ZIM at `path`; return the path."""
+def build_fixture_zim(path: str, metadata: dict | None = None) -> str:
+    """Write a 3-article ZIM at `path`; return the path.
+
+    ``metadata`` adds or overrides ZIM metadata keys (Scraper, Tags, Name...)
+    for tests about what a ZIM says it is."""
     articles = [
         (
             "A/Water",
@@ -80,6 +83,8 @@ def build_fixture_zim(path: str) -> str:
         creator.add_metadata("Title", "Test Survival")
         creator.add_metadata("Language", "eng")
         creator.add_metadata("Description", "tiny fixture")
+        for key, value in (metadata or {}).items():
+            creator.add_metadata(key, value)
     assert os.path.exists(path)
     return path
 

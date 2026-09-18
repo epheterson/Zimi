@@ -700,6 +700,8 @@
   "cat_medical_desc": "WikiMed و MedlinePlus و CDC و NHS وطب الميدان",
   "cat_other": "أخرى",
   "cat_other_desc": "أرشيفات متنوعة وغير مصنفة",
+  "cat_maps": "خرائط",
+  "cat_maps_desc": "خرائط شوارع دون اتصال يمكنك تحريكها وتكبيرها والبحث فيها",
   "cat_qa": "مجتمعات الأسئلة والأجوبة",
   "cat_qa_desc": "Stack Overflow و Ask Ubuntu والطبخ والأعمال اليدوية والعلوم",
   "cat_survival": "بقاء واستعداد",

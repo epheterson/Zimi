@@ -700,6 +700,8 @@
   "cat_medical_desc": "WikiMed, MedlinePlus, CDC, NHS, полевая медицина",
   "cat_other": "Прочее",
   "cat_other_desc": "Разные и некатегоризированные архивы",
+  "cat_maps": "Карты",
+  "cat_maps_desc": "Офлайн-карты улиц: перемещайте, масштабируйте, ищите",
   "cat_qa": "Сообщества Q&A",
   "cat_qa_desc": "Stack Overflow, Ask Ubuntu, кулинария, DIY, наука",
   "cat_survival": "Выживание и Подготовка",
