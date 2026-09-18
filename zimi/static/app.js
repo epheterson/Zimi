@@ -15499,6 +15499,15 @@ function parseMapHash(hash) {
 }
 
 // Follow the map, writing where it is into the address bar.
+// True when the URL on screen is the open map's own address, so a position
+// hash belongs on it. False on the home page after a Back: the frame is still
+// there, hidden, and the resize that hiding it causes fires one more moveend,
+// which must not write the map's position onto the library's URL.
+function _urlIsOpenMapPage() {
+  return !!(readerOpen && currentArticle && _readerMap() &&
+    location.pathname + location.search === _articleDeepLinkPath(currentArticle.zim, currentArticle.path));
+}
+
 function _watchReaderMap() {
   var map = _readerMap();
   if (!map || _mapWatched === map) return;
@@ -15506,6 +15515,7 @@ function _watchReaderMap() {
   var onMove = function() {
     clearTimeout(_mapHashTimer);
     _mapHashTimer = setTimeout(function() {
+      if (!_urlIsOpenMapPage()) return;
       try {
         var c = map.getCenter();
         var base = location.pathname + location.search;
@@ -18215,16 +18225,14 @@ document.addEventListener('keydown', e => {
 // navigation, and treating it as one reloaded the reader frame: on a map that
 // meant every jump to a saved place rebuilt the map and threw you back to the
 // region's default view.
-var _lastRoutedUrl = location.pathname + location.search;
 
 window.addEventListener('popstate', (e) => {
-  var here = location.pathname + location.search;
-  if (here === _lastRoutedUrl && _readerMap()) {
-    // Same page, different place on the same map. The hashchange handler
-    // moves it; there is nothing here to route.
-    return;
-  }
-  _lastRoutedUrl = here;
+  // Same page, different place on the same map: only the hash changed. The
+  // hashchange handler moves the map; there is nothing here to route. Judged
+  // against the article on screen, not against the last URL this handler saw:
+  // pushes never pass through here, so a remembered URL was still "/" when
+  // Back returned to "/" from a map, and the map stayed open over the home page.
+  if (_urlIsOpenMapPage()) return;
   hideSuggest();
   _hideHistoryTrail();
   if (_createOpen) { closeCreate(); return; }
