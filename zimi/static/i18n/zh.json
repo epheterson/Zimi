@@ -1310,6 +1310,8 @@
   "refreshing": "刷新中…",
   "refreshing_cache": "正在刷新缓存…",
   "remaining": "剩余",
+  "dl_eta_left": "剩余 {time}",
+  "dl_eta_under_minute": "不到一分钟",
   "remember_me": "记住我",
   "remove": "移除",
   "remove_from_favorites": "取消收藏",

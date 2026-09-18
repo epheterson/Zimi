@@ -1310,6 +1310,8 @@
   "refreshing": "جارٍ التحديث…",
   "refreshing_cache": "جارٍ تحديث الذاكرة المؤقتة…",
   "remaining": "متبقٍ",
+  "dl_eta_left": "متبقٍ {time}",
+  "dl_eta_under_minute": "أقل من دقيقة",
   "remember_me": "تذكرني",
   "remove": "إزالة",
   "remove_from_favorites": "إزالة من المفضلة",

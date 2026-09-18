@@ -1310,6 +1310,8 @@
   "refreshing": "Wird aktualisiert…",
   "refreshing_cache": "Cache wird aktualisiert…",
   "remaining": "verbleibend",
+  "dl_eta_left": "noch {time}",
+  "dl_eta_under_minute": "unter einer Minute",
   "remember_me": "Angemeldet bleiben",
   "remove": "Entfernen",
   "remove_from_favorites": "Aus Favoriten entfernen",

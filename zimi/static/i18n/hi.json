@@ -1310,6 +1310,8 @@
   "refreshing": "रिफ्रेश हो रहा है…",
   "refreshing_cache": "कैश रिफ्रेश हो रहा है…",
   "remaining": "शेष",
+  "dl_eta_left": "{time} शेष",
+  "dl_eta_under_minute": "एक मिनट से कम",
   "remember_me": "मुझे याद रखें",
   "remove": "हटाएं",
   "remove_from_favorites": "पसंदीदा से हटाएं",
