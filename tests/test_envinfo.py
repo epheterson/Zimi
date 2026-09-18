@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from zimi import envinfo  # noqa: E402
 
 _PKG = pathlib.Path(__file__).resolve().parent.parent / "zimi"
-_LITERAL = re.compile(r"[\"'](ZIMI_[A-Z0-9_]+)[\"']")
+_LITERAL = re.compile(r"[\"']((?:ZIMI_[A-Z0-9_]+|ZIM_DIR))[\"']")
 
 
 def _names_in_source() -> set[str]:
@@ -143,3 +143,24 @@ def test_the_real_environment_is_readable():
     actually set on the machine running the tests."""
     for row in envinfo.effective():
         assert set(row) == {"name", "value", "secret", "description", "locks"}
+
+
+def test_a_config_file_value_is_labelled_as_the_files_not_the_environments():
+    """apply_env_settings publishes config-file values into os.environ. Shown
+    as environment, the panel's advice ("change it where Zimi is started")
+    sends an admin to a launcher that sets nothing: the #69 round trip,
+    reproduced by the feature meant to end it."""
+    rows = envinfo.effective(
+        {"ZIMI_OFFLINE": "1", "ZIMI_MANAGE": "1"},
+        published={"ZIMI_OFFLINE": "/data/zimi.json"},
+    )
+    by = {r["name"]: r for r in rows}
+    assert (by["ZIMI_OFFLINE"]["source"], by["ZIMI_OFFLINE"]["path"]) == ("config", "/data/zimi.json")
+    assert (by["ZIMI_MANAGE"]["source"], by["ZIMI_MANAGE"]["path"]) == ("env", "")
+
+
+def test_zim_dir_is_a_variable_the_panel_knows():
+    """On the Docker and NAS installs it is the most consequential variable
+    there is, and it is the one not spelled ZIMI_."""
+    rows = envinfo.effective({"ZIM_DIR": "/zims"})
+    assert [r["name"] for r in rows] == ["ZIM_DIR"]
