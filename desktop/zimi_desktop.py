@@ -800,6 +800,10 @@ def _run():
             except Exception:
                 pass
 
+        if os.environ.get("ZIMI_DESKTOP_SMOKE") == "app":
+            _smoke_app_rendered(window)
+            return
+
         # Sync document.title → native window title. The JS bridge
         # (pywebview.api.set_title) handles most updates, but we also poll
         # as a fallback since the bridge can be flaky in PyInstaller bundles.
@@ -898,6 +902,55 @@ def _serve_headless():
         server.shutdown()
 
 
+# The window smoke below proves the native window and its .NET backend come
+# up. This one proves the APP does: the embedded server answered, the real
+# page loaded, and the home view rendered with its search box and content.
+# Enabled by ZIMI_DESKTOP_SMOKE=app; the real launch path runs unchanged up to
+# the point where a person would see the home screen.
+#
+# Contract: prints "SMOKE: app rendered ..." and exits 0, after holding the
+# window open for ZIMI_DESKTOP_SMOKE_DWELL seconds (default 8) so a screenshot
+# can be taken of it; prints "SMOKE: FAIL ..." and exits 1 otherwise.
+_SMOKE_APP_RENDERED_JS = """
+(function () {
+  var box = document.querySelector('#search-input, input[type=search]');
+  var home = document.querySelector('.discover-section, .cat-heading, .empty, .stat-card');
+  var text = (document.body && document.body.innerText) || '';
+  return JSON.stringify({box: !!box, home: !!home, chars: text.length, title: document.title});
+})()
+"""
+
+
+def _smoke_app_rendered(window):
+    import json
+    import time
+
+    verdict = None
+    for _ in range(120):  # up to 60s
+        time.sleep(0.5)
+        try:
+            raw = window.evaluate_js(_SMOKE_APP_RENDERED_JS)
+            state = json.loads(raw) if raw else {}
+        except Exception:
+            continue
+        if state.get("box") and state.get("home") and state.get("chars", 0) > 100:
+            verdict = state
+            break
+    if not verdict:
+        print("SMOKE: FAIL app did not render a home view within 60s", flush=True)
+        os._exit(1)
+    print(
+        "SMOKE: app rendered (%d chars, title %r)" % (verdict["chars"], verdict["title"]),
+        flush=True,
+    )
+    time.sleep(float(os.environ.get("ZIMI_DESKTOP_SMOKE_DWELL", "8")))
+    try:
+        window.destroy()
+    except Exception:
+        pass
+    os._exit(0)
+
+
 def _smoke_test_window():
     """Headed smoke test: open a REAL pywebview window, confirm it shows, tear
     it down, and exit. Enabled via ZIMI_DESKTOP_SMOKE=1 or --smoke.
@@ -971,6 +1024,9 @@ def main():
     """Wrapper that restarts the app when exit code is 42."""
     if os.environ.get("ZIMI_DESKTOP_SMOKE") == "1" or "--smoke" in sys.argv:
         _smoke_test_window()
+        return
+    if os.environ.get("ZIMI_DESKTOP_SMOKE") == "app":
+        _run()  # in this process: the wrapper below would swallow the exit code
         return
 
     if "--serve" in sys.argv:

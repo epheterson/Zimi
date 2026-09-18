@@ -194,55 +194,21 @@ jobs:
       # Explorer does, prove the app cannot start with the mark kept, then
       # prove it starts once it is allowed to clear the mark itself. The
       # control run is what makes the passing run evidence rather than luck.
-      - name: The marked bundle fails, then clears its own mark and starts (Windows)
+      - name: The marked bundle fails, then clears its own mark and renders (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
-        env:
-          ZIMI_DESKTOP_SMOKE: '1'
-        run: |
-          $exe = "dist/Zimi/Zimi.exe"
-          function Stamp-Mark {
-            $n = 0
-            Get-ChildItem -Path dist/Zimi -Recurse -Include *.dll,*.exe | ForEach-Object {
-              Set-Content -Path $_.FullName -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3" ; $n++
-            }
-            Write-Host "stamped $n libraries with the mark of the web"
-          }
-          function Run-Smoke([string]$label) {
-            $out = "smoke_$label.out.log"; $err = "smoke_$label.err.log"
-            $p = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
-            if (-not $p.WaitForExit(120000)) { try { $p.Kill() } catch {}; Write-Host "${label}: timed out"; return 124 }
-            # Out-Host, or the log lines join the function's return value and
-            # the exit code comes back as an array.
-            Write-Host "--- $label stdout ---"; Get-Content $out -ErrorAction SilentlyContinue | Out-Host
-            Write-Host "--- $label stderr ---"; Get-Content $err -ErrorAction SilentlyContinue | Out-Host
-            return [int]$p.ExitCode
-          }
-          Stamp-Mark
-          $env:ZIMI_DESKTOP_KEEP_MARK = '1'
-          $control = Run-Smoke "marked"
-          Remove-Item Env:ZIMI_DESKTOP_KEEP_MARK
-          if ($control -eq 0) { Write-Error "control run: the marked bundle started anyway, so this test proves nothing"; exit 1 }
-          $marked = Get-Item "dist/Zimi/_internal/pythonnet/runtime/Python.Runtime.dll" -Stream Zone.Identifier -ErrorAction SilentlyContinue
-          if (-not $marked) { Write-Error "control run cleared the mark; the knob is not being honoured"; exit 1 }
-          Write-Host "control run failed as expected (exit $control) with the mark kept"
-          $real = Run-Smoke "unblocked"
-          if ($real -ne 0) { Write-Error "the app did not start after clearing its own mark (exit $real)"; exit 1 }
-          if (-not (Select-String -Path "smoke_unblocked.out.log" -Pattern 'SMOKE: window shown' -Quiet)) {
-            Write-Error "no 'SMOKE: window shown' after clearing the mark"; exit 1
-          }
-          $left = Get-Item "dist/Zimi/_internal/pythonnet/runtime/Python.Runtime.dll" -Stream Zone.Identifier -ErrorAction SilentlyContinue
-          if ($left) { Write-Error "the mark is still on Python.Runtime.dll after a successful start"; exit 1 }
-          Write-Host "a marked portable bundle clears its own mark and opens a real window"
+        run: pwsh ci/smoke_windows.ps1 dist/Zimi/Zimi.exe
 
-      # The same script the release runs, in the same headless server mode.
-      # The bundle opens a window without it, and there is no display here.
-      - name: The built binary starts and answers
-        if: matrix.os == 'ubuntu-22.04'
-        shell: bash
-        env:
-          SMOKE_EXPECT_BT: '1'
-        run: ci/smoke_binary.sh "dist/Zimi/Zimi"
+      # The picture of what a Windows user sees on first launch, for eyes.
+      - name: Upload the Windows smoke screenshot
+        if: matrix.os == 'windows-latest' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zimi-windows-smoke
+          path: |
+            zimi-windows-smoke.png
+            smoke_*.log
+          if-no-files-found: ignore
 
   docker:
     runs-on: ubuntu-latest
