@@ -702,6 +702,7 @@
   "cat_other_desc": "Archives diverses et non classées",
   "cat_maps": "Cartes",
   "cat_maps_desc": "Cartes routières hors ligne à parcourir, zoomer et rechercher",
+  "find_on_map": "Chercher « {q} » sur {map}",
   "cat_qa": "Communautés Q&R",
   "cat_qa_desc": "Stack Overflow, Ask Ubuntu, cuisine, bricolage, sciences",
   "cat_survival": "Survie & Préparation",

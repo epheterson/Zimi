@@ -4931,7 +4931,7 @@ function _loadDiscover() {
   var computed = [{ type: 'today' }];
   // So is Maps, whenever a map ZIM is installed: the card renders from the
   // live library, so it needs no server pick and nothing to cache.
-  if (_installedMaps().length) computed.push({ type: 'maps' });
+  if (_installedMaps().length) computed.unshift({ type: 'maps' });
   var names = (zimsCache || []).map(function(z) { return z.name; });
   var mmdd = ('0' + (now.getMonth() + 1)).slice(-2) + ('0' + now.getDate()).slice(-2);
 
@@ -6590,7 +6590,8 @@ function renderSearchResults(data, scope) {
   const visible = items.slice(0, visibleResultCount);
   const remaining = items.length - visibleResultCount;
 
-  let html = dymHtml + zimMatchHtml + '<div class="results">' + visible.map((r, i) => {
+  const mapFindHtml = !scope ? _mapFindRowsHtml(data._query || '') : '';
+  let html = dymHtml + zimMatchHtml + '<div class="results">' + mapFindHtml + visible.map((r, i) => {
     const sourceRow = !scope
       ? '<div class="result-source">' + _sourceIconHtml(r.zim, 20) +
         '<span class="rs-name">' + esc(_zimTitle(r.zim)) + '</span></div>'
@@ -15662,6 +15663,76 @@ window.addEventListener('hashchange', function() {
   } catch (e) {}
 });
 
+// Run a query in the map's own search box. StreetZim's index holds towns,
+// streets and addresses (139,067 places for Hawaii alone) and lives in
+// hash-bucketed shards its own code knows how to walk; Zimi's title index
+// cannot see any of it. So the search bar hands the words to the box
+// inside the frame, same-origin, and the map's results open where they
+// always do. Kiwix's maps2zim has no box (and an index of administrative
+// divisions only), so the offer is only made for maps that have one.
+//
+// Nothing here is a contract with StreetZim: a build without #search-input
+// simply opens at its home view with the words unplaced. Issue #18 asks
+// them for a stable way in.
+var _pendingMapFind = null;
+var _MAP_FIND_TRIES = 40;
+function _applyMapFind(tries) {
+  var want = _pendingMapFind;
+  if (!want || !currentArticle || currentArticle.zim !== want.zim) return;
+  var doc = null;
+  try { doc = document.getElementById('reader-frame').contentDocument; } catch (e) { doc = null; }
+  var box = doc && doc.getElementById('search-input');
+  if (!box) {
+    if ((tries || 0) >= _MAP_FIND_TRIES) { _pendingMapFind = null; return; }
+    setTimeout(function() { _applyMapFind((tries || 0) + 1); }, 150);
+    return;
+  }
+  _pendingMapFind = null;
+  _typeIntoMapBox(doc, box, want.q, 0);
+}
+// The box exists before its index does: StreetZim fetches a manifest after
+// the page loads and a query typed before it lands finds nothing. So type,
+// look for results, and type again while there are none, for a bounded
+// while. A query with genuinely no matches costs the same wait and then
+// stops.
+var _MAP_TYPE_TRIES = 25;
+function _typeIntoMapBox(doc, box, q, tries) {
+  try {
+    if (!box.isConnected) return;
+    if (box.value !== q) box.value = q;
+    if (!doc.querySelector('.search-result')) {
+      box.dispatchEvent(new Event('input', {bubbles: true}));
+      box.focus();
+      if ((tries || 0) < _MAP_TYPE_TRIES) {
+        setTimeout(function() { _typeIntoMapBox(doc, box, q, (tries || 0) + 1); }, 400);
+      }
+    }
+  } catch (e) {}
+}
+
+// The rows the search bar adds above its results: one per installed map
+// with a search box of its own, offering the query there.
+function _mapFindRowsHtml(query) {
+  var maps = _installedMaps().filter(function(m) { return m.map_search; });
+  if (!query || !maps.length) return '';
+  return maps.slice(0, 3).map(function(m) {
+    var title = m.title || m.name;
+    return '<a class="result map-find" href="' + escAttr(_articleDeepLinkPath(m.name, m.main_path)) +
+      '" data-zim="' + escAttr(m.name) + '" data-path="' + escAttr(m.main_path) + '" data-title="' + escAttr(title) +
+      '" data-find="' + escAttr(query) + '" onclick="return _spaMapFind(event, this)">' +
+      '<div class="result-body">' +
+        '<div class="result-source">' + _sourceIconHtml(m.name, 20) + '<span class="rs-name">' + esc(title) + '</span></div>' +
+        '<div class="title">' + _FEAT_SVG.map + ' ' + tH('find_on_map', {q: esc(query), map: esc(title)}) + '</div>' +
+      '</div></a>';
+  }).join('');
+}
+function _spaMapFind(e, el) {
+  return _spaNav(e, function () {
+    openArticle(el.getAttribute('data-zim'), el.getAttribute('data-path'), el.getAttribute('data-title') || '',
+      {find: el.getAttribute('data-find') || ''});
+  });
+}
+
 // And put it back where the link says, once the map exists.
 var _MAP_RESTORE_TRIES = 40;
 function _restoreMapPosition(pos, tries) {
@@ -15869,6 +15940,7 @@ function openReader(url) {
     // A map ZIM: put it where the link says, then follow it. Both are no-ops
     // on every other kind of page, since neither finds a map handle.
     _restoreMapPosition(parseMapHash(location.hash), 0);
+    _applyMapFind(0);
     setTimeout(_watchReaderMap, 400);
     // Inject responsive CSS + scroll-to-top button for mobile
     try {
@@ -17711,6 +17783,8 @@ function openArticle(zim, path, title, opts) {
     _mapWatched = null;
     clearTimeout(_mapHashTimer);
   }
+  // A query bound for the map's own search box, once the map has one.
+  _pendingMapFind = (opts && opts.find) ? {zim: zim, q: opts.find} : null;
   // Any normal article open cancels a pending "return to almanac" intent; the
   // almanac deep-link path re-stamps it immediately after this call returns.
   _almReturnScroll = null;

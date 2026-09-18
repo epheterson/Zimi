@@ -144,6 +144,24 @@ def test_a_non_map_is_decided_once_not_reread_every_boot(tmp_path, monkeypatch):
         record = json.load(f)["files"]["survival_en_2026-06.zim"]
     assert "kind" in record and record["kind"] == ""
     calls = []
-    monkeypatch.setattr(srv, "_read_zim_kind", lambda path: calls.append(path) or "")
+    monkeypatch.setattr(srv, "_read_zim_kind", lambda path: calls.append(path) or ("", False))
     srv.load_cache(force=False)
     assert calls == [], "a decided record was read again"
+
+
+@pytest.mark.parametrize(
+    "scraper,expected",
+    [("streetzim/1.0", True), ("AtlasZim 2.0", True), ("maps2zim v0.2.1", False), ("", False)],
+)
+def test_only_maps_with_a_search_box_offer_one(scraper, expected):
+    assert srv._zim_map_search(scraper) is expected
+
+
+def test_map_search_rides_the_cache(tmp_path, monkeypatch):
+    _library_with(tmp_path, monkeypatch, "osm-hawaii-2026-09-08.zim", {"Scraper": "streetzim/1.0", "Tags": "maps;osm"})
+    srv.load_cache(force=True)
+    fresh = next(z for z in srv._zim_list_cache if z["file"] == "osm-hawaii-2026-09-08.zim")
+    assert (fresh["kind"], fresh.get("map_search")) == ("map", True)
+    srv.load_cache(force=False)
+    hit = next(z for z in srv._zim_list_cache if z["file"] == "osm-hawaii-2026-09-08.zim")
+    assert (hit["kind"], hit.get("map_search")) == ("map", True)

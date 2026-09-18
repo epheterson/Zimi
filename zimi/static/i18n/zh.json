@@ -702,6 +702,7 @@
   "cat_other_desc": "杂项及未分类档案",
   "cat_maps": "地图",
   "cat_maps_desc": "可平移、缩放和搜索的离线街道地图",
+  "find_on_map": "在{map}上查找“{q}”",
   "cat_qa": "问答社区",
   "cat_qa_desc": "Stack Overflow、Ask Ubuntu、烹饪、DIY、科学",
   "cat_survival": "生存与应急准备",

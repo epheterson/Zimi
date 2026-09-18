@@ -702,6 +702,7 @@
   "cat_other_desc": "ארכיונים שונים ולא מסווגים",
   "cat_maps": "מפות",
   "cat_maps_desc": "מפות רחובות לא מקוונות לגלילה, הגדלה וחיפוש",
+  "find_on_map": "חפש “{q}” ב-{map}",
   "cat_qa": "קהילות שאלות ותשובות",
   "cat_qa_desc": "Stack Overflow, Ask Ubuntu, בישול, עשה זאת בעצמך, מדע",
   "cat_survival": "הישרדות והיערכות",

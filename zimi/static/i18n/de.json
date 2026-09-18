@@ -702,6 +702,7 @@
   "cat_other_desc": "Verschiedene und nicht kategorisierte Archive",
   "cat_maps": "Karten",
   "cat_maps_desc": "Offline-Straßenkarten zum Verschieben, Zoomen und Suchen",
+  "find_on_map": "„{q}“ auf {map} suchen",
   "cat_qa": "Q&A-Communitys",
   "cat_qa_desc": "Stack Overflow, Ask Ubuntu, Kochen, Heimwerken, Wissenschaft",
   "cat_survival": "Überleben & Vorsorge",

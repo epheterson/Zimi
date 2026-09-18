@@ -702,6 +702,7 @@
   "cat_other_desc": "Miscellaneous and uncategorized archives",
   "cat_maps": "Maps",
   "cat_maps_desc": "Offline street maps you can pan, zoom and search",
+  "find_on_map": "Find “{q}” on {map}",
   "cat_qa": "Q&A Communities",
   "cat_qa_desc": "Stack Overflow, Ask Ubuntu, cooking, DIY, science",
   "cat_survival": "Survival & Preparedness",

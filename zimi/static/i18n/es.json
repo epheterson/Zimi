@@ -702,6 +702,7 @@
   "cat_other_desc": "Archivos diversos y sin categorizar",
   "cat_maps": "Mapas",
   "cat_maps_desc": "Mapas de calles sin conexión para desplazar, ampliar y buscar",
+  "find_on_map": "Buscar “{q}” en {map}",
   "cat_qa": "Preguntas y respuestas",
   "cat_qa_desc": "Stack Overflow, Ask Ubuntu, cocina, bricolaje, ciencia",
   "cat_survival": "Supervivencia y Preparación",

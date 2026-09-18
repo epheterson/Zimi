@@ -1831,12 +1831,25 @@ def _zim_kind(scraper, tags, meta_name):
     return None
 
 
+# Map ZIMs that carry a place search of their own (a box inside the map with
+# an index of towns, streets and addresses). Kiwix's maps2zim has no search
+# box, and its index holds administrative divisions only: Danville, CA is not
+# in it, and "Danville" lands in Québec. Zimi's search bar offers to run a
+# query in the map's own search only where there is one.
+_MAP_SEARCH_SCRAPERS = ("streetzim", "atlaszim")
+
+
+def _zim_map_search(scraper):
+    return (scraper or "").lower().startswith(_MAP_SEARCH_SCRAPERS)
+
+
 def _read_zim_kind(path):
     """``_zim_kind`` for a cache record written before ``kind`` existed.
 
     Three metadata reads and no entry walk, so it is cheap enough to do at
     boot, once per legacy record; the answer is then written down with the
-    rest. Returns "" rather than None so a decided non-map is a decision too."""
+    rest. Returns ``(kind, map_search)``, "" rather than None for the kind so
+    a decided non-map is a decision too."""
     try:
         archive = open_archive(path)
         vals = {}
@@ -1845,10 +1858,11 @@ def _read_zim_kind(path):
                 vals[key] = bytes(archive.get_metadata(key)).decode("utf-8", "replace")
             except Exception:
                 vals[key] = ""
-        return _zim_kind(vals["Scraper"], vals["Tags"], vals["Name"]) or ""
+        kind = _zim_kind(vals["Scraper"], vals["Tags"], vals["Name"]) or ""
+        return kind, bool(kind and _zim_map_search(vals["Scraper"]))
     except Exception as e:
         log.debug("could not read kind for %s: %s", path, e)
-        return ""
+        return "", False
 
 
 def _effective_category(name, path, kind=None):
@@ -2578,6 +2592,7 @@ def _extract_zim_metadata(name, path):
             code = m.group(1)
             meta_lang = _ISO639_3_TO_1.get(code, code)
     kind = _zim_kind(meta_scraper, meta_tags, meta_name)
+    map_search = kind == "map" and _zim_map_search(meta_scraper)
     info = {
         "name": name,
         "file": os.path.basename(path),
@@ -2598,6 +2613,8 @@ def _extract_zim_metadata(name, path):
     # category without reopening the archive.
     if kind:
         info["kind"] = kind
+    if map_search:
+        info["map_search"] = True
     # Additive: the raw subfolder name behind a folder-derived category, so a
     # client can tell "filed under medical/" from a name-heuristic guess. Absent
     # for root-level files, which keep heuristic categorization untouched.
@@ -2882,7 +2899,7 @@ def load_cache(force=False):
                 # A record from before Zimi knew what a map was. Eric's world
                 # map was registered by 1.9 half an hour before 1.10 booted
                 # and sat under Other with nothing to say otherwise.
-                cached["kind"] = _read_zim_kind(path)
+                cached["kind"], cached["map_search"] = _read_zim_kind(path)
                 kind_backfilled = True
             entry = {
                 "name": name,
@@ -2922,6 +2939,8 @@ def load_cache(force=False):
                 entry["folder"] = folder
             if cached.get("kind"):
                 entry["kind"] = cached["kind"]
+            if cached.get("map_search"):
+                entry["map_search"] = True
             if "has_qids" in cached:
                 entry["has_qids"] = cached["has_qids"]
             # Both of the site's faces, when a capture kept them. Cached like
@@ -2990,6 +3009,8 @@ def load_cache(force=False):
             # Always, "" included: a decided non-map must not be re-read
             # on every boot as if it were a record from before the field.
             new_cached["kind"] = entry.get("kind") or ""
+            if entry.get("map_search"):
+                new_cached["map_search"] = True
             # Only when the capture kept two: most ZIMs have one face, and a
             # cache full of nulls is noise. An older Zimi reading this record
             # ignores the key, which is what keeps a downgrade safe.
