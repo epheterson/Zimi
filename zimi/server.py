@@ -2895,10 +2895,11 @@ def load_cache(force=False):
             updated_at = time.time()
         if cache_hit and cached:
             # Cache hit — use stored metadata, skip opening archive
-            if "kind" not in cached:
-                # A record from before Zimi knew what a map was. Eric's world
-                # map was registered by 1.9 half an hour before 1.10 booted
-                # and sat under Other with nothing to say otherwise.
+            if "kind" not in cached or (cached.get("kind") == "map" and "map_search" not in cached):
+                # A record from before Zimi knew what a map was (or what a map
+                # with a search box was). Eric's world map was registered by
+                # 1.9 half an hour before 1.10 booted and sat under Other with
+                # nothing to say otherwise.
                 cached["kind"], cached["map_search"] = _read_zim_kind(path)
                 kind_backfilled = True
             entry = {

@@ -165,3 +165,21 @@ def test_map_search_rides_the_cache(tmp_path, monkeypatch):
     srv.load_cache(force=False)
     hit = next(z for z in srv._zim_list_cache if z["file"] == "osm-hawaii-2026-09-08.zim")
     assert (hit["kind"], hit.get("map_search")) == ("map", True)
+
+
+def test_a_map_record_without_map_search_learns_it_too(tmp_path, monkeypatch):
+    """The first 1.10 build wrote kind but not map_search; a StreetZim map
+    registered by it would never get the search-box offer."""
+    import json
+
+    _library_with(tmp_path, monkeypatch, "osm-hawaii-2026-09-08.zim", {"Scraper": "streetzim/1.0"})
+    srv.load_cache(force=True)
+    cache_path = srv._cache_file_path()
+    with open(cache_path, encoding="utf-8") as f:
+        payload = json.load(f)
+    del payload["files"]["osm-hawaii-2026-09-08.zim"]["map_search"]
+    with open(cache_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f)
+    srv.load_cache(force=False)
+    hit = next(z for z in srv._zim_list_cache if z["file"] == "osm-hawaii-2026-09-08.zim")
+    assert hit.get("map_search") is True
