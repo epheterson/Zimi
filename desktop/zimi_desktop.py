@@ -77,7 +77,14 @@ def _unblock_bundled_libraries(root):
     return count
 
 
-if platform.system() == "Windows" and getattr(sys, "frozen", False):
+# ZIMI_DESKTOP_KEEP_MARK=1 leaves the mark in place. Only CI sets it: the
+# control run that proves a marked bundle really does fail to start, so the
+# passing run after it means something.
+if (
+    platform.system() == "Windows"
+    and getattr(sys, "frozen", False)
+    and os.environ.get("ZIMI_DESKTOP_KEEP_MARK") != "1"
+):
     _unblock_bundled_libraries(getattr(sys, "_MEIPASS", None))
 
 

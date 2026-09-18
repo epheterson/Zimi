@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.9.6] - 2026-09-18
+
+### Fixed
+
+- The portable Windows zip starts. Files extracted from a downloaded zip carry Windows's mark of the web, and .NET refused to load Zimi's runtime library while it was there, so the app died before its window opened. It now clears the mark from its own libraries at launch. The installer was never affected.
+
 ## [1.9.5] - 2026-09-14
 
 ### Fixed
