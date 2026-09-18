@@ -44,6 +44,44 @@ if platform.system() == "Windows":
 
 
 # ---------------------------------------------------------------------------
+# Windows, portable zip: files extracted from a downloaded zip carry the
+# "mark of the web" (a Zone.Identifier stream), and the .NET Framework refuses
+# to load an assembly that has one. pythonnet's Python.Runtime.dll is such an
+# assembly, so the frozen app died on its first import with
+#   Failed to resolve Python.Runtime.Loader.Initialize from ...\_internal\...
+# (Spudlads on r/Kiwix, 1.9.5, Zimi-windows-x64.zip). The installer never had
+# the problem: Inno Setup writes files without the mark. Strip the mark from
+# every library we ship before .NET sees one. Deleting the stream is the same
+# thing Explorer's "Unblock" does.
+# ---------------------------------------------------------------------------
+_MARK_OF_THE_WEB = ":Zone.Identifier"
+
+
+def _unblock_bundled_libraries(root):
+    """Remove the mark of the web from the .dll/.exe files under ``root``.
+
+    Returns how many were unblocked. Never raises: a file that cannot be
+    unblocked is left for the loader to complain about, as before."""
+    if platform.system() != "Windows" or not root or not os.path.isdir(root):
+        return 0
+    count = 0
+    for dirpath, _dirs, files in os.walk(root):
+        for name in files:
+            if not name.lower().endswith((".dll", ".exe")):
+                continue
+            try:
+                os.remove(os.path.join(dirpath, name) + _MARK_OF_THE_WEB)
+                count += 1
+            except OSError:
+                pass  # no stream, or not ours to remove
+    return count
+
+
+if platform.system() == "Windows" and getattr(sys, "frozen", False):
+    _unblock_bundled_libraries(getattr(sys, "_MEIPASS", None))
+
+
+# ---------------------------------------------------------------------------
 # Icon path — resolve relative to this script (works in dev and PyInstaller)
 # ---------------------------------------------------------------------------
 
