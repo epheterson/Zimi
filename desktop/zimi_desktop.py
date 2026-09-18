@@ -913,10 +913,11 @@ def _serve_headless():
 # can be taken of it; prints "SMOKE: FAIL ..." and exits 1 otherwise.
 _SMOKE_APP_RENDERED_JS = """
 (function () {
-  var box = document.querySelector('#search-input, input[type=search]');
+  var box = document.querySelector('#q');
   var home = document.querySelector('.discover-section, .cat-heading, .empty, .stat-card');
   var text = (document.body && document.body.innerText) || '';
-  return JSON.stringify({box: !!box, home: !!home, chars: text.length, title: document.title});
+  return JSON.stringify({box: !!box, home: !!home, chars: text.length, title: document.title,
+                         href: location.href, ready: document.readyState});
 })()
 """
 
@@ -926,18 +927,26 @@ def _smoke_app_rendered(window):
     import time
 
     verdict = None
+    last, last_error = {}, ""
     for _ in range(120):  # up to 60s
         time.sleep(0.5)
         try:
             raw = window.evaluate_js(_SMOKE_APP_RENDERED_JS)
             state = json.loads(raw) if raw else {}
-        except Exception:
+        except Exception as e:
+            last_error = repr(e)
             continue
+        last = state
         if state.get("box") and state.get("home") and state.get("chars", 0) > 100:
             verdict = state
             break
     if not verdict:
-        print("SMOKE: FAIL app did not render a home view within 60s", flush=True)
+        # Say what was seen, not just that it was not enough.
+        print(
+            "SMOKE: FAIL app did not render a home view within 60s; last state %s; last error %s"
+            % (json.dumps(last), last_error or "none"),
+            flush=True,
+        )
         os._exit(1)
     print(
         "SMOKE: app rendered (%d chars, title %r)" % (verdict["chars"], verdict["title"]),
