@@ -211,7 +211,7 @@ jobs:
           function Run-Smoke([string]$label) {
             $out = "smoke_$label.out.log"; $err = "smoke_$label.err.log"
             $p = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
-            if (-not $p.WaitForExit(120000)) { try { $p.Kill() } catch {}; Write-Host "$label: timed out"; return 124 }
+            if (-not $p.WaitForExit(120000)) { try { $p.Kill() } catch {}; Write-Host "${label}: timed out"; return 124 }
             Write-Host "--- $label stdout ---"; Get-Content $out -ErrorAction SilentlyContinue
             Write-Host "--- $label stderr ---"; Get-Content $err -ErrorAction SilentlyContinue
             return $p.ExitCode
