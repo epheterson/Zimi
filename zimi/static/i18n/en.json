@@ -1307,6 +1307,8 @@
   "refreshing": "Refreshing…",
   "refreshing_cache": "Refreshing cache…",
   "remaining": "remaining",
+  "dl_eta_left": "{time} left",
+  "dl_eta_under_minute": "under a minute left",
   "remember_me": "Remember me",
   "remove": "Remove",
   "remove_from_favorites": "Remove from favorites",

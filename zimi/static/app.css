@@ -1946,6 +1946,8 @@
      Remove all) top right — same reading order as the downloads bulk bar.
      Spans the card grid; wraps to two lines on phones instead of crushing. */
   .dl-seed-head { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 10px; }
+  /* Seeds follow the downloads. A rule between the two keeps them from reading as one list. */
+  .dl-seed-head:not(:first-child) { margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--border); }
   .dl-seed-head-title { font-size: 13px; font-weight: 600; color: var(--accent); }
   .dl-seed-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
   /* What Remove means — files stay on disk. Quiet, its own grid row. */

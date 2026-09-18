@@ -13301,6 +13301,80 @@ function _dlOpsActive(ops) {
   return ex.phase === 'running' || hc.phase === 'running' ||
     (_dlExportSeen && (ex.phase === 'done' || ex.phase === 'error'));
 }
+// Patch an element's children to match new markup instead of replacing them.
+// Rebuilding innerHTML on every poll made the Downloads tab flicker: each
+// rebuild re-created every <img>, which the browser paints blank for a frame,
+// and restarted the sweeping-bar animation from zero. Same tag in the same
+// place is kept and its attributes and text brought up to date; anything else
+// is swapped. Inline onclick handlers are attributes, so they survive too.
+function _morphInto(el, html) {
+  var tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  _morphChildren(el, tpl.content);
+}
+function _morphChildren(oldParent, newParent) {
+  var oldKids = Array.prototype.slice.call(oldParent.childNodes);
+  var newKids = Array.prototype.slice.call(newParent.childNodes);
+  var n = Math.max(oldKids.length, newKids.length);
+  for (var i = 0; i < n; i++) {
+    var o = oldKids[i], w = newKids[i];
+    if (!w) { oldParent.removeChild(o); continue; }
+    if (!o) { oldParent.appendChild(w); continue; }
+    if (o.nodeType !== w.nodeType || (o.nodeType === 1 && o.tagName !== w.tagName)) {
+      oldParent.replaceChild(w, o);
+      continue;
+    }
+    if (o.nodeType === 3) { if (o.nodeValue !== w.nodeValue) o.nodeValue = w.nodeValue; continue; }
+    if (o.nodeType !== 1) continue;
+    _morphAttrs(o, w);
+    _morphChildren(o, w);
+  }
+}
+function _morphAttrs(o, w) {
+  var i, a;
+  for (i = o.attributes.length - 1; i >= 0; i--) {
+    a = o.attributes[i].name;
+    if (!w.hasAttribute(a)) o.removeAttribute(a);
+  }
+  for (i = 0; i < w.attributes.length; i++) {
+    a = w.attributes[i];
+    if (o.getAttribute(a.name) !== a.value) o.setAttribute(a.name, a.value);
+  }
+  // Properties an attribute no longer drives once the element exists.
+  if ('disabled' in o && o.disabled !== w.disabled) o.disabled = w.disabled;
+}
+
+// Recent transfer rate per download, from the bytes that arrived between two
+// polls. The average since start (bytes / elapsed) is what the row used to
+// show; it lags a swarm that just found peers by minutes and never catches a
+// stall. This follows the transfer within a couple of polls, smoothed so one
+// slow poll does not swing the ETA.
+var _dlRates = {};
+var _DL_RATE_SMOOTHING = 0.6;  // weight kept from the previous estimate
+function _dlRecentRate(dl, now) {
+  var prev = _dlRates[dl.id];
+  var bytes = dl.downloaded_bytes || 0;
+  var bps = null;
+  if (prev && now > prev.t && bytes >= prev.bytes) {
+    var inst = (bytes - prev.bytes) / ((now - prev.t) / 1000);
+    bps = prev.bps == null ? inst : prev.bps * _DL_RATE_SMOOTHING + inst * (1 - _DL_RATE_SMOOTHING);
+  }
+  _dlRates[dl.id] = {t: now, bytes: bytes, bps: bps};
+  return bps;
+}
+// "1h 12m left", "4m left", "under a minute left". Coarse on purpose: an ETA
+// to the second on a swarm is a number that changes faster than it can be read.
+function _fmtEta(seconds) {
+  if (!isFinite(seconds) || seconds < 0) return '';
+  if (seconds < 60) return t('dl_eta_under_minute');
+  var m = Math.max(1, Math.round(seconds / 60));
+  var time;
+  if (m < 60) time = m + 'm';
+  else if (m < 24 * 60) time = Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : '');
+  else time = Math.floor(m / 1440) + 'd' + (Math.floor((m % 1440) / 60) ? ' ' + Math.floor((m % 1440) / 60) + 'h' : '');
+  return t('dl_eta_left', {time: time});
+}
+
 async function refreshDownloads() {
   // Re-entrancy guard: overlapping calls double-fetch /list and corrupt
   // the completed-count bookkeeping.
@@ -13438,6 +13512,11 @@ async function _refreshDownloadsInner(useCache) {
     if (filter === 'all') h += opsHtml;
     // Seed cards render under "Seeding" AND under "All" — All means all.
     // (With zero downloads and active seeds, All used to render blank.)
+    // They are built apart and appended AFTER the downloads: a download in
+    // flight is the thing this tab exists for, and it was rendering below two
+    // idle seeds. The seeding section always carries its own heading, so the
+    // two never read as one list.
+    let seedHtml = '';
     if (filter === 'seeding' || filter === 'all') {
       // Bulk seed controls sit at the TOP RIGHT of the seeds section (title
       // left, actions right — same reading order as the downloads bulk bar).
@@ -13446,15 +13525,16 @@ async function _refreshDownloadsInner(useCache) {
       // (a single seed's own row buttons cover it). The hint line spells out
       // what Remove actually does — see /manage/seeding-action: the torrent
       // is de-listed and its ledger intent dropped, files stay on disk.
-      if (seedingTorrents.length && (filter === 'seeding' || seedingTorrents.length >= 2)) {
-        const anyPausableSeed = seedingTorrents.some(s => s.state !== 'paused');
-        const anyResumableSeed = seedingTorrents.some(s => s.state === 'paused');
-        h += '<div class="dl-seed-head">' +
+      if (seedingTorrents.length) {
+        const bulk = filter === 'seeding' || seedingTorrents.length >= 2;
+        const anyPausableSeed = bulk && seedingTorrents.some(s => s.state !== 'paused');
+        const anyResumableSeed = bulk && seedingTorrents.some(s => s.state === 'paused');
+        seedHtml += '<div class="dl-seed-head">' +
           '<span class="dl-seed-head-title">' + tH('seeding_tab') + '</span>' +
           '<div class="dl-seed-actions">' +
             (anyPausableSeed ? '<button class="dl-bulk-btn" onclick="pauseAllSeeds()">' + tH('dl_pause_all') + '</button>' : '') +
             (anyResumableSeed ? '<button class="dl-bulk-btn" onclick="resumeAllSeeds()">' + tH('dl_resume_all') + '</button>' : '') +
-            '<button class="dl-cancel-btn" onclick="_seedAction(null, \'stop_all\', this)" title="' + escAttr(t('stop_all_seeds_tip')) + '">' + tH('stop_all_seeds') + '</button>' +
+            (bulk ? '<button class="dl-cancel-btn" onclick="_seedAction(null, \'stop_all\', this)" title="' + escAttr(t('stop_all_seeds_tip')) + '">' + tH('stop_all_seeds') + '</button>' : '') +
           '</div></div>' +
           '<div class="dl-seed-hint">' + tH('seed_remove_hint') + '</div>';
       }
@@ -13490,7 +13570,7 @@ async function _refreshDownloadsInner(useCache) {
           : idle
             ? tH('seed_waiting', {n: connected})
             : tH('seed_active', {speed: _fmtBytes(sd.up_speed), n: connected});
-        h += '<div class="dl-item dl-seed-item">' +
+        seedHtml += '<div class="dl-item dl-seed-item">' +
           '<div class="dl-row">' +
           '<span class="dl-seed-icon">' + _sourceIconHtml(zimName, 22) + '</span>' +
           '<span class="dl-name dl-seed-link" onclick="enterSource(\'' + escAttr(escJs(zimName)) + '\', true)" title="' + escAttr(sName) + '">' + esc(sName) + '</span>' +
@@ -13507,7 +13587,7 @@ async function _refreshDownloadsInner(useCache) {
           '</div>';
       }
       if (filter === 'seeding' && !seedingTorrents.length) {
-        h += '<div class="dl-empty">' + tH('seeding_empty') + '</div>';
+        seedHtml += '<div class="dl-empty">' + tH('seeding_empty') + '</div>';
       }
     }
     if (filter !== 'seeding' && filter !== 'all' && !visibleDls.length) {
@@ -13521,6 +13601,7 @@ async function _refreshDownloadsInner(useCache) {
     const renderDls = (filter === 'all')
       ? visibleDls.filter(dl => !(dl.done && _seedNames.has(dl.filename)))
       : visibleDls;
+    const _dlNow = Date.now();
     for (const dl of renderDls) {
       const title = dlTitle(dl);
       // one formatter, defined once — see fmtBytes near fmtSize.
@@ -13531,7 +13612,18 @@ async function _refreshDownloadsInner(useCache) {
       // Queued items also sweep — a 0%-wide bar reads as stalled
       const indeterminate = (!dl.total_bytes || dl.queued) && !dl.paused;
       const pct = dl.total_bytes ? (dl.percent || 0) : 0;
-      const speed = dl.elapsed > 0 && dl.downloaded_bytes > 0 ? ((dl.downloaded_bytes / 1024 / 1024) / dl.elapsed).toFixed(1) : '0';
+      // Recent rate when two polls have seen it move, the average since start
+      // until then. A paused or queued row is not moving; forget its rate so
+      // resuming starts a fresh estimate rather than an ETA from stale bytes.
+      let bps = 0;
+      if (dl.paused || dl.queued || dl.done) delete _dlRates[dl.id];
+      else {
+        const recent = useCache ? (_dlRates[dl.id] || {}).bps : _dlRecentRate(dl, _dlNow);
+        bps = recent != null ? recent : (dl.elapsed > 0 && dl.downloaded_bytes > 0 ? dl.downloaded_bytes / dl.elapsed : 0);
+      }
+      const speed = (bps / 1024 / 1024).toFixed(1);
+      const eta = (bps > 0 && dl.total_bytes && dl.total_bytes > dl.downloaded_bytes)
+        ? _fmtEta((dl.total_bytes - dl.downloaded_bytes) / bps) : '';
 
       h += '<div class="dl-item">';
       h += '<div class="dl-row"><span class="dl-name">' + esc(title) + '</span>' +
@@ -13547,7 +13639,7 @@ async function _refreshDownloadsInner(useCache) {
       } else if (indeterminate) {
         h += '<span class="dl-size">' + tH('bt_connecting') + '</span>';
       } else {
-        h += '<span class="dl-size">' + dlStr + ' / ' + totalStr + ' · ' + Math.round(pct) + '% · ' + speed + ' MB/s</span>';
+        h += '<span class="dl-size">' + dlStr + ' / ' + totalStr + ' · ' + Math.round(pct) + '% · ' + speed + ' MB/s' + (eta ? ' · ' + esc(eta) : '') + '</span>';
       }
       h += '</div>';
 
@@ -13596,9 +13688,10 @@ async function _refreshDownloadsInner(useCache) {
       }
       h += '</div>';
     }
+    h += seedHtml;
     h += '</div>';  // close .dl-grid
     h += '</div>';  // close .manage-card
-    dlEl.innerHTML = h;
+    _morphInto(dlEl, h);
     // Update catalog item buttons with download progress
     for (const dl of dls) {
       const btns = document.querySelectorAll('[data-dl-url]');

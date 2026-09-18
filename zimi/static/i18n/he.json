@@ -1307,6 +1307,8 @@
   "refreshing": "מרענן…",
   "refreshing_cache": "מרענן מטמון…",
   "remaining": "נותרו",
+  "dl_eta_left": "נותרו {time}",
+  "dl_eta_under_minute": "פחות מדקה",
   "remember_me": "זכור אותי",
   "remove": "הסרה",
   "remove_from_favorites": "הסרה מהמועדפים",

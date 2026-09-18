@@ -1307,6 +1307,8 @@
   "refreshing": "Обновление…",
   "refreshing_cache": "Обновление кэша…",
   "remaining": "осталось",
+  "dl_eta_left": "осталось {time}",
+  "dl_eta_under_minute": "меньше минуты",
   "remember_me": "Запомнить меня",
   "remove": "Убрать",
   "remove_from_favorites": "Убрать из избранного",
