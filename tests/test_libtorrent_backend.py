@@ -393,8 +393,22 @@ class TestResume:
         resume_file = os.path.join(backend.resume_dir, tid + ".fastresume")
         assert os.path.exists(resume_file)
         backend.stop()
-        backend.remove(tid, delete_files=True)
+        backend.remove(tid)
         assert os.path.exists(resume_file), "shutdown deleted the resume data"
+
+    def test_a_cancel_after_stop_still_drops_the_resume_file(self, backend, tmp_path):
+        """delete_files is the caller saying the payload is not wanted. A cancel
+        that lands in the shutdown window must not leave resume data behind,
+        or the next start re-adds the torrent with no download to own it."""
+        tid = backend.add_torrent(
+            str(tmp_path / "cancelled.torrent"), dest_dir=str(tmp_path / "staging")
+        )
+        backend._handles[tid].save_resume_data()
+        backend._pump_alerts_once()
+        resume_file = os.path.join(backend.resume_dir, tid + ".fastresume")
+        backend.stop()
+        backend.remove(tid, delete_files=True)
+        assert not os.path.exists(resume_file)
 
 
 # ── Real-engine smoke (Docker CI only — needs importable libtorrent) ──────

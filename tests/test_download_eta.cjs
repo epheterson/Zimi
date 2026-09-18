@@ -54,6 +54,12 @@ const r3 = ctx._dlRecentRate(dl, 7000);
 ok('bytes going backwards never yield a negative rate', r3 === null || r3 >= 0, String(r3));
 ok('and the next poll starts fresh from the new byte count', ctx._dlRates.x.bytes === 1024);
 ok('rates are per download', ctx._dlRecentRate({ id: 'y', downloaded_bytes: 5 }, 8000) === null);
+// Ids restart from 1 with the server. A tab left open across a restart meets
+// a new download under the old id; the filename tells them apart.
+ctx._dlRecentRate({ id: 'z', filename: 'old.zim', downloaded_bytes: 50 * 1024 * 1024 }, 9000);
+ok('a reused id with a different file starts fresh, no rate from the old bytes',
+  ctx._dlRecentRate({ id: 'z', filename: 'new.zim', downloaded_bytes: 60 * 1024 * 1024 }, 10000) === null);
+ok('the map forgets downloads that left the list', /function _pruneDlRates\(dls\)/.test(src) && /_pruneDlRates\(dls\);/.test(src));
 
 // ── eta ────────────────────────────────────────────────────────────────────
 ok('30 s reads as under a minute', ctx._fmtEta(30) === 'under a minute left');

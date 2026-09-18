@@ -1121,7 +1121,9 @@ class LibtorrentBackend(BTBackend):
         # (its handle gone, so "falling back") and delete the file stop() had
         # just written; a 78 GB map then re-verified from zero on every
         # restart, which read as the download starting over.
-        if self._ses is None:
+        # delete_files is the caller saying the payload is not wanted (a cancel):
+        # then the resume data goes too, or the next start re-adds an orphan.
+        if self._ses is None and not delete_files:
             return
         try:
             os.unlink(self._resume_path(tid))
