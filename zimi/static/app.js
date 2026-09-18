@@ -4912,6 +4912,16 @@ function _loadDiscover() {
       if (cached[0] && cached[0].type === 'today' && cached.length > 1 && cached[1] && cached[1].type !== 'today') {
         cached = [cached[1], cached[0]].concat(cached.slice(2));
       }
+      // The Maps card follows the library, not the day. A map installed
+      // after this morning's cards were cached must show up now, and one
+      // removed must go; the cached list is kept for the picks that cost a
+      // server round trip.
+      var hasMapsCard = cached.some(function(it) { return it && it.type === 'maps'; });
+      if (_installedMaps().length && !hasMapsCard) {
+        cached.unshift({ type: 'maps' });
+      } else if (!_installedMaps().length && hasMapsCard) {
+        cached = cached.filter(function(it) { return !(it && it.type === 'maps'); });
+      }
       _renderDiscover(el, cached);
       return;
     }
@@ -5017,11 +5027,17 @@ function _loadDiscover() {
     // Skip items with no title AND no path (failed dated entry lookups)
     var items = results.filter(function(r) { return r && (r.thumbnail || r.label) && (r.title || r.path); });
     // Move Today card to position 2 if there's content to show first
+    // The Maps card leads when a map is installed: on a phone the strip
+    // shows one card, and the third card (where it sat, behind a server
+    // pick and Today) is one nobody scrolls to. Eric: "I don't see
+    // discover card."
+    var mapsCard = computed.filter(function(it) { return it.type === 'maps'; });
+    var restComputed = computed.filter(function(it) { return it.type !== 'maps'; });
     var all;
     if (items.length > 0) {
-      all = [items[0]].concat(computed).concat(items.slice(1));
+      all = mapsCard.concat([items[0]]).concat(restComputed).concat(items.slice(1));
     } else {
-      all = computed.concat(items);
+      all = mapsCard.concat(restComputed).concat(items);
     }
     // Only cache if all (or nearly all) cards resolved — prevents partial results
     // from persisting all day when some ZIMs were temporarily unavailable
