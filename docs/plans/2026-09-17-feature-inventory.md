@@ -19,13 +19,16 @@ Built:
 
 Before the PR: full pytest with no leftover servers, the browser gate on Eric's phone, NAS deploy, then the PR draft for Eric.
 
-Could ride along or slip to 2.0: search into map places (StreetZim ships `search-data/<prefix>.json` shards with lat/lng; wiring them into Zimi search gives "fly to my address" from the search bar).
+Built after the inventory was first written: the search bar now reaches ZIMs with no full-text index, which is every Kiwix map. maps2zim writes one `search/<Place>` entry per place, so typing a place name finds it on every installed Kiwix map and opening it flies the map there (maps2zim's own `#lat=&lon=&zoom=` redirect; the map's maxBounds may clamp the centre, the place stays in view).
+
+Slips to 2.0 with sources: StreetZim place search. StreetZim keeps its places in `search-data/<2-char prefix>.json` shards behind a manifest (139,067 places for Hawaii), not as titled entries, so the title index cannot see them. Cutting through several StreetZim files from Zimi's search bar means reading the shard for the query prefix on the server and returning `{name, lat, lng}` rows that open `#map=`. Worth doing once StreetZim is a catalog source.
 
 ## 2.0, the maps and sources release
 
 Eric: "We're on a new major release here maps release and each of those apps of the internet will be its own release too."
 
 - Arbitrary catalog sources (decided): a source is a URL plus a format. Bake in Kiwix OPDS, StreetZim, AtlasZim; accept Internet Archive collections and a plain manifest URL. One catalog tagged by origin, per-source magnets, per-source refresh. The Kiwix community catalog (announced for "a few weeks") becomes one more source. Absorbs the parked "Community backend" note.
+- The third source, Eric's words 2026-09-17: "I want to include like a third source for adding sources not more maps." Recommended first: any OPDS catalog URL. kiwix-serve, another Zimi and Project NOMAD all publish the same OPDS feed Zimi already parses, so "add a friend's library" costs a URL field and an origin tag. Second: the Internet Archive, whose advancedsearch API lists ZIM items by collection or query and is where community-uploaded and historical ZIMs actually live (the wayback idea starts there). Map builders (StreetZim, AtlasZim) come after, as sources with a manifest each.
 - Custom categories (Eric: "Custom categories"; planned, not designed). Folder categories shipped in 1.9; this is naming and ordering your own.
 - Map places in search (above), and a Maps entry in the catalog's category order so a new install sees it.
 - Kiwix maps: `#map=` verified on maps2zim output (2026-09-17).
