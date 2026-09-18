@@ -212,9 +212,11 @@ jobs:
             $out = "smoke_$label.out.log"; $err = "smoke_$label.err.log"
             $p = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
             if (-not $p.WaitForExit(120000)) { try { $p.Kill() } catch {}; Write-Host "${label}: timed out"; return 124 }
-            Write-Host "--- $label stdout ---"; Get-Content $out -ErrorAction SilentlyContinue
-            Write-Host "--- $label stderr ---"; Get-Content $err -ErrorAction SilentlyContinue
-            return $p.ExitCode
+            # Out-Host, or the log lines join the function's return value and
+            # the exit code comes back as an array.
+            Write-Host "--- $label stdout ---"; Get-Content $out -ErrorAction SilentlyContinue | Out-Host
+            Write-Host "--- $label stderr ---"; Get-Content $err -ErrorAction SilentlyContinue | Out-Host
+            return [int]$p.ExitCode
           }
           Stamp-Mark
           $env:ZIMI_DESKTOP_KEEP_MARK = '1'
