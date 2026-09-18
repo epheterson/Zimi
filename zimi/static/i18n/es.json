@@ -1580,6 +1580,7 @@
   "env_none": "No se anula nada. Todos los ajustes se controlan en Zimi.",
   "env_locks": "bloquea {v}",
   "env_empty": "(vacío)",
+  "env_unavailable": "No se pudo leer el entorno.",
   "env_from_config": "Definido en {path}",
   "env_hint": "Se definen donde se inicia Zimi, así que prevalecen sobre los ajustes. Cámbialos allí y reinicia."
 }

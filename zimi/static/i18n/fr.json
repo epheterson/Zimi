@@ -1580,6 +1580,7 @@
   "env_none": "Rien n'est remplacé. Tous les réglages se contrôlent dans Zimi.",
   "env_locks": "verrouille {v}",
   "env_empty": "(vide)",
+  "env_unavailable": "Impossible de lire l'environnement.",
   "env_from_config": "Défini dans {path}",
   "env_hint": "Ils sont définis là où Zimi démarre et priment sur les réglages. Modifiez-les là puis redémarrez."
 }

@@ -106,3 +106,68 @@ def test_a_healthy_archive_is_unaffected(monkeypatch):
     results = search_zim(_Archive({"A/One": "One", "A/Two": "Two"}), "q", limit=10)
     assert len(results) == 2
     assert all(r["title"] and r["title"] != r["path"] for r in results)
+
+
+def _patch_suggester(monkeypatch, paths):
+    """The fast path: SuggestionSearcher, used before a ZIM's title index exists."""
+    import zimi.search as search_mod
+
+    class _Suggestions:
+        def getResults(self, start, count):
+            return paths[start : start + count]
+
+    class _SuggestionSearcher:
+        def __init__(self, archive):
+            pass
+
+        def suggest(self, query):
+            return _Suggestions()
+
+    monkeypatch.setattr(search_mod, "SuggestionSearcher", _SuggestionSearcher)
+
+
+def test_the_suggest_path_drops_what_it_cannot_read_too(monkeypatch):
+    """The fast path runs first as a person types, and reaches the
+    SuggestionSearcher whenever a ZIM's title index is not built yet. The
+    same s/4394 rows came through it after search_zim stopped keeping them."""
+    from zimi.search import suggest_search_zim
+
+    _patch_suggester(monkeypatch, ["A/Water", "s/4394", "A/Fire"])
+    archive = _Archive({"A/Water": "Water", "A/Fire": "Fire"})
+    out = suggest_search_zim(archive, "wa", limit=5)
+    assert [r["path"] for r in out] == ["A/Water", "A/Fire"]
+    assert all(r["title"] != r["path"] for r in out)
+
+
+def test_an_index_that_matches_nothing_readable_is_said_once_at_warning(monkeypatch, caplog):
+    """A map ZIM whose every hit is unreadable contributes nothing to any
+    search, for ever. At debug level nobody would know."""
+    import logging
+
+    import zimi.search as search_mod
+
+    _patch_searcher(monkeypatch, ["s/1", "s/2", "s/3"])
+    archive = _Archive({})
+    archive.filename = "streetzim_hawaii.zim"
+    monkeypatch.setattr(search_mod, "_warned_unreadable_index", set())
+    with caplog.at_level(logging.WARNING, logger=search_mod.log.name):
+        assert search_zim(archive, "kailua", limit=5, snippets=False) == []
+        assert search_zim(archive, "kailua", limit=5, snippets=False) == []
+    warnings = [r for r in caplog.records if "cannot read" in r.getMessage()]
+    assert len(warnings) == 1, [r.getMessage() for r in caplog.records]
+    assert "streetzim_hawaii.zim" in warnings[0].getMessage()
+
+
+def test_a_partly_readable_index_is_not_a_warning(monkeypatch, caplog):
+    import logging
+
+    import zimi.search as search_mod
+
+    _patch_searcher(monkeypatch, ["A/Water", "s/4394"])
+    archive = _Archive({"A/Water": "Water"})
+    archive.filename = "wikipedia.zim"
+    monkeypatch.setattr(search_mod, "_warned_unreadable_index", set())
+    with caplog.at_level(logging.WARNING, logger=search_mod.log.name):
+        out = search_zim(archive, "water", limit=5, snippets=False)
+    assert [r["path"] for r in out] == ["A/Water"]
+    assert not [r for r in caplog.records if "cannot read" in r.getMessage()]
