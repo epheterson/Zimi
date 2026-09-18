@@ -15399,7 +15399,10 @@ function _readerPrintCleanup() {
 // for years. One mechanism then covers everything: a shared link opens where
 // you were, a bookmark saves it because a bookmark saves a URL, and Back and
 // Forward walk between places for free.
-var _MAP_HANDLES = ['__szMap', '__streetzim_map'];
+// Two publishers, two handles. StreetZim exposes __szMap; Kiwix's own
+// Maps2ZIM output (193 ZIMs in the catalog, maps_en_*) exposes __openzim_map.
+// Both are MapLibre underneath, so everything past the lookup is shared.
+var _MAP_HANDLES = ['__szMap', '__streetzim_map', '__openzim_map'];
 var _MAP_HASH_RE = /(?:^|[#&])map=(\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)/;
 // Long enough that a drag writes one entry rather than forty, short enough
 // that letting go and hitting Bookmark records where you actually are.
