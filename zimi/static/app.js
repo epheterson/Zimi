@@ -11266,6 +11266,7 @@ async function _renderEnvSection() {
         (r.value === '' ? tH('env_empty') : esc(r.value)) + '</code>' +
       '<div class="env-what">' + esc(r.description) +
         (r.locks ? ' <span class="env-locks">' + tH('env_locks', {v: r.locks}) + '</span>' : '') +
+        (r.source === 'config' ? ' <span class="env-locks">' + tH('env_from_config', {path: esc(r.path)}) + '</span>' : '') +
       '</div></div>';
   }).join('') + '</div>' +
   '<div class="ms-hint">' + tH('env_hint') + '</div>';

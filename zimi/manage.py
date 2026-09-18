@@ -5044,7 +5044,7 @@ def handle_manage_get(handler, parsed, params):
         # design: the environment belongs to whoever starts the process.
         from zimi import envinfo
 
-        return handler._json(200, {"vars": envinfo.effective()})
+        return handler._json(200, {"vars": envinfo.effective(published=_srv.CONFIG_PUBLISHED)})
 
     elif parsed.path == "/manage/bt-status":
         # Surface the BT engine state so the user can self-diagnose:

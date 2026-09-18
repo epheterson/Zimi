@@ -1580,5 +1580,6 @@
   "env_none": "Nothing is overridden here. Every setting is controlled in Zimi.",
   "env_locks": "locks {v}",
   "env_empty": "(empty)",
+  "env_from_config": "Set in {path}",
   "env_hint": "These are set where Zimi is started, so they win over Settings. Change them there, then restart."
 }

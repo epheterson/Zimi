@@ -225,7 +225,7 @@ def test_fallback_when_engine_reports_error(tmp_path):
     assert result == "fallback"
 
 
-def test_engine_stopped_under_the_poll_is_not_a_fallback(tmp_path):
+def test_engine_stopped_under_the_poll_is_not_a_fallback(tmp_path, monkeypatch):
     """Server shutdown. stop() has written the torrent's resume data and
     cleared its handle; the poll thread gets one more tick. That tick used
     to read as failure: remove() deleted the resume data stop() had just
@@ -250,6 +250,7 @@ def test_engine_stopped_under_the_poll_is_not_a_fallback(tmp_path):
     )
     alive = iter([True, False])
     backend.is_alive.side_effect = lambda: next(alive)
+    monkeypatch.setattr(library, "_exiting", True)
     result = library._try_bt_download(
         backend,
         dl,
@@ -261,6 +262,43 @@ def test_engine_stopped_under_the_poll_is_not_a_fallback(tmp_path):
     assert result == "stopped"
     backend.remove.assert_not_called()
     assert not dl.get("done") and not dl.get("error")
+
+
+def test_bittorrent_turned_off_mid_download_falls_back_to_http(tmp_path, monkeypatch):
+    """The same dead engine while the process is NOT exiting is the Settings
+    switch (or a port change). Stranding the row with no error and frozen
+    bytes until a restart is the outcome the first cut of the exit guard
+    produced; the HTTP fallback is what 1.9.5 did, and what it does again."""
+    dl = _mk_dl(tmp_path)
+    backend = _mk_backend(
+        status_sequence=[
+            {
+                "state": "downloading",
+                "completed_bytes": 1000,
+                "total_bytes": 5000,
+                "down_speed": 10,
+                "up_speed": 0,
+                "peers": 3,
+                "info_hash": "",
+                "error_code": "",
+                "error_message": "",
+            },
+        ]
+    )
+    alive = iter([True, False])
+    backend.is_alive.side_effect = lambda: next(alive)
+    monkeypatch.setattr(library, "_exiting", False)
+    result = library._try_bt_download(
+        backend,
+        dl,
+        torrent_url="https://download.kiwix.org/zim/foo.zim.torrent",
+        staging_dir=str(tmp_path / "staging"),
+        poll_interval=0.001,
+        no_peers_timeout=10.0,
+    )
+    assert result == "fallback"
+    backend.remove.assert_called_once()
+    assert backend.remove.call_args.kwargs.get("delete_files") is True
 
 
 def test_cancelled_mid_download(tmp_path):

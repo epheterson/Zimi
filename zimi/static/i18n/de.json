@@ -1580,5 +1580,6 @@
   "env_none": "Nichts wird überschrieben. Alle Einstellungen werden in Zimi gesteuert.",
   "env_locks": "sperrt {v}",
   "env_empty": "(leer)",
+  "env_from_config": "Gesetzt in {path}",
   "env_hint": "Diese werden dort gesetzt, wo Zimi gestartet wird, und haben Vorrang vor den Einstellungen. Dort ändern und neu starten."
 }

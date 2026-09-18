@@ -51,6 +51,7 @@ VARS: dict[str, tuple[str, str]] = {
     "ZIMI_TRUST_CGNAT": ("Treats carrier-grade NAT ranges as private", ""),
     # ── where things live ─────────────────────────────────────────────────
     "ZIMI_CONFIG": ("Path to the config file", ""),
+    "ZIM_DIR": ("Where the ZIM files are", "ZIM folder"),
     "ZIMI_DATA_DIR": ("Where Zimi keeps its own data", "Data folder"),
     "ZIMI_STAGING_DIR": ("Where downloads are assembled", ""),
     "ZIMI_CREATE_ROOT": ("Where created ZIMs are written", ""),
@@ -120,7 +121,7 @@ def is_secret(name: str) -> bool:
     return bool(_SECRET_RE.search(name))
 
 
-def effective(environ=None) -> list[dict]:
+def effective(environ=None, published=None) -> list[dict]:
     """Every known variable actually set, in the table's order.
 
     Table order, not alphabetical: it groups by what the variable affects, and
@@ -132,6 +133,7 @@ def effective(environ=None) -> list[dict]:
     whatever it is set to.
     """
     env = os.environ if environ is None else environ
+    published = published or {}
     rows = []
     for name, (description, locks) in VARS.items():
         if name not in env:
@@ -143,6 +145,10 @@ def effective(environ=None) -> list[dict]:
                 "secret": is_secret(name),
                 "description": description,
                 "locks": locks,
+                # apply_env_settings publishes config-file values into the
+                # environment; they are the file's, and the row says so.
+                "source": "config" if name in published else "env",
+                "path": published.get(name, "") if name in published else "",
             }
         )
     return rows
