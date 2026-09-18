@@ -53,11 +53,12 @@ class _Article(Item):
         return {Hint.FRONT_ARTICLE: True}
 
 
-def build_fixture_zim(path: str, metadata: dict | None = None) -> str:
+def build_fixture_zim(path: str, metadata: dict | None = None, indexing: bool = True) -> str:
     """Write a 3-article ZIM at `path`; return the path.
 
     ``metadata`` adds or overrides ZIM metadata keys (Scraper, Tags, Name...)
-    for tests about what a ZIM says it is."""
+    for tests about what a ZIM says it is. ``indexing=False`` writes no
+    full-text index, the shape of Kiwix's map ZIMs and some small captures."""
     articles = [
         (
             "A/Water",
@@ -76,7 +77,7 @@ def build_fixture_zim(path: str, metadata: dict | None = None) -> str:
             b"<html><body><h1>Shelter</h1><p>Stay dry and warm." b"</p></body></html>",
         ),
     ]
-    with Creator(path).config_indexing(True, "eng") as creator:
+    with Creator(path).config_indexing(indexing, "eng") as creator:
         creator.set_mainpath("A/Water")
         for p, t, h in articles:
             creator.add_item(_Article(p, t, h))

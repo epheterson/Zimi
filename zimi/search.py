@@ -2097,8 +2097,18 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
                 if archive is None or lock is None:
                     return
                 t0 = time.time()
-                with lock:
-                    results = search_zim(archive, cleaned, limit=limit, snippets=False)
+                if archive.has_fulltext_index:
+                    with lock:
+                        results = search_zim(archive, cleaned, limit=limit, snippets=False)
+                else:
+                    # No Xapian index to ask (Kiwix's map ZIMs ship _ftindex:no,
+                    # so do some small captures). Titles are still there, and
+                    # the title index is how suggest already finds them; the
+                    # search bar was returning nothing for the same words.
+                    results = _title_index_search(name, cleaned, limit=limit)
+                    if results is None:
+                        with lock:
+                            results = suggest_search_zim(archive, cleaned, limit=limit)
                 dt = time.time() - t0
                 fts_results[name] = (results, dt)
             except Exception as e:
