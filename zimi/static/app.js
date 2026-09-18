@@ -7387,7 +7387,7 @@ function autoCategorize(item) {
   if (/the_infosphere|zdoom|westeros/.test(n)) return 'gaming';
   if (/minecraft|pokemon|bulba|stardew|rimworld|riskofrain|whitewolf/.test(n)) return 'gaming';
   // Maps: Kiwix's Maps2ZIM output (maps_en_<region>), StreetZim, AtlasZim
-  if (/^maps_|streetzim|atlaszim/.test(n)) return 'maps';
+  if (/^maps(_|$)|streetzim|atlaszim/.test(n)) return 'maps';
   return 'other';
 }
 
@@ -8419,7 +8419,7 @@ function categorizeZim(name) {
   if (/wikihow|ifixit|off-the-grid/.test(n)) return 'How-To';
   if (/^wiki|^wikt/.test(n) || n === 'openstreetmap-wiki') return 'Wikimedia';
   if (/gutenberg|rationalwiki|theworldfactbook/.test(n)) return 'Books';
-  if (/^maps_|streetzim|atlaszim/.test(n)) return 'Maps';
+  if (/^maps(_|$)|streetzim|atlaszim/.test(n)) return 'Maps';
   return 'Other';
 }
 

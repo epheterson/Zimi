@@ -1765,8 +1765,9 @@ def _categorize_zim(name):
     # Books
     if n in ("gutenberg", "rationalwiki", "theworldfactbook"):
         return "Books"
-    # Maps — Kiwix's maps2zim output keeps its maps_<lang>_<region> name
-    if n.startswith("maps_"):
+    # Maps — Kiwix's maps2zim output keeps its maps_<lang>_<region> name;
+    # the world map is maps_en_all, whose stem strips all the way to "maps".
+    if n == "maps" or n.startswith("maps_"):
         return "Maps"
     return None
 
@@ -1828,6 +1829,26 @@ def _zim_kind(scraper, tags, meta_name):
     if (meta_name or "").lower().startswith("maps_"):
         return "map"
     return None
+
+
+def _read_zim_kind(path):
+    """``_zim_kind`` for a cache record written before ``kind`` existed.
+
+    Three metadata reads and no entry walk, so it is cheap enough to do at
+    boot, once per legacy record; the answer is then written down with the
+    rest. Returns "" rather than None so a decided non-map is a decision too."""
+    try:
+        archive = open_archive(path)
+        vals = {}
+        for key in ("Scraper", "Tags", "Name"):
+            try:
+                vals[key] = bytes(archive.get_metadata(key)).decode("utf-8", "replace")
+            except Exception:
+                vals[key] = ""
+        return _zim_kind(vals["Scraper"], vals["Tags"], vals["Name"]) or ""
+    except Exception as e:
+        log.debug("could not read kind for %s: %s", path, e)
+        return ""
 
 
 def _effective_category(name, path, kind=None):
@@ -2767,6 +2788,7 @@ def load_cache(force=False):
 
     info = []
     scanned = 0
+    kind_backfilled = False  # a legacy record learned what it is; write it down
     backfilled = 0  # legacy entries whose first_seen we filled from file mtime
     file_cache = {}  # for saving back to disk
 
@@ -2856,6 +2878,12 @@ def load_cache(force=False):
             updated_at = time.time()
         if cache_hit and cached:
             # Cache hit — use stored metadata, skip opening archive
+            if "kind" not in cached:
+                # A record from before Zimi knew what a map was. Eric's world
+                # map was registered by 1.9 half an hour before 1.10 booted
+                # and sat under Other with nothing to say otherwise.
+                cached["kind"] = _read_zim_kind(path)
+                kind_backfilled = True
             entry = {
                 "name": name,
                 "file": filename,
@@ -2959,8 +2987,9 @@ def load_cache(force=False):
                 new_cached["article_count"] = entry["article_count"]
             if entry.get("zimi_export"):
                 new_cached["zimi_export"] = True
-            if entry.get("kind"):
-                new_cached["kind"] = entry["kind"]
+            # Always, "" included: a decided non-map must not be re-read
+            # on every boot as if it were a record from before the field.
+            new_cached["kind"] = entry.get("kind") or ""
             # Only when the capture kept two: most ZIMs have one face, and a
             # cache full of nulls is noise. An older Zimi reading this record
             # ignores the key, which is what keeps a downgrade safe.
@@ -2985,7 +3014,7 @@ def load_cache(force=False):
 
     # Persist cache if we scanned anything new, backfilled a legacy first_seen
     # (so the mtime stamp is computed once), or repaired mass-stamped entries.
-    if scanned > 0 or backfilled > 0 or disk_cache is None or healed or healed_updates:
+    if scanned > 0 or backfilled > 0 or kind_backfilled or disk_cache is None or healed or healed_updates:
         # Wholesale, not a merge — but under the same lock, so it cannot land
         # in the middle of somebody else's read-modify-write.
         with _disk_cache_lock:

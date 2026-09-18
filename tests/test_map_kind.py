@@ -59,6 +59,8 @@ def test_kind_beats_the_filename_but_not_the_folder(monkeypatch):
 
 def test_the_kiwix_filename_still_files_without_metadata():
     assert srv._categorize_zim("maps_en_samoa") == "Maps"
+    # maps_en_all_2026-06.zim strips all the way to the stem "maps".
+    assert srv._categorize_zim("maps") == "Maps"
     assert srv._categorize_zim("maps_fr_all") == "Maps"
     assert srv._categorize_zim("openstreetmap-wiki") == "Wikimedia"
 
@@ -95,3 +97,53 @@ def test_kind_survives_the_metadata_cache(tmp_path, monkeypatch):
     srv.load_cache(force=False)  # the cache hit
     hit = next(z for z in srv._zim_list_cache if z["name"] == "samoa")
     assert (hit["category"], hit.get("kind")) == ("Maps", "map")
+
+
+def _library_with(tmp_path, monkeypatch, filename, metadata=None):
+    from conftest_zim import build_fixture_zim
+
+    zdir = tmp_path / "zims"
+    zdir.mkdir()
+    build_fixture_zim(str(zdir / filename), metadata)
+    monkeypatch.setattr(srv, "ZIM_DIR", str(zdir))
+    monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(tmp_path / "data"))
+    os.makedirs(str(tmp_path / "data"), exist_ok=True)
+
+
+def test_a_record_from_before_kind_existed_is_backfilled_on_a_cache_hit(tmp_path, monkeypatch):
+    """Eric's world map: registered by 1.9 half an hour before 1.10 booted, so
+    its cache record had no kind, and a cache hit never reopened the archive
+    to find out. It listed under Other. A legacy record is read once, on the
+    next boot, and the answer written down with the rest."""
+    import json
+
+    _library_with(tmp_path, monkeypatch, "maps_en_all_2026-06.zim", {"Scraper": "maps2zim v0.2.1"})
+    srv.load_cache(force=True)
+    cache_path = srv._cache_file_path()
+    with open(cache_path, encoding="utf-8") as f:
+        payload = json.load(f)
+    record = payload["files"]["maps_en_all_2026-06.zim"]
+    assert record["kind"] == "map"
+    del record["kind"]  # what a 1.9 record looks like
+    with open(cache_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f)
+
+    srv.load_cache(force=False)  # the cache hit
+    entry = next(z for z in srv._zim_list_cache if z["file"] == "maps_en_all_2026-06.zim")
+    assert (entry["name"], entry["category"], entry.get("kind")) == ("maps", "Maps", "map")
+    with open(cache_path, encoding="utf-8") as f:
+        assert json.load(f)["files"]["maps_en_all_2026-06.zim"]["kind"] == "map", "not written down"
+
+
+def test_a_non_map_is_decided_once_not_reread_every_boot(tmp_path, monkeypatch):
+    import json
+
+    _library_with(tmp_path, monkeypatch, "survival_en_2026-06.zim")
+    srv.load_cache(force=True)
+    with open(srv._cache_file_path(), encoding="utf-8") as f:
+        record = json.load(f)["files"]["survival_en_2026-06.zim"]
+    assert "kind" in record and record["kind"] == ""
+    calls = []
+    monkeypatch.setattr(srv, "_read_zim_kind", lambda path: calls.append(path) or "")
+    srv.load_cache(force=False)
+    assert calls == [], "a decided record was read again"

@@ -44,7 +44,7 @@ ok('maps is a browse category', keys.includes('maps'));
 ok('maps is listed before other', keys.indexOf('maps') < keys.indexOf('other'), keys.join(','));
 
 // Catalog items: Kiwix names, and the two community map builders.
-for (const name of ['maps_en_samoa', 'maps_en_all', 'MAPS_EN_FIJI', 'streetzim_sf', 'atlaszim_world']) {
+for (const name of ['maps_en_samoa', 'maps_en_all', 'maps', 'MAPS_EN_FIJI', 'streetzim_sf', 'atlaszim_world']) {
   ok('catalog ' + name + ' -> maps', ctx.autoCategorize({ name }) === 'maps', ctx.autoCategorize({ name }));
 }
 ok('a Kiwix category of "maps" wins outright', ctx.autoCategorize({ name: 'x', category: 'maps' }) === 'maps');
@@ -53,6 +53,7 @@ ok('a name merely containing "maps" is not a map', ctx.autoCategorize({ name: 's
 
 // Installed ZIMs: the home page groups by English name, then localizes.
 ok('installed maps_en_samoa -> Maps', ctx.categorizeZim('maps_en_samoa') === 'Maps');
+ok('the world map strips to the stem maps and still files', ctx.categorizeZim('maps') === 'Maps');
 ok('Maps bridges to the maps browse key', ctx._CAT_TO_BROWSE_KEY['Maps'] === 'maps');
 ok('installed wikipedia untouched', ctx.categorizeZim('wikipedia_en_all') === 'Wikimedia');
 
