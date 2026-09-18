@@ -1309,6 +1309,7 @@
   "remaining": "متبقٍ",
   "dl_eta_left": "متبقٍ {time}",
   "dl_eta_under_minute": "أقل من دقيقة",
+  "dl_verifying": "جارٍ التحقق مما تم تنزيله · {pct}%",
   "remember_me": "تذكرني",
   "remove": "إزالة",
   "remove_from_favorites": "إزالة من المفضلة",

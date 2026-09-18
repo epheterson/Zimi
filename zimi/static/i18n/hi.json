@@ -1309,6 +1309,7 @@
   "remaining": "शेष",
   "dl_eta_left": "{time} शेष",
   "dl_eta_under_minute": "एक मिनट से कम",
+  "dl_verifying": "पहले से डाउनलोड डेटा की जाँच · {pct}%",
   "remember_me": "मुझे याद रखें",
   "remove": "हटाएं",
   "remove_from_favorites": "पसंदीदा से हटाएं",

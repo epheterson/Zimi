@@ -1309,6 +1309,7 @@
   "remaining": "剩余",
   "dl_eta_left": "剩余 {time}",
   "dl_eta_under_minute": "不到一分钟",
+  "dl_verifying": "正在校验已下载的数据 · {pct}%",
   "remember_me": "记住我",
   "remove": "移除",
   "remove_from_favorites": "取消收藏",

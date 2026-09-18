@@ -1309,6 +1309,7 @@
   "remaining": "restantes",
   "dl_eta_left": "{time} restantes",
   "dl_eta_under_minute": "menos de un minuto",
+  "dl_verifying": "Verificando lo ya descargado · {pct}%",
   "remember_me": "Recordarme",
   "remove": "Eliminar",
   "remove_from_favorites": "Quitar de favoritos",
