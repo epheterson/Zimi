@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - The portable Windows zip starts. Files extracted from a downloaded zip carry Windows's mark of the web, and .NET refused to load Zimi's runtime library while it was there, so the app died before its window opened. It now clears the mark from its own libraries at launch. The installer was never affected.
+- A BitTorrent download survives a restart without re-checking the whole partial file. A clean shutdown was deleting the resume data it had just written; on a NAS that meant minutes of a counter climbing from zero. While a re-check does happen, the row now says "Verifying what is already on disk" instead of looking like a download starting over.
+- The Downloads tab lists downloads above seeds, shows the recent rate and a time remaining on every row, and no longer flickers its icons every few seconds.
+- Opening a /w/ deep link leaves one history entry, not three, and Forward works after Back in the reader (#78).
+- Search results that cannot be opened are no longer shown.
+- Pages that fill themselves in after loading (the PDF viewer, maps) no longer collapse to nothing.
+
+### Added
+
+- The Server pane lists every ZIMI_* variable in effect, with secrets masked, so a setting that is disabled from the environment says why.
 
 ## [1.9.5] - 2026-09-14
 
