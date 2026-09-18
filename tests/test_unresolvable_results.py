@@ -113,6 +113,9 @@ def _patch_suggester(monkeypatch, paths):
     import zimi.search as search_mod
 
     class _Suggestions:
+        def getEstimatedMatches(self):
+            return len(paths)
+
         def getResults(self, start, count):
             return paths[start : start + count]
 
