@@ -3021,6 +3021,17 @@
   .dc-video-card:hover .dc-play-badge { background: var(--amber); transform: translate(-50%, -50%) scale(1.08); }
   .dc-video-card:hover .dc-play-badge::after { border-left-color: #0a0a0b; }
   /* ── Today card — moon phase + star field ── */
+  /* Maps card: a graticule over the surface, the map glyph in the middle.
+     Same 120px as every other card's thumb, so the row keeps its rhythm. */
+  .dc-map-hero {
+    width: 100%; height: 120px; display: flex; align-items: center; justify-content: center;
+    color: var(--amber); background-color: var(--surface2);
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 24px 24px; background-position: center;
+  }
+  .dc-map-hero svg { width: 40px; height: 40px; }
+  .dc-map-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .dc-map-chip { min-height: 24px; padding: 4px 10px; color: var(--text); text-decoration: none; }
   .dc-today { width: 100%; height: 120px; position: relative; background: linear-gradient(135deg, #0a0e1a 0%, #141c2e 50%, #0d1220 100%); overflow: hidden; }
   .dc-star { position: absolute; width: 2px; height: 2px; background: #fff; border-radius: 50%; animation: dc-twinkle 3s ease-in-out infinite; }
   @keyframes dc-twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }

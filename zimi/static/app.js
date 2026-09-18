@@ -4919,6 +4919,9 @@ function _loadDiscover() {
 
   // Today card is always present (computed client-side, no server call needed)
   var computed = [{ type: 'today' }];
+  // So is Maps, whenever a map ZIM is installed: the card renders from the
+  // live library, so it needs no server pick and nothing to cache.
+  if (_installedMaps().length) computed.push({ type: 'maps' });
   var names = (zimsCache || []).map(function(z) { return z.name; });
   var mmdd = ('0' + (now.getMonth() + 1)).slice(-2) + ('0' + now.getDate()).slice(-2);
 
@@ -4954,7 +4957,9 @@ function _loadDiscover() {
   var skipCats = {'Stack Exchange':1, 'Dev Docs':1};
   var skipPattern = /^zimgit/i;
   var visualZims = (zimsCache || []).filter(function(z) {
-    return typeof z.entries === 'number' && z.entries > 100
+    // A map has no article to pick at random: its entries are tiles and
+    // search shards, and it already has a card of its own.
+    return typeof z.entries === 'number' && z.entries > 100 && z.kind !== 'map'
       && !skipPattern.test(z.name) && !skipCats[z.category] && !usedNames[z.name];
   });
   // Shuffle and pick
@@ -5089,6 +5094,39 @@ function _renderDiscover(el, items) {
           '<div class="dc-blurb">' + _m.illumination + '% ' + tH('alm_illuminated') + '</div>' +
           (_teaser ? '<div class="dc-blurb" style="color:var(--amber)">' + _teaser + '</div>' : '') +
         '</div></a>';
+      continue;
+    }
+
+    // ─── Card: Maps ───────────────────────────────────────────────────
+    // Every installed map, from the live library rather than the cached item,
+    // so installing or removing one changes the card without waiting for the
+    // day to roll over. One map: the whole card opens it. Several: a chip per
+    // region, because a card that opened "the first one" would hide the rest.
+    if (it.type === 'maps') {
+      var _maps = _installedMaps();
+      if (!_maps.length) continue;
+      var _mapHero = '<div class="dc-map-hero" aria-hidden="true">' + _FEAT_SVG.map + '</div>';
+      var _mapSrc = '<div class="dc-source">' + _FEAT_SVG.map + '<span>' + tH('cat_maps') + '</span></div>';
+      if (_maps.length === 1) {
+        var _one = _maps[0];
+        h += '<a class="discover-card dc-map-card" href="' + escAttr(_articleDeepLinkPath(_one.name, _one.main_path)) +
+          '" data-zim="' + escAttr(_one.name) + '" data-path="' + escAttr(_one.main_path) + '" data-title="' + escAttr(_one.title || _one.name) +
+          '" onclick="return _spaCardClick(event, this)">' + _mapHero +
+          '<div class="dc-body">' + _mapSrc +
+            '<div class="dc-title">' + esc(_one.title || _one.name) + '</div>' +
+            (_one.description ? '<div class="dc-blurb">' + esc(_one.description) + '</div>' : '') +
+          '</div></a>';
+      } else {
+        var _chips = '';
+        for (var _mi = 0; _mi < _maps.length; _mi++) {
+          var _mz = _maps[_mi];
+          _chips += '<a class="pill dc-map-chip" href="' + escAttr(_articleDeepLinkPath(_mz.name, _mz.main_path)) +
+            '" data-zim="' + escAttr(_mz.name) + '" data-path="' + escAttr(_mz.main_path) + '" data-title="' + escAttr(_mz.title || _mz.name) +
+            '" onclick="return _spaCardClick(event, this)">' + esc(_mz.title || _mz.name) + '</a>';
+        }
+        h += '<div class="discover-card dc-map-card dc-no-click">' + _mapHero +
+          '<div class="dc-body">' + _mapSrc + '<div class="dc-map-chips">' + _chips + '</div></div></div>';
+      }
       continue;
     }
 
@@ -8005,6 +8043,14 @@ const FEATURED_ZIMS = [
   { match: 'xkcd',          type: 'random',    i18nLabel: 'comic_of_day',       icon: _FEAT_SVG.pen, promo: 'xkcd' },
   { match: 'theworldfactbook', type: 'country', i18nLabel: 'country_of_day',    icon: _FEAT_SVG.map, promo: 'CIA World Factbook' },
 ];
+
+// Installed map ZIMs (Kiwix maps2zim, StreetZim, AtlasZim), as the server
+// identified them from their own metadata, so a renamed file still counts.
+// Sorted by title so the card reads the same on every visit.
+function _installedMaps() {
+  return (zimsCache || []).filter(function(z) { return z.kind === 'map' && z.main_path; })
+    .sort(function(a, b) { return (a.title || a.name).localeCompare(b.title || b.name); });
+}
 
 function _isFeaturedInstalled(feat, grouped) {
   // Check ALL matching catalog groups — if any variant in any group is installed, this featured ZIM is installed
