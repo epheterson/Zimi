@@ -49,7 +49,7 @@ ok('random fill skips maps', /z\.kind !== 'map'/.test(fill));
 
 // And the card is only pushed when there is a map to show.
 ok('the maps card is conditional on an installed map',
-  /if \(_installedMaps\(\)\.length\) computed\.push\(\{ type: 'maps' \}\)/.test(src));
+  /if \(_installedMaps\(\)\.length\) computed\.unshift\(\{ type: 'maps' \}\)/.test(src));
 
 console.log(failures ? failures + ' FAILED' : 'all passed');
 process.exit(failures ? 1 : 0);
