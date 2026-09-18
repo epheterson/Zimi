@@ -21,7 +21,9 @@ Before the PR: full pytest with no leftover servers, the browser gate on Eric's 
 
 Built after the inventory was first written: the search bar now reaches ZIMs with no full-text index, which is every Kiwix map. maps2zim writes one `search/<Place>` entry per place, so typing a place name finds it on every installed Kiwix map and opening it flies the map there (maps2zim's own `#lat=&lon=&zoom=` redirect; the map's maxBounds may clamp the centre, the place stays in view).
 
-Slips to 2.0 with sources: StreetZim place search. StreetZim keeps its places in `search-data/<2-char prefix>.json` shards behind a manifest (139,067 places for Hawaii), not as titled entries, so the title index cannot see them. Cutting through several StreetZim files from Zimi's search bar means reading the shard for the query prefix on the server and returning `{name, lat, lng}` rows that open `#map=`. Worth doing once StreetZim is a catalog source.
+Built the same night, after Eric could not find Danville, CA on the Kiwix world map (maps2zim indexes administrative divisions only; "Danville" is a municipality in Québec): the search bar offers the words to a map's own search box, for maps that have one (StreetZim, AtlasZim), by typing into the box inside the same-origin frame. One tap from "Kailua" in the bar to fifteen results in the map's dropdown.
+
+Still 2.0 with sources: Zimi reading StreetZim's shards itself. StreetZim keeps its places in `search-data/<2-char prefix>.json` shards behind a manifest (139,067 places for Hawaii), not as titled entries, so the title index cannot see them. Cutting through several StreetZim files from Zimi's search bar means reading the shard for the query prefix on the server and returning `{name, lat, lng}` rows that open `#map=`. Worth doing once StreetZim is a catalog source.
 
 ## 2.0, the maps and sources release
 

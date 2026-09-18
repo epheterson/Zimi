@@ -52,10 +52,12 @@ ok('no query, no rows', ctx._mapFindRowsHtml('') === '');
 ok('a hostile query is escaped', !/<img/.test(ctx._mapFindRowsHtml('<img src=x onerror=1>')));
 
 // The hand-off: only for the article that asked, only once, and gives up.
-const hook = extract(/function _applyMapFind\(tries\) \{[\s\S]*?\n\}/, '_applyMapFind');
+const hook = extract(/function _applyMapFind\(tries\) \{[\s\S]*?\n\}/, '_applyMapFind') +
+  extract(/function _typeIntoMapBox\(doc, box, q, tries\) \{[\s\S]*?\n\}/, '_typeIntoMapBox');
 ok('the hand-off checks the map on screen is the one asked for', /currentArticle\.zim !== want\.zim/.test(hook));
 ok('it fires the input event the box listens for', /dispatchEvent\(new Event\('input'/.test(hook));
 ok('and stops asking after a bounded wait', /_MAP_FIND_TRIES/.test(hook) && /_pendingMapFind = null; return;/.test(hook));
+ok('it types again while the index has not answered, boundedly', /_MAP_TYPE_TRIES/.test(hook) && /querySelector\('\.search-result'\)/.test(hook));
 ok('openArticle carries opts.find into the hand-off', /_pendingMapFind = \(opts && opts\.find\)/.test(src));
 ok('the rows sit above the results on a global search', /const mapFindHtml = !scope \? _mapFindRowsHtml/.test(src));
 
