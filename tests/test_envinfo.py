@@ -142,7 +142,7 @@ def test_the_real_environment_is_readable():
     """effective() defaults to os.environ; it must not blow up on whatever is
     actually set on the machine running the tests."""
     for row in envinfo.effective():
-        assert set(row) == {"name", "value", "secret", "description", "locks"}
+        assert set(row) == {"name", "value", "secret", "description", "locks", "source", "path"}
 
 
 def test_a_config_file_value_is_labelled_as_the_files_not_the_environments():
