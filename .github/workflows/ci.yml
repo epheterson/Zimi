@@ -182,7 +182,7 @@ jobs:
       # This catches a bundle that stops building at all, which is the other
       # way Desktop Release fails after a merge rather than before it.
       - name: Build with PyInstaller
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-22.04' || matrix.os == 'windows-latest'
         run: |
           pip install pyinstaller
           pyinstaller --noconfirm desktop/zimi_desktop.spec
@@ -195,6 +195,29 @@ jobs:
         env:
           SMOKE_EXPECT_BT: '1'
         run: ci/smoke_binary.sh "dist/Zimi/Zimi"
+
+      # The portable zip, as a person actually gets it: every file extracted
+      # from a browser download carries the mark of the web, and the .NET
+      # Framework will not load a marked assembly. 1.9.5 died on its first
+      # import that way (Spudlads, r/Kiwix). Stamp the built bundle the way
+      # Explorer does, prove the app cannot start with the mark kept, then
+      # prove it starts once it is allowed to clear the mark itself. The
+      # control run is what makes the passing run evidence rather than luck.
+      - name: The marked bundle fails, then clears its own mark and renders (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: pwsh ci/smoke_windows.ps1 dist/Zimi/Zimi.exe
+
+      # The picture of what a Windows user sees on first launch, for eyes.
+      - name: Upload the Windows smoke screenshot
+        if: matrix.os == 'windows-latest' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zimi-windows-smoke
+          path: |
+            zimi-windows-smoke.png
+            smoke_*.log
+          if-no-files-found: ignore
 
   docker:
     runs-on: ubuntu-latest
