@@ -15939,7 +15939,10 @@ function _mapCovers(z, pos) {
 // The maps that cover where you are, then the rest under a divider. A map of
 // Samoa opened at Honolulu shows Samoa, whatever the URL says, so the list
 // says which switches keep the place before the switch is made.
-function _mapSourceRowsHtml(maps, currentName, pos) {
+// ``extras.middle`` (the catalog's offers) sits between the maps of here and
+// the maps of elsewhere: a map of this ground, installed or not, comes
+// before a map of somewhere else. ``extras.end`` is the way to all of them.
+function _mapSourceRowsHtml(maps, currentName, pos, extras) {
   var here = [], elsewhere = [];
   for (var i = 0; i < maps.length; i++) {
     (_mapCovers(maps[i], pos) === false ? elsewhere : here).push(maps[i]);
@@ -15953,11 +15956,11 @@ function _mapSourceRowsHtml(maps, currentName, pos) {
       (label ? '<span class="ld-sub">' + esc(label) + '</span>' : '') + '</span>' +
       (active ? '<span class="check">\u2713</span>' : '') + '</div>';
   };
-  var h = here.map(row).join('');
+  var h = here.map(row).join('') + ((extras && extras.middle) || '');
   if (elsewhere.length) {
     h += '<div class="ld-divider" role="separator">' + esc(tH('map_source_elsewhere')) + '</div>' + elsewhere.map(row).join('');
   }
-  return h;
+  return h + ((extras && extras.end) || '');
 }
 
 // The place travels only where it can be shown. A map that does not cover it
@@ -16039,6 +16042,7 @@ function _mapOfferRow(it) {
     '<span class="ld-sub">' + esc(sub) + '</span></span><span class="ld-get">' + esc(t('download')) + '</span></div>';
 }
 
+// ``{middle, end}`` for _mapSourceRowsHtml: the offers, and the punch-out.
 function _mapOfferRowsHtml(groups) {
   var h = '';
   if (groups.here.length) {
@@ -16047,8 +16051,10 @@ function _mapOfferRowsHtml(groups) {
   if (groups.world.length) {
     h += '<div class="ld-divider" role="separator">' + esc(tH('map_offer_world')) + '</div>' + groups.world.map(_mapOfferRow).join('');
   }
-  h += '<div class="lang-dropdown-item ld-link" role="menuitem" data-role="all-maps">' + esc(tH('map_offer_all')) + '</div>';
-  return h;
+  return {
+    middle: h,
+    end: '<div class="lang-dropdown-item ld-link" role="menuitem" data-role="all-maps">' + esc(tH('map_offer_all')) + '</div>',
+  };
 }
 
 async function _mapOfferDownload(row) {
@@ -16071,16 +16077,16 @@ async function _openMapsCatalog() {
 function _renderMapSourceDropdown(dd) {
   var here = _currentMapPositionHash();
   var pos = here ? parseMapHash('#' + here) : null;
-  var h = _mapSourceRowsHtml(_installedMaps(), currentArticle ? currentArticle.zim : '', pos);
+  var extras;
   if (_mapOfferLoaded) {
-    h += _mapOfferRowsHtml(_mapOfferGroups(_mapOfferAll(), pos));
+    extras = _mapOfferRowsHtml(_mapOfferGroups(_mapOfferAll(), pos));
   } else {
-    h += '<div class="lang-dropdown-item ld-wait" aria-busy="true">\u2026</div>';
+    extras = {end: '<div class="lang-dropdown-item ld-wait" aria-busy="true">\u2026</div>'};
     _mapOfferItems().then(function() {
       if (dd.classList.contains('visible')) _renderMapSourceDropdown(dd);
     });
   }
-  dd.innerHTML = h;
+  dd.innerHTML = _mapSourceRowsHtml(_installedMaps(), currentArticle ? currentArticle.zim : '', pos, extras);
 }
 
 var _mapSourceDetach = null;
