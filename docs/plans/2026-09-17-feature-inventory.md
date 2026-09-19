@@ -6,7 +6,7 @@ Sources swept: PLAN.md (every unchecked box), docs/plans (release scoping, creat
 
 Status words: **built** is on a branch with tests; **shipped** is on main; **decided** means Eric said yes and nobody started; **parked** means Eric said later; **killed** means Eric said no, and it stays no.
 
-## 1.10 (branch v1.10-env, 20 commits, not pushed)
+## 1.10 (branch v1.10-env)
 
 Built:
 
@@ -26,6 +26,21 @@ Built after the inventory was first written: the search bar now reaches ZIMs wit
 Built the same night, after Eric could not find Danville, CA on the Kiwix world map (maps2zim indexes administrative divisions only; "Danville" is a municipality in Québec): the search bar offers the words to a map's own search box, for maps that have one (StreetZim, AtlasZim), by typing into the box inside the same-origin frame. One tap from "Kailua" in the bar to fifteen results in the map's dropdown.
 
 Built 2026-09-18 evening on Eric's direction: Zimi reads StreetZim's shards itself (`zimi/mapsearch.py`, a port of the map's own lookup, bounded to twelve chunks a query), places render above the article results and open the map at the place; and StreetZim's 47 regions are in the catalog behind a Kiwix/StreetZim toggle in the Maps category (`zimi/streetzim.py`, Internet Archive listing cached on disk). Zimi Maps as its own surface is the 1.11 direction. StreetZim keeps its places in `search-data/<2-char prefix>.json` shards behind a manifest (139,067 places for Hawaii), not as titled entries, so the title index cannot see them. Cutting through several StreetZim files from Zimi's search bar means reading the shard for the query prefix on the server and returning `{name, lat, lng}` rows that open `#map=`. Worth doing once StreetZim is a catalog source.
+
+Built later the same night, on Eric's next three messages:
+
+- Updates for maps from both sources. A StreetZim file carries its date to the day (`osm-hawaii-2026-09-08.zim`); the date parser reads both shapes, an installed StreetZim map is named `osm-hawaii` and survives an update, `_check_updates` asks StreetZim's own listing for the `osm-` files, and an archive.org update goes through the import path. The StreetZim listing ships as a 2.5 KB snapshot beside the Kiwix one.
+- Same place, another map. Eric: "in the maps UI we can change source so I could have multiple and not be limited. Like it uses same GPS position and zoom then swaps out." A topbar button on a map page lists the installed maps, the ones that cover the spot first and the rest under Elsewhere; the position travels only where it can be shown. The server reads each map's bounds from its own config (StreetZim `map-config.json`, maps2zim `content/config.json`) and its publisher from the Scraper metadata, cached with the kind.
+- Get a map of here. Eric: "It should offer the one in their region if they share it or worldwide for both or top few by language I guess with a punch out to the full catalog?" Under the installed maps: the catalog's maps that cover the spot (up to three, smallest first), the maps of the whole world, and "All maps in the catalog", which opens the Maps category with its toggle. Coverage of a catalog map comes from `zimi/assets/map-regions.json`, approximate boxes built by `scripts/build_map_regions.py` (Kiwix from Natural Earth admin-0, public domain; StreetZim's 47 regions by hand). "Top few by language" waits for a second language: Kiwix's 193 maps are all `maps_en_` today, and StreetZim's are English.
+- A map's own top bar. Eric: "Maps should remove speaker icon and either remove or modify random bookmarks history to be for maps. Think about that whole top bar." On a map: no read-aloud, Reader View or type size (inline or in ⋯); the dice roll a place (StreetZim from its place index, a settlement over an address; Kiwix from its `search/<Place>` pages; the open dice leave maps out); history records the place, so two places on one map are two visits and a row returns there; bookmarks already did. A place on the map already open flies there instead of reloading the map, and Back walks the places with their titles.
+- A cold deep link with a place in its hash now lands at the place (the boot rewrote the URL before the map could read it).
+- Verified inside Zimi's frame on StreetZim's Hawaii: the geolocate control puts the blue dot and recentres (the URL follows), and turn-by-turn works (Honolulu to Kailua, 18.3 km, 15 min, step list, drive mode). Both are StreetZim's own; Zimi's job was not to break them. In the desktop app, geolocation permission in the frame is untested; the iframe is same-origin so no `allow` attribute is needed in a browser.
+
+Forward design, recorded so 1.11 starts from it:
+
+- Entry points: one lazy-loaded route per app (`/#maps`, `/#tube`, later `/#mail`, `/#bee`, `/#chat`, `/#overflow`) with a Discover card each, the way the Almanac and Create already work. Nothing new on the home page's primary path.
+- Zimi Maps (1.11): one MapLibre view owned by Zimi, reading tiles and styles from whichever installed map covers the viewport, so the source switch becomes seamless rather than a page open; one search box across every installed map's index (Zimi already reads StreetZim's shards and maps2zim's place pages); the region and source chooser is the catalog's Maps category inside the app; routing stays StreetZim's until a map-agnostic router exists.
+- Eric, 2026-09-18, later: "ZimiMail to compliment ZimiBee forum/bb and ZimiChat and ZimiOverflow threading in real data and live interface. It's like a private interface and it can connect to other Zimi instances or work alone between users on same machine / connecting to the server." And: "Maybe we've really a ZimiStore with various apps and things that can be installed for fun." The store is the entry point for all of it; the catalog is its seed. Not scheduled. And: "Zimibook someday."
 
 ## Eric's direction for maps, 2026-09-18
 

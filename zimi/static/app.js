@@ -15972,6 +15972,117 @@ function _switchMapSource(name, path, title) {
   openArticle(name, path, title, pos ? {pos: pos} : undefined);
 }
 
+// ── Get a map of here ──
+// Eric, 2026-09-18: "It should offer the one in their region if they share
+// it or worldwide for both or top few by language I guess with a punch out
+// to the full catalog?" Under the installed maps, the catalog's maps that
+// cover the spot on screen (the server stamps each catalog map with an
+// approximate box), then the maps of the whole world, then the way to all
+// of them. Both catalogs are read once per session, the first time the
+// list opens, and only for someone the library lets download.
+var _MAP_OFFERS_HERE = 3;
+var _MAP_OFFERS_WORLD = 2;
+var _mapOfferLoaded = false;
+var _mapOfferPending = null;
+var _kiwixOffers = [];
+var _streetzimOffers = [];
+
+// Both catalogs, fetched once, keeping only the maps the server could place.
+// A fresh fetch, not the catalog view's cache: that may be a session copy
+// from before the boxes were stamped, and would then have none.
+function _mapOfferItems() {
+  if (_mapOfferLoaded) return Promise.resolve(_mapOfferAll());
+  if (_mapOfferPending) return _mapOfferPending;
+  var placed = function(items) { return (items || []).filter(function(it) { return it && it.bounds; }); };
+  _mapOfferPending = (async function() {
+    try {
+      var got = await _fetchCatalogItems();
+      try { _enrichCatalogItems(got.items); } catch (e) {}  // installed flags
+      _kiwixOffers = placed(got.items);
+    } catch (e) {}
+    try {
+      var d = await (await manageFetch('/manage/catalog-streetzim')).json();
+      _streetzimOffers = placed(d.items);
+    } catch (e) {}
+    _mapOfferLoaded = true;
+    _mapOfferPending = null;
+    return _mapOfferAll();
+  })();
+  return _mapOfferPending;
+}
+
+function _mapOfferAll() {
+  return _kiwixOffers.concat(_streetzimOffers);
+}
+
+function _mapOfferInstalled(it) {
+  return !!it.installed || (zimsCache || []).some(function(z) { return z.name === it.name; });
+}
+
+// The catalog maps worth a row at this spot: those that cover it, smallest
+// first (the one someone can actually fetch tonight), and the planet.
+function _mapOfferGroups(items, pos) {
+  var bySize = function(a, b) { return (a.size_bytes || 0) - (b.size_bytes || 0); };
+  var open = (items || []).filter(function(it) { return !_mapOfferInstalled(it); });
+  return {
+    here: open.filter(function(it) { return !it.world && pos && _mapCovers({map_bounds: it.bounds}, pos) === true; })
+      .sort(bySize).slice(0, _MAP_OFFERS_HERE),
+    world: open.filter(function(it) { return it.world; }).sort(bySize).slice(0, _MAP_OFFERS_WORLD),
+  };
+}
+
+function _mapOfferRow(it) {
+  var source = it.source === 'streetzim' ? 'StreetZim' : 'Kiwix';
+  var sub = source + (it.size_bytes ? ' \u00b7 ' + fmtBytes(it.size_bytes) : '');
+  return '<div class="lang-dropdown-item ld-offer" role="menuitem" data-role="offer" data-url="' + escAttr(it.download_url || '') +
+    '" data-title="' + escAttr(it.title || it.name) + '"><span class="ld-name">' + esc(it.title || it.name) +
+    '<span class="ld-sub">' + esc(sub) + '</span></span><span class="ld-get">' + esc(t('download')) + '</span></div>';
+}
+
+function _mapOfferRowsHtml(groups) {
+  var h = '';
+  if (groups.here.length) {
+    h += '<div class="ld-divider" role="separator">' + esc(tH('map_offer_here')) + '</div>' + groups.here.map(_mapOfferRow).join('');
+  }
+  if (groups.world.length) {
+    h += '<div class="ld-divider" role="separator">' + esc(tH('map_offer_world')) + '</div>' + groups.world.map(_mapOfferRow).join('');
+  }
+  h += '<div class="lang-dropdown-item ld-link" role="menuitem" data-role="all-maps">' + esc(tH('map_offer_all')) + '</div>';
+  return h;
+}
+
+async function _mapOfferDownload(row) {
+  var url = row.getAttribute('data-url'), title = row.getAttribute('data-title') || '';
+  if (!url) return;
+  row.classList.add('ld-busy');
+  await downloadZim(url, null);
+  _closeMapSourceDropdown();
+  _showToast(tH('map_offer_started', {map: title}));
+}
+
+// The whole Maps category of the catalog, with its source toggle.
+async function _openMapsCatalog() {
+  _closeMapSourceDropdown();
+  await enterManage(null);
+  switchManageTab('browse');
+  drillCategory('maps');
+}
+
+function _renderMapSourceDropdown(dd) {
+  var here = _currentMapPositionHash();
+  var pos = here ? parseMapHash('#' + here) : null;
+  var h = _mapSourceRowsHtml(_installedMaps(), currentArticle ? currentArticle.zim : '', pos);
+  if (_mapOfferLoaded) {
+    h += _mapOfferRowsHtml(_mapOfferGroups(_mapOfferAll(), pos));
+  } else {
+    h += '<div class="lang-dropdown-item ld-wait" aria-busy="true">\u2026</div>';
+    _mapOfferItems().then(function() {
+      if (dd.classList.contains('visible')) _renderMapSourceDropdown(dd);
+    });
+  }
+  dd.innerHTML = h;
+}
+
 var _mapSourceDetach = null;
 function toggleMapSourceDropdown(event) {
   event.stopPropagation();
@@ -15979,11 +16090,14 @@ function toggleMapSourceDropdown(event) {
   var btn = document.getElementById('map-source-btn');
   if (!dd || !btn) return;
   if (dd.classList.contains('visible')) { _closeMapSourceDropdown(); return; }
-  var here = _currentMapPositionHash();
-  dd.innerHTML = _mapSourceRowsHtml(_installedMaps(), currentArticle ? currentArticle.zim : '', here ? parseMapHash('#' + here) : null);
+  _renderMapSourceDropdown(dd);
   dd.onclick = function(e) {
     var row = e.target.closest('.lang-dropdown-item');
     if (!row) return;
+    var role = row.getAttribute('data-role');
+    if (role === 'offer') { _mapOfferDownload(row); return; }
+    if (role === 'all-maps') { _openMapsCatalog(); return; }
+    if (!row.getAttribute('data-zim')) return;
     _switchMapSource(row.getAttribute('data-zim'), row.getAttribute('data-path'), row.getAttribute('data-title'));
   };
   _placeDropdownUnder(dd, btn);

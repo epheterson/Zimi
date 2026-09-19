@@ -33,7 +33,7 @@ const ctx = {
       map_source: 'Kiwix', map_bounds: [-161, 18.5, -154.5, 22.5] },
     { name: 'samoa', title: 'Samoa', kind: 'map', main_path: 'index.html',
       map_source: 'Kiwix', map_bounds: [-174.5, -15.9, -170.5, -11.0] },
-    { name: 'maps_en_all', title: 'World', kind: 'map', main_path: 'index.html', map_bounds: null },
+    { name: 'maps_en_islands', title: 'Islands', kind: 'map', main_path: 'index.html', map_bounds: null },
     { name: 'wikipedia_en_all', title: 'Wikipedia', main_path: 'A/Main' },
   ],
   tH: k => ({ map_source_elsewhere: 'Elsewhere' })[k] || k,
@@ -65,7 +65,7 @@ ok('one row per installed map, none for the encyclopedia', (rows.match(/lang-dro
 ok('the open map is the checked one', /item active" role="menuitemradio" aria-checked="true" data-zim="osm-hawaii"/.test(rows));
 ok('each row says whose map it is', /Hawaii<span class="ld-sub">StreetZim<\/span>/.test(rows) && /Hawaii \(Kiwix\)<span class="ld-sub">Kiwix<\/span>/.test(rows));
 const order = Array.from(rows.matchAll(/data-zim="([^"]+)"|ld-divider/g)).map(m => m[1] || 'divider');
-ok('maps that cover the spot first, then a divider, then the rest', order.join(',') === 'osm-hawaii,maps_en_hawaii,maps_en_all,divider,samoa', order.join(','));
+ok('maps that cover the spot first, then a divider, then the rest', order.join(',') === 'osm-hawaii,maps_en_hawaii,maps_en_islands,divider,samoa', order.join(','));
 ok('a map with unknown ground is not ruled out', ctx._mapCovers(ctx.zimsCache[3], honolulu) === null);
 ok('a box across the antimeridian still contains its inside', ctx._mapCovers({ map_bounds: [170, -20, -170, -10] }, { lat: -15, lng: 179 }) === true && ctx._mapCovers({ map_bounds: [170, -20, -170, -10] }, { lat: -15, lng: 0 }) === false);
 ok('no position known: every map is listed, no divider', !/ld-divider/.test(ctx._mapSourceRowsHtml(ctx._installedMaps(), 'osm-hawaii', null)));
@@ -108,6 +108,42 @@ ok('the language dropdown and this one hang from the same helper', (src.match(/_
 // A shared link: the place in the hash survives the boot rewrite of the URL.
 ok('a cold deep link carries its map position into the open',
   /var pos = parseMapHash\(location\.hash\);\n  openArticle\(zim, path, null, \{ replace: true, pos: pos \? mapPositionHash/.test(src));
+
+// ── Get a map of here: the catalog's maps that cover the spot ────────────
+ctx.t = k => ({ download: 'Download' })[k] || k;
+ctx.tH = k => ({ map_source_elsewhere: 'Elsewhere', map_offer_here: 'Get a map of here', map_offer_world: 'Worldwide', map_offer_all: 'All maps in the catalog' })[k] || k;
+ctx.fmtBytes = b => Math.round(b / 1e9) + ' GB';
+vm.runInContext([
+  extract(/var _MAP_OFFERS_HERE = [^\n]*\n/, '_MAP_OFFERS_HERE'), extract(/var _MAP_OFFERS_WORLD = [^\n]*\n/, '_MAP_OFFERS_WORLD'),
+  extract(/function _mapOfferInstalled\(it\) \{[\s\S]*?\n\}/, '_mapOfferInstalled'),
+  extract(/function _mapOfferGroups\(items, pos\) \{[\s\S]*?\n\}/, '_mapOfferGroups'),
+  extract(/function _mapOfferRow\(it\) \{[\s\S]*?\n\}/, '_mapOfferRow'),
+  extract(/function _mapOfferRowsHtml\(groups\) \{[\s\S]*?\n\}/, '_mapOfferRowsHtml'),
+].join('\n'), ctx);
+const catalog = [
+  { name: 'maps_en_united-states', title: 'United States', size_bytes: 22e9, bounds: [-171.8, 18.9, -66.9, 71.4], download_url: 'https://download.kiwix.org/zim/maps/us.zim' },
+  { name: 'maps_en_north-america', title: 'North America', size_bytes: 40e9, bounds: [-170, 5, -50, 84], download_url: 'https://download.kiwix.org/zim/maps/na.zim' },
+  { name: 'maps_en_canada', title: 'Canada', size_bytes: 9e9, bounds: [-141, 41.7, -52.6, 83.1], download_url: 'https://download.kiwix.org/zim/maps/ca.zim' },
+  { name: 'maps_en_all', title: 'World', size_bytes: 77e9, bounds: [-180, -90, 180, 90], world: true, download_url: 'https://download.kiwix.org/zim/maps/all.zim' },
+  { name: 'osm-hawaii', title: 'Hawaii', size_bytes: 0.25e9, bounds: [-178.5, 18.5, -154.5, 28.5], source: 'streetzim', download_url: 'https://archive.org/download/streetzim-hawaii/osm-hawaii-2026-09-08.zim' },
+  { name: 'osm-pacific-islands', title: 'Pacific Islands', size_bytes: 3e9, bounds: [130, -30, -130, 25], source: 'streetzim', download_url: 'https://archive.org/download/streetzim-pacific-islands/x.zim' },
+  { name: 'maps_en_samoa', title: 'Samoa', size_bytes: 0.13e9, bounds: [-172.8, -14.1, -171.4, -13.4], installed: true, download_url: 'https://download.kiwix.org/zim/maps/ws.zim' },
+  { name: 'wikipedia_en_all', title: 'Wikipedia' },
+];
+const groups = ctx._mapOfferGroups(catalog, honolulu);
+ok('the maps of here, smallest first, not the installed one (osm-hawaii is in zimsCache)', groups.here.map(m => m.name).join(',') === 'osm-pacific-islands,maps_en_united-states,maps_en_north-america', groups.here.map(m => m.name).join(','));
+ok('the planet under its own heading', groups.world.map(m => m.name).join(',') === 'maps_en_all');
+ok('an installed catalog map is not offered', !groups.here.concat(groups.world).some(m => m.name === 'maps_en_samoa'));
+ok('no position: nothing of here, still the planet and the way to all', ctx._mapOfferGroups(catalog, null).here.length === 0 && ctx._mapOfferGroups(catalog, null).world.length === 1);
+const offers = ctx._mapOfferRowsHtml(groups);
+ok('a row says whose map and how big, and offers to get it', /Pacific Islands<span class="ld-sub">StreetZim · 3 GB<\/span><\/span><span class="ld-get">Download/.test(offers) && /United States<span class="ld-sub">Kiwix · 22 GB/.test(offers), offers.slice(0, 200));
+ok('the rows carry the download URL', /data-role="offer" data-url="https:\/\/archive\.org\/download\/streetzim-pacific-islands\/x\.zim"/.test(offers));
+ok('headings for here and the world, then the punch-out to the full catalog', /Get a map of here[\s\S]*Worldwide[\s\S]*data-role="all-maps">All maps in the catalog/.test(offers));
+ok('the dropdown loads both catalogs once and re-renders when they arrive', /var got = await _fetchCatalogItems\(\);[\s\S]*_kiwixOffers = placed\(got\.items\);/.test(src) && /manageFetch\('\/manage\/catalog-streetzim'\)/.test(fn('_mapOfferItems')) && /_mapOfferItems\(\)\.then\(function\(\) \{\n\s*if \(dd\.classList\.contains\('visible'\)\) _renderMapSourceDropdown\(dd\);/.test(src));
+ok('only maps the server could place are kept, from a fresh fetch', /return _kiwixOffers\.concat\(_streetzimOffers\)/.test(src) && /_mapOfferRowsHtml\(_mapOfferGroups\(_mapOfferAll\(\), pos\)\)/.test(src));
+ok('an offer row starts the download through the ordinary path and says where to watch it', /await downloadZim\(url, null\);[\s\S]*_showToast\(tH\('map_offer_started', \{map: title\}\)\)/.test(fn('_mapOfferDownload')));
+ok('the punch-out opens the catalog on the Maps category', /await enterManage\(null\);\n\s*switchManageTab\('browse'\);\n\s*drillCategory\('maps'\);/.test(fn('_openMapsCatalog')));
+function fn(name) { return extract(new RegExp('(?:async )?function ' + name + '\\([^)]*\\) \\{[\\s\\S]*?\\n\\}'), name); }
 
 const tpl = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'templates', 'index.html'), 'utf8');
 ok('the template carries the button and its menu', /id="map-source-btn"/.test(tpl) && /id="map-source-dropdown"/.test(tpl));

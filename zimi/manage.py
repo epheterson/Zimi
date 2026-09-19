@@ -4698,6 +4698,11 @@ def handle_manage_get(handler, parsed, params):
                 _persist.maybe_persist_full_catalog(total)
             except Exception:
                 pass  # caching is best effort; never fail a browse over it
+        # Where each map is, so a map page can offer the maps of the spot on
+        # screen. A no-op for everything that is not a catalog map.
+        from zimi import mapregions
+
+        mapregions.annotate(items)
         resp = {"total": total, "items": items}
         # Offline: last-good catalog served from disk — tell the client so
         # it can show a quiet "catalog from <date>" note.
@@ -5043,10 +5048,12 @@ def handle_manage_get(handler, parsed, params):
         # the Maps category. Cached and served stale while a refresh runs.
         from zimi import streetzim
 
+        from zimi import mapregions
+
         items, source, as_of, refreshing = streetzim.get()
         return handler._json(
             200,
-            {"items": items, "source": source, "as_of": as_of, "refreshing": refreshing},
+            {"items": mapregions.annotate(list(items)), "source": source, "as_of": as_of, "refreshing": refreshing},
         )
 
     elif parsed.path == "/manage/env":

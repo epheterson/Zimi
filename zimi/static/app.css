@@ -1004,6 +1004,11 @@
   .lang-dropdown-item .check { font-size: 14px; }
   .lang-dropdown-item .ld-name { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
   .lang-dropdown-item .ld-sub { font-size: 11px; color: var(--text2); font-weight: 400; }
+  .lang-dropdown-item.ld-offer .ld-sub { font-variant-numeric: tabular-nums; }
+  .lang-dropdown-item.ld-offer .ld-get { font-size: 12px; color: var(--amber); white-space: nowrap; }
+  .lang-dropdown-item.ld-busy { opacity: 0.6; pointer-events: none; }
+  .lang-dropdown-item.ld-link { color: var(--text2); }
+  .lang-dropdown-item.ld-wait { color: var(--text2); font-size: 12px; cursor: default; }
   .ld-divider { padding: 8px 14px 3px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text2); border-top: 1px solid var(--border); margin-top: 4px; }
   .ld-interlang { display: flex; align-items: center; padding: 2px 6px; border-radius: 4px; cursor: pointer; opacity: 0.4; transition: all 0.15s; margin: -2px 0; }
   .ld-interlang:hover { opacity: 1; color: var(--amber); background: var(--amber-glow); }
