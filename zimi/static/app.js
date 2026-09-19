@@ -2212,10 +2212,16 @@ function route(push) {
         doSearch(qParam, false);
         return;
       }
-      // If URL has an article path, open the article directly
+      // If URL has an article path, open the article directly.
+      //
+      // Through the same boot helper the /?a= form uses, which replaces the
+      // boot entry instead of pushing onto it. Hand-rolling it here without
+      // that flag is what made Back unusable on a /w/ deep link (#78): one
+      // navigation left three entries, and stepping back into /w/ re-served
+      // the shell, which rewrote the URL to /?a= again. The reporter arrived
+      // at it from the other end, seeing the address bar change under them.
       if (articlePath) {
-        enterSource(name, false);
-        openArticle(name, articlePath);
+        _bootDeepLinkArticle(name, articlePath);
         return;
       }
       enterSource(name, push);
@@ -11122,6 +11128,40 @@ function _appUpdateSetDelay(days) {
   _appUpdateSaveSetting('/manage/app-update-delay', { delay_days: parseInt(days, 10) }, 'ZIMI_UPDATE_DELAY_DAYS');
 }
 
+// The environment panel. Read-only, and usually empty: the common install
+// overrides nothing, and saying so plainly is the useful answer.
+async function _renderEnvSection() {
+  var rows;
+  var el = document.getElementById('ms-env');
+  try {
+    rows = (await _msFetch('/manage/env')).vars || [];
+  } catch (e) {
+    // This panel's one job is to answer "is something overriding my
+    // settings", and a failed poll must not look like "nothing is".
+    if (el) el.innerHTML = '<div class="ms-hint">' + tH('env_unavailable') + '</div>';
+    return;
+  }
+  if (!el) return;
+  if (!rows.length) {
+    el.innerHTML = '<div class="ms-hint">' + tH('env_none') + '</div>';
+    return;
+  }
+  // Values come from the operator's own environment, so they are escaped like
+  // any other untrusted string. Secrets arrive as the word "set" and are
+  // rendered in the same slot, so the row shape never gives away which is which.
+  el.innerHTML = '<div class="env-rows">' + rows.map(function(r) {
+    return '<div class="env-row">' +
+      '<code class="env-name">' + esc(r.name) + '</code>' +
+      '<code class="env-value' + (r.secret ? ' env-secret' : '') + '">' +
+        (r.value === '' ? tH('env_empty') : esc(r.value)) + '</code>' +
+      '<div class="env-what">' + esc(r.description) +
+        (r.locks ? ' <span class="env-locks">' + tH('env_locks', {v: r.locks}) + '</span>' : '') +
+        (r.source === 'config' ? ' <span class="env-locks">' + tH('env_from_config', {path: esc(r.path)}) + '</span>' : '') +
+      '</div></div>';
+  }).join('') + '</div>' +
+  '<div class="ms-hint">' + tH('env_hint') + '</div>';
+}
+
 function _msServerHtml() {
   // Sharing is the star of v1.7 — it leads the Server pane. Render the
   // last-known rows immediately (stale toggles beat a blank slab that
@@ -11174,10 +11214,17 @@ function _msServerHtml() {
     '<div style="margin-top:14px" id="ms-cache-info-wrap">' +
       '<div id="ms-cache-info" style="color:var(--text2);font-size:12px">' + tH('loading') + '</div></div>';
 
+  // What the environment is overriding. Last, under Storage's neighbours,
+  // because on most installs it says "nothing" — it is a thing you go looking
+  // for when a control will not move, not something to read past every time.
+  var envSec = '<div class="ms-section-label">' + tH('env_section') + '</div>' +
+    '<div id="ms-env">' + tH('loading') + '</div>';
+
   // Sharing, Downloads, Storage, My Data / Server Backups, then App Updates
   // just before the API Token, and Hot ZIMs + cache last (Eric moved Updates
   // down from the top on the second pass).
-  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec].join(sep);
+  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec, envSec].join(sep);
+  _renderEnvSection();
   // Async fill security
   Promise.all([
     fetch('/manage/has-password').then(function(r) { return r.json(); }).catch(function() { return {}; }),
@@ -13258,6 +13305,91 @@ function _dlOpsActive(ops) {
   return ex.phase === 'running' || hc.phase === 'running' ||
     (_dlExportSeen && (ex.phase === 'done' || ex.phase === 'error'));
 }
+// Patch an element's children to match new markup instead of replacing them.
+// Rebuilding innerHTML on every poll made the Downloads tab flicker: each
+// rebuild re-created every <img>, which the browser paints blank for a frame,
+// and restarted the sweeping-bar animation from zero. Same tag in the same
+// place is kept and its attributes and text brought up to date; anything else
+// is swapped. Inline onclick handlers are attributes, so they survive too.
+function _morphInto(el, html) {
+  var tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  _morphChildren(el, tpl.content);
+}
+function _morphChildren(oldParent, newParent) {
+  var oldKids = Array.prototype.slice.call(oldParent.childNodes);
+  var newKids = Array.prototype.slice.call(newParent.childNodes);
+  var n = Math.max(oldKids.length, newKids.length);
+  for (var i = 0; i < n; i++) {
+    var o = oldKids[i], w = newKids[i];
+    if (!w) { oldParent.removeChild(o); continue; }
+    if (!o) { oldParent.appendChild(w); continue; }
+    if (o.nodeType !== w.nodeType || (o.nodeType === 1 && o.tagName !== w.tagName)) {
+      oldParent.replaceChild(w, o);
+      continue;
+    }
+    if (o.nodeType === 3) { if (o.nodeValue !== w.nodeValue) o.nodeValue = w.nodeValue; continue; }
+    if (o.nodeType !== 1) continue;
+    _morphAttrs(o, w);
+    _morphChildren(o, w);
+  }
+}
+function _morphAttrs(o, w) {
+  var i, a;
+  for (i = o.attributes.length - 1; i >= 0; i--) {
+    a = o.attributes[i].name;
+    if (!w.hasAttribute(a)) o.removeAttribute(a);
+  }
+  for (i = 0; i < w.attributes.length; i++) {
+    a = w.attributes[i];
+    if (o.getAttribute(a.name) !== a.value) o.setAttribute(a.name, a.value);
+  }
+  // Properties an attribute no longer drives once the element exists.
+  if ('disabled' in o && o.disabled !== w.disabled) o.disabled = w.disabled;
+}
+
+// Recent transfer rate per download, from the bytes that arrived between two
+// polls. The average since start (bytes / elapsed) is what the row used to
+// show; it lags a swarm that just found peers by minutes and never catches a
+// stall. This follows the transfer within a couple of polls, smoothed so one
+// slow poll does not swing the ETA.
+var _dlRates = {};
+var _DL_RATE_SMOOTHING = 0.6;  // weight kept from the previous estimate
+var _DL_STALL_BPS = 1024;      // under this, no ETA: it would only grow
+function _dlRecentRate(dl, now) {
+  var prev = _dlRates[dl.id];
+  var bytes = dl.downloaded_bytes || 0;
+  var bps = null;
+  // Ids restart from 1 with the server, so a tab left open across a restart
+  // meets a new download under an old id; the filename tells them apart.
+  if (prev && prev.file !== dl.filename) prev = null;
+  if (prev && now > prev.t && bytes >= prev.bytes) {
+    var inst = (bytes - prev.bytes) / ((now - prev.t) / 1000);
+    bps = prev.bps == null ? inst : prev.bps * _DL_RATE_SMOOTHING + inst * (1 - _DL_RATE_SMOOTHING);
+  }
+  _dlRates[dl.id] = {t: now, bytes: bytes, bps: bps, file: dl.filename};
+  return bps;
+}
+// Forget downloads that left the list, so the map does not grow for the
+// life of the tab.
+function _pruneDlRates(dls) {
+  var live = {};
+  for (var i = 0; i < dls.length; i++) live[dls[i].id] = true;
+  Object.keys(_dlRates).forEach(function(id) { if (!live[id]) delete _dlRates[id]; });
+}
+// "1h 12m left", "4m left", "under a minute left". Coarse on purpose: an ETA
+// to the second on a swarm is a number that changes faster than it can be read.
+function _fmtEta(seconds) {
+  if (!isFinite(seconds) || seconds < 0) return '';
+  if (seconds < 60) return t('dl_eta_under_minute');
+  var m = Math.max(1, Math.round(seconds / 60));
+  var time;
+  if (m < 60) time = m + 'm';
+  else if (m < 24 * 60) time = Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : '');
+  else time = Math.floor(m / 1440) + 'd' + (Math.floor((m % 1440) / 60) ? ' ' + Math.floor((m % 1440) / 60) + 'h' : '');
+  return t('dl_eta_left', {time: time});
+}
+
 async function refreshDownloads() {
   // Re-entrancy guard: overlapping calls double-fetch /list and corrupt
   // the completed-count bookkeeping.
@@ -13295,6 +13427,7 @@ async function _refreshDownloadsInner(useCache) {
         try { ops = await actRes.json(); } catch (e) {}
       }
       _dlLastDls = dls; _dlLastSeeds = seedingTorrents; _dlLastSeedCap = seedingCap; _dlLastOps = ops;
+      _pruneDlRates(dls);
     }
     const opsHtml = _dlOpsCardsHtml(ops);
     if (!dls.length && !seedingTorrents.length && !opsHtml) {
@@ -13395,6 +13528,11 @@ async function _refreshDownloadsInner(useCache) {
     if (filter === 'all') h += opsHtml;
     // Seed cards render under "Seeding" AND under "All" — All means all.
     // (With zero downloads and active seeds, All used to render blank.)
+    // They are built apart and appended AFTER the downloads: a download in
+    // flight is the thing this tab exists for, and it was rendering below two
+    // idle seeds. The seeding section always carries its own heading, so the
+    // two never read as one list.
+    let seedHtml = '';
     if (filter === 'seeding' || filter === 'all') {
       // Bulk seed controls sit at the TOP RIGHT of the seeds section (title
       // left, actions right — same reading order as the downloads bulk bar).
@@ -13403,15 +13541,16 @@ async function _refreshDownloadsInner(useCache) {
       // (a single seed's own row buttons cover it). The hint line spells out
       // what Remove actually does — see /manage/seeding-action: the torrent
       // is de-listed and its ledger intent dropped, files stay on disk.
-      if (seedingTorrents.length && (filter === 'seeding' || seedingTorrents.length >= 2)) {
-        const anyPausableSeed = seedingTorrents.some(s => s.state !== 'paused');
-        const anyResumableSeed = seedingTorrents.some(s => s.state === 'paused');
-        h += '<div class="dl-seed-head">' +
+      if (seedingTorrents.length) {
+        const bulk = filter === 'seeding' || seedingTorrents.length >= 2;
+        const anyPausableSeed = bulk && seedingTorrents.some(s => s.state !== 'paused');
+        const anyResumableSeed = bulk && seedingTorrents.some(s => s.state === 'paused');
+        seedHtml += '<div class="dl-seed-head">' +
           '<span class="dl-seed-head-title">' + tH('seeding_tab') + '</span>' +
           '<div class="dl-seed-actions">' +
             (anyPausableSeed ? '<button class="dl-bulk-btn" onclick="pauseAllSeeds()">' + tH('dl_pause_all') + '</button>' : '') +
             (anyResumableSeed ? '<button class="dl-bulk-btn" onclick="resumeAllSeeds()">' + tH('dl_resume_all') + '</button>' : '') +
-            '<button class="dl-cancel-btn" onclick="_seedAction(null, \'stop_all\', this)" title="' + escAttr(t('stop_all_seeds_tip')) + '">' + tH('stop_all_seeds') + '</button>' +
+            (bulk ? '<button class="dl-cancel-btn" onclick="_seedAction(null, \'stop_all\', this)" title="' + escAttr(t('stop_all_seeds_tip')) + '">' + tH('stop_all_seeds') + '</button>' : '') +
           '</div></div>' +
           '<div class="dl-seed-hint">' + tH('seed_remove_hint') + '</div>';
       }
@@ -13447,7 +13586,7 @@ async function _refreshDownloadsInner(useCache) {
           : idle
             ? tH('seed_waiting', {n: connected})
             : tH('seed_active', {speed: _fmtBytes(sd.up_speed), n: connected});
-        h += '<div class="dl-item dl-seed-item">' +
+        seedHtml += '<div class="dl-item dl-seed-item">' +
           '<div class="dl-row">' +
           '<span class="dl-seed-icon">' + _sourceIconHtml(zimName, 22) + '</span>' +
           '<span class="dl-name dl-seed-link" onclick="enterSource(\'' + escAttr(escJs(zimName)) + '\', true)" title="' + escAttr(sName) + '">' + esc(sName) + '</span>' +
@@ -13464,7 +13603,7 @@ async function _refreshDownloadsInner(useCache) {
           '</div>';
       }
       if (filter === 'seeding' && !seedingTorrents.length) {
-        h += '<div class="dl-empty">' + tH('seeding_empty') + '</div>';
+        seedHtml += '<div class="dl-empty">' + tH('seeding_empty') + '</div>';
       }
     }
     if (filter !== 'seeding' && filter !== 'all' && !visibleDls.length) {
@@ -13478,6 +13617,7 @@ async function _refreshDownloadsInner(useCache) {
     const renderDls = (filter === 'all')
       ? visibleDls.filter(dl => !(dl.done && _seedNames.has(dl.filename)))
       : visibleDls;
+    const _dlNow = Date.now();
     for (const dl of renderDls) {
       const title = dlTitle(dl);
       // one formatter, defined once — see fmtBytes near fmtSize.
@@ -13488,7 +13628,22 @@ async function _refreshDownloadsInner(useCache) {
       // Queued items also sweep — a 0%-wide bar reads as stalled
       const indeterminate = (!dl.total_bytes || dl.queued) && !dl.paused;
       const pct = dl.total_bytes ? (dl.percent || 0) : 0;
-      const speed = dl.elapsed > 0 && dl.downloaded_bytes > 0 ? ((dl.downloaded_bytes / 1024 / 1024) / dl.elapsed).toFixed(1) : '0';
+      // Recent rate when two polls have seen it move, the average since start
+      // until then. A paused or queued row is not moving; forget its rate so
+      // resuming starts a fresh estimate rather than an ETA from stale bytes.
+      let bps = 0;
+      // Verifying is disk, not network: the counter climbs at disk speed and
+      // a rate taken from it would promise an ETA the swarm cannot keep.
+      if (dl.paused || dl.queued || dl.done || dl.checking) delete _dlRates[dl.id];
+      else {
+        const recent = useCache ? (_dlRates[dl.id] || {}).bps : _dlRecentRate(dl, _dlNow);
+        bps = recent != null ? recent : (dl.elapsed > 0 && dl.downloaded_bytes > 0 ? dl.downloaded_bytes / dl.elapsed : 0);
+      }
+      const speed = (bps / 1024 / 1024).toFixed(1);
+      // Below a kilobyte a second the transfer is stalled, and an ETA from
+      // a rate decaying toward zero grows without bound ("12d left").
+      const eta = (bps > _DL_STALL_BPS && dl.total_bytes && dl.total_bytes > dl.downloaded_bytes)
+        ? _fmtEta((dl.total_bytes - dl.downloaded_bytes) / bps) : '';
 
       h += '<div class="dl-item">';
       h += '<div class="dl-row"><span class="dl-name">' + esc(title) + '</span>' +
@@ -13501,15 +13656,19 @@ async function _refreshDownloadsInner(useCache) {
         var _win = (window._dlSchedule && window._dlSchedule.start) || '';
         h += '<span class="dl-scheduled" title="' + escAttr(t('dl_scheduled_tip')) + '">\u23f0 ' +
           tH('dl_scheduled') + (_win ? ' \u00b7 ' + tH('dl_scheduled_starts', {time: esc(_win)}) : '') + '</span>';
+      } else if (dl.checking) {
+        // libtorrent re-verifying what is already on disk after a restart.
+        // Nothing is being downloaded; the bar shows how much has been read.
+        h += '<span class="dl-size">' + tH('dl_verifying', {pct: Math.round(pct)}) + '</span>';
       } else if (indeterminate) {
         h += '<span class="dl-size">' + tH('bt_connecting') + '</span>';
       } else {
-        h += '<span class="dl-size">' + dlStr + ' / ' + totalStr + ' · ' + Math.round(pct) + '% · ' + speed + ' MB/s</span>';
+        h += '<span class="dl-size">' + dlStr + ' / ' + totalStr + ' · ' + Math.round(pct) + '% · ' + speed + ' MB/s' + (eta ? ' · ' + esc(eta) : '') + '</span>';
       }
       h += '</div>';
 
       if (!dl.done && !dl.error) {
-        h += '<div class="dl-progress' + (dl.paused ? ' dl-paused' : '') + (indeterminate ? ' dl-indeterminate' : '') +
+        h += '<div class="dl-progress' + (dl.paused ? ' dl-paused' : '') + (indeterminate ? ' dl-indeterminate' : '') + (dl.checking ? ' dl-checking' : '') +
           '"><div class="dl-progress-bar"' + (indeterminate ? '' : ' style="width:' + pct + '%"') + '></div></div>';
         var sourcePill = dl.source === 'bt'
           ? '<span class="dl-source dl-source-bt" title="' + escAttr(t('dl_via_bt_tip')) + '">' +
@@ -13553,9 +13712,10 @@ async function _refreshDownloadsInner(useCache) {
       }
       h += '</div>';
     }
+    h += seedHtml;
     h += '</div>';  // close .dl-grid
     h += '</div>';  // close .manage-card
-    dlEl.innerHTML = h;
+    _morphInto(dlEl, h);
     // Update catalog item buttons with download progress
     for (const dl of dls) {
       const btns = document.querySelectorAll('[data-dl-url]');
@@ -17910,7 +18070,24 @@ document.addEventListener('keydown', e => {
 });
 
 // ── History ──
-window.addEventListener('popstate', (e) => {
+// The in-app stack only describes backwards travel, and a popstate cannot say
+// which way it went. The stack's top can: landing on the article on top of it
+// is a Back, so that entry comes off; landing anywhere else is a Forward, so
+// the article being left goes on. Every landing used to push, which made two
+// Backs from a second article go forward again.
+function _historyOnLanding(target) {
+  var top = articleHistory[articleHistory.length - 1];
+  if (top && top.zim === target.zim && top.path === target.path) {
+    articleHistory.pop();
+    return 'back';
+  }
+  if (readerOpen && currentArticle) {
+    articleHistory.push({zim: currentArticle.zim, path: currentArticle.path});
+  }
+  return 'forward';
+}
+
+window.addEventListener('popstate', async (e) => {
   hideSuggest();
   _hideHistoryTrail();
   if (_createOpen) { closeCreate(); return; }
@@ -17920,6 +18097,31 @@ window.addEventListener('popstate', (e) => {
   if (mode === 'manage' && _manageSavedReader) {
     _manageToken = '';
     _restoreSavedReader();
+    return;
+  }
+  // popstate says where you LANDED, not which way you went. Forward lands on a
+  // reader state exactly as back does, so deciding from direction alone closed
+  // the reader on a forward and then replaceState'd the URL back, which threw
+  // the forward entry away: pressing Forward appeared to do nothing (#78).
+  //
+  // So the destination decides. Landing on a reader state for an article that
+  // is not the one on screen means show that article, whichever direction
+  // brought us here.
+  var target = e.state;
+  if (
+    target && target.mode === 'reader' && target.zim && target.path &&
+    !(currentArticle && currentArticle.zim === target.zim &&
+      currentArticle.path === target.path)
+  ) {
+    _historyOnLanding(target);
+    if (!readerOpen) {
+      // Awaited with the flag held: renderSource consults the flag again
+      // after its own fetch, and an unawaited call had it reset by then, so
+      // the ZIM's main page auto-opened over the article just restored.
+      _popstateNoAutoReader = true;
+      try { await enterSource(target.zim, false); } finally { _popstateNoAutoReader = false; }
+    }
+    _stepBackToArticle({zim: target.zim, path: target.path}, false);
     return;
   }
   // Step through article history when reader is open (mirrors in-app back button)
@@ -18513,8 +18715,52 @@ function _settleCapturedChrome(frame) {
       hole.style.setProperty('padding', '0', 'important');
       hole.style.setProperty('margin', '0', 'important');
       hole.style.setProperty('overflow', 'hidden', 'important');
+      hole.dataset.zimiCollapsed = '1';
     }
+    if (collapse.length) _watchForFilledHoles(doc, collapse);
   } catch (e) {}
+}
+
+// Give a collapsed box back when something puts content in it.
+//
+// The sweep runs on load, and an app that mounts itself a moment later is
+// indistinguishable at that instant from an ad slot nobody filled: a tall,
+// empty, transparent div. The canvas guard above cannot help, because the
+// canvas does not exist yet.
+//
+// That is how every PDF came out blank (#71) and how an offline map ZIM
+// renders as an empty page: MapLibre's container is collapsed before MapLibre
+// builds its canvas inside it. #71 was fixed by teaching the passes to skip
+// OUR pages, which left every other late-mounting app still broken.
+//
+// So: watch the boxes that were collapsed, and undo it the moment one gains
+// real content. Short-lived by design — an app mounts in the first seconds or
+// it was genuinely a hole.
+var _HOLE_WATCH_MS = 8000;
+function _watchForFilledHoles(doc, holes) {
+  var win = doc.defaultView;
+  if (!win || !win.MutationObserver) return;
+  var pending = holes.slice();
+  var observer = new win.MutationObserver(function() {
+    for (var i = pending.length - 1; i >= 0; i--) {
+      var box = pending[i];
+      if (!box.querySelector('canvas, iframe, object, embed, img, video, svg')) continue;
+      _restoreHole(box);
+      pending.splice(i, 1);
+    }
+    if (!pending.length) observer.disconnect();
+  });
+  try {
+    observer.observe(doc.body, {childList: true, subtree: true});
+  } catch (e) { return; }
+  win.setTimeout(function() { try { observer.disconnect(); } catch (e) {} }, _HOLE_WATCH_MS);
+}
+
+function _restoreHole(box) {
+  ['height', 'min-height', 'padding', 'margin', 'overflow'].forEach(function(prop) {
+    box.style.removeProperty(prop);
+  });
+  delete box.dataset.zimiCollapsed;
 }
 
 // Whether a computed background colour paints nothing. Browsers report an

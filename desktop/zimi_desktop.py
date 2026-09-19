@@ -44,6 +44,60 @@ if platform.system() == "Windows":
 
 
 # ---------------------------------------------------------------------------
+# Windows, portable zip: files extracted from a downloaded zip carry the
+# "mark of the web" (a Zone.Identifier stream), and the .NET Framework refuses
+# to load an assembly that has one. pythonnet's Python.Runtime.dll is such an
+# assembly, so the frozen app died on its first import with
+#   Failed to resolve Python.Runtime.Loader.Initialize from ...\_internal\...
+# (Spudlads on r/Kiwix, 1.9.5, Zimi-windows-x64.zip). The installer never had
+# the problem: Inno Setup writes files without the mark. Strip the mark from
+# every library we ship before .NET sees one. Deleting the stream is the same
+# thing Explorer's "Unblock" does.
+# ---------------------------------------------------------------------------
+_MARK_OF_THE_WEB = ":Zone.Identifier"
+
+
+def _unblock_bundled_libraries(root):
+    """Remove the mark of the web from the .dll/.exe files under ``root``.
+
+    Returns how many were unblocked. Never raises: a file that cannot be
+    unblocked is left for the loader to complain about, as before."""
+    if platform.system() != "Windows" or not root or not os.path.isdir(root):
+        return 0
+    count = 0
+    for dirpath, _dirs, files in os.walk(root):
+        for name in files:
+            if not name.lower().endswith((".dll", ".exe")):
+                continue
+            try:
+                os.remove(os.path.join(dirpath, name) + _MARK_OF_THE_WEB)
+                count += 1
+            except OSError:
+                pass  # no stream, or not ours to remove
+    return count
+
+
+# ZIMI_DESKTOP_KEEP_MARK=1 leaves the mark in place. Only CI sets it: the
+# control run that proves a marked bundle really does fail to start, so the
+# passing run after it means something.
+if (
+    platform.system() == "Windows"
+    and getattr(sys, "frozen", False)
+    and os.environ.get("ZIMI_DESKTOP_KEEP_MARK") != "1"
+):
+    # Said out loud, count included: a zero here next to the pythonnet crash
+    # is the difference between "the fix ran and found nothing" and "the fix
+    # never ran". The bundle has no console, but CI and a terminal launch do.
+    _unblocked = _unblock_bundled_libraries(getattr(sys, "_MEIPASS", None))
+    print(
+        "mark of the web: cleared from %d libraries under %s"
+        % (_unblocked, getattr(sys, "_MEIPASS", None)),
+        file=sys.stderr,
+        flush=True,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Icon path — resolve relative to this script (works in dev and PyInstaller)
 # ---------------------------------------------------------------------------
 
@@ -726,6 +780,11 @@ def _run():
         server.ready.wait(timeout=60)
 
         if server.error:
+            if os.environ.get("ZIMI_DESKTOP_SMOKE") == "app":
+                # Otherwise the smoke sits in the GUI loop until the watcher
+                # gives up, and a two-minute timeout says nothing about why.
+                print("SMOKE: FAIL server did not start: %s" % server.error, flush=True)
+                os._exit(1)
             window.load_html(
                 f'<html><body style="font-family:system-ui;background:#0a0a0b;color:#e8e8ed;padding:40px">'
                 f'<h2 style="color:#f59e0b">Failed to start server</h2>'
@@ -754,6 +813,10 @@ def _run():
                     break
             except Exception:
                 pass
+
+        if os.environ.get("ZIMI_DESKTOP_SMOKE") == "app":
+            _smoke_app_rendered(window)
+            return
 
         # Sync document.title → native window title. The JS bridge
         # (pywebview.api.set_title) handles most updates, but we also poll
@@ -853,6 +916,64 @@ def _serve_headless():
         server.shutdown()
 
 
+# The window smoke below proves the native window and its .NET backend come
+# up. This one proves the APP does: the embedded server answered, the real
+# page loaded, and the home view rendered with its search box and content.
+# Enabled by ZIMI_DESKTOP_SMOKE=app; the real launch path runs unchanged up to
+# the point where a person would see the home screen.
+#
+# Contract: prints "SMOKE: app rendered ..." and exits 0, after holding the
+# window open for ZIMI_DESKTOP_SMOKE_DWELL seconds (default 8) so a screenshot
+# can be taken of it; prints "SMOKE: FAIL ..." and exits 1 otherwise.
+_SMOKE_APP_RENDERED_JS = """
+(function () {
+  var box = document.querySelector('#q');
+  var home = document.querySelector('.discover-section, .cat-heading, .empty, .stat-card');
+  var text = (document.body && document.body.innerText) || '';
+  return JSON.stringify({box: !!box, home: !!home, chars: text.length, title: document.title,
+                         href: location.href, ready: document.readyState});
+})()
+"""
+
+
+def _smoke_app_rendered(window):
+    import json
+    import time
+
+    verdict = None
+    last, last_error = {}, ""
+    for _ in range(120):  # up to 60s
+        time.sleep(0.5)
+        try:
+            raw = window.evaluate_js(_SMOKE_APP_RENDERED_JS)
+            state = json.loads(raw) if raw else {}
+        except Exception as e:
+            last_error = repr(e)
+            continue
+        last = state
+        if state.get("box") and state.get("home") and state.get("chars", 0) > 100:
+            verdict = state
+            break
+    if not verdict:
+        # Say what was seen, not just that it was not enough.
+        print(
+            "SMOKE: FAIL app did not render a home view within 60s; last state %s; last error %s"
+            % (json.dumps(last), last_error or "none"),
+            flush=True,
+        )
+        os._exit(1)
+    print(
+        "SMOKE: app rendered (%d chars, title %r)" % (verdict["chars"], verdict["title"]),
+        flush=True,
+    )
+    time.sleep(float(os.environ.get("ZIMI_DESKTOP_SMOKE_DWELL", "8")))
+    try:
+        window.destroy()
+    except Exception:
+        pass
+    os._exit(0)
+
+
 def _smoke_test_window():
     """Headed smoke test: open a REAL pywebview window, confirm it shows, tear
     it down, and exit. Enabled via ZIMI_DESKTOP_SMOKE=1 or --smoke.
@@ -926,6 +1047,9 @@ def main():
     """Wrapper that restarts the app when exit code is 42."""
     if os.environ.get("ZIMI_DESKTOP_SMOKE") == "1" or "--smoke" in sys.argv:
         _smoke_test_window()
+        return
+    if os.environ.get("ZIMI_DESKTOP_SMOKE") == "app":
+        _run()  # in this process: the wrapper below would swallow the exit code
         return
 
     if "--serve" in sys.argv:

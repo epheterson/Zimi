@@ -1114,6 +1114,17 @@ class LibtorrentBackend(BTBackend):
                 self._ses.remove_torrent(h, flags)
             except Exception as e:
                 log.debug("remove_torrent failed for %s: %s", tid, e)
+        # The resume file goes with the torrent, and only then. A stopped
+        # engine has no torrents: stop() cleared the handles after writing
+        # every one's resume data, and that data is what the next start
+        # resumes from. The download poll used to reach here during shutdown
+        # (its handle gone, so "falling back") and delete the file stop() had
+        # just written; a 78 GB map then re-verified from zero on every
+        # restart, which read as the download starting over.
+        # delete_files is the caller saying the payload is not wanted (a cancel):
+        # then the resume data goes too, or the next start re-adds an orphan.
+        if self._ses is None and not delete_files:
+            return
         try:
             os.unlink(self._resume_path(tid))
         except OSError:

@@ -2498,6 +2498,18 @@ def _prepare_delta_staging(dl, staging_dir):
     )
 
 
+# Set by an atexit hook registered in server.py, before the engine is torn
+# down. A stopped engine at exit means "resume next start"; a stopped engine
+# any other time means somebody turned BitTorrent off, and the download must
+# carry on over HTTP.
+_exiting = False
+
+
+def note_exiting():
+    global _exiting
+    _exiting = True
+
+
 def _try_bt_download(
     backend,
     dl,
@@ -2514,6 +2526,8 @@ def _try_bt_download(
       "success"   — file written to dl['dest']; caller is done
       "fallback"  — BT didn't pan out; caller should run the HTTP path
       "cancelled" — user cancelled; backend cleaned up; caller stops
+      "stopped"   — the engine was shut down under us (server exiting);
+                    caller leaves the record alone, it resumes next start
       "error"     — terminal (rare); caller should report
 
     On every poll we update dl with downloaded_bytes / total_bytes /
@@ -2576,6 +2590,27 @@ def _try_bt_download(
             except Exception as e:
                 log.debug("BT pause/resume propagate failed: %s", e)
 
+        # Shutdown, not failure: stop() has written this torrent's resume
+        # data and cleared its handle. Falling back here would delete that
+        # data and start an HTTP copy of the same file in the seconds before
+        # the process exits.
+        if not backend.is_alive():
+            if _exiting:
+                log.info("BT engine stopped under %s; it resumes on next start", dl["filename"])
+                return "stopped"
+            # Not exiting: the engine was turned off (or its port changed)
+            # from Settings while this download ran. That is what the HTTP
+            # fallback is for, as it was before; the partial in staging is
+            # not wanted, and neither is its resume data.
+            log.warning(
+                "BT engine stopped under %s while running; falling back to HTTP",
+                dl["filename"],
+            )
+            try:
+                backend.remove(tid, delete_files=True)
+            except Exception:
+                pass
+            return "fallback"
         try:
             status = backend.status(tid)
         except Exception as e:
@@ -2594,6 +2629,10 @@ def _try_bt_download(
         dl["bt_peers"] = status.get("peers", 0)
         dl["bt_info_hash"] = status.get("info_hash", "")
         dl["_source"] = "bt"
+        # libtorrent verifying what is already on disk. completed_bytes climbs
+        # at disk speed while this is set and nothing is arriving, which read
+        # as "the download restarted" until the row could say otherwise.
+        dl["checking"] = bool(status.get("checking"))
 
         # Delta salvage: once the hash check finishes, completed_bytes is the
         # fraction libtorrent reused from the pre-seeded old version. Snapshot
@@ -3398,6 +3437,8 @@ def _download_thread(dl):
                 dl["done"] = True
                 dl["error"] = "Cancelled"
                 return
+            if _bt_outcome == "stopped":
+                return  # still pending; the next start picks it up
             # Otherwise fall through to HTTP — nothing else to do here.
             # A BT attempt left _source="bt" and stale peer counts on the dl;
             # reset them so the UI reflects the HTTP transport it's now on
@@ -3405,6 +3446,7 @@ def _download_thread(dl):
             dl["_source"] = "http"
             dl["bt_peers"] = 0
             dl["switch_direct"] = False
+            dl["checking"] = False  # HTTP verifies nothing; the row must not say it does
 
         success = False
         last_error = None
@@ -3802,6 +3844,7 @@ def _get_downloads():
                     "paused": bool(dl.get("paused", False)),
                     "source": dl.get("_source", "http"),
                     "bt_peers": dl.get("bt_peers", 0),
+                    "checking": bool(dl.get("checking")),
                     "switching_direct": bool(dl.get("switch_direct", False)),
                     "reused_bytes": dl.get("reused_bytes", 0),
                 }

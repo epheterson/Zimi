@@ -1307,6 +1307,9 @@
   "refreshing": "刷新中…",
   "refreshing_cache": "正在刷新缓存…",
   "remaining": "剩余",
+  "dl_eta_left": "剩余 {time}",
+  "dl_eta_under_minute": "不到一分钟",
+  "dl_verifying": "正在校验已下载的数据 · {pct}%",
   "remember_me": "记住我",
   "remove": "移除",
   "remove_from_favorites": "取消收藏",
@@ -1568,5 +1571,12 @@
   "sort_alpha": "按字母顺序",
   "sort_added": "最近添加",
   "sort_updated": "最近更新",
-  "sort_entries": "文章最多"
+  "sort_entries": "文章最多",
+  "env_section": "环境变量",
+  "env_none": "没有任何设置被覆盖。全部设置都在 Zimi 中控制。",
+  "env_locks": "锁定{v}",
+  "env_empty": "（空）",
+  "env_unavailable": "无法读取环境变量。",
+  "env_from_config": "在 {path} 中设置",
+  "env_hint": "它们在启动 Zimi 的地方设置，优先于设置页。请在那里修改后重启。"
 }

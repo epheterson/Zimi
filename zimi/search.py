@@ -1021,12 +1021,17 @@ def suggest_search_zim(archive, query_str, limit=5):
                 entry = archive.get_entry_by_path(path)
                 results.append({"path": path, "title": entry.title, "snippet": ""})
             except Exception as e:
-                log.debug("Failed to read suggestion entry %s: %s", path, e)
-                results.append({"path": path, "title": path, "snippet": ""})
+                # Same rule as search_zim: a row nobody can open is not a row.
+                log.debug("Dropping unreadable suggestion %s: %s", path, e)
+                continue
     except Exception as e:
         log.debug("SuggestionSearcher failed for query %r: %s", query_str, e)
         pass
     return results
+
+
+# Archives whose full-text index has already been reported as unreadable.
+_warned_unreadable_index = set()
 
 
 def search_zim(archive, query_str, limit=10, snippets=True):
@@ -1036,6 +1041,7 @@ def search_zim(archive, query_str, limit=10, snippets=True):
     since it avoids random seeks for each result's body.
     """
     results = []
+    dropped = 0
     try:
         searcher = Searcher(archive)
         query = Query().set_query(query_str)
@@ -1069,11 +1075,37 @@ def search_zim(archive, query_str, limit=10, snippets=True):
                     }
                 )
             except Exception as e:
-                log.debug("Failed to read search result entry %s: %s", path, e)
-                results.append({"path": path, "title": path, "snippet": ""})
+                # An entry the index promises and the archive does not have.
+                # It used to be kept, titled with its own path, which put rows
+                # like "s/4394" in front of people and opened to nothing when
+                # clicked.
+                #
+                # Seen in the wild: StreetZim's offline OpenStreetMap ZIMs
+                # carry a full-text index over their place shards, and every
+                # path in it fails to resolve. One map in a library was enough
+                # to fill a search with unopenable results.
+                #
+                # A result nobody can open is worse than one fewer result, so
+                # it is dropped. Reading it failing for a transient reason
+                # would drop it too, which is the right trade at one row.
+                log.debug("Dropping unreadable search result %s: %s", path, e)
+                dropped += 1
+                continue
     except Exception as e:
         log.warning("search_zim failed for %r: %s", query_str, e)
         results.append({"error": "Search failed"})
+    if dropped and not results:
+        # Every hit unreadable: the whole index points at nothing this archive
+        # holds (StreetZim's place shards do this). Once per archive, at a
+        # level an operator sees, or the ZIM silently contributes nothing to
+        # any search for ever.
+        key = getattr(archive, "filename", None) or id(archive)
+        if key not in _warned_unreadable_index:
+            _warned_unreadable_index.add(key)
+            log.warning(
+                "Search index of %s matched %d entries the archive cannot read; "
+                "its results are dropped", key, dropped
+            )
     return results
 
 

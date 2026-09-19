@@ -1307,6 +1307,9 @@
   "refreshing": "Actualizando…",
   "refreshing_cache": "Actualizando caché…",
   "remaining": "restantes",
+  "dl_eta_left": "{time} restantes",
+  "dl_eta_under_minute": "menos de un minuto",
+  "dl_verifying": "Verificando lo ya descargado · {pct}%",
   "remember_me": "Recordarme",
   "remove": "Eliminar",
   "remove_from_favorites": "Quitar de favoritos",
@@ -1568,5 +1571,12 @@
   "sort_alpha": "Alfabético",
   "sort_added": "Añadidos recientemente",
   "sort_updated": "Actualizados recientemente",
-  "sort_entries": "Más artículos"
+  "sort_entries": "Más artículos",
+  "env_section": "Entorno",
+  "env_none": "No se anula nada. Todos los ajustes se controlan en Zimi.",
+  "env_locks": "bloquea {v}",
+  "env_empty": "(vacío)",
+  "env_unavailable": "No se pudo leer el entorno.",
+  "env_from_config": "Definido en {path}",
+  "env_hint": "Se definen donde se inicia Zimi, así que prevalecen sobre los ajustes. Cámbialos allí y reinicia."
 }

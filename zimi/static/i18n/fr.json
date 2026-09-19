@@ -1307,6 +1307,9 @@
   "refreshing": "Actualisation…",
   "refreshing_cache": "Actualisation du cache…",
   "remaining": "restant",
+  "dl_eta_left": "{time} restantes",
+  "dl_eta_under_minute": "moins d'une minute",
+  "dl_verifying": "Vérification des données déjà présentes · {pct}%",
   "remember_me": "Se souvenir de moi",
   "remove": "Supprimer",
   "remove_from_favorites": "Retirer des favoris",
@@ -1568,5 +1571,12 @@
   "sort_alpha": "Alphabétique",
   "sort_added": "Ajouts récents",
   "sort_updated": "Mises à jour récentes",
-  "sort_entries": "Plus d'articles"
+  "sort_entries": "Plus d'articles",
+  "env_section": "Environnement",
+  "env_none": "Rien n'est remplacé. Tous les réglages se contrôlent dans Zimi.",
+  "env_locks": "verrouille {v}",
+  "env_empty": "(vide)",
+  "env_unavailable": "Impossible de lire l'environnement.",
+  "env_from_config": "Défini dans {path}",
+  "env_hint": "Ils sont définis là où Zimi démarre et priment sur les réglages. Modifiez-les là puis redémarrez."
 }

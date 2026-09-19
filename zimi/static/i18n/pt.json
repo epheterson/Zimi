@@ -1307,6 +1307,9 @@
   "refreshing": "Atualizando…",
   "refreshing_cache": "Atualizando cache…",
   "remaining": "restante",
+  "dl_eta_left": "faltam {time}",
+  "dl_eta_under_minute": "menos de um minuto",
+  "dl_verifying": "Verificando o que já está no disco · {pct}%",
   "remember_me": "Lembrar de mim",
   "remove": "Remover",
   "remove_from_favorites": "Remover dos favoritos",
@@ -1568,5 +1571,12 @@
   "sort_alpha": "Alfabético",
   "sort_added": "Adicionados recentemente",
   "sort_updated": "Atualizados recentemente",
-  "sort_entries": "Mais artigos"
+  "sort_entries": "Mais artigos",
+  "env_section": "Ambiente",
+  "env_none": "Nada é substituído. Todas as definições são controladas no Zimi.",
+  "env_locks": "bloqueia {v}",
+  "env_empty": "(vazio)",
+  "env_unavailable": "Não foi possível ler o ambiente.",
+  "env_from_config": "Definido em {path}",
+  "env_hint": "São definidas onde o Zimi arranca, por isso prevalecem sobre as definições. Altere-as aí e reinicie."
 }

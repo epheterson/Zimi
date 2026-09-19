@@ -1307,6 +1307,9 @@
   "refreshing": "جارٍ التحديث…",
   "refreshing_cache": "جارٍ تحديث الذاكرة المؤقتة…",
   "remaining": "متبقٍ",
+  "dl_eta_left": "متبقٍ {time}",
+  "dl_eta_under_minute": "أقل من دقيقة",
+  "dl_verifying": "جارٍ التحقق مما تم تنزيله · {pct}%",
   "remember_me": "تذكرني",
   "remove": "إزالة",
   "remove_from_favorites": "إزالة من المفضلة",
@@ -1568,5 +1571,12 @@
   "sort_alpha": "أبجدي",
   "sort_added": "المضافة حديثًا",
   "sort_updated": "المحدَّثة حديثًا",
-  "sort_entries": "الأكثر مقالات"
+  "sort_entries": "الأكثر مقالات",
+  "env_section": "البيئة",
+  "env_none": "لا شيء مُتجاوَز. تُضبط جميع الإعدادات داخل Zimi.",
+  "env_locks": "يقفل {v}",
+  "env_empty": "(فارغ)",
+  "env_unavailable": "تعذّر قراءة البيئة.",
+  "env_from_config": "مضبوط في {path}",
+  "env_hint": "تُضبط هذه حيث يبدأ Zimi، ولذلك تتقدّم على الإعدادات. غيّرها هناك ثم أعد التشغيل."
 }

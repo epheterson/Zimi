@@ -125,7 +125,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.9.5"
+ZIMI_VERSION = "1.9.6"
 
 # Standing maintenance cadence: catalog TTL is 24h and UPnP leases are
 # 24h — run every 12h so both stay fresh at half-life.
@@ -175,6 +175,11 @@ def start_background_services(http_port):
     from zimi import library as _lib_flush
 
     atexit.register(_lib_flush.flush_seed_accounting)
+    # Registered last, so it runs first: the download poll must know the
+    # process is leaving before shutdown_backend takes the engine away, or
+    # it reads a stopped engine as "BitTorrent was turned off" and falls
+    # back to HTTP in the seconds before exit.
+    atexit.register(_lib_flush.note_exiting)
 
     def _init_p2p_background():
         try:
@@ -1113,6 +1118,10 @@ def format_config_report(settings):
     return "\n".join(lines)
 
 
+# Variables apply_env_settings wrote from the config file, name -> file path.
+CONFIG_PUBLISHED = {}
+
+
 def apply_env_settings(settings):
     """Publish file-sourced settings into os.environ, and rebind ZIMI_MANAGE.
 
@@ -1129,11 +1138,16 @@ def apply_env_settings(settings):
     """
     global ZIMI_MANAGE
     published = []
+    CONFIG_PUBLISHED.clear()
     for setting in CONFIG_ENV_SETTINGS:
         value, source = settings[setting.key]
         if source.startswith("config file"):
             os.environ[setting.env_var] = value
             published.append(setting.env_var)
+            # The environment panel shows these rows as the file's, not the
+            # environment's: an admin told "change it where Zimi is started"
+            # would search a launcher that sets nothing.
+            CONFIG_PUBLISHED[setting.env_var] = source.partition(": ")[2]
     # ZIMI_MANAGE is the one environment-backed setting this module reads into a
     # global at import time, so publishing alone would be too late for it. The
     # `== "1"` test is the same one the import-time read uses, which is what

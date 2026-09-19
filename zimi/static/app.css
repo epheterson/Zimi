@@ -1481,6 +1481,22 @@
   .ms-pane .ms-field input:focus { outline: none; border-color: var(--amber-border); }
   .ms-pane .ms-field input[readonly] { opacity: 0.6; }
   .ms-pane .ms-hint { font-size: 12px; color: var(--text2); margin-top: 8px; }
+
+  /* Environment panel: a name, its value, and what it takes over. Monospace
+     on the first two because they are literals an admin will retype into a
+     unit file or a shell, where a proportional font makes that error-prone. */
+  .env-rows { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+  .env-row { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); gap: 4px 10px; align-items: baseline; }
+  .env-name { font-size: 12px; color: var(--text); word-break: break-all; }
+  .env-value { font-size: 12px; color: var(--amber); word-break: break-all; }
+  .env-secret { color: var(--text3); font-style: italic; }
+  .env-what { grid-column: 1 / -1; font-size: 12px; color: var(--text2); }
+  .env-locks { color: var(--text3); }
+  @media (max-width: 560px) {
+    /* Value under the name rather than beside it: a long path or a proxy list
+       otherwise pushes the row sideways on a phone. */
+    .env-row { grid-template-columns: minmax(0, 1fr); }
+  }
   /* App-theme segmented control (Auto / Dark / Light). Three equal pills in a
      recessed track, amber-filled when active — mirrors the reader palette's
      control language so the two theme pickers feel like one family. */
@@ -1929,7 +1945,11 @@
   /* Seeds section header: title left, bulk actions (Pause all / Resume all /
      Remove all) top right — same reading order as the downloads bulk bar.
      Spans the card grid; wraps to two lines on phones instead of crushing. */
+  /* Verifying after a restart: the bar is what has been read back, not what arrived. */
+  .dl-progress.dl-checking .dl-progress-bar { background: var(--text3); }
   .dl-seed-head { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 10px; }
+  /* Seeds follow the downloads. A rule between the two keeps them from reading as one list. */
+  .dl-seed-head:not(:first-child) { margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--border); }
   .dl-seed-head-title { font-size: 13px; font-weight: 600; color: var(--accent); }
   .dl-seed-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
   /* What Remove means — files stay on disk. Quiet, its own grid row. */

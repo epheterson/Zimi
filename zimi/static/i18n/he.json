@@ -1307,6 +1307,9 @@
   "refreshing": "מרענן…",
   "refreshing_cache": "מרענן מטמון…",
   "remaining": "נותרו",
+  "dl_eta_left": "נותרו {time}",
+  "dl_eta_under_minute": "פחות מדקה",
+  "dl_verifying": "מאמת את מה שכבר בדיסק · {pct}%",
   "remember_me": "זכור אותי",
   "remove": "הסרה",
   "remove_from_favorites": "הסרה מהמועדפים",
@@ -1568,5 +1571,12 @@
   "sort_alpha": "לפי א״ב",
   "sort_added": "נוספו לאחרונה",
   "sort_updated": "עודכנו לאחרונה",
-  "sort_entries": "הכי הרבה ערכים"
+  "sort_entries": "הכי הרבה ערכים",
+  "env_section": "סביבה",
+  "env_none": "שום דבר לא נדרס. כל ההגדרות נשלטות בתוך Zimi.",
+  "env_locks": "נועל {v}",
+  "env_empty": "(ריק)",
+  "env_unavailable": "לא ניתן לקרוא את הסביבה.",
+  "env_from_config": "מוגדר ב-{path}",
+  "env_hint": "אלה נקבעים היכן ש-Zimi עולה, ולכן גוברים על ההגדרות. שנה אותם שם והפעל מחדש."
 }

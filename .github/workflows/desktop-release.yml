@@ -202,35 +202,24 @@ jobs:
       # runners have an interactive desktop + WebView2, so a real EdgeChromium
       # window CAN open. Run the BUILT exe with ZIMI_DESKTOP_SMOKE=1 and demand
       # the "SMOKE: window shown" marker + a clean exit.
-      - name: GUI smoke test (Windows — real window)
+      # Not just a window: the bundle is stamped with the mark of the web the
+      # way a downloaded zip arrives, a control run proves that kills 1.9.5,
+      # then the app must clear the mark itself, start, and render its home
+      # view. ci/smoke_windows.ps1 is the same script CI runs on every push.
+      - name: GUI smoke test (Windows, marked bundle renders its home view)
         if: runner.os == 'Windows'
         shell: pwsh
-        env:
-          ZIMI_DESKTOP_SMOKE: '1'
-        run: |
-          $exe = "dist/Zimi/Zimi.exe"
-          $out = "smoke_gui.out.log"
-          $err = "smoke_gui.err.log"
-          Write-Host "Launching $exe in GUI smoke mode..."
-          $p = Start-Process -FilePath $exe -PassThru `
-                 -RedirectStandardOutput $out -RedirectStandardError $err
-          if (-not $p.WaitForExit(120000)) {
-            try { $p.Kill() } catch {}
-            Write-Host "--- stdout ---"; Get-Content $out -ErrorAction SilentlyContinue
-            Write-Host "--- stderr ---"; Get-Content $err -ErrorAction SilentlyContinue
-            Write-Error "GUI smoke timed out (no exit within 120s)"
-            exit 1
-          }
-          $code = $p.ExitCode
-          Write-Host "--- stdout ---"; Get-Content $out -ErrorAction SilentlyContinue
-          Write-Host "--- stderr ---"; Get-Content $err -ErrorAction SilentlyContinue
-          Write-Host "exit code: $code"
-          if ($code -ne 0) { Write-Error "GUI smoke exited $code"; exit 1 }
-          if (-not (Select-String -Path $out -Pattern 'SMOKE: window shown' -Quiet)) {
-            Write-Error "GUI smoke did not report 'SMOKE: window shown'"
-            exit 1
-          }
-          Write-Host "GUI smoke passed: a real EdgeChromium window opened and was shown."
+        run: pwsh ci/smoke_windows.ps1 dist/Zimi/Zimi.exe
+
+      - name: Upload the Windows smoke screenshot
+        if: runner.os == 'Windows' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zimi-windows-smoke
+          path: |
+            zimi-windows-smoke.png
+            smoke_*.log
+          if-no-files-found: ignore
 
       # ── Packaging ─────────────────────────────────────────────────────
 

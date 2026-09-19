@@ -1307,6 +1307,9 @@
   "refreshing": "रिफ्रेश हो रहा है…",
   "refreshing_cache": "कैश रिफ्रेश हो रहा है…",
   "remaining": "शेष",
+  "dl_eta_left": "{time} शेष",
+  "dl_eta_under_minute": "एक मिनट से कम",
+  "dl_verifying": "पहले से डाउनलोड डेटा की जाँच · {pct}%",
   "remember_me": "मुझे याद रखें",
   "remove": "हटाएं",
   "remove_from_favorites": "पसंदीदा से हटाएं",
@@ -1568,5 +1571,12 @@
   "sort_alpha": "वर्णानुक्रम",
   "sort_added": "हाल में जोड़े गए",
   "sort_updated": "हाल में अपडेट किए गए",
-  "sort_entries": "सर्वाधिक लेख"
+  "sort_entries": "सर्वाधिक लेख",
+  "env_section": "एनवायरनमेंट",
+  "env_none": "कुछ भी ओवरराइड नहीं है। सभी सेटिंग्स Zimi में नियंत्रित होती हैं।",
+  "env_locks": "{v} को लॉक करता है",
+  "env_empty": "(खाली)",
+  "env_unavailable": "वातावरण पढ़ा नहीं जा सका।",
+  "env_from_config": "{path} में सेट",
+  "env_hint": "ये वहाँ सेट होते हैं जहाँ Zimi शुरू होता है, इसलिए सेटिंग्स पर भारी पड़ते हैं। वहीं बदलें, फिर पुनः आरंभ करें।"
 }
