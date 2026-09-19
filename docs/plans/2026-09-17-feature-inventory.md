@@ -16,6 +16,8 @@ Built:
 - #78 fixed: /w/ deep links no longer stack history; Forward works.
 - Search results that cannot be read are dropped instead of shown as paths.
 - libtorrent marker gates on architecture as well as Python version, with a reason shown in the BT row.
+- Podman (asked for on r/Kiwix, 2026-09-18): README run line with keep-id and :Z, a Quadlet unit under deploy/podman, and a CI job that runs the image rootless and checks file ownership.
+- The atomic writer waits out Windows's file-in-use refusal (the flake that cost the 1.9.6 release its Windows leg once).
 
 Before the PR: full pytest with no leftover servers, the browser gate on Eric's phone, NAS deploy, then the PR draft for Eric.
 
