@@ -2116,7 +2116,9 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
                 if archive is None or lock is None:
                     return
                 t0 = time.time()
-                if archive.has_fulltext_index:
+                # An archive that cannot say (older libzim, a test double) is
+                # asked the old way: the full-text search, which fails soft.
+                if getattr(archive, "has_fulltext_index", True):
                     with lock:
                         results = search_zim(archive, cleaned, limit=limit, snippets=False)
                 else:

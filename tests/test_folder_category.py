@@ -241,6 +241,10 @@ def test_disk_cache_record_gains_no_new_keys(zim_dir):
         # those, and read with .get() everywhere — an older Zimi that has never
         # heard of it simply ignores the key, which is what this test is for.
         "faces",
+            # What a ZIM is, from its metadata (1.10): a map, and whether it
+        # carries a search box. Additive; older versions ignore both.
+        "kind",
+        "map_search",
     }
     assert set(written) <= known
 
