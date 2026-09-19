@@ -5038,6 +5038,17 @@ def handle_manage_get(handler, parsed, params):
             },
         )
 
+    elif parsed.path == "/manage/catalog-streetzim":
+        # StreetZim's regions, from the Internet Archive, for the toggle in
+        # the Maps category. Cached and served stale while a refresh runs.
+        from zimi import streetzim
+
+        items, source, as_of, refreshing = streetzim.get()
+        return handler._json(
+            200,
+            {"items": items, "source": source, "as_of": as_of, "refreshing": refreshing},
+        )
+
     elif parsed.path == "/manage/env":
         # What the environment is overriding, so an admin can SEE it rather
         # than deducing it from a greyed-out control (#69). Read-only by

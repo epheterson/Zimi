@@ -8304,6 +8304,64 @@ function renderBrowseGallery() {
   });
 }
 
+// The Maps category has two sources: Kiwix's maps, in the OPDS catalog, and
+// StreetZim's, on the Internet Archive. A toggle at the top of the category
+// picks one; nothing else in the catalog has a second source, so this is a
+// toggle and not a sources feature. Eric, 2026-09-18: "since it's only maps
+// sources how about a toggle in maps category?"
+var _MAPS_SOURCE_KEY = 'zimi_maps_source';
+function _mapsSource() {
+  try { return localStorage.getItem(_MAPS_SOURCE_KEY) === 'streetzim' ? 'streetzim' : 'kiwix'; } catch (e) { return 'kiwix'; }
+}
+function setMapsSource(source) {
+  try { localStorage.setItem(_MAPS_SOURCE_KEY, source); } catch (e) {}
+  drillCategory('maps');
+}
+function _mapsSourceToggleHtml() {
+  var cur = _mapsSource();
+  var pill = function(key, label) {
+    return '<button class="pill' + (cur === key ? ' active' : '') + '" onclick="setMapsSource(\'' + key + '\')">' + label + '</button>';
+  };
+  return '<div class="pills maps-source-toggle">' + pill('kiwix', tH('maps_source_kiwix')) + pill('streetzim', tH('maps_source_streetzim')) + '</div>';
+}
+// The StreetZim listing arrives from a cache that a background refresh
+// fills; the first look at it on a fresh install is empty and refreshing,
+// so ask again a few times before saying there is nothing.
+var _STREETZIM_POLL_MS = 5000;
+var _STREETZIM_POLL_TRIES = 12;
+async function _renderStreetZimMaps(results, catMeta, catName, attempt) {
+  var data;
+  try {
+    data = await (await manageFetch('/manage/catalog-streetzim')).json();
+  } catch (e) {
+    results.innerHTML = '<div class="empty"><p>' + tH('failed_load_category') + '</p></div>';
+    return;
+  }
+  var items = (data.items || []).map(function(it) { return Object.assign({}, it, {category: 'maps'}); });
+  if (_catalogCache) _enrichCatalogInstalled(items);
+  var grouped = groupVariants(items);
+  grouped.sort(function(a, b) { return (a.title || a.name || '').localeCompare(b.title || b.name || ''); });
+  var h = '<div class="browse-drilldown-header">' +
+    '<button class="browse-back" onclick="renderBrowseGallery()">' + tH('back_to_catalog') + '</button>' +
+    '<span class="browse-drilldown-title">' + (catMeta ? catMeta.icon + ' ' : '') + esc(catName) + '</span>' +
+    '<span class="browse-drilldown-count">' + tH('n_available', {n: grouped.length}) + '</span>' +
+  '</div>' + _mapsSourceToggleHtml() +
+  '<div class="ms-hint">' + tH('streetzim_note') + (data.as_of ? ' ' + tH('catalog_as_of', {date: esc(data.as_of)}) : '') + '</div>';
+  if (grouped.length) {
+    h += _renderCatalogGrid(grouped);
+  } else if (data.refreshing && (attempt || 0) < _STREETZIM_POLL_TRIES) {
+    h += _loadingHtml('loading_catalog');
+    setTimeout(function() {
+      if (manageTab === 'browse' && manageCategoryFilter === 'maps' && _mapsSource() === 'streetzim') {
+        _renderStreetZimMaps(results, catMeta, catName, (attempt || 0) + 1);
+      }
+    }, _STREETZIM_POLL_MS);
+  } else {
+    h += '<div class="empty"><p>' + tH(data.source === 'none' ? 'streetzim_offline' : 'no_zims_category') + '</p></div>';
+  }
+  results.innerHTML = h;
+}
+
 function drillCategory(catKey, namePrefix) {
   // New category = fresh view; don't carry the show-hidden expansion over.
   if (manageCategoryFilter !== catKey) _showHiddenCatalog = false;
@@ -8320,6 +8378,11 @@ function drillCategory(catKey, namePrefix) {
   q.value = '';
 
   if (!_catalogCache) results.innerHTML = _loadingHtml('loading_catalog');
+
+  if (catKey === 'maps' && _mapsSource() === 'streetzim') {
+    _renderStreetZimMaps(results, catMeta, catName, 0);
+    return;
+  }
 
   loadFullCatalog().then(items => {
     // Filter to this category (+ unknown/merged cats go to "other")
@@ -8352,6 +8415,7 @@ function drillCategory(catKey, namePrefix) {
       '<span class="browse-drilldown-title">' + (catMeta ? catMeta.icon + ' ' : '') + esc(catName) + '</span>' +
       '<span class="browse-drilldown-count">' + tH('n_available', {n: grouped.length}) + '</span>' +
     '</div>';
+    if (catKey === 'maps') h += _mapsSourceToggleHtml();
     h += langPills;
     if (grouped.length) {
       h += _renderCatalogGrid(grouped);
@@ -13201,7 +13265,11 @@ async function manageImportZim() {
 async function downloadZim(url, btn, isUpdate) {
   if (btn) { btn.disabled = true; btn.textContent = t('starting'); }
   try {
-    const res = await manageFetch('/manage/download', {
+    // Kiwix's catalog resolves through the mirror machinery; anything else
+    // (StreetZim on the Internet Archive) is a plain HTTPS fetch of a .zim,
+    // which is what the import path does.
+    const endpoint = /^https:\/\/archive\.org\//.test(url) ? '/manage/import' : '/manage/download';
+    const res = await manageFetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
