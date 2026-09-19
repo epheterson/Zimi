@@ -1972,6 +1972,39 @@ def _maybe_did_you_mean(query_str):
         return None
 
 
+_PLACES_PER_MAP = 5
+
+
+def _search_places(query_str, target_names):
+    """One group per searched map with a place index, best places first."""
+    from zimi import mapsearch
+
+    groups = []
+    for z in _srv._zim_list_cache or []:
+        name = z.get("name")
+        if not z.get("map_search") or name not in target_names:
+            continue
+        try:
+            archive, lock = _get_fts_archive(name)
+            if archive is None or lock is None:
+                continue
+            with lock:
+                found = mapsearch.search_places(archive, query_str, limit=_PLACES_PER_MAP)
+        except Exception as e:
+            log.debug("place search failed on %s: %s", name, e)
+            continue
+        if found:
+            groups.append(
+                {
+                    "zim": name,
+                    "title": z.get("title") or name,
+                    "main_path": z.get("main_path") or "",
+                    "places": found,
+                }
+            )
+    return groups
+
+
 def search_all(query_str, limit=5, filter_zim=None, fast=False):
     """Search across all ZIM files, a specific one, or a list.
 
@@ -2204,6 +2237,14 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
     }
     if detected_lang:
         result["detected_language"] = detected_lang
+    # Places on the installed maps that carry a place index (StreetZim). Not
+    # mixed into the article ranking: a place is a different kind of answer,
+    # shown as its own group with the map to open and where to fly. Full path
+    # only; the fast path is the keystroke path and reads no shards.
+    if not fast:
+        places = _search_places(query_str, target_names)
+        if places:
+            result["places"] = places
     # "Did you mean" — only on the full path (the fast path is a partial,
     # progressive pass), and only when results are sparse. Additive field.
     # Suppressed for restricted (allowlisted) sessions: the vocab is built

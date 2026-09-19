@@ -6411,6 +6411,9 @@ function mergeSearchResults(phase1, phase2) {
     did_you_mean: phase2.did_you_mean || phase1.did_you_mean,
     _clientElapsed: phase2._clientElapsed,
     _query: phase2._query,
+    // Places come only from the full phase; the keystroke phase reads no
+    // shards. They are a group beside the results, not merged into them.
+    places: phase2.places || phase1.places || [],
   };
 }
 
@@ -6591,7 +6594,8 @@ function renderSearchResults(data, scope) {
   const remaining = items.length - visibleResultCount;
 
   const mapFindHtml = !scope ? _mapFindRowsHtml(data._query || '') : '';
-  let html = dymHtml + zimMatchHtml + '<div class="results">' + mapFindHtml + visible.map((r, i) => {
+  const placesHtml = _mapPlaceRowsHtml(data.places || []);
+  let html = dymHtml + zimMatchHtml + '<div class="results">' + placesHtml + mapFindHtml + visible.map((r, i) => {
     const sourceRow = !scope
       ? '<div class="result-source">' + _sourceIconHtml(r.zim, 20) +
         '<span class="rs-name">' + esc(_zimTitle(r.zim)) + '</span></div>'
@@ -15743,6 +15747,37 @@ function _mapFindRowsHtml(query) {
         '<div class="title">' + _FEAT_SVG.map + ' ' + tH('find_on_map', {q: esc(query), map: esc(title)}) + '</div>' +
       '</div></a>';
   }).join('');
+}
+// Places found on a map's own index (StreetZim), one row each: the name,
+// what it is, where, and which map. Opening one flies the map there. These
+// come from the server reading the map's shards, so they are real answers,
+// unlike the Find-on-map row below them, which is an offer.
+function _mapPlaceRowsHtml(groups) {
+  var h = '';
+  for (var gi = 0; gi < groups.length; gi++) {
+    var g = groups[gi];
+    var mapTitle = g.title || g.zim;
+    for (var pi = 0; pi < (g.places || []).length; pi++) {
+      var p = g.places[pi];
+      var what = [p.sub || p.type, p.locality].filter(Boolean).map(function(x) { return String(x).replace(/_/g, ' '); });
+      var pos = 'map=' + (p.zoom || 15) + '/' + p.lat + '/' + p.lng;
+      h += '<a class="result map-place" href="' + escAttr(_articleDeepLinkPath(g.zim, g.main_path) + '#' + pos) +
+        '" data-zim="' + escAttr(g.zim) + '" data-path="' + escAttr(g.main_path) + '" data-title="' + escAttr(p.name) +
+        '" data-pos="' + escAttr(pos) + '" onclick="return _spaMapPlace(event, this)">' +
+        '<div class="result-body">' +
+          '<div class="result-source">' + _sourceIconHtml(g.zim, 20) + '<span class="rs-name">' + esc(mapTitle) + '</span></div>' +
+          '<div class="title">' + _FEAT_SVG.map + ' ' + esc(p.name) + '</div>' +
+          (what.length ? '<div class="snippet">' + esc(what.join(' \u00b7 ')) + '</div>' : '') +
+        '</div></a>';
+    }
+  }
+  return h;
+}
+function _spaMapPlace(e, el) {
+  return _spaNav(e, function () {
+    openArticle(el.getAttribute('data-zim'), el.getAttribute('data-path'), el.getAttribute('data-title') || '',
+      {pos: el.getAttribute('data-pos') || ''});
+  });
 }
 function _spaMapFind(e, el) {
   return _spaNav(e, function () {

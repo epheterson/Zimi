@@ -61,5 +61,27 @@ ok('it types again while the index has not answered, boundedly', /_MAP_TYPE_TRIE
 ok('openArticle carries opts.find into the hand-off', /_pendingMapFind = \(opts && opts\.find\)/.test(src));
 ok('the rows sit above the results on a global search', /const mapFindHtml = !scope \? _mapFindRowsHtml/.test(src));
 
+// Places the server found on a map's own index render as rows that open the
+// map at the place. Real answers, above the Find-on-map offer.
+vm.runInContext(extract(/function _mapPlaceRowsHtml\(groups\) \{[\s\S]*?\n\}/, '_mapPlaceRowsHtml'), ctx);
+const groups = [{ zim: 'osm-hawaii', title: 'OSM - Hawaii', main_path: 'index.html', places: [
+  { name: 'Kailua', type: 'place', sub: 'city', lat: 21.402, lng: -157.74, locality: 'Honolulu', zoom: 14 },
+  { name: 'Kailua High School', type: 'poi', sub: 'school', lat: 21.39, lng: -157.74, locality: '', zoom: 17 },
+]}];
+const rows = ctx._mapPlaceRowsHtml(groups);
+ok('one row per place', (rows.match(/class="result map-place"/g) || []).length === 2);
+ok('a row opens the map at the place, zoom by type', /data-pos="map=14\/21.402\/-157.74"/.test(rows) && /data-pos="map=17\/21.39\/-157.74"/.test(rows));
+ok('the row says what and where', /city · Honolulu/.test(rows));
+ok('the row names the map', /OSM - Hawaii/.test(rows));
+ok('no groups, no rows', ctx._mapPlaceRowsHtml([]) === '');
+ok('a hostile place name is escaped', !/<img/.test(ctx._mapPlaceRowsHtml([{ zim: 'z', title: 't', main_path: 'i', places: [{ name: '<img src=x onerror=1>', lat: 0, lng: 0 }] }])));
+ok('places render above the Find-on-map offer', /const placesHtml = _mapPlaceRowsHtml\(data\.places \|\| \[\]\);/.test(src) && /placesHtml \+ mapFindHtml/.test(src));
+
+// The search runs in two phases and the second's payload is merged into the
+// first's; the places group must survive the merge.
+vm.runInContext(extract(/function mergeSearchResults\(phase1, phase2\) \{[\s\S]*?\n\}/, 'mergeSearchResults'), ctx);
+const merged = ctx.mergeSearchResults({ results: [], by_source: {} }, { results: [], by_source: {}, places: groups });
+ok('the merge keeps the places from the full phase', merged.places === groups);
+
 console.log(failures ? failures + ' FAILED' : 'all passed');
 process.exit(failures ? 1 : 0);

@@ -1254,8 +1254,8 @@
   .result-body { flex: 1; min-width: 0; order: 0; }
   .result-source { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
   /* The search bar's offer to run the words in a map's own search box. */
-  .result.map-find .title { display: flex; align-items: center; gap: 8px; color: var(--amber); }
-  .result.map-find .title svg { flex-shrink: 0; }
+  .result.map-find .title, .result.map-place .title { display: flex; align-items: center; gap: 8px; color: var(--amber); }
+  .result.map-find .title svg, .result.map-place .title svg { flex-shrink: 0; }
   .result-source img { width: 20px; height: 20px; border-radius: 4px; flex-shrink: 0; background: #fff; }
   .result-source .rs-letter {
     width: 20px; height: 20px; border-radius: 4px; background: var(--surface2);
