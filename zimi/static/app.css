@@ -1166,8 +1166,8 @@
     -webkit-touch-callout: none;
   }
   /* Zimi Maps' tile: a source among the sources, its icon a pin. */
-  .maps-grid { margin-bottom: 16px; }
-  .maps-tile .card-icon { color: var(--amber); display: flex; align-items: center; justify-content: center; }
+  .apps-grid { margin-bottom: 16px; }
+  .maps-tile .card-icon, .tube-tile .card-icon { color: var(--amber); display: flex; align-items: center; justify-content: center; }
   .suggest-item.sg-place .sg-title::before { content: '\25CF'; color: var(--amber); font-size: 8px; margin-right: 8px; vertical-align: middle; }
   .stat-card:hover, .stat-card:focus-visible {
     background: var(--surface2); border-color: var(--amber-border);

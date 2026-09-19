@@ -979,6 +979,8 @@ function _updateSearchPlaceholder() {
     } else {
       q.placeholder = t('filter_installed');
     }
+  } else if (_isTubePage()) {
+    q.placeholder = t('tube_search_placeholder');
   } else if (_isMapPage()) {
     q.placeholder = t('maps_search_placeholder');
   } else if (currentSource) {
@@ -1540,6 +1542,12 @@ function updateTopbar() {
     bcIcon.innerHTML = _ALMANAC_BC_ICON;
     // Identity only — no destination behind it, so no link affordance either.
     bcIcon.removeAttribute('href');
+  } else if (_isTubePage()) {
+    bcSep.style.display = 'inline';
+    bcIcon.style.display = 'inline-flex';
+    bcIcon.title = t('tube');
+    bcIcon.innerHTML = _TUBE_PLAY_SVG.replace('width="26" height="26"', 'width="20" height="20"');
+    bcIcon.setAttribute('href', '/#tube');
   } else if (_isMapPage()) {
     // Zimi Maps: the surface is the identity, whichever map is open.
     bcSep.style.display = 'inline';
@@ -1623,7 +1631,7 @@ function updateTopbar() {
   var _foldReaderExtras = _readingArticle && _isNarrow();
   // A map is read with the eyes and the hands: no type size, no read-aloud,
   // no Reader View. _syncReaderViewBtn and the ⋯ menu know the same rule.
-  var _readingText = _readingArticle && !_isMapPage();
+  var _readingText = _readingArticle && !_isMapPage() && !_isTubePage();
   var fontBtn = document.getElementById('font-btn');
   if (fontBtn) fontBtn.style.display = (_readingText && !_foldReaderExtras) ? 'flex' : 'none';
   // Bookmarks-panel opener — reader only (#65). Everywhere else the library
@@ -1700,6 +1708,8 @@ function updateTopbar() {
     q.placeholder = t('create_zim');
   } else if (_almanacOpen) {
     q.placeholder = t('almanac');
+  } else if (_isTubePage()) {
+    q.placeholder = t('tube_search_placeholder');
   } else if (_isMapPage()) {
     q.placeholder = t('maps_search_placeholder');
   } else if (currentSource) {
@@ -2186,6 +2196,11 @@ function route(push) {
   // /manage/create* route is admin-gated server-side anyway — so the page
   // opens now and _initSecondary closes it if the answer comes back no. The
   // alternative, waiting, is the home-then-switch flash Eric asked us to kill.
+  if (location.hash === '#tube') {
+    enterHome(false);
+    openTube(true);
+    return;
+  }
   if (location.hash === '#maps') {
     enterHome(false);
     history.replaceState(history.state, '', location.pathname + location.search);
@@ -3287,7 +3302,7 @@ function renderHome(filter) {
   // Zimi Maps, first, as a source sits: one tile whenever a map is installed.
   // Eric: "a Maps tile that sits with the sources grid like a source does."
   if (!homeScope && !filter && !homeRecentFilter && !homeLangFilter.size) {
-    h += _mapsTileHtml();
+    h += _appsRowHtml();
   }
 
   // Favorites section at top (only on unscoped home)
@@ -6170,7 +6185,11 @@ q.addEventListener('input', () => {
   const val = q.value.trim();
   // Suggest (200ms debounce) — include history items when typing
   clearTimeout(suggestTimer);
-  if (val && val.length >= 1 && _isMapPage()) {
+  if (_isTubePage()) {
+    // Tube: the box filters the feed inside the page, every keystroke.
+    hideSuggest();
+    suggestTimer = setTimeout(function() { _tubeSearch(val); }, 150);
+  } else if (val && val.length >= 1 && _isMapPage()) {
     // Zimi Maps: the box finds places, on every installed map, nothing else.
     if (val.length >= 2) suggestTimer = setTimeout(() => fetchPlaces(val), 200);
   } else if (val && val.length >= 1 && mode !== 'manage') {
@@ -6235,6 +6254,7 @@ q.addEventListener('keydown', e => {
     clearTimeout(suggestTimer);
     // On a map, Enter takes the first place found; there is no article
     // search to fall through to.
+    if (_isTubePage()) { _tubeSearch(q.value.trim()); return; }
     if (_isMapPage()) {
       if (suggestItems.length && suggestItems[0]._place) selectSuggest(0);
       else if (q.value.trim().length >= 2) fetchPlaces(q.value.trim());
@@ -15350,7 +15370,7 @@ function _readerViewToggle() {
 function _syncReaderViewBtn() {
   // Never on Create, whatever is open behind it: there is no article there to
   // read a reading mode into.
-  var avail = _readerViewAvailable() && !_createOpen && !_isMapPage();
+  var avail = _readerViewAvailable() && !_createOpen && !_isMapPage() && !_isTubePage();
   var btn = document.getElementById('readerview-btn');
   if (btn) {
     btn.style.display = avail ? 'flex' : 'none';
@@ -15937,16 +15957,87 @@ function _lastMapVisit() {
   return maps.length ? { zim: maps[0], pos: '' } : null;
 }
 
+// ── Zimi Tube ──
+// Every video in the library as one feed, in a page Zimi owns, shown in the
+// reader so the chrome around it (bookmark, history, Back, the X) is the
+// chrome every page gets. The page is /static/tube.html; the top bar's box
+// drives its search. Eric, 2026-09-19: "Bubble up my TED YouTubes and maybe
+// some others whose structures we know."
+var _tubeOpen = false;
+var _TUBE_PAGE = '/static/tube.html?v=1';
+
+function _installedVideoZims() {
+  return (zimsCache || []).filter(function(z) { return z.kind === 'video' && z.main_path; })
+    .sort(function(a, b) { return (a.title || a.name).localeCompare(b.title || b.name); });
+}
+
+function _isTubePage() {
+  return !!(_tubeOpen && readerOpen && !_almanacOpen && !_createOpen);
+}
+
+// The page's own strings, handed over in the hash: the page is static and
+// has no i18n of its own.
+function _tubeStrings() {
+  return encodeURIComponent(JSON.stringify({
+    title: t('tube'), videos: t('tube_videos'), sources: t('tube_sources'),
+    more: t('tube_more'), none: t('tube_none'), empty: t('tube_empty')
+  }));
+}
+
+function _tubeSearch(val) {
+  try {
+    var win = document.getElementById('reader-frame').contentWindow;
+    if (win && typeof win.tubeSearch === 'function') win.tubeSearch(val);
+  } catch (e) {}
+}
+
+function openTube(replaceState) {
+  if (_isModClick()) { _lastMouseEvent = null; window.open('/#tube', '_blank'); return; }
+  if (_createOpen) closeCreate();
+  if (_almanacOpen) closeAlmanac();
+  if (mode === 'manage') { mode = 'home'; updateTopbar(); }
+  if (_mapWatched) { _mapWatched = null; clearTimeout(_mapHashTimer); }
+  if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
+  currentArticle = null;
+  readerSource = null;
+  _tubeOpen = true;
+  var st = { mode: 'reader', tube: true };
+  if (replaceState) history.replaceState(st, '', '/#tube');
+  else history.pushState(st, '', '/#tube');
+  openReader(_TUBE_PAGE + '#' + _tubeStrings());
+  document.title = t('tube') + ' \u2014 Zimi';
+  _setWindowTitle(document.title);
+  updateTopbar();
+}
+
+// The apps, first among the sources: Maps when a map is installed, Tube
+// when a video ZIM is. One row, each a tile like a source's.
+function _appsRowHtml() {
+  var tiles = _mapsTileHtml() + _tubeTileHtml();
+  if (!tiles) return '';
+  var isTiles = _getLibraryView() === 'tiles';
+  return '<div class="' + (isTiles ? 'stats-grid tiles' : 'stats-grid') + ' apps-grid">' + tiles + '</div>';
+}
+
+function _tubeTileHtml() {
+  var vids = _installedVideoZims();
+  if (!vids.length) return '';
+  var names = vids.map(function(z) { return z.title || z.name; });
+  return '<a class="stat-card tube-tile" href="#tube" data-zim="" onclick="return _spaNav(event, openTube)">' +
+      '<div class="card-icon">' + _TUBE_PLAY_SVG + '</div>' +
+      '<div class="card-info"><div class="name"><span class="zt">' + esc(t('tube')) + '</span></div>' +
+      '<div class="detail">' + esc(names.join(' \u00b7 ')) + '</div></div></a>';
+}
+var _TUBE_PLAY_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"/></svg>';
+
 function _mapsTileHtml() {
   var maps = _installedMaps();
   if (!maps.length) return '';
   var names = maps.map(function(z) { return z.title || z.name; });
-  var isTiles = _getLibraryView() === 'tiles';
-  return '<div class="' + (isTiles ? 'stats-grid tiles' : 'stats-grid') + ' maps-grid">' +
-    '<a class="stat-card maps-tile" href="#maps" data-zim="" onclick="return _spaNav(event, openMaps)">' +
+  return '<a class="stat-card maps-tile" href="#maps" data-zim="" onclick="return _spaNav(event, openMaps)">' +
       '<div class="card-icon">' + _MAPS_PIN_SVG + '</div>' +
       '<div class="card-info"><div class="name"><span class="zt">' + esc(t('cat_maps')) + '</span></div>' +
-      '<div class="detail">' + esc(names.join(' \u00b7 ')) + '</div></div></a></div>';
+      '<div class="detail">' + esc(names.join(' \u00b7 ')) + '</div></div></a>';
 }
 var _MAPS_PIN_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
 
@@ -16744,6 +16835,15 @@ function openReader(url) {
         var _navZim = decodeURIComponent(_wm[1]);
         var _navPath = decodeURIComponent(_wm[2]);
         currentArticle = { zim: _navZim, path: _navPath };
+        if (_tubeOpen) {
+          // A card in Tube opened its video: a real page now, with the
+          // history and address every page gets, and Back returns to Tube.
+          _tubeOpen = false;
+          readerSource = _navZim;
+          history.pushState({ mode: 'reader', zim: _navZim, path: _navPath }, '', _articleDeepLinkPath(_navZim, _navPath));
+          _histPushArticle(_navZim, _navPath, _titleFromPath(_navPath));
+          updateTopbar();
+        }
         _updateLibraryBtnIcon();
       }
     } catch(e) {}
@@ -18268,6 +18368,7 @@ function _fallbackTitle(zim, path) {
 }
 
 function openArticle(zim, path, title, opts) {
+  _tubeOpen = false;
   // A place on the map already on screen: fly there. Reloading an 800,000
   // entry map to move within it is a second of grey; the map is right here.
   // History gets the place (Back returns to the last one), the address gets
@@ -18363,6 +18464,7 @@ function openArticle(zim, path, title, opts) {
 
 function closeReader() {
   if (!readerOpen) return;
+  _tubeOpen = false;
   _ttsStop(); // stop read-aloud when leaving the reader
   // Sync the address bar back to the view the reader was covering — an
   // explicit close otherwise strands the article URL (a reload would
@@ -18659,7 +18761,7 @@ function _buildTopbarMenuHtml() {
   var readerGroup = '';
   if (readerOpen && !_almanacOpen && !_createOpen) {
     // On a map there is nothing to read: none of the reading rows.
-    var rvAvail = _readerViewAvailable() && !_isMapPage();
+    var rvAvail = _readerViewAvailable() && !_isMapPage() && !_isTubePage();
     var rvOn = _readerViewOn && rvAvail;
     // 1. Reader View toggle — always first. A switch: tapping flips it and the
     // menu rebuilds in place (compact controls appear/disappear beneath).
@@ -18675,7 +18777,7 @@ function _buildTopbarMenuHtml() {
       readerGroup += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
     }
     // 3. Read aloud.
-    if (_TTS_AVAILABLE && !_isMapPage()) {
+    if (_TTS_AVAILABLE && !_isMapPage() && !_isTubePage()) {
       readerGroup += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
         '" onclick="event.stopPropagation();_ttsToggle()">' + _TBM_TTS_ICON +
         ' <span class="tbm-label">' + tH(_ttsSpeaking ? 'tts_stop' : 'tts_speak') + '</span></button>';
@@ -19028,6 +19130,8 @@ window.addEventListener('popstate', async (e) => {
     } else {
       doSearch(s.query, false);
     }
+  } else if (s && s.mode === 'reader' && s.tube) {
+    openTube(true);
   } else if (s && s.mode === 'reader' && s.zim) {
     // Going back to a reader state — show the source page, don't re-open reader
     _popstateNoAutoReader = true;

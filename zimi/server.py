@@ -1846,6 +1846,13 @@ def _folder_category(folder):
 # Scrapers whose output is a MapLibre map rather than pages. Matched as a
 # prefix of the Scraper metadata ("maps2zim v0.2.1", "streetzim/1.0").
 _MAP_SCRAPERS = ("maps2zim", "streetzim", "atlaszim")
+# Video ZIMs, by the scraper that made them: Kiwix's TED and YouTube builds,
+# and Zimi's own (Scraper "Zimi x.y + yt-dlp ..."). Not by the _videos:yes
+# tag, which Wikipedia carries too.
+_VIDEO_SCRAPERS = ("ted2zim", "youtube2zim")
+# Bumped when _zim_kind learns a new kind, so a cache record decided under an
+# older rule ("" for a TED ZIM) is read once more.
+KIND_VERSION = 2
 
 
 def _zim_kind(scraper, tags, meta_name):
@@ -1863,6 +1870,8 @@ def _zim_kind(scraper, tags, meta_name):
         return "map"
     if (meta_name or "").lower().startswith("maps_"):
         return "map"
+    if s.startswith(_VIDEO_SCRAPERS) or (s.startswith("zimi") and "yt-dlp" in s):
+        return "video"
     return None
 
 
@@ -3009,7 +3018,11 @@ def load_cache(force=False):
             updated_at = time.time()
         if cache_hit and cached:
             # Cache hit — use stored metadata, skip opening archive
-            if "kind" not in cached or (cached.get("kind") == "map" and "map_search" not in cached):
+            if (
+                "kind" not in cached
+                or int(cached.get("kind_v") or 1) < KIND_VERSION
+                or (cached.get("kind") == "map" and "map_search" not in cached)
+            ):
                 # A record from before Zimi knew what a map was (or what a map
                 # with a search box was). Eric's world map was registered by
                 # 1.9 half an hour before 1.10 booted and sat under Other with
@@ -3131,6 +3144,7 @@ def load_cache(force=False):
             # Always, "" included: a decided non-map must not be re-read
             # on every boot as if it were a record from before the field.
             new_cached["kind"] = entry.get("kind") or ""
+            new_cached["kind_v"] = KIND_VERSION
             if entry.get("map_search"):
                 new_cached["map_search"] = True
             # A map's ground and publisher, null included: a map whose config

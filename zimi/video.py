@@ -26,6 +26,7 @@ writer, so a partial ZIM never appears under its final name.
 
 import html as _html
 import importlib
+import json
 import logging
 import mimetypes
 import os
@@ -894,6 +895,33 @@ def create_video_zim(
                     "index",
                     zim_title,
                     _index_html(zim_title, subtitle, rows, skipped, max_bytes),
+                )
+            )
+            # The same rows as data, for Zimi Tube: the feed reads each video
+            # ZIM's own index, and a list is honest where a scrape of the
+            # page is a guess.
+            creator.add_item(
+                static_cls(
+                    "videos.json",
+                    zim_title,
+                    json.dumps(
+                        [
+                            {
+                                "id": r["page"].rsplit("/", 1)[-1],
+                                "title": r["title"],
+                                "description": "",
+                                "speaker": r["uploader"],
+                                "thumb": r["thumb"] or "",
+                                "page": r["page"],
+                                "duration": r["duration"],
+                                "date": _fmt_date(r["date"]),
+                            }
+                            for r in rows
+                        ],
+                        ensure_ascii=False,
+                    ).encode("utf-8"),
+                    "application/json",
+                    front=False,
                 )
             )
             creator.set_mainpath("index")

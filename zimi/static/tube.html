@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tube</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f2efe9; --surface: #faf8f4; --border: #e4dfd4; --text: #26241f; --text2: #6a675e; --amber: #b5541c; --amber-glow: rgba(181,84,28,0.08); }
+  @media (prefers-color-scheme: dark) { :root { --bg: #17171a; --surface: #1f1f23; --border: #27272b; --text: #e8e8ed; --text2: #8a8a94; --amber: #e0863a; --amber-glow: rgba(224,134,58,0.12); } }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .tube { max-width: 1180px; margin: 0 auto; padding: 16px; }
+  .tube-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 4px 0 14px; }
+  .tube-head h1 { font-size: 17px; margin: 0; font-weight: 700; }
+  .tube-head .n { color: var(--text2); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+  @media (max-width: 480px) { .grid { grid-template-columns: repeat(2, 1fr); gap: 10px; } .tube { padding: 12px; } }
+  .card { display: block; text-decoration: none; color: inherit; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .card:hover, .card:focus-visible { border-color: var(--amber); background: var(--amber-glow); outline: none; }
+  .thumb { position: relative; aspect-ratio: 16 / 9; background: #0003; display: block; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb .dur { position: absolute; right: 6px; bottom: 6px; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: rgba(0,0,0,0.72); color: #fff; font-variant-numeric: tabular-nums; }
+  .thumb .play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; opacity: 0; transition: opacity .15s; }
+  .card:hover .play { opacity: 1; }
+  .body { padding: 9px 11px 11px; }
+  .title { font-weight: 600; font-size: 13.5px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .meta { margin-top: 4px; font-size: 11.5px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meta b { font-weight: 500; color: var(--text2); }
+  .more { display: block; margin: 20px auto 8px; padding: 9px 18px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
+  .more:hover { border-color: var(--amber); color: var(--amber); }
+  .empty { color: var(--text2); text-align: center; padding: 48px 12px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="tube">
+  <div class="tube-head"><h1 id="h">Tube</h1><span class="n" id="n"></span></div>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" hidden></div>
+  <button class="more" id="more" hidden onclick="tubeMore()"></button>
+</div>
+<script>
+// Zimi Tube. One feed across every video ZIM, read from each ZIM's own
+// index by the server (/tube). Cards open the video's own page in this
+// same frame, so the reader around it keeps working: bookmark, history,
+// Back. The search box in Zimi's top bar drives tubeSearch(q).
+var PAGE = 60;
+var _q = '', _offset = 0, _total = 0, _busy = false;
+var STR = { title: 'Tube', videos: 'videos', from: 'from', sources: 'sources', more: 'More', none: 'No videos match.', empty: 'No video ZIMs installed yet.' };
+try { var s = JSON.parse(decodeURIComponent(location.hash.slice(1) || '') || '{}'); for (var k in s) STR[k] = s[k]; } catch (e) {}
+function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function fmtDur(d) {
+  if (d == null || d === '') return '';
+  if (typeof d === 'string' && /:/.test(d)) return d;
+  var n = parseInt(d, 10); if (!(n > 0)) return '';
+  var h = Math.floor(n / 3600), m = Math.floor((n % 3600) / 60), sec = n % 60;
+  return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(sec).padStart(2, '0');
+}
+function card(v) {
+  var page = '/w/' + encodeURIComponent(v.zim) + '/' + v.page.split('/').map(encodeURIComponent).join('/');
+  var thumb = v.thumb ? '/w/' + encodeURIComponent(v.zim) + '/' + v.thumb.split('/').map(encodeURIComponent).join('/') : '';
+  var who = [v.speaker, v.zim_title].filter(Boolean);
+  return '<a class="card" href="' + esc(page) + '">' +
+    '<span class="thumb">' + (thumb ? '<img src="' + esc(thumb) + '" alt="" loading="lazy" onerror="this.remove()">' : '') +
+      '<span class="play"><svg width="44" height="44" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>' +
+      (fmtDur(v.duration) ? '<span class="dur">' + esc(fmtDur(v.duration)) + '</span>' : '') + '</span>' +
+    '<span class="body"><span class="title">' + esc(v.title) + '</span>' +
+      '<span class="meta">' + (who.length ? esc(who[0]) + (who[1] ? ' · <b>' + esc(who[1]) + '</b>' : '') : '') + '</span></span></a>';
+}
+function render(data, append) {
+  var grid = document.getElementById('grid'), empty = document.getElementById('empty'), more = document.getElementById('more'), n = document.getElementById('n');
+  var items = data.items || [];
+  if (!append) grid.innerHTML = '';
+  grid.insertAdjacentHTML('beforeend', items.map(card).join(''));
+  _total = data.total || 0;
+  n.textContent = _total ? _total + ' ' + STR.videos + (data.sources > 1 ? ' · ' + data.sources + ' ' + STR.sources : '') : '';
+  empty.hidden = _total > 0;
+  empty.textContent = _q ? STR.none : STR.empty;
+  more.hidden = grid.children.length >= _total;
+  more.textContent = STR.more;
+}
+function load(append) {
+  if (_busy) return; _busy = true;
+  var url = '/tube?limit=' + PAGE + '&offset=' + _offset + (_q ? '&q=' + encodeURIComponent(_q) : '');
+  fetch(url).then(function(r) { return r.json(); }).then(function(d) { render(d, append); }).catch(function() {
+    document.getElementById('empty').hidden = false; document.getElementById('empty').textContent = STR.none;
+  }).finally(function() { _busy = false; });
+}
+function tubeMore() { _offset += PAGE; load(true); }
+function tubeSearch(q) { _q = (q || '').trim(); _offset = 0; load(false); }
+window.tubeSearch = tubeSearch; window.tubeMore = tubeMore;
+document.getElementById('h').textContent = STR.title;
+load(false);
+</script>
+</body>
+</html>

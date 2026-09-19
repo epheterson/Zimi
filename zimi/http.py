@@ -161,6 +161,7 @@ SESSION_COOKIE_MAX_AGE = 30 * 24 * 3600
 _RATE_LIMITED_API_PATHS = (
     "/search",
     "/places",
+    "/tube",
     "/read",
     "/suggest",
     "/random",
@@ -806,6 +807,7 @@ if os.path.isdir(_STATIC_DIR):
             # bundle hash or a change to one ships behind a stale SW cache.
             + _static_hash("almanac-orrery.js")
             + _static_hash("almanac-sky.js")
+            + _static_hash("tube.html")
             + _i18n_hash
         ).encode()
     ).hexdigest()[:8]
@@ -2232,6 +2234,19 @@ class ZimHandler(BaseHTTPRequestHandler):
                     cache="no-store",
                 )
 
+            elif parsed.path == "/tube":
+                # Zimi Tube's feed: every video in the library, one list.
+                from zimi import tube as _tube
+
+                try:
+                    limit = max(1, min(int(param("limit", "60")), 200))
+                    offset = max(0, int(param("offset", "0")))
+                except (TypeError, ValueError):
+                    limit, offset = 60, 0
+                t0 = time.time()
+                out = _tube.feed(param("q"), limit=limit, offset=offset)
+                _record_metric("/tube", time.time() - t0)
+                return self._json(200, out)
             elif parsed.path == "/places":
                 # Zimi Maps' one box: places on every installed map.
                 q = param("q")

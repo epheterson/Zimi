@@ -39,11 +39,11 @@ vm.runInContext([
   extract(/function _mapsTileHtml\(\) \{[\s\S]*?\n\}/, '_mapsTileHtml'),
 ].join('\n'), ctx);
 const tile = ctx._mapsTileHtml();
-ok('a stat-card like any source, first, named Maps, listing the maps', /class="stats-grid maps-grid"><a class="stat-card maps-tile" href="#maps"/.test(tile) && /<span class="zt">Maps<\/span>/.test(tile) && /Hawaii · Samoa/.test(tile));
+ok('a stat-card like any source, named Maps, listing the maps', /^<a class="stat-card maps-tile" href="#maps"/.test(tile) && /<span class="zt">Maps<\/span>/.test(tile) && /Hawaii · Samoa/.test(tile));
 ok('it opens the door', /onclick="return _spaNav\(event, openMaps\)"/.test(tile));
 ctx.zimsCache = ctx.zimsCache.filter(z => z.kind !== 'map');
 ok('no map installed, no tile', ctx._mapsTileHtml() === '');
-ok('the tile sits before favorites on the plain home only', /if \(!homeScope && !filter && !homeRecentFilter && !homeLangFilter\.size\) \{\n\s*h \+= _mapsTileHtml\(\);/.test(src.replace(/\r\n/g, '\n')));
+ok('the tile sits in the apps row before favorites on the plain home only', /if \(!homeScope && !filter && !homeRecentFilter && !homeLangFilter\.size\) \{\n\s*h \+= _appsRowHtml\(\);/.test(src.replace(/\r\n/g, '\n')) && /_mapsTileHtml\(\) \+ _tubeTileHtml\(\)/.test(src));
 
 // ── the one box ──────────────────────────────────────────────────────────
 const input = extract(/q\.addEventListener\('input', \(\) => \{[\s\S]*?\n\}\);/, 'input handler');
