@@ -112,6 +112,8 @@ def test_region_names_read_as_titles(region, title):
 def data_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(streetzim, "_offline", lambda: False)
+    # No shipped listing either: these tests are about the cache alone.
+    monkeypatch.setattr(streetzim, "SNAPSHOT_PATH", str(tmp_path / "no-snapshot.json.gz"))
     streetzim._reset_for_tests()
     yield tmp_path
     streetzim._reset_for_tests()

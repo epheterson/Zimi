@@ -233,7 +233,12 @@ def _auto_update_loop(initial_delay=0):
                     if os.path.exists(os.path.join(_srv.ZIM_DIR, filename)):
                         log.info("Auto-update: skipping %s (already on disk)", filename)
                         continue
-                    dl_id, err = _start_download(url)
+                    # StreetZim's builds live on the Internet Archive, a plain
+                    # HTTPS fetch of a .zim: the import path, as on first download.
+                    if url.startswith("https://archive.org/"):
+                        dl_id, err = _start_import(url)
+                    else:
+                        dl_id, err = _start_download(url)
                     if err:
                         log.warning(
                             "Auto-update download failed for %s: %s",
@@ -2549,15 +2554,17 @@ def _find_previous_version(filename):
     can never disagree. Date-stamped names sort lexically by date, so the
     max is the most recent — the best delta source (closest content).
     """
-    name_prefix = re.sub(r"_\d{4}-\d{2}\.zim$", "", filename)
-    if name_prefix == filename or not os.path.isdir(_srv.ZIM_DIR):
+    # Either date shape: Kiwix's _YYYY-MM and StreetZim's -YYYY-MM-DD.
+    name_prefix, date = _srv._extract_zim_date(filename)
+    if not date or not os.path.isdir(_srv.ZIM_DIR):
         return None  # not a date-stamped name → no versioned predecessor
     candidates = [
         f
         for f in os.listdir(_srv.ZIM_DIR)
         if f != filename
         and f.endswith(".zim")
-        and re.sub(r"_\d{4}-\d{2}\.zim$", "", f) == name_prefix
+        and _srv._extract_zim_date(f)[1] is not None
+        and _srv._extract_zim_date(f)[0] == name_prefix
         and os.path.isfile(os.path.join(_srv.ZIM_DIR, f))
     ]
     return max(candidates) if candidates else None
@@ -3164,6 +3171,40 @@ def _full_catalog(lang=""):
     return all_items
 
 
+def _check_streetzim_updates(installed_files):
+    """Newer builds of installed StreetZim maps, from StreetZim's own listing.
+
+    Kiwix's catalog knows nothing of them. The installed file's date is to
+    the day (osm-hawaii-2026-09-08.zim), and so is the listing's; a newer
+    date on the same region is an update, fetched from the Archive through
+    the import path like the first download was."""
+    from zimi import streetzim
+
+    maps = [f for f in installed_files if f["filebase"].startswith("osm-")]
+    if not maps:
+        return []
+    items, _source, _as_of, _refreshing = streetzim.get()
+    by_name = {it.get("name"): it for it in items if it.get("name")}
+    updates = []
+    for inst in maps:
+        base, date = _srv._extract_zim_date(inst["filename"])
+        item = by_name.get(base)
+        if not item or not item.get("date") or item["date"] <= (date or ""):
+            continue
+        updates.append(
+            {
+                "name": inst["name"],
+                "installed_file": inst["filename"],
+                "installed_date": date,
+                "latest_date": item["date"],
+                "download_url": item.get("download_url", ""),
+                "title": item.get("title", ""),
+                "size_bytes": item.get("size_bytes", 0),
+            }
+        )
+    return updates
+
+
 def _check_updates():
     """Compare installed ZIMs against Kiwix catalog to find available updates.
 
@@ -3189,12 +3230,13 @@ def _check_updates():
 
     if not installed_files:
         return []
+    updates = _check_streetzim_updates(installed_files)
 
     # Full catalog across all pages — reuses the browse UI's warm SWR cache
     # (empty lang, count 500), so the common path makes no extra Kiwix requests.
     all_items = _full_catalog()
     if not all_items:
-        return []
+        return updates
 
     # Build index: for each catalog item, gather candidate prefixes to match
     # installed filenames against. OPDS `name` field can be truncated/
@@ -3226,8 +3268,9 @@ def _check_updates():
 
     # For each installed ZIM, find the best catalog match. Match flavor
     # first (only same-flavor updates considered), then longest prefix.
-    updates = []
     for inst in installed_files:
+        if inst["filebase"].startswith("osm-"):
+            continue  # a StreetZim map; found above from its own listing
         inst_flavor = _detect_flavor(inst["filebase"])
         best = None
         best_len = 0
@@ -3443,13 +3486,12 @@ def _post_download_finalize(dl):
     """
     # Remove older versions of the same ZIM
     removed_versions = []
-    base = re.match(r"^(.+?)_\d{4}-\d{2}\.zim$", dl["filename"])
-    if base:
-        prefix = base.group(1)
+    prefix, new_date = _srv._extract_zim_date(dl["filename"])
+    if new_date:
         try:
             for f in os.listdir(_srv.ZIM_DIR):
                 if (
-                    f.startswith(prefix + "_")
+                    _srv._extract_zim_date(f)[1] is not None and _srv._extract_zim_date(f)[0] == prefix
                     and f.endswith(".zim")
                     and f != dl["filename"]
                 ):
@@ -3745,12 +3787,15 @@ def _enqueue_zim_download(url, mirrors, filename, size_bytes=None, extra=None):
         return None, space_err
 
     # Detect if this replaces an existing ZIM (update vs fresh download)
-    name_prefix = re.sub(r"_\d{4}-\d{2}\.zim$", "", filename)
+    # Same base (name without its date), either date shape: Kiwix's _YYYY-MM
+    # and StreetZim's -YYYY-MM-DD. _extract_zim_date knows both.
+    name_prefix, _date = _srv._extract_zim_date(filename)
     is_update = (
         any(
             f != filename
             and f.endswith(".zim")
-            and re.sub(r"_\d{4}-\d{2}\.zim$", "", f) == name_prefix
+            and _srv._extract_zim_date(f)[1] is not None
+            and _srv._extract_zim_date(f)[0] == name_prefix
             for f in os.listdir(_srv.ZIM_DIR)
             if os.path.isfile(os.path.join(_srv.ZIM_DIR, f))
         )

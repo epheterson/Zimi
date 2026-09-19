@@ -2269,6 +2269,9 @@ def _zim_short_name(filename):
     )  # Only 2-letter codes before dates (avoids css/git)
     name = re.sub(r"_maxi_2\d{3}.*", "", name)
     name = re.sub(r"_2\d{3}-\d{2}$", "", name)
+    # StreetZim: osm-hawaii-2026-09-08 -> osm-hawaii, so the name survives an
+    # update and the catalog's toggle can tell installed from not.
+    name = re.sub(r"^(osm-.+?)-2\d{3}-\d{2}-\d{2}$", r"\1", name)
     # Append language suffix for non-English ZIMs
     if not is_english and lang_code:
         # Normalize 3-letter to 2-letter
@@ -2522,6 +2525,10 @@ def _extract_zim_date(filename):
     if m:
         base = filename[: m.start()]
         return base, m.group(1)
+    # StreetZim dates its builds to the day, with dashes: osm-hawaii-2026-09-08.zim
+    m = re.match(r"^(osm-.+?)-(\d{4}-\d{2}-\d{2})\.zim$", filename)
+    if m:
+        return m.group(1), m.group(2)
     return filename.replace(".zim", ""), None
 
 

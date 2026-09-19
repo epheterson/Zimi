@@ -36,6 +36,7 @@ IA_SEARCH_URL = (
 IA_METADATA_URL = "https://archive.org/metadata/{identifier}"
 IA_DOWNLOAD_URL = "https://archive.org/download/{identifier}/{filename}"
 CACHE_FILENAME = "streetzim_catalog.json"
+SNAPSHOT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "streetzim-snapshot.json.gz")
 CACHE_TTL_S = 24 * 3600
 FETCH_TIMEOUT_S = 20
 _WORKERS = 8
@@ -201,6 +202,33 @@ def _offline():
     return bool(p2p.is_offline())
 
 
+def _read_snapshot():
+    """The listing shipped in the package, for a machine that has never
+    reached the Archive. ``(items, built_at)`` or ``(None, "")``."""
+    import gzip
+
+    try:
+        with gzip.open(SNAPSHOT_PATH, "rt", encoding="utf-8") as f:
+            payload = json.load(f)
+        items = payload.get("items")
+        if isinstance(items, list):
+            return items, str(payload.get("built_at") or "")
+    except (OSError, ValueError):
+        pass
+    return None, ""
+
+
+def write_snapshot(path, items, built_at):
+    """Reproducible bytes: no filename or mtime in the gzip header, so an
+    unchanged listing rebuilds byte for byte (the file is committed)."""
+    import gzip
+
+    payload = json.dumps({"built_at": built_at, "items": items}, ensure_ascii=False, sort_keys=True)
+    with open(path, "wb") as raw:
+        with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as gz:
+            gz.write(payload.encode("utf-8"))
+
+
 def get(allow_refresh=True):
     """``(items, source, as_of, refreshing)``. Cached items at once; a
     stale or missing cache kicks a background refresh when allowed."""
@@ -214,6 +242,9 @@ def get(allow_refresh=True):
                 target=refresh, name="streetzim-catalog", daemon=True
             ).start()
     if items is None:
+        shipped, built_at = _read_snapshot()
+        if shipped:
+            return shipped, "snapshot", built_at, _refreshing
         return [], "none", "", _refreshing
     as_of = time.strftime("%Y-%m-%d", time.gmtime(fetched_at)) if fetched_at else ""
     return items, "cache", as_of, _refreshing

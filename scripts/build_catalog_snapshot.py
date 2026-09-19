@@ -398,6 +398,24 @@ def main() -> int:
 
     built = datetime.date.today().isoformat()
     catalog_snapshot.write_snapshot(snapshot_path, entries, built)
+
+    # StreetZim's regions, from the Internet Archive, so the Maps toggle has
+    # something to show on a machine that has never been online. Small (25
+    # KB) and independent of the Kiwix half: a failure here is a warning,
+    # never a failed snapshot.
+    from zimi import streetzim
+
+    streetzim_path = os.path.join(assets, "streetzim-snapshot.json.gz")
+    try:
+        print("Fetching StreetZim's regions from the Internet Archive...", flush=True)
+        regions = streetzim.fetch_live()
+        if regions:
+            streetzim.write_snapshot(streetzim_path, regions, built)
+            print(f"Wrote {streetzim_path} ({len(regions)} regions)")
+        else:
+            print("WARNING: StreetZim listing came back empty; kept the previous snapshot", file=sys.stderr)
+    except Exception as e:
+        print(f"WARNING: StreetZim listing not fetched ({e}); kept the previous snapshot", file=sys.stderr)
     if not args.no_icons:
         catalog_snapshot.write_icons(icons_path, icons)
 
