@@ -219,6 +219,58 @@ jobs:
             smoke_*.log
           if-no-files-found: ignore
 
+  # The same image under rootless Podman, the way a Fedora or RHEL self-hoster
+  # runs it. Two things Docker never made us get right: the image's user must
+  # map to the person (or every downloaded ZIM lands owned by a subordinate
+  # UID they cannot read), and the Quadlet unit we ship must be one systemd
+  # accepts. Both are checked here rather than promised in the README.
+  podman:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image with Podman
+        run: podman build -t localhost/zimi:ci .
+
+      - name: Run rootless with the README's flags, and the files come out as ours
+        run: |
+          mkdir -p zims zimi-config
+          podman run -d --name zimi --network host \
+            --userns=keep-id:uid=1000,gid=1000 \
+            -v ./zims:/zims:Z -v ./zimi-config:/config:Z \
+            -e ZIM_DIR=/zims -e ZIMI_DATA_DIR=/config -e ZIMI_MANAGE=1 \
+            localhost/zimi:ci
+          for i in $(seq 1 180); do
+            if curl -sf http://localhost:8899/health > /dev/null 2>&1; then
+              echo "  server up after ${i}s"; break
+            fi
+            if [ "$i" = 180 ]; then
+              echo "::error::server did not answer /health within 180s"
+              podman logs --tail 80 zimi; exit 1
+            fi
+            sleep 1
+          done
+          # The server writes its metadata cache into /config on boot. On the
+          # host that file must belong to the user who ran the container, not
+          # to a subordinate UID: that is the whole point of keep-id.
+          for i in $(seq 1 30); do [ -f zimi-config/cache.json ] && break; sleep 1; done
+          ls -ln zimi-config
+          owner=$(stat -c %u zimi-config/cache.json)
+          if [ "$owner" != "$(id -u)" ]; then
+            echo "::error::cache.json is owned by uid $owner, not by $(id -u): the userns mapping is wrong"
+            exit 1
+          fi
+          echo "files written by the container are owned by $(id -un)"
+          podman rm -f zimi
+
+      - name: The Quadlet unit is one systemd accepts
+        run: |
+          mkdir -p ~/.config/containers/systemd
+          cp deploy/podman/zimi.container ~/.config/containers/systemd/
+          # quadlet -dryrun renders the unit or fails with the line at fault.
+          Q=$(ls /usr/libexec/podman/quadlet /usr/lib/podman/quadlet 2>/dev/null | head -1)
+          "$Q" -dryrun -user | grep -E "^# zimi.service|ExecStart=" | head -3
+
   docker:
     runs-on: ubuntu-latest
     steps:

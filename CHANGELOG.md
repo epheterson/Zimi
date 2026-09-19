@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Maps. Offline map ZIMs open in the reader: Kiwix's 193 regional maps and StreetZim builds. Panning writes the position into the address, so a link or a bookmark returns to the same place at the same zoom, and Back and Forward behave. Maps are a category of their own in the catalog, a map ZIM is filed as a map from its own metadata whatever the file is called, and Discover shows a Maps card with a chip per installed map.
 - Place search. Place names on Kiwix maps are searchable from the search bar and opening one flies the map there. For maps that carry their own search box (StreetZim), the search bar offers to run the words there, one tap from the bar to the map's own results.
+- Podman. A rootless Podman path that actually works: the README's run line maps the image's user to you (so downloaded ZIMs are yours to read and delete, not a subordinate UID's) and labels the mounts for SELinux, and a Quadlet unit starts Zimi at boot. CI runs the image rootless under Podman on every change.
 - The catalog works offline. Zimi ships a snapshot of the Kiwix catalog with a magnet link for every entry, so a machine that has never been online can still browse and queue downloads. After the first successful fetch the full catalog is cached; the live catalog replaces it whenever it can be reached.
 
 ### Fixed

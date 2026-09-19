@@ -139,6 +139,24 @@ services:
 LAN peer discovery (`_zimi._tcp`) won't reach the LAN in bridge mode, multicast doesn't cross the docker bridge, and Zimi warns in the Nearby settings when it detects this. Use host networking, or set `ip=<your host's LAN address>` in `ZIMI_NEARBY`. BT seeding still works because libtorrent binds the mapped port. See [docs/deployment-networking.md](docs/deployment-networking.md) for the full discussion.
 </details>
 
+<details>
+<summary>Podman (rootless)</summary>
+
+The same image runs under Podman. Two flags matter that Docker never needed:
+
+```bash
+mkdir -p zims zimi-config
+podman run -d --name zimi --network host \
+  --userns=keep-id:uid=1000,gid=1000 \
+  -v ./zims:/zims:Z -v ./zimi-config:/config:Z \
+  docker.io/epheterson/zimi
+```
+
+`--userns=keep-id:uid=1000,gid=1000` maps the image's user to you, so the ZIMs Zimi downloads into `./zims` are yours to read and delete; without it, rootless Podman writes them as a subordinate UID. `:Z` is the SELinux label Fedora and RHEL require on a bind mount, and is harmless on other systems.
+
+To start it at boot, install [deploy/podman/zimi.container](deploy/podman/zimi.container) under `~/.config/containers/systemd/` (a Quadlet unit; the file explains each line), then `systemctl --user daemon-reload && systemctl --user start zimi`. `podman compose` also reads the compose file above once you add `:Z` to its two volumes.
+</details>
+
 ### Python
 
 ```bash
