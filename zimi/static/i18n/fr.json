@@ -854,7 +854,7 @@
   "create_mode_import_desc": "Convertir une archive web WARC ou WACZ en ZIM.",
   "create_label_import": "Archive dans votre dossier de bibliothèque",
   "create_ph_import": "Aucun fichier .warc, .warc.gz ou .wacz",
-  "create_import_note": "Placez l’archive dans {dir} (ou son dossier imports) et elle apparaîtra ici.",
+  "create_import_note": "Placez l’archive n’importe où sous {dir} et elle apparaîtra ici.",
   "create_import_dir_unknown": "le dossier de bibliothèque",
   "create_mode_page": "Page web",
   "create_mode_page_desc": "Une page ou une liste de pages, avec leurs images et leurs styles.",

@@ -192,7 +192,7 @@ Most people set nothing: every setting below has a sensible default or lives in 
 | `ZIMI_API_TOKEN` | _(none)_ | Pin the API token instead of generating in the UI |
 | `ZIMI_HOT_ZIMS` | _(none)_ | Comma-separated ZIM names to pre-warm at startup |
 | `ZIMI_OFFLINE` | `0` | `1` guarantees zero outbound traffic: no update checks, no catalog fetches, no torrent stack. For air-gapped machines. |
-| `ZIMI_CREATE_ROOT` | _(none)_ | The one directory tree the web UI may package a server path from (the import mode's server-path field). Unset, server-path packaging from the web stays off entirely. The CLI is unaffected. |
+| `ZIMI_CREATE_ROOT` | _(none)_ | Where the Create page's Import mode looks for WARC/WACZ archives, subfolders included. Unset, it looks in the library folder. Nothing is typed in the browser: the page lists what it finds and you pick. The CLI is unaffected. |
 | `ZIMI_UPDATE_CHANNEL` | `latest` | App release channel: `latest` (finished releases) or `beta` (prereleases too). Locks the UI choice when set. |
 | `ZIMI_UPDATE_DELAY_DAYS` | `0` | Hold a release back until it has been public this many days (0–365). |
 

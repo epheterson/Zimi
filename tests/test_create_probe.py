@@ -159,15 +159,17 @@ def test_the_folder_refusal_does_not_depend_on_the_root(monkeypatch, tmp_path):
     assert "CLI-only" in h.body["error"]
 
 
-def test_probe_reuses_the_real_validator(tmp_path):
+def test_probe_reuses_the_real_validator(tmp_path, monkeypatch):
     """A probe that accepted what a run refuses would be a preview of a
-    different job. Import is CLI-only, so the probe refuses it exactly as the
-    run does — the validator is the one seam."""
+    different job. Import takes a name from the picker's listing, never a
+    typed path, so the probe refuses a path exactly as the run does — the
+    validator is the one seam."""
+    monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: True)
     refused = _post(
         "/manage/create/probe", {"mode": "import", "source": str(tmp_path / "no.wacz")}
     )
     assert refused.status == 400
-    assert "CLI-only" in refused.body["error"]
+    assert "choose an archive" in refused.body["error"]
     assert (
         _post("/manage/create/probe", {"mode": "page", "source": "file:///etc"}).status
         == 400
@@ -258,9 +260,10 @@ def _unset_root(monkeypatch):
     monkeypatch.delenv(manage.CREATE_ROOT_ENV, raising=False)
 
 
-def test_import_is_refused_through_both_doors(monkeypatch, tmp_path):
-    """Whether or not a root is set, and whoever asks: both doors answer with
-    the CLI pointer, never with a root complaint or a tier gate."""
+def test_a_typed_archive_path_is_refused_through_both_doors(monkeypatch, tmp_path):
+    """Whether or not a root is set: both doors tell the primary admin to
+    pick from the list, never take a path, and never complain about a root."""
+    monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: True)
     archive = tmp_path / "cap.warc.gz"
     archive.write_bytes(b"\x1f\x8b")
     for rooted in (True, False):
@@ -271,20 +274,21 @@ def test_import_is_refused_through_both_doors(monkeypatch, tmp_path):
         for path in ("/manage/create", "/manage/create/probe"):
             h = _post(path, {"mode": "import", "source": str(archive)})
             assert h.status == 400, (path, rooted)
-            assert "CLI-only" in h.body["error"], (path, rooted)
-            assert "zimi import" in h.body["error"], (path, rooted)
+            assert "choose an archive" in h.body["error"], (path, rooted)
 
 
-def test_import_refusal_does_not_depend_on_the_primary_admin(monkeypatch, tmp_path):
-    """There is no primary-admin gate left: no web mode reads a server path, so
-    import refuses the primary admin and everyone else the same way."""
+def test_import_is_the_primary_admins_through_both_doors(monkeypatch, tmp_path):
+    """Import reads the server's disk (the library folder, by listing), so a
+    creator account is refused at both doors before an archive is looked
+    for; the primary admin gets the validator's answer."""
     archive = tmp_path / "cap.warc.gz"
     archive.write_bytes(b"\x1f\x8b")
     for primary in (False, True):
         monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: primary)
-        h = _post("/manage/create/probe", {"mode": "import", "source": str(archive)})
-        assert h.status == 400, primary
-        assert "CLI-only" in h.body["error"], primary
+        for path in ("/manage/create", "/manage/create/probe"):
+            h = _post(path, {"mode": "import", "source": str(archive)})
+            assert h.status == (400 if primary else 403), (path, primary, h.body)
+            assert ("choose an archive" if primary else "primary admin") in h.body["error"]
 
 
 def test_with_no_root_the_url_modes_are_untouched(monkeypatch):

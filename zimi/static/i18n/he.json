@@ -854,7 +854,7 @@
   "create_mode_import_desc": "המרת ארכיון אינטרנט מסוג WARC או WACZ ל-ZIM.",
   "create_label_import": "ארכיון בתיקיית הספרייה",
   "create_ph_import": "לא נמצאו קובצי ‎.warc, ‎.warc.gz או ‎.wacz",
-  "create_import_note": "שימו את הארכיון ב-{dir} (או בתיקיית imports) והוא יופיע כאן.",
+  "create_import_note": "שימו את הארכיון בכל מקום בתוך {dir} והוא יופיע כאן.",
   "create_import_dir_unknown": "תיקיית הספרייה",
   "create_mode_page": "דף אינטרנט",
   "create_mode_page_desc": "דף אחד או רשימה של דפים, עם התמונות והעיצוב שלהם.",

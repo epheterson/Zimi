@@ -854,7 +854,7 @@
   "create_mode_import_desc": "Ein WARC- oder WACZ-Webarchiv in ein ZIM umwandeln.",
   "create_label_import": "Archiv im Bibliotheksordner",
   "create_ph_import": "Keine .warc-, .warc.gz- oder .wacz-Dateien gefunden",
-  "create_import_note": "Lege das Archiv in {dir} (oder dessen Ordner imports); es erscheint dann hier.",
+  "create_import_note": "Lege das Archiv irgendwo unter {dir} ab; es erscheint dann hier.",
   "create_import_dir_unknown": "den Bibliotheksordner",
   "create_mode_page": "Webseite",
   "create_mode_page_desc": "Eine Seite oder eine Liste davon, mit Bildern und Stilen.",

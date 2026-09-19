@@ -854,7 +854,7 @@
   "create_mode_import_desc": "تحويل أرشيف ويب بصيغة WARC أو WACZ إلى ZIM.",
   "create_label_import": "أرشيف في مجلد مكتبتك",
   "create_ph_import": "لم يتم العثور على ملفات ‎.warc أو ‎.warc.gz أو ‎.wacz",
-  "create_import_note": "ضع الأرشيف في {dir} (أو مجلد imports) وسيظهر هنا.",
+  "create_import_note": "ضع الأرشيف في أي مكان داخل {dir} وسيظهر هنا.",
   "create_import_dir_unknown": "مجلد المكتبة",
   "create_mode_page": "صفحة ويب",
   "create_mode_page_desc": "صفحة واحدة أو قائمة منها، مع صورها وأنماطها.",

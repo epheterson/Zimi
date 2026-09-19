@@ -3502,7 +3502,7 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
         # Archives the import mode may convert: what is in the library
         # folder, by name. No path is typed anywhere.
         payload["archives"] = _create_archives()
-        payload["archives_dir"] = _srv.ZIM_DIR
+        payload["archives_dir"] = _create_archives_root()
         # And whether BOTH halves of the alive engine are here. Reported as its
         # own answer rather than left for the client to compute from the other
         # two: what the alive engine needs is the alive engine's business, and
@@ -3691,7 +3691,8 @@ def _is_offline_mode():
 # the containment check and the closed-by-default door that guarded that
 # surface are all gone with the modes they guarded.
 #
-# ``ZIMI_CREATE_ROOT`` survives only as a fact the create page still reports
+# ``ZIMI_CREATE_ROOT`` is where the import picker looks for archives (the
+# library folder when unset), and a fact the create page reports
 # (``create_root`` in the poll and the Creator payload): the server no longer
 # acts on it, but the client reads it to describe the instance.
 
@@ -3721,38 +3722,48 @@ def _create_sidecar_dir():
         return None
 
 
-# Where the import mode looks for archives, relative to the library folder.
-# The library folder itself, and one subfolder for people who keep their
-# archives apart from their ZIMs. Not recursive: a picker, not a browser.
-CREATE_ARCHIVE_DIRS = ("", "imports")
+# Where the import mode looks for archives: ``ZIMI_CREATE_ROOT`` when set,
+# else the library folder; every subfolder inside, to a depth and a count
+# that keep a picker a picker (Eric: "Allow defining a create or import
+# directory instead of that path and support subdirectories within").
+CREATE_ARCHIVE_MAX_DEPTH = 8
+CREATE_ARCHIVE_MAX_FILES = 500
+
+
+def _create_archives_root():
+    return _create_root() or _srv.ZIM_DIR
 
 
 def _create_archives():
-    """The WARC/WACZ files in the library folder, ``[{name, size_bytes}]``,
-    newest first. ``name`` is the path relative to the library folder and is
-    the only thing the form ever sends back."""
+    """The WARC/WACZ files under the import directory, ``[{name, size_bytes}]``,
+    newest first. ``name`` is the path relative to that directory, with "/",
+    and is the only thing the form ever sends back."""
     from zimi.importer import ARCHIVE_EXTS
 
-    root = _srv.ZIM_DIR
+    root = _create_archives_root()
     found = []
-    for sub in CREATE_ARCHIVE_DIRS:
-        d = os.path.join(root, sub) if sub else root
-        try:
-            names = os.listdir(d)
-        except OSError:
-            continue
-        for n in names:
-            if not n.lower().endswith(ARCHIVE_EXTS):
+    for dirpath, dirnames, filenames in os.walk(root):
+        rel_dir = os.path.relpath(dirpath, root)
+        depth = 0 if rel_dir == "." else rel_dir.count(os.sep) + 1
+        # Hidden folders are the library's own (.zimi, .data) and nobody's
+        # archives; past the depth the walk stops descending.
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith(".")) if depth < CREATE_ARCHIVE_MAX_DEPTH else []
+        for n in filenames:
+            if not n.lower().endswith(ARCHIVE_EXTS) or n.startswith("."):
                 continue
-            full = os.path.join(d, n)
+            full = os.path.join(dirpath, n)
             try:
                 st = os.stat(full)
             except OSError:
                 continue
             if not os.path.isfile(full):
                 continue
-            rel = os.path.join(sub, n) if sub else n
+            rel = n if rel_dir == "." else os.path.join(rel_dir, n)
             found.append({"name": rel.replace(os.sep, "/"), "size_bytes": st.st_size, "mtime": st.st_mtime})
+            if len(found) >= CREATE_ARCHIVE_MAX_FILES:
+                break
+        if len(found) >= CREATE_ARCHIVE_MAX_FILES:
+            break
     found.sort(key=lambda a: -a["mtime"])
     for a in found:
         del a["mtime"]
@@ -3766,7 +3777,7 @@ def _create_archive_path(name):
     name = (name or "").strip().replace("\\", "/")
     if not name or name not in {a["name"] for a in _create_archives()}:
         raise ValueError("choose an archive from the list")
-    return os.path.join(_srv.ZIM_DIR, *name.split("/"))
+    return os.path.join(_create_archives_root(), *name.split("/"))
 
 
 def _create_import_ready():
@@ -5493,7 +5504,7 @@ def handle_manage_post(handler, parsed, data):
         # it stays with the primary admin; a creator account captures the web
         # and packages its own bookmarks, nothing more.
         if (
-            parsed.path == "/manage/create"
+            parsed.path in ("/manage/create", "/manage/create/probe")
             and data.get("mode") == "import"
             and not _primary_admin_authorized(handler)
         ):

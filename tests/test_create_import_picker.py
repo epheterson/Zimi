@@ -22,38 +22,78 @@ import zimi.server as srv  # noqa: E402
 # ── the archives the picker lists ──────────────────────────────────────────
 
 
-def test_the_listing_is_the_library_folder_and_its_imports_subfolder(tmp_path, monkeypatch):
+def test_the_listing_walks_the_library_folder_and_its_subfolders(tmp_path, monkeypatch):
     lib = tmp_path / "zims"
     (lib / "imports").mkdir(parents=True)
     (lib / "deep" / "er").mkdir(parents=True)
+    (lib / ".data").mkdir()
     (lib / "a.wacz").write_bytes(b"x" * 10)
     (lib / "b.WARC").write_bytes(b"x" * 20)
     (lib / "c.warc.gz").write_bytes(b"x" * 30)
     (lib / "wikipedia.zim").write_bytes(b"x")
     (lib / "notes.txt").write_bytes(b"x")
     (lib / "imports" / "d.warc").write_bytes(b"x" * 40)
-    (lib / "deep" / "er" / "e.warc").write_bytes(b"x")  # not recursive
+    (lib / "deep" / "er" / "e.warc").write_bytes(b"x")
+    (lib / ".data" / "hidden.warc").write_bytes(b"x")  # the library's own folders are skipped
     (lib / "dir.warc").mkdir()  # a folder with the extension is not a file
+    monkeypatch.delenv(manage.CREATE_ROOT_ENV, raising=False)
     monkeypatch.setattr(srv, "ZIM_DIR", str(lib))
     got = manage._create_archives()
-    assert sorted(a["name"] for a in got) == ["a.wacz", "b.WARC", "c.warc.gz", "imports/d.warc"]
+    assert sorted(a["name"] for a in got) == ["a.wacz", "b.WARC", "c.warc.gz", "deep/er/e.warc", "imports/d.warc"]
     assert {a["name"]: a["size_bytes"] for a in got}["imports/d.warc"] == 40
     assert set(got[0]) == {"name", "size_bytes"}
+    assert manage._create_archive_path("deep/er/e.warc") == os.path.join(str(lib), "deep", "er", "e.warc")
+
+
+def test_a_create_root_is_the_import_directory_instead(tmp_path, monkeypatch):
+    """Eric: "Allow defining a create or import directory instead of that
+    path and support subdirectories within." ZIMI_CREATE_ROOT is that
+    directory; the library folder is not looked at when it is set."""
+    lib = tmp_path / "zims"
+    lib.mkdir()
+    (lib / "in-library.wacz").write_bytes(b"x")
+    root = tmp_path / "archives"
+    (root / "2026" / "sep").mkdir(parents=True)
+    (root / "2026" / "sep" / "site.wacz").write_bytes(b"x" * 5)
+    monkeypatch.setattr(srv, "ZIM_DIR", str(lib))
+    monkeypatch.setenv(manage.CREATE_ROOT_ENV, str(root))
+    assert [a["name"] for a in manage._create_archives()] == ["2026/sep/site.wacz"]
+    assert manage._create_archive_path("2026/sep/site.wacz") == os.path.join(os.path.realpath(str(root)), "2026", "sep", "site.wacz")
+    with pytest.raises(ValueError):
+        manage._create_archive_path("in-library.wacz")
+
+
+def test_the_walk_is_bounded(tmp_path, monkeypatch):
+    lib = tmp_path / "zims"
+    d = lib
+    for i in range(12):
+        d = d / f"l{i}"
+    d.mkdir(parents=True)
+    (d / "deep.warc").write_bytes(b"x")
+    for i in range(manage.CREATE_ARCHIVE_MAX_FILES + 20):
+        (lib / f"f{i}.warc").write_bytes(b"x")
+    monkeypatch.delenv(manage.CREATE_ROOT_ENV, raising=False)
+    monkeypatch.setattr(srv, "ZIM_DIR", str(lib))
+    got = manage._create_archives()
+    assert len(got) == manage.CREATE_ARCHIVE_MAX_FILES
+    assert not any(a["name"].endswith("deep.warc") for a in got)
 
 
 def test_a_missing_library_folder_lists_nothing(tmp_path, monkeypatch):
+    monkeypatch.delenv(manage.CREATE_ROOT_ENV, raising=False)
     monkeypatch.setattr(srv, "ZIM_DIR", str(tmp_path / "nope"))
     assert manage._create_archives() == []
 
 
 @pytest.mark.parametrize(
     "name",
-    ["../x.warc", "/etc/passwd", "imports/../a.wacz", "a.wacz/", "", "  ", "nope.warc", "deep/er/e.warc"],
+    ["../x.warc", "/etc/passwd", "imports/../a.wacz", "a.wacz/", "", "  ", "nope.warc", "imports/missing.warc"],
 )
 def test_only_a_listed_name_resolves(tmp_path, monkeypatch, name):
     lib = tmp_path / "zims"
     (lib / "imports").mkdir(parents=True)
     (lib / "a.wacz").write_bytes(b"x")
+    monkeypatch.delenv(manage.CREATE_ROOT_ENV, raising=False)
     monkeypatch.setattr(srv, "ZIM_DIR", str(lib))
     with pytest.raises(ValueError):
         manage._create_archive_path(name)
@@ -64,6 +104,7 @@ def test_the_probe_carries_the_listing_and_where_it_looked(tmp_path, monkeypatch
     lib = tmp_path / "zims"
     lib.mkdir()
     (lib / "a.wacz").write_bytes(b"x")
+    monkeypatch.delenv(manage.CREATE_ROOT_ENV, raising=False)
     monkeypatch.setattr(srv, "ZIM_DIR", str(lib))
     monkeypatch.setattr(manage, "_create_import_ready", lambda: True)
     monkeypatch.setattr(manage, "_create_sidecar_dir", lambda: None)
@@ -138,6 +179,7 @@ def test_the_preview_of_an_archive_is_its_size_not_a_fetch(tmp_path, monkeypatch
     lib = tmp_path / "zims"
     lib.mkdir()
     (lib / "a.wacz").write_bytes(b"x" * 1234)
+    monkeypatch.delenv(manage.CREATE_ROOT_ENV, raising=False)
     monkeypatch.setattr(srv, "ZIM_DIR", str(lib))
     monkeypatch.setattr(manage, "_create_import_ready", lambda: False)
     monkeypatch.setattr(manage, "_create_job", None)
