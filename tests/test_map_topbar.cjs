@@ -21,7 +21,7 @@ function ok(label, cond, detail) {
   console.log((cond ? 'PASS  ' : 'FAIL  ') + label + (detail ? '  ' + detail : ''));
   if (!cond) failures++;
 }
-function fn(name) { return extract(new RegExp('function ' + name + '\\([^)]*\\) \\{[\\s\\S]*?\\n\\}'), name); }
+function fn(name) { return extract(new RegExp('function ' + name + '\\([^)]*\\) \\{[\\s\\S]*?\\r?\\n\\}'), name); }
 
 // ── the page knows it is a map ───────────────────────────────────────────
 const ctx = {
@@ -71,8 +71,8 @@ ok('a hostile place is escaped for the inline handler', ctx._histPosArg({ pos: "
 
 // ── a place on the map already open: fly, do not reload ──────────────────
 const open = extract(/function openArticle\(zim, path, title, opts\) \{[\s\S]*?\n\}/, 'openArticle');
-ok('the fly path needs the same map, a place, and a live map', /opts && opts\.pos && currentArticle && currentArticle\.zim === zim &&\n\s*currentArticle\.path === path && !_isModClick\(\) && _readerMap\(\)/.test(open));
-ok('it records the visit, pushes the address, jumps, titles, and stops', /_histPushArticle\(zim, path, flyTitle, opts\.pos\);[\s\S]*history\.pushState\([\s\S]*_restoreMapPosition\(flyPos, 0\);[\s\S]*_setWindowTitle\(document\.title\);\n\s*return;/.test(open));
+ok('the fly path needs the same map, a place, and a live map', /opts && opts\.pos && currentArticle && currentArticle\.zim === zim &&\r?\n\s*currentArticle\.path === path && !_isModClick\(\) && _readerMap\(\)/.test(open));
+ok('it records the visit, pushes the address, jumps, titles, and stops', /_histPushArticle\(zim, path, flyTitle, opts\.pos\);[\s\S]*history\.pushState\([\s\S]*_restoreMapPosition\(flyPos, 0\);[\s\S]*_setWindowTitle\(document\.title\);\r?\n\s*return;/.test(open));
 ok('a map with no title given is called by its name', /_isMapZim\(zim\) \? _zimTitle\(zim\) : _titleFromPath\(path\)/.test(fn('_fallbackTitle')) &&
   /title \|\| _fallbackTitle\(zim, path\), opts && opts\.pos/.test(open) && /readerTitle = title \|\| _fallbackTitle\(zim, path\)/.test(open));
 ok('the ⋯ Random row says what it rolls', /tH\(_isMapPage\(\) \? 'random_place' : 'random'\)/.test(menu));
@@ -81,6 +81,6 @@ ok('Back to a place restores its title from history', /var was = _histFindPlace\
 
 vm.runInContext([extract(/var _MAP_HASH_RE = [^\n]*\n/, '_MAP_HASH_RE'), fn('mapPositionHash'), fn('parseMapHash'), fn('_normMapPos')].join('\n'), ctx);
 ok('a position has one spelling however it arrived', ctx._normMapPos('map=14/21.3/-157.8') === 'map=14.00/21.30000/-157.80000' && ctx._normMapPos('map=14.00/21.30000/-157.80000') === 'map=14.00/21.30000/-157.80000' && ctx._normMapPos('') === '');
-ok('history writes and reads that spelling', /entry\.pos = _normMapPos\(pos\)/.test(src) && /pos = _normMapPos\(pos\);\n  var h = _histLoad\(\);/.test(src));
+ok('history writes and reads that spelling', /entry\.pos = _normMapPos\(pos\)/.test(src) && /pos = _normMapPos\(pos\);\r?\n  var h = _histLoad\(\);/.test(src));
 
 process.exit(failures ? 1 : 0);

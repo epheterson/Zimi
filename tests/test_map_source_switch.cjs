@@ -109,7 +109,7 @@ ok('the language dropdown and this one hang from the same helper', (src.match(/_
 
 // A shared link: the place in the hash survives the boot rewrite of the URL.
 ok('a cold deep link carries its map position into the open',
-  /var pos = parseMapHash\(location\.hash\);\n  openArticle\(zim, path, null, \{ replace: true, pos: pos \? mapPositionHash/.test(src));
+  /var pos = parseMapHash\(location\.hash\);\r?\n  openArticle\(zim, path, null, \{ replace: true, pos: pos \? mapPositionHash/.test(src));
 
 // ── Get a map of here: the catalog's maps that cover the spot ────────────
 ctx.t = k => ({ download: 'Download' })[k] || k;
@@ -146,11 +146,11 @@ const whole = ctx._mapSourceRowsHtml(ctx._installedMaps(), 'osm-hawaii', honolul
 const wholeOrder = Array.from(whole.matchAll(/data-zim="([^"]+)"|data-role="([^"]+)"|mp-head" role="separator">([^<]+)/g)).map(m => m[1] || m[2] || m[3]);
 ok('a map of this ground, installed or not, comes before a map of elsewhere; the way to all maps last',
   wholeOrder.join(',') === 'osm-hawaii,maps_en_hawaii,maps_en_islands,Get a map of here,offer,offer,offer,offer,fold,samoa,all-maps', wholeOrder.join(','));
-ok('the dropdown loads both catalogs once and re-renders when they arrive', /var got = await _fetchCatalogItems\(\);[\s\S]*_kiwixOffers = placed\(got\.items\);/.test(src) && /manageFetch\('\/manage\/catalog-streetzim'\)/.test(fn('_mapOfferItems')) && /_mapOfferItems\(\)\.then\(function\(\) \{\n\s*if \(dd\.classList\.contains\('visible'\)\) _renderMapSourceDropdown\(dd\);/.test(src));
+ok('the dropdown loads both catalogs once and re-renders when they arrive', /var got = await _fetchCatalogItems\(\);[\s\S]*_kiwixOffers = placed\(got\.items\);/.test(src) && /manageFetch\('\/manage\/catalog-streetzim'\)/.test(fn('_mapOfferItems')) && /_mapOfferItems\(\)\.then\(function\(\) \{\r?\n\s*if \(dd\.classList\.contains\('visible'\)\) _renderMapSourceDropdown\(dd\);/.test(src));
 ok('only maps the server could place are kept, from a fresh fetch', /return _kiwixOffers\.concat\(_streetzimOffers\)/.test(src) && /extras = _mapOfferRowsHtml\(_mapOfferGroups\(_mapOfferAll\(\), pos\)\)/.test(src));
 ok('an offer row starts the download through the ordinary path and says where to watch it', /await downloadZim\(url, null\);[\s\S]*_showToast\(tH\('map_offer_started', \{map: title\}\)\)/.test(fn('_mapOfferDownload')));
-ok('the punch-out opens the catalog on the Maps category', /await enterManage\(null\);\n\s*switchManageTab\('browse'\);\n\s*drillCategory\('maps'\);/.test(fn('_openMapsCatalog')));
-function fn(name) { return extract(new RegExp('(?:async )?function ' + name + '\\([^)]*\\) \\{[\\s\\S]*?\\n\\}'), name); }
+ok('the punch-out opens the catalog on the Maps category', /await enterManage\(null\);\r?\n\s*switchManageTab\('browse'\);\r?\n\s*drillCategory\('maps'\);/.test(fn('_openMapsCatalog')));
+function fn(name) { return extract(new RegExp('(?:async )?function ' + name + '\\([^)]*\\) \\{[\\s\\S]*?\\r?\\n\\}'), name); }
 
 const tpl = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'templates', 'index.html'), 'utf8');
 ok('the template carries the button and its menu', /id="map-source-btn"/.test(tpl) && /id="map-source-dropdown"/.test(tpl));
