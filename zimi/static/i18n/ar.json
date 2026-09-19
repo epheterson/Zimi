@@ -704,7 +704,7 @@
   "cat_maps_desc": "خرائط شوارع دون اتصال يمكنك تحريكها وتكبيرها والبحث فيها",
   "catalog_as_of": "قائمة بتاريخ {date}.",
   "streetzim_offline": "تعذّر جلب مناطق StreetZim. ستظهر عندما يصل هذا الجهاز إلى Internet Archive.",
-  "streetzim_note": "مبنية من OpenStreetMap بواسطة StreetZim ومستضافة على Internet Archive. أكبر من خرائط Kiwix، مع صور أقمار صناعية وتضاريس في معظم المناطق، ويمكن البحث في الأماكن والشوارع والعناوين.",
+  "streetzim_note": "خرائط OpenStreetMap من إعداد StreetZim عبر Internet Archive. أكبر من خرائط Kiwix، مع صور أقمار صناعية وتضاريس في معظم المناطق؛ يمكن البحث عن الأماكن والعناوين.",
   "maps_source_streetzim": "StreetZim",
   "map_source": "خرائط أخرى هنا",
   "map_source_elsewhere": "في مكان آخر",

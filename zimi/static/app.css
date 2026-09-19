@@ -1516,7 +1516,10 @@
   }
   .ms-pane .ms-field input:focus { outline: none; border-color: var(--amber-border); }
   .ms-pane .ms-field input[readonly] { opacity: 0.6; }
-  .ms-pane .ms-hint { font-size: 12px; color: var(--text2); margin-top: 8px; }
+  /* A hint reads the same wherever it sits: the settings panes, and the
+     catalog (the StreetZim note under the Maps toggle was 16px body text). */
+  .ms-hint { font-size: 12px; line-height: 1.5; color: var(--text2); margin-top: 8px; }
+  .browse-drilldown-header + .maps-source-toggle + .ms-hint, .maps-source-toggle + .ms-hint { margin: 6px 0 14px; }
 
   /* Environment panel: a name, its value, and what it takes over. Monospace
      on the first two because they are literals an admin will retype into a

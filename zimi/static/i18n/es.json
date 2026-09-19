@@ -704,7 +704,7 @@
   "cat_maps_desc": "Mapas de calles sin conexión para desplazar, ampliar y buscar",
   "catalog_as_of": "Listado del {date}.",
   "streetzim_offline": "No se pudieron obtener las regiones de StreetZim. Aparecerán cuando este equipo haya alcanzado Internet Archive.",
-  "streetzim_note": "Creados por StreetZim a partir de OpenStreetMap y alojados en Internet Archive. Más grandes que los mapas de Kiwix, con imágenes satelitales y relieve en la mayoría de regiones, y lugares, calles y direcciones buscables.",
+  "streetzim_note": "Mapas de OpenStreetMap creados por StreetZim, desde Internet Archive. Más grandes que los de Kiwix, con imágenes satelitales y relieve en la mayoría de regiones; lugares y direcciones consultables.",
   "maps_source_streetzim": "StreetZim",
   "map_source": "Otros mapas aquí",
   "map_source_elsewhere": "En otro lugar",

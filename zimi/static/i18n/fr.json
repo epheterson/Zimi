@@ -704,7 +704,7 @@
   "cat_maps_desc": "Cartes routières hors ligne à parcourir, zoomer et rechercher",
   "catalog_as_of": "Liste du {date}.",
   "streetzim_offline": "Les régions StreetZim n'ont pas pu être récupérées. Elles apparaîtront une fois qu'Internet Archive aura été joint.",
-  "streetzim_note": "Construits par StreetZim à partir d'OpenStreetMap et hébergés sur Internet Archive. Plus volumineux que les cartes Kiwix, avec imagerie satellite et relief sur la plupart des régions ; lieux, rues et adresses sont recherchables.",
+  "streetzim_note": "Cartes OpenStreetMap construites par StreetZim, depuis l’Internet Archive. Plus lourdes que celles de Kiwix, avec imagerie satellite et relief sur la plupart des régions ; lieux et adresses consultables.",
   "maps_source_streetzim": "StreetZim",
   "map_source": "Autres cartes ici",
   "map_source_elsewhere": "Ailleurs",

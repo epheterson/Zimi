@@ -704,7 +704,7 @@
   "cat_maps_desc": "Offline-Straßenkarten zum Verschieben, Zoomen und Suchen",
   "catalog_as_of": "Stand: {date}.",
   "streetzim_offline": "Die StreetZim-Regionen konnten nicht geladen werden. Sie erscheinen, sobald dieser Rechner das Internet Archive erreicht hat.",
-  "streetzim_note": "Von StreetZim aus OpenStreetMap erstellt, gehostet im Internet Archive. Größer als die Kiwix-Karten, meist mit Satellitenbildern und Gelände; Orte, Straßen und Adressen sind durchsuchbar.",
+  "streetzim_note": "OpenStreetMap-Karten von StreetZim, vom Internet Archive. Größer als die von Kiwix, mit Satellitenbildern und Gelände für die meisten Regionen; Orte und Adressen sind durchsuchbar.",
   "maps_source_streetzim": "StreetZim",
   "map_source": "Andere Karten hier",
   "map_source_elsewhere": "Anderswo",

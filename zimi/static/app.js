@@ -11350,16 +11350,25 @@ function _appUpdateSetDelay(days) {
 // overrides nothing, and saying so plainly is the useful answer.
 async function _renderEnvSection() {
   var rows;
-  var el = document.getElementById('ms-env');
+  var fetched;
   try {
-    rows = (await _msFetch('/manage/env')).vars || [];
+    fetched = await _msFetch('/manage/env');
   } catch (e) {
+    fetched = null;
+  }
+  // The element is looked up AFTER the fetch, never before: this runs while
+  // _msServerHtml is still building the pane's markup, so at call time there
+  // is no #ms-env yet. Capturing null then and testing it later left the
+  // section on "Loading…" for good (Eric, from his phone, 2026-09-19).
+  var el = document.getElementById('ms-env');
+  if (!el) return;
+  if (fetched === null) {
     // This panel's one job is to answer "is something overriding my
     // settings", and a failed poll must not look like "nothing is".
-    if (el) el.innerHTML = '<div class="ms-hint">' + tH('env_unavailable') + '</div>';
+    el.innerHTML = '<div class="ms-hint">' + tH('env_unavailable') + '</div>';
     return;
   }
-  if (!el) return;
+  rows = fetched.vars || [];
   if (!rows.length) {
     el.innerHTML = '<div class="ms-hint">' + tH('env_none') + '</div>';
     return;

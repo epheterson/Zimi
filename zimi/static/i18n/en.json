@@ -704,7 +704,7 @@
   "cat_maps_desc": "Offline street maps you can pan, zoom and search",
   "catalog_as_of": "Listing from {date}.",
   "streetzim_offline": "StreetZim's regions could not be fetched. They are listed once this machine has reached the Internet Archive.",
-  "streetzim_note": "Built from OpenStreetMap by StreetZim and hosted on the Internet Archive. Larger than Kiwix's maps, with satellite imagery and terrain on most regions, and places, streets and addresses searchable.",
+  "streetzim_note": "OpenStreetMap builds by StreetZim, from the Internet Archive. Larger than Kiwix's, with satellite imagery and terrain on most regions; places and addresses are searchable.",
   "maps_source_streetzim": "StreetZim",
   "map_source": "Other maps here",
   "map_source_elsewhere": "Elsewhere",

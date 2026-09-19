@@ -704,7 +704,7 @@
   "cat_maps_desc": "ऑफ़लाइन सड़क मानचित्र जिन्हें आप खिसका, ज़ूम और खोज सकते हैं",
   "catalog_as_of": "{date} की सूची।",
   "streetzim_offline": "StreetZim के क्षेत्र प्राप्त नहीं हो सके। यह मशीन Internet Archive तक पहुँचने पर वे सूचीबद्ध होंगे।",
-  "streetzim_note": "StreetZim द्वारा OpenStreetMap से बनाए गए और Internet Archive पर होस्ट किए गए। Kiwix मानचित्रों से बड़े, अधिकांश क्षेत्रों में उपग्रह चित्र और भू-भाग के साथ, और स्थान, सड़कें व पते खोजे जा सकते हैं।",
+  "streetzim_note": "StreetZim द्वारा बनाए गए OpenStreetMap नक्शे, Internet Archive से। Kiwix के नक्शों से बड़े, अधिकांश क्षेत्रों में उपग्रह चित्र और भू-आकृति सहित; स्थान और पते खोजे जा सकते हैं।",
   "maps_source_streetzim": "StreetZim",
   "map_source": "यहाँ के अन्य नक्शे",
   "map_source_elsewhere": "अन्यत्र",

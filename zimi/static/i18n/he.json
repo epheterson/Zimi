@@ -704,7 +704,7 @@
   "cat_maps_desc": "מפות רחובות לא מקוונות לגלילה, הגדלה וחיפוש",
   "catalog_as_of": "רשימה מתאריך {date}.",
   "streetzim_offline": "לא ניתן היה לאחזר את אזורי StreetZim. הם יופיעו ברגע שמחשב זה יגיע ל-Internet Archive.",
-  "streetzim_note": "נבנו על ידי StreetZim מתוך OpenStreetMap ומתארחים ב-Internet Archive. גדולות ממפות Kiwix, עם צילומי לוויין וטופוגרפיה ברוב האזורים, ומקומות, רחובות וכתובות ניתנים לחיפוש.",
+  "streetzim_note": "מפות OpenStreetMap שנבנו על ידי StreetZim, מ-Internet Archive. גדולות משל Kiwix, עם צילומי לוויין ותבליט ברוב האזורים; מקומות וכתובות ניתנים לחיפוש.",
   "maps_source_streetzim": "StreetZim",
   "map_source": "מפות אחרות כאן",
   "map_source_elsewhere": "במקום אחר",
