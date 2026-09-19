@@ -26,6 +26,7 @@ one search.
 """
 
 import json
+import random
 import logging
 import math
 import re
@@ -277,6 +278,59 @@ def search_places(archive, query, limit=MAX_RESULTS, max_chunks=MAX_CHUNKS):
             }
         )
     return out
+
+
+def _place_dict(e):
+    return {
+        "name": e.get("n", ""),
+        "type": e.get("t", ""),
+        "sub": e.get("s", "") or "",
+        "lat": round(float(e["a"]), 5),
+        "lng": round(float(e["o"]), 5),
+        "locality": e.get("l", "") or "",
+        "zoom": ZOOM_FOR_TYPE.get(e.get("t"), _DEFAULT_ZOOM),
+    }
+
+
+def _has_coords(e):
+    lat, lng = e.get("a"), e.get("o")
+    return (
+        isinstance(lat, (int, float))
+        and isinstance(lng, (int, float))
+        and math.isfinite(lat)
+        and math.isfinite(lng)
+    )
+
+
+def random_place(archive, rng=None):
+    """Somewhere on this map, for the dice: one chunk of the place index
+    drawn by how many places it holds, then one place in it. A named place
+    over an address when the chunk has one, and a settlement over the rest;
+    an address is a fine surprise too when that is all there is. None for a map
+    without a place index or an empty one."""
+    rng = rng or random
+    manifest = manifest_for(archive)
+    if manifest is None:
+        return None
+    chunks = manifest.get("chunks") or {}
+    keys = list(chunks)
+    if not keys:
+        return None
+    weights = [chunks[k] if isinstance(chunks[k], (int, float)) and chunks[k] > 0 else 1 for k in keys]
+    for _ in range(4):  # a chunk the manifest names but the map lacks
+        key = rng.choices(keys, weights=weights)[0]
+        entries = _read_json(archive, CHUNK_DIR + key + ".json", _CHUNK_MAX_BYTES)
+        if not isinstance(entries, list):
+            continue
+        usable = [e for e in entries if isinstance(e, dict) and _has_coords(e)]
+        if not usable:
+            continue
+        # A settlement first (a town is a surprise you can name), then any
+        # named thing, then an address when that is all the chunk holds.
+        towns = [e for e in usable if e.get("t") == "place"]
+        named = [e for e in usable if e.get("t") != "address"]
+        return _place_dict(rng.choice(towns or named or usable))
+    return None
 
 
 def _reset_for_tests():

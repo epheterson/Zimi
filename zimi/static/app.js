@@ -1612,8 +1612,11 @@ function updateTopbar() {
   // the inline row to the essentials (Eric: reconsider what's behind ⋯, we
   // have a lot going on). Desktop keeps them inline; the space is there.
   var _foldReaderExtras = _readingArticle && _isNarrow();
+  // A map is read with the eyes and the hands: no type size, no read-aloud,
+  // no Reader View. _syncReaderViewBtn and the ⋯ menu know the same rule.
+  var _readingText = _readingArticle && !_isMapPage();
   var fontBtn = document.getElementById('font-btn');
-  if (fontBtn) fontBtn.style.display = (_readingArticle && !_foldReaderExtras) ? 'flex' : 'none';
+  if (fontBtn) fontBtn.style.display = (_readingText && !_foldReaderExtras) ? 'flex' : 'none';
   // Bookmarks-panel opener — reader only (#65). Everywhere else the library
   // button already opens the panel, but while reading it becomes the
   // save-bookmark toggle, which left the bookmark tree unreachable without
@@ -1629,7 +1632,11 @@ function updateTopbar() {
     if (!showMapSrc) _closeMapSourceDropdown();
   }
   var ttsBtn = document.getElementById('tts-btn');
-  if (ttsBtn) ttsBtn.style.display = (_readingArticle && _TTS_AVAILABLE && !_foldReaderExtras) ? 'flex' : 'none';
+  if (ttsBtn) ttsBtn.style.display = (_readingText && _TTS_AVAILABLE && !_foldReaderExtras) ? 'flex' : 'none';
+  // The dice on a map roll a place, and say so.
+  var randomLabel = t(_isMapPage() ? 'random_place' : 'random_article');
+  randomBtn.title = randomLabel;
+  randomBtn.setAttribute('aria-label', randomLabel);
   _syncReaderViewBtn(); // book/reader-view glyph — gated on extractable content
   // Desktop: show save button when viewing a downloadable file (PDF, EPUB)
   var saveBtn = document.getElementById('save-btn');
@@ -15312,7 +15319,7 @@ function _readerViewToggle() {
 function _syncReaderViewBtn() {
   // Never on Create, whatever is open behind it: there is no article there to
   // read a reading mode into.
-  var avail = _readerViewAvailable() && !_createOpen;
+  var avail = _readerViewAvailable() && !_createOpen && !_isMapPage();
   var btn = document.getElementById('readerview-btn');
   if (btn) {
     btn.style.display = avail ? 'flex' : 'none';
@@ -15705,6 +15712,14 @@ function mapPositionHash(zoom, lat, lng) {
   return 'map=' + (+zoom).toFixed(2) + '/' + (+lat).toFixed(5) + '/' + (+lng).toFixed(5);
 }
 
+// One spelling for a position wherever it is written down (history, the
+// address, a bookmark): the server writes map=14/21.3/-157.8, the map's own
+// moveend writes map=14.00/21.30000/-157.80000, and they must compare equal.
+function _normMapPos(pos) {
+  var p = parseMapHash('#' + (pos || ''));
+  return p ? mapPositionHash(p.zoom, p.lat, p.lng) : (pos || '');
+}
+
 function parseMapHash(hash) {
   var m = _MAP_HASH_RE.exec(hash || '');
   if (!m) return null;
@@ -15764,6 +15779,12 @@ window.addEventListener('hashchange', function() {
         Math.abs(map.getZoom() - pos.zoom) < 0.01) return;
     map.jumpTo({center: [pos.lng, pos.lat], zoom: pos.zoom});
   } catch (e) {}
+  // Back to a place you were at: the tab is called what it was called then.
+  var was = _histFindPlace(currentArticle && currentArticle.zim, location.hash.slice(1));
+  if (was) {
+    document.title = was.title + ' \u2014 Zimi';
+    _setWindowTitle(document.title);
+  }
 });
 
 // Run a query in the map's own search box. StreetZim's index holds towns,
@@ -15870,6 +15891,15 @@ function _spaMapPlace(e, el) {
 // carried in the hash, so Back returns to the map you left, where you were.
 function _isMapZim(name) {
   return (zimsCache || []).some(function(z) { return z.name === name && z.kind === 'map'; });
+}
+
+// The page on screen is a map. Eric, 2026-09-18: "Maps should remove speaker
+// icon and either remove or modify random bookmarks history to be for maps.
+// Think about that whole top bar." A map has nothing to read aloud, no
+// reading mode and no type size; its Random is a random place, its
+// bookmarks and history are places, and its language is the map's own.
+function _isMapPage() {
+  return !!(readerOpen && !_almanacOpen && !_createOpen && currentArticle && _isMapZim(currentArticle.zim));
 }
 
 // Where the open map is, as a hash fragment, read from the map itself so it
@@ -16547,20 +16577,40 @@ function _histSave() {
   if (!_persistHist) return;
   try { localStorage.setItem(_HIST_KEY, JSON.stringify(_persistHist)); } catch(e) {}
 }
-function _histPushArticle(zim, path, title) {
+function _histPushArticle(zim, path, title, pos) {
   var h = _histLoad();
   // Deduplicate: remove if same zim+path exists recently (within last 5 entries)
   for (var i = 0; i < Math.min(5, h.length); i++) {
-    if (h[i].type === 'article' && h[i].zim === zim && h[i].path === path) {
+    if (h[i].type === 'article' && h[i].zim === zim && h[i].path === path && (h[i].pos || '') === _normMapPos(pos)) {
       h.splice(i, 1);
       break;
     }
   }
   var entry = { type: 'article', zim: zim, path: path, title: title || _titleFromPath(path), timestamp: Date.now() };
+  // A place on a map: the same page as every other visit to that map, so
+  // the visit is the place, and reopening it returns there.
+  if (pos) entry.pos = _normMapPos(pos);
   if (_currentSearchQuery) entry.fromQuery = _currentSearchQuery;
   h.unshift(entry);
   if (h.length > _HIST_MAX) h.length = _HIST_MAX;
   _histSave();
+}
+// The fourth argument of a history row's openArticle: the place, when the
+// visit was one. Written into an inline handler, so it is source text.
+function _histPosArg(entry) {
+  return entry.pos ? ',{pos:\'' + escJs(entry.pos) + '\'}' : '';
+}
+// The most recent visit to a place on a map, by its position hash, or null.
+// Positions are written to the same precision everywhere (mapPositionHash),
+// so the address after a Back is the same string the visit was recorded with.
+function _histFindPlace(zim, pos) {
+  if (!zim || !pos) return null;
+  pos = _normMapPos(pos);
+  var h = _histLoad();
+  for (var i = 0; i < h.length; i++) {
+    if (h[i].type === 'article' && h[i].zim === zim && h[i].pos === pos) return h[i];
+  }
+  return null;
 }
 function _histPushSearch(query, zimName, resultCount) {
   var h = _histLoad();
@@ -16690,7 +16740,7 @@ function _renderHistoryContent() {
         var child = h[j];
         var cIcon = child.zim ? _sourceIconHtml(child.zim, 16) : '';
         var cSub = child.zim ? _zimTitleWithLang(child.zim) : '';
-        html += '<div class="hp-item" style="padding-left:38px" onclick="_closeLibraryPanel();openArticle(\'' + escJs(child.zim) + '\',\'' + escJs(child.path) + '\',\'' + escJs(child.title || '') + '\')">' +
+        html += '<div class="hp-item" style="padding-left:38px" onclick="_closeLibraryPanel();openArticle(\'' + escJs(child.zim) + '\',\'' + escJs(child.path) + '\',\'' + escJs(child.title || '') + '\'' + _histPosArg(child) + ')">' +
           '<div class="hp-icon" style="width:22px;height:22px">' + cIcon + '</div>' +
           '<div class="hp-detail"><div class="hp-title">' + esc(child.title || child.path) + '</div>' +
           '<div class="hp-sub">' + esc(cSub) + '</div></div>' +
@@ -16701,7 +16751,7 @@ function _renderHistoryContent() {
     } else if (item.type === 'article') {
       var aIcon = item.zim ? _sourceIconHtml(item.zim, 20) : _BM_PAGE_SVG;
       var aSub = item.zim ? _zimTitleWithLang(item.zim) : '';
-      html += '<div class="hp-item" onclick="_closeLibraryPanel();openArticle(\'' + escJs(item.zim) + '\',\'' + escJs(item.path) + '\',\'' + escJs(item.title || '') + '\')">' +
+      html += '<div class="hp-item" onclick="_closeLibraryPanel();openArticle(\'' + escJs(item.zim) + '\',\'' + escJs(item.path) + '\',\'' + escJs(item.title || '') + '\'' + _histPosArg(item) + ')">' +
         '<div class="hp-icon">' + aIcon + '</div>' +
         '<div class="hp-detail"><div class="hp-title">' + esc(item.title || item.path) + '</div>' +
         '<div class="hp-sub">' + esc(aSub) + '</div></div>' +
@@ -18006,7 +18056,30 @@ function _updateLibraryBtnIcon() {
     panelBtn.title = t('bookmarks');
   }
 }
+// What a page is called when nobody said: a map is called by its name (the
+// same page every visit, the place is the visit), anything else by its path.
+function _fallbackTitle(zim, path) {
+  return _isMapZim(zim) ? _zimTitle(zim) : _titleFromPath(path);
+}
+
 function openArticle(zim, path, title, opts) {
+  // A place on the map already on screen: fly there. Reloading an 800,000
+  // entry map to move within it is a second of grey; the map is right here.
+  // History gets the place (Back returns to the last one), the address gets
+  // the place, the title gets the place, and the map jumps.
+  if (opts && opts.pos && currentArticle && currentArticle.zim === zim &&
+      currentArticle.path === path && !_isModClick() && _readerMap()) {
+    var flyPos = parseMapHash('#' + opts.pos);
+    if (flyPos) {
+      var flyTitle = title || _fallbackTitle(zim, path);
+      _histPushArticle(zim, path, flyTitle, opts.pos);
+      history.pushState({ mode: 'reader', zim: zim, path: path }, '', _articleDeepLinkPath(zim, path) + '#' + opts.pos);
+      _restoreMapPosition(flyPos, 0);
+      document.title = flyTitle + ' \u2014 Zimi';
+      _setWindowTitle(document.title);
+      return;
+    }
+  }
   // Leaving a map: stop following it, and drop its position from the address
   // so the next article does not inherit a place it has nothing to do with.
   if (_mapWatched) {
@@ -18049,7 +18122,7 @@ function openArticle(zim, path, title, opts) {
   // Start interlang prefetch immediately (don't wait for iframe load)
   _prefetchArticleLangs();
   // Persist to browse history (localStorage)
-  _histPushArticle(zim, path, title || _titleFromPath(path));
+  _histPushArticle(zim, path, title || _fallbackTitle(zim, path), opts && opts.pos);
   // Address bar always carries the SPA's canonical deep-link form (?a=<zim>/<path>),
   // never the raw /w/ content URL. A /w/<zim>/<path> URL is served as the BARE ZIM
   // article (no Zimi chrome), so leaving one in the bar strands the user in a
@@ -18075,7 +18148,7 @@ function openArticle(zim, path, title, opts) {
   openReader(url);
   // Use explicit title if provided (e.g. from catalog or search results),
   // fall back to deriving from the URL path segment
-  var readerTitle = title || _titleFromPath(path);
+  var readerTitle = title || _fallbackTitle(zim, path);
   if (readerTitle) {
     var t2 = readerTitle + ' — Zimi';
     document.title = t2;
@@ -18380,7 +18453,8 @@ function _buildTopbarMenuHtml() {
   //     viewport they stay inline, so listing them here too would duplicate them.
   var readerGroup = '';
   if (readerOpen && !_almanacOpen && !_createOpen) {
-    var rvAvail = _readerViewAvailable();
+    // On a map there is nothing to read: none of the reading rows.
+    var rvAvail = _readerViewAvailable() && !_isMapPage();
     var rvOn = _readerViewOn && rvAvail;
     // 1. Reader View toggle — always first. A switch: tapping flips it and the
     // menu rebuilds in place (compact controls appear/disappear beneath).
@@ -18396,7 +18470,7 @@ function _buildTopbarMenuHtml() {
       readerGroup += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
     }
     // 3. Read aloud.
-    if (_TTS_AVAILABLE) {
+    if (_TTS_AVAILABLE && !_isMapPage()) {
       readerGroup += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
         '" onclick="event.stopPropagation();_ttsToggle()">' + _TBM_TTS_ICON +
         ' <span class="tbm-label">' + tH(_ttsSpeaking ? 'tts_stop' : 'tts_speak') + '</span></button>';
@@ -18427,7 +18501,7 @@ function _buildTopbarMenuHtml() {
   // back when it hid the inline buttons; it keeps them now, so forcing it here
   // listed Random and Language twice in the same bar (#68).
   if (_isNarrow()) {
-    navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH('random') + '</button>';
+    navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH(_isMapPage() ? 'random_place' : 'random') + '</button>';
     if (!_getStorageFlag(SK.HIDE_LANG_CHOOSER)) navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
     // Manage row: while downloads are active, carry the count and route the tap
     // straight to the downloads view (the badge on the ⋯ button is only a dot).
@@ -18572,15 +18646,18 @@ async function randomArticle(event) {
   btn._randomBusy = true;
   btn.classList.add('rolling');
   try {
-    var zimParam = currentSource ? '?zim=' + encodeURIComponent(currentSource) : '';
+    // On a map the dice stay on the map, whatever source the search bar is
+    // scoped to: a random place here, not a random article from the library.
+    var randomScope = _isMapPage() ? currentArticle.zim : currentSource;
+    var zimParam = randomScope ? '?zim=' + encodeURIComponent(randomScope) : '';
     // Unscoped rolls retry a couple of times — right after startup the
     // ZIM list/archives may not be warm yet and the first roll can 500
     // or come back empty; a silent no-op reads as a dead button.
-    var attempts = currentSource ? 1 : 3;
+    var attempts = randomScope ? 1 : 3;
     for (var i = 0; i < attempts; i++) {
       var res = await fetch('/random' + zimParam);
       var data = await res.json().catch(function() { return {error: 'bad json'}; });
-      if (!data.error) { openArticle(data.zim, data.path, data.title); return; }
+      if (!data.error) { openArticle(data.zim, data.path, data.title, data.pos ? {pos: data.pos} : undefined); return; }
       if (i < attempts - 1) await new Promise(function(r) { setTimeout(r, 400); });
     }
     // Fallback for zimgit/PDF ZIMs: pick random doc from catalog

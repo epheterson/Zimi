@@ -2236,13 +2236,20 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if zim:
                     if zim not in _srv.get_zim_files():
                         return self._json(404, {"error": f"ZIM '{zim}' not found"})
+                    # A map has no articles; its dice land on a place.
+                    if _srv._is_map_zim(zim):
+                        place = _srv._random_map_place(zim)
+                        return self._json(200, place or {"error": "no places found"})
                     pick_names = [zim]
                 else:
+                    # Maps are left out: their entries are tiles, and the
+                    # dice would come up "no articles found".
                     eligible = [
                         z
                         for z in (_srv._zim_list_cache or [])
                         if isinstance(z.get("entries"), int)
                         and z["entries"] > 100
+                        and z.get("kind") != "map"
                         and _srv.zim_allowed(z["name"])
                     ]
                     if not eligible:

@@ -708,6 +708,7 @@
   "maps_source_streetzim": "StreetZim",
   "map_source": "מפות אחרות כאן",
   "map_source_elsewhere": "במקום אחר",
+  "random_place": "מקום אקראי",
   "maps_source_kiwix": "מפות Kiwix",
   "find_on_map": "חפש “{q}” ב-{map}",
   "cat_qa": "קהילות שאלות ותשובות",

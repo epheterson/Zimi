@@ -708,6 +708,7 @@
   "maps_source_streetzim": "StreetZim",
   "map_source": "Другие карты здесь",
   "map_source_elsewhere": "В другом месте",
+  "random_place": "Случайное место",
   "maps_source_kiwix": "Карты Kiwix",
   "find_on_map": "Найти «{q}» на {map}",
   "cat_qa": "Сообщества Q&A",

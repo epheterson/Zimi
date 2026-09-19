@@ -42,7 +42,9 @@ class _File(Item):
         return self._path
 
     def get_title(self) -> str:
-        return ""
+        # Titled by its last path segment: maps2zim's search/<Place> pages
+        # are titled, and libzim's random draw only lands on titled entries.
+        return self._path.rsplit("/", 1)[-1]
 
     def get_mimetype(self) -> str:
         return "application/octet-stream"
@@ -51,7 +53,9 @@ class _File(Item):
         return _StringProvider(self._blob)
 
     def get_hints(self) -> dict:
-        return {}
+        # A front article, like maps2zim's own search/<Place> pages, so the
+        # random-entry draw can land on it the way it does on the real ZIM.
+        return {Hint.FRONT_ARTICLE: True}
 
 
 class _Article(Item):

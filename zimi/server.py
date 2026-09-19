@@ -1940,6 +1940,11 @@ def _read_map_facts(path):
         return {"map_source": "", "map_bounds": None}
 
 
+def _is_map_zim(name):
+    """Whether the registered ZIM ``name`` is a map, from the list cache."""
+    return any(z.get("name") == name and z.get("kind") == "map" for z in (_zim_list_cache or []))
+
+
 def _read_zim_kind(path):
     """``_zim_kind`` for a cache record written before ``kind`` existed.
 
@@ -4567,6 +4572,7 @@ def __getattr__(name):
 
 
 from zimi.search import (  # noqa: E402, F401
+    _random_map_place,
     # Search / suggest caches (dicts + constants + functions)
     _search_cache,
     SEARCH_CACHE_MAX,

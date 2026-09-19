@@ -1975,6 +1975,60 @@ def _maybe_did_you_mean(query_str):
 _PLACES_PER_MAP = 5
 
 
+# Kiwix's maps2zim writes one page per place under search/<Name>, a meta
+# refresh onto the map at the place. The dice read the place out of it.
+_MAPS2ZIM_POS_RE = re.compile(r"#lat=(-?\d+(?:\.\d+)?)&lon=(-?\d+(?:\.\d+)?)(?:&zoom=(\d+))?")
+_RANDOM_MAP_TRIES = 60
+
+
+def _random_map_place(name):
+    """Somewhere on the map ``name``, for the dice: ``{zim, path, title, pos}``
+    with the map's own page and a ``map=z/lat/lng`` hash, or None when the
+    map has no place Zimi can find. StreetZim maps carry a place index;
+    Kiwix's carry a page per place, 97 of every 100 entries on Samoa, so a
+    few random draws find one."""
+    from zimi import mapsearch
+
+    entry = next((z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None)
+    if not entry or entry.get("kind") != "map" or not entry.get("main_path"):
+        return None
+    try:
+        archive, lock = _get_fts_archive(name)
+    except Exception as e:
+        log.debug("random place: no archive for %s: %s", name, e)
+        return None
+    if archive is None or lock is None:
+        return None
+    with lock:
+        place = None
+        if mapsearch.has_place_index(archive):
+            found = mapsearch.random_place(archive)
+            if found:
+                place = (found["name"], found["zoom"], found["lat"], found["lng"])
+        else:
+            for _ in range(_RANDOM_MAP_TRIES):
+                try:
+                    e = archive.get_random_entry()
+                    if not e.path.startswith("search/") or e.is_redirect:
+                        continue
+                    html = bytes(e.get_item().content).decode("utf-8", "replace")
+                except Exception:
+                    continue
+                m = _MAPS2ZIM_POS_RE.search(html)
+                if m:
+                    place = (e.title or e.path[7:], int(m.group(3) or 10), float(m.group(1)), float(m.group(2)))
+                    break
+    if not place:
+        return None
+    title, zoom, lat, lng = place
+    return {
+        "zim": name,
+        "path": entry["main_path"],
+        "title": title,
+        "pos": f"map={zoom}/{lat}/{lng}",
+    }
+
+
 def _search_places(query_str, target_names):
     """One group per searched map with a place index, best places first."""
     from zimi import mapsearch

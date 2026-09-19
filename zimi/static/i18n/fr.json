@@ -708,6 +708,7 @@
   "maps_source_streetzim": "StreetZim",
   "map_source": "Autres cartes ici",
   "map_source_elsewhere": "Ailleurs",
+  "random_place": "Lieu au hasard",
   "maps_source_kiwix": "Cartes Kiwix",
   "find_on_map": "Chercher « {q} » sur {map}",
   "cat_qa": "Communautés Q&R",

@@ -708,6 +708,7 @@
   "maps_source_streetzim": "StreetZim",
   "map_source": "此处的其他地图",
   "map_source_elsewhere": "其他地区",
+  "random_place": "随机地点",
   "maps_source_kiwix": "Kiwix 地图",
   "find_on_map": "在{map}上查找“{q}”",
   "cat_qa": "问答社区",
