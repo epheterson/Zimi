@@ -15939,26 +15939,33 @@ function _mapCovers(z, pos) {
 // The maps that cover where you are, then the rest under a divider. A map of
 // Samoa opened at Honolulu shows Samoa, whatever the URL says, so the list
 // says which switches keep the place before the switch is made.
-// ``extras.middle`` (the catalog's offers) sits between the maps of here and
-// the maps of elsewhere: a map of this ground, installed or not, comes
-// before a map of somewhere else. ``extras.end`` is the way to all of them.
+// The picker. One line per map: the name, then on the right what tells it
+// apart (whose map it is) or what it costs (its size). Installed maps of
+// here first, the catalog's offers of here (the planet among them, last),
+// the installed maps of elsewhere folded behind one row, then the way to
+// all maps. No headings with rules under them: a small label is enough.
+// ``extras`` is ``{middle, end}`` from _mapOfferRowsHtml, or absent.
+var _MP_DOWN_SVG = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="M6 12l6 6 6-6"/></svg>';
+
+function _mpRow(z, active) {
+  return '<div class="mp-row' + (active ? ' active' : '') + '" role="menuitemradio" aria-checked="' + active +
+    '" data-zim="' + escAttr(z.name) + '" data-path="' + escAttr(z.main_path) + '" data-title="' + escAttr(z.title || z.name) + '">' +
+    '<span class="mp-name">' + esc(z.title || z.name) + '</span>' +
+    '<span class="mp-meta">' + esc(_mapSourceLabel(z)) + (active ? ' <span class="mp-check">\u2713</span>' : '') + '</span></div>';
+}
+
 function _mapSourceRowsHtml(maps, currentName, pos, extras) {
   var here = [], elsewhere = [];
   for (var i = 0; i < maps.length; i++) {
     (_mapCovers(maps[i], pos) === false ? elsewhere : here).push(maps[i]);
   }
-  var row = function(z) {
-    var active = z.name === currentName;
-    var label = _mapSourceLabel(z);
-    return '<div class="lang-dropdown-item' + (active ? ' active' : '') + '" role="menuitemradio" aria-checked="' + active +
-      '" data-zim="' + escAttr(z.name) + '" data-path="' + escAttr(z.main_path) + '" data-title="' + escAttr(z.title || z.name) + '">' +
-      '<span class="ld-name">' + esc(z.title || z.name) +
-      (label ? '<span class="ld-sub">' + esc(label) + '</span>' : '') + '</span>' +
-      (active ? '<span class="check">\u2713</span>' : '') + '</div>';
-  };
+  var row = function(z) { return _mpRow(z, z.name === currentName); };
   var h = here.map(row).join('') + ((extras && extras.middle) || '');
   if (elsewhere.length) {
-    h += '<div class="ld-divider" role="separator">' + esc(tH('map_source_elsewhere')) + '</div>' + elsewhere.map(row).join('');
+    // Folded: seven maps of other places are noise until you want one.
+    h += '<div class="mp-row mp-fold" role="menuitem" aria-expanded="false" data-role="fold">' +
+      '<span class="mp-name">' + esc(tH('map_source_elsewhere')) + '</span><span class="mp-meta">' + elsewhere.length + '</span></div>' +
+      '<div class="mp-folded" hidden>' + elsewhere.map(row).join('') + '</div>';
   }
   return h + ((extras && extras.end) || '');
 }
@@ -16036,31 +16043,29 @@ function _mapOfferGroups(items, pos) {
 
 function _mapOfferRow(it) {
   var source = it.source === 'streetzim' ? 'StreetZim' : 'Kiwix';
-  var sub = source + (it.size_bytes ? ' \u00b7 ' + fmtBytes(it.size_bytes) : '');
-  return '<div class="lang-dropdown-item ld-offer" role="menuitem" data-role="offer" data-url="' + escAttr(it.download_url || '') +
-    '" data-title="' + escAttr(it.title || it.name) + '"><span class="ld-name">' + esc(it.title || it.name) +
-    '<span class="ld-sub">' + esc(sub) + '</span></span><span class="ld-get">' + esc(t('download')) + '</span></div>';
+  return '<div class="mp-row mp-offer" role="menuitem" data-role="offer" data-url="' + escAttr(it.download_url || '') +
+    '" data-title="' + escAttr(it.title || it.name) + '">' +
+    '<span class="mp-name">' + esc(it.title || it.name) + '<span class="mp-tag">' + esc(source) + '</span></span>' +
+    '<span class="mp-meta">' + (it.size_bytes ? esc(fmtBytes(it.size_bytes)) + ' ' : '') + _MP_DOWN_SVG + '</span></div>';
 }
 
 // ``{middle, end}`` for _mapSourceRowsHtml: the offers, and the punch-out.
+// The planet sits at the end of the same list: "World" needs no heading.
 function _mapOfferRowsHtml(groups) {
-  var h = '';
-  if (groups.here.length) {
-    h += '<div class="ld-divider" role="separator">' + esc(tH('map_offer_here')) + '</div>' + groups.here.map(_mapOfferRow).join('');
-  }
-  if (groups.world.length) {
-    h += '<div class="ld-divider" role="separator">' + esc(tH('map_offer_world')) + '</div>' + groups.world.map(_mapOfferRow).join('');
-  }
+  var offers = groups.here.concat(groups.world);
+  var middle = offers.length
+    ? '<div class="mp-head" role="separator">' + esc(tH('map_offer_here')) + '</div>' + offers.map(_mapOfferRow).join('')
+    : '';
   return {
-    middle: h,
-    end: '<div class="lang-dropdown-item ld-link" role="menuitem" data-role="all-maps">' + esc(tH('map_offer_all')) + '</div>',
+    middle: middle,
+    end: '<div class="mp-row mp-link" role="menuitem" data-role="all-maps"><span class="mp-name">' + esc(tH('map_offer_all')) + '</span></div>',
   };
 }
 
 async function _mapOfferDownload(row) {
   var url = row.getAttribute('data-url'), title = row.getAttribute('data-title') || '';
   if (!url) return;
-  row.classList.add('ld-busy');
+  row.classList.add('mp-busy');
   await downloadZim(url, null);
   _closeMapSourceDropdown();
   _showToast(tH('map_offer_started', {map: title}));
@@ -16081,7 +16086,7 @@ function _renderMapSourceDropdown(dd) {
   if (_mapOfferLoaded) {
     extras = _mapOfferRowsHtml(_mapOfferGroups(_mapOfferAll(), pos));
   } else {
-    extras = {end: '<div class="lang-dropdown-item ld-wait" aria-busy="true">\u2026</div>'};
+    extras = {end: '<div class="mp-row mp-wait" aria-busy="true"><span class="mp-name">\u2026</span></div>'};
     _mapOfferItems().then(function() {
       if (dd.classList.contains('visible')) _renderMapSourceDropdown(dd);
     });
@@ -16098,9 +16103,16 @@ function toggleMapSourceDropdown(event) {
   if (dd.classList.contains('visible')) { _closeMapSourceDropdown(); return; }
   _renderMapSourceDropdown(dd);
   dd.onclick = function(e) {
-    var row = e.target.closest('.lang-dropdown-item');
+    var row = e.target.closest('.mp-row');
     if (!row) return;
     var role = row.getAttribute('data-role');
+    if (role === 'fold') {
+      var folded = row.nextElementSibling;
+      var open = folded && folded.hidden;
+      if (folded) folded.hidden = !open;
+      row.setAttribute('aria-expanded', String(!!open));
+      return;
+    }
     if (role === 'offer') { _mapOfferDownload(row); return; }
     if (role === 'all-maps') { _openMapsCatalog(); return; }
     if (!row.getAttribute('data-zim')) return;

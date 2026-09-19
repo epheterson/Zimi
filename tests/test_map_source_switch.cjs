@@ -54,6 +54,7 @@ vm.runInContext([
   extract(/function _currentMapPositionHash\(\) \{[\s\S]*?\n\}/, '_currentMapPositionHash'),
   extract(/function _mapSourceLabel\(z\) \{[\s\S]*?\n\}/, '_mapSourceLabel'),
   extract(/function _mapCovers\(z, pos\) \{[\s\S]*?\n\}/, '_mapCovers'),
+  extract(/function _mpRow\(z, active\) \{[\s\S]*?\n\}/, '_mpRow'),
   extract(/function _mapSourceRowsHtml\(maps, currentName, pos, extras\) \{[\s\S]*?\n\}/, '_mapSourceRowsHtml'),
   extract(/function _switchMapSource\(name, path, title\) \{[\s\S]*?\n\}/, '_switchMapSource'),
 ].join('\n'), ctx);
@@ -61,14 +62,15 @@ vm.runInContext([
 // The rows, from Honolulu
 const honolulu = { lat: 21.3069, lng: -157.8583, zoom: 14 };
 const rows = ctx._mapSourceRowsHtml(ctx._installedMaps(), 'osm-hawaii', honolulu);
-ok('one row per installed map, none for the encyclopedia', (rows.match(/lang-dropdown-item/g) || []).length === 4 && !/Wikipedia/.test(rows));
-ok('the open map is the checked one', /item active" role="menuitemradio" aria-checked="true" data-zim="osm-hawaii"/.test(rows));
-ok('each row says whose map it is', /Hawaii<span class="ld-sub">StreetZim<\/span>/.test(rows) && /Hawaii \(Kiwix\)<span class="ld-sub">Kiwix<\/span>/.test(rows));
-const order = Array.from(rows.matchAll(/data-zim="([^"]+)"|ld-divider/g)).map(m => m[1] || 'divider');
-ok('maps that cover the spot first, then a divider, then the rest', order.join(',') === 'osm-hawaii,maps_en_hawaii,maps_en_islands,divider,samoa', order.join(','));
+ok('one row per installed map, none for the encyclopedia', (rows.match(/class="mp-row/g) || []).length === 5 && !/Wikipedia/.test(rows));  // 4 maps + the fold row
+ok('the open map is the checked one', /mp-row active" role="menuitemradio" aria-checked="true" data-zim="osm-hawaii"/.test(rows) && /mp-check/.test(rows));
+ok('each row says whose map it is, on the same line', /<span class="mp-name">Hawaii<\/span><span class="mp-meta">StreetZim/.test(rows) && /<span class="mp-name">Hawaii \(Kiwix\)<\/span><span class="mp-meta">Kiwix<\/span>/.test(rows));
+const order = Array.from(rows.matchAll(/data-zim="([^"]+)"|data-role="fold"/g)).map(m => m[1] || 'fold');
+ok('maps that cover the spot first, then the fold, then the rest behind it', order.join(',') === 'osm-hawaii,maps_en_hawaii,maps_en_islands,fold,samoa' && /<div class="mp-folded" hidden>[\s\S]*data-zim="samoa"/.test(rows), order.join(','));
+ok('the fold says how many it hides', /data-role="fold"><span class="mp-name">Elsewhere<\/span><span class="mp-meta">1<\/span>/.test(rows));
 ok('a map with unknown ground is not ruled out', ctx._mapCovers(ctx.zimsCache[3], honolulu) === null);
 ok('a box across the antimeridian still contains its inside', ctx._mapCovers({ map_bounds: [170, -20, -170, -10] }, { lat: -15, lng: 179 }) === true && ctx._mapCovers({ map_bounds: [170, -20, -170, -10] }, { lat: -15, lng: 0 }) === false);
-ok('no position known: every map is listed, no divider', !/ld-divider/.test(ctx._mapSourceRowsHtml(ctx._installedMaps(), 'osm-hawaii', null)));
+ok('no position known: every map is listed, nothing folded', !/data-role="fold"/.test(ctx._mapSourceRowsHtml(ctx._installedMaps(), 'osm-hawaii', null)) && (ctx._mapSourceRowsHtml(ctx._installedMaps(), 'osm-hawaii', null).match(/class="mp-row/g) || []).length === 4);
 ok('a map only a map ZIM counts', ctx._isMapZim('osm-hawaii') && !ctx._isMapZim('wikipedia_en_all') && !ctx._isMapZim('nope'));
 
 // The position travels: from the live map first
@@ -117,6 +119,7 @@ vm.runInContext([
   extract(/var _MAP_OFFERS_HERE = [^\n]*\n/, '_MAP_OFFERS_HERE'), extract(/var _MAP_OFFERS_WORLD = [^\n]*\n/, '_MAP_OFFERS_WORLD'),
   extract(/function _mapOfferInstalled\(it\) \{[\s\S]*?\n\}/, '_mapOfferInstalled'),
   extract(/function _mapOfferGroups\(items, pos\) \{[\s\S]*?\n\}/, '_mapOfferGroups'),
+  extract(/var _MP_DOWN_SVG = [^\n]*\n/, '_MP_DOWN_SVG'),
   extract(/function _mapOfferRow\(it\) \{[\s\S]*?\n\}/, '_mapOfferRow'),
   extract(/function _mapOfferRowsHtml\(groups\) \{[\s\S]*?\n\}/, '_mapOfferRowsHtml'),
 ].join('\n'), ctx);
@@ -136,13 +139,13 @@ ok('the planet under its own heading', groups.world.map(m => m.name).join(',') =
 ok('an installed catalog map is not offered', !groups.here.concat(groups.world).some(m => m.name === 'maps_en_samoa'));
 ok('no position: nothing of here, still the planet and the way to all', ctx._mapOfferGroups(catalog, null).here.length === 0 && ctx._mapOfferGroups(catalog, null).world.length === 1);
 const offerParts = ctx._mapOfferRowsHtml(groups); const offers = offerParts.middle + offerParts.end;
-ok('a row says whose map and how big, and offers to get it', /Pacific Islands<span class="ld-sub">StreetZim · 3 GB<\/span><\/span><span class="ld-get">Download/.test(offers) && /United States<span class="ld-sub">Kiwix · 22 GB/.test(offers), offers.slice(0, 200));
+ok('a row says whose map on the line and how big on the right, with the arrow', /Pacific Islands<span class="mp-tag">StreetZim<\/span><\/span><span class="mp-meta">3 GB <svg/.test(offers) && /United States<span class="mp-tag">Kiwix<\/span><\/span><span class="mp-meta">22 GB <svg/.test(offers) && !/Download/.test(offers), offers.slice(0, 200));
 ok('the rows carry the download URL', /data-role="offer" data-url="https:\/\/archive\.org\/download\/streetzim-pacific-islands\/x\.zim"/.test(offers));
-ok('headings for here and the world, then the punch-out to the full catalog', /Get a map of here[\s\S]*Worldwide[\s\S]*data-role="all-maps">All maps in the catalog/.test(offers));
+ok('one heading, the planet last in the same list, then the punch-out', /mp-head" role="separator">Get a map of here<\/div>[\s\S]*Pacific Islands[\s\S]*North America[\s\S]*World<span class="mp-tag">Kiwix/.test(offers) && !/Worldwide/.test(offers) && /data-role="all-maps"><span class="mp-name">All maps in the catalog/.test(offers));
 const whole = ctx._mapSourceRowsHtml(ctx._installedMaps(), 'osm-hawaii', honolulu, offerParts);
-const wholeOrder = Array.from(whole.matchAll(/data-zim="([^"]+)"|data-role="([^"]+)"|ld-divider" role="separator">([^<]+)/g)).map(m => m[1] || m[2] || m[3]);
+const wholeOrder = Array.from(whole.matchAll(/data-zim="([^"]+)"|data-role="([^"]+)"|mp-head" role="separator">([^<]+)/g)).map(m => m[1] || m[2] || m[3]);
 ok('a map of this ground, installed or not, comes before a map of elsewhere; the way to all maps last',
-  wholeOrder.join(',') === 'osm-hawaii,maps_en_hawaii,maps_en_islands,Get a map of here,offer,offer,offer,Worldwide,offer,Elsewhere,samoa,all-maps', wholeOrder.join(','));
+  wholeOrder.join(',') === 'osm-hawaii,maps_en_hawaii,maps_en_islands,Get a map of here,offer,offer,offer,offer,fold,samoa,all-maps', wholeOrder.join(','));
 ok('the dropdown loads both catalogs once and re-renders when they arrive', /var got = await _fetchCatalogItems\(\);[\s\S]*_kiwixOffers = placed\(got\.items\);/.test(src) && /manageFetch\('\/manage\/catalog-streetzim'\)/.test(fn('_mapOfferItems')) && /_mapOfferItems\(\)\.then\(function\(\) \{\n\s*if \(dd\.classList\.contains\('visible'\)\) _renderMapSourceDropdown\(dd\);/.test(src));
 ok('only maps the server could place are kept, from a fresh fetch', /return _kiwixOffers\.concat\(_streetzimOffers\)/.test(src) && /extras = _mapOfferRowsHtml\(_mapOfferGroups\(_mapOfferAll\(\), pos\)\)/.test(src));
 ok('an offer row starts the download through the ordinary path and says where to watch it', /await downloadZim\(url, null\);[\s\S]*_showToast\(tH\('map_offer_started', \{map: title\}\)\)/.test(fn('_mapOfferDownload')));
