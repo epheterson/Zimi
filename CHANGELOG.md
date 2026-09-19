@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.10.0] - 2026-09-18
+
+### Added
+
+- Maps. Offline map ZIMs open in the reader: Kiwix's 193 regional maps and StreetZim builds. Panning writes the position into the address, so a link or a bookmark returns to the same place at the same zoom, and Back and Forward behave. Maps are a category of their own in the catalog, a map ZIM is filed as a map from its own metadata whatever the file is called, and Discover shows a Maps card with a chip per installed map.
+- Place search. Place names on Kiwix maps are searchable from the search bar and opening one flies the map there. For maps that carry their own search box (StreetZim), the search bar offers to run the words there, one tap from the bar to the map's own results.
+- The catalog works offline. Zimi ships a snapshot of the Kiwix catalog with a magnet link for every entry, so a machine that has never been online can still browse and queue downloads. After the first successful fetch the full catalog is cached; the live catalog replaces it whenever it can be reached.
+
+### Fixed
+
+- ZIMs without a full-text index answer the search bar from their titles.
+- A file replaced while another thread was reading it no longer fails the write on Windows; it waits the reader out.
+
 ## [1.9.6] - 2026-09-18
 
 ### Fixed
