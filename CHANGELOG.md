@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Zimi Maps. A Maps tile sits first among the sources whenever a map is installed and opens the map you were last on, where you were; /#maps does the same. On a map the search box finds places on every installed map, and the top bar carries a picker to the other maps of the same ground, with the catalog's maps of here to download beneath them.
 - Maps. Offline map ZIMs open in the reader: Kiwix's 193 regional maps and StreetZim builds. Panning writes the position into the address, so a link or a bookmark returns to the same place at the same zoom, and Back and Forward behave. Maps are a category of their own in the catalog, a map ZIM is filed as a map from its own metadata whatever the file is called, and Discover shows a Maps card with a chip per installed map.
 - Two map sources. The Maps category has a toggle between Kiwix's maps and StreetZim's regions, which live on the Internet Archive: larger builds with satellite imagery and terrain on most regions, and places, streets and addresses searchable. Downloads come straight from the Archive, and a newer build of an installed region shows up as an update like any other ZIM. The StreetZim listing is cached after the first fetch and shipped as a snapshot for a machine that has never been online.
 - Place search. Place names on Kiwix maps are searchable from the search bar and opening one flies the map there. On StreetZim maps, Zimi reads the map's own place index: a town, a street or an address typed into the search bar comes back as a place with coordinates, and opening it flies the map there.
@@ -21,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The download badge sits on the gear only, and only for downloads: not on the ⋯ or the Create +, not on an X, and no bare dot for indexing or seeding (#80).
 - ZIMs without a full-text index answer the search bar from their titles.
 - A file replaced while another thread was reading it no longer fails the write on Windows; it waits the reader out.
 

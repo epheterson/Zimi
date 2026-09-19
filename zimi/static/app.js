@@ -979,6 +979,8 @@ function _updateSearchPlaceholder() {
     } else {
       q.placeholder = t('filter_installed');
     }
+  } else if (_isMapPage()) {
+    q.placeholder = t('maps_search_placeholder');
   } else if (currentSource) {
     var info = _zimInfo(currentSource);
     q.placeholder = t('search_in', { source: (info && info.title) || currentSource });
@@ -1538,6 +1540,13 @@ function updateTopbar() {
     bcIcon.innerHTML = _ALMANAC_BC_ICON;
     // Identity only — no destination behind it, so no link affordance either.
     bcIcon.removeAttribute('href');
+  } else if (_isMapPage()) {
+    // Zimi Maps: the surface is the identity, whichever map is open.
+    bcSep.style.display = 'inline';
+    bcIcon.style.display = 'inline-flex';
+    bcIcon.title = t('cat_maps');
+    bcIcon.innerHTML = _MAPS_PIN_SVG.replace('width="26" height="26"', 'width="20" height="20"');
+    bcIcon.setAttribute('href', '/#maps');
   } else if (activeSource) {
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
@@ -1691,6 +1700,8 @@ function updateTopbar() {
     q.placeholder = t('create_zim');
   } else if (_almanacOpen) {
     q.placeholder = t('almanac');
+  } else if (_isMapPage()) {
+    q.placeholder = t('maps_search_placeholder');
   } else if (currentSource) {
     q.placeholder = _zimTitle(currentSource);
   } else if (readerOpen && readerSource) {
@@ -3272,6 +3283,12 @@ function renderHome(filter) {
   }
 
   // Bookmarks moved to library panel (H/B key or topbar icon)
+
+  // Zimi Maps, first, as a source sits: one tile whenever a map is installed.
+  // Eric: "a Maps tile that sits with the sources grid like a source does."
+  if (!homeScope && !filter && !homeRecentFilter && !homeLangFilter.size) {
+    h += _mapsTileHtml();
+  }
 
   // Favorites section at top (only on unscoped home)
   if (!homeScope) {
@@ -6153,7 +6170,10 @@ q.addEventListener('input', () => {
   const val = q.value.trim();
   // Suggest (200ms debounce) — include history items when typing
   clearTimeout(suggestTimer);
-  if (val && val.length >= 1 && mode !== 'manage') {
+  if (val && val.length >= 1 && _isMapPage()) {
+    // Zimi Maps: the box finds places, on every installed map, nothing else.
+    if (val.length >= 2) suggestTimer = setTimeout(() => fetchPlaces(val), 200);
+  } else if (val && val.length >= 1 && mode !== 'manage') {
     // Show filtered history immediately, then fetch remote suggestions
     showHistoryDropdown(val);
     if (val.length >= 2) suggestTimer = setTimeout(() => fetchSuggestions(val), 200);
@@ -6213,6 +6233,13 @@ q.addEventListener('keydown', e => {
     e.preventDefault();
     clearTimeout(searchTimer);
     clearTimeout(suggestTimer);
+    // On a map, Enter takes the first place found; there is no article
+    // search to fall through to.
+    if (_isMapPage()) {
+      if (suggestItems.length && suggestItems[0]._place) selectSuggest(0);
+      else if (q.value.trim().length >= 2) fetchPlaces(q.value.trim());
+      return;
+    }
     hideSuggest();
     if (mode === 'manage') {
       if (manageTab === 'installed') {
@@ -6786,6 +6813,35 @@ async function fetchSuggestions(query) {
   }
 }
 
+// Places on every installed map, for the box on a map page. Rows are
+// suggestItems like any other, so the arrow keys and Enter work unchanged;
+// picking one opens the place (a fly when it is on the map already open).
+async function fetchPlaces(query) {
+  if (suggestController) suggestController.abort();
+  suggestController = new AbortController();
+  const seq = ++_suggestSeq;
+  try {
+    const res = await fetch('/places?q=' + encodeURIComponent(query), { signal: suggestController.signal });
+    const data = await res.json();
+    if (seq !== _suggestSeq || document.activeElement !== q) return;
+    suggestItems = [];
+    for (const g of (data.groups || [])) {
+      for (const p of (g.places || [])) {
+        const what = [p.sub || (p.type !== 'place' ? p.type : ''), p.locality].filter(Boolean)
+          .map(x => String(x).replace(/_/g, ' ')).join(' \u00b7 ');
+        suggestItems.push({ _place: true, zim: g.zim, path: g.main_path, title: p.name,
+          sub: (what ? what + ' \u00b7 ' : '') + (g.title || g.zim),
+          pos: 'map=' + (p.zoom || 15) + '/' + p.lat + '/' + p.lng });
+      }
+    }
+    suggestItems = suggestItems.slice(0, 12);
+    if (suggestItems.length) showSuggest();
+    else hideSuggest();
+  } catch (e) {
+    if (e.name !== 'AbortError') hideSuggest();
+  }
+}
+
 // Close suggestions when clicking anywhere outside the search box/dropdown
 document.addEventListener('mousedown', (e) => {
   if (!suggestDropdown.contains(e.target) && e.target !== q) {
@@ -6859,9 +6915,10 @@ function showHistoryDropdown(filter) {
 function showSuggest() {
   suggestIndex = -1;
   suggestDropdown.innerHTML = suggestItems.map((s, i) =>
-    '<div class="suggest-item" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
+    '<div class="suggest-item' + (s._place ? ' sg-place' : '') + '" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
     '<div class="sg-title">' + esc(s.title) + '</div>' +
-    (!currentSource ? '<div class="sg-source">' + esc(_zimTitle(s.zim)) + '</div>' : '') +
+    (s._place ? '<div class="sg-source">' + esc(s.sub) + '</div>'
+      : (!currentSource ? '<div class="sg-source">' + esc(_zimTitle(s.zim)) + '</div>' : '')) +
     '</div>'
   ).join('');
   suggestDropdown.style.display = 'block';
@@ -6888,9 +6945,9 @@ function selectSuggest(i) {
     _runRecentSearch(s.query, s.zim);
     return;
   }
-  // Regular suggestion or history article
+  // Regular suggestion or history article; a place carries where it is.
   q.value = s.title;
-  openArticle(s.zim, s.path, s.title);
+  openArticle(s.zim, s.path, s.title, s.pos ? {pos: s.pos} : undefined);
 }
 
 // ── Library Manager ──
@@ -15866,6 +15923,19 @@ function _lastMapVisit() {
   return maps.length ? { zim: maps[0], pos: '' } : null;
 }
 
+function _mapsTileHtml() {
+  var maps = _installedMaps();
+  if (!maps.length) return '';
+  var names = maps.map(function(z) { return z.title || z.name; });
+  var isTiles = _getLibraryView() === 'tiles';
+  return '<div class="' + (isTiles ? 'stats-grid tiles' : 'stats-grid') + ' maps-grid">' +
+    '<a class="stat-card maps-tile" href="#maps" data-zim="" onclick="return _spaNav(event, openMaps)">' +
+      '<div class="card-icon">' + _MAPS_PIN_SVG + '</div>' +
+      '<div class="card-info"><div class="name"><span class="zt">' + esc(t('cat_maps')) + '</span></div>' +
+      '<div class="detail">' + esc(names.join(' \u00b7 ')) + '</div></div></a></div>';
+}
+var _MAPS_PIN_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
+
 function openMaps(e) {
   if (e && e.preventDefault) e.preventDefault();
   var last = _lastMapVisit();
@@ -16637,7 +16707,9 @@ function openReader(url) {
     } catch(e) { /* cross-origin */ }
     // Update document/window title from iframe content (skip for pdf.js — it reports
     // "PDF.js viewer" which overwrites the good title already set by openArticle)
-    if (!_frameLoc.startsWith('/static/')) try {
+    // A map keeps the title openArticle gave it (the map's name, or the
+    // place): its own <title> is the publisher's ("OpenStreetMap Offline").
+    if (!_frameLoc.startsWith('/static/') && !_isMapPage()) try {
       var iTitle = frame.contentDocument && frame.contentDocument.title;
       if (!iTitle) {
         // Fallback: extract from iframe URL path

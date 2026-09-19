@@ -160,6 +160,7 @@ SESSION_COOKIE_MAX_AGE = 30 * 24 * 3600
 # regression, not a cleanup.
 _RATE_LIMITED_API_PATHS = (
     "/search",
+    "/places",
     "/read",
     "/suggest",
     "/random",
@@ -2231,6 +2232,15 @@ class ZimHandler(BaseHTTPRequestHandler):
                     cache="no-store",
                 )
 
+            elif parsed.path == "/places":
+                # Zimi Maps' one box: places on every installed map.
+                q = param("q")
+                if not q:
+                    return self._json(400, {"error": "missing ?q= parameter"})
+                t0 = time.time()
+                groups = _srv.find_places(q)
+                _record_metric("/places", time.time() - t0)
+                return self._json(200, {"groups": groups, "elapsed": round(time.time() - t0, 3)})
             elif parsed.path == "/random":
                 zim = param("zim")  # optional: scope to specific ZIM
                 if zim:

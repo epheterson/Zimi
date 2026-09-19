@@ -2029,6 +2029,71 @@ def _random_map_place(name):
     }
 
 
+def _kiwix_places(archive, query_str, limit):
+    """Places on a maps2zim map: its search/<Place> pages are titled entries,
+    so the title index finds them and the page says where they are."""
+    found = []
+    for hit in suggest_search_zim(archive, query_str, limit=limit * 3):
+        path = hit.get("path") or ""
+        if not path.startswith("search/"):
+            continue
+        try:
+            html = bytes(archive.get_entry_by_path(path).get_item().content).decode("utf-8", "replace")
+        except Exception:
+            continue
+        m = _MAPS2ZIM_POS_RE.search(html)
+        if not m:
+            continue
+        found.append(
+            {
+                "name": hit.get("title") or path[7:],
+                "type": "place",
+                "sub": "",
+                "lat": float(m.group(1)),
+                "lng": float(m.group(2)),
+                "locality": "",
+                "zoom": int(m.group(3) or 10),
+            }
+        )
+        if len(found) >= limit:
+            break
+    return found
+
+
+def find_places(query_str, limit=_PLACES_PER_MAP):
+    """Places matching ``query_str`` on every installed map: the one box of
+    Zimi Maps. One group per map that answered, StreetZim's from their place
+    index, Kiwix's from their place pages. Same shape as ``search_all``'s
+    ``places``."""
+    from zimi import mapsearch
+
+    q = (query_str or "").strip()
+    if not q:
+        return []
+    groups = []
+    for z in _srv._zim_list_cache or []:
+        name = z.get("name")
+        if z.get("kind") != "map" or not name or not _srv.zim_allowed(name):
+            continue
+        try:
+            archive, lock = _get_fts_archive(name)
+            if archive is None or lock is None:
+                continue
+            with lock:
+                if z.get("map_search") and mapsearch.has_place_index(archive):
+                    found = mapsearch.search_places(archive, q, limit=limit)
+                else:
+                    found = _kiwix_places(archive, q, limit)
+        except Exception as e:
+            log.debug("place search failed on %s: %s", name, e)
+            continue
+        if found:
+            groups.append(
+                {"zim": name, "title": z.get("title") or name, "main_path": z.get("main_path") or "", "places": found}
+            )
+    return groups
+
+
 def _search_places(query_str, target_names):
     """One group per searched map with a place index, best places first."""
     from zimi import mapsearch
