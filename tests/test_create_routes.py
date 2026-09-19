@@ -185,17 +185,26 @@ def test_folder_mode_is_cli_only_and_the_refusal_says_so(tmp_path):
         assert "zimi create" in h.body["error"], source
 
 
-def test_import_mode_is_cli_only_and_the_refusal_says_so(tmp_path):
-    """Eric, this round: "remove archive as well only in cli." Import followed
-    folder off the web — the refusal names the CLI door, and (like folder) does
-    not depend on the file existing: the mode is gone, not misconfigured."""
-    archive = tmp_path / "cap.wacz"
-    archive.write_bytes(b"x")
-    for source in (str(archive), str(tmp_path / "nope.wacz"), str(tmp_path)):
+def test_import_picks_from_the_library_folder_and_never_a_typed_path(tmp_path, monkeypatch, stub_engine):
+    """Import is back on the web (2026-09-19) as a picker over the archives in
+    the library folder. The request names one of them; a path, a name not in
+    the listing, or a name that walks out of the folder is refused."""
+    lib = tmp_path / "zims"
+    (lib / "imports").mkdir(parents=True)
+    (lib / "cap.wacz").write_bytes(b"x")
+    (lib / "imports" / "old.warc.gz").write_bytes(b"x")
+    outside = tmp_path / "secret.warc"
+    outside.write_bytes(b"x")
+    monkeypatch.setattr(server, "ZIM_DIR", str(lib))
+    monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: True)
+    for source in (str(outside), "../secret.warc", "nope.wacz", str(lib / "cap.wacz"), "imports/../../secret.warc"):
         h = _post("/manage/create", {"mode": "import", "source": source})
         assert h.status == 400, source
-        assert "CLI-only" in h.body["error"], source
-        assert "zimi import" in h.body["error"], source
+        assert "choose an archive" in h.body["error"], source
+    h = _post("/manage/create", {"mode": "import", "source": "imports/old.warc.gz"})
+    assert h.status in (200, 202), h.body
+    _wait_done()
+    manage._create_job = None
 
 
 def test_url_modes_reject_non_http_schemes():
@@ -691,10 +700,15 @@ def test_no_web_mode_reads_a_server_path(monkeypatch, tmp_path):
     f.write_bytes(b"x")
     for primary in (False, True):
         monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: primary)
-        for mode, source in (("import", str(f)), ("folder", str(tmp_path))):
-            r = _post("/manage/create", {"mode": mode, "source": source})
-            assert r.status == 400, (mode, primary)
-            assert "CLI-only" in r.body["error"], (mode, primary)
+        r = _post("/manage/create", {"mode": "folder", "source": str(tmp_path)})
+        assert r.status == 400, primary
+        assert "CLI-only" in r.body["error"], primary
+        # Import is back, as a picker, and it is the primary admin's: a creator
+        # account is refused before the archive is even looked for; the
+        # primary admin with a typed path is told to pick from the list.
+        r = _post("/manage/create", {"mode": "import", "source": str(f)})
+        assert r.status == (400 if primary else 403), (r.status, primary)
+        assert ("choose an archive" if primary else "primary admin") in r.body["error"]
         # URL modes stay open to any authorized admin — invalid scheme still
         # 400s, proving the request reached validation, not a tier gate.
         r = _post("/manage/create", {"mode": "page", "source": "ftp://nope"})

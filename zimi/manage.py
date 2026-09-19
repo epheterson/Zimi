@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import sys
 import secrets
 import threading
@@ -2837,15 +2838,12 @@ def _create_validate(data):
             "on the server itself"
         )
     elif mode == "import":
-        # CLI-only, by the same decree that took folder capture off the web
-        # (Eric: "remove archive as well only in cli"). The engine
-        # (importer.convert_archive) is untouched — `zimi import <file>` on the
-        # machine itself still runs it. What is gone is the web door that read a
-        # path off the server's disk, and the refusal names the one still open.
-        raise ValueError(
-            "web archive import is CLI-only — run `zimi import <file>` "
-            "on the server itself"
-        )
+        # Back on the web (a user: "I'd like a way to convert warc files
+        # within the app's gui"), without the thing that took it off: no
+        # path is typed. The form offers the archives found in the library
+        # folder, the request names one, and the name is checked against the
+        # same listing. `zimi import <file>` still takes any path.
+        source = _create_archive_path(source)
     elif mode == "page":
         # One page or twenty, it is the same gesture: paste what you want kept.
         # The engine sends a single URL down the single-page path itself, so
@@ -3108,9 +3106,8 @@ def _create_out_dir():
 def _create_run(job, opts):
     """Drive the engine for one job. Imports are deferred to here: the writer
     stack and yt-dlp are heavy, and a server that never creates a ZIM should
-    never pay for them. (Neither folder nor archive import reaches here — the
-    web refuses both at validation; `zimi create <folder>` and `zimi import
-    <file>` are their only doors.)"""
+    never pay for them. (Folder capture never reaches here — the web refuses
+    it at validation; `zimi create <folder>` is its only door.)"""
     if job.mode == "page":
         # create_pages_zim hands a single URL to create_page_zim itself, so one
         # entry point covers both shapes — and it takes a progress callback,
@@ -3169,9 +3166,19 @@ def _create_run(job, opts):
             progress=job.note,
             **_create_kwargs(opts, "limit", "max_bytes", "fmt", "language"),
         )
-    # Only the three URL modes reach here; validation refuses everything else
-    # (folder and archive import are CLI-only). A job that arrived with any
-    # other mode is a bug in the caller, not an input to run.
+    if job.mode == "import":
+        from zimi.importer import import_archive
+
+        return import_archive(
+            job.source,
+            title=job.title or None,
+            out_dir=_create_out_dir(),
+            register=True,
+            sink=job.note,
+        )
+    # Only these reach here; validation refuses everything else (folder
+    # capture is CLI-only). A job that arrived with any other mode is a bug in
+    # the caller, not an input to run.
     raise ValueError(f"no web engine for mode {job.mode!r}")
 
 
@@ -3491,6 +3498,11 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
         # contract as import_ready: asked once, on the page's first poll, and
         # answered from a cache after that.
         payload["browser_ready"] = _create_browser_ready()
+        payload["browser_install"] = _create_browser_install()
+        # Archives the import mode may convert: what is in the library
+        # folder, by name. No path is typed anywhere.
+        payload["archives"] = _create_archives()
+        payload["archives_dir"] = _srv.ZIM_DIR
         # And whether BOTH halves of the alive engine are here. Reported as its
         # own answer rather than left for the client to compute from the other
         # two: what the alive engine needs is the alive engine's business, and
@@ -3709,6 +3721,54 @@ def _create_sidecar_dir():
         return None
 
 
+# Where the import mode looks for archives, relative to the library folder.
+# The library folder itself, and one subfolder for people who keep their
+# archives apart from their ZIMs. Not recursive: a picker, not a browser.
+CREATE_ARCHIVE_DIRS = ("", "imports")
+
+
+def _create_archives():
+    """The WARC/WACZ files in the library folder, ``[{name, size_bytes}]``,
+    newest first. ``name`` is the path relative to the library folder and is
+    the only thing the form ever sends back."""
+    from zimi.importer import ARCHIVE_EXTS
+
+    root = _srv.ZIM_DIR
+    found = []
+    for sub in CREATE_ARCHIVE_DIRS:
+        d = os.path.join(root, sub) if sub else root
+        try:
+            names = os.listdir(d)
+        except OSError:
+            continue
+        for n in names:
+            if not n.lower().endswith(ARCHIVE_EXTS):
+                continue
+            full = os.path.join(d, n)
+            try:
+                st = os.stat(full)
+            except OSError:
+                continue
+            if not os.path.isfile(full):
+                continue
+            rel = os.path.join(sub, n) if sub else n
+            found.append({"name": rel.replace(os.sep, "/"), "size_bytes": st.st_size, "mtime": st.st_mtime})
+    found.sort(key=lambda a: -a["mtime"])
+    for a in found:
+        del a["mtime"]
+    return found
+
+
+def _create_archive_path(name):
+    """The full path of an archive the picker listed, or ValueError. Only a
+    name the listing would produce is accepted: no separators the listing
+    did not put there, nothing outside the library folder."""
+    name = (name or "").strip().replace("\\", "/")
+    if not name or name not in {a["name"] for a in _create_archives()}:
+        raise ValueError("choose an archive from the list")
+    return os.path.join(_srv.ZIM_DIR, *name.split("/"))
+
+
 def _create_import_ready():
     """True when the warc2zim sidecar is already installed — the one thing
     that decides whether archive import can run on a machine with no
@@ -3731,12 +3791,41 @@ def _create_browser_ready():
     call. It is asked on the Create page's first poll and when a request names
     the rendered engine; never per second, and never per page."""
     try:
-        from zimi.renderer import browser_available
+        from zimi.renderer import browser_available, browser_status_known
 
-        return bool(browser_available())
+        # The renderer remembers its answer for the life of the process. A
+        # "yes" is a fact about the install and stays; a "no" is the state
+        # before the admin ran the command this pane printed, so it is asked
+        # again (one browser launch, on the probe thread, at most every
+        # CREATOR_PROBE_TTL while someone has the page open). Otherwise an
+        # install made while the server runs never shows until a restart:
+        # "I successfully download what it requires but the app says the
+        # browser engine wasn't installed" (r/Kiwix, 2026-09-19).
+        known = browser_status_known()
+        if known is not None and known[0]:
+            return True
+        return bool(browser_available(refresh=known is not None))
     except Exception:
         log.exception("rendered-engine probe failed")
         return False
+
+
+def _create_browser_install():
+    """The command that installs the rendered engine INTO THIS SERVER's
+    Python, or None when there is no such command (a frozen desktop build,
+    the Docker image). "pip install" in the shell that happens to be open
+    lands in whatever Python that shell has; under uv or a venv that is not
+    the one Zimi runs in, and the pane keeps saying not installed."""
+    if getattr(sys, "frozen", False) or getattr(sys, "_MEIPASS", None):
+        return None
+    exe = sys.executable or ""
+    if not exe:
+        return None
+    norm = exe.replace("\\", "/")
+    if "/uv/tools/" in norm or "/.local/share/uv/" in norm:
+        return "uv tool install --force 'zimi[browser]' && uv tool run --from zimi playwright install chromium"
+    q = shlex.quote(exe)
+    return f"{q} -m pip install 'zimi[browser]' && {q} -m playwright install chromium"
 
 
 def _create_video_ready():
@@ -4338,7 +4427,19 @@ def _create_probe(data):
             # And back: the chip moved to Video for the last address, and
             # this one is a page. yt-dlp's catch-all would only fail on it.
             mode = "page"
-        if mode == "video":
+        if mode == "import":
+            # The archive is on disk and validation already found it; the
+            # preview is its size and whether the helper is here.
+            result = {
+                "ok": True,
+                "final_url": "",
+                "title": os.path.basename(source),
+                "content_type": "",
+                "bytes": os.path.getsize(source),
+                "warning_key": None,
+                "import_ready": _create_import_ready(),
+            }
+        elif mode == "video":
             result = _probe_video(source, opts.get("limit"))
         elif mode == "page":
             # One fetch, not twenty: the preview answers "is this the kind of
@@ -5376,10 +5477,9 @@ def handle_manage_post(handler, parsed, data):
 
     # ZIM creation — a creator account (can_create) may drive these routes
     # without admin credentials, so they gate themselves ahead of the generic
-    # admin challenge below. Every web mode captures the web, never the
-    # server's disk: folder and archive import are both refused outright in
-    # ``_create_validate`` (CLI-only), so there is no server-path mode left to
-    # hold to the primary admin.
+    # admin challenge below. Folder capture is refused outright in
+    # ``_create_validate`` (CLI-only); archive import, the one web mode that
+    # reads the server's disk, is held to the primary admin just below.
     if parsed.path in (
         "/manage/create",
         "/manage/create/cancel",
@@ -5389,6 +5489,15 @@ def handle_manage_post(handler, parsed, data):
         denial = _creator_denial(handler)
         if denial:
             return handler._json(*denial)
+        # Import reads the server's disk (the library folder, by listing), so
+        # it stays with the primary admin; a creator account captures the web
+        # and packages its own bookmarks, nothing more.
+        if (
+            parsed.path == "/manage/create"
+            and data.get("mode") == "import"
+            and not _primary_admin_authorized(handler)
+        ):
+            return handler._json(403, {"error": "archive import is for the primary admin"})
         if parsed.path == "/manage/create/cancel":
             # With an id: that job, wherever it is — the running one or one
             # still waiting. Without: whatever is running.

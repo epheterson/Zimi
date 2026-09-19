@@ -130,11 +130,20 @@ var CREATE_MODE_DEFS = [
     advanced: ['format', 'max_bytes', 'language'],
     pick: { max_bytes: '4G' }
   },
-  CREATE_BOOKMARKS_DEF
-  // Import (WARC/WACZ) is CLI-only, like folder capture: it reads a server
-  // path, and a web door onto the server's disk is exactly what the folder
-  // retreat closed. `zimi import <file>` is its one door. No tile here.
+  CREATE_BOOKMARKS_DEF,
+  // Import (WARC/WACZ): back on the web (2026-09-19), as a picker. The
+  // address field becomes a list of the archives in the library folder; no
+  // path is typed, which is what took it off the web with folder capture.
+  {
+    id: 'import', network: false, sidecar: true, picker: true, serverPath: true,
+    label: 'create_label_import', placeholder: 'create_ph_import',
+    flags: [], advanced: []
+  }
 ];
+
+// The archives the server listed, and where it looked.
+var _createArchives = [];
+var _createArchivesDir = '';
 
 // Size budgets, as amounts rather than as a syntax to remember. The values are
 // the strings the engines' own parse_size already accepts, so the web form does
@@ -236,6 +245,16 @@ var CREATE_PART_INSTALL = {
   browser: "pip install 'zimi[browser]' && playwright install chromium",
   sidecar: 'zimi import --setup'
 };
+
+// The browser install command aimed at THIS server's Python, once a probe
+// has said which. `pip install` typed into whatever shell is open lands in
+// that shell's Python; under uv, or a venv that is not Zimi's, the engine
+// stays greyed out after a successful install ("the app says the browser
+// engine wasn't installed", r/Kiwix, 2026-09-19).
+var _createBrowserInstall = null;
+function _createBrowserCommand() {
+  return _createBrowserInstall || CREATE_PART_INSTALL.browser;
+}
 
 // Where this server keeps its sidecar, once a probe has said so.
 var _createSidecarDir = null;
@@ -1427,6 +1446,7 @@ function _renderCreate() {
           '<label class="ms-form-label" for="create-source" id="create-address-label"></label>' +
           '<textarea rows="1" class="create-field" id="create-source" spellcheck="false"' +
             ' autocapitalize="none" autocorrect="off"></textarea>' +
+          '<select class="create-field" id="create-archive" hidden></select>' +
           '<div class="create-caption" id="create-address-note" hidden></div>' +
         '</div>' +
         '<div class="create-modes" id="create-modes" role="tablist"' +
@@ -1753,8 +1773,8 @@ function _createEngineHtml(f) {
 function _createAddCommands(into, capability) {
   var parts = CREATE_ENGINE_NEEDS[capability] || [];
   for (var i = 0; i < parts.length; i++) {
-    var cmd = parts[i] === 'sidecar'
-      ? _createSidecarCommand()
+    var cmd = parts[i] === 'sidecar' ? _createSidecarCommand()
+      : parts[i] === 'browser' ? _createBrowserCommand()
       : CREATE_PART_INSTALL[parts[i]];
     if (cmd && _createPartReady(parts[i]) === false && into.indexOf(cmd) < 0) into.push(cmd);
   }
@@ -1846,6 +1866,27 @@ function _renderCreateAddress() {
   wrap.hidden = !takesAddress;
   if (!takesAddress) return;
   if (label) label.textContent = t(def.label);
+  var pick = document.getElementById('create-archive');
+  if (def.picker) {
+    // A list, not a field: the archives the server found, newest first.
+    src.hidden = true;
+    if (pick) {
+      pick.hidden = false;
+      pick.innerHTML = _createArchives.length
+        ? _createArchives.map(function(a) {
+            return '<option value="' + escAttr(a.name) + '">' + esc(a.name) + (a.size_bytes ? ' \u00b7 ' + fmtBytes(a.size_bytes) : '') + '</option>';
+          }).join('')
+        : '<option value="">' + esc(t('create_ph_import')) + '</option>';
+      pick.disabled = !_createArchives.length;
+    }
+    if (note) {
+      note.textContent = t('create_import_note', {dir: _createArchivesDir || t('create_import_dir_unknown')});
+      note.hidden = false;
+    }
+    return;
+  }
+  src.hidden = false;
+  if (pick) pick.hidden = true;
   src.placeholder = t(def.placeholder);
   src.rows = def.multiline ? 3 : 1;
   if (note) { note.textContent = def.multiline ? t('create_pages_note') : ''; note.hidden = !def.multiline; }
@@ -1993,8 +2034,9 @@ function _createSyncEngine() {
 
 function _createFormFields() {
   var el = function(id) { return document.getElementById(id); };
+  var def = _createDef(_createSelected);
   var fields = {
-    source: (el('create-source') || {}).value || '',
+    source: ((def && def.picker) ? (el('create-archive') || {}) : (el('create-source') || {})).value || '',
     title: (el('create-title') || {}).value || ''
   };
   for (var key in CREATE_FIELDS) {
@@ -2454,6 +2496,14 @@ function _createIngest(data) {
   }
   if (typeof data.sidecar_dir === 'string' && data.sidecar_dir) {
     _createSidecarDir = data.sidecar_dir;
+  }
+  if (Array.isArray(data.archives)) {
+    _createArchives = data.archives;
+    _createArchivesDir = data.archives_dir || '';
+    if (_createSelected === 'import') _renderCreateAddress();
+  }
+  if (typeof data.browser_install === 'string' && data.browser_install) {
+    _createBrowserInstall = data.browser_install;
   }
   if (typeof data.browser_ready === 'boolean') {
     _createBrowserReady = data.browser_ready;
