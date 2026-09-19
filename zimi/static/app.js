@@ -6593,8 +6593,10 @@ function renderSearchResults(data, scope) {
   const visible = items.slice(0, visibleResultCount);
   const remaining = items.length - visibleResultCount;
 
-  const mapFindHtml = !scope ? _mapFindRowsHtml(data._query || '') : '';
+  // Real places first. The offer to type into the map's own box is for when
+  // the shards had nothing, not a second row under every hit.
   const placesHtml = _mapPlaceRowsHtml(data.places || []);
+  const mapFindHtml = (!scope && !placesHtml) ? _mapFindRowsHtml(data._query || '') : '';
   let html = dymHtml + zimMatchHtml + '<div class="results">' + placesHtml + mapFindHtml + visible.map((r, i) => {
     const sourceRow = !scope
       ? '<div class="result-source">' + _sourceIconHtml(r.zim, 20) +
