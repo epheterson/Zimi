@@ -19937,14 +19937,15 @@ function _openDownloadsView(e) {
   switchManageTab('downloads');
 }
 
-// The badge: a count of downloads (in flight + queued) on the gear, and
-// nowhere else (#80: "these badges appear in very random places"). Eric:
-// "Should only be on gear and downloads tab representing active downloads."
-// So: not on the ⋯ (its Manage row carries the count on a phone), not for
-// indexing or seeding or an export (the hover title still names them), and
-// never while the gear is drawn as an X, which it is in Manage, the reader,
-// the Almanac and Create. Idempotent: the poller and updateTopbar (which
-// rewrites the gear's innerHTML) both call it.
+// The badge (#80, tripplehelix: "the icons it's attached to have no relation
+// to downloads"). A dot on the gear while a download runs, because the gear
+// is the way to the Downloads tab and a number on it explains nothing; the
+// count, as a pill, on the Manage row of the ⋯ menu, where there is room for
+// a word beside it; the count on the Downloads tab. Nowhere else: not on the
+// ⋯ itself, not for indexing or seeding or an export (the hover title still
+// names them), and never while the gear is drawn as an X (Manage, the
+// reader, the Almanac, Create). Idempotent: the poller and updateTopbar
+// (which rewrites the gear's innerHTML) both call it.
 function _gearIsAGear() {
   return !(mode === 'manage' || readerOpen || _almanacOpen || _createOpen);
 }
@@ -19962,7 +19963,8 @@ function _applyActivityBadge() {
     badge.onclick = _openDownloadsView;
     gear.appendChild(badge);
   }
-  badge.textContent = st.count > 99 ? '99+' : String(st.count);
+  badge.classList.add('dot');
+  badge.textContent = '';
   badge.title = st.tip;
   badge.setAttribute('aria-label', st.tip);
   badge.style.display = 'flex';

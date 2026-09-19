@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- The download badge sits on the gear only, and only for downloads: not on the ⋯ or the Create +, not on an X, and no bare dot for indexing or seeding (#80).
+- Downloads in progress show as a dot on the gear and a count on the Manage row of the ⋯ menu, and nowhere else: not on the ⋯ itself or the Create +, not on an X, and nothing for indexing or seeding (#80).
 - ZIMs without a full-text index answer the search bar from their titles.
 - A file replaced while another thread was reading it no longer fails the write on Windows; it waits the reader out.
 
