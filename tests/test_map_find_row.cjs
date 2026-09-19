@@ -59,7 +59,8 @@ ok('it fires the input event the box listens for', /dispatchEvent\(new Event\('i
 ok('and stops asking after a bounded wait', /_MAP_FIND_TRIES/.test(hook) && /_pendingMapFind = null; return;/.test(hook));
 ok('it types again while the index has not answered, boundedly', /_MAP_TYPE_TRIES/.test(hook) && /querySelector\('\.search-result'\)/.test(hook));
 ok('openArticle carries opts.find into the hand-off', /_pendingMapFind = \(opts && opts\.find\)/.test(src));
-ok('the rows sit above the results on a global search', /const mapFindHtml = !scope \? _mapFindRowsHtml/.test(src));
+ok('the rows sit above the results on a global search, and only when no place answered',
+  /const mapFindHtml = \(!scope && !placesHtml\) \? _mapFindRowsHtml/.test(src));
 
 // Places the server found on a map's own index render as rows that open the
 // map at the place. Real answers, above the Find-on-map offer.
