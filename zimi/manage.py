@@ -2162,8 +2162,12 @@ CREATE_FINISHABLE_MODES = ("site",)
 # nothing — the client hides it the moment the server stops saying so.
 CREATE_FINISHABLE_PHASES = ("probe", "fetch", "assets")
 CREATE_MAX_TITLE = 200
-# Site crawls: what the form offers. Wider bounds live on the CLI.
-CREATE_MAX_PAGES_CEILING = 5000
+# Site crawls: what the form offers. The page ceiling was 5,000 with "past
+# this, use the CLI"; the first Windows user to make a ZIM asked for more
+# (r/Kiwix, 2026-09-19), and on the desktop app the form IS the CLI. 50,000
+# pages is a large documentation site whole; the crawler's memory for it is
+# 200,000 URLs in a set, and the byte ceiling below still bounds the file.
+CREATE_MAX_PAGES_CEILING = 50000
 CREATE_MAX_DEPTH_CEILING = 10
 CREATE_MAX_DELAY = 60.0  # seconds between page requests
 # Video jobs: a playlist cap, same reasoning.

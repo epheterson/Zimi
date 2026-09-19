@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Podman. A rootless Podman path that actually works: the README's run line maps the image's user to you (so downloaded ZIMs are yours to read and delete, not a subordinate UID's) and labels the mounts for SELinux, and a Quadlet unit starts Zimi at boot. CI runs the image rootless under Podman on every change.
 - The catalog works offline. Zimi ships a snapshot of the Kiwix catalog with a magnet link for every entry, so a machine that has never been online can still browse and queue downloads. After the first successful fetch the full catalog is cached; the live catalog replaces it whenever it can be reached.
 
+### Changed
+
+- Create a ZIM from a site: the form's page limit goes from 5,000 to 50,000 (asked for on r/Kiwix).
+
 ### Fixed
 
 - ZIMs without a full-text index answer the search bar from their titles.

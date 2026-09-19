@@ -273,7 +273,7 @@ var CREATE_FIELDS = {
   },
   max_pages: {
     id: 'create-max-pages', control: 'number', label: 'create_max_pages',
-    kind: 'int', min: 1, max: 5000, ph: '200'
+    kind: 'int', min: 1, max: 50000, ph: '200'
   },
   limit: {
     id: 'create-limit', control: 'number', label: 'create_video_limit',
