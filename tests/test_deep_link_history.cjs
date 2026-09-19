@@ -66,7 +66,7 @@ check(/_bootDeepLinkArticle\(aZim, aPath\)/.test(route),
 // ── and that helper replaces rather than pushes ────────────────────────────
 
 const boot = fn('_bootDeepLinkArticle');
-check(/openArticle\([^)]*\{\s*replace:\s*true\s*\}\)/.test(boot),
+check(/openArticle\([^)]*\{\s*replace:\s*true\b[^}]*\}\)/.test(boot),
       'the helper replaces the boot entry instead of pushing onto it');
 check(/enterSource\([^,]+,\s*false\)/.test(boot),
       'and enters the source without pushing an entry of its own');

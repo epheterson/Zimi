@@ -30,6 +30,30 @@ class _StringProvider(ContentProvider):
         return Blob(self.content)
 
 
+class _File(Item):
+    """A plain entry: a path and bytes, no title, not an article."""
+
+    def __init__(self, path: str, blob: bytes):
+        super().__init__()
+        self._path = path
+        self._blob = blob
+
+    def get_path(self) -> str:
+        return self._path
+
+    def get_title(self) -> str:
+        return ""
+
+    def get_mimetype(self) -> str:
+        return "application/octet-stream"
+
+    def get_contentprovider(self) -> ContentProvider:
+        return _StringProvider(self._blob)
+
+    def get_hints(self) -> dict:
+        return {}
+
+
 class _Article(Item):
     def __init__(self, path: str, title: str, html: bytes):
         super().__init__()
@@ -53,12 +77,16 @@ class _Article(Item):
         return {Hint.FRONT_ARTICLE: True}
 
 
-def build_fixture_zim(path: str, metadata: dict | None = None, indexing: bool = True) -> str:
+def build_fixture_zim(
+    path: str, metadata: dict | None = None, indexing: bool = True, files: dict | None = None
+) -> str:
     """Write a 3-article ZIM at `path`; return the path.
 
     ``metadata`` adds or overrides ZIM metadata keys (Scraper, Tags, Name...)
     for tests about what a ZIM says it is. ``indexing=False`` writes no
-    full-text index, the shape of Kiwix's map ZIMs and some small captures."""
+    full-text index, the shape of Kiwix's map ZIMs and some small captures.
+    ``files`` adds plain entries, ``{path: bytes}`` (JSON for a map's config,
+    say), served as application/octet-stream."""
     articles = [
         (
             "A/Water",
@@ -81,6 +109,8 @@ def build_fixture_zim(path: str, metadata: dict | None = None, indexing: bool = 
         creator.set_mainpath("A/Water")
         for p, t, h in articles:
             creator.add_item(_Article(p, t, h))
+        for fpath, blob in (files or {}).items():
+            creator.add_item(_File(fpath, blob))
         creator.add_metadata("Title", "Test Survival")
         creator.add_metadata("Language", "eng")
         creator.add_metadata("Description", "tiny fixture")

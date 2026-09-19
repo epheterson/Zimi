@@ -706,6 +706,8 @@
   "streetzim_offline": "No se pudieron obtener las regiones de StreetZim. Aparecerán cuando este equipo haya alcanzado Internet Archive.",
   "streetzim_note": "Creados por StreetZim a partir de OpenStreetMap y alojados en Internet Archive. Más grandes que los mapas de Kiwix, con imágenes satelitales y relieve en la mayoría de regiones, y lugares, calles y direcciones buscables.",
   "maps_source_streetzim": "StreetZim",
+  "map_source": "Otros mapas aquí",
+  "map_source_elsewhere": "En otro lugar",
   "maps_source_kiwix": "Mapas de Kiwix",
   "find_on_map": "Buscar “{q}” en {map}",
   "cat_qa": "Preguntas y respuestas",

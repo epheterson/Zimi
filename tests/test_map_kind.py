@@ -99,12 +99,12 @@ def test_kind_survives_the_metadata_cache(tmp_path, monkeypatch):
     assert (hit["category"], hit.get("kind")) == ("Maps", "map")
 
 
-def _library_with(tmp_path, monkeypatch, filename, metadata=None):
+def _library_with(tmp_path, monkeypatch, filename, metadata=None, files=None):
     from conftest_zim import build_fixture_zim
 
     zdir = tmp_path / "zims"
     zdir.mkdir()
-    build_fixture_zim(str(zdir / filename), metadata)
+    build_fixture_zim(str(zdir / filename), metadata, files=files)
     monkeypatch.setattr(srv, "ZIM_DIR", str(zdir))
     monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(tmp_path / "data"))
     os.makedirs(str(tmp_path / "data"), exist_ok=True)
@@ -183,3 +183,113 @@ def test_a_map_record_without_map_search_learns_it_too(tmp_path, monkeypatch):
     srv.load_cache(force=False)
     hit = next(z for z in srv._zim_list_cache if z["file"] == "osm-hawaii-2026-09-08.zim")
     assert hit.get("map_search") is True
+
+
+# ── what ground a map covers, and whose it is ──────────────────────────────
+
+
+def test_streetzim_bounds_are_read_from_its_config(tmp_path, monkeypatch):
+    _library_with(
+        tmp_path, monkeypatch, "osm-hawaii-2026-09-08.zim",
+        {"Scraper": "streetzim/1.0"},
+        files={"map-config.json": b'{"name": "Hawaii", "bounds": [-178.5, 18.5, -154.5, 28.5]}'},
+    )
+    srv.load_cache(force=True)
+    z = next(z for z in srv._zim_list_cache if z["file"] == "osm-hawaii-2026-09-08.zim")
+    assert (z["map_bounds"], z["map_source"]) == ([-178.5, 18.5, -154.5, 28.5], "StreetZim")
+
+
+def test_kiwix_bounds_are_read_from_its_config_in_its_own_shape(tmp_path, monkeypatch):
+    _library_with(
+        tmp_path, monkeypatch, "samoa.zim",
+        {"Scraper": "maps2zim v0.2.1"},
+        files={"content/config.json": b'{"zimName": "maps_en_samoa", "boundingBox": [[-174.5114, -15.87838], [-170.5427, -10.96083]]}'},
+    )
+    srv.load_cache(force=True)
+    z = next(z for z in srv._zim_list_cache if z["file"] == "samoa.zim")
+    assert (z["map_bounds"], z["map_source"]) == ([-174.5114, -15.87838, -170.5427, -10.96083], "Kiwix")
+
+
+def test_a_map_without_a_readable_config_is_decided_as_unknown(tmp_path, monkeypatch):
+    _library_with(tmp_path, monkeypatch, "maps_en_all_2026-06.zim", {"Scraper": "maps2zim v0.2.1"})
+    srv.load_cache(force=True)
+    z = next(z for z in srv._zim_list_cache if z["file"] == "maps_en_all_2026-06.zim")
+    assert "map_bounds" in z and z["map_bounds"] is None
+    calls = []
+    monkeypatch.setattr(srv, "_read_map_facts", lambda path: calls.append(path) or {})
+    srv.load_cache(force=False)
+    assert calls == [], "an unknown box was read again on a cache hit"
+
+
+def test_a_map_record_without_bounds_learns_them_on_a_cache_hit(tmp_path, monkeypatch):
+    import json
+
+    _library_with(
+        tmp_path, monkeypatch, "osm-hawaii-2026-09-08.zim",
+        {"Scraper": "streetzim/1.0"},
+        files={"map-config.json": b'{"bounds": [-178.5, 18.5, -154.5, 28.5]}'},
+    )
+    srv.load_cache(force=True)
+    cache_path = srv._cache_file_path()
+    with open(cache_path, encoding="utf-8") as f:
+        payload = json.load(f)
+    rec = payload["files"]["osm-hawaii-2026-09-08.zim"]
+    del rec["map_bounds"], rec["map_source"]
+    with open(cache_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f)
+    srv.load_cache(force=False)
+    hit = next(z for z in srv._zim_list_cache if z["file"] == "osm-hawaii-2026-09-08.zim")
+    assert (hit["map_bounds"], hit["map_source"]) == ([-178.5, 18.5, -154.5, 28.5], "StreetZim")
+    with open(cache_path, encoding="utf-8") as f:
+        assert json.load(f)["files"]["osm-hawaii-2026-09-08.zim"]["map_bounds"] == [-178.5, 18.5, -154.5, 28.5]
+
+
+def test_a_non_map_carries_no_bounds_key(tmp_path, monkeypatch):
+    _library_with(tmp_path, monkeypatch, "survival_en_2026-06.zim")
+    srv.load_cache(force=True)
+    z = next(z for z in srv._zim_list_cache if z["file"] == "survival_en_2026-06.zim")
+    assert "map_bounds" not in z and "map_source" not in z
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ({"bounds": [-178.5, 18.5, -154.5, 28.5]}, [-178.5, 18.5, -154.5, 28.5]),
+        ({"boundingBox": [[-174.5, -15.9], [-170.5, -11.0]]}, [-174.5, -15.9, -170.5, -11.0]),
+        ({"bounds": [-178.5, 28.5, -154.5, 18.5]}, None),  # south above north
+        ({"bounds": [1, 2, 3]}, None),
+        ({"bounds": "1,2,3,4"}, None),
+        ({}, None),
+    ],
+)
+def test_bounds_shapes(raw, expected):
+    import json
+
+    class _Item:
+        def __init__(self, b):
+            self.content = b
+
+    class _Entry:
+        is_redirect = False
+
+        def __init__(self, b):
+            self._b = b
+
+        def get_item(self):
+            return _Item(self._b)
+
+    class _Archive:
+        def get_entry_by_path(self, path):
+            if path in ("map-config.json", "content/config.json"):
+                return _Entry(json.dumps(raw).encode())
+            raise KeyError(path)
+
+    assert srv._map_bounds(_Archive()) == expected
+
+
+@pytest.mark.parametrize(
+    "scraper,label",
+    [("streetzim/1.0", "StreetZim"), ("AtlasZim 2.0", "AtlasZim"), ("maps2zim v0.2.1", "Kiwix"), ("", ""), ("mwoffliner 1.0", "")],
+)
+def test_map_source_labels(scraper, label):
+    assert srv._map_source(scraper) == label

@@ -706,6 +706,8 @@
   "streetzim_offline": "Не удалось получить регионы StreetZim. Они появятся, когда эта машина свяжется с Internet Archive.",
   "streetzim_note": "Собраны StreetZim из OpenStreetMap и размещены в Internet Archive. Больше карт Kiwix, в большинстве регионов со спутниковыми снимками и рельефом; места, улицы и адреса доступны для поиска.",
   "maps_source_streetzim": "StreetZim",
+  "map_source": "Другие карты здесь",
+  "map_source_elsewhere": "В другом месте",
   "maps_source_kiwix": "Карты Kiwix",
   "find_on_map": "Найти «{q}» на {map}",
   "cat_qa": "Сообщества Q&A",

@@ -1621,6 +1621,13 @@ function updateTopbar() {
   // saved article should stay one tap from the page you're on.
   var bmPanelBtn = document.getElementById('bm-panel-btn');
   if (bmPanelBtn) bmPanelBtn.style.display = _readingArticle ? 'flex' : 'none';
+  // Other maps of the same place: a map page, and somewhere else to go.
+  var mapSrcBtn = document.getElementById('map-source-btn');
+  if (mapSrcBtn) {
+    var showMapSrc = _readingArticle && currentArticle && _isMapZim(currentArticle.zim) && _installedMaps().length > 1;
+    mapSrcBtn.style.display = showMapSrc ? 'flex' : 'none';
+    if (!showMapSrc) _closeMapSourceDropdown();
+  }
   var ttsBtn = document.getElementById('tts-btn');
   if (ttsBtn) ttsBtn.style.display = (_readingArticle && _TTS_AVAILABLE && !_foldReaderExtras) ? 'flex' : 'none';
   _syncReaderViewBtn(); // book/reader-view glyph — gated on extractable content
@@ -2280,7 +2287,11 @@ async function _bootDeepLinkArticle(zim, path) {
   } finally {
     _popstateNoAutoReader = false;
   }
-  openArticle(zim, path, null, { replace: true });
+  // A shared map link arrives with its place in the hash. openArticle rewrites
+  // the URL, so the place has to travel through it or it is gone before the
+  // map loads and asks for it.
+  var pos = parseMapHash(location.hash);
+  openArticle(zim, path, null, { replace: true, pos: pos ? mapPositionHash(pos.zoom, pos.lat, pos.lng) : '' });
 }
 
 function _showToast(msg, duration) {
@@ -15849,6 +15860,110 @@ function _spaMapPlace(e, el) {
       {pos: el.getAttribute('data-pos') || ''});
   });
 }
+
+// ── Same place, another map ──
+// Eric, 2026-09-18: "in the maps UI we can change source so I could have
+// multiple and not be limited. Like it uses same GPS position and zoom then
+// swaps out." Two maps of the same ground disagree on what they show: Kiwix's
+// maps2zim has roads and admin names, StreetZim has satellite, terrain and
+// every address. The switch is a normal article open with the position
+// carried in the hash, so Back returns to the map you left, where you were.
+function _isMapZim(name) {
+  return (zimsCache || []).some(function(z) { return z.name === name && z.kind === 'map'; });
+}
+
+// Where the open map is, as a hash fragment, read from the map itself so it
+// is right even before the debounced URL write; from the URL when the map
+// has not answered yet; null when this is not a map.
+function _currentMapPositionHash() {
+  try {
+    var map = _readerMap();
+    if (map) {
+      var c = map.getCenter();
+      return mapPositionHash(map.getZoom(), c.lat, c.lng);
+    }
+  } catch (e) {}
+  var pos = parseMapHash(location.hash);
+  return pos ? mapPositionHash(pos.zoom, pos.lat, pos.lng) : null;
+}
+
+// Which publisher's map this is, for the row's second line: the server reads
+// it from the ZIM's own Scraper metadata, so a renamed file still knows.
+function _mapSourceLabel(z) {
+  if (z.map_source) return z.map_source;
+  if (z.map_search || /^osm-/.test(z.name)) return 'StreetZim';
+  if (/^maps_/.test(z.name)) return 'Kiwix';
+  return '';
+}
+
+// Whether a map's ground includes a point. Bounds are [W, S, E, N] from the
+// map's own config; a box that crosses the antimeridian has W > E. A map
+// with no known bounds is not ruled out: null, not false.
+function _mapCovers(z, pos) {
+  var b = z.map_bounds;
+  if (!pos || !b || b.length !== 4) return null;
+  if (pos.lat < b[1] || pos.lat > b[3]) return false;
+  return b[0] <= b[2] ? (pos.lng >= b[0] && pos.lng <= b[2]) : (pos.lng >= b[0] || pos.lng <= b[2]);
+}
+
+// The maps that cover where you are, then the rest under a divider. A map of
+// Samoa opened at Honolulu shows Samoa, whatever the URL says, so the list
+// says which switches keep the place before the switch is made.
+function _mapSourceRowsHtml(maps, currentName, pos) {
+  var here = [], elsewhere = [];
+  for (var i = 0; i < maps.length; i++) {
+    (_mapCovers(maps[i], pos) === false ? elsewhere : here).push(maps[i]);
+  }
+  var row = function(z) {
+    var active = z.name === currentName;
+    var label = _mapSourceLabel(z);
+    return '<div class="lang-dropdown-item' + (active ? ' active' : '') + '" role="menuitemradio" aria-checked="' + active +
+      '" data-zim="' + escAttr(z.name) + '" data-path="' + escAttr(z.main_path) + '" data-title="' + escAttr(z.title || z.name) + '">' +
+      '<span class="ld-name">' + esc(z.title || z.name) +
+      (label ? '<span class="ld-sub">' + esc(label) + '</span>' : '') + '</span>' +
+      (active ? '<span class="check">\u2713</span>' : '') + '</div>';
+  };
+  var h = here.map(row).join('');
+  if (elsewhere.length) {
+    h += '<div class="ld-divider" role="separator">' + esc(tH('map_source_elsewhere')) + '</div>' + elsewhere.map(row).join('');
+  }
+  return h;
+}
+
+// The place travels only where it can be shown. A map that does not cover it
+// opens at its own home, and the URL says so, rather than carrying a position
+// the map clamps away from while the address still claims it.
+function _switchMapSource(name, path, title) {
+  _closeMapSourceDropdown();
+  if (currentArticle && currentArticle.zim === name) return;
+  var pos = _currentMapPositionHash();
+  var target = (zimsCache || []).filter(function(z) { return z.name === name; })[0];
+  if (pos && target && _mapCovers(target, parseMapHash('#' + pos)) === false) pos = null;
+  openArticle(name, path, title, pos ? {pos: pos} : undefined);
+}
+
+var _mapSourceDetach = null;
+function toggleMapSourceDropdown(event) {
+  event.stopPropagation();
+  var dd = document.getElementById('map-source-dropdown');
+  var btn = document.getElementById('map-source-btn');
+  if (!dd || !btn) return;
+  if (dd.classList.contains('visible')) { _closeMapSourceDropdown(); return; }
+  var here = _currentMapPositionHash();
+  dd.innerHTML = _mapSourceRowsHtml(_installedMaps(), currentArticle ? currentArticle.zim : '', here ? parseMapHash('#' + here) : null);
+  dd.onclick = function(e) {
+    var row = e.target.closest('.lang-dropdown-item');
+    if (!row) return;
+    _switchMapSource(row.getAttribute('data-zim'), row.getAttribute('data-path'), row.getAttribute('data-title'));
+  };
+  _placeDropdownUnder(dd, btn);
+  _mapSourceDetach = _dismissOnOutside([dd, btn], _closeMapSourceDropdown);
+}
+function _closeMapSourceDropdown() {
+  var dd = document.getElementById('map-source-dropdown');
+  if (dd) dd.classList.remove('visible');
+  if (_mapSourceDetach) { _mapSourceDetach(); _mapSourceDetach = null; }
+}
 function _spaMapFind(e, el) {
   return _spaNav(e, function () {
     openArticle(el.getAttribute('data-zim'), el.getAttribute('data-path'), el.getAttribute('data-title') || '',
@@ -17846,15 +17961,7 @@ function toggleBookmark() {
     // Where the map is, if this is one. Read at the moment of bookmarking
     // rather than from the URL, so it is right even if the debounce has not
     // fired yet.
-    var pos = null;
-    try {
-      var map = _readerMap();
-      if (map) {
-        var c = map.getCenter();
-        pos = mapPositionHash(map.getZoom(), c.lat, c.lng);
-      }
-    } catch (e) {}
-    _bkAdd(zim, path, title, pos);
+    _bkAdd(zim, path, title, _currentMapPositionHash());
   }
   _updateLibraryBtnIcon();
 }
@@ -18171,8 +18278,22 @@ function toggleLangDropdown(event) {
   }
   _renderLangDropdown();
   var btn = document.getElementById('lang-selector-btn');
+  _placeDropdownUnder(dd, btn);
+  // Dismiss on outside interaction (iframe taps included). Clicks inside the
+  // dropdown are ignored by the helper; a transient locked state vetoes the
+  // close (returns false) so the listener keeps watching. Keep the selector
+  // button "inside" for a clean second-tap toggle.
+  _langDropdownDetach = _dismissOnOutside([dd, btn], function() {
+    if (_langDropdownLocked) return false;
+    _closeLangDropdown();
+  });
+}
+
+// Hang a topbar dropdown under its button, on the button's side of the bar.
+// A button hidden at this width (display:none measures 0 wide) hangs under
+// the ⋯ menu button instead, which is where its row lives on a phone.
+function _placeDropdownUnder(dd, btn) {
   var rect = btn.getBoundingClientRect();
-  // On mobile the lang button is hidden (display:none) — fall back to the ... menu button
   if (rect.width === 0) {
     var moreBtn = document.querySelector('.topbar-more');
     if (moreBtn) rect = moreBtn.getBoundingClientRect();
@@ -18187,14 +18308,6 @@ function toggleLangDropdown(event) {
     dd.style.left = 'auto';
   }
   dd.classList.add('visible');
-  // Dismiss on outside interaction (iframe taps included). Clicks inside the
-  // dropdown are ignored by the helper; a transient locked state vetoes the
-  // close (returns false) so the listener keeps watching. Keep the selector
-  // button "inside" for a clean second-tap toggle.
-  _langDropdownDetach = _dismissOnOutside([dd, btn], function() {
-    if (_langDropdownLocked) return false;
-    _closeLangDropdown();
-  });
 }
 
 var _langDropdownLocked = false;

@@ -706,6 +706,8 @@
   "streetzim_offline": "StreetZim's regions could not be fetched. They are listed once this machine has reached the Internet Archive.",
   "streetzim_note": "Built from OpenStreetMap by StreetZim and hosted on the Internet Archive. Larger than Kiwix's maps, with satellite imagery and terrain on most regions, and places, streets and addresses searchable.",
   "maps_source_streetzim": "StreetZim",
+  "map_source": "Other maps here",
+  "map_source_elsewhere": "Elsewhere",
   "maps_source_kiwix": "Kiwix maps",
   "find_on_map": "Find “{q}” on {map}",
   "cat_qa": "Q&A Communities",

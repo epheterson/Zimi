@@ -706,6 +706,8 @@
   "streetzim_offline": "تعذّر جلب مناطق StreetZim. ستظهر عندما يصل هذا الجهاز إلى Internet Archive.",
   "streetzim_note": "مبنية من OpenStreetMap بواسطة StreetZim ومستضافة على Internet Archive. أكبر من خرائط Kiwix، مع صور أقمار صناعية وتضاريس في معظم المناطق، ويمكن البحث في الأماكن والشوارع والعناوين.",
   "maps_source_streetzim": "StreetZim",
+  "map_source": "خرائط أخرى هنا",
+  "map_source_elsewhere": "في مكان آخر",
   "maps_source_kiwix": "خرائط Kiwix",
   "find_on_map": "ابحث عن “{q}” في {map}",
   "cat_qa": "مجتمعات الأسئلة والأجوبة",

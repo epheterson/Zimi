@@ -706,6 +706,8 @@
   "streetzim_offline": "לא ניתן היה לאחזר את אזורי StreetZim. הם יופיעו ברגע שמחשב זה יגיע ל-Internet Archive.",
   "streetzim_note": "נבנו על ידי StreetZim מתוך OpenStreetMap ומתארחים ב-Internet Archive. גדולות ממפות Kiwix, עם צילומי לוויין וטופוגרפיה ברוב האזורים, ומקומות, רחובות וכתובות ניתנים לחיפוש.",
   "maps_source_streetzim": "StreetZim",
+  "map_source": "מפות אחרות כאן",
+  "map_source_elsewhere": "במקום אחר",
   "maps_source_kiwix": "מפות Kiwix",
   "find_on_map": "חפש “{q}” ב-{map}",
   "cat_qa": "קהילות שאלות ותשובות",

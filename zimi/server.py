@@ -1878,6 +1878,68 @@ def _zim_map_search(scraper):
     return (scraper or "").lower().startswith(_MAP_SEARCH_SCRAPERS)
 
 
+# Where each publisher writes down what ground its map covers, and the shape
+# it uses. StreetZim: map-config.json, bounds as [W, S, E, N]. Kiwix's
+# maps2zim: content/config.json, boundingBox as [[W, S], [E, N]]. Both are
+# the same four numbers; Zimi keeps the first shape.
+_MAP_CONFIG_PATHS = (("map-config.json", "bounds"), ("content/config.json", "boundingBox"))
+_MAP_SOURCE_LABELS = (("streetzim", "StreetZim"), ("atlaszim", "AtlasZim"), ("maps2zim", "Kiwix"))
+
+
+def _map_source(scraper):
+    """Whose map this is, for a row that lists several: the publisher's name
+    from the Scraper metadata, "" when it is one Zimi has not met."""
+    s = (scraper or "").lower()
+    for prefix, label in _MAP_SOURCE_LABELS:
+        if s.startswith(prefix):
+            return label
+    return ""
+
+
+def _map_bounds(archive):
+    """``[W, S, E, N]`` for a map ZIM, from its own config entry; None when it
+    has none Zimi knows, or the numbers do not make a box."""
+    for path, key in _MAP_CONFIG_PATHS:
+        try:
+            entry = archive.get_entry_by_path(path)
+            if entry.is_redirect:
+                entry = entry.get_redirect_entry()
+            raw = json.loads(bytes(entry.get_item().content).decode("utf-8", "replace"))
+        except Exception:
+            continue
+        box = raw.get(key) if isinstance(raw, dict) else None
+        try:
+            if isinstance(box, list) and len(box) == 2 and all(isinstance(c, list) for c in box):
+                box = [box[0][0], box[0][1], box[1][0], box[1][1]]
+            w, so, e, n = (float(v) for v in box)
+        except (TypeError, ValueError):
+            continue
+        if not (-180 <= w <= 180 and -180 <= e <= 180 and -90 <= so <= n <= 90):
+            continue
+        return [w, so, e, n]
+    return None
+
+
+def _map_facts(archive, scraper):
+    """The two facts about a map beyond its kind, read once and cached with
+    the rest: who published it and what ground it covers."""
+    return {"map_source": _map_source(scraper), "map_bounds": _map_bounds(archive)}
+
+
+def _read_map_facts(path):
+    """``_map_facts`` for a cache record written before they were kept."""
+    try:
+        archive = open_archive(path)
+        try:
+            scraper = bytes(archive.get_metadata("Scraper")).decode("utf-8", "replace")
+        except Exception:
+            scraper = ""
+        return _map_facts(archive, scraper)
+    except Exception as e:
+        log.debug("could not read map facts for %s: %s", path, e)
+        return {"map_source": "", "map_bounds": None}
+
+
 def _read_zim_kind(path):
     """``_zim_kind`` for a cache record written before ``kind`` existed.
 
@@ -2565,6 +2627,7 @@ def _extract_zim_metadata(name, path):
     meta_lang = ""
     meta_creator = ""
     meta_scraper = ""
+    map_facts = None
     meta_tags = ""
     meta_name = ""
     has_icon = False
@@ -2619,6 +2682,8 @@ def _extract_zim_metadata(name, path):
         except Exception as e:
             log.debug("Failed to read main entry for %s: %s", name, e)
             pass
+        if _zim_kind(meta_scraper, meta_tags, meta_name) == "map":
+            map_facts = _map_facts(archive, meta_scraper)
     except Exception as e:
         log.debug("Failed to open archive for metadata extraction %s: %s", name, e)
         entry_count = "?"
@@ -2657,6 +2722,8 @@ def _extract_zim_metadata(name, path):
         info["kind"] = kind
     if map_search:
         info["map_search"] = True
+    if map_facts:
+        info.update(map_facts)
     # Additive: the raw subfolder name behind a folder-derived category, so a
     # client can tell "filed under medical/" from a name-heuristic guess. Absent
     # for root-level files, which keep heuristic categorization untouched.
@@ -2944,6 +3011,10 @@ def load_cache(force=False):
                 # nothing to say otherwise.
                 cached["kind"], cached["map_search"] = _read_zim_kind(path)
                 kind_backfilled = True
+            if cached.get("kind") == "map" and "map_bounds" not in cached:
+                # A record from before Zimi kept a map's ground and publisher.
+                cached.update(_read_map_facts(path))
+                kind_backfilled = True
             entry = {
                 "name": name,
                 "file": filename,
@@ -2984,6 +3055,9 @@ def load_cache(force=False):
                 entry["kind"] = cached["kind"]
             if cached.get("map_search"):
                 entry["map_search"] = True
+            if "map_bounds" in cached:
+                entry["map_bounds"] = cached["map_bounds"]
+                entry["map_source"] = cached.get("map_source", "")
             if "has_qids" in cached:
                 entry["has_qids"] = cached["has_qids"]
             # Both of the site's faces, when a capture kept them. Cached like
@@ -3054,6 +3128,11 @@ def load_cache(force=False):
             new_cached["kind"] = entry.get("kind") or ""
             if entry.get("map_search"):
                 new_cached["map_search"] = True
+            # A map's ground and publisher, null included: a map whose config
+            # Zimi could not read is decided too, not re-read every boot.
+            if "map_bounds" in entry:
+                new_cached["map_bounds"] = entry["map_bounds"]
+                new_cached["map_source"] = entry.get("map_source", "")
             # Only when the capture kept two: most ZIMs have one face, and a
             # cache full of nulls is noise. An older Zimi reading this record
             # ignores the key, which is what keeps a downgrade safe.
