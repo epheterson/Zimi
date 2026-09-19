@@ -1614,6 +1614,27 @@ def format_bytes(n):
     return f"{gb:.0f} GB" if gb >= _GB_WHOLE_FROM else f"{gb:.1f} GB"
 
 
+# Windows refuses to replace a file another thread still has open for reading
+# ("Access is denied", WinError 5), where POSIX just swaps the inode. The
+# create-jobs journal is read by the route that reports progress and written
+# by the worker that makes it, and the 1.9.6 release build lost its Windows
+# leg to exactly that overlap. A reader holds the file for microseconds, so a
+# short wait is the whole fix; a genuine lock still surfaces as the warning.
+_REPLACE_RETRY_ATTEMPTS = 20
+_REPLACE_RETRY_SLEEP_S = 0.05
+
+
+def _replace_with_retry(tmp, path):
+    for attempt in range(_REPLACE_RETRY_ATTEMPTS):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == _REPLACE_RETRY_ATTEMPTS - 1:
+                raise
+            time.sleep(_REPLACE_RETRY_SLEEP_S)
+
+
 def _atomic_write_json(path, data, indent=None):
     """Write JSON data to a file atomically via temp file + os.replace().
 
@@ -1646,7 +1667,7 @@ def _atomic_write_json(path, data, indent=None):
                 indent=indent,
                 separators=(",", ":") if indent is None else None,
             )
-        os.replace(tmp, path)
+        _replace_with_retry(tmp, path)
     except OSError as e:
         log.warning("Atomic write failed for %s: %s", path, e)
         try:
