@@ -267,9 +267,19 @@ jobs:
         run: |
           mkdir -p ~/.config/containers/systemd
           cp deploy/podman/zimi.container ~/.config/containers/systemd/
-          # quadlet -dryrun renders the unit or fails with the line at fault.
+          # quadlet -dryrun renders the unit, or complains about the line at
+          # fault. Its exit code is not the verdict (it exits 0 with a
+          # complaint), and neither is a grep behind a pipe with no pipefail:
+          # the rendered service must contain the podman run line, and the
+          # render must not mention our file in an error.
           Q=$(ls /usr/libexec/podman/quadlet /usr/lib/podman/quadlet 2>/dev/null | head -1)
-          "$Q" -dryrun -user | grep -E "^# zimi.service|ExecStart=" | head -3
+          test -x "$Q" || { echo "::error::no quadlet generator on this runner"; exit 1; }
+          "$Q" -dryrun -user > rendered.txt 2>&1 || true
+          cat rendered.txt
+          grep -q "^ExecStart=.*podman run" rendered.txt || { echo "::error::zimi.container did not render to a service"; exit 1; }
+          grep -q "UserNS=keep-id\|--userns keep-id\|--userns=keep-id" rendered.txt || { echo "::error::the rendered service lost the userns mapping"; exit 1; }
+          ! grep -i "zimi.container.*error\|error.*zimi.container" rendered.txt || { echo "::error::quadlet complained about zimi.container"; exit 1; }
+          echo "the Quadlet unit renders to a service with the userns mapping intact"
 
   docker:
     runs-on: ubuntu-latest
