@@ -2387,6 +2387,9 @@
   .browse-back { background: none; border: none; color: var(--amber); font-size: 13px; cursor: pointer; padding: 4px 0; font-weight: 500; }
   .browse-back:hover { text-decoration: underline; }
   .browse-drilldown-title { font-size: 15px; font-weight: 600; color: var(--accent); }
+  .browse-drilldown-icon { margin-right: 8px; }
+  .ci-pin { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; color: var(--amber); }
+  .ci-pin svg { width: 24px; height: 24px; }
   .browse-drilldown-count { font-size: 12px; color: var(--text2); margin-inline-start: auto; }
 
   /* ── Mobile ── */

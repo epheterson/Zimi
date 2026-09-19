@@ -8380,10 +8380,11 @@ async function _renderStreetZimMaps(results, catMeta, catName, attempt) {
   grouped.sort(function(a, b) { return (a.title || a.name || '').localeCompare(b.title || b.name || ''); });
   var h = '<div class="browse-drilldown-header">' +
     '<button class="browse-back" onclick="renderBrowseGallery()">' + tH('back_to_catalog') + '</button>' +
-    '<span class="browse-drilldown-title">' + (catMeta ? catMeta.icon + ' ' : '') + esc(catName) + '</span>' +
+    '<span class="browse-drilldown-title">' + (catMeta ? '<span class="browse-drilldown-icon">' + catMeta.icon + '</span>' : '') + esc(catName) + '</span>' +
     '<span class="browse-drilldown-count">' + tH('n_available', {n: grouped.length}) + '</span>' +
   '</div>' + _mapsSourceToggleHtml() +
-  '<div class="ms-hint">' + tH('streetzim_note') + (data.as_of ? ' ' + tH('catalog_as_of', {date: esc(data.as_of)}) : '') + '</div>';
+  '<div class="ms-hint">' + tH('streetzim_note') + (data.as_of ? ' ' + tH('catalog_as_of', {date: esc(data.as_of)}) : '') +
+    ' <a href="https://streetzim.web.app" target="_blank" rel="noopener">streetzim.web.app</a></div>';
   if (grouped.length) {
     h += _renderCatalogGrid(grouped);
   } else if (data.refreshing && (attempt || 0) < _STREETZIM_POLL_TRIES) {
@@ -8449,7 +8450,7 @@ function drillCategory(catKey, namePrefix) {
     grouped.sort((a, b) => (a.title || a.name || '').localeCompare(b.title || b.name || ''));
     let h = '<div class="browse-drilldown-header">' +
       '<button class="browse-back" onclick="renderBrowseGallery()">' + tH('back_to_catalog') + '</button>' +
-      '<span class="browse-drilldown-title">' + (catMeta ? catMeta.icon + ' ' : '') + esc(catName) + '</span>' +
+      '<span class="browse-drilldown-title">' + (catMeta ? '<span class="browse-drilldown-icon">' + catMeta.icon + '</span>' : '') + esc(catName) + '</span>' +
       '<span class="browse-drilldown-count">' + tH('n_available', {n: grouped.length}) + '</span>' +
     '</div>';
     if (catKey === 'maps') h += _mapsSourceToggleHtml();
@@ -8687,7 +8688,11 @@ function renderCatalogItem(group) {
   const iconSrc = !item.icon_url ? ''
     : item.icon_url.startsWith('/catalog-icon/') ? item.icon_url
     : '/manage/thumb?url=' + encodeURIComponent(item.icon_url);
-  const iconHtml = iconSrc
+  // StreetZim's regions have no icon on the Archive; a pin says what they
+  // are better than the first letter of "Alaska".
+  const iconHtml = (!iconSrc && item.source === 'streetzim')
+    ? '<span class="ci-pin">' + _MAPS_PIN_SVG + '</span>'
+    : iconSrc
     ? '<img src="' + escAttr(iconSrc) + '" alt="" width="40" height="40" loading="lazy"' +
       ' onerror="_ciThumbFallback(this)" data-letter="' + escAttr(letterChar) + '">'
     : '<span class="ci-letter">' + letterChar + '</span>';
