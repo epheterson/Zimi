@@ -27,6 +27,12 @@ Built the same night, after Eric could not find Danville, CA on the Kiwix world 
 
 Still 2.0 with sources: Zimi reading StreetZim's shards itself. StreetZim keeps its places in `search-data/<2-char prefix>.json` shards behind a manifest (139,067 places for Hawaii), not as titled entries, so the title index cannot see them. Cutting through several StreetZim files from Zimi's search bar means reading the shard for the query prefix on the server and returning `{name, lat, lng}` rows that open `#map=`. Worth doing once StreetZim is a catalog source.
 
+## Eric's direction for maps, 2026-09-18
+
+"I want both maps sources (since it's only maps sources how about a toggle in maps category?) and proper search and all that. In the long run a proper Zimi Maps interface where it's like Google Maps and there's a step to chose the region and sources and use it nicely in there then maybe we limit map search to inside that thing."
+
+So for 1.10: StreetZim's regions in the catalog behind a toggle inside the Maps category (no general sources machinery yet), and place search that Zimi does itself over StreetZim's shards. For 1.11: Zimi Maps, a surface of its own with a region and source chooser, and map search inside it.
+
 ## 2.0, the maps and sources release
 
 Eric: "We're on a new major release here maps release and each of those apps of the internet will be its own release too."
