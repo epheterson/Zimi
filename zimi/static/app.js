@@ -1656,6 +1656,7 @@ function updateTopbar() {
   // gone now; what is left is Language and the X, which is the whole job.
   var libraryChromeOff = mode === 'manage' || _almanacOpen || _createOpen;
   randomBtn.style.display = libraryChromeOff ? 'none' : 'flex';
+
   document.getElementById('library-btn').style.display = libraryChromeOff ? 'none' : 'flex';
   // Create-a-ZIM lives in the ⋯ menu at every width — creation is an
   // occasional, deliberate act, so it stays out of the primary topbar. The ⋯
@@ -2174,6 +2175,12 @@ function route(push) {
   // /manage/create* route is admin-gated server-side anyway — so the page
   // opens now and _initSecondary closes it if the answer comes back no. The
   // alternative, waiting, is the home-then-switch flash Eric asked us to kill.
+  if (location.hash === '#maps') {
+    enterHome(false);
+    history.replaceState(history.state, '', location.pathname + location.search);
+    openMaps();
+    return;
+  }
   if (location.hash === '#create') {
     enterHome(false);
     openCreate(true);
@@ -4930,16 +4937,10 @@ function _loadDiscover() {
       if (cached[0] && cached[0].type === 'today' && cached.length > 1 && cached[1] && cached[1].type !== 'today') {
         cached = [cached[1], cached[0]].concat(cached.slice(2));
       }
-      // The Maps card follows the library, not the day. A map installed
-      // after this morning's cards were cached must show up now, and one
-      // removed must go; the cached list is kept for the picks that cost a
-      // server round trip.
-      var hasMapsCard = cached.some(function(it) { return it && it.type === 'maps'; });
-      if (_installedMaps().length && !hasMapsCard) {
-        cached.unshift({ type: 'maps' });
-      } else if (!_installedMaps().length && hasMapsCard) {
-        cached = cached.filter(function(it) { return !(it && it.type === 'maps'); });
-      }
+      // A list cached by a build that had a Maps card: drop it. Maps enter
+      // from the top bar now (Eric: "map entry through discover that's not
+      // it").
+      cached = cached.filter(function(it) { return !(it && it.type === 'maps'); });
       _renderDiscover(el, cached);
       return;
     }
@@ -4947,9 +4948,6 @@ function _loadDiscover() {
 
   // Today card is always present (computed client-side, no server call needed)
   var computed = [{ type: 'today' }];
-  // So is Maps, whenever a map ZIM is installed: the card renders from the
-  // live library, so it needs no server pick and nothing to cache.
-  if (_installedMaps().length) computed.unshift({ type: 'maps' });
   var names = (zimsCache || []).map(function(z) { return z.name; });
   var mmdd = ('0' + (now.getMonth() + 1)).slice(-2) + ('0' + now.getDate()).slice(-2);
 
@@ -5045,17 +5043,11 @@ function _loadDiscover() {
     // Skip items with no title AND no path (failed dated entry lookups)
     var items = results.filter(function(r) { return r && (r.thumbnail || r.label) && (r.title || r.path); });
     // Move Today card to position 2 if there's content to show first
-    // The Maps card leads when a map is installed: on a phone the strip
-    // shows one card, and the third card (where it sat, behind a server
-    // pick and Today) is one nobody scrolls to. Eric: "I don't see
-    // discover card."
-    var mapsCard = computed.filter(function(it) { return it.type === 'maps'; });
-    var restComputed = computed.filter(function(it) { return it.type !== 'maps'; });
     var all;
     if (items.length > 0) {
-      all = mapsCard.concat([items[0]]).concat(restComputed).concat(items.slice(1));
+      all = [items[0]].concat(computed).concat(items.slice(1));
     } else {
-      all = mapsCard.concat(restComputed).concat(items);
+      all = computed.concat(items);
     }
     // Only cache if all (or nearly all) cards resolved — prevents partial results
     // from persisting all day when some ZIMs were temporarily unavailable
@@ -5131,38 +5123,6 @@ function _renderDiscover(el, items) {
       continue;
     }
 
-    // ─── Card: Maps ───────────────────────────────────────────────────
-    // Every installed map, from the live library rather than the cached item,
-    // so installing or removing one changes the card without waiting for the
-    // day to roll over. One map: the whole card opens it. Several: a chip per
-    // region, because a card that opened "the first one" would hide the rest.
-    if (it.type === 'maps') {
-      var _maps = _installedMaps();
-      if (!_maps.length) continue;
-      var _mapHero = '<div class="dc-map-hero" aria-hidden="true">' + _FEAT_SVG.map + '</div>';
-      var _mapSrc = '<div class="dc-source">' + _FEAT_SVG.map + '<span>' + tH('cat_maps') + '</span></div>';
-      if (_maps.length === 1) {
-        var _one = _maps[0];
-        h += '<a class="discover-card dc-map-card" href="' + escAttr(_articleDeepLinkPath(_one.name, _one.main_path)) +
-          '" data-zim="' + escAttr(_one.name) + '" data-path="' + escAttr(_one.main_path) + '" data-title="' + escAttr(_one.title || _one.name) +
-          '" onclick="return _spaCardClick(event, this)">' + _mapHero +
-          '<div class="dc-body">' + _mapSrc +
-            '<div class="dc-title">' + esc(_one.title || _one.name) + '</div>' +
-            (_one.description ? '<div class="dc-blurb">' + esc(_one.description) + '</div>' : '') +
-          '</div></a>';
-      } else {
-        var _chips = '';
-        for (var _mi = 0; _mi < _maps.length; _mi++) {
-          var _mz = _maps[_mi];
-          _chips += '<a class="pill dc-map-chip" href="' + escAttr(_articleDeepLinkPath(_mz.name, _mz.main_path)) +
-            '" data-zim="' + escAttr(_mz.name) + '" data-path="' + escAttr(_mz.main_path) + '" data-title="' + escAttr(_mz.title || _mz.name) +
-            '" onclick="return _spaCardClick(event, this)">' + esc(_mz.title || _mz.name) + '</a>';
-        }
-        h += '<div class="discover-card dc-map-card dc-no-click">' + _mapHero +
-          '<div class="dc-body">' + _mapSrc + '<div class="dc-map-chips">' + _chips + '</div></div></div>';
-      }
-      continue;
-    }
 
     // ─── Shared: metadata extraction ──────────────────────────────────
     // Common fields used by Quote, Word, and Standard card types.
@@ -15889,6 +15849,33 @@ function _spaMapPlace(e, el) {
 // maps2zim has roads and admin names, StreetZim has satellite, terrain and
 // every address. The switch is a normal article open with the position
 // carried in the hash, so Back returns to the map you left, where you were.
+// ── Maps, from the top bar ──
+// Eric: "Maps doesn't feel first class yet." The door: the map you were
+// last on, where you were; before that, the first installed map. /#maps
+// opens it for a link or a home-screen icon. What on the home page leads to
+// it is Eric's call (a Discover card and a top-bar button were both "not
+// it"); this is the function whichever entry will call.
+function _lastMapVisit() {
+  var maps = _installedMaps();
+  var names = {};
+  maps.forEach(function(z) { names[z.name] = z; });
+  var h = _histLoad();
+  for (var i = 0; i < h.length; i++) {
+    if (h[i].type === 'article' && names[h[i].zim]) return { zim: names[h[i].zim], pos: h[i].pos || '' };
+  }
+  return maps.length ? { zim: maps[0], pos: '' } : null;
+}
+
+function openMaps(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  var last = _lastMapVisit();
+  if (!last) return;
+  if (_createOpen) closeCreate();
+  if (_almanacOpen) closeAlmanac();
+  if (mode === 'manage') { mode = 'home'; updateTopbar(); }
+  openArticle(last.zim.name, last.zim.main_path, last.zim.title || last.zim.name, last.pos ? {pos: last.pos} : undefined);
+}
+
 function _isMapZim(name) {
   return (zimsCache || []).some(function(z) { return z.name === name && z.kind === 'map'; });
 }
@@ -19878,40 +19865,35 @@ function _openDownloadsView(e) {
   switchManageTab('downloads');
 }
 
-// Paint the badge onto whichever Manage entry point is live (CSS shows exactly
-// one: gear on desktop, ⋯ on mobile). Idempotent — called by the poller AND at
-// the end of updateTopbar (which rewrites the gear's innerHTML, wiping any child
-// badge). Suppressed in Manage mode: that view surfaces downloads in its tabs,
-// and the gear is a close-X there.
+// The badge: a count of downloads (in flight + queued) on the gear, and
+// nowhere else (#80: "these badges appear in very random places"). Eric:
+// "Should only be on gear and downloads tab representing active downloads."
+// So: not on the ⋯ (its Manage row carries the count on a phone), not for
+// indexing or seeding or an export (the hover title still names them), and
+// never while the gear is drawn as an X, which it is in Manage, the reader,
+// the Almanac and Create. Idempotent: the poller and updateTopbar (which
+// rewrites the gear's innerHTML) both call it.
+function _gearIsAGear() {
+  return !(mode === 'manage' || readerOpen || _almanacOpen || _createOpen);
+}
+
 function _applyActivityBadge() {
   var st = _activityBadge || { active: false, count: 0, tip: '' };
-  // Suppress in Manage (downloads live in its own tabs) and while the Almanac
-  // overlay is open — there the Manage entry point becomes the close X, so the
-  // badge would bleed onto it (W1.1).
-  var suppress = (typeof mode !== 'undefined' && mode === 'manage') ||
-    (typeof _almanacOpen !== 'undefined' && _almanacOpen) || !st.active;
-  var hosts = [
-    { el: document.getElementById('manage-btn'), forceDot: false }, // desktop gear: count
-    { el: document.querySelector('.topbar-more'), forceDot: true }, // mobile ⋯: dot
-  ];
-  hosts.forEach(function(h) {
-    if (!h.el) return;
-    var badge = h.el.querySelector('.topbar-badge');
-    if (suppress) { if (badge) badge.remove(); return; }
-    if (!badge) {
-      badge = document.createElement('span');
-      badge.className = 'topbar-badge';
-      badge.setAttribute('role', 'status');
-      badge.onclick = _openDownloadsView;
-      h.el.appendChild(badge);
-    }
-    var asDot = h.forceDot || st.count <= 0;
-    badge.classList.toggle('dot', asDot);
-    badge.textContent = asDot ? '' : (st.count > 99 ? '99+' : String(st.count));
-    badge.title = st.tip;
-    badge.setAttribute('aria-label', st.tip);
-    badge.style.display = 'flex';
-  });
+  var gear = document.getElementById('manage-btn');
+  if (!gear) return;
+  var badge = gear.querySelector('.topbar-badge');
+  if (st.count <= 0 || !_gearIsAGear()) { if (badge) badge.remove(); return; }
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'topbar-badge';
+    badge.setAttribute('role', 'status');
+    badge.onclick = _openDownloadsView;
+    gear.appendChild(badge);
+  }
+  badge.textContent = st.count > 99 ? '99+' : String(st.count);
+  badge.title = st.tip;
+  badge.setAttribute('aria-label', st.tip);
+  badge.style.display = 'flex';
 }
 
 function _renderActivity(a) {
