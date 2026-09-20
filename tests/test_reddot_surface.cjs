@@ -18,7 +18,7 @@ function ok(label, cond, detail) {
 }
 
 ok('the tile is one line in the apps row, fourth', /_mapsTileHtml\(\) \+ _tubeTileHtml\(\) \+ _exchangeTileHtml\(\) \+ _reddotTileHtml\(\)/.test(src));
-ok('its empty state is the Create page on the Subreddit mode, not the catalog', /var door = _APP_CATEGORY\[app\]/.test(src) && /_createRememberMode = \\'reddit\\'; openCreate\(\);/.test(src) && /var _APP_CATEGORY = \{ maps: 'maps', tube: 'ted', exchange: 'stack_exchange' \};/.test(src));
+ok('its empty state is the Create page with a subreddit address started, not the catalog', /var door = _APP_CATEGORY\[app\]/.test(src) && /_createRememberSource = _REDDIT_ADDRESS_START; openCreate\(\);/.test(src) && !/_APP_CATEGORY = \{[^}]*reddot/.test(src));
 ok('it is the page Zimi owns, in the reader, with its own history entry', /openReader\(_REDDOT_PAGE \+ '#' \+ _reddotStrings\(p\)\)/.test(src) && /history\.pushState\(st, '', _reddotUrl\(p\)\)/.test(src));
 ok('/#reddot opens it cold, with a post when the address names one', /location\.hash === '#reddot' \|\| location\.hash\.indexOf\('#reddot\?'\) === 0/.test(src) && /rdQ\.get\('p'\)/.test(src));
 ok('Back and Forward return to it', /s\.mode === 'reader' && s\.reddot\) \{\n\s*openReddot\(true, s\.p \|\| ''\);/.test(src));
@@ -30,11 +30,12 @@ ok('the breadcrumb is Reddot and the box says what it is for', /bcIcon\.title = 
 ok('shelves per subreddit, a paged list with Top and New, a post with its comment tree', /class="shelf"/.test(page) && /setSort\(/.test(page) && /'\/reddot\/sub\?zim='/.test(page) && /'\/reddot\/post\?zim='/.test(page) && /function commentHtml\(c\)/.test(page) && /\(c\.children \|\| \[\]\)\.map\(commentHtml\)/.test(page));
 ok('the page takes the shared sheet, which holds both themes', /<!--@apps\.css@-->/.test(page) && !/prefers-color-scheme/.test(page));
 // the Create page
-ok('the Create page offers a Subreddit mode that needs the internet', /id: 'reddit', network: true, reddot: true/.test(create) && /if \(def\.reddot\) return false;/.test(create));
+ok('no Subreddit tile: a reddit.com/r/ address under Web page is a subreddit, and the preview says so', !/id: 'reddit'/.test(create) && /p\.mode === 'reddit'/.test(create) && /add\('create_mode_reddit', p\.title\)/.test(create) && /reddit: \{ name: 'ArcticZim'/.test(create));
+ok('Reddot\'s doors open Create with the address started', /_REDDIT_ADDRESS_START = 'https:\/\/www\.reddit\.com\/r\/'/.test(src) && (src.match(/_createRememberSource = _REDDIT_ADDRESS_START/g) || []).length === 2 && /seedEl\.dispatchEvent\(new Event\('input'\)\)/.test(create));
 ok('the Create page can be opened on a remembered mode', /if \(typeof _createRememberMode === 'string' && _createRememberMode\) \{\n\s*_createSelected = _createRememberMode;/.test(create));
 for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n'))) {
   const d = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n', lang), 'utf8'));
   if (d.reddot !== 'Reddot') ok('it is called Reddot in ' + lang, false);
-  for (const k of ['reddot_search_placeholder', 'reddot_comments', 'reddot_empty', 'app_empty_reddot', 'create_mode_reddit', 'create_mode_reddit_desc', 'create_label_reddit', 'create_ph_reddit']) if (!d[k]) ok(k + ' in ' + lang, false);
+  for (const k of ['reddot_search_placeholder', 'reddot_comments', 'reddot_empty', 'app_empty_reddot', 'create_mode_reddit', 'create_pv_reddit_what']) if (!d[k]) ok(k + ' in ' + lang, false);
 }
 process.exit(failures ? 1 : 0);

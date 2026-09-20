@@ -16,6 +16,7 @@ process; nothing is re-indexed.
 """
 
 import html as _html
+import json
 from html.parser import HTMLParser
 import logging
 import os
@@ -38,6 +39,15 @@ ARCTICZIM_REQUIREMENT = "arcticzim[integration,optimize] @ https://github.com/IM
 SUBREDDIT_RE = re.compile(r"^[A-Za-z0-9_]{2,21}$")
 _MARKER = ".zimi-sidecar.json"
 _MAX_PAGE_BYTES = 8 * 1024 * 1024
+# ArcticZim's retrieve asks Arctic Shift for what comes after the last item
+# it saw, and at the end of a subreddit the archive answers with that last
+# item again, one per request, forever (r/kiwix: ~1,000 posts in 15 s, then
+# one post a second for an hour at the same cursor). This many requests at
+# one cursor means the end was reached.
+STALL_REQUESTS = 8
+_WORKER_DEATH = "Traceback (most recent call last)"
+_PROGRESS_RE = re.compile(r"Time=(\S+), requests=(\d+)")
+_PROGRESS_EVERY_S = 2.0
 
 
 # ── the maker ──────────────────────────────────────────────────────────────
@@ -49,6 +59,59 @@ def sidecar_dir():
 
 def _exe():
     return _venv_bin(sidecar_dir(), "arcticzim")
+
+
+# ArcticZim is run through this launcher rather than its own console script.
+# Its build configures each worker process with psutil, and it takes every
+# system that is not Linux for Windows: on macOS the workers die asking for
+# Windows priority constants and the creator waits for them forever. The
+# launcher keeps the worker's name and skips the priorities where they
+# would fail; on Linux it changes nothing. Guarded for multiprocessing,
+# which imports the main module again in every worker.
+_LAUNCHER_NAME = "zimi_arcticzim.py"
+_LAUNCHER_SRC = """\
+# Written by Zimi. ArcticZim's entry point, with one patch for macOS.
+import sys
+
+if sys.platform != "linux":
+    import arcticzim.zimbuild.builder as _builder
+
+    def _config_process(name, nice=0, ionice=0):
+        try:
+            import setproctitle
+
+            setproctitle.setproctitle(name)
+        except Exception:
+            pass
+
+    _builder.config_process = _config_process
+
+if __name__ == "__main__":
+    from arcticzim.cli import main
+
+    sys.exit(main())
+"""
+
+
+def _launcher():
+    """The launcher's path, written into the sidecar when it is not there
+    yet (a sidecar installed by an earlier Zimi has none)."""
+    path = os.path.join(sidecar_dir(), _LAUNCHER_NAME)
+    try:
+        with open(path, encoding="utf-8") as f:
+            current = f.read() == _LAUNCHER_SRC
+    except OSError:
+        current = False
+    if not current:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(_LAUNCHER_SRC)
+    return path
+
+
+def _cmd(*args):
+    """An ArcticZim command line, through the launcher."""
+    return [_venv_bin(sidecar_dir(), "python"), _launcher(), *args]
 
 
 def sidecar_status():
@@ -105,7 +168,70 @@ def normalize_subreddit(text):
 
 def looks_like_subreddit(text):
     t = (text or "").strip()
-    return bool(re.match(r"^(?:https?://(?:www\.|old\.)?reddit\.com)?/?r/[A-Za-z0-9_]+/?$", t))
+    return bool(re.match(r"^(?:(?:https?://)?(?:www\.|old\.)?reddit\.com)?/?r/[A-Za-z0-9_]+/?$", t))
+
+
+def _stall_watch():
+    """A watcher for ``_run_stream``: True once the retrieve has sat at one
+    cursor for STALL_REQUESTS requests, which is ArcticZim past the end."""
+    state = {"time": None, "first": 0}
+
+    def watch(line):
+        m = _PROGRESS_RE.search(line)
+        if not m:
+            return False
+        when, n = m.group(1), int(m.group(2))
+        if when != state["time"]:
+            state["time"], state["first"] = when, n
+            return False
+        return n - state["first"] >= STALL_REQUESTS
+
+    return watch
+
+
+def _worker_death_watch(line):
+    """A watcher for the build: a traceback from a worker process. ArcticZim's
+    creator then waits for that worker forever, so the job ends here, as a
+    failure the log explains."""
+    return "fail" if _WORKER_DEATH in line else False
+
+
+def _throttled(say):
+    """Progress lines at most every few seconds; everything else at once.
+    tqdm redraws ten times a second, and a job log is not a terminal."""
+    last = [0.0]
+
+    def sink(line):
+        if line.startswith("Retrieving "):
+            now = time.monotonic()
+            if now - last[0] < _PROGRESS_EVERY_S:
+                return
+            last[0] = now
+        say(line)
+
+    return sink
+
+
+def _dedupe_jsonl(path):
+    """One line per id. The retrieve's tail repeats its last item, and
+    ArcticZim's import keys posts and comments by id."""
+    seen, kept = set(), []
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    key = json.loads(line).get("id")
+                except ValueError:
+                    continue
+                if key in seen:
+                    continue
+                seen.add(key)
+                kept.append(line)
+        with open(path, "w", encoding="utf-8") as f:
+            f.writelines(kept)
+    except OSError:
+        pass
+    return len(kept)
 
 
 def create_reddit_zim(subreddit, *, title=None, out_dir=None, out_path=None, register=False, progress=None, stop=None):
@@ -115,26 +241,28 @@ def create_reddit_zim(subreddit, *, title=None, out_dir=None, out_path=None, reg
     sub = normalize_subreddit(subreddit)
     if not sub:
         raise CreateError("that is not a subreddit name (letters, digits and _ only, like r/kiwix)")
-    exe = ensure_sidecar(say)
+    ensure_sidecar(say)
     zim_name = f"reddit_{sub.lower()}"
     out = _finish_output(out_dir or _srv.ZIM_DIR, out_path, zim_name)
     work = os.path.join(_srv.ZIMI_DATA_DIR, "staging", f"reddot-{sub.lower()}-{int(time.time())}")
     os.makedirs(work, exist_ok=True)
     posts, comments, db = (os.path.join(work, n) for n in ("posts.jsonl", "comments.jsonl", "db.sqlite"))
     steps = [
-        ("fetching posts of r/%s from Arctic Shift" % sub, [exe, "retrieve", "--subreddit", sub, "posts", posts]),
-        ("fetching comments", [exe, "retrieve", "--subreddit", sub, "comments", comments]),
-        ("importing", [exe, "import", "--posts-file", posts, "--comments-file", comments, "sqlite:///" + db]),
-        ("building the ZIM", [exe, "-v", "build", "sqlite:///" + db, out + ".part"]),
+        ("fetching posts of r/%s from Arctic Shift" % sub, _cmd("retrieve", "--subreddit", sub, "--sleep", "0.2", "posts", posts), posts, _stall_watch()),
+        ("fetching comments", _cmd("retrieve", "--subreddit", sub, "--sleep", "0.2", "comments", comments), comments, _stall_watch()),
+        ("importing", _cmd("import", "--posts-file", posts, "--comments-file", comments, "sqlite:///" + db), None, None),
+        ("building the ZIM", _cmd("-v", "build", "sqlite:///" + db, out + ".part"), None, _worker_death_watch),
     ]
     try:
-        for label, cmd in steps:
+        for label, cmd, fetched, watch in steps:
             if stop is not None and getattr(stop, "hit", False):
                 raise CreateError("stopped")
             say(label)
-            rc = _run_stream(cmd, say)
+            rc = _run_stream(cmd, _throttled(say), watch=watch)
             if rc != 0:
                 raise CreateError(f"ArcticZim failed while {label} (the job log has its output)")
+            if fetched:
+                say(f"{_dedupe_jsonl(fetched):,} {os.path.basename(fetched).split('.')[0]}")
         if not os.path.exists(out + ".part"):
             raise CreateError("ArcticZim finished without writing a ZIM")
         os.replace(out + ".part", out)
@@ -155,19 +283,33 @@ def create_reddit_zim(subreddit, *, title=None, out_dir=None, out_path=None, reg
 _lock = threading.Lock()
 _cache = {}
 
-_SUMMARY_SPLIT_RE = re.compile(r'<DIV class="postsummary"', re.I)
+# ArcticZim writes minified pages: lowercase tags, attribute values without
+# quotes (``class=postsummary data-post=1n5s13v``), paragraphs left open.
+# The reader quotes the values first, once per page, so one set of patterns
+# reads both that and a hand-written page.
+_TAG_RE = re.compile(r"<[a-zA-Z][^<>]*>")
+_UNQUOTED_RE = re.compile(r"(\s[a-zA-Z_:-]+)=([^\s\"'<>]+)")
+_SUMMARY_SPLIT_RE = re.compile(r'<div class="postsummary"', re.I)
 _ATTR_RE = re.compile(r'\b([a-zA-Z-]+)=(["\'])([^"\']*)\2')
 _SCORE_RE = re.compile(r'class="postscore">(-?\d+)<', re.I)
-_TITLE_RE = re.compile(r'<H1 class="posttitle"><A href="([^"]*)">(.*?)</A></H1>', re.I | re.S)
-_FLAIR_RE = re.compile(r'class="postflair"[^>]*>(.*?)</P>', re.I | re.S)
-_META_RE = re.compile(r'class="postmeta">\s*Posted (.*?)\s*by <A class="authorlink"[^>]*>(.*?)</A>', re.I | re.S)
+_TITLE_RE = re.compile(r'<h1 class="posttitle"><a href="([^"]*)">(.*?)</a>', re.I | re.S)
+_FLAIR_RE = re.compile(r'class="postflair"[^>]*>([^<]*)', re.I)
+_META_RE = re.compile(r'class="postmeta">\s*Posted (.*?)\s*by <a class="authorlink"[^>]*>(.*?)</a>', re.I | re.S)
 _PAGES_RE = re.compile(r'_page_(\d+)')
-_SUBS_RE = re.compile(r'href="[^"]*?r/([A-Za-z0-9_]+)/"', re.I)
-_PAGE_TITLE_RE = re.compile(r"<TITLE>(.*?)</TITLE>", re.I | re.S)
-_POSTBODY_RE = re.compile(r'<DIV class="postbody"[^>]*>(.*?)</DIV>\s*(?=<DIV class="commentlist"|<DIV class="comments|<DIV id="comments|$)', re.I | re.S)
-_COMMENT_HEAD_RE = re.compile(r'<A class="authorlink"[^>]*>(.*?)</A>.*?<B>(-?\d+) points</B>\s*on (.*?)\s*</P>', re.I | re.S)
+_SUBS_RE = re.compile(r'class="subredditinfo-link" href="[^"]*?r/([A-Za-z0-9_]+)/"', re.I)
+_PAGE_TITLE_RE = re.compile(r"<title>(.*?)</title>", re.I | re.S)
+_POSTBODY_RE = re.compile(r'<div class="postbodytext mdbody">(.*?)</div>', re.I | re.S)
+_COMMENT_HEAD_RE = re.compile(r'<a class="authorlink"[^>]*>(.*?)</a>.*?<b>(-?\d+) points</b>\s*on ([^<]*)', re.I | re.S)
+_COMMENT_LIST_RE = re.compile(r'<div class="commentlist"', re.I)
+_COMMENT_BODY_RE = re.compile(r'<div class="commentbody mdbody">', re.I)
 _SCRIPT_RE = re.compile(r"<script\b.*?</script>", re.S | re.I)
 _URLATTR_RE = re.compile(r'\b(href|src)=(["\'])([^"\']*)\2', re.I)
+
+
+def _quote_attrs(text):
+    """Every attribute value in quotes. Only inside tags, so a ``--flag=value``
+    in a post's own words is left alone."""
+    return _TAG_RE.sub(lambda m: _UNQUOTED_RE.sub(r'\1="\2"', m.group(0)), text or "")
 
 
 def _read(archive, path):
@@ -178,13 +320,19 @@ def _read(archive, path):
         item = entry.get_item()
         if item.size > _MAX_PAGE_BYTES:
             return None
-        return bytes(item.content).decode("utf-8", "replace")
+        return _quote_attrs(bytes(item.content).decode("utf-8", "replace"))
     except Exception:
         return None
 
 
 def _text(s):
     return _html.unescape(re.sub(r"<[^>]+>", "", s or "")).strip()
+
+
+def _when(s):
+    """ArcticZim's ``2025-09-01T08:39:03`` as a person reads it."""
+    t = _text(s)
+    return t[:16].replace("T", " ") if len(t) >= 16 and t[10:11] == "T" else t
 
 
 def _rebase(fragment, page, zim):
@@ -210,7 +358,7 @@ def rows_from_listing(text):
     """The posts on a listing page: id, subreddit, title, page, score,
     flair, author, date, external (a link post's URL)."""
     out = []
-    for block in _SUMMARY_SPLIT_RE.split(text or "")[1:]:
+    for block in _SUMMARY_SPLIT_RE.split(_quote_attrs(text))[1:]:
         head = block[: block.find(">") + 1]
         attrs = {k.lower(): v for k, _, v in _ATTR_RE.findall(head)}
         pid, sub = attrs.get("data-post", ""), attrs.get("data-subreddit", "")
@@ -231,7 +379,7 @@ def rows_from_listing(text):
                 "score": int(score.group(1)) if score else 0,
                 "flair": _text(flair.group(1)) if flair else "",
                 "author": _text(meta.group(2)) if meta else "",
-                "date": _text(meta.group(1)) if meta else "",
+                "date": _when(meta.group(1)) if meta else "",
                 "external": "" if (not href or href.endswith(local) or "/r/" in href) else href,
             }
         )
@@ -245,7 +393,7 @@ def pages_in(text):
 
 def subreddits_from_page(text):
     seen, out = set(), []
-    for name in _SUBS_RE.findall(text or ""):
+    for name in _SUBS_RE.findall(_quote_attrs(text)):
         if name not in seen:
             seen.add(name)
             out.append(name)
@@ -299,20 +447,20 @@ def _parse_comments(text, page, zim):
     for node, start, end in tree.positions:
         chunk = text[_offset(text, start):_offset(text, end)]
         # This comment's own head and body come before any child's.
-        first_child = chunk.find('<DIV class="commentlist"')
-        own = chunk[:first_child] if first_child > 0 else chunk
+        first_child = _COMMENT_LIST_RE.search(chunk)
+        own = chunk[: first_child.start()] if first_child and first_child.start() > 0 else chunk
         head = _COMMENT_HEAD_RE.search(own)
         # The body runs from its open tag to its own close: a stray close tag
         # carried into the page shut the parent early and flattened the tree.
         body_html = ""
-        bm = re.search(r'<DIV class="commentbody mdbody">', own, re.I)
+        bm = _COMMENT_BODY_RE.search(own)
         if bm:
             rest = own[bm.end():]
-            cut = re.search(r"</DIV>", rest, re.I)
+            cut = re.search(r"</div>", rest, re.I)
             body_html = rest[: cut.start()] if cut else rest
         node["author"] = _text(head.group(1)) if head else ""
         node["score"] = int(head.group(2)) if head else 0
-        node["date"] = _text(head.group(3)) if head else ""
+        node["date"] = _when(head.group(3)) if head else ""
         node["body"] = _rebase(body_html, page, zim)
     return tree.roots
 
@@ -320,6 +468,7 @@ def _parse_comments(text, page, zim):
 def post_from_page(text, page, zim):
     if not text:
         return None
+    text = _quote_attrs(text)
     t = _PAGE_TITLE_RE.search(text)
     body = _POSTBODY_RE.search(text)
     m = re.match(r"r/([^/]+)/([^/]+)/?", page)
@@ -332,7 +481,7 @@ def post_from_page(text, page, zim):
         "id": m.group(2) if m else "",
         "score": int(score.group(1)) if score else 0,
         "author": _text(meta.group(2)) if meta else "",
-        "date": _text(meta.group(1)) if meta else "",
+        "date": _when(meta.group(1)) if meta else "",
         "flair": _text(flair.group(1)) if flair else "",
         "body": _rebase(body.group(1) if body else "", page, zim),
         "comments": _parse_comments(text, page, zim),
@@ -391,15 +540,27 @@ def _claim_subreddits(zims_):
     return zims_
 
 
+# ArcticZim's listing pages end in a slash (``r/Kiwix/top_page_1/``), and
+# the subreddit index is ``subreddits/``; the front page lists them too.
+SUBREDDITS_PATHS = ("subreddits/", "subreddits", "index.html")
+
+
+def _first_page(name, paths, parse):
+    for path in paths:
+        got = _cached_page(name, path, parse)
+        if got:
+            return got
+    return None
+
+
 def subreddits(name):
-    got = _cached_page(name, "subreddits", subreddits_from_page)
-    return got or []
+    return _first_page(name, SUBREDDITS_PATHS, subreddits_from_page) or []
 
 
 def listing(name, sub, sort="top", page=1):
     sort = sort if sort in ("top", "new") else "top"
-    path = f"r/{sub}/{sort}_page_{page}"
-    got = _cached_page(name, path, lambda t: {"rows": rows_from_listing(t), "pages": pages_in(t)})
+    base = f"r/{sub}/{sort}_page_{page}"
+    got = _first_page(name, (base + "/", base), lambda t: {"rows": rows_from_listing(t), "pages": pages_in(t)} if rows_from_listing(t) else None)
     return got or {"rows": [], "pages": 0}
 
 

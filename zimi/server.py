@@ -1944,6 +1944,45 @@ def _map_facts(archive, scraper):
     return {"map_source": _map_source(scraper), "map_bounds": _map_bounds(archive)}
 
 
+def _reddit_facts(archive):
+    """The subreddits a Reddit ZIM carries, read once from its own index and
+    cached with its kind, so the Reddot tile can name them (the ZIM's own
+    title is "ArcticZim", which names the tool, not the content)."""
+    from zimi import reddot
+
+    for path in reddot.SUBREDDITS_PATHS:
+        try:
+            entry = archive.get_entry_by_path(path)
+            if entry.is_redirect:
+                entry = entry.get_redirect_entry()
+            subs = reddot.subreddits_from_page(bytes(entry.get_item().content).decode("utf-8", "replace"))
+            if subs:
+                return {"subreddits": subs}
+        except Exception:
+            continue
+    return {"subreddits": []}
+
+
+# Every ArcticZim ZIM is titled after the tool. A ZIM named for what it
+# holds is what a library lists, so a Reddit ZIM with no title of its own
+# is named by its subreddits.
+_TOOL_TITLES = ("arcticzim", "")
+
+
+def _subreddit_title(title, subreddits):
+    if str(title or "").strip().lower() in _TOOL_TITLES and subreddits:
+        return " · ".join("r/" + s for s in subreddits[:3]) + (" …" if len(subreddits) > 3 else "")
+    return title
+
+
+def _read_reddit_facts(path):
+    try:
+        return _reddit_facts(open_archive(path))
+    except Exception as e:
+        log.debug("could not read subreddits of %s: %s", path, e)
+        return {"subreddits": []}
+
+
 def _read_map_facts(path):
     """``_map_facts`` for a cache record written before they were kept."""
     try:
@@ -2068,7 +2107,7 @@ def _effective_category(name, path, kind=None):
     """
     return (
         _folder_category(_zim_folder(path))
-        or ("Maps" if kind == "map" else None)
+        or ("Maps" if kind == "map" else "Reddit" if kind == "reddit" else None)
         or _categorize_zim(name)
     )
 
@@ -2776,8 +2815,11 @@ def _extract_zim_metadata(name, path):
         except Exception as e:
             log.debug("Failed to read main entry for %s: %s", name, e)
             pass
-        if _zim_kind(meta_scraper, meta_tags, meta_name) == "map":
+        cold_kind = _zim_kind(meta_scraper, meta_tags, meta_name)
+        if cold_kind == "map":
             map_facts = _map_facts(archive, meta_scraper)
+        elif cold_kind == "reddit":
+            map_facts = _reddit_facts(archive)
     except Exception as e:
         log.debug("Failed to open archive for metadata extraction %s: %s", name, e)
         entry_count = "?"
@@ -2818,6 +2860,8 @@ def _extract_zim_metadata(name, path):
         info["map_search"] = True
     if map_facts:
         info.update(map_facts)
+        if "subreddits" in map_facts:
+            info["title"] = _subreddit_title(info["title"], map_facts["subreddits"])
     # Additive: the raw subfolder name behind a folder-derived category, so a
     # client can tell "filed under medical/" from a name-heuristic guess. Absent
     # for root-level files, which keep heuristic categorization untouched.
@@ -3113,6 +3157,9 @@ def load_cache(force=False):
                 # A record from before Zimi kept a map's ground and publisher.
                 cached.update(_read_map_facts(path))
                 kind_backfilled = True
+            if cached.get("kind") == "reddit" and "subreddits" not in cached:
+                cached.update(_read_reddit_facts(path))
+                kind_backfilled = True
             entry = {
                 "name": name,
                 "file": filename,
@@ -3156,6 +3203,9 @@ def load_cache(force=False):
             if "map_bounds" in cached:
                 entry["map_bounds"] = cached["map_bounds"]
                 entry["map_source"] = cached.get("map_source", "")
+            if "subreddits" in cached:
+                entry["subreddits"] = cached["subreddits"]
+                entry["title"] = _subreddit_title(entry["title"], cached["subreddits"])
             if "has_qids" in cached:
                 entry["has_qids"] = cached["has_qids"]
             # Both of the site's faces, when a capture kept them. Cached like
@@ -3232,6 +3282,8 @@ def load_cache(force=False):
             if "map_bounds" in entry:
                 new_cached["map_bounds"] = entry["map_bounds"]
                 new_cached["map_source"] = entry.get("map_source", "")
+            if "subreddits" in entry:
+                new_cached["subreddits"] = entry["subreddits"]
             # Only when the capture kept two: most ZIMs have one face, and a
             # cache full of nulls is noise. An older Zimi reading this record
             # ignores the key, which is what keeps a downgrade safe.

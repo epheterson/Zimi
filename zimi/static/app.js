@@ -16072,7 +16072,10 @@ function _isReddotPage() {
   return !!(_reddotOpen && readerOpen && !_almanacOpen && !_createOpen);
 }
 function _reddotTileHtml() {
-  return _appTileHtml('reddot', t('reddot'), _REDDOT_SVG, _installedRedditZims().map(function(z) { return z.title || z.name; }), 'openReddot');
+  // Named by subreddit, not by file: every ArcticZim ZIM is titled "ArcticZim".
+  var names = [];
+  _installedRedditZims().forEach(function(z) { (z.subreddits && z.subreddits.length ? z.subreddits.map(function(s) { return 'r/' + s; }) : [z.title || z.name]).forEach(function(n) { names.push(n); }); });
+  return _appTileHtml('reddot', t('reddot'), _REDDOT_SVG, names, 'openReddot');
 }
 function _reddotUrl(p) {
   return '/#reddot' + (p ? '?p=' + encodeURIComponent(p) : '');
@@ -16224,7 +16227,8 @@ window.addEventListener('message', function(e) {
     // Reddot's empty page: the way to make a subreddit ZIM is the Create
     // page, not the catalog (nobody publishes these).
     if (readerOpen) closeReader();
-    _createRememberMode = 'reddit';
+    _createRememberMode = 'page';
+    _createRememberSource = _REDDIT_ADDRESS_START;
     openCreate();
   } else if (d.zimi === 'exchange-q' && _exchangeOpen && typeof d.q === 'string') {
     history.replaceState({ mode: 'reader', exchange: true, q: d.q }, '', _exchangeUrl(d.q));
@@ -16277,6 +16281,10 @@ function openTube(replaceState, play) {
 var _APP_CATEGORY = { maps: 'maps', tube: 'ted', exchange: 'stack_exchange' };  // reddot: made, not downloaded
 // A mode the Create page should open on, set by whoever sends someone there.
 var _createRememberMode = '';
+var _createRememberSource = '';
+// Where a subreddit's address starts. Reddot's empty page and tile open
+// Create with this in the field; the person finishes it.
+var _REDDIT_ADDRESS_START = 'https://www.reddit.com/r/';
 
 // The row is offered unless the server turned it off for everyone
 // (ZIMI_APPS, or the switch in Server settings; stamped on the shell) or
@@ -16314,7 +16322,10 @@ function _appsRowHtml() {
   var tiles = _mapsTileHtml() + _tubeTileHtml() + _exchangeTileHtml() + _reddotTileHtml();
   if (!tiles) return '';
   var isTiles = _getLibraryView() === 'tiles';
-  return '<div class="' + (isTiles ? 'stats-grid tiles' : 'stats-grid') + ' apps-grid">' + tiles + '</div>';
+  // Labelled like every section around it (Discover above, the categories
+  // below): a row without a name between rows with names reads as lost.
+  return '<div class="ci-section-label">' + tH('apps_section') + '</div>' +
+    '<div class="' + (isTiles ? 'stats-grid tiles' : 'stats-grid') + ' apps-grid">' + tiles + '</div>';
 }
 
 function _appTileHtml(app, title, icon, names, openFn) {
@@ -16327,7 +16338,7 @@ function _appTileHtml(app, title, icon, names, openFn) {
   }
   var door = _APP_CATEGORY[app]
     ? 'href="/?manage" onclick="return _spaNav(event, function() { _openCategory(_APP_CATEGORY.' + app + '); })"'
-    : 'href="/#create" onclick="return _spaNav(event, function() { _createRememberMode = \'reddit\'; openCreate(); })"';
+    : 'href="/#create" onclick="return _spaNav(event, function() { _createRememberMode = \'page\'; _createRememberSource = _REDDIT_ADDRESS_START; openCreate(); })"';
   return '<a class="stat-card app-tile app-empty ' + app + '-tile" ' + door + ' data-zim="">' +
     '<div class="card-icon">' + icon + '</div>' +
     '<div class="card-info"><div class="name"><span class="zt">' + esc(title) + '</span></div>' +

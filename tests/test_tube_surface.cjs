@@ -31,7 +31,7 @@ const ctx = {
     { name: 'osm-hawaii', title: 'Hawaii', kind: 'map', main_path: 'index.html' },
     { name: 'wikipedia_en_all', title: 'Wikipedia', main_path: 'A/Main' },
   ],
-  esc: escf, t: k => ({ tube: 'ZimiTube', cat_maps: 'Maps', app_empty_maps: 'No map yet.', app_empty_tube: 'No videos yet.', app_empty_exchange: 'No Q&A site yet.', exchange: 'ZimiExchange', reddot: 'Reddot', app_empty_reddot: 'No subreddits yet.' })[k] || k, _getLibraryView: () => 'list',
+  esc: escf, t: k => ({ tube: 'ZimiTube', cat_maps: 'Maps', app_empty_maps: 'No map yet.', app_empty_tube: 'No videos yet.', app_empty_exchange: 'No Q&A site yet.', exchange: 'ZimiExchange', reddot: 'Reddot', app_empty_reddot: 'No subreddits yet.', apps_section: 'Apps' })[k] || k, tH: k => k === 'apps_section' ? 'Apps' : k, _getLibraryView: () => 'list',
   _userSession: null, document: { body: { dataset: {} } },
 };
 vm.createContext(ctx);

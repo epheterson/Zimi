@@ -130,13 +130,10 @@ var CREATE_MODE_DEFS = [
     advanced: ['format', 'max_bytes', 'language'],
     pick: { max_bytes: '4G' }
   },
-  // A subreddit, by name: ArcticZim (installed into a sidecar on first use)
-  // builds its posts and comments from Arctic Shift's archive.
-  {
-    id: 'reddit', network: true, reddot: true,
-    label: 'create_label_reddit', placeholder: 'create_ph_reddit',
-    flags: [], advanced: []
-  },
+  // No subreddit tile. A reddit.com/r/<name> address under Web page is a
+  // subreddit, and the server says so (Eric: "let's be coy. You put in the
+  // url Reddit.com/r/whatever and we know what to do"); the preview and the
+  // run then speak of a subreddit.
   CREATE_BOOKMARKS_DEF,
   // Import (WARC/WACZ): back on the web (2026-09-19), as a picker. The
   // address field becomes a list of the archives in the library folder; no
@@ -378,7 +375,8 @@ var CREATE_FIELDS = {
 // footer's "Powered by Kiwix": a fact, quietly stated, and a link out.
 var CREATE_CREDITS = {
   video: { name: 'yt-dlp', url: 'https://github.com/yt-dlp/yt-dlp' },
-  'import': { name: 'warc2zim', url: 'https://github.com/openzim/warc2zim' }
+  'import': { name: 'warc2zim', url: 'https://github.com/openzim/warc2zim' },
+  reddit: { name: 'ArcticZim', url: 'https://github.com/IMayBeABitShy/ArcticZim' }
 };
 
 // ── the progress model ──────────────────────────────────────────────────────
@@ -498,7 +496,6 @@ function _createEtaText(est) {
 function _createModeAvailable(def, offline, importReady) {
   if (def.client) return true;   // nothing to fetch and nothing to install
   if (!offline) return true;
-  if (def.reddot) return false;  // Arctic Shift is on the internet
   if (def.network) return false;
   if (def.sidecar) return !!importReady;
   return true;
@@ -615,6 +612,11 @@ function _createPreviewRows(p) {
   } else if (p.mode === 'import') {
     add('create_pv_size', _fmtBytes(p.bytes || 0));
     add('create_pv_helper', t(p.sidecar_ready ? 'create_pv_ready' : 'create_pv_installs'));
+  } else if (p.mode === 'reddit') {
+    // The address was a subreddit's: say so, and what comes of it.
+    add('create_mode_reddit', p.title);
+    add('create_pv_what', t('create_pv_reddit_what'));
+    add('create_pv_helper', t(p.reddot_ready ? 'create_pv_ready' : 'create_pv_installs'));
   } else {
     if (p.urls > 1) add('create_pv_pages', String(p.urls));
     add('create_pv_title', p.title);
@@ -1380,6 +1382,10 @@ function _openCreateInner(replaceState) {
     _createSelected = _createRememberMode;
     _createRememberMode = '';
   }
+  // An address the caller wants in the field (Reddot's empty page starts a
+  // subreddit's address for you); typed in, so the preview follows.
+  var seed = (typeof _createRememberSource === 'string' && _createRememberSource) || '';
+  _createRememberSource = '';
   // The reload-into-Create boot gate (stamped by the head bootstrap before the
   // first paint) has done its job once the real Create chrome is up.
   document.documentElement.classList.remove('create-boot');
@@ -1407,6 +1413,10 @@ function _openCreateInner(replaceState) {
   // ENDED, and this puts back one that had not.
   _createHydrate();
   _renderCreate();
+  if (seed) {
+    var seedEl = document.getElementById('create-source');
+    if (seedEl) { seedEl.value = seed; seedEl.dispatchEvent(new Event('input')); seedEl.focus(); try { seedEl.setSelectionRange(seed.length, seed.length); } catch (e) {} }
+  }
   // First poll carries probe=1 and history=1: the one call that pays for the
   // sidecar check and the recent list, and the one that picks up a job already
   // running from another tab. Its answer REPLACES everything hydrated above —

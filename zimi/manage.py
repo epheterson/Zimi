@@ -2827,6 +2827,16 @@ def _create_validate(data):
     title = str(data.get("title") or "").strip()[:CREATE_MAX_TITLE]
     page_urls = []
 
+    # The address says what it is. A reddit.com/r/<name> address typed under
+    # Web page or Site is a subreddit, and there is no tile for one (Eric:
+    # "let's be coy. You put in the url Reddit.com/r/whatever and we know
+    # what to do"). One address only: a list of pages stays a list.
+    if mode in ("page", "site") and "\n" not in source:
+        from zimi.reddot import looks_like_subreddit
+
+        if looks_like_subreddit(source):
+            mode = "reddit"
+
     if mode == "folder":
         # CLI-only, by decree (Eric, round 3: "remove folder, I said that
         # would be CLI only"). The engine (creator.create_folder_zim) is
@@ -4483,6 +4493,7 @@ def _create_probe(data):
                 "ok": True,
                 "final_url": "https://www.reddit.com/r/%s/" % source,
                 "title": "r/%s" % source,
+                "subreddit": source,
                 "content_type": "",
                 "bytes": 0,
                 "warning_key": None,
