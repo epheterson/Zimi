@@ -16119,14 +16119,32 @@ function _mapSourceLabel(z) {
   return '';
 }
 
-// Whether a map's ground includes a point. Bounds are [W, S, E, N] from the
-// map's own config; a box that crosses the antimeridian has W > E. A map
-// with no known bounds is not ruled out: null, not false.
+// Whether a map's ground includes a point, or overlaps a view. Bounds are
+// [W, S, E, N] from the map's own config; a box that crosses the
+// antimeridian has W > E. A map with no known bounds is not ruled out:
+// null, not false. ``pos`` is {lat, lng} for a point, or {w, s, e, n} for
+// what is on screen (Eric: "what's under the viewport").
+function _lngIn(lng, w, e) { return w <= e ? (lng >= w && lng <= e) : (lng >= w || lng <= e); }
 function _mapCovers(z, pos) {
   var b = z.map_bounds;
   if (!pos || !b || b.length !== 4) return null;
+  if (pos.w !== undefined) {
+    if (pos.n < b[1] || pos.s > b[3]) return false;
+    // Two boxes overlap in longitude when either's west edge lies inside the other.
+    return _lngIn(pos.w, b[0], b[2]) || _lngIn(b[0], pos.w, pos.e);
+  }
   if (pos.lat < b[1] || pos.lat > b[3]) return false;
-  return b[0] <= b[2] ? (pos.lng >= b[0] && pos.lng <= b[2]) : (pos.lng >= b[0] || pos.lng <= b[2]);
+  return _lngIn(pos.lng, b[0], b[2]);
+}
+
+// What is on screen, as a box, from the live map; null before it answers.
+function _currentMapView() {
+  try {
+    var map = _readerMap();
+    if (!map) return null;
+    var b = map.getBounds();
+    return {w: b.getWest(), s: b.getSouth(), e: b.getEast(), n: b.getNorth()};
+  } catch (e) { return null; }
 }
 
 // The maps that cover where you are, then the rest under a divider. A map of
@@ -16147,6 +16165,10 @@ function _mpRow(z, active) {
     '<span class="mp-meta">' + esc(_mapSourceLabel(z)) + (active ? ' <span class="mp-check">\u2713</span>' : '') + '</span></div>';
 }
 
+// With this many maps or fewer, nothing is folded: a short list is read
+// whole (Eric: "show all installed maps if there's only a few").
+var _MP_FOLD_FROM = 5;
+
 function _mapSourceRowsHtml(maps, currentName, pos, extras) {
   var here = [], elsewhere = [];
   for (var i = 0; i < maps.length; i++) {
@@ -16154,13 +16176,35 @@ function _mapSourceRowsHtml(maps, currentName, pos, extras) {
   }
   var row = function(z) { return _mpRow(z, z.name === currentName); };
   var h = here.map(row).join('') + ((extras && extras.middle) || '');
-  if (elsewhere.length) {
+  if (elsewhere.length && maps.length <= _MP_FOLD_FROM) {
+    h += elsewhere.map(row).join('');
+  } else if (elsewhere.length) {
     // Folded: seven maps of other places are noise until you want one.
     h += '<div class="mp-row mp-fold" role="menuitem" aria-expanded="false" data-role="fold">' +
       '<span class="mp-name">' + esc(tH('map_source_elsewhere')) + '</span><span class="mp-meta">' + elsewhere.length + '</span></div>' +
       '<div class="mp-folded" hidden>' + elsewhere.map(row).join('') + '</div>';
   }
   return h + ((extras && extras.end) || '');
+}
+
+// Where I am, on the map that is open: the device's location, asked for
+// when tapped and never before. A map that does not cover it says so
+// rather than jumping to its own edge. Eric: "a button to go local / use IP
+// or system location or something."
+function _mapWhereIAm() {
+  _closeMapSourceDropdown();
+  if (!navigator.geolocation) { _showToast(t('map_location_unavailable')); return; }
+  navigator.geolocation.getCurrentPosition(function(p) {
+    var lat = p.coords.latitude, lng = p.coords.longitude;
+    var z = currentArticle && (zimsCache || []).filter(function(x) { return x.name === currentArticle.zim; })[0];
+    if (z && _mapCovers(z, {lat: lat, lng: lng}) === false) { _showToast(t('map_location_off_map')); return; }
+    var pos = mapPositionHash(15, lat, lng);
+    var map = _readerMap();
+    if (map) {
+      try { map.jumpTo({center: [lng, lat], zoom: 15}); } catch (e) {}
+      history.replaceState(history.state, '', location.pathname + location.search + '#' + pos);
+    }
+  }, function() { _showToast(t('map_location_unavailable')); }, {enableHighAccuracy: false, timeout: 10000, maximumAge: 60000});
 }
 
 // The place travels only where it can be shown. A map that does not cover it
@@ -16227,6 +16271,9 @@ function _mapOfferInstalled(it) {
 function _mapOfferGroups(items, pos) {
   var bySize = function(a, b) { return (a.size_bytes || 0) - (b.size_bytes || 0); };
   var open = (items || []).filter(function(it) { return !_mapOfferInstalled(it); });
+  // A point, for the offers: a map that merely touches the edge of a wide
+  // view is not "a map of here"; the centre is.
+  if (pos && pos.w !== undefined) pos = {lat: (pos.s + pos.n) / 2, lng: pos.w <= pos.e ? (pos.w + pos.e) / 2 : pos.w};
   return {
     here: open.filter(function(it) { return !it.world && pos && _mapCovers({map_bounds: it.bounds}, pos) === true; })
       .sort(bySize).slice(0, _MAP_OFFERS_HERE),
@@ -16251,7 +16298,8 @@ function _mapOfferRowsHtml(groups) {
     : '';
   return {
     middle: middle,
-    end: '<div class="mp-row mp-link" role="menuitem" data-role="all-maps"><span class="mp-name">' + esc(tH('map_offer_all')) + '</span></div>',
+    end: '<div class="mp-row mp-link" role="menuitem" data-role="locate"><span class="mp-name">' + esc(tH('map_where_i_am')) + '</span></div>' +
+      '<div class="mp-row mp-link" role="menuitem" data-role="all-maps"><span class="mp-name">' + esc(tH('map_offer_all')) + '</span></div>',
   };
 }
 
@@ -16280,8 +16328,10 @@ async function _openCategory(key) {
 }
 
 function _renderMapSourceDropdown(dd) {
+  // The view on screen decides which maps are "here"; the centre only
+  // before the map has answered (a cold load, the hash alone).
   var here = _currentMapPositionHash();
-  var pos = here ? parseMapHash('#' + here) : null;
+  var pos = _currentMapView() || (here ? parseMapHash('#' + here) : null);
   var extras;
   if (_mapOfferLoaded) {
     extras = _mapOfferRowsHtml(_mapOfferGroups(_mapOfferAll(), pos));
@@ -16315,6 +16365,7 @@ function toggleMapSourceDropdown(event) {
     }
     if (role === 'offer') { _mapOfferDownload(row); return; }
     if (role === 'all-maps') { _openMapsCatalog(); return; }
+    if (role === 'locate') { _mapWhereIAm(); return; }
     if (!row.getAttribute('data-zim')) return;
     _switchMapSource(row.getAttribute('data-zim'), row.getAttribute('data-path'), row.getAttribute('data-title'));
   };

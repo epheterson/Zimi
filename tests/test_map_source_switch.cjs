@@ -53,6 +53,8 @@ vm.runInContext([
   extract(/function _isMapZim\(name\) \{[\s\S]*?\n\}/, '_isMapZim'),
   extract(/function _currentMapPositionHash\(\) \{[\s\S]*?\n\}/, '_currentMapPositionHash'),
   extract(/function _mapSourceLabel\(z\) \{[\s\S]*?\n\}/, '_mapSourceLabel'),
+  extract(/function _lngIn\(lng, w, e\) \{[^\n]*\n/, '_lngIn'),
+  extract(/var _MP_FOLD_FROM = [^\n]*\n/, '_MP_FOLD_FROM'),
   extract(/function _mapCovers\(z, pos\) \{[\s\S]*?\n\}/, '_mapCovers'),
   extract(/function _mpRow\(z, active\) \{[\s\S]*?\n\}/, '_mpRow'),
   extract(/function _mapSourceRowsHtml\(maps, currentName, pos, extras\) \{[\s\S]*?\n\}/, '_mapSourceRowsHtml'),
@@ -62,14 +64,17 @@ vm.runInContext([
 // The rows, from Honolulu
 const honolulu = { lat: 21.3069, lng: -157.8583, zoom: 14 };
 const rows = ctx._mapSourceRowsHtml(ctx._installedMaps(), 'osm-hawaii', honolulu);
-ok('one row per installed map, none for the encyclopedia', (rows.match(/class="mp-row/g) || []).length === 5 && !/Wikipedia/.test(rows));  // 4 maps + the fold row
+ok('one row per installed map, none for the encyclopedia', (rows.match(/class="mp-row/g) || []).length === 4 && !/Wikipedia/.test(rows));
 ok('the open map is the checked one', /mp-row active" role="menuitemradio" aria-checked="true" data-zim="osm-hawaii"/.test(rows) && /mp-check/.test(rows));
 ok('each row says whose map it is, on the same line', /<span class="mp-name">Hawaii<\/span><span class="mp-meta">StreetZim/.test(rows) && /<span class="mp-name">Hawaii \(Kiwix\)<\/span><span class="mp-meta">Kiwix<\/span>/.test(rows));
 const order = Array.from(rows.matchAll(/data-zim="([^"]+)"|data-role="fold"/g)).map(m => m[1] || 'fold');
-ok('maps that cover the spot first, then the fold, then the rest behind it', order.join(',') === 'osm-hawaii,maps_en_hawaii,maps_en_islands,fold,samoa' && /<div class="mp-folded" hidden>[\s\S]*data-zim="samoa"/.test(rows), order.join(','));
-ok('the fold says how many it hides', /data-role="fold"><span class="mp-name">Elsewhere<\/span><span class="mp-meta">1<\/span>/.test(rows));
+ok('four maps: nothing is folded, the maps of elsewhere simply follow', order.join(',') === 'osm-hawaii,maps_en_hawaii,maps_en_islands,samoa' && !/data-role="fold"/.test(rows), order.join(','));
+const many = ctx._installedMaps().concat([1, 2, 3].map(i => ({ name: 'far' + i, title: 'Far ' + i, kind: 'map', main_path: 'index.html', map_bounds: [10, 10, 20, 20] })));
+const manyRows = ctx._mapSourceRowsHtml(many, 'osm-hawaii', honolulu);
+ok('seven maps: the maps of elsewhere fold behind one row that says how many', /data-role="fold"><span class="mp-name">Elsewhere<\/span><span class="mp-meta">4<\/span>/.test(manyRows) && /<div class="mp-folded" hidden>[\s\S]*data-zim="samoa"/.test(manyRows));
 ok('a map with unknown ground is not ruled out', ctx._mapCovers(ctx.zimsCache[3], honolulu) === null);
 ok('a box across the antimeridian still contains its inside', ctx._mapCovers({ map_bounds: [170, -20, -170, -10] }, { lat: -15, lng: 179 }) === true && ctx._mapCovers({ map_bounds: [170, -20, -170, -10] }, { lat: -15, lng: 0 }) === false);
+ok('a view counts as here when the map shows any of it', ctx._mapCovers({ map_bounds: [-161, 18.5, -154.5, 22.5] }, { w: -158.5, s: 21, e: -157.5, n: 21.6 }) === true && ctx._mapCovers({ map_bounds: [-161, 18.5, -154.5, 22.5] }, { w: -170, s: 21, e: -162, n: 21.6 }) === false && ctx._mapCovers({ map_bounds: [-161, 18.5, -154.5, 22.5] }, { w: -162, s: 21, e: -160, n: 21.6 }) === true);
 ok('no position known: every map is listed, nothing folded', !/data-role="fold"/.test(ctx._mapSourceRowsHtml(ctx._installedMaps(), 'osm-hawaii', null)) && (ctx._mapSourceRowsHtml(ctx._installedMaps(), 'osm-hawaii', null).match(/class="mp-row/g) || []).length === 4);
 ok('a map only a map ZIM counts', ctx._isMapZim('osm-hawaii') && !ctx._isMapZim('wikipedia_en_all') && !ctx._isMapZim('nope'));
 
@@ -145,7 +150,10 @@ ok('one heading, the planet last in the same list, then the punch-out', /mp-head
 const whole = ctx._mapSourceRowsHtml(ctx._installedMaps(), 'osm-hawaii', honolulu, offerParts);
 const wholeOrder = Array.from(whole.matchAll(/data-zim="([^"]+)"|data-role="([^"]+)"|mp-head" role="separator">([^<]+)/g)).map(m => m[1] || m[2] || m[3]);
 ok('a map of this ground, installed or not, comes before a map of elsewhere; the way to all maps last',
-  wholeOrder.join(',') === 'osm-hawaii,maps_en_hawaii,maps_en_islands,Get a map of here,offer,offer,offer,offer,fold,samoa,all-maps', wholeOrder.join(','));
+  wholeOrder.join(',') === 'osm-hawaii,maps_en_hawaii,maps_en_islands,Get a map of here,offer,offer,offer,offer,samoa,locate,all-maps', wholeOrder.join(','));
+ok('the way to where you are asks the device only when tapped', /function _mapWhereIAm\(\)[\s\S]*navigator\.geolocation\.getCurrentPosition/.test(src) && !/getCurrentPosition[\s\S]*function _mapWhereIAm/.test(src.slice(0, src.indexOf('function _mapWhereIAm'))));
+ok('off the open map, it says so instead of jumping to the edge', /_mapCovers\(z, \{lat: lat, lng: lng\}\) === false\) \{ _showToast\(t\('map_location_off_map'\)\)/.test(src));
+ok('the picker judges here by the view on screen', /var pos = _currentMapView\(\) \|\| \(here \? parseMapHash/.test(src));
 ok('the dropdown loads both catalogs once and re-renders when they arrive', /var got = await _fetchCatalogItems\(\);[\s\S]*_kiwixOffers = placed\(got\.items\);/.test(src) && /manageFetch\('\/manage\/catalog-streetzim'\)/.test(fn('_mapOfferItems')) && /_mapOfferItems\(\)\.then\(function\(\) \{\r?\n\s*if \(dd\.classList\.contains\('visible'\)\) _renderMapSourceDropdown\(dd\);/.test(src));
 ok('only maps the server could place are kept, from a fresh fetch', /return _kiwixOffers\.concat\(_streetzimOffers\)/.test(src) && /extras = _mapOfferRowsHtml\(_mapOfferGroups\(_mapOfferAll\(\), pos\)\)/.test(src));
 ok('an offer row starts the download through the ordinary path and says where to watch it', /await downloadZim\(url, null\);[\s\S]*_showToast\(tH\('map_offer_started', \{map: title\}\)\)/.test(fn('_mapOfferDownload')));
