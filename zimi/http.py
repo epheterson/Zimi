@@ -1542,6 +1542,14 @@ def _reconstruct_source_url(archive, entry_path):
 # ============================================================================
 
 
+def _index_content(apps=True):
+    """The shell, stamped when the server has turned the apps row off, so
+    the client knows before it draws the home page."""
+    if apps:
+        return SEARCH_UI_HTML
+    return SEARCH_UI_HTML.replace("<body>", '<body data-zimi-apps="0">', 1)
+
+
 class ZimHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     timeout = 30  # seconds — prevents slow-client DoS on POST bodies
@@ -2032,6 +2040,15 @@ class ZimHandler(BaseHTTPRequestHandler):
             elif parsed.path == "/whoami":
                 return self._handle_whoami()
 
+            elif parsed.path == "/me/prefs":
+                # A signed-in user's own preferences that live with the
+                # account, not the browser. Today: whether the apps row
+                # is shown to them.
+                name = _users.resolve_request_user(self)
+                if not name:
+                    return self._json(401, {"error": "sign in required"})
+                prefs = _users.load_user_data(name).get("preferences") or {}
+                return self._json(200, {"apps": prefs.get("apps", True) is not False})
             elif parsed.path == "/userdata":
                 return self._handle_userdata_get()
 
@@ -2597,6 +2614,19 @@ class ZimHandler(BaseHTTPRequestHandler):
             if parsed.path == "/logout":
                 return self._handle_logout()
 
+            if parsed.path == "/me/prefs":
+                name = _users.resolve_request_user(self)
+                if not name:
+                    return self._json(401, {"error": "sign in required"})
+                blob = _users.load_user_data(name)
+                prefs = blob.get("preferences") if isinstance(blob.get("preferences"), dict) else {}
+                if "apps" in data:
+                    prefs["apps"] = bool(data.get("apps"))
+                blob["preferences"] = prefs
+                ok, err = _users.save_user_data(name, blob)
+                if not ok:
+                    return self._json(400, {"error": err})
+                return self._json(200, {"apps": prefs.get("apps", True) is not False})
             if parsed.path == "/userdata":
                 return self._handle_userdata_post(data)
 
@@ -3863,12 +3893,13 @@ class ZimHandler(BaseHTTPRequestHandler):
         #   s-maxage=3600 — Cloudflare edge caches 1 hour (fast for users worldwide)
         #   ETag — efficient revalidation (304 = no body, instant response)
         #   deploy.sh purges Cloudflare edge after each deploy.
+        apps = _srv.apps_enabled()
         return self._html(
             200,
-            SEARCH_UI_HTML,
+            _index_content(apps),
             vary=vary,
             cache="public, max-age=0, must-revalidate, s-maxage=3600",
-            etag=ZimHandler._index_etag,
+            etag=ZimHandler._index_etag if apps else ZimHandler._index_etag.replace('"', '-noapps"', 1),
         )
 
     def _html(self, code, content, vary=None, cache=None, etag=None):

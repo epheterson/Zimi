@@ -1949,6 +1949,44 @@ def _read_map_facts(path):
         return {"map_source": "", "map_bounds": None}
 
 
+APPS_ENV = "ZIMI_APPS"
+
+
+def _apps_env():
+    """The env var's verdict, or None when it is unset or unreadable."""
+    raw = os.environ.get(APPS_ENV)
+    if raw is None or not raw.strip():
+        return None
+    return raw.strip().lower() not in ("0", "false", "no", "off")
+
+
+def apps_enabled():
+    """Whether the apps row (Maps, ZimiTube, ZimiExchange) is offered on this
+    server: ``ZIMI_APPS`` when set, else the setting saved from Server
+    settings, else on. A signed-in user can also turn it off for themselves
+    (their account's preferences). Never per browser (Eric: "Not per browser
+    only per user or server")."""
+    verdict = _apps_env()
+    if verdict is not None:
+        return verdict
+    from zimi import manage
+
+    saved = manage._read_app_update_prefs().get("apps")
+    return True if saved is None else bool(saved)
+
+
+def set_apps_enabled(value):
+    """Save the server-wide switch. ``(enabled, error)``; ``env_locked`` when
+    the env var has the last word."""
+    if _apps_env() is not None:
+        return None, "env_locked"
+    from zimi import manage
+
+    enabled = bool(value)
+    manage._write_app_update_prefs(apps=enabled)
+    return enabled, None
+
+
 def _is_map_zim(name):
     """Whether the registered ZIM ``name`` is a map, from the list cache."""
     return any(z.get("name") == name and z.get("kind") == "map" for z in (_zim_list_cache or []))

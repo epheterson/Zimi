@@ -5159,6 +5159,9 @@ def handle_manage_get(handler, parsed, params):
             },
         )
 
+    elif parsed.path == "/manage/apps":
+        return handler._json(200, {"enabled": _srv.apps_enabled(), "env_locked": _srv._apps_env() is not None})
+
     elif parsed.path == "/manage/catalog-streetzim":
         # StreetZim's regions, from the Internet Archive, for the toggle in
         # the Maps category. Cached and served stale while a refresh runs.
@@ -6052,6 +6055,15 @@ def handle_manage_post(handler, parsed, data):
         # The delay is applied when the payload is built, so no re-check is
         # needed — the cached answer is still the right answer.
         return handler._json(200, _app_update_payload())
+
+    elif parsed.path == "/manage/apps":
+        # The server-wide apps switch. Same env-lock contract as the other
+        # settings: ZIMI_APPS wins and the write is refused, not ignored.
+        enabled, err = _srv.set_apps_enabled(data.get("enabled"))
+        if err == "env_locked":
+            return handler._json(403, {"error": "Apps are controlled by the %s env var" % _srv.APPS_ENV})
+        log.info("Apps row %s", "on" if enabled else "off")
+        return handler._json(200, {"enabled": enabled, "env_locked": False})
 
     elif parsed.path == "/manage/app-update-channel":
         # Latest vs beta for the APP release check. Same env-lock contract

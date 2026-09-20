@@ -31,12 +31,16 @@ const ctx = {
     { name: 'wikipedia_en_all', title: 'Wikipedia', main_path: 'A/Main' },
   ],
   esc: escf, t: k => ({ tube: 'ZimiTube', cat_maps: 'Maps', app_empty_maps: 'No map yet.', app_empty_tube: 'No videos yet.' })[k] || k, _getLibraryView: () => 'list',
+  _userSession: null, document: { body: { dataset: {} } },
 };
 vm.createContext(ctx);
 vm.runInContext([
   extract(/var _MAPS_PIN_SVG = [^\n]*\n/, '_MAPS_PIN_SVG'), extract(/var _TUBE_PLAY_SVG = [^\n]*\n/, '_TUBE_PLAY_SVG'),
   extract(/function _installedMaps\(\) \{[\s\S]*?\n\}/, '_installedMaps'),
   extract(/function _installedVideoZims\(\) \{[\s\S]*?\n\}/, '_installedVideoZims'),
+  extract(/var _userPrefs = [^\n]*\n/, '_userPrefs'),
+  extract(/function _appsAllowedByServer\(\) \{[\s\S]*?\n\}/, '_appsAllowedByServer'),
+  extract(/function _appsEnabled\(\) \{[\s\S]*?\n\}/, '_appsEnabled'),
   extract(/function _appTileHtml\(app, title, icon, names, openFn\) \{[\s\S]*?\n\}/, '_appTileHtml'),
   extract(/function _mapsTileHtml\(\) \{[\s\S]*?\n\}/, '_mapsTileHtml'),
   extract(/function _tubeTileHtml\(\) \{[\s\S]*?\n\}/, '_tubeTileHtml'),
@@ -51,6 +55,15 @@ ctx.zimsCache = ctx.zimsCache.filter(z => z.kind !== 'video');
 ok('no video ZIM: the tile stays, empty, and opens the Video category', /app-empty tube-tile/.test(ctx._appsRowHtml()) && /No videos yet/.test(ctx._appsRowHtml()) && /_openCategory\(_APP_CATEGORY\.tube\)/.test(ctx._appsRowHtml()));
 ctx.zimsCache = [];
 ok('a fresh install still has the apps row, every tile a door to the catalog', (ctx._appsRowHtml().match(/app-empty/g) || []).length === 2);
+ok('the row can be turned off for everyone (the server stamps the shell) or for a signed-in person (their account), never per browser', /dataset\.zimiApps === '0'/.test(src) && /_appsAllowedByServer\(\) && \(!_userSession \|\| _userPrefs\.apps !== false\)/.test(src) && /if \(!_appsEnabled\(\)\) return '';/.test(src) && /fetch\('\/me\/prefs'/.test(src) && !/zimi_hide_apps/.test(src));
+ok('the server switch sits in Server settings and reads its state from the server', /_msFetch\('\/manage\/apps'\)/.test(src) && /_setAppsForServer\(this\.checked\)/.test(src));
+ctx.document.body.dataset.zimiApps = '0';
+ok('the server can turn the row off for everyone', ctx._appsRowHtml() === '');
+delete ctx.document.body.dataset.zimiApps; ctx._userSession = { name: 'eric' }; ctx._userPrefs.apps = false;
+ok('a signed-in person can turn it off for their account', ctx._appsRowHtml() === '');
+ctx._userPrefs.apps = true;
+ok('and back on', ctx._appsRowHtml() !== '');
+ctx._userSession = null;
 ok('the categories behind the doors', /_APP_CATEGORY = \{ maps: 'maps', tube: 'ted', exchange: 'stack_exchange' \}/.test(src));
 ok('the home page draws the row before favorites', /h \+= _appsRowHtml\(\);/.test(src));
 

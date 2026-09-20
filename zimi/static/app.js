@@ -1225,6 +1225,7 @@ async function _bootAuthGate() {
   if (j && j.role === 'user') {
     _userSession = { name: j.name, restricted: !!j.restricted, canCreate: !!j.can_create };
     if (manageBtnEl) manageBtnEl.style.display = 'none';
+    _loadUserPrefs();
     return false;
   }
   if (j && j.role === 'admin') {
@@ -11057,6 +11058,13 @@ function _msPreferencesHtml() {
     '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
     '<label class="ms-check"><input type="checkbox"' + (showDiscover ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> ' + tH('show_discover') + '</label>' +
+    // The apps row, for THIS account: a signed-in user's preference lives on
+    // the server with their bookmarks. An admin without an account has the
+    // server-wide switch in Server settings instead.
+    (_appsAllowedByServer() && _userSession
+      ? '<label class="ms-check"><input type="checkbox"' + (_userPrefs.apps !== false ? ' checked' : '') +
+        ' onchange="_setUserPref(\'apps\', this.checked)"> ' + tH('show_apps') + '</label>'
+      : '') +
     '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>' +
     // Default download flavor (above languages — reached more often)
@@ -11372,6 +11380,29 @@ function _appUpdateSetDelay(days) {
   _appUpdateSaveSetting('/manage/app-update-delay', { delay_days: parseInt(days, 10) }, 'ZIMI_UPDATE_DELAY_DAYS');
 }
 
+// The server-wide apps switch. The element is looked up after the fetch
+// (see _renderEnvSection for why).
+async function _renderAppsSection() {
+  var d = null;
+  try { d = await _msFetch('/manage/apps'); } catch (e) {}
+  var el = document.getElementById('ms-apps');
+  if (!el) return;
+  if (!d) { el.innerHTML = '<div class="ms-hint">' + tH('env_unavailable') + '</div>'; return; }
+  el.innerHTML = '<label class="ms-check"><input type="checkbox"' + (d.enabled ? ' checked' : '') + (d.env_locked ? ' disabled' : '') +
+    ' onchange="_setAppsForServer(this.checked)"> ' + tH('show_apps_server') + '</label>' +
+    '<div class="ms-hint">' + tH(d.env_locked ? 'env_controlled' : 'apps_server_hint', { v: 'ZIMI_APPS' }) + '</div>';
+}
+function _setAppsForServer(on) {
+  manageFetch('/manage/apps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !!on }) })
+    .then(function(r) { return r.json(); }).then(function(d) {
+      if (d && d.error) { _showToast(t('env_controlled', { v: 'ZIMI_APPS' })); }
+      // The shell's stamp is read at render; refresh it here so the home
+      // page follows without a reload.
+      if (document.body && document.body.dataset) { if (d && d.enabled === false) document.body.dataset.zimiApps = '0'; else delete document.body.dataset.zimiApps; }
+      _renderAppsSection();
+    }).catch(function() { _renderAppsSection(); });
+}
+
 // The environment panel. Read-only, and usually empty: the common install
 // overrides nothing, and saying so plainly is the useful answer.
 async function _renderEnvSection() {
@@ -11470,13 +11501,19 @@ function _msServerHtml() {
   // What the environment is overriding. Last, under Storage's neighbours,
   // because on most installs it says "nothing" — it is a thing you go looking
   // for when a control will not move, not something to read past every time.
+  // The apps row, for everyone on this server. Painted from the server's
+  // answer; env-locked reads as such rather than as a control that does
+  // nothing.
+  var appsSec = '<div class="ms-section-label">' + tH('apps_section') + '</div>' +
+    '<div id="ms-apps">' + tH('loading') + '</div>';
+  _renderAppsSection();
   var envSec = '<div class="ms-section-label">' + tH('env_section') + '</div>' +
     '<div id="ms-env">' + tH('loading') + '</div>';
 
   // Sharing, Downloads, Storage, My Data / Server Backups, then App Updates
   // just before the API Token, and Hot ZIMs + cache last (Eric moved Updates
   // down from the top on the second pass).
-  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec, envSec].join(sep);
+  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, appsSec, tokenSec, hotSec, envSec].join(sep);
   _renderEnvSection();
   // Async fill security
   Promise.all([
@@ -16042,7 +16079,39 @@ function openTube(replaceState, play) {
 // the catalog category that feeds it, and its tile says so.
 var _APP_CATEGORY = { maps: 'maps', tube: 'ted', exchange: 'stack_exchange' };
 
+// The row is offered unless the server turned it off for everyone
+// (ZIMI_APPS, or the switch in Server settings; stamped on the shell) or
+// this signed-in person turned it off for their account. Never per
+// browser (Eric: "Not per browser only per user or server").
+var _userPrefs = { apps: true };
+function _appsAllowedByServer() {
+  return !(document.body && document.body.dataset && document.body.dataset.zimiApps === '0');
+}
+function _appsEnabled() {
+  return _appsAllowedByServer() && (!_userSession || _userPrefs.apps !== false);
+}
+async function _loadUserPrefs() {
+  if (!_userSession) return;
+  try {
+    var r = await fetch('/me/prefs', { credentials: 'same-origin' });
+    if (!r.ok) return;
+    var d = await r.json();
+    var was = _userPrefs.apps;
+    _userPrefs = { apps: d.apps !== false };
+    if (was !== _userPrefs.apps && mode === 'home') renderHome();
+  } catch (e) {}
+}
+async function _setUserPref(key, value) {
+  var body = {}; body[key] = value;
+  try {
+    var r = await fetch('/me/prefs', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (r.ok) { var d = await r.json(); _userPrefs = { apps: d.apps !== false }; }
+  } catch (e) {}
+  renderHome();
+}
+
 function _appsRowHtml() {
+  if (!_appsEnabled()) return '';
   var tiles = _mapsTileHtml() + _tubeTileHtml() + (typeof _exchangeTileHtml === 'function' ? _exchangeTileHtml() : '');
   if (!tiles) return '';
   var isTiles = _getLibraryView() === 'tiles';

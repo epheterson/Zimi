@@ -77,6 +77,7 @@ VARS: dict[str, tuple[str, str]] = {
     ),
     # ── sharing: BitTorrent ───────────────────────────────────────────────
     "ZIMI_OFFLINE": ("Air-gap switch: turns off everything internet-bound", "Sharing"),
+    "ZIMI_APPS": ("The apps row (Maps, ZimiTube, ZimiExchange) on the home page; 0 hides it for everyone", "Apps"),
     "ZIMI_BT": ("BitTorrent settings, as one blob", "BitTorrent"),
     "ZIMI_TORRENT": ("Turns BitTorrent on or off", "BitTorrent"),
     "ZIMI_BT_PORT": ("Inbound BitTorrent port", "Port"),
