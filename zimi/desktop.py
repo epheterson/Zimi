@@ -114,10 +114,15 @@ def _host_webkit(loadable=None):
     return None
 
 
-def _pin_webkit_version(require_version=None, host=None):
+_DETECT = object()
+
+
+def _pin_webkit_version(require_version=None, host=_DETECT):
     """Tell introspection which WebKit2 and Soup to use before pywebview
-    asks, so its own ask agrees with the host. Returns the pin, or None."""
-    pin = _host_webkit() if host is None else host
+    asks, so its own ask agrees with the host. Returns the pin, or None.
+    ``host`` is the ABI pair to pin (None: the host has no WebKitGTK), or
+    left alone to look."""
+    pin = _host_webkit() if host is _DETECT else host
     if not pin:
         return None
     if require_version is None:
