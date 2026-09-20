@@ -162,6 +162,7 @@ _RATE_LIMITED_API_PATHS = (
     "/search",
     "/places",
     "/tube",
+    "/tube/play",
     "/read",
     "/suggest",
     "/random",
@@ -2234,6 +2235,17 @@ class ZimHandler(BaseHTTPRequestHandler):
                     cache="no-store",
                 )
 
+            elif parsed.path == "/tube/play":
+                # ZimiTube's own player: the media behind one video's page.
+                from zimi import tube as _tube
+
+                zim, page = param("zim"), param("page")
+                if not zim or not page or zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
+                    return self._json(404, {"error": "not found"})
+                out = _tube.playback(zim, page)
+                if out is None:
+                    return self._json(404, {"error": "no media on that page"})
+                return self._json(200, out)
             elif parsed.path == "/tube":
                 # Zimi Tube's feed: every video in the library, one list.
                 from zimi import tube as _tube

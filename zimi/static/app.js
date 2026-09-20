@@ -15978,10 +15978,11 @@ function _isTubePage() {
 // The page's own strings, handed over in the hash: the page is static and
 // has no i18n of its own.
 function _tubeStrings() {
-  return encodeURIComponent(JSON.stringify({
-    title: t('tube'), videos: t('tube_videos'), sources: t('tube_sources'),
-    more: t('tube_more'), none: t('tube_none'), empty: t('tube_empty')
-  }));
+  var keys = ['tube_videos', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay',
+    'tube_open_page', 'tube_all', 'tube_sort_mixed', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_no_media'];
+  var out = { title: t('tube') };
+  keys.forEach(function(k) { out[k.replace(/^tube_/, '')] = t(k); });
+  return encodeURIComponent(JSON.stringify(out));
 }
 
 function _tubeSearch(val) {

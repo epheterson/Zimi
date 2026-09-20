@@ -30,7 +30,7 @@ const ctx = {
     { name: 'osm-hawaii', title: 'Hawaii', kind: 'map', main_path: 'index.html' },
     { name: 'wikipedia_en_all', title: 'Wikipedia', main_path: 'A/Main' },
   ],
-  esc: escf, t: k => ({ tube: 'Tube', cat_maps: 'Maps' })[k] || k, _getLibraryView: () => 'list',
+  esc: escf, t: k => ({ tube: 'ZimiTube', cat_maps: 'Maps' })[k] || k, _getLibraryView: () => 'list',
 };
 vm.createContext(ctx);
 vm.runInContext([
@@ -45,7 +45,7 @@ vm.runInContext([
 // ── the apps row ─────────────────────────────────────────────────────────
 const row = ctx._appsRowHtml();
 ok('one row holds the apps, each a tile like a source', /class="stats-grid apps-grid">/.test(row) && /maps-tile/.test(row) && /tube-tile/.test(row));
-ok('the Tube tile names the video ZIMs', /<span class="zt">Tube<\/span>/.test(row) && /TED Talks – Technology/.test(row) && /href="#tube"/.test(row));
+ok('the ZimiTube tile names the video ZIMs', /<span class="zt">ZimiTube<\/span>/.test(row) && /TED Talks – Technology/.test(row) && /href="#tube"/.test(row));
 ctx.zimsCache = ctx.zimsCache.filter(z => z.kind !== 'video');
 ok('no video ZIM, no Tube tile; Maps stays', !/tube-tile/.test(ctx._appsRowHtml()) && /maps-tile/.test(ctx._appsRowHtml()));
 ctx.zimsCache = [];
@@ -63,21 +63,25 @@ ok('Back and Forward return to it', /s\.mode === 'reader' && s\.tube\) \{\n\s*op
 ok('typing on Tube filters the feed inside the page', /if \(_isTubePage\(\)\) \{\n\s*\/\/ Tube[^\n]*\n\s*hideSuggest\(\);\n\s*suggestTimer = setTimeout\(function\(\) \{ _tubeSearch\(val\); \}, 150\);/.test(src));
 ok('the hand-off calls the page\'s own function', /win\.tubeSearch\(val\)/.test(extract(/function _tubeSearch\(val\) \{[\s\S]*?\n\}/, '_tubeSearch')));
 ok('no reading controls on Tube, in the bar or the ⋯', /_readingText = _readingArticle && !_isMapPage\(\) && !_isTubePage\(\)/.test(src) && /_TTS_AVAILABLE && !_isMapPage\(\) && !_isTubePage\(\)/.test(src));
-ok('the breadcrumb is Tube and the box says what it is for', /bcIcon\.title = t\('tube'\)/.test(src) && (src.match(/q\.placeholder = t\('tube_search_placeholder'\)/g) || []).length === 2);
+ok('the breadcrumb is ZimiTube and the box says what it is for', /bcIcon\.title = t\('tube'\)/.test(src) && (src.match(/q\.placeholder = t\('tube_search_placeholder'\)/g) || []).length === 2);
 
 // ── a card becomes a page ────────────────────────────────────────────────
 ok('a video opened from a card gets history and an address, and Tube closes', /if \(_tubeOpen\) \{[\s\S]*?_tubeOpen = false;[\s\S]*?history\.pushState\(\{ mode: 'reader', zim: _navZim, path: _navPath \}, '', _articleDeepLinkPath\(_navZim, _navPath\)\);/.test(src));
 ok('closing the reader or opening any article leaves Tube', /function closeReader\(\) \{\n\s*if \(!readerOpen\) return;\n\s*_tubeOpen = false;/.test(src) && /function openArticle\(zim, path, title, opts\) \{\n\s*_tubeOpen = false;/.test(src));
 
 // ── the page ─────────────────────────────────────────────────────────────
-ok('the page asks /tube and pages with More', /fetch\(url\)/.test(page) && /'\/tube\?limit=' \+ PAGE \+ '&offset=' \+ _offset/.test(page) && /function tubeMore\(\)/.test(page));
-ok('cards link to the video\'s page in the same frame, thumbnails from the ZIM', /href="' \+ esc\(page\) \+ '"/.test(page) && /'\/w\/' \+ encodeURIComponent\(v\.zim\) \+ '\/' \+ v\.thumb/.test(page));
+ok('the page asks /tube once and pages what it shows', /fetch\(url\)/.test(page) && /'\/tube\?limit=5000&offset=0'/.test(page) && /function tubeMore\(\)/.test(page));
+ok('a card is a real link to the page, and a click plays in ZimiTube\'s own player', /href="' \+ esc\(zpath\(v\.zim, v\.page\)\) \+ '"/.test(page) && /onclick="return play\(event, ' \+ i \+ '\)"/.test(page));
+ok('the player reads the media behind the page and rolls into the next', /fetch\('\/tube\/play\?zim='/.test(page) && /addEventListener\('ended'[\s\S]*play\(null, i \+ 1\)/.test(page) && /STR\.up_next/.test(page));
+ok('shelves per source, chips, sorts, ZIM icons', /class="shelf"/.test(page) && /class="chip/.test(page) && /sort_longest/.test(page) && /zpath\(v\.zim, '-\/icon'\)/.test(page));
+ok('the original page stays one tap away', /STR\.open_page/.test(page));
 ok('the page exposes its search to the top bar', /window\.tubeSearch = tubeSearch/.test(page));
 ok('strings arrive in the hash, escaped on the way in', /JSON\.parse\(decodeURIComponent\(location\.hash\.slice\(1\)/.test(page) && /function esc\(x\)/.test(page));
 ok('the page holds in both themes', /prefers-color-scheme: dark/.test(page) && /color-scheme: light dark/.test(page));
 for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n'))) {
   const d = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n', lang), 'utf8'));
-  for (const k of ['tube', 'tube_search_placeholder', 'tube_videos', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty']) if (!d[k]) ok(k + ' in ' + lang, false);
+  for (const k of ['tube', 'tube_search_placeholder', 'tube_videos', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay', 'tube_open_page', 'tube_sort_mixed', 'tube_no_media']) if (!d[k]) ok(k + ' in ' + lang, false);
+  if (d.tube !== 'ZimiTube') ok('it is called ZimiTube in ' + lang, false);
 }
 
 process.exit(failures ? 1 : 0);

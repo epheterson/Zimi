@@ -875,6 +875,7 @@ def create_video_zim(
                 rows.append(
                     {
                         "page": page_path,
+                        "media": media_path,
                         "thumb": thumb_path,
                         "title": v_title,
                         "uploader": str(
@@ -913,6 +914,7 @@ def create_video_zim(
                                 "speaker": r["uploader"],
                                 "thumb": r["thumb"] or "",
                                 "page": r["page"],
+                                "media": r["media"],
                                 "duration": r["duration"],
                                 "date": _fmt_date(r["date"]),
                             }

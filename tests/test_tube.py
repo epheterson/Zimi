@@ -145,7 +145,7 @@ def test_youtube2zim_rows_come_from_videos_json(tmp_path, monkeypatch):
 def test_not_a_video_zim_has_no_videos(tmp_path, monkeypatch):
     _library(tmp_path, monkeypatch, [("survival_en_2026-06.zim", None, {})])
     assert tube.videos_for("survival") == []
-    assert tube.feed() == {"items": [], "total": 0, "sources": 0}
+    assert tube.feed() == {"items": [], "total": 0, "sources": 0, "zims": []}
 
 
 # ── the feed ───────────────────────────────────────────────────────────────
@@ -162,6 +162,8 @@ def test_the_feed_interleaves_sources_and_a_query_keeps_every_word(tmp_path, mon
     )
     f = tube.feed()
     assert f["total"] == 5 and f["sources"] == 2
+    assert [(z["name"], z["count"], z["icon"]) for z in f["zims"]] == [("own", 3, False), ("ted_en_x", 2, False)]
+    assert all("zim_icon" in v for v in f["items"])
     assert [v["zim"] for v in f["items"]] == ["own", "ted_en_x", "own", "ted_en_x", "own"]
     assert f["items"][1]["zim_title"] == "Test Survival"  # the fixture's Title
     q = tube.feed("greka rare")
@@ -175,3 +177,51 @@ def test_the_route_is_rate_limited_as_an_api_path():
     from zimi import http
 
     assert "/tube" in http._RATE_LIMITED_API_PATHS
+
+
+# ── the player: media behind a page ────────────────────────────────────────
+
+TED_PAGE = (
+    b"<html><body><p id='speaker'>  Berridge</p><video class='video-js' controls poster='videos/13316/thumbnail.webp'>"
+    b"<source src='videos/13316/video.webm' type='video/webm' />"
+    b"<track kind='subtitles' src='videos/13316/subs/subs_en.vtt' srclang='en' label='English' />"
+    b"<track kind='subtitles' src='videos/13316/subs/subs_fr.vtt' srclang='fr' label='French' /></video></body></html>"
+)
+
+
+def test_playback_reads_the_media_and_tracks_behind_the_page(tmp_path, monkeypatch):
+    files = dict(TED_FILES)
+    files["why-tech-needs-the-humanities"] = TED_PAGE
+    # Its own ZIM name: the archive pool keeps an archive per name for the
+    # life of the process, and an earlier test's ted_en_x has no such page.
+    _library(tmp_path, monkeypatch, [("ted_en_play_2023-09.zim", {"Scraper": "ted2zim 2.0.13", "Name": "ted_en_play"}, files)])
+    got = tube.playback("ted_en_play", "why-tech-needs-the-humanities")
+    assert got == {
+        "media": [{"path": "videos/13316/video.webm", "type": "video/webm"}],
+        "subs": [
+            {"path": "videos/13316/subs/subs_en.vtt", "lang": "en", "label": "English"},
+            {"path": "videos/13316/subs/subs_fr.vtt", "lang": "fr", "label": "French"},
+        ],
+        "poster": "videos/13316/thumbnail.webp",
+        "page": "why-tech-needs-the-humanities",
+    }
+
+
+def test_playback_resolves_zimis_own_relative_paths(tmp_path, monkeypatch):
+    page = b"<html><body><video controls preload='metadata'><source src='../media/abc.webm' type='video/webm'><track kind='subtitles' src='../subs/abc.en.vtt' srclang='en' label='en'></video></body></html>"
+    _library(tmp_path, monkeypatch, [("own-play.zim", {"Scraper": "Zimi 1.10.0 + yt-dlp 2026.07.04", "Name": "own-play"}, {"videos/abc": page})])
+    got = tube.playback("own-play", "videos/abc")
+    assert got["media"] == [{"path": "media/abc.webm", "type": "video/webm"}]
+    assert got["subs"] == [{"path": "subs/abc.en.vtt", "lang": "en", "label": "en"}]
+
+
+def test_a_page_without_media_is_none(tmp_path, monkeypatch):
+    _library(tmp_path, monkeypatch, [("own-none.zim", {"Scraper": "Zimi 1.10.0 + yt-dlp 2026.07.04", "Name": "own-none"}, {"videos/abc": b"<html><body>no player</body></html>"})])
+    assert tube.playback("own-none", "videos/abc") is None
+    assert tube.playback("own-none", "videos/missing") is None
+
+
+def test_the_play_route_is_rate_limited_as_an_api_path():
+    from zimi import http
+
+    assert "/tube/play" in http._RATE_LIMITED_API_PATHS

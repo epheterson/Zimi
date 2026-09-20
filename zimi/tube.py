@@ -241,6 +241,69 @@ def videos_for(name):
     return rows
 
 
+_SRC_TAG_RE = re.compile(r"<(?:source|video|audio)\b[^>]*>", re.I | re.S)
+_TRACK_RE = re.compile(r"<track\b[^>]*>", re.I | re.S)
+_ATTR_RE = re.compile(r"\b([a-z-]+)=['\"]([^'\"]*)['\"]", re.I)
+_POSTER_RE = re.compile(r"<video\b[^>]*?\bposter=['\"]([^'\"]+)['\"]", re.I | re.S)
+
+
+def _resolve_path(page, ref):
+    """A path relative to the page's folder, as a ZIM path."""
+    import posixpath
+
+    ref = ref.split("#")[0].split("?")[0]
+    if not ref or "://" in ref or ref.startswith("/"):
+        return ""
+    base = posixpath.dirname(page)
+    return posixpath.normpath(posixpath.join(base, ref)) if base else posixpath.normpath(ref)
+
+
+def playback(name, page):
+    """What ZimiTube's own player needs for one video, read from the video's
+    page in the ZIM: its media sources, subtitle tracks and poster, as ZIM
+    paths. Every video ZIM Zimi knows (ted2zim, youtube2zim, Zimi's own)
+    writes a plain <video> with <source> and <track> children; the player
+    pages differ, the media does not. None when the page has no media."""
+    from zimi.search import _get_fts_archive
+
+    try:
+        archive, lock = _get_fts_archive(name)
+    except Exception:
+        return None
+    if archive is None or lock is None:
+        return None
+    with lock:
+        try:
+            entry = archive.get_entry_by_path(page)
+            if entry.is_redirect:
+                entry = entry.get_redirect_entry()
+            page = entry.path
+            html_text = bytes(entry.get_item().content).decode("utf-8", "replace")
+        except Exception:
+            return None
+    media = []
+    for tag in _SRC_TAG_RE.findall(html_text):
+        attrs = {k.lower(): _html.unescape(v) for k, v in _ATTR_RE.findall(tag)}
+        path = _resolve_path(page, attrs.get("src", ""))
+        if path and path not in [x["path"] for x in media]:
+            media.append({"path": path, "type": attrs.get("type", "")})
+    if not media:
+        return None
+    subs = []
+    for t in _TRACK_RE.findall(html_text):
+        attrs = {k.lower(): _html.unescape(v) for k, v in _ATTR_RE.findall(t)}
+        src = _resolve_path(page, attrs.get("src", ""))
+        if src:
+            subs.append({"path": src, "lang": attrs.get("srclang", ""), "label": attrs.get("label", "")})
+    poster = _POSTER_RE.search(html_text)
+    return {
+        "media": media,
+        "subs": subs,
+        "poster": _resolve_path(page, _html.unescape(poster.group(1))) if poster else "",
+        "page": page,
+    }
+
+
 def _matches(v, q):
     hay = " ".join((v.get("title") or "", v.get("description") or "", v.get("speaker") or "")).lower()
     return all(w in hay for w in q)
@@ -260,23 +323,29 @@ def feed(query="", limit=60, offset=0):
         if q:
             rows = [v for v in rows if _matches(v, q)]
         if rows:
-            per_zim.append((name, z.get("title") or name, rows))
+            per_zim.append((name, z.get("title") or name, bool(z.get("has_icon")), rows))
     merged = []
     i = 0
     while True:
         added = False
-        for name, title, rows in per_zim:
+        for name, title, has_icon, rows in per_zim:
             if i < len(rows):
                 v = dict(rows[i])
                 v["zim"] = name
                 v["zim_title"] = title
+                v["zim_icon"] = has_icon
                 merged.append(v)
                 added = True
         if not added:
             break
         i += 1
     total = len(merged)
-    return {"items": merged[offset : offset + limit], "total": total, "sources": len(per_zim)}
+    return {
+        "items": merged[offset : offset + limit],
+        "total": total,
+        "sources": len(per_zim),
+        "zims": [{"name": n, "title": t, "icon": ic, "count": len(r)} for n, t, ic, r in per_zim],
+    }
 
 
 def _reset_for_tests():
