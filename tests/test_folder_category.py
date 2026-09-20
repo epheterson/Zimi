@@ -245,6 +245,7 @@ def test_disk_cache_record_gains_no_new_keys(zim_dir):
         # carries a search box. Additive; older versions ignore both.
         "kind",
         "map_search",
+        "kind_v",  # which rule decided the kind, so a new kind re-reads old records once
     }
     assert set(written) <= known
 
