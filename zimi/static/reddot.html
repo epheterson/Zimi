@@ -6,12 +6,11 @@
 <title>Reddot</title>
 <!--@apps.css@-->
 <style>
-  .sorts { display: inline-flex; gap: 6px; }
-  .c { margin: 10px 0 0; padding: 0 0 0 12px; border-left: 2px solid var(--border); }
+  .c { margin: 10px 0 0; padding-inline-start: 12px; border-inline-start: 2px solid var(--border); }
   .c .cm { font-size: 12px; color: var(--text2); margin-bottom: 2px; }
   .c .cm b { color: var(--text); font-weight: 600; }
   .c .prose { font-size: 13.5px; }
-  .c .c { margin-left: 4px; }
+  .c .c { margin-inline-start: 4px; }
 </style>
 </head>
 <body>
@@ -27,7 +26,7 @@
     <div class="empty" id="empty" hidden></div>
   </div>
   <div id="pview" class="item" hidden>
-    <button class="back" onclick="closeP()">&#8592; <span id="backlabel"></span></button>
+    <button class="back" onclick="closeP()"><span class="arrow"></span> <span id="backlabel"></span></button>
     <h1 id="p-title"></h1>
     <div class="who" id="p-who"></div>
     <div class="prose" id="p-body"></div>
@@ -36,27 +35,29 @@
     <div class="actions"><a id="p-open" href="#"></a></div>
   </div>
 </div>
+<!--@apps.js@-->
 <script>
 // Reddot. Subreddits as ZIMs (made by ArcticZim, and by Zimi's create page
 // wrapping it), read in a view Zimi owns: a shelf per subreddit of its top
 // posts, a subreddit as a paged list (top, new), a post with its comment
 // tree, the original page one tap away. Zimi's top bar drives
 // reddotSearch(q) over the library's own title search.
-var STR = { title: 'Reddot', all: 'All', more: 'More', top: 'Top', new: 'New', comments: 'Comments', points: 'points', by: 'by', open_page: 'Open the original page', none: 'No posts match.', empty: 'No subreddit ZIMs installed yet. Make one from the Create page.', catalog: 'Make one', p: '' };
-try { var s0 = JSON.parse(decodeURIComponent(location.hash.slice(1) || '') || '{}'); for (var k0 in s0) STR[k0] = s0[k0]; } catch (e) {}
+var STR = strings({ title: 'Reddot', all: 'All', more: 'More', top: 'Top', new: 'New', comments: 'comments', comment: 'comment', points: 'points', point: 'point', by: 'by', open_page: 'Open the original page', none: 'No posts match.', empty: 'No subreddit ZIMs installed yet. Make one from the Create page.', catalog: 'Make one', p: '' });
 var _zims = [], _zim = '', _sub = '', _sort = 'top', _page = 1, _pages = 0, _q = '', _busy = false;
-function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-function zpath(zim, p) { return '/w/' + encodeURIComponent(zim) + '/' + String(p).split('/').map(encodeURIComponent).join('/'); }
-function J(v) { return JSON.stringify(v).replace(/"/g, '&quot;'); }
-function tell(msg) { try { if (window.parent !== window) window.parent.postMessage(msg, location.origin); } catch (e) {} }
 function goCreate() { tell({ zimi: 'create', mode: 'reddit' }); return false; }
 
-function row(r, zim) {
+// A row names its subreddit only when its list does not: a shelf and a
+// subreddit's list are one subreddit by definition; a search is not.
+function row(r, zim, mixed) {
+  var facts = [];
+  if (mixed) facts.push('r/' + esc(r.subreddit));
+  if (r.author) facts.push(esc(STR.by) + ' ' + esc(r.author));
+  if (r.date) facts.push(esc(r.date));
+  if (r.external) facts.push('<span>' + esc(r.external.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]) + '</span>');
   return '<div class="row" onclick="openP(' + J(zim) + ',' + J(r.page) + ')">' +
-    '<div class="stat"><b>' + esc(r.score) + '</b>' + esc(STR.points) + '</div>' +
+    '<div class="stat">' + (r.score === '' ? '' : '<b>' + esc(r.score) + '</b>' + esc(Number(r.score) === 1 ? STR.point : STR.points)) + '</div>' +
     '<div><div class="t">' + esc(r.title) + '</div><div class="m">' + (r.flair ? '<span class="fl">' + esc(r.flair) + '</span>' : '') +
-    'r/' + esc(r.subreddit) + (r.author ? ' · ' + esc(STR.by) + ' ' + esc(r.author) : '') + (r.date ? ' · ' + esc(r.date) : '') +
-    (r.external ? ' · <span>' + esc(r.external.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]) + '</span>' : '') + '</div></div></div>';
+    facts.join(' · ') + '</div></div></div>';
 }
 function renderChips() {
   var c = document.getElementById('chips'); var subs = [];
@@ -70,15 +71,17 @@ function renderHome(data) {
   renderChips();
   document.getElementById('list').hidden = true;
   var sh = document.getElementById('shelves'); sh.hidden = false;
+  // A subreddit with nothing to show gets no shelf: a heading over nothing
+  // is a promise the page cannot keep. Its chip still leads to it.
   sh.innerHTML = _zims.map(function(z) {
-    return (z.shelves || []).map(function(s) {
-      return '<section class="shelf"><div class="shelf-h"><h2>r/' + esc(s.subreddit) + '</h2><button class="all" onclick="openSub(' + J(z.name) + ',' + J(s.subreddit) + ')">' + esc(STR.all) + ' ›</button></div>' +
-        s.rows.map(function(r) { return row(r, z.name); }).join('') + '</section>';
+    return (z.shelves || []).filter(function(s) { return s.rows && s.rows.length; }).map(function(s) {
+      return '<section class="shelf"><div class="shelf-h"><h2>r/' + esc(s.subreddit) + '</h2><button class="all" onclick="openSub(' + J(z.name) + ',' + J(s.subreddit) + ')">' + esc(STR.all) + CHEV + '</button></div>' +
+        s.rows.map(function(r) { return row(r, z.name, false); }).join('') + '</section>';
     }).join('');
   }).join('');
   var empty = document.getElementById('empty');
   empty.hidden = _zims.length > 0;
-  empty.innerHTML = esc(STR.empty) + '<br><a class="door" href="/#create" onclick="return goCreate()">' + esc(STR.catalog) + ' ›</a>';
+  empty.innerHTML = esc(STR.empty) + '<br><a class="door" href="/#create" onclick="return goCreate()">' + esc(STR.catalog) + CHEV + '</a>';
 }
 function renderList(title, rows, append) {
   document.getElementById('shelves').hidden = true;
@@ -87,7 +90,7 @@ function renderList(title, rows, append) {
   document.getElementById('l-sorts').innerHTML = _q ? '' : ['top', 'new'].map(function(k) { return '<button class="chip' + (_sort === k ? ' on' : '') + '" onclick="setSort(' + J(k) + ')">' + esc(STR[k]) + '</button>'; }).join('');
   var host = document.getElementById('l-rows');
   if (!append) host.innerHTML = '';
-  host.insertAdjacentHTML('beforeend', rows.map(function(r) { return row(r, r.zim || _zim); }).join(''));
+  host.insertAdjacentHTML('beforeend', rows.map(function(r) { return row(r, r.zim || _zim, !!_q); }).join(''));
   var more = document.getElementById('more'); more.hidden = !_pages || _page >= _pages; more.textContent = STR.more;
   var empty = document.getElementById('empty'); empty.hidden = host.children.length > 0; empty.textContent = STR.none;
 }
@@ -120,7 +123,7 @@ function reddotSearch(q) {
   }).catch(function() {});
 }
 function commentHtml(c) {
-  return '<div class="c"><div class="cm"><b>' + esc(c.author) + '</b> · ' + esc(c.score) + ' ' + esc(STR.points) + (c.date ? ' · ' + esc(c.date) : '') + '</div>' +
+  return '<div class="c"><div class="cm"><b>' + esc(c.author) + '</b> · ' + esc(count(c.score, STR.point, STR.points)) + (c.date ? ' · ' + esc(c.date) : '') + '</div>' +
     '<div class="prose">' + c.body + '</div>' + (c.children || []).map(commentHtml).join('') + '</div>';
 }
 function countComments(list) { return (list || []).reduce(function(n, c) { return n + 1 + countComments(c.children); }, 0); }
@@ -137,10 +140,10 @@ function openP(zim, page) {
     if (!d) { document.getElementById('p-title').textContent = STR.none; return; }
     document.getElementById('p-title').textContent = d.title;
     tell({ zimi: 'reddot-p', p: zim + '/' + page, title: d.title });
-    document.getElementById('p-who').innerHTML = 'r/' + esc(d.subreddit) + ' · <b>' + esc(d.score) + '</b> ' + esc(STR.points) + (d.author ? ' · ' + esc(STR.by) + ' ' + esc(d.author) : '') + (d.date ? ' · ' + esc(d.date) : '');
+    document.getElementById('p-who').innerHTML = 'r/' + esc(d.subreddit) + ' · <b>' + esc(d.score) + '</b> ' + esc(Number(d.score) === 1 ? STR.point : STR.points) + (d.author ? ' · ' + esc(STR.by) + ' ' + esc(d.author) : '') + (d.date ? ' · ' + esc(d.date) : '');
     document.getElementById('p-body').innerHTML = d.body || '';
     var n = countComments(d.comments);
-    document.getElementById('p-ch').textContent = n + ' ' + STR.comments;
+    document.getElementById('p-ch').textContent = count(n, STR.comment, STR.comments);
     document.getElementById('p-comments').innerHTML = (d.comments || []).map(commentHtml).join('');
   }).catch(function() { document.getElementById('p-title').textContent = STR.none; });
 }

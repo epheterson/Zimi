@@ -161,3 +161,22 @@ def test_the_routes_are_rate_limited_as_api_paths():
     from zimi import http
 
     assert "/reddot" in http._RATE_LIMITED_API_PATHS
+
+
+# ── one subreddit once ─────────────────────────────────────────────────────
+
+
+def test_a_subreddit_in_two_zims_is_one_shelf_from_the_newest_build(tmp_path, monkeypatch):
+    """Eric, 2026-09-19: "handle deduplication if we're merging multiple
+    Zims." A Zimi build of r/kiwix beside an ArcticZim bundle that also
+    carries it: one shelf, one chip, from the newest build."""
+    _library(tmp_path, monkeypatch, [
+        ("reddit_kiwix_2026-09-01.zim", {"Scraper": "ArcticZim", "Name": "reddit_kiwix", "Date": "2026-09-01"}, FILES),
+        ("reddit_bundle_2026-09-10.zim", {"Scraper": "ArcticZim", "Name": "reddit_bundle", "Date": "2026-09-10"}, FILES),
+    ])
+    home = reddot.home()
+    bundle, single = srv._zim_short_name("reddit_bundle_2026-09-10.zim"), srv._zim_short_name("reddit_kiwix_2026-09-01.zim")
+    carried = {z["name"]: z["subreddits"] for z in home["zims"]}
+    assert carried == {bundle: ["kiwix", "selfhosted"], single: []}
+    shelves = [(z["name"], s["subreddit"]) for z in home["zims"] for s in z["shelves"]]
+    assert shelves == [(bundle, "kiwix"), (bundle, "selfhosted")]

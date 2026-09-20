@@ -208,9 +208,12 @@ def sites():
     out = []
     for z in _srv._zim_list_cache or []:
         if z.get("kind") == "qa" and z.get("name") and _srv.zim_allowed(z["name"]):
-            out.append({"name": z["name"], "title": z.get("title") or z["name"], "icon": bool(z.get("has_icon")), "description": z.get("description") or ""})
+            out.append({"name": z["name"], "title": z.get("title") or z["name"], "icon": bool(z.get("has_icon")), "description": z.get("description") or "",
+                        "date": z.get("date") or "", "size_bytes": z.get("size_bytes") or 0})
     out.sort(key=lambda s: s["title"].lower())
-    return out
+    # A site once: a nopic beside a maxi, or last month's file beside this
+    # month's, is one site, and the newest build is the one read.
+    return _srv.newest_per(out, lambda s: s["title"].strip().lower())
 
 
 def listing(name, page=1, tag=""):

@@ -46,6 +46,9 @@ const ctx = {
 };
 vm.createContext(ctx);
 vm.runInContext([
+  extract(/function _newestPer\(list, key\) \{[\s\S]*?\n\}/, '_newestPer'),
+  extract(/function _installedOfKind\(kind, key\) \{[\s\S]*?\n\}/, '_installedOfKind'),
+  extract(/function _mapName\(z\) \{[\s\S]*?\n\}/, '_mapName'),
   extract(/function _installedMaps\(\) \{[\s\S]*?\n\}/, '_installedMaps'),
   extract(/function mapPositionHash\(zoom, lat, lng\) \{[\s\S]*?\n\}/, 'mapPositionHash'),
   extract(/var _MAP_HASH_RE = [^\n]*\n/, '_MAP_HASH_RE'),

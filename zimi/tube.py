@@ -323,7 +323,7 @@ def feed(query="", limit=60, offset=0):
         if q:
             rows = [v for v in rows if _matches(v, q)]
         if rows:
-            per_zim.append((name, z.get("title") or name, bool(z.get("has_icon")), rows))
+            per_zim.append((name, z.get("title") or name, bool(z.get("has_icon")), rows, z.get("language") or ""))
     # One card per talk. Two TED ZIMs (a playlist, a topic) carry the same
     # talks, and a feed that shows a talk once per ZIM it is in reads as
     # broken. The first source keeps the card and lists the others.
@@ -332,7 +332,7 @@ def feed(query="", limit=60, offset=0):
     i = 0
     while True:
         added = False
-        for name, title, has_icon, rows in per_zim:
+        for name, title, has_icon, rows, _lang in per_zim:
             if i < len(rows):
                 added = True
                 v = dict(rows[i])
@@ -354,7 +354,7 @@ def feed(query="", limit=60, offset=0):
         "items": merged[offset : offset + limit],
         "total": total,
         "sources": len(per_zim),
-        "zims": [{"name": n, "title": t, "icon": ic, "count": len(r)} for n, t, ic, r in per_zim],
+        "zims": [{"name": n, "title": t, "icon": ic, "count": len(r), "language": lg} for n, t, ic, r, lg in per_zim],
     }
 
 

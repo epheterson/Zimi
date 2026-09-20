@@ -26,7 +26,7 @@ ok('a post has an address, replaced as you read', /d\.zimi === 'reddot-p' && _re
 ok('the page\'s empty state sends people to Create on the Subreddit mode', /goCreate\(\)/.test(page) && /mode: 'reddit'/.test(page) && /d\.zimi === 'create' && d\.mode === 'reddit'/.test(src));
 ok('typing asks the page, which asks the library\'s own search across the ZIMs', /_reddotSearch\(val\)/.test(src) && /fetch\('\/search\?q=' \+ encodeURIComponent\(_q\)/.test(page));
 ok('no reading controls on it', /!_isExchangePage\(\) && !_isReddotPage\(\)/.test(src));
-ok('the breadcrumb is Reddot and the box says what it is for', /bcIcon\.title = t\('reddot'\)/.test(src) && (src.match(/q\.placeholder = t\('reddot_search_placeholder'\)/g) || []).length === 2);
+ok('the breadcrumb is Reddot and the box says what it is for', /bcIcon\.title = t\('reddot'\)/.test(src) && /return t\('reddot_search_placeholder'\)/.test(src) && (src.match(/q\.placeholder = _appPlaceholder\(\)/g) || []).length === 2);
 ok('shelves per subreddit, a paged list with Top and New, a post with its comment tree', /class="shelf"/.test(page) && /setSort\(/.test(page) && /'\/reddot\/sub\?zim='/.test(page) && /'\/reddot\/post\?zim='/.test(page) && /function commentHtml\(c\)/.test(page) && /\(c\.children \|\| \[\]\)\.map\(commentHtml\)/.test(page));
 ok('the page takes the shared sheet, which holds both themes', /<!--@apps\.css@-->/.test(page) && !/prefers-color-scheme/.test(page));
 // the Create page

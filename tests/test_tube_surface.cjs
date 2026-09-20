@@ -12,6 +12,7 @@ const vm = require('vm');
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.js'), 'utf8').replace(/\r\n/g, '\n');
 const page = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'tube.html'), 'utf8');
+const shared = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'apps.js'), 'utf8');
 function extract(re, label) {
   const m = src.match(re);
   if (!m) throw new Error('could not extract ' + label + ' from app.js');
@@ -36,6 +37,10 @@ const ctx = {
 vm.createContext(ctx);
 vm.runInContext([
   extract(/var _MAPS_PIN_SVG = [^\n]*\n/, '_MAPS_PIN_SVG'), extract(/var _TUBE_PLAY_SVG = [^\n]*\n/, '_TUBE_PLAY_SVG'),
+  extract(/function _newestPer\(list, key\) \{[\s\S]*?\n\}/, '_newestPer'),
+  extract(/function _installedOfKind\(kind, key\) \{[\s\S]*?\n\}/, '_installedOfKind'),
+  extract(/function _mapName\(z\) \{[\s\S]*?\n\}/, '_mapName'),
+  extract(/function _mapSourceLabel\(z\) \{[\s\S]*?\n\}/, '_mapSourceLabel'),
   extract(/function _installedMaps\(\) \{[\s\S]*?\n\}/, '_installedMaps'),
   extract(/function _installedVideoZims\(\) \{[\s\S]*?\n\}/, '_installedVideoZims'),
   extract(/var _userPrefs = [^\n]*\n/, '_userPrefs'),
@@ -90,7 +95,7 @@ ok('Back and Forward return to it, video included', /s\.mode === 'reader' && s\.
 ok('typing on Tube filters the feed inside the page', /if \(_isTubePage\(\)\) \{\n\s*\/\/ Tube[^\n]*\n\s*hideSuggest\(\);\n\s*suggestTimer = setTimeout\(function\(\) \{ _tubeSearch\(val\); \}, 150\);/.test(src));
 ok('the hand-off calls the page\'s own function', /win\.tubeSearch\(val\)/.test(extract(/function _tubeSearch\(val\) \{[\s\S]*?\n\}/, '_tubeSearch')));
 ok('no reading controls on Tube, in the bar or the ⋯', /_readingText = _readingArticle && !_isMapPage\(\) && !_isTubePage\(\)/.test(src) && /_TTS_AVAILABLE && !_isMapPage\(\) && !_isTubePage\(\)/.test(src));
-ok('the breadcrumb is ZimiTube and the box says what it is for', /bcIcon\.title = t\('tube'\)/.test(src) && (src.match(/q\.placeholder = t\('tube_search_placeholder'\)/g) || []).length === 2);
+ok('the breadcrumb is ZimiTube and the box says what it is for', /bcIcon\.title = t\('tube'\)/.test(src) && /return t\('tube_search_placeholder'\)/.test(src) && (src.match(/q\.placeholder = _appPlaceholder\(\)/g) || []).length === 2);
 
 // ── a card becomes a page ────────────────────────────────────────────────
 ok('a ZIM page opened from an app gets history and an address, and the app closes', /if \(_tubeOpen \|\| _exchangeOpen \|\| _reddotOpen\) \{[\s\S]*?_tubeOpen = false;[\s\S]*?_exchangeOpen = false;[\s\S]*?_reddotOpen = false;[\s\S]*?history\.pushState\(\{ mode: 'reader', zim: _navZim, path: _navPath \}, '', _articleDeepLinkPath\(_navZim, _navPath\)\);/.test(src));
@@ -100,12 +105,12 @@ ok('closing the reader or opening any article leaves Tube', /function closeReade
 ok('the page asks /tube once and pages what it shows', /fetch\(url\)/.test(page) && /'\/tube\?limit=5000&offset=0'/.test(page) && /function tubeMore\(\)/.test(page));
 ok('a card is a real link to the page, and a click plays in ZimiTube\'s own player', /href="' \+ esc\(zpath\(v\.zim, v\.page\)\) \+ '"/.test(page) && /onclick="return play\(event, ' \+ i \+ '\)"/.test(page));
 ok('the player reads the media behind the page and rolls into the next', /fetch\('\/tube\/play\?zim='/.test(page) && /addEventListener\('ended'[\s\S]*play\(null, i \+ 1\)/.test(page) && /STR\.up_next/.test(page));
-ok('shelves per source, chips, sorts, ZIM icons', /class="shelf"/.test(page) && /class="chip/.test(page) && /sort_longest/.test(page) && /zpath\(v\.zim, '-\/icon'\)/.test(page));
-ok('browsing is the shelves alone; the grid is for a chip, a query or another order', /_shown = browsing \? 0 :/.test(page) && /grid\.innerHTML = browsing \? '' :/.test(page));
+ok('shelves per source, chips, sorts, ZIM icons', /class="shelf"/.test(page) && /class="chip/.test(page) && /sort_longest/.test(page) && /zimIcon\(v\.zim, cls\)/.test(page));
+ok('browsing is the shelves alone; the grid is for a chip, a query or another order', /shelves\.hidden = !browsing;/.test(page) && /list\.hidden = browsing;/.test(page) && !/<select/.test(page));
 ok('the default order is called Top', /_sort = 'top'/.test(page) && /sort_top/.test(page) && !/sort_mixed/.test(page));
 ok('the original page stays one tap away', /STR\.open_page/.test(page));
 ok('the page exposes its search to the top bar', /window\.tubeSearch = tubeSearch/.test(page));
-ok('strings arrive in the hash, escaped on the way in', /JSON\.parse\(decodeURIComponent\(location\.hash\.slice\(1\)/.test(page) && /function esc\(x\)/.test(page));
+ok('strings arrive in the hash, escaped on the way in', /<!--@apps\.js@-->/.test(page) && /JSON\.parse\(decodeURIComponent\(location\.hash\.slice\(1\)/.test(shared) && /function esc\(x\)/.test(shared));
 ok('the page takes the shared sheet, which holds both themes', /<!--@apps\.css@-->/.test(page) && !/prefers-color-scheme/.test(page));
 for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n'))) {
   const d = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n', lang), 'utf8'));

@@ -970,6 +970,16 @@ function _applyI18nToDOM() {
   _updateSearchPlaceholder();
 }
 
+// On an app's page the box asks the app's question, short enough for a
+// phone's box: "Where to?", "Find a video", "Ask a question".
+function _appPlaceholder() {
+  if (_isReddotPage()) return t('reddot_search_placeholder');
+  if (_isExchangePage()) return t('exchange_search_placeholder');
+  if (_isTubePage()) return t('tube_search_placeholder');
+  if (_isMapPage()) return t('maps_search_placeholder');
+  return '';
+}
+
 function _updateSearchPlaceholder() {
   if (!q) return;
   if (mode === 'manage') {
@@ -979,14 +989,8 @@ function _updateSearchPlaceholder() {
     } else {
       q.placeholder = t('filter_installed');
     }
-  } else if (_isReddotPage()) {
-    q.placeholder = t('reddot_search_placeholder');
-  } else if (_isExchangePage()) {
-    q.placeholder = t('exchange_search_placeholder');
-  } else if (_isTubePage()) {
-    q.placeholder = t('tube_search_placeholder');
-  } else if (_isMapPage()) {
-    q.placeholder = t('maps_search_placeholder');
+  } else if (_appPlaceholder()) {
+    q.placeholder = _appPlaceholder();
   } else if (currentSource) {
     var info = _zimInfo(currentSource);
     q.placeholder = t('search_in', { source: (info && info.title) || currentSource });
@@ -1725,14 +1729,8 @@ function updateTopbar() {
     q.placeholder = t('create_zim');
   } else if (_almanacOpen) {
     q.placeholder = t('almanac');
-  } else if (_isReddotPage()) {
-    q.placeholder = t('reddot_search_placeholder');
-  } else if (_isExchangePage()) {
-    q.placeholder = t('exchange_search_placeholder');
-  } else if (_isTubePage()) {
-    q.placeholder = t('tube_search_placeholder');
-  } else if (_isMapPage()) {
-    q.placeholder = t('maps_search_placeholder');
+  } else if (_appPlaceholder()) {
+    q.placeholder = _appPlaceholder();
   } else if (currentSource) {
     q.placeholder = _zimTitle(currentSource);
   } else if (readerOpen && readerSource) {
@@ -8167,9 +8165,32 @@ const FEATURED_ZIMS = [
 // Installed map ZIMs (Kiwix maps2zim, StreetZim, AtlasZim), as the server
 // identified them from their own metadata, so a renamed file still counts.
 // Sorted by title so the card reads the same on every visit.
-function _installedMaps() {
-  return (zimsCache || []).filter(function(z) { return z.kind === 'map' && z.main_path; })
+// One entry per identity, the newest build (then the fullest): an update
+// whose old file is still around, a nopic beside a maxi, two names for one
+// thing. Eric, 2026-09-19: "handle deduplication if we're merging multiple
+// Zims." The order of first appearance is kept.
+function _newestPer(list, key) {
+  var best = {}, order = [];
+  list.forEach(function(z) {
+    var k = key(z); if (!k) return;
+    var cur = best[k];
+    if (!cur) { best[k] = z; order.push(k); return; }
+    var d = String(z.date || ''), cd = String(cur.date || '');
+    if (d > cd || (d === cd && (z.size_bytes || 0) > (cur.size_bytes || 0))) best[k] = z;
+  });
+  return order.map(function(k) { return best[k]; });
+}
+
+// The installed ZIMs of one kind, by title; with a key, one per identity.
+function _installedOfKind(kind, key) {
+  var all = (zimsCache || []).filter(function(z) { return z.kind === kind && z.main_path; })
     .sort(function(a, b) { return (a.title || a.name).localeCompare(b.title || b.name); });
+  return key ? _newestPer(all, key) : all;
+}
+
+// A map once: the same region from the same source is one map.
+function _installedMaps() {
+  return _installedOfKind('map', function(z) { return _mapSourceLabel(z) + '|' + _mapName(z).toLowerCase(); });
 }
 
 function _isFeaturedInstalled(feat, grouped) {
@@ -16040,11 +16061,12 @@ function _lastMapVisit() {
 // it), read in a page Zimi owns (/static/reddot.html) shown in the reader.
 var _reddotOpen = false;
 var _REDDOT_PAGE = '/static/reddot.html?v=1';
-var _REDDOT_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><circle cx="9" cy="13" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1" fill="currentColor" stroke="none"/><path d="M9 16.5c1.6 1.2 4.4 1.2 6 0M12 5l1.5-3 3 1"/></svg>';
+// Reddot's mark is a red dot (Eric, 2026-09-19), the one colour in the
+// chrome that is not the shell's: a logo keeps its colour in both themes.
+var _REDDOT_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="#e2452b"/></svg>';
 
 function _installedRedditZims() {
-  return (zimsCache || []).filter(function(z) { return z.kind === 'reddit' && z.main_path; })
-    .sort(function(a, b) { return (a.title || a.name).localeCompare(b.title || b.name); });
+  return _installedOfKind('reddit');
 }
 function _isReddotPage() {
   return !!(_reddotOpen && readerOpen && !_almanacOpen && !_createOpen);
@@ -16055,11 +16077,22 @@ function _reddotTileHtml() {
 function _reddotUrl(p) {
   return '/#reddot' + (p ? '?p=' + encodeURIComponent(p) : '');
 }
-function _reddotStrings(p) {
-  var keys = ['reddot_all', 'reddot_more', 'reddot_top', 'reddot_new', 'reddot_comments', 'reddot_points', 'reddot_by', 'reddot_open_page', 'reddot_none', 'reddot_empty', 'reddot_catalog'];
-  var out = { title: t('reddot'), p: p || '' };
-  keys.forEach(function(k) { out[k.replace(/^reddot_/, '')] = t(k); });
+// What the shell tells an app page, in the hash it opens with: its strings
+// in the shell's language, the language and its direction (Arabic and
+// Hebrew read right to left in the app too), the catalog door, and the
+// address it opens at. Eric, 2026-09-19: "Any language or interlang
+// considerations with all this."
+function _appStrings(app, keys, extra) {
+  var out = { title: t(app), catalog: t('app_browse_catalog'), lang: _currentLang || 'en',
+    dir: document.documentElement.getAttribute('dir') || 'ltr' };
+  keys.forEach(function(k) { out[k.slice(app.length + 1)] = t(k); });
+  for (var k in extra) out[k] = extra[k];
   return encodeURIComponent(JSON.stringify(out));
+}
+
+function _reddotStrings(p) {
+  return _appStrings('reddot', ['reddot_all', 'reddot_more', 'reddot_top', 'reddot_new', 'reddot_comments', 'reddot_comment', 'reddot_points', 'reddot_point',
+    'reddot_by', 'reddot_open_page', 'reddot_none', 'reddot_empty', 'reddot_catalog'], { p: p || '' });
 }
 function openReddot(replaceState, p) {
   if (_isModClick()) { _lastMouseEvent = null; window.open(_reddotUrl(p), '_blank'); return; }
@@ -16095,9 +16128,9 @@ var _exchangeOpen = false;
 var _EXCHANGE_PAGE = '/static/exchange.html?v=1';
 var _EXCHANGE_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg>';
 
+// A site once, as ZimiExchange lists it.
 function _installedQaZims() {
-  return (zimsCache || []).filter(function(z) { return z.kind === 'qa' && z.main_path; })
-    .sort(function(a, b) { return (a.title || a.name).localeCompare(b.title || b.name); });
+  return _installedOfKind('qa', function(z) { return (z.title || z.name).toLowerCase(); });
 }
 function _isExchangePage() {
   return !!(_exchangeOpen && readerOpen && !_almanacOpen && !_createOpen);
@@ -16109,10 +16142,8 @@ function _exchangeUrl(q) {
   return '/#exchange' + (q ? '?q=' + encodeURIComponent(q) : '');
 }
 function _exchangeStrings(q) {
-  var keys = ['exchange_all', 'exchange_more', 'exchange_questions', 'exchange_answers', 'exchange_asked', 'exchange_open_page', 'exchange_none', 'exchange_empty'];
-  var out = { title: t('exchange'), catalog: t('app_browse_catalog'), q: q || '' };
-  keys.forEach(function(k) { out[k.replace(/^exchange_/, '')] = t(k); });
-  return encodeURIComponent(JSON.stringify(out));
+  return _appStrings('exchange', ['exchange_all', 'exchange_more', 'exchange_questions', 'exchange_answers', 'exchange_answer', 'exchange_votes', 'exchange_vote',
+    'exchange_asked', 'exchange_open_page', 'exchange_none', 'exchange_empty'], { q: q || '' });
 }
 function openExchange(replaceState, q) {
   if (_isModClick()) { _lastMouseEvent = null; window.open(_exchangeUrl(q), '_blank'); return; }
@@ -16150,8 +16181,7 @@ var _tubeOpen = false;
 var _TUBE_PAGE = '/static/tube.html?v=1';
 
 function _installedVideoZims() {
-  return (zimsCache || []).filter(function(z) { return z.kind === 'video' && z.main_path; })
-    .sort(function(a, b) { return (a.title || a.name).localeCompare(b.title || b.name); });
+  return _installedOfKind('video');
 }
 
 function _isTubePage() {
@@ -16161,11 +16191,12 @@ function _isTubePage() {
 // The page's own strings, handed over in the hash: the page is static and
 // has no i18n of its own.
 function _tubeStrings(play) {
-  var keys = ['tube_videos', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay',
-    'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_no_media'];
-  var out = { title: t('tube'), catalog: t('app_browse_catalog'), play: play || '' };
-  keys.forEach(function(k) { out[k.replace(/^tube_/, '')] = t(k); });
-  return encodeURIComponent(JSON.stringify(out));
+  // A library whose video ZIMs speak more than one language labels each
+  // source with its own, named in the shell's language.
+  var langs = {};
+  _installedVideoZims().forEach(function(z) { if (z.language) langs[z.language] = _langDisplayName(z.language) || z.language; });
+  return _appStrings('tube', ['tube_videos', 'tube_video', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay',
+    'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_no_media'], { play: play || '', langs: langs });
 }
 
 // What the pages Zimi owns say to the shell. Same origin, and only the
@@ -16287,6 +16318,7 @@ function _appsRowHtml() {
 }
 
 function _appTileHtml(app, title, icon, names, openFn) {
+  names = names.filter(function(n, i) { return names.indexOf(n) === i; });
   if (names.length) {
     return '<a class="stat-card app-tile ' + app + '-tile" href="#' + app + '" data-zim="" onclick="return _spaNav(event, ' + openFn + ')">' +
       '<div class="card-icon">' + icon + '</div>' +
@@ -16308,7 +16340,7 @@ function _tubeTileHtml() {
 var _TUBE_PLAY_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"/></svg>';
 
 function _mapsTileHtml() {
-  return _appTileHtml('maps', t('cat_maps'), _MAPS_PIN_SVG, _installedMaps().map(function(z) { return z.title || z.name; }), 'openMaps');
+  return _appTileHtml('maps', t('cat_maps'), _MAPS_PIN_SVG, _installedMaps().map(_mapName), 'openMaps');
 }
 var _MAPS_PIN_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
 
@@ -16319,7 +16351,7 @@ function openMaps(e) {
   if (_createOpen) closeCreate();
   if (_almanacOpen) closeAlmanac();
   if (mode === 'manage') { mode = 'home'; updateTopbar(); }
-  openArticle(last.zim.name, last.zim.main_path, last.zim.title || last.zim.name, last.pos ? {pos: last.pos} : undefined);
+  openArticle(last.zim.name, last.zim.main_path, _mapName(last.zim), last.pos ? {pos: last.pos} : undefined);
 }
 
 function _isMapZim(name) {
@@ -16352,6 +16384,14 @@ function _currentMapPositionHash() {
 
 // Which publisher's map this is, for the row's second line: the server reads
 // it from the ZIM's own Scraper metadata, so a renamed file still knows.
+// A map's name where Zimi names it (the tile, the picker, the breadcrumb).
+// StreetZim titles its files "OSM - Hawaii"; the person says Hawaii, and so
+// does the map in its own corner.
+function _mapName(z) {
+  var title = z.title || z.name;
+  return _mapSourceLabel(z) === 'StreetZim' ? title.replace(/^OSM\s*-\s*/i, '') : title;
+}
+
 function _mapSourceLabel(z) {
   if (z.map_source) return z.map_source;
   if (z.map_search || /^osm-/.test(z.name)) return 'StreetZim';
@@ -16400,8 +16440,8 @@ var _MP_DOWN_SVG = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 
 
 function _mpRow(z, active) {
   return '<div class="mp-row' + (active ? ' active' : '') + '" role="menuitemradio" aria-checked="' + active +
-    '" data-zim="' + escAttr(z.name) + '" data-path="' + escAttr(z.main_path) + '" data-title="' + escAttr(z.title || z.name) + '">' +
-    '<span class="mp-name">' + esc(z.title || z.name) + '</span>' +
+    '" data-zim="' + escAttr(z.name) + '" data-path="' + escAttr(z.main_path) + '" data-title="' + escAttr(_mapName(z)) + '">' +
+    '<span class="mp-name">' + esc(_mapName(z)) + '</span>' +
     '<span class="mp-meta">' + esc(_mapSourceLabel(z)) + (active ? ' <span class="mp-check">\u2713</span>' : '') + '</span></div>';
 }
 
@@ -16581,7 +16621,10 @@ function _renderMapSourceDropdown(dd) {
       if (dd.classList.contains('visible')) _renderMapSourceDropdown(dd);
     });
   }
-  dd.innerHTML = _mapSourceRowsHtml(_installedMaps(), currentArticle ? currentArticle.zim : '', pos, extras);
+  var maps = _installedMaps();
+  var cur = currentArticle && (zimsCache || []).filter(function(z) { return z.name === currentArticle.zim; })[0];
+  if (cur && !maps.some(function(m) { return m.name === cur.name; })) maps.unshift(cur);
+  dd.innerHTML = _mapSourceRowsHtml(maps, currentArticle ? currentArticle.zim : '', pos, extras);
 }
 
 var _mapSourceDetach = null;
@@ -18710,7 +18753,9 @@ function _updateLibraryBtnIcon() {
 // What a page is called when nobody said: a map is called by its name (the
 // same page every visit, the place is the visit), anything else by its path.
 function _fallbackTitle(zim, path) {
-  return _isMapZim(zim) ? _zimTitle(zim) : _titleFromPath(path);
+  if (!_isMapZim(zim)) return _titleFromPath(path);
+  var z = (zimsCache || []).filter(function(x) { return x.name === zim; })[0];
+  return z ? _mapName(z) : _zimTitle(zim);
 }
 
 function openArticle(zim, path, title, opts) {

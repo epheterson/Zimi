@@ -35,6 +35,10 @@ const ctx = {
 vm.createContext(ctx);
 vm.runInContext([
   extract(/var _MAPS_PIN_SVG = [^\n]*\n/, '_MAPS_PIN_SVG'),
+  extract(/function _newestPer\(list, key\) \{[\s\S]*?\n\}/, '_newestPer'),
+  extract(/function _installedOfKind\(kind, key\) \{[\s\S]*?\n\}/, '_installedOfKind'),
+  extract(/function _mapName\(z\) \{[\s\S]*?\n\}/, '_mapName'),
+  extract(/function _mapSourceLabel\(z\) \{[\s\S]*?\n\}/, '_mapSourceLabel'),
   extract(/function _installedMaps\(\) \{[\s\S]*?\n\}/, '_installedMaps'),
   extract(/var _APP_CATEGORY = [^\n]*\n/, '_APP_CATEGORY'),
   extract(/function _appTileHtml\(app, title, icon, names, openFn\) \{[\s\S]*?\n\}/, '_appTileHtml'),
@@ -55,7 +59,7 @@ ok('it asks /places and makes suggest rows that carry the place', /fetch\('\/pla
 ok('picking a row opens the place where it is', /openArticle\(s\.zim, s\.path, s\.title, s\.pos \? \{pos: s\.pos\} : undefined\)/.test(src));
 const keys = extract(/q\.addEventListener\('keydown', e => \{[\s\S]*?\n\}\);/, 'keydown');
 ok('Enter on a map takes the first place', /if \(_isMapPage\(\)\) \{\s*\r?\n\s*if \(suggestItems\.length && suggestItems\[0\]\._place\) selectSuggest\(0\);/.test(keys));
-ok('the box says what it is for', /_isMapPage\(\)\) \{\n\s*q\.placeholder = t\('maps_search_placeholder'\)/.test(src.replace(/\r\n/g, '\n')));
+ok('the box says what it is for', /_isMapPage\(\)\) return t\('maps_search_placeholder'\)/.test(src));
 for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n'))) {
   const d = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n', lang), 'utf8'));
   if (!d.maps_search_placeholder) ok('maps_search_placeholder in ' + lang, false);

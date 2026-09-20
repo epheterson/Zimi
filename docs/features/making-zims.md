@@ -1,6 +1,6 @@
 # Creating ZIMs
 
-Turn a folder, a web page, a whole small site, or a video source into a ZIM that lives in your library and works forever offline.
+Turn a folder, a web page, a whole small site, a video source, or a subreddit into a ZIM that lives in your library and works forever offline.
 
 ## How it works
 
@@ -36,7 +36,9 @@ A capture is also **refused rather than packaged** when the site does not return
 
 **Bookmarks as a ZIM.** The Create page's **Bookmarks** tile packages your saved articles into one standalone `.zim` — the articles themselves, with their images and styles carried in, not a list of links. The result opens in any ZIM reader and needs nothing from the library it came from, which makes it the way to hand somebody a reading list that still works on a machine with no internet and no Zimi.
 
-**From the web UI.** The Create page (the topbar `+`) drives the URL-based modes — single page, `--site`, video — for admins and creator-role accounts. **Folder mode and web-archive import are CLI-only.** The web UI has no folder tile and no import tile: folder mode is refused from the web entirely, and import reads a server path, which stays a primary-admin, shell-only operation. Run `zimi create <folder>` / `zimi import <file>` from a terminal on the machine.
+**Subreddits.** `zimi create r/<name>` (or a reddit.com URL) fetches a subreddit's posts and comments through [ArcticZim](https://github.com/IMayBeABitShy/ArcticZim), which Zimi keeps in its own sidecar environment, and builds a ZIM that opens as a source and in the Reddot app (see [apps](apps.md)). `zimi create --setup-reddit` installs the sidecar ahead of time (needs network, about 30 s); without it the first subreddit build installs it. Retrieval runs through the Arctic Shift archive at roughly one post per second, so a large subreddit takes hours: start with a small one, and cap with the usual size budget. The Create page's **Subreddit** tile does the same for admins and creator-role accounts.
+
+**From the web UI.** The Create page (the topbar `+`) drives the URL-based modes — single page, `--site`, video, subreddit — for admins and creator-role accounts, and packages bookmarks. **Import** is on the page for the primary admin only: a picker over the archives in the import directory (`ZIMI_CREATE_ROOT`, else the ZIM directory, subdirectories included), never a typed path. **Folder mode is CLI-only**: the web UI has no folder tile, and folder mode is refused from the web entirely. Run `zimi create <folder>` from a terminal on the machine.
 
 ### Two pictures
 
@@ -72,7 +74,9 @@ The rendered and alive engines take them on the page they already have open. The
 - **`--engine-arg` reads as a missing value** — argparse treats a bare flag-shaped token as missing. Write it attached: `--engine-arg=--workers=2`.
 - **Crawl stops early / ZIM smaller than expected** — you hit `--max-bytes`, `--max-pages`, or `--max-depth`, or robots.txt disallowed pages. Raise the caps or add `--ignore-robots` (site only) where appropriate.
 - **A page renders blank or paywalled** — it may gate on a blocked endpoint. Retry with `--no-block-ads`, or use `--engine rendered`/`alive` so scripts run.
-- **Web UI has no folder or import option** — by design. These are CLI-only: `zimi create <folder>` and `zimi import <file>`.
+- **Web UI has no folder option** — by design; it is CLI-only: `zimi create <folder>`. Import is on the page for the primary admin as a picker: put the archive in the import directory (`ZIMI_CREATE_ROOT`, else the ZIM directory) and it appears.
+- **A subreddit build says the sidecar is missing** — run `zimi create --setup-reddit` once with network access; an air-gapped machine can be seeded the same way before it goes offline.
+- **The Subreddit tile is not on the Create page** — the sidecar could not be installed (no network, or the Archive unreachable). Install it with `--setup-reddit` and reload.
 
 ---
 
@@ -86,7 +90,7 @@ Convert a WARC or WACZ web archive into a library ZIM.
 
 `zimi import --setup` installs the sidecar venv now (needs network) so an air-gapped machine can be pre-seeded before it goes offline. `zimi import --status` reports the sidecar's state and version. Name and metadata come from `--name` / `--title` / `--description`, with the name derived from the filename by default.
 
-Import is **CLI-only**. It reads a path on the server's disk — a read-the-server's-disk primitive — so it is deliberately not exposed in the web UI and stays with the primary admin at a shell on the machine. The Docker image ships the sidecar prerequisites (Python 3.14 + libmagic) so import works there out of the box.
+Import reads a file on the server's disk, so it stays with the **primary admin**: at a shell with `zimi import <file>`, or on the Create page as a picker over the archives in the import directory (`ZIMI_CREATE_ROOT`, else the ZIM directory, subdirectories included). No path is ever typed into the browser. The Docker image ships the sidecar prerequisites (Python 3.14 + libmagic) so import works there out of the box.
 
 ### Configure
 
@@ -104,5 +108,5 @@ Import is **CLI-only**. It reads a path on the server's disk — a read-the-serv
 - **"sidecar not installed" / conversion won't start** — run `zimi import --setup` once with network access, then `zimi import --status` to confirm the venv and version.
 - **Preparing an offline machine** — run `zimi import --setup` while it still has internet; the sidecar then works air-gapped.
 - **libmagic errors on a bare install** — the sidecar needs libmagic on the host. The Docker image already includes it; on a manual install, install your platform's libmagic package.
-- **Looking for an import button in the web UI** — there isn't one by design. Run `zimi import <file>` from a shell on the server; it's a primary-admin, server-disk operation.
+- **Looking for an import button in the web UI** — it is the **Import** tile on the Create page, shown to the primary admin only, and it lists the archives in the import directory rather than taking a path. Drop the file there (or set `ZIMI_CREATE_ROOT` to where your archives live) and reload.
 - **Related** — the `--engine alive` capture path in [Creating ZIMs](making-zims.md) uses the same warc2zim sidecar, so `--setup` provisions both.

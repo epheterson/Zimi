@@ -95,3 +95,30 @@ def test_the_routes_are_rate_limited_as_api_paths():
     from zimi import http
 
     assert "/exchange" in http._RATE_LIMITED_API_PATHS
+
+
+# ── one site once ──────────────────────────────────────────────────────────
+
+
+def test_two_builds_of_one_site_are_one_shelf_the_newest(tmp_path, monkeypatch):
+    """Eric, 2026-09-19: "handle deduplication if we're merging multiple
+    Zims." A nopic beside a maxi, or last month's file beside this month's,
+    is one site; the newest build (then the fullest) is the one read."""
+    _library(tmp_path, monkeypatch, [
+        ("cooking.stackexchange.com_en_all_nopic_2026-07.zim", {"Scraper": "sotoki v3.1.1", "Name": "cooking.stackexchange.com_en_all_nopic", "Date": "2026-07-01"}, FILES),
+        ("cooking.stackexchange.com_en_all_maxi_2026-08.zim", {"Scraper": "sotoki v3.1.1", "Name": "cooking.stackexchange.com_en_all_maxi", "Date": "2026-08-01"}, FILES),
+    ])
+    sites = exchange.sites()
+    assert len(sites) == 1 and str(sites[0]["date"]).startswith("2026-08"), sites
+    assert len(exchange.home()["sites"]) == 1
+
+
+def test_newest_per_keeps_the_newest_then_the_fullest_and_the_keyless():
+    rows = [
+        {"id": "a", "date": "2026-01", "size_bytes": 1},
+        {"id": "b", "date": "2026-03", "size_bytes": 1},
+        {"id": "c", "date": "2026-03", "size_bytes": 9},
+        {"id": "d"},
+    ]
+    kept = srv.newest_per(rows, lambda r: "" if r["id"] == "d" else "k")
+    assert [r["id"] for r in kept] == ["c", "d"]

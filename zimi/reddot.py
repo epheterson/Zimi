@@ -373,9 +373,22 @@ def zims():
     out = []
     for z in _srv._zim_list_cache or []:
         if z.get("kind") == "reddit" and z.get("name") and _srv.zim_allowed(z["name"]):
-            out.append({"name": z["name"], "title": z.get("title") or z["name"], "icon": bool(z.get("has_icon")), "subreddits": subreddits(z["name"])})
+            out.append({"name": z["name"], "title": z.get("title") or z["name"], "icon": bool(z.get("has_icon")), "subreddits": subreddits(z["name"]),
+                        "date": z.get("date") or "", "size_bytes": z.get("size_bytes") or 0})
     out.sort(key=lambda s: s["title"].lower())
-    return out
+    return _claim_subreddits(out)
+
+
+def _claim_subreddits(zims_):
+    """A subreddit once: when two ZIMs carry it (a Zimi build beside an
+    ArcticZim bundle, or last week's build beside today's), the newest
+    build keeps it and the other ZIM's copy is not listed."""
+    claimed = set()
+    for z in sorted(zims_, key=_srv.build_rank, reverse=True):
+        mine = [s for s in z["subreddits"] if s not in claimed]
+        claimed.update(mine)
+        z["subreddits"] = mine
+    return zims_
 
 
 def subreddits(name):

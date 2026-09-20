@@ -814,6 +814,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("exchange.html")
             + _static_hash("reddot.html")
             + _static_hash("apps.css")
+            + _static_hash("apps.js")
             + _i18n_hash
         ).encode()
     ).hexdigest()[:8]
@@ -1549,15 +1550,25 @@ def _reconstruct_source_url(archive, entry_path):
 
 APP_PAGES = ("tube.html", "exchange.html", "reddot.html")
 _APPS_CSS_MARK = b"<!--@apps.css@-->"
+_APPS_JS_MARK = b"<!--@apps.js@-->"
+_APP_ASSETS = (
+    (_APPS_CSS_MARK, "apps.css", b"<style>\n", b"</style>"),
+    (_APPS_JS_MARK, "apps.js", b"<script>\n", b"</script>"),
+)
 
 
-def _inline_apps_css(body):
-    try:
-        with open(os.path.join(_STATIC_DIR, "apps.css"), "rb") as f:
-            css = f.read()
-    except OSError:
-        return body
-    return body.replace(_APPS_CSS_MARK, b"<style>\n" + css + b"</style>", 1)
+def _inline_apps_assets(body):
+    """The apps' shared stylesheet and script, inlined at their marks, so an
+    app page is still one document."""
+    for mark, name, open_tag, close_tag in _APP_ASSETS:
+        try:
+            with open(os.path.join(_STATIC_DIR, name), "rb") as f:
+                body = body.replace(mark, open_tag + f.read() + close_tag, 1)
+        except OSError as e:
+            # The page still serves, without its shared parts: say so in the
+            # log rather than let a broken app page pass for a styling bug.
+            log.warning("app page served without %s: %s", name, e)
+    return body
 
 
 def _index_content(apps=True):
@@ -3792,7 +3803,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # page stays one document and a change to the sheet reaches
                 # every app without a second request or a stale cache.
                 if rel_path in APP_PAGES:
-                    body = _inline_apps_css(body)
+                    body = _inline_apps_assets(body)
                 if rel_path == "sw.js":
                     # Key the cache on version + content hash so same-version
                     # deploys still produce new sw.js bytes → the browser

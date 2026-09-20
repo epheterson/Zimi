@@ -206,6 +206,7 @@ def test_creator_counts_break_down_made_here_zims_by_type(made_library):
         "folder": 0,
         "export": 1,
         "edit": 0,
+        "reddit": 0,
     }
 
 

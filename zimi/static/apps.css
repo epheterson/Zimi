@@ -44,10 +44,11 @@ button { font: inherit; color: inherit; }
 .shelf-h h2 { font-size: 15px; margin: 0; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .shelf-h .all { color: var(--amber); font-size: 12.5px; font-weight: 600; cursor: pointer; background: none; border: 0; padding: 4px 0; white-space: nowrap; }
 
-/* A list's head: what this list is, and how far along. */
-.head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 8px; }
+/* A list's head: what this list is, how many, how far along, and its orders. */
+.head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; margin: 0 0 8px; }
 .head h2 { font-size: 16px; margin: 0; color: var(--text); }
-.head .n { color: var(--text2); font-size: 12px; font-variant-numeric: tabular-nums; }
+.head .n { color: var(--text2); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.sorts { display: inline-flex; gap: 6px; }
 
 /* A row in a list: a number on the left, the thing on the right. */
 .row { display: grid; grid-template-columns: 52px 1fr; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); cursor: pointer; }
@@ -70,18 +71,26 @@ button { font: inherit; color: inherit; }
 .empty { color: var(--text2); text-align: center; padding: 48px 12px; line-height: 1.8; }
 .empty .door { color: var(--amber); font-weight: 600; }
 .back { display: inline-flex; align-items: center; gap: 6px; color: var(--amber); font-weight: 600; background: none; border: 0; padding: 0 0 12px; cursor: pointer; font-size: 13px; }
+/* Arrows point the way the text runs. */
+.back .arrow::before { content: '\2190'; }
+[dir="rtl"] .back .arrow::before { content: '\2192'; }
+.chev::before { content: '\203A'; }
+[dir="rtl"] .chev::before { content: '\2039'; }
 
 /* A thing being read: its title, its line of facts, its body. */
 .item h1 { font-size: 20px; line-height: 1.3; margin: 0 0 6px; color: var(--text); }
 .item .who { color: var(--text2); font-size: 12.5px; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .item .who img { width: 18px; height: 18px; border-radius: 5px; }
 .item .who b { color: var(--text); font-weight: 600; }
+/* Content keeps its own direction inside a right-to-left shell: an English
+   post under Hebrew chrome still reads left to right. */
+.prose, .item h1, .row .t, .row .ex { unicode-bidi: plaintext; }
 .prose { min-width: 0; overflow-wrap: anywhere; }
 .prose img, .prose video { max-width: 100%; height: auto; border-radius: var(--radius-s); }
 .prose pre { background: var(--surface2); padding: 10px 12px; border-radius: var(--radius-s); overflow-x: auto; font-size: 13px; }
 .prose code { background: var(--surface2); padding: 1px 4px; border-radius: 4px; font-size: 13px; }
 .prose pre code { background: none; padding: 0; }
-.prose blockquote { margin: 0; padding: 4px 12px; border-left: 3px solid var(--border); color: var(--text2); }
+.prose blockquote { margin: 0; padding: 4px 12px; border-inline-start: 3px solid var(--border); color: var(--text2); }
 .prose table { border-collapse: collapse; max-width: 100%; display: block; overflow-x: auto; }
 .prose td, .prose th { border: 1px solid var(--border); padding: 4px 8px; }
 .section-h { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: .06em; margin: 22px 0 6px; }

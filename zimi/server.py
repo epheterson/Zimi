@@ -2003,6 +2003,32 @@ def set_apps_enabled(value):
     return enabled, None
 
 
+def build_rank(entry):
+    """What makes one build of a thing newer than another: its date, then
+    its size (a maxi over a nopic of the same month)."""
+    return (str(entry.get("date") or ""), int(entry.get("size_bytes") or 0))
+
+
+def newest_per(entries, key):
+    """One entry per identity, the newest build: an update whose old file is
+    still around, a nopic beside a maxi, two names for one thing. Eric,
+    2026-09-19: "handle deduplication if we're merging multiple Zims." The
+    order of first appearance is kept; an entry whose key is falsy stays."""
+    best, order, out = {}, [], []
+    for e in entries:
+        k = key(e)
+        if not k:
+            out.append(e)
+            continue
+        cur = best.get(k)
+        if cur is None:
+            best[k] = e
+            order.append(k)
+        elif build_rank(e) > build_rank(cur):
+            best[k] = e
+    return [best[k] for k in order] + out
+
+
 def _is_map_zim(name):
     """Whether the registered ZIM ``name`` is a map, from the list cache."""
     return any(z.get("name") == name and z.get("kind") == "map" for z in (_zim_list_cache or []))

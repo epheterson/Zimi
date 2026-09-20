@@ -1167,6 +1167,7 @@
   }
   /* Zimi Maps' tile: a source among the sources, its icon a pin. */
   .apps-grid { margin-bottom: 16px; }
+  .app-tile .detail { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .app-tile .card-icon { color: var(--amber); display: flex; align-items: center; justify-content: center; }
   .app-tile.app-empty .card-icon { color: var(--text2); }
   .app-tile.app-empty .detail { color: var(--amber); }

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- One thing once across the apps. When two ZIMs carry the same thing, an app shows it once from the newest build (then the fullest): last month's file still beside this month's, a nopic beside a maxi of one Stack Exchange site, the same region from the same map source, a subreddit in two bundles. The library itself still lists every file.
+- The apps read right to left with the shell. Arabic and Hebrew turn every app page, its arrows and its comment rails; counts take one or many in the shell's language ("1 video", "12 videos"); a video library in more than one language labels each source with its own; a title sort follows the shell's collation.
+- A guide to the apps: docs/features/apps.md.
 - Reddot. Subreddits as ZIMs. `zimi create r/<name>` (and the Subreddit mode on the Create page) builds a subreddit's posts and comments from Arctic Shift's public archive with ArcticZim, installed into a sidecar on first use; `zimi create --setup-reddit` installs it ahead of time. The Reddot app reads those ZIMs in a view of its own: a shelf per subreddit of its top posts, Top and New as paged lists, a post with its comment tree, the original page one tap away, an address per post.
 - ZimiExchange. Every Stack Exchange site in the library as one place: a shelf per site of its most voted questions with its top tags, a site or a tag as a paged list, the search bar asking across every site, and a question view of Zimi's own with the answers scored and the accepted one first. Links between questions stay inside it; the original page is one tap away. Every question has an address.
 - Maps: the picker judges "here" by what is on screen, lists a short library whole, offers "Where I am" from the device's location, and a switch to a Kiwix map now lands where you were.
@@ -25,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- A design pass over the four apps. Reddot's mark is a red dot. The search box on an app's page asks a question that fits a phone ("Where to?", "Find a video", "Ask a question"). ZimiTube's home is shelves alone; a source, a query or a one-source library is a list with its orders as chips, not a native menu; Up next begins with the next video; a video the browser cannot play says so on the stage with the way to its page. A row in a shelf no longer repeats the shelf's own name; a subreddit with nothing to show gets no empty shelf; a question and its answers share the list's gutter. A StreetZim map is named by its region ("Hawaii", not "OSM - Hawaii") wherever Zimi names it. The three app pages share one script as well as one stylesheet.
 - Create a ZIM from a site: the form's page limit goes from 5,000 to 50,000 (asked for on r/Kiwix).
 - The rendered engine's install command names the server's own Python (and the uv command under uv), and an install made while the server runs shows up without a restart.
 

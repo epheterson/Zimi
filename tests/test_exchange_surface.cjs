@@ -22,7 +22,7 @@ ok('Back and Forward return to it', /s\.mode === 'reader' && s\.exchange\) \{\n\
 ok('a question has an address, replaced as you read', /d\.zimi === 'exchange-q' && _exchangeOpen[\s\S]*_exchangeUrl\(d\.q\)/.test(src) && /tell\(\{ zimi: 'exchange-q', q: zim \+ '\/' \+ page/.test(page));
 ok('typing asks the page, which asks the library\'s own search across the sites', /_exchangeSearch\(val\)/.test(src) && /fetch\('\/search\?q=' \+ encodeURIComponent\(_q\) \+ '&zim=' \+ encodeURIComponent\(zims\)/.test(page) && /\/\^questions\\\/\\d\+\\\//.test(page));
 ok('no reading controls on it', /!_isTubePage\(\) && !_isExchangePage\(\)/.test(src));
-ok('the breadcrumb is ZimiExchange and the box says what it is for', /bcIcon\.title = t\('exchange'\)/.test(src) && (src.match(/q\.placeholder = t\('exchange_search_placeholder'\)/g) || []).length === 2);
+ok('the breadcrumb is ZimiExchange and the box says what it is for', /bcIcon\.title = t\('exchange'\)/.test(src) && /return t\('exchange_search_placeholder'\)/.test(src) && (src.match(/q\.placeholder = _appPlaceholder\(\)/g) || []).length === 2);
 ok('shelves per site with tags, a paged list per site or tag, a question view with answers', /class="shelf"/.test(page) && /openTag\(/.test(page) && /'\/exchange\/site\?zim='/.test(page) && /'\/exchange\/q\?zim='/.test(page) && /q-answers/.test(page));
 ok('a link to another question stays inside ZimiExchange', /a\[data-q\]/.test(page));
 ok('the empty page is a door to the Q&A category', /category: 'stack_exchange'/.test(page));

@@ -73,7 +73,7 @@ ok('a hostile place is escaped for the inline handler', ctx._histPosArg({ pos: "
 const open = extract(/function openArticle\(zim, path, title, opts\) \{[\s\S]*?\n\}/, 'openArticle');
 ok('the fly path needs the same map, a place, and a live map', /opts && opts\.pos && currentArticle && currentArticle\.zim === zim &&\r?\n\s*currentArticle\.path === path && !_isModClick\(\) && _readerMap\(\)/.test(open));
 ok('it records the visit, pushes the address, jumps, titles, and stops', /_histPushArticle\(zim, path, flyTitle, opts\.pos\);[\s\S]*history\.pushState\([\s\S]*_restoreMapPosition\(flyPos, 0\);[\s\S]*_setWindowTitle\(document\.title\);\r?\n\s*return;/.test(open));
-ok('a map with no title given is called by its name', /_isMapZim\(zim\) \? _zimTitle\(zim\) : _titleFromPath\(path\)/.test(fn('_fallbackTitle')) &&
+ok('a map with no title given is called by its name', /if \(!_isMapZim\(zim\)\) return _titleFromPath\(path\);[\s\S]*_mapName\(z\) : _zimTitle\(zim\)/.test(fn('_fallbackTitle')) &&
   /title \|\| _fallbackTitle\(zim, path\), opts && opts\.pos/.test(open) && /readerTitle = title \|\| _fallbackTitle\(zim, path\)/.test(open));
 ok('the ⋯ Random row says what it rolls', /tH\(_isMapPage\(\) \? 'random_place' : 'random'\)/.test(menu));
 

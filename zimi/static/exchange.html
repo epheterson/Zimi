@@ -6,9 +6,11 @@
 <title>ZimiExchange</title>
 <!--@apps.css@-->
 <style>
-  .post { display: grid; grid-template-columns: 44px 1fr; gap: 12px; padding: 14px 0; border-top: 1px solid var(--border); }
+  /* A question or an answer: the same gutter and the same number as a row
+     in a list, so the eye lands where it did there. */
+  .post { display: grid; grid-template-columns: 52px 1fr; gap: 12px; padding: 14px 0; border-top: 1px solid var(--border); }
   .post.first { border-top: 0; padding-top: 0; }
-  .post .score { text-align: center; font-weight: 600; font-size: 15px; color: var(--text2); font-variant-numeric: tabular-nums; }
+  .post .score { text-align: center; font-weight: 600; font-size: 15px; color: var(--text); font-variant-numeric: tabular-nums; }
   .post .score .ok { display: block; color: var(--green); font-size: 18px; margin-top: 4px; }
   .by { color: var(--text2); font-size: 12px; margin-top: 8px; }
 </style>
@@ -27,7 +29,7 @@
     <div class="empty" id="empty" hidden></div>
   </div>
   <div id="qview" class="item" hidden>
-    <button class="back" onclick="closeQ()">&#8592; <span id="backlabel"></span></button>
+    <button class="back" onclick="closeQ()"><span class="arrow"></span> <span id="backlabel"></span></button>
     <h1 id="q-title"></h1>
     <div class="who" id="q-who"></div>
     <div class="post first"><div class="score" id="q-score"></div><div class="prose" id="q-body"></div></div>
@@ -37,6 +39,7 @@
     <div class="actions"><a id="q-open" href="#"></a></div>
   </div>
 </div>
+<!--@apps.js@-->
 <script>
 // ZimiExchange. Every Stack Exchange site in the library as one place: a
 // shelf per site of its most voted questions with its top tags, a site or a
@@ -44,29 +47,29 @@
 // scored with the accepted one first, the original page one tap away.
 // Zimi's top bar drives exchangeSearch(q), which asks the library's own
 // title search across the sites.
-var STR = { title: 'ZimiExchange', all: 'All', more: 'More', questions: 'questions', answers: 'Answers', asked: 'asked by', open_page: 'Open the original page', none: 'No questions match.', empty: 'No Q&A site installed yet.', catalog: 'Browse the catalog', q: '' };
-try { var s0 = JSON.parse(decodeURIComponent(location.hash.slice(1) || '') || '{}'); for (var k0 in s0) STR[k0] = s0[k0]; } catch (e) {}
-var _sites = [], _site = '', _tag = '', _q = '', _page = 1, _pages = 0, _rows = [], _busy = false;
-function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-function zpath(zim, p) { return '/w/' + encodeURIComponent(zim) + '/' + String(p).split('/').map(encodeURIComponent).join('/'); }
-function icon(s) { return s.icon ? '<img src="' + esc(zpath(s.name, '-/icon')) + '" alt="">' : ''; }
+var STR = strings({ title: 'ZimiExchange', all: 'All', more: 'More', questions: 'questions', answers: 'answers', answer: 'answer', votes: 'votes', vote: 'vote', asked: 'asked by', open_page: 'Open the original page', none: 'No questions match.', empty: 'No Q&A site installed yet.', catalog: 'Browse the catalog', q: '' });
+var _sites = [], _site = '', _tag = '', _q = '', _page = 1, _pages = 0, _busy = false;
+function icon(s) { return s.icon ? zimIcon(s.name) : ''; }
 function siteOf(name) { return _sites.filter(function(s) { return s.name === name; })[0] || { name: name, title: name }; }
-function tell(msg) { try { if (window.parent !== window) window.parent.postMessage(msg, location.origin); } catch (e) {} }
 function goCatalog() { tell({ zimi: 'catalog', category: 'stack_exchange' }); return false; }
+function tagChip(zim, t) { return '<button class="chip tag" onclick="openTag(' + J(zim) + ',' + J(t.tag) + ')">' + esc(t.tag) + ' <span class="n">' + esc(t.count) + '</span></button>'; }
 
-function row(r, zim) {
+// A row names its site only when its list does not: a shelf and a site's
+// list are one site by definition; a search across the sites is not.
+function row(r, zim, mixed) {
   var s = siteOf(zim);
-  return '<div class="row" onclick="openQ(' + JSON.stringify(zim).replace(/"/g, '&quot;') + ',' + JSON.stringify(r.page).replace(/"/g, '&quot;') + ')">' +
-    '<div class="stat"><b>' + esc(r.votes) + '</b>votes<span class="pill' + (r.accepted ? ' ok' : '') + '">' + esc(r.answers) + '</span></div>' +
+  return '<div class="row" onclick="openQ(' + J(zim) + ',' + J(r.page) + ')">' +
+    '<div class="stat">' + (r.votes === '' ? '' : '<b>' + esc(r.votes) + '</b>' + esc(Number(r.votes) === 1 ? STR.vote : STR.votes)) +
+      (r.answers === '' ? '' : '<span class="pill' + (r.accepted ? ' ok' : '') + '">' + esc(r.answers) + '</span>') + '</div>' +
     '<div><div class="t">' + esc(r.title) + '</div>' + (r.excerpt ? '<div class="ex">' + esc(r.excerpt) + '</div>' : '') +
-    (r.tags && r.tags.length ? '<div class="tags">' + r.tags.slice(0, 5).map(function(t) { return '<span class="tg" onclick="event.stopPropagation();openTag(' + JSON.stringify(zim).replace(/"/g, '&quot;') + ',' + JSON.stringify(t).replace(/"/g, '&quot;') + ')">' + esc(t) + '</span>'; }).join('') + '</div>' : '') +
-    (!_site ? '<div class="m">' + icon(s) + esc(s.title) + '</div>' : '') + '</div></div>';
+    (r.tags && r.tags.length ? '<div class="tags">' + r.tags.slice(0, 5).map(function(t) { return '<span class="tg" onclick="event.stopPropagation();openTag(' + J(zim) + ',' + J(t) + ')">' + esc(t) + '</span>'; }).join('') + '</div>' : '') +
+    (mixed ? '<div class="m">' + icon(s) + esc(s.title) + '</div>' : '') + '</div></div>';
 }
 
 function renderChips() {
   var c = document.getElementById('chips');
   c.innerHTML = (_sites.length > 1 ? '<button class="chip' + (!_site ? ' on' : '') + '" onclick="openSite(\'\')">' + esc(STR.all) + '</button>' : '') +
-    _sites.map(function(s) { return '<button class="chip' + (_site === s.name ? ' on' : '') + '" onclick="openSite(' + JSON.stringify(s.name).replace(/"/g, '&quot;') + ')">' + icon(s) + esc(s.title) + '</button>'; }).join('');
+    _sites.map(function(s) { return '<button class="chip' + (_site === s.name ? ' on' : '') + '" onclick="openSite(' + J(s.name) + ')">' + icon(s) + esc(s.title) + '</button>'; }).join('');
   c.hidden = _sites.length < 2;
 }
 
@@ -78,13 +81,13 @@ function renderHome(data) {
   sh.hidden = false;
   sh.innerHTML = _sites.map(function(s) {
     return '<section class="shelf"><div class="shelf-h">' + icon(s) + '<h2>' + esc(s.title) + '</h2>' +
-      '<button class="all" onclick="openSite(' + JSON.stringify(s.name).replace(/"/g, '&quot;') + ')">' + esc(STR.all) + ' ›</button></div>' +
-      (s.tags && s.tags.length ? '<div class="chips">' + s.tags.slice(0, 12).map(function(t) { return '<button class="chip tag" onclick="openTag(' + JSON.stringify(s.name).replace(/"/g, '&quot;') + ',' + JSON.stringify(t.tag).replace(/"/g, '&quot;') + ')">' + esc(t.tag) + ' <span class="n">' + esc(t.count) + '</span></button>'; }).join('') + '</div>' : '') +
-      (s.rows || []).slice(0, 6).map(function(r) { return row(r, s.name); }).join('') + '</section>';
+      '<button class="all" onclick="openSite(' + J(s.name) + ')">' + esc(STR.all) + CHEV + '</button></div>' +
+      (s.tags && s.tags.length ? '<div class="chips">' + s.tags.slice(0, 12).map(function(t) { return tagChip(s.name, t); }).join('') + '</div>' : '') +
+      (s.rows || []).slice(0, 6).map(function(r) { return row(r, s.name, false); }).join('') + '</section>';
   }).join('');
   var empty = document.getElementById('empty');
   empty.hidden = _sites.length > 0;
-  empty.innerHTML = esc(STR.empty) + '<br><a class="door" href="/?manage" onclick="return goCatalog()">' + esc(STR.catalog) + ' ›</a>';
+  empty.innerHTML = esc(STR.empty) + '<br><a class="door" href="/?manage" onclick="return goCatalog()">' + esc(STR.catalog) + CHEV + '</a>';
 }
 
 function renderList(title, rows, append) {
@@ -93,14 +96,15 @@ function renderList(title, rows, append) {
   document.getElementById('l-title').textContent = title;
   var host = document.getElementById('l-rows');
   if (!append) host.innerHTML = '';
-  host.insertAdjacentHTML('beforeend', rows.map(function(r) { return row(r, r.zim || _site); }).join(''));
+  var mixed = !!_q && !_site;
+  host.insertAdjacentHTML('beforeend', rows.map(function(r) { return row(r, r.zim || _site, mixed); }).join(''));
   document.getElementById('l-n').textContent = _pages ? (_page + ' / ' + _pages) : '';
   var more = document.getElementById('more'); more.hidden = !_pages || _page >= _pages; more.textContent = STR.more;
   var empty = document.getElementById('empty'); empty.hidden = host.children.length > 0; empty.textContent = STR.none;
   var lt = document.getElementById('l-tags'); lt.innerHTML = ''; lt.hidden = true;
   if (_site && !_tag && !_q) {
     var s = siteOf(_site);
-    if (s.tags && s.tags.length) { lt.hidden = false; lt.innerHTML = s.tags.map(function(t) { return '<button class="chip tag" onclick="openTag(' + JSON.stringify(_site).replace(/"/g, '&quot;') + ',' + JSON.stringify(t.tag).replace(/"/g, '&quot;') + ')">' + esc(t.tag) + ' <span class="n">' + esc(t.count) + '</span></button>'; }).join(''); }
+    if (s.tags && s.tags.length) { lt.hidden = false; lt.innerHTML = s.tags.map(function(t) { return tagChip(_site, t); }).join(''); }
   }
 }
 
@@ -155,8 +159,8 @@ function openQ(zim, page) {
     document.getElementById('q-who').innerHTML = icon(s) + '<span>' + esc(s.title) + (d.author ? ' · ' + esc(STR.asked) + ' <b>' + esc(d.author) + '</b>' : '') + '</span>';
     document.getElementById('q-score').innerHTML = esc(d.votes);
     document.getElementById('q-body').innerHTML = d.body || '';
-    document.getElementById('q-tags').innerHTML = (d.tags || []).map(function(t) { return '<span class="tg" onclick="openTag(' + JSON.stringify(zim).replace(/"/g, '&quot;') + ',' + JSON.stringify(t).replace(/"/g, '&quot;') + ')">' + esc(t) + '</span>'; }).join('');
-    document.getElementById('q-ah').textContent = (d.answers || []).length + ' ' + STR.answers;
+    document.getElementById('q-tags').innerHTML = (d.tags || []).map(function(t) { return '<span class="tg" onclick="openTag(' + J(zim) + ',' + J(t) + ')">' + esc(t) + '</span>'; }).join('');
+    document.getElementById('q-ah').textContent = count((d.answers || []).length, STR.answer, STR.answers);
     document.getElementById('q-answers').innerHTML = (d.answers || []).map(function(a) {
       return '<div class="post"><div class="score">' + esc(a.score) + (a.accepted ? '<span class="ok" title="accepted">✓</span>' : '') + '</div>' +
         '<div class="prose">' + a.body + (a.author ? '<div class="by">' + esc(a.author) + '</div>' : '') + '</div></div>';
