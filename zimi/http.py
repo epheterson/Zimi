@@ -163,6 +163,7 @@ _RATE_LIMITED_API_PATHS = (
     "/places",
     "/tube",
     "/tube/play",
+    "/exchange",
     "/read",
     "/suggest",
     "/random",
@@ -809,6 +810,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("almanac-orrery.js")
             + _static_hash("almanac-sky.js")
             + _static_hash("tube.html")
+            + _static_hash("exchange.html")
             + _i18n_hash
         ).encode()
     ).hexdigest()[:8]
@@ -2252,6 +2254,28 @@ class ZimHandler(BaseHTTPRequestHandler):
                     cache="no-store",
                 )
 
+            elif parsed.path == "/exchange" or parsed.path.startswith("/exchange/"):
+                # ZimiExchange: every Stack Exchange site in the library.
+                from zimi import exchange as _ex
+
+                sub = parsed.path[len("/exchange"):].strip("/")
+                try:
+                    pg = max(1, int(param("page", "1")))
+                except (TypeError, ValueError):
+                    pg = 1
+                zim = param("zim")
+                if sub in ("", "home"):
+                    return self._json(200, _ex.home())
+                if not zim or zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
+                    return self._json(404, {"error": "not found"})
+                if sub == "site":
+                    return self._json(200, _ex.listing(zim, pg, param("tag")))
+                if sub == "tags":
+                    return self._json(200, {"tags": _ex.tags(zim)})
+                if sub == "q":
+                    got = _ex.question(zim, param("q"))
+                    return self._json(200, got) if got else self._json(404, {"error": "not a question page"})
+                return self._json(404, {"error": "not found"})
             elif parsed.path == "/tube/play":
                 # ZimiTube's own player: the media behind one video's page.
                 from zimi import tube as _tube

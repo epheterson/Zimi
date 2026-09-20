@@ -1850,9 +1850,12 @@ _MAP_SCRAPERS = ("maps2zim", "streetzim", "atlaszim")
 # and Zimi's own (Scraper "Zimi x.y + yt-dlp ..."). Not by the _videos:yes
 # tag, which Wikipedia carries too.
 _VIDEO_SCRAPERS = ("ted2zim", "youtube2zim")
+# Q&A sites, by the scraper that made them: Kiwix builds every Stack
+# Exchange site with sotoki.
+_QA_SCRAPERS = ("sotoki",)
 # Bumped when _zim_kind learns a new kind, so a cache record decided under an
 # older rule ("" for a TED ZIM) is read once more.
-KIND_VERSION = 2
+KIND_VERSION = 3
 
 
 def _zim_kind(scraper, tags, meta_name):
@@ -1872,6 +1875,8 @@ def _zim_kind(scraper, tags, meta_name):
         return "map"
     if s.startswith(_VIDEO_SCRAPERS) or (s.startswith("zimi") and "yt-dlp" in s):
         return "video"
+    if s.startswith(_QA_SCRAPERS):
+        return "qa"
     return None
 
 
@@ -1958,6 +1963,13 @@ def _apps_env():
     if raw is None or not raw.strip():
         return None
     return raw.strip().lower() not in ("0", "false", "no", "off")
+
+
+def url_quote(name):
+    """A ZIM name as it appears in a /w/ path."""
+    import urllib.parse
+
+    return urllib.parse.quote(name, safe="")
 
 
 def apps_enabled():

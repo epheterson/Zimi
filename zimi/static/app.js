@@ -979,6 +979,8 @@ function _updateSearchPlaceholder() {
     } else {
       q.placeholder = t('filter_installed');
     }
+  } else if (_isExchangePage()) {
+    q.placeholder = t('exchange_search_placeholder');
   } else if (_isTubePage()) {
     q.placeholder = t('tube_search_placeholder');
   } else if (_isMapPage()) {
@@ -1543,6 +1545,12 @@ function updateTopbar() {
     bcIcon.innerHTML = _ALMANAC_BC_ICON;
     // Identity only — no destination behind it, so no link affordance either.
     bcIcon.removeAttribute('href');
+  } else if (_isExchangePage()) {
+    bcSep.style.display = 'inline';
+    bcIcon.style.display = 'inline-flex';
+    bcIcon.title = t('exchange');
+    bcIcon.innerHTML = _EXCHANGE_SVG.replace('width="26" height="26"', 'width="20" height="20"');
+    bcIcon.setAttribute('href', '/#exchange');
   } else if (_isTubePage()) {
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
@@ -1632,7 +1640,7 @@ function updateTopbar() {
   var _foldReaderExtras = _readingArticle && _isNarrow();
   // A map is read with the eyes and the hands: no type size, no read-aloud,
   // no Reader View. _syncReaderViewBtn and the ⋯ menu know the same rule.
-  var _readingText = _readingArticle && !_isMapPage() && !_isTubePage();
+  var _readingText = _readingArticle && !_isMapPage() && !_isTubePage() && !_isExchangePage();
   var fontBtn = document.getElementById('font-btn');
   if (fontBtn) fontBtn.style.display = (_readingText && !_foldReaderExtras) ? 'flex' : 'none';
   // Bookmarks-panel opener — reader only (#65). Everywhere else the library
@@ -1709,6 +1717,8 @@ function updateTopbar() {
     q.placeholder = t('create_zim');
   } else if (_almanacOpen) {
     q.placeholder = t('almanac');
+  } else if (_isExchangePage()) {
+    q.placeholder = t('exchange_search_placeholder');
   } else if (_isTubePage()) {
     q.placeholder = t('tube_search_placeholder');
   } else if (_isMapPage()) {
@@ -2197,6 +2207,12 @@ function route(push) {
   // /manage/create* route is admin-gated server-side anyway — so the page
   // opens now and _initSecondary closes it if the answer comes back no. The
   // alternative, waiting, is the home-then-switch flash Eric asked us to kill.
+  if (location.hash === '#exchange' || location.hash.indexOf('#exchange?') === 0) {
+    enterHome(false);
+    var exQ = new URLSearchParams(location.hash.slice(location.hash.indexOf('?') + 1));
+    openExchange(true, location.hash.indexOf('?') > 0 ? (exQ.get('q') || '') : '');
+    return;
+  }
   if (location.hash === '#tube' || location.hash.indexOf('#tube?') === 0) {
     enterHome(false);
     var tubeQ = new URLSearchParams(location.hash.slice(location.hash.indexOf('?') + 1));
@@ -6187,7 +6203,10 @@ q.addEventListener('input', () => {
   const val = q.value.trim();
   // Suggest (200ms debounce) — include history items when typing
   clearTimeout(suggestTimer);
-  if (_isTubePage()) {
+  if (_isExchangePage()) {
+    hideSuggest();
+    suggestTimer = setTimeout(function() { _exchangeSearch(val); }, 250);
+  } else if (_isTubePage()) {
     // Tube: the box filters the feed inside the page, every keystroke.
     hideSuggest();
     suggestTimer = setTimeout(function() { _tubeSearch(val); }, 150);
@@ -6257,6 +6276,7 @@ q.addEventListener('keydown', e => {
     // On a map, Enter takes the first place found; there is no article
     // search to fall through to.
     if (_isTubePage()) { _tubeSearch(q.value.trim()); return; }
+    if (_isExchangePage()) { _exchangeSearch(q.value.trim()); return; }
     if (_isMapPage()) {
       if (suggestItems.length && suggestItems[0]._place) selectSuggest(0);
       else if (q.value.trim().length >= 2) fetchPlaces(q.value.trim());
@@ -15408,7 +15428,7 @@ function _readerViewToggle() {
 function _syncReaderViewBtn() {
   // Never on Create, whatever is open behind it: there is no article there to
   // read a reading mode into.
-  var avail = _readerViewAvailable() && !_createOpen && !_isMapPage() && !_isTubePage();
+  var avail = _readerViewAvailable() && !_createOpen && !_isMapPage() && !_isTubePage() && !_isExchangePage();
   var btn = document.getElementById('readerview-btn');
   if (btn) {
     btn.style.display = avail ? 'flex' : 'none';
@@ -15995,6 +16015,59 @@ function _lastMapVisit() {
   return maps.length ? { zim: maps[0], pos: '' } : null;
 }
 
+// ── ZimiExchange ──
+// Every Stack Exchange site in the library as one place, in a page Zimi
+// owns (/static/exchange.html) shown in the reader like ZimiTube. Eric,
+// 2026-09-19: "ZimiExchange ... threading in real data and live interface."
+var _exchangeOpen = false;
+var _EXCHANGE_PAGE = '/static/exchange.html?v=1';
+var _EXCHANGE_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg>';
+
+function _installedQaZims() {
+  return (zimsCache || []).filter(function(z) { return z.kind === 'qa' && z.main_path; })
+    .sort(function(a, b) { return (a.title || a.name).localeCompare(b.title || b.name); });
+}
+function _isExchangePage() {
+  return !!(_exchangeOpen && readerOpen && !_almanacOpen && !_createOpen);
+}
+function _exchangeTileHtml() {
+  return _appTileHtml('exchange', t('exchange'), _EXCHANGE_SVG, _installedQaZims().map(function(z) { return z.title || z.name; }), 'openExchange');
+}
+function _exchangeUrl(q) {
+  return '/#exchange' + (q ? '?q=' + encodeURIComponent(q) : '');
+}
+function _exchangeStrings(q) {
+  var keys = ['exchange_all', 'exchange_more', 'exchange_questions', 'exchange_answers', 'exchange_asked', 'exchange_open_page', 'exchange_none', 'exchange_empty'];
+  var out = { title: t('exchange'), catalog: t('app_browse_catalog'), q: q || '' };
+  keys.forEach(function(k) { out[k.replace(/^exchange_/, '')] = t(k); });
+  return encodeURIComponent(JSON.stringify(out));
+}
+function openExchange(replaceState, q) {
+  if (_isModClick()) { _lastMouseEvent = null; window.open(_exchangeUrl(q), '_blank'); return; }
+  if (_createOpen) closeCreate();
+  if (_almanacOpen) closeAlmanac();
+  if (mode === 'manage') { mode = 'home'; updateTopbar(); }
+  if (_mapWatched) { _mapWatched = null; clearTimeout(_mapHashTimer); }
+  if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
+  currentArticle = null;
+  readerSource = null;
+  _tubeOpen = false;
+  _exchangeOpen = true;
+  var st = { mode: 'reader', exchange: true, q: q || '' };
+  if (replaceState) history.replaceState(st, '', _exchangeUrl(q));
+  else history.pushState(st, '', _exchangeUrl(q));
+  openReader(_EXCHANGE_PAGE + '#' + _exchangeStrings(q));
+  document.title = t('exchange') + ' \u2014 Zimi';
+  _setWindowTitle(document.title);
+  updateTopbar();
+}
+function _exchangeSearch(val) {
+  try {
+    var win = document.getElementById('reader-frame').contentWindow;
+    if (win && typeof win.exchangeSearch === 'function') win.exchangeSearch(val);
+  } catch (e) {}
+}
+
 // ── Zimi Tube ──
 // Every video in the library as one feed, in a page Zimi owns, shown in the
 // reader so the chrome around it (bookmark, history, Back, the X) is the
@@ -16037,6 +16110,13 @@ window.addEventListener('message', function(e) {
     history.replaceState({ mode: 'reader', tube: true, play: '' }, '', _tubeUrl(''));
     document.title = t('tube') + ' \u2014 Zimi';
     _setWindowTitle(document.title);
+  } else if (d.zimi === 'exchange-q' && _exchangeOpen && typeof d.q === 'string') {
+    history.replaceState({ mode: 'reader', exchange: true, q: d.q }, '', _exchangeUrl(d.q));
+    if (d.title) { document.title = d.title + ' \u2014 ' + t('exchange'); _setWindowTitle(document.title); }
+  } else if (d.zimi === 'exchange-home' && _exchangeOpen) {
+    history.replaceState({ mode: 'reader', exchange: true, q: '' }, '', _exchangeUrl(''));
+    document.title = t('exchange') + ' \u2014 Zimi';
+    _setWindowTitle(document.title);
   } else if (d.zimi === 'catalog' && typeof d.category === 'string' && _APP_CATEGORY_KEYS.indexOf(d.category) >= 0) {
     _openCategory(d.category);
   }
@@ -16063,6 +16143,7 @@ function openTube(replaceState, play) {
   if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
   currentArticle = null;
   readerSource = null;
+  _exchangeOpen = false;
   _tubeOpen = true;
   var st = { mode: 'reader', tube: true, play: play || '' };
   if (replaceState) history.replaceState(st, '', _tubeUrl(play));
@@ -16112,7 +16193,7 @@ async function _setUserPref(key, value) {
 
 function _appsRowHtml() {
   if (!_appsEnabled()) return '';
-  var tiles = _mapsTileHtml() + _tubeTileHtml() + (typeof _exchangeTileHtml === 'function' ? _exchangeTileHtml() : '');
+  var tiles = _mapsTileHtml() + _tubeTileHtml() + _exchangeTileHtml();
   if (!tiles) return '';
   var isTiles = _getLibraryView() === 'tiles';
   return '<div class="' + (isTiles ? 'stats-grid tiles' : 'stats-grid') + ' apps-grid">' + tiles + '</div>';
@@ -16467,6 +16548,21 @@ function _restoreMapPosition(pos, tries) {
   }
   try { map.jumpTo({center: [pos.lng, pos.lat], zoom: pos.zoom}); } catch (e) {}
   _watchReaderMap();
+  // Belt and braces: a map that moves itself in its first seconds (a saved
+  // view, a maxBounds clamp) is put back, unless a person moved it.
+  var moved = false;
+  try { map.once('dragstart', function() { moved = true; }); map.once('wheel', function() { moved = true; }); } catch (e) {}
+  [700, 2000].forEach(function(ms) {
+    setTimeout(function() {
+      if (moved) return;
+      try {
+        var c = map.getCenter();
+        if (Math.abs(c.lat - pos.lat) > 1e-3 || Math.abs(c.lng - pos.lng) > 1e-3) {
+          map.jumpTo({center: [pos.lng, pos.lat], zoom: pos.zoom});
+        }
+      } catch (e) {}
+    }, ms);
+  });
 }
 
 function _articleDeepLinkPath(zim, path) {
@@ -16993,10 +17089,11 @@ function openReader(url) {
         var _navZim = decodeURIComponent(_wm[1]);
         var _navPath = decodeURIComponent(_wm[2]);
         currentArticle = { zim: _navZim, path: _navPath };
-        if (_tubeOpen) {
-          // A card in Tube opened its video: a real page now, with the
-          // history and address every page gets, and Back returns to Tube.
+        if (_tubeOpen || _exchangeOpen) {
+          // A card in an app opened a ZIM page: a real page now, with the
+          // history and address every page gets, and Back returns to the app.
           _tubeOpen = false;
+          _exchangeOpen = false;
           readerSource = _navZim;
           history.pushState({ mode: 'reader', zim: _navZim, path: _navPath }, '', _articleDeepLinkPath(_navZim, _navPath));
           _histPushArticle(_navZim, _navPath, _titleFromPath(_navPath));
@@ -18527,6 +18624,7 @@ function _fallbackTitle(zim, path) {
 
 function openArticle(zim, path, title, opts) {
   _tubeOpen = false;
+  _exchangeOpen = false;
   // A place on the map already on screen: fly there. Reloading an 800,000
   // entry map to move within it is a second of grey; the map is right here.
   // History gets the place (Back returns to the last one), the address gets
@@ -18572,6 +18670,19 @@ function openArticle(zim, path, title, opts) {
     try { sessionStorage.setItem('zimi_disc_scroll', String(Math.round(discScroll.scrollLeft))); } catch(e) {}
   }
   var url = _articleUrl(zim, path);
+  // A Kiwix map restores its own last view from localStorage as it loads,
+  // after Zimi has positioned it, so a switch from Hawaii to the world map
+  // landed on wherever that map was last (Eric: "It moved from Hawaii to
+  // my local position"). maps2zim honours a position in its own hash
+  // (its place pages redirect to index.html#lat=&lon=&zoom=), so the map
+  // is told where to open in the one form it will not override.
+  if (opts && opts.pos) {
+    var mp = parseMapHash('#' + opts.pos);
+    var mz = (zimsCache || []).filter(function(z) { return z.name === zim; })[0];
+    if (mp && mz && mz.map_source === 'Kiwix') {
+      url += '#lat=' + mp.lat + '&lon=' + mp.lng + '&zoom=' + Math.round(mp.zoom);
+    }
+  }
   readerSource = zim;
   // EPUB: download (Gutenberg has HTML equivalents for all EPUBs)
   var lurl = url.toLowerCase();
@@ -18623,6 +18734,7 @@ function openArticle(zim, path, title, opts) {
 function closeReader() {
   if (!readerOpen) return;
   _tubeOpen = false;
+  _exchangeOpen = false;
   _ttsStop(); // stop read-aloud when leaving the reader
   // Sync the address bar back to the view the reader was covering — an
   // explicit close otherwise strands the article URL (a reload would
@@ -18919,7 +19031,7 @@ function _buildTopbarMenuHtml() {
   var readerGroup = '';
   if (readerOpen && !_almanacOpen && !_createOpen) {
     // On a map there is nothing to read: none of the reading rows.
-    var rvAvail = _readerViewAvailable() && !_isMapPage() && !_isTubePage();
+    var rvAvail = _readerViewAvailable() && !_isMapPage() && !_isTubePage() && !_isExchangePage();
     var rvOn = _readerViewOn && rvAvail;
     // 1. Reader View toggle — always first. A switch: tapping flips it and the
     // menu rebuilds in place (compact controls appear/disappear beneath).
@@ -18935,7 +19047,7 @@ function _buildTopbarMenuHtml() {
       readerGroup += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
     }
     // 3. Read aloud.
-    if (_TTS_AVAILABLE && !_isMapPage() && !_isTubePage()) {
+    if (_TTS_AVAILABLE && !_isMapPage() && !_isTubePage() && !_isExchangePage()) {
       readerGroup += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
         '" onclick="event.stopPropagation();_ttsToggle()">' + _TBM_TTS_ICON +
         ' <span class="tbm-label">' + tH(_ttsSpeaking ? 'tts_stop' : 'tts_speak') + '</span></button>';
@@ -19288,6 +19400,8 @@ window.addEventListener('popstate', async (e) => {
     } else {
       doSearch(s.query, false);
     }
+  } else if (s && s.mode === 'reader' && s.exchange) {
+    openExchange(true, s.q || '');
   } else if (s && s.mode === 'reader' && s.tube) {
     openTube(true, s.play || '');
   } else if (s && s.mode === 'reader' && s.zim) {

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- ZimiExchange. Every Stack Exchange site in the library as one place: a shelf per site of its most voted questions with its top tags, a site or a tag as a paged list, the search bar asking across every site, and a question view of Zimi's own with the answers scored and the accepted one first. Links between questions stay inside it; the original page is one tap away. Every question has an address.
+- Maps: the picker judges "here" by what is on screen, lists a short library whole, offers "Where I am" from the device's location, and a switch to a Kiwix map now lands where you were.
+- The apps row can be turned off for everyone (ZIMI_APPS, or Server settings) or by a signed-in user for their own account.
 - The apps row. Maps, ZimiTube and ZimiExchange sit first among the sources on every install; an app with nothing to show yet opens the catalog category that feeds it. A playing video has an address of its own (/#tube?play=...), so it can be shared and bookmarked.
 - ZimiTube. Opens every video in the library as one place, one card per talk however many ZIMs carry it: Kiwix's TED and TED-Ed, YouTube channels and Khan Academy, and the ZIMs `zimi create` makes from a playlist. A shelf per source, chips to narrow to one, sorts by title, date and length, the search bar filtering as you type. A card plays in ZimiTube's own player with the video's subtitles, the rest of the list up next and autoplay into the next; the original page is one tap away. `zimi create <video URL>` now writes a videos.json into its ZIMs.
 - Zimi Maps. A Maps tile sits first among the sources whenever a map is installed and opens the map you were last on, where you were; /#maps does the same. On a map the search box finds places on every installed map, and the top bar carries a picker to the other maps of the same ground, with the catalog's maps of here to download beneath them.

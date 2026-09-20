@@ -163,4 +163,7 @@ function fn(name) { return extract(new RegExp('(?:async )?function ' + name + '\
 const tpl = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'templates', 'index.html'), 'utf8');
 ok('the template carries the button and its menu', /id="map-source-btn"/.test(tpl) && /id="map-source-dropdown"/.test(tpl));
 
+ok('a Kiwix map is told where to open in its own hash, which it will not override', /mz\.map_source === 'Kiwix'\) \{\r?\n\s*url \+= '#lat=' \+ mp\.lat \+ '&lon=' \+ mp\.lng \+ '&zoom=' \+ Math\.round\(mp\.zoom\)/.test(src));
+ok('and a map that moves itself in its first seconds is put back, unless a person moved it', /\[700, 2000\]\.forEach/.test(fn('_restoreMapPosition')) && /if \(moved\) return;/.test(fn('_restoreMapPosition')));
+
 process.exit(failures ? 1 : 0);

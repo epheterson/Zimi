@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZimiExchange</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f2efe9; --surface: #faf8f4; --surface2: #f3f0ea; --border: #e4dfd4; --text: #26241f; --text2: #6a675e; --amber: #b5541c; --amber-glow: rgba(181,84,28,0.08); --green: #2f7d4f; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #17171a; --surface: #1f1f23; --surface2: #26262b; --border: #27272b; --text: #e8e8ed; --text2: #8a8a94; --amber: #e0863a; --amber-glow: rgba(224,134,58,0.12); --green: #5cbf80; } }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  a { color: var(--amber); text-decoration: none; }
+  button { font: inherit; }
+  .x { max-width: 1080px; margin: 0 auto; padding: 14px 16px 32px; }
+  @media (max-width: 480px) { .x { padding: 10px 12px 28px; } }
+  .chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 0 14px; padding-bottom: 2px; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex: none; display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .chip img { width: 16px; height: 16px; border-radius: 4px; }
+  .chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .chip.tag { font-size: 12px; padding: 4px 10px; background: var(--surface2); }
+  .shelf { margin: 0 0 24px; }
+  .shelf-h { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; }
+  .shelf-h img { width: 22px; height: 22px; border-radius: 6px; }
+  .shelf-h h2 { font-size: 15px; margin: 0; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .shelf-h .all { color: var(--amber); font-size: 12.5px; font-weight: 600; cursor: pointer; background: none; border: 0; padding: 4px 0; }
+  .q { display: grid; grid-template-columns: 56px 1fr; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); cursor: pointer; }
+  .q:first-of-type { border-top: 0; }
+  .stats { text-align: center; font-size: 11.5px; color: var(--text2); line-height: 1.25; padding-top: 2px; font-variant-numeric: tabular-nums; }
+  .stats b { display: block; font-size: 15px; color: var(--text); font-weight: 600; }
+  .stats .ans { margin-top: 6px; display: inline-block; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border); }
+  .stats .ans.acc { background: var(--green); color: #fff; border-color: var(--green); }
+  .q .t { font-weight: 600; font-size: 14.5px; line-height: 1.3; color: var(--text); }
+  .q .ex { color: var(--text2); font-size: 13px; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .q .tags, .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .tags .tg { font-size: 11.5px; padding: 2px 8px; border-radius: 6px; background: var(--amber-glow); color: var(--amber); cursor: pointer; }
+  .q .site { font-size: 11.5px; color: var(--text2); margin-top: 6px; display: flex; align-items: center; gap: 6px; }
+  .q .site img { width: 14px; height: 14px; border-radius: 4px; }
+  .more { display: block; margin: 20px auto 8px; padding: 9px 20px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--text); cursor: pointer; }
+  .empty { color: var(--text2); text-align: center; padding: 48px 12px; line-height: 1.8; }
+  .empty .door { color: var(--amber); font-weight: 600; }
+  .back { display: inline-flex; align-items: center; gap: 6px; color: var(--amber); font-weight: 600; background: none; border: 0; padding: 0 0 12px; cursor: pointer; font-size: 13px; }
+  .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 10px; }
+  .head h2 { font-size: 16px; margin: 0; }
+  .head .n { color: var(--text2); font-size: 12px; }
+  /* the question */
+  .qq h1 { font-size: 20px; line-height: 1.3; margin: 0 0 8px; }
+  .qq .who { color: var(--text2); font-size: 12.5px; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .qq .who img { width: 18px; height: 18px; border-radius: 5px; }
+  .post { display: grid; grid-template-columns: 44px 1fr; gap: 12px; padding: 14px 0; border-top: 1px solid var(--border); }
+  .post.first { border-top: 0; padding-top: 0; }
+  .post .score { text-align: center; font-weight: 600; font-size: 15px; color: var(--text2); font-variant-numeric: tabular-nums; }
+  .post .score .ok { display: block; color: var(--green); font-size: 18px; margin-top: 4px; }
+  .prose { min-width: 0; overflow-wrap: anywhere; }
+  .prose img { max-width: 100%; height: auto; }
+  .prose pre { background: var(--surface2); padding: 10px 12px; border-radius: 8px; overflow-x: auto; font-size: 13px; }
+  .prose code { background: var(--surface2); padding: 1px 4px; border-radius: 4px; font-size: 13px; }
+  .prose pre code { background: none; padding: 0; }
+  .prose blockquote { margin: 0; padding: 4px 12px; border-left: 3px solid var(--border); color: var(--text2); }
+  .prose table { border-collapse: collapse; } .prose td, .prose th { border: 1px solid var(--border); padding: 4px 8px; }
+  .by { color: var(--text2); font-size: 12px; margin-top: 8px; }
+  .ah { font-size: 13px; color: var(--text2); text-transform: uppercase; letter-spacing: .06em; margin: 22px 0 6px; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0 0; }
+  .actions a { display: inline-flex; align-items: center; padding: 7px 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 12.5px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="x">
+  <div id="home">
+    <div class="chips" id="chips"></div>
+    <div id="shelves"></div>
+    <div id="list" hidden>
+      <div class="head"><h2 id="l-title"></h2><span class="n" id="l-n"></span></div>
+      <div class="chips" id="l-tags"></div>
+      <div id="l-rows"></div>
+      <button class="more" id="more" hidden onclick="more()"></button>
+    </div>
+    <div class="empty" id="empty" hidden></div>
+  </div>
+  <div id="qview" class="qq" hidden>
+    <button class="back" onclick="closeQ()">&#8592; <span id="backlabel"></span></button>
+    <h1 id="q-title"></h1>
+    <div class="who" id="q-who"></div>
+    <div class="post first"><div class="score" id="q-score"></div><div class="prose" id="q-body"></div></div>
+    <div class="tags" id="q-tags"></div>
+    <div class="ah" id="q-ah"></div>
+    <div id="q-answers"></div>
+    <div class="actions"><a id="q-open" href="#"></a></div>
+  </div>
+</div>
+<script>
+// ZimiExchange. Every Stack Exchange site in the library as one place: a
+// shelf per site of its most voted questions with its top tags, a site or a
+// tag as a paged list, and a question view Zimi owns: body, tags, answers
+// scored with the accepted one first, the original page one tap away.
+// Zimi's top bar drives exchangeSearch(q), which asks the library's own
+// title search across the sites.
+var STR = { title: 'ZimiExchange', all: 'All', more: 'More', questions: 'questions', answers: 'Answers', asked: 'asked by', open_page: 'Open the original page', none: 'No questions match.', empty: 'No Q&A site installed yet.', catalog: 'Browse the catalog', q: '' };
+try { var s0 = JSON.parse(decodeURIComponent(location.hash.slice(1) || '') || '{}'); for (var k0 in s0) STR[k0] = s0[k0]; } catch (e) {}
+var _sites = [], _site = '', _tag = '', _q = '', _page = 1, _pages = 0, _rows = [], _busy = false;
+function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function zpath(zim, p) { return '/w/' + encodeURIComponent(zim) + '/' + String(p).split('/').map(encodeURIComponent).join('/'); }
+function icon(s) { return s.icon ? '<img src="' + esc(zpath(s.name, '-/icon')) + '" alt="">' : ''; }
+function siteOf(name) { return _sites.filter(function(s) { return s.name === name; })[0] || { name: name, title: name }; }
+function tell(msg) { try { if (window.parent !== window) window.parent.postMessage(msg, location.origin); } catch (e) {} }
+function goCatalog() { tell({ zimi: 'catalog', category: 'stack_exchange' }); return false; }
+
+function row(r, zim) {
+  var s = siteOf(zim);
+  return '<div class="q" onclick="openQ(' + JSON.stringify(zim).replace(/"/g, '&quot;') + ',' + JSON.stringify(r.page).replace(/"/g, '&quot;') + ')">' +
+    '<div class="stats"><b>' + esc(r.votes) + '</b>votes<span class="ans' + (r.accepted ? ' acc' : '') + '">' + esc(r.answers) + '</span></div>' +
+    '<div><div class="t">' + esc(r.title) + '</div>' + (r.excerpt ? '<div class="ex">' + esc(r.excerpt) + '</div>' : '') +
+    (r.tags && r.tags.length ? '<div class="tags">' + r.tags.slice(0, 5).map(function(t) { return '<span class="tg" onclick="event.stopPropagation();openTag(' + JSON.stringify(zim).replace(/"/g, '&quot;') + ',' + JSON.stringify(t).replace(/"/g, '&quot;') + ')">' + esc(t) + '</span>'; }).join('') + '</div>' : '') +
+    (!_site ? '<div class="site">' + icon(s) + esc(s.title) + '</div>' : '') + '</div></div>';
+}
+
+function renderChips() {
+  var c = document.getElementById('chips');
+  c.innerHTML = (_sites.length > 1 ? '<button class="chip' + (!_site ? ' on' : '') + '" onclick="openSite(\'\')">' + esc(STR.all) + '</button>' : '') +
+    _sites.map(function(s) { return '<button class="chip' + (_site === s.name ? ' on' : '') + '" onclick="openSite(' + JSON.stringify(s.name).replace(/"/g, '&quot;') + ')">' + icon(s) + esc(s.title) + '</button>'; }).join('');
+  c.hidden = _sites.length < 2;
+}
+
+function renderHome(data) {
+  _sites = data.sites || [];
+  renderChips();
+  var sh = document.getElementById('shelves');
+  document.getElementById('list').hidden = true;
+  sh.hidden = false;
+  sh.innerHTML = _sites.map(function(s) {
+    return '<section class="shelf"><div class="shelf-h">' + icon(s) + '<h2>' + esc(s.title) + '</h2>' +
+      '<button class="all" onclick="openSite(' + JSON.stringify(s.name).replace(/"/g, '&quot;') + ')">' + esc(STR.all) + ' ›</button></div>' +
+      (s.tags && s.tags.length ? '<div class="chips">' + s.tags.slice(0, 12).map(function(t) { return '<button class="chip tag" onclick="openTag(' + JSON.stringify(s.name).replace(/"/g, '&quot;') + ',' + JSON.stringify(t.tag).replace(/"/g, '&quot;') + ')">' + esc(t.tag) + ' <span style="opacity:.6">' + esc(t.count) + '</span></button>'; }).join('') + '</div>' : '') +
+      (s.rows || []).slice(0, 6).map(function(r) { return row(r, s.name); }).join('') + '</section>';
+  }).join('');
+  var empty = document.getElementById('empty');
+  empty.hidden = _sites.length > 0;
+  empty.innerHTML = esc(STR.empty) + '<br><a class="door" href="/?manage" onclick="return goCatalog()">' + esc(STR.catalog) + ' ›</a>';
+}
+
+function renderList(title, rows, append) {
+  document.getElementById('shelves').hidden = true;
+  var l = document.getElementById('list'); l.hidden = false;
+  document.getElementById('l-title').textContent = title;
+  var host = document.getElementById('l-rows');
+  if (!append) host.innerHTML = '';
+  host.insertAdjacentHTML('beforeend', rows.map(function(r) { return row(r, r.zim || _site); }).join(''));
+  document.getElementById('l-n').textContent = _pages ? (_page + ' / ' + _pages) : '';
+  var more = document.getElementById('more'); more.hidden = !_pages || _page >= _pages; more.textContent = STR.more;
+  var empty = document.getElementById('empty'); empty.hidden = host.children.length > 0; empty.textContent = STR.none;
+  var lt = document.getElementById('l-tags'); lt.innerHTML = ''; lt.hidden = true;
+  if (_site && !_tag && !_q) {
+    var s = siteOf(_site);
+    if (s.tags && s.tags.length) { lt.hidden = false; lt.innerHTML = s.tags.map(function(t) { return '<button class="chip tag" onclick="openTag(' + JSON.stringify(_site).replace(/"/g, '&quot;') + ',' + JSON.stringify(t.tag).replace(/"/g, '&quot;') + ')">' + esc(t.tag) + ' <span style="opacity:.6">' + esc(t.count) + '</span></button>'; }).join(''); }
+  }
+}
+
+function loadHome() {
+  fetch('/exchange/home').then(function(r) { return r.json(); }).then(function(d) {
+    renderHome(d);
+    if (STR.q) { var want = STR.q; STR.q = ''; var i = want.indexOf('/'); if (i > 0) openQ(want.slice(0, i), want.slice(i + 1)); }
+  }).catch(function() { document.getElementById('empty').hidden = false; document.getElementById('empty').textContent = STR.none; });
+}
+function loadList(append) {
+  if (_busy) return; _busy = true;
+  fetch('/exchange/site?zim=' + encodeURIComponent(_site) + '&page=' + _page + (_tag ? '&tag=' + encodeURIComponent(_tag) : '')).then(function(r) { return r.json(); }).then(function(d) {
+    _pages = d.pages || 0;
+    renderList((_tag ? '[' + _tag + '] · ' : '') + siteOf(_site).title, d.rows || [], append);
+  }).finally(function() { _busy = false; });
+}
+function openSite(name) { closeQ(true); _site = name; _tag = ''; _q = ''; _page = 1; renderChips(); if (!name) { document.getElementById('list').hidden = true; document.getElementById('shelves').hidden = false; document.getElementById('empty').hidden = _sites.length > 0; return; } loadList(false); window.scrollTo(0, 0); }
+function openTag(name, tag) { closeQ(true); _site = name; _tag = tag; _q = ''; _page = 1; renderChips(); loadList(false); window.scrollTo(0, 0); }
+function more() { if (_q) return; _page += 1; loadList(true); }
+
+// The library's own title search, over the installed sites only. A hit is
+// a question page; anything else a site ZIM holds (users, tags) is not.
+function exchangeSearch(q) {
+  _q = (q || '').trim();
+  closeQ(true);
+  if (!_q) { openSite(_site); return; }
+  var zims = (_site ? [_site] : _sites.map(function(s) { return s.name; })).join(',');
+  if (!zims) return;
+  fetch('/search?q=' + encodeURIComponent(_q) + '&zim=' + encodeURIComponent(zims) + '&limit=15&fast=1').then(function(r) { return r.json(); }).then(function(d) {
+    var rows = (d.results || []).filter(function(r) { return /^questions\/\d+\//.test(r.path || ''); }).map(function(r) {
+      return { title: r.title, page: r.path, votes: '', answers: '', accepted: false, excerpt: r.snippet ? String(r.snippet).replace(/<[^>]+>/g, '') : '', tags: [], zim: r.zim };
+    });
+    _pages = 0; _page = 1;
+    renderList('“' + _q + '”', rows, false);
+  }).catch(function() {});
+}
+
+function openQ(zim, page) {
+  var s = siteOf(zim);
+  document.getElementById('home').hidden = true;
+  var v = document.getElementById('qview'); v.hidden = false;
+  document.getElementById('backlabel').textContent = STR.title;
+  document.getElementById('q-title').textContent = '…';
+  document.getElementById('q-body').innerHTML = ''; document.getElementById('q-answers').innerHTML = ''; document.getElementById('q-tags').innerHTML = ''; document.getElementById('q-ah').textContent = '';
+  var open = document.getElementById('q-open'); open.href = zpath(zim, page); open.textContent = STR.open_page;
+  window.scrollTo(0, 0);
+  tell({ zimi: 'exchange-q', q: zim + '/' + page });
+  fetch('/exchange/q?zim=' + encodeURIComponent(zim) + '&q=' + encodeURIComponent(page)).then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
+    if (!d) { document.getElementById('q-title').textContent = STR.none; return; }
+    document.getElementById('q-title').textContent = d.title;
+    tell({ zimi: 'exchange-q', q: zim + '/' + page, title: d.title });
+    document.getElementById('q-who').innerHTML = icon(s) + '<span>' + esc(s.title) + (d.author ? ' · ' + esc(STR.asked) + ' <b>' + esc(d.author) + '</b>' : '') + '</span>';
+    document.getElementById('q-score').innerHTML = esc(d.votes);
+    document.getElementById('q-body').innerHTML = d.body || '';
+    document.getElementById('q-tags').innerHTML = (d.tags || []).map(function(t) { return '<span class="tg" onclick="openTag(' + JSON.stringify(zim).replace(/"/g, '&quot;') + ',' + JSON.stringify(t).replace(/"/g, '&quot;') + ')">' + esc(t) + '</span>'; }).join('');
+    document.getElementById('q-ah').textContent = (d.answers || []).length + ' ' + STR.answers;
+    document.getElementById('q-answers').innerHTML = (d.answers || []).map(function(a) {
+      return '<div class="post"><div class="score">' + esc(a.score) + (a.accepted ? '<span class="ok" title="accepted">✓</span>' : '') + '</div>' +
+        '<div class="prose">' + a.body + (a.author ? '<div class="by">' + esc(a.author) + '</div>' : '') + '</div></div>';
+    }).join('');
+    // A link to another question stays here.
+    v.querySelectorAll('a[data-q]').forEach(function(a) { a.addEventListener('click', function(e) { e.preventDefault(); openQ(zim, a.getAttribute('data-q')); }); });
+  }).catch(function() { document.getElementById('q-title').textContent = STR.none; });
+}
+function closeQ(silent) {
+  var v = document.getElementById('qview'); if (v.hidden) return;
+  v.hidden = true; document.getElementById('home').hidden = false;
+  tell({ zimi: 'exchange-home' });
+  if (!silent) window.scrollTo(0, 0);
+}
+window.exchangeSearch = exchangeSearch; window.openQ = openQ; window.closeQ = closeQ; window.openSite = openSite; window.openTag = openTag; window.more = more;
+loadHome();
+</script>
+</body>
+</html>
