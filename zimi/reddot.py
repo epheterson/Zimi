@@ -32,7 +32,9 @@ from zimi.importer import _run_capture, _run_stream, _venv_bin
 
 log = logging.getLogger("zimi")
 
-ARCTICZIM_REQUIREMENT = "arcticzim[integration,optimize] @ git+https://github.com/IMayBeABitShy/ArcticZim.git"
+# A source archive, not a git URL: the Docker image has no git, and pip
+# unpacks a zip on its own.
+ARCTICZIM_REQUIREMENT = "arcticzim[integration,optimize] @ https://github.com/IMayBeABitShy/ArcticZim/archive/refs/heads/main.zip"
 SUBREDDIT_RE = re.compile(r"^[A-Za-z0-9_]{2,21}$")
 _MARKER = ".zimi-sidecar.json"
 _MAX_PAGE_BYTES = 8 * 1024 * 1024
@@ -76,8 +78,6 @@ def ensure_sidecar(sink=None):
         )
     if os.path.isdir(venv):
         shutil.rmtree(venv)
-    if shutil.which("git") is None:
-        raise CreateError("ArcticZim installs from GitHub with git, and git is not on this machine's PATH.")
     os.makedirs(os.path.dirname(venv), exist_ok=True)
     say(f"creating the ArcticZim sidecar at {venv}")
     rc = _run_stream([sys.executable, "-m", "venv", venv], say)
