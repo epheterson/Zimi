@@ -1,4 +1,26 @@
 #!/bin/bash
-# AppImage entry point — launches the PyInstaller-bundled Zimi binary.
+# AppImage entry point. The bundle's own library path holds Python and the
+# wheels' libraries only; the system libraries it was built against sit in
+# _internal/fallback and are put on the path one by one, only when the host
+# has no library of that name. A host's GLib, GTK and WebKitGTK are the ones
+# its WebKitGTK helper processes and drivers match (issue #81); a bare host
+# without, say, sqlite3 still gets Python's from the fallback.
 HERE="$(dirname "$(readlink -f "$0")")"
+FALLBACK="$HERE/_internal/fallback"
+if [ -d "$FALLBACK" ]; then
+  # ldconfig's cache, one soname per line (its lines are tab-indented, so
+  # an exact match on the name is the only safe test).
+  KNOWN="$(ldconfig -p 2>/dev/null | awk 'NR > 1 { print $1 }')"
+  MISSING="$(mktemp -d "${TMPDIR:-/tmp}/zimi-libs.XXXXXX")"
+  for lib in "$FALLBACK"/*.so*; do
+    [ -e "$lib" ] || continue
+    name="$(basename "$lib")"
+    if ! printf '%s\n' "$KNOWN" | grep -qxF "$name"; then
+      ln -s "$lib" "$MISSING/$name"
+    fi
+  done
+  if [ -n "$(ls -A "$MISSING")" ]; then
+    export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:+$LD_LIBRARY_PATH:}$MISSING"
+  fi
+fi
 exec "$HERE/Zimi" "$@"

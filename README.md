@@ -90,7 +90,7 @@ Or download from [GitHub Releases](https://github.com/epheterson/Zimi/releases).
 sudo snap install zimi
 ```
 
-Or grab the [AppImage](https://github.com/epheterson/Zimi/releases).
+Or grab the [AppImage](https://github.com/epheterson/Zimi/releases). The native window is WebKitGTK, which the AppImage takes from your distro: `sudo apt install libwebkit2gtk-4.1-0` (Ubuntu, Mint, Debian 12), `sudo dnf install webkit2gtk4.1` (Fedora), `sudo pacman -S webkit2gtk-4.1` (Arch); 4.0 works too. Without it Zimi opens in your web browser instead, and `Zimi --browser` does that on purpose. A black window is WebKitGTK's GPU path on some drivers: Zimi already runs with `WEBKIT_DISABLE_DMABUF_RENDERER=1`; set it to `0` to try the GPU path.
 
 ### Docker
 

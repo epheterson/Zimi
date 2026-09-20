@@ -1,3 +1,43 @@
+// The last few script errors, kept where a smoke test or a bug report can
+// read them back (window.__zimiErrors): a desktop window has no console a
+// person can open, and "the page stayed blank" is not a report.
+window.__zimiErrors = [];
+window.addEventListener('error', function(e) {
+  var where = (e.filename || '').split('/').pop() + ':' + (e.lineno || 0);
+  window.__zimiErrors.push(where + ' ' + (e.message || String(e.error || e)));
+  if (window.__zimiErrors.length > 20) window.__zimiErrors.shift();
+});
+window.addEventListener('unhandledrejection', function(e) {
+  window.__zimiErrors.push('promise: ' + String((e.reason && (e.reason.message || e.reason)) || e));
+  if (window.__zimiErrors.length > 20) window.__zimiErrors.shift();
+});
+
+// Storage that is always there. WebKitGTK hands a private-mode window a
+// null localStorage, and one unguarded read of it at load killed the whole
+// script: the desktop window on Linux stayed a bare shell (issue #81). A
+// window with no storage gets an in-memory one and forgets on close, which
+// is what private mode means; it does not get a dead page.
+(function _ensureStorage() {
+  function memory() {
+    var m = {};
+    return {
+      getItem: function(k) { return Object.prototype.hasOwnProperty.call(m, k) ? m[k] : null; },
+      setItem: function(k, v) { m[k] = String(v); },
+      removeItem: function(k) { delete m[k]; },
+      clear: function() { m = {}; },
+      key: function(i) { return Object.keys(m)[i] || null; },
+      get length() { return Object.keys(m).length; }
+    };
+  }
+  ['localStorage', 'sessionStorage'].forEach(function(name) {
+    var ok = false;
+    try { ok = !!window[name] && typeof window[name].getItem === 'function'; } catch (e) { ok = false; }
+    if (!ok) {
+      try { Object.defineProperty(window, name, { configurable: true, value: memory() }); } catch (e) {}
+    }
+  });
+})();
+
 // ── Config (injected by server via inline script) ──
 var _cfg = window.__ZIMI_CONFIG || {};
 var _i18nVer = _cfg.i18nHash || '0';
@@ -980,15 +1020,22 @@ function _appPlaceholder() {
   return '';
 }
 
+// What the box does on the Manage page: filters the installed list on
+// the Library tab, searches the catalog (or the open category) everywhere
+// else. One answer, so the two places that write the placeholder agree.
+function _managePlaceholder() {
+  if (manageTab === 'installed') return t('filter_installed');
+  if (manageCategoryFilter) {
+    var catMeta = BROWSE_CATEGORIES.find(function(c) { return c.key === manageCategoryFilter; });
+    return t('search_in', {source: catMeta ? t(catMeta.i18n) : manageCategoryFilter});
+  }
+  return t('search_catalog');
+}
+
 function _updateSearchPlaceholder() {
   if (!q) return;
   if (mode === 'manage') {
-    var manageMode = document.querySelector('.manage-tab.active');
-    if (manageMode && manageMode.dataset.tab === 'catalog') {
-      q.placeholder = t('search_catalog');
-    } else {
-      q.placeholder = t('filter_installed');
-    }
+    q.placeholder = _managePlaceholder();
   } else if (_appPlaceholder()) {
     q.placeholder = _appPlaceholder();
   } else if (currentSource) {
@@ -1736,14 +1783,7 @@ function updateTopbar() {
   } else if (readerOpen && readerSource) {
     q.placeholder = _zimTitle(readerSource);
   } else if (mode === 'manage') {
-    if (manageTab === 'installed') {
-      q.placeholder = t('filter_installed');
-    } else if (manageCategoryFilter) {
-      const catMeta = BROWSE_CATEGORIES.find(c => c.key === manageCategoryFilter);
-      q.placeholder = t('search_in', {source: catMeta ? t(catMeta.i18n) : manageCategoryFilter});
-    } else {
-      q.placeholder = t('search_catalog');
-    }
+    q.placeholder = _managePlaceholder();
   } else if (homeScope) {
     q.placeholder = t('search_in', {source: homeScope.label});
   } else {
@@ -7290,18 +7330,25 @@ function filterCatalogLang(lang) {
 }
 
 // ── Browse category gallery metadata ──
+// A category's mark, drawn like the apps' and the top bar's (one stroke,
+// round caps), not an emoji: an emoji is a different picture on every
+// platform and the only thing on the page that is not Zimi's own line.
+function _catIcon(paths) {
+  return '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + paths + '</svg>';
+}
+
 const BROWSE_CATEGORIES = [
-  { key: 'wikipedia',      i18n: 'cat_encyclopedias',  icon: '\u{1F30D}', descKey: 'cat_encyclopedias_desc' },
-  { key: 'stack_exchange', i18n: 'cat_qa',             icon: '\u{1F4AC}', descKey: 'cat_qa_desc' },
-  { key: 'devdocs',        i18n: 'cat_devdocs',        icon: '\u{1F4BB}', descKey: 'cat_devdocs_desc' },
-  { key: 'ted',            i18n: 'cat_video',          icon: '\u{1F3AC}', descKey: 'cat_video_desc' },
-  { key: 'education',      i18n: 'cat_education',      icon: '\u{1F393}', descKey: 'cat_education_desc' },
-  { key: 'gutenberg',      i18n: 'cat_books',          icon: '\u{1F4DA}', descKey: 'cat_books_desc' },
-  { key: 'medical',        i18n: 'cat_medical',        icon: '\u{1FA7A}', descKey: 'cat_medical_desc' },
-  { key: 'survival',       i18n: 'cat_survival',       icon: '\u{1F9ED}', descKey: 'cat_survival_desc' },
-  { key: 'gaming',         i18n: 'cat_gaming',         icon: '\u{1F3AE}', descKey: 'cat_gaming_desc' },
-  { key: 'maps',           i18n: 'cat_maps',           icon: '\u{1F5FA}\uFE0F', descKey: 'cat_maps_desc' },
-  { key: 'other',          i18n: 'cat_other',          icon: '\u{1F4E6}', descKey: 'cat_other_desc' },
+  { key: 'wikipedia',      i18n: 'cat_encyclopedias',  icon: _catIcon('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>'), descKey: 'cat_encyclopedias_desc' },
+  { key: 'stack_exchange', i18n: 'cat_qa',             icon: _catIcon('<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>'), descKey: 'cat_qa_desc' },
+  { key: 'devdocs',        i18n: 'cat_devdocs',        icon: _catIcon('<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M2 20h20"/><path d="M9 10l-2 2 2 2M15 10l2 2-2 2"/>'), descKey: 'cat_devdocs_desc' },
+  { key: 'ted',            i18n: 'cat_video',          icon: _catIcon('<rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"/>'), descKey: 'cat_video_desc' },
+  { key: 'education',      i18n: 'cat_education',      icon: _catIcon('<path d="M2 9l10-4 10 4-10 4z"/><path d="M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/><path d="M22 9v6"/>'), descKey: 'cat_education_desc' },
+  { key: 'gutenberg',      i18n: 'cat_books',          icon: _catIcon('<path d="M4 5a2 2 0 0 1 2-2h6v16H6a2 2 0 0 0-2 2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v16h6a2 2 0 0 1 2 2z"/>'), descKey: 'cat_books_desc' },
+  { key: 'medical',        i18n: 'cat_medical',        icon: _catIcon('<path d="M12 4v16M4 12h16"/><rect x="3" y="3" width="18" height="18" rx="4"/>'), descKey: 'cat_medical_desc' },
+  { key: 'survival',       i18n: 'cat_survival',       icon: _catIcon('<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z" fill="currentColor" stroke="none"/>'), descKey: 'cat_survival_desc' },
+  { key: 'gaming',         i18n: 'cat_gaming',         icon: _catIcon('<rect x="2" y="7" width="20" height="11" rx="5"/><path d="M7 11v3M5.5 12.5h3"/><circle cx="16" cy="11.5" r="1" fill="currentColor" stroke="none"/><circle cx="18.5" cy="13.5" r="1" fill="currentColor" stroke="none"/>'), descKey: 'cat_gaming_desc' },
+  { key: 'maps',           i18n: 'cat_maps',           icon: _catIcon('<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>'), descKey: 'cat_maps_desc' },
+  { key: 'other',          i18n: 'cat_other',          icon: _catIcon('<path d="M3 8l9-4 9 4v9l-9 4-9-4z"/><path d="M3 8l9 4 9-4M12 12v9"/>'), descKey: 'cat_other_desc' },
 ];
 
 // Category key → localized display name

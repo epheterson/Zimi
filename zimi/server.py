@@ -4355,21 +4355,18 @@ def main():
         _importer.cli_import(args)
 
     elif args.command == "desktop" or (args.command == "serve" and args.ui):
+        # Inside the package since 1.10: a pip install has it. pywebview is
+        # the one thing it needs that the package does not require.
         try:
-            # The desktop entry-point lives in the repo's desktop/ dir (a sibling
-            # of this package), not on the default import path — add it first.
-            _desktop_dir = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "desktop"
-            )
-            if _desktop_dir not in sys.path:
-                sys.path.insert(0, _desktop_dir)
-            from zimi_desktop import main as desktop_main
+            import webview  # noqa: F401
         except ImportError:
             print(
-                "Desktop mode requires pywebview: pip install pywebview",
+                "Desktop mode needs pywebview: pip install 'zimi[desktop]'",
                 file=sys.stderr,
             )
             sys.exit(1)
+        from zimi.desktop import main as desktop_main
+
         desktop_main()
 
     elif args.command == "serve":

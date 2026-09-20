@@ -16,7 +16,7 @@ Running Zimi as a service: resolving configuration, backing it up, air-gapping i
 
 **Deploy manifests.** `deploy/` ships `docker-compose.yml`, `kubernetes.yaml`, and a `README.md` covering host/bridge networking and air-gap. See also [Networking & deployment modes](../deployment-networking.md).
 
-**Native desktop window.** `zimi desktop` starts the server and opens it in a native window instead of a browser tab (`zimi serve --ui` does the same thing). It needs pywebview, which the packaged macOS, Windows and Linux desktop builds already bundle — a `pip install zimi` gets the subcommand but has to add pywebview itself. Everything else about the instance is identical: same library, same config, same port.
+**Native desktop window.** `zimi desktop` starts the server and opens it in a native window instead of a browser tab (`zimi serve --ui` does the same thing). It needs pywebview: `pip install 'zimi[desktop]'`; the packaged macOS, Windows and Linux desktop builds bundle it. On Linux the window is WebKitGTK, taken from the distro (`libwebkit2gtk-4.1-0` or 4.0, and `python3-gi` for a pip install); a machine without it gets the same app in the system browser, which `zimi desktop --browser` or `ZIMI_DESKTOP_BROWSER=1` asks for outright. Zimi sets `WEBKIT_DISABLE_DMABUF_RENDERER=1` and `WEBKIT_DISABLE_COMPOSITING_MODE=1` unless you set them, because WebKitGTK's GPU path draws a black window on some drivers. Everything else about the instance is identical: same library, same config, same port.
 
 ## Configure
 

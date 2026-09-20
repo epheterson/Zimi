@@ -31,6 +31,7 @@ function ok(label, cond, detail) {
 const ctx = { console };
 vm.createContext(ctx);
 vm.runInContext([
+  extract(/function _catIcon\(paths\) \{[\s\S]*?\n\}/, '_catIcon'),
   extract(/const BROWSE_CATEGORIES = \[[\s\S]*?\n\];/, 'BROWSE_CATEGORIES'),
   extract(/const _OPDS_CAT_MAP = \{[\s\S]*?\n\};/, '_OPDS_CAT_MAP'),
   extract(/function autoCategorize\(item\) \{[\s\S]*?\n\}/, 'autoCategorize'),

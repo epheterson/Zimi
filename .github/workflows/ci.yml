@@ -196,6 +196,36 @@ jobs:
           SMOKE_EXPECT_BT: '1'
         run: ci/smoke_binary.sh "dist/Zimi/Zimi"
 
+      # The window, which no Linux gate ever opened: every AppImage and snap
+      # from 1.8 to 1.9.6 died on launch on every distro (issue #81) while
+      # this job stayed green on the headless server alone. Xvfb is the
+      # display; the runner's own WebKitGTK is the one the bundle must find,
+      # the way a person's distro provides it.
+      - name: The built binary opens its window and renders the home view (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          sudo apt-get install -y -qq xvfb libwebkit2gtk-4.1-0 dbus-x11 >/dev/null
+          TMPZIM=$(mktemp -d)
+          ZIMI_DESKTOP_SMOKE=app ZIMI_DESKTOP_SMOKE_DWELL=2 ZIM_DIR="$TMPZIM" \
+            timeout 180 xvfb-run -a dist/Zimi/Zimi 2>&1 | tee /tmp/window-smoke.log
+          grep -q "SMOKE: app rendered" /tmp/window-smoke.log
+
+      # And a machine with no WebKitGTK at all: the app must run in the
+      # system browser rather than die. --browser asks for that outright;
+      # the fake browser records the address it was handed.
+      - name: The built binary runs in the browser when asked (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        shell: bash
+        env:
+          SMOKE_MODE_ARGS: --browser
+          SMOKE_EXPECT_BT: '1'
+          BROWSER: ${{ github.workspace }}/ci/fake_browser.sh
+          FAKE_BROWSER_LOG: /tmp/fake-browser.log
+        run: |
+          ci/smoke_binary.sh "dist/Zimi/Zimi"
+          grep -q "http://127.0.0.1:" /tmp/fake-browser.log
+
       # The portable zip, as a person actually gets it: every file extracted
       # from a browser download carries the mark of the web, and the .NET
       # Framework will not load a marked assembly. 1.9.5 died on its first

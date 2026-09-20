@@ -2375,7 +2375,7 @@
   .browse-cat-card:hover { border-color: var(--amber-border); background: var(--surface2); transform: translateY(-2px); }
   .browse-cat-card.dimmed { opacity: 0.3; pointer-events: none; }
   .bcc-icon {
-    font-size: 28px; width: 48px; height: 48px;
+    width: 48px; height: 48px; color: var(--amber);
     display: flex; align-items: center; justify-content: center;
     background: var(--surface2); border-radius: 12px; flex-shrink: 0;
     align-self: center;
@@ -2390,7 +2390,8 @@
   .browse-back { background: none; border: none; color: var(--amber); font-size: 13px; cursor: pointer; padding: 4px 0; font-weight: 500; }
   .browse-back:hover { text-decoration: underline; }
   .browse-drilldown-title { font-size: 15px; font-weight: 600; color: var(--accent); }
-  .browse-drilldown-icon { margin-right: 8px; }
+  .browse-drilldown-icon { margin-inline-end: 8px; display: inline-flex; vertical-align: middle; color: var(--amber); }
+  .browse-drilldown-icon svg { width: 20px; height: 20px; }
   .ci-pin { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; color: var(--amber); }
   .ci-pin svg { width: 24px; height: 24px; }
   .browse-drilldown-count { font-size: 12px; color: var(--text2); margin-inline-start: auto; }
