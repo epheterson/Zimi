@@ -2065,7 +2065,7 @@ def activity_payload(type_filter=None, actor_filter=None):
 # folder, I said that would be CLI only") — recognising the mode is what lets
 # the refusal point at `zimi create <folder>` instead of shrugging "unknown
 # creation mode" at someone who read about it in the docs.
-CREATE_MODES = ("folder", "page", "site", "video", "import")
+CREATE_MODES = ("folder", "page", "site", "video", "import", "reddit")
 # Which engine captures a web page. Mirrors creator.OFFERED_ENGINES — every
 # name a person may ASK for, which is a wider set than the ones that build a
 # capture object. Held here as a literal for the same reason CREATE_MAX_PAGE_URLS
@@ -2150,7 +2150,7 @@ CREATE_MAX_PAGE_URLS = 20
 # the one engine with no progress callback, is CLI-only now), but the list and
 # the `cancellable` field stay: the client's button should keep answering to
 # the server's word rather than to an assumption a future mode could break.
-CREATE_CANCELLABLE_MODES = ("page", "site", "video", "import")
+CREATE_CANCELLABLE_MODES = ("page", "site", "video", "import", "reddit")
 # Which jobs can FINISH EARLY — stop fetching at the next page boundary and
 # package everything captured so far, exactly what SIGINT does to a CLI crawl.
 # Site capture alone: it is the one mode whose work is an open-ended frontier
@@ -2837,6 +2837,15 @@ def _create_validate(data):
             "folder capture is CLI-only — run `zimi create <folder>` "
             "on the server itself"
         )
+    elif mode == "reddit":
+        # A subreddit, by name or address. The maker (ArcticZim) is fetched
+        # into a sidecar on first use, like warc2zim.
+        from zimi.reddot import normalize_subreddit
+
+        sub = normalize_subreddit(source)
+        if not sub:
+            raise ValueError("not a subreddit name (letters, digits and _, like r/kiwix)")
+        source = sub
     elif mode == "import":
         # Back on the web (a user: "I'd like a way to convert warc files
         # within the app's gui"), without the thing that took it off: no
@@ -3165,6 +3174,21 @@ def _create_run(job, opts):
             register=True,
             progress=job.note,
             **_create_kwargs(opts, "limit", "max_bytes", "fmt", "language"),
+        )
+    if job.mode == "reddit":
+        from zimi.crawler import _StopFlag
+        from zimi.reddot import create_reddit_zim
+
+        stop = _StopFlag()
+        stop.hit = job.finish_requested
+        job.stop_flag = stop
+        return create_reddit_zim(
+            job.source,
+            title=job.title or None,
+            out_dir=_create_out_dir(),
+            register=True,
+            progress=job.note,
+            stop=stop,
         )
     if job.mode == "import":
         from zimi.importer import import_archive
@@ -3499,6 +3523,7 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
         # answered from a cache after that.
         payload["browser_ready"] = _create_browser_ready()
         payload["browser_install"] = _create_browser_install()
+        payload["reddot_ready"] = _create_reddot_ready()
         # Archives the import mode may convert: what is in the library
         # folder, by name. No path is typed anywhere.
         payload["archives"] = _create_archives()
@@ -3780,6 +3805,18 @@ def _create_archive_path(name):
     return os.path.join(_create_archives_root(), *name.split("/"))
 
 
+def _create_reddot_ready():
+    """True when the Reddit maker (ArcticZim) is already installed, which
+    decides whether a subreddit can be made offline."""
+    try:
+        from zimi.reddot import sidecar_status
+
+        return bool(sidecar_status().get("installed"))
+    except Exception:
+        log.exception("ArcticZim sidecar probe failed")
+        return False
+
+
 def _create_import_ready():
     """True when the warc2zim sidecar is already installed — the one thing
     that decides whether archive import can run on a machine with no
@@ -3911,7 +3948,7 @@ def _create_alive_ready():
 # yet, and a bucket that is always present but sometimes zero is a stabler
 # contract than one that appears the day the first edit lands.
 
-_CREATOR_TYPES = ("page", "site", "video", "import", "folder", "export", "edit")
+_CREATOR_TYPES = ("page", "site", "video", "import", "reddit", "folder", "export", "edit")
 
 _CREATOR_TYPE_BY_MODE = {
     "page": "page",
@@ -3919,6 +3956,7 @@ _CREATOR_TYPE_BY_MODE = {
     "site": "site",
     "video": "video",
     "import": "import",
+    "reddit": "reddit",
     "folder": "folder",
     "bookmarks": "export",
     "edit": "edit",
@@ -4438,7 +4476,19 @@ def _create_probe(data):
             # And back: the chip moved to Video for the last address, and
             # this one is a page. yt-dlp's catch-all would only fail on it.
             mode = "page"
-        if mode == "import":
+        if mode == "reddit":
+            from zimi.reddot import sidecar_status
+
+            result = {
+                "ok": True,
+                "final_url": "https://www.reddit.com/r/%s/" % source,
+                "title": "r/%s" % source,
+                "content_type": "",
+                "bytes": 0,
+                "warning_key": None,
+                "reddot_ready": bool(sidecar_status().get("installed")),
+            }
+        elif mode == "import":
             # The archive is on disk and validation already found it; the
             # preview is its size and whether the helper is here.
             result = {

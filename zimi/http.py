@@ -164,6 +164,7 @@ _RATE_LIMITED_API_PATHS = (
     "/tube",
     "/tube/play",
     "/exchange",
+    "/reddot",
     "/read",
     "/suggest",
     "/random",
@@ -811,6 +812,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("almanac-sky.js")
             + _static_hash("tube.html")
             + _static_hash("exchange.html")
+            + _static_hash("reddot.html")
             + _i18n_hash
         ).encode()
     ).hexdigest()[:8]
@@ -2254,6 +2256,26 @@ class ZimHandler(BaseHTTPRequestHandler):
                     cache="no-store",
                 )
 
+            elif parsed.path == "/reddot" or parsed.path.startswith("/reddot/"):
+                # Reddot: subreddits as ZIMs.
+                from zimi import reddot as _rd
+
+                sub = parsed.path[len("/reddot"):].strip("/")
+                try:
+                    pg = max(1, int(param("page", "1")))
+                except (TypeError, ValueError):
+                    pg = 1
+                zim = param("zim")
+                if sub in ("", "home"):
+                    return self._json(200, _rd.home())
+                if not zim or zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
+                    return self._json(404, {"error": "not found"})
+                if sub == "sub":
+                    return self._json(200, _rd.listing(zim, param("r"), param("sort", "top"), pg))
+                if sub == "post":
+                    got = _rd.post(zim, param("p"))
+                    return self._json(200, got) if got else self._json(404, {"error": "not a post page"})
+                return self._json(404, {"error": "not found"})
             elif parsed.path == "/exchange" or parsed.path.startswith("/exchange/"):
                 # ZimiExchange: every Stack Exchange site in the library.
                 from zimi import exchange as _ex

@@ -66,8 +66,8 @@ const def = id => CREATE_MODE_DEFS.find(d => d.id === id);
 // only"): the server refuses the mode from the web, so a tile for it would be
 // a door drawn on a wall.
 eq(CREATE_MODE_DEFS.map(d => d.id),
-  ['page', 'site', 'video', 'bookmarks', 'import'],
-  'tile order: the web modes first, then bookmarks, then import (folder is CLI-only)');
+  ['page', 'site', 'video', 'reddit', 'bookmarks', 'import'],
+  'tile order: the web modes first (a subreddit is a web source), then bookmarks, then import (folder is CLI-only)');
 check(!CREATE_MODE_DEFS.some(d => d.id === 'folder'),
   'folder mode is not offered at all — it is CLI-only');
 
@@ -77,8 +77,8 @@ check(!CREATE_MODE_DEFS.some(d => d.id === 'folder'),
 // still names them so its refusal can point at the CLI, but the web offers
 // only the URL-based server modes.
 eq(CREATE_MODE_DEFS.filter(d => !d.client).map(d => d.id).sort(),
-  ['import', 'page', 'site', 'video'],
-  'the web offers the URL server modes and import; folder is CLI-only');
+  ['import', 'page', 'reddit', 'site', 'video'],
+  'the web offers the URL server modes, a subreddit and import; folder is CLI-only');
 // Import is back (2026-09-19) as a PICKER: the address field is a list of the
 // archives the server found in the library folder. No path is typed, which is
 // what took it off the web with folder capture.
@@ -132,6 +132,7 @@ eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
   ['site', ['max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
     'language', 'ignore_robots']],
   ['video', ['format', 'max_bytes', 'language']],
+  ['reddit', []],
   ['bookmarks', []],
   ['import', []]
 ], 'each mode advertises its documented advanced options');
@@ -910,8 +911,8 @@ for (const d of CREATE_MODE_DEFS) {
 eq(CREATE_MODE_DEFS.filter(d => d.serverPath).map(d => d.id), ['import'],
   'import is the one mode that reads the server disk, and it says so in the table');
 eq(CREATE_MODE_DEFS.filter(d => _createModeVisible(d, true)).map(d => d.id),
-  ['page', 'site', 'video', 'bookmarks'],
-  'a creator gets the web modes and bookmarks, never the server-path one');
+  ['page', 'site', 'video', 'reddit', 'bookmarks'],
+  'a creator gets the web modes (a subreddit is one) and bookmarks, never the server-path one');
 
 check(CREATE_TREE_MAX_NODES > 0 && CREATE_TREE_MAX_NODES <= 1000,
   'the tree draws a bounded number of rows, whatever the crawl size');

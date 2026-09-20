@@ -741,6 +741,7 @@ def test_every_create_mode_can_answer_whether_it_can_run():
         "site": manage._create_browser_ready,  # rendered/alive are gated below
         "video": manage._create_video_ready,
         "import": manage._create_import_ready,
+        "reddit": manage._create_reddot_ready,
         "folder": lambda: True,  # reads the server's own disk; nothing to install
     }
     missing = [m for m in manage.CREATE_MODES if m not in probes]

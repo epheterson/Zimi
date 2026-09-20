@@ -36,6 +36,7 @@ vm.createContext(ctx);
 vm.runInContext([
   extract(/var _MAPS_PIN_SVG = [^\n]*\n/, '_MAPS_PIN_SVG'),
   extract(/function _installedMaps\(\) \{[\s\S]*?\n\}/, '_installedMaps'),
+  extract(/var _APP_CATEGORY = [^\n]*\n/, '_APP_CATEGORY'),
   extract(/function _appTileHtml\(app, title, icon, names, openFn\) \{[\s\S]*?\n\}/, '_appTileHtml'),
   extract(/function _mapsTileHtml\(\) \{[\s\S]*?\n\}/, '_mapsTileHtml'),
 ].join('\n'), ctx);

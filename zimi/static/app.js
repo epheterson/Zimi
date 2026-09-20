@@ -979,6 +979,8 @@ function _updateSearchPlaceholder() {
     } else {
       q.placeholder = t('filter_installed');
     }
+  } else if (_isReddotPage()) {
+    q.placeholder = t('reddot_search_placeholder');
   } else if (_isExchangePage()) {
     q.placeholder = t('exchange_search_placeholder');
   } else if (_isTubePage()) {
@@ -1545,6 +1547,12 @@ function updateTopbar() {
     bcIcon.innerHTML = _ALMANAC_BC_ICON;
     // Identity only — no destination behind it, so no link affordance either.
     bcIcon.removeAttribute('href');
+  } else if (_isReddotPage()) {
+    bcSep.style.display = 'inline';
+    bcIcon.style.display = 'inline-flex';
+    bcIcon.title = t('reddot');
+    bcIcon.innerHTML = _REDDOT_SVG.replace('width="26" height="26"', 'width="20" height="20"');
+    bcIcon.setAttribute('href', '/#reddot');
   } else if (_isExchangePage()) {
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
@@ -1640,7 +1648,7 @@ function updateTopbar() {
   var _foldReaderExtras = _readingArticle && _isNarrow();
   // A map is read with the eyes and the hands: no type size, no read-aloud,
   // no Reader View. _syncReaderViewBtn and the ⋯ menu know the same rule.
-  var _readingText = _readingArticle && !_isMapPage() && !_isTubePage() && !_isExchangePage();
+  var _readingText = _readingArticle && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage();
   var fontBtn = document.getElementById('font-btn');
   if (fontBtn) fontBtn.style.display = (_readingText && !_foldReaderExtras) ? 'flex' : 'none';
   // Bookmarks-panel opener — reader only (#65). Everywhere else the library
@@ -1717,6 +1725,8 @@ function updateTopbar() {
     q.placeholder = t('create_zim');
   } else if (_almanacOpen) {
     q.placeholder = t('almanac');
+  } else if (_isReddotPage()) {
+    q.placeholder = t('reddot_search_placeholder');
   } else if (_isExchangePage()) {
     q.placeholder = t('exchange_search_placeholder');
   } else if (_isTubePage()) {
@@ -2207,6 +2217,12 @@ function route(push) {
   // /manage/create* route is admin-gated server-side anyway — so the page
   // opens now and _initSecondary closes it if the answer comes back no. The
   // alternative, waiting, is the home-then-switch flash Eric asked us to kill.
+  if (location.hash === '#reddot' || location.hash.indexOf('#reddot?') === 0) {
+    enterHome(false);
+    var rdQ = new URLSearchParams(location.hash.slice(location.hash.indexOf('?') + 1));
+    openReddot(true, location.hash.indexOf('?') > 0 ? (rdQ.get('p') || '') : '');
+    return;
+  }
   if (location.hash === '#exchange' || location.hash.indexOf('#exchange?') === 0) {
     enterHome(false);
     var exQ = new URLSearchParams(location.hash.slice(location.hash.indexOf('?') + 1));
@@ -6203,7 +6219,10 @@ q.addEventListener('input', () => {
   const val = q.value.trim();
   // Suggest (200ms debounce) — include history items when typing
   clearTimeout(suggestTimer);
-  if (_isExchangePage()) {
+  if (_isReddotPage()) {
+    hideSuggest();
+    suggestTimer = setTimeout(function() { _reddotSearch(val); }, 250);
+  } else if (_isExchangePage()) {
     hideSuggest();
     suggestTimer = setTimeout(function() { _exchangeSearch(val); }, 250);
   } else if (_isTubePage()) {
@@ -6277,6 +6296,7 @@ q.addEventListener('keydown', e => {
     // search to fall through to.
     if (_isTubePage()) { _tubeSearch(q.value.trim()); return; }
     if (_isExchangePage()) { _exchangeSearch(q.value.trim()); return; }
+    if (_isReddotPage()) { _reddotSearch(q.value.trim()); return; }
     if (_isMapPage()) {
       if (suggestItems.length && suggestItems[0]._place) selectSuggest(0);
       else if (q.value.trim().length >= 2) fetchPlaces(q.value.trim());
@@ -15428,7 +15448,7 @@ function _readerViewToggle() {
 function _syncReaderViewBtn() {
   // Never on Create, whatever is open behind it: there is no article there to
   // read a reading mode into.
-  var avail = _readerViewAvailable() && !_createOpen && !_isMapPage() && !_isTubePage() && !_isExchangePage();
+  var avail = _readerViewAvailable() && !_createOpen && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage();
   var btn = document.getElementById('readerview-btn');
   if (btn) {
     btn.style.display = avail ? 'flex' : 'none';
@@ -16015,6 +16035,58 @@ function _lastMapVisit() {
   return maps.length ? { zim: maps[0], pos: '' } : null;
 }
 
+// ── Reddot ──
+// Subreddits as ZIMs, made by ArcticZim (and by Zimi's create page wrapping
+// it), read in a page Zimi owns (/static/reddot.html) shown in the reader.
+var _reddotOpen = false;
+var _REDDOT_PAGE = '/static/reddot.html?v=1';
+var _REDDOT_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><circle cx="9" cy="13" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1" fill="currentColor" stroke="none"/><path d="M9 16.5c1.6 1.2 4.4 1.2 6 0M12 5l1.5-3 3 1"/></svg>';
+
+function _installedRedditZims() {
+  return (zimsCache || []).filter(function(z) { return z.kind === 'reddit' && z.main_path; })
+    .sort(function(a, b) { return (a.title || a.name).localeCompare(b.title || b.name); });
+}
+function _isReddotPage() {
+  return !!(_reddotOpen && readerOpen && !_almanacOpen && !_createOpen);
+}
+function _reddotTileHtml() {
+  return _appTileHtml('reddot', t('reddot'), _REDDOT_SVG, _installedRedditZims().map(function(z) { return z.title || z.name; }), 'openReddot');
+}
+function _reddotUrl(p) {
+  return '/#reddot' + (p ? '?p=' + encodeURIComponent(p) : '');
+}
+function _reddotStrings(p) {
+  var keys = ['reddot_all', 'reddot_more', 'reddot_top', 'reddot_new', 'reddot_comments', 'reddot_points', 'reddot_by', 'reddot_open_page', 'reddot_none', 'reddot_empty', 'reddot_catalog'];
+  var out = { title: t('reddot'), p: p || '' };
+  keys.forEach(function(k) { out[k.replace(/^reddot_/, '')] = t(k); });
+  return encodeURIComponent(JSON.stringify(out));
+}
+function openReddot(replaceState, p) {
+  if (_isModClick()) { _lastMouseEvent = null; window.open(_reddotUrl(p), '_blank'); return; }
+  if (_createOpen) closeCreate();
+  if (_almanacOpen) closeAlmanac();
+  if (mode === 'manage') { mode = 'home'; updateTopbar(); }
+  if (_mapWatched) { _mapWatched = null; clearTimeout(_mapHashTimer); }
+  if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
+  currentArticle = null;
+  readerSource = null;
+  _tubeOpen = false; _exchangeOpen = false;
+  _reddotOpen = true;
+  var st = { mode: 'reader', reddot: true, p: p || '' };
+  if (replaceState) history.replaceState(st, '', _reddotUrl(p));
+  else history.pushState(st, '', _reddotUrl(p));
+  openReader(_REDDOT_PAGE + '#' + _reddotStrings(p));
+  document.title = t('reddot') + ' \u2014 Zimi';
+  _setWindowTitle(document.title);
+  updateTopbar();
+}
+function _reddotSearch(val) {
+  try {
+    var win = document.getElementById('reader-frame').contentWindow;
+    if (win && typeof win.reddotSearch === 'function') win.reddotSearch(val);
+  } catch (e) {}
+}
+
 // ── ZimiExchange ──
 // Every Stack Exchange site in the library as one place, in a page Zimi
 // owns (/static/exchange.html) shown in the reader like ZimiTube. Eric,
@@ -16051,7 +16123,7 @@ function openExchange(replaceState, q) {
   if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
   currentArticle = null;
   readerSource = null;
-  _tubeOpen = false;
+  _tubeOpen = false; _reddotOpen = false;
   _exchangeOpen = true;
   var st = { mode: 'reader', exchange: true, q: q || '' };
   if (replaceState) history.replaceState(st, '', _exchangeUrl(q));
@@ -16110,6 +16182,19 @@ window.addEventListener('message', function(e) {
     history.replaceState({ mode: 'reader', tube: true, play: '' }, '', _tubeUrl(''));
     document.title = t('tube') + ' \u2014 Zimi';
     _setWindowTitle(document.title);
+  } else if (d.zimi === 'reddot-p' && _reddotOpen && typeof d.p === 'string') {
+    history.replaceState({ mode: 'reader', reddot: true, p: d.p }, '', _reddotUrl(d.p));
+    if (d.title) { document.title = d.title + ' \u2014 ' + t('reddot'); _setWindowTitle(document.title); }
+  } else if (d.zimi === 'reddot-home' && _reddotOpen) {
+    history.replaceState({ mode: 'reader', reddot: true, p: '' }, '', _reddotUrl(''));
+    document.title = t('reddot') + ' \u2014 Zimi';
+    _setWindowTitle(document.title);
+  } else if (d.zimi === 'create' && d.mode === 'reddit') {
+    // Reddot's empty page: the way to make a subreddit ZIM is the Create
+    // page, not the catalog (nobody publishes these).
+    if (readerOpen) closeReader();
+    _createRememberMode = 'reddit';
+    openCreate();
   } else if (d.zimi === 'exchange-q' && _exchangeOpen && typeof d.q === 'string') {
     history.replaceState({ mode: 'reader', exchange: true, q: d.q }, '', _exchangeUrl(d.q));
     if (d.title) { document.title = d.title + ' \u2014 ' + t('exchange'); _setWindowTitle(document.title); }
@@ -16143,7 +16228,7 @@ function openTube(replaceState, play) {
   if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
   currentArticle = null;
   readerSource = null;
-  _exchangeOpen = false;
+  _exchangeOpen = false; _reddotOpen = false;
   _tubeOpen = true;
   var st = { mode: 'reader', tube: true, play: play || '' };
   if (replaceState) history.replaceState(st, '', _tubeUrl(play));
@@ -16158,7 +16243,9 @@ function openTube(replaceState, play) {
 // can exist on a fresh install and suggest which zims to add or pop to
 // relevant catalog categories." An app with data opens; one without opens
 // the catalog category that feeds it, and its tile says so.
-var _APP_CATEGORY = { maps: 'maps', tube: 'ted', exchange: 'stack_exchange' };
+var _APP_CATEGORY = { maps: 'maps', tube: 'ted', exchange: 'stack_exchange' };  // reddot: made, not downloaded
+// A mode the Create page should open on, set by whoever sends someone there.
+var _createRememberMode = '';
 
 // The row is offered unless the server turned it off for everyone
 // (ZIMI_APPS, or the switch in Server settings; stamped on the shell) or
@@ -16193,7 +16280,7 @@ async function _setUserPref(key, value) {
 
 function _appsRowHtml() {
   if (!_appsEnabled()) return '';
-  var tiles = _mapsTileHtml() + _tubeTileHtml() + _exchangeTileHtml();
+  var tiles = _mapsTileHtml() + _tubeTileHtml() + _exchangeTileHtml() + _reddotTileHtml();
   if (!tiles) return '';
   var isTiles = _getLibraryView() === 'tiles';
   return '<div class="' + (isTiles ? 'stats-grid tiles' : 'stats-grid') + ' apps-grid">' + tiles + '</div>';
@@ -16206,7 +16293,10 @@ function _appTileHtml(app, title, icon, names, openFn) {
       '<div class="card-info"><div class="name"><span class="zt">' + esc(title) + '</span></div>' +
       '<div class="detail">' + esc(names.join(' \u00b7 ')) + '</div></div></a>';
   }
-  return '<a class="stat-card app-tile app-empty ' + app + '-tile" href="/?manage" data-zim="" onclick="return _spaNav(event, function() { _openCategory(_APP_CATEGORY.' + app + '); })">' +
+  var door = _APP_CATEGORY[app]
+    ? 'href="/?manage" onclick="return _spaNav(event, function() { _openCategory(_APP_CATEGORY.' + app + '); })"'
+    : 'href="/#create" onclick="return _spaNav(event, function() { _createRememberMode = \'reddit\'; openCreate(); })"';
+  return '<a class="stat-card app-tile app-empty ' + app + '-tile" ' + door + ' data-zim="">' +
     '<div class="card-icon">' + icon + '</div>' +
     '<div class="card-info"><div class="name"><span class="zt">' + esc(title) + '</span></div>' +
     '<div class="detail">' + esc(t('app_empty_' + app)) + '</div></div></a>';
@@ -17089,11 +17179,12 @@ function openReader(url) {
         var _navZim = decodeURIComponent(_wm[1]);
         var _navPath = decodeURIComponent(_wm[2]);
         currentArticle = { zim: _navZim, path: _navPath };
-        if (_tubeOpen || _exchangeOpen) {
+        if (_tubeOpen || _exchangeOpen || _reddotOpen) {
           // A card in an app opened a ZIM page: a real page now, with the
           // history and address every page gets, and Back returns to the app.
           _tubeOpen = false;
           _exchangeOpen = false;
+          _reddotOpen = false;
           readerSource = _navZim;
           history.pushState({ mode: 'reader', zim: _navZim, path: _navPath }, '', _articleDeepLinkPath(_navZim, _navPath));
           _histPushArticle(_navZim, _navPath, _titleFromPath(_navPath));
@@ -18625,6 +18716,7 @@ function _fallbackTitle(zim, path) {
 function openArticle(zim, path, title, opts) {
   _tubeOpen = false;
   _exchangeOpen = false;
+  _reddotOpen = false;
   // A place on the map already on screen: fly there. Reloading an 800,000
   // entry map to move within it is a second of grey; the map is right here.
   // History gets the place (Back returns to the last one), the address gets
@@ -18735,6 +18827,7 @@ function closeReader() {
   if (!readerOpen) return;
   _tubeOpen = false;
   _exchangeOpen = false;
+  _reddotOpen = false;
   _ttsStop(); // stop read-aloud when leaving the reader
   // Sync the address bar back to the view the reader was covering — an
   // explicit close otherwise strands the article URL (a reload would
@@ -19031,7 +19124,7 @@ function _buildTopbarMenuHtml() {
   var readerGroup = '';
   if (readerOpen && !_almanacOpen && !_createOpen) {
     // On a map there is nothing to read: none of the reading rows.
-    var rvAvail = _readerViewAvailable() && !_isMapPage() && !_isTubePage() && !_isExchangePage();
+    var rvAvail = _readerViewAvailable() && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage();
     var rvOn = _readerViewOn && rvAvail;
     // 1. Reader View toggle — always first. A switch: tapping flips it and the
     // menu rebuilds in place (compact controls appear/disappear beneath).
@@ -19047,7 +19140,7 @@ function _buildTopbarMenuHtml() {
       readerGroup += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
     }
     // 3. Read aloud.
-    if (_TTS_AVAILABLE && !_isMapPage() && !_isTubePage() && !_isExchangePage()) {
+    if (_TTS_AVAILABLE && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage()) {
       readerGroup += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
         '" onclick="event.stopPropagation();_ttsToggle()">' + _TBM_TTS_ICON +
         ' <span class="tbm-label">' + tH(_ttsSpeaking ? 'tts_stop' : 'tts_speak') + '</span></button>';
@@ -19400,6 +19493,8 @@ window.addEventListener('popstate', async (e) => {
     } else {
       doSearch(s.query, false);
     }
+  } else if (s && s.mode === 'reader' && s.reddot) {
+    openReddot(true, s.p || '');
   } else if (s && s.mode === 'reader' && s.exchange) {
     openExchange(true, s.q || '');
   } else if (s && s.mode === 'reader' && s.tube) {

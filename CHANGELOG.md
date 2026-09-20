@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Reddot. Subreddits as ZIMs. `zimi create r/<name>` (and the Subreddit mode on the Create page) builds a subreddit's posts and comments from Arctic Shift's public archive with ArcticZim, installed into a sidecar on first use; `zimi create --setup-reddit` installs it ahead of time. The Reddot app reads those ZIMs in a view of its own: a shelf per subreddit of its top posts, Top and New as paged lists, a post with its comment tree, the original page one tap away, an address per post.
 - ZimiExchange. Every Stack Exchange site in the library as one place: a shelf per site of its most voted questions with its top tags, a site or a tag as a paged list, the search bar asking across every site, and a question view of Zimi's own with the answers scored and the accepted one first. Links between questions stay inside it; the original page is one tap away. Every question has an address.
 - Maps: the picker judges "here" by what is on screen, lists a short library whole, offers "Where I am" from the device's location, and a switch to a Kiwix map now lands where you were.
 - The apps row can be turned off for everyone (ZIMI_APPS, or Server settings) or by a signed-in user for their own account.

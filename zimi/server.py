@@ -1853,9 +1853,11 @@ _VIDEO_SCRAPERS = ("ted2zim", "youtube2zim")
 # Q&A sites, by the scraper that made them: Kiwix builds every Stack
 # Exchange site with sotoki.
 _QA_SCRAPERS = ("sotoki",)
+# Subreddits, by the scraper that made them (ArcticZim, which Zimi wraps).
+_REDDIT_SCRAPERS = ("arcticzim",)
 # Bumped when _zim_kind learns a new kind, so a cache record decided under an
 # older rule ("" for a TED ZIM) is read once more.
-KIND_VERSION = 3
+KIND_VERSION = 4
 
 
 def _zim_kind(scraper, tags, meta_name):
@@ -1877,6 +1879,8 @@ def _zim_kind(scraper, tags, meta_name):
         return "video"
     if s.startswith(_QA_SCRAPERS):
         return "qa"
+    if s.startswith(_REDDIT_SCRAPERS):
+        return "reddit"
     return None
 
 
@@ -3971,7 +3975,7 @@ def main():
     p_create.add_argument(
         "source",
         nargs="+",
-        help="Folder path, or one or more http(s):// URLs (several URLs are "
+        help="Folder path, a subreddit (r/kiwix), or one or more http(s):// URLs (several URLs are "
         "captured into a single ZIM with an index page)",
     )
     p_create.add_argument(
@@ -4000,6 +4004,12 @@ def main():
     # said" — that difference is what lets a flag that only applies to a
     # site crawl be refused instead of silently ignored, and what keeps a
     # flag Zimi guessed at from being sent to another engine.
+    p_create.add_argument(
+        "--setup-reddit",
+        action="store_true",
+        help="Install the Reddit maker (ArcticZim) into its sidecar now, while "
+        "connected, so a subreddit can be made offline later",
+    )
     p_create.add_argument(
         "--site",
         action="store_true",

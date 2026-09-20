@@ -130,6 +130,13 @@ var CREATE_MODE_DEFS = [
     advanced: ['format', 'max_bytes', 'language'],
     pick: { max_bytes: '4G' }
   },
+  // A subreddit, by name: ArcticZim (installed into a sidecar on first use)
+  // builds its posts and comments from Arctic Shift's archive.
+  {
+    id: 'reddit', network: true, reddot: true,
+    label: 'create_label_reddit', placeholder: 'create_ph_reddit',
+    flags: [], advanced: []
+  },
   CREATE_BOOKMARKS_DEF,
   // Import (WARC/WACZ): back on the web (2026-09-19), as a picker. The
   // address field becomes a list of the archives in the library folder; no
@@ -491,6 +498,7 @@ function _createEtaText(est) {
 function _createModeAvailable(def, offline, importReady) {
   if (def.client) return true;   // nothing to fetch and nothing to install
   if (!offline) return true;
+  if (def.reddot) return false;  // Arctic Shift is on the internet
   if (def.network) return false;
   if (def.sidecar) return !!importReady;
   return true;
@@ -1193,6 +1201,7 @@ function _createRemember(name, value) {
 // vanishes from under a click is worse than one that admits the job late.
 // Once known, it is the known answer, so the tile stops vanishing entirely.
 var _createImportReady = _createCapBoot('sidecar') !== false;
+var _createReddotReady = _createCapBoot('reddot') !== false;
 // Whether this server can run the rendered engine — the server's answer, or
 // null until it gives one.
 var _createBrowserReady = _createCapBoot('browser');
@@ -1367,6 +1376,10 @@ function _createEngineFor(p, browserReady) {
 // you came from.
 function _openCreateInner(replaceState) {
   _createOpen = true;
+  if (typeof _createRememberMode === 'string' && _createRememberMode) {
+    _createSelected = _createRememberMode;
+    _createRememberMode = '';
+  }
   // The reload-into-Create boot gate (stamped by the head bootstrap before the
   // first paint) has done its job once the real Create chrome is up.
   document.documentElement.classList.remove('create-boot');
@@ -2501,6 +2514,10 @@ function _createIngest(data) {
     _createArchives = data.archives;
     _createArchivesDir = data.archives_dir || '';
     if (_createSelected === 'import') _renderCreateAddress();
+  }
+  if (typeof data.reddot_ready === 'boolean') {
+    _createReddotReady = data.reddot_ready;
+    _createRemember('reddot', data.reddot_ready);
   }
   if (typeof data.browser_install === 'string' && data.browser_install) {
     _createBrowserInstall = data.browser_install;

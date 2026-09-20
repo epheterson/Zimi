@@ -30,7 +30,7 @@ const ctx = {
     { name: 'osm-hawaii', title: 'Hawaii', kind: 'map', main_path: 'index.html' },
     { name: 'wikipedia_en_all', title: 'Wikipedia', main_path: 'A/Main' },
   ],
-  esc: escf, t: k => ({ tube: 'ZimiTube', cat_maps: 'Maps', app_empty_maps: 'No map yet.', app_empty_tube: 'No videos yet.', app_empty_exchange: 'No Q&A site yet.', exchange: 'ZimiExchange' })[k] || k, _getLibraryView: () => 'list',
+  esc: escf, t: k => ({ tube: 'ZimiTube', cat_maps: 'Maps', app_empty_maps: 'No map yet.', app_empty_tube: 'No videos yet.', app_empty_exchange: 'No Q&A site yet.', exchange: 'ZimiExchange', reddot: 'Reddot', app_empty_reddot: 'No subreddits yet.' })[k] || k, _getLibraryView: () => 'list',
   _userSession: null, document: { body: { dataset: {} } },
 };
 vm.createContext(ctx);
@@ -41,11 +41,16 @@ vm.runInContext([
   extract(/var _userPrefs = [^\n]*\n/, '_userPrefs'),
   extract(/function _appsAllowedByServer\(\) \{[\s\S]*?\n\}/, '_appsAllowedByServer'),
   extract(/function _appsEnabled\(\) \{[\s\S]*?\n\}/, '_appsEnabled'),
+  extract(/var _APP_CATEGORY = [^\n]*\n/, '_APP_CATEGORY'),
   extract(/function _appTileHtml\(app, title, icon, names, openFn\) \{[\s\S]*?\n\}/, '_appTileHtml'),
   extract(/function _mapsTileHtml\(\) \{[\s\S]*?\n\}/, '_mapsTileHtml'),
   extract(/var _EXCHANGE_SVG = [^\n]*\n/, '_EXCHANGE_SVG'),
   extract(/function _installedQaZims\(\) \{[\s\S]*?\n\}/, '_installedQaZims'),
   extract(/function _exchangeTileHtml\(\) \{[\s\S]*?\n\}/, '_exchangeTileHtml'),
+  extract(/var _REDDOT_SVG = [^\n]*\n/, '_REDDOT_SVG'),
+  extract(/var _createRememberMode = [^\n]*\n/, '_createRememberMode'),
+  extract(/function _installedRedditZims\(\) \{[\s\S]*?\n\}/, '_installedRedditZims'),
+  extract(/function _reddotTileHtml\(\) \{[\s\S]*?\n\}/, '_reddotTileHtml'),
   extract(/function _tubeTileHtml\(\) \{[\s\S]*?\n\}/, '_tubeTileHtml'),
   extract(/function _appsRowHtml\(\) \{[\s\S]*?\n\}/, '_appsRowHtml'),
 ].join('\n'), ctx);
@@ -57,7 +62,7 @@ ok('the ZimiTube tile names the video ZIMs', /<span class="zt">ZimiTube<\/span>/
 ctx.zimsCache = ctx.zimsCache.filter(z => z.kind !== 'video');
 ok('no video ZIM: the tile stays, empty, and opens the Video category', /app-empty tube-tile/.test(ctx._appsRowHtml()) && /No videos yet/.test(ctx._appsRowHtml()) && /_openCategory\(_APP_CATEGORY\.tube\)/.test(ctx._appsRowHtml()));
 ctx.zimsCache = [];
-ok('a fresh install still has the apps row, every tile a door to the catalog', (ctx._appsRowHtml().match(/app-empty/g) || []).length === 3);
+ok('a fresh install still has the apps row, every tile a door', (ctx._appsRowHtml().match(/app-empty/g) || []).length === 4);
 ok('the row can be turned off for everyone (the server stamps the shell) or for a signed-in person (their account), never per browser', /dataset\.zimiApps === '0'/.test(src) && /_appsAllowedByServer\(\) && \(!_userSession \|\| _userPrefs\.apps !== false\)/.test(src) && /if \(!_appsEnabled\(\)\) return '';/.test(src) && /fetch\('\/me\/prefs'/.test(src) && !/zimi_hide_apps/.test(src));
 ok('the server switch sits in Server settings and reads its state from the server', /_msFetch\('\/manage\/apps'\)/.test(src) && /_setAppsForServer\(this\.checked\)/.test(src));
 ctx.document.body.dataset.zimiApps = '0';
@@ -88,7 +93,7 @@ ok('no reading controls on Tube, in the bar or the ⋯', /_readingText = _readin
 ok('the breadcrumb is ZimiTube and the box says what it is for', /bcIcon\.title = t\('tube'\)/.test(src) && (src.match(/q\.placeholder = t\('tube_search_placeholder'\)/g) || []).length === 2);
 
 // ── a card becomes a page ────────────────────────────────────────────────
-ok('a ZIM page opened from an app gets history and an address, and the app closes', /if \(_tubeOpen \|\| _exchangeOpen\) \{[\s\S]*?_tubeOpen = false;[\s\S]*?_exchangeOpen = false;[\s\S]*?history\.pushState\(\{ mode: 'reader', zim: _navZim, path: _navPath \}, '', _articleDeepLinkPath\(_navZim, _navPath\)\);/.test(src));
+ok('a ZIM page opened from an app gets history and an address, and the app closes', /if \(_tubeOpen \|\| _exchangeOpen \|\| _reddotOpen\) \{[\s\S]*?_tubeOpen = false;[\s\S]*?_exchangeOpen = false;[\s\S]*?_reddotOpen = false;[\s\S]*?history\.pushState\(\{ mode: 'reader', zim: _navZim, path: _navPath \}, '', _articleDeepLinkPath\(_navZim, _navPath\)\);/.test(src));
 ok('closing the reader or opening any article leaves Tube', /function closeReader\(\) \{\n\s*if \(!readerOpen\) return;\n\s*_tubeOpen = false;/.test(src) && /function openArticle\(zim, path, title, opts\) \{\n\s*_tubeOpen = false;/.test(src));
 
 // ── the page ─────────────────────────────────────────────────────────────

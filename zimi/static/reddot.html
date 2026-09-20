@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reddot</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f2efe9; --surface: #faf8f4; --surface2: #f3f0ea; --border: #e4dfd4; --text: #26241f; --text2: #6a675e; --amber: #b5541c; --amber-glow: rgba(181,84,28,0.08); }
+  @media (prefers-color-scheme: dark) { :root { --bg: #17171a; --surface: #1f1f23; --surface2: #26262b; --border: #27272b; --text: #e8e8ed; --text2: #8a8a94; --amber: #e0863a; --amber-glow: rgba(224,134,58,0.12); } }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  a { color: var(--amber); text-decoration: none; }
+  button { font: inherit; }
+  .x { max-width: 1080px; margin: 0 auto; padding: 14px 16px 32px; }
+  @media (max-width: 480px) { .x { padding: 10px 12px 28px; } }
+  .chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 0 14px; padding-bottom: 2px; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex: none; display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .shelf { margin: 0 0 24px; }
+  .shelf-h { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; }
+  .shelf-h h2 { font-size: 15px; margin: 0; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .shelf-h .all { color: var(--amber); font-size: 12.5px; font-weight: 600; cursor: pointer; background: none; border: 0; padding: 4px 0; }
+  .p { display: grid; grid-template-columns: 52px 1fr; gap: 12px; padding: 11px 0; border-top: 1px solid var(--border); cursor: pointer; }
+  .p:first-of-type { border-top: 0; }
+  .score { text-align: center; font-weight: 600; font-size: 15px; color: var(--text2); padding-top: 2px; font-variant-numeric: tabular-nums; }
+  .score small { display: block; font-size: 10.5px; font-weight: 400; }
+  .p .t { font-weight: 600; font-size: 14.5px; line-height: 1.3; color: var(--text); }
+  .p .m { color: var(--text2); font-size: 12px; margin-top: 3px; }
+  .p .fl { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 6px; background: var(--amber-glow); color: var(--amber); margin-right: 6px; }
+  .p .ext { color: var(--text2); }
+  .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 8px; }
+  .head h2 { font-size: 16px; margin: 0; }
+  .head .n { color: var(--text2); font-size: 12px; }
+  .sorts { display: inline-flex; gap: 6px; }
+  .more { display: block; margin: 20px auto 8px; padding: 9px 20px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--text); cursor: pointer; }
+  .empty { color: var(--text2); text-align: center; padding: 48px 12px; line-height: 1.8; }
+  .empty .door { color: var(--amber); font-weight: 600; }
+  .back { display: inline-flex; align-items: center; gap: 6px; color: var(--amber); font-weight: 600; background: none; border: 0; padding: 0 0 12px; cursor: pointer; font-size: 13px; }
+  .pv h1 { font-size: 20px; line-height: 1.3; margin: 0 0 6px; }
+  .pv .who { color: var(--text2); font-size: 12.5px; margin: 0 0 14px; }
+  .pv .who b { color: var(--text); }
+  .prose { min-width: 0; overflow-wrap: anywhere; }
+  .prose img, .prose video { max-width: 100%; height: auto; border-radius: 8px; }
+  .prose pre { background: var(--surface2); padding: 10px 12px; border-radius: 8px; overflow-x: auto; font-size: 13px; }
+  .prose code { background: var(--surface2); padding: 1px 4px; border-radius: 4px; font-size: 13px; }
+  .prose blockquote { margin: 0; padding: 4px 12px; border-left: 3px solid var(--border); color: var(--text2); }
+  .ch { font-size: 13px; color: var(--text2); text-transform: uppercase; letter-spacing: .06em; margin: 22px 0 6px; }
+  .c { margin: 10px 0 0; padding: 0 0 0 12px; border-left: 2px solid var(--border); }
+  .c .cm { font-size: 12px; color: var(--text2); margin-bottom: 2px; }
+  .c .cm b { color: var(--text); font-weight: 600; }
+  .c .prose { font-size: 13.5px; }
+  .c .c { margin-left: 4px; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0 0; }
+  .actions a { display: inline-flex; align-items: center; padding: 7px 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 12.5px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="x">
+  <div id="home">
+    <div class="chips" id="chips"></div>
+    <div id="shelves"></div>
+    <div id="list" hidden>
+      <div class="head"><h2 id="l-title"></h2><span class="sorts" id="l-sorts"></span></div>
+      <div id="l-rows"></div>
+      <button class="more" id="more" hidden onclick="more()"></button>
+    </div>
+    <div class="empty" id="empty" hidden></div>
+  </div>
+  <div id="pview" class="pv" hidden>
+    <button class="back" onclick="closeP()">&#8592; <span id="backlabel"></span></button>
+    <h1 id="p-title"></h1>
+    <div class="who" id="p-who"></div>
+    <div class="prose" id="p-body"></div>
+    <div class="ch" id="p-ch"></div>
+    <div id="p-comments"></div>
+    <div class="actions"><a id="p-open" href="#"></a></div>
+  </div>
+</div>
+<script>
+// Reddot. Subreddits as ZIMs (made by ArcticZim, and by Zimi's create page
+// wrapping it), read in a view Zimi owns: a shelf per subreddit of its top
+// posts, a subreddit as a paged list (top, new), a post with its comment
+// tree, the original page one tap away. Zimi's top bar drives
+// reddotSearch(q) over the library's own title search.
+var STR = { title: 'Reddot', all: 'All', more: 'More', top: 'Top', new: 'New', comments: 'Comments', points: 'points', by: 'by', open_page: 'Open the original page', none: 'No posts match.', empty: 'No subreddit ZIMs installed yet. Make one from the Create page.', catalog: 'Make one', p: '' };
+try { var s0 = JSON.parse(decodeURIComponent(location.hash.slice(1) || '') || '{}'); for (var k0 in s0) STR[k0] = s0[k0]; } catch (e) {}
+var _zims = [], _zim = '', _sub = '', _sort = 'top', _page = 1, _pages = 0, _q = '', _busy = false;
+function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function zpath(zim, p) { return '/w/' + encodeURIComponent(zim) + '/' + String(p).split('/').map(encodeURIComponent).join('/'); }
+function J(v) { return JSON.stringify(v).replace(/"/g, '&quot;'); }
+function tell(msg) { try { if (window.parent !== window) window.parent.postMessage(msg, location.origin); } catch (e) {} }
+function goCreate() { tell({ zimi: 'create', mode: 'reddit' }); return false; }
+
+function row(r, zim) {
+  return '<div class="p" onclick="openP(' + J(zim) + ',' + J(r.page) + ')">' +
+    '<div class="score">' + esc(r.score) + '<small>' + esc(STR.points) + '</small></div>' +
+    '<div><div class="t">' + esc(r.title) + '</div><div class="m">' + (r.flair ? '<span class="fl">' + esc(r.flair) + '</span>' : '') +
+    'r/' + esc(r.subreddit) + (r.author ? ' · ' + esc(STR.by) + ' ' + esc(r.author) : '') + (r.date ? ' · ' + esc(r.date) : '') +
+    (r.external ? ' · <span class="ext">' + esc(r.external.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]) + '</span>' : '') + '</div></div></div>';
+}
+function renderChips() {
+  var c = document.getElementById('chips'); var subs = [];
+  _zims.forEach(function(z) { z.subreddits.forEach(function(s) { subs.push({ zim: z.name, sub: s }); }); });
+  c.innerHTML = (subs.length > 1 ? '<button class="chip' + (!_sub ? ' on' : '') + '" onclick="openHome()">' + esc(STR.all) + '</button>' : '') +
+    subs.map(function(s) { return '<button class="chip' + (_sub === s.sub && _zim === s.zim ? ' on' : '') + '" onclick="openSub(' + J(s.zim) + ',' + J(s.sub) + ')">r/' + esc(s.sub) + '</button>'; }).join('');
+  c.hidden = subs.length < 2;
+}
+function renderHome(data) {
+  _zims = data.zims || [];
+  renderChips();
+  document.getElementById('list').hidden = true;
+  var sh = document.getElementById('shelves'); sh.hidden = false;
+  sh.innerHTML = _zims.map(function(z) {
+    return (z.shelves || []).map(function(s) {
+      return '<section class="shelf"><div class="shelf-h"><h2>r/' + esc(s.subreddit) + '</h2><button class="all" onclick="openSub(' + J(z.name) + ',' + J(s.subreddit) + ')">' + esc(STR.all) + ' ›</button></div>' +
+        s.rows.map(function(r) { return row(r, z.name); }).join('') + '</section>';
+    }).join('');
+  }).join('');
+  var empty = document.getElementById('empty');
+  empty.hidden = _zims.length > 0;
+  empty.innerHTML = esc(STR.empty) + '<br><a class="door" href="/#create" onclick="return goCreate()">' + esc(STR.catalog) + ' ›</a>';
+}
+function renderList(title, rows, append) {
+  document.getElementById('shelves').hidden = true;
+  var l = document.getElementById('list'); l.hidden = false;
+  document.getElementById('l-title').textContent = title;
+  document.getElementById('l-sorts').innerHTML = _q ? '' : ['top', 'new'].map(function(k) { return '<button class="chip' + (_sort === k ? ' on' : '') + '" onclick="setSort(' + J(k) + ')">' + esc(STR[k]) + '</button>'; }).join('');
+  var host = document.getElementById('l-rows');
+  if (!append) host.innerHTML = '';
+  host.insertAdjacentHTML('beforeend', rows.map(function(r) { return row(r, r.zim || _zim); }).join(''));
+  var more = document.getElementById('more'); more.hidden = !_pages || _page >= _pages; more.textContent = STR.more;
+  var empty = document.getElementById('empty'); empty.hidden = host.children.length > 0; empty.textContent = STR.none;
+}
+function loadHome() {
+  fetch('/reddot/home').then(function(r) { return r.json(); }).then(function(d) {
+    renderHome(d);
+    if (STR.p) { var want = STR.p; STR.p = ''; var i = want.indexOf('/'); if (i > 0) openP(want.slice(0, i), want.slice(i + 1)); }
+  }).catch(function() { document.getElementById('empty').hidden = false; document.getElementById('empty').textContent = STR.none; });
+}
+function loadList(append) {
+  if (_busy) return; _busy = true;
+  fetch('/reddot/sub?zim=' + encodeURIComponent(_zim) + '&r=' + encodeURIComponent(_sub) + '&sort=' + _sort + '&page=' + _page).then(function(r) { return r.json(); }).then(function(d) {
+    _pages = d.pages || 0; renderList('r/' + _sub, d.rows || [], append);
+  }).finally(function() { _busy = false; });
+}
+function openHome() { closeP(true); _sub = ''; _zim = ''; _q = ''; renderChips(); document.getElementById('list').hidden = true; document.getElementById('shelves').hidden = false; document.getElementById('empty').hidden = _zims.length > 0; window.scrollTo(0, 0); }
+function openSub(zim, sub) { closeP(true); _zim = zim; _sub = sub; _q = ''; _page = 1; renderChips(); loadList(false); window.scrollTo(0, 0); }
+function setSort(k) { _sort = k; _page = 1; loadList(false); }
+function more() { if (_q) return; _page += 1; loadList(true); }
+function reddotSearch(q) {
+  _q = (q || '').trim(); closeP(true);
+  if (!_q) { openHome(); return; }
+  var zims = _zims.map(function(z) { return z.name; }).join(',');
+  if (!zims) return;
+  fetch('/search?q=' + encodeURIComponent(_q) + '&zim=' + encodeURIComponent(zims) + '&limit=20&fast=1').then(function(r) { return r.json(); }).then(function(d) {
+    var rows = (d.results || []).filter(function(r) { return /^r\/[^\/]+\/[^\/]+\/?$/.test(r.path || ''); }).map(function(r) {
+      var m = /^r\/([^\/]+)\//.exec(r.path); return { title: r.title, page: r.path.replace(/\/?$/, '/'), score: '', subreddit: m ? m[1] : '', author: '', date: '', flair: '', external: '', zim: r.zim };
+    });
+    _pages = 0; _page = 1; renderList('“' + _q + '”', rows, false);
+  }).catch(function() {});
+}
+function commentHtml(c) {
+  return '<div class="c"><div class="cm"><b>' + esc(c.author) + '</b> · ' + esc(c.score) + ' ' + esc(STR.points) + (c.date ? ' · ' + esc(c.date) : '') + '</div>' +
+    '<div class="prose">' + c.body + '</div>' + (c.children || []).map(commentHtml).join('') + '</div>';
+}
+function countComments(list) { return (list || []).reduce(function(n, c) { return n + 1 + countComments(c.children); }, 0); }
+function openP(zim, page) {
+  document.getElementById('home').hidden = true;
+  var v = document.getElementById('pview'); v.hidden = false;
+  document.getElementById('backlabel').textContent = STR.title;
+  document.getElementById('p-title').textContent = '…';
+  document.getElementById('p-body').innerHTML = ''; document.getElementById('p-comments').innerHTML = ''; document.getElementById('p-ch').textContent = '';
+  var open = document.getElementById('p-open'); open.href = zpath(zim, page); open.textContent = STR.open_page;
+  window.scrollTo(0, 0);
+  tell({ zimi: 'reddot-p', p: zim + '/' + page });
+  fetch('/reddot/post?zim=' + encodeURIComponent(zim) + '&p=' + encodeURIComponent(page)).then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
+    if (!d) { document.getElementById('p-title').textContent = STR.none; return; }
+    document.getElementById('p-title').textContent = d.title;
+    tell({ zimi: 'reddot-p', p: zim + '/' + page, title: d.title });
+    document.getElementById('p-who').innerHTML = 'r/' + esc(d.subreddit) + ' · <b>' + esc(d.score) + '</b> ' + esc(STR.points) + (d.author ? ' · ' + esc(STR.by) + ' ' + esc(d.author) : '') + (d.date ? ' · ' + esc(d.date) : '');
+    document.getElementById('p-body').innerHTML = d.body || '';
+    var n = countComments(d.comments);
+    document.getElementById('p-ch').textContent = n + ' ' + STR.comments;
+    document.getElementById('p-comments').innerHTML = (d.comments || []).map(commentHtml).join('');
+  }).catch(function() { document.getElementById('p-title').textContent = STR.none; });
+}
+function closeP(silent) {
+  var v = document.getElementById('pview'); if (v.hidden) return;
+  v.hidden = true; document.getElementById('home').hidden = false;
+  tell({ zimi: 'reddot-home' });
+  if (!silent) window.scrollTo(0, 0);
+}
+window.reddotSearch = reddotSearch; window.openP = openP; window.closeP = closeP; window.openSub = openSub; window.openHome = openHome; window.setSort = setSort; window.more = more;
+loadHome();
+</script>
+</body>
+</html>
