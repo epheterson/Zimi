@@ -149,7 +149,7 @@ ok('a map of this ground, installed or not, comes before a map of elsewhere; the
 ok('the dropdown loads both catalogs once and re-renders when they arrive', /var got = await _fetchCatalogItems\(\);[\s\S]*_kiwixOffers = placed\(got\.items\);/.test(src) && /manageFetch\('\/manage\/catalog-streetzim'\)/.test(fn('_mapOfferItems')) && /_mapOfferItems\(\)\.then\(function\(\) \{\r?\n\s*if \(dd\.classList\.contains\('visible'\)\) _renderMapSourceDropdown\(dd\);/.test(src));
 ok('only maps the server could place are kept, from a fresh fetch', /return _kiwixOffers\.concat\(_streetzimOffers\)/.test(src) && /extras = _mapOfferRowsHtml\(_mapOfferGroups\(_mapOfferAll\(\), pos\)\)/.test(src));
 ok('an offer row starts the download through the ordinary path and says where to watch it', /await downloadZim\(url, null\);[\s\S]*_showToast\(tH\('map_offer_started', \{map: title\}\)\)/.test(fn('_mapOfferDownload')));
-ok('the punch-out opens the catalog on the Maps category', /await enterManage\(null\);\r?\n\s*switchManageTab\('browse'\);\r?\n\s*drillCategory\('maps'\);/.test(fn('_openMapsCatalog')));
+ok('the punch-out opens the catalog on the Maps category', /await _openCategory\('maps'\)/.test(fn('_openMapsCatalog')) && /await enterManage\(null\);\r?\n\s*switchManageTab\('browse'\);\r?\n\s*drillCategory\(key\);/.test(fn('_openCategory')));
 function fn(name) { return extract(new RegExp('(?:async )?function ' + name + '\\([^)]*\\) \\{[\\s\\S]*?\\r?\\n\\}'), name); }
 
 const tpl = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'templates', 'index.html'), 'utf8');

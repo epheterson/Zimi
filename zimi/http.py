@@ -2251,7 +2251,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 from zimi import tube as _tube
 
                 try:
-                    limit = max(1, min(int(param("limit", "60")), 200))
+                    # Every video in the library is the point; the page asks
+                    # for all of it once and pages what it shows itself.
+                    limit = max(1, min(int(param("limit", "60")), 20000))
                     offset = max(0, int(param("offset", "0")))
                 except (TypeError, ValueError):
                     limit, offset = 60, 0

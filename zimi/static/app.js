@@ -2196,9 +2196,10 @@ function route(push) {
   // /manage/create* route is admin-gated server-side anyway — so the page
   // opens now and _initSecondary closes it if the answer comes back no. The
   // alternative, waiting, is the home-then-switch flash Eric asked us to kill.
-  if (location.hash === '#tube') {
+  if (location.hash === '#tube' || location.hash.indexOf('#tube?') === 0) {
     enterHome(false);
-    openTube(true);
+    var tubeQ = new URLSearchParams(location.hash.slice(location.hash.indexOf('?') + 1));
+    openTube(true, location.hash.indexOf('?') > 0 ? (tubeQ.get('play') || '') : '');
     return;
   }
   if (location.hash === '#maps') {
@@ -15977,13 +15978,33 @@ function _isTubePage() {
 
 // The page's own strings, handed over in the hash: the page is static and
 // has no i18n of its own.
-function _tubeStrings() {
+function _tubeStrings(play) {
   var keys = ['tube_videos', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay',
-    'tube_open_page', 'tube_all', 'tube_sort_mixed', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_no_media'];
-  var out = { title: t('tube') };
+    'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_no_media'];
+  var out = { title: t('tube'), catalog: t('app_browse_catalog'), play: play || '' };
   keys.forEach(function(k) { out[k.replace(/^tube_/, '')] = t(k); });
   return encodeURIComponent(JSON.stringify(out));
 }
+
+// What the pages Zimi owns say to the shell. Same origin, and only the
+// shapes listed here; anything else is ignored.
+window.addEventListener('message', function(e) {
+  if (e.origin !== location.origin || !e.data || typeof e.data !== 'object') return;
+  var d = e.data;
+  if (d.zimi === 'tube-play' && _tubeOpen && typeof d.play === 'string') {
+    // The player has an address of its own, so a playing video can be
+    // shared and bookmarked. replaceState: a card is not a navigation away.
+    history.replaceState({ mode: 'reader', tube: true, play: d.play }, '', _tubeUrl(d.play));
+    if (d.title) { document.title = d.title + ' \u2014 ' + t('tube'); _setWindowTitle(document.title); }
+  } else if (d.zimi === 'tube-home' && _tubeOpen) {
+    history.replaceState({ mode: 'reader', tube: true, play: '' }, '', _tubeUrl(''));
+    document.title = t('tube') + ' \u2014 Zimi';
+    _setWindowTitle(document.title);
+  } else if (d.zimi === 'catalog' && typeof d.category === 'string' && _APP_CATEGORY_KEYS.indexOf(d.category) >= 0) {
+    _openCategory(d.category);
+  }
+});
+var _APP_CATEGORY_KEYS = ['maps', 'ted', 'stack_exchange'];
 
 function _tubeSearch(val) {
   try {
@@ -15992,8 +16013,12 @@ function _tubeSearch(val) {
   } catch (e) {}
 }
 
-function openTube(replaceState) {
-  if (_isModClick()) { _lastMouseEvent = null; window.open('/#tube', '_blank'); return; }
+function _tubeUrl(play) {
+  return '/#tube' + (play ? '?play=' + encodeURIComponent(play) : '');
+}
+
+function openTube(replaceState, play) {
+  if (_isModClick()) { _lastMouseEvent = null; window.open(_tubeUrl(play), '_blank'); return; }
   if (_createOpen) closeCreate();
   if (_almanacOpen) closeAlmanac();
   if (mode === 'manage') { mode = 'home'; updateTopbar(); }
@@ -16002,43 +16027,48 @@ function openTube(replaceState) {
   currentArticle = null;
   readerSource = null;
   _tubeOpen = true;
-  var st = { mode: 'reader', tube: true };
-  if (replaceState) history.replaceState(st, '', '/#tube');
-  else history.pushState(st, '', '/#tube');
-  openReader(_TUBE_PAGE + '#' + _tubeStrings());
+  var st = { mode: 'reader', tube: true, play: play || '' };
+  if (replaceState) history.replaceState(st, '', _tubeUrl(play));
+  else history.pushState(st, '', _tubeUrl(play));
+  openReader(_TUBE_PAGE + '#' + _tubeStrings(play));
   document.title = t('tube') + ' \u2014 Zimi';
   _setWindowTitle(document.title);
   updateTopbar();
 }
 
-// The apps, first among the sources: Maps when a map is installed, Tube
-// when a video ZIM is. One row, each a tile like a source's.
+// The apps, first among the sources, on every install. Eric: "all the apps
+// can exist on a fresh install and suggest which zims to add or pop to
+// relevant catalog categories." An app with data opens; one without opens
+// the catalog category that feeds it, and its tile says so.
+var _APP_CATEGORY = { maps: 'maps', tube: 'ted', exchange: 'stack_exchange' };
+
 function _appsRowHtml() {
-  var tiles = _mapsTileHtml() + _tubeTileHtml();
+  var tiles = _mapsTileHtml() + _tubeTileHtml() + (typeof _exchangeTileHtml === 'function' ? _exchangeTileHtml() : '');
   if (!tiles) return '';
   var isTiles = _getLibraryView() === 'tiles';
   return '<div class="' + (isTiles ? 'stats-grid tiles' : 'stats-grid') + ' apps-grid">' + tiles + '</div>';
 }
 
-function _tubeTileHtml() {
-  var vids = _installedVideoZims();
-  if (!vids.length) return '';
-  var names = vids.map(function(z) { return z.title || z.name; });
-  return '<a class="stat-card tube-tile" href="#tube" data-zim="" onclick="return _spaNav(event, openTube)">' +
-      '<div class="card-icon">' + _TUBE_PLAY_SVG + '</div>' +
-      '<div class="card-info"><div class="name"><span class="zt">' + esc(t('tube')) + '</span></div>' +
+function _appTileHtml(app, title, icon, names, openFn) {
+  if (names.length) {
+    return '<a class="stat-card app-tile ' + app + '-tile" href="#' + app + '" data-zim="" onclick="return _spaNav(event, ' + openFn + ')">' +
+      '<div class="card-icon">' + icon + '</div>' +
+      '<div class="card-info"><div class="name"><span class="zt">' + esc(title) + '</span></div>' +
       '<div class="detail">' + esc(names.join(' \u00b7 ')) + '</div></div></a>';
+  }
+  return '<a class="stat-card app-tile app-empty ' + app + '-tile" href="/?manage" data-zim="" onclick="return _spaNav(event, function() { _openCategory(_APP_CATEGORY.' + app + '); })">' +
+    '<div class="card-icon">' + icon + '</div>' +
+    '<div class="card-info"><div class="name"><span class="zt">' + esc(title) + '</span></div>' +
+    '<div class="detail">' + esc(t('app_empty_' + app)) + '</div></div></a>';
+}
+
+function _tubeTileHtml() {
+  return _appTileHtml('tube', t('tube'), _TUBE_PLAY_SVG, _installedVideoZims().map(function(z) { return z.title || z.name; }), 'openTube');
 }
 var _TUBE_PLAY_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"/></svg>';
 
 function _mapsTileHtml() {
-  var maps = _installedMaps();
-  if (!maps.length) return '';
-  var names = maps.map(function(z) { return z.title || z.name; });
-  return '<a class="stat-card maps-tile" href="#maps" data-zim="" onclick="return _spaNav(event, openMaps)">' +
-      '<div class="card-icon">' + _MAPS_PIN_SVG + '</div>' +
-      '<div class="card-info"><div class="name"><span class="zt">' + esc(t('cat_maps')) + '</span></div>' +
-      '<div class="detail">' + esc(names.join(' \u00b7 ')) + '</div></div></a>';
+  return _appTileHtml('maps', t('cat_maps'), _MAPS_PIN_SVG, _installedMaps().map(function(z) { return z.title || z.name; }), 'openMaps');
 }
 var _MAPS_PIN_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
 
@@ -16237,9 +16267,16 @@ async function _mapOfferDownload(row) {
 // The whole Maps category of the catalog, with its source toggle.
 async function _openMapsCatalog() {
   _closeMapSourceDropdown();
+  await _openCategory('maps');
+}
+
+// A catalog category, from an app that has nothing to show yet: the app is
+// the door, the category is what fills it.
+async function _openCategory(key) {
+  if (readerOpen) closeReader();
   await enterManage(null);
   switchManageTab('browse');
-  drillCategory('maps');
+  drillCategory(key);
 }
 
 function _renderMapSourceDropdown(dd) {
@@ -19132,7 +19169,7 @@ window.addEventListener('popstate', async (e) => {
       doSearch(s.query, false);
     }
   } else if (s && s.mode === 'reader' && s.tube) {
-    openTube(true);
+    openTube(true, s.play || '');
   } else if (s && s.mode === 'reader' && s.zim) {
     // Going back to a reader state — show the source page, don't re-open reader
     _popstateNoAutoReader = true;

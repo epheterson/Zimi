@@ -44,7 +44,8 @@
   .meta { margin-top: 4px; font-size: 12px; color: var(--text2); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .more { display: block; margin: 22px auto 8px; padding: 9px 20px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--text); cursor: pointer; }
   .more:hover { border-color: var(--amber); color: var(--amber); }
-  .empty { color: var(--text2); text-align: center; padding: 48px 12px; }
+  .empty { color: var(--text2); text-align: center; padding: 48px 12px; line-height: 1.8; }
+  .empty .door { color: var(--amber); font-weight: 600; }
   /* the player */
   .player { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; }
   @media (max-width: 900px) { .player { grid-template-columns: 1fr; } }
@@ -110,10 +111,10 @@
 var PAGE = 60;
 var STR = { title: 'ZimiTube', videos: 'videos', sources: 'sources', more: 'More', none: 'No videos match.', empty: 'No video ZIMs installed yet.',
   up_next: 'Up next', autoplay: 'Autoplay', open_page: 'Open the original page', all: 'All',
-  sort_mixed: 'Mixed', sort_title: 'Title', sort_newest: 'Newest', sort_longest: 'Longest', no_media: 'This video cannot be played here; open its page instead.' };
+  sort_top: 'Top', sort_title: 'Title', sort_newest: 'Newest', sort_longest: 'Longest', no_media: 'This video cannot be played here; open its page instead.' };
 try { var s0 = JSON.parse(decodeURIComponent(location.hash.slice(1) || '') || '{}'); for (var k0 in s0) STR[k0] = s0[k0]; } catch (e) {}
-var _q = '', _zim = '', _sort = 'mixed', _all = [], _zims = [], _list = [], _shown = 0, _busy = false, _autoplay = true, _now = -1;
-try { _sort = localStorage.getItem('zimitube_sort') || 'mixed'; _autoplay = localStorage.getItem('zimitube_autoplay') !== '0'; } catch (e) {}
+var _q = '', _zim = '', _sort = 'top', _all = [], _zims = [], _list = [], _shown = 0, _busy = false, _autoplay = true, _now = -1;
+try { _sort = localStorage.getItem('zimitube_sort') || 'top'; if (_sort === 'mixed') _sort = 'top'; _autoplay = localStorage.getItem('zimitube_autoplay') !== '0'; } catch (e) {}
 
 function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function zpath(zim, p) { return '/w/' + encodeURIComponent(zim) + '/' + String(p).split('/').map(encodeURIComponent).join('/'); }
@@ -132,7 +133,8 @@ function card(v, i) {
       '<span class="meta">' + esc(who) + '</span></span></span></a>';
 }
 
-// The order on screen. "Mixed" is the server's interleave; the rest sort
+// The order on screen. "Top" is the server's interleave, each source's
+// own order (TED lists its most watched first) taken in turns; the rest sort
 // what is loaded, with what a source did not say (a date, a length) last.
 function sorted(items) {
   var a = items.slice();
@@ -145,13 +147,13 @@ function sorted(items) {
 function renderHome() {
   var chips = document.getElementById('chips'), shelves = document.getElementById('shelves'), grid = document.getElementById('grid'),
       empty = document.getElementById('empty'), more = document.getElementById('more'), n = document.getElementById('n'), sort = document.getElementById('sort');
-  sort.innerHTML = ['mixed', 'title', 'newest', 'longest'].map(function(k) { return '<option value="' + k + '"' + (k === _sort ? ' selected' : '') + '>' + esc(STR['sort_' + k]) + '</option>'; }).join('');
+  sort.innerHTML = ['top', 'title', 'newest', 'longest'].map(function(k) { return '<option value="' + k + '"' + (k === _sort ? ' selected' : '') + '>' + esc(STR['sort_' + k]) + '</option>'; }).join('');
   chips.innerHTML = (_zims.length > 1 ? '<button class="chip' + (!_zim ? ' on' : '') + '" onclick="setZim(\'\')">' + esc(STR.all) + '</button>' : '') +
     _zims.map(function(z) { return '<button class="chip' + (_zim === z.name ? ' on' : '') + '" onclick="setZim(' + JSON.stringify(z.name).replace(/"/g, '&quot;') + ')">' +
       (z.icon ? '<img src="' + esc(zpath(z.name, '-/icon')) + '" alt="">' : '') + esc(z.title) + ' <span style="opacity:.6">' + z.count + '</span></button>'; }).join('');
   chips.hidden = _zims.length < 2;
   _list = sorted(_all.filter(function(v) { return !_zim || v.zim === _zim; }));
-  var browsing = !_q && !_zim && _zims.length > 1 && _sort === 'mixed';
+  var browsing = !_q && !_zim && _zims.length > 1 && _sort === 'top';
   // Shelves: one per source, its first dozen; the grid under them is
   // everything in the chosen order. With a query or a chip: the grid alone.
   shelves.innerHTML = browsing ? _zims.map(function(z) {
@@ -160,12 +162,15 @@ function renderHome() {
       '<h2>' + esc(z.title) + '</h2><button class="all" onclick="setZim(' + JSON.stringify(z.name).replace(/"/g, '&quot;') + ')">' + esc(STR.all) + ' ' + z.count + ' \u203a</button></div>' +
       '<div class="row">' + mine.map(function(v) { return card(v, _list.indexOf(v)); }).join('') + '</div></section>';
   }).join('') : '';
-  _shown = Math.min(_list.length, Math.max(_shown, PAGE));
-  grid.innerHTML = _list.slice(0, _shown).map(function(v, i) { return card(v, i); }).join('');
+  // Browsing shows the shelves and nothing else: the grid under them
+  // repeated every card a second time. The grid is for a chip, a query or
+  // another order.
+  _shown = browsing ? 0 : Math.min(_list.length, Math.max(_shown, PAGE));
+  grid.innerHTML = browsing ? '' : _list.slice(0, _shown).map(function(v, i) { return card(v, i); }).join('');
   n.textContent = _list.length ? _list.length + ' ' + STR.videos + (_zims.length > 1 && !_zim ? ' \u00b7 ' + _zims.length + ' ' + STR.sources : '') : '';
   empty.hidden = _list.length > 0;
-  empty.textContent = _q ? STR.none : STR.empty;
-  more.hidden = _shown >= _list.length;
+  empty.innerHTML = _q ? esc(STR.none) : esc(STR.empty) + (STR.catalog ? '<br><a class="door" href="/?manage" onclick="return goCatalog()">' + esc(STR.catalog) + ' \u203a</a>' : '');
+  more.hidden = browsing || _shown >= _list.length;
   more.textContent = STR.more;
 }
 
@@ -174,6 +179,9 @@ function load() {
   var url = '/tube?limit=5000&offset=0' + (_q ? '&q=' + encodeURIComponent(_q) : '');
   fetch(url).then(function(r) { return r.json(); }).then(function(d) {
     _all = d.items || []; _zims = d.zims || []; _shown = 0; renderHome();
+    // Opened at an address: play what it names, once, then it is a page like
+    // any other visit here.
+    if (STR.play) { var want = STR.play; STR.play = ''; var i = _list.findIndex(function(v) { return v.zim + '/' + v.page === want; }); if (i >= 0) play(null, i); }
   }).catch(function() { document.getElementById('empty').hidden = false; document.getElementById('empty').textContent = STR.none; })
     .finally(function() { _busy = false; });
 }
@@ -204,6 +212,7 @@ function play(e, i) {
   paintAutoplay();
   var stage = document.getElementById('stage'); stage.innerHTML = '';
   window.scrollTo(0, 0);
+  tell({ zimi: 'tube-play', play: v.zim + '/' + v.page, title: v.title });
   fetch('/tube/play?zim=' + encodeURIComponent(v.zim) + '&page=' + encodeURIComponent(v.page)).then(function(r) { return r.ok ? r.json() : null; }).then(function(m) {
     if (_now !== i) return;
     if (!m || !m.media || !m.media.length) { stage.innerHTML = '<div class="nomedia">' + esc(STR.no_media) + '</div>'; return; }
@@ -224,8 +233,11 @@ function play(e, i) {
   }).join('');
   return false;
 }
+function tell(msg) { try { if (window.parent !== window) window.parent.postMessage(msg, location.origin); } catch (e) {} }
+function goCatalog() { tell({ zimi: 'catalog', category: 'ted' }); return false; }
 function closePlayer(silent) {
   var stage = document.getElementById('stage'); stage.innerHTML = '';
+  if (_now >= 0) tell({ zimi: 'tube-home' });
   _now = -1;
   document.getElementById('watch').hidden = true;
   document.getElementById('home').hidden = false;

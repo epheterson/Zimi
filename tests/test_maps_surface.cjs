@@ -30,19 +30,20 @@ const ctx = {
     { name: 'samoa', title: 'Samoa', kind: 'map', main_path: 'index.html' },
     { name: 'wikipedia_en_all', title: 'Wikipedia', main_path: 'A/Main' },
   ],
-  esc: escf, t: k => ({ cat_maps: 'Maps' })[k] || k, _getLibraryView: () => 'list',
+  esc: escf, t: k => ({ cat_maps: 'Maps', app_empty_maps: 'No map yet. Get one from the catalog.' })[k] || k, _getLibraryView: () => 'list',
 };
 vm.createContext(ctx);
 vm.runInContext([
   extract(/var _MAPS_PIN_SVG = [^\n]*\n/, '_MAPS_PIN_SVG'),
   extract(/function _installedMaps\(\) \{[\s\S]*?\n\}/, '_installedMaps'),
+  extract(/function _appTileHtml\(app, title, icon, names, openFn\) \{[\s\S]*?\n\}/, '_appTileHtml'),
   extract(/function _mapsTileHtml\(\) \{[\s\S]*?\n\}/, '_mapsTileHtml'),
 ].join('\n'), ctx);
 const tile = ctx._mapsTileHtml();
-ok('a stat-card like any source, named Maps, listing the maps', /^<a class="stat-card maps-tile" href="#maps"/.test(tile) && /<span class="zt">Maps<\/span>/.test(tile) && /Hawaii · Samoa/.test(tile));
+ok('a stat-card like any source, named Maps, listing the maps', /^<a class="stat-card app-tile maps-tile" href="#maps"/.test(tile) && /<span class="zt">Maps<\/span>/.test(tile) && /Hawaii · Samoa/.test(tile));
 ok('it opens the door', /onclick="return _spaNav\(event, openMaps\)"/.test(tile));
 ctx.zimsCache = ctx.zimsCache.filter(z => z.kind !== 'map');
-ok('no map installed, no tile', ctx._mapsTileHtml() === '');
+ok('no map installed: the tile stays and opens the Maps category of the catalog', /app-empty maps-tile/.test(ctx._mapsTileHtml()) && /No map yet/.test(ctx._mapsTileHtml()) && /_openCategory\(_APP_CATEGORY\.maps\)/.test(ctx._mapsTileHtml()));
 ok('the tile sits in the apps row before favorites on the plain home only', /if \(!homeScope && !filter && !homeRecentFilter && !homeLangFilter\.size\) \{\n\s*h \+= _appsRowHtml\(\);/.test(src.replace(/\r\n/g, '\n')) && /_mapsTileHtml\(\) \+ _tubeTileHtml\(\)/.test(src));
 
 // ── the one box ──────────────────────────────────────────────────────────

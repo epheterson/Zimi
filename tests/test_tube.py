@@ -225,3 +225,19 @@ def test_the_play_route_is_rate_limited_as_an_api_path():
     from zimi import http
 
     assert "/tube/play" in http._RATE_LIMITED_API_PATHS
+
+
+def test_one_card_per_talk_across_sources(tmp_path, monkeypatch):
+    """Two TED ZIMs (a playlist, a topic) carry the same talks; the feed
+    shows each once, naming the other ZIM it is in."""
+    _library(
+        tmp_path, monkeypatch,
+        [
+            ("ted_en_a_2023-09.zim", {"Scraper": "ted2zim 2.0.13", "Name": "ted_en_a"}, TED_FILES),
+            ("ted_en_b_2023-09.zim", {"Scraper": "ted2zim 2.0.13", "Name": "ted_en_b"}, TED_FILES),
+        ],
+    )
+    f = tube.feed()
+    assert f["total"] == 2 and f["sources"] == 2
+    assert [v["zim"] for v in f["items"]] == ["ted_en_a", "ted_en_a"]
+    assert f["items"][0]["also"] == [{"zim": "ted_en_b", "zim_title": "Test Survival", "page": f["items"][0]["page"]}]
