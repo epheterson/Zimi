@@ -26,7 +26,7 @@ ok('the breadcrumb is ZimiExchange and the box says what it is for', /bcIcon\.ti
 ok('shelves per site with tags, a paged list per site or tag, a question view with answers', /class="shelf"/.test(page) && /openTag\(/.test(page) && /'\/exchange\/site\?zim='/.test(page) && /'\/exchange\/q\?zim='/.test(page) && /q-answers/.test(page));
 ok('a link to another question stays inside ZimiExchange', /a\[data-q\]/.test(page));
 ok('the empty page is a door to the Q&A category', /category: 'stack_exchange'/.test(page));
-ok('the page holds in both themes', /prefers-color-scheme: dark/.test(page));
+ok('the page takes the shared sheet, which holds both themes', /<!--@apps\.css@-->/.test(page) && !/prefers-color-scheme/.test(page));
 for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n'))) {
   const d = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n', lang), 'utf8'));
   if (d.exchange !== 'ZimiExchange') ok('it is called ZimiExchange in ' + lang, false);

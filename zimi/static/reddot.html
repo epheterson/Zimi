@@ -4,59 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Reddot</title>
+<!--@apps.css@-->
 <style>
-  :root { color-scheme: light dark; --bg: #f2efe9; --surface: #faf8f4; --surface2: #f3f0ea; --border: #e4dfd4; --text: #26241f; --text2: #6a675e; --amber: #b5541c; --amber-glow: rgba(181,84,28,0.08); }
-  @media (prefers-color-scheme: dark) { :root { --bg: #17171a; --surface: #1f1f23; --surface2: #26262b; --border: #27272b; --text: #e8e8ed; --text2: #8a8a94; --amber: #e0863a; --amber-glow: rgba(224,134,58,0.12); } }
-  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-  a { color: var(--amber); text-decoration: none; }
-  button { font: inherit; }
-  .x { max-width: 1080px; margin: 0 auto; padding: 14px 16px 32px; }
-  @media (max-width: 480px) { .x { padding: 10px 12px 28px; } }
-  .chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 0 14px; padding-bottom: 2px; }
-  .chips::-webkit-scrollbar { display: none; }
-  .chip { flex: none; display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 13px; cursor: pointer; white-space: nowrap; }
-  .chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
-  .shelf { margin: 0 0 24px; }
-  .shelf-h { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; }
-  .shelf-h h2 { font-size: 15px; margin: 0; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-  .shelf-h .all { color: var(--amber); font-size: 12.5px; font-weight: 600; cursor: pointer; background: none; border: 0; padding: 4px 0; }
-  .p { display: grid; grid-template-columns: 52px 1fr; gap: 12px; padding: 11px 0; border-top: 1px solid var(--border); cursor: pointer; }
-  .p:first-of-type { border-top: 0; }
-  .score { text-align: center; font-weight: 600; font-size: 15px; color: var(--text2); padding-top: 2px; font-variant-numeric: tabular-nums; }
-  .score small { display: block; font-size: 10.5px; font-weight: 400; }
-  .p .t { font-weight: 600; font-size: 14.5px; line-height: 1.3; color: var(--text); }
-  .p .m { color: var(--text2); font-size: 12px; margin-top: 3px; }
-  .p .fl { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 6px; background: var(--amber-glow); color: var(--amber); margin-right: 6px; }
-  .p .ext { color: var(--text2); }
-  .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 8px; }
-  .head h2 { font-size: 16px; margin: 0; }
-  .head .n { color: var(--text2); font-size: 12px; }
   .sorts { display: inline-flex; gap: 6px; }
-  .more { display: block; margin: 20px auto 8px; padding: 9px 20px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--text); cursor: pointer; }
-  .empty { color: var(--text2); text-align: center; padding: 48px 12px; line-height: 1.8; }
-  .empty .door { color: var(--amber); font-weight: 600; }
-  .back { display: inline-flex; align-items: center; gap: 6px; color: var(--amber); font-weight: 600; background: none; border: 0; padding: 0 0 12px; cursor: pointer; font-size: 13px; }
-  .pv h1 { font-size: 20px; line-height: 1.3; margin: 0 0 6px; }
-  .pv .who { color: var(--text2); font-size: 12.5px; margin: 0 0 14px; }
-  .pv .who b { color: var(--text); }
-  .prose { min-width: 0; overflow-wrap: anywhere; }
-  .prose img, .prose video { max-width: 100%; height: auto; border-radius: 8px; }
-  .prose pre { background: var(--surface2); padding: 10px 12px; border-radius: 8px; overflow-x: auto; font-size: 13px; }
-  .prose code { background: var(--surface2); padding: 1px 4px; border-radius: 4px; font-size: 13px; }
-  .prose blockquote { margin: 0; padding: 4px 12px; border-left: 3px solid var(--border); color: var(--text2); }
-  .ch { font-size: 13px; color: var(--text2); text-transform: uppercase; letter-spacing: .06em; margin: 22px 0 6px; }
   .c { margin: 10px 0 0; padding: 0 0 0 12px; border-left: 2px solid var(--border); }
   .c .cm { font-size: 12px; color: var(--text2); margin-bottom: 2px; }
   .c .cm b { color: var(--text); font-weight: 600; }
   .c .prose { font-size: 13.5px; }
   .c .c { margin-left: 4px; }
-  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0 0; }
-  .actions a { display: inline-flex; align-items: center; padding: 7px 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 12.5px; }
-  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
-<div class="x">
+<div class="page">
   <div id="home">
     <div class="chips" id="chips"></div>
     <div id="shelves"></div>
@@ -67,12 +26,12 @@
     </div>
     <div class="empty" id="empty" hidden></div>
   </div>
-  <div id="pview" class="pv" hidden>
+  <div id="pview" class="item" hidden>
     <button class="back" onclick="closeP()">&#8592; <span id="backlabel"></span></button>
     <h1 id="p-title"></h1>
     <div class="who" id="p-who"></div>
     <div class="prose" id="p-body"></div>
-    <div class="ch" id="p-ch"></div>
+    <div class="section-h" id="p-ch"></div>
     <div id="p-comments"></div>
     <div class="actions"><a id="p-open" href="#"></a></div>
   </div>
@@ -93,11 +52,11 @@ function tell(msg) { try { if (window.parent !== window) window.parent.postMessa
 function goCreate() { tell({ zimi: 'create', mode: 'reddit' }); return false; }
 
 function row(r, zim) {
-  return '<div class="p" onclick="openP(' + J(zim) + ',' + J(r.page) + ')">' +
-    '<div class="score">' + esc(r.score) + '<small>' + esc(STR.points) + '</small></div>' +
+  return '<div class="row" onclick="openP(' + J(zim) + ',' + J(r.page) + ')">' +
+    '<div class="stat"><b>' + esc(r.score) + '</b>' + esc(STR.points) + '</div>' +
     '<div><div class="t">' + esc(r.title) + '</div><div class="m">' + (r.flair ? '<span class="fl">' + esc(r.flair) + '</span>' : '') +
     'r/' + esc(r.subreddit) + (r.author ? ' · ' + esc(STR.by) + ' ' + esc(r.author) : '') + (r.date ? ' · ' + esc(r.date) : '') +
-    (r.external ? ' · <span class="ext">' + esc(r.external.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]) + '</span>' : '') + '</div></div></div>';
+    (r.external ? ' · <span>' + esc(r.external.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]) + '</span>' : '') + '</div></div></div>';
 }
 function renderChips() {
   var c = document.getElementById('chips'); var subs = [];

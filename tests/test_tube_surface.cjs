@@ -106,7 +106,7 @@ ok('the default order is called Top', /_sort = 'top'/.test(page) && /sort_top/.t
 ok('the original page stays one tap away', /STR\.open_page/.test(page));
 ok('the page exposes its search to the top bar', /window\.tubeSearch = tubeSearch/.test(page));
 ok('strings arrive in the hash, escaped on the way in', /JSON\.parse\(decodeURIComponent\(location\.hash\.slice\(1\)/.test(page) && /function esc\(x\)/.test(page));
-ok('the page holds in both themes', /prefers-color-scheme: dark/.test(page) && /color-scheme: light dark/.test(page));
+ok('the page takes the shared sheet, which holds both themes', /<!--@apps\.css@-->/.test(page) && !/prefers-color-scheme/.test(page));
 for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n'))) {
   const d = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n', lang), 'utf8'));
   for (const k of ['tube', 'tube_search_placeholder', 'tube_videos', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay', 'tube_open_page', 'tube_sort_top', 'tube_no_media']) if (!d[k]) ok(k + ' in ' + lang, false);

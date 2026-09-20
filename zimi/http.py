@@ -813,6 +813,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("tube.html")
             + _static_hash("exchange.html")
             + _static_hash("reddot.html")
+            + _static_hash("apps.css")
             + _i18n_hash
         ).encode()
     ).hexdigest()[:8]
@@ -1544,6 +1545,19 @@ def _reconstruct_source_url(archive, entry_path):
 # ============================================================================
 # HTTP Request Handler
 # ============================================================================
+
+
+APP_PAGES = ("tube.html", "exchange.html", "reddot.html")
+_APPS_CSS_MARK = b"<!--@apps.css@-->"
+
+
+def _inline_apps_css(body):
+    try:
+        with open(os.path.join(_STATIC_DIR, "apps.css"), "rb") as f:
+            css = f.read()
+    except OSError:
+        return body
+    return body.replace(_APPS_CSS_MARK, b"<style>\n" + css + b"</style>", 1)
 
 
 def _index_content(apps=True):
@@ -3756,7 +3770,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 current_mtime = None
             with ZimHandler._static_cache_lock:
                 cached = ZimHandler._static_cache.get(rel_path)
-            if cached and current_mtime is not None and cached[2] == current_mtime:
+            if cached and current_mtime is not None and cached[2] == current_mtime and rel_path not in APP_PAGES:
                 body, content_type = cached[0], cached[1]
             else:
                 file_path = probe_path
@@ -3774,6 +3788,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # sw.js pins CACHE_VERSION to the running server version at
                 # serve time — the hardcoded constant went stale for a whole
                 # release cycle once and silently disabled the PWA.
+                # The app pages share one stylesheet, inlined here so each
+                # page stays one document and a change to the sheet reaches
+                # every app without a second request or a stale cache.
+                if rel_path in APP_PAGES:
+                    body = _inline_apps_css(body)
                 if rel_path == "sw.js":
                     # Key the cache on version + content hash so same-version
                     # deploys still produce new sw.js bytes → the browser

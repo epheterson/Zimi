@@ -28,7 +28,7 @@ ok('typing asks the page, which asks the library\'s own search across the ZIMs',
 ok('no reading controls on it', /!_isExchangePage\(\) && !_isReddotPage\(\)/.test(src));
 ok('the breadcrumb is Reddot and the box says what it is for', /bcIcon\.title = t\('reddot'\)/.test(src) && (src.match(/q\.placeholder = t\('reddot_search_placeholder'\)/g) || []).length === 2);
 ok('shelves per subreddit, a paged list with Top and New, a post with its comment tree', /class="shelf"/.test(page) && /setSort\(/.test(page) && /'\/reddot\/sub\?zim='/.test(page) && /'\/reddot\/post\?zim='/.test(page) && /function commentHtml\(c\)/.test(page) && /\(c\.children \|\| \[\]\)\.map\(commentHtml\)/.test(page));
-ok('the page holds in both themes', /prefers-color-scheme: dark/.test(page));
+ok('the page takes the shared sheet, which holds both themes', /<!--@apps\.css@-->/.test(page) && !/prefers-color-scheme/.test(page));
 // the Create page
 ok('the Create page offers a Subreddit mode that needs the internet', /id: 'reddit', network: true, reddot: true/.test(create) && /if \(def\.reddot\) return false;/.test(create));
 ok('the Create page can be opened on a remembered mode', /if \(typeof _createRememberMode === 'string' && _createRememberMode\) \{\n\s*_createSelected = _createRememberMode;/.test(create));

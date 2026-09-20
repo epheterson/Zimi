@@ -4,75 +4,45 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ZimiTube</title>
+<!--@apps.css@-->
 <style>
-  :root { color-scheme: light dark; --bg: #f2efe9; --surface: #faf8f4; --surface2: #f3f0ea; --border: #e4dfd4; --text: #26241f; --text2: #6a675e; --amber: #b5541c; --amber-glow: rgba(181,84,28,0.08); }
-  @media (prefers-color-scheme: dark) { :root { --bg: #17171a; --surface: #1f1f23; --surface2: #26262b; --border: #27272b; --text: #e8e8ed; --text2: #8a8a94; --amber: #e0863a; --amber-glow: rgba(224,134,58,0.12); } }
-  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-  a { color: inherit; text-decoration: none; }
-  button { font: inherit; }
-  .tube { max-width: 1240px; margin: 0 auto; padding: 14px 16px 32px; }
-  @media (max-width: 480px) { .tube { padding: 10px 12px 28px; } }
   .bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 2px 0 12px; }
   .bar .n { color: var(--text2); font-size: 12px; font-variant-numeric: tabular-nums; }
   .bar select { font: inherit; font-size: 12.5px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 5px 10px; }
-  .chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 0 14px; padding-bottom: 2px; }
-  .chips::-webkit-scrollbar { display: none; }
-  .chip { flex: none; display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); font-size: 13px; cursor: pointer; white-space: nowrap; }
-  .chip img { width: 16px; height: 16px; border-radius: 4px; }
-  .chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
-  .shelf { margin: 0 0 22px; }
-  .shelf-h { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
-  .shelf-h img { width: 22px; height: 22px; border-radius: 6px; }
-  .shelf-h h2 { font-size: 15px; margin: 0; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .shelf-h .all { color: var(--amber); font-size: 12.5px; font-weight: 600; cursor: pointer; background: none; border: 0; padding: 4px 0; }
-  .row { display: grid; grid-auto-flow: column; grid-auto-columns: 232px; gap: 12px; overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 6px; scrollbar-width: thin; }
-  @media (max-width: 480px) { .row { grid-auto-columns: 68vw; } }
+  .strip { display: grid; grid-auto-flow: column; grid-auto-columns: 232px; gap: 12px; overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 6px; scrollbar-width: thin; }
+  @media (max-width: 480px) { .strip { grid-auto-columns: 68vw; } }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 14px; }
   @media (max-width: 480px) { .grid { grid-template-columns: 1fr; gap: 12px; } }
-  .card { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; scroll-snap-align: start; cursor: pointer; }
+  .card { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; scroll-snap-align: start; cursor: pointer; color: inherit; }
   .card:hover, .card:focus-visible { border-color: var(--amber); outline: none; }
   .thumb { position: relative; aspect-ratio: 16 / 9; background: var(--surface2); display: block; }
   .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .thumb .dur { position: absolute; right: 8px; bottom: 8px; font-size: 11px; padding: 2px 6px; border-radius: 4px; background: rgba(0,0,0,0.75); color: #fff; font-variant-numeric: tabular-nums; }
   .thumb .play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; opacity: 0; transition: opacity .15s; background: rgba(0,0,0,0.18); }
   .card:hover .play { opacity: 1; }
-  .body { padding: 11px 13px 13px; display: flex; gap: 10px; }
+  .body { padding: 12px 12px 12px; display: flex; gap: 10px; }
   .body img { width: 26px; height: 26px; border-radius: 7px; flex: none; margin-top: 1px; }
   .body .letter { width: 26px; height: 26px; border-radius: 7px; flex: none; background: var(--surface2); color: var(--text2); font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center; }
   .txt { min-width: 0; }
   .title { font-weight: 600; font-size: 14px; line-height: 1.32; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .meta { margin-top: 4px; font-size: 12px; color: var(--text2); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .more { display: block; margin: 22px auto 8px; padding: 9px 20px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--text); cursor: pointer; }
-  .more:hover { border-color: var(--amber); color: var(--amber); }
-  .empty { color: var(--text2); text-align: center; padding: 48px 12px; line-height: 1.8; }
-  .empty .door { color: var(--amber); font-weight: 600; }
   /* the player */
   .player { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; }
   @media (max-width: 900px) { .player { grid-template-columns: 1fr; } }
-  .stage { background: #000; border-radius: 12px; overflow: hidden; aspect-ratio: 16 / 9; }
+  .stage { background: #000; border-radius: var(--radius); overflow: hidden; aspect-ratio: 16 / 9; }
   .stage video { width: 100%; height: 100%; display: block; background: #000; }
   .stage .nomedia { color: #ddd; padding: 32px; text-align: center; }
   .about { padding: 12px 2px 0; }
-  .about h1 { font-size: 18px; margin: 0 0 6px; line-height: 1.3; }
-  .who { display: flex; align-items: center; gap: 10px; color: var(--text2); font-size: 13px; margin: 0 0 10px; }
-  .who img { width: 28px; height: 28px; border-radius: 8px; }
-  .who b { color: var(--text); font-weight: 600; }
   .desc { font-size: 13.5px; color: var(--text); white-space: pre-wrap; max-width: 70ch; }
-  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 0; }
-  .actions a, .actions button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: 12.5px; }
-  .actions .on { background: var(--amber-glow); border-color: var(--amber); color: var(--amber); }
-  .next h3 { font-size: 13px; margin: 0 0 10px; color: var(--text2); text-transform: uppercase; letter-spacing: .06em; }
-  .next .item { display: grid; grid-template-columns: 124px 1fr; gap: 10px; margin: 0 0 10px; cursor: pointer; align-items: start; }
-  .next .item .thumb { border-radius: 8px; overflow: hidden; }
-  .next .item .t { font-weight: 600; font-size: 13px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .next .item .m { font-size: 11.5px; color: var(--text2); margin-top: 2px; }
-  .next .item.now .t { color: var(--amber); }
-  .back { display: inline-flex; align-items: center; gap: 6px; color: var(--amber); font-weight: 600; background: none; border: 0; padding: 0 0 12px; cursor: pointer; font-size: 13px; }
-  [hidden] { display: none !important; }
+  .next .item-r { display: grid; grid-template-columns: 124px 1fr; gap: 10px; margin: 0 0 10px; cursor: pointer; align-items: start; }
+  .next .item-r .thumb { border-radius: var(--radius-s); overflow: hidden; }
+  .next .item-r .t { font-weight: 600; font-size: 13px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .next .item-r .m { font-size: 11.5px; color: var(--text2); margin-top: 2px; }
+  .next .item-r.now .t { color: var(--amber); }
 </style>
 </head>
 <body>
-<div class="tube">
+<div class="page">
   <div id="home">
     <div class="bar"><span class="n" id="n"></span>
       <select id="sort" onchange="setSort(this.value)"></select></div>
@@ -87,7 +57,7 @@
     <div class="player">
       <div>
         <div class="stage" id="stage"></div>
-        <div class="about">
+        <div class="about item">
           <h1 id="w-title"></h1>
           <div class="who" id="w-who"></div>
           <div class="desc" id="w-desc"></div>
@@ -97,7 +67,7 @@
           </div>
         </div>
       </div>
-      <div class="next"><h3 id="w-nexth"></h3><div id="w-next"></div></div>
+      <div class="next"><div class="section-h" id="w-nexth"></div><div id="w-next"></div></div>
     </div>
   </div>
 </div>
@@ -160,7 +130,7 @@ function renderHome() {
     var mine = _all.filter(function(v) { return v.zim === z.name; }).slice(0, 12);
     return '<section class="shelf"><div class="shelf-h">' + (z.icon ? '<img src="' + esc(zpath(z.name, '-/icon')) + '" alt="">' : '') +
       '<h2>' + esc(z.title) + '</h2><button class="all" onclick="setZim(' + JSON.stringify(z.name).replace(/"/g, '&quot;') + ')">' + esc(STR.all) + ' ' + z.count + ' \u203a</button></div>' +
-      '<div class="row">' + mine.map(function(v) { return card(v, _list.indexOf(v)); }).join('') + '</div></section>';
+      '<div class="strip">' + mine.map(function(v) { return card(v, _list.indexOf(v)); }).join('') + '</div></section>';
   }).join('') : '';
   // Browsing shows the shelves and nothing else: the grid under them
   // repeated every card a second time. The grid is for a chip, a query or
@@ -228,7 +198,7 @@ function play(e, i) {
   var next = document.getElementById('w-next');
   next.innerHTML = _list.slice(Math.max(0, i - 1), i + 12).map(function(w) {
     var j = _list.indexOf(w);
-    return '<div class="item' + (j === i ? ' now' : '') + '" onclick="play(null, ' + j + ')"><span class="thumb">' + (w.thumb ? '<img src="' + esc(zpath(w.zim, w.thumb)) + '" alt="" loading="lazy" onerror="this.remove()">' : '') +
+    return '<div class="item-r' + (j === i ? ' now' : '') + '" onclick="play(null, ' + j + ')"><span class="thumb">' + (w.thumb ? '<img src="' + esc(zpath(w.zim, w.thumb)) + '" alt="" loading="lazy" onerror="this.remove()">' : '') +
       (fmtDur(w.duration) ? '<span class="dur">' + esc(fmtDur(w.duration)) + '</span>' : '') + '</span><div><div class="t">' + esc(w.title) + '</div><div class="m">' + esc([w.speaker, w.zim_title].filter(Boolean).join(' \u00b7 ')) + '</div></div></div>';
   }).join('');
   return false;
