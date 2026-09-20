@@ -42,3 +42,12 @@ def test_the_sheet_is_part_of_the_asset_bundle():
         src = f.read()
     assert '_static_hash("apps.css")' in src
     assert '_static_hash("apps.js")' in src
+
+
+def test_an_app_page_is_never_cached_as_immutable():
+    """The reader loads /static/tube.html at its bare address, so a year-long
+    immutable cache kept the old page after a deploy."""
+    with open(http.__file__, encoding="utf-8") as f:
+        src = f.read()
+    branch = src[src.index('elif rel_path in APP_PAGES:'):]
+    assert 'self.send_header("Cache-Control", "no-cache")' in branch[:600]

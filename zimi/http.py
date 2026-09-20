@@ -3842,6 +3842,12 @@ class ZimHandler(BaseHTTPRequestHandler):
         if rel_path == "sw.js":
             self.send_header("Service-Worker-Allowed", "/")
             self.send_header("Cache-Control", "no-cache")
+        elif rel_path in APP_PAGES:
+            # The reader loads an app page at its bare address (no version
+            # in the URL, the strings ride in the hash), so "immutable for a
+            # year" kept the old page on a phone after every deploy. Small
+            # and inlined at serve time: ask each time.
+            self.send_header("Cache-Control", "no-cache")
         elif rel_path.startswith("i18n/"):
             self.send_header("Cache-Control", "public, max-age=86400")
         else:

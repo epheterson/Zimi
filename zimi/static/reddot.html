@@ -49,15 +49,17 @@ function goCreate() { tell({ zimi: 'create', mode: 'reddit' }); return false; }
 // A row names its subreddit only when its list does not: a shelf and a
 // subreddit's list are one subreddit by definition; a search is not.
 function row(r, zim, mixed) {
+  // Each fact its own span: the separator between two facts is drawn by
+  // the stylesheet on the second, so a line never ends in a dangling dot.
   var facts = [];
   if (mixed) facts.push('r/' + esc(r.subreddit));
   if (r.author) facts.push(esc(STR.by) + ' ' + esc(r.author));
   if (r.date) facts.push(esc(r.date));
-  if (r.external) facts.push('<span>' + esc(r.external.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]) + '</span>');
+  if (r.external) facts.push(esc(r.external.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]));
   return '<div class="row" onclick="openP(' + J(zim) + ',' + J(r.page) + ')">' +
     '<div class="stat">' + (r.score === '' ? '' : '<b>' + esc(r.score) + '</b>' + esc(Number(r.score) === 1 ? STR.point : STR.points)) + '</div>' +
     '<div><div class="t">' + esc(r.title) + '</div><div class="m">' + (r.flair ? '<span class="fl">' + esc(r.flair) + '</span>' : '') +
-    facts.join(' · ') + '</div></div></div>';
+    facts.map(function(f) { return '<span class="fact">' + f + '</span>'; }).join('') + '</div></div></div>';
 }
 function renderChips() {
   var c = document.getElementById('chips'); var subs = [];

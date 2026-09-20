@@ -1713,6 +1713,11 @@ function updateTopbar() {
   var mapSrcBtn = document.getElementById('map-source-btn');
   if (mapSrcBtn) {
     var showMapSrc = _readingArticle && currentArticle && _isMapZim(currentArticle.zim) && _installedMaps().length > 1;
+    // A map page carries one more button (the picker) than any other page,
+    // and on a phone that squeezed the box to a third of its placeholder.
+    // The bookmarks button steps aside there: the history button's panel
+    // holds the bookmarks too.
+    document.body.classList.toggle('map-page', !!(_readingArticle && currentArticle && _isMapZim(currentArticle.zim)));
     mapSrcBtn.style.display = showMapSrc ? 'flex' : 'none';
     if (!showMapSrc) _closeMapSourceDropdown();
   }

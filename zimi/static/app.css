@@ -2449,6 +2449,9 @@
     .topbar.search-focused .topbar-more,
     .topbar.search-focused .library-btn,
     .topbar.search-focused #bm-panel-btn { display: none !important; }
+    /* On a map the picker takes the bookmarks button's place; the history
+       panel's Bookmarks tab is where they are. */
+    body.map-page #bm-panel-btn { display: none !important; }
     .topbar.search-focused .lang-dropdown { display: none !important; }
     /* v1.6: Language dropdown — full width on mobile */
     .lang-dropdown { min-width: 160px; }
