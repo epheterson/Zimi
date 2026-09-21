@@ -3856,6 +3856,16 @@ def _create_import_ready():
         return False
 
 
+def _reddit_ready():
+    """Whether the ArcticZim sidecar is installed (``zimi create --setup-reddit``)."""
+    try:
+        from zimi import reddot
+
+        return bool(reddot.sidecar_status()["installed"])
+    except Exception:
+        return False
+
+
 def _create_browser_ready():
     """True when the rendered engine can actually run here — Playwright
     importable AND a Chromium that launches.
@@ -4082,6 +4092,8 @@ def _creator_payload():
         "browser_ready": known["browser_ready"] if known else None,
         "alive_ready": known["alive_ready"] if known else None,
         "sidecar": known["sidecar"] if known else None,
+        # ArcticZim, the subreddit engine: two files on disk, no probe.
+        "reddit_ready": _reddit_ready(),
         "probing": known is None,
         # None, not "", when no root is configured — the same shape the create
         # page's probe uses, so both readers treat "unset" the same way.
@@ -4788,29 +4800,7 @@ def handle_manage_get(handler, parsed, params):
         # panel renders from a single fetch.
         from zimi import users as _users
 
-        return handler._json(
-            200,
-            {
-                "users": _users.list_users(),
-                "zims": sorted(_srv.get_zim_files().keys()),
-                # Rich per-ZIM options for the allowlist picker (used by both the
-                # per-user Limited picker and the public-access Limited picker).
-                "zim_options": _zim_picker_options(),
-                # Anonymous-access policy (Open / Limited / Sign-in required).
-                "public_access": _users.public_access_status(),
-                # The PRIMARY admin (password-file account) is not stored in
-                # users.json — surface it as a synthetic, non-deletable row so
-                # the UI can show "the admin" alongside the named users.
-                "primary_admin": {
-                    "name": _get_manage_user() or "admin",
-                    "role": "admin",
-                    "primary": True,
-                },
-                # Which kind of admin is viewing — the client hides admin-only
-                # controls (creating/managing other admins) for secondaries.
-                "self_kind": admin_kind(handler),
-            },
-        )
+        return handler._json(200, _users_payload(handler))
 
     elif parsed.path == "/manage/public-access":
         # Anonymous-access policy on its own, with the picker options — a
@@ -5447,7 +5437,41 @@ def _handle_users_post(handler, data):
         return handler._json(400, {"error": "unknown action"})
     if not ok:
         return handler._json(400, {"error": err or "operation failed"})
-    return handler._json(200, {"status": "ok", "users": _users.list_users()})
+    # The whole panel, as the GET gives it: the client paints from one
+    # object, and a reply with only the users left the public-access card
+    # reading "Open" and the allowlist picker "No ZIMs installed" after every
+    # change (Eric, 2026-09-21: "change my claude user to limited then my
+    # public access changes to open!? That makes zero sense").
+    return handler._json(200, dict(_users_payload(handler), status="ok"))
+
+
+def _users_payload(handler):
+    """The Users panel in one object: the accounts, the ZIMs an allowlist
+    can name, the anonymous-access policy, the primary admin and which kind
+    of admin is looking. Every reply that changes any of it returns all of
+    it."""
+    from zimi import users as _users
+
+    return {
+        "users": _users.list_users(),
+        "zims": sorted(_srv.get_zim_files().keys()),
+        # Rich per-ZIM options for the allowlist picker (used by both the
+        # per-user Limited picker and the public-access Limited picker).
+        "zim_options": _zim_picker_options(),
+        # Anonymous-access policy (Open / Limited / Sign-in required).
+        "public_access": _users.public_access_status(),
+        # The PRIMARY admin (password-file account) is not stored in
+        # users.json — surface it as a synthetic, non-deletable row so
+        # the UI can show "the admin" alongside the named users.
+        "primary_admin": {
+            "name": _get_manage_user() or "admin",
+            "role": "admin",
+            "primary": True,
+        },
+        # Which kind of admin is viewing — the client hides admin-only
+        # controls (creating/managing other admins) for secondaries.
+        "self_kind": admin_kind(handler),
+    }
 
 
 # ============================================================================

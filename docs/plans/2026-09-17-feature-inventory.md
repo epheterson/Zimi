@@ -118,6 +118,9 @@ Eric: "We're on a new major release here maps release and each of those apps of 
 
 ## Smaller parked items
 
+- A Like button in the apps, and what people like or save. Eric, 2026-09-21: "Let's add like button and start tracking wat content users like or save that for future release and write it down?" Written down: next release. What it needs decided first: whether a like lives with the account (like bookmarks) or the browser, and whether an admin sees a library-wide tally.
+- Apps per user (an admin limits which apps an account sees). Eric, 2026-09-21: "Wanted to see if I can limit apps to users yet but that can be future." The server-wide and per-account switches shipped in 1.10; the per-user allowlist is the remaining piece and fits the allowlist editor.
+
 - Localization: `pl()` pluralization, about fifteen hardcoded strings, a full localization revamp "eventually, not this PR".
 - @ and # search tokens with a picker; query-shape ranking. Both parked by Eric after the first cut was reverted.
 - #69 update frequency not selectable. Open; needs a decision on whether the schedule is a setting.

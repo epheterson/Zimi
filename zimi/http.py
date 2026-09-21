@@ -165,6 +165,7 @@ _RATE_LIMITED_API_PATHS = (
     "/tube/play",
     "/exchange",
     "/reddot",
+    "/map-home",
     "/read",
     "/suggest",
     "/random",
@@ -2301,6 +2302,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 zim = param("zim")
                 if sub in ("", "home"):
                     return self._json(200, _rd.home())
+                if sub == "random":
+                    got = _rd.random_post()
+                    return self._json(200, got) if got else self._json(404, {"error": "no posts"})
                 if not zim or zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
                     return self._json(404, {"error": "not found"})
                 if sub == "sub":
@@ -2321,6 +2325,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 zim = param("zim")
                 if sub in ("", "home"):
                     return self._json(200, _ex.home())
+                if sub == "random":
+                    got = _ex.random_question()
+                    return self._json(200, got) if got else self._json(404, {"error": "no questions"})
                 if not zim or zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
                     return self._json(404, {"error": "not found"})
                 if sub == "site":
@@ -2366,6 +2373,13 @@ class ZimHandler(BaseHTTPRequestHandler):
                 groups = _srv.find_places(q)
                 _record_metric("/places", time.time() - t0)
                 return self._json(200, {"groups": groups, "elapsed": round(time.time() - t0, 3)})
+            elif parsed.path == "/map-home":
+                # Where a map opens when nobody has been on it yet.
+                zim = param("zim")
+                if not zim or zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
+                    return self._json(404, {"error": "not found"})
+                view = _srv._map_home_view(zim)
+                return self._json(200, view or {"error": "no place index"})
             elif parsed.path == "/random":
                 zim = param("zim")  # optional: scope to specific ZIM
                 if zim:

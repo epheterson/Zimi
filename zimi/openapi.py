@@ -407,6 +407,7 @@ def build_openapi():
                                 "poster": {"type": "string"},
                                 "page": {"type": "string"},
                                 "ogv": {"type": "string", "description": "Path of the ZIM's own ogv.js decoder, or empty"},
+                                "missing": {"type": "boolean", "description": "True when the page names files the ZIM does not carry"},
                             },
                             "required": ["media"],
                         },
@@ -466,6 +467,37 @@ def build_openapi():
                 "summary": "Every subreddit ZIM with a shelf per subreddit of its top posts",
                 "operationId": "reddotHome",
                 "responses": {**_json_response("200", {"type": "object", "properties": {"zims": {"type": "array", "items": {"type": "object"}}}, "required": ["zims"]})},
+            }
+        },
+        "/reddot/random": {
+            "get": {
+                "summary": "A post by chance: a subreddit, a page of its top posts, a post on it",
+                "operationId": "reddotRandom",
+                "responses": {
+                    **_json_response("200", {"type": "object", "properties": {"zim": {"type": "string"}, "page": {"type": "string"}, "title": {"type": "string"}, "subreddit": {"type": "string"}}, "required": ["zim", "page"]}),
+                    **_json_response("404", error),
+                },
+            }
+        },
+        "/exchange/random": {
+            "get": {
+                "summary": "A question by chance: a site, a page of its most voted, a question on it",
+                "operationId": "exchangeRandom",
+                "responses": {
+                    **_json_response("200", {"type": "object", "properties": {"zim": {"type": "string"}, "page": {"type": "string"}, "title": {"type": "string"}}, "required": ["zim", "page"]}),
+                    **_json_response("404", error),
+                },
+            }
+        },
+        "/map-home": {
+            "get": {
+                "summary": "Where a map opens when no position is remembered: over its settlements (maps with a place index)",
+                "operationId": "mapHome",
+                "parameters": [_param("zim", {"type": "string"}, required=True)],
+                "responses": {
+                    **_json_response("200", {"type": "object", "properties": {"lat": {"type": "number"}, "lng": {"type": "number"}, "zoom": {"type": "integer"}, "error": {"type": "string"}}}),
+                    **_json_response("404", error),
+                },
             }
         },
         "/reddot/sub": {

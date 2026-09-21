@@ -65,11 +65,18 @@ log = logging.getLogger("zimi.video")
 
 DEFAULT_MAX_ZIM_BYTES = 4 * 1024**3  # total budget: keep video ZIMs shareable
 # Progressive-first ~720p: no merge step, so ffmpeg is never required.
-DEFAULT_VIDEO_FORMAT = "best[height<=720][ext=mp4]/best[height<=720]/best"
+# H.264 (avc1) before anything else at the same cap: YouTube's "best" MP4 is
+# AV1 now, which Safari cannot decode on any iPhone before the 15 Pro, so a
+# ZIM made with the default played in Chrome and sat dead on Eric's phone
+# ("This video isn't included in this ZIM"). H.264 plays everywhere.
+DEFAULT_VIDEO_FORMAT = (
+    "best[height<=720][ext=mp4][vcodec^=avc1]/best[height<=720][ext=mp4]/best[height<=720]/best"
+)
 # With ffmpeg on the box the same cap can be met by merging a video-only and
 # an audio-only stream, which is the only way YouTube offers anything above
 # 360p now, and the result is remuxed once so the index sits at the front.
 DEFAULT_VIDEO_FORMAT_MERGED = (
+    "bestvideo[height<=720][ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/"
     "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/" + DEFAULT_VIDEO_FORMAT
 )
 # A fragmented MP4 — what PeerTube serves as its plain file, and what a

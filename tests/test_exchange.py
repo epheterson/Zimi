@@ -122,3 +122,25 @@ def test_newest_per_keeps_the_newest_then_the_fullest_and_the_keyless():
     ]
     kept = srv.newest_per(rows, lambda r: "" if r["id"] == "d" else "k")
     assert [r["id"] for r in kept] == ["c", "d"]
+
+
+def test_the_dice_land_on_a_question(monkeypatch):
+    """A site by chance, a page of its most-voted list by chance, a question
+    on it by chance; None with no site installed."""
+    import random
+
+    from zimi import exchange
+
+    monkeypatch.setattr(exchange, "sites", lambda: [{"name": "cooking", "title": "Cooking"}, {"name": "diy", "title": "DIY"}])
+    calls = []
+
+    def listing(name, page=1, tag=""):
+        calls.append((name, page))
+        return {"rows": [{"page": "questions/%d/x" % (page * 10 + i), "title": "Q%d" % i} for i in range(3)], "pages": 4}
+
+    monkeypatch.setattr(exchange, "listing", listing)
+    got = exchange.random_question(random.Random(3))
+    assert got["zim"] in ("cooking", "diy") and got["page"].startswith("questions/") and got["title"].startswith("Q")
+    assert calls[0][1] == 1
+    monkeypatch.setattr(exchange, "sites", lambda: [])
+    assert exchange.random_question(random.Random(3)) is None

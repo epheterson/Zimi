@@ -333,5 +333,44 @@ def random_place(archive, rng=None):
     return None
 
 
+_HOME_SAMPLE = 40
+_HOME_MIN_ZOOM, _HOME_MAX_ZOOM = 4, 10
+_homes = {}
+
+
+def home_view(archive):
+    """Where this map opens the first time: over its settlements, not over
+    the middle of its region's box. Hawaii's box runs from Midway to the Big
+    Island, so its middle is open ocean and the islands sit off the right
+    edge (Eric: "I gotta pull hawaii in from the right every time"). A
+    fixed-seed sample of the place index gives the median settlement and a
+    zoom that holds the middle four fifths of them; the same map always
+    opens the same way. None for a map without a place index."""
+    key = getattr(archive, "filename", None) or id(archive)
+    if key in _homes:
+        return _homes[key]
+    rng = random.Random(7)
+    pts = []
+    for _ in range(_HOME_SAMPLE):
+        p = random_place(archive, rng)
+        if p and p["type"] == "place":
+            pts.append((p["lat"], p["lng"]))
+    if not pts:
+        pts = [(p["lat"], p["lng"]) for p in (random_place(archive, rng) for _ in range(_HOME_SAMPLE)) if p]
+    view = None
+    if pts:
+        lats = sorted(x[0] for x in pts)
+        lngs = sorted(x[1] for x in pts)
+        n = len(pts)
+        lo, hi = n // 10, max(n // 10, n - 1 - n // 10)
+        lat, lng = lats[n // 2], lngs[n // 2]
+        span = max(lats[hi] - lats[lo], (lngs[hi] - lngs[lo]) * max(0.2, math.cos(math.radians(lat))), 0.05)
+        zoom = int(max(_HOME_MIN_ZOOM, min(_HOME_MAX_ZOOM, math.ceil(math.log2(360 / span)))))
+        view = {"lat": round(lat, 4), "lng": round(lng, 4), "zoom": zoom}
+    _homes[key] = view
+    return view
+
+
 def _reset_for_tests():
+    _homes.clear()
     _manifests.clear()

@@ -63,7 +63,6 @@
     <div class="chips" id="chips"></div>
     <div id="shelves"></div>
     <div id="list" hidden>
-      <button class="back" onclick="setZim(''); tubeSearch('')"><span class="arrow"></span> <span id="l-back"></span></button>
       <div class="head"><h2 id="l-title"></h2><span class="sorts" id="l-sorts"></span></div>
       <div class="grid" id="grid"></div>
       <button class="more" id="more" hidden onclick="tubeMore()"></button>
@@ -71,7 +70,6 @@
     <div class="empty" id="empty" hidden></div>
   </div>
   <div id="watch" hidden>
-    <button class="back" onclick="goBack(closePlayer)"><span class="arrow"></span> <span id="backlabel">ZimiTube</span></button>
     <div class="player">
       <div>
         <div class="stage-wrap">
@@ -109,7 +107,7 @@
 var PAGE = 60;
 var STR = strings({ title: 'ZimiTube', videos: 'videos', video: 'video', langs: {}, more: 'More', none: 'No videos match.', empty: 'No video ZIMs installed yet.',
   up_next: 'Up next', autoplay: 'Autoplay', theater: 'Theater', pip: 'Picture in picture', open_page: 'Open the original page', all: 'All',
-  sort_top: 'Top', sort_title: 'Title', sort_newest: 'Newest', sort_longest: 'Longest', no_media: 'This video cannot be played here.' });
+  sort_top: 'Top', sort_title: 'Title', sort_newest: 'Newest', sort_longest: 'Longest', no_media: 'This video cannot be played here.', missing: 'This video isn\'t in this ZIM.' });
 var SORTS = ['top', 'title', 'newest', 'longest'];
 var _q = '', _zim = '', _sort = 'top', _all = [], _zims = [], _list = [], _shown = 0, _busy = false, _autoplay = true, _theater = false, _now = -1, _video = null;
 try { _sort = localStorage.getItem('zimitube_sort') || 'top'; if (SORTS.indexOf(_sort) < 0) _sort = 'top'; _autoplay = localStorage.getItem('zimitube_autoplay') !== '0'; _theater = localStorage.getItem('zimitube_theater') === '1'; } catch (e) {}
@@ -171,7 +169,6 @@ function renderHome() {
     grid.innerHTML = _list.slice(0, _shown).map(function(v, i) { return card(v, i); }).join('');
     document.getElementById('l-title').innerHTML = esc(_q ? '“' + _q + '”' : (_zim ? zimTitle(_zim) : STR.title)) +
       (_list.length ? ' <span class="n">' + esc(count(_list.length, STR.video, STR.videos)) + '</span>' : '');
-    document.getElementById('l-back').textContent = STR.title;
     document.getElementById('l-sorts').innerHTML = SORTS.map(function(k) { return '<button class="chip' + (k === _sort ? ' on' : '') + '" onclick="setSort(' + J(k) + ')">' + esc(STR['sort_' + k]) + '</button>'; }).join('');
   } else {
     _shown = 0; grid.innerHTML = '';
@@ -239,7 +236,6 @@ function play(e, i) {
   _now = i;
   document.getElementById('home').hidden = true;
   var watch = document.getElementById('watch'); watch.hidden = false;
-  document.getElementById('backlabel').textContent = STR.title;
   document.getElementById('w-title').textContent = v.title;
   document.getElementById('w-who').innerHTML = iconHtml(v, '') + '<span>' + (v.speaker ? '<b>' + esc(v.speaker) + '</b> · ' : '') + esc(v.zim_title) + (v.date ? ' · ' + esc(v.date) : '') + '</span>';
   document.getElementById('w-desc').textContent = v.description || '';
@@ -252,11 +248,13 @@ function play(e, i) {
   tell({ zimi: 'tube-play', play: v.zim + '/' + v.page, title: v.title });
   // The stage says so, and holds the way to the page, when the media is not
   // in a shape a browser plays.
-  var noMedia = function() { stage.innerHTML = '<div class="nomedia">' + esc(STR.no_media) + '<br><a href="' + esc(page) + '">' + esc(STR.open_page) + CHEV + '</a></div>'; };
+  // Two different truths: the file is not in the ZIM (the page names one
+  // the scrape never got), or it is there and this browser cannot decode it.
+  var noMedia = function(missing) { stage.innerHTML = '<div class="nomedia">' + esc(missing ? STR.missing : STR.no_media) + (missing ? '' : '<br><a href="' + esc(page) + '">' + esc(STR.open_page) + CHEV + '</a>') + '</div>'; };
   var stageEl = stage;
   fetch('/tube/play?zim=' + encodeURIComponent(v.zim) + '&page=' + encodeURIComponent(v.page)).then(function(r) { return r.ok ? r.json() : null; }).then(function(m) {
     if (_now !== i) return;
-    if (!m || !m.media || !m.media.length) { noMedia(); return; }
+    if (!m || !m.media || !m.media.length || m.missing) { noMedia(!!(m && m.missing)); return; }
     // A file the browser cannot decode (WebM on an iPhone): the ZIM's own
     // ogv.js decoder, the way the original page plays it.
     // An iPhone says it might play WebM and then cannot decode it; the
@@ -363,6 +361,15 @@ function stopDock() {
 window.tubeSearch = tubeSearch; window.tubeMore = tubeMore; window.play = play; window.closePlayer = closePlayer;
 window.setSort = setSort; window.setZim = setZim; window.toggleAutoplay = toggleAutoplay;
 window.toggleTheater = toggleTheater; window.enterPip = enterPip; window.undock = undock; window.stopDock = stopDock;
+// At the top: the shelves (or the one-source list with nothing chosen).
+window.__top = function() { return _now < 0 && !_q && !_zim; };
+// The dice: a video from the whole feed, played from the list it belongs to.
+window.__random = function() {
+  if (!_all.length) return;
+  var v = _all[Math.floor(Math.random() * _all.length)];
+  _q = ''; _zim = ''; _shown = 0; renderHome();
+  var i = _list.indexOf(v); if (i >= 0) play(null, i);
+};
 window.__back = function() {
   if (_now >= 0) { closePlayer(); return true; }
   if (!document.getElementById('list').hidden) { _q = ''; setZim(''); if (!document.getElementById('list').hidden) load(); return true; }

@@ -1981,6 +1981,27 @@ _MAPS2ZIM_POS_RE = re.compile(r"#lat=(-?\d+(?:\.\d+)?)&lon=(-?\d+(?:\.\d+)?)(?:&
 _RANDOM_MAP_TRIES = 60
 
 
+def _map_home_view(name):
+    """Where the map ``name`` opens when no position is remembered:
+    ``{lat, lng, zoom}`` over its settlements (StreetZim's place index), or
+    None for a map without one, which then opens where it opens itself."""
+    from zimi import mapsearch
+
+    entry = next((z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None)
+    if not entry or entry.get("kind") != "map":
+        return None
+    try:
+        archive, lock = _get_fts_archive(name)
+    except Exception:
+        return None
+    if archive is None or lock is None:
+        return None
+    with lock:
+        if not mapsearch.has_place_index(archive):
+            return None
+        return mapsearch.home_view(archive)
+
+
 def _random_map_place(name):
     """Somewhere on the map ``name``, for the dice: ``{zim, path, title, pos}``
     with the map's own page and a ``map=z/lat/lng`` hash, or None when the

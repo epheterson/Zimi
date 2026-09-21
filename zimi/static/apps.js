@@ -29,6 +29,9 @@ window.addEventListener('message', function(e) {
   if (e.data.zimi === 'route' && typeof window.__route === 'function') {
     _fromShell = true;
     try { window.__route(e.data.id || ''); } finally { _fromShell = false; }
+  } else if (e.data.zimi === 'random') {
+    // The dice, inside the app: a video, a question, a post by chance.
+    try { if (typeof window.__random === 'function') window.__random(); } catch (err) {}
   } else if (e.data.zimi === 'back-request') {
     // The header's arrow: a step back inside the page (a list to the home),
     // or, at the home already, the word that lets the shell leave.
@@ -39,7 +42,20 @@ window.addEventListener('message', function(e) {
 });
 // Back in the page's own chrome: the shell's history when it has a step to
 // give back, the page's home otherwise.
-function goBack(home) { if (window.history.length > 1 && !_fromShell) { tell({ zimi: 'back' }); } home(); }
+// Where the page is: at its top (the shelves) or inside (a list, a thing).
+// The shell shows its back arrow only inside, as it does for an article;
+// the page reports whenever a view is shown or hidden.
+var _topTold;
+function tellTop() {
+  var top = typeof window.__top === 'function' ? !!window.__top() : true;
+  if (top === _topTold) return;
+  _topTold = top;
+  window.parent.postMessage({ zimi: 'top', top: top }, location.origin);
+}
+document.addEventListener('DOMContentLoaded', function() {
+  new MutationObserver(function() { requestAnimationFrame(tellTop); }).observe(document.body, { attributes: true, attributeFilter: ['hidden'], subtree: true });
+  tellTop();
+});
 // The shell's strings and the opening state, carried in the hash.
 function strings(defaults) {
   try { var s = JSON.parse(decodeURIComponent(location.hash.slice(1) || '') || '{}'); for (var k in s) defaults[k] = s[k]; } catch (e) {}

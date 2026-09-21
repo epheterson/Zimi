@@ -21,7 +21,6 @@
     <div class="chips" id="chips"></div>
     <div id="shelves"></div>
     <div id="list" hidden>
-      <button class="back" onclick="openSite('')"><span class="arrow"></span> <span id="l-back"></span></button>
       <div class="head"><h2 id="l-title"></h2><span class="n" id="l-n"></span></div>
       <div class="chips" id="l-tags"></div>
       <div id="l-rows"></div>
@@ -30,7 +29,6 @@
     <div class="empty" id="empty" hidden></div>
   </div>
   <div id="qview" class="item" hidden>
-    <button class="back" onclick="goBack(closeQ)"><span class="arrow"></span> <span id="backlabel"></span></button>
     <h1 id="q-title"></h1>
     <div class="who" id="q-who"></div>
     <div class="post first"><div class="score" id="q-score"></div><div class="prose" id="q-body"></div></div>
@@ -95,7 +93,6 @@ function renderList(title, rows, append) {
   document.getElementById('shelves').hidden = true;
   var l = document.getElementById('list'); l.hidden = false;
   document.getElementById('l-title').textContent = title;
-  document.getElementById('l-back').textContent = STR.title;
   var host = document.getElementById('l-rows');
   if (!append) host.innerHTML = '';
   var mixed = !!_q && !_site;
@@ -148,7 +145,6 @@ function openQ(zim, page) {
   var s = siteOf(zim);
   document.getElementById('home').hidden = true;
   var v = document.getElementById('qview'); v.hidden = false;
-  document.getElementById('backlabel').textContent = STR.title;
   document.getElementById('q-title').textContent = '…';
   document.getElementById('q-body').innerHTML = ''; document.getElementById('q-answers').innerHTML = ''; document.getElementById('q-tags').innerHTML = ''; document.getElementById('q-ah').textContent = '';
   openLink(document.getElementById('q-open'), zim, page, STR.open_page);
@@ -178,6 +174,10 @@ function closeQ(silent) {
   if (!silent) window.scrollTo(0, 0);
 }
 window.exchangeSearch = exchangeSearch; window.openQ = openQ; window.closeQ = closeQ; window.openSite = openSite; window.openTag = openTag; window.more = more;
+window.__top = function() { return document.getElementById('qview').hidden && document.getElementById('list').hidden; };
+window.__random = function() {
+  fetch('/exchange/random').then(function(r) { return r.ok ? r.json() : null; }).then(function(d) { if (d && d.zim && d.page) openQ(d.zim, d.page); }).catch(function() {});
+};
 window.__back = function() {
   if (!document.getElementById('qview').hidden) { closeQ(); return true; }
   if (!document.getElementById('list').hidden) { openSite(''); return true; }

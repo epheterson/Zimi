@@ -1577,7 +1577,7 @@ function updateTopbar() {
   // (back = click source icon or Escape).
   // On an app page the arrow is always there: a step back inside the app
   // (a video, a question, a post, a list), and from its home, out.
-  const showBack = articleHistory.length > 0 || mode === 'search' || homeScope || _isAppPage();
+  const showBack = articleHistory.length > 0 || mode === 'search' || homeScope || (_isAppPage() && !_appTop);
   backBtn.style.display = showBack ? 'flex' : 'none';
 
   // Breadcrumb: Zimi / [icon] — search bar shows source name as placeholder.
@@ -1769,8 +1769,11 @@ function updateTopbar() {
   document.body.classList.toggle('creating', !!_createOpen);
   var moreBtn = document.querySelector('.topbar-more');
   if (moreBtn) {
+    // A menu with nothing in it is no menu: on a wide screen an app page has
+    // no reading rows to fold, so the button goes too (Eric: "... menu is
+    // showing in tube and for no reason nothing behind it on desktop").
     moreBtn.style.display = _createOpen ? 'none'
-      : (_createMenuRowAvailable() ? 'flex' : '');
+      : (_createMenuRowAvailable() ? 'flex' : (readerOpen && !_buildTopbarMenuHtml() ? 'none' : ''));
     _syncTopbarMoreSolo(moreBtn);
   }
   document.getElementById('lang-selector-btn').style.display =
@@ -7132,7 +7135,12 @@ async function enterManage(e, section) {
     // only bail if management is genuinely disabled.
     if (_manageProbed) { _dropManageBoot(); return; }   // probe finished: disabled
     if (!_manageProbe) _manageProbe = _probeManageAuth();
-    await _manageProbe;
+    // The gear turns while the answer is on its way: on a busy server (a
+    // library warming after a restart) that can be seconds, and a tap that
+    // shows nothing reads as a dead button.
+    var gear = document.getElementById('manage-btn');
+    if (gear) gear.classList.add('busy');
+    try { await _manageProbe; } finally { if (gear) gear.classList.remove('busy'); }
     if (!manageEnabled) { _dropManageBoot(); return; }  // resolved to disabled
   }
   // Decide which settings section to land on: an explicit arg (deep link /
@@ -7380,8 +7388,8 @@ const BROWSE_CATEGORIES = [
   { key: 'devdocs',        i18n: 'cat_devdocs',        icon: _catIcon('<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M2 20h20"/><path d="M9 10l-2 2 2 2M15 10l2 2-2 2"/>'), descKey: 'cat_devdocs_desc' },
   { key: 'ted',            i18n: 'cat_video',          icon: _catIcon('<rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"/>'), descKey: 'cat_video_desc' },
   { key: 'education',      i18n: 'cat_education',      icon: _catIcon('<path d="M2 9l10-4 10 4-10 4z"/><path d="M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/><path d="M22 9v6"/>'), descKey: 'cat_education_desc' },
-  { key: 'gutenberg',      i18n: 'cat_books',          icon: _catIcon('<path d="M4 5a2 2 0 0 1 2-2h6v16H6a2 2 0 0 0-2 2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v16h6a2 2 0 0 1 2 2z"/>'), descKey: 'cat_books_desc' },
-  { key: 'medical',        i18n: 'cat_medical',        icon: _catIcon('<path d="M12 4v16M4 12h16"/><rect x="3" y="3" width="18" height="18" rx="4"/>'), descKey: 'cat_medical_desc' },
+  { key: 'gutenberg',      i18n: 'cat_books',          icon: _catIcon('<path d="M2 5h6a4 4 0 0 1 4 4v11a3 3 0 0 0-3-3H2z"/><path d="M22 5h-6a4 4 0 0 0-4 4v11a3 3 0 0 1 3-3h7z"/>'), descKey: 'cat_books_desc' },
+  { key: 'medical',        i18n: 'cat_medical',        icon: _catIcon('<path d="M20.8 11.5A5.5 5.5 0 0 0 12 5.6a5.5 5.5 0 0 0-8.8 5.9C4.6 16 12 21 12 21s2.5-1.7 5-4"/><path d="M3 13h4l2-3 3 6 2-3h7"/>'), descKey: 'cat_medical_desc' },
   { key: 'survival',       i18n: 'cat_survival',       icon: _catIcon('<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z" fill="currentColor" stroke="none"/>'), descKey: 'cat_survival_desc' },
   { key: 'gaming',         i18n: 'cat_gaming',         icon: _catIcon('<rect x="2" y="7" width="20" height="11" rx="5"/><path d="M7 11v3M5.5 12.5h3"/><circle cx="16" cy="11.5" r="1" fill="currentColor" stroke="none"/><circle cx="18.5" cy="13.5" r="1" fill="currentColor" stroke="none"/>'), descKey: 'cat_gaming_desc' },
   { key: 'maps',           i18n: 'cat_maps',           icon: _catIcon('<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>'), descKey: 'cat_maps_desc' },
@@ -9941,7 +9949,7 @@ function switchMs(section) {
   if (!pane) return;
   switch(section) {
     case 'library': pane.innerHTML = _msLibraryHtml(); break;
-    case 'preferences': pane.innerHTML = _msPreferencesHtml(); break;
+    case 'preferences': pane.innerHTML = _msPreferencesHtml(); _renderAppsSection(); break;
     case 'creator': pane.innerHTML = _msCreatorHtml(); break;
     case 'server': pane.innerHTML = _msServerHtml(); break;
     case 'users': _renderMsUsers(); break;
@@ -10605,7 +10613,9 @@ function _creatorHtml(d) {
     '<div id="ms-cr-browser-cmd">' + _creatorInstallHtml(d.browser_ready, "pip install 'zimi[browser]' && playwright install chromium") + '</div>' +
     _mcRow(tH('creator_sidecar'), '<span id="ms-cr-sidecar">' + _creatorSidecarCell(d) + '</span>') +
     '<div id="ms-cr-sidecar-cmd">' + _creatorSidecarCmd(d) + '</div>' +
-    _mcRow(tH('creator_alive'), '<span id="ms-cr-alive">' + _creatorStateHtml(d.alive_ready) + '</span>');
+    _mcRow(tH('creator_alive'), '<span id="ms-cr-alive">' + _creatorStateHtml(d.alive_ready) + '</span>') +
+    _mcRow(tH('creator_reddit'), '<span id="ms-cr-reddit">' + _creatorStateHtml(d.reddit_ready) + '</span>') +
+    '<div id="ms-cr-reddit-cmd">' + _creatorInstallHtml(d.reddit_ready, 'zimi create --setup-reddit') + '</div>';
 
   // Made here LAST — an unbounded, growing list, and the slow half to gather
   // (a provenance walk of the library), so it never blocks the pane. It fills
@@ -10718,6 +10728,8 @@ function _patchCreatorSection(d) {
   put('ms-cr-browser-cmd', _creatorInstallHtml(d.browser_ready, "pip install 'zimi[browser]' && playwright install chromium"));
   put('ms-cr-sidecar', _creatorSidecarCell(d));
   put('ms-cr-sidecar-cmd', _creatorSidecarCmd(d));
+  put('ms-cr-reddit', _creatorStateHtml(d.reddit_ready));
+  put('ms-cr-reddit-cmd', _creatorInstallHtml(d.reddit_ready, 'zimi create --setup-reddit'));
   put('ms-cr-alive', _creatorStateHtml(d.alive_ready));
   put('ms-cr-queue', _creatorQueueHtml(d.queue));
   ['block_ads', 'capture_variants'].forEach(function(key) {
@@ -11203,15 +11215,19 @@ function _msPreferencesHtml() {
     '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
     '<label class="ms-check"><input type="checkbox"' + (showDiscover ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> ' + tH('show_discover') + '</label>' +
+    '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
+      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>' +
+    // The apps offered to everyone, under the plain switches beside Discover: what the home page
+    // shows is decided in one place (Eric: "that should be near the
+    // discover feature thing in Settings > Preferences"). Painted from the
+    // server's answer; an account that may not set it sees nothing here.
+    '<div id="ms-apps-wrap" hidden><div class="ms-theme-label" style="margin-top:12px">' + tH('show_apps_server') + '</div><div id="ms-apps"></div></div>' +
     // The apps row, for THIS account: a signed-in user's preference lives on
-    // the server with their bookmarks. An admin without an account has the
-    // server-wide switch in Server settings instead.
+    // the server with their bookmarks. The server-wide choice sits just above.
     (_appsAllowedByServer() && _userSession
       ? '<div class="ms-theme-label" style="margin-top:12px">' + tH('show_apps') + '</div>' +
         _appChecksHtml(APP_NAMES.filter(_appsAllowedByServer), _appShown, '_setUserApp')
       : '') +
-    '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
-      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>' +
     // Default download flavor (above languages — reached more often)
     '<div class="ms-section-label" style="margin-top:20px">' + tH('default_flavor') + '</div>' +
     '<div class="ms-hint">' + tH('default_flavor_hint') + '</div>' +
@@ -11531,12 +11547,13 @@ async function _renderAppsSection() {
   var d = null;
   try { d = await _msFetch('/manage/apps'); } catch (e) {}
   var el = document.getElementById('ms-apps');
+  var wrap = document.getElementById('ms-apps-wrap');
   if (!el) return;
-  if (!d) { el.innerHTML = '<div class="ms-hint">' + tH('env_unavailable') + '</div>'; return; }
+  if (!d) { if (wrap) wrap.hidden = true; return; }
+  if (wrap) wrap.hidden = false;
   var shown = Array.isArray(d.shown) ? d.shown : (d.enabled ? APP_NAMES : []);
   _serverApps = shown;
-  el.innerHTML = '<div class="ms-theme-label">' + tH('show_apps_server') + '</div>' +
-    _appChecksHtml(APP_NAMES, function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', d.env_locked) +
+  el.innerHTML = _appChecksHtml(APP_NAMES, function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', d.env_locked) +
     '<div class="ms-hint">' + tH(d.env_locked ? 'env_controlled' : 'apps_server_hint', { v: 'ZIMI_APPS' }) + '</div>';
 }
 var _serverApps = APP_NAMES;
@@ -11656,16 +11673,13 @@ function _msServerHtml() {
   // The apps row, for everyone on this server. Painted from the server's
   // answer; env-locked reads as such rather than as a control that does
   // nothing.
-  var appsSec = '<div class="ms-section-label">' + tH('apps_section') + '</div>' +
-    '<div id="ms-apps">' + tH('loading') + '</div>';
-  _renderAppsSection();
   var envSec = '<div class="ms-section-label">' + tH('env_section') + '</div>' +
     '<div id="ms-env">' + tH('loading') + '</div>';
 
   // Sharing, Downloads, Storage, My Data / Server Backups, then App Updates
   // just before the API Token, and Hot ZIMs + cache last (Eric moved Updates
   // down from the top on the second pass).
-  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, appsSec, tokenSec, hotSec, envSec].join(sep);
+  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec, envSec].join(sep);
   _renderEnvSection();
   // Async fill security
   Promise.all([
@@ -15350,6 +15364,19 @@ function _bindVideoResume(frame, zim, path) {
 // load is networkState LOADING with error === null, so it never trips this.
 // The box uses neutral grey tones + color:inherit so it reads correctly whether
 // the app is light, dark, or the raw page is running under the auto-dark invert.
+// Whether the video's file is absent from the ZIM (a 404, or an empty
+// entry), as opposed to present and undecodable.
+function _videoFileMissing(v) {
+  var src = '';
+  try { src = v.currentSrc || (v.querySelector('source') || {}).src || v.src || ''; } catch (e) {}
+  if (!src) return Promise.resolve(false);
+  // One byte by GET: a HEAD comes back 200 for a path the ZIM lacks (the
+  // server answers HEAD before it looks), a ranged GET says 404 or 206.
+  return fetch(src, { headers: { Range: 'bytes=0-0' } }).then(function(r) {
+    return r.status === 404 || r.status === 416 || r.headers.get('content-length') === '0';
+  }).catch(function() { return false; });
+}
+
 function _bindVideoError(frame) {
   var doc; try { doc = frame.contentDocument; } catch(e) { return; }
   if (!doc) return;
@@ -15382,7 +15409,11 @@ function _bindVideoError(frame) {
         'stroke-linejoin="round" style="opacity:.7"><path d="m23 7-7 5 7 5V7z"/>' +
         '<rect x="1" y="5" width="15" height="14" rx="2" ry="2"/><line x1="2" y1="2" x2="22" y2="22"/></svg>' +
         '<span></span>';
-      box.lastChild.textContent = t('video_not_included');
+      // Two different truths: the file is not in the ZIM, or it is there and
+      // this browser cannot decode it (an AV1 MP4 on an iPhone). Only the
+      // file's own answer tells them apart, so it is asked.
+      box.lastChild.textContent = t('video_not_playable');
+      _videoFileMissing(v).then(function(missing) { if (missing) box.lastChild.textContent = t('video_not_included'); });
       v.parentNode.insertBefore(box, v);
       v.style.display = 'none';
       v.__zimiErrBox = box;
@@ -16204,6 +16235,7 @@ function openReddot(replaceState, p) {
   readerSource = null;
   _tubeOpen = false; _exchangeOpen = false;
   _reddotOpen = true;
+  _appTop = !p;
   var st = { mode: 'reader', reddot: true, p: p || '' };
   // Arrived at the thing itself (a shared link): there is no home beneath
   // it in history, so the arrow makes one in place instead of stepping out.
@@ -16258,6 +16290,7 @@ function openExchange(replaceState, q) {
   readerSource = null;
   _tubeOpen = false; _reddotOpen = false;
   _exchangeOpen = true;
+  _appTop = !q;
   var st = { mode: 'reader', exchange: true, q: q || '' };
   // Arrived at the thing itself (a shared link): there is no home beneath
   // it in history, so the arrow makes one in place instead of stepping out.
@@ -16283,6 +16316,9 @@ function _exchangeSearch(val) {
 // drives its search. Eric, 2026-09-19: "Bubble up my TED YouTubes and maybe
 // some others whose structures we know."
 var _tubeOpen = false;
+// Whether the open app page is at its top (the shelves). Reported by the
+// page; the header's arrow shows only inside, as it does for an article.
+var _appTop = true;
 var _TUBE_PAGE = '/static/tube.html?v=1';
 
 function _installedVideoZims() {
@@ -16301,7 +16337,7 @@ function _tubeStrings(play) {
   var langs = {};
   _installedVideoZims().forEach(function(z) { if (z.language) langs[z.language] = _langDisplayName(z.language) || z.language; });
   return _appStrings('tube', ['tube_videos', 'tube_video', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay',
-    'tube_theater', 'tube_pip', 'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_no_media'], { play: play || '', langs: langs });
+    'tube_theater', 'tube_pip', 'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_no_media', 'tube_missing'], { play: play || '', langs: langs });
 }
 
 // A thing inside an app (a video, a question, a post) is a step in history
@@ -16351,6 +16387,9 @@ window.addEventListener('message', function(e) {
     var fromApp = _isAppPage();
     openArticle(d.zim, d.path);
     if (fromApp) { articleHistory.push({ app: true }); updateTopbar(); }
+  } else if (d.zimi === 'top') {
+    _appTop = d.top !== false;
+    updateTopbar();
   } else if (d.zimi === 'at-home') {
     // The header's arrow at the app's home: out of the app.
     if (_isAppPage()) closeReader();
@@ -16408,6 +16447,7 @@ function openTube(replaceState, play) {
   readerSource = null;
   _exchangeOpen = false; _reddotOpen = false;
   _tubeOpen = true;
+  _appTop = !play;
   var st = { mode: 'reader', tube: true, play: play || '' };
   // Arrived at the thing itself (a shared link): there is no home beneath
   // it in history, so the arrow makes one in place instead of stepping out.
@@ -16855,6 +16895,19 @@ function _spaMapFind(e, el) {
 
 // And put it back where the link says, once the map exists.
 var _MAP_RESTORE_TRIES = 40;
+// The server's answer for where a map opens the first time, applied once
+// the map is up: at once when it already is, else when the frame loads.
+var _pendingMapHome = null;
+function _mapHomeView(zim) {
+  _pendingMapHome = null;
+  fetch('/map-home?zim=' + encodeURIComponent(zim)).then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
+    if (!d || typeof d.lat !== 'number' || !currentArticle || currentArticle.zim !== zim) return;
+    var pos = { lat: d.lat, lng: d.lng, zoom: d.zoom };
+    if (_readerMap()) _restoreMapPosition(pos, 0);
+    else _pendingMapHome = { zim: zim, pos: pos };
+  }).catch(function() {});
+}
+
 function _restoreMapPosition(pos, tries) {
   if (!pos) return;
   var map = _readerMap();
@@ -16865,7 +16918,18 @@ function _restoreMapPosition(pos, tries) {
     setTimeout(function() { _restoreMapPosition(pos, (tries || 0) + 1); }, 150);
     return;
   }
-  try { map.jumpTo({center: [pos.lng, pos.lat], zoom: pos.zoom}); } catch (e) {}
+  try {
+    map.jumpTo({center: [pos.lng, pos.lat], zoom: pos.zoom});
+    // A map with maxBounds (StreetZim's region box) cannot look at a spot
+    // when the view is wider than the box: it recentres on the box instead.
+    // Zoom in until it can, and keep that zoom for the re-puts below.
+    for (var zi = 0; zi < 4 && pos.zoom < 12; zi++) {
+      var got = map.getCenter();
+      if (Math.abs(got.lng - pos.lng) < 0.5 && Math.abs(got.lat - pos.lat) < 0.5) break;
+      pos = { lat: pos.lat, lng: pos.lng, zoom: pos.zoom + 1 };
+      map.jumpTo({center: [pos.lng, pos.lat], zoom: pos.zoom});
+    }
+  } catch (e) {}
   _watchReaderMap();
   // Belt and braces: a map that moves itself in its first seconds (a saved
   // view, a maxBounds clamp) is put back, unless a person moved it.
@@ -17074,7 +17138,9 @@ function openReader(url) {
     else _settlePasses();
     // A map ZIM: put it where the link says, then follow it. Both are no-ops
     // on every other kind of page, since neither finds a map handle.
-    _restoreMapPosition(parseMapHash(location.hash), 0);
+    var _mapPos = parseMapHash(location.hash);
+    if (!_mapPos && _pendingMapHome && currentArticle && _pendingMapHome.zim === currentArticle.zim) { _mapPos = _pendingMapHome.pos; _pendingMapHome = null; }
+    _restoreMapPosition(_mapPos, 0);
     _applyMapFind(0);
     setTimeout(_watchReaderMap, 400);
     // Inject responsive CSS + scroll-to-top button for mobile
@@ -18999,12 +19065,17 @@ function openArticle(zim, path, title, opts) {
   // my local position"). maps2zim honours a position in its own hash
   // (its place pages redirect to index.html#lat=&lon=&zoom=), so the map
   // is told where to open in the one form it will not override.
+  var mz = (zimsCache || []).filter(function(z) { return z.name === zim; })[0];
   if (opts && opts.pos) {
     var mp = parseMapHash('#' + opts.pos);
-    var mz = (zimsCache || []).filter(function(z) { return z.name === zim; })[0];
     if (mp && mz && mz.map_source === 'Kiwix') {
       url += '#lat=' + mp.lat + '&lon=' + mp.lng + '&zoom=' + Math.round(mp.zoom);
     }
+  } else if (mz && mz.kind === 'map' && mz.map_source === 'StreetZim') {
+    // Nowhere remembered: the map opens over its settlements, not over the
+    // middle of its region's box (Hawaii's box is mostly ocean, and the
+    // islands sat off the right edge).
+    _mapHomeView(zim);
   }
   readerSource = zim;
   // EPUB: download (Gutenberg has HTML equivalents for all EPUBs)
@@ -19544,6 +19615,16 @@ async function randomArticle(event) {
   if (mode === 'manage') { mode = 'home'; updateTopbar(); }
   var btn = document.getElementById('random-btn');
   if (btn._randomBusy) return;
+  // Inside an app the dice stay in the app: a video, a question, a post
+  // (Eric: "random while in app needs to pull random video in-app").
+  if (_isAppPage()) {
+    var af = document.getElementById('reader-frame');
+    if (af && af.contentWindow) {
+      btn.classList.add('rolling'); setTimeout(function() { btn.classList.remove('rolling'); }, 600);
+      try { af.contentWindow.postMessage({ zimi: 'random' }, location.origin); } catch (e) {}
+      return;
+    }
+  }
   btn._randomBusy = true;
   btn.classList.add('rolling');
   try {

@@ -73,10 +73,7 @@ button { font: inherit; color: inherit; }
 .more:hover { border-color: var(--amber); color: var(--amber); }
 .empty { color: var(--text2); text-align: center; padding: 48px 12px; line-height: 1.8; }
 .empty .door { color: var(--amber); font-weight: 600; }
-.back { display: inline-flex; align-items: center; gap: 6px; color: var(--amber); font-weight: 600; background: none; border: 0; padding: 0 0 12px; cursor: pointer; font-size: 13px; }
 /* Arrows point the way the text runs. */
-.back .arrow::before { content: '\2190'; }
-[dir="rtl"] .back .arrow::before { content: '\2192'; }
 .chev::before { content: '\203A'; }
 [dir="rtl"] .chev::before { content: '\2039'; }
 

@@ -21,6 +21,7 @@ from html.parser import HTMLParser
 import logging
 import os
 import posixpath
+import random
 import re
 import shutil
 import sys
@@ -585,6 +586,27 @@ def listing(name, sub, sort="top", page=1):
 
 def post(name, page):
     return _cached_page(name, page, lambda t: post_from_page(t, page, name))
+
+
+def random_post(rng=None):
+    """Somewhere in the library's subreddits, for the dice: a subreddit by
+    chance (every subreddit an even chance, whichever ZIM carries it), a
+    page of its top posts by chance, a post on it by chance."""
+    rng = rng or random
+    pairs = [(z["name"], sub) for z in zims() for sub in z.get("subreddits") or []]
+    if not pairs:
+        return None
+    for _ in range(4):
+        name, sub = rng.choice(pairs)
+        first = listing(name, sub, "top", 1)
+        pages = max(1, int(first.get("pages") or 1))
+        pg = rng.randint(1, pages)
+        rows = (first["rows"] if pg == 1 else listing(name, sub, "top", pg)["rows"]) or first["rows"]
+        rows = [r for r in rows if r.get("page")]
+        if rows:
+            r = rng.choice(rows)
+            return {"zim": name, "page": r["page"], "title": r.get("title") or "", "subreddit": sub}
+    return None
 
 
 def home():

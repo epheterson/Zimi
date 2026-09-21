@@ -268,3 +268,17 @@ def test_the_search_bar_returns_places_as_their_own_group(tmp_path, monkeypatch)
 
     # The keystroke path reads no shards.
     assert "places" not in search.search_all("kailua", limit=5, fast=True)
+
+
+def test_a_map_opens_over_its_settlements(archive):
+    """Where a StreetZim map opens the first time: the median settlement of
+    a fixed-seed sample, so the same map always opens the same way, and a
+    zoom that holds most of them. Not the middle of the region's box."""
+    from zimi import mapsearch
+
+    view = mapsearch.home_view(archive)
+    assert view and set(view) == {"lat", "lng", "zoom"}
+    assert 4 <= view["zoom"] <= 10
+    assert view == mapsearch.home_view(archive)  # cached, and stable
+    mapsearch._reset_for_tests()
+    assert view == mapsearch.home_view(archive)  # recomputed the same

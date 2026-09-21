@@ -516,8 +516,13 @@
      so the header reads: title … ✕. */
   body.reading #font-btn, body.reading #tts-btn,
   body.reading #readerview-btn, body.reading #newtab-btn { display: none !important; }
-  body.reading .topbar-more { display: flex; order: 990; }
-  body.reading .manage-btn { order: 1000; }
+  body.reading .topbar-more { display: flex; }
+  /* The gear is the last thing on the bar, on every page: the + (the one-item
+     ⋯) sits before it (Eric: "Gear should be top-right on main page not the +"). */
+  .topbar-more { order: 990; }
+  .manage-btn { order: 1000; }
+  @keyframes gear-turn { to { transform: rotate(360deg); } }
+  .manage-btn.busy svg { animation: gear-turn 1s linear infinite; }
 
   /* ── Users management (multi-user v1) ── */
   .ms-btn { padding: 6px 12px; font-size: 12px; font-family: inherit; color: var(--text2); background: none; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: all 0.15s; }

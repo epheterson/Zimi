@@ -58,7 +58,7 @@ The rendered and alive engines take them on the page they already have open. The
 | `--max-depth` | flag | 5 (site) | Link hops from the start page |
 | `--delay` | flag | 0.5s (site) | Seconds between requests |
 | `--ignore-robots` | flag | off | Crawl robots-disallowed pages (site only) |
-| `--format` / `--audio-only` / `--limit` | flag | ~720p cap | Video source selection |
+| `--format` / `--audio-only` / `--limit` | flag | ~720p cap, H.264 first | Video source selection. H.264 plays in every browser; YouTube's default MP4 is AV1, which iPhones before the 15 Pro cannot decode. |
 | `--language` | flag | detected → `eng` | ISO 639-3 content language |
 | `--out` | flag | ZIM dir + register | Explicit output path |
 | `ZIMI_CREATE_ROOT` | env / config `create_root` | unset (web off) | The one directory tree the web UI may package a server path from. Unset means the web cannot read any server path; the CLI is unaffected. |

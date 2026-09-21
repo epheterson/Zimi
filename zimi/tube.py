@@ -328,6 +328,11 @@ def playback(name, page):
             media.append({"path": path, "type": attrs.get("type", "")})
     if not media:
         return None
+    # A page whose files never made it into the ZIM (ted2zim writes the talk
+    # page and skips a download that failed): say so, rather than "cannot be
+    # played here", which blames the browser for a file that is not there.
+    with lock:
+        missing = not any(_has(archive, m["path"]) for m in media)
     subs = []
     for t in _TRACK_RE.findall(html_text):
         attrs = {k.lower(): _html.unescape(v) for k, v in _ATTR_RE.findall(t)}
@@ -337,6 +342,7 @@ def playback(name, page):
     poster = _POSTER_RE.search(html_text)
     return {
         "media": media,
+        "missing": missing,
         "subs": subs,
         "poster": _resolve_path(page, _html.unescape(poster.group(1))) if poster else "",
         "page": page,

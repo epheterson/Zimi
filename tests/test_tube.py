@@ -205,7 +205,22 @@ def test_playback_reads_the_media_and_tracks_behind_the_page(tmp_path, monkeypat
         "poster": "videos/13316/thumbnail.webp",
         "page": "why-tech-needs-the-humanities",
         "ogv": "",
+        "missing": True,
     }
+
+
+def test_playback_says_when_the_file_is_not_in_the_zim(tmp_path, monkeypatch):
+    """ted2zim writes a talk's page even when its download failed (the CRISPR
+    talk in ted_en_technology_2023-09). The page names a file the ZIM does
+    not carry; ZimiTube says the video is not in the ZIM, rather than
+    blaming the browser."""
+    files = dict(TED_FILES)
+    files["why-tech-needs-the-humanities"] = TED_PAGE
+    files["videos/13316/video.webm"] = b"\x1a\x45\xdf\xa3webm"
+    _library(tmp_path, monkeypatch, [("ted_en_have_2023-09.zim", {"Scraper": "ted2zim 2.0.13", "Name": "ted_en_have"}, files)])
+    got = tube.playback("ted_en_have", "why-tech-needs-the-humanities")
+    assert got["missing"] is False
+    assert got["media"] == [{"path": "videos/13316/video.webm", "type": "video/webm"}]
 
 
 def test_playback_names_the_zims_own_decoder_when_it_ships_one(tmp_path, monkeypatch):

@@ -23,7 +23,6 @@
     <div class="chips" id="chips"></div>
     <div id="shelves"></div>
     <div id="list" hidden>
-      <button class="back" onclick="openHome()"><span class="arrow"></span> <span id="l-back"></span></button>
       <div class="head"><h2 id="l-title"></h2><span id="l-follow"></span><span class="sorts" id="l-sorts"></span></div>
       <div id="l-rows"></div>
       <button class="more" id="more" hidden onclick="more()"></button>
@@ -31,7 +30,6 @@
     <div class="empty" id="empty" hidden></div>
   </div>
   <div id="pview" class="item" hidden>
-    <button class="back" onclick="goBack(closeP)"><span class="arrow"></span> <span id="backlabel"></span></button>
     <h1 id="p-title"></h1>
     <div class="who" id="p-who"></div>
     <div class="prose" id="p-body"></div>
@@ -131,7 +129,6 @@ function renderList(title, rows, append, mixed) {
   document.getElementById('shelves').hidden = true;
   var l = document.getElementById('list'); l.hidden = false;
   document.getElementById('l-title').textContent = title;
-  document.getElementById('l-back').textContent = STR.title;
   document.getElementById('l-sorts').innerHTML = _q || _home ? '' : ['top', 'new'].map(function(k) { return '<button class="chip' + (_sort === k ? ' on' : '') + '" onclick="setSort(' + J(k) + ')">' + esc(STR[k]) + '</button>'; }).join('');
   paintFollowButton();
   var host = document.getElementById('l-rows');
@@ -177,7 +174,6 @@ function countComments(list) { return (list || []).reduce(function(n, c) { retur
 function openP(zim, page) {
   document.getElementById('home').hidden = true;
   var v = document.getElementById('pview'); v.hidden = false;
-  document.getElementById('backlabel').textContent = STR.title;
   document.getElementById('p-title').textContent = '…';
   document.getElementById('p-body').innerHTML = ''; document.getElementById('p-comments').innerHTML = ''; document.getElementById('p-ch').textContent = '';
   openLink(document.getElementById('p-open'), zim, page, STR.open_page);
@@ -202,6 +198,10 @@ function closeP(silent) {
 }
 window.reddotSearch = reddotSearch; window.openP = openP; window.closeP = closeP; window.openSub = openSub; window.openHome = openHome; window.setSort = setSort; window.more = more;
 window.toggleFollow = toggleFollow; window.renderHomeFeed = renderHomeFeed;
+window.__top = function() { return document.getElementById('pview').hidden && document.getElementById('list').hidden; };
+window.__random = function() {
+  fetch('/reddot/random').then(function(r) { return r.ok ? r.json() : null; }).then(function(d) { if (d && d.zim && d.page) openP(d.zim, d.page); }).catch(function() {});
+};
 window.__back = function() {
   if (!document.getElementById('pview').hidden) { closeP(); return true; }
   if (!document.getElementById('list').hidden) { openHome(); return true; }

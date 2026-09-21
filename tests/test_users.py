@@ -686,6 +686,20 @@ class TestAdminHierarchy(_UsersBase):
         code, _ = self._post(h, {"action": "set-role", "name": "Other", "role": "user"})
         self.assertEqual(code, 403)
 
+    def test_a_change_returns_the_whole_panel(self):
+        """The reply to set-role carries the public-access policy and the
+        allowlist's ZIM options, as the GET does: painted from a reply with
+        only the users, the card read "Open" and the picker "No ZIMs
+        installed" after every change."""
+        users.create_user("Kid", "pw", role="user")
+        h = self._primary()
+        code, body = self._post(h, {"action": "set-role", "name": "Kid", "role": "limited", "allowlist": []})
+        self.assertEqual(code, 200)
+        self.assertEqual(body["status"], "ok")
+        for key in ("users", "zims", "zim_options", "public_access", "primary_admin", "self_kind"):
+            self.assertIn(key, body)
+        self.assertEqual(body["public_access"]["mode"], "open")
+
     def test_primary_can_manage_admins(self):
         h = self._primary()
         code, _ = self._post(

@@ -4773,6 +4773,7 @@ def __getattr__(name):
 
 from zimi.search import (  # noqa: E402, F401
     _random_map_place,
+    _map_home_view,
     find_places,
     # Search / suggest caches (dicts + constants + functions)
     _search_cache,

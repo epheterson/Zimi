@@ -390,3 +390,25 @@ def test_a_tqdm_redraw_becomes_a_sentence():
     assert reddot._caption("Retrieving posts: 1031posts [00:14, 71.31posts/s, Time=2026-08-07T12:21:12, requests=4]") == "1,031 posts fetched, up to 2026-08-07"
     assert reddot._caption("Retrieving comments: 4299comments [00:34, 142.27comments/s, Time=2026-03-07T00:17:12, requests=29]") == "4,299 comments fetched, up to 2026-03-07"
     assert reddot._caption("importing") == "importing"
+
+
+def test_the_dice_land_on_a_post(monkeypatch):
+    """A subreddit by chance (each an even chance whichever ZIM carries it),
+    a page of its top posts by chance, a post on it by chance."""
+    import random
+
+    from zimi import reddot
+
+    monkeypatch.setattr(reddot, "zims", lambda: [{"name": "reddit_a", "subreddits": ["Kiwix", "selfhosted"]}, {"name": "reddit_b", "subreddits": ["prepping"]}])
+    seen = []
+
+    def listing(name, sub, sort="top", page=1):
+        seen.append((name, sub, sort, page))
+        return {"rows": [{"page": "r/%s/p%d" % (sub, page * 10 + i), "title": "T%d" % i} for i in range(2)], "pages": 3}
+
+    monkeypatch.setattr(reddot, "listing", listing)
+    got = reddot.random_post(random.Random(5))
+    assert got["subreddit"] in ("Kiwix", "selfhosted", "prepping") and got["page"].startswith("r/" + got["subreddit"] + "/")
+    assert all(s[2] == "top" for s in seen)
+    monkeypatch.setattr(reddot, "zims", lambda: [])
+    assert reddot.random_post(random.Random(5)) is None

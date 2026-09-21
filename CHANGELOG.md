@@ -16,7 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - ZimiExchange. Every Stack Exchange site in the library as one place: a shelf per site of its most voted questions with its top tags, a site or a tag as a paged list, the search bar asking across every site, and a question view of Zimi's own with the answers scored and the accepted one first. Links between questions stay inside it; the original page is one tap away. Every question has an address.
 - Maps: the picker judges "here" by what is on screen, lists a short library whole, offers "Where I am" from the device's location, and a switch to a Kiwix map now lands where you were.
 - Each app can be offered or not: for everyone (ZIMI_APPS=0, or a comma list of maps, tube, exchange, reddot; or the checkboxes in Server settings) and by a signed-in user for their own account.
-- The header's back arrow works inside the apps: a video, a question, a post or a list steps back; the app's home steps out.
+- The header's back arrow is the apps' only back: it appears inside an app (a video, a question, a post, a list) and steps back; the apps' own arrows are gone. "Open the original page" is a step the arrow returns from. The dice stay inside an app (a video, a question, a post by chance), and the ⋯ menu is gone from app pages where it held nothing.
+- ZimiTube says which it is when a video will not play: the file is not in the ZIM (a talk the scrape skipped), or this browser cannot decode it. The reader's own dead-player message does the same.
+- A ZIM made from a video site takes H.264 first: YouTube's default MP4 is AV1 now, which iPhones before the 15 Pro cannot decode.
+- A StreetZim map nobody has been on yet opens over its settlements, not over the middle of its region's box.
+- Users: changing a user's role or allowlist no longer repaints the public-access card as Open, nor the allowlist picker as empty.
+- The Creator pane lists the subreddit engine (ArcticZim) beside the others.
+- The gear is the last thing on the bar on every page; the apps offered to everyone are chosen under Preferences beside Show Discover.
 - ZimiTube's Theater and Picture in picture buttons sit on the player. On iPhones and iPads a WebM video plays through the ZIM's own decoder from the start.
 - The apps row. Maps, ZimiTube and ZimiExchange sit first among the sources on every install; an app with nothing to show yet opens the catalog category that feeds it. A playing video has an address of its own (/#tube?play=...), so it can be shared and bookmarked.
 - The apps have back arrows and a history. A video, a question or a post opened from an app's home is a step Back returns from, and the arrow at the top of the page takes the same step; a list inside an app (a subreddit, a tag, a search) has an arrow to the app's home. The bookmark button is off app pages, which are not articles.

@@ -12,6 +12,7 @@ Eric, 2026-09-19: "ZimiExchange ... threading in real data and live
 interface."
 """
 
+import random
 import html as _html
 import logging
 import posixpath
@@ -231,6 +232,29 @@ def tags(name):
 def question(name, page):
     got = _cached_page(name, page, lambda t: question_from_page(t, page, name))
     return got
+
+
+def random_question(rng=None):
+    """Somewhere in the library's Q&A, for the dice: a site by chance, a
+    page of its most-voted list by chance, a question on it by chance. None
+    when no site is installed or nothing readable turns up."""
+    rng = rng or random
+    ss = sites()
+    if not ss:
+        return None
+    for _ in range(4):
+        s = rng.choice(ss)
+        first = listing(s["name"], 1)
+        pages = max(1, int(first.get("pages") or 1))
+        pg = rng.randint(1, pages)
+        # A page count the listing promises but the ZIM lacks falls back
+        # to the first page rather than to nothing.
+        rows = (first["rows"] if pg == 1 else listing(s["name"], pg)["rows"]) or first["rows"]
+        rows = [r for r in rows if r.get("page")]
+        if rows:
+            r = rng.choice(rows)
+            return {"zim": s["name"], "page": r["page"], "title": r.get("title") or ""}
+    return None
 
 
 def home():
