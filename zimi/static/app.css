@@ -1178,7 +1178,9 @@
   .app-tile .card-icon { color: var(--amber); display: flex; align-items: center; justify-content: center; }
   .app-tile.app-empty .card-icon { color: var(--text2); }
   /* Quiet, like any other detail line: an empty app is not an error (Eric). */
-  .app-tile.app-empty .detail { color: var(--text2); }
+  .app-tile.app-empty .detail { color: var(--text2); margin-top: 4px; }
+  /* Reddot's dot keeps its colour in the breadcrumb, where line marks take the text's. */
+  #bc-icon circle { fill: var(--amber); }
   .suggest-item.sg-place .sg-title::before { content: '\25CF'; color: var(--amber); font-size: 8px; margin-right: 8px; vertical-align: middle; }
   .stat-card:hover, .stat-card:focus-visible {
     background: var(--surface2); border-color: var(--amber-border);

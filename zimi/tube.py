@@ -281,6 +281,88 @@ def _resolve_path(page, ref):
     return posixpath.normpath(posixpath.join(base, ref)) if base else posixpath.normpath(ref)
 
 
+# One video, several containers: the extensions a scraper writes and what
+# each is. MP4 first: every browser plays H.264 with AAC, while Safari plays
+# a WebM's picture and not its Vorbis sound.
+_SIBLINGS = (("mp4", "video/mp4"), ("m4v", "video/mp4"), ("webm", "video/webm"), ("ogv", "video/ogg"))
+_SIBLING_TYPES = dict(_SIBLINGS)
+
+
+def siblings_of(path):
+    """The same file under the other extensions, mp4 first, the path itself
+    included in that order. ``videos/1/video.webm`` → ``[..mp4, ..m4v, ..webm, ..ogv]``."""
+    stem, dot, ext = path.rpartition(".")
+    if not dot or ext.lower() not in _SIBLING_TYPES:
+        return [path]
+    return [stem + "." + e for e, _ in _SIBLINGS]
+
+
+def mend_media(archive, media):
+    """The media list a page gives, with each named file replaced by the
+    siblings the ZIM actually carries, mp4 first; a file with no sibling in
+    the ZIM stays as named so the caller can say it is missing. Caller holds
+    the archive's lock."""
+    out = []
+    for m in media:
+        found = [p for p in siblings_of(m["path"]) if _has(archive, p)]
+        for path in found or [m["path"]]:
+            if path not in [x["path"] for x in out]:
+                ext = path.rpartition(".")[2].lower()
+                out.append({"path": path, "type": _SIBLING_TYPES.get(ext) or m.get("type", "")})
+    return out
+
+
+_SOURCE_TAG_RE = re.compile(r"<source\b[^>]*>", re.IGNORECASE)
+
+
+def mend_sources(html, name, page):
+    """A page's ``<source>`` tags, each pointed at a file the ZIM carries
+    when the one it names is absent and a sibling is there; the tag's type
+    follows. The page's own relative form is kept (``../I/videos/…``). For a
+    page whose sources are all present, or a ZIM Zimi cannot open, the
+    text comes back untouched."""
+    if "<source" not in html:
+        return html
+    from zimi.search import _get_fts_archive
+
+    try:
+        archive, lock = _get_fts_archive(name)
+    except Exception:
+        return html
+    if archive is None or lock is None:
+        return html
+    try:
+        with lock:
+            try:
+                entry = archive.get_entry_by_path(page)
+                if entry.is_redirect:
+                    entry = entry.get_redirect_entry()
+                page = entry.path
+            except Exception:
+                pass
+
+            def fix(m):
+                tag = m.group(0)
+                attrs = {k.lower(): _html.unescape(v) for k, v in _ATTR_RE.findall(tag)}
+                src = attrs.get("src", "")
+                path = _resolve_path(page, src)
+                if not path or _has(archive, path):
+                    return tag
+                for alt in siblings_of(path):
+                    if alt != path and _has(archive, alt):
+                        ext = alt.rpartition(".")[2]
+                        new_src = src.rpartition(".")[0] + "." + ext
+                        esc_src = _html.escape(new_src, quote=True)
+                        tag = re.sub(r"""src=(["'])[^"']*\1""", lambda q: 'src=%s%s%s' % (q.group(1), esc_src, q.group(1)), tag, count=1)
+                        tag = re.sub(r"""type=(["'])[^"']*\1""", lambda q: 'type=%s%s%s' % (q.group(1), _SIBLING_TYPES[ext], q.group(1)), tag, count=1)
+                        return tag
+                return tag
+
+            return _SOURCE_TAG_RE.sub(fix, html)
+    except Exception:
+        return html
+
+
 # ted2zim's player asks the browser first and the ZIM's decoder (ogv.js)
 # second. An iPhone answers "maybe" to WebM and then cannot decode it, so
 # the page shows "The media could not be loaded". Served through Zimi, the
@@ -290,7 +372,7 @@ def _resolve_path(page, ref):
 _TECH_ORDER = '"techOrder": ["html5", "ogvjs"]'
 _TECH_ORDER_IOS = '"techOrder": ["ogvjs", "html5"]'
 _IOS_DECODER_FIRST = (
-    "<script>(function(){var a=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);"
+    "<script>(function(){var u=navigator.userAgent;var a=/iPhone|iPad|iPod/.test(u)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)||(/Safari\\//.test(u)&&!/Chrome|Chromium|Edg|OPR|Android/.test(u));"
     "if(!a)return;function f(){var v=document.querySelectorAll('video[data-setup]');for(var i=0;i<v.length;i++){var s=v[i].getAttribute('data-setup')||'';"
     "if(s.indexOf(%s)>=0)v[i].setAttribute('data-setup',s.split(%s).join(%s));}}"
     "if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',f);else f();})()</script>"
@@ -300,7 +382,8 @@ _VIDEOJS_SCRIPT = re.compile(r"<script\s[^>]*src=[\"'][^\"']*videojs/video(?:\.m
 
 def decoder_first_on_ios(html):
     """A ted2zim page with the browser-first player, given the line above;
-    any other page unchanged."""
+    any other page unchanged. Safari (the Mac's as well as the iPhone's)
+    plays a WebM's picture and not its Vorbis sound; the decoder plays both."""
     if _TECH_ORDER not in html:
         return html
     m = _VIDEOJS_SCRIPT.search(html)
@@ -340,10 +423,13 @@ def playback(name, page):
             media.append({"path": path, "type": attrs.get("type", "")})
     if not media:
         return None
-    # A page whose files never made it into the ZIM (ted2zim writes the talk
-    # page and skips a download that failed): say so, rather than "cannot be
-    # played here", which blames the browser for a file that is not there.
+    # The file the page names may be absent while its sibling is there:
+    # ted_en_technology_2023-09 names videos/N/video.webm for every talk and
+    # carries video.mp4 for some (the climate talk). Only when nothing is
+    # there is the video missing; say so then, rather than "cannot be played
+    # here", which blames the browser for a file that is not there.
     with lock:
+        media = mend_media(archive, media)
         missing = not any(_has(archive, m["path"]) for m in media)
     subs = []
     for t in _TRACK_RE.findall(html_text):

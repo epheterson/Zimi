@@ -3363,9 +3363,13 @@ class ZimHandler(BaseHTTPRequestHandler):
         if mimetype.startswith("text/html"):
             text = content.decode("UTF-8", errors="replace")
             text = re.sub(r"<base\s[^>]*>", "", text, flags=re.IGNORECASE)
-            if "techOrder" in text:
+            if "techOrder" in text or "<source" in text:
                 from zimi import tube as _tube
 
+                # A video ZIM's page names one container; the ZIM may carry
+                # another (ted2zim's mp4 beside a webm it never downloaded).
+                if _srv._zim_kind_of(zim_name) == "video":
+                    text = _tube.mend_sources(text, zim_name, entry_path)
                 text = _tube.decoder_first_on_ios(text)
             if a11y:
                 from zimi import a11y as _a11y

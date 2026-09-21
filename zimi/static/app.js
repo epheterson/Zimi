@@ -953,6 +953,16 @@ async function setLanguage(lang) {
   if (libPanel && libPanel.classList.contains('open')) renderLibraryPanel();
   // If reading an article, re-check language banner in reader context
   if (readerOpen && currentArticle) _checkReaderLangBanner();
+  // The PDF viewer speaks the shell's language too: reopened with the new
+  // locale on the same file (Eric: "changing language with PDF up doesn't
+  // change language of the text in the PDF player").
+  if (_isPdfPage()) {
+    try {
+      var _pf = document.getElementById('reader-frame');
+      var _pm = /[?&]file=([^#&]*)/.exec(_pf.contentWindow.location.href);
+      if (_pm) _pf.contentWindow.location.replace(_pdfViewerUrl(_pm[1]));
+    } catch (e) {}
+  }
   // Sync almanac: re-render all content with new translations
   if (typeof _onGlobalLanguageChanged === 'function') _onGlobalLanguageChanged(lang);
   if (_almanacOpen && typeof _renderAlmanacContent === 'function') _renderAlmanacContent();
@@ -1701,7 +1711,7 @@ function updateTopbar() {
   var _foldReaderExtras = _readingArticle && _isNarrow();
   // A map is read with the eyes and the hands: no type size, no read-aloud,
   // no Reader View. _syncReaderViewBtn and the ⋯ menu know the same rule.
-  var _readingText = _readingArticle && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage();
+  var _readingText = _readingArticle && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage() && !_isPdfPage();
   var fontBtn = document.getElementById('font-btn');
   if (fontBtn) fontBtn.style.display = (_readingText && !_foldReaderExtras) ? 'flex' : 'none';
   // Bookmarks-panel opener — reader only (#65). Everywhere else the library
@@ -2505,6 +2515,12 @@ function goHome(e) {
 
 function _isAppPage() {
   return _isTubePage() || _isExchangePage() || _isReddotPage();
+}
+// The reader is on the PDF viewer: nothing to read aloud, no type size.
+function _isPdfPage() {
+  if (!readerOpen) return false;
+  var f = document.getElementById('reader-frame');
+  try { return !!(f && f.contentWindow && f.contentWindow.location.pathname.indexOf('/static/pdfjs/') === 0); } catch (e) { return false; }
 }
 // The app's home, in place of the item a shared link landed on.
 function _appEntryHome() {
@@ -8566,6 +8582,15 @@ function _mapsSourceToggleHtml() {
 // so ask again a few times before saying there is nothing.
 var _STREETZIM_POLL_MS = 5000;
 var _STREETZIM_POLL_TRIES = 12;
+// The note over StreetZim's regions: the link sits on the name (Eric: "put
+// it behind the StreetZim text"), and no date: a listing is current unless
+// it says otherwise, and a date reads as "old".
+var _STREETZIM_URL = 'https://streetzim.web.app';
+function _streetzimNoteHtml() {
+  var note = tH('streetzim_note');
+  var link = '<a href="' + _STREETZIM_URL + '" target="_blank" rel="noopener">StreetZim</a>';
+  return note.indexOf('StreetZim') >= 0 ? note.replace('StreetZim', link) : note + ' ' + link;
+}
 async function _renderStreetZimMaps(results, catMeta, catName, attempt) {
   var data;
   try {
@@ -8583,8 +8608,7 @@ async function _renderStreetZimMaps(results, catMeta, catName, attempt) {
     '<span class="browse-drilldown-title">' + (catMeta ? '<span class="browse-drilldown-icon">' + catMeta.icon + '</span>' : '') + esc(catName) + '</span>' +
     '<span class="browse-drilldown-count">' + tH('n_available', {n: grouped.length}) + '</span>' +
   '</div>' + _mapsSourceToggleHtml() +
-  '<div class="ms-hint">' + tH('streetzim_note') + (data.as_of ? ' ' + tH('catalog_as_of', {date: esc(data.as_of)}) : '') +
-    ' <a href="https://streetzim.web.app" target="_blank" rel="noopener">streetzim.web.app</a></div>';
+  '<div class="ms-hint">' + _streetzimNoteHtml() + '</div>';
   if (grouped.length) {
     h += _renderCatalogGrid(grouped);
   } else if (data.refreshing && (attempt || 0) < _STREETZIM_POLL_TRIES) {
@@ -19487,7 +19511,7 @@ function _buildTopbarMenuHtml() {
       readerGroup += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
     }
     // 3. Read aloud.
-    if (_TTS_AVAILABLE && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage()) {
+    if (_TTS_AVAILABLE && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage() && !_isPdfPage()) {
       readerGroup += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
         '" onclick="event.stopPropagation();_ttsToggle()">' + _TBM_TTS_ICON +
         ' <span class="tbm-label">' + tH(_ttsSpeaking ? 'tts_stop' : 'tts_speak') + '</span></button>';

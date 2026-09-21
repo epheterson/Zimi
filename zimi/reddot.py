@@ -615,7 +615,7 @@ def home():
         subs = []
         for sub in z["subreddits"][:12]:
             first = listing(z["name"], sub, "top", 1)
-            subs.append({"subreddit": sub, "rows": first["rows"][:6], "pages": first["pages"]})
+            subs.append({"subreddit": sub, "rows": first["rows"][:12], "pages": first["pages"]})
         out.append(dict(z, shelves=subs))
     return {"zims": out}
 

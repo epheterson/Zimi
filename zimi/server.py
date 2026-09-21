@@ -2054,6 +2054,14 @@ def url_quote(name):
     return urllib.parse.quote(name, safe="")
 
 
+def _zim_kind_of(name):
+    """The cached kind of an installed ZIM (map, video, qa, reddit) or ""."""
+    for z in _zim_list_cache or []:
+        if z.get("name") == name:
+            return z.get("kind") or ""
+    return ""
+
+
 def apps_shown():
     """The apps (Maps, ZimiTube, ZimiExchange, Reddot) offered on this server:
     ``ZIMI_APPS`` when set (``0``, ``1`` or a comma list of names), else the
@@ -4444,6 +4452,15 @@ def main():
             except OSError:
                 pass
         warm_indexes()
+        # The Creator pane's engines (a browser launch, the sidecars) are
+        # found out now, on their own thread, so the first look at the pane
+        # is not "Checking…" for as long as a browser takes to start.
+        try:
+            from zimi import manage as _manage_boot
+
+            _manage_boot._creator_capabilities()
+        except Exception:
+            pass
         start_background_services(port)
         # Start auto-update thread if enabled
         global _auto_update_thread

@@ -23,7 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Users: changing a user's role or allowlist no longer repaints the public-access card as Open, nor the allowlist picker as empty.
 - The Creator pane lists the subreddit engine (ArcticZim) beside the others.
 - The gear is the last thing on the bar on every page; the apps offered to everyone are chosen under Preferences beside Show Discover, as the tiles they are on the home page.
-- A video whose file never made it into its ZIM is left out of ZimiTube's feed.
+- A video whose file never made it into its ZIM is left out of ZimiTube's feed. When the page names one container and the ZIM carries another (ted2zim's mp4 beside a webm it never downloaded), the player and the page served through Zimi play the file that is there, mp4 first.
+- Safari on the Mac plays a WebM's picture without its Vorbis sound; ZimiTube and a TED page served through Zimi hand Safari the ZIM's decoder, as they do an iPhone.
+- A library with one subreddit opens Reddot on that subreddit's paged list; shelves show a dozen posts, not six.
+- Read aloud and type size are not offered on a PDF; switching the app's language reopens an open PDF in that language.
+- The catalog's StreetZim note links the name itself and drops the listing date; the Creator pane's engines are probed at startup so the pane answers at once.
 - One map mark everywhere Maps is named (the catalog's folded map), and Reddot's mark in the apps' own colour. The app's icon in the breadcrumb is the way to its front page. Reddot opens on its shelves without a pitch; Follow sits beside the subreddit's name.
 - A StreetZim region already installed shows as installed in the catalog whatever its file was named, and a catalog entry with one file says its size, not "Full".
 - The catalog's language pills count the projects a category shows, not every file behind them.

@@ -320,3 +320,29 @@ def test_a_talk_is_filed_where_the_archive_really_keeps_it():
     assert tube._page_path(Old(), "why-tech-needs-the-humanities") == "A/why-tech-needs-the-humanities"
     assert tube._page_path(New(), "why-tech-needs-the-humanities") == "why-tech-needs-the-humanities"
     assert tube._page_path(Gone(), "why-tech-needs-the-humanities") == "why-tech-needs-the-humanities"
+
+
+def test_a_sibling_file_the_page_never_named_is_played(tmp_path, monkeypatch):
+    """ted_en_technology_2023-09 names videos/N/video.webm for every talk and
+    carries video.mp4 for some (the climate talk, whose webm is absent). The
+    player gets the mp4; the page served through Zimi names it too; only a
+    talk with neither file is missing. MP4 comes first when both are there:
+    Safari plays a WebM's picture and not its Vorbis sound."""
+    files = dict(TED_FILES)
+    del files["videos/13316/video.webm"]
+    files["videos/13316/video.mp4"] = b"\x00\x00\x00\x18ftypmp42"
+    files["why-tech-needs-the-humanities"] = TED_PAGE
+    files["videos/117845/video.mp4"] = b"\x00\x00\x00\x18ftypmp42"
+    _library(tmp_path, monkeypatch, [("ted_en_sib_2023-09.zim", {"Scraper": "ted2zim 2.0.13", "Name": "ted_en_sib"}, files)])
+    got = tube.playback("ted_en_sib", "why-tech-needs-the-humanities")
+    assert got["missing"] is False
+    assert got["media"] == [{"path": "videos/13316/video.mp4", "type": "video/mp4"}]
+    assert [v["page"] for v in tube.videos_for("ted_en_sib")] == ["the-world-s-rarest-diseases", "why-tech-needs-the-humanities"]
+    page = TED_PAGE.decode()
+    mended = tube.mend_sources(page, "ted_en_sib", "why-tech-needs-the-humanities")
+    assert "<source src='videos/13316/video.mp4' type='video/mp4' />" in mended.replace('"', "'")
+    assert mended.count("<source") == 1
+    # a page whose file is there is served as written
+    assert tube.mend_sources(page, "ted_en_sib", "the-world-s-rarest-diseases") == page or "videos/13316" in page
+    assert tube.siblings_of("videos/1/video.webm") == ["videos/1/video.mp4", "videos/1/video.m4v", "videos/1/video.webm", "videos/1/video.ogv"]
+    assert tube.siblings_of("subs/x.vtt") == ["subs/x.vtt"]

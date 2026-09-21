@@ -261,7 +261,10 @@ function play(e, i) {
     // ZIM's decoder (what the TED page itself uses there) goes first.
     var probe = document.createElement('video');
     var playable = m.media.some(function(src) { return !src.type || probe.canPlayType(src.type) !== ''; });
-    var apple = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    // Safari, the Mac's as well: it says it can play WebM and then plays the
+    // picture without its Vorbis sound (Eric: "this one DOES play but no audio").
+    var ua = navigator.userAgent;
+    var apple = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) || (/Safari\//.test(ua) && !/Chrome|Chromium|Edg|OPR|Android/.test(ua));
     var webmOnly = m.media.every(function(src) { return /webm/i.test(src.type || src.path); });
     if ((!playable || (apple && webmOnly)) && m.ogv) { playWithOgv(v, m, stage, i); return; }
     var vid = document.createElement('video');

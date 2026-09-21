@@ -106,9 +106,17 @@ function renderChips() {
     subs.map(function(s) { return '<button class="chip' + (_sub === s.sub && _zim === s.zim ? ' on' : '') + '" onclick="openSub(' + J(s.zim) + ',' + J(s.sub) + ')">r/' + esc(s.sub) + '</button>'; }).join('');
   c.hidden = subs.length < 2 && !_follow.length;
 }
+var _single = null;  // the one subreddit in the library, when there is exactly one
 function renderHome(data) {
   _zims = data.zims || [];
   _home = false;
+  var all = [];
+  _zims.forEach(function(z) { (z.subreddits || []).forEach(function(s) { all.push({ zim: z.name, sub: s }); }); });
+  // One subreddit is a list, not a shelf of six (Eric: "the zim has LOTS of
+  // posts but it only shows like six unless I click All"): its top posts,
+  // paged, with Top and New, and that list is the app's front page.
+  _single = all.length === 1 ? all[0] : null;
+  if (_single && !_q) { openSub(_single.zim, _single.sub); return; }
   renderChips();
   document.getElementById('list').hidden = true;
   var sh = document.getElementById('shelves'); sh.hidden = false;
@@ -152,7 +160,7 @@ function loadList(append) {
     _pages = d.pages || 0; renderList('r/' + _sub, d.rows || [], append);
   }).finally(function() { _busy = false; });
 }
-function openHome() { closeP(true); _sub = ''; _zim = ''; _q = ''; _home = false; renderChips(); document.getElementById('list').hidden = true; document.getElementById('shelves').hidden = false; document.getElementById('empty').hidden = _zims.length > 0; window.scrollTo(0, 0); }
+function openHome() { if (_single) { _q = ''; openSub(_single.zim, _single.sub); return; } closeP(true); _sub = ''; _zim = ''; _q = ''; _home = false; renderChips(); document.getElementById('list').hidden = true; document.getElementById('shelves').hidden = false; document.getElementById('empty').hidden = _zims.length > 0; window.scrollTo(0, 0); }
 function openSub(zim, sub) { closeP(true); _zim = zim; _sub = sub; _q = ''; _home = false; _page = 1; renderChips(); loadList(false); window.scrollTo(0, 0); }
 function setSort(k) { _sort = k; _page = 1; loadList(false); }
 function more() { if (_q) return; _page += 1; loadList(true); }
@@ -200,13 +208,13 @@ function closeP(silent) {
 }
 window.reddotSearch = reddotSearch; window.openP = openP; window.closeP = closeP; window.openSub = openSub; window.openHome = openHome; window.setSort = setSort; window.more = more;
 window.toggleFollow = toggleFollow; window.renderHomeFeed = renderHomeFeed;
-window.__top = function() { return document.getElementById('pview').hidden && document.getElementById('list').hidden; };
+window.__top = function() { return document.getElementById('pview').hidden && (document.getElementById('list').hidden || (!!_single && !_q && !_home)); };
 window.__random = function() {
   fetch('/reddot/random').then(function(r) { return r.ok ? r.json() : null; }).then(function(d) { if (d && d.zim && d.page) openP(d.zim, d.page); }).catch(function() {});
 };
 window.__back = function() {
   if (!document.getElementById('pview').hidden) { closeP(); return true; }
-  if (!document.getElementById('list').hidden) { openHome(); return true; }
+  if (!document.getElementById('list').hidden && !(_single && !_q && !_home)) { openHome(); return true; }
   return false;
 };
 window.__home = function() { closeP(true); openHome(); window.scrollTo(0, 0); };
