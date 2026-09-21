@@ -27,6 +27,7 @@ ok('the page\'s empty state sends people to Create on the Subreddit mode', /goCr
 ok('typing asks the page, which asks the library\'s own search across the ZIMs', /_reddotSearch\(val\)/.test(src) && /fetch\('\/search\?q=' \+ encodeURIComponent\(_q\)/.test(page));
 ok('no reading controls on it', /!_isExchangePage\(\) && !_isReddotPage\(\)/.test(src));
 ok('the breadcrumb is Reddot and the box says what it is for', /bcIcon\.title = t\('reddot'\)/.test(src) && /return t\('reddot_search_placeholder'\)/.test(src) && (src.match(/q\.placeholder = _appPlaceholder\(\)/g) || []).length === 2);
+ok('follow a subreddit and Home is their top posts in one list, followed shelves first', /reddot_follow/.test(page) && /function toggleFollow\(zim, sub\)/.test(page) && /function renderHomeFeed\(\)/.test(page) && /isFollowed\(b\.z\.name, b\.s\.subreddit\)/.test(page) && /renderHomeFeed\(\)">' \+ esc\(STR\.home\)/.test(page));
 ok('shelves per subreddit, a paged list with Top and New, a post with its comment tree', /class="shelf"/.test(page) && /setSort\(/.test(page) && /'\/reddot\/sub\?zim='/.test(page) && /'\/reddot\/post\?zim='/.test(page) && /function commentHtml\(c\)/.test(page) && /\(c\.children \|\| \[\]\)\.map\(commentHtml\)/.test(page));
 ok('the page takes the shared sheet, which holds both themes', /<!--@apps\.css@-->/.test(page) && !/prefers-color-scheme/.test(page));
 // the Create page
@@ -36,6 +37,6 @@ ok('the Create page can be opened on a remembered mode', /if \(typeof _createRem
 for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n'))) {
   const d = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n', lang), 'utf8'));
   if (d.reddot !== 'Reddot') ok('it is called Reddot in ' + lang, false);
-  for (const k of ['reddot_search_placeholder', 'reddot_comments', 'reddot_empty', 'app_empty_reddot', 'create_mode_reddit', 'create_pv_reddit_what']) if (!d[k]) ok(k + ' in ' + lang, false);
+  for (const k of ['reddot_search_placeholder', 'reddot_comments', 'reddot_empty', 'app_empty_reddot', 'create_mode_reddit', 'create_pv_reddit_what', 'reddot_home', 'reddot_follow', 'reddot_following', 'reddot_home_hint']) if (!d[k]) ok(k + ' in ' + lang, false);
 }
 process.exit(failures ? 1 : 0);

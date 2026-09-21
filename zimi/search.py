@@ -1972,7 +1972,7 @@ def _maybe_did_you_mean(query_str):
         return None
 
 
-_PLACES_PER_MAP = 5
+_PLACES_PER_MAP = 8
 
 
 # Kiwix's maps2zim writes one page per place under search/<Name>, a meta

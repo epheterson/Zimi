@@ -11,6 +11,10 @@
   .c .cm b { color: var(--text); font-weight: 600; }
   .c .prose { font-size: 13.5px; }
   .c .c { margin-inline-start: 4px; }
+  /* Following a subreddit: a star on its shelf and on its list. */
+  .follow { flex: none; border: 1px solid var(--border); background: var(--surface); color: var(--text2); border-radius: 14px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+  .follow.on { color: var(--amber); border-color: var(--amber); background: var(--amber-glow); }
+  .hint { color: var(--text2); font-size: 12.5px; margin: 0 0 12px; }
 </style>
 </head>
 <body>
@@ -19,7 +23,7 @@
     <div class="chips" id="chips"></div>
     <div id="shelves"></div>
     <div id="list" hidden>
-      <div class="head"><h2 id="l-title"></h2><span class="sorts" id="l-sorts"></span></div>
+      <div class="head"><h2 id="l-title"></h2><span id="l-follow"></span><span class="sorts" id="l-sorts"></span></div>
       <div id="l-rows"></div>
       <button class="more" id="more" hidden onclick="more()"></button>
     </div>
@@ -42,8 +46,40 @@
 // posts, a subreddit as a paged list (top, new), a post with its comment
 // tree, the original page one tap away. Zimi's top bar drives
 // reddotSearch(q) over the library's own title search.
-var STR = strings({ title: 'Reddot', all: 'All', more: 'More', top: 'Top', new: 'New', comments: 'comments', comment: 'comment', points: 'points', point: 'point', by: 'by', open_page: 'Open the original page', none: 'No posts match.', empty: 'No subreddit ZIMs installed yet. Make one from the Create page.', catalog: 'Make one', p: '' });
-var _zims = [], _zim = '', _sub = '', _sort = 'top', _page = 1, _pages = 0, _q = '', _busy = false;
+var STR = strings({ title: 'Reddot', all: 'All', more: 'More', top: 'Top', new: 'New', comments: 'comments', comment: 'comment', points: 'points', point: 'point', by: 'by', open_page: 'Open the original page', none: 'No posts match.', empty: 'No subreddit ZIMs installed yet. Make one from the Create page.', catalog: 'Make one', p: '',
+  home: 'Home', follow: 'Follow', following: 'Following', home_hint: 'Follow subreddits and their top posts meet here.' });
+var _zims = [], _zim = '', _sub = '', _sort = 'top', _page = 1, _pages = 0, _q = '', _busy = false, _home = false;
+// The subreddits you follow, kept in this browser: "zim|subreddit" each.
+// Your home is their top posts in one list.
+var _follow = [];
+try { _follow = JSON.parse(localStorage.getItem('reddot_follow') || '[]'); if (!Array.isArray(_follow)) _follow = []; } catch (e) { _follow = []; }
+function followKey(zim, sub) { return zim + '|' + sub; }
+function isFollowed(zim, sub) { return _follow.indexOf(followKey(zim, sub)) >= 0; }
+function toggleFollow(zim, sub) {
+  var k = followKey(zim, sub), i = _follow.indexOf(k);
+  if (i >= 0) _follow.splice(i, 1); else _follow.push(k);
+  try { localStorage.setItem('reddot_follow', JSON.stringify(_follow)); } catch (e) {}
+  if (_home && !_follow.length) { openHome(); return; }
+  renderChips();
+  if (_home) renderHomeFeed(); else if (_sub) paintFollowButton(); else renderHome({ zims: _zims });
+}
+function followButton(zim, sub) {
+  var on = isFollowed(zim, sub);
+  return '<button class="follow' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="event.stopPropagation(); toggleFollow(' + J(zim) + ',' + J(sub) + ')">' + (on ? '★ ' + esc(STR.following) : '☆ ' + esc(STR.follow)) + '</button>';
+}
+function paintFollowButton() { var el = document.getElementById('l-follow'); if (el) el.innerHTML = _sub ? followButton(_zim, _sub) : ''; }
+// Home: the top posts of every followed subreddit, by score, from what
+// the home data already holds (each shelf's first page).
+function renderHomeFeed() {
+  _home = true; _sub = ''; _zim = ''; _q = '';
+  var rows = [];
+  _zims.forEach(function(z) { (z.shelves || []).forEach(function(s) { if (isFollowed(z.name, s.subreddit)) s.rows.forEach(function(r) { rows.push(Object.assign({ zim: z.name }, r)); }); }); });
+  rows.sort(function(a, b) { return (b.score || 0) - (a.score || 0); });
+  _pages = 0; _page = 1;
+  renderList(STR.home, rows, false, true);
+  document.getElementById('l-sorts').innerHTML = '';
+  window.scrollTo(0, 0);
+}
 function goCreate() { tell({ zimi: 'create', mode: 'reddit' }); return false; }
 
 // A row names its subreddit only when its list does not: a shelf and a
@@ -64,41 +100,48 @@ function row(r, zim, mixed) {
 function renderChips() {
   var c = document.getElementById('chips'); var subs = [];
   _zims.forEach(function(z) { z.subreddits.forEach(function(s) { subs.push({ zim: z.name, sub: s }); }); });
-  c.innerHTML = (subs.length > 1 ? '<button class="chip' + (!_sub ? ' on' : '') + '" onclick="openHome()">' + esc(STR.all) + '</button>' : '') +
+  c.innerHTML = (_follow.length ? '<button class="chip' + (_home ? ' on' : '') + '" onclick="renderHomeFeed()">' + esc(STR.home) + '</button>' : '') +
+    (subs.length > 1 ? '<button class="chip' + (!_sub && !_home ? ' on' : '') + '" onclick="openHome()">' + esc(STR.all) + '</button>' : '') +
     subs.map(function(s) { return '<button class="chip' + (_sub === s.sub && _zim === s.zim ? ' on' : '') + '" onclick="openSub(' + J(s.zim) + ',' + J(s.sub) + ')">r/' + esc(s.sub) + '</button>'; }).join('');
-  c.hidden = subs.length < 2;
+  c.hidden = subs.length < 2 && !_follow.length;
 }
 function renderHome(data) {
   _zims = data.zims || [];
+  _home = false;
   renderChips();
   document.getElementById('list').hidden = true;
   var sh = document.getElementById('shelves'); sh.hidden = false;
   // A subreddit with nothing to show gets no shelf: a heading over nothing
-  // is a promise the page cannot keep. Its chip still leads to it.
-  sh.innerHTML = _zims.map(function(z) {
-    return (z.shelves || []).filter(function(s) { return s.rows && s.rows.length; }).map(function(s) {
-      return '<section class="shelf"><div class="shelf-h"><h2>r/' + esc(s.subreddit) + '</h2><button class="all" onclick="openSub(' + J(z.name) + ',' + J(s.subreddit) + ')">' + esc(STR.all) + CHEV + '</button></div>' +
-        s.rows.map(function(r) { return row(r, z.name, false); }).join('') + '</section>';
-    }).join('');
+  // is a promise the page cannot keep. Its chip still leads to it. The
+  // followed ones come first.
+  var shelves = [];
+  _zims.forEach(function(z) { (z.shelves || []).forEach(function(s) { if (s.rows && s.rows.length) shelves.push({ z: z, s: s }); }); });
+  shelves.sort(function(a, b) { return (isFollowed(b.z.name, b.s.subreddit) ? 1 : 0) - (isFollowed(a.z.name, a.s.subreddit) ? 1 : 0); });
+  sh.innerHTML = (shelves.length && !_follow.length ? '<div class="hint">' + esc(STR.home_hint) + '</div>' : '') + shelves.map(function(x) {
+    var z = x.z, s = x.s;
+    return '<section class="shelf"><div class="shelf-h"><h2>r/' + esc(s.subreddit) + '</h2>' + followButton(z.name, s.subreddit) + '<button class="all" onclick="openSub(' + J(z.name) + ',' + J(s.subreddit) + ')">' + esc(STR.all) + CHEV + '</button></div>' +
+      s.rows.map(function(r) { return row(r, z.name, false); }).join('') + '</section>';
   }).join('');
   var empty = document.getElementById('empty');
   empty.hidden = _zims.length > 0;
   empty.innerHTML = esc(STR.empty) + '<br><a class="door" href="/#create" onclick="return goCreate()">' + esc(STR.catalog) + CHEV + '</a>';
 }
-function renderList(title, rows, append) {
+function renderList(title, rows, append, mixed) {
   document.getElementById('shelves').hidden = true;
   var l = document.getElementById('list'); l.hidden = false;
   document.getElementById('l-title').textContent = title;
-  document.getElementById('l-sorts').innerHTML = _q ? '' : ['top', 'new'].map(function(k) { return '<button class="chip' + (_sort === k ? ' on' : '') + '" onclick="setSort(' + J(k) + ')">' + esc(STR[k]) + '</button>'; }).join('');
+  document.getElementById('l-sorts').innerHTML = _q || _home ? '' : ['top', 'new'].map(function(k) { return '<button class="chip' + (_sort === k ? ' on' : '') + '" onclick="setSort(' + J(k) + ')">' + esc(STR[k]) + '</button>'; }).join('');
+  paintFollowButton();
   var host = document.getElementById('l-rows');
   if (!append) host.innerHTML = '';
-  host.insertAdjacentHTML('beforeend', rows.map(function(r) { return row(r, r.zim || _zim, !!_q); }).join(''));
+  host.insertAdjacentHTML('beforeend', rows.map(function(r) { return row(r, r.zim || _zim, !!_q || !!mixed); }).join(''));
   var more = document.getElementById('more'); more.hidden = !_pages || _page >= _pages; more.textContent = STR.more;
   var empty = document.getElementById('empty'); empty.hidden = host.children.length > 0; empty.textContent = STR.none;
 }
 function loadHome() {
   fetch('/reddot/home').then(function(r) { return r.json(); }).then(function(d) {
     renderHome(d);
+    if (_follow.length && !STR.p) renderHomeFeed();
     if (STR.p) { var want = STR.p; STR.p = ''; var i = want.indexOf('/'); if (i > 0) openP(want.slice(0, i), want.slice(i + 1)); }
   }).catch(function() { document.getElementById('empty').hidden = false; document.getElementById('empty').textContent = STR.none; });
 }
@@ -108,12 +151,12 @@ function loadList(append) {
     _pages = d.pages || 0; renderList('r/' + _sub, d.rows || [], append);
   }).finally(function() { _busy = false; });
 }
-function openHome() { closeP(true); _sub = ''; _zim = ''; _q = ''; renderChips(); document.getElementById('list').hidden = true; document.getElementById('shelves').hidden = false; document.getElementById('empty').hidden = _zims.length > 0; window.scrollTo(0, 0); }
-function openSub(zim, sub) { closeP(true); _zim = zim; _sub = sub; _q = ''; _page = 1; renderChips(); loadList(false); window.scrollTo(0, 0); }
+function openHome() { closeP(true); _sub = ''; _zim = ''; _q = ''; _home = false; renderChips(); document.getElementById('list').hidden = true; document.getElementById('shelves').hidden = false; document.getElementById('empty').hidden = _zims.length > 0; window.scrollTo(0, 0); }
+function openSub(zim, sub) { closeP(true); _zim = zim; _sub = sub; _q = ''; _home = false; _page = 1; renderChips(); loadList(false); window.scrollTo(0, 0); }
 function setSort(k) { _sort = k; _page = 1; loadList(false); }
 function more() { if (_q) return; _page += 1; loadList(true); }
 function reddotSearch(q) {
-  _q = (q || '').trim(); closeP(true);
+  _q = (q || '').trim(); closeP(true); _home = false;
   if (!_q) { openHome(); return; }
   var zims = _zims.map(function(z) { return z.name; }).join(',');
   if (!zims) return;
@@ -156,6 +199,7 @@ function closeP(silent) {
   if (!silent) window.scrollTo(0, 0);
 }
 window.reddotSearch = reddotSearch; window.openP = openP; window.closeP = closeP; window.openSub = openSub; window.openHome = openHome; window.setSort = setSort; window.more = more;
+window.toggleFollow = toggleFollow; window.renderHomeFeed = renderHomeFeed;
 loadHome();
 </script>
 </body>

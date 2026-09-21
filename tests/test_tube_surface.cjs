@@ -111,10 +111,12 @@ ok('the default order is called Top', /_sort = 'top'/.test(page) && /sort_top/.t
 ok('the original page stays one tap away', /STR\.open_page/.test(page));
 ok('the page exposes its search to the top bar', /window\.tubeSearch = tubeSearch/.test(page));
 ok('strings arrive in the hash, escaped on the way in', /<!--@apps\.js@-->/.test(page) && /JSON\.parse\(decodeURIComponent\(location\.hash\.slice\(1\)/.test(shared) && /function esc\(x\)/.test(shared));
+ok('leaving the player with a video playing docks it, and a tap brings it back', /function closePlayer\(silent\)/.test(page) && /dock-stage'\)\.appendChild\(v\)/.test(page) && /function undock\(\)/.test(page) && /function stopDock\(\)/.test(page) && /id="dock" hidden onclick="undock\(\)"/.test(page));
+ok('theater mode is remembered and picture in picture appears only where the browser has it', /zimitube_theater/.test(page) && /player\.theater/.test(page) && /function pipAvailable\(v\)/.test(page) && /webkitSetPresentationMode/.test(page) && /requestPictureInPicture/.test(page));
 ok('the page takes the shared sheet, which holds both themes', /<!--@apps\.css@-->/.test(page) && !/prefers-color-scheme/.test(page));
 for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n'))) {
   const d = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n', lang), 'utf8'));
-  for (const k of ['tube', 'tube_search_placeholder', 'tube_videos', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay', 'tube_open_page', 'tube_sort_top', 'tube_no_media']) if (!d[k]) ok(k + ' in ' + lang, false);
+  for (const k of ['tube', 'tube_search_placeholder', 'tube_videos', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay', 'tube_theater', 'tube_pip', 'tube_open_page', 'tube_sort_top', 'tube_no_media']) if (!d[k]) ok(k + ' in ' + lang, false);
   if (d.tube !== 'ZimiTube') ok('it is called ZimiTube in ' + lang, false);
 }
 

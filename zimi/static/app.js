@@ -16147,7 +16147,7 @@ function _appStrings(app, keys, extra) {
 
 function _reddotStrings(p) {
   return _appStrings('reddot', ['reddot_all', 'reddot_more', 'reddot_top', 'reddot_new', 'reddot_comments', 'reddot_comment', 'reddot_points', 'reddot_point',
-    'reddot_by', 'reddot_open_page', 'reddot_none', 'reddot_empty', 'reddot_catalog'], { p: p || '' });
+    'reddot_by', 'reddot_open_page', 'reddot_none', 'reddot_empty', 'reddot_catalog', 'reddot_home', 'reddot_follow', 'reddot_following', 'reddot_home_hint'], { p: p || '' });
 }
 function openReddot(replaceState, p) {
   if (_isModClick()) { _lastMouseEvent = null; window.open(_reddotUrl(p), '_blank'); return; }
@@ -16251,7 +16251,7 @@ function _tubeStrings(play) {
   var langs = {};
   _installedVideoZims().forEach(function(z) { if (z.language) langs[z.language] = _langDisplayName(z.language) || z.language; });
   return _appStrings('tube', ['tube_videos', 'tube_video', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay',
-    'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_no_media'], { play: play || '', langs: langs });
+    'tube_theater', 'tube_pip', 'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_no_media'], { play: play || '', langs: langs });
 }
 
 // What the pages Zimi owns say to the shell. Same origin, and only the

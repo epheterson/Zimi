@@ -204,7 +204,18 @@ def test_playback_reads_the_media_and_tracks_behind_the_page(tmp_path, monkeypat
         ],
         "poster": "videos/13316/thumbnail.webp",
         "page": "why-tech-needs-the-humanities",
+        "ogv": "",
     }
+
+
+def test_playback_names_the_zims_own_decoder_when_it_ships_one(tmp_path, monkeypatch):
+    """TED's videos are WebM, which iPhones cannot decode; a ted2zim ZIM
+    ships ogv.js for its own pages, and ZimiTube's player uses it too."""
+    files = dict(TED_FILES)
+    files["why-tech-needs-the-humanities"] = b"<html><body><video><source src='videos/13316/video.webm' type='video/webm'></video></body></html>"
+    files["-/assets/ogvjs/ogv.js"] = b"/* ogv */"
+    _library(tmp_path, monkeypatch, [("ted_en_ogv_2023-09.zim", {"Scraper": "ted2zim 2.0.13", "Name": "ted_en_ogv"}, files)])
+    assert tube.playback("ted_en_ogv", "why-tech-needs-the-humanities")["ogv"] == "-/assets/ogvjs"
 
 
 def test_playback_resolves_zimis_own_relative_paths(tmp_path, monkeypatch):

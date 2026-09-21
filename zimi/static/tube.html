@@ -36,6 +36,18 @@
   .next .item-r .thumb { border-radius: var(--radius-s); overflow: hidden; }
   .next .item-r .t { font-weight: 600; font-size: 13px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .next .item-r .m { font-size: 11.5px; color: var(--text2); margin-top: 2px; }
+  /* Theater: the stage takes the whole width, up next moves below. */
+  .player.theater { grid-template-columns: 1fr; }
+  .player.theater .stage { aspect-ratio: 16 / 9; max-height: 80vh; }
+  /* The dock: the video keeps playing in a corner while you browse. */
+  .dock { position: fixed; right: 12px; bottom: 12px; width: 240px; z-index: 50; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,0.25); overflow: hidden; cursor: pointer; }
+  [dir="rtl"] .dock { right: auto; left: 12px; }
+  @media (max-width: 480px) { .dock { width: calc(100% - 24px); left: 12px; right: 12px; } }
+  .dock .stage { border-radius: 0; }
+  .dock .dock-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+  .dock .dock-t { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dock button { flex: none; border: 0; background: none; color: var(--text2); font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 4px; }
+  .dock button:hover { color: var(--amber); }
 </style>
 </head>
 <body>
@@ -61,12 +73,20 @@
           <div class="desc" id="w-desc"></div>
           <div class="actions">
             <button id="autoplay" onclick="toggleAutoplay()"></button>
+            <button id="theater" onclick="toggleTheater()"></button>
+            <button id="pip" onclick="enterPip()" hidden></button>
             <a id="w-open" href="#"></a>
           </div>
         </div>
       </div>
       <div class="next"><div class="section-h" id="w-nexth"></div><div id="w-next"></div></div>
     </div>
+  </div>
+  <!-- The dock: where the stage goes when you leave the player with a video
+       playing. Tap it to come back; × stops it. -->
+  <div class="dock" id="dock" hidden onclick="undock()">
+    <div id="dock-stage"></div>
+    <div class="dock-bar"><span class="dock-t" id="dock-t"></span><button id="dock-close" aria-label="close" onclick="event.stopPropagation(); stopDock()">&#215;</button></div>
   </div>
 </div>
 <!--@apps.js@-->
@@ -80,11 +100,11 @@
 // box in Zimi's top bar drives tubeSearch(q).
 var PAGE = 60;
 var STR = strings({ title: 'ZimiTube', videos: 'videos', video: 'video', langs: {}, more: 'More', none: 'No videos match.', empty: 'No video ZIMs installed yet.',
-  up_next: 'Up next', autoplay: 'Autoplay', open_page: 'Open the original page', all: 'All',
+  up_next: 'Up next', autoplay: 'Autoplay', theater: 'Theater', pip: 'Picture in picture', open_page: 'Open the original page', all: 'All',
   sort_top: 'Top', sort_title: 'Title', sort_newest: 'Newest', sort_longest: 'Longest', no_media: 'This video cannot be played here.' });
 var SORTS = ['top', 'title', 'newest', 'longest'];
-var _q = '', _zim = '', _sort = 'top', _all = [], _zims = [], _list = [], _shown = 0, _busy = false, _autoplay = true, _now = -1;
-try { _sort = localStorage.getItem('zimitube_sort') || 'top'; if (SORTS.indexOf(_sort) < 0) _sort = 'top'; _autoplay = localStorage.getItem('zimitube_autoplay') !== '0'; } catch (e) {}
+var _q = '', _zim = '', _sort = 'top', _all = [], _zims = [], _list = [], _shown = 0, _busy = false, _autoplay = true, _theater = false, _now = -1, _video = null;
+try { _sort = localStorage.getItem('zimitube_sort') || 'top'; if (SORTS.indexOf(_sort) < 0) _sort = 'top'; _autoplay = localStorage.getItem('zimitube_autoplay') !== '0'; _theater = localStorage.getItem('zimitube_theater') === '1'; } catch (e) {}
 
 function iconHtml(v, cls) { return v.zim_icon ? zimIcon(v.zim, cls) : '<span class="letter ' + cls + '">' + esc((v.zim_title || v.zim || '?')[0].toUpperCase()) + '</span>'; }
 function secs(d) { if (d == null || d === '') return 0; if (typeof d === 'string' && /:/.test(d)) { return d.split(':').reduce(function(a, b) { return a * 60 + (parseInt(b, 10) || 0); }, 0); } return parseInt(d, 10) || 0; }
@@ -170,6 +190,22 @@ function setSort(v) { _sort = v; try { localStorage.setItem('zimitube_sort', v);
 function setZim(name) { _zim = name; _shown = 0; renderHome(); window.scrollTo(0, 0); }
 function toggleAutoplay() { _autoplay = !_autoplay; try { localStorage.setItem('zimitube_autoplay', _autoplay ? '1' : '0'); } catch (e) {} paintAutoplay(); }
 function paintAutoplay() { var b = document.getElementById('autoplay'); b.textContent = STR.autoplay + (_autoplay ? ' ✓' : ''); b.className = _autoplay ? 'on' : ''; b.setAttribute('aria-pressed', String(_autoplay)); }
+// Theater: the stage across the whole width, remembered.
+function toggleTheater() { _theater = !_theater; try { localStorage.setItem('zimitube_theater', _theater ? '1' : '0'); } catch (e) {} paintTheater(); }
+function paintTheater() {
+  document.querySelector('.player').classList.toggle('theater', _theater);
+  var b = document.getElementById('theater'); b.textContent = STR.theater + (_theater ? ' ✓' : ''); b.className = _theater ? 'on' : ''; b.setAttribute('aria-pressed', String(_theater));
+}
+// Picture in picture, where the browser has it (Safari's own way, or the
+// standard one); the button appears only then.
+function pipAvailable(v) { return !!(v && (typeof v.requestPictureInPicture === 'function' && document.pictureInPictureEnabled || typeof v.webkitSetPresentationMode === 'function' && v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode('picture-in-picture'))); }
+function enterPip() {
+  var v = _video; if (!v) return;
+  try {
+    if (typeof v.webkitSetPresentationMode === 'function' && v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode('picture-in-picture')) v.webkitSetPresentationMode('picture-in-picture');
+    else if (v.requestPictureInPicture) v.requestPictureInPicture().catch(function() {});
+  } catch (e) {}
+}
 
 // ZimiTube's own player. The media behind the video's page, in a plain
 // <video> with the page's subtitle tracks; the rest of the list up next;
@@ -179,6 +215,7 @@ function play(e, i) {
   if (e && (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1)) return true;
   if (e) e.preventDefault();
   var v = _list[i]; if (!v) return false;
+  if (_docked >= 0) stopDock();
   _now = i;
   document.getElementById('home').hidden = true;
   var watch = document.getElementById('watch'); watch.hidden = false;
@@ -188,23 +225,33 @@ function play(e, i) {
   document.getElementById('w-desc').textContent = v.description || '';
   var page = zpath(v.zim, v.page);
   var open = document.getElementById('w-open'); open.href = page; open.textContent = STR.open_page;
-  paintAutoplay();
-  var stage = document.getElementById('stage'); stage.innerHTML = '';
+  paintAutoplay(); paintTheater();
+  document.getElementById('dock').hidden = true;
+  var stage = document.getElementById('stage'); stage.innerHTML = ''; _video = null;
+  document.getElementById('pip').hidden = true;
   window.scrollTo(0, 0);
   tell({ zimi: 'tube-play', play: v.zim + '/' + v.page, title: v.title });
   // The stage says so, and holds the way to the page, when the media is not
   // in a shape a browser plays.
   var noMedia = function() { stage.innerHTML = '<div class="nomedia">' + esc(STR.no_media) + '<br><a href="' + esc(page) + '">' + esc(STR.open_page) + CHEV + '</a></div>'; };
+  var stageEl = stage;
   fetch('/tube/play?zim=' + encodeURIComponent(v.zim) + '&page=' + encodeURIComponent(v.page)).then(function(r) { return r.ok ? r.json() : null; }).then(function(m) {
     if (_now !== i) return;
     if (!m || !m.media || !m.media.length) { noMedia(); return; }
+    // A file the browser cannot decode (WebM on an iPhone): the ZIM's own
+    // ogv.js decoder, the way the original page plays it.
+    var probe = document.createElement('video');
+    var playable = m.media.some(function(src) { return !src.type || probe.canPlayType(src.type) !== ''; });
+    if (!playable && m.ogv) { playWithOgv(v, m, stage, i); return; }
     var vid = document.createElement('video');
     vid.controls = true; vid.autoplay = true; vid.playsInline = true; vid.preload = 'auto';
     if (m.poster) vid.poster = zpath(v.zim, m.poster);
     m.media.forEach(function(src) { var s = document.createElement('source'); s.src = zpath(v.zim, src.path); if (src.type) s.type = src.type; vid.appendChild(s); });
     (m.subs || []).forEach(function(t, k) { var tr = document.createElement('track'); tr.kind = 'subtitles'; tr.src = zpath(v.zim, t.path); tr.srclang = t.lang || ''; tr.label = t.label || t.lang || 'subtitles'; if (k === 0 && /^en/.test(t.lang || '')) tr.default = true; vid.appendChild(tr); });
     vid.addEventListener('ended', function() { if (_autoplay && _now === i && _list[i + 1]) play(null, i + 1); });
-    stage.appendChild(vid);
+    stage.appendChild(vid); _video = vid;
+    document.getElementById('pip').hidden = !pipAvailable(vid);
+    document.getElementById('pip').textContent = STR.pip;
     var p = vid.play(); if (p && p.catch) p.catch(function() {});
   }).catch(function() { if (_now === i) noMedia(); });
   // Up next is what plays after this one, in the list's order; the last
@@ -219,16 +266,74 @@ function play(e, i) {
   return false;
 }
 function goCatalog() { tell({ zimi: 'catalog', category: 'ted' }); return false; }
+// ogv.js: loaded once per ZIM from the ZIM itself, then a player that
+// decodes WebM in JavaScript. Slower than the browser's own, and the only
+// way a TED talk plays on an iPhone.
+var _ogvLoaded = {};
+function playWithOgv(v, m, stage, i) {
+  var base = zpath(v.zim, m.ogv);
+  var start = function() {
+    if (_now !== i || typeof OGVPlayer === 'undefined') { if (_now === i) stage.innerHTML = '<div class="nomedia">' + esc(STR.no_media) + '<br><a href="' + esc(zpath(v.zim, v.page)) + '">' + esc(STR.open_page) + CHEV + '</a></div>'; return; }
+    try {
+      if (window.OGVLoader) OGVLoader.base = base;
+      var p = new OGVPlayer();
+      p.src = zpath(v.zim, m.media[0].path);
+      if (m.poster) p.poster = zpath(v.zim, m.poster);
+      p.setAttribute('controls', ''); p.setAttribute('playsinline', '');
+      p.addEventListener('ended', function() { if (_autoplay && _now === i && _list[i + 1]) play(null, i + 1); });
+      stage.innerHTML = ''; stage.appendChild(p); _video = p;
+      p.play();
+    } catch (e) { stage.innerHTML = '<div class="nomedia">' + esc(STR.no_media) + '</div>'; }
+  };
+  if (_ogvLoaded[base]) { start(); return; }
+  var s = document.createElement('script');
+  s.src = base + '/ogv.js';
+  s.onload = function() { _ogvLoaded[base] = true; start(); };
+  s.onerror = function() { start(); };
+  document.head.appendChild(s);
+}
+// Leaving the player: a video that is playing keeps playing, in the dock,
+// so you can browse the shelves while you listen. Anything else stops.
 function closePlayer(silent) {
-  var stage = document.getElementById('stage'); stage.innerHTML = '';
+  var stage = document.getElementById('stage');
+  var v = _video;
+  var playing = v && !v.paused && !v.ended && _now >= 0;
+  if (playing && !silent) {
+    document.getElementById('dock-stage').appendChild(v);
+    document.getElementById('dock-t').textContent = (_list[_now] || {}).title || '';
+    document.getElementById('dock').hidden = false;
+  } else {
+    stage.innerHTML = ''; _video = null;
+    document.getElementById('dock').hidden = true;
+  }
   if (_now >= 0) tell({ zimi: 'tube-home' });
+  _docked = playing && !silent ? _now : -1;
   _now = -1;
   document.getElementById('watch').hidden = true;
   document.getElementById('home').hidden = false;
   if (!silent) window.scrollTo(0, 0);
 }
+var _docked = -1;
+// Back to the player from the dock: the same video, where it is.
+function undock() {
+  var i = _docked; var v = _video; if (i < 0 || !v) { stopDock(); return; }
+  _docked = -1; _now = i;
+  var w = _list[i];
+  document.getElementById('home').hidden = true;
+  document.getElementById('watch').hidden = false;
+  document.getElementById('dock').hidden = true;
+  document.getElementById('stage').appendChild(v);
+  window.scrollTo(0, 0);
+  if (w) tell({ zimi: 'tube-play', play: w.zim + '/' + w.page, title: w.title });
+}
+function stopDock() {
+  var v = _video; if (v) { try { v.pause(); } catch (e) {} v.remove(); }
+  _video = null; _docked = -1;
+  document.getElementById('dock').hidden = true;
+}
 window.tubeSearch = tubeSearch; window.tubeMore = tubeMore; window.play = play; window.closePlayer = closePlayer;
 window.setSort = setSort; window.setZim = setZim; window.toggleAutoplay = toggleAutoplay;
+window.toggleTheater = toggleTheater; window.enterPip = enterPip; window.undock = undock; window.stopDock = stopDock;
 load();
 </script>
 </body>

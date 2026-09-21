@@ -301,7 +301,14 @@ def playback(name, page):
         "subs": subs,
         "poster": _resolve_path(page, _html.unescape(poster.group(1))) if poster else "",
         "page": page,
+        # TED's videos are WebM, which iPhones cannot decode; the ZIM ships
+        # ogv.js, a decoder in JavaScript, for its own pages. ZimiTube's
+        # player uses it where the browser cannot play the file.
+        "ogv": _OGV_BASE if _has(archive, _OGV_BASE + "/ogv.js") else "",
     }
+
+
+_OGV_BASE = "-/assets/ogvjs"
 
 
 def _matches(v, q):
