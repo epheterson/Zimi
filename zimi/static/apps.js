@@ -29,6 +29,9 @@ window.addEventListener('message', function(e) {
   if (e.data.zimi === 'route' && typeof window.__route === 'function') {
     _fromShell = true;
     try { window.__route(e.data.id || ''); } finally { _fromShell = false; }
+  } else if (e.data.zimi === 'home') {
+    // The front page, whatever is open: the app's icon in the breadcrumb.
+    try { if (typeof window.__home === 'function') window.__home(); } catch (err) {}
   } else if (e.data.zimi === 'random') {
     // The dice, inside the app: a video, a question, a post by chance.
     try { if (typeof window.__random === 'function') window.__random(); } catch (err) {}

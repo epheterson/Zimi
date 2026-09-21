@@ -183,6 +183,7 @@ window.__back = function() {
   if (!document.getElementById('list').hidden) { openSite(''); return true; }
   return false;
 };
+window.__home = function() { closeQ(true); openSite(''); window.scrollTo(0, 0); };
 window.__route = function(id) {
   if (!id) { closeQ(); return; }
   var i = id.indexOf('/'); if (i > 0) openQ(id.slice(0, i), id.slice(i + 1));

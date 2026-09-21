@@ -36,7 +36,7 @@ const ctx = {
 };
 vm.createContext(ctx);
 vm.runInContext([
-  extract(/var _MAPS_PIN_SVG = [^\n]*\n/, '_MAPS_PIN_SVG'), extract(/var _TUBE_PLAY_SVG = [^\n]*\n/, '_TUBE_PLAY_SVG'),
+  extract(/var _MAPS_SVG = [^\n]*\n/, '_MAPS_SVG'), extract(/var _TUBE_PLAY_SVG = [^\n]*\n/, '_TUBE_PLAY_SVG'),
   extract(/function _newestPer\(list, key\) \{[\s\S]*?\n\}/, '_newestPer'),
   extract(/function _installedOfKind\(kind, key\) \{[\s\S]*?\n\}/, '_installedOfKind'),
   extract(/function _mapName\(z\) \{[\s\S]*?\n\}/, '_mapName'),

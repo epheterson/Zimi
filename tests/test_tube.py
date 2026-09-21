@@ -32,6 +32,8 @@ TED_FILES = {
     ).encode(),
     "videos/117845/thumbnail.webp": b"RIFF....WEBP",
     "videos/13316/thumbnail.webp": b"RIFF....WEBP",
+    "videos/117845/video.webm": b"\x1a\x45\xdf\xa3webm",
+    "videos/13316/video.webm": b"\x1a\x45\xdf\xa3webm",
 }
 
 ZIMI_INDEX = (
@@ -47,7 +49,9 @@ YT_FILES = {
         [{"id": "x1", "slug": "hello-world", "title": "Hello world", "thumbnailPath": "videos/x1/video.webp",
           "duration": 61, "publicationDate": "2025-05-05T00:00:00", "author": {"channelTitle": "Chan"}}]
     ).encode(),
+    "videos/x1/video.webm": b"\x1a\x45\xdf\xa3webm",
 }
+ZIMI_MEDIA = {"media/abc.mp4": b"\x00\x00\x00\x18ftypmp42", "media/def.mp4": b"\x00\x00\x00\x18ftypmp42"}
 
 
 def _library(tmp_path, monkeypatch, zims):
@@ -205,21 +209,23 @@ def test_playback_reads_the_media_and_tracks_behind_the_page(tmp_path, monkeypat
         "poster": "videos/13316/thumbnail.webp",
         "page": "why-tech-needs-the-humanities",
         "ogv": "",
-        "missing": True,
+        "missing": False,
     }
 
 
-def test_playback_says_when_the_file_is_not_in_the_zim(tmp_path, monkeypatch):
+def test_a_talk_without_its_file_is_not_in_the_feed_and_its_page_says_so(tmp_path, monkeypatch):
     """ted2zim writes a talk's page even when its download failed (the CRISPR
-    talk in ted_en_technology_2023-09). The page names a file the ZIM does
-    not carry; ZimiTube says the video is not in the ZIM, rather than
-    blaming the browser."""
+    talk in ted_en_technology_2023-09). The feed leaves that talk out; asked
+    for by address anyway, its page says the video is not in the ZIM rather
+    than blaming the browser."""
     files = dict(TED_FILES)
+    del files["videos/13316/video.webm"]
     files["why-tech-needs-the-humanities"] = TED_PAGE
-    files["videos/13316/video.webm"] = b"\x1a\x45\xdf\xa3webm"
-    _library(tmp_path, monkeypatch, [("ted_en_have_2023-09.zim", {"Scraper": "ted2zim 2.0.13", "Name": "ted_en_have"}, files)])
-    got = tube.playback("ted_en_have", "why-tech-needs-the-humanities")
-    assert got["missing"] is False
+    _library(tmp_path, monkeypatch, [("ted_en_gone_2023-09.zim", {"Scraper": "ted2zim 2.0.13", "Name": "ted_en_gone"}, files)])
+    assert [v["page"] for v in tube.videos_for("ted_en_gone")] == ["the-world-s-rarest-diseases"]
+    assert "media" not in tube.videos_for("ted_en_gone")[0]
+    got = tube.playback("ted_en_gone", "why-tech-needs-the-humanities")
+    assert got["missing"] is True
     assert got["media"] == [{"path": "videos/13316/video.webm", "type": "video/webm"}]
 
 

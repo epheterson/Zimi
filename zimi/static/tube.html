@@ -375,6 +375,7 @@ window.__back = function() {
   if (!document.getElementById('list').hidden) { _q = ''; setZim(''); if (!document.getElementById('list').hidden) load(); return true; }
   return false;
 };
+window.__home = function() { if (_now >= 0) closePlayer(true); _q = ''; _zim = ''; _shown = 0; renderHome(); window.scrollTo(0, 0); };
 window.__route = function(id) {
   if (!id) { if (_now >= 0) closePlayer(); return; }
   var i = _list.findIndex(function(v) { return v.zim + '/' + v.page === id; });

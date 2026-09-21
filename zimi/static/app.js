@@ -1623,7 +1623,7 @@ function updateTopbar() {
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
     bcIcon.title = t('cat_maps');
-    bcIcon.innerHTML = _MAPS_PIN_SVG.replace('width="26" height="26"', 'width="20" height="20"');
+    bcIcon.innerHTML = _MAPS_SVG.replace('width="26" height="26"', 'width="20" height="20"');
     bcIcon.setAttribute('href', '/#maps');
   } else if (activeSource) {
     bcSep.style.display = 'inline';
@@ -1829,6 +1829,8 @@ function bcClick(e) {
   if (_anchorNativeClick(e)) return; // bc-icon is a real link (#49) — new-tab gestures stay native
   e.preventDefault();
   if (_almanacOpen) return; // the Almanac breadcrumb is identity only — no nav into the ZIM behind it
+  // An app's icon is the way to its front page, from anywhere inside it.
+  if (_isAppPage()) { _appEntryHome(); return; }
   if (currentSource && (readerOpen || mode === 'search')) {
     if (readerOpen) closeReader();
     enterSource(currentSource, false);
@@ -2509,7 +2511,11 @@ function _appEntryHome() {
   var app = _tubeOpen ? ['tube', 'play', _tubeUrl('')] : _exchangeOpen ? ['exchange', 'q', _exchangeUrl('')] : ['reddot', 'p', _reddotUrl('')];
   var st = { mode: 'reader' }; st[app[0]] = true; st[app[1]] = '';
   _appHome(st, app[2], app[1]);
-  _appFrameRoute(true, '');
+  // "home", not a route to nothing: a route only closes the thing on
+  // screen (Back from a post lands on its list), the front page is the
+  // shelves whatever was open.
+  var f = document.getElementById('reader-frame');
+  try { if (f && f.contentWindow) f.contentWindow.postMessage({ zimi: 'home' }, location.origin); } catch (e) {}
   document.title = t(app[0]) + ' \u2014 Zimi';
   _setWindowTitle(document.title);
 }
@@ -3377,7 +3383,10 @@ function renderHome(filter) {
   }
 
   // Discover (only on unscoped, unfiltered, unfiltered-by-language home)
-  var _showDiscover = !homeScope && !filter && !homeRecentFilter && !homeLangFilter.size;
+  // Not drawn at all when hidden: a row drawn and then emptied was filled
+  // again by a load that landed after the × (Eric: "clicking the X no
+  // longer hides discover!? BAD REGRESSION!!").
+  var _showDiscover = !homeScope && !filter && !homeRecentFilter && !homeLangFilter.size && !discoverHidden;
   if (_showDiscover) {
     h += '<div id="discover-row"></div>';
   }
@@ -5204,7 +5213,7 @@ function _loadDiscover() {
       setTimeout(function() { if (!localStorage.getItem(cacheKey)) renderHome(); }, 10000);
     }
     var el2 = document.getElementById('discover-row');
-    if (el2) _renderDiscover(el2, all);
+    if (el2 && !_getStorageFlag(SK.HIDE_DISCOVER)) _renderDiscover(el2, all);
   });
 }
 function _renderDiscover(el, items) {
@@ -8187,6 +8196,22 @@ function _enrichCatalogInstalled(items) {
       if (urlPrefix && urlPrefix !== item.name) prefixes.push(urlPrefix);
     }
     const itemTok = _flavorToken(item.download_url || item.name);
+    // A StreetZim region is installed under whatever name the file was given
+    // (streetzim_hawaii, hawaii, osm-hawaii): match the region itself, which
+    // the map's own metadata names.
+    if (item.source === 'streetzim') {
+      const want = (item.title || '').toLowerCase();
+      const hit = zimsCache.find(z => z.map_source === 'StreetZim' && !claimed.has(z.file) && _mapName(z).toLowerCase() === want);
+      if (hit) {
+        item.installed = true;
+        item._installedDate = hit.date || null;
+        item._installedFile = hit.file;
+        item._installedName = hit.name;
+        item._installedSizeGb = hit.size_gb;
+        claimed.add(hit.file);
+      }
+      return;
+    }
     for (const z of zimsCache) {
       const fb = (z.file || '').replace(/\.zim$/, '');
       if (!prefixes.some(p => fb === p || fb.startsWith(p + '_'))) continue;
@@ -8612,8 +8637,10 @@ function drillCategory(catKey, namePrefix) {
       filtered = filtered.filter(function(item) { return (item.name || '').toLowerCase().startsWith(pfx); });
     }
 
-    // Language pills scoped to this category (counts from unfiltered items)
-    var langPills = _renderLangPills(_countLangsByCategory(filtered, catKey), 'filterCatalogLang');
+    // Language pills scoped to this category. Counted over the grouped
+    // projects the drill shows, not the files behind them: a project with
+    // four flavours is one card, and its pill said four.
+    var langPills = _renderLangPills(_countLangsByCategory(groupVariants(filtered), catKey), 'filterCatalogLang');
 
     // Apply language filter after computing pill counts (so pills show all available languages).
     // _zimMatchesLang internally falls back to user prefs when no pill is set.
@@ -8866,7 +8893,7 @@ function renderCatalogItem(group) {
   // StreetZim's regions have no icon on the Archive; a pin says what they
   // are better than the first letter of "Alaska".
   const iconHtml = (!iconSrc && item.source === 'streetzim')
-    ? '<span class="ci-pin">' + _MAPS_PIN_SVG + '</span>'
+    ? '<span class="ci-pin">' + _MAPS_SVG + '</span>'
     : iconSrc
     ? '<img src="' + escAttr(iconSrc) + '" alt="" width="40" height="40" loading="lazy"' +
       ' onerror="_ciThumbFallback(this)" data-letter="' + escAttr(letterChar) + '">'
@@ -8918,9 +8945,11 @@ function renderCatalogItem(group) {
         '</button>' +
       '</div>';
     } else if (withLabels.length === 1) {
-      actionsHtml = '<button class="ci-add-btn" aria-label="' + escAttr(t('download_size', {size: withLabels[0].label + ' (' + withLabels[0].size + ')'})) + '"' +
+      // One file: its size alone. "Full" names a choice that is not there.
+      var only = variantLabel(withLabels[0].url, vUrls) ? withLabels[0].label + ' (' + withLabels[0].size + ')' : withLabels[0].size;
+      actionsHtml = '<button class="ci-add-btn" aria-label="' + escAttr(t('download_size', {size: only})) + '"' +
         ' onclick="event.stopPropagation();downloadZim(\'' + escAttr(withLabels[0].url) + '\', this)">' +
-        _DL_ARROW_SVG + esc(withLabels[0].label + ' (' + withLabels[0].size + ')') + '</button>';
+        _DL_ARROW_SVG + esc(only) + '</button>';
     }
   }
   const catAttr = item.category ? ' data-category="' + escAttr(item.category) + '"' : '';
@@ -10767,6 +10796,14 @@ function _renderCreatorSection() {
     var slot = document.getElementById('ms-creator');
     // A cached paint stays up through a failed refresh — stale beats blank.
     if (slot && !_creatorData) slot.innerHTML = '<div class="ms-hint">' + tH('could_not_load') + '</div>';
+    // One failed ask must not end the asking: "Checking…" then stayed until
+    // the pane was left and reopened (Eric: "stuck checking?").
+    clearTimeout(_creatorProbeTimer);
+    if (_creatorData && _creatorData.probing) {
+      _creatorProbeTimer = setTimeout(function() {
+        if (_msSection === 'creator') _renderCreatorSection();
+      }, CREATOR_PROBE_RETRY_MS);
+    }
   });
 }
 
@@ -11226,7 +11263,7 @@ function _msPreferencesHtml() {
     // the server with their bookmarks. The server-wide choice sits just above.
     (_appsAllowedByServer() && _userSession
       ? '<div class="ms-theme-label" style="margin-top:12px">' + tH('show_apps') + '</div>' +
-        _appChecksHtml(APP_NAMES.filter(_appsAllowedByServer), _appShown, '_setUserApp')
+        _appPicksHtml(APP_NAMES.filter(_appsAllowedByServer), _appShown, '_setUserApp')
       : '') +
     // Default download flavor (above languages — reached more often)
     '<div class="ms-section-label" style="margin-top:20px">' + tH('default_flavor') + '</div>' +
@@ -11553,7 +11590,7 @@ async function _renderAppsSection() {
   if (wrap) wrap.hidden = false;
   var shown = Array.isArray(d.shown) ? d.shown : (d.enabled ? APP_NAMES : []);
   _serverApps = shown;
-  el.innerHTML = _appChecksHtml(APP_NAMES, function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', d.env_locked) +
+  el.innerHTML = _appPicksHtml(APP_NAMES, function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', d.env_locked) +
     '<div class="ms-hint">' + tH(d.env_locked ? 'env_controlled' : 'apps_server_hint', { v: 'ZIMI_APPS' }) + '</div>';
 }
 var _serverApps = APP_NAMES;
@@ -16190,7 +16227,7 @@ var _reddotOpen = false;
 var _REDDOT_PAGE = '/static/reddot.html?v=1';
 // Reddot's mark is a red dot (Eric, 2026-09-19), the one colour in the
 // chrome that is not the shell's: a logo keeps its colour in both themes.
-var _REDDOT_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="#e2452b"/></svg>';
+var _REDDOT_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="currentColor"/></svg>';
 
 function _installedRedditZims() {
   return _installedOfKind('reddit');
@@ -16524,11 +16561,18 @@ function _setUserApp(app, on) {
   var shown = APP_NAMES.filter(function(a) { return a === app ? on : _appShown(a); });
   _setUserPref('apps', shown);
 }
-function _appChecksHtml(apps, checked, onchange, disabled) {
-  return apps.map(function(app) {
-    return '<label class="ms-check"><input type="checkbox"' + (checked(app) ? ' checked' : '') + (disabled ? ' disabled' : '') +
-      ' onchange="' + onchange + '(\'' + app + '\', this.checked)"> ' + esc(_appTitle(app)) + '</label>';
-  }).join('');
+// The apps to choose from, as the tiles they are on the home page: an icon
+// and a name, lit when offered (Eric: "the lil app tiles with icons and i
+// can select or deselect which to show").
+function _appIcon(app) {
+  return app === 'maps' ? _MAPS_SVG : app === 'tube' ? _TUBE_PLAY_SVG : app === 'exchange' ? _EXCHANGE_SVG : _REDDOT_SVG;
+}
+function _appPicksHtml(apps, checked, onchange, disabled) {
+  return '<div class="app-picks" role="group">' + apps.map(function(app) {
+    var on = !!checked(app);
+    return '<button type="button" class="app-pick' + (on ? ' on' : '') + '" aria-pressed="' + on + '"' + (disabled ? ' disabled' : '') +
+      ' onclick="' + onchange + '(\'' + app + '\', ' + (!on) + ')">' + _appIcon(app) + '<span>' + esc(_appTitle(app)) + '</span></button>';
+  }).join('') + '</div>';
 }
 
 function _appsRowHtml() {
@@ -16566,9 +16610,10 @@ function _tubeTileHtml() {
 var _TUBE_PLAY_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"/></svg>';
 
 function _mapsTileHtml() {
-  return _appTileHtml('maps', t('cat_maps'), _MAPS_PIN_SVG, _installedMaps().map(_mapName), 'openMaps');
+  return _appTileHtml('maps', t('cat_maps'), _MAPS_SVG, _installedMaps().map(_mapName), 'openMaps');
 }
-var _MAPS_PIN_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
+// The same mark the catalog draws for the category: one map, wherever Maps is named.
+var _MAPS_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg>';
 
 function openMaps(e) {
   if (e && e.preventDefault) e.preventDefault();

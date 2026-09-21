@@ -12,6 +12,8 @@
   .c .prose { font-size: 13.5px; }
   .c .c { margin-inline-start: 4px; }
   /* Following a subreddit: a star on its shelf and on its list. */
+  /* Beside the name it belongs to; the sorts keep the far end. */
+  #l-follow { margin-inline-end: auto; }
   .follow { flex: none; border: 1px solid var(--border); background: var(--surface); color: var(--text2); border-radius: 14px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
   .follow.on { color: var(--amber); border-color: var(--amber); background: var(--amber-glow); }
   .hint { color: var(--text2); font-size: 12.5px; margin: 0 0 12px; }
@@ -116,7 +118,7 @@ function renderHome(data) {
   var shelves = [];
   _zims.forEach(function(z) { (z.shelves || []).forEach(function(s) { if (s.rows && s.rows.length) shelves.push({ z: z, s: s }); }); });
   shelves.sort(function(a, b) { return (isFollowed(b.z.name, b.s.subreddit) ? 1 : 0) - (isFollowed(a.z.name, a.s.subreddit) ? 1 : 0); });
-  sh.innerHTML = (shelves.length && !_follow.length ? '<div class="hint">' + esc(STR.home_hint) + '</div>' : '') + shelves.map(function(x) {
+  sh.innerHTML = shelves.map(function(x) {
     var z = x.z, s = x.s;
     return '<section class="shelf"><div class="shelf-h"><h2>r/' + esc(s.subreddit) + '</h2>' + followButton(z.name, s.subreddit) + '<button class="all" onclick="openSub(' + J(z.name) + ',' + J(s.subreddit) + ')">' + esc(STR.all) + CHEV + '</button></div>' +
       s.rows.map(function(r) { return row(r, z.name, false); }).join('') + '</section>';
@@ -207,6 +209,7 @@ window.__back = function() {
   if (!document.getElementById('list').hidden) { openHome(); return true; }
   return false;
 };
+window.__home = function() { closeP(true); openHome(); window.scrollTo(0, 0); };
 window.__route = function(id) {
   if (!id) { closeP(); return; }
   var i = id.indexOf('/'); if (i > 0) openP(id.slice(0, i), id.slice(i + 1));

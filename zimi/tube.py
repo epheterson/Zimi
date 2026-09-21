@@ -109,6 +109,7 @@ def _ted(archive):
                 "page": _page_path(archive, t["slug"]),
                 "duration": None,
                 "date": "",
+                "media": [f"videos/{vid}/video.webm", f"videos/{vid}/video.mp4"] if vid else [],
             }
         )
     return out
@@ -147,6 +148,7 @@ def _youtube2zim(archive):
                 "page": page,
                 "duration": v.get("duration"),
                 "date": str(v.get("publicationDate") or v.get("date") or "")[:10],
+                "media": [f"videos/{vid}/video.webm", f"videos/{vid}/video.mp4"],
             }
         )
     return out
@@ -188,6 +190,7 @@ def _zimi(archive):
                 "speaker": meta[0] if meta and meta[0] else "",
                 "thumb": _html.unescape(m.group("thumb") or ""),
                 "page": _html.unescape(m.group("page")),
+                "media": [f"media/{_media_id}.{ext}" for _media_id in [m.group("page").rsplit("/", 1)[-1]] for ext in ("mp4", "webm", "m4a", "mp3", "mkv", "opus")],
                 "duration": meta[1] if len(meta) > 1 else None,
                 "date": meta[2] if len(meta) > 2 else "",
             }
@@ -247,6 +250,15 @@ def videos_for(name):
                 if rows:
                     break
     rows = rows or []
+    # A video whose file never made it into the ZIM (a talk the scrape
+    # skipped) is not a video the app can offer: left out of the feed (Eric:
+    # "If a zim has a video link and the source isn't there then exclude it
+    # from zimitube"). Every reader names where the file would be; a lookup
+    # per candidate is a dirent search, cheap even for thousands of talks.
+    with lock:
+        rows = [v for v in rows if not v.get("media") or any(_has(archive, m) for m in v["media"])]
+    for v in rows:
+        v.pop("media", None)
     with _lock:
         _cache[key] = rows
     return rows

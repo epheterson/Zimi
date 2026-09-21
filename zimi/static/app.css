@@ -1177,7 +1177,8 @@
   .app-tile .detail { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .app-tile .card-icon { color: var(--amber); display: flex; align-items: center; justify-content: center; }
   .app-tile.app-empty .card-icon { color: var(--text2); }
-  .app-tile.app-empty .detail { color: var(--amber); }
+  /* Quiet, like any other detail line: an empty app is not an error (Eric). */
+  .app-tile.app-empty .detail { color: var(--text2); }
   .suggest-item.sg-place .sg-title::before { content: '\25CF'; color: var(--amber); font-size: 8px; margin-right: 8px; vertical-align: middle; }
   .stat-card:hover, .stat-card:focus-visible {
     background: var(--surface2); border-color: var(--amber-border);
@@ -1516,6 +1517,13 @@
   .ms-pane .ms-actions { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
   .ms-pane .ms-check { display: flex; align-items: center; gap: 8px; padding: 6px 0; cursor: pointer; font-size: 13px; color: var(--text); }
   .ms-pane .ms-check input { accent-color: var(--amber); }
+  /* The apps to offer, as the tiles they are: lit when on. */
+  .app-picks { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
+  .app-pick { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; font: inherit; font-size: 13px; color: var(--text2);
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; }
+  .app-pick svg { width: 20px; height: 20px; }
+  .app-pick.on { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .app-pick[disabled] { opacity: 0.5; cursor: default; }
   .ms-pane .ms-field { margin-bottom: 10px; }
   /* Field labels stay mixed-case 12px — uppercase is reserved for section
      headers so the two hierarchy levels read as different levels. */

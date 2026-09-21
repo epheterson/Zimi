@@ -22,7 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - A StreetZim map nobody has been on yet opens over its settlements, not over the middle of its region's box.
 - Users: changing a user's role or allowlist no longer repaints the public-access card as Open, nor the allowlist picker as empty.
 - The Creator pane lists the subreddit engine (ArcticZim) beside the others.
-- The gear is the last thing on the bar on every page; the apps offered to everyone are chosen under Preferences beside Show Discover.
+- The gear is the last thing on the bar on every page; the apps offered to everyone are chosen under Preferences beside Show Discover, as the tiles they are on the home page.
+- A video whose file never made it into its ZIM is left out of ZimiTube's feed.
+- One map mark everywhere Maps is named (the catalog's folded map), and Reddot's mark in the apps' own colour. The app's icon in the breadcrumb is the way to its front page. Reddot opens on its shelves without a pitch; Follow sits beside the subreddit's name.
+- A StreetZim region already installed shows as installed in the catalog whatever its file was named, and a catalog entry with one file says its size, not "Full".
+- The catalog's language pills count the projects a category shows, not every file behind them.
+- An empty app tile says what to do in the same quiet grey as any other detail, not in a colour that reads as an error.
+- Hiding Discover with its × sticks again; a load that landed after the × used to bring it back.
+- The Creator pane keeps asking after the engines while their probe runs, instead of sitting on "Checking…" until reopened.
 - ZimiTube's Theater and Picture in picture buttons sit on the player. On iPhones and iPads a WebM video plays through the ZIM's own decoder from the start.
 - The apps row. Maps, ZimiTube and ZimiExchange sit first among the sources on every install; an app with nothing to show yet opens the catalog category that feeds it. A playing video has an address of its own (/#tube?play=...), so it can be shared and bookmarked.
 - The apps have back arrows and a history. A video, a question or a post opened from an app's home is a step Back returns from, and the arrow at the top of the page takes the same step; a list inside an app (a subreddit, a tag, a search) has an arrow to the app's home. The bookmark button is off app pages, which are not articles.
