@@ -1167,8 +1167,8 @@
   }
   /* Zimi Maps' tile: a source among the sources, its icon a pin. */
   .apps-grid { margin-bottom: 16px; }
-  /* An app page is not an article; the bookmark button is for articles. */
-  body.app-page #bm-panel-btn { display: none !important; }
+  /* An app page is not an article; the bookmark buttons are for articles. */
+  body.app-page #bm-panel-btn, body.app-page #library-btn { display: none !important; }
   .app-tile .detail { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .app-tile .card-icon { color: var(--amber); display: flex; align-items: center; justify-content: center; }
   .app-tile.app-empty .card-icon { color: var(--text2); }

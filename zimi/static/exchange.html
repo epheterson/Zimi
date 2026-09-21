@@ -151,7 +151,7 @@ function openQ(zim, page) {
   document.getElementById('backlabel').textContent = STR.title;
   document.getElementById('q-title').textContent = '…';
   document.getElementById('q-body').innerHTML = ''; document.getElementById('q-answers').innerHTML = ''; document.getElementById('q-tags').innerHTML = ''; document.getElementById('q-ah').textContent = '';
-  var open = document.getElementById('q-open'); open.href = zpath(zim, page); open.textContent = STR.open_page;
+  openLink(document.getElementById('q-open'), zim, page, STR.open_page);
   window.scrollTo(0, 0);
   tell({ zimi: 'exchange-q', q: zim + '/' + page });
   fetch('/exchange/q?zim=' + encodeURIComponent(zim) + '&q=' + encodeURIComponent(page)).then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
@@ -178,6 +178,11 @@ function closeQ(silent) {
   if (!silent) window.scrollTo(0, 0);
 }
 window.exchangeSearch = exchangeSearch; window.openQ = openQ; window.closeQ = closeQ; window.openSite = openSite; window.openTag = openTag; window.more = more;
+window.__back = function() {
+  if (!document.getElementById('qview').hidden) { closeQ(); return true; }
+  if (!document.getElementById('list').hidden) { openSite(''); return true; }
+  return false;
+};
 window.__route = function(id) {
   if (!id) { closeQ(); return; }
   var i = id.indexOf('/'); if (i > 0) openQ(id.slice(0, i), id.slice(i + 1));

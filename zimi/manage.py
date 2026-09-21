@@ -5237,7 +5237,11 @@ def handle_manage_get(handler, parsed, params):
         )
 
     elif parsed.path == "/manage/apps":
-        return handler._json(200, {"enabled": _srv.apps_enabled(), "env_locked": _srv._apps_env() is not None})
+        shown = _srv.apps_shown()
+        return handler._json(
+            200,
+            {"enabled": bool(shown), "shown": [n for n in _srv.APP_NAMES if n in shown], "env_locked": _srv._apps_env() is not None},
+        )
 
     elif parsed.path == "/manage/catalog-streetzim":
         # StreetZim's regions, from the Internet Archive, for the toggle in
@@ -6136,11 +6140,13 @@ def handle_manage_post(handler, parsed, data):
     elif parsed.path == "/manage/apps":
         # The server-wide apps switch. Same env-lock contract as the other
         # settings: ZIMI_APPS wins and the write is refused, not ignored.
-        enabled, err = _srv.set_apps_enabled(data.get("enabled"))
+        # ``shown`` names the apps offered; ``enabled`` is the old all-or-nothing.
+        enabled, err = _srv.set_apps_enabled(data.get("shown") if "shown" in data else data.get("enabled"))
         if err == "env_locked":
             return handler._json(403, {"error": "Apps are controlled by the %s env var" % _srv.APPS_ENV})
-        log.info("Apps row %s", "on" if enabled else "off")
-        return handler._json(200, {"enabled": enabled, "env_locked": False})
+        shown = _srv.apps_shown()
+        log.info("Apps offered: %s", ", ".join(n for n in _srv.APP_NAMES if n in shown) or "none")
+        return handler._json(200, {"enabled": enabled, "shown": [n for n in _srv.APP_NAMES if n in shown], "env_locked": False})
 
     elif parsed.path == "/manage/app-update-channel":
         # Latest vs beta for the APP release check. Same env-lock contract

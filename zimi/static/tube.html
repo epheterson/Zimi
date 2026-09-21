@@ -26,7 +26,14 @@
   /* the player */
   .player { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; }
   @media (max-width: 900px) { .player { grid-template-columns: 1fr; } }
-  .stage { background: #000; border-radius: var(--radius); overflow: hidden; aspect-ratio: 16 / 9; }
+  .stage { background: #000; border-radius: var(--radius); overflow: hidden; aspect-ratio: 16 / 9; position: relative; }
+  /* The stage's own tools, in its corner: theater, and picture in picture where it exists. */
+  .stage-tools { position: absolute; top: 8px; inset-inline-end: 8px; display: flex; gap: 6px; z-index: 2; }
+  .stage-tools button { border: 0; border-radius: 8px; background: rgba(0,0,0,0.55); color: #fff; padding: 6px; cursor: pointer; display: inline-flex; line-height: 0; }
+  .stage-tools button:hover { background: rgba(0,0,0,0.8); }
+  /* Dark on any poster, white or black; the on state is the accent, not a lighter grey. */
+  .stage-tools button.on { color: #ffb347; }
+  .stage-tools svg { width: 18px; height: 18px; }
   .stage video { width: 100%; height: 100%; display: block; background: #000; }
   .stage .nomedia { color: #ddd; padding: 32px; text-align: center; line-height: 1.8; }
   .stage .nomedia a { color: #fff; font-weight: 600; }
@@ -67,15 +74,15 @@
     <button class="back" onclick="goBack(closePlayer)"><span class="arrow"></span> <span id="backlabel">ZimiTube</span></button>
     <div class="player">
       <div>
-        <div class="stage" id="stage"></div>
+        <div class="stage-wrap">
+          <div class="stage" id="stage"></div>
+        </div>
         <div class="about item">
           <h1 id="w-title"></h1>
           <div class="who" id="w-who"></div>
           <div class="desc" id="w-desc"></div>
           <div class="actions">
             <button id="autoplay" onclick="toggleAutoplay()"></button>
-            <button id="theater" onclick="toggleTheater()"></button>
-            <button id="pip" onclick="enterPip()" hidden></button>
             <a id="w-open" href="#"></a>
           </div>
         </div>
@@ -196,7 +203,18 @@ function paintAutoplay() { var b = document.getElementById('autoplay'); b.textCo
 function toggleTheater() { _theater = !_theater; try { localStorage.setItem('zimitube_theater', _theater ? '1' : '0'); } catch (e) {} paintTheater(); }
 function paintTheater() {
   document.querySelector('.player').classList.toggle('theater', _theater);
-  var b = document.getElementById('theater'); b.textContent = STR.theater + (_theater ? ' ✓' : ''); b.className = _theater ? 'on' : ''; b.setAttribute('aria-pressed', String(_theater));
+  var b = document.getElementById('theater'); if (b) { b.className = _theater ? 'on' : ''; b.setAttribute('aria-pressed', String(_theater)); }
+}
+var _THEATER_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 19v2M18 19v2"/></svg>';
+var _PIP_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="11" width="8" height="6" rx="1" fill="currentColor" stroke="none"/></svg>';
+// The tools sit on the stage itself, where a player's controls are.
+function stageTools(stage, pip) {
+  var old = stage.querySelector('.stage-tools'); if (old) old.remove();
+  var tools = document.createElement('div'); tools.className = 'stage-tools';
+  tools.innerHTML = (pip ? '<button type="button" id="pip" title="' + esc(STR.pip) + '" aria-label="' + esc(STR.pip) + '" onclick="enterPip()">' + _PIP_SVG + '</button>' : '') +
+    '<button type="button" id="theater" title="' + esc(STR.theater) + '" aria-label="' + esc(STR.theater) + '" onclick="toggleTheater()">' + _THEATER_SVG + '</button>';
+  stage.appendChild(tools);
+  paintTheater();
 }
 // Picture in picture, where the browser has it (Safari's own way, or the
 // standard one); the button appears only then.
@@ -225,12 +243,11 @@ function play(e, i) {
   document.getElementById('w-title').textContent = v.title;
   document.getElementById('w-who').innerHTML = iconHtml(v, '') + '<span>' + (v.speaker ? '<b>' + esc(v.speaker) + '</b> · ' : '') + esc(v.zim_title) + (v.date ? ' · ' + esc(v.date) : '') + '</span>';
   document.getElementById('w-desc').textContent = v.description || '';
-  var page = zpath(v.zim, v.page);
-  var open = document.getElementById('w-open'); open.href = page; open.textContent = STR.open_page;
+  openLink(document.getElementById('w-open'), v.zim, v.page, STR.open_page);
   paintAutoplay(); paintTheater();
   document.getElementById('dock').hidden = true;
   var stage = document.getElementById('stage'); stage.innerHTML = ''; _video = null;
-  document.getElementById('pip').hidden = true;
+  stageTools(stage, false);
   window.scrollTo(0, 0);
   tell({ zimi: 'tube-play', play: v.zim + '/' + v.page, title: v.title });
   // The stage says so, and holds the way to the page, when the media is not
@@ -242,9 +259,13 @@ function play(e, i) {
     if (!m || !m.media || !m.media.length) { noMedia(); return; }
     // A file the browser cannot decode (WebM on an iPhone): the ZIM's own
     // ogv.js decoder, the way the original page plays it.
+    // An iPhone says it might play WebM and then cannot decode it; the
+    // ZIM's decoder (what the TED page itself uses there) goes first.
     var probe = document.createElement('video');
     var playable = m.media.some(function(src) { return !src.type || probe.canPlayType(src.type) !== ''; });
-    if (!playable && m.ogv) { playWithOgv(v, m, stage, i); return; }
+    var apple = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    var webmOnly = m.media.every(function(src) { return /webm/i.test(src.type || src.path); });
+    if ((!playable || (apple && webmOnly)) && m.ogv) { playWithOgv(v, m, stage, i); return; }
     var vid = document.createElement('video');
     vid.controls = true; vid.autoplay = true; vid.playsInline = true; vid.preload = 'auto';
     if (m.poster) vid.poster = zpath(v.zim, m.poster);
@@ -258,8 +279,7 @@ function play(e, i) {
     (m.subs || []).forEach(function(t, k) { var tr = document.createElement('track'); tr.kind = 'subtitles'; tr.src = zpath(v.zim, t.path); tr.srclang = t.lang || ''; tr.label = t.label || t.lang || 'subtitles'; if (k === 0 && /^en/.test(t.lang || '')) tr.default = true; vid.appendChild(tr); });
     vid.addEventListener('ended', function() { if (_autoplay && _now === i && _list[i + 1]) play(null, i + 1); });
     stage.appendChild(vid); _video = vid;
-    document.getElementById('pip').hidden = !pipAvailable(vid);
-    document.getElementById('pip').textContent = STR.pip;
+    stageTools(stage, pipAvailable(vid));
     var p = vid.play(); if (p && p.catch) p.catch(function() {});
   }).catch(function() { if (_now === i) noMedia(); });
   // Up next is what plays after this one, in the list's order; the last
@@ -290,6 +310,7 @@ function playWithOgv(v, m, stage, i) {
       p.setAttribute('controls', ''); p.setAttribute('playsinline', '');
       p.addEventListener('ended', function() { if (_autoplay && _now === i && _list[i + 1]) play(null, i + 1); });
       stage.innerHTML = ''; stage.appendChild(p); _video = p;
+      stageTools(stage, false);
       p.play();
     } catch (e) { stage.innerHTML = '<div class="nomedia">' + esc(STR.no_media) + '</div>'; }
   };
@@ -342,6 +363,11 @@ function stopDock() {
 window.tubeSearch = tubeSearch; window.tubeMore = tubeMore; window.play = play; window.closePlayer = closePlayer;
 window.setSort = setSort; window.setZim = setZim; window.toggleAutoplay = toggleAutoplay;
 window.toggleTheater = toggleTheater; window.enterPip = enterPip; window.undock = undock; window.stopDock = stopDock;
+window.__back = function() {
+  if (_now >= 0) { closePlayer(); return true; }
+  if (!document.getElementById('list').hidden) { _q = ''; setZim(''); if (!document.getElementById('list').hidden) load(); return true; }
+  return false;
+};
 window.__route = function(id) {
   if (!id) { if (_now >= 0) closePlayer(); return; }
   var i = _list.findIndex(function(v) { return v.zim + '/' + v.page === id; });

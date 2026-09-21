@@ -17,11 +17,12 @@ function ok(label, cond, detail) {
   if (!cond) failures++;
 }
 
-ok('the tile is one line in the apps row, fourth', /_mapsTileHtml\(\) \+ _tubeTileHtml\(\) \+ _exchangeTileHtml\(\) \+ _reddotTileHtml\(\)/.test(src));
+ok('the tile is one line in the apps row, fourth', /_appShown\('exchange'\) \? _exchangeTileHtml\(\) : ''\) \+ \(_appShown\('reddot'\) \? _reddotTileHtml\(\) : ''/.test(src));
 ok('its empty state is the Create page with a subreddit address started, not the catalog', /var door = _APP_CATEGORY\[app\]/.test(src) && /_createRememberSource = _REDDIT_ADDRESS_START; openCreate\(\);/.test(src) && !/_APP_CATEGORY = \{[^}]*reddot/.test(src));
 ok('it is the page Zimi owns, in the reader, with its own history entry', /openReader\(_REDDOT_PAGE \+ '#' \+ _reddotStrings\(p\)\)/.test(src) && /history\.pushState\(st, '', _reddotUrl\(p\)\)/.test(src));
 ok('/#reddot opens it cold, with a post when the address names one', /location\.hash === '#reddot' \|\| location\.hash\.indexOf\('#reddot\?'\) === 0/.test(src) && /rdQ\.get\('p'\)/.test(src));
 ok('Back and Forward steer the open page, and reload it only when it is gone', /s\.mode === 'reader' && s\.reddot\) \{\n\s*if \(!_appFrameRoute\(_reddotOpen, s\.p\)\) openReddot\(true, s\.p \|\| ''\);/.test(src) && /window\.__route = function\(id\)/.test(page));
+ok("the header's arrow steps a post back to its list and a list to the home; at the home the shell leaves", /window\.__back = function\(\) \{\n\s*if \(!document\.getElementById\('pview'\)\.hidden\) \{ closeP\(\); return true; \}\n\s*if \(!document\.getElementById\('list'\)\.hidden\) \{ openHome\(\); return true; \}\n\s*return false;/.test(page));
 ok('a post is a step in history; the arrow at its top takes it back', /_appStep\(\{ mode: 'reader', reddot: true, p: d\.p \}/.test(src) && /goBack\(closeP\)/.test(page) && /id="l-back"/.test(page));
 ok('a post has an address, replaced as you read', /d\.zimi === 'reddot-p' && _reddotOpen[\s\S]*_reddotUrl\(d\.p\)/.test(src) && /tell\(\{ zimi: 'reddot-p', p: zim \+ '\/' \+ page/.test(page));
 ok('the page\'s empty state sends people to Create on the Subreddit mode', /goCreate\(\)/.test(page) && /mode: 'reddit'/.test(page) && /d\.zimi === 'create' && d\.mode === 'reddit'/.test(src));

@@ -49,7 +49,7 @@ ok('a stat-card like any source, named Maps, listing the maps', /^<a class="stat
 ok('it opens the door', /onclick="return _spaNav\(event, openMaps\)"/.test(tile));
 ctx.zimsCache = ctx.zimsCache.filter(z => z.kind !== 'map');
 ok('no map installed: the tile stays and opens the Maps category of the catalog', /app-empty maps-tile/.test(ctx._mapsTileHtml()) && /No map yet/.test(ctx._mapsTileHtml()) && /_openCategory\(_APP_CATEGORY\.maps\)/.test(ctx._mapsTileHtml()));
-ok('the tile sits in the apps row before favorites on the plain home only', /if \(!homeScope && !filter && !homeRecentFilter && !homeLangFilter\.size\) \{\n\s*h \+= _appsRowHtml\(\);/.test(src.replace(/\r\n/g, '\n')) && /_mapsTileHtml\(\) \+ _tubeTileHtml\(\)/.test(src));
+ok('the tile sits in the apps row before favorites on the plain home only', /if \(!homeScope && !filter && !homeRecentFilter && !homeLangFilter\.size\) \{\n\s*h \+= _appsRowHtml\(\);/.test(src.replace(/\r\n/g, '\n')) && /_appShown\('maps'\) \? _mapsTileHtml\(\) : ''\) \+ \(_appShown\('tube'\) \? _tubeTileHtml\(\) : ''/.test(src));
 
 // ── the one box ──────────────────────────────────────────────────────────
 const input = extract(/q\.addEventListener\('input', \(\) => \{[\s\S]*?\n\}\);/, 'input handler');

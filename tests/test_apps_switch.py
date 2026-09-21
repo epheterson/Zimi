@@ -49,6 +49,53 @@ def test_the_shell_is_stamped_only_when_off():
     assert "data-zimi-apps" not in on
     assert off.count('<body data-zimi-apps="0">') == 1
     assert off.replace('<body data-zimi-apps="0">', "<body>", 1) == on
+    some = http._index_content(frozenset(["reddot", "maps"]))
+    assert some.count('<body data-zimi-apps="maps,reddot">') == 1
+    assert http._index_content(frozenset(srv.APP_NAMES)) == on
+
+
+@pytest.mark.parametrize(
+    "value,shown",
+    [
+        ("maps,tube", {"maps", "tube"}),
+        (" Reddot , maps ", {"maps", "reddot"}),
+        ("maps,bogus", {"maps"}),
+        ("all", set(srv.APP_NAMES)),
+        ("none", set()),
+        (["exchange"], {"exchange"}),
+        (True, set(srv.APP_NAMES)),
+        (False, set()),
+    ],
+)
+def test_each_app_can_be_offered_or_not(data_dir, monkeypatch, value, shown):
+    if isinstance(value, str):
+        monkeypatch.setenv("ZIMI_APPS", value)
+        assert srv.apps_shown() == frozenset(shown)
+        assert srv.apps_enabled() is bool(shown)
+        assert srv.set_apps_enabled(True) == (None, "env_locked")
+    else:
+        assert srv.set_apps_enabled(value) == (bool(shown), None)
+        assert srv.apps_shown() == frozenset(shown)
+        saved = manage._read_app_update_prefs()["apps"]
+        assert saved is (True if shown == set(srv.APP_NAMES) else False) if isinstance(saved, bool) else saved == sorted(shown, key=srv.APP_NAMES.index)
+
+
+def test_a_saved_list_is_in_the_apps_order(data_dir):
+    assert srv.set_apps_enabled(["reddot", "maps"]) == (True, None)
+    assert manage._read_app_update_prefs()["apps"] == ["maps", "reddot"]
+    assert srv.apps_stamp(srv.apps_shown()) == "maps,reddot"
+    assert srv.apps_stamp(frozenset()) == "0"
+    assert srv.apps_stamp(True) is None
+
+
+def test_an_account_keeps_only_what_the_server_offers(data_dir, monkeypatch):
+    assert srv.user_apps_shown(None) == frozenset(srv.APP_NAMES)
+    assert srv.user_apps_shown(["tube", "maps"]) == frozenset(["tube", "maps"])
+    assert srv.user_apps_shown(False) == frozenset()
+    monkeypatch.setenv("ZIMI_APPS", "maps")
+    assert srv.user_apps_shown(["tube", "maps"]) == frozenset(["maps"])
+    assert http._prefs_reply({"apps": ["tube"]}) == {"apps": False, "shown": []}
+    assert http._prefs_reply({}) == {"apps": True, "shown": ["maps"]}
 
 
 def test_a_users_preference_lives_with_their_account(data_dir, monkeypatch):

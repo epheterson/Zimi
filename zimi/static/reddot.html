@@ -180,14 +180,14 @@ function openP(zim, page) {
   document.getElementById('backlabel').textContent = STR.title;
   document.getElementById('p-title').textContent = '…';
   document.getElementById('p-body').innerHTML = ''; document.getElementById('p-comments').innerHTML = ''; document.getElementById('p-ch').textContent = '';
-  var open = document.getElementById('p-open'); open.href = zpath(zim, page); open.textContent = STR.open_page;
+  openLink(document.getElementById('p-open'), zim, page, STR.open_page);
   window.scrollTo(0, 0);
   tell({ zimi: 'reddot-p', p: zim + '/' + page });
   fetch('/reddot/post?zim=' + encodeURIComponent(zim) + '&p=' + encodeURIComponent(page)).then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
     if (!d) { document.getElementById('p-title').textContent = STR.none; return; }
     document.getElementById('p-title').textContent = d.title;
     tell({ zimi: 'reddot-p', p: zim + '/' + page, title: d.title });
-    document.getElementById('p-who').innerHTML = 'r/' + esc(d.subreddit) + ' · <b>' + esc(d.score) + '</b> ' + esc(Number(d.score) === 1 ? STR.point : STR.points) + (d.author ? ' · ' + esc(STR.by) + ' ' + esc(d.author) : '') + (d.date ? ' · ' + esc(d.date) : '');
+    document.getElementById('p-who').innerHTML = 'r/' + esc(d.subreddit) + ' · <b>' + esc(d.score) + '</b>&nbsp;' + esc(Number(d.score) === 1 ? STR.point : STR.points) + (d.author ? ' · ' + esc(STR.by) + ' ' + esc(d.author) : '') + (d.date ? ' · ' + esc(d.date) : '');
     document.getElementById('p-body').innerHTML = d.body || '';
     var n = countComments(d.comments);
     document.getElementById('p-ch').textContent = count(n, STR.comment, STR.comments);
@@ -202,6 +202,11 @@ function closeP(silent) {
 }
 window.reddotSearch = reddotSearch; window.openP = openP; window.closeP = closeP; window.openSub = openSub; window.openHome = openHome; window.setSort = setSort; window.more = more;
 window.toggleFollow = toggleFollow; window.renderHomeFeed = renderHomeFeed;
+window.__back = function() {
+  if (!document.getElementById('pview').hidden) { closeP(); return true; }
+  if (!document.getElementById('list').hidden) { openHome(); return true; }
+  return false;
+};
 window.__route = function(id) {
   if (!id) { closeP(); return; }
   var i = id.indexOf('/'); if (i > 0) openP(id.slice(0, i), id.slice(i + 1));

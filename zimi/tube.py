@@ -79,6 +79,17 @@ def _json_data(text):
     return data if isinstance(data, list) else None
 
 
+def _page_path(archive, path):
+    """The path the page really has in the archive. A 2021 ted2zim ZIM
+    still files talks under ``A/`` and its assets under ``-/``; libzim
+    finds ``<slug>`` either way, but the page's own relative links
+    (``../-/assets/…``) only resolve from where the page really is."""
+    try:
+        return archive.get_entry_by_path(path).path or path
+    except Exception:
+        return path
+
+
 def _ted(archive):
     talks = _json_data(_read(archive, "assets/data.js"))
     if not talks:
@@ -95,7 +106,7 @@ def _ted(archive):
                 "description": _lang_text(t.get("description"))[:400],
                 "speaker": str(t.get("speaker") or "").strip(),
                 "thumb": f"videos/{vid}/thumbnail.webp" if vid else "",
-                "page": t["slug"],
+                "page": _page_path(archive, t["slug"]),
                 "duration": None,
                 "date": "",
             }
@@ -256,6 +267,34 @@ def _resolve_path(page, ref):
         return ""
     base = posixpath.dirname(page)
     return posixpath.normpath(posixpath.join(base, ref)) if base else posixpath.normpath(ref)
+
+
+# ted2zim's player asks the browser first and the ZIM's decoder (ogv.js)
+# second. An iPhone answers "maybe" to WebM and then cannot decode it, so
+# the page shows "The media could not be loaded". Served through Zimi, the
+# page gets one line that puts the decoder first on Apple's handhelds
+# before video.js reads the player's setup; every other browser is left
+# alone, so the page and its caches stay one page.
+_TECH_ORDER = '"techOrder": ["html5", "ogvjs"]'
+_TECH_ORDER_IOS = '"techOrder": ["ogvjs", "html5"]'
+_IOS_DECODER_FIRST = (
+    "<script>(function(){var a=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);"
+    "if(!a)return;function f(){var v=document.querySelectorAll('video[data-setup]');for(var i=0;i<v.length;i++){var s=v[i].getAttribute('data-setup')||'';"
+    "if(s.indexOf(%s)>=0)v[i].setAttribute('data-setup',s.split(%s).join(%s));}}"
+    "if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',f);else f();})()</script>"
+) % (json.dumps(_TECH_ORDER), json.dumps(_TECH_ORDER), json.dumps(_TECH_ORDER_IOS))
+_VIDEOJS_SCRIPT = re.compile(r"<script\s[^>]*src=[\"'][^\"']*videojs/video(?:\.min)?\.js[\"']", re.IGNORECASE)
+
+
+def decoder_first_on_ios(html):
+    """A ted2zim page with the browser-first player, given the line above;
+    any other page unchanged."""
+    if _TECH_ORDER not in html:
+        return html
+    m = _VIDEOJS_SCRIPT.search(html)
+    if not m:
+        return html
+    return html[: m.start()] + _IOS_DECODER_FIRST + html[m.start() :]
 
 
 def playback(name, page):

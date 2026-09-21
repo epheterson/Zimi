@@ -15,10 +15,11 @@ function ok(label, cond, detail) {
   if (!cond) failures++;
 }
 
-ok('the tile is one line in the apps row, like the others', /_exchangeTileHtml\(\) \{\n\s*return _appTileHtml\('exchange', t\('exchange'\), _EXCHANGE_SVG, _installedQaZims\(\)/.test(src) && /_mapsTileHtml\(\) \+ _tubeTileHtml\(\) \+ _exchangeTileHtml\(\)/.test(src));
+ok('the tile is one line in the apps row, like the others', /_exchangeTileHtml\(\) \{\n\s*return _appTileHtml\('exchange', t\('exchange'\), _EXCHANGE_SVG, _installedQaZims\(\)/.test(src) && /_appShown\('exchange'\) \? _exchangeTileHtml\(\) : ''/.test(src));
 ok('it is the page Zimi owns, in the reader, with its own history entry', /openReader\(_EXCHANGE_PAGE \+ '#' \+ _exchangeStrings\(q\)\)/.test(src) && /history\.pushState\(st, '', _exchangeUrl\(q\)\)/.test(src));
 ok('/#exchange opens it cold, with a question when the address names one', /location\.hash === '#exchange' \|\| location\.hash\.indexOf\('#exchange\?'\) === 0/.test(src) && /exQ\.get\('q'\)/.test(src));
 ok('Back and Forward steer the open page, and reload it only when it is gone', /s\.mode === 'reader' && s\.exchange\) \{\n\s*if \(!_appFrameRoute\(_exchangeOpen, s\.q\)\) openExchange\(true, s\.q \|\| ''\);/.test(src) && /window\.__route = function\(id\)/.test(page));
+ok("the header's arrow steps a question back to its list and a list to the home; at the home the shell leaves", /window\.__back = function\(\) \{\n\s*if \(!document\.getElementById\('qview'\)\.hidden\) \{ closeQ\(\); return true; \}\n\s*if \(!document\.getElementById\('list'\)\.hidden\) \{ openSite\(''\); return true; \}\n\s*return false;/.test(page));
 ok('a question is a step in history; the arrow at its top takes it back', /_appStep\(\{ mode: 'reader', exchange: true, q: d\.q \}/.test(src) && /goBack\(closeQ\)/.test(page) && /id="l-back"/.test(page));
 ok('a question has an address, replaced as you read', /d\.zimi === 'exchange-q' && _exchangeOpen[\s\S]*_exchangeUrl\(d\.q\)/.test(src) && /tell\(\{ zimi: 'exchange-q', q: zim \+ '\/' \+ page/.test(page));
 ok('typing asks the page, which asks the library\'s own search across the sites', /_exchangeSearch\(val\)/.test(src) && /fetch\('\/search\?q=' \+ encodeURIComponent\(_q\) \+ '&zim=' \+ encodeURIComponent\(zims\)/.test(page) && /\/\^questions\\\/\\d\+\\\//.test(page));

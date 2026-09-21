@@ -1998,14 +1998,53 @@ def _read_map_facts(path):
 
 
 APPS_ENV = "ZIMI_APPS"
+APP_NAMES = ("maps", "tube", "exchange", "reddot")
+_APPS_OFF = ("0", "false", "no", "off", "none")
+_APPS_ON = ("1", "true", "yes", "on", "all")
+
+
+def _apps_value(raw):
+    """A setting (True/False, a list of app names, or a string of ``0``/``1``
+    or a comma list) as the set of apps shown; None when it says nothing."""
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return frozenset(APP_NAMES) if raw else frozenset()
+    if isinstance(raw, str):
+        text = raw.strip().lower()
+        if not text:
+            return None
+        if text in _APPS_OFF:
+            return frozenset()
+        if text in _APPS_ON:
+            return frozenset(APP_NAMES)
+        raw = text.split(",")
+    if isinstance(raw, (list, tuple, set, frozenset)):
+        return frozenset(n for n in (str(x).strip().lower() for x in raw) if n in APP_NAMES)
+    return frozenset(APP_NAMES) if raw else frozenset()
+
+
+def _apps_setting(shown):
+    """The set as it is saved: True for all, False for none, else the names."""
+    if shown >= frozenset(APP_NAMES):
+        return True
+    if not shown:
+        return False
+    return [n for n in APP_NAMES if n in shown]
+
+
+def apps_stamp(shown):
+    """What the shell carries in ``data-zimi-apps``: nothing when every app
+    is offered, ``0`` for none, else the names offered."""
+    shown = _apps_value(shown)
+    if shown is None or shown >= frozenset(APP_NAMES):
+        return None
+    return ",".join(n for n in APP_NAMES if n in shown) or "0"
 
 
 def _apps_env():
     """The env var's verdict, or None when it is unset or unreadable."""
-    raw = os.environ.get(APPS_ENV)
-    if raw is None or not raw.strip():
-        return None
-    return raw.strip().lower() not in ("0", "false", "no", "off")
+    return _apps_value(os.environ.get(APPS_ENV))
 
 
 def url_quote(name):
@@ -2015,19 +2054,31 @@ def url_quote(name):
     return urllib.parse.quote(name, safe="")
 
 
-def apps_enabled():
-    """Whether the apps row (Maps, ZimiTube, ZimiExchange) is offered on this
-    server: ``ZIMI_APPS`` when set, else the setting saved from Server
-    settings, else on. A signed-in user can also turn it off for themselves
-    (their account's preferences). Never per browser (Eric: "Not per browser
-    only per user or server")."""
+def apps_shown():
+    """The apps (Maps, ZimiTube, ZimiExchange, Reddot) offered on this server:
+    ``ZIMI_APPS`` when set (``0``, ``1`` or a comma list of names), else the
+    setting saved from Server settings, else all of them. A signed-in user
+    can also hide any of them for themselves (their account's preferences).
+    Never per browser (Eric: "Not per browser only per user or server")."""
     verdict = _apps_env()
     if verdict is not None:
         return verdict
     from zimi import manage
 
-    saved = manage._read_app_update_prefs().get("apps")
-    return True if saved is None else bool(saved)
+    saved = _apps_value(manage._read_app_update_prefs().get("apps"))
+    return frozenset(APP_NAMES) if saved is None else saved
+
+
+def apps_enabled():
+    """Whether any app is offered on this server."""
+    return bool(apps_shown())
+
+
+def user_apps_shown(setting):
+    """What an account's saved preference leaves of the server's offer."""
+    mine = _apps_value(setting)
+    shown = apps_shown()
+    return shown if mine is None else shown & mine
 
 
 def set_apps_enabled(value):
@@ -2037,9 +2088,9 @@ def set_apps_enabled(value):
         return None, "env_locked"
     from zimi import manage
 
-    enabled = bool(value)
-    manage._write_app_update_prefs(apps=enabled)
-    return enabled, None
+    shown = _apps_value(value) or frozenset()
+    manage._write_app_update_prefs(apps=_apps_setting(shown))
+    return bool(shown), None
 
 
 def build_rank(entry):

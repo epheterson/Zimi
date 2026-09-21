@@ -252,3 +252,50 @@ def test_one_card_per_talk_across_sources(tmp_path, monkeypatch):
     assert f["total"] == 2 and f["sources"] == 2
     assert [v["zim"] for v in f["items"]] == ["ted_en_a", "ted_en_a"]
     assert f["items"][0]["also"] == [{"zim": "ted_en_b", "zim_title": "Test Survival", "page": f["items"][0]["page"]}]
+
+
+def test_a_ted_page_puts_the_decoder_first_on_iphones_only():
+    """ted2zim's player asks the browser first; an iPhone says it can play
+    WebM and then cannot. Served through Zimi the page gets one line, before
+    video.js, that swaps the order on Apple's handhelds. Other pages, and
+    pages without the browser-first order, are untouched."""
+    page = (
+        '<html><head><script src="assets/videojs/video.min.js"></script><script src="assets/ogvjs/ogv.js"></script></head>'
+        '<body><video class="video-js" data-setup=\'{"techOrder": ["html5", "ogvjs"], "ogvjs": {"base": "assets/ogvjs"}}\'>'
+        '<source src="videos/1/video.webm" type="video/webm" /></video></body></html>'
+    )
+    out = tube.decoder_first_on_ios(page)
+    assert out.count("<script>") == 1
+    assert out.index("<script>") < out.index('src="assets/videojs/video.min.js"')
+    assert json.dumps(tube._TECH_ORDER_IOS) in out
+    assert "iPhone|iPad|iPod" in out
+    assert out.replace(tube._IOS_DECODER_FIRST, "", 1) == page
+    assert tube.decoder_first_on_ios("<html><video data-setup='{\"techOrder\": [\"html5\"]}'></video></html>") == "<html><video data-setup='{\"techOrder\": [\"html5\"]}'></video></html>"
+    assert tube.decoder_first_on_ios(page.replace("assets/videojs/video.min.js", "player.js")) == page.replace("assets/videojs/video.min.js", "player.js")
+
+
+def test_a_talk_is_filed_where_the_archive_really_keeps_it():
+    """A 2021 ted2zim ZIM keeps talks under A/ and assets under -/; libzim
+    finds the slug either way, but the page's own ../-/assets links only
+    resolve from A/. The reader gets the real path; a new-scheme ZIM and a
+    missing page get the slug back."""
+
+    class Entry:
+        def __init__(self, path):
+            self.path = path
+
+    class Old:
+        def get_entry_by_path(self, path):
+            return Entry("A/" + path)
+
+    class New:
+        def get_entry_by_path(self, path):
+            return Entry(path)
+
+    class Gone:
+        def get_entry_by_path(self, path):
+            raise KeyError(path)
+
+    assert tube._page_path(Old(), "why-tech-needs-the-humanities") == "A/why-tech-needs-the-humanities"
+    assert tube._page_path(New(), "why-tech-needs-the-humanities") == "why-tech-needs-the-humanities"
+    assert tube._page_path(Gone(), "why-tech-needs-the-humanities") == "why-tech-needs-the-humanities"

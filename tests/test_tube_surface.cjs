@@ -43,8 +43,10 @@ vm.runInContext([
   extract(/function _mapSourceLabel\(z\) \{[\s\S]*?\n\}/, '_mapSourceLabel'),
   extract(/function _installedMaps\(\) \{[\s\S]*?\n\}/, '_installedMaps'),
   extract(/function _installedVideoZims\(\) \{[\s\S]*?\n\}/, '_installedVideoZims'),
+  extract(/var APP_NAMES = [^\n]*\n/, 'APP_NAMES'),
   extract(/var _userPrefs = [^\n]*\n/, '_userPrefs'),
-  extract(/function _appsAllowedByServer\(\) \{[\s\S]*?\n\}/, '_appsAllowedByServer'),
+  extract(/function _appsAllowedByServer\(app\) \{[\s\S]*?\n\}/, '_appsAllowedByServer'),
+  extract(/function _appShown\(app\) \{[\s\S]*?\n\}/, '_appShown'),
   extract(/function _appsEnabled\(\) \{[\s\S]*?\n\}/, '_appsEnabled'),
   extract(/var _APP_CATEGORY = [^\n]*\n/, '_APP_CATEGORY'),
   extract(/function _appTileHtml\(app, title, icon, names, openFn\) \{[\s\S]*?\n\}/, '_appTileHtml'),
@@ -68,13 +70,19 @@ ctx.zimsCache = ctx.zimsCache.filter(z => z.kind !== 'video');
 ok('no video ZIM: the tile stays, empty, and opens the Video category', /app-empty tube-tile/.test(ctx._appsRowHtml()) && /No videos yet/.test(ctx._appsRowHtml()) && /_openCategory\(_APP_CATEGORY\.tube\)/.test(ctx._appsRowHtml()));
 ctx.zimsCache = [];
 ok('a fresh install still has the apps row, every tile a door', (ctx._appsRowHtml().match(/app-empty/g) || []).length === 4);
-ok('the row can be turned off for everyone (the server stamps the shell) or for a signed-in person (their account), never per browser', /dataset\.zimiApps === '0'/.test(src) && /_appsAllowedByServer\(\) && \(!_userSession \|\| _userPrefs\.apps !== false\)/.test(src) && /if \(!_appsEnabled\(\)\) return '';/.test(src) && /fetch\('\/me\/prefs'/.test(src) && !/zimi_hide_apps/.test(src));
-ok('the server switch sits in Server settings and reads its state from the server', /_msFetch\('\/manage\/apps'\)/.test(src) && /_setAppsForServer\(this\.checked\)/.test(src));
+ok('the row can be turned off for everyone (the server stamps the shell) or for a signed-in person (their account), never per browser', /dataset\.zimiApps/.test(src) && /function _appShown\(app\)/.test(src) && /APP_NAMES\.some\(_appShown\)/.test(src) && /if \(!_appsEnabled\(\)\) return '';/.test(src) && /fetch\('\/me\/prefs'/.test(src) && !/zimi_hide_apps/.test(src));
+ok('the server switch sits in Server settings, one checkbox per app, and reads its state from the server', /_msFetch\('\/manage\/apps'\)/.test(src) && /_setAppForServer\(app, on\)/.test(src) && /body: JSON\.stringify\(\{ shown: shown \}\)/.test(src));
 ctx.document.body.dataset.zimiApps = '0';
 ok('the server can turn the row off for everyone', ctx._appsRowHtml() === '');
+ctx.document.body.dataset.zimiApps = 'maps,reddot';
+ok('or offer only some apps: the row carries just those', (ctx._appsRowHtml().match(/app-empty/g) || []).length === 2 && /maps-tile/.test(ctx._appsRowHtml()) && /reddot-tile/.test(ctx._appsRowHtml()) && !/tube-tile/.test(ctx._appsRowHtml()));
 delete ctx.document.body.dataset.zimiApps; ctx._userSession = { name: 'eric' }; ctx._userPrefs.apps = false;
 ok('a signed-in person can turn it off for their account', ctx._appsRowHtml() === '');
-ctx._userPrefs.apps = true;
+ctx._userPrefs.apps = true; ctx._userPrefs.shown = ['tube'];
+ok('or keep only some apps', (ctx._appsRowHtml().match(/app-empty/g) || []).length === 1 && /tube-tile/.test(ctx._appsRowHtml()));
+ctx.document.body.dataset.zimiApps = 'maps';
+ok('an account keeps only what the server offers', ctx._appsRowHtml() === '');
+delete ctx.document.body.dataset.zimiApps; ctx._userPrefs.shown = null;
 ok('and back on', ctx._appsRowHtml() !== '');
 ctx._userSession = null;
 ok('the categories behind the doors', /_APP_CATEGORY = \{ maps: 'maps', tube: 'ted', exchange: 'stack_exchange' \}/.test(src));
@@ -90,6 +98,12 @@ ok('the empty page is a door to the catalog', /goCatalog\(\)/.test(page) && /cat
 ok('the page is a static asset the server versions', /var _TUBE_PAGE = '\/static\/tube\.html\?v=1';/.test(src));
 ok('/#tube on a cold load opens it, with the address\'s video', /location\.hash === '#tube' \|\| location\.hash\.indexOf\('#tube\?'\) === 0/.test(src));
 ok('Back and Forward steer the open page, video included, and reload it only when it is gone', /s\.mode === 'reader' && s\.tube\) \{\n\s*if \(!_appFrameRoute\(_tubeOpen, s\.play\)\) openTube\(true, s\.play \|\| ''\);/.test(src) && /window\.__route = function\(id\)/.test(page) && /goBack\(closePlayer\)/.test(page));
+const css = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.css'), 'utf8');
+ok("the header's arrow shows on every app page: a video is a history step back, a list asks the page, the home leaves the app", /homeScope \|\| _isAppPage\(\);/.test(src) && /if \(_isAppPage\(\)\) \{[\s\S]*?if \(st && \(st\.play \|\| st\.q \|\| st\.p\)\) \{ if \(st\.entry\) _appEntryHome\(\); else history\.back\(\); return; \}[\s\S]*?postMessage\(\{ zimi: 'back-request' \}/.test(src) && /d\.zimi === 'at-home'[\s\S]*?if \(_isAppPage\(\)\) closeReader\(\);/.test(src) && /e\.data\.zimi === 'back-request'[\s\S]*?window\.__back\(\)[\s\S]*?tell\(\{ zimi: 'at-home' \}\)/.test(shared) && /window\.__back = function\(\) \{\n\s*if \(_now >= 0\) \{ closePlayer\(\); return true; \}/.test(page));
+ok('the reader\'s bookmark buttons are for articles, not app pages', /body\.app-page #bm-panel-btn, body\.app-page #library-btn \{ display: none !important; \}/.test(css));
+ok('"Open the original page" is a step: the shell opens the article with the app behind it, and the arrow (or Back) returns to the video', /function openLink\(a, zim, page, label\)/.test(shared) && /tell\(\{ zimi: 'open', zim: zim, path: page \}\)/.test(shared) && /openLink\(document\.getElementById\('w-open'\), v\.zim, v\.page, STR\.open_page\)/.test(page) && /d\.zimi === 'open'[\s\S]*?openArticle\(d\.zim, d\.path\);\n\s*if \(fromApp\) \{ articleHistory\.push\(\{ app: true \}\); updateTopbar\(\); \}/.test(src) && /if \(prev\.app\) \{ history\.back\(\); return; \}/.test(src) && /if \(replaceState && play\) st\.entry = true;/.test(src) && /if \(st\.entry\) _appEntryHome\(\); else history\.back\(\);/.test(src) && /var toApp = app && app\.mode === 'reader' && \(app\.tube \|\| app\.exchange \|\| app\.reddot\);/.test(src) && /if \(readerOpen && articleHistory\.length > 0 && !toApp\) \{/.test(src));
+ok('Theater and Picture in picture sit on the stage; PIP only where a native video plays', /function stageTools\(stage, pip\)/.test(page) && /\.stage-tools \{ position: absolute; top: 8px; inset-inline-end: 8px;/.test(page) && /stageTools\(stage, pipAvailable\(vid\)\);/.test(page) && /stageTools\(stage, false\);\n\s*p\.play\(\);/.test(page) && !/<button id="theater"/.test(page) && !/<button id="pip"/.test(page));
+ok('an iPhone gets the decoder first for a WebM-only talk: it says it can play WebM and then cannot', /var apple = \/iPhone\|iPad\|iPod\/\.test\(navigator\.userAgent\)/.test(page) && /webmOnly = m\.media\.every/.test(page) && /if \(\(!playable \|\| \(apple && webmOnly\)\) && m\.ogv\) \{ playWithOgv\(v, m, stage, i\); return; \}/.test(page));
 
 // ── the box and the chrome ───────────────────────────────────────────────
 ok('typing on Tube filters the feed inside the page', /if \(_isTubePage\(\)\) \{\n\s*\/\/ Tube[^\n]*\n\s*hideSuggest\(\);\n\s*suggestTimer = setTimeout\(function\(\) \{ _tubeSearch\(val\); \}, 150\);/.test(src));

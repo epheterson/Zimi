@@ -1572,11 +1572,19 @@ def _inline_apps_assets(body):
 
 
 def _index_content(apps=True):
-    """The shell, stamped when the server has turned the apps row off, so
-    the client knows before it draws the home page."""
-    if apps:
+    """The shell, stamped when the server offers fewer than all the apps
+    (``0`` for none, else the names), so the client knows before it draws
+    the home page."""
+    stamp = _srv.apps_stamp(apps)
+    if stamp is None:
         return SEARCH_UI_HTML
-    return SEARCH_UI_HTML.replace("<body>", '<body data-zimi-apps="0">', 1)
+    return SEARCH_UI_HTML.replace("<body>", '<body data-zimi-apps="%s">' % stamp, 1)
+
+
+def _prefs_reply(prefs):
+    """An account's own preferences as the client reads them."""
+    shown = _srv.user_apps_shown(prefs.get("apps"))
+    return {"apps": bool(shown), "shown": [n for n in _srv.APP_NAMES if n in shown]}
 
 
 class ZimHandler(BaseHTTPRequestHandler):
@@ -2077,7 +2085,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if not name:
                     return self._json(401, {"error": "sign in required"})
                 prefs = _users.load_user_data(name).get("preferences") or {}
-                return self._json(200, {"apps": prefs.get("apps", True) is not False})
+                return self._json(200, _prefs_reply(prefs))
             elif parsed.path == "/userdata":
                 return self._handle_userdata_get()
 
@@ -2692,12 +2700,13 @@ class ZimHandler(BaseHTTPRequestHandler):
                 blob = _users.load_user_data(name)
                 prefs = blob.get("preferences") if isinstance(blob.get("preferences"), dict) else {}
                 if "apps" in data:
-                    prefs["apps"] = bool(data.get("apps"))
+                    # True, False, or the names of the apps to keep.
+                    prefs["apps"] = _srv._apps_setting(_srv._apps_value(data.get("apps")) or frozenset())
                 blob["preferences"] = prefs
                 ok, err = _users.save_user_data(name, blob)
                 if not ok:
                     return self._json(400, {"error": err})
-                return self._json(200, {"apps": prefs.get("apps", True) is not False})
+                return self._json(200, _prefs_reply(prefs))
             if parsed.path == "/userdata":
                 return self._handle_userdata_post(data)
 
@@ -3340,6 +3349,10 @@ class ZimHandler(BaseHTTPRequestHandler):
         if mimetype.startswith("text/html"):
             text = content.decode("UTF-8", errors="replace")
             text = re.sub(r"<base\s[^>]*>", "", text, flags=re.IGNORECASE)
+            if "techOrder" in text:
+                from zimi import tube as _tube
+
+                text = _tube.decoder_first_on_ios(text)
             if a11y:
                 from zimi import a11y as _a11y
 
@@ -3975,13 +3988,14 @@ class ZimHandler(BaseHTTPRequestHandler):
         #   s-maxage=3600 — Cloudflare edge caches 1 hour (fast for users worldwide)
         #   ETag — efficient revalidation (304 = no body, instant response)
         #   deploy.sh purges Cloudflare edge after each deploy.
-        apps = _srv.apps_enabled()
+        apps = _srv.apps_shown()
+        stamp = _srv.apps_stamp(apps)
         return self._html(
             200,
             _index_content(apps),
             vary=vary,
             cache="public, max-age=0, must-revalidate, s-maxage=3600",
-            etag=ZimHandler._index_etag if apps else ZimHandler._index_etag.replace('"', '-noapps"', 1),
+            etag=ZimHandler._index_etag if stamp is None else ZimHandler._index_etag.replace('"', '-apps-%s"' % stamp.replace(",", "-"), 1),
         )
 
     def _html(self, code, content, vary=None, cache=None, etag=None):

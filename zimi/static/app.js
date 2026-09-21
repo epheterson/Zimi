@@ -1575,7 +1575,9 @@ function updateTopbar() {
   // That means: article history exists (stepped into articles), scoped home
   // view, or search results. NOT shown for basic reader-open-from-source
   // (back = click source icon or Escape).
-  const showBack = articleHistory.length > 0 || mode === 'search' || homeScope;
+  // On an app page the arrow is always there: a step back inside the app
+  // (a video, a question, a post, a list), and from its home, out.
+  const showBack = articleHistory.length > 0 || mode === 'search' || homeScope || _isAppPage();
   backBtn.style.display = showBack ? 'flex' : 'none';
 
   // Breadcrumb: Zimi / [icon] — search bar shows source name as placeholder.
@@ -2496,9 +2498,32 @@ function goHome(e) {
   setTimeout(function() { window.scrollTo({ top: 0 }); }, 0);
 }
 
+function _isAppPage() {
+  return _isTubePage() || _isExchangePage() || _isReddotPage();
+}
+// The app's home, in place of the item a shared link landed on.
+function _appEntryHome() {
+  var app = _tubeOpen ? ['tube', 'play', _tubeUrl('')] : _exchangeOpen ? ['exchange', 'q', _exchangeUrl('')] : ['reddot', 'p', _reddotUrl('')];
+  var st = { mode: 'reader' }; st[app[0]] = true; st[app[1]] = '';
+  _appHome(st, app[2], app[1]);
+  _appFrameRoute(true, '');
+  document.title = t(app[0]) + ' \u2014 Zimi';
+  _setWindowTitle(document.title);
+}
+
 function goBack() {
   if (_createOpen) { closeCreate(); return; }
   if (_almanacOpen) { closeAlmanac(); return; }
+  if (_isAppPage()) {
+    // A thing inside the app is a history step: take it back. Otherwise ask
+    // the page (a list goes to the app's home); at the home, leave the app.
+    var st = history.state;
+    if (st && (st.play || st.q || st.p)) { if (st.entry) _appEntryHome(); else history.back(); return; }
+    var f = document.getElementById('reader-frame');
+    if (f && f.contentWindow) { try { f.contentWindow.postMessage({ zimi: 'back-request' }, location.origin); return; } catch (e) {} }
+    closeReader();
+    return;
+  }
   if (readerOpen) {
     // Step back through article history before closing reader
     if (articleHistory.length > 0) {
@@ -11182,8 +11207,8 @@ function _msPreferencesHtml() {
     // the server with their bookmarks. An admin without an account has the
     // server-wide switch in Server settings instead.
     (_appsAllowedByServer() && _userSession
-      ? '<label class="ms-check"><input type="checkbox"' + (_userPrefs.apps !== false ? ' checked' : '') +
-        ' onchange="_setUserPref(\'apps\', this.checked)"> ' + tH('show_apps') + '</label>'
+      ? '<div class="ms-theme-label" style="margin-top:12px">' + tH('show_apps') + '</div>' +
+        _appChecksHtml(APP_NAMES.filter(_appsAllowedByServer), _appShown, '_setUserApp')
       : '') +
     '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>' +
@@ -11508,17 +11533,24 @@ async function _renderAppsSection() {
   var el = document.getElementById('ms-apps');
   if (!el) return;
   if (!d) { el.innerHTML = '<div class="ms-hint">' + tH('env_unavailable') + '</div>'; return; }
-  el.innerHTML = '<label class="ms-check"><input type="checkbox"' + (d.enabled ? ' checked' : '') + (d.env_locked ? ' disabled' : '') +
-    ' onchange="_setAppsForServer(this.checked)"> ' + tH('show_apps_server') + '</label>' +
+  var shown = Array.isArray(d.shown) ? d.shown : (d.enabled ? APP_NAMES : []);
+  _serverApps = shown;
+  el.innerHTML = '<div class="ms-theme-label">' + tH('show_apps_server') + '</div>' +
+    _appChecksHtml(APP_NAMES, function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', d.env_locked) +
     '<div class="ms-hint">' + tH(d.env_locked ? 'env_controlled' : 'apps_server_hint', { v: 'ZIMI_APPS' }) + '</div>';
 }
-function _setAppsForServer(on) {
-  manageFetch('/manage/apps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !!on }) })
+var _serverApps = APP_NAMES;
+function _setAppForServer(app, on) {
+  var shown = APP_NAMES.filter(function(a) { return a === app ? on : _serverApps.indexOf(a) >= 0; });
+  manageFetch('/manage/apps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shown: shown }) })
     .then(function(r) { return r.json(); }).then(function(d) {
       if (d && d.error) { _showToast(t('env_controlled', { v: 'ZIMI_APPS' })); }
       // The shell's stamp is read at render; refresh it here so the home
       // page follows without a reload.
-      if (document.body && document.body.dataset) { if (d && d.enabled === false) document.body.dataset.zimiApps = '0'; else delete document.body.dataset.zimiApps; }
+      if (document.body && document.body.dataset && d && Array.isArray(d.shown)) {
+        if (d.shown.length === APP_NAMES.length) delete document.body.dataset.zimiApps;
+        else document.body.dataset.zimiApps = d.shown.join(',') || '0';
+      }
       _renderAppsSection();
     }).catch(function() { _renderAppsSection(); });
 }
@@ -14574,6 +14606,11 @@ function _downloadFile(url) {
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 function _stepBackToArticle(prev, replaceState) {
+  // The step behind this article is an app page: its history entry is the
+  // one before, and the popstate routing reopens it where it was.
+  if (prev.app) { history.back(); return; }
+  // An article on screen is not an app page, whichever way it was reached.
+  _tubeOpen = false; _exchangeOpen = false; _reddotOpen = false;
   // Navigate reader to a previous article from history.
   // replaceState=true for in-app back (URL hasn't changed yet),
   // replaceState=false for browser back (URL already changed by popstate).
@@ -16168,6 +16205,9 @@ function openReddot(replaceState, p) {
   _tubeOpen = false; _exchangeOpen = false;
   _reddotOpen = true;
   var st = { mode: 'reader', reddot: true, p: p || '' };
+  // Arrived at the thing itself (a shared link): there is no home beneath
+  // it in history, so the arrow makes one in place instead of stepping out.
+  if (replaceState && p) st.entry = true;
   if (replaceState) history.replaceState(st, '', _reddotUrl(p));
   else history.pushState(st, '', _reddotUrl(p));
   openReader(_REDDOT_PAGE + '#' + _reddotStrings(p));
@@ -16219,6 +16259,9 @@ function openExchange(replaceState, q) {
   _tubeOpen = false; _reddotOpen = false;
   _exchangeOpen = true;
   var st = { mode: 'reader', exchange: true, q: q || '' };
+  // Arrived at the thing itself (a shared link): there is no home beneath
+  // it in history, so the arrow makes one in place instead of stepping out.
+  if (replaceState && q) st.entry = true;
   if (replaceState) history.replaceState(st, '', _exchangeUrl(q));
   else history.pushState(st, '', _exchangeUrl(q));
   openReader(_EXCHANGE_PAGE + '#' + _exchangeStrings(q));
@@ -16268,7 +16311,8 @@ function _tubeStrings(play) {
 // person came from, not through everything they read.
 function _appStep(state, url, key) {
   var s = history.state || {};
-  if (s.mode === 'reader' && s[key]) history.replaceState(state, '', url);
+  // Item to item is one entry; the way in (a shared link) stays the way in.
+  if (s.mode === 'reader' && s[key]) { if (s.entry) state.entry = true; history.replaceState(state, '', url); }
   else history.pushState(state, '', url);
 }
 function _appHome(state, url, key) {
@@ -16300,6 +16344,16 @@ window.addEventListener('message', function(e) {
   } else if (d.zimi === 'back') {
     // The page's own back arrow: the step the shell took for it.
     if (history.state && (history.state.play || history.state.q || history.state.p)) history.back();
+  } else if (d.zimi === 'open' && typeof d.zim === 'string' && typeof d.path === 'string' && d.zim && d.path) {
+    // "Open the original page" from an app: an article with the app as the
+    // step behind it, so the header's arrow returns to the video, the
+    // question or the post (the browser's Back does the same).
+    var fromApp = _isAppPage();
+    openArticle(d.zim, d.path);
+    if (fromApp) { articleHistory.push({ app: true }); updateTopbar(); }
+  } else if (d.zimi === 'at-home') {
+    // The header's arrow at the app's home: out of the app.
+    if (_isAppPage()) closeReader();
   } else if (d.zimi === 'reddot-p' && _reddotOpen && typeof d.p === 'string') {
     _appStep({ mode: 'reader', reddot: true, p: d.p }, _reddotUrl(d.p), 'p');
     if (d.title) { document.title = d.title + ' \u2014 ' + t('reddot'); _setWindowTitle(document.title); }
@@ -16355,6 +16409,9 @@ function openTube(replaceState, play) {
   _exchangeOpen = false; _reddotOpen = false;
   _tubeOpen = true;
   var st = { mode: 'reader', tube: true, play: play || '' };
+  // Arrived at the thing itself (a shared link): there is no home beneath
+  // it in history, so the arrow makes one in place instead of stepping out.
+  if (replaceState && play) st.entry = true;
   if (replaceState) history.replaceState(st, '', _tubeUrl(play));
   else history.pushState(st, '', _tubeUrl(play));
   openReader(_TUBE_PAGE + '#' + _tubeStrings(play));
@@ -16381,12 +16438,26 @@ var _REDDIT_ADDRESS_START = 'https://www.reddit.com/r/Kiwix';
 // (ZIMI_APPS, or the switch in Server settings; stamped on the shell) or
 // this signed-in person turned it off for their account. Never per
 // browser (Eric: "Not per browser only per user or server").
-var _userPrefs = { apps: true };
-function _appsAllowedByServer() {
-  return !(document.body && document.body.dataset && document.body.dataset.zimiApps === '0');
+var APP_NAMES = ['maps', 'tube', 'exchange', 'reddot'];
+var _userPrefs = { apps: true, shown: null };
+// The stamp: nothing when every app is offered, '0' for none, else the names.
+function _appsAllowedByServer(app) {
+  var stamp = document.body && document.body.dataset ? document.body.dataset.zimiApps : undefined;
+  if (stamp === undefined || stamp === '') return true;
+  if (stamp === '0') return false;
+  return app ? stamp.split(',').indexOf(app) >= 0 : true;
+}
+function _appShown(app) {
+  if (!_appsAllowedByServer(app)) return false;
+  if (!_userSession || _userPrefs.apps === false) return !_userSession;
+  return !_userPrefs.shown || _userPrefs.shown.indexOf(app) >= 0;
 }
 function _appsEnabled() {
-  return _appsAllowedByServer() && (!_userSession || _userPrefs.apps !== false);
+  return APP_NAMES.some(_appShown);
+}
+function _appTitle(app) { return t(app === 'maps' ? 'cat_maps' : app); }
+function _readPrefs(d) {
+  _userPrefs = { apps: d.apps !== false, shown: Array.isArray(d.shown) ? d.shown : null };
 }
 async function _loadUserPrefs() {
   if (!_userSession) return;
@@ -16394,23 +16465,36 @@ async function _loadUserPrefs() {
     var r = await fetch('/me/prefs', { credentials: 'same-origin' });
     if (!r.ok) return;
     var d = await r.json();
-    var was = _userPrefs.apps;
-    _userPrefs = { apps: d.apps !== false };
-    if (was !== _userPrefs.apps && mode === 'home') renderHome();
+    var was = JSON.stringify(_userPrefs);
+    _readPrefs(d);
+    if (was !== JSON.stringify(_userPrefs) && mode === 'home') renderHome();
   } catch (e) {}
 }
 async function _setUserPref(key, value) {
   var body = {}; body[key] = value;
   try {
     var r = await fetch('/me/prefs', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (r.ok) { var d = await r.json(); _userPrefs = { apps: d.apps !== false }; }
+    if (r.ok) { _readPrefs(await r.json()); }
   } catch (e) {}
   renderHome();
+}
+// One app on or off for this account: the whole list goes up, so the server
+// never has to guess what the others were.
+function _setUserApp(app, on) {
+  var shown = APP_NAMES.filter(function(a) { return a === app ? on : _appShown(a); });
+  _setUserPref('apps', shown);
+}
+function _appChecksHtml(apps, checked, onchange, disabled) {
+  return apps.map(function(app) {
+    return '<label class="ms-check"><input type="checkbox"' + (checked(app) ? ' checked' : '') + (disabled ? ' disabled' : '') +
+      ' onchange="' + onchange + '(\'' + app + '\', this.checked)"> ' + esc(_appTitle(app)) + '</label>';
+  }).join('');
 }
 
 function _appsRowHtml() {
   if (!_appsEnabled()) return '';
-  var tiles = _mapsTileHtml() + _tubeTileHtml() + _exchangeTileHtml() + _reddotTileHtml();
+  var tiles = (_appShown('maps') ? _mapsTileHtml() : '') + (_appShown('tube') ? _tubeTileHtml() : '') +
+    (_appShown('exchange') ? _exchangeTileHtml() : '') + (_appShown('reddot') ? _reddotTileHtml() : '');
   if (!tiles) return '';
   var isTiles = _getLibraryView() === 'tiles';
   // Labelled like every section around it (Discover above, the categories
@@ -19553,6 +19637,10 @@ function _historyOnLanding(target) {
   }
   if (readerOpen && currentArticle) {
     articleHistory.push({zim: currentArticle.zim, path: currentArticle.path});
+  } else if (readerOpen && _isAppPage()) {
+    // Forward from an app into the article opened out of it: the app is the
+    // step behind, as it was the first time.
+    articleHistory.push({ app: true });
   }
   return 'forward';
 }
@@ -19613,8 +19701,12 @@ window.addEventListener('popstate', async (e) => {
     if (app.exchange && _appFrameRoute(_exchangeOpen, app.q)) return;
     if (app.reddot && _appFrameRoute(_reddotOpen, app.p)) return;
   }
+  // Landing on an app's address from the article opened out of it: the app
+  // is reopened below, not stepped past. (The article history's own copy of
+  // that step would otherwise take a second step back.)
+  var toApp = app && app.mode === 'reader' && (app.tube || app.exchange || app.reddot);
   // Step through article history when reader is open (mirrors in-app back button)
-  if (readerOpen && articleHistory.length > 0) {
+  if (readerOpen && articleHistory.length > 0 && !toApp) {
     _stepBackToArticle(articleHistory.pop(), false);
     return;
   }
