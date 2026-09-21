@@ -914,6 +914,7 @@
   "create_label_import": "Archive in your library folder",
   "create_ph_import": "No .warc, .warc.gz or .wacz files found",
   "create_mode_reddit": "Subreddit",
+  "create_mode_reddit_desc": "A subreddit’s posts and comments, from Arctic Shift’s public archive. Made by ArcticZim; needs the internet.",
   "create_pv_reddit_what": "Posts and comments, from Arctic Shift’s public archive",
   "create_import_note": "Put the archive anywhere under {dir} and it appears here.",
   "create_import_dir_unknown": "the library folder",

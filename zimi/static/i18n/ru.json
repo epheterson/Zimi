@@ -914,6 +914,7 @@
   "create_label_import": "Архив в папке библиотеки",
   "create_ph_import": "Файлы .warc, .warc.gz или .wacz не найдены",
   "create_mode_reddit": "Сабреддит",
+  "create_mode_reddit_desc": "Посты и комментарии сабреддита из открытого архива Arctic Shift. Собирает ArcticZim; нужен интернет.",
   "create_pv_reddit_what": "Посты и комментарии из открытого архива Arctic Shift",
   "create_import_note": "Положите архив в любую папку внутри {dir}, и он появится здесь.",
   "create_import_dir_unknown": "папку библиотеки",

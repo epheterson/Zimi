@@ -21,6 +21,7 @@
     <div class="chips" id="chips"></div>
     <div id="shelves"></div>
     <div id="list" hidden>
+      <button class="back" onclick="openSite('')"><span class="arrow"></span> <span id="l-back"></span></button>
       <div class="head"><h2 id="l-title"></h2><span class="n" id="l-n"></span></div>
       <div class="chips" id="l-tags"></div>
       <div id="l-rows"></div>
@@ -29,7 +30,7 @@
     <div class="empty" id="empty" hidden></div>
   </div>
   <div id="qview" class="item" hidden>
-    <button class="back" onclick="closeQ()"><span class="arrow"></span> <span id="backlabel"></span></button>
+    <button class="back" onclick="goBack(closeQ)"><span class="arrow"></span> <span id="backlabel"></span></button>
     <h1 id="q-title"></h1>
     <div class="who" id="q-who"></div>
     <div class="post first"><div class="score" id="q-score"></div><div class="prose" id="q-body"></div></div>
@@ -94,6 +95,7 @@ function renderList(title, rows, append) {
   document.getElementById('shelves').hidden = true;
   var l = document.getElementById('list'); l.hidden = false;
   document.getElementById('l-title').textContent = title;
+  document.getElementById('l-back').textContent = STR.title;
   var host = document.getElementById('l-rows');
   if (!append) host.innerHTML = '';
   var mixed = !!_q && !_site;
@@ -176,6 +178,10 @@ function closeQ(silent) {
   if (!silent) window.scrollTo(0, 0);
 }
 window.exchangeSearch = exchangeSearch; window.openQ = openQ; window.closeQ = closeQ; window.openSite = openSite; window.openTag = openTag; window.more = more;
+window.__route = function(id) {
+  if (!id) { closeQ(); return; }
+  var i = id.indexOf('/'); if (i > 0) openQ(id.slice(0, i), id.slice(i + 1));
+};
 loadHome();
 </script>
 </body>

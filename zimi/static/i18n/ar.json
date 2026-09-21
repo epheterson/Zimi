@@ -914,6 +914,7 @@
   "create_label_import": "أرشيف في مجلد مكتبتك",
   "create_ph_import": "لم يتم العثور على ملفات ‎.warc أو ‎.warc.gz أو ‎.wacz",
   "create_mode_reddit": "منتدى ريديت",
+  "create_mode_reddit_desc": "منشورات وتعليقات منتدى فرعي من أرشيف Arctic Shift العام. يصنعه ArcticZim؛ يحتاج إلى الإنترنت.",
   "create_pv_reddit_what": "منشورات وتعليقات من أرشيف Arctic Shift العام",
   "create_import_note": "ضع الأرشيف في أي مكان داخل {dir} وسيظهر هنا.",
   "create_import_dir_unknown": "مجلد المكتبة",

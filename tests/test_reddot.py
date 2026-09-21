@@ -384,3 +384,9 @@ def test_the_parser_accepts_setup_reddit_alone():
         pytest.skip("no parser builder to call")
     args = parser.parse_args(["create", "--setup-reddit"])
     assert args.source == [] and args.setup_reddit is True
+
+
+def test_a_tqdm_redraw_becomes_a_sentence():
+    assert reddot._caption("Retrieving posts: 1031posts [00:14, 71.31posts/s, Time=2026-08-07T12:21:12, requests=4]") == "1,031 posts fetched, up to 2026-08-07"
+    assert reddot._caption("Retrieving comments: 4299comments [00:34, 142.27comments/s, Time=2026-03-07T00:17:12, requests=29]") == "4,299 comments fetched, up to 2026-03-07"
+    assert reddot._caption("importing") == "importing"

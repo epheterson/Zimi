@@ -200,9 +200,23 @@ def _worker_death_watch(line):
     return "fail" if _WORKER_DEATH in line else False
 
 
+_TQDM_RE = re.compile(r"^Retrieving (posts|comments): (\d+)\w* \[.*?Time=(\d{4}-\d{2}-\d{2})")
+
+
+def _caption(line):
+    """A tqdm redraw as a sentence: ``Retrieving posts: 1031posts [00:14,
+    71.31posts/s, Time=2026-08-07T12:21:12, requests=4]`` becomes
+    ``1,031 posts fetched, up to 2026-08-07``. Other lines pass as they are."""
+    m = _TQDM_RE.match(line)
+    if not m:
+        return line
+    return "%s %s fetched, up to %s" % (format(int(m.group(2)), ","), m.group(1), m.group(3))
+
+
 def _throttled(say):
-    """Progress lines at most every few seconds; everything else at once.
-    tqdm redraws ten times a second, and a job log is not a terminal."""
+    """Progress lines at most every few seconds, as sentences; everything
+    else at once. tqdm redraws ten times a second, and a job log is not a
+    terminal."""
     last = [0.0]
 
     def sink(line):
@@ -211,6 +225,7 @@ def _throttled(say):
             if now - last[0] < _PROGRESS_EVERY_S:
                 return
             last[0] = now
+            line = _caption(line)
         say(line)
 
     return sink

@@ -914,6 +914,7 @@
   "create_label_import": "आपके लाइब्रेरी फ़ोल्डर में संग्रह",
   "create_ph_import": "कोई .warc, .warc.gz या .wacz फ़ाइल नहीं मिली",
   "create_mode_reddit": "सबरेडिट",
+  "create_mode_reddit_desc": "Arctic Shift के सार्वजनिक संग्रह से किसी सबरेडिट की पोस्ट और टिप्पणियाँ। ArcticZim से बनता है; इंटरनेट चाहिए।",
   "create_pv_reddit_what": "पोस्ट और टिप्पणियाँ, Arctic Shift के सार्वजनिक संग्रह से",
   "create_import_note": "संग्रह को {dir} के भीतर कहीं भी रखें, वह यहाँ दिखेगा।",
   "create_import_dir_unknown": "लाइब्रेरी फ़ोल्डर",

@@ -83,13 +83,13 @@ ok('the home page draws the row before favorites', /h \+= _appsRowHtml\(\);/.tes
 // ── opening it ───────────────────────────────────────────────────────────
 const open = extract(/function openTube\(replaceState, play\) \{[\s\S]*?\n\}/, 'openTube');
 ok('ZimiTube is the page Zimi owns, in the reader, with its own history entry', /openReader\(_TUBE_PAGE \+ '#' \+ _tubeStrings\(play\)\)/.test(open) && /history\.pushState\(st, '', _tubeUrl\(play\)\)/.test(open) && /_tubeOpen = true;/.test(open));
-ok('a playing video has an address: /#tube?play=<zim>/<page>, replaced, never pushed', /d\.zimi === 'tube-play' && _tubeOpen[\s\S]*history\.replaceState\(\{ mode: 'reader', tube: true, play: d\.play \}, '', _tubeUrl\(d\.play\)\)/.test(src) && /tell\(\{ zimi: 'tube-play', play: v\.zim \+ '\/' \+ v\.page, title: v\.title \}\)/.test(page));
+ok('a playing video has an address (/?tube=<zim>/<page>): a step from the shelves, the same step from one video to the next', /d\.zimi === 'tube-play' && _tubeOpen[\s\S]*_appStep\(\{ mode: 'reader', tube: true, play: d\.play \}, _tubeUrl\(d\.play\), 'play'\)/.test(src) && /tell\(\{ zimi: 'tube-play', play: v\.zim \+ '\/' \+ v\.page, title: v\.title \}\)/.test(page) && /return play \? '\/\?tube=' \+ encodeURIComponent\(play\) : '\/#tube';/.test(src));
 ok('opened at that address, the page plays it', /if \(STR\.play\) \{ var want = STR\.play;/.test(page) && /tubeQ\.get\('play'\)/.test(src));
 ok('messages from the page are checked for origin and shape', /e\.origin !== location\.origin/.test(src) && /_APP_CATEGORY_KEYS\.indexOf\(d\.category\) >= 0/.test(src));
 ok('the empty page is a door to the catalog', /goCatalog\(\)/.test(page) && /category: 'ted'/.test(page));
 ok('the page is a static asset the server versions', /var _TUBE_PAGE = '\/static\/tube\.html\?v=1';/.test(src));
 ok('/#tube on a cold load opens it, with the address\'s video', /location\.hash === '#tube' \|\| location\.hash\.indexOf\('#tube\?'\) === 0/.test(src));
-ok('Back and Forward return to it, video included', /s\.mode === 'reader' && s\.tube\) \{\n\s*openTube\(true, s\.play \|\| ''\);/.test(src));
+ok('Back and Forward steer the open page, video included, and reload it only when it is gone', /s\.mode === 'reader' && s\.tube\) \{\n\s*if \(!_appFrameRoute\(_tubeOpen, s\.play\)\) openTube\(true, s\.play \|\| ''\);/.test(src) && /window\.__route = function\(id\)/.test(page) && /goBack\(closePlayer\)/.test(page));
 
 // ── the box and the chrome ───────────────────────────────────────────────
 ok('typing on Tube filters the feed inside the page', /if \(_isTubePage\(\)\) \{\n\s*\/\/ Tube[^\n]*\n\s*hideSuggest\(\);\n\s*suggestTimer = setTimeout\(function\(\) \{ _tubeSearch\(val\); \}, 150\);/.test(src));

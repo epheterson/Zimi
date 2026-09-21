@@ -8,7 +8,20 @@ function zpath(zim, p) { return '/w/' + encodeURIComponent(zim) + '/' + String(p
 // A value into an onclick attribute.
 function J(v) { return JSON.stringify(v).replace(/"/g, '&quot;'); }
 // A word to the shell (the app's address, its title, a door to the catalog).
-function tell(msg) { try { if (window.parent !== window) window.parent.postMessage(msg, location.origin); } catch (e) {} }
+// Silent while the shell itself is steering (Back and Forward), or every
+// step would write the address the shell just restored.
+var _fromShell = false;
+function tell(msg) { if (_fromShell) return; try { if (window.parent !== window) window.parent.postMessage(msg, location.origin); } catch (e) {} }
+// The shell steering the page: Back or Forward landed on an address of this
+// app, and the page shows it without a reload. Each page sets window.__route.
+window.addEventListener('message', function(e) {
+  if (e.origin !== location.origin || !e.data || e.data.zimi !== 'route' || typeof window.__route !== 'function') return;
+  _fromShell = true;
+  try { window.__route(e.data.id || ''); } finally { _fromShell = false; }
+});
+// Back in the page's own chrome: the shell's history when it has a step to
+// give back, the page's home otherwise.
+function goBack(home) { if (window.history.length > 1 && !_fromShell) { tell({ zimi: 'back' }); } home(); }
 // The shell's strings and the opening state, carried in the hash.
 function strings(defaults) {
   try { var s = JSON.parse(decodeURIComponent(location.hash.slice(1) || '') || '{}'); for (var k in s) defaults[k] = s[k]; } catch (e) {}

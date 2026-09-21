@@ -2528,7 +2528,7 @@ def _create_derive_line(job, text):
             enter("package")
         elif low.startswith("zim written"):
             enter("register")
-        elif low.startswith(("retrieving ", "adding ", "writing ")):
+        elif re.match(r"^[\d,]+ (posts|comments) fetched", low) or low.startswith(("retrieving ", "adding ", "writing ")):
             settle()
         events.append({"t": "phase", "phase": job.phase, "detail": line})
         return events, phase

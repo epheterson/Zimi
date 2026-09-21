@@ -56,6 +56,7 @@
     <div class="chips" id="chips"></div>
     <div id="shelves"></div>
     <div id="list" hidden>
+      <button class="back" onclick="setZim(''); tubeSearch('')"><span class="arrow"></span> <span id="l-back"></span></button>
       <div class="head"><h2 id="l-title"></h2><span class="sorts" id="l-sorts"></span></div>
       <div class="grid" id="grid"></div>
       <button class="more" id="more" hidden onclick="tubeMore()"></button>
@@ -63,7 +64,7 @@
     <div class="empty" id="empty" hidden></div>
   </div>
   <div id="watch" hidden>
-    <button class="back" onclick="closePlayer()"><span class="arrow"></span> <span id="backlabel">ZimiTube</span></button>
+    <button class="back" onclick="goBack(closePlayer)"><span class="arrow"></span> <span id="backlabel">ZimiTube</span></button>
     <div class="player">
       <div>
         <div class="stage" id="stage"></div>
@@ -163,6 +164,7 @@ function renderHome() {
     grid.innerHTML = _list.slice(0, _shown).map(function(v, i) { return card(v, i); }).join('');
     document.getElementById('l-title').innerHTML = esc(_q ? '“' + _q + '”' : (_zim ? zimTitle(_zim) : STR.title)) +
       (_list.length ? ' <span class="n">' + esc(count(_list.length, STR.video, STR.videos)) + '</span>' : '');
+    document.getElementById('l-back').textContent = STR.title;
     document.getElementById('l-sorts').innerHTML = SORTS.map(function(k) { return '<button class="chip' + (k === _sort ? ' on' : '') + '" onclick="setSort(' + J(k) + ')">' + esc(STR['sort_' + k]) + '</button>'; }).join('');
   } else {
     _shown = 0; grid.innerHTML = '';
@@ -246,7 +248,13 @@ function play(e, i) {
     var vid = document.createElement('video');
     vid.controls = true; vid.autoplay = true; vid.playsInline = true; vid.preload = 'auto';
     if (m.poster) vid.poster = zpath(v.zim, m.poster);
-    m.media.forEach(function(src) { var s = document.createElement('source'); s.src = zpath(v.zim, src.path); if (src.type) s.type = src.type; vid.appendChild(s); });
+    // The browser said it might play the file and then could not (an iPhone
+    // and WebM): the decoder the ZIM ships takes over, the way it would have
+    // had the browser said no up front.
+    var fell = false;
+    var fallBack = function() { if (fell || _now !== i) return; fell = true; if (m.ogv) playWithOgv(v, m, stage, i); else noMedia(); };
+    vid.addEventListener('error', fallBack);
+    m.media.forEach(function(src, k) { var s = document.createElement('source'); s.src = zpath(v.zim, src.path); if (src.type) s.type = src.type; if (k === m.media.length - 1) s.addEventListener('error', fallBack); vid.appendChild(s); });
     (m.subs || []).forEach(function(t, k) { var tr = document.createElement('track'); tr.kind = 'subtitles'; tr.src = zpath(v.zim, t.path); tr.srclang = t.lang || ''; tr.label = t.label || t.lang || 'subtitles'; if (k === 0 && /^en/.test(t.lang || '')) tr.default = true; vid.appendChild(tr); });
     vid.addEventListener('ended', function() { if (_autoplay && _now === i && _list[i + 1]) play(null, i + 1); });
     stage.appendChild(vid); _video = vid;
@@ -334,6 +342,11 @@ function stopDock() {
 window.tubeSearch = tubeSearch; window.tubeMore = tubeMore; window.play = play; window.closePlayer = closePlayer;
 window.setSort = setSort; window.setZim = setZim; window.toggleAutoplay = toggleAutoplay;
 window.toggleTheater = toggleTheater; window.enterPip = enterPip; window.undock = undock; window.stopDock = stopDock;
+window.__route = function(id) {
+  if (!id) { if (_now >= 0) closePlayer(); return; }
+  var i = _list.findIndex(function(v) { return v.zim + '/' + v.page === id; });
+  if (i >= 0 && i !== _now) play(null, i);
+};
 load();
 </script>
 </body>

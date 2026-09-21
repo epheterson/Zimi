@@ -914,6 +914,7 @@
   "create_label_import": "库文件夹中的归档",
   "create_ph_import": "未找到 .warc、.warc.gz 或 .wacz 文件",
   "create_mode_reddit": "子版块",
+  "create_mode_reddit_desc": "来自 Arctic Shift 公共存档的子版块帖子和评论。由 ArcticZim 制作；需要联网。",
   "create_pv_reddit_what": "帖子和评论，来自 Arctic Shift 的公共存档",
   "create_import_note": "将归档放在 {dir} 下的任意位置，它就会出现在这里。",
   "create_import_dir_unknown": "库文件夹",

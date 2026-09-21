@@ -914,6 +914,7 @@
   "create_label_import": "Archive dans votre dossier de bibliothèque",
   "create_ph_import": "Aucun fichier .warc, .warc.gz ou .wacz",
   "create_mode_reddit": "Subreddit",
+  "create_mode_reddit_desc": "Les publications et commentaires d’un subreddit, depuis l’archive publique d’Arctic Shift. Fait avec ArcticZim ; il faut internet.",
   "create_pv_reddit_what": "Publications et commentaires, depuis l’archive publique d’Arctic Shift",
   "create_import_note": "Placez l’archive n’importe où sous {dir} et elle apparaîtra ici.",
   "create_import_dir_unknown": "le dossier de bibliothèque",

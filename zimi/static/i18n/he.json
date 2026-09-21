@@ -914,6 +914,7 @@
   "create_label_import": "ארכיון בתיקיית הספרייה",
   "create_ph_import": "לא נמצאו קובצי ‎.warc, ‎.warc.gz או ‎.wacz",
   "create_mode_reddit": "סאברדיט",
+  "create_mode_reddit_desc": "הפוסטים והתגובות של סאברדיט, מהארכיון הציבורי של Arctic Shift. נוצר על ידי ArcticZim; דורש אינטרנט.",
   "create_pv_reddit_what": "פוסטים ותגובות, מהארכיון הציבורי של Arctic Shift",
   "create_import_note": "שימו את הארכיון בכל מקום בתוך {dir} והוא יופיע כאן.",
   "create_import_dir_unknown": "תיקיית הספרייה",

@@ -109,6 +109,12 @@ var CREATE_BOOKMARKS_DEF = {
 // articles you already chose; then import, which starts from something
 // already sitting on the server — the rarest way in and the one you only
 // reach deliberately.
+// The form for a subreddit's address. Not a tile: the address decides (see
+// the note under the tiles), and the panel takes this shape the moment the
+// server says the address is a subreddit.
+var CREATE_REDDIT_DEF = { id: 'reddit', network: true, flags: [], advanced: [] };
+var _createRedditPanel = false;
+
 var CREATE_MODE_DEFS = [
   {
     id: 'page', network: true, multiline: true,
@@ -1518,10 +1524,15 @@ function _renderCreateModes() {
     _createSelected = _createDefaultMode(visible);
   }
   var html = '';
+  // The address decided: a subreddit, lit in the row where the choice would
+  // have been, so the row tells the truth about what will be made.
+  if (_createRedditPanel) {
+    html += '<span class="create-chip active" role="tab" aria-selected="true" aria-disabled="true">' + tH('create_mode_reddit') + '</span>';
+  }
   for (var i = 0; i < visible.length; i++) {
     var def = visible[i];
     var live = _createModeAvailable(def, _createOffline, _createImportReady);
-    var on = _createSelected === def.id;
+    var on = _createSelected === def.id && !(_createRedditPanel && (def.id === 'page' || def.id === 'site'));  // lit unless the address decided
     // The reason a chip is dead is a whole sentence, and a chip has no room for
     // one. It goes where a sentence fits: the tooltip, and the panel below.
     var why = live ? '' :
@@ -1929,6 +1940,9 @@ function _renderCreatePanel() {
   if (!host) return;
   var def = _createDef(_createSelected);
   if (!def) { host.innerHTML = ''; return; }
+  // A subreddit's address under Web page or Site: the panel is a subreddit's
+  // (no engine, no crawl limits; the maker is ArcticZim), and says so.
+  if (_createRedditPanel && (def.id === 'page' || def.id === 'site')) def = CREATE_REDDIT_DEF;
   var live = _createModeAvailable(def, _createOffline, _createImportReady);
   var desc = '<div class="create-panel-desc">' + tH('create_mode_' + def.id + '_desc') + '</div>';
   _renderCreateAddress();
@@ -2194,6 +2208,10 @@ async function _createProbeSource() {
       left.previewSource = '';
     } else {
       _createPreview = data;
+      // The address turned out to be a subreddit's (or stopped being one):
+      // the panel and the chips follow.
+      var reddit = data.mode === 'reddit';
+      if (reddit !== _createRedditPanel) { _createRedditPanel = reddit; _createPanelFlip = true; }
       // Remembered here, at the moment it is known: the probe finds the icon
       // seconds before a job exists, and the run header wants it from the
       // first frame rather than after the first poll.
@@ -2206,9 +2224,19 @@ async function _createProbeSource() {
     if (mode === _createSelected) _createPreview = null;
   } finally {
     _createProbing = false;
-    if (mode === _createSelected) _renderCreatePreview();
+    if (mode === _createSelected) {
+      if (_createPanelFlip) {
+        // The panel takes its new shape, then the answer goes back into it:
+        // redrawing the panel restores the mode's remembered (older) answer.
+        _createPanelFlip = false;
+        _renderCreateModes(); _renderCreatePanel();
+        _createPreview = data; _createPreviewSource = body.source;
+      }
+      _renderCreatePreview();
+    }
   }
 }
+var _createPanelFlip = false;
 
 // The payoff for detecting a language: put it in the control, but never over
 // a choice the admin already made by hand.

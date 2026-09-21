@@ -1718,6 +1718,8 @@ function updateTopbar() {
     // The bookmarks button steps aside there: the history button's panel
     // holds the bookmarks too.
     document.body.classList.toggle('map-page', !!(_readingArticle && currentArticle && _isMapZim(currentArticle.zim)));
+    // An app page is not an article: nothing on it to bookmark as one.
+    document.body.classList.toggle('app-page', _isTubePage() || _isExchangePage() || _isReddotPage());
     mapSrcBtn.style.display = showMapSrc ? 'flex' : 'none';
     if (!showMapSrc) _closeMapSourceDropdown();
   }
@@ -16259,6 +16261,27 @@ function _tubeStrings(play) {
     'tube_theater', 'tube_pip', 'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_no_media'], { play: play || '', langs: langs });
 }
 
+// A thing inside an app (a video, a question, a post) is a step in history
+// when it opens from the app's home, so Back returns there; one thing to
+// the next is the same step rewritten. Leaving it for the home rewrites the
+// step as the home rather than adding one: Back from there goes where the
+// person came from, not through everything they read.
+function _appStep(state, url, key) {
+  var s = history.state || {};
+  if (s.mode === 'reader' && s[key]) history.replaceState(state, '', url);
+  else history.pushState(state, '', url);
+}
+function _appHome(state, url, key) {
+  history.replaceState(state, '', url);
+}
+// Back or Forward landed on an app address while that app is open: steer
+// the page rather than reload it (a reload would stop a docked video).
+function _appFrameRoute(open, id) {
+  var f = document.getElementById('reader-frame');
+  if (!open || !readerOpen || !f || !f.contentWindow) return false;
+  try { f.contentWindow.postMessage({ zimi: 'route', id: id || '' }, location.origin); return true; } catch (e) { return false; }
+}
+
 // What the pages Zimi owns say to the shell. Same origin, and only the
 // shapes listed here; anything else is ignored.
 window.addEventListener('message', function(e) {
@@ -16266,18 +16289,22 @@ window.addEventListener('message', function(e) {
   var d = e.data;
   if (d.zimi === 'tube-play' && _tubeOpen && typeof d.play === 'string') {
     // The player has an address of its own, so a playing video can be
-    // shared and bookmarked. replaceState: a card is not a navigation away.
-    history.replaceState({ mode: 'reader', tube: true, play: d.play }, '', _tubeUrl(d.play));
+    // shared and bookmarked. From the shelves it is a step (Back returns
+    // to them); from one video to the next it is the same step, rewritten.
+    _appStep({ mode: 'reader', tube: true, play: d.play }, _tubeUrl(d.play), 'play');
     if (d.title) { document.title = d.title + ' \u2014 ' + t('tube'); _setWindowTitle(document.title); }
   } else if (d.zimi === 'tube-home' && _tubeOpen) {
-    history.replaceState({ mode: 'reader', tube: true, play: '' }, '', _tubeUrl(''));
+    _appHome({ mode: 'reader', tube: true, play: '' }, _tubeUrl(''), 'play');
     document.title = t('tube') + ' \u2014 Zimi';
     _setWindowTitle(document.title);
+  } else if (d.zimi === 'back') {
+    // The page's own back arrow: the step the shell took for it.
+    if (history.state && (history.state.play || history.state.q || history.state.p)) history.back();
   } else if (d.zimi === 'reddot-p' && _reddotOpen && typeof d.p === 'string') {
-    history.replaceState({ mode: 'reader', reddot: true, p: d.p }, '', _reddotUrl(d.p));
+    _appStep({ mode: 'reader', reddot: true, p: d.p }, _reddotUrl(d.p), 'p');
     if (d.title) { document.title = d.title + ' \u2014 ' + t('reddot'); _setWindowTitle(document.title); }
   } else if (d.zimi === 'reddot-home' && _reddotOpen) {
-    history.replaceState({ mode: 'reader', reddot: true, p: '' }, '', _reddotUrl(''));
+    _appHome({ mode: 'reader', reddot: true, p: '' }, _reddotUrl(''), 'p');
     document.title = t('reddot') + ' \u2014 Zimi';
     _setWindowTitle(document.title);
   } else if (d.zimi === 'create' && d.mode === 'reddit') {
@@ -16288,10 +16315,10 @@ window.addEventListener('message', function(e) {
     _createRememberSource = _REDDIT_ADDRESS_START;
     openCreate();
   } else if (d.zimi === 'exchange-q' && _exchangeOpen && typeof d.q === 'string') {
-    history.replaceState({ mode: 'reader', exchange: true, q: d.q }, '', _exchangeUrl(d.q));
+    _appStep({ mode: 'reader', exchange: true, q: d.q }, _exchangeUrl(d.q), 'q');
     if (d.title) { document.title = d.title + ' \u2014 ' + t('exchange'); _setWindowTitle(document.title); }
   } else if (d.zimi === 'exchange-home' && _exchangeOpen) {
-    history.replaceState({ mode: 'reader', exchange: true, q: '' }, '', _exchangeUrl(''));
+    _appHome({ mode: 'reader', exchange: true, q: '' }, _exchangeUrl(''), 'q');
     document.title = t('exchange') + ' \u2014 Zimi';
     _setWindowTitle(document.title);
   } else if (d.zimi === 'catalog' && typeof d.category === 'string' && _APP_CATEGORY_KEYS.indexOf(d.category) >= 0) {
@@ -19578,6 +19605,14 @@ window.addEventListener('popstate', async (e) => {
     _stepBackToArticle({zim: target.zim, path: target.path}, false);
     return;
   }
+  // An app's own steps (a video, a question, a post, or its home) while that
+  // app is open: steer the page, before the lines below close the reader.
+  var app = e.state;
+  if (app && app.mode === 'reader') {
+    if (app.tube && _appFrameRoute(_tubeOpen, app.play)) return;
+    if (app.exchange && _appFrameRoute(_exchangeOpen, app.q)) return;
+    if (app.reddot && _appFrameRoute(_reddotOpen, app.p)) return;
+  }
   // Step through article history when reader is open (mirrors in-app back button)
   if (readerOpen && articleHistory.length > 0) {
     _stepBackToArticle(articleHistory.pop(), false);
@@ -19614,11 +19649,11 @@ window.addEventListener('popstate', async (e) => {
       doSearch(s.query, false);
     }
   } else if (s && s.mode === 'reader' && s.reddot) {
-    openReddot(true, s.p || '');
+    if (!_appFrameRoute(_reddotOpen, s.p)) openReddot(true, s.p || '');
   } else if (s && s.mode === 'reader' && s.exchange) {
-    openExchange(true, s.q || '');
+    if (!_appFrameRoute(_exchangeOpen, s.q)) openExchange(true, s.q || '');
   } else if (s && s.mode === 'reader' && s.tube) {
-    openTube(true, s.play || '');
+    if (!_appFrameRoute(_tubeOpen, s.play)) openTube(true, s.play || '');
   } else if (s && s.mode === 'reader' && s.zim) {
     // Going back to a reader state — show the source page, don't re-open reader
     _popstateNoAutoReader = true;
