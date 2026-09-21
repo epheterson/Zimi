@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Maps: the picker judges "here" by what is on screen, lists a short library whole, offers "Where I am" from the device's location, and a switch to a Kiwix map now lands where you were.
 - The apps row can be turned off for everyone (ZIMI_APPS, or Server settings) or by a signed-in user for their own account.
 - The apps row. Maps, ZimiTube and ZimiExchange sit first among the sources on every install; an app with nothing to show yet opens the catalog category that feeds it. A playing video has an address of its own (/#tube?play=...), so it can be shared and bookmarked.
+- The apps have an API and MCP tools. /tube, /tube/play, /exchange/{home,site,q} and /reddot/{home,sub,post} are in the OpenAPI document, and five MCP tools (list_videos, list_questions, read_question, list_posts, read_post) hand an agent the same content sorted and threaded: a site's questions most voted first, a question's answers with the accepted one first, a post's replies indented under their parents.
+- A shared link to a playing video, a question or a post survives a sign-in redirect: it is a query (/?tube=…, /?exchange=…, /?reddot=…) rather than a hash, which a sign-in on the way in dropped. The old hash links still open.
+- A subreddit build's progress strip follows the build's own steps.
+- Making a subreddit ZIM works again: the ArcticZim sidecar is installed from a pinned commit archive (the branch-name address was a 404).
 - ZimiTube plays on while you browse: leaving the player with a video playing docks it in a corner, and a tap brings it back. Theater mode gives the stage the whole width; a Picture in picture button appears where the browser has it.
 - Reddot has a home: follow subreddits with the star on their shelves, and Home lists their top posts in one place, followed shelves first.
 - The map picker's rows are shorter: Locate me, Maps of here, Catalog.

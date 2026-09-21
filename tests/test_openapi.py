@@ -22,6 +22,14 @@ from zimi.openapi import build_openapi  # noqa: E402
 # The eight stable paths the spec documents. /w/{zim}/{path} is the raw-content
 # endpoint the plan calls "/content".
 EXPECTED_PATHS = {
+    "/tube",
+    "/tube/play",
+    "/exchange/home",
+    "/exchange/site",
+    "/exchange/q",
+    "/reddot/home",
+    "/reddot/sub",
+    "/reddot/post",
     "/search",
     "/suggest",
     "/read",
@@ -42,9 +50,10 @@ class TestOpenAPISpec(unittest.TestCase):
         reparsed = json.loads(json.dumps(self.spec))
         self.assertEqual(reparsed["openapi"], "3.1.0")
 
-    def test_documents_all_eight_paths(self):
+    def test_documents_every_stable_path(self):
+        # The eight article paths, and the apps' eight (2026-09-20).
         self.assertEqual(set(self.spec["paths"].keys()), EXPECTED_PATHS)
-        self.assertEqual(len(self.spec["paths"]), 8)
+        self.assertEqual(len(self.spec["paths"]), 16)
 
     def test_version_mirrors_server(self):
         self.assertEqual(self.spec["info"]["version"], server.ZIMI_VERSION)
@@ -118,7 +127,7 @@ class TestOpenAPIRoute(unittest.TestCase):
         with urllib.request.urlopen(f"{self._base}/openapi.json", timeout=10) as r:
             data = json.loads(r.read())
             self.assertEqual(r.status, 200)
-        self.assertEqual(len(data["paths"]), 8)
+        self.assertEqual(len(data["paths"]), 16)
         self.assertEqual(data["info"]["version"], server.ZIMI_VERSION)
 
 

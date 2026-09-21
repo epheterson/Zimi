@@ -356,6 +356,158 @@ def build_openapi():
                 },
             }
         },
+        # ── the apps: content sorted and threaded, ready to read ──
+        "/tube": {
+            "get": {
+                "summary": "Videos across every video ZIM, sources interleaved, one card per talk",
+                "operationId": "tube",
+                "parameters": [
+                    _param("q", {"type": "string"}, description="Keep videos whose title, description or speaker carry every word"),
+                    _param("limit", {"type": "integer", "minimum": 1, "maximum": 20000, "default": 60}),
+                    _param("offset", {"type": "integer", "minimum": 0, "default": 0}),
+                ],
+                "responses": {
+                    **_json_response(
+                        "200",
+                        {
+                            "type": "object",
+                            "properties": {
+                                "items": {"type": "array", "items": {"type": "object", "properties": {
+                                    "zim": {"type": "string"}, "zim_title": {"type": "string"}, "page": {"type": "string"},
+                                    "title": {"type": "string"}, "speaker": {"type": "string"}, "description": {"type": "string"},
+                                    "duration": {"type": ["integer", "string", "null"]}, "date": {"type": "string"}, "thumb": {"type": "string"},
+                                    "also": {"type": "array", "items": {"type": "object"}, "description": "The same talk in other ZIMs"},
+                                }}},
+                                "total": {"type": "integer"},
+                                "sources": {"type": "integer"},
+                                "zims": {"type": "array", "items": {"type": "object"}},
+                            },
+                            "required": ["items", "total"],
+                        },
+                    ),
+                },
+            }
+        },
+        "/tube/play": {
+            "get": {
+                "summary": "The media behind a video's page: sources, subtitle tracks, poster",
+                "operationId": "tubePlay",
+                "parameters": [
+                    _param("zim", {"type": "string"}, required=True),
+                    _param("page", {"type": "string"}, required=True),
+                ],
+                "responses": {
+                    **_json_response(
+                        "200",
+                        {
+                            "type": "object",
+                            "properties": {
+                                "media": {"type": "array", "items": {"type": "object", "properties": {"path": {"type": "string"}, "type": {"type": "string"}}}},
+                                "subs": {"type": "array", "items": {"type": "object"}},
+                                "poster": {"type": "string"},
+                                "page": {"type": "string"},
+                                "ogv": {"type": "string", "description": "Path of the ZIM's own ogv.js decoder, or empty"},
+                            },
+                            "required": ["media"],
+                        },
+                    ),
+                    **_json_response("404", error),
+                },
+            }
+        },
+        "/exchange/home": {
+            "get": {
+                "summary": "Every Stack Exchange site in the library, each with its first page and top tags",
+                "operationId": "exchangeHome",
+                "responses": {**_json_response("200", {"type": "object", "properties": {"sites": {"type": "array", "items": {"type": "object"}}}, "required": ["sites"]})},
+            }
+        },
+        "/exchange/site": {
+            "get": {
+                "summary": "One page of a site's questions, the site's own order (most voted), or of a tag's",
+                "operationId": "exchangeSite",
+                "parameters": [
+                    _param("zim", {"type": "string"}, required=True),
+                    _param("page", {"type": "integer", "minimum": 1, "default": 1}),
+                    _param("tag", {"type": "string"}),
+                ],
+                "responses": {
+                    **_json_response("200", {"type": "object", "properties": {
+                        "rows": {"type": "array", "items": {"type": "object", "properties": {
+                            "id": {"type": "string"}, "title": {"type": "string"}, "page": {"type": "string"}, "votes": {"type": "integer"},
+                            "answers": {"type": "integer"}, "accepted": {"type": "boolean"}, "excerpt": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}},
+                        }}},
+                        "pages": {"type": "integer"},
+                    }, "required": ["rows", "pages"]}),
+                    **_json_response("404", error),
+                },
+            }
+        },
+        "/exchange/q": {
+            "get": {
+                "summary": "A question with its answers, the accepted one first; bodies as HTML rebased to /w/",
+                "operationId": "exchangeQuestion",
+                "parameters": [
+                    _param("zim", {"type": "string"}, required=True),
+                    _param("q", {"type": "string"}, required=True, description="The question page's path (questions/<id>/<slug>)"),
+                ],
+                "responses": {
+                    **_json_response("200", {"type": "object", "properties": {
+                        "title": {"type": "string"}, "votes": {"type": "integer"}, "author": {"type": "string"}, "body": {"type": "string"},
+                        "tags": {"type": "array", "items": {"type": "string"}},
+                        "answers": {"type": "array", "items": {"type": "object", "properties": {"score": {"type": "integer"}, "accepted": {"type": "boolean"}, "author": {"type": "string"}, "body": {"type": "string"}}}},
+                    }, "required": ["title", "answers"]}),
+                    **_json_response("404", error),
+                },
+            }
+        },
+        "/reddot/home": {
+            "get": {
+                "summary": "Every subreddit ZIM with a shelf per subreddit of its top posts",
+                "operationId": "reddotHome",
+                "responses": {**_json_response("200", {"type": "object", "properties": {"zims": {"type": "array", "items": {"type": "object"}}}, "required": ["zims"]})},
+            }
+        },
+        "/reddot/sub": {
+            "get": {
+                "summary": "One page of a subreddit's posts, top or new",
+                "operationId": "reddotSub",
+                "parameters": [
+                    _param("zim", {"type": "string"}, required=True),
+                    _param("r", {"type": "string"}, required=True, description="The subreddit, as the ZIM names it"),
+                    _param("sort", {"type": "string", "enum": ["top", "new"], "default": "top"}),
+                    _param("page", {"type": "integer", "minimum": 1, "default": 1}),
+                ],
+                "responses": {
+                    **_json_response("200", {"type": "object", "properties": {
+                        "rows": {"type": "array", "items": {"type": "object", "properties": {
+                            "id": {"type": "string"}, "subreddit": {"type": "string"}, "title": {"type": "string"}, "page": {"type": "string"},
+                            "score": {"type": "integer"}, "flair": {"type": "string"}, "author": {"type": "string"}, "date": {"type": "string"}, "external": {"type": "string"},
+                        }}},
+                        "pages": {"type": "integer"},
+                    }, "required": ["rows", "pages"]}),
+                    **_json_response("404", error),
+                },
+            }
+        },
+        "/reddot/post": {
+            "get": {
+                "summary": "A post with its comment tree (children nested), bodies as HTML rebased to /w/",
+                "operationId": "reddotPost",
+                "parameters": [
+                    _param("zim", {"type": "string"}, required=True),
+                    _param("p", {"type": "string"}, required=True, description="The post page's path (r/<sub>/<id>/)"),
+                ],
+                "responses": {
+                    **_json_response("200", {"type": "object", "properties": {
+                        "title": {"type": "string"}, "subreddit": {"type": "string"}, "score": {"type": "integer"}, "author": {"type": "string"},
+                        "date": {"type": "string"}, "flair": {"type": "string"}, "body": {"type": "string"},
+                        "comments": {"type": "array", "items": {"type": "object", "properties": {"author": {"type": "string"}, "score": {"type": "integer"}, "date": {"type": "string"}, "body": {"type": "string"}, "children": {"type": "array", "items": {"type": "object"}}}}},
+                    }, "required": ["title", "comments"]}),
+                    **_json_response("404", error),
+                },
+            }
+        },
         "/health": {
             "get": {
                 "summary": "Liveness + build info",

@@ -32,7 +32,7 @@ ok('shelves per subreddit, a paged list with Top and New, a post with its commen
 ok('the page takes the shared sheet, which holds both themes', /<!--@apps\.css@-->/.test(page) && !/prefers-color-scheme/.test(page));
 // the Create page
 ok('no Subreddit tile: a reddit.com/r/ address under Web page is a subreddit, and the preview says so', !/id: 'reddit'/.test(create) && /p\.mode === 'reddit'/.test(create) && /add\('create_mode_reddit', p\.title\)/.test(create) && /reddit: \{ name: 'ArcticZim'/.test(create));
-ok('Reddot\'s doors open Create with the address started', /_REDDIT_ADDRESS_START = 'https:\/\/www\.reddit\.com\/r\/'/.test(src) && (src.match(/_createRememberSource = _REDDIT_ADDRESS_START/g) || []).length === 2 && /seedEl\.dispatchEvent\(new Event\('input'\)\)/.test(create));
+ok('Reddot\'s doors open Create with the address started', /_REDDIT_ADDRESS_START = 'https:\/\/www\.reddit\.com\/r\/Kiwix'/.test(src) && (src.match(/_createRememberSource = _REDDIT_ADDRESS_START/g) || []).length === 2 && /seedEl\.dispatchEvent\(new Event\('input'\)\)/.test(create));
 ok('the Create page can be opened on a remembered mode', /if \(typeof _createRememberMode === 'string' && _createRememberMode\) \{\n\s*_createSelected = _createRememberMode;/.test(create));
 for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n'))) {
   const d = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n', lang), 'utf8'));

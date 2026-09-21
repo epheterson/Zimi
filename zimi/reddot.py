@@ -34,8 +34,12 @@ from zimi.importer import _run_capture, _run_stream, _venv_bin
 log = logging.getLogger("zimi")
 
 # A source archive, not a git URL: the Docker image has no git, and pip
-# unpacks a zip on its own.
-ARCTICZIM_REQUIREMENT = "arcticzim[integration,optimize] @ https://github.com/IMayBeABitShy/ArcticZim/archive/refs/heads/main.zip"
+# unpacks a zip on its own. Pinned to a commit rather than a branch name:
+# the repository's branch is "master" (a "main" URL was a 404, and every
+# subreddit build on the NAS died installing the sidecar), and a pin means
+# the same ArcticZim on every machine until Zimi moves it on purpose.
+ARCTICZIM_COMMIT = "8281389c2bc27d56702a2eecb3a568a0af3749b9"  # master, 2026-03-22
+ARCTICZIM_REQUIREMENT = "arcticzim[integration,optimize] @ https://github.com/IMayBeABitShy/ArcticZim/archive/%s.zip" % ARCTICZIM_COMMIT
 SUBREDDIT_RE = re.compile(r"^[A-Za-z0-9_]{2,21}$")
 _MARKER = ".zimi-sidecar.json"
 _MAX_PAGE_BYTES = 8 * 1024 * 1024

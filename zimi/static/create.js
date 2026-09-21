@@ -1415,7 +1415,12 @@ function _openCreateInner(replaceState) {
   _renderCreate();
   if (seed) {
     var seedEl = document.getElementById('create-source');
-    if (seedEl) { seedEl.value = seed; seedEl.dispatchEvent(new Event('input')); seedEl.focus(); try { seedEl.setSelectionRange(seed.length, seed.length); } catch (e) {} }
+    if (seedEl) {
+      seedEl.value = seed; seedEl.dispatchEvent(new Event('input')); seedEl.focus();
+      // The last path segment selected: a subreddit's name, ready to be typed over.
+      var cut = seed.lastIndexOf('/') + 1;
+      try { seedEl.setSelectionRange(cut < seed.length ? cut : seed.length, seed.length); } catch (e) {}
+    }
   }
   // First poll carries probe=1 and history=1: the one call that pays for the
   // sidecar check and the recent list, and the one that picks up a job already

@@ -2260,6 +2260,11 @@ function route(push) {
   // /manage/create* route is admin-gated server-side anyway — so the page
   // opens now and _initSecondary closes it if the answer comes back no. The
   // alternative, waiting, is the home-then-switch flash Eric asked us to kill.
+  // The query form of an app address: /?tube=<video>, /?exchange=<question>,
+  // /?reddot=<post>. The hash forms below are the older shape.
+  if (params.get('tube') !== null) { enterHome(false); openTube(true, params.get('tube') || ''); return; }
+  if (params.get('exchange') !== null) { enterHome(false); openExchange(true, params.get('exchange') || ''); return; }
+  if (params.get('reddot') !== null) { enterHome(false); openReddot(true, params.get('reddot') || ''); return; }
   if (location.hash === '#reddot' || location.hash.indexOf('#reddot?') === 0) {
     enterHome(false);
     var rdQ = new URLSearchParams(location.hash.slice(location.hash.indexOf('?') + 1));
@@ -16130,7 +16135,7 @@ function _reddotTileHtml() {
   return _appTileHtml('reddot', t('reddot'), _REDDOT_SVG, names, 'openReddot');
 }
 function _reddotUrl(p) {
-  return '/#reddot' + (p ? '?p=' + encodeURIComponent(p) : '');
+  return p ? '/?reddot=' + encodeURIComponent(p) : '/#reddot';
 }
 // What the shell tells an app page, in the hash it opens with: its strings
 // in the shell's language, the language and its direction (Arabic and
@@ -16194,7 +16199,7 @@ function _exchangeTileHtml() {
   return _appTileHtml('exchange', t('exchange'), _EXCHANGE_SVG, _installedQaZims().map(function(z) { return z.title || z.name; }), 'openExchange');
 }
 function _exchangeUrl(q) {
-  return '/#exchange' + (q ? '?q=' + encodeURIComponent(q) : '');
+  return q ? '/?exchange=' + encodeURIComponent(q) : '/#exchange';
 }
 function _exchangeStrings(q) {
   return _appStrings('exchange', ['exchange_all', 'exchange_more', 'exchange_questions', 'exchange_answers', 'exchange_answer', 'exchange_votes', 'exchange_vote',
@@ -16302,8 +16307,13 @@ function _tubeSearch(val) {
   } catch (e) {}
 }
 
+// An app's home is a hash route; a thing inside it (a playing video, a
+// question, a post) is a query. A copied link with the thing in the hash
+// lost it through a sign-in redirect (Cloudflare Access on the way in
+// drops the fragment), and opened on the app's home; a query survives.
+// The hash form is still read, for links already out there.
 function _tubeUrl(play) {
-  return '/#tube' + (play ? '?play=' + encodeURIComponent(play) : '');
+  return play ? '/?tube=' + encodeURIComponent(play) : '/#tube';
 }
 
 function openTube(replaceState, play) {
@@ -16334,9 +16344,11 @@ var _APP_CATEGORY = { maps: 'maps', tube: 'ted', exchange: 'stack_exchange' };  
 // A mode the Create page should open on, set by whoever sends someone there.
 var _createRememberMode = '';
 var _createRememberSource = '';
-// Where a subreddit's address starts. Reddot's empty page and tile open
-// Create with this in the field; the person finishes it.
-var _REDDIT_ADDRESS_START = 'https://www.reddit.com/r/';
+// A whole subreddit address, so the preview answers at once. Reddot's empty
+// page and tile open Create with it in the field, the name selected, so
+// typing replaces it (Eric: "include a subreddit so it's a valid URL, maybe
+// Kiwix or something fun").
+var _REDDIT_ADDRESS_START = 'https://www.reddit.com/r/Kiwix';
 
 // The row is offered unless the server turned it off for everyone
 // (ZIMI_APPS, or the switch in Server settings; stamped on the shell) or

@@ -352,3 +352,10 @@ def test_a_reddit_zim_titled_after_the_tool_is_named_by_its_subreddits():
 def test_a_reddit_zim_files_under_reddit_whatever_its_file_is_called():
     assert srv._effective_category("arcticzim_eng", "/zims/arcticzim_eng.zim", "reddit") == "Reddit"
     assert srv._effective_category("reddit_kiwix", "/zims/reddit_kiwix.zim", None) != "Reddit", "only the ZIM's own metadata says it is Reddit"
+
+
+def test_the_sidecar_is_pinned_to_a_commit_archive():
+    """The repository's branch is master; a branch-name URL was a 404 on the
+    NAS and every subreddit build died installing the sidecar."""
+    assert "refs/heads" not in reddot.ARCTICZIM_REQUIREMENT
+    assert reddot.ARCTICZIM_COMMIT in reddot.ARCTICZIM_REQUIREMENT and len(reddot.ARCTICZIM_COMMIT) == 40

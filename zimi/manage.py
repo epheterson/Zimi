@@ -2517,6 +2517,22 @@ def _create_derive_line(job, text):
         events.append({"t": "phase", "phase": job.phase, "detail": line})
         return events, phase
 
+    if job.mode == "reddit":
+        # A subreddit build has its own steps (fetching posts, fetching
+        # comments, importing, building the ZIM), none shaped like a page
+        # capture's lines; they map onto the same four steps on the strip.
+        low = line.lower()
+        if low.startswith("fetching "):
+            enter("fetch")
+        elif low.startswith(("importing", "building the zim")):
+            enter("package")
+        elif low.startswith("zim written"):
+            enter("register")
+        elif low.startswith(("retrieving ", "adding ", "writing ")):
+            settle()
+        events.append({"t": "phase", "phase": job.phase, "detail": line})
+        return events, phase
+
     match = _CREATE_RE_PACKAGED.match(line)
     if match:  # site capture, one page written into the ZIM
         enter("package")
