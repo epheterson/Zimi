@@ -1471,11 +1471,14 @@ function _renderCreate() {
             tH('create_beta_report') + '</a>.</span>' +
       '</div>' +
       '<div id="create-picker" class="create-picker">' +
-        // The address is the job, so it is the first field, and there is one
-        // of it: the mode follows from the address (video is detected from
-        // it; page-versus-site is a question about the address just typed),
-        // so the chips sit under it as "what to make of this", not above it
-        // as a decision taken blind (design review D2, 09-03).
+        // The chips first, the address under them. They sat under the
+        // address (design review D2, 09-03: "what to make of this"), but the
+        // address line changes shape with the mode (a textarea, a picker, a
+        // caption or none), and the chips bounced with it (Eric, 09-21: "the
+        // type bounces around below the url"). A row that never moves is the
+        // steadier anchor; the address still decides the mode when it can.
+        '<div class="create-modes" id="create-modes" role="tablist"' +
+          ' aria-label="' + escAttr(t('create_zim')) + '"></div>' +
         '<div class="create-address" id="create-address">' +
           '<label class="ms-form-label" for="create-source" id="create-address-label"></label>' +
           '<textarea rows="1" class="create-field" id="create-source" spellcheck="false"' +
@@ -1483,8 +1486,6 @@ function _renderCreate() {
           '<select class="create-field" id="create-archive" hidden></select>' +
           '<div class="create-caption" id="create-address-note" hidden></div>' +
         '</div>' +
-        '<div class="create-modes" id="create-modes" role="tablist"' +
-          ' aria-label="' + escAttr(t('create_zim')) + '"></div>' +
         '<div id="create-panel"></div>' +
       '</div>' +
       '<div id="create-queue"></div>' +

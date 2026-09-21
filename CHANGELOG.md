@@ -24,7 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The Creator pane lists the subreddit engine (ArcticZim) beside the others.
 - The gear is the last thing on the bar on every page; the apps offered to everyone are chosen under Preferences beside Show Discover, as the tiles they are on the home page.
 - A video whose file never made it into its ZIM is left out of ZimiTube's feed. When the page names one container and the ZIM carries another (ted2zim's mp4 beside a webm it never downloaded), the player and the page served through Zimi play the file that is there, mp4 first.
-- Safari on the Mac plays a WebM's picture without its Vorbis sound; ZimiTube and a TED page served through Zimi hand Safari the ZIM's decoder, as they do an iPhone.
+- Safari on the Mac plays a WebM's picture without its Vorbis sound; ZimiTube and a TED page served through Zimi hand Safari the ZIM's decoder, as they do an iPhone. The decoder fills the stage and has controls of its own in ZimiTube (play, seek, time, sound, full screen), which it had none of.
+- Create asks for the password before it opens on a protected server, as Manage does, instead of opening and failing on its first request. Manage no longer sits on "Loading…" after a sign-in: an answer fetched before the password is dropped, not kept.
+- The Create page's mode chips sit above the address, where the address line's changing shape cannot move them.
+- A map page has no bookmark button either; places are the map's own.
 - A library with one subreddit opens Reddot on that subreddit's paged list; shelves show a dozen posts, not six.
 - Read aloud and type size are not offered on a PDF; switching the app's language reopens an open PDF in that language.
 - The catalog's StreetZim note links the name itself and drops the listing date; the Creator pane's engines are probed at startup so the pane answers at once.

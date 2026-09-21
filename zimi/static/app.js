@@ -1553,6 +1553,7 @@ function submitPw() {
         // manage deterministically (enterManage, never toggleManage — the
         // latter would toggle OFF when opened from within manage).
         _manageToken = tok; _saveManageToken(tok, remember);
+        _msPrefetch = {};  // whatever was fetched before the password is stale
         closePwModal();
         if (typeof enterManage === 'function') enterManage();
       }
@@ -4882,6 +4883,19 @@ function openCreate(replaceState) {
     return;
   }
   if (_createOpen) return;
+  // A protected server asks for the password here, before the page opens,
+  // as Manage does: the page used to open and its first request came back
+  // as a red "unauthorized" under the Create button (Eric, desktop app).
+  if (_managePwRequired && !_manageToken && !(_userSession && _userSession.can_create) && typeof openPwModal === 'function' && !_pwResolve) {
+    var _afterPw = function(tok) {
+      _manageToken = tok; _saveManageToken(tok, true);
+      closePwModal();
+      openCreate(replaceState);
+    };
+    _pwResolve = _afterPw; _pwReject = function() {};
+    openPwModal();
+    return;
+  }
   if (_createLoaded) { _openCreateInner(replaceState); return; }
   var el = document.createElement('script');
   el.src = '/static/create.js?v=1';
@@ -9965,7 +9979,11 @@ function _msFetch(url, fetcher) {
 function _msPrime(url, fetcher) {
   var p = (fetcher || _msDefaultFetcher(url))();
   _msPrefetch[url] = { ts: Date.now(), promise: p };
-  p.catch(function() {});  // silence unhandled-rejection; consumers re-await
+  // A prefetch that failed (a 401 before the password was given) is not an
+  // answer to hand the pane later: it drops out, so the pane asks afresh.
+  // Kept, it left Manage on "Loading…" after a sign-in until a reload
+  // (Eric: "we're stuck loading it didn't finish after i unlocked").
+  p.catch(function() { if (_msPrefetch[url] && _msPrefetch[url].promise === p) delete _msPrefetch[url]; });
 }
 function _prefetchServerSettings() {
   _msPrime('/manage/mirror', function() { return authedFetch('/manage/mirror').then(_msJson); });

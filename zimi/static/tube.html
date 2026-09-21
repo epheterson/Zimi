@@ -34,6 +34,17 @@
   /* Dark on any poster, white or black; the on state is the accent, not a lighter grey. */
   .stage-tools button.on { color: #ffb347; }
   .stage-tools svg { width: 18px; height: 18px; }
+  /* The ZIM's decoder draws on a canvas at the file's own size; the stage is the size. */
+  .stage ogvjs, .stage .ogvjs { position: absolute; inset: 0; width: 100% !important; height: 100% !important; display: block; }
+  .stage ogvjs canvas, .stage .ogvjs canvas { width: 100% !important; height: 100% !important; object-fit: contain; display: block; }
+  /* The controls the decoder has none of: play, a seek bar, the time, sound, full screen. */
+  .ctl { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 22px 10px 8px; color: #fff;
+    background: linear-gradient(to top, rgba(0,0,0,0.7), rgba(0,0,0,0)); z-index: 3; transition: opacity 0.25s; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .stage.quiet .ctl, .stage.quiet .stage-tools { opacity: 0; pointer-events: none; }
+  .ctl button { border: 0; background: none; color: #fff; padding: 4px; cursor: pointer; display: inline-flex; line-height: 0; }
+  .ctl svg { width: 20px; height: 20px; }
+  .ctl input[type=range] { flex: 1; accent-color: #fff; min-width: 0; }
+  .ctl .t { min-width: 5.5em; text-align: center; }
   .stage video { width: 100%; height: 100%; display: block; background: #000; }
   .stage .nomedia { color: #ddd; padding: 32px; text-align: center; line-height: 1.8; }
   .stage .nomedia a { color: #fff; font-weight: 600; }
@@ -107,7 +118,7 @@
 var PAGE = 60;
 var STR = strings({ title: 'ZimiTube', videos: 'videos', video: 'video', langs: {}, more: 'More', none: 'No videos match.', empty: 'No video ZIMs installed yet.',
   up_next: 'Up next', autoplay: 'Autoplay', theater: 'Theater', pip: 'Picture in picture', open_page: 'Open the original page', all: 'All',
-  sort_top: 'Top', sort_title: 'Title', sort_newest: 'Newest', sort_longest: 'Longest', no_media: 'This video cannot be played here.', missing: 'This video isn\'t in this ZIM.' });
+  sort_top: 'Top', sort_title: 'Title', sort_newest: 'Newest', sort_longest: 'Longest', no_media: 'This video cannot be played here.', missing: 'This video isn\'t in this ZIM.', play_pause: 'Play or pause', seek: 'Seek', sound: 'Sound', full_screen: 'Full screen' });
 var SORTS = ['top', 'title', 'newest', 'longest'];
 var _q = '', _zim = '', _sort = 'top', _all = [], _zims = [], _list = [], _shown = 0, _busy = false, _autoplay = true, _theater = false, _now = -1, _video = null;
 try { _sort = localStorage.getItem('zimitube_sort') || 'top'; if (SORTS.indexOf(_sort) < 0) _sort = 'top'; _autoplay = localStorage.getItem('zimitube_autoplay') !== '0'; _theater = localStorage.getItem('zimitube_theater') === '1'; } catch (e) {}
@@ -213,6 +224,50 @@ function stageTools(stage, pip) {
   stage.appendChild(tools);
   paintTheater();
 }
+// The decoder has no controls of its own (a browser's <video> does; ogv.js
+// draws on a canvas). These are them: play and pause, a seek bar, the time,
+// sound on and off, full screen; hidden while the pointer rests, back on a
+// touch or a move, as a player's are.
+var _PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4l14 8-14 8z"/></svg>';
+var _PAUSE_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>';
+var _SOUND_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14"/></svg>';
+var _MUTE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M23 9l-6 6M17 9l6 6"/></svg>';
+var _FULL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>';
+function clock(s) { s = Math.max(0, Math.floor(s || 0)); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); }
+function ogvControls(stage, p) {
+  var old = stage.querySelector('.ctl'); if (old) old.remove();
+  var bar = document.createElement('div'); bar.className = 'ctl';
+  bar.innerHTML = '<button type="button" class="pp" aria-label="' + esc(STR.play_pause || 'Play') + '">' + _PAUSE_SVG + '</button>' +
+    '<span class="t">0:00 / 0:00</span><input type="range" min="0" max="1000" value="0" aria-label="' + esc(STR.seek || 'Seek') + '">' +
+    '<button type="button" class="snd" aria-label="' + esc(STR.sound || 'Sound') + '">' + _SOUND_SVG + '</button>' +
+    '<button type="button" class="fs" aria-label="' + esc(STR.full_screen || 'Full screen') + '">' + _FULL_SVG + '</button>';
+  stage.appendChild(bar);
+  var pp = bar.querySelector('.pp'), t = bar.querySelector('.t'), seek = bar.querySelector('input'), snd = bar.querySelector('.snd'), fs = bar.querySelector('.fs');
+  var scrubbing = false;
+  var paint = function() {
+    pp.innerHTML = p.paused ? _PLAY_SVG : _PAUSE_SVG;
+    var d = p.duration || 0, c = p.currentTime || 0;
+    t.textContent = clock(c) + ' / ' + clock(d);
+    if (!scrubbing && d) seek.value = Math.round(c / d * 1000);
+    snd.innerHTML = p.muted ? _MUTE_SVG : _SOUND_SVG;
+  };
+  var toggle = function() { if (p.paused) p.play(); else p.pause(); };
+  pp.onclick = toggle;
+  p.addEventListener('click', toggle);
+  snd.onclick = function() { p.muted = !p.muted; paint(); };
+  fs.onclick = function() { var el = stage; try { (el.requestFullscreen || el.webkitRequestFullscreen).call(el); } catch (e) {} };
+  seek.addEventListener('input', function() { scrubbing = true; t.textContent = clock(seek.value / 1000 * (p.duration || 0)) + ' / ' + clock(p.duration); });
+  seek.addEventListener('change', function() { scrubbing = false; if (p.duration) p.currentTime = seek.value / 1000 * p.duration; });
+  ['play', 'pause', 'timeupdate', 'loadedmetadata', 'durationchange', 'ended', 'volumechange'].forEach(function(ev) { p.addEventListener(ev, paint); });
+  // At rest the controls step aside; a touch or a move brings them back.
+  var quietTimer = null;
+  var wake = function() { stage.classList.remove('quiet'); clearTimeout(quietTimer); quietTimer = setTimeout(function() { if (!p.paused) stage.classList.add('quiet'); }, 2500); };
+  stage.addEventListener('mousemove', wake); stage.addEventListener('touchstart', wake, { passive: true });
+  p.addEventListener('pause', function() { stage.classList.remove('quiet'); });
+  p.addEventListener('play', wake);
+  paint();
+}
+
 // Picture in picture, where the browser has it (Safari's own way, or the
 // standard one); the button appears only then.
 function pipAvailable(v) { return !!(v && (typeof v.requestPictureInPicture === 'function' && document.pictureInPictureEnabled || typeof v.webkitSetPresentationMode === 'function' && v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode('picture-in-picture'))); }
@@ -308,10 +363,11 @@ function playWithOgv(v, m, stage, i) {
       var p = new OGVPlayer();
       p.src = zpath(v.zim, m.media[0].path);
       if (m.poster) p.poster = zpath(v.zim, m.poster);
-      p.setAttribute('controls', ''); p.setAttribute('playsinline', '');
+      p.setAttribute('playsinline', '');
       p.addEventListener('ended', function() { if (_autoplay && _now === i && _list[i + 1]) play(null, i + 1); });
       stage.innerHTML = ''; stage.appendChild(p); _video = p;
       stageTools(stage, false);
+      ogvControls(stage, p);
       p.play();
     } catch (e) { stage.innerHTML = '<div class="nomedia">' + esc(STR.no_media) + '</div>'; }
   };
@@ -333,7 +389,7 @@ function closePlayer(silent) {
     document.getElementById('dock-t').textContent = (_list[_now] || {}).title || '';
     document.getElementById('dock').hidden = false;
   } else {
-    stage.innerHTML = ''; _video = null;
+    stage.innerHTML = ''; stage.classList.remove('quiet'); _video = null;
     document.getElementById('dock').hidden = true;
   }
   if (_now >= 0) tell({ zimi: 'tube-home' });
