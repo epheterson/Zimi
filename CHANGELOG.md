@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The apps have an API and MCP tools. /tube, /tube/play, /exchange/{home,site,q} and /reddot/{home,sub,post} are in the OpenAPI document, and five MCP tools (list_videos, list_questions, read_question, list_posts, read_post) hand an agent the same content sorted and threaded: a site's questions most voted first, a question's answers with the accepted one first, a post's replies indented under their parents.
 - A shared link to a playing video, a question or a post survives a sign-in redirect: it is a query (/?tube=…, /?exchange=…, /?reddot=…) rather than a hash, which a sign-in on the way in dropped. The old hash links still open.
 - A subreddit build's progress strip follows the build's own steps.
+- `zimi create --setup-reddit` stands alone, as the guide says; it demanded a source.
 - Making a subreddit ZIM works again: the ArcticZim sidecar is installed from a pinned commit archive (the branch-name address was a 404).
 - ZimiTube plays on while you browse: leaving the player with a video playing docks it in a corner, and a tap brings it back. Theater mode gives the stage the whole width; a Picture in picture button appears where the browser has it.
 - Reddot has a home: follow subreddits with the star on their shelves, and Home lists their top posts in one place, followed shelves first.

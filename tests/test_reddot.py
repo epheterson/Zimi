@@ -359,3 +359,28 @@ def test_the_sidecar_is_pinned_to_a_commit_archive():
     NAS and every subreddit build died installing the sidecar."""
     assert "refs/heads" not in reddot.ARCTICZIM_REQUIREMENT
     assert reddot.ARCTICZIM_COMMIT in reddot.ARCTICZIM_REQUIREMENT and len(reddot.ARCTICZIM_COMMIT) == 40
+
+
+def test_setup_reddit_needs_no_source(monkeypatch, capsys):
+    """The docs say `zimi create --setup-reddit`; the parser demanded a
+    source and the command died on the NAS before installing anything."""
+    from types import SimpleNamespace
+    from zimi import creator
+
+    seen = []
+    monkeypatch.setattr(reddot, "ensure_sidecar", lambda sink=None: seen.append("installed") or "/x/arcticzim")
+    monkeypatch.setattr(reddot, "sidecar_dir", lambda: "/x")
+    creator.cli_create(SimpleNamespace(source=[], setup_reddit=True))
+    assert seen == ["installed"] and "Reddit maker ready at /x" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        creator.cli_create(SimpleNamespace(source=[], setup_reddit=False))
+
+
+def test_the_parser_accepts_setup_reddit_alone():
+    import zimi.server as srv_mod
+
+    parser = srv_mod._build_arg_parser() if hasattr(srv_mod, "_build_arg_parser") else None
+    if parser is None:
+        pytest.skip("no parser builder to call")
+    args = parser.parse_args(["create", "--setup-reddit"])
+    assert args.source == [] and args.setup_reddit is True

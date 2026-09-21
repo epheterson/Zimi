@@ -4052,9 +4052,9 @@ def main():
     # page and wrapping it in an index nobody asked for is a worse ZIM.
     p_create.add_argument(
         "source",
-        nargs="+",
+        nargs="*",
         help="Folder path, a subreddit (r/kiwix), or one or more http(s):// URLs (several URLs are "
-        "captured into a single ZIM with an index page)",
+        "captured into a single ZIM with an index page). Optional only with --setup-reddit.",
     )
     p_create.add_argument(
         "--title", default=None, help="ZIM title (default: folder name / page title)"
