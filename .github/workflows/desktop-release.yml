@@ -239,21 +239,31 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo snap wait system seed.loaded
-          for i in 1 2 3 4 5; do
-            sudo snap install core22 && break
-            echo "core22 install failed (attempt $i), retrying in 20s..."
-            sleep 20
+          # The gnome extension's own snaps too: in destructive mode
+          # snapcraft installs them itself, and the install of
+          # gnome-42-2204-sdk failed on the v1.10.0 tag, which took the
+          # AppImage down with it (the AppImage is packaged after).
+          for snapname in core22 gnome-42-2204 gnome-42-2204-sdk; do
+            for i in 1 2 3 4 5; do
+              sudo snap install "$snapname" && break
+              echo "$snapname install failed (attempt $i), retrying in 20s..."
+              sleep 20
+            done
           done
-          snap list core22
+          snap list core22 gnome-42-2204 gnome-42-2204-sdk || true
 
       - name: Build Snap (Linux)
         if: runner.os == 'Linux'
+        # The snap is an extra channel, and the store is not ours. A snap
+        # that will not build must not cost the release its AppImage.
+        continue-on-error: true
         uses: snapcore/action-build@v1
         with:
           snapcraft-args: '--destructive-mode'
 
       - name: Upload Snap artifact
         if: runner.os == 'Linux'
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: Zimi-Linux-snap
@@ -613,6 +623,9 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           draft: true
+          # The snap may not be there (its build is allowed to fail); the
+          # release is the other five files either way.
+          fail_on_unmatched_files: false
           files: |
             Zimi-Linux-amd64/Zimi-Linux-amd64.AppImage
             Zimi-Linux-snap/*.snap
