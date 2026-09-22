@@ -264,13 +264,16 @@ jobs:
       # the bundle's environment fixups took apart what the gnome extension
       # had set up (issue #81). Installed and run here the way a person
       # would, so the next one cannot ship untried.
+      # Not continue-on-error, unlike the build above: a snap the store
+      # would not let us build costs nothing, but a snap we did build and
+      # that will not open is the 1.10.0 bug, and it should stop the build
+      # rather than reach anyone. The `if` is what keeps the first case from
+      # failing here.
       - name: The snap installs and opens its window (Linux)
-        if: runner.os == 'Linux'
-        continue-on-error: true
+        if: runner.os == 'Linux' && hashFiles('*.snap') != ''
         shell: bash
         run: |
           set -x
-          ls *.snap || { echo "no snap to try"; exit 0; }
           sudo apt-get install -y -qq xvfb dbus-x11 >/dev/null
           sudo snap install --dangerous ./*.snap
           # A sideloaded snap gets no auto-connections: wire what the
