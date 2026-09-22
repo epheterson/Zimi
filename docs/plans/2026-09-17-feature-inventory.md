@@ -119,6 +119,7 @@ Eric: "We're on a new major release here maps release and each of those apps of 
 ## Smaller parked items
 
 - A Like button in the apps, and what people like or save. Eric, 2026-09-21: "Let's add like button and start tracking wat content users like or save that for future release and write it down?" Written down: next release. What it needs decided first: whether a like lives with the account (like bookmarks) or the browser, and whether an admin sees a library-wide tally.
+- The sign-in prompt over Manage: the catalog tiles open Manage, which paints "Loading catalog…" under the password modal; Create's way (the modal over the home page, then the page) reads better. Eric, 2026-09-21: "don't like how the others show manage with it on top saying loading catalog... while it waits for the password". Not new in 1.10; next release.
 - Lists across the apps: saved places, videos, questions, posts as one thing, in place of the reader's bookmark and history buttons, which the apps hide. Eric, 2026-09-21: "what does bookmark/history tab thing do in maps app? Feels like they should be removed and we do lists and stuff across all the apps properly eventually."
 - Apps per user (an admin limits which apps an account sees). Eric, 2026-09-21: "Wanted to see if I can limit apps to users yet but that can be future." The server-wide and per-account switches shipped in 1.10; the per-user allowlist is the remaining piece and fits the allowlist editor.
 

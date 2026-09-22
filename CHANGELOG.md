@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Create asks for the password before it opens on a protected server, as Manage does, instead of opening and failing on its first request. Manage no longer sits on "Loading…" after a sign-in: an answer fetched before the password is dropped, not kept.
 - The Create page's mode chips sit above the address, where the address line's changing shape cannot move them.
 - A map page has no bookmark button either; places are the map's own.
+- A video, a question or a post open in an app can be bookmarked and is remembered in History, as an article is; the lists show it as the app's and reopen it in the app.
+- Preferences opens on an Apps section of its own: the four tiles, each with what the library holds for it, and All and None.
+- A zero-byte video entry (the climate talk's mp4 in the 2023 TED technology ZIM) is as absent as none: left out of ZimiTube, and its page says the video is not in the ZIM.
 - A library with one subreddit opens Reddot on that subreddit's paged list; shelves show a dozen posts, not six.
 - Read aloud and type size are not offered on a PDF; switching the app's language reopens an open PDF in that language.
 - The catalog's StreetZim note links the name itself and drops the listing date; the Creator pane's engines are probed at startup so the pane answers at once.

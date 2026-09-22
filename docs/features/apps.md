@@ -13,16 +13,18 @@ The home page shows an **Apps** row above the sources when the library holds som
 
 **Getting around.** The app's icon in the breadcrumb is the way to its front page. The arrow in Zimi's header is the only back there is, and it works inside an app as it does in an article: it appears once you are inside (a video, a question, a post, a list) and steps back to where you were; a list (a subreddit, a tag, a search) steps to the app's home; at the home there is no arrow, as on a ZIM's front page. **Open the original page** is a step too: the arrow returns to the video, the question or the post. A shared link to one of those has no home beneath it, so the arrow makes one in place. The dice stay inside the app: a video, a question or a post by chance. A shared link to a video, a question or a post is a query (`/?tube=…`, `/?exchange=…`, `/?reddot=…`), which survives a sign-in on the way in.
 
+**Bookmarks and history.** A video, a question or a post open in an app can be bookmarked with the same button as an article, and History remembers it the same way; both lists show it under the app's own name and mark, and opening it there opens it in the app.
+
 **One thing once.** When two ZIMs carry the same thing, an app shows it once, from the newest build (then the fullest): last month's file still beside this month's, a nopic beside a maxi of one site, the same region from the same map source, a subreddit in two bundles. The library itself lists every file; only the apps' views are deduplicated.
 
-**Choosing apps.** Each app can be offered or not. `ZIMI_APPS=0` hides them all for the whole server and `ZIMI_APPS=maps,tube` keeps only those (the names are `maps`, `tube`, `exchange`, `reddot`); the **Apps offered to everyone** checkboxes under Preferences (beside Show Discover) do the same without a restart, and each account can untick apps for itself under its own settings. The pages and endpoints stay reachable by address for anyone allowed to read the ZIMs behind them.
+**Choosing apps.** Each app can be offered or not. `ZIMI_APPS=0` hides them all for the whole server and `ZIMI_APPS=maps,tube` keeps only those (the names are `maps`, `tube`, `exchange`, `reddot`); the **Apps** tiles at the top of Preferences do the same without a restart, and each account can untick apps for itself under its own settings. The pages and endpoints stay reachable by address for anyone allowed to read the ZIMs behind them.
 
 ## Configure
 
 | Setting | Where | Effect |
 | --- | --- | --- |
 | `ZIMI_APPS` | environment | `0` offers no app to anyone; a comma list of `maps`, `tube`, `exchange`, `reddot` offers only those. Overrides the saved choice. |
-| Apps offered to everyone | Manage, Preferences (beside Show Discover) | The server's choice, one checkbox per app, saved with the other server preferences. |
+| Apps | Preferences, first section | The server's choice: the four app tiles, lit when offered, with All and None; each tile says what the library holds for it. Saved with the other server preferences. |
 | Apps on my home page | account settings | One account's own choice among the apps the server offers, kept with its bookmarks and history. |
 
 ## Troubleshoot

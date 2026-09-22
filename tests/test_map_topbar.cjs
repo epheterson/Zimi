@@ -62,7 +62,7 @@ for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', '
 }
 
 // ── history keeps the place ──────────────────────────────────────────────
-ok('a visit to a place is recorded with the place', /function _histPushArticle\(zim, path, title, pos\)/.test(src) && /if \(pos\) entry\.pos = _normMapPos\(pos\);/.test(src));
+ok('a visit to a place is recorded with the place', /function _histPushArticle\(zim, path, title, pos, app\)/.test(src) && /if \(pos\) entry\.pos = _normMapPos\(pos\);/.test(src));
 ok('two places on one map are two visits', /h\[i\]\.path === path && \(h\[i\]\.pos \|\| ''\) === _normMapPos\(pos\)/.test(src));
 ok('openArticle hands the place to history', /_histPushArticle\(zim, path, title \|\| _fallbackTitle\(zim, path\), opts && opts\.pos\)/.test(src));
 ok('a history row reopens the place', ctx._histPosArg({ pos: 'map=14/21.3/-157.8' }) === ",{pos:'map=14/21.3/-157.8'}" && ctx._histPosArg({}) === '');

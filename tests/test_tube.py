@@ -346,3 +346,18 @@ def test_a_sibling_file_the_page_never_named_is_played(tmp_path, monkeypatch):
     assert tube.mend_sources(page, "ted_en_sib", "the-world-s-rarest-diseases") == page or "videos/13316" in page
     assert tube.siblings_of("videos/1/video.webm") == ["videos/1/video.mp4", "videos/1/video.m4v", "videos/1/video.webm", "videos/1/video.ogv"]
     assert tube.siblings_of("subs/x.vtt") == ["subs/x.vtt"]
+
+
+def test_a_zero_byte_file_is_as_absent_as_none(tmp_path, monkeypatch):
+    """The climate talk in ted_en_technology_2023-09: no webm, and a
+    video.mp4 entry of zero bytes. Neither is a video; the talk is left out
+    of the feed and its page says the video is not in the ZIM."""
+    files = dict(TED_FILES)
+    del files["videos/13316/video.webm"]
+    files["videos/13316/video.mp4"] = b""
+    files["why-tech-needs-the-humanities"] = TED_PAGE
+    _library(tmp_path, monkeypatch, [("ted_en_zero_2023-09.zim", {"Scraper": "ted2zim 2.0.13", "Name": "ted_en_zero"}, files)])
+    assert [v["page"] for v in tube.videos_for("ted_en_zero")] == ["the-world-s-rarest-diseases"]
+    got = tube.playback("ted_en_zero", "why-tech-needs-the-humanities")
+    assert got["missing"] is True
+    assert tube.mend_sources(TED_PAGE.decode(), "ted_en_zero", "why-tech-needs-the-humanities") == TED_PAGE.decode()

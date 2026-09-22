@@ -1733,6 +1733,7 @@ function updateTopbar() {
     document.body.classList.toggle('map-page', !!(_readingArticle && currentArticle && _isMapZim(currentArticle.zim)));
     // An app page is not an article: nothing on it to bookmark as one.
     document.body.classList.toggle('app-page', _isTubePage() || _isExchangePage() || _isReddotPage());
+  document.body.classList.toggle('app-noitem', _isAppPage() && !_appItem);
     mapSrcBtn.style.display = showMapSrc ? 'flex' : 'none';
     if (!showMapSrc) _closeMapSourceDropdown();
   }
@@ -11277,7 +11278,16 @@ function _msPreferencesHtml() {
   var showDiscover = !_getStorageFlag(SK.HIDE_DISCOVER);
   var showLangChooser = !_getStorageFlag(SK.HIDE_LANG_CHOOSER);
   var darkenOn = _darkenArticlesOn();
-  var h = '<div class="ms-section-label">' + tH('ms_display_section') + '</div>' +
+  // Apps first, a section of its own: the tiles offered to everyone (the
+  // server's choice; painted from its answer, and an account that may not
+  // set it sees nothing), then a signed-in account's own. Eric: "its own
+  // proper lil section with header just APPS and no subtext".
+  var h = '<div id="ms-apps-wrap" hidden><div class="ms-section-label">' + tH('apps_section') + '</div><div id="ms-apps"></div></div>' +
+    (_appsAllowedByServer() && _userSession
+      ? '<div class="ms-theme-label" style="margin-top:12px">' + tH('show_apps') + '</div>' +
+        _appPicksHtml(APP_NAMES.filter(_appsAllowedByServer), _appShown, '_setUserApp')
+      : '') +
+    '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_display_section') + '</div>' +
     // App theme: Auto / Dark / Light segmented control.
     '<div class="ms-theme-label">' + tH('app_theme') + '</div>' +
     _appThemeSegHtml() +
@@ -11296,17 +11306,7 @@ function _msPreferencesHtml() {
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> ' + tH('show_discover') + '</label>' +
     '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>' +
-    // The apps offered to everyone, under the plain switches beside Discover: what the home page
-    // shows is decided in one place (Eric: "that should be near the
-    // discover feature thing in Settings > Preferences"). Painted from the
-    // server's answer; an account that may not set it sees nothing here.
-    '<div id="ms-apps-wrap" hidden><div class="ms-theme-label" style="margin-top:12px">' + tH('show_apps_server') + '</div><div id="ms-apps"></div></div>' +
-    // The apps row, for THIS account: a signed-in user's preference lives on
-    // the server with their bookmarks. The server-wide choice sits just above.
-    (_appsAllowedByServer() && _userSession
-      ? '<div class="ms-theme-label" style="margin-top:12px">' + tH('show_apps') + '</div>' +
-        _appPicksHtml(APP_NAMES.filter(_appsAllowedByServer), _appShown, '_setUserApp')
-      : '') +
+
     // Default download flavor (above languages — reached more often)
     '<div class="ms-section-label" style="margin-top:20px">' + tH('default_flavor') + '</div>' +
     '<div class="ms-hint">' + tH('default_flavor_hint') + '</div>' +
@@ -11633,11 +11633,16 @@ async function _renderAppsSection() {
   var shown = Array.isArray(d.shown) ? d.shown : (d.enabled ? APP_NAMES : []);
   _serverApps = shown;
   el.innerHTML = _appPicksHtml(APP_NAMES, function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', d.env_locked) +
-    '<div class="ms-hint">' + tH(d.env_locked ? 'env_controlled' : 'apps_server_hint', { v: 'ZIMI_APPS' }) + '</div>';
+    (d.env_locked ? '<div class="ms-hint">' + tH('env_controlled', { v: 'ZIMI_APPS' }) + '</div>'
+      : '<div class="app-picks-all"><button type="button" class="pill" onclick="_setAppsForServerAll(true)">' + tH('filter_all') + '</button>' +
+        '<button type="button" class="pill" onclick="_setAppsForServerAll(false)">' + tH('apps_none') + '</button></div>');
 }
 var _serverApps = APP_NAMES;
+function _setAppsForServerAll(on) { _postServerApps(on ? APP_NAMES.slice() : []); }
 function _setAppForServer(app, on) {
-  var shown = APP_NAMES.filter(function(a) { return a === app ? on : _serverApps.indexOf(a) >= 0; });
+  _postServerApps(APP_NAMES.filter(function(a) { return a === app ? on : _serverApps.indexOf(a) >= 0; }));
+}
+function _postServerApps(shown) {
   manageFetch('/manage/apps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shown: shown }) })
     .then(function(r) { return r.json(); }).then(function(d) {
       if (d && d.error) { _showToast(t('env_controlled', { v: 'ZIMI_APPS' })); }
@@ -16398,6 +16403,28 @@ var _tubeOpen = false;
 // Whether the open app page is at its top (the shelves). Reported by the
 // page; the header's arrow shows only inside, as it does for an article.
 var _appTop = true;
+// The thing open inside an app (a video, a question, a post): what history
+// records and a bookmark keeps, as it does an article, opening back into
+// the app (Eric: "have them work identically to within real zims but
+// launch into the app pages and show in the lists as the app").
+var _appItem = null;
+function _appItemOpened(app, id, title) {
+  var i = id.indexOf('/'); if (i <= 0) return;
+  var zim = id.slice(0, i), path = id.slice(i + 1);
+  if (title) {
+    _appItem = { app: app, zim: zim, path: path, title: title };
+    _histPushArticle(zim, path, title, null, app);
+  } else if (!_appItem || _appItem.zim !== zim || _appItem.path !== path) {
+    _appItem = { app: app, zim: zim, path: path, title: '' };
+  }
+  _updateLibraryBtnIcon();
+  updateTopbar();
+}
+function _appItemClosed() { _appItem = null; _updateLibraryBtnIcon(); updateTopbar(); }
+function _openAppItem(app, zim, path) {
+  var id = zim + '/' + path;
+  if (app === 'tube') openTube(false, id); else if (app === 'exchange') openExchange(false, id); else openReddot(false, id);
+}
 var _TUBE_PAGE = '/static/tube.html?v=1';
 
 function _installedVideoZims() {
@@ -16452,8 +16479,10 @@ window.addEventListener('message', function(e) {
     // to them); from one video to the next it is the same step, rewritten.
     _appStep({ mode: 'reader', tube: true, play: d.play }, _tubeUrl(d.play), 'play');
     if (d.title) { document.title = d.title + ' \u2014 ' + t('tube'); _setWindowTitle(document.title); }
+    _appItemOpened('tube', d.play, d.title);
   } else if (d.zimi === 'tube-home' && _tubeOpen) {
     _appHome({ mode: 'reader', tube: true, play: '' }, _tubeUrl(''), 'play');
+    _appItemClosed();
     document.title = t('tube') + ' \u2014 Zimi';
     _setWindowTitle(document.title);
   } else if (d.zimi === 'back') {
@@ -16475,8 +16504,10 @@ window.addEventListener('message', function(e) {
   } else if (d.zimi === 'reddot-p' && _reddotOpen && typeof d.p === 'string') {
     _appStep({ mode: 'reader', reddot: true, p: d.p }, _reddotUrl(d.p), 'p');
     if (d.title) { document.title = d.title + ' \u2014 ' + t('reddot'); _setWindowTitle(document.title); }
+    _appItemOpened('reddot', d.p, d.title);
   } else if (d.zimi === 'reddot-home' && _reddotOpen) {
     _appHome({ mode: 'reader', reddot: true, p: '' }, _reddotUrl(''), 'p');
+    _appItemClosed();
     document.title = t('reddot') + ' \u2014 Zimi';
     _setWindowTitle(document.title);
   } else if (d.zimi === 'create' && d.mode === 'reddit') {
@@ -16489,8 +16520,10 @@ window.addEventListener('message', function(e) {
   } else if (d.zimi === 'exchange-q' && _exchangeOpen && typeof d.q === 'string') {
     _appStep({ mode: 'reader', exchange: true, q: d.q }, _exchangeUrl(d.q), 'q');
     if (d.title) { document.title = d.title + ' \u2014 ' + t('exchange'); _setWindowTitle(document.title); }
+    _appItemOpened('exchange', d.q, d.title);
   } else if (d.zimi === 'exchange-home' && _exchangeOpen) {
     _appHome({ mode: 'reader', exchange: true, q: '' }, _exchangeUrl(''), 'q');
+    _appItemClosed();
     document.title = t('exchange') + ' \u2014 Zimi';
     _setWindowTitle(document.title);
   } else if (d.zimi === 'catalog' && typeof d.category === 'string' && _APP_CATEGORY_KEYS.indexOf(d.category) >= 0) {
@@ -16609,11 +16642,19 @@ function _setUserApp(app, on) {
 function _appIcon(app) {
   return app === 'maps' ? _MAPS_SVG : app === 'tube' ? _TUBE_PLAY_SVG : app === 'exchange' ? _EXCHANGE_SVG : _REDDOT_SVG;
 }
+// What the library holds for each app, in a line under its name.
+function _appCountLine(app) {
+  var n = app === 'maps' ? _installedMaps().length
+    : app === 'tube' ? _installedVideoZims().length
+    : app === 'exchange' ? _installedQaZims().length
+    : _installedRedditZims().reduce(function(s, z) { return s + (z.subreddits && z.subreddits.length ? z.subreddits.length : 1); }, 0);
+  return tPlural('apps_count_' + app, n);
+}
 function _appPicksHtml(apps, checked, onchange, disabled) {
   return '<div class="app-picks" role="group">' + apps.map(function(app) {
     var on = !!checked(app);
     return '<button type="button" class="app-pick' + (on ? ' on' : '') + '" aria-pressed="' + on + '"' + (disabled ? ' disabled' : '') +
-      ' onclick="' + onchange + '(\'' + app + '\', ' + (!on) + ')">' + _appIcon(app) + '<span>' + esc(_appTitle(app)) + '</span></button>';
+      ' onclick="' + onchange + '(\'' + app + '\', ' + (!on) + ')">' + _appIcon(app) + '<span class="app-pick-t"><span>' + esc(_appTitle(app)) + '</span><small>' + esc(_appCountLine(app)) + '</small></span></button>';
   }).join('') + '</div>';
 }
 
@@ -17610,7 +17651,7 @@ function _histSave() {
   if (!_persistHist) return;
   try { localStorage.setItem(_HIST_KEY, JSON.stringify(_persistHist)); } catch(e) {}
 }
-function _histPushArticle(zim, path, title, pos) {
+function _histPushArticle(zim, path, title, pos, app) {
   var h = _histLoad();
   // Deduplicate: remove if same zim+path exists recently (within last 5 entries)
   for (var i = 0; i < Math.min(5, h.length); i++) {
@@ -17623,6 +17664,8 @@ function _histPushArticle(zim, path, title, pos) {
   // A place on a map: the same page as every other visit to that map, so
   // the visit is the place, and reopening it returns there.
   if (pos) entry.pos = _normMapPos(pos);
+  // A video, a question, a post: reopened in its app, listed as the app.
+  if (app) entry.app = app;
   if (_currentSearchQuery) entry.fromQuery = _currentSearchQuery;
   h.unshift(entry);
   if (h.length > _HIST_MAX) h.length = _HIST_MAX;
@@ -17782,9 +17825,11 @@ function _renderHistoryContent() {
       }
       i = j;
     } else if (item.type === 'article') {
-      var aIcon = item.zim ? _sourceIconHtml(item.zim, 20) : _BM_PAGE_SVG;
-      var aSub = item.zim ? _zimTitleWithLang(item.zim) : '';
-      html += '<div class="hp-item" onclick="_closeLibraryPanel();openArticle(\'' + escJs(item.zim) + '\',\'' + escJs(item.path) + '\',\'' + escJs(item.title || '') + '\'' + _histPosArg(item) + ')">' +
+      var aIcon = item.app ? _appIcon(item.app).replace('width="26" height="26"', 'width="20" height="20"') : item.zim ? _sourceIconHtml(item.zim, 20) : _BM_PAGE_SVG;
+      var aSub = item.app ? _appTitle(item.app) : item.zim ? _zimTitleWithLang(item.zim) : '';
+      var aOpen = item.app ? '_openAppItem(\'' + escJs(item.app) + '\',\'' + escJs(item.zim) + '\',\'' + escJs(item.path) + '\')'
+        : 'openArticle(\'' + escJs(item.zim) + '\',\'' + escJs(item.path) + '\',\'' + escJs(item.title || '') + '\'' + _histPosArg(item) + ')';
+      html += '<div class="hp-item" onclick="_closeLibraryPanel();' + aOpen + '">' +
         '<div class="hp-icon">' + aIcon + '</div>' +
         '<div class="hp-detail"><div class="hp-title">' + esc(item.title || item.path) + '</div>' +
         '<div class="hp-sub">' + esc(aSub) + '</div></div>' +
@@ -17870,11 +17915,11 @@ function _bkSourceMissing(b) {
 
 function _bmBookmarkRowHtml(b, depth) {
   var missing = _bkSourceMissing(b);
-  var icon = b.zim ? _sourceIconHtml(b.zim, 20) : _BM_PAGE_SVG;
-  var sub = missing ? t('bm_source_missing') : (b.zim ? _zimTitleWithLang(b.zim) : '');
+  var icon = b.app ? _appIcon(b.app).replace('width="26" height="26"', 'width="20" height="20"') : b.zim ? _sourceIconHtml(b.zim, 20) : _BM_PAGE_SVG;
+  var sub = missing ? t('bm_source_missing') : b.app ? _appTitle(b.app) : (b.zim ? _zimTitleWithLang(b.zim) : '');
   var pad = 6 + depth * _BM_INDENT;
   return '<div class="bm-row bm-bk' + (missing ? ' bm-missing' : '') + '"' +
-    ' data-zim="' + escAttr(b.zim) + '" data-path="' + escAttr(b.path) + '"' +
+    ' data-zim="' + escAttr(b.zim) + '" data-path="' + escAttr(b.path) + '"' + (b.app ? ' data-app="' + escAttr(b.app) + '"' : '') +
     (b.pos ? ' data-pos="' + escAttr(b.pos) + '"' : '') +
     ' data-fid="' + escAttr(_bkFolderOf(b)) + '" data-depth="' + depth + '"' +
     ' style="padding-left:' + pad + 'px" role="treeitem" aria-level="' + (depth + 1) + '" tabindex="-1">' +
@@ -18213,6 +18258,7 @@ function _bmEnsureBound() {
       // actually moves the map, already sees it.
       var bkTitle = row.querySelector('.bm-name') ? row.querySelector('.bm-name').textContent : '';
       var bkPos = row.dataset.pos || '';
+      if (row.dataset.app) { _openAppItem(row.dataset.app, row.dataset.zim, row.dataset.path); return; }
       openArticle(row.dataset.zim, row.dataset.path, bkTitle, bkPos ? {pos: bkPos} : undefined);
       // Already on this map: nothing reloaded, so nudge the hash to move it.
       // Assigning fires hashchange; a replaceState would change the bar and
@@ -18509,10 +18555,11 @@ function _bkFind(zim, path) {
   return _bkLoad().findIndex(function(b) { return b.zim === zim && b.path === path; });
 }
 function _bkIsBookmarked(zim, path) { return _bkFind(zim, path) >= 0; }
-function _bkAdd(zim, path, title, pos) {
+function _bkAdd(zim, path, title, pos, app) {
   var bk = _bkLoad();
   if (_bkFind(zim, path) >= 0) return; // already bookmarked
   var record = { zim: zim, path: path, title: title || _titleFromPath(path), timestamp: Date.now() };
+  if (app) record.app = app;
   // An offline map is one page whose whole meaning is WHERE you are, so a
   // bookmark of it has to carry the place. Optional and absent everywhere
   // else, so older records and every ordinary article are unchanged.
@@ -19027,6 +19074,13 @@ async function _revealExportedZim(file) {
   }, 120);
 }
 function toggleBookmark() {
+  if (!currentArticle && _appItem) {
+    // A video, a question, a post: kept as the app's, reopened in the app.
+    if (_bkIsBookmarked(_appItem.zim, _appItem.path)) _bkRemove(_appItem.zim, _appItem.path);
+    else _bkAdd(_appItem.zim, _appItem.path, _appItem.title || document.title.replace(/ \u2014 .*$/, ''), null, _appItem.app);
+    _updateLibraryBtnIcon();
+    return;
+  }
   if (!currentArticle) return;
   // The reader's own "This page wasn't captured" stand-in is not an article:
   // bookmarked, it went into a bookmarks export as a page titled exactly
@@ -19057,7 +19111,8 @@ function _updateLibraryBtnIcon() {
   var btn = document.getElementById('library-btn');
   if (!btn) return;
   var tab = _getLibraryTab();
-  if (readerOpen && currentArticle && _bkIsBookmarked(currentArticle.zim, currentArticle.path)) {
+  var cur = currentArticle || _appItem;
+  if (readerOpen && cur && _bkIsBookmarked(cur.zim, cur.path)) {
     btn.innerHTML = _libBookmarkFilledSvg;
     btn.style.color = 'var(--amber)';
     btn.title = t('bookmarked_remove');
@@ -19238,6 +19293,7 @@ function closeReader() {
   readerOpen = false;
   readerSource = null;
   currentArticle = null;
+  _appItem = null;
   articleHistory = [];
   _manageSavedReader = null; // discard saved state when reader is explicitly closed
   document.getElementById('reader').classList.remove('open');

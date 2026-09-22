@@ -1174,10 +1174,9 @@
   .apps-grid { margin-bottom: 16px; }
   /* An app page is not an article; the bookmark buttons are for articles. A
      map neither: its places are its own (lists across the apps are for later). */
-  body.app-page #bm-panel-btn, body.app-page #library-btn, body.map-page #bm-panel-btn, body.map-page #library-btn { display: none !important; }
+  body.app-page #bm-panel-btn, body.app-page.app-noitem #library-btn, body.map-page #bm-panel-btn, body.map-page #library-btn { display: none !important; }
   .app-tile .detail { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .app-tile .card-icon { color: var(--amber); display: flex; align-items: center; justify-content: center; }
-  .app-tile.app-empty .card-icon { color: var(--text2); }
   /* Quiet, like any other detail line: an empty app is not an error (Eric). */
   .app-tile.app-empty .detail { color: var(--text2); margin-top: 4px; }
   /* Reddot's dot keeps its colour in the breadcrumb, where line marks take the text's. */
@@ -1527,6 +1526,9 @@
   .app-pick svg { width: 20px; height: 20px; }
   .app-pick.on { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
   .app-pick[disabled] { opacity: 0.5; cursor: default; }
+  .app-pick-t { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.25; }
+  .app-pick-t small { font-size: 11px; opacity: 0.75; }
+  .app-picks-all { display: flex; gap: 6px; margin: 2px 0 8px; }
   .ms-pane .ms-field { margin-bottom: 10px; }
   /* Field labels stay mixed-case 12px — uppercase is reserved for section
      headers so the two hierarchy levels read as different levels. */

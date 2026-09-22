@@ -52,6 +52,20 @@ def _has(archive, path):
         return False
 
 
+def _present(archive, path):
+    """A media file that is really there: the entry exists and holds bytes.
+    ted_en_technology_2023-09 carries a zero-byte video.mp4 for the climate
+    talk (the scrape wrote the entry and never the file), which is as absent
+    as no entry at all."""
+    try:
+        entry = archive.get_entry_by_path(path)
+        if entry.is_redirect:
+            entry = entry.get_redirect_entry()
+        return entry.get_item().size > 0
+    except Exception:
+        return False
+
+
 def _lang_text(value):
     """ted2zim's ``[{lang, text}]`` lists, or a plain string."""
     if isinstance(value, str):
@@ -256,7 +270,7 @@ def videos_for(name):
     # from zimitube"). Every reader names where the file would be; a lookup
     # per candidate is a dirent search, cheap even for thousands of talks.
     with lock:
-        rows = [v for v in rows if not v.get("media") or any(_has(archive, m) for m in v["media"])]
+        rows = [v for v in rows if not v.get("media") or any(_present(archive, m) for m in v["media"])]
     for v in rows:
         v.pop("media", None)
     with _lock:
@@ -304,7 +318,7 @@ def mend_media(archive, media):
     the archive's lock."""
     out = []
     for m in media:
-        found = [p for p in siblings_of(m["path"]) if _has(archive, p)]
+        found = [p for p in siblings_of(m["path"]) if _present(archive, p)]
         for path in found or [m["path"]]:
             if path not in [x["path"] for x in out]:
                 ext = path.rpartition(".")[2].lower()
@@ -346,10 +360,10 @@ def mend_sources(html, name, page):
                 attrs = {k.lower(): _html.unescape(v) for k, v in _ATTR_RE.findall(tag)}
                 src = attrs.get("src", "")
                 path = _resolve_path(page, src)
-                if not path or _has(archive, path):
+                if not path or _present(archive, path):
                     return tag
                 for alt in siblings_of(path):
-                    if alt != path and _has(archive, alt):
+                    if alt != path and _present(archive, alt):
                         ext = alt.rpartition(".")[2]
                         new_src = src.rpartition(".")[0] + "." + ext
                         esc_src = _html.escape(new_src, quote=True)
@@ -430,7 +444,7 @@ def playback(name, page):
     # here", which blames the browser for a file that is not there.
     with lock:
         media = mend_media(archive, media)
-        missing = not any(_has(archive, m["path"]) for m in media)
+        missing = not any(_present(archive, m["path"]) for m in media)
     subs = []
     for t in _TRACK_RE.findall(html_text):
         attrs = {k.lower(): _html.unescape(v) for k, v in _ATTR_RE.findall(t)}
