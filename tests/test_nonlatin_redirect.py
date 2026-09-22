@@ -111,3 +111,37 @@ class TestNonLatinRedirect(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNonLatinAttachment(unittest.TestCase):
+    """The same fault as the redirect, in the two places a file is offered
+    by name: an EPUB inside a ZIM, and a ZIM served to a peer at /dl/.
+
+    A name that is not Latin-1 cannot go in the header as written; RFC 6266
+    carries it in filename* with an ASCII fallback beside it.
+    """
+
+    def _header(self, name):
+        import zimi.http as http
+
+        value = http.ZimHandler._attachment(name)
+        # What the stdlib does when it writes the header. This is the test.
+        ("Content-Disposition: %s\r\n" % value).encode("latin-1")
+        return value
+
+    def test_an_ascii_name_is_left_alone(self):
+        self.assertEqual(self._header("book.epub"), 'attachment; filename="book.epub"')
+
+    def test_an_arabic_name_is_carried_in_filename_star(self):
+        value = self._header("كتاب.epub")
+        self.assertIn("filename*=UTF-8''", value)
+        self.assertIn(urllib.parse.quote("كتاب.epub", safe=""), value)
+
+    def test_a_cyrillic_name_is_carried_in_filename_star(self):
+        value = self._header("Языковая семья.zim")
+        self.assertIn(urllib.parse.quote("Языковая семья.zim", safe=""), value)
+
+    def test_a_quote_in_a_name_cannot_break_out_of_the_header(self):
+        value = self._header('a"quote.zim')
+        self.assertNotIn('"a"quote', value)
+        self.assertTrue(value.startswith('attachment; filename="a_quote.zim"'))

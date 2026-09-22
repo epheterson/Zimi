@@ -2999,6 +2999,23 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(icon_data)
 
+    @staticmethod
+    def _attachment(filename):
+        """A Content-Disposition value for a file whose name is its own.
+
+        A header is Latin-1. An EPUB inside an Arabic or Russian ZIM, or a
+        ZIM `zimi create` named after a page that was not in English, has a
+        name that is not, and writing it raised inside the stdlib: the
+        download died as a server error (the same fault as the redirects in
+        issue #86). RFC 6266 is how a name that is not Latin-1 is carried:
+        an ASCII fallback for anything old, and filename* for everyone else.
+        """
+        ascii_name = filename.encode("ascii", "replace").decode("ascii").replace('"', "_")
+        value = 'attachment; filename="%s"' % ascii_name
+        if filename != ascii_name:
+            value += "; filename*=UTF-8''%s" % quote(filename, safe="")
+        return value
+
     def _wants_html_document(self):
         """Whether THIS request is a page being opened, rather than a
         subresource being fetched by one.
@@ -3362,9 +3379,7 @@ class ZimHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", mimetype)
             self.send_header("Content-Length", str(len(content)))
-            self.send_header(
-                "Content-Disposition", f'attachment; filename="{epub_filename}"'
-            )
+            self.send_header("Content-Disposition", self._attachment(epub_filename))
             self.end_headers()
             self.wfile.write(content)
             return
@@ -3696,10 +3711,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/octet-stream")
         self.send_header("Content-Length", str(send_len))
         self.send_header("Accept-Ranges", "bytes")
-        self.send_header(
-            "Content-Disposition",
-            f'attachment; filename="{os.path.basename(path)}"',
-        )
+        self.send_header("Content-Disposition", self._attachment(os.path.basename(path)))
         self.end_headers()
 
         # Stream in 1 MB chunks. A peer disconnecting mid-pull (BrokenPipe)
