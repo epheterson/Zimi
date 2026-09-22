@@ -7,77 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.10.0] - 2026-09-21
 
-The maps and apps release. Offline maps in the reader with two sources and place search, and four views Zimi owns over the ZIMs in the library: Maps, ZimiTube, ZimiExchange and Reddot. Also the catalog when you are offline, a Podman path that is tested, an env panel, and the Linux desktop app opening again.
+The maps and apps release: offline maps in the reader, four views Zimi owns over the ZIMs you already have, a catalog that works with no internet, and the Linux desktop app opening again.
 
-### Added
+### Maps
 
-**The apps**
+- Offline map ZIMs open in the reader: Kiwix's 193 regional maps and StreetZim's builds. A Maps tile reopens the map you were last on, where you were, and panning writes the position into the address, so a link or a bookmark returns to the same place at the same zoom.
+- Two sources in the catalog: Kiwix's maps, and StreetZim's regions from the Internet Archive (larger builds, with satellite imagery and terrain on most). Downloads and updates work like any other ZIM; the listing is cached and ships as a snapshot.
+- Place search. A town, a street or an address typed into the search bar flies the map there: StreetZim maps carry a place index Zimi reads, and Kiwix maps' place pages are searchable too.
+- Same place, another map: a picker lists the installed maps that cover the spot, then the catalog's. A map's top bar drops what a map has no use for, and Random rolls a place.
 
-- An Apps row sits first among the sources on every install. An app with nothing to read yet says what to add and opens the catalog category that feeds it (Reddot opens the Create page).
-- Each app can be offered or not: for everyone (Preferences opens on an Apps section with the four tiles, each saying what the library holds for it, and All and None; or `ZIMI_APPS=0`, or a comma list of `maps,tube,exchange,reddot`) and by a signed-in user for their own account.
-- Getting around is the shell's: the header's back arrow appears inside an app (a video, a question, a post, a list) and steps back; at the app's home there is no arrow, as on a ZIM's front page. The app's icon in the breadcrumb is the way to its front page. "Open the original page" is a step the arrow returns from. The dice stay inside an app: a video, a question, a post by chance.
-- A video, a question or a post open in an app can be bookmarked and is remembered in History, as an article is; both lists show it under the app's mark and reopen it in the app.
-- A shared link to a playing video, a question or a post is a query (`/?tube=…`, `/?exchange=…`, `/?reddot=…`), which survives a sign-in redirect; the hash links still open.
-- One thing once: when two ZIMs carry the same thing (last month's file beside this month's, a nopic beside a maxi, the same region from the same map source, a subreddit in two bundles), an app shows it once, from the newest build. The library itself still lists every file.
-- The apps read right to left with the shell, count in the shell's words ("1 video", "12 videos"), and label a video source with its language when the library mixes languages.
-- An API and MCP tools: `/tube`, `/tube/play`, `/exchange/{home,site,q,random}`, `/reddot/{home,sub,post,random}` and `/map-home` in the OpenAPI document, and five MCP tools (`list_videos`, `list_questions`, `read_question`, `list_posts`, `read_post`) hand an agent the same content sorted and threaded.
-- A guide: docs/features/apps.md.
+### The apps
 
-**ZimiTube**
+Views over the library, in a row first among the sources. Each can be offered or not, for everyone or per account (Preferences, or `ZIMI_APPS`).
 
-- Every video in the library as one place, one card per talk however many ZIMs carry it: Kiwix's TED and TED-Ed, YouTube channels and Khan Academy, and the ZIMs `zimi create` makes from a playlist. A shelf per source; a source, a query or a one-source library is a list with Top, Title, Newest and Longest.
-- Its own player: the video's subtitles, Up next, autoplay into the next, the original page one tap away, an address per playing video. Leave with a video playing and it docks in a corner while you browse. Theater and Picture in picture sit on the player.
-- Every video plays, or says why not. A page that names one container while the ZIM carries another (ted2zim's mp4 beside a webm it never got) plays the file that is there, mp4 first. A talk whose file never made it into the ZIM is left out of the feed, and its page says so rather than blaming the browser. Safari and iPhones cannot decode TED's WebM sound, so they get the ZIM's own decoder, with ZimiTube's own controls for it. The reader's dead-player message tells "not in the ZIM" from "this browser cannot play this format".
-- `zimi create <video URL>` takes H.264 first: YouTube's default MP4 is AV1 now, which iPhones before the 15 Pro cannot decode.
+- **ZimiTube** — every video ZIM as one feed (Kiwix's TED and TED-Ed, YouTube channels, the ZIMs `zimi create` makes), one card per talk. Its own player with the video's subtitles, Up next and autoplay, a dock so it keeps playing while you browse, theater and picture in picture. Every video plays or says why not: the file the ZIM actually carries is the one used, and Safari and iPhones get the ZIM's own decoder for TED's WebM.
+- **ZimiExchange** — every Stack Exchange site as one place: a shelf per site with its top tags, a site or a tag as a paged list, the search box asking across sites, and a question with its answers scored, the accepted one first.
+- **Reddot** — subreddits as ZIMs. `zimi create r/<name>`, or a subreddit's address pasted into Create, builds one from Arctic Shift's archive with ArcticZim; the app reads a shelf per subreddit, Top and New, and a post's comment tree. Follow subreddits and Home gathers their top posts.
+- A video, a question or a post is a step in history and can be bookmarked, opening back into its app; a shared link to one is a query that survives a sign-in. The apps read right to left with the shell and count in its language, and two ZIMs carrying the same thing show it once.
+- An API and MCP tools for all of it: the app routes are in the OpenAPI document, and five MCP tools hand an agent the content sorted and threaded.
 
-**ZimiExchange**
+### Offline, Create, ops
 
-- Every Stack Exchange site in the library as one place: a shelf per site of its most voted questions with its top tags, a site or a tag as a paged list, the search box asking across sites, a question with its answers scored and the accepted one first, links between questions staying inside.
-
-**Reddot**
-
-- Subreddits as ZIMs. `zimi create r/<name>`, or a subreddit's reddit.com address pasted into the Create page, builds one from Arctic Shift's public archive with ArcticZim, installed into a sidecar on first use (`zimi create --setup-reddit` ahead of time). A subreddit ZIM is listed by its subreddits, and the build's progress reads as a sentence.
-- The app: a shelf per subreddit of its top posts, a subreddit as a list (Top, New), a post with its comment tree, an address per post. A library with one subreddit opens on that subreddit's list. Follow subreddits with the star, and Home lists their top posts in one place.
-- Three ArcticZim problems handled on Zimi's side: its fetch never ends at the end of a subreddit, its build leaves a helper holding the output pipe, and on macOS its build workers die.
-
-**Maps**
-
-- Offline map ZIMs open in the reader: Kiwix's 193 regional maps and StreetZim's builds. Panning writes the position into the address, so a link or a bookmark returns to the same place at the same zoom; Back and Forward behave.
-- A Maps tile opens the map you were last on, where you were. A StreetZim map nobody has been on yet opens over its settlements, not over the middle of its region's box.
-- Two sources in the catalog: Kiwix's maps and StreetZim's regions on the Internet Archive (larger builds, satellite imagery and terrain on most regions). Downloads come straight from the Archive; a newer build of an installed region shows as an update. The listing is cached and shipped as a snapshot.
-- Place search: a town, a street or an address typed into the search bar on a StreetZim map comes back as a place and flies the map there; Kiwix maps' place names are searchable too.
-- Same place, another map: the picker under the pin lists the installed maps that cover the spot first, then the catalog's maps of here and of the world, then Locate me and Catalog. A map's top bar has no read-aloud, Reader View, type size or bookmark button; Random rolls a place.
-
-**Catalog, Create, users, ops**
-
-- The catalog works offline: a snapshot of the Kiwix catalog ships in the package with a magnet link for every entry. The first look at the catalog answers from the copy on disk or the snapshot at once, and the live catalog is fetched behind it.
-- Import a web archive from the Create page: a .warc, .warc.gz or .wacz anywhere under the library folder (or `ZIMI_CREATE_ROOT`), picked from a list. Primary admin only.
-- Create a ZIM from a site: the page limit goes from 5,000 to 50,000.
-- The Creator pane lists the subreddit engine beside the others, and the engines are probed at startup so the pane answers at once.
-- An env panel under Server settings shows every `ZIMI_*` variable in effect.
+- The catalog works with no internet: a snapshot ships in the package with a magnet link for every entry, the live catalog is cached after the first fetch, and the first look answers from whichever is at hand while the live one loads behind it.
+- Import a .warc, .warc.gz or .wacz from the Create page, picked from a list of what is in the library folder (or `ZIMI_CREATE_ROOT`); primary admin only. A site's page limit goes from 5,000 to 50,000. A video ZIM takes H.264 first, so it plays on any iPhone.
+- An env panel lists every `ZIMI_*` variable in effect, and the Creator pane says which capture engines are installed.
 - Podman: a rootless run line that maps the image's user to you, a Quadlet unit that starts Zimi at boot, and a CI job that runs the image rootless.
-
-### Changed
-
-- The catalog's category marks are drawn in Zimi's own line instead of emoji; one map mark wherever Maps is named; Reddot's mark in the apps' colour.
-- The gear is the last thing on the bar on every page. The ⋯ menu is gone from pages where it held nothing.
-- The Create page's mode chips sit above the address. Create asks for the password before it opens on a protected server, as Manage does.
-- The rendered engine's install command names the server's own Python (and the uv command under uv), and an install made while the server runs shows up without a restart.
-- Read aloud and type size are not offered on a PDF; switching the app's language reopens an open PDF in that language.
-- A catalog entry with one file says its size, not "Full"; the language pills count the projects a category shows; a StreetZim region already installed shows as installed whatever its file was named; the StreetZim note links the name itself.
 
 ### Fixed
 
-- The Linux desktop app opens (#81). Every AppImage and snap since 1.8 died on launch with "Namespace WebKit2 not available", or showed a black window. The bundle now carries the WebKit2 typelibs, looks at the host's first, leaves every system library to the host, gives WebKitGTK's helper processes the host's library path, and the snap gets a display and GNOME's WebKit. A machine with no WebKitGTK or Qt runs Zimi in the system browser instead; `Zimi --browser` asks for that anywhere. CI opens the window under Xvfb on every change.
-- The desktop app keeps its bookmarks, history and settings between launches; the window opened in private mode and threw its storage away.
-- `zimi desktop` works from a pip install (`pip install 'zimi[desktop]'`).
-- Users: changing a user's role or allowlist no longer repaints the public-access card as Open, nor the allowlist picker as empty.
-- Manage no longer sits on "Loading…" after a sign-in; a settings fetch made before the password was kept.
-- Hiding Discover with its × sticks; a load that landed after the × used to bring it back.
-- Downloads in progress show as a dot on the gear and a count on the Manage row of the ⋯ menu, and nowhere else (#80).
+- **The Linux desktop app opens (#81).** Every AppImage and snap since 1.8 died on launch with "Namespace WebKit2 not available", or showed a black window. The bundle now carries the WebKit2 typelibs and prefers the host's, leaves every system library to the host, and gives WebKitGTK's helper processes the host's library path; the snap gets a display and GNOME's WebKit. A machine with neither WebKitGTK nor Qt runs Zimi in the system browser instead (`Zimi --browser` asks for that anywhere). CI now opens the window under Xvfb on every change.
+- The desktop app keeps its bookmarks, history and settings between launches; its window opened in private mode and threw them away. `zimi desktop` also works from a pip install (`pip install 'zimi[desktop]'`).
+- Users: changing a role or an allowlist no longer repaints public access as Open, or the allowlist picker as empty. Manage no longer sits on "Loading…" after a sign-in, and Create asks for the password before it opens instead of failing on its first request.
+- Downloads in progress show as a dot on the gear and a count on the Manage row, and nowhere else (#80).
 - ZIMs without a full-text index answer the search bar from their titles.
+- A PDF drops read-aloud and type size, and follows the app's language.
+- Catalog: an entry with one file shows its size instead of "Full", the language pills count what a category shows, and the category marks are drawn rather than emoji. The gear sits last on the bar.
+- The rendered engine's install command names the server's own Python, and an install made while the server runs is seen without a restart.
 - A file replaced while another thread was reading it no longer fails the write on Windows.
-- The app pages are fetched fresh after a deploy; they were cached as immutable at an unversioned address.
 
 ## [1.9.6] - 2026-09-18
 
