@@ -1868,6 +1868,25 @@ def _fetch_kiwix_catalog(
         _kick_catalog_refresh(query, lang, count, start, _internal=_internal)
         return serve_stale[0], serve_stale[1], None
 
+    if not _background and not _internal:
+        # Cold: nothing cached for this page yet. The catalog on disk (or the
+        # snapshot in the package) answers now and the live one is fetched
+        # behind it, the same stale-while-revalidate as an expired page. The
+        # first browse used to wait on Kiwix (Eric: "if catalog is baked in
+        # and cached why did it take a while when I clicked maps").
+        fallback, _source, _as_of = offline_catalog()
+        if query:
+            needle = query.lower()
+            fallback = [
+                it
+                for it in fallback
+                if needle in str(it.get("title", "")).lower() or needle in str(it.get("name", "")).lower()
+            ]
+        if fallback:
+            _catalog_stale_ts = _catalog_stale_ts or time.time()
+            _kick_catalog_refresh(query, lang, count, start, _internal=_internal)
+            return len(fallback), fallback[start : start + count], None
+
     params = {"count": str(count), "start": str(start)}
     if query:
         params["q"] = query

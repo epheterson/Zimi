@@ -201,3 +201,30 @@ def test_search_pages_are_not_mistaken_for_the_catalog(data_dir, monkeypatch):
     assert lib.maybe_persist_full_catalog(2) is False
     _, source, _ = lib.offline_catalog()
     assert source != "cache"
+
+
+def test_a_cold_page_answers_from_the_snapshot_and_fetches_behind(data_dir, shipped, monkeypatch):
+    """The first browse on a fresh install used to wait on Kiwix. Nothing
+    cached, a snapshot in the package: the snapshot answers now, marked
+    stale, and the live fetch goes out behind it."""
+    import threading
+    import urllib.request
+
+    monkeypatch.setattr(lib, "_opds_disk_loaded", True)
+    monkeypatch.setattr(lib, "_opds_last_fail", 0.0)
+    monkeypatch.setattr(lib, "_thumb_prefetch_started", True)
+    lib._opds_cache.clear()
+    lib._opds_refreshing.clear()
+    lib._catalog_stale_ts = None
+    hit = threading.Event()
+
+    def fake_urlopen(req, *a, **k):
+        hit.set()
+        raise OSError("no network in this test")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    total, items, err = lib._fetch_kiwix_catalog("", "eng", 5, 0)
+    assert err is None
+    assert total == 1 and [i["name"] for i in items] == ["from_snapshot"]
+    assert lib._catalog_stale_ts
+    assert hit.wait(3), "the live fetch did not go out behind the answer"

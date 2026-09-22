@@ -54,6 +54,10 @@ def _env(tmp_path, monkeypatch):
     # Earlier dead-network tests (test_offline_mode et al.) leave the fail
     # cooldown armed, which silently suppresses _kick_catalog_refresh here.
     monkeypatch.setattr(lib, "_opds_last_fail", 0.0)
+    # These are the network's own contracts: with nothing on disk and no
+    # shipped snapshot, a cold page has to come from Kiwix in-band.
+    from zimi import catalog_snapshot as _snap
+    monkeypatch.setattr(_snap, "available", lambda: False)
     lib._opds_cache.clear()
     lib._opds_refreshing.clear()
     lib._catalog_stale_ts = None

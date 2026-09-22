@@ -56,6 +56,10 @@ def _env(tmp_path, monkeypatch):
     monkeypatch.setattr(lib, "_magnets_ensured", False)
     monkeypatch.setattr(lib, "_magnet_network_ok", False)  # pre-maintenance state
     monkeypatch.setattr(lib, "_opds_last_fail", 0.0)
+    # The network's own contract: with no snapshot, a cold page comes from
+    # Kiwix in-band, which is what earns the magnet piggyback.
+    from zimi import catalog_snapshot as _snap
+    monkeypatch.setattr(_snap, "available", lambda: False)
     lib._opds_cache.clear()
     yield zim_dir
     lib._opds_cache.clear()

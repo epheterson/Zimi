@@ -62,6 +62,10 @@ def _env(tmp_path, monkeypatch):
     monkeypatch.setattr(lib, "_opds_disk_loaded", True)
     monkeypatch.setattr(lib, "_thumb_prefetch_started", True)
     monkeypatch.setattr(lib, "_opds_last_fail", 0.0)
+    # These are the network's own contracts: with nothing on disk and no
+    # shipped snapshot, a cold page has to come from Kiwix in-band.
+    from zimi import catalog_snapshot as _snap
+    monkeypatch.setattr(_snap, "available", lambda: False)
     monkeypatch.setattr(lib, "_catalog_last_used", 0.0)
     lib._opds_cache.clear()
     lib._opds_validators.clear()
