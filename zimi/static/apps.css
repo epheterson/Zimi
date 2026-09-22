@@ -1,0 +1,99 @@
+/* The apps' shared stylesheet: ZimiTube, ZimiExchange, Reddot. One palette,
+   one rhythm, one set of parts, so the four surfaces read as one product.
+   Inlined into each app page by the server at serve time (see
+   http._serve_static), so a page is still one document and a change here
+   reaches every app on the next deploy. Spacing is a 4px grid; type is the
+   shell's; the accent is the shell's amber and is spent on one thing per
+   screen. */
+:root {
+  color-scheme: light dark;
+  --bg: #f2efe9; --surface: #faf8f4; --surface2: #f3f0ea; --border: #e4dfd4;
+  --text: #26241f; --text2: #6a675e; --amber: #b5541c; --amber-glow: rgba(181,84,28,0.08);
+  --green: #2f7d4f; --radius: 12px; --radius-s: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17171a; --surface: #1f1f23; --surface2: #26262b; --border: #27272b;
+    --text: #e8e8ed; --text2: #8a8a94; --amber: #e0863a; --amber-glow: rgba(224,134,58,0.12); --green: #5cbf80;
+  }
+}
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-text-size-adjust: 100%; }
+a { color: var(--amber); text-decoration: none; }
+button { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* The page: one column, the shell's gutters. */
+.page { max-width: 1180px; margin: 0 auto; padding: 12px 16px 32px; }
+@media (max-width: 480px) { .page { padding: 8px 12px 28px; } }
+
+/* A row of chips: sources, tags, sorts. Scrolls sideways, never wraps. */
+.chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 0 12px; padding: 2px 0; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); font-size: 13px; line-height: 1.2; cursor: pointer; white-space: nowrap; }
+.chip img { width: 16px; height: 16px; border-radius: 4px; }
+.chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+.chip.tag { font-size: 12px; padding: 4px 10px; background: var(--surface2); }
+.chip .n { opacity: .6; font-variant-numeric: tabular-nums; }
+
+/* A shelf: a heading with its icon and its way to everything, then rows. */
+.shelf { margin: 0 0 24px; }
+.shelf-h { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; }
+.shelf-h img { width: 22px; height: 22px; border-radius: 6px; }
+.shelf-h h2 { font-size: 15px; margin: 0; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.shelf-h .all { color: var(--amber); font-size: 12.5px; font-weight: 600; cursor: pointer; background: none; border: 0; padding: 4px 0; white-space: nowrap; }
+
+/* A list's head: what this list is, how many, how far along, and its orders. */
+.head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; margin: 0 0 8px; }
+.head h2 { font-size: 16px; margin: 0; color: var(--text); }
+.head .n { color: var(--text2); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.sorts { display: inline-flex; gap: 6px; }
+
+/* A row in a list: a number on the left, the thing on the right. */
+.row { display: grid; grid-template-columns: 52px 1fr; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); cursor: pointer; }
+.row:first-of-type { border-top: 0; }
+.row .stat { text-align: center; font-size: 11px; color: var(--text2); line-height: 1.25; padding-top: 2px; font-variant-numeric: tabular-nums; }
+.row .stat b { display: block; font-size: 15px; color: var(--text); font-weight: 600; }
+.row .stat .pill { margin: 6px auto 0; display: block; width: fit-content; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border); }
+.row .stat .pill.ok { background: var(--green); color: #fff; border-color: var(--green); }
+.row .t { font-weight: 600; font-size: 14.5px; line-height: 1.3; color: var(--text); }
+.row .ex { color: var(--text2); font-size: 13px; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.row .m { color: var(--text2); font-size: 12px; margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.row .m img { width: 14px; height: 14px; border-radius: 4px; }
+/* Facts in a row's line, separated by a dot that belongs to the fact after
+   it, so a wrapped line never ends in a separator. */
+.row .m .fact + .fact::before { content: '\B7'; margin-inline-end: 6px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tg { font-size: 11.5px; padding: 2px 8px; border-radius: 6px; background: var(--amber-glow); color: var(--amber); cursor: pointer; }
+.fl { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 6px; background: var(--amber-glow); color: var(--amber); }
+
+/* More, empty, back. */
+.more { display: block; margin: 20px auto 8px; padding: 9px 20px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--text); cursor: pointer; }
+.more:hover { border-color: var(--amber); color: var(--amber); }
+.empty { color: var(--text2); text-align: center; padding: 48px 12px; line-height: 1.8; }
+.empty .door { color: var(--amber); font-weight: 600; }
+/* Arrows point the way the text runs. */
+.chev::before { content: '\203A'; }
+[dir="rtl"] .chev::before { content: '\2039'; }
+
+/* A thing being read: its title, its line of facts, its body. */
+.item h1 { font-size: 20px; line-height: 1.3; margin: 0 0 6px; color: var(--text); }
+.item .who { color: var(--text2); font-size: 12.5px; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.item .who img { width: 18px; height: 18px; border-radius: 5px; }
+.item .who b { color: var(--text); font-weight: 600; }
+/* Content keeps its own direction inside a right-to-left shell: an English
+   post under Hebrew chrome still reads left to right. */
+.prose, .item h1, .row .t, .row .ex { unicode-bidi: plaintext; }
+.prose { min-width: 0; overflow-wrap: anywhere; }
+.prose img, .prose video { max-width: 100%; height: auto; border-radius: var(--radius-s); }
+.prose pre { background: var(--surface2); padding: 10px 12px; border-radius: var(--radius-s); overflow-x: auto; font-size: 13px; }
+.prose code { background: var(--surface2); padding: 1px 4px; border-radius: 4px; font-size: 13px; }
+.prose pre code { background: none; padding: 0; }
+.prose blockquote { margin: 0; padding: 4px 12px; border-inline-start: 3px solid var(--border); color: var(--text2); }
+.prose table { border-collapse: collapse; max-width: 100%; display: block; overflow-x: auto; }
+.prose td, .prose th { border: 1px solid var(--border); padding: 4px 8px; }
+.section-h { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: .06em; margin: 22px 0 6px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0 0; }
+.actions a, .actions button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: 12.5px; }
+.actions .on { background: var(--amber-glow); border-color: var(--amber); color: var(--amber); }

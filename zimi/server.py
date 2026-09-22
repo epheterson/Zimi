@@ -125,7 +125,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.9.6"
+ZIMI_VERSION = "1.10.0"
 
 # Standing maintenance cadence: catalog TTL is 24h and UPnP leases are
 # 24h — run every 12h so both stay fresh at half-life.
@@ -1614,6 +1614,27 @@ def format_bytes(n):
     return f"{gb:.0f} GB" if gb >= _GB_WHOLE_FROM else f"{gb:.1f} GB"
 
 
+# Windows refuses to replace a file another thread still has open for reading
+# ("Access is denied", WinError 5), where POSIX just swaps the inode. The
+# create-jobs journal is read by the route that reports progress and written
+# by the worker that makes it, and the 1.9.6 release build lost its Windows
+# leg to exactly that overlap. A reader holds the file for microseconds, so a
+# short wait is the whole fix; a genuine lock still surfaces as the warning.
+_REPLACE_RETRY_ATTEMPTS = 20
+_REPLACE_RETRY_SLEEP_S = 0.05
+
+
+def _replace_with_retry(tmp, path):
+    for attempt in range(_REPLACE_RETRY_ATTEMPTS):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == _REPLACE_RETRY_ATTEMPTS - 1:
+                raise
+            time.sleep(_REPLACE_RETRY_SLEEP_S)
+
+
 def _atomic_write_json(path, data, indent=None):
     """Write JSON data to a file atomically via temp file + os.replace().
 
@@ -1646,7 +1667,7 @@ def _atomic_write_json(path, data, indent=None):
                 indent=indent,
                 separators=(",", ":") if indent is None else None,
             )
-        os.replace(tmp, path)
+        _replace_with_retry(tmp, path)
     except OSError as e:
         log.warning("Atomic write failed for %s: %s", path, e)
         try:
@@ -1779,6 +1800,10 @@ def _categorize_zim(name):
     # Books
     if n in ("gutenberg", "rationalwiki", "theworldfactbook"):
         return "Books"
+    # Maps — Kiwix's maps2zim output keeps its maps_<lang>_<region> name;
+    # the world map is maps_en_all, whose stem strips all the way to "maps".
+    if n == "maps" or n.startswith("maps_"):
+        return "Maps"
     return None
 
 
@@ -1818,15 +1843,332 @@ def _folder_category(folder):
     return pretty[:_FOLDER_CATEGORY_MAX]
 
 
-def _effective_category(name, path):
+# Scrapers whose output is a MapLibre map rather than pages. Matched as a
+# prefix of the Scraper metadata ("maps2zim v0.2.1", "streetzim/1.0").
+_MAP_SCRAPERS = ("maps2zim", "streetzim", "atlaszim")
+# Video ZIMs, by the scraper that made them: Kiwix's TED and YouTube builds,
+# and Zimi's own (Scraper "Zimi x.y + yt-dlp ..."). Not by the _videos:yes
+# tag, which Wikipedia carries too.
+_VIDEO_SCRAPERS = ("ted2zim", "youtube2zim")
+# Q&A sites, by the scraper that made them: Kiwix builds every Stack
+# Exchange site with sotoki.
+_QA_SCRAPERS = ("sotoki",)
+# Subreddits, by the scraper that made them (ArcticZim, which Zimi wraps).
+_REDDIT_SCRAPERS = ("arcticzim",)
+# Bumped when _zim_kind learns a new kind, so a cache record decided under an
+# older rule ("" for a TED ZIM) is read once more.
+KIND_VERSION = 4
+
+
+def _zim_kind(scraper, tags, meta_name):
+    """What a ZIM is, from its own metadata, for when its filename says nothing.
+
+    ``"map"`` for a map ZIM, else None. Kiwix ships its maps as maps_en_<region>
+    but a copy is often renamed (samoa.zim), and StreetZim names its output after
+    the region with no hint at all (osm_osm_-_hawaii). The Scraper and Tags
+    metadata survive a rename; the filename does not.
+    """
+    s = (scraper or "").lower()
+    if s.startswith(_MAP_SCRAPERS):
+        return "map"
+    if "maps" in {t.strip().lower() for t in (tags or "").split(";")}:
+        return "map"
+    if (meta_name or "").lower().startswith("maps_"):
+        return "map"
+    if s.startswith(_VIDEO_SCRAPERS) or (s.startswith("zimi") and "yt-dlp" in s):
+        return "video"
+    if s.startswith(_QA_SCRAPERS):
+        return "qa"
+    if s.startswith(_REDDIT_SCRAPERS):
+        return "reddit"
+    return None
+
+
+# Map ZIMs that carry a place search of their own (a box inside the map with
+# an index of towns, streets and addresses). Kiwix's maps2zim has no search
+# box, and its index holds administrative divisions only: Danville, CA is not
+# in it, and "Danville" lands in Québec. Zimi's search bar offers to run a
+# query in the map's own search only where there is one.
+_MAP_SEARCH_SCRAPERS = ("streetzim", "atlaszim")
+
+
+def _zim_map_search(scraper):
+    return (scraper or "").lower().startswith(_MAP_SEARCH_SCRAPERS)
+
+
+# Where each publisher writes down what ground its map covers, and the shape
+# it uses. StreetZim: map-config.json, bounds as [W, S, E, N]. Kiwix's
+# maps2zim: content/config.json, boundingBox as [[W, S], [E, N]]. Both are
+# the same four numbers; Zimi keeps the first shape.
+_MAP_CONFIG_PATHS = (("map-config.json", "bounds"), ("content/config.json", "boundingBox"))
+_MAP_SOURCE_LABELS = (("streetzim", "StreetZim"), ("atlaszim", "AtlasZim"), ("maps2zim", "Kiwix"))
+
+
+def _map_source(scraper):
+    """Whose map this is, for a row that lists several: the publisher's name
+    from the Scraper metadata, "" when it is one Zimi has not met."""
+    s = (scraper or "").lower()
+    for prefix, label in _MAP_SOURCE_LABELS:
+        if s.startswith(prefix):
+            return label
+    return ""
+
+
+def _map_bounds(archive):
+    """``[W, S, E, N]`` for a map ZIM, from its own config entry; None when it
+    has none Zimi knows, or the numbers do not make a box."""
+    for path, key in _MAP_CONFIG_PATHS:
+        try:
+            entry = archive.get_entry_by_path(path)
+            if entry.is_redirect:
+                entry = entry.get_redirect_entry()
+            raw = json.loads(bytes(entry.get_item().content).decode("utf-8", "replace"))
+        except Exception:
+            continue
+        box = raw.get(key) if isinstance(raw, dict) else None
+        try:
+            if isinstance(box, list) and len(box) == 2 and all(isinstance(c, list) for c in box):
+                box = [box[0][0], box[0][1], box[1][0], box[1][1]]
+            w, so, e, n = (float(v) for v in box)
+        except (TypeError, ValueError):
+            continue
+        if not (-180 <= w <= 180 and -180 <= e <= 180 and -90 <= so <= n <= 90):
+            continue
+        return [w, so, e, n]
+    return None
+
+
+def _map_facts(archive, scraper):
+    """The two facts about a map beyond its kind, read once and cached with
+    the rest: who published it and what ground it covers."""
+    return {"map_source": _map_source(scraper), "map_bounds": _map_bounds(archive)}
+
+
+def _reddit_facts(archive):
+    """The subreddits a Reddit ZIM carries, read once from its own index and
+    cached with its kind, so the Reddot tile can name them (the ZIM's own
+    title is "ArcticZim", which names the tool, not the content)."""
+    from zimi import reddot
+
+    for path in reddot.SUBREDDITS_PATHS:
+        try:
+            entry = archive.get_entry_by_path(path)
+            if entry.is_redirect:
+                entry = entry.get_redirect_entry()
+            subs = reddot.subreddits_from_page(bytes(entry.get_item().content).decode("utf-8", "replace"))
+            if subs:
+                return {"subreddits": subs}
+        except Exception:
+            continue
+    return {"subreddits": []}
+
+
+# Every ArcticZim ZIM is titled after the tool. A ZIM named for what it
+# holds is what a library lists, so a Reddit ZIM with no title of its own
+# is named by its subreddits.
+_TOOL_TITLES = ("arcticzim", "")
+
+
+def _subreddit_title(title, subreddits):
+    if str(title or "").strip().lower() in _TOOL_TITLES and subreddits:
+        return " · ".join("r/" + s for s in subreddits[:3]) + (" …" if len(subreddits) > 3 else "")
+    return title
+
+
+def _read_reddit_facts(path):
+    try:
+        return _reddit_facts(open_archive(path))
+    except Exception as e:
+        log.debug("could not read subreddits of %s: %s", path, e)
+        return {"subreddits": []}
+
+
+def _read_map_facts(path):
+    """``_map_facts`` for a cache record written before they were kept."""
+    try:
+        archive = open_archive(path)
+        try:
+            scraper = bytes(archive.get_metadata("Scraper")).decode("utf-8", "replace")
+        except Exception:
+            scraper = ""
+        return _map_facts(archive, scraper)
+    except Exception as e:
+        log.debug("could not read map facts for %s: %s", path, e)
+        return {"map_source": "", "map_bounds": None}
+
+
+APPS_ENV = "ZIMI_APPS"
+APP_NAMES = ("maps", "tube", "exchange", "reddot")
+_APPS_OFF = ("0", "false", "no", "off", "none")
+_APPS_ON = ("1", "true", "yes", "on", "all")
+
+
+def _apps_value(raw):
+    """A setting (True/False, a list of app names, or a string of ``0``/``1``
+    or a comma list) as the set of apps shown; None when it says nothing."""
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return frozenset(APP_NAMES) if raw else frozenset()
+    if isinstance(raw, str):
+        text = raw.strip().lower()
+        if not text:
+            return None
+        if text in _APPS_OFF:
+            return frozenset()
+        if text in _APPS_ON:
+            return frozenset(APP_NAMES)
+        raw = text.split(",")
+    if isinstance(raw, (list, tuple, set, frozenset)):
+        return frozenset(n for n in (str(x).strip().lower() for x in raw) if n in APP_NAMES)
+    return frozenset(APP_NAMES) if raw else frozenset()
+
+
+def _apps_setting(shown):
+    """The set as it is saved: True for all, False for none, else the names."""
+    if shown >= frozenset(APP_NAMES):
+        return True
+    if not shown:
+        return False
+    return [n for n in APP_NAMES if n in shown]
+
+
+def apps_stamp(shown):
+    """What the shell carries in ``data-zimi-apps``: nothing when every app
+    is offered, ``0`` for none, else the names offered."""
+    shown = _apps_value(shown)
+    if shown is None or shown >= frozenset(APP_NAMES):
+        return None
+    return ",".join(n for n in APP_NAMES if n in shown) or "0"
+
+
+def _apps_env():
+    """The env var's verdict, or None when it is unset or unreadable."""
+    return _apps_value(os.environ.get(APPS_ENV))
+
+
+def url_quote(name):
+    """A ZIM name as it appears in a /w/ path."""
+    import urllib.parse
+
+    return urllib.parse.quote(name, safe="")
+
+
+def _zim_kind_of(name):
+    """The cached kind of an installed ZIM (map, video, qa, reddit) or ""."""
+    for z in _zim_list_cache or []:
+        if z.get("name") == name:
+            return z.get("kind") or ""
+    return ""
+
+
+def apps_shown():
+    """The apps (Maps, ZimiTube, ZimiExchange, Reddot) offered on this server:
+    ``ZIMI_APPS`` when set (``0``, ``1`` or a comma list of names), else the
+    setting saved from Server settings, else all of them. A signed-in user
+    can also hide any of them for themselves (their account's preferences).
+    Never per browser (Eric: "Not per browser only per user or server")."""
+    verdict = _apps_env()
+    if verdict is not None:
+        return verdict
+    from zimi import manage
+
+    saved = _apps_value(manage._read_app_update_prefs().get("apps"))
+    return frozenset(APP_NAMES) if saved is None else saved
+
+
+def apps_enabled():
+    """Whether any app is offered on this server."""
+    return bool(apps_shown())
+
+
+def user_apps_shown(setting):
+    """What an account's saved preference leaves of the server's offer."""
+    mine = _apps_value(setting)
+    shown = apps_shown()
+    return shown if mine is None else shown & mine
+
+
+def set_apps_enabled(value):
+    """Save the server-wide switch. ``(enabled, error)``; ``env_locked`` when
+    the env var has the last word."""
+    if _apps_env() is not None:
+        return None, "env_locked"
+    from zimi import manage
+
+    shown = _apps_value(value) or frozenset()
+    manage._write_app_update_prefs(apps=_apps_setting(shown))
+    return bool(shown), None
+
+
+def build_rank(entry):
+    """What makes one build of a thing newer than another: its date, then
+    its size (a maxi over a nopic of the same month)."""
+    return (str(entry.get("date") or ""), int(entry.get("size_bytes") or 0))
+
+
+def newest_per(entries, key):
+    """One entry per identity, the newest build: an update whose old file is
+    still around, a nopic beside a maxi, two names for one thing. Eric,
+    2026-09-19: "handle deduplication if we're merging multiple Zims." The
+    order of first appearance is kept; an entry whose key is falsy stays."""
+    best, order, out = {}, [], []
+    for e in entries:
+        k = key(e)
+        if not k:
+            out.append(e)
+            continue
+        cur = best.get(k)
+        if cur is None:
+            best[k] = e
+            order.append(k)
+        elif build_rank(e) > build_rank(cur):
+            best[k] = e
+    return [best[k] for k in order] + out
+
+
+def _is_map_zim(name):
+    """Whether the registered ZIM ``name`` is a map, from the list cache."""
+    return any(z.get("name") == name and z.get("kind") == "map" for z in (_zim_list_cache or []))
+
+
+def _read_zim_kind(path):
+    """``_zim_kind`` for a cache record written before ``kind`` existed.
+
+    Three metadata reads and no entry walk, so it is cheap enough to do at
+    boot, once per legacy record; the answer is then written down with the
+    rest. Returns ``(kind, map_search)``, "" rather than None for the kind so
+    a decided non-map is a decision too."""
+    try:
+        archive = open_archive(path)
+        vals = {}
+        for key in ("Scraper", "Tags", "Name"):
+            try:
+                vals[key] = bytes(archive.get_metadata(key)).decode("utf-8", "replace")
+            except Exception:
+                vals[key] = ""
+        kind = _zim_kind(vals["Scraper"], vals["Tags"], vals["Name"]) or ""
+        return kind, bool(kind and _zim_map_search(vals["Scraper"]))
+    except Exception as e:
+        log.debug("could not read kind for %s: %s", path, e)
+        return "", False
+
+
+def _effective_category(name, path, kind=None):
     """A ZIM's category: its subfolder if it lives in one, else the heuristic.
 
     Folder beats heuristic because the folder is an act of organization by the
     operator — filing a ZIM under medical/ says more than any guess made from
     its filename. A hand-set per-ZIM override still beats both; that is applied
-    at the /list boundary, not baked in here.
+    at the /list boundary, not baked in here. Between folder and filename sits
+    what the ZIM says it is (``kind``, from its metadata): a map is a map
+    whatever the file was renamed to.
     """
-    return _folder_category(_zim_folder(path)) or _categorize_zim(name)
+    return (
+        _folder_category(_zim_folder(path))
+        or ("Maps" if kind == "map" else "Reddit" if kind == "reddit" else None)
+        or _categorize_zim(name)
+    )
 
 
 # ============================================================================
@@ -2181,6 +2523,9 @@ def _zim_short_name(filename):
     )  # Only 2-letter codes before dates (avoids css/git)
     name = re.sub(r"_maxi_2\d{3}.*", "", name)
     name = re.sub(r"_2\d{3}-\d{2}$", "", name)
+    # StreetZim: osm-hawaii-2026-09-08 -> osm-hawaii, so the name survives an
+    # update and the catalog's toggle can tell installed from not.
+    name = re.sub(r"^(osm-.+?)-2\d{3}-\d{2}-\d{2}$", r"\1", name)
     # Append language suffix for non-English ZIMs
     if not is_english and lang_code:
         # Normalize 3-letter to 2-letter
@@ -2434,6 +2779,10 @@ def _extract_zim_date(filename):
     if m:
         base = filename[: m.start()]
         return base, m.group(1)
+    # StreetZim dates its builds to the day, with dashes: osm-hawaii-2026-09-08.zim
+    m = re.match(r"^(osm-.+?)-(\d{4}-\d{2}-\d{2})\.zim$", filename)
+    if m:
+        return m.group(1), m.group(2)
     return filename.replace(".zim", ""), None
 
 
@@ -2469,6 +2818,10 @@ def _extract_zim_metadata(name, path):
     meta_date = ""
     meta_lang = ""
     meta_creator = ""
+    meta_scraper = ""
+    map_facts = None
+    meta_tags = ""
+    meta_name = ""
     has_icon = False
     main_path = ""
     archive = None
@@ -2494,6 +2847,12 @@ def _extract_zim_metadata(name, path):
                     meta_date = val.decode("utf-8", errors="replace").strip()
                 elif key == "Creator":
                     meta_creator = val.decode("utf-8", errors="replace").strip()
+                elif key == "Scraper":
+                    meta_scraper = val.decode("utf-8", errors="replace").strip()
+                elif key == "Tags":
+                    meta_tags = val.decode("utf-8", errors="replace").strip()
+                elif key == "Name":
+                    meta_name = val.decode("utf-8", errors="replace").strip()
                 elif key == "Language":
                     raw_lang = val.decode("utf-8", errors="replace").strip().lower()
                     # Handle multilingual ZIMs (comma-separated codes)
@@ -2515,6 +2874,11 @@ def _extract_zim_metadata(name, path):
         except Exception as e:
             log.debug("Failed to read main entry for %s: %s", name, e)
             pass
+        cold_kind = _zim_kind(meta_scraper, meta_tags, meta_name)
+        if cold_kind == "map":
+            map_facts = _map_facts(archive, meta_scraper)
+        elif cold_kind == "reddit":
+            map_facts = _reddit_facts(archive)
     except Exception as e:
         log.debug("Failed to open archive for metadata extraction %s: %s", name, e)
         entry_count = "?"
@@ -2529,6 +2893,8 @@ def _extract_zim_metadata(name, path):
         if m:
             code = m.group(1)
             meta_lang = _ISO639_3_TO_1.get(code, code)
+    kind = _zim_kind(meta_scraper, meta_tags, meta_name)
+    map_search = kind == "map" and _zim_map_search(meta_scraper)
     info = {
         "name": name,
         "file": os.path.basename(path),
@@ -2542,9 +2908,19 @@ def _extract_zim_metadata(name, path):
         "date": meta_date,
         "language": meta_lang,
         "has_icon": has_icon,
-        "category": _effective_category(name, path),
+        "category": _effective_category(name, path, kind),
         "main_path": main_path,
     }
+    # Additive: what the ZIM says it is, kept so a cache hit can re-derive the
+    # category without reopening the archive.
+    if kind:
+        info["kind"] = kind
+    if map_search:
+        info["map_search"] = True
+    if map_facts:
+        info.update(map_facts)
+        if "subreddits" in map_facts:
+            info["title"] = _subreddit_title(info["title"], map_facts["subreddits"])
     # Additive: the raw subfolder name behind a folder-derived category, so a
     # client can tell "filed under medical/" from a name-heuristic guess. Absent
     # for root-level files, which keep heuristic categorization untouched.
@@ -2735,6 +3111,7 @@ def load_cache(force=False):
 
     info = []
     scanned = 0
+    kind_backfilled = False  # a legacy record learned what it is; write it down
     backfilled = 0  # legacy entries whose first_seen we filled from file mtime
     file_cache = {}  # for saving back to disk
 
@@ -2824,6 +3201,24 @@ def load_cache(force=False):
             updated_at = time.time()
         if cache_hit and cached:
             # Cache hit — use stored metadata, skip opening archive
+            if (
+                "kind" not in cached
+                or int(cached.get("kind_v") or 1) < KIND_VERSION
+                or (cached.get("kind") == "map" and "map_search" not in cached)
+            ):
+                # A record from before Zimi knew what a map was (or what a map
+                # with a search box was). Eric's world map was registered by
+                # 1.9 half an hour before 1.10 booted and sat under Other with
+                # nothing to say otherwise.
+                cached["kind"], cached["map_search"] = _read_zim_kind(path)
+                kind_backfilled = True
+            if cached.get("kind") == "map" and "map_bounds" not in cached:
+                # A record from before Zimi kept a map's ground and publisher.
+                cached.update(_read_map_facts(path))
+                kind_backfilled = True
+            if cached.get("kind") == "reddit" and "subreddits" not in cached:
+                cached.update(_read_reddit_facts(path))
+                kind_backfilled = True
             entry = {
                 "name": name,
                 "file": filename,
@@ -2852,7 +3247,7 @@ def load_cache(force=False):
                 # stale on exactly the move that should re-file it. Deriving
                 # here is pure string work, so an existing library re-files on
                 # the next boot with no rescan and no extra I/O.
-                "category": _effective_category(name, path),
+                "category": _effective_category(name, path, cached.get("kind")),
                 "main_path": cached.get("main_path", ""),
                 "first_seen": first_seen,
                 "updated_at": updated_at,
@@ -2860,6 +3255,16 @@ def load_cache(force=False):
             folder = _zim_folder(path)
             if folder:
                 entry["folder"] = folder
+            if cached.get("kind"):
+                entry["kind"] = cached["kind"]
+            if cached.get("map_search"):
+                entry["map_search"] = True
+            if "map_bounds" in cached:
+                entry["map_bounds"] = cached["map_bounds"]
+                entry["map_source"] = cached.get("map_source", "")
+            if "subreddits" in cached:
+                entry["subreddits"] = cached["subreddits"]
+                entry["title"] = _subreddit_title(entry["title"], cached["subreddits"])
             if "has_qids" in cached:
                 entry["has_qids"] = cached["has_qids"]
             # Both of the site's faces, when a capture kept them. Cached like
@@ -2925,6 +3330,19 @@ def load_cache(force=False):
                 new_cached["article_count"] = entry["article_count"]
             if entry.get("zimi_export"):
                 new_cached["zimi_export"] = True
+            # Always, "" included: a decided non-map must not be re-read
+            # on every boot as if it were a record from before the field.
+            new_cached["kind"] = entry.get("kind") or ""
+            new_cached["kind_v"] = KIND_VERSION
+            if entry.get("map_search"):
+                new_cached["map_search"] = True
+            # A map's ground and publisher, null included: a map whose config
+            # Zimi could not read is decided too, not re-read every boot.
+            if "map_bounds" in entry:
+                new_cached["map_bounds"] = entry["map_bounds"]
+                new_cached["map_source"] = entry.get("map_source", "")
+            if "subreddits" in entry:
+                new_cached["subreddits"] = entry["subreddits"]
             # Only when the capture kept two: most ZIMs have one face, and a
             # cache full of nulls is noise. An older Zimi reading this record
             # ignores the key, which is what keeps a downgrade safe.
@@ -2949,7 +3367,7 @@ def load_cache(force=False):
 
     # Persist cache if we scanned anything new, backfilled a legacy first_seen
     # (so the mtime stamp is computed once), or repaired mass-stamped entries.
-    if scanned > 0 or backfilled > 0 or disk_cache is None or healed or healed_updates:
+    if scanned > 0 or backfilled > 0 or kind_backfilled or disk_cache is None or healed or healed_updates:
         # Wholesale, not a merge — but under the same lock, so it cannot land
         # in the middle of somebody else's read-modify-write.
         with _disk_cache_lock:
@@ -3693,9 +4111,9 @@ def main():
     # page and wrapping it in an index nobody asked for is a worse ZIM.
     p_create.add_argument(
         "source",
-        nargs="+",
-        help="Folder path, or one or more http(s):// URLs (several URLs are "
-        "captured into a single ZIM with an index page)",
+        nargs="*",
+        help="Folder path, a subreddit (r/kiwix), or one or more http(s):// URLs (several URLs are "
+        "captured into a single ZIM with an index page). Optional only with --setup-reddit.",
     )
     p_create.add_argument(
         "--title", default=None, help="ZIM title (default: folder name / page title)"
@@ -3723,6 +4141,12 @@ def main():
     # said" — that difference is what lets a flag that only applies to a
     # site crawl be refused instead of silently ignored, and what keeps a
     # flag Zimi guessed at from being sent to another engine.
+    p_create.add_argument(
+        "--setup-reddit",
+        action="store_true",
+        help="Install the Reddit maker (ArcticZim) into its sidecar now, while "
+        "connected, so a subreddit can be made offline later",
+    )
     p_create.add_argument(
         "--site",
         action="store_true",
@@ -3990,21 +4414,18 @@ def main():
         _importer.cli_import(args)
 
     elif args.command == "desktop" or (args.command == "serve" and args.ui):
+        # Inside the package since 1.10: a pip install has it. pywebview is
+        # the one thing it needs that the package does not require.
         try:
-            # The desktop entry-point lives in the repo's desktop/ dir (a sibling
-            # of this package), not on the default import path — add it first.
-            _desktop_dir = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "desktop"
-            )
-            if _desktop_dir not in sys.path:
-                sys.path.insert(0, _desktop_dir)
-            from zimi_desktop import main as desktop_main
+            import webview  # noqa: F401
         except ImportError:
             print(
-                "Desktop mode requires pywebview: pip install pywebview",
+                "Desktop mode needs pywebview: pip install 'zimi[desktop]'",
                 file=sys.stderr,
             )
             sys.exit(1)
+        from zimi.desktop import main as desktop_main
+
         desktop_main()
 
     elif args.command == "serve":
@@ -4031,6 +4452,15 @@ def main():
             except OSError:
                 pass
         warm_indexes()
+        # The Creator pane's engines (a browser launch, the sidecars) are
+        # found out now, on their own thread, so the first look at the pane
+        # is not "Checking…" for as long as a browser takes to start.
+        try:
+            from zimi import manage as _manage_boot
+
+            _manage_boot._creator_capabilities()
+        except Exception:
+            pass
         start_background_services(port)
         # Start auto-update thread if enabled
         global _auto_update_thread
@@ -4359,6 +4789,9 @@ def __getattr__(name):
 
 
 from zimi.search import (  # noqa: E402, F401
+    _random_map_place,
+    _map_home_view,
+    find_places,
     # Search / suggest caches (dicts + constants + functions)
     _search_cache,
     SEARCH_CACHE_MAX,

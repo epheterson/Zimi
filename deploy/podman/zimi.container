@@ -1,0 +1,44 @@
+# Zimi as a rootless Podman service, started at boot by systemd (Quadlet).
+#
+# Install:  cp zimi.container ~/.config/containers/systemd/
+#           mkdir -p ~/zimi/zims ~/zimi/config
+#           systemctl --user daemon-reload && systemctl --user start zimi
+#           loginctl enable-linger $USER      # keep it running when logged out
+# Then open http://localhost:8899.
+#
+# Why each line is there:
+#   UserNS=keep-id:uid=1000,gid=1000  The image runs as user 1000. Rootless
+#                                      Podman would map that to a subordinate
+#                                      UID, and every ZIM Zimi downloads would
+#                                      land in ~/zimi/zims owned by a number you
+#                                      cannot read without sudo. keep-id maps
+#                                      it to you.
+#   :Z on the volumes                  SELinux (Fedora, RHEL and kin) denies a
+#                                      bind mount without the label. Harmless
+#                                      elsewhere.
+#   Network=host                       LAN peer discovery is multicast and
+#                                      BitTorrent wants its port; neither
+#                                      crosses a rootless bridge.
+[Unit]
+Description=Zimi offline knowledge server
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=docker.io/epheterson/zimi:latest
+ContainerName=zimi
+AutoUpdate=registry
+UserNS=keep-id:uid=1000,gid=1000
+Network=host
+Volume=%h/zimi/zims:/zims:Z
+Volume=%h/zimi/config:/config:Z
+Environment=ZIM_DIR=/zims
+Environment=ZIMI_DATA_DIR=/config
+Environment=ZIMI_MANAGE=1
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

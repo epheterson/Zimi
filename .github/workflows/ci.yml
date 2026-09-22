@@ -196,6 +196,36 @@ jobs:
           SMOKE_EXPECT_BT: '1'
         run: ci/smoke_binary.sh "dist/Zimi/Zimi"
 
+      # The window, which no Linux gate ever opened: every AppImage and snap
+      # from 1.8 to 1.9.6 died on launch on every distro (issue #81) while
+      # this job stayed green on the headless server alone. Xvfb is the
+      # display; the runner's own WebKitGTK is the one the bundle must find,
+      # the way a person's distro provides it.
+      - name: The built binary opens its window and renders the home view (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          sudo apt-get install -y -qq xvfb libwebkit2gtk-4.1-0 dbus-x11 >/dev/null
+          TMPZIM=$(mktemp -d)
+          ZIMI_DESKTOP_SMOKE=app ZIMI_DESKTOP_SMOKE_DWELL=2 ZIM_DIR="$TMPZIM" \
+            timeout 180 xvfb-run -a dist/Zimi/Zimi 2>&1 | tee /tmp/window-smoke.log
+          grep -q "SMOKE: app rendered" /tmp/window-smoke.log
+
+      # And a machine with no WebKitGTK at all: the app must run in the
+      # system browser rather than die. --browser asks for that outright;
+      # the fake browser records the address it was handed.
+      - name: The built binary runs in the browser when asked (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        shell: bash
+        env:
+          SMOKE_MODE_ARGS: --browser
+          SMOKE_EXPECT_BT: '1'
+          BROWSER: ${{ github.workspace }}/ci/fake_browser.sh
+          FAKE_BROWSER_LOG: /tmp/fake-browser.log
+        run: |
+          ci/smoke_binary.sh "dist/Zimi/Zimi"
+          grep -q "http://127.0.0.1:" /tmp/fake-browser.log
+
       # The portable zip, as a person actually gets it: every file extracted
       # from a browser download carries the mark of the web, and the .NET
       # Framework will not load a marked assembly. 1.9.5 died on its first
@@ -218,6 +248,68 @@ jobs:
             zimi-windows-smoke.png
             smoke_*.log
           if-no-files-found: ignore
+
+  # The same image under rootless Podman, the way a Fedora or RHEL self-hoster
+  # runs it. Two things Docker never made us get right: the image's user must
+  # map to the person (or every downloaded ZIM lands owned by a subordinate
+  # UID they cannot read), and the Quadlet unit we ship must be one systemd
+  # accepts. Both are checked here rather than promised in the README.
+  podman:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image with Podman
+        run: podman build -t localhost/zimi:ci .
+
+      - name: Run rootless with the README's flags, and the files come out as ours
+        run: |
+          mkdir -p zims zimi-config
+          podman run -d --name zimi --network host \
+            --userns=keep-id:uid=1000,gid=1000 \
+            -v ./zims:/zims:Z -v ./zimi-config:/config:Z \
+            -e ZIM_DIR=/zims -e ZIMI_DATA_DIR=/config -e ZIMI_MANAGE=1 \
+            localhost/zimi:ci
+          for i in $(seq 1 180); do
+            if curl -sf http://localhost:8899/health > /dev/null 2>&1; then
+              echo "  server up after ${i}s"; break
+            fi
+            if [ "$i" = 180 ]; then
+              echo "::error::server did not answer /health within 180s"
+              podman logs --tail 80 zimi; exit 1
+            fi
+            sleep 1
+          done
+          # The server writes its metadata cache into /config on boot. On the
+          # host that file must belong to the user who ran the container, not
+          # to a subordinate UID: that is the whole point of keep-id.
+          for i in $(seq 1 30); do [ -f zimi-config/cache.json ] && break; sleep 1; done
+          ls -ln zimi-config
+          owner=$(stat -c %u zimi-config/cache.json)
+          if [ "$owner" != "$(id -u)" ]; then
+            echo "::error::cache.json is owned by uid $owner, not by $(id -u): the userns mapping is wrong"
+            exit 1
+          fi
+          echo "files written by the container are owned by $(id -un)"
+          podman rm -f zimi
+
+      - name: The Quadlet unit is one systemd accepts
+        run: |
+          mkdir -p ~/.config/containers/systemd
+          cp deploy/podman/zimi.container ~/.config/containers/systemd/
+          # quadlet -dryrun renders the unit, or complains about the line at
+          # fault. Its exit code is not the verdict (it exits 0 with a
+          # complaint), and neither is a grep behind a pipe with no pipefail:
+          # the rendered service must contain the podman run line, and the
+          # render must not mention our file in an error.
+          Q=$(ls /usr/libexec/podman/quadlet /usr/lib/podman/quadlet 2>/dev/null | head -1)
+          test -x "$Q" || { echo "::error::no quadlet generator on this runner"; exit 1; }
+          "$Q" -dryrun -user > rendered.txt 2>&1 || true
+          cat rendered.txt
+          grep -q "^ExecStart=.*podman run" rendered.txt || { echo "::error::zimi.container did not render to a service"; exit 1; }
+          grep -q "UserNS=keep-id\|--userns keep-id\|--userns=keep-id" rendered.txt || { echo "::error::the rendered service lost the userns mapping"; exit 1; }
+          ! grep -i "zimi.container.*error\|error.*zimi.container" rendered.txt || { echo "::error::quadlet complained about zimi.container"; exit 1; }
+          echo "the Quadlet unit renders to a service with the userns mapping intact"
 
   docker:
     runs-on: ubuntu-latest

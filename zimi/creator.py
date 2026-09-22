@@ -3146,7 +3146,22 @@ def cli_create(args):
     """`zimi create <folder-or-url> [<url>…]` — dispatch, then print a short
     honest summary. Exit 2 with a one-line message on any user-fixable failure,
     matching the backup/restore CLI convention."""
-    sources = list(args.source) if isinstance(args.source, list) else [args.source]
+    sources = list(args.source) if isinstance(args.source, list) else ([args.source] if args.source else [])
+    if not sources:
+        # The one thing the command does without a source: install the
+        # Reddit maker ahead of time (docs: `zimi create --setup-reddit`).
+        if getattr(args, "setup_reddit", False):
+            from zimi import reddot as _reddot
+
+            try:
+                _reddot.ensure_sidecar(sink=print)
+            except CreateError as e:
+                print(f"zimi: {e}", file=sys.stderr)
+                sys.exit(2)
+            print(f"Reddit maker ready at {_reddot.sidecar_dir()}")
+            return
+        print("zimi create: a source is required (a folder, a page, a site, a video or a subreddit)", file=sys.stderr)
+        sys.exit(2)
     src = sources[0]
     # ONE source restores the exact pre-multi-URL contract for everything
     # downstream — the video arm and the zimit arm both read args.source, and
@@ -3154,6 +3169,38 @@ def cli_create(args):
     # always been would be a silent break nothing else would catch.
     if len(sources) == 1:
         args.source = src
+    if getattr(args, "setup_reddit", False):
+        from zimi import reddot as _reddot
+
+        try:
+            _reddot.ensure_sidecar(sink=print)
+        except CreateError as e:
+            print(f"zimi: {e}", file=sys.stderr)
+            sys.exit(2)
+        print(f"Reddit maker ready at {_reddot.sidecar_dir()}")
+        if not src or src == "-":
+            return
+    if len(sources) == 1 and not os.path.isdir(src):
+        from zimi import reddot as _reddot
+
+        # A subreddit: r/kiwix, /r/kiwix, or its reddit.com address.
+        if _reddot.looks_like_subreddit(src):
+            try:
+                info = _reddot.create_reddit_zim(
+                    src,
+                    title=args.title,
+                    out_dir=None,
+                    out_path=args.out,
+                    register=not args.out,
+                    progress=print,
+                )
+            except CreateError as e:
+                print(f"zimi: {e}", file=sys.stderr)
+                sys.exit(2)
+            print(f"ZIM written: {info['path']}")
+            if info["registered"]:
+                print("  registered in the library — no rescan needed")
+            return
     is_url = _is_http_url(src)
     if is_url and len(sources) == 1:
         from zimi import video as _video

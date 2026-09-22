@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.10.0] - 2026-09-21
+
+Offline maps, four apps over the library, a catalog that works with no internet, and the Linux desktop app fixed.
+
+### Maps
+
+- Map ZIMs open in the reader: Kiwix's 193 regional maps and StreetZim builds.
+- The position lives in the address, so links and bookmarks return to the same place and zoom.
+- Place search in the search bar: towns, streets and addresses on StreetZim maps, place pages on Kiwix maps.
+- A picker switches maps at the same spot, with the catalog's maps of here under it.
+- StreetZim is a second catalog source, from the Internet Archive.
+- A map's top bar: no read-aloud, Reader View or type size. Random rolls a place.
+
+### Apps
+
+A row of four, first among the sources. Offered per server (`ZIMI_APPS`, or Preferences) or per account.
+
+- ZimiTube: every video ZIM as one feed. Subtitles, Up next, autoplay, a dock, theater, picture in picture.
+- ZimiExchange: every Stack Exchange site as one place. Shelves, tags, paged lists, the accepted answer first.
+- Reddot: subreddits as ZIMs. `zimi create r/<name>` builds one with ArcticZim. Shelves, Top and New, comment trees, follows.
+- Videos, questions and posts go into history and bookmarks, and open back into their app.
+- Shared links survive a sign-in. Right to left with the shell. One card when two ZIMs carry the same thing.
+- App routes in the OpenAPI document, and five MCP tools.
+
+### Catalog, Create, ops
+
+- The catalog works offline: a snapshot in the package, the live one cached after the first fetch.
+- Import .warc, .warc.gz and .wacz from the Create page.
+- A site's page limit goes from 5,000 to 50,000.
+- Video ZIMs take H.264 first, so they play on any iPhone.
+- An env panel lists every `ZIMI_*` variable in effect.
+- Podman: a rootless run line, a Quadlet unit, and a CI job.
+
+### Fixed
+
+- The Linux desktop app opens (#81). Every AppImage and snap since 1.8 died on launch or showed a black window.
+- The desktop app keeps bookmarks, history and settings between launches.
+- `zimi desktop` works from a pip install (`pip install 'zimi[desktop]'`).
+- A role or allowlist change no longer resets public access to Open.
+- Manage no longer sticks on "Loading…" after a sign-in.
+- Create asks for the password before it opens.
+- Download badges only on the gear and the Manage row (#80).
+- ZIMs without a full-text index answer the search bar from their titles.
+- PDFs: no read-aloud or type size, and the viewer follows the app's language.
+- Catalog: a single-file entry shows its size, language counts match the view, category marks are drawn.
+- Windows: a file replaced mid-read no longer fails the write.
+
 ## [1.9.6] - 2026-09-18
 
 ### Fixed

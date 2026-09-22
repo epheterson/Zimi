@@ -6,7 +6,7 @@ Two ways for machines to use a Zimi library: the MCP server (for AI agents) and 
 
 **MCP server.** `python3 -m zimi.mcp_server` runs a FastMCP server over **stdio** that wraps Zimi's core functions. It warms search indexes in the background so the transport starts immediately. Point any MCP client at it (locally, or `ssh … docker exec -i zimi python3 -m zimi.mcp_server` for a remote Docker instance), passing `ZIM_DIR` in its env.
 
-Tools exposed: `search` (with a `lang` filter), `read`, `get_chunks`, `suggest`, `list_sources`, `random`, `article_languages`, `read_with_links`, `deep_search`, `list_collections`, `manage_collection`, `manage_favorites`.
+Tools exposed: `search` (with a `lang` filter), `read`, `get_chunks`, `suggest`, `list_sources`, `random`, `article_languages`, `read_with_links`, `deep_search`, `list_collections`, `manage_collection`, `manage_favorites`, and for the apps `list_videos`, `list_questions`, `read_question`, `list_posts`, `read_post`: the same readers ZimiTube, ZimiExchange and Reddot draw from, as text (a question's answers with the accepted one first, a post's replies indented under their parents).
 
 **HTTP JSON API.** The stable, integrate-against-it surface (contract in [API stability](../api-stability.md)):
 
@@ -20,6 +20,10 @@ Tools exposed: `search` (with a `lang` filter), `read`, `get_chunks`, `suggest`,
 | `GET /list` | Installed ZIM sources |
 | `GET /random` | Random article |
 | `GET /health` | Liveness + build info |
+| `GET /tube` | Videos across every video ZIM, sources interleaved, one card per talk; `q=`, `limit=`, `offset=` |
+| `GET /tube/play` | The media behind a video's page: sources, subtitles, poster, the ZIM's own decoder |
+| `GET /exchange/home`, `/exchange/site`, `/exchange/q` | Stack Exchange sites; a site's or a tag's questions most voted first; a question with its answers, accepted first |
+| `GET /reddot/home`, `/reddot/sub`, `/reddot/post` | Subreddit ZIMs; a subreddit's posts top or new; a post with its comment tree |
 
 The machine-readable contract is served at `GET /openapi.json` (OpenAPI 3.1, hand-authored; its `info.version` mirrors the running build). Everything else (`/manage/*`, `/dl/*`, `/snippet`, `/resolve`, static assets, the SPA shell) is internal plumbing and may change at any time — don't build against it.
 

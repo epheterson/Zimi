@@ -1,10 +1,11 @@
 # Deploying Zimi
 
-Two files, both complete and both meant to be copied rather than read as examples.
+Three files, all complete and all meant to be copied rather than read as examples.
 
 | | |
 |---|---|
 | [`docker-compose.yml`](docker-compose.yml) | A single host. This is what most people want. |
+| [`podman/zimi.container`](podman/zimi.container) | A single host on Fedora, RHEL or anywhere Podman is the container tool: rootless, started by systemd. |
 | [`kubernetes.yaml`](kubernetes.yaml) | A cluster. One namespace, one Deployment, one Service, two volumes. |
 
 ```bash
@@ -12,9 +13,16 @@ Two files, both complete and both meant to be copied rather than read as example
 mkdir -p zims && cp /path/to/*.zim zims/
 docker compose -f deploy/docker-compose.yml up -d
 
+# Podman (rootless, at boot)
+mkdir -p ~/zimi/zims ~/zimi/config && cp /path/to/*.zim ~/zimi/zims/
+cp deploy/podman/zimi.container ~/.config/containers/systemd/
+systemctl --user daemon-reload && systemctl --user start zimi
+
 # Kubernetes
 kubectl apply -f deploy/kubernetes.yaml
 ```
+
+The Podman unit carries two flags Docker never needed, and the file says why: `keep-id` so the ZIMs Zimi downloads are owned by you rather than a subordinate UID, and `:Z` for SELinux. CI runs the image rootless under Podman on every change and checks the ownership claim.
 
 Then open port 8899. There is no setup step, no account to create, and no first-run wizard: Zimi serves whatever ZIMs it finds.
 

@@ -109,6 +109,12 @@ var CREATE_BOOKMARKS_DEF = {
 // articles you already chose; then import, which starts from something
 // already sitting on the server — the rarest way in and the one you only
 // reach deliberately.
+// The form for a subreddit's address. Not a tile: the address decides (see
+// the note under the tiles), and the panel takes this shape the moment the
+// server says the address is a subreddit.
+var CREATE_REDDIT_DEF = { id: 'reddit', network: true, flags: [], advanced: [] };
+var _createRedditPanel = false;
+
 var CREATE_MODE_DEFS = [
   {
     id: 'page', network: true, multiline: true,
@@ -130,11 +136,24 @@ var CREATE_MODE_DEFS = [
     advanced: ['format', 'max_bytes', 'language'],
     pick: { max_bytes: '4G' }
   },
-  CREATE_BOOKMARKS_DEF
-  // Import (WARC/WACZ) is CLI-only, like folder capture: it reads a server
-  // path, and a web door onto the server's disk is exactly what the folder
-  // retreat closed. `zimi import <file>` is its one door. No tile here.
+  // No subreddit tile. A reddit.com/r/<name> address under Web page is a
+  // subreddit, and the server says so (Eric: "let's be coy. You put in the
+  // url Reddit.com/r/whatever and we know what to do"); the preview and the
+  // run then speak of a subreddit.
+  CREATE_BOOKMARKS_DEF,
+  // Import (WARC/WACZ): back on the web (2026-09-19), as a picker. The
+  // address field becomes a list of the archives in the library folder; no
+  // path is typed, which is what took it off the web with folder capture.
+  {
+    id: 'import', network: false, sidecar: true, picker: true, serverPath: true,
+    label: 'create_label_import', placeholder: 'create_ph_import',
+    flags: [], advanced: []
+  }
 ];
+
+// The archives the server listed, and where it looked.
+var _createArchives = [];
+var _createArchivesDir = '';
 
 // Size budgets, as amounts rather than as a syntax to remember. The values are
 // the strings the engines' own parse_size already accepts, so the web form does
@@ -237,6 +256,16 @@ var CREATE_PART_INSTALL = {
   sidecar: 'zimi import --setup'
 };
 
+// The browser install command aimed at THIS server's Python, once a probe
+// has said which. `pip install` typed into whatever shell is open lands in
+// that shell's Python; under uv, or a venv that is not Zimi's, the engine
+// stays greyed out after a successful install ("the app says the browser
+// engine wasn't installed", r/Kiwix, 2026-09-19).
+var _createBrowserInstall = null;
+function _createBrowserCommand() {
+  return _createBrowserInstall || CREATE_PART_INSTALL.browser;
+}
+
 // Where this server keeps its sidecar, once a probe has said so.
 var _createSidecarDir = null;
 
@@ -273,7 +302,7 @@ var CREATE_FIELDS = {
   },
   max_pages: {
     id: 'create-max-pages', control: 'number', label: 'create_max_pages',
-    kind: 'int', min: 1, max: 5000, ph: '200'
+    kind: 'int', min: 1, max: 50000, ph: '200'
   },
   limit: {
     id: 'create-limit', control: 'number', label: 'create_video_limit',
@@ -352,7 +381,8 @@ var CREATE_FIELDS = {
 // footer's "Powered by Kiwix": a fact, quietly stated, and a link out.
 var CREATE_CREDITS = {
   video: { name: 'yt-dlp', url: 'https://github.com/yt-dlp/yt-dlp' },
-  'import': { name: 'warc2zim', url: 'https://github.com/openzim/warc2zim' }
+  'import': { name: 'warc2zim', url: 'https://github.com/openzim/warc2zim' },
+  reddit: { name: 'ArcticZim', url: 'https://github.com/IMayBeABitShy/ArcticZim' }
 };
 
 // ── the progress model ──────────────────────────────────────────────────────
@@ -588,6 +618,11 @@ function _createPreviewRows(p) {
   } else if (p.mode === 'import') {
     add('create_pv_size', _fmtBytes(p.bytes || 0));
     add('create_pv_helper', t(p.sidecar_ready ? 'create_pv_ready' : 'create_pv_installs'));
+  } else if (p.mode === 'reddit') {
+    // The address was a subreddit's: say so, and what comes of it.
+    add('create_mode_reddit', p.title);
+    add('create_pv_what', t('create_pv_reddit_what'));
+    add('create_pv_helper', t(p.reddot_ready ? 'create_pv_ready' : 'create_pv_installs'));
   } else {
     if (p.urls > 1) add('create_pv_pages', String(p.urls));
     add('create_pv_title', p.title);
@@ -1174,6 +1209,7 @@ function _createRemember(name, value) {
 // vanishes from under a click is worse than one that admits the job late.
 // Once known, it is the known answer, so the tile stops vanishing entirely.
 var _createImportReady = _createCapBoot('sidecar') !== false;
+var _createReddotReady = _createCapBoot('reddot') !== false;
 // Whether this server can run the rendered engine — the server's answer, or
 // null until it gives one.
 var _createBrowserReady = _createCapBoot('browser');
@@ -1348,6 +1384,14 @@ function _createEngineFor(p, browserReady) {
 // you came from.
 function _openCreateInner(replaceState) {
   _createOpen = true;
+  if (typeof _createRememberMode === 'string' && _createRememberMode) {
+    _createSelected = _createRememberMode;
+    _createRememberMode = '';
+  }
+  // An address the caller wants in the field (Reddot's empty page starts a
+  // subreddit's address for you); typed in, so the preview follows.
+  var seed = (typeof _createRememberSource === 'string' && _createRememberSource) || '';
+  _createRememberSource = '';
   // The reload-into-Create boot gate (stamped by the head bootstrap before the
   // first paint) has done its job once the real Create chrome is up.
   document.documentElement.classList.remove('create-boot');
@@ -1375,6 +1419,15 @@ function _openCreateInner(replaceState) {
   // ENDED, and this puts back one that had not.
   _createHydrate();
   _renderCreate();
+  if (seed) {
+    var seedEl = document.getElementById('create-source');
+    if (seedEl) {
+      seedEl.value = seed; seedEl.dispatchEvent(new Event('input')); seedEl.focus();
+      // The last path segment selected: a subreddit's name, ready to be typed over.
+      var cut = seed.lastIndexOf('/') + 1;
+      try { seedEl.setSelectionRange(cut < seed.length ? cut : seed.length, seed.length); } catch (e) {}
+    }
+  }
   // First poll carries probe=1 and history=1: the one call that pays for the
   // sidecar check and the recent list, and the one that picks up a job already
   // running from another tab. Its answer REPLACES everything hydrated above —
@@ -1418,19 +1471,21 @@ function _renderCreate() {
             tH('create_beta_report') + '</a>.</span>' +
       '</div>' +
       '<div id="create-picker" class="create-picker">' +
-        // The address is the job, so it is the first field, and there is one
-        // of it: the mode follows from the address (video is detected from
-        // it; page-versus-site is a question about the address just typed),
-        // so the chips sit under it as "what to make of this", not above it
-        // as a decision taken blind (design review D2, 09-03).
+        // The chips first, the address under them. They sat under the
+        // address (design review D2, 09-03: "what to make of this"), but the
+        // address line changes shape with the mode (a textarea, a picker, a
+        // caption or none), and the chips bounced with it (Eric, 09-21: "the
+        // type bounces around below the url"). A row that never moves is the
+        // steadier anchor; the address still decides the mode when it can.
+        '<div class="create-modes" id="create-modes" role="tablist"' +
+          ' aria-label="' + escAttr(t('create_zim')) + '"></div>' +
         '<div class="create-address" id="create-address">' +
           '<label class="ms-form-label" for="create-source" id="create-address-label"></label>' +
           '<textarea rows="1" class="create-field" id="create-source" spellcheck="false"' +
             ' autocapitalize="none" autocorrect="off"></textarea>' +
+          '<select class="create-field" id="create-archive" hidden></select>' +
           '<div class="create-caption" id="create-address-note" hidden></div>' +
         '</div>' +
-        '<div class="create-modes" id="create-modes" role="tablist"' +
-          ' aria-label="' + escAttr(t('create_zim')) + '"></div>' +
         '<div id="create-panel"></div>' +
       '</div>' +
       '<div id="create-queue"></div>' +
@@ -1470,10 +1525,15 @@ function _renderCreateModes() {
     _createSelected = _createDefaultMode(visible);
   }
   var html = '';
+  // The address decided: a subreddit, lit in the row where the choice would
+  // have been, so the row tells the truth about what will be made.
+  if (_createRedditPanel) {
+    html += '<span class="create-chip active" role="tab" aria-selected="true" aria-disabled="true">' + tH('create_mode_reddit') + '</span>';
+  }
   for (var i = 0; i < visible.length; i++) {
     var def = visible[i];
     var live = _createModeAvailable(def, _createOffline, _createImportReady);
-    var on = _createSelected === def.id;
+    var on = _createSelected === def.id && !(_createRedditPanel && (def.id === 'page' || def.id === 'site'));  // lit unless the address decided
     // The reason a chip is dead is a whole sentence, and a chip has no room for
     // one. It goes where a sentence fits: the tooltip, and the panel below.
     var why = live ? '' :
@@ -1753,8 +1813,8 @@ function _createEngineHtml(f) {
 function _createAddCommands(into, capability) {
   var parts = CREATE_ENGINE_NEEDS[capability] || [];
   for (var i = 0; i < parts.length; i++) {
-    var cmd = parts[i] === 'sidecar'
-      ? _createSidecarCommand()
+    var cmd = parts[i] === 'sidecar' ? _createSidecarCommand()
+      : parts[i] === 'browser' ? _createBrowserCommand()
       : CREATE_PART_INSTALL[parts[i]];
     if (cmd && _createPartReady(parts[i]) === false && into.indexOf(cmd) < 0) into.push(cmd);
   }
@@ -1846,6 +1906,27 @@ function _renderCreateAddress() {
   wrap.hidden = !takesAddress;
   if (!takesAddress) return;
   if (label) label.textContent = t(def.label);
+  var pick = document.getElementById('create-archive');
+  if (def.picker) {
+    // A list, not a field: the archives the server found, newest first.
+    src.hidden = true;
+    if (pick) {
+      pick.hidden = false;
+      pick.innerHTML = _createArchives.length
+        ? _createArchives.map(function(a) {
+            return '<option value="' + escAttr(a.name) + '">' + esc(a.name) + (a.size_bytes ? ' \u00b7 ' + fmtBytes(a.size_bytes) : '') + '</option>';
+          }).join('')
+        : '<option value="">' + esc(t('create_ph_import')) + '</option>';
+      pick.disabled = !_createArchives.length;
+    }
+    if (note) {
+      note.textContent = t('create_import_note', {dir: _createArchivesDir || t('create_import_dir_unknown')});
+      note.hidden = false;
+    }
+    return;
+  }
+  src.hidden = false;
+  if (pick) pick.hidden = true;
   src.placeholder = t(def.placeholder);
   src.rows = def.multiline ? 3 : 1;
   if (note) { note.textContent = def.multiline ? t('create_pages_note') : ''; note.hidden = !def.multiline; }
@@ -1860,6 +1941,9 @@ function _renderCreatePanel() {
   if (!host) return;
   var def = _createDef(_createSelected);
   if (!def) { host.innerHTML = ''; return; }
+  // A subreddit's address under Web page or Site: the panel is a subreddit's
+  // (no engine, no crawl limits; the maker is ArcticZim), and says so.
+  if (_createRedditPanel && (def.id === 'page' || def.id === 'site')) def = CREATE_REDDIT_DEF;
   var live = _createModeAvailable(def, _createOffline, _createImportReady);
   var desc = '<div class="create-panel-desc">' + tH('create_mode_' + def.id + '_desc') + '</div>';
   _renderCreateAddress();
@@ -1993,8 +2077,9 @@ function _createSyncEngine() {
 
 function _createFormFields() {
   var el = function(id) { return document.getElementById(id); };
+  var def = _createDef(_createSelected);
   var fields = {
-    source: (el('create-source') || {}).value || '',
+    source: ((def && def.picker) ? (el('create-archive') || {}) : (el('create-source') || {})).value || '',
     title: (el('create-title') || {}).value || ''
   };
   for (var key in CREATE_FIELDS) {
@@ -2124,6 +2209,10 @@ async function _createProbeSource() {
       left.previewSource = '';
     } else {
       _createPreview = data;
+      // The address turned out to be a subreddit's (or stopped being one):
+      // the panel and the chips follow.
+      var reddit = data.mode === 'reddit';
+      if (reddit !== _createRedditPanel) { _createRedditPanel = reddit; _createPanelFlip = true; }
       // Remembered here, at the moment it is known: the probe finds the icon
       // seconds before a job exists, and the run header wants it from the
       // first frame rather than after the first poll.
@@ -2136,9 +2225,19 @@ async function _createProbeSource() {
     if (mode === _createSelected) _createPreview = null;
   } finally {
     _createProbing = false;
-    if (mode === _createSelected) _renderCreatePreview();
+    if (mode === _createSelected) {
+      if (_createPanelFlip) {
+        // The panel takes its new shape, then the answer goes back into it:
+        // redrawing the panel restores the mode's remembered (older) answer.
+        _createPanelFlip = false;
+        _renderCreateModes(); _renderCreatePanel();
+        _createPreview = data; _createPreviewSource = body.source;
+      }
+      _renderCreatePreview();
+    }
   }
 }
+var _createPanelFlip = false;
 
 // The payoff for detecting a language: put it in the control, but never over
 // a choice the admin already made by hand.
@@ -2454,6 +2553,18 @@ function _createIngest(data) {
   }
   if (typeof data.sidecar_dir === 'string' && data.sidecar_dir) {
     _createSidecarDir = data.sidecar_dir;
+  }
+  if (Array.isArray(data.archives)) {
+    _createArchives = data.archives;
+    _createArchivesDir = data.archives_dir || '';
+    if (_createSelected === 'import') _renderCreateAddress();
+  }
+  if (typeof data.reddot_ready === 'boolean') {
+    _createReddotReady = data.reddot_ready;
+    _createRemember('reddot', data.reddot_ready);
+  }
+  if (typeof data.browser_install === 'string' && data.browser_install) {
+    _createBrowserInstall = data.browser_install;
   }
   if (typeof data.browser_ready === 'boolean') {
     _createBrowserReady = data.browser_ready;

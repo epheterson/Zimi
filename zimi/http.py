@@ -160,6 +160,12 @@ SESSION_COOKIE_MAX_AGE = 30 * 24 * 3600
 # regression, not a cleanup.
 _RATE_LIMITED_API_PATHS = (
     "/search",
+    "/places",
+    "/tube",
+    "/tube/play",
+    "/exchange",
+    "/reddot",
+    "/map-home",
     "/read",
     "/suggest",
     "/random",
@@ -805,6 +811,11 @@ if os.path.isdir(_STATIC_DIR):
             # bundle hash or a change to one ships behind a stale SW cache.
             + _static_hash("almanac-orrery.js")
             + _static_hash("almanac-sky.js")
+            + _static_hash("tube.html")
+            + _static_hash("exchange.html")
+            + _static_hash("reddot.html")
+            + _static_hash("apps.css")
+            + _static_hash("apps.js")
             + _i18n_hash
         ).encode()
     ).hexdigest()[:8]
@@ -1538,6 +1549,45 @@ def _reconstruct_source_url(archive, entry_path):
 # ============================================================================
 
 
+APP_PAGES = ("tube.html", "exchange.html", "reddot.html")
+_APPS_CSS_MARK = b"<!--@apps.css@-->"
+_APPS_JS_MARK = b"<!--@apps.js@-->"
+_APP_ASSETS = (
+    (_APPS_CSS_MARK, "apps.css", b"<style>\n", b"</style>"),
+    (_APPS_JS_MARK, "apps.js", b"<script>\n", b"</script>"),
+)
+
+
+def _inline_apps_assets(body):
+    """The apps' shared stylesheet and script, inlined at their marks, so an
+    app page is still one document."""
+    for mark, name, open_tag, close_tag in _APP_ASSETS:
+        try:
+            with open(os.path.join(_STATIC_DIR, name), "rb") as f:
+                body = body.replace(mark, open_tag + f.read() + close_tag, 1)
+        except OSError as e:
+            # The page still serves, without its shared parts: say so in the
+            # log rather than let a broken app page pass for a styling bug.
+            log.warning("app page served without %s: %s", name, e)
+    return body
+
+
+def _index_content(apps=True):
+    """The shell, stamped when the server offers fewer than all the apps
+    (``0`` for none, else the names), so the client knows before it draws
+    the home page."""
+    stamp = _srv.apps_stamp(apps)
+    if stamp is None:
+        return SEARCH_UI_HTML
+    return SEARCH_UI_HTML.replace("<body>", '<body data-zimi-apps="%s">' % stamp, 1)
+
+
+def _prefs_reply(prefs):
+    """An account's own preferences as the client reads them."""
+    shown = _srv.user_apps_shown(prefs.get("apps"))
+    return {"apps": bool(shown), "shown": [n for n in _srv.APP_NAMES if n in shown]}
+
+
 class ZimHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     timeout = 30  # seconds — prevents slow-client DoS on POST bodies
@@ -2028,6 +2078,15 @@ class ZimHandler(BaseHTTPRequestHandler):
             elif parsed.path == "/whoami":
                 return self._handle_whoami()
 
+            elif parsed.path == "/me/prefs":
+                # A signed-in user's own preferences that live with the
+                # account, not the browser. Today: whether the apps row
+                # is shown to them.
+                name = _users.resolve_request_user(self)
+                if not name:
+                    return self._json(401, {"error": "sign in required"})
+                prefs = _users.load_user_data(name).get("preferences") or {}
+                return self._json(200, _prefs_reply(prefs))
             elif parsed.path == "/userdata":
                 return self._handle_userdata_get()
 
@@ -2231,18 +2290,117 @@ class ZimHandler(BaseHTTPRequestHandler):
                     cache="no-store",
                 )
 
+            elif parsed.path == "/reddot" or parsed.path.startswith("/reddot/"):
+                # Reddot: subreddits as ZIMs.
+                from zimi import reddot as _rd
+
+                sub = parsed.path[len("/reddot"):].strip("/")
+                try:
+                    pg = max(1, int(param("page", "1")))
+                except (TypeError, ValueError):
+                    pg = 1
+                zim = param("zim")
+                if sub in ("", "home"):
+                    return self._json(200, _rd.home())
+                if sub == "random":
+                    got = _rd.random_post()
+                    return self._json(200, got) if got else self._json(404, {"error": "no posts"})
+                if not zim or zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
+                    return self._json(404, {"error": "not found"})
+                if sub == "sub":
+                    return self._json(200, _rd.listing(zim, param("r"), param("sort", "top"), pg))
+                if sub == "post":
+                    got = _rd.post(zim, param("p"))
+                    return self._json(200, got) if got else self._json(404, {"error": "not a post page"})
+                return self._json(404, {"error": "not found"})
+            elif parsed.path == "/exchange" or parsed.path.startswith("/exchange/"):
+                # ZimiExchange: every Stack Exchange site in the library.
+                from zimi import exchange as _ex
+
+                sub = parsed.path[len("/exchange"):].strip("/")
+                try:
+                    pg = max(1, int(param("page", "1")))
+                except (TypeError, ValueError):
+                    pg = 1
+                zim = param("zim")
+                if sub in ("", "home"):
+                    return self._json(200, _ex.home())
+                if sub == "random":
+                    got = _ex.random_question()
+                    return self._json(200, got) if got else self._json(404, {"error": "no questions"})
+                if not zim or zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
+                    return self._json(404, {"error": "not found"})
+                if sub == "site":
+                    return self._json(200, _ex.listing(zim, pg, param("tag")))
+                if sub == "tags":
+                    return self._json(200, {"tags": _ex.tags(zim)})
+                if sub == "q":
+                    got = _ex.question(zim, param("q"))
+                    return self._json(200, got) if got else self._json(404, {"error": "not a question page"})
+                return self._json(404, {"error": "not found"})
+            elif parsed.path == "/tube/play":
+                # ZimiTube's own player: the media behind one video's page.
+                from zimi import tube as _tube
+
+                zim, page = param("zim"), param("page")
+                if not zim or not page or zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
+                    return self._json(404, {"error": "not found"})
+                out = _tube.playback(zim, page)
+                if out is None:
+                    return self._json(404, {"error": "no media on that page"})
+                return self._json(200, out)
+            elif parsed.path == "/tube":
+                # Zimi Tube's feed: every video in the library, one list.
+                from zimi import tube as _tube
+
+                try:
+                    # Every video in the library is the point; the page asks
+                    # for all of it once and pages what it shows itself.
+                    limit = max(1, min(int(param("limit", "60")), 20000))
+                    offset = max(0, int(param("offset", "0")))
+                except (TypeError, ValueError):
+                    limit, offset = 60, 0
+                t0 = time.time()
+                out = _tube.feed(param("q"), limit=limit, offset=offset)
+                _record_metric("/tube", time.time() - t0)
+                return self._json(200, out)
+            elif parsed.path == "/places":
+                # Zimi Maps' one box: places on every installed map.
+                q = param("q")
+                if not q:
+                    return self._json(400, {"error": "missing ?q= parameter"})
+                t0 = time.time()
+                groups = _srv.find_places(q)
+                _record_metric("/places", time.time() - t0)
+                return self._json(200, {"groups": groups, "elapsed": round(time.time() - t0, 3)})
+            elif parsed.path == "/map-home":
+                # Where a map opens when nobody has been on it yet.
+                zim = param("zim")
+                if not zim or zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
+                    return self._json(404, {"error": "not found"})
+                view = _srv._map_home_view(zim)
+                return self._json(200, view or {"error": "no place index"})
             elif parsed.path == "/random":
                 zim = param("zim")  # optional: scope to specific ZIM
                 if zim:
-                    if zim not in _srv.get_zim_files():
+                    # A ZIM this request may not read is one it cannot see:
+                    # the map branch below never reaches get_archive's own gate.
+                    if zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
                         return self._json(404, {"error": f"ZIM '{zim}' not found"})
+                    # A map has no articles; its dice land on a place.
+                    if _srv._is_map_zim(zim):
+                        place = _srv._random_map_place(zim)
+                        return self._json(200, place or {"error": "no places found"})
                     pick_names = [zim]
                 else:
+                    # Maps are left out: their entries are tiles, and the
+                    # dice would come up "no articles found".
                     eligible = [
                         z
                         for z in (_srv._zim_list_cache or [])
                         if isinstance(z.get("entries"), int)
                         and z["entries"] > 100
+                        and z.get("kind") != "map"
                         and _srv.zim_allowed(z["name"])
                     ]
                     if not eligible:
@@ -2413,6 +2571,9 @@ class ZimHandler(BaseHTTPRequestHandler):
             elif parsed.path.startswith("/manage/"):
                 return handle_manage_get(self, parsed, params)
 
+            elif parsed.path.startswith("/catalog-icon/"):
+                return self._serve_catalog_icon(parsed.path[14:])
+
             elif parsed.path.startswith("/static/"):
                 return self._serve_static(parsed.path[8:])  # strip "/static/"
 
@@ -2548,6 +2709,20 @@ class ZimHandler(BaseHTTPRequestHandler):
             if parsed.path == "/logout":
                 return self._handle_logout()
 
+            if parsed.path == "/me/prefs":
+                name = _users.resolve_request_user(self)
+                if not name:
+                    return self._json(401, {"error": "sign in required"})
+                blob = _users.load_user_data(name)
+                prefs = blob.get("preferences") if isinstance(blob.get("preferences"), dict) else {}
+                if "apps" in data:
+                    # True, False, or the names of the apps to keep.
+                    prefs["apps"] = _srv._apps_setting(_srv._apps_value(data.get("apps")) or frozenset())
+                blob["preferences"] = prefs
+                ok, err = _users.save_user_data(name, blob)
+                if not ok:
+                    return self._json(400, {"error": err})
+                return self._json(200, _prefs_reply(prefs))
             if parsed.path == "/userdata":
                 return self._handle_userdata_post(data)
 
@@ -3190,6 +3365,14 @@ class ZimHandler(BaseHTTPRequestHandler):
         if mimetype.startswith("text/html"):
             text = content.decode("UTF-8", errors="replace")
             text = re.sub(r"<base\s[^>]*>", "", text, flags=re.IGNORECASE)
+            if "techOrder" in text or "<source" in text:
+                from zimi import tube as _tube
+
+                # A video ZIM's page names one container; the ZIM may carry
+                # another (ted2zim's mp4 beside a webm it never downloaded).
+                if _srv._zim_kind_of(zim_name) == "video":
+                    text = _tube.mend_sources(text, zim_name, entry_path)
+                text = _tube.decoder_first_on_ios(text)
             if a11y:
                 from zimi import a11y as _a11y
 
@@ -3631,7 +3814,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 current_mtime = None
             with ZimHandler._static_cache_lock:
                 cached = ZimHandler._static_cache.get(rel_path)
-            if cached and current_mtime is not None and cached[2] == current_mtime:
+            if cached and current_mtime is not None and cached[2] == current_mtime and rel_path not in APP_PAGES:
                 body, content_type = cached[0], cached[1]
             else:
                 file_path = probe_path
@@ -3649,6 +3832,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # sw.js pins CACHE_VERSION to the running server version at
                 # serve time — the hardcoded constant went stale for a whole
                 # release cycle once and silently disabled the PWA.
+                # The app pages share one stylesheet, inlined here so each
+                # page stays one document and a change to the sheet reaches
+                # every app without a second request or a stale cache.
+                if rel_path in APP_PAGES:
+                    body = _inline_apps_assets(body)
                 if rel_path == "sw.js":
                     # Key the cache on version + content hash so same-version
                     # deploys still produce new sw.js bytes → the browser
@@ -3687,6 +3875,12 @@ class ZimHandler(BaseHTTPRequestHandler):
         if rel_path == "sw.js":
             self.send_header("Service-Worker-Allowed", "/")
             self.send_header("Cache-Control", "no-cache")
+        elif rel_path in APP_PAGES:
+            # The reader loads an app page at its bare address (no version
+            # in the URL, the strings ride in the hash), so "immutable for a
+            # year" kept the old page on a phone after every deploy. Small
+            # and inlined at serve time: ask each time.
+            self.send_header("Cache-Control", "no-cache")
         elif rel_path.startswith("i18n/"):
             self.send_header("Cache-Control", "public, max-age=86400")
         else:
@@ -3698,6 +3892,26 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     _favicon_cache = {}
+
+    def _serve_catalog_icon(self, name):
+        """A catalog illustration from the shipped snapshot.
+
+        Content-addressed, so the bytes for a name can never change and the
+        response is immutable: a year of cache and no validator. Unknown names
+        404 rather than falling through to anything, and the name is validated
+        as a hex digest inside catalog_snapshot before any file is touched.
+        """
+        from zimi import catalog_snapshot
+
+        data = catalog_snapshot.icon(name)
+        if not data:
+            return self._json(404, {"error": "not found"})
+        self.send_response(200)
+        self.send_header("Content-Type", "image/webp")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        self.end_headers()
+        self.wfile.write(data)
 
     def _serve_favicon(self, path="/favicon.png"):
         filename = "favicon-64.png" if "64" in path else "favicon.png"
@@ -3794,12 +4008,14 @@ class ZimHandler(BaseHTTPRequestHandler):
         #   s-maxage=3600 — Cloudflare edge caches 1 hour (fast for users worldwide)
         #   ETag — efficient revalidation (304 = no body, instant response)
         #   deploy.sh purges Cloudflare edge after each deploy.
+        apps = _srv.apps_shown()
+        stamp = _srv.apps_stamp(apps)
         return self._html(
             200,
-            SEARCH_UI_HTML,
+            _index_content(apps),
             vary=vary,
             cache="public, max-age=0, must-revalidate, s-maxage=3600",
-            etag=ZimHandler._index_etag,
+            etag=ZimHandler._index_etag if stamp is None else ZimHandler._index_etag.replace('"', '-apps-%s"' % stamp.replace(",", "-"), 1),
         )
 
     def _html(self, code, content, vary=None, cache=None, etag=None):

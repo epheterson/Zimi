@@ -66,7 +66,7 @@ check(/_bootDeepLinkArticle\(aZim, aPath\)/.test(route),
 // ── and that helper replaces rather than pushes ────────────────────────────
 
 const boot = fn('_bootDeepLinkArticle');
-check(/openArticle\([^)]*\{\s*replace:\s*true\s*\}\)/.test(boot),
+check(/openArticle\([^)]*\{\s*replace:\s*true\b[^}]*\}\)/.test(boot),
       'the helper replaces the boot entry instead of pushing onto it');
 check(/enterSource\([^,]+,\s*false\)/.test(boot),
       'and enters the source without pushing an entry of its own');
@@ -118,6 +118,24 @@ check(ctx.articleHistory.length === 1 && ctx.articleHistory[0].path === 'A', 'wh
 ctx.readerOpen = false; ctx.currentArticle = null; ctx.articleHistory = [];
 check(ctx._historyOnLanding({ zim: 'w', path: 'C' }) === 'forward' && ctx.articleHistory.length === 0,
       'with the reader closed there is nothing to record');
+
+// ── a map's position hash is not a navigation, but Back from the map is ────
+// Panning a map rewrites only the hash, and a hash-only popstate must not
+// reload the frame. The first guard remembered the last URL the HANDLER saw,
+// which pushes never update: it was still "/" when Back returned to "/" from
+// a map, so the guard swallowed the route and the map stayed open over the
+// home page. The guard has to judge against the article on screen.
+
+check(/if \(_urlIsOpenMapPage\(\)\) return;/.test(pop),
+      'the hash-only guard exists');
+const guard = src.slice(src.indexOf('function _urlIsOpenMapPage'), src.indexOf('function _watchReaderMap'));
+check(/location\.pathname \+ location\.search === _articleDeepLinkPath\(currentArticle\.zim, currentArticle\.path\)/.test(guard),
+      'and compares the landing URL with the OPEN article, not a remembered URL');
+const watcher = src.slice(src.indexOf('function _watchReaderMap'), src.indexOf("addEventListener('hashchange'"));
+check(/if \(!_urlIsOpenMapPage\(\)\) return;/.test(watcher),
+      'and the pan watcher asks the same question before it writes a hash, so a late moveend cannot stamp the home URL');
+check(!/_lastRoutedUrl/.test(src),
+      'no remembered last-routed URL anywhere: it can only go stale');
 
 console.log('');
 if (failures) {

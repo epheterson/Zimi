@@ -92,9 +92,54 @@ def _run_capture(cmd, timeout=60):
 HEARTBEAT_SECONDS = 15.0
 
 
-def _run_stream(cmd, sink, heartbeat_s=HEARTBEAT_SECONDS):
+def _read_some(stream, exited):
+    """The next bytes of ``stream``, or b"" at its end, or once the command
+    has exited and nothing more arrives within a moment. A tool that starts
+    a helper process (ArcticZim's build leaves a multiprocessing forkserver
+    behind) hands it the pipe, and that helper can outlive the tool with the
+    pipe open: a reader that waits for end-of-file then waits forever."""
+    if os.name != "nt":
+        import select
+
+        while True:
+            ready, _, _ = select.select([stream], [], [], 0.5)
+            if ready:
+                break
+            if exited():
+                return b""
+    return stream.read1(65536) if hasattr(stream, "read1") else stream.read(4096)
+
+
+def _stream_lines(stream, exited=lambda: False):
+    """The lines of a byte stream, ended by a newline OR a carriage return.
+    A progress bar (tqdm, pip) redraws with ``\r`` and never writes a
+    newline until it is done, so a reader that splits on newlines alone sees
+    an hour of progress as one line, at the end."""
+    buf = b""
+    while True:
+        chunk = _read_some(stream, exited)
+        if not chunk:
+            break
+        buf += chunk
+        while True:
+            i = min((k for k in (buf.find(b"\n"), buf.find(b"\r")) if k >= 0), default=-1)
+            if i < 0:
+                break
+            line, buf = buf[:i], buf[i + 1:]
+            if line:
+                yield line.decode("utf-8", "replace")
+    if buf:
+        yield buf.decode("utf-8", "replace")
+
+
+def _run_stream(cmd, sink, heartbeat_s=HEARTBEAT_SECONDS, watch=None):
     """Run a command, streaming every combined-output line through ``sink``.
     No timeout — warc2zim over a multi-GB WARC legitimately runs for hours.
+
+    ``watch(line)``, when given, sees every line too and may end the command
+    early: True for a success (a tool that has finished its work and does
+    not know it), the string "fail" for a failure (a tool whose helper has
+    died and that would wait for it forever).
 
     When the command prints nothing for ``heartbeat_s``, a line saying it is
     still running goes through ``sink`` instead: warc2zim converted cnn.com's
@@ -107,8 +152,6 @@ def _run_stream(cmd, sink, heartbeat_s=HEARTBEAT_SECONDS):
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
         )
     except OSError as e:
         sink(f"cannot run {cmd[0]}: {e}")
@@ -134,9 +177,12 @@ def _run_stream(cmd, sink, heartbeat_s=HEARTBEAT_SECONDS):
 
     threading.Thread(target=beat, daemon=True).start()
     try:
-        for line in proc.stdout or ():
+        for line in _stream_lines(proc.stdout, lambda: proc.poll() is not None) if proc.stdout else ():
             last[0] = time.monotonic()
-            sink(line.rstrip("\n"))
+            sink(line)
+            hit = watch(line) if watch is not None else False
+            if hit:
+                return 1 if hit == "fail" else 0
         return proc.wait()
     finally:
         done.set()

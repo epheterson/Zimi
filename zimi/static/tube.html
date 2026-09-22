@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZimiTube</title>
+<!--@apps.css@-->
+<style>
+  .strip { display: grid; grid-auto-flow: column; grid-auto-columns: 232px; gap: 12px; overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 6px; scrollbar-width: thin; }
+  @media (max-width: 480px) { .strip { grid-auto-columns: 68vw; } }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 14px; }
+  @media (max-width: 480px) { .grid { grid-template-columns: 1fr; gap: 12px; } }
+  .card { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; scroll-snap-align: start; cursor: pointer; color: inherit; }
+  .card:hover, .card:focus-visible { border-color: var(--amber); outline: none; }
+  .thumb { position: relative; aspect-ratio: 16 / 9; background: var(--surface2); display: block; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb .dur { position: absolute; inset-inline-end: 8px; bottom: 8px; font-size: 11px; padding: 2px 6px; border-radius: 4px; background: rgba(0,0,0,0.75); color: #fff; font-variant-numeric: tabular-nums; }
+  .thumb .play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; opacity: 0; transition: opacity .15s; background: rgba(0,0,0,0.18); }
+  .card:hover .play { opacity: 1; }
+  .body { padding: 12px; display: flex; gap: 10px; }
+  .body img { width: 26px; height: 26px; border-radius: 7px; flex: none; margin-top: 1px; }
+  .body .letter { width: 26px; height: 26px; border-radius: 7px; flex: none; background: var(--surface2); color: var(--text2); font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center; }
+  .txt { min-width: 0; }
+  .title { font-weight: 600; font-size: 14px; line-height: 1.32; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .meta { margin-top: 4px; font-size: 12px; color: var(--text2); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* the player */
+  .player { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; }
+  @media (max-width: 900px) { .player { grid-template-columns: 1fr; } }
+  .stage { background: #000; border-radius: var(--radius); overflow: hidden; aspect-ratio: 16 / 9; position: relative; }
+  /* The stage's own tools, in its corner: theater, and picture in picture where it exists. */
+  .stage-tools { position: absolute; top: 8px; inset-inline-end: 8px; display: flex; gap: 6px; z-index: 2; }
+  .stage-tools button { border: 0; border-radius: 8px; background: rgba(0,0,0,0.55); color: #fff; padding: 6px; cursor: pointer; display: inline-flex; line-height: 0; }
+  .stage-tools button:hover { background: rgba(0,0,0,0.8); }
+  /* Dark on any poster, white or black; the on state is the accent, not a lighter grey. */
+  .stage-tools button.on { color: #ffb347; }
+  .stage-tools svg { width: 18px; height: 18px; }
+  /* The ZIM's decoder draws on a canvas at the file's own size; the stage is the size. */
+  .stage ogvjs, .stage .ogvjs { position: absolute; inset: 0; width: 100% !important; height: 100% !important; display: block; }
+  .stage ogvjs canvas, .stage .ogvjs canvas { width: 100% !important; height: 100% !important; object-fit: contain; display: block; }
+  /* The controls the decoder has none of: play, a seek bar, the time, sound, full screen. */
+  .ctl { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 22px 10px 8px; color: #fff;
+    background: linear-gradient(to top, rgba(0,0,0,0.7), rgba(0,0,0,0)); z-index: 3; transition: opacity 0.25s; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .stage.quiet .ctl, .stage.quiet .stage-tools { opacity: 0; pointer-events: none; }
+  .ctl button { border: 0; background: none; color: #fff; padding: 4px; cursor: pointer; display: inline-flex; line-height: 0; }
+  .ctl svg { width: 20px; height: 20px; }
+  .ctl input[type=range] { flex: 1; accent-color: #fff; min-width: 0; }
+  .ctl .t { min-width: 5.5em; text-align: center; }
+  .stage video { width: 100%; height: 100%; display: block; background: #000; }
+  .stage .nomedia { color: #ddd; padding: 32px; text-align: center; line-height: 1.8; }
+  .stage .nomedia a { color: #fff; font-weight: 600; }
+  .about { padding: 12px 2px 0; }
+  .desc { font-size: 13.5px; color: var(--text); white-space: pre-wrap; max-width: 70ch; }
+  .next .item-r { display: grid; grid-template-columns: 124px 1fr; gap: 10px; margin: 0 0 10px; cursor: pointer; align-items: start; }
+  .next .item-r .thumb { border-radius: var(--radius-s); overflow: hidden; }
+  .next .item-r .t { font-weight: 600; font-size: 13px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .next .item-r .m { font-size: 11.5px; color: var(--text2); margin-top: 2px; }
+  /* Theater: the stage takes the whole width, up next moves below. */
+  .player.theater { grid-template-columns: 1fr; }
+  .player.theater .stage { aspect-ratio: 16 / 9; max-height: 80vh; }
+  /* The dock: the video keeps playing in a corner while you browse. */
+  .dock { position: fixed; right: 12px; bottom: 12px; width: 240px; z-index: 50; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,0.25); overflow: hidden; cursor: pointer; }
+  [dir="rtl"] .dock { right: auto; left: 12px; }
+  @media (max-width: 480px) { .dock { width: calc(100% - 24px); left: 12px; right: 12px; } }
+  .dock .stage { border-radius: 0; }
+  .dock .dock-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+  .dock .dock-t { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dock button { flex: none; border: 0; background: none; color: var(--text2); font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 4px; }
+  .dock button:hover { color: var(--amber); }
+</style>
+</head>
+<body>
+<div class="page">
+  <div id="home">
+    <div class="chips" id="chips"></div>
+    <div id="shelves"></div>
+    <div id="list" hidden>
+      <div class="head"><h2 id="l-title"></h2><span class="sorts" id="l-sorts"></span></div>
+      <div class="grid" id="grid"></div>
+      <button class="more" id="more" hidden onclick="tubeMore()"></button>
+    </div>
+    <div class="empty" id="empty" hidden></div>
+  </div>
+  <div id="watch" hidden>
+    <div class="player">
+      <div>
+        <div class="stage-wrap">
+          <div class="stage" id="stage"></div>
+        </div>
+        <div class="about item">
+          <h1 id="w-title"></h1>
+          <div class="who" id="w-who"></div>
+          <div class="desc" id="w-desc"></div>
+          <div class="actions">
+            <button id="autoplay" onclick="toggleAutoplay()"></button>
+            <a id="w-open" href="#"></a>
+          </div>
+        </div>
+      </div>
+      <div class="next"><div class="section-h" id="w-nexth"></div><div id="w-next"></div></div>
+    </div>
+  </div>
+  <!-- The dock: where the stage goes when you leave the player with a video
+       playing. Tap it to come back; × stops it. -->
+  <div class="dock" id="dock" hidden onclick="undock()">
+    <div id="dock-stage"></div>
+    <div class="dock-bar"><span class="dock-t" id="dock-t"></span><button id="dock-close" aria-label="close" onclick="event.stopPropagation(); stopDock()">&#215;</button></div>
+  </div>
+</div>
+<!--@apps.js@-->
+<script>
+// ZimiTube. One feed across every video ZIM, read from each ZIM's own index
+// by the server (/tube). The home is shelves, one per source, like a video
+// site's; a source chip, a query, or a library with one source is a list
+// with its own order; a card plays in ZimiTube's own player (/tube/play
+// reads the media behind the video's page), with the rest of the list up
+// next and autoplay into it. The original page is one tap away. The search
+// box in Zimi's top bar drives tubeSearch(q).
+var PAGE = 60;
+var STR = strings({ title: 'ZimiTube', videos: 'videos', video: 'video', langs: {}, more: 'More', none: 'No videos match.', empty: 'No video ZIMs installed yet.',
+  up_next: 'Up next', autoplay: 'Autoplay', theater: 'Theater', pip: 'Picture in picture', open_page: 'Open the original page', all: 'All',
+  sort_top: 'Top', sort_title: 'Title', sort_newest: 'Newest', sort_longest: 'Longest', no_media: 'This video cannot be played here.', missing: 'This video isn\'t in this ZIM.', play_pause: 'Play or pause', seek: 'Seek', sound: 'Sound', full_screen: 'Full screen' });
+var SORTS = ['top', 'title', 'newest', 'longest'];
+var _q = '', _zim = '', _sort = 'top', _all = [], _zims = [], _list = [], _shown = 0, _busy = false, _autoplay = true, _theater = false, _now = -1, _video = null;
+try { _sort = localStorage.getItem('zimitube_sort') || 'top'; if (SORTS.indexOf(_sort) < 0) _sort = 'top'; _autoplay = localStorage.getItem('zimitube_autoplay') !== '0'; _theater = localStorage.getItem('zimitube_theater') === '1'; } catch (e) {}
+
+function iconHtml(v, cls) { return v.zim_icon ? zimIcon(v.zim, cls) : '<span class="letter ' + cls + '">' + esc((v.zim_title || v.zim || '?')[0].toUpperCase()) + '</span>'; }
+function secs(d) { if (d == null || d === '') return 0; if (typeof d === 'string' && /:/.test(d)) { return d.split(':').reduce(function(a, b) { return a * 60 + (parseInt(b, 10) || 0); }, 0); } return parseInt(d, 10) || 0; }
+function fmtDur(d) { var n = secs(d); if (!(n > 0)) return ''; var h = Math.floor(n / 3600), m = Math.floor((n % 3600) / 60), sec = n % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(sec).padStart(2, '0'); }
+function zimTitle(name) { var z = _zims.filter(function(x) { return x.name === name; })[0]; return z ? z.title : name; }
+// A source's language, only when the sources do not all share one.
+function langOf(z) {
+  var langs = {}; _zims.forEach(function(x) { if (x.language) langs[x.language] = 1; });
+  return Object.keys(langs).length > 1 && z.language ? ' <span class="n">' + esc(STR.langs[z.language] || z.language) + '</span>' : '';
+}
+
+function card(v, i) {
+  var thumb = v.thumb ? zpath(v.zim, v.thumb) : '';
+  var who = [v.speaker, v.zim_title].filter(Boolean).join(' · ');
+  return '<a class="card" href="' + esc(zpath(v.zim, v.page)) + '" data-i="' + i + '" onclick="return play(event, ' + i + ')">' +
+    '<span class="thumb">' + (thumb ? '<img src="' + esc(thumb) + '" alt="" loading="lazy" onerror="this.remove()">' : '') +
+      '<span class="play"><svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>' +
+      (fmtDur(v.duration) ? '<span class="dur">' + esc(fmtDur(v.duration)) + '</span>' : '') + '</span>' +
+    '<span class="body">' + iconHtml(v, '') + '<span class="txt"><span class="title">' + esc(v.title) + '</span>' +
+      '<span class="meta">' + esc(who) + '</span></span></span></a>';
+}
+
+// The order on screen. "Top" is the server's interleave, each source's
+// own order (TED lists its most watched first) taken in turns; the rest sort
+// what is loaded, with what a source did not say (a date, a length) last.
+function sorted(items) {
+  var a = items.slice();
+  if (_sort === 'title') a.sort(function(x, y) { return String(x.title).localeCompare(String(y.title), STR.lang || undefined); });
+  else if (_sort === 'newest') a.sort(function(x, y) { return String(y.date || '').localeCompare(String(x.date || '')); });
+  else if (_sort === 'longest') a.sort(function(x, y) { return secs(y.duration) - secs(x.duration); });
+  return a;
+}
+
+function renderHome() {
+  var chips = document.getElementById('chips'), shelves = document.getElementById('shelves'), list = document.getElementById('list'),
+      grid = document.getElementById('grid'), empty = document.getElementById('empty'), more = document.getElementById('more');
+  chips.innerHTML = (_zims.length > 1 ? '<button class="chip' + (!_zim ? ' on' : '') + '" onclick="setZim(\'\')">' + esc(STR.all) + '</button>' : '') +
+    _zims.map(function(z) { return '<button class="chip' + (_zim === z.name ? ' on' : '') + '" onclick="setZim(' + J(z.name) + ')">' +
+      (z.icon ? zimIcon(z.name) : '') + esc(z.title) + langOf(z) + ' <span class="n">' + z.count + '</span></button>'; }).join('');
+  chips.hidden = _zims.length < 2;
+  _list = sorted(_all.filter(function(v) { return !_zim || v.zim === _zim; }));
+  // Browsing is shelves, one per source, its first dozen each, and nothing
+  // else. A chip, a query, or a library with one source is a list: every
+  // video, in an order of your choosing, a page at a time.
+  var browsing = !_q && !_zim && _zims.length > 1;
+  shelves.hidden = !browsing;
+  list.hidden = browsing;
+  shelves.innerHTML = browsing ? _zims.map(function(z) {
+    var mine = _all.filter(function(v) { return v.zim === z.name; }).slice(0, 12);
+    return '<section class="shelf"><div class="shelf-h">' + (z.icon ? zimIcon(z.name) : '') +
+      '<h2>' + esc(z.title) + langOf(z) + '</h2><button class="all" onclick="setZim(' + J(z.name) + ')">' + esc(STR.all) + ' ' + z.count + CHEV + '</button></div>' +
+      '<div class="strip">' + mine.map(function(v) { return card(v, _list.indexOf(v)); }).join('') + '</div></section>';
+  }).join('') : '';
+  if (!browsing) {
+    _shown = Math.min(_list.length, Math.max(_shown, PAGE));
+    grid.innerHTML = _list.slice(0, _shown).map(function(v, i) { return card(v, i); }).join('');
+    document.getElementById('l-title').innerHTML = esc(_q ? '“' + _q + '”' : (_zim ? zimTitle(_zim) : STR.title)) +
+      (_list.length ? ' <span class="n">' + esc(count(_list.length, STR.video, STR.videos)) + '</span>' : '');
+    document.getElementById('l-sorts').innerHTML = SORTS.map(function(k) { return '<button class="chip' + (k === _sort ? ' on' : '') + '" onclick="setSort(' + J(k) + ')">' + esc(STR['sort_' + k]) + '</button>'; }).join('');
+  } else {
+    _shown = 0; grid.innerHTML = '';
+  }
+  empty.hidden = _list.length > 0;
+  empty.innerHTML = _q ? esc(STR.none) : esc(STR.empty) + (STR.catalog ? '<br><a class="door" href="/?manage" onclick="return goCatalog()">' + esc(STR.catalog) + CHEV + '</a>' : '');
+  more.hidden = browsing || _shown >= _list.length;
+  more.textContent = STR.more;
+}
+
+function load() {
+  if (_busy) return; _busy = true;
+  var url = '/tube?limit=5000&offset=0' + (_q ? '&q=' + encodeURIComponent(_q) : '');
+  fetch(url).then(function(r) { return r.json(); }).then(function(d) {
+    _all = d.items || []; _zims = d.zims || []; _shown = 0; renderHome();
+    // Opened at an address: play what it names, once, then it is a page like
+    // any other visit here.
+    if (STR.play) { var want = STR.play; STR.play = ''; var i = _list.findIndex(function(v) { return v.zim + '/' + v.page === want; }); if (i >= 0) play(null, i); }
+  }).catch(function() { document.getElementById('empty').hidden = false; document.getElementById('empty').textContent = STR.none; })
+    .finally(function() { _busy = false; });
+}
+function tubeMore() { _shown += PAGE; renderHome(); }
+function tubeSearch(q) { _q = (q || '').trim(); closePlayer(true); load(); }
+function setSort(v) { _sort = v; try { localStorage.setItem('zimitube_sort', v); } catch (e) {} _shown = 0; renderHome(); }
+function setZim(name) { _zim = name; _shown = 0; renderHome(); window.scrollTo(0, 0); }
+function toggleAutoplay() { _autoplay = !_autoplay; try { localStorage.setItem('zimitube_autoplay', _autoplay ? '1' : '0'); } catch (e) {} paintAutoplay(); }
+function paintAutoplay() { var b = document.getElementById('autoplay'); b.textContent = STR.autoplay + (_autoplay ? ' ✓' : ''); b.className = _autoplay ? 'on' : ''; b.setAttribute('aria-pressed', String(_autoplay)); }
+// Theater: the stage across the whole width, remembered.
+function toggleTheater() { _theater = !_theater; try { localStorage.setItem('zimitube_theater', _theater ? '1' : '0'); } catch (e) {} paintTheater(); }
+function paintTheater() {
+  document.querySelector('.player').classList.toggle('theater', _theater);
+  var b = document.getElementById('theater'); if (b) { b.className = _theater ? 'on' : ''; b.setAttribute('aria-pressed', String(_theater)); }
+}
+var _THEATER_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 19v2M18 19v2"/></svg>';
+var _PIP_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="11" width="8" height="6" rx="1" fill="currentColor" stroke="none"/></svg>';
+// The tools sit on the stage itself, where a player's controls are.
+function stageTools(stage, pip) {
+  var old = stage.querySelector('.stage-tools'); if (old) old.remove();
+  var tools = document.createElement('div'); tools.className = 'stage-tools';
+  tools.innerHTML = (pip ? '<button type="button" id="pip" title="' + esc(STR.pip) + '" aria-label="' + esc(STR.pip) + '" onclick="enterPip()">' + _PIP_SVG + '</button>' : '') +
+    '<button type="button" id="theater" title="' + esc(STR.theater) + '" aria-label="' + esc(STR.theater) + '" onclick="toggleTheater()">' + _THEATER_SVG + '</button>';
+  stage.appendChild(tools);
+  paintTheater();
+}
+// The decoder has no controls of its own (a browser's <video> does; ogv.js
+// draws on a canvas). These are them: play and pause, a seek bar, the time,
+// sound on and off, full screen; hidden while the pointer rests, back on a
+// touch or a move, as a player's are.
+var _PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4l14 8-14 8z"/></svg>';
+var _PAUSE_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>';
+var _SOUND_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14"/></svg>';
+var _MUTE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M23 9l-6 6M17 9l6 6"/></svg>';
+var _FULL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>';
+function clock(s) { s = Math.max(0, Math.floor(s || 0)); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); }
+function ogvControls(stage, p) {
+  var old = stage.querySelector('.ctl'); if (old) old.remove();
+  var bar = document.createElement('div'); bar.className = 'ctl';
+  bar.innerHTML = '<button type="button" class="pp" aria-label="' + esc(STR.play_pause || 'Play') + '">' + _PAUSE_SVG + '</button>' +
+    '<span class="t">0:00 / 0:00</span><input type="range" min="0" max="1000" value="0" aria-label="' + esc(STR.seek || 'Seek') + '">' +
+    '<button type="button" class="snd" aria-label="' + esc(STR.sound || 'Sound') + '">' + _SOUND_SVG + '</button>' +
+    '<button type="button" class="fs" aria-label="' + esc(STR.full_screen || 'Full screen') + '">' + _FULL_SVG + '</button>';
+  stage.appendChild(bar);
+  var pp = bar.querySelector('.pp'), t = bar.querySelector('.t'), seek = bar.querySelector('input'), snd = bar.querySelector('.snd'), fs = bar.querySelector('.fs');
+  var scrubbing = false;
+  var paint = function() {
+    pp.innerHTML = p.paused ? _PLAY_SVG : _PAUSE_SVG;
+    var d = p.duration || 0, c = p.currentTime || 0;
+    t.textContent = clock(c) + ' / ' + clock(d);
+    if (!scrubbing && d) seek.value = Math.round(c / d * 1000);
+    snd.innerHTML = p.muted ? _MUTE_SVG : _SOUND_SVG;
+  };
+  var toggle = function() { if (p.paused) p.play(); else p.pause(); };
+  pp.onclick = toggle;
+  p.addEventListener('click', toggle);
+  snd.onclick = function() { p.muted = !p.muted; paint(); };
+  fs.onclick = function() { var el = stage; try { (el.requestFullscreen || el.webkitRequestFullscreen).call(el); } catch (e) {} };
+  seek.addEventListener('input', function() { scrubbing = true; t.textContent = clock(seek.value / 1000 * (p.duration || 0)) + ' / ' + clock(p.duration); });
+  seek.addEventListener('change', function() { scrubbing = false; if (p.duration) p.currentTime = seek.value / 1000 * p.duration; });
+  ['play', 'pause', 'timeupdate', 'loadedmetadata', 'durationchange', 'ended', 'volumechange'].forEach(function(ev) { p.addEventListener(ev, paint); });
+  // At rest the controls step aside; a touch or a move brings them back.
+  var quietTimer = null;
+  var wake = function() { stage.classList.remove('quiet'); clearTimeout(quietTimer); quietTimer = setTimeout(function() { if (!p.paused) stage.classList.add('quiet'); }, 2500); };
+  stage.addEventListener('mousemove', wake); stage.addEventListener('touchstart', wake, { passive: true });
+  p.addEventListener('pause', function() { stage.classList.remove('quiet'); });
+  p.addEventListener('play', wake);
+  paint();
+}
+
+// Picture in picture, where the browser has it (Safari's own way, or the
+// standard one); the button appears only then.
+function pipAvailable(v) { return !!(v && (typeof v.requestPictureInPicture === 'function' && document.pictureInPictureEnabled || typeof v.webkitSetPresentationMode === 'function' && v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode('picture-in-picture'))); }
+function enterPip() {
+  var v = _video; if (!v) return;
+  try {
+    if (typeof v.webkitSetPresentationMode === 'function' && v.webkitSupportsPresentationMode && v.webkitSupportsPresentationMode('picture-in-picture')) v.webkitSetPresentationMode('picture-in-picture');
+    else if (v.requestPictureInPicture) v.requestPictureInPicture().catch(function() {});
+  } catch (e) {}
+}
+
+// ZimiTube's own player. The media behind the video's page, in a plain
+// <video> with the page's subtitle tracks; the rest of the list up next;
+// autoplay rolls into the next one. Modifier-click keeps the link's own
+// behaviour (the page, in a new tab).
+function play(e, i) {
+  if (e && (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1)) return true;
+  if (e) e.preventDefault();
+  var v = _list[i]; if (!v) return false;
+  if (_docked >= 0) stopDock();
+  _now = i;
+  document.getElementById('home').hidden = true;
+  var watch = document.getElementById('watch'); watch.hidden = false;
+  document.getElementById('w-title').textContent = v.title;
+  document.getElementById('w-who').innerHTML = iconHtml(v, '') + '<span>' + (v.speaker ? '<b>' + esc(v.speaker) + '</b> · ' : '') + esc(v.zim_title) + (v.date ? ' · ' + esc(v.date) : '') + '</span>';
+  document.getElementById('w-desc').textContent = v.description || '';
+  openLink(document.getElementById('w-open'), v.zim, v.page, STR.open_page);
+  paintAutoplay(); paintTheater();
+  document.getElementById('dock').hidden = true;
+  var stage = document.getElementById('stage'); stage.innerHTML = ''; _video = null;
+  stageTools(stage, false);
+  window.scrollTo(0, 0);
+  tell({ zimi: 'tube-play', play: v.zim + '/' + v.page, title: v.title });
+  // The stage says so, and holds the way to the page, when the media is not
+  // in a shape a browser plays.
+  // Two different truths: the file is not in the ZIM (the page names one
+  // the scrape never got), or it is there and this browser cannot decode it.
+  var noMedia = function(missing) { stage.innerHTML = '<div class="nomedia">' + esc(missing ? STR.missing : STR.no_media) + (missing ? '' : '<br><a href="' + esc(zpath(v.zim, v.page)) + '">' + esc(STR.open_page) + CHEV + '</a>') + '</div>'; };
+  var stageEl = stage;
+  fetch('/tube/play?zim=' + encodeURIComponent(v.zim) + '&page=' + encodeURIComponent(v.page)).then(function(r) { return r.ok ? r.json() : null; }).then(function(m) {
+    if (_now !== i) return;
+    if (!m || !m.media || !m.media.length || m.missing) { noMedia(!!(m && m.missing)); return; }
+    // A file the browser cannot decode (WebM on an iPhone): the ZIM's own
+    // ogv.js decoder, the way the original page plays it.
+    // An iPhone says it might play WebM and then cannot decode it; the
+    // ZIM's decoder (what the TED page itself uses there) goes first.
+    var probe = document.createElement('video');
+    var playable = m.media.some(function(src) { return !src.type || probe.canPlayType(src.type) !== ''; });
+    // Safari, the Mac's as well: it says it can play WebM and then plays the
+    // picture without its Vorbis sound (Eric: "this one DOES play but no audio").
+    var ua = navigator.userAgent;
+    var apple = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) || (/Safari\//.test(ua) && !/Chrome|Chromium|Edg|OPR|Android/.test(ua));
+    var webmOnly = m.media.every(function(src) { return /webm/i.test(src.type || src.path); });
+    if ((!playable || (apple && webmOnly)) && m.ogv) { playWithOgv(v, m, stage, i); return; }
+    var vid = document.createElement('video');
+    vid.controls = true; vid.autoplay = true; vid.playsInline = true; vid.preload = 'auto';
+    if (m.poster) vid.poster = zpath(v.zim, m.poster);
+    // The browser said it might play the file and then could not (an iPhone
+    // and WebM): the decoder the ZIM ships takes over, the way it would have
+    // had the browser said no up front.
+    var fell = false;
+    var fallBack = function() { if (fell || _now !== i) return; fell = true; if (m.ogv) playWithOgv(v, m, stage, i); else noMedia(); };
+    vid.addEventListener('error', fallBack);
+    m.media.forEach(function(src, k) { var s = document.createElement('source'); s.src = zpath(v.zim, src.path); if (src.type) s.type = src.type; if (k === m.media.length - 1) s.addEventListener('error', fallBack); vid.appendChild(s); });
+    (m.subs || []).forEach(function(t, k) { var tr = document.createElement('track'); tr.kind = 'subtitles'; tr.src = zpath(v.zim, t.path); tr.srclang = t.lang || ''; tr.label = t.label || t.lang || 'subtitles'; if (k === 0 && /^en/.test(t.lang || '')) tr.default = true; vid.appendChild(tr); });
+    vid.addEventListener('ended', function() { if (_autoplay && _now === i && _list[i + 1]) play(null, i + 1); });
+    stage.appendChild(vid); _video = vid;
+    stageTools(stage, pipAvailable(vid));
+    var p = vid.play(); if (p && p.catch) p.catch(function() {});
+  }).catch(function() { if (_now === i) noMedia(); });
+  // Up next is what plays after this one, in the list's order; the last
+  // video has nothing up next and says nothing.
+  var upcoming = _list.slice(i + 1, i + 13);
+  document.getElementById('w-nexth').textContent = upcoming.length ? STR.up_next : '';
+  document.getElementById('w-next').innerHTML = upcoming.map(function(w) {
+    var j = _list.indexOf(w);
+    return '<div class="item-r" onclick="play(null, ' + j + ')"><span class="thumb">' + (w.thumb ? '<img src="' + esc(zpath(w.zim, w.thumb)) + '" alt="" loading="lazy" onerror="this.remove()">' : '') +
+      (fmtDur(w.duration) ? '<span class="dur">' + esc(fmtDur(w.duration)) + '</span>' : '') + '</span><div><div class="t">' + esc(w.title) + '</div><div class="m">' + esc([w.speaker, w.zim_title].filter(Boolean).join(' · ')) + '</div></div></div>';
+  }).join('');
+  return false;
+}
+function goCatalog() { tell({ zimi: 'catalog', category: 'ted' }); return false; }
+// ogv.js: loaded once per ZIM from the ZIM itself, then a player that
+// decodes WebM in JavaScript. Slower than the browser's own, and the only
+// way a TED talk plays on an iPhone.
+var _ogvLoaded = {};
+function playWithOgv(v, m, stage, i) {
+  var base = zpath(v.zim, m.ogv);
+  var start = function() {
+    if (_now !== i || typeof OGVPlayer === 'undefined') { if (_now === i) stage.innerHTML = '<div class="nomedia">' + esc(STR.no_media) + '<br><a href="' + esc(zpath(v.zim, v.page)) + '">' + esc(STR.open_page) + CHEV + '</a></div>'; return; }
+    try {
+      if (window.OGVLoader) OGVLoader.base = base;
+      var p = new OGVPlayer();
+      p.src = zpath(v.zim, m.media[0].path);
+      if (m.poster) p.poster = zpath(v.zim, m.poster);
+      p.setAttribute('playsinline', '');
+      p.addEventListener('ended', function() { if (_autoplay && _now === i && _list[i + 1]) play(null, i + 1); });
+      stage.innerHTML = ''; stage.appendChild(p); _video = p;
+      stageTools(stage, false);
+      ogvControls(stage, p);
+      p.play();
+    } catch (e) { stage.innerHTML = '<div class="nomedia">' + esc(STR.no_media) + '</div>'; }
+  };
+  if (_ogvLoaded[base]) { start(); return; }
+  var s = document.createElement('script');
+  s.src = base + '/ogv.js';
+  s.onload = function() { _ogvLoaded[base] = true; start(); };
+  s.onerror = function() { start(); };
+  document.head.appendChild(s);
+}
+// Leaving the player: a video that is playing keeps playing, in the dock,
+// so you can browse the shelves while you listen. Anything else stops.
+function closePlayer(silent) {
+  var stage = document.getElementById('stage');
+  var v = _video;
+  var playing = v && !v.paused && !v.ended && _now >= 0;
+  if (playing && !silent) {
+    document.getElementById('dock-stage').appendChild(v);
+    document.getElementById('dock-t').textContent = (_list[_now] || {}).title || '';
+    document.getElementById('dock').hidden = false;
+  } else {
+    stage.innerHTML = ''; stage.classList.remove('quiet'); _video = null;
+    document.getElementById('dock').hidden = true;
+  }
+  if (_now >= 0) tell({ zimi: 'tube-home' });
+  _docked = playing && !silent ? _now : -1;
+  _now = -1;
+  document.getElementById('watch').hidden = true;
+  document.getElementById('home').hidden = false;
+  if (!silent) window.scrollTo(0, 0);
+}
+var _docked = -1;
+// Back to the player from the dock: the same video, where it is.
+function undock() {
+  var i = _docked; var v = _video; if (i < 0 || !v) { stopDock(); return; }
+  _docked = -1; _now = i;
+  var w = _list[i];
+  document.getElementById('home').hidden = true;
+  document.getElementById('watch').hidden = false;
+  document.getElementById('dock').hidden = true;
+  document.getElementById('stage').appendChild(v);
+  window.scrollTo(0, 0);
+  if (w) tell({ zimi: 'tube-play', play: w.zim + '/' + w.page, title: w.title });
+}
+function stopDock() {
+  var v = _video; if (v) { try { v.pause(); } catch (e) {} v.remove(); }
+  _video = null; _docked = -1;
+  document.getElementById('dock').hidden = true;
+}
+window.tubeSearch = tubeSearch; window.tubeMore = tubeMore; window.play = play; window.closePlayer = closePlayer;
+window.setSort = setSort; window.setZim = setZim; window.toggleAutoplay = toggleAutoplay;
+window.toggleTheater = toggleTheater; window.enterPip = enterPip; window.undock = undock; window.stopDock = stopDock;
+// At the top: the shelves (or the one-source list with nothing chosen).
+window.__top = function() { return _now < 0 && !_q && !_zim; };
+// The dice: a video from the whole feed, played from the list it belongs to.
+window.__random = function() {
+  if (!_all.length) return;
+  var v = _all[Math.floor(Math.random() * _all.length)];
+  _q = ''; _zim = ''; _shown = 0; renderHome();
+  var i = _list.indexOf(v); if (i >= 0) play(null, i);
+};
+window.__back = function() {
+  if (_now >= 0) { closePlayer(); return true; }
+  if (!document.getElementById('list').hidden) { _q = ''; setZim(''); if (!document.getElementById('list').hidden) load(); return true; }
+  return false;
+};
+window.__home = function() { if (_now >= 0) closePlayer(true); _q = ''; _zim = ''; _shown = 0; renderHome(); window.scrollTo(0, 0); };
+window.__route = function(id) {
+  if (!id) { if (_now >= 0) closePlayer(); return; }
+  var i = _list.findIndex(function(v) { return v.zim + '/' + v.page === id; });
+  if (i >= 0 && i !== _now) play(null, i);
+};
+load();
+</script>
+</body>
+</html>

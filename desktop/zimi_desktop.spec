@@ -100,6 +100,39 @@ if platform.system() == 'Windows':
 # unless we collect the whole packages. Missing pieces = a frozen app that
 # crashes at launch trying to bring up the window. Windows-only; on mac/linux
 # these packages aren't installed and this collects nothing.
+# ---------------------------------------------------------------------------
+# Linux: WebKitGTK's typelibs. pywebview's GTK backend asks GObject
+# introspection for WebKit2 (4.1, else 4.0) and Soup; PyInstaller has hooks
+# for Gtk but none for those, and its runtime hook points introspection at
+# the bundle alone, so every Linux build shipped without the one namespace
+# the window needs (issue #81: "Namespace WebKit2 not available", six
+# distros). The typelibs are bundled here, both versions the build host
+# has; the libraries themselves are NOT, on purpose: the typelib names the
+# .so and the host's own WebKitGTK is loaded, whichever it has. Carrying a
+# WebKit in the bundle would mean carrying its whole stack and its GPU
+# quirks; the host's is the one that matches the host's drivers.
+# ---------------------------------------------------------------------------
+webkit_datas = []
+webkit_hiddenimports = []
+if platform.system() == 'Linux':
+    from PyInstaller.utils.hooks.gi import GiModuleInfo
+    for _mod, _ver in (('WebKit2', '4.1'), ('JavaScriptCore', '4.1'), ('Soup', '3.0'),
+                       ('WebKit2', '4.0'), ('JavaScriptCore', '4.0'), ('Soup', '2.4')):
+        try:
+            _info = GiModuleInfo(_mod, _ver)
+            if not _info.available:
+                print('spec: no %s %s typelib on this host' % (_mod, _ver))
+                continue
+            _b, _d, _h = _info.collect_typelib_data()
+            webkit_datas += _d
+            # Only WebKit2 is imported by name (pywebview's gtk backend);
+            # Soup and JavaScriptCore ride along as typelibs it resolves.
+            if _mod == 'WebKit2':
+                webkit_hiddenimports += [h for h in _h if 'JavaScriptCore' not in h]
+            print('spec: bundling the %s %s typelib' % (_mod, _ver))
+        except Exception as e:  # the host lacks that version: fine
+            print('spec: no %s %s typelib on this host (%s)' % (_mod, _ver, e))
+
 pythonnet_datas = []
 pythonnet_bins = []
 windows_hiddenimports = []
@@ -128,7 +161,7 @@ a = Analysis(
         (os.path.join(REPO_ROOT, 'zimi/templates'), 'zimi/templates'),
         (os.path.join(REPO_ROOT, 'zimi/assets'), 'zimi/assets'),
         (os.path.join(REPO_ROOT, 'zimi/static'), 'zimi/static'),
-    ] + pythonnet_datas,
+    ] + pythonnet_datas + webkit_datas,
     hiddenimports=[
         'zimi',
         'zimi.server',
@@ -148,10 +181,11 @@ a = Analysis(
         'fitz',
         'PIL',
         'webview',
-        # Windows auto-updater bridge (imported lazily in zimi_desktop).
-        'zimi_winsparkle',
+        # The app and its Windows auto-updater bridge (imported lazily).
+        'zimi.desktop',
+        'zimi.winsparkle',
         *lt_hidden,
-    ] + zeroconf_hiddenimports + windows_hiddenimports + (['gi'] if platform.system() == 'Linux' else []),
+    ] + zeroconf_hiddenimports + windows_hiddenimports + webkit_hiddenimports + (['gi'] if platform.system() == 'Linux' else []),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -170,6 +204,43 @@ a = Analysis(
     noarchive=False,
     cipher=block_cipher,
 )
+
+# ---------------------------------------------------------------------------
+# Linux: system libraries are the host's. PyInstaller bundles every shared
+# library the build machine's Python happened to load: GLib, GTK, gnutls,
+# and a hundred more, all Ubuntu 22.04's. The window then fails wherever
+# the host's WebKitGTK and its dependencies link against newer ones:
+#   24.04: libgudev-1.0.so.0: undefined symbol: g_once_init_enter_pointer
+#   Fedora 41: libgnutls.so.30: version `GNUTLS_3_8_2' not found
+# So the bundle's own library path holds only what a Linux desktop cannot
+# be assumed to have: Python's extension modules, the libraries the wheels
+# vendor (libzim, libtorrent, PyMuPDF, Pillow, PyGObject's _gi) and
+# libgirepository. Every system library goes to _internal/fallback instead,
+# and linux/AppRun puts on the library path only those the host lacks
+# (a bare box without sqlite3, say, still runs the server and the browser
+# mode). Where the host has a library, the host's is used, and matching the
+# host's own WebKitGTK is the whole point.
+# ---------------------------------------------------------------------------
+if platform.system() == 'Linux':
+    _kept, _fallback = [], []
+    for _entry in a.binaries:
+        _dest, _src, _kind = _entry[0], _entry[1], _entry[2]
+        _base = os.path.basename(_dest)
+        _ours = (
+            _kind == 'EXTENSION'
+            or '/site-packages/' in _src.replace(os.sep, '/')
+            or _base.startswith('libpython')
+            or _base.startswith('libgirepository')
+        )
+        if _dest.startswith('gio_modules'):
+            continue
+        if _ours:
+            _kept.append(_entry)
+        else:
+            _fallback.append((os.path.join('fallback', _base), _src, _kind))
+    a.binaries = _kept + _fallback
+    print('spec: %d system libraries moved to fallback, for hosts that lack them: %s'
+          % (len(_fallback), ' '.join(sorted(set(os.path.basename(e[0]) for e in _fallback)))))
 
 pyz = PYZ(a.pure, cipher=block_cipher)
 

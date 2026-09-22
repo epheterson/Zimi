@@ -84,6 +84,7 @@ def test_creator_payload_answers_every_question_the_section_asks(monkeypatch):
         "browser_ready",
         "alive_ready",
         "sidecar",
+        "reddit_ready",
         "probing",
         "create_root",
         "block_ads_default",
@@ -99,6 +100,7 @@ def test_creator_payload_answers_every_question_the_section_asks(monkeypatch):
     body = _settled_creator()
     assert body["browser_ready"] is True
     assert body["alive_ready"] is False
+    assert body["reddit_ready"] in (True, False)  # two files on disk, no probe
     assert body["create_root"] == "/srv/zims"
     # "dir" is part of the contract, not incidental: it is where THIS server
     # looks for the sidecar, and the Create page puts it into the install
@@ -206,6 +208,7 @@ def test_creator_counts_break_down_made_here_zims_by_type(made_library):
         "folder": 0,
         "export": 1,
         "edit": 0,
+        "reddit": 0,
     }
 
 

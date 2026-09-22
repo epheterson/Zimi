@@ -17,7 +17,13 @@ confinement: strict
 apps:
   zimi:
     command: Zimi
-    plugs: [network, network-bind, home, removable-media]
+    # The GNOME extension brings GTK 3 and WebKitGTK (4.0 and 4.1) into a
+    # strictly confined snap through the gnome-42-2204 platform snap, and
+    # wires the desktop interfaces a window needs. Without it the snap had
+    # no display access and no WebKit at all (issue #81), and the app died
+    # on launch on every machine.
+    extensions: [gnome]
+    plugs: [network, network-bind, home, removable-media, desktop, desktop-legacy, x11, wayland, opengl]
 
 parts:
   zimi:

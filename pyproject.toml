@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "zimi"
-version = "1.9.6"
+version = "1.10.0"
 description = "Offline knowledge server for ZIM files — search and read Wikipedia, Stack Overflow and 50+ sources with no internet"
 readme = "README.md"
 license = {text = "MIT"}
@@ -67,6 +67,9 @@ dependencies = [
 [project.optional-dependencies]
 bt = ["libtorrent==2.0.*"]
 pdf = ["PyMuPDF>=1.23.0"]
+# `zimi desktop`: the native window. On Linux it also needs the distro's
+# WebKitGTK and PyGObject (see README); without them it opens the browser.
+desktop = ["pywebview>=4.0.0"]
 # <2.0 for the same reason requirements.txt pins it: mcp 2.0 dropped the
 # vendored FastMCP this server is built on, moving it to a separate `fastmcp`
 # distribution. Without the ceiling, `pip install zimi[mcp]` resolves to 2.x and

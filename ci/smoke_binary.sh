@@ -10,6 +10,10 @@
 set -euo pipefail
 
 BINARY="$1"
+# How the binary is launched: --serve (the headless server), or --browser
+# (the app without a native window, which opens the system browser and
+# prints the same READY line).
+MODE_ARGS="${SMOKE_MODE_ARGS:---serve}"
 ATTEMPTS="${SMOKE_ATTEMPTS:-3}"
 READY_TIMEOUT="${SMOKE_READY_TIMEOUT:-60}"
 LOG=$(mktemp)
@@ -24,8 +28,9 @@ PORT=""
 for attempt in $(seq 1 "$ATTEMPTS"); do
   TMPZIM=$(mktemp -d)
   : > "$LOG"
-  echo "Attempt $attempt/$ATTEMPTS: starting $BINARY --serve --port 0 ..."
-  "$BINARY" --serve --port 0 --zim-dir "$TMPZIM" > "$LOG" 2>&1 &
+  echo "Attempt $attempt/$ATTEMPTS: starting $BINARY $MODE_ARGS --port 0 ..."
+  # shellcheck disable=SC2086
+  "$BINARY" $MODE_ARGS --port 0 --zim-dir "$TMPZIM" > "$LOG" 2>&1 &
   PID=$!
 
   deadline=$(( SECONDS + READY_TIMEOUT ))

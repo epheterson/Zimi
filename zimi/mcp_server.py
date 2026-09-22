@@ -577,5 +577,169 @@ def deep_search(
     return "\n".join(lines)
 
 
+# ── the apps: the library's videos, Q&A and subreddits, sorted and threaded ──
+#
+# The same readers ZimiTube, ZimiExchange and Reddot draw from, as text an
+# agent can use: a feed of talks across every video ZIM, a site's questions
+# most voted first, a question with its answers (accepted first), a
+# subreddit's posts top or new, a post with its comment tree indented.
+
+
+def _strip_html(html):
+    import html as _h
+    import re
+
+    text = re.sub(r"<(script|style)\b.*?</\1>", "", html or "", flags=re.S | re.I)
+    text = re.sub(r"</(p|div|li|br|h\d|blockquote|pre)>", "\n", text, flags=re.I)
+    text = re.sub(r"<[^>]+>", "", text)
+    return re.sub(r"\n{3,}", "\n\n", _h.unescape(text)).strip()
+
+
+@mcp.tool()
+def list_videos(query: str = "", limit: int = 30, offset: int = 0) -> str:
+    """List videos across every video ZIM (TED, YouTube, Zimi's own): one
+    card per talk, sources interleaved in each ZIM's own order (TED's most
+    watched first).
+
+    Args:
+        query: keep videos whose title, description or speaker carry every word
+        limit: how many (default 30)
+        offset: skip this many
+    Use read(zim, path=page) for a video's page; /tube/play for its media.
+    """
+    from zimi import tube
+
+    got = tube.feed(query, limit=max(1, min(int(limit), 500)), offset=max(0, int(offset)))
+    if not got["items"]:
+        return "No videos match." if query else "No video ZIMs installed."
+    lines = [f"{got['total']} videos across {got['sources']} sources" + (f" for '{query}'" if query else "") + ":\n"]
+    for v in got["items"]:
+        who = " · ".join(x for x in (v.get("speaker"), v.get("zim_title")) if x)
+        extra = " · ".join(str(x) for x in (v.get("duration"), v.get("date")) if x)
+        lines.append(f"- **{v['title']}** ({who})" + (f" · {extra}" if extra else "") + f"\n  zim: {v['zim']}  path: {v['page']}")
+        if v.get("description"):
+            lines.append(f"  {str(v['description'])[:200]}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def list_questions(site: str = "", tag: str = "", page: int = 1) -> str:
+    """List a Stack Exchange site's questions, most voted first (the site's
+    own order), or a tag's. With no site, list the installed sites.
+
+    Args:
+        site: the ZIM name of the site (see the listing with no arguments)
+        tag: narrow to one tag
+        page: page number (default 1)
+    Use read_question(site, path) for a question with its answers.
+    """
+    from zimi import exchange
+
+    if not site:
+        sites = exchange.sites()
+        if not sites:
+            return "No Stack Exchange sites installed."
+        return "Installed sites:\n" + "\n".join(f"- **{s['title']}** (`{s['name']}`)" for s in sites)
+    got = exchange.listing(site, max(1, int(page)), tag or "")
+    if not got["rows"]:
+        return f"No questions found for '{site}'" + (f" tagged {tag}" if tag else "") + "."
+    lines = [f"{site}" + (f" [{tag}]" if tag else "") + f" — page {page} of {got['pages']}:\n"]
+    for r in got["rows"]:
+        mark = " ✓" if r.get("accepted") else ""
+        lines.append(f"- **{r['title']}** — {r['votes']} votes, {r['answers']} answers{mark}" + (f" · {', '.join(r['tags'])}" if r.get("tags") else "") + f"\n  path: {r['page']}")
+        if r.get("excerpt"):
+            lines.append(f"  {r['excerpt'][:200]}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def read_question(site: str, path: str, max_length: int = 8000) -> str:
+    """A question with its answers, the accepted one first, as text.
+
+    Args:
+        site: the ZIM name of the site
+        path: the question's path (questions/<id>/<slug>), from list_questions
+        max_length: cut the text here
+    """
+    from zimi import exchange
+
+    q = exchange.question(site, path)
+    if not q:
+        return f"Not a question page: {path}"
+    out = [f"# {q['title']}", f"{q['votes']} votes · asked by {q.get('author') or 'unknown'}" + (f" · {', '.join(q['tags'])}" if q.get("tags") else ""), "", _strip_html(q.get("body")), ""]
+    for i, a in enumerate(q.get("answers") or [], 1):
+        out.append(f"## Answer {i} — {a['score']} points" + (" (accepted)" if a.get("accepted") else "") + (f" · {a['author']}" if a.get("author") else ""))
+        out.append(_strip_html(a.get("body")))
+        out.append("")
+    text = "\n".join(out)
+    return text[: max(200, int(max_length))]
+
+
+@mcp.tool()
+def list_posts(zim: str = "", subreddit: str = "", sort: str = "top", page: int = 1) -> str:
+    """List a subreddit's posts, top or new. With no arguments, list the
+    installed subreddit ZIMs and their subreddits.
+
+    Args:
+        zim: the subreddit ZIM's name
+        subreddit: the subreddit, as the ZIM names it
+        sort: "top" (default) or "new"
+        page: page number (default 1)
+    Use read_post(zim, path) for a post with its comments.
+    """
+    from zimi import reddot
+
+    if not zim or not subreddit:
+        zims = reddot.zims()
+        if not zims:
+            return "No subreddit ZIMs installed."
+        return "Installed:\n" + "\n".join(f"- `{z['name']}`: " + ", ".join("r/" + s for s in z["subreddits"]) for z in zims)
+    got = reddot.listing(zim, subreddit, sort, max(1, int(page)))
+    if not got["rows"]:
+        return f"No posts found for r/{subreddit} in '{zim}'."
+    lines = [f"r/{subreddit} — {sort}, page {page} of {got['pages']}:\n"]
+    for r in got["rows"]:
+        facts = " · ".join(x for x in (r.get("flair"), (f"by {r['author']}" if r.get("author") else ""), r.get("date")) if x)
+        lines.append(f"- **{r['title']}** — {r['score']} points" + (f" · {facts}" if facts else "") + (f" · {r['external']}" if r.get("external") else "") + f"\n  path: {r['page']}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def read_post(zim: str, path: str, max_length: int = 8000) -> str:
+    """A post with its comment tree, replies indented under their parents.
+
+    Args:
+        zim: the subreddit ZIM's name
+        path: the post's path (r/<sub>/<id>/), from list_posts
+        max_length: cut the text here
+    """
+    from zimi import reddot
+
+    p = reddot.post(zim, path)
+    if not p:
+        return f"Not a post page: {path}"
+    out = [f"# {p['title']}", f"r/{p['subreddit']} · {p['score']} points" + (f" · by {p['author']}" if p.get("author") else "") + (f" · {p['date']}" if p.get("date") else ""), "", _strip_html(p.get("body")), ""]
+
+    def walk(comments, depth):
+        for c in comments or []:
+            pad = "  " * depth
+            out.append(f"{pad}- **{c.get('author') or 'unknown'}** ({c.get('score', 0)} points" + (f", {c['date']}" if c.get("date") else "") + ")")
+            for line in _strip_html(c.get("body")).splitlines():
+                out.append(f"{pad}  {line}")
+            walk(c.get("children"), depth + 1)
+
+    n = sum(1 for _ in _each(p.get("comments")))
+    out.append(f"## {n} comments")
+    walk(p.get("comments"), 0)
+    text = "\n".join(out)
+    return text[: max(200, int(max_length))]
+
+
+def _each(comments):
+    for c in comments or []:
+        yield c
+        yield from _each(c.get("children"))
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")

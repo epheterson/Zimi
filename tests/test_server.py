@@ -376,16 +376,47 @@ class TestServerEndpoints(unittest.TestCase):
         finally:
             _srv._fetch_kiwix_catalog = original
 
-    def test_manage_catalog_reports_an_upstream_failure(self):
-        """And when the feed cannot be reached, it says so rather than 500."""
+    def test_manage_catalog_falls_back_when_the_feed_is_unreachable(self):
+        """An unreachable feed is answered from the shipped snapshot.
+
+        It used to be a 502, and the catalog view answered that by replacing
+        itself with one error line: no categories, no library, and none of the
+        ZIMs a LAN peer was offering, which do not depend on Kiwix at all.
+        """
         import zimi.server as _srv
+        from zimi import catalog_snapshot
+
+        if not catalog_snapshot.available():
+            self.skipTest("no snapshot built in this checkout")
 
         original = _srv._fetch_kiwix_catalog
         _srv._fetch_kiwix_catalog = lambda *a, **k: (0, [], "upstream unreachable")
         try:
+            data, status = self._get("/manage/catalog?count=1")
+            self.assertEqual(status, 200)
+            self.assertEqual(data.get("source"), "snapshot")
+            self.assertTrue(data.get("as_of"), "an old catalog must be dated")
+            self.assertTrue(data.get("stale"))
+            self.assertTrue(data.get("items"))
+        finally:
+            _srv._fetch_kiwix_catalog = original
+
+    def test_manage_catalog_still_errors_with_nothing_to_fall_back_on(self):
+        """The floor. No live fetch, no cache and no snapshot is a genuine
+        failure and must say so rather than render an empty library as if it
+        were the real one."""
+        import zimi.server as _srv
+        from zimi import library as _lib
+
+        original = _srv._fetch_kiwix_catalog
+        original_offline = _lib.offline_catalog
+        _srv._fetch_kiwix_catalog = lambda *a, **k: (0, [], "upstream unreachable")
+        _lib.offline_catalog = lambda: ([], "none", "")
+        try:
             self.assertEqual(self._get_status("/manage/catalog?count=1"), 502)
         finally:
             _srv._fetch_kiwix_catalog = original
+            _lib.offline_catalog = original_offline
 
     def test_manage_download_missing_url(self):
         data, status = self._post("/manage/download", {})

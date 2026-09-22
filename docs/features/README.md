@@ -9,7 +9,8 @@ Everything here is verified against the shipping code. Commands are `python3 -m 
 | Doc | What it covers |
 | --- | --- |
 | [Reading](reading.md) | Search and ranking, the reader and Reader View, bookmarks and history, word lookup, cross-language articles, PDFs, offline/PWA, accessibility, the almanac, and what happens to a page captured without its JavaScript |
-| [Making ZIMs](making-zims.md) | `zimi create` for a folder, a page, a `--site` crawl or a video; the four engines and what each one trades; bookmarks as a standalone ZIM; `zimi import` for a WARC/WACZ |
+| [Apps](apps.md) | Maps, ZimiTube, ZimiExchange and Reddot: Zimi's own views over the map, video, Q&A and subreddit ZIMs in the library; one thing once across builds; the apps switch |
+| [Making ZIMs](making-zims.md) | `zimi create` for a folder, a page, a `--site` crawl, a video or a subreddit; the engines and what each one trades; bookmarks as a standalone ZIM; import for a WARC/WACZ |
 | [Getting & sharing](getting-and-sharing.md) | The catalog and downloads, folders as categories, same-flavor auto-update, BitTorrent seeding, Nearby (mDNS LAN), and the `/dl/` peer transport |
 | [Access](access.md) | Public-access modes, named accounts, per-ZIM allowlists, the creator role, the first-run bootstrap, and Cloudflare Access SSO |
 | [Operations](operations.md) | `zimi config` and the config file, backup/restore, air-gap (`ZIMI_OFFLINE`), `/metrics`, `/health`, update channels, deploy manifests |

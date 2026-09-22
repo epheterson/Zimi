@@ -66,8 +66,8 @@ const def = id => CREATE_MODE_DEFS.find(d => d.id === id);
 // only"): the server refuses the mode from the web, so a tile for it would be
 // a door drawn on a wall.
 eq(CREATE_MODE_DEFS.map(d => d.id),
-  ['page', 'site', 'video', 'bookmarks'],
-  'tile order: the web modes first, then bookmarks (folder AND import are CLI-only)');
+  ['page', 'site', 'video', 'bookmarks', 'import'],
+  'tile order: the web modes first, then bookmarks, then import (folder is CLI-only; a subreddit is an address under Web page, not a tile)');
 check(!CREATE_MODE_DEFS.some(d => d.id === 'folder'),
   'folder mode is not offered at all — it is CLI-only');
 
@@ -77,8 +77,13 @@ check(!CREATE_MODE_DEFS.some(d => d.id === 'folder'),
 // still names them so its refusal can point at the CLI, but the web offers
 // only the URL-based server modes.
 eq(CREATE_MODE_DEFS.filter(d => !d.client).map(d => d.id).sort(),
-  ['page', 'site', 'video'],
-  'the web offers only the URL server modes — folder and import are CLI-only');
+  ['import', 'page', 'site', 'video'],
+  'the web offers the URL server modes and import; folder is CLI-only');
+// Import is back (2026-09-19) as a PICKER: the address field is a list of the
+// archives the server found in the library folder. No path is typed, which is
+// what took it off the web with folder capture.
+check(CREATE_MODE_DEFS.find(d => d.id === 'import').picker === true,
+  'import picks an archive the server listed, never a typed path');
 
 check(_createBuildRequest('bookmarks', { source: 'anything at all' }) === null,
   'a client mode refuses to build a server request, whatever is in the field');
@@ -127,7 +132,8 @@ eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
   ['site', ['max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
     'language', 'ignore_robots']],
   ['video', ['format', 'max_bytes', 'language']],
-  ['bookmarks', []]
+  ['bookmarks', []],
+  ['import', []]
 ], 'each mode advertises its documented advanced options');
 
 // Quality is a closed list of preset NAMES. A yt-dlp format expression is an
@@ -139,7 +145,7 @@ eq(CREATE_FIELDS.format.options, ['720p', '1080p', '480p', 'best'],
 
 // ── attribution ─────────────────────────────────────────────────────────────
 
-eq(Object.keys(CREATE_CREDITS).sort(), ['import', 'video'],
+eq(Object.keys(CREATE_CREDITS).sort(), ['import', 'reddit', 'video'],
   'the modes another project does the work for are the ones that carry a credit');
 eq(CREATE_CREDITS.video.name, 'yt-dlp', 'video credits yt-dlp');
 eq(CREATE_CREDITS['import'].name, 'warc2zim', 'import credits warc2zim');
@@ -154,8 +160,8 @@ for (const d of CREATE_MODE_DEFS) {
     `${d.id} is available when the server is online`);
 }
 eq(CREATE_MODE_DEFS.filter(d => _createModeAvailable(d, true, true)).map(d => d.id),
-  ['bookmarks'],
-  'offline leaves only bookmarks (import is CLI-only now)');
+  ['bookmarks', 'import'],
+  'offline with the helper installed leaves bookmarks and import');
 eq(CREATE_MODE_DEFS.filter(d => _createModeAvailable(d, true, false)).map(d => d.id),
   ['bookmarks'],
   'offline without the sidecar: still just bookmarks');
@@ -901,8 +907,8 @@ for (const d of CREATE_MODE_DEFS) {
 // The server-path mode is exactly import — the one the server gates to the
 // primary admin. Marked in the table rather than named in an if, so adding a
 // second server-path mode cannot forget this rule.
-eq(CREATE_MODE_DEFS.filter(d => d.serverPath).map(d => d.id), [],
-  'no web mode reads the server disk — folder and import are CLI-only');
+eq(CREATE_MODE_DEFS.filter(d => d.serverPath).map(d => d.id), ['import'],
+  'import is the one mode that reads the server disk, and it says so in the table');
 eq(CREATE_MODE_DEFS.filter(d => _createModeVisible(d, true)).map(d => d.id),
   ['page', 'site', 'video', 'bookmarks'],
   'a creator gets the web modes and bookmarks, never the server-path one');

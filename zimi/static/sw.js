@@ -86,7 +86,11 @@ async function checkVersion() {
 // These fail CLOSED: on network failure they return the offline page rather
 // than a wrong-identity cached response. Kept as a single source of truth so
 // the classification is testable (see tests/test_sw_route_classification.mjs).
-const NETWORK_ONLY_PREFIXES = ['/whoami', '/login', '/logout', '/list', '/search', '/suggest', '/random'];
+// The apps' feeds (/places, /tube, /exchange, /reddot) and a person's own
+// preferences (/me) expose the library or an identity the same way, so they
+// fail closed too: a cached feed served to the wrong visitor, or an old feed
+// after a deploy, is the same bug twice.
+const NETWORK_ONLY_PREFIXES = ['/whoami', '/login', '/logout', '/list', '/search', '/suggest', '/random', '/places', '/tube', '/exchange', '/reddot', '/me'];
 
 // Non-identity API/data (article reads, health, manage, language lists). These
 // do not expose the library index and tolerate a cached fallback when offline.

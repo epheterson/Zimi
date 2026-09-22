@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<metalink xmlns="urn:ietf:params:xml:ns:metalink">
+  <generator>MirrorBrain/2.19.0</generator>
+  <origin dynamic="true">https://lb.download.kiwix.org/zim/stack_exchange/ja.stackoverflow.com_mul_all_2026-02.zim.meta4</origin>
+  <published>2026-09-15T06:02:00Z</published>
+  <publisher>
+    <name>Kiwix project</name>
+    <url>https://kiwix.org</url>
+  </publisher>
+
+  <file name="ja.stackoverflow.com_mul_all_2026-02.zim">
+    <size>236789540</size>
+
+    <!-- <mtime>1770195229</mtime> -->
+
+    <!-- internal id: 3435 -->
+    <hash type="md5">2252def982dc5bac44876c5c252abff9</hash>
+    <hash type="sha-1">a2d3d733081915a1e18e120fd9ad01fb8ec9f551</hash>
+    <hash type="sha-256">7217481d1d05f6dd82d0e4c8d69c834c884596960fff9da3f12aa7932f8b08e2</hash>
+    <pieces length="4194304" type="sha-1">
+      <hash>27b8727b351571932cd68180f4a970b6b13194dd</hash>
+      <hash>4ecfa456932536f7930fe6c0fbc0c8150d0f8b62</hash>
+      <hash>bf8ca7ff257ae6c25e7448fc9fadcbaf6e9adc45</hash>
+      <hash>d418fc733492deb5566d47f8346d5c087f058baf</hash>
+      <hash>768c3a96a5cbe36a5d55d1608530a52052710ee5</hash>
+      <hash>89fe72f11732a676acb92852eabca023061887d7</hash>
+      <hash>d4be790c2e86b79d715b7c03d06d9afdbea7b8ce</hash>
+      <hash>6a57c46dcad3c0664dd85ddb80b6c2e978ec542d</hash>
+      <hash>3a1df803d86eb596bae231082e35007c108d8d2b</hash>
+      <hash>15c674f2db8f5d02883b26f101128956f1141764</hash>
+      <hash>41259c762e6549ec26363c84556a43549e23eea1</hash>
+      <hash>e0469fee1d00f182a8a1d05c14f98b87fa086b4b</hash>
+      <hash>4aec207102a71f656c5a263d2fc87f6d385b7e64</hash>
+      <hash>f5fcb5867fb1dca5541028bd50b8bbc154c5b73d</hash>
+      <hash>3787b90c0dbed68fbfd96fb5319d9be556584029</hash>
+      <hash>6b0de658e1d8029b26e3abcf5200779fc764be20</hash>
+      <hash>eb21c1deb5cd711996c2d2e76ab2633b2e3955cd</hash>
+      <hash>bada3f76ac1728d1bb0acafd41565e700c1b0d0a</hash>
+      <hash>7f7d7d6d777faab93ad03c37635d562998feaba3</hash>
+      <hash>9dbeb2f5095911bfe5f050a0e9f643d380606fb9</hash>
+      <hash>168b42aac66037cf99a9abf24ac886e1f598921a</hash>
+      <hash>c034bb89ed7747b227a1c71708cb5c2b95a30874</hash>
+      <hash>0de367cc3cf5171982c09241a387dc073579fcbf</hash>
+      <hash>305bde1a778ac21642871fb64eaeb08bd027a8f3</hash>
+      <hash>e25f612aca7d4c4638b252c93c177e6b348ebd90</hash>
+      <hash>eefd70b93e3c2e494cc9ce708687f861ebd4afda</hash>
+      <hash>f2100a2b1afb350e8623c5c0c3ef55482593b559</hash>
+      <hash>0210e9bbd1162e22ff12e6b848ae2f851d87abb8</hash>
+      <hash>19d3e233c0485365c3c7f8c213e1e7597d9b813f</hash>
+      <hash>8fc82c22c87c9f44dbe3ba5c87cb6d651087a22e</hash>
+      <hash>f848e126491061b4695e36e1e6e08ebb4712df49</hash>
+      <hash>623db92df7c1b1e2674e6d5af2a538d5fc924a95</hash>
+      <hash>f1e0a1346a915902629a44ca24bf6a95f37a9260</hash>
+      <hash>bed4bfd6d8f0dc0b30861a414b8e89ac26358bfc</hash>
+      <hash>6508ae9212f2eb8cd156b173480071705c09b91d</hash>
+      <hash>53944a3b3af6618f9108fff8eb145ecd45fef841</hash>
+      <hash>c0b4003828420e47629bb7a927746a674a8233ac</hash>
+      <hash>bf2ec9a1f21019d2e20dc8babfbf66e0aacc4055</hash>
+      <hash>95bca9653a9eb7d5eee0d62544f7a8d277f8279b</hash>
+      <hash>9258d02b4c7ecce65d19b5d083209efdfca2c0f2</hash>
+      <hash>c8bb592221f02d088af63649b6158ed306f4b494</hash>
+      <hash>e3d44a2873d6593050d054d9056b134e5d278c60</hash>
+      <hash>03741a5e0b532197ba8a88808aff950963c3ba03</hash>
+      <hash>5c30a6ca1f1f376df7ac2ae5dc932b830a0669b3</hash>
+      <hash>f162d777ec86ba4d23c01669b5bbf5641b377fc2</hash>
+      <hash>f191e6abe2ba88ebf6741ab86ee69f9bd8e5373a</hash>
+      <hash>c18802f51a6a4cc3a916b7bbc374fc53e1c98dc5</hash>
+      <hash>118d32ddf2ee11e8266eb431f42166dd5b291c9d</hash>
+      <hash>e59a77bcb569962ad55ab0ea8aa6eb0366de5052</hash>
+      <hash>8875112eaf225e01227c5a344c8eefdd9d8114eb</hash>
+      <hash>d7eaa7dd99ed006e6f9d1ff17e1b2c0e1eaf5af8</hash>
+      <hash>a7c0636eb08dda1deef35f453a949cf7912640b8</hash>
+      <hash>16f374c28b6546ec89ccf602e7e8aa70de21c3af</hash>
+      <hash>dea12911ea48d995c820facd46cbd9082bd856ac</hash>
+      <hash>63b2ee5f82d6cccd76574bb5831a561381ee06dd</hash>
+      <hash>7a57c157d4c13b99a26026b7115971ca2811f6aa</hash>
+      <hash>8979fbf49bcb07fb951f63a68aad0944be41d3b2</hash>
+    </pieces>
+
+
+    <!-- Found 11 mirrors: 0 in the same network prefix, 0 in the same autonomous system,
+         3 handling this country, 0 in the same region, 4 elsewhere -->
+
+    <!-- Mirrors in the same network (unknown): -->
+
+    <!-- Mirrors in the same AS (unknown): -->
+
+    <!-- Mirrors which handle this country (US): -->
+    <url location="us" priority="1">https://mirror.triplebit.org/download.kiwix.org/zim/stack_exchange/ja.stackoverflow.com_mul_all_2026-02.zim</url>
+    <url location="us" priority="2">https://wi.mirror.driftle.ss/kiwix/zim/stack_exchange/ja.stackoverflow.com_mul_all_2026-02.zim</url>
+    <url location="us" priority="3">https://ny.mirror.driftle.ss/kiwix/zim/stack_exchange/ja.stackoverflow.com_mul_all_2026-02.zim</url>
+
+    <!-- Mirrors in the same continent (NA): -->
+
+    <!-- Mirrors in the rest of the world: -->
+    <url location="nl" priority="4">https://ftp.nluug.nl/pub/kiwix/zim/stack_exchange/ja.stackoverflow.com_mul_all_2026-02.zim</url>
+    <url location="fr" priority="5">https://mirror.download.kiwix.org/zim/stack_exchange/ja.stackoverflow.com_mul_all_2026-02.zim</url>
+    <url location="dk" priority="6">https://mirrors.dotsrc.org/kiwix/zim/stack_exchange/ja.stackoverflow.com_mul_all_2026-02.zim</url>
+    <url location="aq" priority="7">https://mirror-sites-in.mblibrary.info/mirror-sites/download.kiwix.org/zim/stack_exchange/ja.stackoverflow.com_mul_all_2026-02.zim</url>
+  </file>
+</metalink>

@@ -90,7 +90,7 @@ Or download from [GitHub Releases](https://github.com/epheterson/Zimi/releases).
 sudo snap install zimi
 ```
 
-Or grab the [AppImage](https://github.com/epheterson/Zimi/releases).
+Or grab the [AppImage](https://github.com/epheterson/Zimi/releases). The native window is WebKitGTK, which the AppImage takes from your distro: `sudo apt install libwebkit2gtk-4.1-0` (Ubuntu, Mint, Debian 12), `sudo dnf install webkit2gtk4.1` (Fedora), `sudo pacman -S webkit2gtk-4.1` (Arch); 4.0 works too. Without it Zimi opens in your web browser instead, and `Zimi --browser` does that on purpose. A black window is WebKitGTK's GPU path on some drivers: Zimi already runs with `WEBKIT_DISABLE_DMABUF_RENDERER=1`; set it to `0` to try the GPU path.
 
 ### Docker
 
@@ -139,6 +139,24 @@ services:
 LAN peer discovery (`_zimi._tcp`) won't reach the LAN in bridge mode, multicast doesn't cross the docker bridge, and Zimi warns in the Nearby settings when it detects this. Use host networking, or set `ip=<your host's LAN address>` in `ZIMI_NEARBY`. BT seeding still works because libtorrent binds the mapped port. See [docs/deployment-networking.md](docs/deployment-networking.md) for the full discussion.
 </details>
 
+<details>
+<summary>Podman (rootless)</summary>
+
+The same image runs under Podman. Two flags matter that Docker never needed:
+
+```bash
+mkdir -p zims zimi-config
+podman run -d --name zimi --network host \
+  --userns=keep-id:uid=1000,gid=1000 \
+  -v ./zims:/zims:Z -v ./zimi-config:/config:Z \
+  docker.io/epheterson/zimi
+```
+
+`--userns=keep-id:uid=1000,gid=1000` maps the image's user to you, so the ZIMs Zimi downloads into `./zims` are yours to read and delete; without it, rootless Podman writes them as a subordinate UID. `:Z` is the SELinux label Fedora and RHEL require on a bind mount, and is harmless on other systems.
+
+To start it at boot, install [deploy/podman/zimi.container](deploy/podman/zimi.container) under `~/.config/containers/systemd/` (a Quadlet unit; the file explains each line), then `systemctl --user daemon-reload && systemctl --user start zimi`. `podman compose` also reads the compose file above once you add `:Z` to its two volumes.
+</details>
+
 ### Python
 
 ```bash
@@ -174,7 +192,7 @@ Most people set nothing: every setting below has a sensible default or lives in 
 | `ZIMI_API_TOKEN` | _(none)_ | Pin the API token instead of generating in the UI |
 | `ZIMI_HOT_ZIMS` | _(none)_ | Comma-separated ZIM names to pre-warm at startup |
 | `ZIMI_OFFLINE` | `0` | `1` guarantees zero outbound traffic: no update checks, no catalog fetches, no torrent stack. For air-gapped machines. |
-| `ZIMI_CREATE_ROOT` | _(none)_ | The one directory tree the web UI may package a server path from (the import mode's server-path field). Unset, server-path packaging from the web stays off entirely. The CLI is unaffected. |
+| `ZIMI_CREATE_ROOT` | _(none)_ | Where the Create page's Import mode looks for WARC/WACZ archives, subfolders included. Unset, it looks in the library folder. Nothing is typed in the browser: the page lists what it finds and you pick. The CLI is unaffected. |
 | `ZIMI_UPDATE_CHANNEL` | `latest` | App release channel: `latest` (finished releases) or `beta` (prereleases too). Locks the UI choice when set. |
 | `ZIMI_UPDATE_DELAY_DAYS` | `0` | Hold a release back until it has been public this many days (0–365). |
 
@@ -200,7 +218,8 @@ Single sign-on through Cloudflare Access is available for tunnel deployments (ex
 Each guide is structured as How it works / Configure / Troubleshoot. Start at the [feature guide index](docs/features/README.md).
 
 - [Reading](docs/features/reading.md), search and ranking, the reader and Reader View, bookmarks and history, word lookup, cross-language articles, PDFs, offline/PWA, accessibility, the almanac.
-- [Making ZIMs](docs/features/making-zims.md), `zimi create` for a folder, page, `--site` crawl or video; the four engines and what each trades; bookmarks as a standalone ZIM; `zimi import` for WARC/WACZ.
+- [Apps](docs/features/apps.md), Maps, ZimiTube, ZimiExchange and Reddot: Zimi's own views over the map, video, Q&A and subreddit ZIMs in the library; one thing once across builds; the apps switch.
+- [Making ZIMs](docs/features/making-zims.md), `zimi create` for a folder, page, `--site` crawl, video or subreddit; the engines and what each trades; bookmarks as a standalone ZIM; import for WARC/WACZ.
 - [Getting & sharing](docs/features/getting-and-sharing.md), catalog and downloads, folders as categories, same-flavor auto-update, BitTorrent seeding, Nearby (mDNS LAN), the `/dl/` peer transport.
 - [Access](docs/features/access.md), public-access modes, named accounts, per-ZIM allowlists, the creator role, the first-run bootstrap, Cloudflare Access SSO.
 - [Operations](docs/features/operations.md), `zimi config` + config file, backup/restore, air-gap, `/metrics`, `/health`, update channels, deploy manifests.

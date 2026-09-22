@@ -1972,6 +1972,182 @@ def _maybe_did_you_mean(query_str):
         return None
 
 
+_PLACES_PER_MAP = 8
+
+
+# Kiwix's maps2zim writes one page per place under search/<Name>, a meta
+# refresh onto the map at the place. The dice read the place out of it.
+_MAPS2ZIM_POS_RE = re.compile(r"#lat=(-?\d+(?:\.\d+)?)&lon=(-?\d+(?:\.\d+)?)(?:&zoom=(\d+))?")
+_RANDOM_MAP_TRIES = 60
+
+
+def _map_home_view(name):
+    """Where the map ``name`` opens when no position is remembered:
+    ``{lat, lng, zoom}`` over its settlements (StreetZim's place index), or
+    None for a map without one, which then opens where it opens itself."""
+    from zimi import mapsearch
+
+    entry = next((z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None)
+    if not entry or entry.get("kind") != "map" or not _srv.zim_allowed(name):
+        return None
+    try:
+        archive, lock = _get_fts_archive(name)
+    except Exception:
+        return None
+    if archive is None or lock is None:
+        return None
+    with lock:
+        if not mapsearch.has_place_index(archive):
+            return None
+        return mapsearch.home_view(archive)
+
+
+def _random_map_place(name):
+    """Somewhere on the map ``name``, for the dice: ``{zim, path, title, pos}``
+    with the map's own page and a ``map=z/lat/lng`` hash, or None when the
+    map has no place Zimi can find. StreetZim maps carry a place index;
+    Kiwix's carry a page per place, 97 of every 100 entries on Samoa, so a
+    few random draws find one."""
+    from zimi import mapsearch
+
+    entry = next((z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None)
+    # A map this request may not read is one it cannot roll on either: the
+    # pooled archive behind this has no gate of its own (the route's does not
+    # reach get_archive on the map branch).
+    if not entry or entry.get("kind") != "map" or not entry.get("main_path") or not _srv.zim_allowed(name):
+        return None
+    try:
+        archive, lock = _get_fts_archive(name)
+    except Exception as e:
+        log.debug("random place: no archive for %s: %s", name, e)
+        return None
+    if archive is None or lock is None:
+        return None
+    with lock:
+        place = None
+        if mapsearch.has_place_index(archive):
+            found = mapsearch.random_place(archive)
+            if found:
+                place = (found["name"], found["zoom"], found["lat"], found["lng"])
+        else:
+            for _ in range(_RANDOM_MAP_TRIES):
+                try:
+                    e = archive.get_random_entry()
+                    if not e.path.startswith("search/") or e.is_redirect:
+                        continue
+                    html = bytes(e.get_item().content).decode("utf-8", "replace")
+                except Exception:
+                    continue
+                m = _MAPS2ZIM_POS_RE.search(html)
+                if m:
+                    place = (e.title or e.path[7:], int(m.group(3) or 10), float(m.group(1)), float(m.group(2)))
+                    break
+    if not place:
+        return None
+    title, zoom, lat, lng = place
+    return {
+        "zim": name,
+        "path": entry["main_path"],
+        "title": title,
+        "pos": f"map={zoom}/{lat}/{lng}",
+    }
+
+
+def _kiwix_places(archive, query_str, limit):
+    """Places on a maps2zim map: its search/<Place> pages are titled entries,
+    so the title index finds them and the page says where they are."""
+    found = []
+    for hit in suggest_search_zim(archive, query_str, limit=limit * 3):
+        path = hit.get("path") or ""
+        if not path.startswith("search/"):
+            continue
+        try:
+            html = bytes(archive.get_entry_by_path(path).get_item().content).decode("utf-8", "replace")
+        except Exception:
+            continue
+        m = _MAPS2ZIM_POS_RE.search(html)
+        if not m:
+            continue
+        found.append(
+            {
+                "name": hit.get("title") or path[7:],
+                "type": "place",
+                "sub": "",
+                "lat": float(m.group(1)),
+                "lng": float(m.group(2)),
+                "locality": "",
+                "zoom": int(m.group(3) or 10),
+            }
+        )
+        if len(found) >= limit:
+            break
+    return found
+
+
+def find_places(query_str, limit=_PLACES_PER_MAP):
+    """Places matching ``query_str`` on every installed map: the one box of
+    Zimi Maps. One group per map that answered, StreetZim's from their place
+    index, Kiwix's from their place pages. Same shape as ``search_all``'s
+    ``places``."""
+    from zimi import mapsearch
+
+    q = (query_str or "").strip()
+    if not q:
+        return []
+    groups = []
+    for z in _srv._zim_list_cache or []:
+        name = z.get("name")
+        if z.get("kind") != "map" or not name or not _srv.zim_allowed(name):
+            continue
+        try:
+            archive, lock = _get_fts_archive(name)
+            if archive is None or lock is None:
+                continue
+            with lock:
+                if z.get("map_search") and mapsearch.has_place_index(archive):
+                    found = mapsearch.search_places(archive, q, limit=limit)
+                else:
+                    found = _kiwix_places(archive, q, limit)
+        except Exception as e:
+            log.debug("place search failed on %s: %s", name, e)
+            continue
+        if found:
+            groups.append(
+                {"zim": name, "title": z.get("title") or name, "main_path": z.get("main_path") or "", "places": found}
+            )
+    return groups
+
+
+def _search_places(query_str, target_names):
+    """One group per searched map with a place index, best places first."""
+    from zimi import mapsearch
+
+    groups = []
+    for z in _srv._zim_list_cache or []:
+        name = z.get("name")
+        if not z.get("map_search") or name not in target_names:
+            continue
+        try:
+            archive, lock = _get_fts_archive(name)
+            if archive is None or lock is None:
+                continue
+            with lock:
+                found = mapsearch.search_places(archive, query_str, limit=_PLACES_PER_MAP)
+        except Exception as e:
+            log.debug("place search failed on %s: %s", name, e)
+            continue
+        if found:
+            groups.append(
+                {
+                    "zim": name,
+                    "title": z.get("title") or name,
+                    "main_path": z.get("main_path") or "",
+                    "places": found,
+                }
+            )
+    return groups
+
+
 def search_all(query_str, limit=5, filter_zim=None, fast=False):
     """Search across all ZIM files, a specific one, or a list.
 
@@ -2116,8 +2292,20 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
                 if archive is None or lock is None:
                     return
                 t0 = time.time()
-                with lock:
-                    results = search_zim(archive, cleaned, limit=limit, snippets=False)
+                # An archive that cannot say (older libzim, a test double) is
+                # asked the old way: the full-text search, which fails soft.
+                if getattr(archive, "has_fulltext_index", True):
+                    with lock:
+                        results = search_zim(archive, cleaned, limit=limit, snippets=False)
+                else:
+                    # No Xapian index to ask (Kiwix's map ZIMs ship _ftindex:no,
+                    # so do some small captures). Titles are still there, and
+                    # the title index is how suggest already finds them; the
+                    # search bar was returning nothing for the same words.
+                    results = _title_index_search(name, cleaned, limit=limit)
+                    if results is None:
+                        with lock:
+                            results = suggest_search_zim(archive, cleaned, limit=limit)
                 dt = time.time() - t0
                 fts_results[name] = (results, dt)
             except Exception as e:
@@ -2192,6 +2380,14 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
     }
     if detected_lang:
         result["detected_language"] = detected_lang
+    # Places on the installed maps that carry a place index (StreetZim). Not
+    # mixed into the article ranking: a place is a different kind of answer,
+    # shown as its own group with the map to open and where to fly. Full path
+    # only; the fast path is the keystroke path and reads no shards.
+    if not fast:
+        places = _search_places(query_str, target_names)
+        if places:
+            result["places"] = places
     # "Did you mean" — only on the full path (the fast path is a partial,
     # progressive pass), and only when results are sparse. Additive field.
     # Suppressed for restricted (allowlisted) sessions: the vocab is built

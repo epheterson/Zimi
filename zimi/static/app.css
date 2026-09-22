@@ -516,8 +516,13 @@
      so the header reads: title … ✕. */
   body.reading #font-btn, body.reading #tts-btn,
   body.reading #readerview-btn, body.reading #newtab-btn { display: none !important; }
-  body.reading .topbar-more { display: flex; order: 990; }
-  body.reading .manage-btn { order: 1000; }
+  body.reading .topbar-more { display: flex; }
+  /* The gear is the last thing on the bar, on every page: the + (the one-item
+     ⋯) sits before it (Eric: "Gear should be top-right on main page not the +"). */
+  .topbar-more { order: 990; }
+  .manage-btn { order: 1000; }
+  @keyframes gear-turn { to { transform: rotate(360deg); } }
+  .manage-btn.busy svg { animation: gear-turn 1s linear infinite; }
 
   /* ── Users management (multi-user v1) ── */
   .ms-btn { padding: 6px 12px; font-size: 12px; font-family: inherit; color: var(--text2); background: none; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: all 0.15s; }
@@ -1002,6 +1007,35 @@
   }
   .lang-dropdown-item.active { color: var(--amber); font-weight: 600; }
   .lang-dropdown-item .check { font-size: 14px; }
+  /* ── Map picker (same place, another map) ── */
+  .map-picker { min-width: 260px; max-width: min(340px, calc(100vw - 8px)); padding: 4px 0; }
+  .mp-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 8px 14px; font-size: 13px; color: var(--text); cursor: pointer; line-height: 1.25;
+  }
+  .mp-row:hover { background: var(--amber-glow); }
+  .mp-row.active { color: var(--amber); font-weight: 600; }
+  .mp-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .mp-name > :first-child, .mp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mp-tag { font-size: 11px; font-weight: 400; color: var(--text2); flex: none; }
+  .mp-meta {
+    display: inline-flex; align-items: center; gap: 6px; flex: none;
+    font-size: 11px; font-weight: 400; color: var(--text2); font-variant-numeric: tabular-nums;
+  }
+  .mp-row.active .mp-meta { color: var(--amber); }
+  .mp-check { font-size: 13px; }
+  .mp-offer .mp-meta { color: var(--text); }
+  .mp-offer .mp-meta svg { color: var(--amber); }
+  .mp-head {
+    padding: 10px 14px 2px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text2); cursor: default;
+  }
+  .mp-fold .mp-meta::after { content: '\203A'; font-size: 14px; transform: rotate(90deg); display: inline-block; }
+  .mp-fold[aria-expanded="true"] .mp-meta::after { transform: rotate(-90deg); }
+  .mp-link { color: var(--text2); border-top: 1px solid var(--border); margin-top: 4px; padding-top: 10px; }
+  .mp-link:hover { color: var(--amber); }
+  .mp-wait { color: var(--text2); cursor: default; }
+  .mp-busy { opacity: 0.6; pointer-events: none; }
   .ld-interlang { display: flex; align-items: center; padding: 2px 6px; border-radius: 4px; cursor: pointer; opacity: 0.4; transition: all 0.15s; margin: -2px 0; }
   .ld-interlang:hover { opacity: 1; color: var(--amber); background: var(--amber-glow); }
   .lang-dropdown-item .ld-switch { display: flex; align-items: center; }
@@ -1136,6 +1170,18 @@
        callout / magnifier so the press reads as a clean right-click. */
     -webkit-touch-callout: none;
   }
+  /* Zimi Maps' tile: a source among the sources, its icon a pin. */
+  .apps-grid { margin-bottom: 16px; }
+  /* An app page is not an article; the bookmark buttons are for articles. A
+     map neither: its places are its own (lists across the apps are for later). */
+  body.app-page #bm-panel-btn, body.app-page.app-noitem #library-btn, body.map-page #bm-panel-btn, body.map-page #library-btn { display: none !important; }
+  .app-tile .detail { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .app-tile .card-icon { color: var(--amber); display: flex; align-items: center; justify-content: center; }
+  /* Quiet, like any other detail line: an empty app is not an error (Eric). */
+  .app-tile.app-empty .detail { color: var(--text2); margin-top: 4px; }
+  /* Reddot's dot keeps its colour in the breadcrumb, where line marks take the text's. */
+  #bc-icon circle { fill: var(--amber); }
+  .suggest-item.sg-place .sg-title::before { content: '\25CF'; color: var(--amber); font-size: 8px; margin-right: 8px; vertical-align: middle; }
   .stat-card:hover, .stat-card:focus-visible {
     background: var(--surface2); border-color: var(--amber-border);
     box-shadow: 0 4px 24px var(--amber-glow), 0 0 0 1px var(--amber-glow);
@@ -1253,6 +1299,9 @@
   .result-thumb img { width: 100%; height: 100%; object-fit: cover; }
   .result-body { flex: 1; min-width: 0; order: 0; }
   .result-source { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  /* The search bar's offer to run the words in a map's own search box. */
+  .result.map-find .title, .result.map-place .title { display: flex; align-items: center; gap: 8px; color: var(--amber); }
+  .result.map-find .title svg, .result.map-place .title svg { flex-shrink: 0; }
   .result-source img { width: 20px; height: 20px; border-radius: 4px; flex-shrink: 0; background: #fff; }
   .result-source .rs-letter {
     width: 20px; height: 20px; border-radius: 4px; background: var(--surface2);
@@ -1470,6 +1519,16 @@
   .ms-pane .ms-actions { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
   .ms-pane .ms-check { display: flex; align-items: center; gap: 8px; padding: 6px 0; cursor: pointer; font-size: 13px; color: var(--text); }
   .ms-pane .ms-check input { accent-color: var(--amber); }
+  /* The apps to offer, as the tiles they are: lit when on. */
+  .app-picks { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
+  .app-pick { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; font: inherit; font-size: 13px; color: var(--text2);
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; }
+  .app-pick svg { width: 20px; height: 20px; }
+  .app-pick.on { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .app-pick[disabled] { opacity: 0.5; cursor: default; }
+  .app-pick-t { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.25; }
+  .app-pick-t small { font-size: 11px; opacity: 0.75; }
+  .app-picks-all { display: flex; gap: 6px; margin: 2px 0 8px; }
   .ms-pane .ms-field { margin-bottom: 10px; }
   /* Field labels stay mixed-case 12px — uppercase is reserved for section
      headers so the two hierarchy levels read as different levels. */
@@ -1480,7 +1539,10 @@
   }
   .ms-pane .ms-field input:focus { outline: none; border-color: var(--amber-border); }
   .ms-pane .ms-field input[readonly] { opacity: 0.6; }
-  .ms-pane .ms-hint { font-size: 12px; color: var(--text2); margin-top: 8px; }
+  /* A hint reads the same wherever it sits: the settings panes, and the
+     catalog (the StreetZim note under the Maps toggle was 16px body text). */
+  .ms-hint { font-size: 12px; line-height: 1.5; color: var(--text2); margin-top: 8px; }
+  .browse-drilldown-header + .maps-source-toggle + .ms-hint, .maps-source-toggle + .ms-hint { margin: 6px 0 14px; }
 
   /* Environment panel: a name, its value, and what it takes over. Monospace
      on the first two because they are literals an admin will retype into a
@@ -2333,7 +2395,7 @@
   .browse-cat-card:hover { border-color: var(--amber-border); background: var(--surface2); transform: translateY(-2px); }
   .browse-cat-card.dimmed { opacity: 0.3; pointer-events: none; }
   .bcc-icon {
-    font-size: 28px; width: 48px; height: 48px;
+    width: 48px; height: 48px; color: var(--amber);
     display: flex; align-items: center; justify-content: center;
     background: var(--surface2); border-radius: 12px; flex-shrink: 0;
     align-self: center;
@@ -2348,6 +2410,10 @@
   .browse-back { background: none; border: none; color: var(--amber); font-size: 13px; cursor: pointer; padding: 4px 0; font-weight: 500; }
   .browse-back:hover { text-decoration: underline; }
   .browse-drilldown-title { font-size: 15px; font-weight: 600; color: var(--accent); }
+  .browse-drilldown-icon { margin-inline-end: 8px; display: inline-flex; vertical-align: middle; color: var(--amber); }
+  .browse-drilldown-icon svg { width: 20px; height: 20px; }
+  .ci-pin { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; color: var(--amber); }
+  .ci-pin svg { width: 24px; height: 24px; }
   .browse-drilldown-count { font-size: 12px; color: var(--text2); margin-inline-start: auto; }
 
   /* ── Mobile ── */
@@ -2403,6 +2469,9 @@
     .topbar.search-focused .topbar-more,
     .topbar.search-focused .library-btn,
     .topbar.search-focused #bm-panel-btn { display: none !important; }
+    /* On a map the picker takes the bookmarks button's place; the history
+       panel's Bookmarks tab is where they are. */
+    body.map-page #bm-panel-btn { display: none !important; }
     .topbar.search-focused .lang-dropdown { display: none !important; }
     /* v1.6: Language dropdown — full width on mobile */
     .lang-dropdown { min-width: 160px; }
@@ -3025,6 +3094,8 @@
   .dc-video-card:hover .dc-play-badge { background: var(--amber); transform: translate(-50%, -50%) scale(1.08); }
   .dc-video-card:hover .dc-play-badge::after { border-left-color: #0a0a0b; }
   /* ── Today card — moon phase + star field ── */
+  /* Maps card: a graticule over the surface, the map glyph in the middle.
+     Same 120px as every other card's thumb, so the row keeps its rhythm. */
   .dc-today { width: 100%; height: 120px; position: relative; background: linear-gradient(135deg, #0a0e1a 0%, #141c2e 50%, #0d1220 100%); overflow: hidden; }
   .dc-star { position: absolute; width: 2px; height: 2px; background: #fff; border-radius: 50%; animation: dc-twinkle 3s ease-in-out infinite; }
   @keyframes dc-twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }

@@ -5,6 +5,7 @@ All server state (ZIM_DIR, locks, caches) is accessed via ``zimi.server`` to
 maintain a single source of truth.
 """
 
+import datetime
 import glob
 import gzip
 import ipaddress
@@ -232,7 +233,12 @@ def _auto_update_loop(initial_delay=0):
                     if os.path.exists(os.path.join(_srv.ZIM_DIR, filename)):
                         log.info("Auto-update: skipping %s (already on disk)", filename)
                         continue
-                    dl_id, err = _start_download(url)
+                    # StreetZim's builds live on the Internet Archive, a plain
+                    # HTTPS fetch of a .zim: the import path, as on first download.
+                    if url.startswith("https://archive.org/"):
+                        dl_id, err = _start_import(url)
+                    else:
+                        dl_id, err = _start_download(url)
                     if err:
                         log.warning(
                             "Auto-update download failed for %s: %s",
@@ -1667,6 +1673,143 @@ def _kick_catalog_refresh(query, lang, count, start, _internal=False):
     threading.Thread(target=_run, name="catalog-refresh", daemon=True).start()
 
 
+# ── The full catalog, and where it comes from ──────────────────────────────
+#
+# Three states, and a person is always in exactly one:
+#
+#   never online          the snapshot that ships in the package
+#   online once, now not  the cached catalog, dated
+#   online                the live fetch
+#
+# The handover is one rule: a successful live fetch replaces the cache
+# WHOLESALE, and the cache outranks the shipped snapshot from then on. The
+# snapshot is never written to, never merged into, and never consulted again
+# once a cache exists. Eric, 2026-09-16: "we update on first load or when first
+# getting internet seamlessly and store the new cache instead."
+#
+# Merging would be worse than either: a library half of which is six months old
+# with nothing to say which half.
+#
+# This is separate from the page cache above (catalog_cache.json), which keys
+# on query+offset and is capped at 40 keys. That is a cache of REQUESTS, so
+# what survives offline depends on which pages somebody happened to browse. The
+# full catalog is one file, written once, holding every entry.
+
+
+def _full_catalog_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "catalog_full.json")
+
+
+def persist_full_catalog(items):
+    """Write the whole catalog to disk, replacing whatever was there.
+
+    Called after a successful full fetch. Best-effort: a machine that cannot
+    write its data directory still browses fine from the live fetch, it just
+    will not survive going offline.
+    """
+    if not items:
+        return False
+    path = _full_catalog_path()
+    try:
+        _srv._atomic_write_json(
+            path,
+            {"fetched_at": time.time(), "count": len(items), "items": items},
+        )
+    except (OSError, ValueError) as e:
+        log.debug("could not cache the full catalog: %s", e)
+        return False
+    # _atomic_write_json logs and returns on failure rather than raising, so
+    # the only honest way to report success is to look. Claiming a cache that
+    # is not there would promise offline survival this machine does not have.
+    if not os.path.exists(path):
+        return False
+    log.info("Full catalog cached (%d entries)", len(items))
+    return True
+
+
+def _load_full_catalog():
+    """(items, fetched_at) from disk, or (None, 0)."""
+    try:
+        with open(_full_catalog_path(), encoding="utf-8") as f:
+            data = json.load(f)
+        items = data.get("items")
+        if isinstance(items, list) and items:
+            return items, float(data.get("fetched_at") or 0)
+    except (OSError, ValueError, TypeError):
+        pass
+    return None, 0
+
+
+def maybe_persist_full_catalog(total):
+    """Assemble the whole catalog out of the page cache and write it down.
+
+    Costs no network. The browse pages the UI just walked are already in
+    ``_opds_cache``, so once they cover ``total`` entries the full catalog can
+    be stitched together from memory and persisted. That is what makes a
+    machine that is online once stay useful forever after.
+
+    Runs on the caller's thread only long enough to notice it has everything;
+    the write itself is small and atomic. Returns True when it wrote.
+    """
+    if not total:
+        return False
+    with _opds_lock:
+        pages = [
+            (key, entry)
+            for key, entry in _opds_cache.items()
+            if _is_browse_key(key)
+        ]
+    seen, items = set(), []
+    for _key, (_ts, _total, page_items) in pages:
+        for item in page_items or []:
+            name = item.get("name")
+            if name and name not in seen:
+                seen.add(name)
+                items.append(item)
+    # Only when the cache genuinely covers the catalog. A partial write would
+    # be worse than none: it would satisfy offline_catalog() forever with half
+    # a library and no sign that it was half.
+    if len(items) < total:
+        return False
+    return persist_full_catalog(items)
+
+
+def offline_catalog():
+    """The best catalog available without touching the network.
+
+    Returns ``(items, source, as_of)`` where source is "cache", "snapshot" or
+    "none", and as_of is an ISO date for the UI to show, or "".
+
+    Cache first, always: it is the fresher of the two and it is what the
+    handover rule promises. The snapshot is the floor, not a supplement.
+    """
+    items, fetched_at = _load_full_catalog()
+    if items:
+        as_of = ""
+        if fetched_at:
+            as_of = datetime.datetime.fromtimestamp(fetched_at).date().isoformat()
+        return items, "cache", as_of
+
+    from zimi import catalog_snapshot
+
+    if catalog_snapshot.available():
+        # The snapshot stores an icon's CONTENT HASH, not a URL: the URL it
+        # came from points at a server this machine cannot reach, which is the
+        # whole situation. Hand the UI a local path instead, so the same
+        # rendering code works without knowing where the catalog came from.
+        #
+        # Copied, not mutated: entries() returns the module's own list.
+        shipped = []
+        for entry in catalog_snapshot.entries():
+            item = dict(entry)
+            digest = item.pop("icon", "")
+            if digest:
+                item["icon_url"] = "/catalog-icon/" + digest
+            shipped.append(item)
+        return shipped, "snapshot", catalog_snapshot.built_at()
+    return [], "none", ""
+
+
 def _fetch_kiwix_catalog(
     query="", lang="eng", count=20, start=0, _background=False, _internal=False
 ):
@@ -1724,6 +1867,25 @@ def _fetch_kiwix_catalog(
         # Hand back the stale copy now; revalidate in the background.
         _kick_catalog_refresh(query, lang, count, start, _internal=_internal)
         return serve_stale[0], serve_stale[1], None
+
+    if not _background and not _internal:
+        # Cold: nothing cached for this page yet. The catalog on disk (or the
+        # snapshot in the package) answers now and the live one is fetched
+        # behind it, the same stale-while-revalidate as an expired page. The
+        # first browse used to wait on Kiwix (Eric: "if catalog is baked in
+        # and cached why did it take a while when I clicked maps").
+        fallback, _source, _as_of = offline_catalog()
+        if query:
+            needle = query.lower()
+            fallback = [
+                it
+                for it in fallback
+                if needle in str(it.get("title", "")).lower() or needle in str(it.get("name", "")).lower()
+            ]
+        if fallback:
+            _catalog_stale_ts = _catalog_stale_ts or time.time()
+            _kick_catalog_refresh(query, lang, count, start, _internal=_internal)
+            return len(fallback), fallback[start : start + count], None
 
     params = {"count": str(count), "start": str(start)}
     if query:
@@ -2411,15 +2573,17 @@ def _find_previous_version(filename):
     can never disagree. Date-stamped names sort lexically by date, so the
     max is the most recent — the best delta source (closest content).
     """
-    name_prefix = re.sub(r"_\d{4}-\d{2}\.zim$", "", filename)
-    if name_prefix == filename or not os.path.isdir(_srv.ZIM_DIR):
+    # Either date shape: Kiwix's _YYYY-MM and StreetZim's -YYYY-MM-DD.
+    name_prefix, date = _srv._extract_zim_date(filename)
+    if not date or not os.path.isdir(_srv.ZIM_DIR):
         return None  # not a date-stamped name → no versioned predecessor
     candidates = [
         f
         for f in os.listdir(_srv.ZIM_DIR)
         if f != filename
         and f.endswith(".zim")
-        and re.sub(r"_\d{4}-\d{2}\.zim$", "", f) == name_prefix
+        and _srv._extract_zim_date(f)[1] is not None
+        and _srv._extract_zim_date(f)[0] == name_prefix
         and os.path.isfile(os.path.join(_srv.ZIM_DIR, f))
     ]
     return max(candidates) if candidates else None
@@ -3026,6 +3190,40 @@ def _full_catalog(lang=""):
     return all_items
 
 
+def _check_streetzim_updates(installed_files):
+    """Newer builds of installed StreetZim maps, from StreetZim's own listing.
+
+    Kiwix's catalog knows nothing of them. The installed file's date is to
+    the day (osm-hawaii-2026-09-08.zim), and so is the listing's; a newer
+    date on the same region is an update, fetched from the Archive through
+    the import path like the first download was."""
+    from zimi import streetzim
+
+    maps = [f for f in installed_files if f["filebase"].startswith("osm-")]
+    if not maps:
+        return []
+    items, _source, _as_of, _refreshing = streetzim.get()
+    by_name = {it.get("name"): it for it in items if it.get("name")}
+    updates = []
+    for inst in maps:
+        base, date = _srv._extract_zim_date(inst["filename"])
+        item = by_name.get(base)
+        if not item or not item.get("date") or item["date"] <= (date or ""):
+            continue
+        updates.append(
+            {
+                "name": inst["name"],
+                "installed_file": inst["filename"],
+                "installed_date": date,
+                "latest_date": item["date"],
+                "download_url": item.get("download_url", ""),
+                "title": item.get("title", ""),
+                "size_bytes": item.get("size_bytes", 0),
+            }
+        )
+    return updates
+
+
 def _check_updates():
     """Compare installed ZIMs against Kiwix catalog to find available updates.
 
@@ -3051,12 +3249,13 @@ def _check_updates():
 
     if not installed_files:
         return []
+    updates = _check_streetzim_updates(installed_files)
 
     # Full catalog across all pages — reuses the browse UI's warm SWR cache
     # (empty lang, count 500), so the common path makes no extra Kiwix requests.
     all_items = _full_catalog()
     if not all_items:
-        return []
+        return updates
 
     # Build index: for each catalog item, gather candidate prefixes to match
     # installed filenames against. OPDS `name` field can be truncated/
@@ -3088,8 +3287,9 @@ def _check_updates():
 
     # For each installed ZIM, find the best catalog match. Match flavor
     # first (only same-flavor updates considered), then longest prefix.
-    updates = []
     for inst in installed_files:
+        if inst["filebase"].startswith("osm-"):
+            continue  # a StreetZim map; found above from its own listing
         inst_flavor = _detect_flavor(inst["filebase"])
         best = None
         best_len = 0
@@ -3305,13 +3505,12 @@ def _post_download_finalize(dl):
     """
     # Remove older versions of the same ZIM
     removed_versions = []
-    base = re.match(r"^(.+?)_\d{4}-\d{2}\.zim$", dl["filename"])
-    if base:
-        prefix = base.group(1)
+    prefix, new_date = _srv._extract_zim_date(dl["filename"])
+    if new_date:
         try:
             for f in os.listdir(_srv.ZIM_DIR):
                 if (
-                    f.startswith(prefix + "_")
+                    _srv._extract_zim_date(f)[1] is not None and _srv._extract_zim_date(f)[0] == prefix
                     and f.endswith(".zim")
                     and f != dl["filename"]
                 ):
@@ -3607,12 +3806,15 @@ def _enqueue_zim_download(url, mirrors, filename, size_bytes=None, extra=None):
         return None, space_err
 
     # Detect if this replaces an existing ZIM (update vs fresh download)
-    name_prefix = re.sub(r"_\d{4}-\d{2}\.zim$", "", filename)
+    # Same base (name without its date), either date shape: Kiwix's _YYYY-MM
+    # and StreetZim's -YYYY-MM-DD. _extract_zim_date knows both.
+    name_prefix, _date = _srv._extract_zim_date(filename)
     is_update = (
         any(
             f != filename
             and f.endswith(".zim")
-            and re.sub(r"_\d{4}-\d{2}\.zim$", "", f) == name_prefix
+            and _srv._extract_zim_date(f)[1] is not None
+            and _srv._extract_zim_date(f)[0] == name_prefix
             for f in os.listdir(_srv.ZIM_DIR)
             if os.path.isfile(os.path.join(_srv.ZIM_DIR, f))
         )

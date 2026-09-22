@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import sys
 import secrets
 import threading
@@ -2064,7 +2065,7 @@ def activity_payload(type_filter=None, actor_filter=None):
 # folder, I said that would be CLI only") — recognising the mode is what lets
 # the refusal point at `zimi create <folder>` instead of shrugging "unknown
 # creation mode" at someone who read about it in the docs.
-CREATE_MODES = ("folder", "page", "site", "video", "import")
+CREATE_MODES = ("folder", "page", "site", "video", "import", "reddit")
 # Which engine captures a web page. Mirrors creator.OFFERED_ENGINES — every
 # name a person may ASK for, which is a wider set than the ones that build a
 # capture object. Held here as a literal for the same reason CREATE_MAX_PAGE_URLS
@@ -2149,7 +2150,7 @@ CREATE_MAX_PAGE_URLS = 20
 # the one engine with no progress callback, is CLI-only now), but the list and
 # the `cancellable` field stay: the client's button should keep answering to
 # the server's word rather than to an assumption a future mode could break.
-CREATE_CANCELLABLE_MODES = ("page", "site", "video", "import")
+CREATE_CANCELLABLE_MODES = ("page", "site", "video", "import", "reddit")
 # Which jobs can FINISH EARLY — stop fetching at the next page boundary and
 # package everything captured so far, exactly what SIGINT does to a CLI crawl.
 # Site capture alone: it is the one mode whose work is an open-ended frontier
@@ -2162,8 +2163,12 @@ CREATE_FINISHABLE_MODES = ("site",)
 # nothing — the client hides it the moment the server stops saying so.
 CREATE_FINISHABLE_PHASES = ("probe", "fetch", "assets")
 CREATE_MAX_TITLE = 200
-# Site crawls: what the form offers. Wider bounds live on the CLI.
-CREATE_MAX_PAGES_CEILING = 5000
+# Site crawls: what the form offers. The page ceiling was 5,000 with "past
+# this, use the CLI"; the first Windows user to make a ZIM asked for more
+# (r/Kiwix, 2026-09-19), and on the desktop app the form IS the CLI. 50,000
+# pages is a large documentation site whole; the crawler's memory for it is
+# 200,000 URLs in a set, and the byte ceiling below still bounds the file.
+CREATE_MAX_PAGES_CEILING = 50000
 CREATE_MAX_DEPTH_CEILING = 10
 CREATE_MAX_DELAY = 60.0  # seconds between page requests
 # Video jobs: a playlist cap, same reasoning.
@@ -2512,6 +2517,22 @@ def _create_derive_line(job, text):
         events.append({"t": "phase", "phase": job.phase, "detail": line})
         return events, phase
 
+    if job.mode == "reddit":
+        # A subreddit build has its own steps (fetching posts, fetching
+        # comments, importing, building the ZIM), none shaped like a page
+        # capture's lines; they map onto the same four steps on the strip.
+        low = line.lower()
+        if low.startswith("fetching "):
+            enter("fetch")
+        elif low.startswith(("importing", "building the zim")):
+            enter("package")
+        elif low.startswith("zim written"):
+            enter("register")
+        elif re.match(r"^[\d,]+ (posts|comments) fetched", low) or low.startswith(("retrieving ", "adding ", "writing ")):
+            settle()
+        events.append({"t": "phase", "phase": job.phase, "detail": line})
+        return events, phase
+
     match = _CREATE_RE_PACKAGED.match(line)
     if match:  # site capture, one page written into the ZIM
         enter("package")
@@ -2822,6 +2843,16 @@ def _create_validate(data):
     title = str(data.get("title") or "").strip()[:CREATE_MAX_TITLE]
     page_urls = []
 
+    # The address says what it is. A reddit.com/r/<name> address typed under
+    # Web page or Site is a subreddit, and there is no tile for one (Eric:
+    # "let's be coy. You put in the url Reddit.com/r/whatever and we know
+    # what to do"). One address only: a list of pages stays a list.
+    if mode in ("page", "site") and "\n" not in source:
+        from zimi.reddot import looks_like_subreddit
+
+        if looks_like_subreddit(source):
+            mode = "reddit"
+
     if mode == "folder":
         # CLI-only, by decree (Eric, round 3: "remove folder, I said that
         # would be CLI only"). The engine (creator.create_folder_zim) is
@@ -2832,16 +2863,22 @@ def _create_validate(data):
             "folder capture is CLI-only — run `zimi create <folder>` "
             "on the server itself"
         )
+    elif mode == "reddit":
+        # A subreddit, by name or address. The maker (ArcticZim) is fetched
+        # into a sidecar on first use, like warc2zim.
+        from zimi.reddot import normalize_subreddit
+
+        sub = normalize_subreddit(source)
+        if not sub:
+            raise ValueError("not a subreddit name (letters, digits and _, like r/kiwix)")
+        source = sub
     elif mode == "import":
-        # CLI-only, by the same decree that took folder capture off the web
-        # (Eric: "remove archive as well only in cli"). The engine
-        # (importer.convert_archive) is untouched — `zimi import <file>` on the
-        # machine itself still runs it. What is gone is the web door that read a
-        # path off the server's disk, and the refusal names the one still open.
-        raise ValueError(
-            "web archive import is CLI-only — run `zimi import <file>` "
-            "on the server itself"
-        )
+        # Back on the web (a user: "I'd like a way to convert warc files
+        # within the app's gui"), without the thing that took it off: no
+        # path is typed. The form offers the archives found in the library
+        # folder, the request names one, and the name is checked against the
+        # same listing. `zimi import <file>` still takes any path.
+        source = _create_archive_path(source)
     elif mode == "page":
         # One page or twenty, it is the same gesture: paste what you want kept.
         # The engine sends a single URL down the single-page path itself, so
@@ -3104,9 +3141,8 @@ def _create_out_dir():
 def _create_run(job, opts):
     """Drive the engine for one job. Imports are deferred to here: the writer
     stack and yt-dlp are heavy, and a server that never creates a ZIM should
-    never pay for them. (Neither folder nor archive import reaches here — the
-    web refuses both at validation; `zimi create <folder>` and `zimi import
-    <file>` are their only doors.)"""
+    never pay for them. (Folder capture never reaches here — the web refuses
+    it at validation; `zimi create <folder>` is its only door.)"""
     if job.mode == "page":
         # create_pages_zim hands a single URL to create_page_zim itself, so one
         # entry point covers both shapes — and it takes a progress callback,
@@ -3165,9 +3201,34 @@ def _create_run(job, opts):
             progress=job.note,
             **_create_kwargs(opts, "limit", "max_bytes", "fmt", "language"),
         )
-    # Only the three URL modes reach here; validation refuses everything else
-    # (folder and archive import are CLI-only). A job that arrived with any
-    # other mode is a bug in the caller, not an input to run.
+    if job.mode == "reddit":
+        from zimi.crawler import _StopFlag
+        from zimi.reddot import create_reddit_zim
+
+        stop = _StopFlag()
+        stop.hit = job.finish_requested
+        job.stop_flag = stop
+        return create_reddit_zim(
+            job.source,
+            title=job.title or None,
+            out_dir=_create_out_dir(),
+            register=True,
+            progress=job.note,
+            stop=stop,
+        )
+    if job.mode == "import":
+        from zimi.importer import import_archive
+
+        return import_archive(
+            job.source,
+            title=job.title or None,
+            out_dir=_create_out_dir(),
+            register=True,
+            sink=job.note,
+        )
+    # Only these reach here; validation refuses everything else (folder
+    # capture is CLI-only). A job that arrived with any other mode is a bug in
+    # the caller, not an input to run.
     raise ValueError(f"no web engine for mode {job.mode!r}")
 
 
@@ -3487,6 +3548,12 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
         # contract as import_ready: asked once, on the page's first poll, and
         # answered from a cache after that.
         payload["browser_ready"] = _create_browser_ready()
+        payload["browser_install"] = _create_browser_install()
+        payload["reddot_ready"] = _create_reddot_ready()
+        # Archives the import mode may convert: what is in the library
+        # folder, by name. No path is typed anywhere.
+        payload["archives"] = _create_archives()
+        payload["archives_dir"] = _create_archives_root()
         # And whether BOTH halves of the alive engine are here. Reported as its
         # own answer rather than left for the client to compute from the other
         # two: what the alive engine needs is the alive engine's business, and
@@ -3675,7 +3742,8 @@ def _is_offline_mode():
 # the containment check and the closed-by-default door that guarded that
 # surface are all gone with the modes they guarded.
 #
-# ``ZIMI_CREATE_ROOT`` survives only as a fact the create page still reports
+# ``ZIMI_CREATE_ROOT`` is where the import picker looks for archives (the
+# library folder when unset), and a fact the create page reports
 # (``create_root`` in the poll and the Creator payload): the server no longer
 # acts on it, but the client reads it to describe the instance.
 
@@ -3705,6 +3773,76 @@ def _create_sidecar_dir():
         return None
 
 
+# Where the import mode looks for archives: ``ZIMI_CREATE_ROOT`` when set,
+# else the library folder; every subfolder inside, to a depth and a count
+# that keep a picker a picker (Eric: "Allow defining a create or import
+# directory instead of that path and support subdirectories within").
+CREATE_ARCHIVE_MAX_DEPTH = 8
+CREATE_ARCHIVE_MAX_FILES = 500
+
+
+def _create_archives_root():
+    return _create_root() or _srv.ZIM_DIR
+
+
+def _create_archives():
+    """The WARC/WACZ files under the import directory, ``[{name, size_bytes}]``,
+    newest first. ``name`` is the path relative to that directory, with "/",
+    and is the only thing the form ever sends back."""
+    from zimi.importer import ARCHIVE_EXTS
+
+    root = _create_archives_root()
+    found = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        rel_dir = os.path.relpath(dirpath, root)
+        depth = 0 if rel_dir == "." else rel_dir.count(os.sep) + 1
+        # Hidden folders are the library's own (.zimi, .data) and nobody's
+        # archives; past the depth the walk stops descending.
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith(".")) if depth < CREATE_ARCHIVE_MAX_DEPTH else []
+        for n in filenames:
+            if not n.lower().endswith(ARCHIVE_EXTS) or n.startswith("."):
+                continue
+            full = os.path.join(dirpath, n)
+            try:
+                st = os.stat(full)
+            except OSError:
+                continue
+            if not os.path.isfile(full):
+                continue
+            rel = n if rel_dir == "." else os.path.join(rel_dir, n)
+            found.append({"name": rel.replace(os.sep, "/"), "size_bytes": st.st_size, "mtime": st.st_mtime})
+            if len(found) >= CREATE_ARCHIVE_MAX_FILES:
+                break
+        if len(found) >= CREATE_ARCHIVE_MAX_FILES:
+            break
+    found.sort(key=lambda a: -a["mtime"])
+    for a in found:
+        del a["mtime"]
+    return found
+
+
+def _create_archive_path(name):
+    """The full path of an archive the picker listed, or ValueError. Only a
+    name the listing would produce is accepted: no separators the listing
+    did not put there, nothing outside the library folder."""
+    name = (name or "").strip().replace("\\", "/")
+    if not name or name not in {a["name"] for a in _create_archives()}:
+        raise ValueError("choose an archive from the list")
+    return os.path.join(_create_archives_root(), *name.split("/"))
+
+
+def _create_reddot_ready():
+    """True when the Reddit maker (ArcticZim) is already installed, which
+    decides whether a subreddit can be made offline."""
+    try:
+        from zimi.reddot import sidecar_status
+
+        return bool(sidecar_status().get("installed"))
+    except Exception:
+        log.exception("ArcticZim sidecar probe failed")
+        return False
+
+
 def _create_import_ready():
     """True when the warc2zim sidecar is already installed — the one thing
     that decides whether archive import can run on a machine with no
@@ -3718,6 +3856,16 @@ def _create_import_ready():
         return False
 
 
+def _reddit_ready():
+    """Whether the ArcticZim sidecar is installed (``zimi create --setup-reddit``)."""
+    try:
+        from zimi import reddot
+
+        return bool(reddot.sidecar_status()["installed"])
+    except Exception:
+        return False
+
+
 def _create_browser_ready():
     """True when the rendered engine can actually run here — Playwright
     importable AND a Chromium that launches.
@@ -3727,12 +3875,41 @@ def _create_browser_ready():
     call. It is asked on the Create page's first poll and when a request names
     the rendered engine; never per second, and never per page."""
     try:
-        from zimi.renderer import browser_available
+        from zimi.renderer import browser_available, browser_status_known
 
-        return bool(browser_available())
+        # The renderer remembers its answer for the life of the process. A
+        # "yes" is a fact about the install and stays; a "no" is the state
+        # before the admin ran the command this pane printed, so it is asked
+        # again (one browser launch, on the probe thread, at most every
+        # CREATOR_PROBE_TTL while someone has the page open). Otherwise an
+        # install made while the server runs never shows until a restart:
+        # "I successfully download what it requires but the app says the
+        # browser engine wasn't installed" (r/Kiwix, 2026-09-19).
+        known = browser_status_known()
+        if known is not None and known[0]:
+            return True
+        return bool(browser_available(refresh=known is not None))
     except Exception:
         log.exception("rendered-engine probe failed")
         return False
+
+
+def _create_browser_install():
+    """The command that installs the rendered engine INTO THIS SERVER's
+    Python, or None when there is no such command (a frozen desktop build,
+    the Docker image). "pip install" in the shell that happens to be open
+    lands in whatever Python that shell has; under uv or a venv that is not
+    the one Zimi runs in, and the pane keeps saying not installed."""
+    if getattr(sys, "frozen", False) or getattr(sys, "_MEIPASS", None):
+        return None
+    exe = sys.executable or ""
+    if not exe:
+        return None
+    norm = exe.replace("\\", "/")
+    if "/uv/tools/" in norm or "/.local/share/uv/" in norm:
+        return "uv tool install --force 'zimi[browser]' && uv tool run --from zimi playwright install chromium"
+    q = shlex.quote(exe)
+    return f"{q} -m pip install 'zimi[browser]' && {q} -m playwright install chromium"
 
 
 def _create_video_ready():
@@ -3807,7 +3984,7 @@ def _create_alive_ready():
 # yet, and a bucket that is always present but sometimes zero is a stabler
 # contract than one that appears the day the first edit lands.
 
-_CREATOR_TYPES = ("page", "site", "video", "import", "folder", "export", "edit")
+_CREATOR_TYPES = ("page", "site", "video", "import", "reddit", "folder", "export", "edit")
 
 _CREATOR_TYPE_BY_MODE = {
     "page": "page",
@@ -3815,6 +3992,7 @@ _CREATOR_TYPE_BY_MODE = {
     "site": "site",
     "video": "video",
     "import": "import",
+    "reddit": "reddit",
     "folder": "folder",
     "bookmarks": "export",
     "edit": "edit",
@@ -3914,6 +4092,8 @@ def _creator_payload():
         "browser_ready": known["browser_ready"] if known else None,
         "alive_ready": known["alive_ready"] if known else None,
         "sidecar": known["sidecar"] if known else None,
+        # ArcticZim, the subreddit engine: two files on disk, no probe.
+        "reddit_ready": _reddit_ready(),
         "probing": known is None,
         # None, not "", when no root is configured — the same shape the create
         # page's probe uses, so both readers treat "unset" the same way.
@@ -4334,7 +4514,32 @@ def _create_probe(data):
             # And back: the chip moved to Video for the last address, and
             # this one is a page. yt-dlp's catch-all would only fail on it.
             mode = "page"
-        if mode == "video":
+        if mode == "reddit":
+            from zimi.reddot import sidecar_status
+
+            result = {
+                "ok": True,
+                "final_url": "https://www.reddit.com/r/%s/" % source,
+                "title": "r/%s" % source,
+                "subreddit": source,
+                "content_type": "",
+                "bytes": 0,
+                "warning_key": None,
+                "reddot_ready": bool(sidecar_status().get("installed")),
+            }
+        elif mode == "import":
+            # The archive is on disk and validation already found it; the
+            # preview is its size and whether the helper is here.
+            result = {
+                "ok": True,
+                "final_url": "",
+                "title": os.path.basename(source),
+                "content_type": "",
+                "bytes": os.path.getsize(source),
+                "warning_key": None,
+                "import_ready": _create_import_ready(),
+            }
+        elif mode == "video":
             result = _probe_video(source, opts.get("limit"))
         elif mode == "page":
             # One fetch, not twenty: the preview answers "is this the kind of
@@ -4595,29 +4800,7 @@ def handle_manage_get(handler, parsed, params):
         # panel renders from a single fetch.
         from zimi import users as _users
 
-        return handler._json(
-            200,
-            {
-                "users": _users.list_users(),
-                "zims": sorted(_srv.get_zim_files().keys()),
-                # Rich per-ZIM options for the allowlist picker (used by both the
-                # per-user Limited picker and the public-access Limited picker).
-                "zim_options": _zim_picker_options(),
-                # Anonymous-access policy (Open / Limited / Sign-in required).
-                "public_access": _users.public_access_status(),
-                # The PRIMARY admin (password-file account) is not stored in
-                # users.json — surface it as a synthetic, non-deletable row so
-                # the UI can show "the admin" alongside the named users.
-                "primary_admin": {
-                    "name": _get_manage_user() or "admin",
-                    "role": "admin",
-                    "primary": True,
-                },
-                # Which kind of admin is viewing — the client hides admin-only
-                # controls (creating/managing other admins) for secondaries.
-                "self_kind": admin_kind(handler),
-            },
-        )
+        return handler._json(200, _users_payload(handler))
 
     elif parsed.path == "/manage/public-access":
         # Anonymous-access policy on its own, with the picker options — a
@@ -4644,8 +4827,32 @@ def handle_manage_get(handler, parsed, params):
         except (ValueError, TypeError):
             start = 0
         total, items, err = _srv._fetch_kiwix_catalog(query, lang, count, start)
+        offline_source = ""
+        offline_as_of = ""
         if err:
-            return handler._json(502, {"error": f"Kiwix catalog fetch failed: {err}"})
+            # A failed fetch used to be a 502, and the catalog view answered it
+            # by replacing itself with one error line. That hid the categories,
+            # the whole library, and the ZIMs a LAN peer was offering right
+            # then, none of which depend on Kiwix answering.
+            #
+            # Fall back instead: the cached catalog if this machine has ever
+            # been online, otherwise the snapshot that ships in the package.
+            # Only a machine with neither still errors.
+            from zimi import library as _offline
+
+            fallback, offline_source, offline_as_of = _offline.offline_catalog()
+            if not fallback:
+                return handler._json(502, {"error": f"Kiwix catalog fetch failed: {err}"})
+            if query:
+                needle = query.lower()
+                fallback = [
+                    it
+                    for it in fallback
+                    if needle in str(it.get("title", "")).lower()
+                    or needle in str(it.get("name", "")).lower()
+                ]
+            total = len(fallback)
+            items = fallback[start : start + count]
         # Optional client-side language filter — `ui_languages=en,fr` returns
         # only items whose normalized language code is in the set.
         ui_langs_raw = param("ui_languages", "")
@@ -4664,6 +4871,21 @@ def handle_manage_get(handler, parsed, params):
             rels = bundle_relationships(items)
             for it in items:
                 it["hierarchy"] = rels.get(it.get("name"), {})
+        # Once the browse pages in cache cover the whole catalog, write it
+        # down as one file. No extra requests: the pages are already here.
+        # This is what lets a machine that was online once browse forever.
+        if not err and total:
+            try:
+                from zimi import library as _persist
+
+                _persist.maybe_persist_full_catalog(total)
+            except Exception:
+                pass  # caching is best effort; never fail a browse over it
+        # Where each map is, so a map page can offer the maps of the spot on
+        # screen. A no-op for everything that is not a catalog map.
+        from zimi import mapregions
+
+        mapregions.annotate(items)
         resp = {"total": total, "items": items}
         # Offline: last-good catalog served from disk — tell the client so
         # it can show a quiet "catalog from <date>" note.
@@ -4672,6 +4894,13 @@ def handle_manage_get(handler, parsed, params):
         if _lib._catalog_stale_ts:
             resp["stale"] = True
             resp["fetched_at"] = _lib._catalog_stale_ts
+        if offline_source:
+            # Which of the three states this answer came from, so the UI can
+            # date it honestly rather than presenting a six-month-old library
+            # as current.
+            resp["source"] = offline_source
+            resp["as_of"] = offline_as_of
+            resp["stale"] = True
         return handler._json(200, resp)
 
     elif parsed.path == "/manage/check-updates":
@@ -4997,6 +5226,26 @@ def handle_manage_get(handler, parsed, params):
             },
         )
 
+    elif parsed.path == "/manage/apps":
+        shown = _srv.apps_shown()
+        return handler._json(
+            200,
+            {"enabled": bool(shown), "shown": [n for n in _srv.APP_NAMES if n in shown], "env_locked": _srv._apps_env() is not None},
+        )
+
+    elif parsed.path == "/manage/catalog-streetzim":
+        # StreetZim's regions, from the Internet Archive, for the toggle in
+        # the Maps category. Cached and served stale while a refresh runs.
+        from zimi import streetzim
+
+        from zimi import mapregions
+
+        items, source, as_of, refreshing = streetzim.get()
+        return handler._json(
+            200,
+            {"items": mapregions.annotate(list(items)), "source": source, "as_of": as_of, "refreshing": refreshing},
+        )
+
     elif parsed.path == "/manage/env":
         # What the environment is overriding, so an admin can SEE it rather
         # than deducing it from a greyed-out control (#69). Read-only by
@@ -5188,7 +5437,41 @@ def _handle_users_post(handler, data):
         return handler._json(400, {"error": "unknown action"})
     if not ok:
         return handler._json(400, {"error": err or "operation failed"})
-    return handler._json(200, {"status": "ok", "users": _users.list_users()})
+    # The whole panel, as the GET gives it: the client paints from one
+    # object, and a reply with only the users left the public-access card
+    # reading "Open" and the allowlist picker "No ZIMs installed" after every
+    # change (Eric, 2026-09-21: "change my claude user to limited then my
+    # public access changes to open!? That makes zero sense").
+    return handler._json(200, dict(_users_payload(handler), status="ok"))
+
+
+def _users_payload(handler):
+    """The Users panel in one object: the accounts, the ZIMs an allowlist
+    can name, the anonymous-access policy, the primary admin and which kind
+    of admin is looking. Every reply that changes any of it returns all of
+    it."""
+    from zimi import users as _users
+
+    return {
+        "users": _users.list_users(),
+        "zims": sorted(_srv.get_zim_files().keys()),
+        # Rich per-ZIM options for the allowlist picker (used by both the
+        # per-user Limited picker and the public-access Limited picker).
+        "zim_options": _zim_picker_options(),
+        # Anonymous-access policy (Open / Limited / Sign-in required).
+        "public_access": _users.public_access_status(),
+        # The PRIMARY admin (password-file account) is not stored in
+        # users.json — surface it as a synthetic, non-deletable row so
+        # the UI can show "the admin" alongside the named users.
+        "primary_admin": {
+            "name": _get_manage_user() or "admin",
+            "role": "admin",
+            "primary": True,
+        },
+        # Which kind of admin is viewing — the client hides admin-only
+        # controls (creating/managing other admins) for secondaries.
+        "self_kind": admin_kind(handler),
+    }
 
 
 # ============================================================================
@@ -5313,10 +5596,9 @@ def handle_manage_post(handler, parsed, data):
 
     # ZIM creation — a creator account (can_create) may drive these routes
     # without admin credentials, so they gate themselves ahead of the generic
-    # admin challenge below. Every web mode captures the web, never the
-    # server's disk: folder and archive import are both refused outright in
-    # ``_create_validate`` (CLI-only), so there is no server-path mode left to
-    # hold to the primary admin.
+    # admin challenge below. Folder capture is refused outright in
+    # ``_create_validate`` (CLI-only); archive import, the one web mode that
+    # reads the server's disk, is held to the primary admin just below.
     if parsed.path in (
         "/manage/create",
         "/manage/create/cancel",
@@ -5326,6 +5608,15 @@ def handle_manage_post(handler, parsed, data):
         denial = _creator_denial(handler)
         if denial:
             return handler._json(*denial)
+        # Import reads the server's disk (the library folder, by listing), so
+        # it stays with the primary admin; a creator account captures the web
+        # and packages its own bookmarks, nothing more.
+        if (
+            parsed.path in ("/manage/create", "/manage/create/probe")
+            and data.get("mode") == "import"
+            and not _primary_admin_authorized(handler)
+        ):
+            return handler._json(403, {"error": "archive import is for the primary admin"})
         if parsed.path == "/manage/create/cancel":
             # With an id: that job, wherever it is — the running one or one
             # still waiting. Without: whatever is running.
@@ -5869,6 +6160,17 @@ def handle_manage_post(handler, parsed, data):
         # The delay is applied when the payload is built, so no re-check is
         # needed — the cached answer is still the right answer.
         return handler._json(200, _app_update_payload())
+
+    elif parsed.path == "/manage/apps":
+        # The server-wide apps switch. Same env-lock contract as the other
+        # settings: ZIMI_APPS wins and the write is refused, not ignored.
+        # ``shown`` names the apps offered; ``enabled`` is the old all-or-nothing.
+        enabled, err = _srv.set_apps_enabled(data.get("shown") if "shown" in data else data.get("enabled"))
+        if err == "env_locked":
+            return handler._json(403, {"error": "Apps are controlled by the %s env var" % _srv.APPS_ENV})
+        shown = _srv.apps_shown()
+        log.info("Apps offered: %s", ", ".join(n for n in _srv.APP_NAMES if n in shown) or "none")
+        return handler._json(200, {"enabled": enabled, "shown": [n for n in _srv.APP_NAMES if n in shown], "env_locked": False})
 
     elif parsed.path == "/manage/app-update-channel":
         # Latest vs beta for the APP release check. Same env-lock contract

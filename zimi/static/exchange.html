@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZimiExchange</title>
+<!--@apps.css@-->
+<style>
+  /* A question or an answer: the same gutter and the same number as a row
+     in a list, so the eye lands where it did there. */
+  .post { display: grid; grid-template-columns: 52px 1fr; gap: 12px; padding: 14px 0; border-top: 1px solid var(--border); }
+  .post.first { border-top: 0; padding-top: 0; }
+  .post .score { text-align: center; font-weight: 600; font-size: 15px; color: var(--text); font-variant-numeric: tabular-nums; }
+  .post .score .ok { display: block; color: var(--green); font-size: 18px; margin-top: 4px; }
+  .by { color: var(--text2); font-size: 12px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div id="home">
+    <div class="chips" id="chips"></div>
+    <div id="shelves"></div>
+    <div id="list" hidden>
+      <div class="head"><h2 id="l-title"></h2><span class="n" id="l-n"></span></div>
+      <div class="chips" id="l-tags"></div>
+      <div id="l-rows"></div>
+      <button class="more" id="more" hidden onclick="more()"></button>
+    </div>
+    <div class="empty" id="empty" hidden></div>
+  </div>
+  <div id="qview" class="item" hidden>
+    <h1 id="q-title"></h1>
+    <div class="who" id="q-who"></div>
+    <div class="post first"><div class="score" id="q-score"></div><div class="prose" id="q-body"></div></div>
+    <div class="tags" id="q-tags"></div>
+    <div class="section-h" id="q-ah"></div>
+    <div id="q-answers"></div>
+    <div class="actions"><a id="q-open" href="#"></a></div>
+  </div>
+</div>
+<!--@apps.js@-->
+<script>
+// ZimiExchange. Every Stack Exchange site in the library as one place: a
+// shelf per site of its most voted questions with its top tags, a site or a
+// tag as a paged list, and a question view Zimi owns: body, tags, answers
+// scored with the accepted one first, the original page one tap away.
+// Zimi's top bar drives exchangeSearch(q), which asks the library's own
+// title search across the sites.
+var STR = strings({ title: 'ZimiExchange', all: 'All', more: 'More', questions: 'questions', answers: 'answers', answer: 'answer', votes: 'votes', vote: 'vote', asked: 'asked by', open_page: 'Open the original page', none: 'No questions match.', empty: 'No Q&A site installed yet.', catalog: 'Browse the catalog', q: '' });
+var _sites = [], _site = '', _tag = '', _q = '', _page = 1, _pages = 0, _busy = false;
+function icon(s) { return s.icon ? zimIcon(s.name) : ''; }
+function siteOf(name) { return _sites.filter(function(s) { return s.name === name; })[0] || { name: name, title: name }; }
+function goCatalog() { tell({ zimi: 'catalog', category: 'stack_exchange' }); return false; }
+function tagChip(zim, t) { return '<button class="chip tag" onclick="openTag(' + J(zim) + ',' + J(t.tag) + ')">' + esc(t.tag) + ' <span class="n">' + esc(t.count) + '</span></button>'; }
+
+// A row names its site only when its list does not: a shelf and a site's
+// list are one site by definition; a search across the sites is not.
+function row(r, zim, mixed) {
+  var s = siteOf(zim);
+  return '<div class="row" onclick="openQ(' + J(zim) + ',' + J(r.page) + ')">' +
+    '<div class="stat">' + (r.votes === '' ? '' : '<b>' + esc(r.votes) + '</b>' + esc(Number(r.votes) === 1 ? STR.vote : STR.votes)) +
+      (r.answers === '' ? '' : '<span class="pill' + (r.accepted ? ' ok' : '') + '">' + esc(r.answers) + '</span>') + '</div>' +
+    '<div><div class="t">' + esc(r.title) + '</div>' + (r.excerpt ? '<div class="ex">' + esc(r.excerpt) + '</div>' : '') +
+    (r.tags && r.tags.length ? '<div class="tags">' + r.tags.slice(0, 5).map(function(t) { return '<span class="tg" onclick="event.stopPropagation();openTag(' + J(zim) + ',' + J(t) + ')">' + esc(t) + '</span>'; }).join('') + '</div>' : '') +
+    (mixed ? '<div class="m">' + icon(s) + esc(s.title) + '</div>' : '') + '</div></div>';
+}
+
+function renderChips() {
+  var c = document.getElementById('chips');
+  c.innerHTML = (_sites.length > 1 ? '<button class="chip' + (!_site ? ' on' : '') + '" onclick="openSite(\'\')">' + esc(STR.all) + '</button>' : '') +
+    _sites.map(function(s) { return '<button class="chip' + (_site === s.name ? ' on' : '') + '" onclick="openSite(' + J(s.name) + ')">' + icon(s) + esc(s.title) + '</button>'; }).join('');
+  c.hidden = _sites.length < 2;
+}
+
+function renderHome(data) {
+  _sites = data.sites || [];
+  renderChips();
+  var sh = document.getElementById('shelves');
+  document.getElementById('list').hidden = true;
+  sh.hidden = false;
+  sh.innerHTML = _sites.map(function(s) {
+    return '<section class="shelf"><div class="shelf-h">' + icon(s) + '<h2>' + esc(s.title) + '</h2>' +
+      '<button class="all" onclick="openSite(' + J(s.name) + ')">' + esc(STR.all) + CHEV + '</button></div>' +
+      (s.tags && s.tags.length ? '<div class="chips">' + s.tags.slice(0, 12).map(function(t) { return tagChip(s.name, t); }).join('') + '</div>' : '') +
+      (s.rows || []).slice(0, 6).map(function(r) { return row(r, s.name, false); }).join('') + '</section>';
+  }).join('');
+  var empty = document.getElementById('empty');
+  empty.hidden = _sites.length > 0;
+  empty.innerHTML = esc(STR.empty) + '<br><a class="door" href="/?manage" onclick="return goCatalog()">' + esc(STR.catalog) + CHEV + '</a>';
+}
+
+function renderList(title, rows, append) {
+  document.getElementById('shelves').hidden = true;
+  var l = document.getElementById('list'); l.hidden = false;
+  document.getElementById('l-title').textContent = title;
+  var host = document.getElementById('l-rows');
+  if (!append) host.innerHTML = '';
+  var mixed = !!_q && !_site;
+  host.insertAdjacentHTML('beforeend', rows.map(function(r) { return row(r, r.zim || _site, mixed); }).join(''));
+  document.getElementById('l-n').textContent = _pages ? (_page + ' / ' + _pages) : '';
+  var more = document.getElementById('more'); more.hidden = !_pages || _page >= _pages; more.textContent = STR.more;
+  var empty = document.getElementById('empty'); empty.hidden = host.children.length > 0; empty.textContent = STR.none;
+  var lt = document.getElementById('l-tags'); lt.innerHTML = ''; lt.hidden = true;
+  if (_site && !_tag && !_q) {
+    var s = siteOf(_site);
+    if (s.tags && s.tags.length) { lt.hidden = false; lt.innerHTML = s.tags.map(function(t) { return tagChip(_site, t); }).join(''); }
+  }
+}
+
+function loadHome() {
+  fetch('/exchange/home').then(function(r) { return r.json(); }).then(function(d) {
+    renderHome(d);
+    if (STR.q) { var want = STR.q; STR.q = ''; var i = want.indexOf('/'); if (i > 0) openQ(want.slice(0, i), want.slice(i + 1)); }
+  }).catch(function() { document.getElementById('empty').hidden = false; document.getElementById('empty').textContent = STR.none; });
+}
+function loadList(append) {
+  if (_busy) return; _busy = true;
+  fetch('/exchange/site?zim=' + encodeURIComponent(_site) + '&page=' + _page + (_tag ? '&tag=' + encodeURIComponent(_tag) : '')).then(function(r) { return r.json(); }).then(function(d) {
+    _pages = d.pages || 0;
+    renderList((_tag ? '[' + _tag + '] · ' : '') + siteOf(_site).title, d.rows || [], append);
+  }).finally(function() { _busy = false; });
+}
+function openSite(name) { closeQ(true); _site = name; _tag = ''; _q = ''; _page = 1; renderChips(); if (!name) { document.getElementById('list').hidden = true; document.getElementById('shelves').hidden = false; document.getElementById('empty').hidden = _sites.length > 0; return; } loadList(false); window.scrollTo(0, 0); }
+function openTag(name, tag) { closeQ(true); _site = name; _tag = tag; _q = ''; _page = 1; renderChips(); loadList(false); window.scrollTo(0, 0); }
+function more() { if (_q) return; _page += 1; loadList(true); }
+
+// The library's own title search, over the installed sites only. A hit is
+// a question page; anything else a site ZIM holds (users, tags) is not.
+function exchangeSearch(q) {
+  _q = (q || '').trim();
+  closeQ(true);
+  if (!_q) { openSite(_site); return; }
+  var zims = (_site ? [_site] : _sites.map(function(s) { return s.name; })).join(',');
+  if (!zims) return;
+  fetch('/search?q=' + encodeURIComponent(_q) + '&zim=' + encodeURIComponent(zims) + '&limit=15&fast=1').then(function(r) { return r.json(); }).then(function(d) {
+    var rows = (d.results || []).filter(function(r) { return /^questions\/\d+\//.test(r.path || ''); }).map(function(r) {
+      return { title: r.title, page: r.path, votes: '', answers: '', accepted: false, excerpt: r.snippet ? String(r.snippet).replace(/<[^>]+>/g, '') : '', tags: [], zim: r.zim };
+    });
+    _pages = 0; _page = 1;
+    renderList('“' + _q + '”', rows, false);
+  }).catch(function() {});
+}
+
+function openQ(zim, page) {
+  var s = siteOf(zim);
+  document.getElementById('home').hidden = true;
+  var v = document.getElementById('qview'); v.hidden = false;
+  document.getElementById('q-title').textContent = '…';
+  document.getElementById('q-body').innerHTML = ''; document.getElementById('q-answers').innerHTML = ''; document.getElementById('q-tags').innerHTML = ''; document.getElementById('q-ah').textContent = '';
+  openLink(document.getElementById('q-open'), zim, page, STR.open_page);
+  window.scrollTo(0, 0);
+  tell({ zimi: 'exchange-q', q: zim + '/' + page });
+  fetch('/exchange/q?zim=' + encodeURIComponent(zim) + '&q=' + encodeURIComponent(page)).then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
+    if (!d) { document.getElementById('q-title').textContent = STR.none; return; }
+    document.getElementById('q-title').textContent = d.title;
+    tell({ zimi: 'exchange-q', q: zim + '/' + page, title: d.title });
+    document.getElementById('q-who').innerHTML = icon(s) + '<span>' + esc(s.title) + (d.author ? ' · ' + esc(STR.asked) + ' <b>' + esc(d.author) + '</b>' : '') + '</span>';
+    document.getElementById('q-score').innerHTML = esc(d.votes);
+    document.getElementById('q-body').innerHTML = d.body || '';
+    document.getElementById('q-tags').innerHTML = (d.tags || []).map(function(t) { return '<span class="tg" onclick="openTag(' + J(zim) + ',' + J(t) + ')">' + esc(t) + '</span>'; }).join('');
+    document.getElementById('q-ah').textContent = count((d.answers || []).length, STR.answer, STR.answers);
+    document.getElementById('q-answers').innerHTML = (d.answers || []).map(function(a) {
+      return '<div class="post"><div class="score">' + esc(a.score) + (a.accepted ? '<span class="ok" title="accepted">✓</span>' : '') + '</div>' +
+        '<div class="prose">' + a.body + (a.author ? '<div class="by">' + esc(a.author) + '</div>' : '') + '</div></div>';
+    }).join('');
+    // A link to another question stays here.
+    v.querySelectorAll('a[data-q]').forEach(function(a) { a.addEventListener('click', function(e) { e.preventDefault(); openQ(zim, a.getAttribute('data-q')); }); });
+  }).catch(function() { document.getElementById('q-title').textContent = STR.none; });
+}
+function closeQ(silent) {
+  var v = document.getElementById('qview'); if (v.hidden) return;
+  v.hidden = true; document.getElementById('home').hidden = false;
+  tell({ zimi: 'exchange-home' });
+  if (!silent) window.scrollTo(0, 0);
+}
+window.exchangeSearch = exchangeSearch; window.openQ = openQ; window.closeQ = closeQ; window.openSite = openSite; window.openTag = openTag; window.more = more;
+window.__top = function() { return document.getElementById('qview').hidden && document.getElementById('list').hidden; };
+window.__random = function() {
+  fetch('/exchange/random').then(function(r) { return r.ok ? r.json() : null; }).then(function(d) { if (d && d.zim && d.page) openQ(d.zim, d.page); }).catch(function() {});
+};
+window.__back = function() {
+  if (!document.getElementById('qview').hidden) { closeQ(); return true; }
+  if (!document.getElementById('list').hidden) { openSite(''); return true; }
+  return false;
+};
+window.__home = function() { closeQ(true); openSite(''); window.scrollTo(0, 0); };
+window.__route = function(id) {
+  if (!id) { closeQ(); return; }
+  var i = id.indexOf('/'); if (i > 0) openQ(id.slice(0, i), id.slice(i + 1));
+};
+loadHome();
+</script>
+</body>
+</html>

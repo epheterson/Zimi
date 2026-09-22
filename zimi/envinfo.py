@@ -54,7 +54,7 @@ VARS: dict[str, tuple[str, str]] = {
     "ZIM_DIR": ("Where the ZIM files are", "ZIM folder"),
     "ZIMI_DATA_DIR": ("Where Zimi keeps its own data", "Data folder"),
     "ZIMI_STAGING_DIR": ("Where downloads are assembled", ""),
-    "ZIMI_CREATE_ROOT": ("Where created ZIMs are written", ""),
+    "ZIMI_CREATE_ROOT": ("Where the Create page looks for archives to import (the library folder when unset)", ""),
     "ZIMI_HOST": ("Address the server binds to", ""),
     "ZIMI_PORT": ("Port the server binds to", "Port"),
     # ── updates ───────────────────────────────────────────────────────────
@@ -77,6 +77,14 @@ VARS: dict[str, tuple[str, str]] = {
     ),
     # ── sharing: BitTorrent ───────────────────────────────────────────────
     "ZIMI_OFFLINE": ("Air-gap switch: turns off everything internet-bound", "Sharing"),
+    "ZIMI_APPS": ("The apps on the home page: 0 hides them all, or a comma list of maps, tube, exchange, reddot keeps only those", "Apps"),
+    # ── the desktop app ────────────────────────────────────────────────────
+    "ZIMI_DESKTOP_BROWSER": ("1 runs the desktop app in the system browser instead of a native window", "Desktop"),
+    "ZIMI_APPCAST_URL": ("Where the Windows desktop app looks for updates", "Desktop"),
+    "ZIMI_DESKTOP_SMOKE": ("CI: 1 opens a window and exits; app renders the home view and exits", "Desktop"),
+    "ZIMI_DESKTOP_SMOKE_DWELL": ("CI: seconds the smoke window stays open for a screenshot", "Desktop"),
+    "ZIMI_DESKTOP_DEBUG": ("1 opens the desktop window with the page's console on stdout and the inspector", "Desktop"),
+    "ZIMI_DESKTOP_KEEP_MARK": ("CI: 1 leaves the mark of the web on the Windows zip's libraries", "Desktop"),
     "ZIMI_BT": ("BitTorrent settings, as one blob", "BitTorrent"),
     "ZIMI_TORRENT": ("Turns BitTorrent on or off", "BitTorrent"),
     "ZIMI_BT_PORT": ("Inbound BitTorrent port", "Port"),

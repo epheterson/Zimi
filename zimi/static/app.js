@@ -1,3 +1,43 @@
+// The last few script errors, kept where a smoke test or a bug report can
+// read them back (window.__zimiErrors): a desktop window has no console a
+// person can open, and "the page stayed blank" is not a report.
+window.__zimiErrors = [];
+window.addEventListener('error', function(e) {
+  var where = (e.filename || '').split('/').pop() + ':' + (e.lineno || 0);
+  window.__zimiErrors.push(where + ' ' + (e.message || String(e.error || e)));
+  if (window.__zimiErrors.length > 20) window.__zimiErrors.shift();
+});
+window.addEventListener('unhandledrejection', function(e) {
+  window.__zimiErrors.push('promise: ' + String((e.reason && (e.reason.message || e.reason)) || e));
+  if (window.__zimiErrors.length > 20) window.__zimiErrors.shift();
+});
+
+// Storage that is always there. WebKitGTK hands a private-mode window a
+// null localStorage, and one unguarded read of it at load killed the whole
+// script: the desktop window on Linux stayed a bare shell (issue #81). A
+// window with no storage gets an in-memory one and forgets on close, which
+// is what private mode means; it does not get a dead page.
+(function _ensureStorage() {
+  function memory() {
+    var m = {};
+    return {
+      getItem: function(k) { return Object.prototype.hasOwnProperty.call(m, k) ? m[k] : null; },
+      setItem: function(k, v) { m[k] = String(v); },
+      removeItem: function(k) { delete m[k]; },
+      clear: function() { m = {}; },
+      key: function(i) { return Object.keys(m)[i] || null; },
+      get length() { return Object.keys(m).length; }
+    };
+  }
+  ['localStorage', 'sessionStorage'].forEach(function(name) {
+    var ok = false;
+    try { ok = !!window[name] && typeof window[name].getItem === 'function'; } catch (e) { ok = false; }
+    if (!ok) {
+      try { Object.defineProperty(window, name, { configurable: true, value: memory() }); } catch (e) {}
+    }
+  });
+})();
+
 // ── Config (injected by server via inline script) ──
 var _cfg = window.__ZIMI_CONFIG || {};
 var _i18nVer = _cfg.i18nHash || '0';
@@ -913,6 +953,16 @@ async function setLanguage(lang) {
   if (libPanel && libPanel.classList.contains('open')) renderLibraryPanel();
   // If reading an article, re-check language banner in reader context
   if (readerOpen && currentArticle) _checkReaderLangBanner();
+  // The PDF viewer speaks the shell's language too: reopened with the new
+  // locale on the same file (Eric: "changing language with PDF up doesn't
+  // change language of the text in the PDF player").
+  if (_isPdfPage()) {
+    try {
+      var _pf = document.getElementById('reader-frame');
+      var _pm = /[?&]file=([^#&]*)/.exec(_pf.contentWindow.location.href);
+      if (_pm) _pf.contentWindow.location.replace(_pdfViewerUrl(_pm[1]));
+    } catch (e) {}
+  }
   // Sync almanac: re-render all content with new translations
   if (typeof _onGlobalLanguageChanged === 'function') _onGlobalLanguageChanged(lang);
   if (_almanacOpen && typeof _renderAlmanacContent === 'function') _renderAlmanacContent();
@@ -970,15 +1020,34 @@ function _applyI18nToDOM() {
   _updateSearchPlaceholder();
 }
 
+// On an app's page the box asks the app's question, short enough for a
+// phone's box: "Where to?", "Find a video", "Ask a question".
+function _appPlaceholder() {
+  if (_isReddotPage()) return t('reddot_search_placeholder');
+  if (_isExchangePage()) return t('exchange_search_placeholder');
+  if (_isTubePage()) return t('tube_search_placeholder');
+  if (_isMapPage()) return t('maps_search_placeholder');
+  return '';
+}
+
+// What the box does on the Manage page: filters the installed list on
+// the Library tab, searches the catalog (or the open category) everywhere
+// else. One answer, so the two places that write the placeholder agree.
+function _managePlaceholder() {
+  if (manageTab === 'installed') return t('filter_installed');
+  if (manageCategoryFilter) {
+    var catMeta = BROWSE_CATEGORIES.find(function(c) { return c.key === manageCategoryFilter; });
+    return t('search_in', {source: catMeta ? t(catMeta.i18n) : manageCategoryFilter});
+  }
+  return t('search_catalog');
+}
+
 function _updateSearchPlaceholder() {
   if (!q) return;
   if (mode === 'manage') {
-    var manageMode = document.querySelector('.manage-tab.active');
-    if (manageMode && manageMode.dataset.tab === 'catalog') {
-      q.placeholder = t('search_catalog');
-    } else {
-      q.placeholder = t('filter_installed');
-    }
+    q.placeholder = _managePlaceholder();
+  } else if (_appPlaceholder()) {
+    q.placeholder = _appPlaceholder();
   } else if (currentSource) {
     var info = _zimInfo(currentSource);
     q.placeholder = t('search_in', { source: (info && info.title) || currentSource });
@@ -1221,6 +1290,7 @@ async function _bootAuthGate() {
   if (j && j.role === 'user') {
     _userSession = { name: j.name, restricted: !!j.restricted, canCreate: !!j.can_create };
     if (manageBtnEl) manageBtnEl.style.display = 'none';
+    _loadUserPrefs();
     return false;
   }
   if (j && j.role === 'admin') {
@@ -1483,6 +1553,7 @@ function submitPw() {
         // manage deterministically (enterManage, never toggleManage — the
         // latter would toggle OFF when opened from within manage).
         _manageToken = tok; _saveManageToken(tok, remember);
+        _msPrefetch = {};  // whatever was fetched before the password is stale
         closePwModal();
         if (typeof enterManage === 'function') enterManage();
       }
@@ -1515,7 +1586,9 @@ function updateTopbar() {
   // That means: article history exists (stepped into articles), scoped home
   // view, or search results. NOT shown for basic reader-open-from-source
   // (back = click source icon or Escape).
-  const showBack = articleHistory.length > 0 || mode === 'search' || homeScope;
+  // On an app page the arrow is always there: a step back inside the app
+  // (a video, a question, a post, a list), and from its home, out.
+  const showBack = articleHistory.length > 0 || mode === 'search' || homeScope || (_isAppPage() && !_appTop);
   backBtn.style.display = showBack ? 'flex' : 'none';
 
   // Breadcrumb: Zimi / [icon] — search bar shows source name as placeholder.
@@ -1538,6 +1611,31 @@ function updateTopbar() {
     bcIcon.innerHTML = _ALMANAC_BC_ICON;
     // Identity only — no destination behind it, so no link affordance either.
     bcIcon.removeAttribute('href');
+  } else if (_isReddotPage()) {
+    bcSep.style.display = 'inline';
+    bcIcon.style.display = 'inline-flex';
+    bcIcon.title = t('reddot');
+    bcIcon.innerHTML = _REDDOT_SVG.replace('width="26" height="26"', 'width="20" height="20"');
+    bcIcon.setAttribute('href', '/#reddot');
+  } else if (_isExchangePage()) {
+    bcSep.style.display = 'inline';
+    bcIcon.style.display = 'inline-flex';
+    bcIcon.title = t('exchange');
+    bcIcon.innerHTML = _EXCHANGE_SVG.replace('width="26" height="26"', 'width="20" height="20"');
+    bcIcon.setAttribute('href', '/#exchange');
+  } else if (_isTubePage()) {
+    bcSep.style.display = 'inline';
+    bcIcon.style.display = 'inline-flex';
+    bcIcon.title = t('tube');
+    bcIcon.innerHTML = _TUBE_PLAY_SVG.replace('width="26" height="26"', 'width="20" height="20"');
+    bcIcon.setAttribute('href', '/#tube');
+  } else if (_isMapPage()) {
+    // Zimi Maps: the surface is the identity, whichever map is open.
+    bcSep.style.display = 'inline';
+    bcIcon.style.display = 'inline-flex';
+    bcIcon.title = t('cat_maps');
+    bcIcon.innerHTML = _MAPS_SVG.replace('width="26" height="26"', 'width="20" height="20"');
+    bcIcon.setAttribute('href', '/#maps');
   } else if (activeSource) {
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
@@ -1612,8 +1710,11 @@ function updateTopbar() {
   // the inline row to the essentials (Eric: reconsider what's behind ⋯, we
   // have a lot going on). Desktop keeps them inline; the space is there.
   var _foldReaderExtras = _readingArticle && _isNarrow();
+  // A map is read with the eyes and the hands: no type size, no read-aloud,
+  // no Reader View. _syncReaderViewBtn and the ⋯ menu know the same rule.
+  var _readingText = _readingArticle && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage() && !_isPdfPage();
   var fontBtn = document.getElementById('font-btn');
-  if (fontBtn) fontBtn.style.display = (_readingArticle && !_foldReaderExtras) ? 'flex' : 'none';
+  if (fontBtn) fontBtn.style.display = (_readingText && !_foldReaderExtras) ? 'flex' : 'none';
   // Bookmarks-panel opener — reader only (#65). Everywhere else the library
   // button already opens the panel, but while reading it becomes the
   // save-bookmark toggle, which left the bookmark tree unreachable without
@@ -1621,8 +1722,27 @@ function updateTopbar() {
   // saved article should stay one tap from the page you're on.
   var bmPanelBtn = document.getElementById('bm-panel-btn');
   if (bmPanelBtn) bmPanelBtn.style.display = _readingArticle ? 'flex' : 'none';
+  // Other maps of the same place: a map page, and somewhere else to go.
+  var mapSrcBtn = document.getElementById('map-source-btn');
+  if (mapSrcBtn) {
+    var showMapSrc = _readingArticle && currentArticle && _isMapZim(currentArticle.zim) && _installedMaps().length > 1;
+    // A map page carries one more button (the picker) than any other page,
+    // and on a phone that squeezed the box to a third of its placeholder.
+    // The bookmarks button steps aside there: the history button's panel
+    // holds the bookmarks too.
+    document.body.classList.toggle('map-page', !!(_readingArticle && currentArticle && _isMapZim(currentArticle.zim)));
+    // An app page is not an article: nothing on it to bookmark as one.
+    document.body.classList.toggle('app-page', _isTubePage() || _isExchangePage() || _isReddotPage());
+  document.body.classList.toggle('app-noitem', _isAppPage() && !_appItem);
+    mapSrcBtn.style.display = showMapSrc ? 'flex' : 'none';
+    if (!showMapSrc) _closeMapSourceDropdown();
+  }
   var ttsBtn = document.getElementById('tts-btn');
-  if (ttsBtn) ttsBtn.style.display = (_readingArticle && _TTS_AVAILABLE && !_foldReaderExtras) ? 'flex' : 'none';
+  if (ttsBtn) ttsBtn.style.display = (_readingText && _TTS_AVAILABLE && !_foldReaderExtras) ? 'flex' : 'none';
+  // The dice on a map roll a place, and say so.
+  var randomLabel = t(_isMapPage() ? 'random_place' : 'random_article');
+  randomBtn.title = randomLabel;
+  randomBtn.setAttribute('aria-label', randomLabel);
   _syncReaderViewBtn(); // book/reader-view glyph — gated on extractable content
   // Desktop: show save button when viewing a downloadable file (PDF, EPUB)
   var saveBtn = document.getElementById('save-btn');
@@ -1642,6 +1762,7 @@ function updateTopbar() {
   // gone now; what is left is Language and the X, which is the whole job.
   var libraryChromeOff = mode === 'manage' || _almanacOpen || _createOpen;
   randomBtn.style.display = libraryChromeOff ? 'none' : 'flex';
+
   document.getElementById('library-btn').style.display = libraryChromeOff ? 'none' : 'flex';
   // Create-a-ZIM lives in the ⋯ menu at every width — creation is an
   // occasional, deliberate act, so it stays out of the primary topbar. The ⋯
@@ -1660,8 +1781,11 @@ function updateTopbar() {
   document.body.classList.toggle('creating', !!_createOpen);
   var moreBtn = document.querySelector('.topbar-more');
   if (moreBtn) {
+    // A menu with nothing in it is no menu: on a wide screen an app page has
+    // no reading rows to fold, so the button goes too (Eric: "... menu is
+    // showing in tube and for no reason nothing behind it on desktop").
     moreBtn.style.display = _createOpen ? 'none'
-      : (_createMenuRowAvailable() ? 'flex' : '');
+      : (_createMenuRowAvailable() ? 'flex' : (readerOpen && !_buildTopbarMenuHtml() ? 'none' : ''));
     _syncTopbarMoreSolo(moreBtn);
   }
   document.getElementById('lang-selector-btn').style.display =
@@ -1676,19 +1800,14 @@ function updateTopbar() {
     q.placeholder = t('create_zim');
   } else if (_almanacOpen) {
     q.placeholder = t('almanac');
+  } else if (_appPlaceholder()) {
+    q.placeholder = _appPlaceholder();
   } else if (currentSource) {
     q.placeholder = _zimTitle(currentSource);
   } else if (readerOpen && readerSource) {
     q.placeholder = _zimTitle(readerSource);
   } else if (mode === 'manage') {
-    if (manageTab === 'installed') {
-      q.placeholder = t('filter_installed');
-    } else if (manageCategoryFilter) {
-      const catMeta = BROWSE_CATEGORIES.find(c => c.key === manageCategoryFilter);
-      q.placeholder = t('search_in', {source: catMeta ? t(catMeta.i18n) : manageCategoryFilter});
-    } else {
-      q.placeholder = t('search_catalog');
-    }
+    q.placeholder = _managePlaceholder();
   } else if (homeScope) {
     q.placeholder = t('search_in', {source: homeScope.label});
   } else {
@@ -1722,6 +1841,8 @@ function bcClick(e) {
   if (_anchorNativeClick(e)) return; // bc-icon is a real link (#49) — new-tab gestures stay native
   e.preventDefault();
   if (_almanacOpen) return; // the Almanac breadcrumb is identity only — no nav into the ZIM behind it
+  // An app's icon is the way to its front page, from anywhere inside it.
+  if (_isAppPage()) { _appEntryHome(); return; }
   if (currentSource && (readerOpen || mode === 'search')) {
     if (readerOpen) closeReader();
     enterSource(currentSource, false);
@@ -2160,6 +2281,35 @@ function route(push) {
   // /manage/create* route is admin-gated server-side anyway — so the page
   // opens now and _initSecondary closes it if the answer comes back no. The
   // alternative, waiting, is the home-then-switch flash Eric asked us to kill.
+  // The query form of an app address: /?tube=<video>, /?exchange=<question>,
+  // /?reddot=<post>. The hash forms below are the older shape.
+  if (params.get('tube') !== null) { enterHome(false); openTube(true, params.get('tube') || ''); return; }
+  if (params.get('exchange') !== null) { enterHome(false); openExchange(true, params.get('exchange') || ''); return; }
+  if (params.get('reddot') !== null) { enterHome(false); openReddot(true, params.get('reddot') || ''); return; }
+  if (location.hash === '#reddot' || location.hash.indexOf('#reddot?') === 0) {
+    enterHome(false);
+    var rdQ = new URLSearchParams(location.hash.slice(location.hash.indexOf('?') + 1));
+    openReddot(true, location.hash.indexOf('?') > 0 ? (rdQ.get('p') || '') : '');
+    return;
+  }
+  if (location.hash === '#exchange' || location.hash.indexOf('#exchange?') === 0) {
+    enterHome(false);
+    var exQ = new URLSearchParams(location.hash.slice(location.hash.indexOf('?') + 1));
+    openExchange(true, location.hash.indexOf('?') > 0 ? (exQ.get('q') || '') : '');
+    return;
+  }
+  if (location.hash === '#tube' || location.hash.indexOf('#tube?') === 0) {
+    enterHome(false);
+    var tubeQ = new URLSearchParams(location.hash.slice(location.hash.indexOf('?') + 1));
+    openTube(true, location.hash.indexOf('?') > 0 ? (tubeQ.get('play') || '') : '');
+    return;
+  }
+  if (location.hash === '#maps') {
+    enterHome(false);
+    history.replaceState(history.state, '', location.pathname + location.search);
+    openMaps();
+    return;
+  }
   if (location.hash === '#create') {
     enterHome(false);
     openCreate(true);
@@ -2280,7 +2430,11 @@ async function _bootDeepLinkArticle(zim, path) {
   } finally {
     _popstateNoAutoReader = false;
   }
-  openArticle(zim, path, null, { replace: true });
+  // A shared map link arrives with its place in the hash. openArticle rewrites
+  // the URL, so the place has to travel through it or it is gone before the
+  // map loads and asks for it.
+  var pos = parseMapHash(location.hash);
+  openArticle(zim, path, null, { replace: true, pos: pos ? mapPositionHash(pos.zoom, pos.lat, pos.lng) : '' });
 }
 
 function _showToast(msg, duration) {
@@ -2361,9 +2515,42 @@ function goHome(e) {
   setTimeout(function() { window.scrollTo({ top: 0 }); }, 0);
 }
 
+function _isAppPage() {
+  return _isTubePage() || _isExchangePage() || _isReddotPage();
+}
+// The reader is on the PDF viewer: nothing to read aloud, no type size.
+function _isPdfPage() {
+  if (!readerOpen) return false;
+  var f = document.getElementById('reader-frame');
+  try { return !!(f && f.contentWindow && f.contentWindow.location.pathname.indexOf('/static/pdfjs/') === 0); } catch (e) { return false; }
+}
+// The app's home, in place of the item a shared link landed on.
+function _appEntryHome() {
+  var app = _tubeOpen ? ['tube', 'play', _tubeUrl('')] : _exchangeOpen ? ['exchange', 'q', _exchangeUrl('')] : ['reddot', 'p', _reddotUrl('')];
+  var st = { mode: 'reader' }; st[app[0]] = true; st[app[1]] = '';
+  _appHome(st, app[2], app[1]);
+  // "home", not a route to nothing: a route only closes the thing on
+  // screen (Back from a post lands on its list), the front page is the
+  // shelves whatever was open.
+  var f = document.getElementById('reader-frame');
+  try { if (f && f.contentWindow) f.contentWindow.postMessage({ zimi: 'home' }, location.origin); } catch (e) {}
+  document.title = t(app[0]) + ' \u2014 Zimi';
+  _setWindowTitle(document.title);
+}
+
 function goBack() {
   if (_createOpen) { closeCreate(); return; }
   if (_almanacOpen) { closeAlmanac(); return; }
+  if (_isAppPage()) {
+    // A thing inside the app is a history step: take it back. Otherwise ask
+    // the page (a list goes to the app's home); at the home, leave the app.
+    var st = history.state;
+    if (st && (st.play || st.q || st.p)) { if (st.entry) _appEntryHome(); else history.back(); return; }
+    var f = document.getElementById('reader-frame');
+    if (f && f.contentWindow) { try { f.contentWindow.postMessage({ zimi: 'back-request' }, location.origin); return; } catch (e) {} }
+    closeReader();
+    return;
+  }
   if (readerOpen) {
     // Step back through article history before closing reader
     if (articleHistory.length > 0) {
@@ -3214,7 +3401,10 @@ function renderHome(filter) {
   }
 
   // Discover (only on unscoped, unfiltered, unfiltered-by-language home)
-  var _showDiscover = !homeScope && !filter && !homeRecentFilter && !homeLangFilter.size;
+  // Not drawn at all when hidden: a row drawn and then emptied was filled
+  // again by a load that landed after the × (Eric: "clicking the X no
+  // longer hides discover!? BAD REGRESSION!!").
+  var _showDiscover = !homeScope && !filter && !homeRecentFilter && !homeLangFilter.size && !discoverHidden;
   if (_showDiscover) {
     h += '<div id="discover-row"></div>';
   }
@@ -3247,6 +3437,12 @@ function renderHome(filter) {
   }
 
   // Bookmarks moved to library panel (H/B key or topbar icon)
+
+  // Zimi Maps, first, as a source sits: one tile whenever a map is installed.
+  // Eric: "a Maps tile that sits with the sources grid like a source does."
+  if (!homeScope && !filter && !homeRecentFilter && !homeLangFilter.size) {
+    h += _appsRowHtml();
+  }
 
   // Favorites section at top (only on unscoped home)
   if (!homeScope) {
@@ -4688,6 +4884,19 @@ function openCreate(replaceState) {
     return;
   }
   if (_createOpen) return;
+  // A protected server asks for the password here, before the page opens,
+  // as Manage does: the page used to open and its first request came back
+  // as a red "unauthorized" under the Create button (Eric, desktop app).
+  if (_managePwRequired && !_manageToken && !(_userSession && _userSession.can_create) && typeof openPwModal === 'function' && !_pwResolve) {
+    var _afterPw = function(tok) {
+      _manageToken = tok; _saveManageToken(tok, true);
+      closePwModal();
+      openCreate(replaceState);
+    };
+    _pwResolve = _afterPw; _pwReject = function() {};
+    openPwModal();
+    return;
+  }
   if (_createLoaded) { _openCreateInner(replaceState); return; }
   var el = document.createElement('script');
   el.src = '/static/create.js?v=1';
@@ -4912,6 +5121,10 @@ function _loadDiscover() {
       if (cached[0] && cached[0].type === 'today' && cached.length > 1 && cached[1] && cached[1].type !== 'today') {
         cached = [cached[1], cached[0]].concat(cached.slice(2));
       }
+      // A list cached by a build that had a Maps card: drop it. Maps enter
+      // from the top bar now (Eric: "map entry through discover that's not
+      // it").
+      cached = cached.filter(function(it) { return !(it && it.type === 'maps'); });
       _renderDiscover(el, cached);
       return;
     }
@@ -4954,7 +5167,9 @@ function _loadDiscover() {
   var skipCats = {'Stack Exchange':1, 'Dev Docs':1};
   var skipPattern = /^zimgit/i;
   var visualZims = (zimsCache || []).filter(function(z) {
-    return typeof z.entries === 'number' && z.entries > 100
+    // A map has no article to pick at random: its entries are tiles and
+    // search shards, and it already has a card of its own.
+    return typeof z.entries === 'number' && z.entries > 100 && z.kind !== 'map'
       && !skipPattern.test(z.name) && !skipCats[z.category] && !usedNames[z.name];
   });
   // Shuffle and pick
@@ -5029,7 +5244,7 @@ function _loadDiscover() {
       setTimeout(function() { if (!localStorage.getItem(cacheKey)) renderHome(); }, 10000);
     }
     var el2 = document.getElementById('discover-row');
-    if (el2) _renderDiscover(el2, all);
+    if (el2 && !_getStorageFlag(SK.HIDE_DISCOVER)) _renderDiscover(el2, all);
   });
 }
 function _renderDiscover(el, items) {
@@ -5091,6 +5306,7 @@ function _renderDiscover(el, items) {
         '</div></a>';
       continue;
     }
+
 
     // ─── Shared: metadata extraction ──────────────────────────────────
     // Common fields used by Quote, Word, and Standard card types.
@@ -6121,7 +6337,20 @@ q.addEventListener('input', () => {
   const val = q.value.trim();
   // Suggest (200ms debounce) — include history items when typing
   clearTimeout(suggestTimer);
-  if (val && val.length >= 1 && mode !== 'manage') {
+  if (_isReddotPage()) {
+    hideSuggest();
+    suggestTimer = setTimeout(function() { _reddotSearch(val); }, 250);
+  } else if (_isExchangePage()) {
+    hideSuggest();
+    suggestTimer = setTimeout(function() { _exchangeSearch(val); }, 250);
+  } else if (_isTubePage()) {
+    // Tube: the box filters the feed inside the page, every keystroke.
+    hideSuggest();
+    suggestTimer = setTimeout(function() { _tubeSearch(val); }, 150);
+  } else if (val && val.length >= 1 && _isMapPage()) {
+    // Zimi Maps: the box finds places, on every installed map, nothing else.
+    if (val.length >= 2) suggestTimer = setTimeout(() => fetchPlaces(val), 200);
+  } else if (val && val.length >= 1 && mode !== 'manage') {
     // Show filtered history immediately, then fetch remote suggestions
     showHistoryDropdown(val);
     if (val.length >= 2) suggestTimer = setTimeout(() => fetchSuggestions(val), 200);
@@ -6181,6 +6410,16 @@ q.addEventListener('keydown', e => {
     e.preventDefault();
     clearTimeout(searchTimer);
     clearTimeout(suggestTimer);
+    // On a map, Enter takes the first place found; there is no article
+    // search to fall through to.
+    if (_isTubePage()) { _tubeSearch(q.value.trim()); return; }
+    if (_isExchangePage()) { _exchangeSearch(q.value.trim()); return; }
+    if (_isReddotPage()) { _reddotSearch(q.value.trim()); return; }
+    if (_isMapPage()) {
+      if (suggestItems.length && suggestItems[0]._place) selectSuggest(0);
+      else if (q.value.trim().length >= 2) fetchPlaces(q.value.trim());
+      return;
+    }
     hideSuggest();
     if (mode === 'manage') {
       if (manageTab === 'installed') {
@@ -6357,6 +6596,9 @@ function mergeSearchResults(phase1, phase2) {
     did_you_mean: phase2.did_you_mean || phase1.did_you_mean,
     _clientElapsed: phase2._clientElapsed,
     _query: phase2._query,
+    // Places come only from the full phase; the keystroke phase reads no
+    // shards. They are a group beside the results, not merged into them.
+    places: phase2.places || phase1.places || [],
   };
 }
 
@@ -6536,7 +6778,11 @@ function renderSearchResults(data, scope) {
   const visible = items.slice(0, visibleResultCount);
   const remaining = items.length - visibleResultCount;
 
-  let html = dymHtml + zimMatchHtml + '<div class="results">' + visible.map((r, i) => {
+  // Real places first. The offer to type into the map's own box is for when
+  // the shards had nothing, not a second row under every hit.
+  const placesHtml = _mapPlaceRowsHtml(data.places || []);
+  const mapFindHtml = (!scope && !placesHtml) ? _mapFindRowsHtml(data._query || '') : '';
+  let html = dymHtml + zimMatchHtml + '<div class="results">' + placesHtml + mapFindHtml + visible.map((r, i) => {
     const sourceRow = !scope
       ? '<div class="result-source">' + _sourceIconHtml(r.zim, 20) +
         '<span class="rs-name">' + esc(_zimTitle(r.zim)) + '</span></div>'
@@ -6747,6 +6993,35 @@ async function fetchSuggestions(query) {
   }
 }
 
+// Places on every installed map, for the box on a map page. Rows are
+// suggestItems like any other, so the arrow keys and Enter work unchanged;
+// picking one opens the place (a fly when it is on the map already open).
+async function fetchPlaces(query) {
+  if (suggestController) suggestController.abort();
+  suggestController = new AbortController();
+  const seq = ++_suggestSeq;
+  try {
+    const res = await fetch('/places?q=' + encodeURIComponent(query), { signal: suggestController.signal });
+    const data = await res.json();
+    if (seq !== _suggestSeq || document.activeElement !== q) return;
+    suggestItems = [];
+    for (const g of (data.groups || [])) {
+      for (const p of (g.places || [])) {
+        const what = [p.sub || (p.type !== 'place' ? p.type : ''), p.locality].filter(Boolean)
+          .map(x => String(x).replace(/_/g, ' ')).join(' \u00b7 ');
+        suggestItems.push({ _place: true, zim: g.zim, path: g.main_path, title: p.name,
+          sub: (what ? what + ' \u00b7 ' : '') + (g.title || g.zim),
+          pos: 'map=' + (p.zoom || 15) + '/' + p.lat + '/' + p.lng });
+      }
+    }
+    suggestItems = suggestItems.slice(0, 12);
+    if (suggestItems.length) showSuggest();
+    else hideSuggest();
+  } catch (e) {
+    if (e.name !== 'AbortError') hideSuggest();
+  }
+}
+
 // Close suggestions when clicking anywhere outside the search box/dropdown
 document.addEventListener('mousedown', (e) => {
   if (!suggestDropdown.contains(e.target) && e.target !== q) {
@@ -6820,9 +7095,10 @@ function showHistoryDropdown(filter) {
 function showSuggest() {
   suggestIndex = -1;
   suggestDropdown.innerHTML = suggestItems.map((s, i) =>
-    '<div class="suggest-item" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
+    '<div class="suggest-item' + (s._place ? ' sg-place' : '') + '" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
     '<div class="sg-title">' + esc(s.title) + '</div>' +
-    (!currentSource ? '<div class="sg-source">' + esc(_zimTitle(s.zim)) + '</div>' : '') +
+    (s._place ? '<div class="sg-source">' + esc(s.sub) + '</div>'
+      : (!currentSource ? '<div class="sg-source">' + esc(_zimTitle(s.zim)) + '</div>' : '')) +
     '</div>'
   ).join('');
   suggestDropdown.style.display = 'block';
@@ -6849,9 +7125,9 @@ function selectSuggest(i) {
     _runRecentSearch(s.query, s.zim);
     return;
   }
-  // Regular suggestion or history article
+  // Regular suggestion or history article; a place carries where it is.
   q.value = s.title;
-  openArticle(s.zim, s.path, s.title);
+  openArticle(s.zim, s.path, s.title, s.pos ? {pos: s.pos} : undefined);
 }
 
 // ── Library Manager ──
@@ -6899,7 +7175,12 @@ async function enterManage(e, section) {
     // only bail if management is genuinely disabled.
     if (_manageProbed) { _dropManageBoot(); return; }   // probe finished: disabled
     if (!_manageProbe) _manageProbe = _probeManageAuth();
-    await _manageProbe;
+    // The gear turns while the answer is on its way: on a busy server (a
+    // library warming after a restart) that can be seconds, and a tap that
+    // shows nothing reads as a dead button.
+    var gear = document.getElementById('manage-btn');
+    if (gear) gear.classList.add('busy');
+    try { await _manageProbe; } finally { if (gear) gear.classList.remove('busy'); }
     if (!manageEnabled) { _dropManageBoot(); return; }  // resolved to disabled
   }
   // Decide which settings section to land on: an explicit arg (deep link /
@@ -7134,17 +7415,25 @@ function filterCatalogLang(lang) {
 }
 
 // ── Browse category gallery metadata ──
+// A category's mark, drawn like the apps' and the top bar's (one stroke,
+// round caps), not an emoji: an emoji is a different picture on every
+// platform and the only thing on the page that is not Zimi's own line.
+function _catIcon(paths) {
+  return '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + paths + '</svg>';
+}
+
 const BROWSE_CATEGORIES = [
-  { key: 'wikipedia',      i18n: 'cat_encyclopedias',  icon: '\u{1F30D}', descKey: 'cat_encyclopedias_desc' },
-  { key: 'stack_exchange', i18n: 'cat_qa',             icon: '\u{1F4AC}', descKey: 'cat_qa_desc' },
-  { key: 'devdocs',        i18n: 'cat_devdocs',        icon: '\u{1F4BB}', descKey: 'cat_devdocs_desc' },
-  { key: 'ted',            i18n: 'cat_video',          icon: '\u{1F3AC}', descKey: 'cat_video_desc' },
-  { key: 'education',      i18n: 'cat_education',      icon: '\u{1F393}', descKey: 'cat_education_desc' },
-  { key: 'gutenberg',      i18n: 'cat_books',          icon: '\u{1F4DA}', descKey: 'cat_books_desc' },
-  { key: 'medical',        i18n: 'cat_medical',        icon: '\u{1FA7A}', descKey: 'cat_medical_desc' },
-  { key: 'survival',       i18n: 'cat_survival',       icon: '\u{1F9ED}', descKey: 'cat_survival_desc' },
-  { key: 'gaming',         i18n: 'cat_gaming',         icon: '\u{1F3AE}', descKey: 'cat_gaming_desc' },
-  { key: 'other',          i18n: 'cat_other',          icon: '\u{1F4E6}', descKey: 'cat_other_desc' },
+  { key: 'wikipedia',      i18n: 'cat_encyclopedias',  icon: _catIcon('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>'), descKey: 'cat_encyclopedias_desc' },
+  { key: 'stack_exchange', i18n: 'cat_qa',             icon: _catIcon('<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>'), descKey: 'cat_qa_desc' },
+  { key: 'devdocs',        i18n: 'cat_devdocs',        icon: _catIcon('<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M2 20h20"/><path d="M9 10l-2 2 2 2M15 10l2 2-2 2"/>'), descKey: 'cat_devdocs_desc' },
+  { key: 'ted',            i18n: 'cat_video',          icon: _catIcon('<rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"/>'), descKey: 'cat_video_desc' },
+  { key: 'education',      i18n: 'cat_education',      icon: _catIcon('<path d="M2 9l10-4 10 4-10 4z"/><path d="M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/><path d="M22 9v6"/>'), descKey: 'cat_education_desc' },
+  { key: 'gutenberg',      i18n: 'cat_books',          icon: _catIcon('<path d="M2 5h6a4 4 0 0 1 4 4v11a3 3 0 0 0-3-3H2z"/><path d="M22 5h-6a4 4 0 0 0-4 4v11a3 3 0 0 1 3-3h7z"/>'), descKey: 'cat_books_desc' },
+  { key: 'medical',        i18n: 'cat_medical',        icon: _catIcon('<path d="M20.8 11.5A5.5 5.5 0 0 0 12 5.6a5.5 5.5 0 0 0-8.8 5.9C4.6 16 12 21 12 21s2.5-1.7 5-4"/><path d="M3 13h4l2-3 3 6 2-3h7"/>'), descKey: 'cat_medical_desc' },
+  { key: 'survival',       i18n: 'cat_survival',       icon: _catIcon('<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z" fill="currentColor" stroke="none"/>'), descKey: 'cat_survival_desc' },
+  { key: 'gaming',         i18n: 'cat_gaming',         icon: _catIcon('<rect x="2" y="7" width="20" height="11" rx="5"/><path d="M7 11v3M5.5 12.5h3"/><circle cx="16" cy="11.5" r="1" fill="currentColor" stroke="none"/><circle cx="18.5" cy="13.5" r="1" fill="currentColor" stroke="none"/>'), descKey: 'cat_gaming_desc' },
+  { key: 'maps',           i18n: 'cat_maps',           icon: _catIcon('<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>'), descKey: 'cat_maps_desc' },
+  { key: 'other',          i18n: 'cat_other',          icon: _catIcon('<path d="M3 8l9-4 9 4v9l-9 4-9-4z"/><path d="M3 8l9 4 9-4M12 12v9"/>'), descKey: 'cat_other_desc' },
 ];
 
 // Category key → localized display name
@@ -7306,6 +7595,7 @@ const _OPDS_CAT_MAP = {
   'gutenberg':'gutenberg',
   'mooc':'education', 'phet':'education',
   'ifixit':'education',  // iFixit, WikiHow → Education & How-To
+  'maps':'maps',         // not set by Kiwix today (maps_en_* ship with no category); ready for when it is
 };
 
 function autoCategorize(item) {
@@ -7346,6 +7636,8 @@ function autoCategorize(item) {
   if (/dandwiki|evageeks|frackinuniverse|granbluefantasy/.test(n)) return 'gaming';
   if (/the_infosphere|zdoom|westeros/.test(n)) return 'gaming';
   if (/minecraft|pokemon|bulba|stardew|rimworld|riskofrain|whitewolf/.test(n)) return 'gaming';
+  // Maps: Kiwix's Maps2ZIM output (maps_en_<region>), StreetZim, AtlasZim
+  if (/^maps(_|$)|streetzim|atlaszim/.test(n)) return 'maps';
   return 'other';
 }
 
@@ -7397,9 +7689,27 @@ function _rerenderCatalogIfSafe() {
   else renderBrowseGallery();
 }
 
+// Where the catalog on screen came from, when it was not a live fetch.
+var _catalogSource = '';
+var _catalogAsOf = '';
+
 function _catalogStaleNote() {
-  if (!_catalogStaleAt) return '';
-  var when = new Date(_catalogStaleAt * 1000).toLocaleDateString();
+  // A catalog that may be months old says so. The shipped snapshot gets its
+  // own wording because "offline copy from <date>" implies the person once
+  // had it fresh, and on a machine that has never been online they did not.
+  if (_catalogSource === 'snapshot' && _catalogAsOf) {
+    // The snapshot's date is a plain YYYY-MM-DD, not a timestamp. Parsed as
+    // UTC noon so a timezone west of Greenwich does not render it as the day
+    // before, which is the classic way a date-only string slips backwards.
+    var parts = _catalogAsOf.split('-');
+    var day = new Date(Date.UTC(+parts[0], +parts[1] - 1, +parts[2], 12));
+    var shown = isNaN(day.getTime()) ? _catalogAsOf : day.toLocaleDateString();
+    return '<div class="ms-hint" style="text-align:center;margin:4px 0 10px">' +
+      tH('catalog_snapshot_note', {d: shown}) + '</div>';
+  }
+  var at = _catalogStaleAt || (_catalogAsOf ? Date.parse(_catalogAsOf) / 1000 : 0);
+  if (!at) return '';
+  var when = new Date(at * 1000).toLocaleDateString();
   return '<div class="ms-hint" style="text-align:center;margin:4px 0 10px">' +
     tH('catalog_offline_note', {d: when}) + '</div>';
 }
@@ -7433,7 +7743,15 @@ async function _fetchCatalogItems() {
     for (const page of pages) items.push(...page);
   }
   for (const item of items) item.category = autoCategorize(item);
-  return { items: items, stale: !!data.stale, fetchedAt: data.stale ? (data.fetched_at || 0) : 0 };
+  return {
+    items: items,
+    stale: !!data.stale,
+    fetchedAt: data.stale ? (data.fetched_at || 0) : 0,
+    // Which of the three states answered: live (absent), "cache" or
+    // "snapshot". The server only sets it when it fell back.
+    source: data.source || '',
+    asOf: data.as_of || ''
+  };
 }
 
 // Enrich in place: installed flags, hierarchy, peer availability, name index.
@@ -7481,6 +7799,7 @@ function _revalidateSessionCatalog() {
     try {
       const fresh = await _fetchCatalogItems();
       _catalogStaleAt = fresh.stale ? fresh.fetchedAt : 0;
+      _catalogSource = fresh.source; _catalogAsOf = fresh.asOf;
       _enrichCatalogItems(fresh.items);
       _catalogCache = fresh.items;
       if (!fresh.stale) _saveCatalogSession(fresh.items);
@@ -7507,9 +7826,10 @@ function _kickPeerEnrichment() {
 async function loadFullCatalog() {
   if (_catalogCache) return _catalogCache;
 
-  const { items, stale, fetchedAt } = await _fetchCatalogItems();
+  const { items, stale, fetchedAt, source, asOf } = await _fetchCatalogItems();
   // Offline: server returned its last-good catalog — note it quietly
   _catalogStaleAt = stale ? fetchedAt : 0;
+  _catalogSource = source; _catalogAsOf = asOf;
   _enrichCatalogItems(items);
   _catalogCache = items;
   if (!stale) _saveCatalogSession(items);
@@ -7907,6 +8227,22 @@ function _enrichCatalogInstalled(items) {
       if (urlPrefix && urlPrefix !== item.name) prefixes.push(urlPrefix);
     }
     const itemTok = _flavorToken(item.download_url || item.name);
+    // A StreetZim region is installed under whatever name the file was given
+    // (streetzim_hawaii, hawaii, osm-hawaii): match the region itself, which
+    // the map's own metadata names.
+    if (item.source === 'streetzim') {
+      const want = (item.title || '').toLowerCase();
+      const hit = zimsCache.find(z => z.map_source === 'StreetZim' && !claimed.has(z.file) && _mapName(z).toLowerCase() === want);
+      if (hit) {
+        item.installed = true;
+        item._installedDate = hit.date || null;
+        item._installedFile = hit.file;
+        item._installedName = hit.name;
+        item._installedSizeGb = hit.size_gb;
+        claimed.add(hit.file);
+      }
+      return;
+    }
     for (const z of zimsCache) {
       const fb = (z.file || '').replace(/\.zim$/, '');
       if (!prefixes.some(p => fb === p || fb.startsWith(p + '_'))) continue;
@@ -7973,6 +8309,37 @@ const FEATURED_ZIMS = [
   { match: 'xkcd',          type: 'random',    i18nLabel: 'comic_of_day',       icon: _FEAT_SVG.pen, promo: 'xkcd' },
   { match: 'theworldfactbook', type: 'country', i18nLabel: 'country_of_day',    icon: _FEAT_SVG.map, promo: 'CIA World Factbook' },
 ];
+
+// Installed map ZIMs (Kiwix maps2zim, StreetZim, AtlasZim), as the server
+// identified them from their own metadata, so a renamed file still counts.
+// Sorted by title so the card reads the same on every visit.
+// One entry per identity, the newest build (then the fullest): an update
+// whose old file is still around, a nopic beside a maxi, two names for one
+// thing. Eric, 2026-09-19: "handle deduplication if we're merging multiple
+// Zims." The order of first appearance is kept.
+function _newestPer(list, key) {
+  var best = {}, order = [];
+  list.forEach(function(z) {
+    var k = key(z); if (!k) return;
+    var cur = best[k];
+    if (!cur) { best[k] = z; order.push(k); return; }
+    var d = String(z.date || ''), cd = String(cur.date || '');
+    if (d > cd || (d === cd && (z.size_bytes || 0) > (cur.size_bytes || 0))) best[k] = z;
+  });
+  return order.map(function(k) { return best[k]; });
+}
+
+// The installed ZIMs of one kind, by title; with a key, one per identity.
+function _installedOfKind(kind, key) {
+  var all = (zimsCache || []).filter(function(z) { return z.kind === kind && z.main_path; })
+    .sort(function(a, b) { return (a.title || a.name).localeCompare(b.title || b.name); });
+  return key ? _newestPer(all, key) : all;
+}
+
+// A map once: the same region from the same source is one map.
+function _installedMaps() {
+  return _installedOfKind('map', function(z) { return _mapSourceLabel(z) + '|' + _mapName(z).toLowerCase(); });
+}
 
 function _isFeaturedInstalled(feat, grouped) {
   // Check ALL matching catalog groups — if any variant in any group is installed, this featured ZIM is installed
@@ -8191,8 +8558,85 @@ function renderBrowseGallery() {
     var activePill = results.querySelector('.catalog-lang-scroll .pill.active');
     if (activePill) activePill.scrollIntoView({inline: 'center', block: 'nearest'});
   }).catch(err => {
-    results.innerHTML = '<div class="empty"><p>' + tH('failed_load_library') + '</p><div class="hint">' + esc(String(err)) + '</div></div>';
+    // Only reached now when there is no catalog at all: no live fetch, no
+    // cache, and no shipped snapshot. Everything else falls back on the
+    // server side and renders normally with a dated note.
+    //
+    // Even here, do not wipe the view. A peer on this LAN offering ZIMs is a
+    // fact about the local network and has nothing to do with whether Kiwix
+    // answered; replacing the pane with one error line used to hide that,
+    // which made an offline Zimi look emptier than it was.
+    var note = '<div class="empty"><p>' + tH('failed_load_library') + '</p>' +
+      '<div class="hint">' + esc(String(err)) + '</div></div>';
+    results.innerHTML = note + _nearbyPeerSectionHtml();
   });
+}
+
+// The Maps category has two sources: Kiwix's maps, in the OPDS catalog, and
+// StreetZim's, on the Internet Archive. A toggle at the top of the category
+// picks one; nothing else in the catalog has a second source, so this is a
+// toggle and not a sources feature. Eric, 2026-09-18: "since it's only maps
+// sources how about a toggle in maps category?"
+var _MAPS_SOURCE_KEY = 'zimi_maps_source';
+function _mapsSource() {
+  try { return localStorage.getItem(_MAPS_SOURCE_KEY) === 'streetzim' ? 'streetzim' : 'kiwix'; } catch (e) { return 'kiwix'; }
+}
+function setMapsSource(source) {
+  try { localStorage.setItem(_MAPS_SOURCE_KEY, source); } catch (e) {}
+  drillCategory('maps');
+}
+function _mapsSourceToggleHtml() {
+  var cur = _mapsSource();
+  var pill = function(key, label) {
+    return '<button class="pill' + (cur === key ? ' active' : '') + '" onclick="setMapsSource(\'' + key + '\')">' + label + '</button>';
+  };
+  return '<div class="pills maps-source-toggle">' + pill('kiwix', tH('maps_source_kiwix')) + pill('streetzim', tH('maps_source_streetzim')) + '</div>';
+}
+// The StreetZim listing arrives from a cache that a background refresh
+// fills; the first look at it on a fresh install is empty and refreshing,
+// so ask again a few times before saying there is nothing.
+var _STREETZIM_POLL_MS = 5000;
+var _STREETZIM_POLL_TRIES = 12;
+// The note over StreetZim's regions: the link sits on the name (Eric: "put
+// it behind the StreetZim text"), and no date: a listing is current unless
+// it says otherwise, and a date reads as "old".
+var _STREETZIM_URL = 'https://streetzim.web.app';
+function _streetzimNoteHtml() {
+  var note = tH('streetzim_note');
+  var link = '<a href="' + _STREETZIM_URL + '" target="_blank" rel="noopener">StreetZim</a>';
+  return note.indexOf('StreetZim') >= 0 ? note.replace('StreetZim', link) : note + ' ' + link;
+}
+async function _renderStreetZimMaps(results, catMeta, catName, attempt) {
+  var data;
+  try {
+    data = await (await manageFetch('/manage/catalog-streetzim')).json();
+  } catch (e) {
+    results.innerHTML = '<div class="empty"><p>' + tH('failed_load_category') + '</p></div>';
+    return;
+  }
+  var items = (data.items || []).map(function(it) { return Object.assign({}, it, {category: 'maps'}); });
+  if (_catalogCache) _enrichCatalogInstalled(items);
+  var grouped = groupVariants(items);
+  grouped.sort(function(a, b) { return (a.title || a.name || '').localeCompare(b.title || b.name || ''); });
+  var h = '<div class="browse-drilldown-header">' +
+    '<button class="browse-back" onclick="renderBrowseGallery()">' + tH('back_to_catalog') + '</button>' +
+    '<span class="browse-drilldown-title">' + (catMeta ? '<span class="browse-drilldown-icon">' + catMeta.icon + '</span>' : '') + esc(catName) + '</span>' +
+    '<span class="browse-drilldown-count">' + tH('n_available', {n: grouped.length}) + '</span>' +
+  '</div>' + _mapsSourceToggleHtml() +
+  '<div class="ms-hint">' + _streetzimNoteHtml() + '</div>';
+  if (grouped.length) {
+    h += _renderCatalogGrid(grouped);
+  } else if (data.refreshing && (attempt || 0) < _STREETZIM_POLL_TRIES) {
+    h += _loadingHtml('loading_catalog');
+    setTimeout(function() {
+      if (manageTab === 'browse' && manageCategoryFilter === 'maps' && _mapsSource() === 'streetzim') {
+        _renderStreetZimMaps(results, catMeta, catName, (attempt || 0) + 1);
+      }
+    }, _STREETZIM_POLL_MS);
+  } else {
+    h += '<div class="empty"><p>' + tH(data.source === 'none' ? 'streetzim_offline' : 'no_zims_category') + '</p></div>';
+  }
+  results.innerHTML = h;
 }
 
 function drillCategory(catKey, namePrefix) {
@@ -8212,6 +8656,11 @@ function drillCategory(catKey, namePrefix) {
 
   if (!_catalogCache) results.innerHTML = _loadingHtml('loading_catalog');
 
+  if (catKey === 'maps' && _mapsSource() === 'streetzim') {
+    _renderStreetZimMaps(results, catMeta, catName, 0);
+    return;
+  }
+
   loadFullCatalog().then(items => {
     // Filter to this category (+ unknown/merged cats go to "other")
     const knownKeys = new Set(BROWSE_CATEGORIES.map(c => c.key));
@@ -8227,8 +8676,10 @@ function drillCategory(catKey, namePrefix) {
       filtered = filtered.filter(function(item) { return (item.name || '').toLowerCase().startsWith(pfx); });
     }
 
-    // Language pills scoped to this category (counts from unfiltered items)
-    var langPills = _renderLangPills(_countLangsByCategory(filtered, catKey), 'filterCatalogLang');
+    // Language pills scoped to this category. Counted over the grouped
+    // projects the drill shows, not the files behind them: a project with
+    // four flavours is one card, and its pill said four.
+    var langPills = _renderLangPills(_countLangsByCategory(groupVariants(filtered), catKey), 'filterCatalogLang');
 
     // Apply language filter after computing pill counts (so pills show all available languages).
     // _zimMatchesLang internally falls back to user prefs when no pill is set.
@@ -8240,9 +8691,10 @@ function drillCategory(catKey, namePrefix) {
     grouped.sort((a, b) => (a.title || a.name || '').localeCompare(b.title || b.name || ''));
     let h = '<div class="browse-drilldown-header">' +
       '<button class="browse-back" onclick="renderBrowseGallery()">' + tH('back_to_catalog') + '</button>' +
-      '<span class="browse-drilldown-title">' + (catMeta ? catMeta.icon + ' ' : '') + esc(catName) + '</span>' +
+      '<span class="browse-drilldown-title">' + (catMeta ? '<span class="browse-drilldown-icon">' + catMeta.icon + '</span>' : '') + esc(catName) + '</span>' +
       '<span class="browse-drilldown-count">' + tH('n_available', {n: grouped.length}) + '</span>' +
     '</div>';
+    if (catKey === 'maps') h += _mapsSourceToggleHtml();
     h += langPills;
     if (grouped.length) {
       h += _renderCatalogGrid(grouped);
@@ -8319,7 +8771,7 @@ const MANAGE_CATEGORIES = [
 const _CAT_TO_BROWSE_KEY = {
   'Wikimedia': 'wikipedia', 'Stack Exchange': 'stack_exchange', 'Dev Docs': 'devdocs',
   'Education': 'education', 'Medical': 'medical', 'How-To': 'survival',
-  'Books': 'gutenberg', 'Other': 'other'
+  'Books': 'gutenberg', 'Maps': 'maps', 'Other': 'other'
 };
 
 function categorizeZim(name) {
@@ -8331,6 +8783,7 @@ function categorizeZim(name) {
   if (/wikihow|ifixit|off-the-grid/.test(n)) return 'How-To';
   if (/^wiki|^wikt/.test(n) || n === 'openstreetmap-wiki') return 'Wikimedia';
   if (/gutenberg|rationalwiki|theworldfactbook/.test(n)) return 'Books';
+  if (/^maps(_|$)|streetzim|atlaszim/.test(n)) return 'Maps';
   return 'Other';
 }
 
@@ -8469,8 +8922,19 @@ function renderCatalogItem(group) {
     metaTags.push(formatSize(sizes[0]));
   }
   const letterChar = (esc(item.title || item.name)[0] || '?').toUpperCase();
-  const iconHtml = item.icon_url
-    ? '<img src="/manage/thumb?url=' + encodeURIComponent(item.icon_url) + '" alt="" width="40" height="40" loading="lazy"' +
+  // A /catalog-icon/ path is already ours: it comes from the snapshot shipped
+  // in the package and is served locally. Proxying it through /manage/thumb
+  // would ask the server to fetch from itself, which is exactly the network
+  // round trip an offline machine cannot make.
+  const iconSrc = !item.icon_url ? ''
+    : item.icon_url.startsWith('/catalog-icon/') ? item.icon_url
+    : '/manage/thumb?url=' + encodeURIComponent(item.icon_url);
+  // StreetZim's regions have no icon on the Archive; a pin says what they
+  // are better than the first letter of "Alaska".
+  const iconHtml = (!iconSrc && item.source === 'streetzim')
+    ? '<span class="ci-pin">' + _MAPS_SVG + '</span>'
+    : iconSrc
+    ? '<img src="' + escAttr(iconSrc) + '" alt="" width="40" height="40" loading="lazy"' +
       ' onerror="_ciThumbFallback(this)" data-letter="' + escAttr(letterChar) + '">'
     : '<span class="ci-letter">' + letterChar + '</span>';
   const anyInstalled = variants.some(v => v.installed);
@@ -8520,9 +8984,11 @@ function renderCatalogItem(group) {
         '</button>' +
       '</div>';
     } else if (withLabels.length === 1) {
-      actionsHtml = '<button class="ci-add-btn" aria-label="' + escAttr(t('download_size', {size: withLabels[0].label + ' (' + withLabels[0].size + ')'})) + '"' +
+      // One file: its size alone. "Full" names a choice that is not there.
+      var only = variantLabel(withLabels[0].url, vUrls) ? withLabels[0].label + ' (' + withLabels[0].size + ')' : withLabels[0].size;
+      actionsHtml = '<button class="ci-add-btn" aria-label="' + escAttr(t('download_size', {size: only})) + '"' +
         ' onclick="event.stopPropagation();downloadZim(\'' + escAttr(withLabels[0].url) + '\', this)">' +
-        _DL_ARROW_SVG + esc(withLabels[0].label + ' (' + withLabels[0].size + ')') + '</button>';
+        _DL_ARROW_SVG + esc(only) + '</button>';
     }
   }
   const catAttr = item.category ? ' data-category="' + escAttr(item.category) + '"' : '';
@@ -9514,7 +9980,11 @@ function _msFetch(url, fetcher) {
 function _msPrime(url, fetcher) {
   var p = (fetcher || _msDefaultFetcher(url))();
   _msPrefetch[url] = { ts: Date.now(), promise: p };
-  p.catch(function() {});  // silence unhandled-rejection; consumers re-await
+  // A prefetch that failed (a 401 before the password was given) is not an
+  // answer to hand the pane later: it drops out, so the pane asks afresh.
+  // Kept, it left Manage on "Loading…" after a sign-in until a reload
+  // (Eric: "we're stuck loading it didn't finish after i unlocked").
+  p.catch(function() { if (_msPrefetch[url] && _msPrefetch[url].promise === p) delete _msPrefetch[url]; });
 }
 function _prefetchServerSettings() {
   _msPrime('/manage/mirror', function() { return authedFetch('/manage/mirror').then(_msJson); });
@@ -9551,7 +10021,7 @@ function switchMs(section) {
   if (!pane) return;
   switch(section) {
     case 'library': pane.innerHTML = _msLibraryHtml(); break;
-    case 'preferences': pane.innerHTML = _msPreferencesHtml(); break;
+    case 'preferences': pane.innerHTML = _msPreferencesHtml(); _renderAppsSection(); break;
     case 'creator': pane.innerHTML = _msCreatorHtml(); break;
     case 'server': pane.innerHTML = _msServerHtml(); break;
     case 'users': _renderMsUsers(); break;
@@ -10215,7 +10685,9 @@ function _creatorHtml(d) {
     '<div id="ms-cr-browser-cmd">' + _creatorInstallHtml(d.browser_ready, "pip install 'zimi[browser]' && playwright install chromium") + '</div>' +
     _mcRow(tH('creator_sidecar'), '<span id="ms-cr-sidecar">' + _creatorSidecarCell(d) + '</span>') +
     '<div id="ms-cr-sidecar-cmd">' + _creatorSidecarCmd(d) + '</div>' +
-    _mcRow(tH('creator_alive'), '<span id="ms-cr-alive">' + _creatorStateHtml(d.alive_ready) + '</span>');
+    _mcRow(tH('creator_alive'), '<span id="ms-cr-alive">' + _creatorStateHtml(d.alive_ready) + '</span>') +
+    _mcRow(tH('creator_reddit'), '<span id="ms-cr-reddit">' + _creatorStateHtml(d.reddit_ready) + '</span>') +
+    '<div id="ms-cr-reddit-cmd">' + _creatorInstallHtml(d.reddit_ready, 'zimi create --setup-reddit') + '</div>';
 
   // Made here LAST — an unbounded, growing list, and the slow half to gather
   // (a provenance walk of the library), so it never blocks the pane. It fills
@@ -10328,6 +10800,8 @@ function _patchCreatorSection(d) {
   put('ms-cr-browser-cmd', _creatorInstallHtml(d.browser_ready, "pip install 'zimi[browser]' && playwright install chromium"));
   put('ms-cr-sidecar', _creatorSidecarCell(d));
   put('ms-cr-sidecar-cmd', _creatorSidecarCmd(d));
+  put('ms-cr-reddit', _creatorStateHtml(d.reddit_ready));
+  put('ms-cr-reddit-cmd', _creatorInstallHtml(d.reddit_ready, 'zimi create --setup-reddit'));
   put('ms-cr-alive', _creatorStateHtml(d.alive_ready));
   put('ms-cr-queue', _creatorQueueHtml(d.queue));
   ['block_ads', 'capture_variants'].forEach(function(key) {
@@ -10365,6 +10839,14 @@ function _renderCreatorSection() {
     var slot = document.getElementById('ms-creator');
     // A cached paint stays up through a failed refresh — stale beats blank.
     if (slot && !_creatorData) slot.innerHTML = '<div class="ms-hint">' + tH('could_not_load') + '</div>';
+    // One failed ask must not end the asking: "Checking…" then stayed until
+    // the pane was left and reopened (Eric: "stuck checking?").
+    clearTimeout(_creatorProbeTimer);
+    if (_creatorData && _creatorData.probing) {
+      _creatorProbeTimer = setTimeout(function() {
+        if (_msSection === 'creator') _renderCreatorSection();
+      }, CREATOR_PROBE_RETRY_MS);
+    }
   });
 }
 
@@ -10796,7 +11278,16 @@ function _msPreferencesHtml() {
   var showDiscover = !_getStorageFlag(SK.HIDE_DISCOVER);
   var showLangChooser = !_getStorageFlag(SK.HIDE_LANG_CHOOSER);
   var darkenOn = _darkenArticlesOn();
-  var h = '<div class="ms-section-label">' + tH('ms_display_section') + '</div>' +
+  // Apps first, a section of its own: the tiles offered to everyone (the
+  // server's choice; painted from its answer, and an account that may not
+  // set it sees nothing), then a signed-in account's own. Eric: "its own
+  // proper lil section with header just APPS and no subtext".
+  var h = '<div id="ms-apps-wrap" hidden><div class="ms-section-label">' + tH('apps_section') + '</div><div id="ms-apps"></div></div>' +
+    (_appsAllowedByServer() && _userSession
+      ? '<div class="ms-theme-label" style="margin-top:12px">' + tH('show_apps') + '</div>' +
+        _appPicksHtml(APP_NAMES.filter(_appsAllowedByServer), _appShown, '_setUserApp')
+      : '') +
+    '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_display_section') + '</div>' +
     // App theme: Auto / Dark / Light segmented control.
     '<div class="ms-theme-label">' + tH('app_theme') + '</div>' +
     _appThemeSegHtml() +
@@ -10815,6 +11306,7 @@ function _msPreferencesHtml() {
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> ' + tH('show_discover') + '</label>' +
     '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>' +
+
     // Default download flavor (above languages — reached more often)
     '<div class="ms-section-label" style="margin-top:20px">' + tH('default_flavor') + '</div>' +
     '<div class="ms-hint">' + tH('default_flavor_hint') + '</div>' +
@@ -11128,20 +11620,65 @@ function _appUpdateSetDelay(days) {
   _appUpdateSaveSetting('/manage/app-update-delay', { delay_days: parseInt(days, 10) }, 'ZIMI_UPDATE_DELAY_DAYS');
 }
 
+// The server-wide apps switch. The element is looked up after the fetch
+// (see _renderEnvSection for why).
+async function _renderAppsSection() {
+  var d = null;
+  try { d = await _msFetch('/manage/apps'); } catch (e) {}
+  var el = document.getElementById('ms-apps');
+  var wrap = document.getElementById('ms-apps-wrap');
+  if (!el) return;
+  if (!d) { if (wrap) wrap.hidden = true; return; }
+  if (wrap) wrap.hidden = false;
+  var shown = Array.isArray(d.shown) ? d.shown : (d.enabled ? APP_NAMES : []);
+  _serverApps = shown;
+  el.innerHTML = _appPicksHtml(APP_NAMES, function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', d.env_locked) +
+    (d.env_locked ? '<div class="ms-hint">' + tH('env_controlled', { v: 'ZIMI_APPS' }) + '</div>'
+      : '<div class="app-picks-all"><button type="button" class="pill" onclick="_setAppsForServerAll(true)">' + tH('filter_all') + '</button>' +
+        '<button type="button" class="pill" onclick="_setAppsForServerAll(false)">' + tH('apps_none') + '</button></div>');
+}
+var _serverApps = APP_NAMES;
+function _setAppsForServerAll(on) { _postServerApps(on ? APP_NAMES.slice() : []); }
+function _setAppForServer(app, on) {
+  _postServerApps(APP_NAMES.filter(function(a) { return a === app ? on : _serverApps.indexOf(a) >= 0; }));
+}
+function _postServerApps(shown) {
+  manageFetch('/manage/apps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shown: shown }) })
+    .then(function(r) { return r.json(); }).then(function(d) {
+      if (d && d.error) { _showToast(t('env_controlled', { v: 'ZIMI_APPS' })); }
+      // The shell's stamp is read at render; refresh it here so the home
+      // page follows without a reload.
+      if (document.body && document.body.dataset && d && Array.isArray(d.shown)) {
+        if (d.shown.length === APP_NAMES.length) delete document.body.dataset.zimiApps;
+        else document.body.dataset.zimiApps = d.shown.join(',') || '0';
+      }
+      _renderAppsSection();
+    }).catch(function() { _renderAppsSection(); });
+}
+
 // The environment panel. Read-only, and usually empty: the common install
 // overrides nothing, and saying so plainly is the useful answer.
 async function _renderEnvSection() {
   var rows;
-  var el = document.getElementById('ms-env');
+  var fetched;
   try {
-    rows = (await _msFetch('/manage/env')).vars || [];
+    fetched = await _msFetch('/manage/env');
   } catch (e) {
+    fetched = null;
+  }
+  // The element is looked up AFTER the fetch, never before: this runs while
+  // _msServerHtml is still building the pane's markup, so at call time there
+  // is no #ms-env yet. Capturing null then and testing it later left the
+  // section on "Loading…" for good (Eric, from his phone, 2026-09-19).
+  var el = document.getElementById('ms-env');
+  if (!el) return;
+  if (fetched === null) {
     // This panel's one job is to answer "is something overriding my
     // settings", and a failed poll must not look like "nothing is".
-    if (el) el.innerHTML = '<div class="ms-hint">' + tH('env_unavailable') + '</div>';
+    el.innerHTML = '<div class="ms-hint">' + tH('env_unavailable') + '</div>';
     return;
   }
-  if (!el) return;
+  rows = fetched.vars || [];
   if (!rows.length) {
     el.innerHTML = '<div class="ms-hint">' + tH('env_none') + '</div>';
     return;
@@ -11217,6 +11754,9 @@ function _msServerHtml() {
   // What the environment is overriding. Last, under Storage's neighbours,
   // because on most installs it says "nothing" — it is a thing you go looking
   // for when a control will not move, not something to read past every time.
+  // The apps row, for everyone on this server. Painted from the server's
+  // answer; env-locked reads as such rather than as a control that does
+  // nothing.
   var envSec = '<div class="ms-section-label">' + tH('env_section') + '</div>' +
     '<div id="ms-env">' + tH('loading') + '</div>';
 
@@ -13084,7 +13624,11 @@ async function manageImportZim() {
 async function downloadZim(url, btn, isUpdate) {
   if (btn) { btn.disabled = true; btn.textContent = t('starting'); }
   try {
-    const res = await manageFetch('/manage/download', {
+    // Kiwix's catalog resolves through the mirror machinery; anything else
+    // (StreetZim on the Internet Archive) is a plain HTTPS fetch of a .zim,
+    // which is what the import path does.
+    const endpoint = /^https:\/\/archive\.org\//.test(url) ? '/manage/import' : '/manage/download';
+    const res = await manageFetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
@@ -14160,6 +14704,11 @@ function _downloadFile(url) {
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 function _stepBackToArticle(prev, replaceState) {
+  // The step behind this article is an app page: its history entry is the
+  // one before, and the popstate routing reopens it where it was.
+  if (prev.app) { history.back(); return; }
+  // An article on screen is not an app page, whichever way it was reached.
+  _tubeOpen = false; _exchangeOpen = false; _reddotOpen = false;
   // Navigate reader to a previous article from history.
   // replaceState=true for in-app back (URL hasn't changed yet),
   // replaceState=false for browser back (URL already changed by popstate).
@@ -14899,6 +15448,19 @@ function _bindVideoResume(frame, zim, path) {
 // load is networkState LOADING with error === null, so it never trips this.
 // The box uses neutral grey tones + color:inherit so it reads correctly whether
 // the app is light, dark, or the raw page is running under the auto-dark invert.
+// Whether the video's file is absent from the ZIM (a 404, or an empty
+// entry), as opposed to present and undecodable.
+function _videoFileMissing(v) {
+  var src = '';
+  try { src = v.currentSrc || (v.querySelector('source') || {}).src || v.src || ''; } catch (e) {}
+  if (!src) return Promise.resolve(false);
+  // One byte by GET: a HEAD comes back 200 for a path the ZIM lacks (the
+  // server answers HEAD before it looks), a ranged GET says 404 or 206.
+  return fetch(src, { headers: { Range: 'bytes=0-0' } }).then(function(r) {
+    return r.status === 404 || r.status === 416 || r.headers.get('content-length') === '0';
+  }).catch(function() { return false; });
+}
+
 function _bindVideoError(frame) {
   var doc; try { doc = frame.contentDocument; } catch(e) { return; }
   if (!doc) return;
@@ -14931,7 +15493,11 @@ function _bindVideoError(frame) {
         'stroke-linejoin="round" style="opacity:.7"><path d="m23 7-7 5 7 5V7z"/>' +
         '<rect x="1" y="5" width="15" height="14" rx="2" ry="2"/><line x1="2" y1="2" x2="22" y2="22"/></svg>' +
         '<span></span>';
-      box.lastChild.textContent = t('video_not_included');
+      // Two different truths: the file is not in the ZIM, or it is there and
+      // this browser cannot decode it (an AV1 MP4 on an iPhone). Only the
+      // file's own answer tells them apart, so it is asked.
+      box.lastChild.textContent = t('video_not_playable');
+      _videoFileMissing(v).then(function(missing) { if (missing) box.lastChild.textContent = t('video_not_included'); });
       v.parentNode.insertBefore(box, v);
       v.style.display = 'none';
       v.__zimiErrBox = box;
@@ -15114,7 +15680,7 @@ function _readerViewToggle() {
 function _syncReaderViewBtn() {
   // Never on Create, whatever is open behind it: there is no article there to
   // read a reading mode into.
-  var avail = _readerViewAvailable() && !_createOpen;
+  var avail = _readerViewAvailable() && !_createOpen && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage();
   var btn = document.getElementById('readerview-btn');
   if (btn) {
     btn.style.display = avail ? 'flex' : 'none';
@@ -15455,6 +16021,1061 @@ function _readerPrintCleanup() {
 // opening it boots full Zimi chrome and lands straight on the article — unlike a
 // raw /w/<zim>/<path> link, which servers ambiguously serve as bare ZIM content
 // when the Sec-Fetch-Dest hint is missing (older Safari, in-app browsers).
+// ── An interactive map inside a ZIM ────────────────────────────────────────
+//
+// StreetZim publishes offline OpenStreetMap regions as ZIMs: MapLibre, vector
+// tiles, a place index, satellite and terrain, all inside the file. They work
+// in the reader, but only as a page: the URL never changes as you move, so
+// where you were was unbookmarkable, unshareable, and lost on reload. A map
+// you cannot return to a place on is a picture of a map.
+//
+// The author exposes the MapLibre instance on window, which is the whole
+// reason this is possible without a change on their side. Nothing here assumes
+// their internals beyond that handle and MapLibre's own public API.
+//
+// The position rides in the URL hash, in the same z/lat/lng order OSM has used
+// for years. One mechanism then covers everything: a shared link opens where
+// you were, a bookmark saves it because a bookmark saves a URL, and Back and
+// Forward walk between places for free.
+// Two publishers, two handles. StreetZim exposes __szMap; Kiwix's own
+// Maps2ZIM output (193 ZIMs in the catalog, maps_en_*) exposes __openzim_map.
+// Both are MapLibre underneath, so everything past the lookup is shared.
+var _MAP_HANDLES = ['__szMap', '__streetzim_map', '__openzim_map'];
+var _MAP_HASH_RE = /(?:^|[#&])map=(\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)/;
+// Long enough that a drag writes one entry rather than forty, short enough
+// that letting go and hitting Bookmark records where you actually are.
+var _MAP_HASH_DEBOUNCE_MS = 450;
+var _mapHashTimer = null;
+var _mapWatched = null;
+
+// The map in the reader frame, or null. Every access is guarded: the frame is
+// same-origin but its contents are a third party's, and a page that defines
+// the global as something else must not break the reader.
+function _readerMap() {
+  try {
+    var frame = document.getElementById('reader-frame');
+    var win = frame && frame.contentWindow;
+    if (!win) return null;
+    for (var i = 0; i < _MAP_HANDLES.length; i++) {
+      var candidate = win[_MAP_HANDLES[i]];
+      if (candidate && typeof candidate.getCenter === 'function' &&
+          typeof candidate.getZoom === 'function' && typeof candidate.jumpTo === 'function') {
+        return candidate;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+function mapPositionHash(zoom, lat, lng) {
+  // Two decimals of zoom and five of position: about a metre, which is finer
+  // than anyone points at and short enough to read in a URL.
+  return 'map=' + (+zoom).toFixed(2) + '/' + (+lat).toFixed(5) + '/' + (+lng).toFixed(5);
+}
+
+// One spelling for a position wherever it is written down (history, the
+// address, a bookmark): the server writes map=14/21.3/-157.8, the map's own
+// moveend writes map=14.00/21.30000/-157.80000, and they must compare equal.
+function _normMapPos(pos) {
+  var p = parseMapHash('#' + (pos || ''));
+  return p ? mapPositionHash(p.zoom, p.lat, p.lng) : (pos || '');
+}
+
+function parseMapHash(hash) {
+  var m = _MAP_HASH_RE.exec(hash || '');
+  if (!m) return null;
+  var pos = {zoom: parseFloat(m[1]), lat: parseFloat(m[2]), lng: parseFloat(m[3])};
+  // A hash is user-editable and arrives from a shared link. Refuse anything
+  // off the globe rather than handing MapLibre a NaN or a pole.
+  if (!isFinite(pos.zoom) || !isFinite(pos.lat) || !isFinite(pos.lng)) return null;
+  if (pos.zoom < 0 || pos.zoom > 24) return null;
+  if (pos.lat < -90 || pos.lat > 90 || pos.lng < -180 || pos.lng > 180) return null;
+  return pos;
+}
+
+// Follow the map, writing where it is into the address bar.
+// True when the URL on screen is the open map's own address, so a position
+// hash belongs on it. False on the home page after a Back: the frame is still
+// there, hidden, and the resize that hiding it causes fires one more moveend,
+// which must not write the map's position onto the library's URL.
+function _urlIsOpenMapPage() {
+  return !!(readerOpen && currentArticle && _readerMap() &&
+    location.pathname + location.search === _articleDeepLinkPath(currentArticle.zim, currentArticle.path));
+}
+
+function _watchReaderMap() {
+  var map = _readerMap();
+  if (!map || _mapWatched === map) return;
+  _mapWatched = map;
+  var onMove = function() {
+    clearTimeout(_mapHashTimer);
+    _mapHashTimer = setTimeout(function() {
+      if (!_urlIsOpenMapPage()) return;
+      try {
+        var c = map.getCenter();
+        var base = location.pathname + location.search;
+        // replaceState, never push: a pan is not a navigation, and pushing
+        // would bury the page you came from under a hundred entries.
+        history.replaceState(history.state, '', base + '#' + mapPositionHash(map.getZoom(), c.lat, c.lng));
+      } catch (e) {}
+    }, _MAP_HASH_DEBOUNCE_MS);
+  };
+  try { map.on('moveend', onMove); } catch (e) {}
+}
+
+// The hash is the source of truth for where the map is, so react to it
+// changing rather than only to the frame loading. Opening a bookmarked place
+// while already on that map is the case that needs this: the article does not
+// change, so nothing reloads and the load handler never runs. It also covers
+// Back and Forward between two places, and editing the URL by hand.
+window.addEventListener('hashchange', function() {
+  var pos = parseMapHash(location.hash);
+  if (!pos) return;
+  var map = _readerMap();
+  if (!map) return;  // not a map page; the load handler will deal with it
+  try {
+    var c = map.getCenter();
+    // Already there: jumping again would fight a drag that is still settling.
+    if (Math.abs(c.lat - pos.lat) < 1e-5 && Math.abs(c.lng - pos.lng) < 1e-5 &&
+        Math.abs(map.getZoom() - pos.zoom) < 0.01) return;
+    map.jumpTo({center: [pos.lng, pos.lat], zoom: pos.zoom});
+  } catch (e) {}
+  // Back to a place you were at: the tab is called what it was called then.
+  var was = _histFindPlace(currentArticle && currentArticle.zim, location.hash.slice(1));
+  if (was) {
+    document.title = was.title + ' \u2014 Zimi';
+    _setWindowTitle(document.title);
+  }
+});
+
+// Run a query in the map's own search box. StreetZim's index holds towns,
+// streets and addresses (139,067 places for Hawaii alone) and lives in
+// hash-bucketed shards its own code knows how to walk; Zimi's title index
+// cannot see any of it. So the search bar hands the words to the box
+// inside the frame, same-origin, and the map's results open where they
+// always do. Kiwix's maps2zim has no box (and an index of administrative
+// divisions only), so the offer is only made for maps that have one.
+//
+// Nothing here is a contract with StreetZim: a build without #search-input
+// simply opens at its home view with the words unplaced. Issue #18 asks
+// them for a stable way in.
+var _pendingMapFind = null;
+var _MAP_FIND_TRIES = 40;
+function _applyMapFind(tries) {
+  var want = _pendingMapFind;
+  if (!want || !currentArticle || currentArticle.zim !== want.zim) return;
+  var doc = null;
+  try { doc = document.getElementById('reader-frame').contentDocument; } catch (e) { doc = null; }
+  var box = doc && doc.getElementById('search-input');
+  if (!box) {
+    if ((tries || 0) >= _MAP_FIND_TRIES) { _pendingMapFind = null; return; }
+    setTimeout(function() { _applyMapFind((tries || 0) + 1); }, 150);
+    return;
+  }
+  _pendingMapFind = null;
+  _typeIntoMapBox(doc, box, want.q, 0);
+}
+// The box exists before its index does: StreetZim fetches a manifest after
+// the page loads and a query typed before it lands finds nothing. So type,
+// look for results, and type again while there are none, for a bounded
+// while. A query with genuinely no matches costs the same wait and then
+// stops.
+var _MAP_TYPE_TRIES = 25;
+function _typeIntoMapBox(doc, box, q, tries) {
+  try {
+    if (!box.isConnected) return;
+    if (box.value !== q) box.value = q;
+    if (!doc.querySelector('.search-result')) {
+      box.dispatchEvent(new Event('input', {bubbles: true}));
+      box.focus();
+      if ((tries || 0) < _MAP_TYPE_TRIES) {
+        setTimeout(function() { _typeIntoMapBox(doc, box, q, (tries || 0) + 1); }, 400);
+      }
+    }
+  } catch (e) {}
+}
+
+// The rows the search bar adds above its results: one per installed map
+// with a search box of its own, offering the query there.
+function _mapFindRowsHtml(query) {
+  var maps = _installedMaps().filter(function(m) { return m.map_search; });
+  if (!query || !maps.length) return '';
+  return maps.slice(0, 3).map(function(m) {
+    var title = m.title || m.name;
+    return '<a class="result map-find" href="' + escAttr(_articleDeepLinkPath(m.name, m.main_path)) +
+      '" data-zim="' + escAttr(m.name) + '" data-path="' + escAttr(m.main_path) + '" data-title="' + escAttr(title) +
+      '" data-find="' + escAttr(query) + '" onclick="return _spaMapFind(event, this)">' +
+      '<div class="result-body">' +
+        '<div class="result-source">' + _sourceIconHtml(m.name, 20) + '<span class="rs-name">' + esc(title) + '</span></div>' +
+        '<div class="title">' + _FEAT_SVG.map + ' ' + tH('find_on_map', {q: esc(query), map: esc(title)}) + '</div>' +
+      '</div></a>';
+  }).join('');
+}
+// Places found on a map's own index (StreetZim), one row each: the name,
+// what it is, where, and which map. Opening one flies the map there. These
+// come from the server reading the map's shards, so they are real answers,
+// unlike the Find-on-map row below them, which is an offer.
+function _mapPlaceRowsHtml(groups) {
+  var h = '';
+  for (var gi = 0; gi < groups.length; gi++) {
+    var g = groups[gi];
+    var mapTitle = g.title || g.zim;
+    for (var pi = 0; pi < (g.places || []).length; pi++) {
+      var p = g.places[pi];
+      var what = [p.sub || p.type, p.locality].filter(Boolean).map(function(x) { return String(x).replace(/_/g, ' '); });
+      var pos = 'map=' + (p.zoom || 15) + '/' + p.lat + '/' + p.lng;
+      h += '<a class="result map-place" href="' + escAttr(_articleDeepLinkPath(g.zim, g.main_path) + '#' + pos) +
+        '" data-zim="' + escAttr(g.zim) + '" data-path="' + escAttr(g.main_path) + '" data-title="' + escAttr(p.name) +
+        '" data-pos="' + escAttr(pos) + '" onclick="return _spaMapPlace(event, this)">' +
+        '<div class="result-body">' +
+          '<div class="result-source">' + _sourceIconHtml(g.zim, 20) + '<span class="rs-name">' + esc(mapTitle) + '</span></div>' +
+          '<div class="title">' + _FEAT_SVG.map + ' ' + esc(p.name) + '</div>' +
+          (what.length ? '<div class="snippet">' + esc(what.join(' \u00b7 ')) + '</div>' : '') +
+        '</div></a>';
+    }
+  }
+  return h;
+}
+function _spaMapPlace(e, el) {
+  return _spaNav(e, function () {
+    openArticle(el.getAttribute('data-zim'), el.getAttribute('data-path'), el.getAttribute('data-title') || '',
+      {pos: el.getAttribute('data-pos') || ''});
+  });
+}
+
+// ── Same place, another map ──
+// Eric, 2026-09-18: "in the maps UI we can change source so I could have
+// multiple and not be limited. Like it uses same GPS position and zoom then
+// swaps out." Two maps of the same ground disagree on what they show: Kiwix's
+// maps2zim has roads and admin names, StreetZim has satellite, terrain and
+// every address. The switch is a normal article open with the position
+// carried in the hash, so Back returns to the map you left, where you were.
+// ── Maps, from the top bar ──
+// Eric: "Maps doesn't feel first class yet." The door: the map you were
+// last on, where you were; before that, the first installed map. /#maps
+// opens it for a link or a home-screen icon. What on the home page leads to
+// it is Eric's call (a Discover card and a top-bar button were both "not
+// it"); this is the function whichever entry will call.
+function _lastMapVisit() {
+  var maps = _installedMaps();
+  var names = {};
+  maps.forEach(function(z) { names[z.name] = z; });
+  var h = _histLoad();
+  for (var i = 0; i < h.length; i++) {
+    if (h[i].type === 'article' && names[h[i].zim]) return { zim: names[h[i].zim], pos: h[i].pos || '' };
+  }
+  return maps.length ? { zim: maps[0], pos: '' } : null;
+}
+
+// ── Reddot ──
+// Subreddits as ZIMs, made by ArcticZim (and by Zimi's create page wrapping
+// it), read in a page Zimi owns (/static/reddot.html) shown in the reader.
+var _reddotOpen = false;
+var _REDDOT_PAGE = '/static/reddot.html?v=1';
+// Reddot's mark is a red dot (Eric, 2026-09-19), the one colour in the
+// chrome that is not the shell's: a logo keeps its colour in both themes.
+var _REDDOT_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="currentColor"/></svg>';
+
+function _installedRedditZims() {
+  return _installedOfKind('reddit');
+}
+function _isReddotPage() {
+  return !!(_reddotOpen && readerOpen && !_almanacOpen && !_createOpen);
+}
+function _reddotTileHtml() {
+  // Named by subreddit, not by file: every ArcticZim ZIM is titled "ArcticZim".
+  var names = [];
+  _installedRedditZims().forEach(function(z) { (z.subreddits && z.subreddits.length ? z.subreddits.map(function(s) { return 'r/' + s; }) : [z.title || z.name]).forEach(function(n) { names.push(n); }); });
+  return _appTileHtml('reddot', t('reddot'), _REDDOT_SVG, names, 'openReddot');
+}
+function _reddotUrl(p) {
+  return p ? '/?reddot=' + encodeURIComponent(p) : '/#reddot';
+}
+// What the shell tells an app page, in the hash it opens with: its strings
+// in the shell's language, the language and its direction (Arabic and
+// Hebrew read right to left in the app too), the catalog door, and the
+// address it opens at. Eric, 2026-09-19: "Any language or interlang
+// considerations with all this."
+function _appStrings(app, keys, extra) {
+  var out = { title: t(app), catalog: t('app_browse_catalog'), lang: _currentLang || 'en',
+    dir: document.documentElement.getAttribute('dir') || 'ltr' };
+  keys.forEach(function(k) { out[k.slice(app.length + 1)] = t(k); });
+  for (var k in extra) out[k] = extra[k];
+  return encodeURIComponent(JSON.stringify(out));
+}
+
+function _reddotStrings(p) {
+  return _appStrings('reddot', ['reddot_all', 'reddot_more', 'reddot_top', 'reddot_new', 'reddot_comments', 'reddot_comment', 'reddot_points', 'reddot_point',
+    'reddot_by', 'reddot_open_page', 'reddot_none', 'reddot_empty', 'reddot_catalog', 'reddot_home', 'reddot_follow', 'reddot_following', 'reddot_home_hint'], { p: p || '' });
+}
+function openReddot(replaceState, p) {
+  if (_isModClick()) { _lastMouseEvent = null; window.open(_reddotUrl(p), '_blank'); return; }
+  if (_createOpen) closeCreate();
+  if (_almanacOpen) closeAlmanac();
+  if (mode === 'manage') { mode = 'home'; updateTopbar(); }
+  if (_mapWatched) { _mapWatched = null; clearTimeout(_mapHashTimer); }
+  if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
+  currentArticle = null;
+  readerSource = null;
+  _tubeOpen = false; _exchangeOpen = false;
+  _reddotOpen = true;
+  _appTop = !p;
+  var st = { mode: 'reader', reddot: true, p: p || '' };
+  // Arrived at the thing itself (a shared link): there is no home beneath
+  // it in history, so the arrow makes one in place instead of stepping out.
+  if (replaceState && p) st.entry = true;
+  if (replaceState) history.replaceState(st, '', _reddotUrl(p));
+  else history.pushState(st, '', _reddotUrl(p));
+  openReader(_REDDOT_PAGE + '#' + _reddotStrings(p));
+  document.title = t('reddot') + ' \u2014 Zimi';
+  _setWindowTitle(document.title);
+  updateTopbar();
+}
+function _reddotSearch(val) {
+  try {
+    var win = document.getElementById('reader-frame').contentWindow;
+    if (win && typeof win.reddotSearch === 'function') win.reddotSearch(val);
+  } catch (e) {}
+}
+
+// ── ZimiExchange ──
+// Every Stack Exchange site in the library as one place, in a page Zimi
+// owns (/static/exchange.html) shown in the reader like ZimiTube. Eric,
+// 2026-09-19: "ZimiExchange ... threading in real data and live interface."
+var _exchangeOpen = false;
+var _EXCHANGE_PAGE = '/static/exchange.html?v=1';
+var _EXCHANGE_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg>';
+
+// A site once, as ZimiExchange lists it.
+function _installedQaZims() {
+  return _installedOfKind('qa', function(z) { return (z.title || z.name).toLowerCase(); });
+}
+function _isExchangePage() {
+  return !!(_exchangeOpen && readerOpen && !_almanacOpen && !_createOpen);
+}
+function _exchangeTileHtml() {
+  return _appTileHtml('exchange', t('exchange'), _EXCHANGE_SVG, _installedQaZims().map(function(z) { return z.title || z.name; }), 'openExchange');
+}
+function _exchangeUrl(q) {
+  return q ? '/?exchange=' + encodeURIComponent(q) : '/#exchange';
+}
+function _exchangeStrings(q) {
+  return _appStrings('exchange', ['exchange_all', 'exchange_more', 'exchange_questions', 'exchange_answers', 'exchange_answer', 'exchange_votes', 'exchange_vote',
+    'exchange_asked', 'exchange_open_page', 'exchange_none', 'exchange_empty'], { q: q || '' });
+}
+function openExchange(replaceState, q) {
+  if (_isModClick()) { _lastMouseEvent = null; window.open(_exchangeUrl(q), '_blank'); return; }
+  if (_createOpen) closeCreate();
+  if (_almanacOpen) closeAlmanac();
+  if (mode === 'manage') { mode = 'home'; updateTopbar(); }
+  if (_mapWatched) { _mapWatched = null; clearTimeout(_mapHashTimer); }
+  if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
+  currentArticle = null;
+  readerSource = null;
+  _tubeOpen = false; _reddotOpen = false;
+  _exchangeOpen = true;
+  _appTop = !q;
+  var st = { mode: 'reader', exchange: true, q: q || '' };
+  // Arrived at the thing itself (a shared link): there is no home beneath
+  // it in history, so the arrow makes one in place instead of stepping out.
+  if (replaceState && q) st.entry = true;
+  if (replaceState) history.replaceState(st, '', _exchangeUrl(q));
+  else history.pushState(st, '', _exchangeUrl(q));
+  openReader(_EXCHANGE_PAGE + '#' + _exchangeStrings(q));
+  document.title = t('exchange') + ' \u2014 Zimi';
+  _setWindowTitle(document.title);
+  updateTopbar();
+}
+function _exchangeSearch(val) {
+  try {
+    var win = document.getElementById('reader-frame').contentWindow;
+    if (win && typeof win.exchangeSearch === 'function') win.exchangeSearch(val);
+  } catch (e) {}
+}
+
+// ── Zimi Tube ──
+// Every video in the library as one feed, in a page Zimi owns, shown in the
+// reader so the chrome around it (bookmark, history, Back, the X) is the
+// chrome every page gets. The page is /static/tube.html; the top bar's box
+// drives its search. Eric, 2026-09-19: "Bubble up my TED YouTubes and maybe
+// some others whose structures we know."
+var _tubeOpen = false;
+// Whether the open app page is at its top (the shelves). Reported by the
+// page; the header's arrow shows only inside, as it does for an article.
+var _appTop = true;
+// The thing open inside an app (a video, a question, a post): what history
+// records and a bookmark keeps, as it does an article, opening back into
+// the app (Eric: "have them work identically to within real zims but
+// launch into the app pages and show in the lists as the app").
+var _appItem = null;
+function _appItemOpened(app, id, title) {
+  var i = id.indexOf('/'); if (i <= 0) return;
+  var zim = id.slice(0, i), path = id.slice(i + 1);
+  if (title) {
+    _appItem = { app: app, zim: zim, path: path, title: title };
+    _histPushArticle(zim, path, title, null, app);
+  } else if (!_appItem || _appItem.zim !== zim || _appItem.path !== path) {
+    _appItem = { app: app, zim: zim, path: path, title: '' };
+  }
+  _updateLibraryBtnIcon();
+  updateTopbar();
+}
+function _appItemClosed() { _appItem = null; _updateLibraryBtnIcon(); updateTopbar(); }
+function _openAppItem(app, zim, path) {
+  var id = zim + '/' + path;
+  if (app === 'tube') openTube(false, id); else if (app === 'exchange') openExchange(false, id); else openReddot(false, id);
+}
+var _TUBE_PAGE = '/static/tube.html?v=1';
+
+function _installedVideoZims() {
+  return _installedOfKind('video');
+}
+
+function _isTubePage() {
+  return !!(_tubeOpen && readerOpen && !_almanacOpen && !_createOpen);
+}
+
+// The page's own strings, handed over in the hash: the page is static and
+// has no i18n of its own.
+function _tubeStrings(play) {
+  // A library whose video ZIMs speak more than one language labels each
+  // source with its own, named in the shell's language.
+  var langs = {};
+  _installedVideoZims().forEach(function(z) { if (z.language) langs[z.language] = _langDisplayName(z.language) || z.language; });
+  return _appStrings('tube', ['tube_videos', 'tube_video', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay',
+    'tube_theater', 'tube_pip', 'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_no_media', 'tube_missing'], { play: play || '', langs: langs });
+}
+
+// A thing inside an app (a video, a question, a post) is a step in history
+// when it opens from the app's home, so Back returns there; one thing to
+// the next is the same step rewritten. Leaving it for the home rewrites the
+// step as the home rather than adding one: Back from there goes where the
+// person came from, not through everything they read.
+function _appStep(state, url, key) {
+  var s = history.state || {};
+  // Item to item is one entry; the way in (a shared link) stays the way in.
+  if (s.mode === 'reader' && s[key]) { if (s.entry) state.entry = true; history.replaceState(state, '', url); }
+  else history.pushState(state, '', url);
+}
+function _appHome(state, url, key) {
+  history.replaceState(state, '', url);
+}
+// Back or Forward landed on an app address while that app is open: steer
+// the page rather than reload it (a reload would stop a docked video).
+function _appFrameRoute(open, id) {
+  var f = document.getElementById('reader-frame');
+  if (!open || !readerOpen || !f || !f.contentWindow) return false;
+  try { f.contentWindow.postMessage({ zimi: 'route', id: id || '' }, location.origin); return true; } catch (e) { return false; }
+}
+
+// What the pages Zimi owns say to the shell. Same origin, and only the
+// shapes listed here; anything else is ignored.
+window.addEventListener('message', function(e) {
+  if (e.origin !== location.origin || !e.data || typeof e.data !== 'object') return;
+  var d = e.data;
+  if (d.zimi === 'tube-play' && _tubeOpen && typeof d.play === 'string') {
+    // The player has an address of its own, so a playing video can be
+    // shared and bookmarked. From the shelves it is a step (Back returns
+    // to them); from one video to the next it is the same step, rewritten.
+    _appStep({ mode: 'reader', tube: true, play: d.play }, _tubeUrl(d.play), 'play');
+    if (d.title) { document.title = d.title + ' \u2014 ' + t('tube'); _setWindowTitle(document.title); }
+    _appItemOpened('tube', d.play, d.title);
+  } else if (d.zimi === 'tube-home' && _tubeOpen) {
+    _appHome({ mode: 'reader', tube: true, play: '' }, _tubeUrl(''), 'play');
+    _appItemClosed();
+    document.title = t('tube') + ' \u2014 Zimi';
+    _setWindowTitle(document.title);
+  } else if (d.zimi === 'back') {
+    // The page's own back arrow: the step the shell took for it.
+    if (history.state && (history.state.play || history.state.q || history.state.p)) history.back();
+  } else if (d.zimi === 'open' && typeof d.zim === 'string' && typeof d.path === 'string' && d.zim && d.path) {
+    // "Open the original page" from an app: an article with the app as the
+    // step behind it, so the header's arrow returns to the video, the
+    // question or the post (the browser's Back does the same).
+    var fromApp = _isAppPage();
+    openArticle(d.zim, d.path);
+    if (fromApp) { articleHistory.push({ app: true }); updateTopbar(); }
+  } else if (d.zimi === 'top') {
+    _appTop = d.top !== false;
+    updateTopbar();
+  } else if (d.zimi === 'at-home') {
+    // The header's arrow at the app's home: out of the app.
+    if (_isAppPage()) closeReader();
+  } else if (d.zimi === 'reddot-p' && _reddotOpen && typeof d.p === 'string') {
+    _appStep({ mode: 'reader', reddot: true, p: d.p }, _reddotUrl(d.p), 'p');
+    if (d.title) { document.title = d.title + ' \u2014 ' + t('reddot'); _setWindowTitle(document.title); }
+    _appItemOpened('reddot', d.p, d.title);
+  } else if (d.zimi === 'reddot-home' && _reddotOpen) {
+    _appHome({ mode: 'reader', reddot: true, p: '' }, _reddotUrl(''), 'p');
+    _appItemClosed();
+    document.title = t('reddot') + ' \u2014 Zimi';
+    _setWindowTitle(document.title);
+  } else if (d.zimi === 'create' && d.mode === 'reddit') {
+    // Reddot's empty page: the way to make a subreddit ZIM is the Create
+    // page, not the catalog (nobody publishes these).
+    if (readerOpen) closeReader();
+    _createRememberMode = 'page';
+    _createRememberSource = _REDDIT_ADDRESS_START;
+    openCreate();
+  } else if (d.zimi === 'exchange-q' && _exchangeOpen && typeof d.q === 'string') {
+    _appStep({ mode: 'reader', exchange: true, q: d.q }, _exchangeUrl(d.q), 'q');
+    if (d.title) { document.title = d.title + ' \u2014 ' + t('exchange'); _setWindowTitle(document.title); }
+    _appItemOpened('exchange', d.q, d.title);
+  } else if (d.zimi === 'exchange-home' && _exchangeOpen) {
+    _appHome({ mode: 'reader', exchange: true, q: '' }, _exchangeUrl(''), 'q');
+    _appItemClosed();
+    document.title = t('exchange') + ' \u2014 Zimi';
+    _setWindowTitle(document.title);
+  } else if (d.zimi === 'catalog' && typeof d.category === 'string' && _APP_CATEGORY_KEYS.indexOf(d.category) >= 0) {
+    _openCategory(d.category);
+  }
+});
+var _APP_CATEGORY_KEYS = ['maps', 'ted', 'stack_exchange'];
+
+function _tubeSearch(val) {
+  try {
+    var win = document.getElementById('reader-frame').contentWindow;
+    if (win && typeof win.tubeSearch === 'function') win.tubeSearch(val);
+  } catch (e) {}
+}
+
+// An app's home is a hash route; a thing inside it (a playing video, a
+// question, a post) is a query. A copied link with the thing in the hash
+// lost it through a sign-in redirect (Cloudflare Access on the way in
+// drops the fragment), and opened on the app's home; a query survives.
+// The hash form is still read, for links already out there.
+function _tubeUrl(play) {
+  return play ? '/?tube=' + encodeURIComponent(play) : '/#tube';
+}
+
+function openTube(replaceState, play) {
+  if (_isModClick()) { _lastMouseEvent = null; window.open(_tubeUrl(play), '_blank'); return; }
+  if (_createOpen) closeCreate();
+  if (_almanacOpen) closeAlmanac();
+  if (mode === 'manage') { mode = 'home'; updateTopbar(); }
+  if (_mapWatched) { _mapWatched = null; clearTimeout(_mapHashTimer); }
+  if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
+  currentArticle = null;
+  readerSource = null;
+  _exchangeOpen = false; _reddotOpen = false;
+  _tubeOpen = true;
+  _appTop = !play;
+  var st = { mode: 'reader', tube: true, play: play || '' };
+  // Arrived at the thing itself (a shared link): there is no home beneath
+  // it in history, so the arrow makes one in place instead of stepping out.
+  if (replaceState && play) st.entry = true;
+  if (replaceState) history.replaceState(st, '', _tubeUrl(play));
+  else history.pushState(st, '', _tubeUrl(play));
+  openReader(_TUBE_PAGE + '#' + _tubeStrings(play));
+  document.title = t('tube') + ' \u2014 Zimi';
+  _setWindowTitle(document.title);
+  updateTopbar();
+}
+
+// The apps, first among the sources, on every install. Eric: "all the apps
+// can exist on a fresh install and suggest which zims to add or pop to
+// relevant catalog categories." An app with data opens; one without opens
+// the catalog category that feeds it, and its tile says so.
+var _APP_CATEGORY = { maps: 'maps', tube: 'ted', exchange: 'stack_exchange' };  // reddot: made, not downloaded
+// A mode the Create page should open on, set by whoever sends someone there.
+var _createRememberMode = '';
+var _createRememberSource = '';
+// A whole subreddit address, so the preview answers at once. Reddot's empty
+// page and tile open Create with it in the field, the name selected, so
+// typing replaces it (Eric: "include a subreddit so it's a valid URL, maybe
+// Kiwix or something fun").
+var _REDDIT_ADDRESS_START = 'https://www.reddit.com/r/Kiwix';
+
+// The row is offered unless the server turned it off for everyone
+// (ZIMI_APPS, or the switch in Server settings; stamped on the shell) or
+// this signed-in person turned it off for their account. Never per
+// browser (Eric: "Not per browser only per user or server").
+var APP_NAMES = ['maps', 'tube', 'exchange', 'reddot'];
+var _userPrefs = { apps: true, shown: null };
+// The stamp: nothing when every app is offered, '0' for none, else the names.
+function _appsAllowedByServer(app) {
+  var stamp = document.body && document.body.dataset ? document.body.dataset.zimiApps : undefined;
+  if (stamp === undefined || stamp === '') return true;
+  if (stamp === '0') return false;
+  return app ? stamp.split(',').indexOf(app) >= 0 : true;
+}
+function _appShown(app) {
+  if (!_appsAllowedByServer(app)) return false;
+  if (!_userSession || _userPrefs.apps === false) return !_userSession;
+  return !_userPrefs.shown || _userPrefs.shown.indexOf(app) >= 0;
+}
+function _appsEnabled() {
+  return APP_NAMES.some(_appShown);
+}
+function _appTitle(app) { return t(app === 'maps' ? 'cat_maps' : app); }
+function _readPrefs(d) {
+  _userPrefs = { apps: d.apps !== false, shown: Array.isArray(d.shown) ? d.shown : null };
+}
+async function _loadUserPrefs() {
+  if (!_userSession) return;
+  try {
+    var r = await fetch('/me/prefs', { credentials: 'same-origin' });
+    if (!r.ok) return;
+    var d = await r.json();
+    var was = JSON.stringify(_userPrefs);
+    _readPrefs(d);
+    if (was !== JSON.stringify(_userPrefs) && mode === 'home') renderHome();
+  } catch (e) {}
+}
+async function _setUserPref(key, value) {
+  var body = {}; body[key] = value;
+  try {
+    var r = await fetch('/me/prefs', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (r.ok) { _readPrefs(await r.json()); }
+  } catch (e) {}
+  renderHome();
+}
+// One app on or off for this account: the whole list goes up, so the server
+// never has to guess what the others were.
+function _setUserApp(app, on) {
+  var shown = APP_NAMES.filter(function(a) { return a === app ? on : _appShown(a); });
+  _setUserPref('apps', shown);
+}
+// The apps to choose from, as the tiles they are on the home page: an icon
+// and a name, lit when offered (Eric: "the lil app tiles with icons and i
+// can select or deselect which to show").
+function _appIcon(app) {
+  return app === 'maps' ? _MAPS_SVG : app === 'tube' ? _TUBE_PLAY_SVG : app === 'exchange' ? _EXCHANGE_SVG : _REDDOT_SVG;
+}
+// What the library holds for each app, in a line under its name.
+function _appCountLine(app) {
+  var n = app === 'maps' ? _installedMaps().length
+    : app === 'tube' ? _installedVideoZims().length
+    : app === 'exchange' ? _installedQaZims().length
+    : _installedRedditZims().reduce(function(s, z) { return s + (z.subreddits && z.subreddits.length ? z.subreddits.length : 1); }, 0);
+  return tPlural('apps_count_' + app, n);
+}
+function _appPicksHtml(apps, checked, onchange, disabled) {
+  return '<div class="app-picks" role="group">' + apps.map(function(app) {
+    var on = !!checked(app);
+    return '<button type="button" class="app-pick' + (on ? ' on' : '') + '" aria-pressed="' + on + '"' + (disabled ? ' disabled' : '') +
+      ' onclick="' + onchange + '(\'' + app + '\', ' + (!on) + ')">' + _appIcon(app) + '<span class="app-pick-t"><span>' + esc(_appTitle(app)) + '</span><small>' + esc(_appCountLine(app)) + '</small></span></button>';
+  }).join('') + '</div>';
+}
+
+function _appsRowHtml() {
+  if (!_appsEnabled()) return '';
+  var tiles = (_appShown('maps') ? _mapsTileHtml() : '') + (_appShown('tube') ? _tubeTileHtml() : '') +
+    (_appShown('exchange') ? _exchangeTileHtml() : '') + (_appShown('reddot') ? _reddotTileHtml() : '');
+  if (!tiles) return '';
+  var isTiles = _getLibraryView() === 'tiles';
+  // Labelled like every section around it (Discover above, the categories
+  // below): a row without a name between rows with names reads as lost.
+  return '<div class="ci-section-label">' + tH('apps_section') + '</div>' +
+    '<div class="' + (isTiles ? 'stats-grid tiles' : 'stats-grid') + ' apps-grid">' + tiles + '</div>';
+}
+
+function _appTileHtml(app, title, icon, names, openFn) {
+  names = names.filter(function(n, i) { return names.indexOf(n) === i; });
+  if (names.length) {
+    return '<a class="stat-card app-tile ' + app + '-tile" href="#' + app + '" data-zim="" onclick="return _spaNav(event, ' + openFn + ')">' +
+      '<div class="card-icon">' + icon + '</div>' +
+      '<div class="card-info"><div class="name"><span class="zt">' + esc(title) + '</span></div>' +
+      '<div class="detail">' + esc(names.join(' \u00b7 ')) + '</div></div></a>';
+  }
+  var door = _APP_CATEGORY[app]
+    ? 'href="/?manage" onclick="return _spaNav(event, function() { _openCategory(_APP_CATEGORY.' + app + '); })"'
+    : 'href="/#create" onclick="return _spaNav(event, function() { _createRememberMode = \'page\'; _createRememberSource = _REDDIT_ADDRESS_START; openCreate(); })"';
+  return '<a class="stat-card app-tile app-empty ' + app + '-tile" ' + door + ' data-zim="">' +
+    '<div class="card-icon">' + icon + '</div>' +
+    '<div class="card-info"><div class="name"><span class="zt">' + esc(title) + '</span></div>' +
+    '<div class="detail">' + esc(t('app_empty_' + app)) + '</div></div></a>';
+}
+
+function _tubeTileHtml() {
+  return _appTileHtml('tube', t('tube'), _TUBE_PLAY_SVG, _installedVideoZims().map(function(z) { return z.title || z.name; }), 'openTube');
+}
+var _TUBE_PLAY_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"/></svg>';
+
+function _mapsTileHtml() {
+  return _appTileHtml('maps', t('cat_maps'), _MAPS_SVG, _installedMaps().map(_mapName), 'openMaps');
+}
+// The same mark the catalog draws for the category: one map, wherever Maps is named.
+var _MAPS_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg>';
+
+function openMaps(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  var last = _lastMapVisit();
+  if (!last) return;
+  if (_createOpen) closeCreate();
+  if (_almanacOpen) closeAlmanac();
+  if (mode === 'manage') { mode = 'home'; updateTopbar(); }
+  openArticle(last.zim.name, last.zim.main_path, _mapName(last.zim), last.pos ? {pos: last.pos} : undefined);
+}
+
+function _isMapZim(name) {
+  return (zimsCache || []).some(function(z) { return z.name === name && z.kind === 'map'; });
+}
+
+// The page on screen is a map. Eric, 2026-09-18: "Maps should remove speaker
+// icon and either remove or modify random bookmarks history to be for maps.
+// Think about that whole top bar." A map has nothing to read aloud, no
+// reading mode and no type size; its Random is a random place, its
+// bookmarks and history are places, and its language is the map's own.
+function _isMapPage() {
+  return !!(readerOpen && !_almanacOpen && !_createOpen && currentArticle && _isMapZim(currentArticle.zim));
+}
+
+// Where the open map is, as a hash fragment, read from the map itself so it
+// is right even before the debounced URL write; from the URL when the map
+// has not answered yet; null when this is not a map.
+function _currentMapPositionHash() {
+  try {
+    var map = _readerMap();
+    if (map) {
+      var c = map.getCenter();
+      return mapPositionHash(map.getZoom(), c.lat, c.lng);
+    }
+  } catch (e) {}
+  var pos = parseMapHash(location.hash);
+  return pos ? mapPositionHash(pos.zoom, pos.lat, pos.lng) : null;
+}
+
+// Which publisher's map this is, for the row's second line: the server reads
+// it from the ZIM's own Scraper metadata, so a renamed file still knows.
+// A map's name where Zimi names it (the tile, the picker, the breadcrumb).
+// StreetZim titles its files "OSM - Hawaii"; the person says Hawaii, and so
+// does the map in its own corner.
+function _mapName(z) {
+  var title = z.title || z.name;
+  return _mapSourceLabel(z) === 'StreetZim' ? title.replace(/^OSM\s*-\s*/i, '') : title;
+}
+
+function _mapSourceLabel(z) {
+  if (z.map_source) return z.map_source;
+  if (z.map_search || /^osm-/.test(z.name)) return 'StreetZim';
+  if (/^maps_/.test(z.name)) return 'Kiwix';
+  return '';
+}
+
+// Whether a map's ground includes a point, or overlaps a view. Bounds are
+// [W, S, E, N] from the map's own config; a box that crosses the
+// antimeridian has W > E. A map with no known bounds is not ruled out:
+// null, not false. ``pos`` is {lat, lng} for a point, or {w, s, e, n} for
+// what is on screen (Eric: "what's under the viewport").
+function _lngIn(lng, w, e) { return w <= e ? (lng >= w && lng <= e) : (lng >= w || lng <= e); }
+function _mapCovers(z, pos) {
+  var b = z.map_bounds;
+  if (!pos || !b || b.length !== 4) return null;
+  if (pos.w !== undefined) {
+    if (pos.n < b[1] || pos.s > b[3]) return false;
+    // Two boxes overlap in longitude when either's west edge lies inside the other.
+    return _lngIn(pos.w, b[0], b[2]) || _lngIn(b[0], pos.w, pos.e);
+  }
+  if (pos.lat < b[1] || pos.lat > b[3]) return false;
+  return _lngIn(pos.lng, b[0], b[2]);
+}
+
+// What is on screen, as a box, from the live map; null before it answers.
+function _currentMapView() {
+  try {
+    var map = _readerMap();
+    if (!map) return null;
+    var b = map.getBounds();
+    return {w: b.getWest(), s: b.getSouth(), e: b.getEast(), n: b.getNorth()};
+  } catch (e) { return null; }
+}
+
+// The maps that cover where you are, then the rest under a divider. A map of
+// Samoa opened at Honolulu shows Samoa, whatever the URL says, so the list
+// says which switches keep the place before the switch is made.
+// The picker. One line per map: the name, then on the right what tells it
+// apart (whose map it is) or what it costs (its size). Installed maps of
+// here first, the catalog's offers of here (the planet among them, last),
+// the installed maps of elsewhere folded behind one row, then the way to
+// all maps. No headings with rules under them: a small label is enough.
+// ``extras`` is ``{middle, end}`` from _mapOfferRowsHtml, or absent.
+var _MP_DOWN_SVG = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="M6 12l6 6 6-6"/></svg>';
+
+function _mpRow(z, active) {
+  return '<div class="mp-row' + (active ? ' active' : '') + '" role="menuitemradio" aria-checked="' + active +
+    '" data-zim="' + escAttr(z.name) + '" data-path="' + escAttr(z.main_path) + '" data-title="' + escAttr(_mapName(z)) + '">' +
+    '<span class="mp-name">' + esc(_mapName(z)) + '</span>' +
+    '<span class="mp-meta">' + esc(_mapSourceLabel(z)) + (active ? ' <span class="mp-check">\u2713</span>' : '') + '</span></div>';
+}
+
+// With this many maps or fewer, nothing is folded: a short list is read
+// whole (Eric: "show all installed maps if there's only a few").
+var _MP_FOLD_FROM = 5;
+
+function _mapSourceRowsHtml(maps, currentName, pos, extras) {
+  var here = [], elsewhere = [];
+  for (var i = 0; i < maps.length; i++) {
+    (_mapCovers(maps[i], pos) === false ? elsewhere : here).push(maps[i]);
+  }
+  var row = function(z) { return _mpRow(z, z.name === currentName); };
+  var h = here.map(row).join('') + ((extras && extras.middle) || '');
+  if (elsewhere.length && maps.length <= _MP_FOLD_FROM) {
+    h += elsewhere.map(row).join('');
+  } else if (elsewhere.length) {
+    // Folded: seven maps of other places are noise until you want one.
+    h += '<div class="mp-row mp-fold" role="menuitem" aria-expanded="false" data-role="fold">' +
+      '<span class="mp-name">' + esc(tH('map_source_elsewhere')) + '</span><span class="mp-meta">' + elsewhere.length + '</span></div>' +
+      '<div class="mp-folded" hidden>' + elsewhere.map(row).join('') + '</div>';
+  }
+  return h + ((extras && extras.end) || '');
+}
+
+// Where I am, on the map that is open: the device's location, asked for
+// when tapped and never before. A map that does not cover it says so
+// rather than jumping to its own edge. Eric: "a button to go local / use IP
+// or system location or something."
+function _mapWhereIAm() {
+  _closeMapSourceDropdown();
+  if (!navigator.geolocation) { _showToast(t('map_location_unavailable')); return; }
+  navigator.geolocation.getCurrentPosition(function(p) {
+    var lat = p.coords.latitude, lng = p.coords.longitude;
+    var z = currentArticle && (zimsCache || []).filter(function(x) { return x.name === currentArticle.zim; })[0];
+    if (z && _mapCovers(z, {lat: lat, lng: lng}) === false) { _showToast(t('map_location_off_map')); return; }
+    var pos = mapPositionHash(15, lat, lng);
+    var map = _readerMap();
+    if (map) {
+      try { map.jumpTo({center: [lng, lat], zoom: 15}); } catch (e) {}
+      history.replaceState(history.state, '', location.pathname + location.search + '#' + pos);
+    }
+  }, function() { _showToast(t('map_location_unavailable')); }, {enableHighAccuracy: false, timeout: 10000, maximumAge: 60000});
+}
+
+// The place travels only where it can be shown. A map that does not cover it
+// opens at its own home, and the URL says so, rather than carrying a position
+// the map clamps away from while the address still claims it.
+function _switchMapSource(name, path, title) {
+  _closeMapSourceDropdown();
+  if (currentArticle && currentArticle.zim === name) return;
+  var pos = _currentMapPositionHash();
+  var target = (zimsCache || []).filter(function(z) { return z.name === name; })[0];
+  if (pos && target && _mapCovers(target, parseMapHash('#' + pos)) === false) pos = null;
+  openArticle(name, path, title, pos ? {pos: pos} : undefined);
+}
+
+// ── Get a map of here ──
+// Eric, 2026-09-18: "It should offer the one in their region if they share
+// it or worldwide for both or top few by language I guess with a punch out
+// to the full catalog?" Under the installed maps, the catalog's maps that
+// cover the spot on screen (the server stamps each catalog map with an
+// approximate box), then the maps of the whole world, then the way to all
+// of them. Both catalogs are read once per session, the first time the
+// list opens, and only for someone the library lets download.
+var _MAP_OFFERS_HERE = 3;
+var _MAP_OFFERS_WORLD = 2;
+var _mapOfferLoaded = false;
+var _mapOfferPending = null;
+var _kiwixOffers = [];
+var _streetzimOffers = [];
+
+// Both catalogs, fetched once, keeping only the maps the server could place.
+// A fresh fetch, not the catalog view's cache: that may be a session copy
+// from before the boxes were stamped, and would then have none.
+function _mapOfferItems() {
+  if (_mapOfferLoaded) return Promise.resolve(_mapOfferAll());
+  if (_mapOfferPending) return _mapOfferPending;
+  var placed = function(items) { return (items || []).filter(function(it) { return it && it.bounds; }); };
+  _mapOfferPending = (async function() {
+    try {
+      var got = await _fetchCatalogItems();
+      try { _enrichCatalogItems(got.items); } catch (e) {}  // installed flags
+      _kiwixOffers = placed(got.items);
+    } catch (e) {}
+    try {
+      var d = await (await manageFetch('/manage/catalog-streetzim')).json();
+      _streetzimOffers = placed(d.items);
+    } catch (e) {}
+    _mapOfferLoaded = true;
+    _mapOfferPending = null;
+    return _mapOfferAll();
+  })();
+  return _mapOfferPending;
+}
+
+function _mapOfferAll() {
+  return _kiwixOffers.concat(_streetzimOffers);
+}
+
+function _mapOfferInstalled(it) {
+  return !!it.installed || (zimsCache || []).some(function(z) { return z.name === it.name; });
+}
+
+// The catalog maps worth a row at this spot: those that cover it, smallest
+// first (the one someone can actually fetch tonight), and the planet.
+function _mapOfferGroups(items, pos) {
+  var bySize = function(a, b) { return (a.size_bytes || 0) - (b.size_bytes || 0); };
+  var open = (items || []).filter(function(it) { return !_mapOfferInstalled(it); });
+  // A point, for the offers: a map that merely touches the edge of a wide
+  // view is not "a map of here"; the centre is.
+  if (pos && pos.w !== undefined) pos = {lat: (pos.s + pos.n) / 2, lng: pos.w <= pos.e ? (pos.w + pos.e) / 2 : pos.w};
+  return {
+    here: open.filter(function(it) { return !it.world && pos && _mapCovers({map_bounds: it.bounds}, pos) === true; })
+      .sort(bySize).slice(0, _MAP_OFFERS_HERE),
+    world: open.filter(function(it) { return it.world; }).sort(bySize).slice(0, _MAP_OFFERS_WORLD),
+  };
+}
+
+function _mapOfferRow(it) {
+  var source = it.source === 'streetzim' ? 'StreetZim' : 'Kiwix';
+  return '<div class="mp-row mp-offer" role="menuitem" data-role="offer" data-url="' + escAttr(it.download_url || '') +
+    '" data-title="' + escAttr(it.title || it.name) + '">' +
+    '<span class="mp-name">' + esc(it.title || it.name) + '<span class="mp-tag">' + esc(source) + '</span></span>' +
+    '<span class="mp-meta">' + (it.size_bytes ? esc(fmtBytes(it.size_bytes)) + ' ' : '') + _MP_DOWN_SVG + '</span></div>';
+}
+
+// ``{middle, end}`` for _mapSourceRowsHtml: the offers, and the punch-out.
+// The planet sits at the end of the same list: "World" needs no heading.
+function _mapOfferRowsHtml(groups) {
+  var offers = groups.here.concat(groups.world);
+  var middle = offers.length
+    ? '<div class="mp-head" role="separator">' + esc(tH('map_offer_here')) + '</div>' + offers.map(_mapOfferRow).join('')
+    : '';
+  return {
+    middle: middle,
+    end: '<div class="mp-row mp-link" role="menuitem" data-role="locate"><span class="mp-name">' + esc(tH('map_where_i_am')) + '</span></div>' +
+      '<div class="mp-row mp-link" role="menuitem" data-role="all-maps"><span class="mp-name">' + esc(tH('map_offer_all')) + '</span></div>',
+  };
+}
+
+async function _mapOfferDownload(row) {
+  var url = row.getAttribute('data-url'), title = row.getAttribute('data-title') || '';
+  if (!url) return;
+  row.classList.add('mp-busy');
+  await downloadZim(url, null);
+  _closeMapSourceDropdown();
+  _showToast(tH('map_offer_started', {map: title}));
+}
+
+// The whole Maps category of the catalog, with its source toggle.
+async function _openMapsCatalog() {
+  _closeMapSourceDropdown();
+  await _openCategory('maps');
+}
+
+// A catalog category, from an app that has nothing to show yet: the app is
+// the door, the category is what fills it.
+async function _openCategory(key) {
+  if (readerOpen) closeReader();
+  await enterManage(null);
+  switchManageTab('browse');
+  drillCategory(key);
+}
+
+function _renderMapSourceDropdown(dd) {
+  // The view on screen decides which maps are "here"; the centre only
+  // before the map has answered (a cold load, the hash alone).
+  var here = _currentMapPositionHash();
+  var pos = _currentMapView() || (here ? parseMapHash('#' + here) : null);
+  var extras;
+  if (_mapOfferLoaded) {
+    extras = _mapOfferRowsHtml(_mapOfferGroups(_mapOfferAll(), pos));
+  } else {
+    extras = {end: '<div class="mp-row mp-wait" aria-busy="true"><span class="mp-name">\u2026</span></div>'};
+    _mapOfferItems().then(function() {
+      if (dd.classList.contains('visible')) _renderMapSourceDropdown(dd);
+    });
+  }
+  var maps = _installedMaps();
+  var cur = currentArticle && (zimsCache || []).filter(function(z) { return z.name === currentArticle.zim; })[0];
+  if (cur && !maps.some(function(m) { return m.name === cur.name; })) maps.unshift(cur);
+  dd.innerHTML = _mapSourceRowsHtml(maps, currentArticle ? currentArticle.zim : '', pos, extras);
+}
+
+var _mapSourceDetach = null;
+function toggleMapSourceDropdown(event) {
+  event.stopPropagation();
+  var dd = document.getElementById('map-source-dropdown');
+  var btn = document.getElementById('map-source-btn');
+  if (!dd || !btn) return;
+  if (dd.classList.contains('visible')) { _closeMapSourceDropdown(); return; }
+  _renderMapSourceDropdown(dd);
+  dd.onclick = function(e) {
+    var row = e.target.closest('.mp-row');
+    if (!row) return;
+    var role = row.getAttribute('data-role');
+    if (role === 'fold') {
+      var folded = row.nextElementSibling;
+      var open = folded && folded.hidden;
+      if (folded) folded.hidden = !open;
+      row.setAttribute('aria-expanded', String(!!open));
+      return;
+    }
+    if (role === 'offer') { _mapOfferDownload(row); return; }
+    if (role === 'all-maps') { _openMapsCatalog(); return; }
+    if (role === 'locate') { _mapWhereIAm(); return; }
+    if (!row.getAttribute('data-zim')) return;
+    _switchMapSource(row.getAttribute('data-zim'), row.getAttribute('data-path'), row.getAttribute('data-title'));
+  };
+  _placeDropdownUnder(dd, btn);
+  _mapSourceDetach = _dismissOnOutside([dd, btn], _closeMapSourceDropdown);
+}
+function _closeMapSourceDropdown() {
+  var dd = document.getElementById('map-source-dropdown');
+  if (dd) dd.classList.remove('visible');
+  if (_mapSourceDetach) { _mapSourceDetach(); _mapSourceDetach = null; }
+}
+function _spaMapFind(e, el) {
+  return _spaNav(e, function () {
+    openArticle(el.getAttribute('data-zim'), el.getAttribute('data-path'), el.getAttribute('data-title') || '',
+      {find: el.getAttribute('data-find') || ''});
+  });
+}
+
+// And put it back where the link says, once the map exists.
+var _MAP_RESTORE_TRIES = 40;
+// The server's answer for where a map opens the first time, applied once
+// the map is up: at once when it already is, else when the frame loads.
+var _pendingMapHome = null;
+function _mapHomeView(zim) {
+  _pendingMapHome = null;
+  fetch('/map-home?zim=' + encodeURIComponent(zim)).then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
+    if (!d || typeof d.lat !== 'number' || !currentArticle || currentArticle.zim !== zim) return;
+    var pos = { lat: d.lat, lng: d.lng, zoom: d.zoom };
+    if (_readerMap()) _restoreMapPosition(pos, 0);
+    else _pendingMapHome = { zim: zim, pos: pos };
+  }).catch(function() {});
+}
+
+function _restoreMapPosition(pos, tries) {
+  if (!pos) return;
+  var map = _readerMap();
+  if (!map) {
+    if ((tries || 0) >= _MAP_RESTORE_TRIES) return;
+    // The map is built after the frame loads, so there is nothing to aim at
+    // yet. Poll briefly rather than guess a delay.
+    setTimeout(function() { _restoreMapPosition(pos, (tries || 0) + 1); }, 150);
+    return;
+  }
+  try {
+    map.jumpTo({center: [pos.lng, pos.lat], zoom: pos.zoom});
+    // A map with maxBounds (StreetZim's region box) cannot look at a spot
+    // when the view is wider than the box: it recentres on the box instead.
+    // Zoom in until it can, and keep that zoom for the re-puts below.
+    for (var zi = 0; zi < 4 && pos.zoom < 12; zi++) {
+      var got = map.getCenter();
+      if (Math.abs(got.lng - pos.lng) < 0.5 && Math.abs(got.lat - pos.lat) < 0.5) break;
+      pos = { lat: pos.lat, lng: pos.lng, zoom: pos.zoom + 1 };
+      map.jumpTo({center: [pos.lng, pos.lat], zoom: pos.zoom});
+    }
+  } catch (e) {}
+  _watchReaderMap();
+  // Belt and braces: a map that moves itself in its first seconds (a saved
+  // view, a maxBounds clamp) is put back, unless a person moved it.
+  var moved = false;
+  try { map.once('dragstart', function() { moved = true; }); map.once('wheel', function() { moved = true; }); } catch (e) {}
+  [700, 2000].forEach(function(ms) {
+    setTimeout(function() {
+      if (moved) return;
+      try {
+        var c = map.getCenter();
+        if (Math.abs(c.lat - pos.lat) > 1e-3 || Math.abs(c.lng - pos.lng) > 1e-3) {
+          map.jumpTo({center: [pos.lng, pos.lat], zoom: pos.zoom});
+        }
+      } catch (e) {}
+    }, ms);
+  });
+}
+
 function _articleDeepLinkPath(zim, path) {
   return '/?a=' + encodeURIComponent(zim + '/' + path);
 }
@@ -15643,6 +17264,13 @@ function openReader(url) {
     };
     if (_replayAlive) setTimeout(_settlePasses, REPLAY_SETTLE_MS);
     else _settlePasses();
+    // A map ZIM: put it where the link says, then follow it. Both are no-ops
+    // on every other kind of page, since neither finds a map handle.
+    var _mapPos = parseMapHash(location.hash);
+    if (!_mapPos && _pendingMapHome && currentArticle && _pendingMapHome.zim === currentArticle.zim) { _mapPos = _pendingMapHome.pos; _pendingMapHome = null; }
+    _restoreMapPosition(_mapPos, 0);
+    _applyMapFind(0);
+    setTimeout(_watchReaderMap, 400);
     // Inject responsive CSS + scroll-to-top button for mobile
     try {
       // Web-mirror pages (alive engine, zimit) ship a browser's-eye recording of
@@ -15951,7 +17579,9 @@ function openReader(url) {
     } catch(e) { /* cross-origin */ }
     // Update document/window title from iframe content (skip for pdf.js — it reports
     // "PDF.js viewer" which overwrites the good title already set by openArticle)
-    if (!_frameLoc.startsWith('/static/')) try {
+    // A map keeps the title openArticle gave it (the map's name, or the
+    // place): its own <title> is the publisher's ("OpenStreetMap Offline").
+    if (!_frameLoc.startsWith('/static/') && !_isMapPage()) try {
       var iTitle = frame.contentDocument && frame.contentDocument.title;
       if (!iTitle) {
         // Fallback: extract from iframe URL path
@@ -15972,6 +17602,17 @@ function openReader(url) {
         var _navZim = decodeURIComponent(_wm[1]);
         var _navPath = decodeURIComponent(_wm[2]);
         currentArticle = { zim: _navZim, path: _navPath };
+        if (_tubeOpen || _exchangeOpen || _reddotOpen) {
+          // A card in an app opened a ZIM page: a real page now, with the
+          // history and address every page gets, and Back returns to the app.
+          _tubeOpen = false;
+          _exchangeOpen = false;
+          _reddotOpen = false;
+          readerSource = _navZim;
+          history.pushState({ mode: 'reader', zim: _navZim, path: _navPath }, '', _articleDeepLinkPath(_navZim, _navPath));
+          _histPushArticle(_navZim, _navPath, _titleFromPath(_navPath));
+          updateTopbar();
+        }
         _updateLibraryBtnIcon();
       }
     } catch(e) {}
@@ -16010,20 +17651,42 @@ function _histSave() {
   if (!_persistHist) return;
   try { localStorage.setItem(_HIST_KEY, JSON.stringify(_persistHist)); } catch(e) {}
 }
-function _histPushArticle(zim, path, title) {
+function _histPushArticle(zim, path, title, pos, app) {
   var h = _histLoad();
   // Deduplicate: remove if same zim+path exists recently (within last 5 entries)
   for (var i = 0; i < Math.min(5, h.length); i++) {
-    if (h[i].type === 'article' && h[i].zim === zim && h[i].path === path) {
+    if (h[i].type === 'article' && h[i].zim === zim && h[i].path === path && (h[i].pos || '') === _normMapPos(pos)) {
       h.splice(i, 1);
       break;
     }
   }
   var entry = { type: 'article', zim: zim, path: path, title: title || _titleFromPath(path), timestamp: Date.now() };
+  // A place on a map: the same page as every other visit to that map, so
+  // the visit is the place, and reopening it returns there.
+  if (pos) entry.pos = _normMapPos(pos);
+  // A video, a question, a post: reopened in its app, listed as the app.
+  if (app) entry.app = app;
   if (_currentSearchQuery) entry.fromQuery = _currentSearchQuery;
   h.unshift(entry);
   if (h.length > _HIST_MAX) h.length = _HIST_MAX;
   _histSave();
+}
+// The fourth argument of a history row's openArticle: the place, when the
+// visit was one. Written into an inline handler, so it is source text.
+function _histPosArg(entry) {
+  return entry.pos ? ',{pos:\'' + escJs(entry.pos) + '\'}' : '';
+}
+// The most recent visit to a place on a map, by its position hash, or null.
+// Positions are written to the same precision everywhere (mapPositionHash),
+// so the address after a Back is the same string the visit was recorded with.
+function _histFindPlace(zim, pos) {
+  if (!zim || !pos) return null;
+  pos = _normMapPos(pos);
+  var h = _histLoad();
+  for (var i = 0; i < h.length; i++) {
+    if (h[i].type === 'article' && h[i].zim === zim && h[i].pos === pos) return h[i];
+  }
+  return null;
 }
 function _histPushSearch(query, zimName, resultCount) {
   var h = _histLoad();
@@ -16153,7 +17816,7 @@ function _renderHistoryContent() {
         var child = h[j];
         var cIcon = child.zim ? _sourceIconHtml(child.zim, 16) : '';
         var cSub = child.zim ? _zimTitleWithLang(child.zim) : '';
-        html += '<div class="hp-item" style="padding-left:38px" onclick="_closeLibraryPanel();openArticle(\'' + escJs(child.zim) + '\',\'' + escJs(child.path) + '\',\'' + escJs(child.title || '') + '\')">' +
+        html += '<div class="hp-item" style="padding-left:38px" onclick="_closeLibraryPanel();openArticle(\'' + escJs(child.zim) + '\',\'' + escJs(child.path) + '\',\'' + escJs(child.title || '') + '\'' + _histPosArg(child) + ')">' +
           '<div class="hp-icon" style="width:22px;height:22px">' + cIcon + '</div>' +
           '<div class="hp-detail"><div class="hp-title">' + esc(child.title || child.path) + '</div>' +
           '<div class="hp-sub">' + esc(cSub) + '</div></div>' +
@@ -16162,9 +17825,11 @@ function _renderHistoryContent() {
       }
       i = j;
     } else if (item.type === 'article') {
-      var aIcon = item.zim ? _sourceIconHtml(item.zim, 20) : _BM_PAGE_SVG;
-      var aSub = item.zim ? _zimTitleWithLang(item.zim) : '';
-      html += '<div class="hp-item" onclick="_closeLibraryPanel();openArticle(\'' + escJs(item.zim) + '\',\'' + escJs(item.path) + '\',\'' + escJs(item.title || '') + '\')">' +
+      var aIcon = item.app ? _appIcon(item.app).replace('width="26" height="26"', 'width="20" height="20"') : item.zim ? _sourceIconHtml(item.zim, 20) : _BM_PAGE_SVG;
+      var aSub = item.app ? _appTitle(item.app) : item.zim ? _zimTitleWithLang(item.zim) : '';
+      var aOpen = item.app ? '_openAppItem(\'' + escJs(item.app) + '\',\'' + escJs(item.zim) + '\',\'' + escJs(item.path) + '\')'
+        : 'openArticle(\'' + escJs(item.zim) + '\',\'' + escJs(item.path) + '\',\'' + escJs(item.title || '') + '\'' + _histPosArg(item) + ')';
+      html += '<div class="hp-item" onclick="_closeLibraryPanel();' + aOpen + '">' +
         '<div class="hp-icon">' + aIcon + '</div>' +
         '<div class="hp-detail"><div class="hp-title">' + esc(item.title || item.path) + '</div>' +
         '<div class="hp-sub">' + esc(aSub) + '</div></div>' +
@@ -16250,11 +17915,12 @@ function _bkSourceMissing(b) {
 
 function _bmBookmarkRowHtml(b, depth) {
   var missing = _bkSourceMissing(b);
-  var icon = b.zim ? _sourceIconHtml(b.zim, 20) : _BM_PAGE_SVG;
-  var sub = missing ? t('bm_source_missing') : (b.zim ? _zimTitleWithLang(b.zim) : '');
+  var icon = b.app ? _appIcon(b.app).replace('width="26" height="26"', 'width="20" height="20"') : b.zim ? _sourceIconHtml(b.zim, 20) : _BM_PAGE_SVG;
+  var sub = missing ? t('bm_source_missing') : b.app ? _appTitle(b.app) : (b.zim ? _zimTitleWithLang(b.zim) : '');
   var pad = 6 + depth * _BM_INDENT;
   return '<div class="bm-row bm-bk' + (missing ? ' bm-missing' : '') + '"' +
-    ' data-zim="' + escAttr(b.zim) + '" data-path="' + escAttr(b.path) + '"' +
+    ' data-zim="' + escAttr(b.zim) + '" data-path="' + escAttr(b.path) + '"' + (b.app ? ' data-app="' + escAttr(b.app) + '"' : '') +
+    (b.pos ? ' data-pos="' + escAttr(b.pos) + '"' : '') +
     ' data-fid="' + escAttr(_bkFolderOf(b)) + '" data-depth="' + depth + '"' +
     ' style="padding-left:' + pad + 'px" role="treeitem" aria-level="' + (depth + 1) + '" tabindex="-1">' +
     // Stands in for the folder rows' twist so a bookmark sits to the RIGHT of
@@ -16587,7 +18253,19 @@ function _bmEnsureBound() {
     } else if (row.classList.contains('bm-bk')) {
       if (row.classList.contains('bm-missing')) { _showToast(t('bm_source_missing')); return; }
       _closeLibraryPanel();
-      openArticle(row.dataset.zim, row.dataset.path, row.querySelector('.bm-name') ? row.querySelector('.bm-name').textContent : '');
+      // A bookmarked map opens at the place it was bookmarked. The hash is
+      // set before openArticle so the frame's load handler, which is what
+      // actually moves the map, already sees it.
+      var bkTitle = row.querySelector('.bm-name') ? row.querySelector('.bm-name').textContent : '';
+      var bkPos = row.dataset.pos || '';
+      if (row.dataset.app) { _openAppItem(row.dataset.app, row.dataset.zim, row.dataset.path); return; }
+      openArticle(row.dataset.zim, row.dataset.path, bkTitle, bkPos ? {pos: bkPos} : undefined);
+      // Already on this map: nothing reloaded, so nudge the hash to move it.
+      // Assigning fires hashchange; a replaceState would change the bar and
+      // tell nobody.
+      if (bkPos && location.hash.indexOf(bkPos) < 0) {
+        try { location.hash = bkPos; } catch (e) {}
+      }
     }
   });
 
@@ -16877,10 +18555,16 @@ function _bkFind(zim, path) {
   return _bkLoad().findIndex(function(b) { return b.zim === zim && b.path === path; });
 }
 function _bkIsBookmarked(zim, path) { return _bkFind(zim, path) >= 0; }
-function _bkAdd(zim, path, title) {
+function _bkAdd(zim, path, title, pos, app) {
   var bk = _bkLoad();
   if (_bkFind(zim, path) >= 0) return; // already bookmarked
-  bk.unshift({ zim: zim, path: path, title: title || _titleFromPath(path), timestamp: Date.now() });
+  var record = { zim: zim, path: path, title: title || _titleFromPath(path), timestamp: Date.now() };
+  if (app) record.app = app;
+  // An offline map is one page whose whole meaning is WHERE you are, so a
+  // bookmark of it has to carry the place. Optional and absent everywhere
+  // else, so older records and every ordinary article are unchanged.
+  if (pos) record.pos = pos;
+  bk.unshift(record);
   if (bk.length > _BK_MAX) bk.length = _BK_MAX;
   _bkSave();
 }
@@ -17390,6 +19074,13 @@ async function _revealExportedZim(file) {
   }, 120);
 }
 function toggleBookmark() {
+  if (!currentArticle && _appItem) {
+    // A video, a question, a post: kept as the app's, reopened in the app.
+    if (_bkIsBookmarked(_appItem.zim, _appItem.path)) _bkRemove(_appItem.zim, _appItem.path);
+    else _bkAdd(_appItem.zim, _appItem.path, _appItem.title || document.title.replace(/ \u2014 .*$/, ''), null, _appItem.app);
+    _updateLibraryBtnIcon();
+    return;
+  }
   if (!currentArticle) return;
   // The reader's own "This page wasn't captured" stand-in is not an article:
   // bookmarked, it went into a bookmarks export as a page titled exactly
@@ -17404,7 +19095,10 @@ function toggleBookmark() {
   if (_bkIsBookmarked(zim, path)) {
     _bkRemove(zim, path);
   } else {
-    _bkAdd(zim, path, title);
+    // Where the map is, if this is one. Read at the moment of bookmarking
+    // rather than from the URL, so it is right even if the debounce has not
+    // fired yet.
+    _bkAdd(zim, path, title, _currentMapPositionHash());
   }
   _updateLibraryBtnIcon();
 }
@@ -17417,7 +19111,8 @@ function _updateLibraryBtnIcon() {
   var btn = document.getElementById('library-btn');
   if (!btn) return;
   var tab = _getLibraryTab();
-  if (readerOpen && currentArticle && _bkIsBookmarked(currentArticle.zim, currentArticle.path)) {
+  var cur = currentArticle || _appItem;
+  if (readerOpen && cur && _bkIsBookmarked(cur.zim, cur.path)) {
     btn.innerHTML = _libBookmarkFilledSvg;
     btn.style.color = 'var(--amber)';
     btn.title = t('bookmarked_remove');
@@ -17449,7 +19144,43 @@ function _updateLibraryBtnIcon() {
     panelBtn.title = t('bookmarks');
   }
 }
+// What a page is called when nobody said: a map is called by its name (the
+// same page every visit, the place is the visit), anything else by its path.
+function _fallbackTitle(zim, path) {
+  if (!_isMapZim(zim)) return _titleFromPath(path);
+  var z = (zimsCache || []).filter(function(x) { return x.name === zim; })[0];
+  return z ? _mapName(z) : _zimTitle(zim);
+}
+
 function openArticle(zim, path, title, opts) {
+  _tubeOpen = false;
+  _exchangeOpen = false;
+  _reddotOpen = false;
+  // A place on the map already on screen: fly there. Reloading an 800,000
+  // entry map to move within it is a second of grey; the map is right here.
+  // History gets the place (Back returns to the last one), the address gets
+  // the place, the title gets the place, and the map jumps.
+  if (opts && opts.pos && currentArticle && currentArticle.zim === zim &&
+      currentArticle.path === path && !_isModClick() && _readerMap()) {
+    var flyPos = parseMapHash('#' + opts.pos);
+    if (flyPos) {
+      var flyTitle = title || _fallbackTitle(zim, path);
+      _histPushArticle(zim, path, flyTitle, opts.pos);
+      history.pushState({ mode: 'reader', zim: zim, path: path }, '', _articleDeepLinkPath(zim, path) + '#' + opts.pos);
+      _restoreMapPosition(flyPos, 0);
+      document.title = flyTitle + ' \u2014 Zimi';
+      _setWindowTitle(document.title);
+      return;
+    }
+  }
+  // Leaving a map: stop following it, and drop its position from the address
+  // so the next article does not inherit a place it has nothing to do with.
+  if (_mapWatched) {
+    _mapWatched = null;
+    clearTimeout(_mapHashTimer);
+  }
+  // A query bound for the map's own search box, once the map has one.
+  _pendingMapFind = (opts && opts.find) ? {zim: zim, q: opts.find} : null;
   // Any normal article open cancels a pending "return to almanac" intent; the
   // almanac deep-link path re-stamps it immediately after this call returns.
   _almReturnScroll = null;
@@ -17470,6 +19201,24 @@ function openArticle(zim, path, title, opts) {
     try { sessionStorage.setItem('zimi_disc_scroll', String(Math.round(discScroll.scrollLeft))); } catch(e) {}
   }
   var url = _articleUrl(zim, path);
+  // A Kiwix map restores its own last view from localStorage as it loads,
+  // after Zimi has positioned it, so a switch from Hawaii to the world map
+  // landed on wherever that map was last (Eric: "It moved from Hawaii to
+  // my local position"). maps2zim honours a position in its own hash
+  // (its place pages redirect to index.html#lat=&lon=&zoom=), so the map
+  // is told where to open in the one form it will not override.
+  var mz = (zimsCache || []).filter(function(z) { return z.name === zim; })[0];
+  if (opts && opts.pos) {
+    var mp = parseMapHash('#' + opts.pos);
+    if (mp && mz && mz.map_source === 'Kiwix') {
+      url += '#lat=' + mp.lat + '&lon=' + mp.lng + '&zoom=' + Math.round(mp.zoom);
+    }
+  } else if (mz && mz.kind === 'map' && mz.map_source === 'StreetZim') {
+    // Nowhere remembered: the map opens over its settlements, not over the
+    // middle of its region's box (Hawaii's box is mostly ocean, and the
+    // islands sat off the right edge).
+    _mapHomeView(zim);
+  }
   readerSource = zim;
   // EPUB: download (Gutenberg has HTML equivalents for all EPUBs)
   var lurl = url.toLowerCase();
@@ -17484,7 +19233,7 @@ function openArticle(zim, path, title, opts) {
   // Start interlang prefetch immediately (don't wait for iframe load)
   _prefetchArticleLangs();
   // Persist to browse history (localStorage)
-  _histPushArticle(zim, path, title || _titleFromPath(path));
+  _histPushArticle(zim, path, title || _fallbackTitle(zim, path), opts && opts.pos);
   // Address bar always carries the SPA's canonical deep-link form (?a=<zim>/<path>),
   // never the raw /w/ content URL. A /w/<zim>/<path> URL is served as the BARE ZIM
   // article (no Zimi chrome), so leaving one in the bar strands the user in a
@@ -17492,6 +19241,11 @@ function openArticle(zim, path, title, opts) {
   // and being a query on '/', not a '.pdf' path, it also sidesteps the PDF
   // raw-binary-on-reload hazard the old ?view=1 kludge guarded against.
   var canonUrl = _articleDeepLinkPath(zim, path);
+  // A place on a map travels WITH the article, in the one URL write openArticle
+  // already does. Setting the hash separately either loses it (this function
+  // rewrites the URL straight after) or races the frame load, depending on
+  // which side of the call it happens.
+  if (opts && opts.pos) canonUrl += '#' + opts.pos;
   var st = { mode: 'reader', zim: zim, path: path };
   // Deep-link boot replaces the boot entry so the history stack is exactly
   // [article] — browser Back then leaves the site instead of surfacing a phantom
@@ -17505,7 +19259,7 @@ function openArticle(zim, path, title, opts) {
   openReader(url);
   // Use explicit title if provided (e.g. from catalog or search results),
   // fall back to deriving from the URL path segment
-  var readerTitle = title || _titleFromPath(path);
+  var readerTitle = title || _fallbackTitle(zim, path);
   if (readerTitle) {
     var t2 = readerTitle + ' — Zimi';
     document.title = t2;
@@ -17515,6 +19269,9 @@ function openArticle(zim, path, title, opts) {
 
 function closeReader() {
   if (!readerOpen) return;
+  _tubeOpen = false;
+  _exchangeOpen = false;
+  _reddotOpen = false;
   _ttsStop(); // stop read-aloud when leaving the reader
   // Sync the address bar back to the view the reader was covering — an
   // explicit close otherwise strands the article URL (a reload would
@@ -17536,6 +19293,7 @@ function closeReader() {
   readerOpen = false;
   readerSource = null;
   currentArticle = null;
+  _appItem = null;
   articleHistory = [];
   _manageSavedReader = null; // discard saved state when reader is explicitly closed
   document.getElementById('reader').classList.remove('open');
@@ -17708,8 +19466,22 @@ function toggleLangDropdown(event) {
   }
   _renderLangDropdown();
   var btn = document.getElementById('lang-selector-btn');
+  _placeDropdownUnder(dd, btn);
+  // Dismiss on outside interaction (iframe taps included). Clicks inside the
+  // dropdown are ignored by the helper; a transient locked state vetoes the
+  // close (returns false) so the listener keeps watching. Keep the selector
+  // button "inside" for a clean second-tap toggle.
+  _langDropdownDetach = _dismissOnOutside([dd, btn], function() {
+    if (_langDropdownLocked) return false;
+    _closeLangDropdown();
+  });
+}
+
+// Hang a topbar dropdown under its button, on the button's side of the bar.
+// A button hidden at this width (display:none measures 0 wide) hangs under
+// the ⋯ menu button instead, which is where its row lives on a phone.
+function _placeDropdownUnder(dd, btn) {
   var rect = btn.getBoundingClientRect();
-  // On mobile the lang button is hidden (display:none) — fall back to the ... menu button
   if (rect.width === 0) {
     var moreBtn = document.querySelector('.topbar-more');
     if (moreBtn) rect = moreBtn.getBoundingClientRect();
@@ -17724,14 +19496,6 @@ function toggleLangDropdown(event) {
     dd.style.left = 'auto';
   }
   dd.classList.add('visible');
-  // Dismiss on outside interaction (iframe taps included). Clicks inside the
-  // dropdown are ignored by the helper; a transient locked state vetoes the
-  // close (returns false) so the listener keeps watching. Keep the selector
-  // button "inside" for a clean second-tap toggle.
-  _langDropdownDetach = _dismissOnOutside([dd, btn], function() {
-    if (_langDropdownLocked) return false;
-    _closeLangDropdown();
-  });
 }
 
 var _langDropdownLocked = false;
@@ -17804,7 +19568,8 @@ function _buildTopbarMenuHtml() {
   //     viewport they stay inline, so listing them here too would duplicate them.
   var readerGroup = '';
   if (readerOpen && !_almanacOpen && !_createOpen) {
-    var rvAvail = _readerViewAvailable();
+    // On a map there is nothing to read: none of the reading rows.
+    var rvAvail = _readerViewAvailable() && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage();
     var rvOn = _readerViewOn && rvAvail;
     // 1. Reader View toggle — always first. A switch: tapping flips it and the
     // menu rebuilds in place (compact controls appear/disappear beneath).
@@ -17820,7 +19585,7 @@ function _buildTopbarMenuHtml() {
       readerGroup += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
     }
     // 3. Read aloud.
-    if (_TTS_AVAILABLE) {
+    if (_TTS_AVAILABLE && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage() && !_isPdfPage()) {
       readerGroup += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
         '" onclick="event.stopPropagation();_ttsToggle()">' + _TBM_TTS_ICON +
         ' <span class="tbm-label">' + tH(_ttsSpeaking ? 'tts_stop' : 'tts_speak') + '</span></button>';
@@ -17851,7 +19616,7 @@ function _buildTopbarMenuHtml() {
   // back when it hid the inline buttons; it keeps them now, so forcing it here
   // listed Random and Language twice in the same bar (#68).
   if (_isNarrow()) {
-    navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH('random') + '</button>';
+    navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH(_isMapPage() ? 'random_place' : 'random') + '</button>';
     if (!_getStorageFlag(SK.HIDE_LANG_CHOOSER)) navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
     // Manage row: while downloads are active, carry the count and route the tap
     // straight to the downloads view (the badge on the ⋯ button is only a dot).
@@ -17993,18 +19758,31 @@ async function randomArticle(event) {
   if (mode === 'manage') { mode = 'home'; updateTopbar(); }
   var btn = document.getElementById('random-btn');
   if (btn._randomBusy) return;
+  // Inside an app the dice stay in the app: a video, a question, a post
+  // (Eric: "random while in app needs to pull random video in-app").
+  if (_isAppPage()) {
+    var af = document.getElementById('reader-frame');
+    if (af && af.contentWindow) {
+      btn.classList.add('rolling'); setTimeout(function() { btn.classList.remove('rolling'); }, 600);
+      try { af.contentWindow.postMessage({ zimi: 'random' }, location.origin); } catch (e) {}
+      return;
+    }
+  }
   btn._randomBusy = true;
   btn.classList.add('rolling');
   try {
-    var zimParam = currentSource ? '?zim=' + encodeURIComponent(currentSource) : '';
+    // On a map the dice stay on the map, whatever source the search bar is
+    // scoped to: a random place here, not a random article from the library.
+    var randomScope = _isMapPage() ? currentArticle.zim : currentSource;
+    var zimParam = randomScope ? '?zim=' + encodeURIComponent(randomScope) : '';
     // Unscoped rolls retry a couple of times — right after startup the
     // ZIM list/archives may not be warm yet and the first roll can 500
     // or come back empty; a silent no-op reads as a dead button.
-    var attempts = currentSource ? 1 : 3;
+    var attempts = randomScope ? 1 : 3;
     for (var i = 0; i < attempts; i++) {
       var res = await fetch('/random' + zimParam);
       var data = await res.json().catch(function() { return {error: 'bad json'}; });
-      if (!data.error) { openArticle(data.zim, data.path, data.title); return; }
+      if (!data.error) { openArticle(data.zim, data.path, data.title, data.pos ? {pos: data.pos} : undefined); return; }
       if (i < attempts - 1) await new Promise(function(r) { setTimeout(r, 400); });
     }
     // Fallback for zimgit/PDF ZIMs: pick random doc from catalog
@@ -18083,11 +19861,26 @@ function _historyOnLanding(target) {
   }
   if (readerOpen && currentArticle) {
     articleHistory.push({zim: currentArticle.zim, path: currentArticle.path});
+  } else if (readerOpen && _isAppPage()) {
+    // Forward from an app into the article opened out of it: the app is the
+    // step behind, as it was the first time.
+    articleHistory.push({ app: true });
   }
   return 'forward';
 }
 
+// Where the URL was, ignoring the hash. Changing only the hash is not a
+// navigation, and treating it as one reloaded the reader frame: on a map that
+// meant every jump to a saved place rebuilt the map and threw you back to the
+// region's default view.
+
 window.addEventListener('popstate', async (e) => {
+  // Same page, different place on the same map: only the hash changed. The
+  // hashchange handler moves the map; there is nothing here to route. Judged
+  // against the article on screen, not against the last URL this handler saw:
+  // pushes never pass through here, so a remembered URL was still "/" when
+  // Back returned to "/" from a map, and the map stayed open over the home page.
+  if (_urlIsOpenMapPage()) return;
   hideSuggest();
   _hideHistoryTrail();
   if (_createOpen) { closeCreate(); return; }
@@ -18124,8 +19917,20 @@ window.addEventListener('popstate', async (e) => {
     _stepBackToArticle({zim: target.zim, path: target.path}, false);
     return;
   }
+  // An app's own steps (a video, a question, a post, or its home) while that
+  // app is open: steer the page, before the lines below close the reader.
+  var app = e.state;
+  if (app && app.mode === 'reader') {
+    if (app.tube && _appFrameRoute(_tubeOpen, app.play)) return;
+    if (app.exchange && _appFrameRoute(_exchangeOpen, app.q)) return;
+    if (app.reddot && _appFrameRoute(_reddotOpen, app.p)) return;
+  }
+  // Landing on an app's address from the article opened out of it: the app
+  // is reopened below, not stepped past. (The article history's own copy of
+  // that step would otherwise take a second step back.)
+  var toApp = app && app.mode === 'reader' && (app.tube || app.exchange || app.reddot);
   // Step through article history when reader is open (mirrors in-app back button)
-  if (readerOpen && articleHistory.length > 0) {
+  if (readerOpen && articleHistory.length > 0 && !toApp) {
     _stepBackToArticle(articleHistory.pop(), false);
     return;
   }
@@ -18159,6 +19964,12 @@ window.addEventListener('popstate', async (e) => {
     } else {
       doSearch(s.query, false);
     }
+  } else if (s && s.mode === 'reader' && s.reddot) {
+    if (!_appFrameRoute(_reddotOpen, s.p)) openReddot(true, s.p || '');
+  } else if (s && s.mode === 'reader' && s.exchange) {
+    if (!_appFrameRoute(_exchangeOpen, s.q)) openExchange(true, s.q || '');
+  } else if (s && s.mode === 'reader' && s.tube) {
+    if (!_appFrameRoute(_tubeOpen, s.play)) openTube(true, s.play || '');
   } else if (s && s.mode === 'reader' && s.zim) {
     // Going back to a reader state — show the source page, don't re-open reader
     _popstateNoAutoReader = true;
@@ -19082,40 +20893,37 @@ function _openDownloadsView(e) {
   switchManageTab('downloads');
 }
 
-// Paint the badge onto whichever Manage entry point is live (CSS shows exactly
-// one: gear on desktop, ⋯ on mobile). Idempotent — called by the poller AND at
-// the end of updateTopbar (which rewrites the gear's innerHTML, wiping any child
-// badge). Suppressed in Manage mode: that view surfaces downloads in its tabs,
-// and the gear is a close-X there.
+// The badge (#80, tripplehelix: "the icons it's attached to have no relation
+// to downloads"). A dot on the gear while a download runs, because the gear
+// is the way to the Downloads tab and a number on it explains nothing; the
+// count, as a pill, on the Manage row of the ⋯ menu, where there is room for
+// a word beside it; the count on the Downloads tab. Nowhere else: not on the
+// ⋯ itself, not for indexing or seeding or an export (the hover title still
+// names them), and never while the gear is drawn as an X (Manage, the
+// reader, the Almanac, Create). Idempotent: the poller and updateTopbar
+// (which rewrites the gear's innerHTML) both call it.
+function _gearIsAGear() {
+  return !(mode === 'manage' || readerOpen || _almanacOpen || _createOpen);
+}
+
 function _applyActivityBadge() {
   var st = _activityBadge || { active: false, count: 0, tip: '' };
-  // Suppress in Manage (downloads live in its own tabs) and while the Almanac
-  // overlay is open — there the Manage entry point becomes the close X, so the
-  // badge would bleed onto it (W1.1).
-  var suppress = (typeof mode !== 'undefined' && mode === 'manage') ||
-    (typeof _almanacOpen !== 'undefined' && _almanacOpen) || !st.active;
-  var hosts = [
-    { el: document.getElementById('manage-btn'), forceDot: false }, // desktop gear: count
-    { el: document.querySelector('.topbar-more'), forceDot: true }, // mobile ⋯: dot
-  ];
-  hosts.forEach(function(h) {
-    if (!h.el) return;
-    var badge = h.el.querySelector('.topbar-badge');
-    if (suppress) { if (badge) badge.remove(); return; }
-    if (!badge) {
-      badge = document.createElement('span');
-      badge.className = 'topbar-badge';
-      badge.setAttribute('role', 'status');
-      badge.onclick = _openDownloadsView;
-      h.el.appendChild(badge);
-    }
-    var asDot = h.forceDot || st.count <= 0;
-    badge.classList.toggle('dot', asDot);
-    badge.textContent = asDot ? '' : (st.count > 99 ? '99+' : String(st.count));
-    badge.title = st.tip;
-    badge.setAttribute('aria-label', st.tip);
-    badge.style.display = 'flex';
-  });
+  var gear = document.getElementById('manage-btn');
+  if (!gear) return;
+  var badge = gear.querySelector('.topbar-badge');
+  if (st.count <= 0 || !_gearIsAGear()) { if (badge) badge.remove(); return; }
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'topbar-badge';
+    badge.setAttribute('role', 'status');
+    badge.onclick = _openDownloadsView;
+    gear.appendChild(badge);
+  }
+  badge.classList.add('dot');
+  badge.textContent = '';
+  badge.title = st.tip;
+  badge.setAttribute('aria-label', st.tip);
+  badge.style.display = 'flex';
 }
 
 function _renderActivity(a) {
