@@ -235,29 +235,40 @@ jobs:
           sed -i "s/^version: .*/version: '$VER'/" snap/snapcraft.yaml
           grep '^version' snap/snapcraft.yaml
 
-      - name: Pre-install snap bases (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo snap wait system seed.loaded
-          for i in 1 2 3 4 5; do
-            sudo snap install core22 && break
-            echo "core22 install failed (attempt $i), retrying in 20s..."
-            sleep 20
-          done
-          snap list core22
-
       - name: Build Snap (Linux)
         if: runner.os == 'Linux'
+        # In the container snapcraft sets up, not on the runner. Destructive
+        # mode made snapcraft install the gnome extension's own snaps onto
+        # the runner as a non-root user, and the store refused them one at a
+        # time: gnome-42-2204-sdk on the v1.10.0 tag, gtk-common-themes once
+        # that was pre-installed by hand. The container is the supported
+        # path for an extension, and snapcraft is root inside it.
+        #
+        # continue-on-error stays: the snap is an extra channel and the
+        # store is not ours, and the AppImage is packaged in the step after
+        # this one. A snap that will not build must not cost the release its
+        # Linux app, which is what happened on the v1.10.0 tag.
+        continue-on-error: true
         uses: snapcore/action-build@v1
-        with:
-          snapcraft-args: '--destructive-mode'
 
       - name: Upload Snap artifact
         if: runner.os == 'Linux'
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: Zimi-Linux-snap
           path: "*.snap"
+
+      - name: Say what the snap did (Linux)
+        if: runner.os == 'Linux' && always()
+        run: |
+          ls -la *.snap 2>/dev/null || echo "no .snap was built"
+          # snapcraft's own log says why, and nothing else prints it.
+          for f in ~/.local/state/snapcraft/log/*.log; do
+            [ -e "$f" ] || continue
+            echo "── $f"
+            tail -40 "$f"
+          done
 
       - name: Package AppImage (Linux)
         if: runner.os == 'Linux'
@@ -613,6 +624,9 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           draft: true
+          # The snap may not be there (its build is allowed to fail); the
+          # release is the other five files either way.
+          fail_on_unmatched_files: false
           files: |
             Zimi-Linux-amd64/Zimi-Linux-amd64.AppImage
             Zimi-Linux-snap/*.snap
