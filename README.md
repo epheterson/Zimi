@@ -1,7 +1,7 @@
 # Zimi
 
 [![CI](https://github.com/epheterson/Zimi/actions/workflows/ci.yml/badge.svg)](https://github.com/epheterson/Zimi/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-2766-brightgreen)](#)
+[![Tests](https://img.shields.io/badge/tests-3123-brightgreen)](#)
 [![Lighthouse Accessibility](https://img.shields.io/badge/Lighthouse%20a11y-100%2F100-success?logo=lighthouse&logoColor=white)](docs/plans/2026-04-26-accessibility.md)
 [![WCAG 2.1 AA](https://img.shields.io/badge/WCAG%202.1-AA-blue)](docs/plans/2026-04-26-accessibility.md)
 [![i18n](https://img.shields.io/badge/i18n-10%20languages-blueviolet)](#languages)
@@ -16,6 +16,7 @@ A modern experience for your ZIM files.
 ## What is Zimi?
 
 - **The offline internet.** Whole sites, cross-ZIM links, real search, a browser that feels like one.
+- **Apps over your library.** Offline street maps, every video ZIM as one feed, every Q&A in one place, and your favorite subreddits thread together.
 - **Search that hits everything.** One query, every source, 100M+ articles, the right answer on top.
 - **A real library.** 1,000+ archives one click away, auto-updating, with collections and bookmarks.
 - **Multilingual.** Any article in any language it has. Ten UI languages built in.
@@ -24,10 +25,21 @@ A modern experience for your ZIM files.
 - **A good citizen.** Downloads come over BitTorrent and seed back. One switch makes you a mirror.
 - **Manageable.** Accounts and per-ZIM access, wide open or sign-in only. A health endpoint and an activity log when you need them.
 - **Accessible.** Keyboard, screen reader, high contrast. Built in, not bolted on.
-- **A ZIM creator (beta).** A page, a site, a video or playlist, your bookmarks or a folder becomes a ZIM.
+- **A ZIM creator (beta).** A page, a site, a video or playlist, a subreddit, your bookmarks or a folder becomes a ZIM.
 - **For humans and machines.** Web UI, JSON API, MCP server for agents.
-- **Anywhere.** Docker, pip, a native macOS app, or your phone as a PWA.
+- **Anywhere.** Docker or Podman, pip, native apps for macOS, Windows and Linux, or your phone as a PWA.
 - **Improving.** Regular updates, shaped by what people ask for. Just ask.
+
+## Apps
+
+Some ZIMs hold a map, a video library, a Q&A site or a subreddit. Zimi gives each kind a view of its own, over whatever you already have.
+
+- **Maps.** Kiwix's regional maps and StreetZim's larger builds. Type a town, a street or an address and the map flies there; the position lives in the address bar, so a link or a bookmark comes back to the same place at the same zoom.
+- **ZimiTube.** Every video ZIM as one feed: Kiwix's TED and TED-Ed, YouTube channels, and the ones `zimi create` makes. Subtitles, Up next, autoplay, a dock so a video keeps playing while you browse.
+- **ZimiExchange.** Every Stack Exchange site as one place: a shelf per site with its top tags, paged lists, and a question with its answers scored, the accepted one first.
+- **Reddot.** Subreddits as ZIMs. `zimi create r/<name>` builds one from the public Arctic Shift archive; the app reads shelves, Top and New, and a post's whole comment tree.
+
+They share the shell: one search box, one back arrow, bookmarks and history, right to left where the language runs that way. Each can be offered or not, for the whole server or per account, and an agent reads the same content through the API and MCP tools. See the [apps guide](docs/features/apps.md).
 
 ## Screenshots
 
@@ -35,9 +47,13 @@ A modern experience for your ZIM files.
 |----------|---------------|
 | ![Homepage](screenshots/homepage.png) | ![Search](screenshots/search.png) |
 
-| Language Switching | Catalog |
-|-------------------|---------|
-| ![Languages](screenshots/language-dropdown.png) | ![Catalog](screenshots/browse-library.png) |
+| Maps | ZimiTube |
+|------|----------|
+| ![Maps](screenshots/maps.png) | ![ZimiTube](screenshots/zimitube.png) |
+
+| Reddot | Catalog |
+|--------|---------|
+| ![Reddot](screenshots/reddot.png) | ![Catalog](screenshots/browse-library.png) |
 
 | Sharing | Make a ZIM |
 |---------|------------|
@@ -68,6 +84,7 @@ The library isn't only what you download. Zimi packages new ZIMs from the **+** 
 - **A web page**: one URL, or a list of up to twenty, captured with its images, styles, and fonts.
 - **A whole site**: a bounded, polite, same-origin crawl: page, depth, and byte budgets, robots.txt honored, and Ctrl-C still writes a valid ZIM of everything captured so far.
 - **Videos**: a playlist or channel becomes an offline video ZIM with subtitles, powered by yt-dlp.
+- **A subreddit**: `zimi create r/<name>`, or the subreddit's address pasted into the web app, packages its posts and comment trees from the public Arctic Shift archive.
 - **A web archive**: `zimi import` converts WARC and WACZ files from ArchiveBox, Webrecorder, browsertrix, or HTTrack. Powered by a managed warc2zim sidecar (needs Python 3.14 and libmagic on the machine, the Docker image ships both).
 
 Three capture engines trade speed for fidelity: **Fast** (no browser required), **Rendered** (a real headless Chromium draws pages that build themselves in JavaScript), and **Alive** (records the browser session so the page's own JavaScript still runs offline, menus, galleries, videos). Rendered and Alive can block ads and trackers at capture time from a published blocklist.
@@ -206,6 +223,8 @@ Zimi runs seriously with zero ceremony: `zimi serve` in or beside a folder of ZI
 - **Backup and restore.** `zimi backup` writes settings, bookmarks, collections, and user data to one file; `zimi restore` brings a fresh install back from it.
 - **Provable offline.** `ZIMI_OFFLINE=1` is a real air-gap switch, verified by a test that records every outbound socket.
 - **Monitoring.** `GET /health` for liveness, `GET /metrics` in Prometheus exposition format for the rest.
+- **A catalog with no internet.** Zimi ships a snapshot of the Kiwix catalog, so a machine that has never been online can still browse 1,000+ archives and queue downloads over BitTorrent.
+- **Rootless Podman.** A run line that maps the image's user to you, a Quadlet unit that starts Zimi at boot, and a CI job that proves it, see [operations](docs/features/operations.md).
 - **Reference manifests.** `deploy/` carries docker-compose and Kubernetes examples, and `scripts/make-airgap-bundle.sh` builds a wheels-only installer for machines that will never see the internet.
 - **Update awareness.** Manage shows the current version and checks for releases on demand, Latest or Beta channel, with an optional hold-back delay.
 
@@ -301,7 +320,7 @@ Tools: `search` (with `lang` filter), `read`, `get_chunks`, `suggest`, `list_sou
 
 ## Long-requested, shipped here
 
-Every issue filed against Zimi has been answered, #33 country holiday colors, #34 new-ZIM badges and recency filters, #36 Tailscale-friendly management, #37 library organization, #38 fragment links, #44–46 access modes and per-user data, #48–51 almanac, anchor, flavor, and Raspberry Pi fixes, #65 in-article bookmarks, #76 update awareness. And features the wider ZIM ecosystem has been asking for, available today:
+Every issue filed against Zimi has been answered, #33 country holiday colors, #34 new-ZIM badges and recency filters, #36 Tailscale-friendly management, #37 library organization, #38 fragment links, #44–46 access modes and per-user data, #48–51 almanac, anchor, flavor, and Raspberry Pi fixes, #65 in-article bookmarks, #76 update awareness, #80 download badges, #81 the Linux desktop app. And features the wider ZIM ecosystem has been asking for, available today:
 
 - **Spelling suggestions**: "did you mean?" on weak searches, fully offline ([libzim #731](https://github.com/openzim/libzim/issues/731))
 - **Read-aloud**: text-to-speech in the reader via the offline Web Speech API ([kiwix-js #166](https://github.com/kiwix/kiwix-js/issues/166))
