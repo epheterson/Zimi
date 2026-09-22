@@ -125,7 +125,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.10.0"
+ZIMI_VERSION = "1.10.1"
 
 # Standing maintenance cadence: catalog TTL is 24h and UPnP leases are
 # 24h — run every 12h so both stay fresh at half-life.
@@ -4452,15 +4452,6 @@ def main():
             except OSError:
                 pass
         warm_indexes()
-        # The Creator pane's engines (a browser launch, the sidecars) are
-        # found out now, on their own thread, so the first look at the pane
-        # is not "Checking…" for as long as a browser takes to start.
-        try:
-            from zimi import manage as _manage_boot
-
-            _manage_boot._creator_capabilities()
-        except Exception:
-            pass
         start_background_services(port)
         # Start auto-update thread if enabled
         global _auto_update_thread
@@ -4532,6 +4523,22 @@ def main():
         # --port 0 is used to let the OS pick a free port.
         actual_port = server.server_address[1]
         print(f"READY {actual_port}", flush=True)
+        # The Creator pane's engines (a browser launch, two sidecars) are
+        # found out in the background, so the first look at that pane is not
+        # "Checking…" for as long as a browser takes to start. After READY
+        # and after a pause, never before: it launches Chromium, and boot is
+        # the one moment nothing else should be competing for the machine
+        # (it pushed READY past 30s on a loaded one).
+        def _probe_engines_later():
+            time.sleep(_CREATOR_PROBE_DELAY_S)
+            try:
+                from zimi import manage as _manage_boot
+
+                _manage_boot._creator_capabilities()
+            except Exception:
+                pass
+
+        threading.Thread(target=_probe_engines_later, daemon=True, name="creator-probe-boot").start()
         try:
             server.serve_forever()
         except KeyboardInterrupt:
@@ -4605,6 +4612,11 @@ def set_hot_zims(names):
     os.makedirs(ZIMI_DATA_DIR, exist_ok=True)
     _atomic_write_json(_hot_zims_file(), deduped)
     log.info("hot.json updated: %d ZIM(s)", len(deduped))
+
+
+# Long enough that a boot, its index warm-up and the first page are done
+# with the machine before a browser is launched to see whether one exists.
+_CREATOR_PROBE_DELAY_S = 20
 
 
 def warm_indexes():
