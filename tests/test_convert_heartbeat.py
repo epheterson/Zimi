@@ -24,7 +24,12 @@ def test_a_silent_command_gets_a_heartbeat_line():
     assert code == 0
     assert lines[-1] == "done"
     beats = [ln for ln in lines if "still converting" in ln]
-    assert 2 <= len(beats) <= 4, lines
+    # At least two, so silence really is broken up. No tight ceiling: the
+    # command takes longer on a loaded machine and earns more beats, and a
+    # test that fails then is reporting the load, not the behaviour (the
+    # same lesson as the chatty case below; this one failed at five while
+    # the rest of the suite ran beside it).
+    assert 2 <= len(beats) <= 12, lines
 
 
 def test_a_chatty_command_gets_no_heartbeat():
