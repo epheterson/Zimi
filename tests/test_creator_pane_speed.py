@@ -55,11 +55,22 @@ def slow_probes(monkeypatch):
     monkeypatch.setattr(_manage, "_create_browser_ready", browser)
     monkeypatch.setattr(_manage, "_create_alive_ready", alive)
     monkeypatch.setattr(_manage, "_creator_sidecar", sidecar)
+    # A probe another test started may still be in flight. Left alone it
+    # finishes inside this one, publishes its answer, and every caller here
+    # reads that instead of starting a probe of its own: the count is zero
+    # and the test reads as broken (seen on the macOS Intel runner, which is
+    # slow enough for the two to overlap). Wait it out, then start from
+    # nothing, timestamp included, so nothing here can be answered by it.
+    deadline = time.time() + 10
+    while getattr(_manage, "_creator_probing", False) and time.time() < deadline:
+        time.sleep(0.05)
     monkeypatch.setattr(_manage, "_creator_probed", None, raising=False)
+    monkeypatch.setattr(_manage, "_creator_probed_at", 0.0, raising=False)
     monkeypatch.setattr(_manage, "_creator_probing", False, raising=False)
     monkeypatch.setattr(_manage, "_create_queue_view", lambda: [])
     yield calls
     _manage._creator_probed = None
+    _manage._creator_probed_at = 0.0
     _manage._creator_probing = False
 
 
