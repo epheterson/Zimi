@@ -3016,6 +3016,19 @@ class ZimHandler(BaseHTTPRequestHandler):
             value += "; filename*=UTF-8''%s" % quote(filename, safe="")
         return value
 
+    @staticmethod
+    def _w_location(zim_name, entry_path, fragment=""):
+        """The /w/ address a redirect sends the reader to.
+
+        Percent-encoded, name, path and fragment alike: a header is Latin-1
+        and a ZIM's paths and section names are whatever language the ZIM
+        is in (issue #86).
+        """
+        location = "/w/%s/%s" % (_srv.url_quote(zim_name), quote(entry_path, safe="/"))
+        if fragment:
+            location += "#" + quote(fragment, safe="")
+        return location
+
     def _wants_html_document(self):
         """Whether THIS request is a page being opened, rather than a
         subresource being fetched by one.
@@ -3204,10 +3217,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                     except KeyError:
                         base_path = None
                     if base_path is not None:
-                        quoted = "/".join(quote(seg) for seg in base_path.split("/"))
                         self.send_response(302)
                         self.send_header(
-                            "Location", f"/w/{quote(zim_name)}/{quoted}#{fragment}"
+                            "Location", self._w_location(zim_name, base_path, fragment)
                         )
                         self.send_header("Content-Length", "0")
                         self.end_headers()
@@ -3248,10 +3260,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 target = entry.get_redirect_entry()
                 target_path = target.path
                 self.send_response(302)
-                self.send_header(
-                    "Location",
-                    "/w/%s/%s" % (_srv.url_quote(zim_name), quote(target_path, safe="/")),
-                )
+                self.send_header("Location", self._w_location(zim_name, target_path))
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return

@@ -102,6 +102,20 @@ class TestNonLatinRedirect(unittest.TestCase):
     def test_a_cyrillic_redirect_names_its_target(self):
         self._redirect_to(CYRILLIC_SOURCE, CYRILLIC_TARGET)
 
+    def test_a_section_of_a_non_latin_page_is_a_redirect_too(self):
+        # A title-index suggestion can name a section ("page#section"); the
+        # entry is the page, and the section rides along as the fragment.
+        section = "قسم"
+        status, headers = self._no_redirect_get(
+            "/w/nonlatin/" + urllib.parse.quote(TARGET + "#" + section, safe="/")
+        )
+        self.assertEqual(status, 302)
+        location = headers.get("Location")
+        location.encode("latin-1")
+        self.assertEqual(
+            urllib.parse.unquote(location), "/w/nonlatin/%s#%s" % (TARGET, section)
+        )
+
     def test_the_target_is_reachable_at_the_address_given(self):
         location = self._redirect_to(SOURCE, TARGET)
         with urllib.request.urlopen(self._base + location) as resp:
