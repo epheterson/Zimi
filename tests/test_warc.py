@@ -574,7 +574,7 @@ def _read_with_warcio(path):
     done = subprocess.run(
         [_SIDECAR_PYTHON, "-c", _WARCIO_PROBE, str(path)],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         timeout=60,
     )
     assert done.returncode == 0, done.stderr

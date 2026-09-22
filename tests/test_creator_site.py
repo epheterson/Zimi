@@ -875,7 +875,7 @@ def _cli(tmp_path, *args):
     return subprocess.run(
         [sys.executable, "-m", "zimi", "create", *args],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         env=env,
         cwd=REPO_ROOT,
         timeout=180,

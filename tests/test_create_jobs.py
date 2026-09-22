@@ -160,8 +160,24 @@ def test_cancel_with_an_unknown_id_is_refused(tmp_path, held_engine):
 
 
 def _journal(tmp_path):
-    with open(os.path.join(str(tmp_path / "data"), "create_jobs.json")) as fh:
-        return json.load(fh)
+    """The journal as it is on disk, read through the replace window.
+
+    The server writes it atomically: a .tmp file, then os.replace. On Windows
+    a reader that opens the file during that replace gets a sharing violation
+    (PermissionError), and a poll loop like this one hits it eventually — it
+    failed the Windows job twice on release day. Waiting a moment and asking
+    again is what any reader of an atomically written file has to do there.
+    """
+    path = os.path.join(str(tmp_path / "data"), "create_jobs.json")
+    last = None
+    for _ in range(50):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                return json.load(fh)
+        except (PermissionError, FileNotFoundError, json.JSONDecodeError) as e:
+            last = e
+            time.sleep(0.02)
+    raise last
 
 
 def test_a_job_is_journalled_from_queue_through_to_its_outcome(tmp_path, held_engine):

@@ -116,7 +116,11 @@ def test_the_standalone_js_tests_pass():
     broken = []
     for script in scripts:
         done = subprocess.run(
-            [node, str(script)], capture_output=True, text=True, cwd=ROOT, timeout=180
+            # encoding, not the platform default: the .cjs tests print names
+            # and marks that cp1252 cannot decode, and the failure lands in
+            # a reader thread as an unhandled exception rather than here.
+            [node, str(script)], capture_output=True, text=True, encoding="utf-8",
+            errors="replace", cwd=ROOT, timeout=180
         )
         if done.returncode != 0:
             tail = (done.stdout + done.stderr).strip().splitlines()
@@ -225,7 +229,8 @@ def test_the_repo_refuses_commit_messages_with_session_links():
             path = fh.name
         try:
             return subprocess.run(
-                [shell, str(hook), path], capture_output=True, text=True
+                [shell, str(hook), path], capture_output=True, text=True,
+                encoding="utf-8", errors="replace"
             )
         finally:
             os.unlink(path)
@@ -247,6 +252,8 @@ def test_no_commit_on_this_branch_carries_a_session_link():
         ["git", "log", "origin/main..HEAD", "--format=%H%n%B"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=ROOT,
     )
     if done.returncode != 0:

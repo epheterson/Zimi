@@ -415,7 +415,7 @@ def test_cli_create_folder_subprocess(tmp_path):
             "CLI Guide",
         ],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         env=_cli_env(tmp_path),
         cwd=REPO_ROOT,
         timeout=120,
@@ -430,7 +430,7 @@ def test_cli_create_missing_folder_exits_2(tmp_path):
     r = subprocess.run(
         [sys.executable, "-m", "zimi", "create", str(tmp_path / "gone")],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         env=_cli_env(tmp_path),
         cwd=REPO_ROOT,
         timeout=120,
@@ -445,7 +445,7 @@ def test_cli_create_url_offline_exits_2(tmp_path):
     r = subprocess.run(
         [sys.executable, "-m", "zimi", "create", "https://example.com/x"],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         env=env,
         cwd=REPO_ROOT,
         timeout=120,
