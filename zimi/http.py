@@ -3221,12 +3221,20 @@ class ZimHandler(BaseHTTPRequestHandler):
                     404, {"error": f"Entry '{entry_path}' not found in {zim_name}"}
                 )
 
-            # ZIM redirects → HTTP 302 so browser URL updates to canonical path
+            # ZIM redirects → HTTP 302 so browser URL updates to canonical path.
+            # Percent-encoded, because a header is Latin-1 and an entry path is
+            # not: every redirect in a ZIM whose titles are not Latin (Arabic
+            # Wikipedia, Russian, Chinese) raised inside the stdlib as the
+            # header was written, and the reader got a 500 with no clue
+            # (issue #86; the same link opened in Kiwix, which encodes it).
             if entry.is_redirect:
                 target = entry.get_redirect_entry()
                 target_path = target.path
                 self.send_response(302)
-                self.send_header("Location", f"/w/{zim_name}/{target_path}")
+                self.send_header(
+                    "Location",
+                    "/w/%s/%s" % (_srv.url_quote(zim_name), quote(target_path, safe="/")),
+                )
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
