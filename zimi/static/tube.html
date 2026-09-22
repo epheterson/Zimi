@@ -305,7 +305,7 @@ function play(e, i) {
   // in a shape a browser plays.
   // Two different truths: the file is not in the ZIM (the page names one
   // the scrape never got), or it is there and this browser cannot decode it.
-  var noMedia = function(missing) { stage.innerHTML = '<div class="nomedia">' + esc(missing ? STR.missing : STR.no_media) + (missing ? '' : '<br><a href="' + esc(page) + '">' + esc(STR.open_page) + CHEV + '</a>') + '</div>'; };
+  var noMedia = function(missing) { stage.innerHTML = '<div class="nomedia">' + esc(missing ? STR.missing : STR.no_media) + (missing ? '' : '<br><a href="' + esc(zpath(v.zim, v.page)) + '">' + esc(STR.open_page) + CHEV + '</a>') + '</div>'; };
   var stageEl = stage;
   fetch('/tube/play?zim=' + encodeURIComponent(v.zim) + '&page=' + encodeURIComponent(v.page)).then(function(r) { return r.ok ? r.json() : null; }).then(function(m) {
     if (_now !== i) return;

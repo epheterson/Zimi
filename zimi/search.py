@@ -1988,7 +1988,7 @@ def _map_home_view(name):
     from zimi import mapsearch
 
     entry = next((z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None)
-    if not entry or entry.get("kind") != "map":
+    if not entry or entry.get("kind") != "map" or not _srv.zim_allowed(name):
         return None
     try:
         archive, lock = _get_fts_archive(name)
@@ -2011,7 +2011,10 @@ def _random_map_place(name):
     from zimi import mapsearch
 
     entry = next((z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None)
-    if not entry or entry.get("kind") != "map" or not entry.get("main_path"):
+    # A map this request may not read is one it cannot roll on either: the
+    # pooled archive behind this has no gate of its own (the route's does not
+    # reach get_archive on the map branch).
+    if not entry or entry.get("kind") != "map" or not entry.get("main_path") or not _srv.zim_allowed(name):
         return None
     try:
         archive, lock = _get_fts_archive(name)

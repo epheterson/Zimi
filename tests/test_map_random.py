@@ -113,3 +113,15 @@ def test_the_position_regex_reads_maps2zim_pages():
     assert m and (m.group(1), m.group(2), m.group(3)) == ("-13.87786", "-171.79807", "8")
     m = search._MAPS2ZIM_POS_RE.search("#lat=21&lon=-157")
     assert m and m.group(3) is None
+
+
+def test_a_map_outside_the_allowlist_has_no_dice_and_no_home(tmp_path, monkeypatch):
+    """The dice and the home view read the map through the archive pool,
+    which has no gate of its own; the request's allowlist is checked here,
+    so a limited user learns nothing about a map they may not read."""
+    _library(tmp_path, monkeypatch, "osm-hawaii-2026-09-08.zim", {"Scraper": "streetzim/1.0"}, STREETZIM_FILES)
+    assert search._random_map_place("osm-hawaii") is not None
+    assert search._map_home_view("osm-hawaii") is not None
+    monkeypatch.setattr(srv, "zim_allowed", lambda name: False)
+    assert search._random_map_place("osm-hawaii") is None
+    assert search._map_home_view("osm-hawaii") is None

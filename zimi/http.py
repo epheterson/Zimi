@@ -2383,7 +2383,9 @@ class ZimHandler(BaseHTTPRequestHandler):
             elif parsed.path == "/random":
                 zim = param("zim")  # optional: scope to specific ZIM
                 if zim:
-                    if zim not in _srv.get_zim_files():
+                    # A ZIM this request may not read is one it cannot see:
+                    # the map branch below never reaches get_archive's own gate.
+                    if zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
                         return self._json(404, {"error": f"ZIM '{zim}' not found"})
                     # A map has no articles; its dice land on a place.
                     if _srv._is_map_zim(zim):
