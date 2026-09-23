@@ -35,6 +35,7 @@ IDENTITY_ENDPOINTS = [
     "/search",
     "/suggest",
     "/random",
+    "/collections",
 ]
 
 # Query strings must not change the classification (the SW keys off pathname).
