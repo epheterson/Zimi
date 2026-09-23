@@ -6368,10 +6368,10 @@ def handle_manage_post(handler, parsed, data):
                 )
             changed["seed"] = bool(data["seed"])
             # Settings govern LIVE seeds too: toggling seeding off stops the
-            # running library seeds (files stay); on re-caps them.
+            # running library seeds (files and intent stay); on re-seeds them.
             from zimi import library as _lib_seed
 
-            threading.Thread(target=_lib_seed.apply_seed_policy, daemon=True).start()
+            threading.Thread(target=_lib_seed.apply_seed_settings, daemon=True).start()
         if "mirror" in data:
             if p2p.is_mirror_env_locked():
                 return handler._json(
@@ -6515,10 +6515,11 @@ def handle_manage_post(handler, parsed, data):
                 )
             changed["seed_ratio"] = ratio
             # Apply the new cap to every live library seed, not just future
-            # adds — the ledger stops seeds already past the new ratio.
+            # adds — the ledger stops seeds already past the new ratio, and a
+            # ratio raised from 0 brings back the seeds it had stopped.
             from zimi import library as _lib_ratio
 
-            threading.Thread(target=_lib_ratio.apply_seed_policy, daemon=True).start()
+            threading.Thread(target=_lib_ratio.apply_seed_settings, daemon=True).start()
         # Global bandwidth caps (KB/s, 0 = unlimited). Applied live to the
         # running session so a new limit takes effect without a restart.
         for _field, _envlock in (

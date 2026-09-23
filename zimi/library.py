@@ -2379,7 +2379,8 @@ def apply_seed_policy():
     - accumulates uploaded bytes per file across sessions in the ledger;
     - stops seeds once cumulative upload >= cap x file size (unless
       Mirror is on — mirrors seed without a cap), removing their intent;
-    - with seeding off entirely, stops all library seeds (files stay).
+    - with seeding off entirely, stops all library seeds (files and the
+      ledger's intent stay; see apply_seed_settings).
 
     Returns how many seeds were updated or stopped."""
     from zimi import p2p as _p2p
@@ -2412,10 +2413,10 @@ def apply_seed_policy():
                 fname = os.path.basename(path)
                 try:
                     if not seeding:
+                        # Stopped, not forgotten: the intent stays, so turning
+                        # seeding back on re-seeds it (apply_seed_settings), and
+                        # startup leaves it alone while seeding is off.
                         backend.remove(gid, delete_files=True)
-                        if fname in ledger:
-                            del ledger[fname]
-                            ledger_dirty = True
                         changed += 1
                         break
 
@@ -2480,6 +2481,14 @@ def apply_seed_policy():
 # minute, and a clean shutdown flushes the tail — worst case after a power
 # cut is ~30s of unaccounted upload.
 _SEED_ACCOUNTING_INTERVAL = 30.0
+
+
+def apply_seed_settings():
+    """The seed settings just changed: govern the live seeds by them, then
+    re-add what the ledger intends and is not running (seeding back on, a
+    ratio raised). Off then on used to lose every seed for good."""
+    changed = apply_seed_policy()
+    return changed + reseed_from_ledger()
 
 
 def seed_accounting_loop():

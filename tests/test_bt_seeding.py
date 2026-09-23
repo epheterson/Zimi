@@ -516,9 +516,12 @@ def test_reseed_respects_seeding_off(_ledger_env, monkeypatch):
     assert lib.reseed_from_ledger() == 0
 
 
-def test_policy_stop_removes_ledger_intent(_ledger_env, tmp_path, monkeypatch):
-    """Seeding toggled off: the policy stop also clears intent, so the seed
-    doesn't resurrect at next startup."""
+def test_seeding_off_stops_seeds_but_keeps_their_intent(_ledger_env, tmp_path, monkeypatch):
+    """Seeding toggled off stops every seed and keeps what was intended, so
+    toggling it on brings them back. It used to clear the intent too ("so the
+    seed doesn't resurrect at next startup"), which startup never needed
+    (reseed_from_ledger does nothing while seeding is off) and which lost
+    every seed for good on the first off-and-on."""
     lib = _ledger_env
     lib.record_seed("wiki.zim")
     backend = MagicMock()
@@ -530,7 +533,30 @@ def test_policy_stop_removes_ledger_intent(_ledger_env, tmp_path, monkeypatch):
     monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: False)
     monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: 2.0)
     assert lib.apply_seed_policy() == 1
-    assert "wiki.zim" not in lib._seed_ledger()
+    backend.remove.assert_called_once_with("g1", delete_files=True)
+    assert "wiki.zim" in lib._seed_ledger()
+
+
+def test_seeding_back_on_reseeds_what_was_stopped(_ledger_env, tmp_path, monkeypatch):
+    """Off, then on: the seed stopped by off is added back from its torrent."""
+    lib = _ledger_env
+    (tmp_path / "wiki.zim").write_bytes(b"z")
+    tfile = tmp_path / "wiki.torrent"
+    tfile.write_bytes(b"d4:infoe")
+    lib.record_seed("wiki.zim")
+    monkeypatch.setattr(lib, "_get_torrent_metadata", lambda: {"wiki.zim": {"torrent_file": str(tfile)}})
+    backend = MagicMock()
+    backend.list_managed.return_value = [{"gid": "g1", "files": [{"path": str(tmp_path / "wiki.zim")}]}]
+    monkeypatch.setattr(p2p, "peek_backend", lambda: backend)
+    monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: False)
+    monkeypatch.setattr(p2p, "get_seed_ratio_cap", lambda: 2.0)
+    monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: False)
+    lib.apply_seed_policy()  # off: the seed stops
+    backend.list_managed.return_value = []
+    monkeypatch.setattr(p2p, "is_seeding_enabled", lambda: True)
+    lib.apply_seed_settings()  # on
+    backend.add_torrent.assert_called_once()
+    assert backend.add_torrent.call_args[0][0] == str(tfile)
 
 
 def test_accounting_tick_books_upload(tmp_path, monkeypatch):
