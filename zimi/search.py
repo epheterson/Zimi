@@ -627,6 +627,14 @@ def _title_index_search(zim_name, query, limit=10):
             ).fetchall()
             return [{"path": r[0], "title": r[1], "snippet": ""} for r in rows]
         else:
+            # Titles starting with the whole phrase first, the exact title
+            # first among them: a first-word scan is alphabetical and runs out
+            # of rows among thousands of "Albert ..." before "Albert Einstein".
+            phrase_upper = q[:-1] + chr(ord(q[-1]) + 1)
+            leading = conn.execute(
+                "SELECT path, title FROM titles WHERE title_lower >= ? AND title_lower < ? LIMIT ?",
+                (q, phrase_upper, limit),
+            ).fetchall()
             # Multi-word: B-tree prefix on first word, then filter in Python.
             first_word = words[0]
             other_words = [w for w in words[1:]]
@@ -639,12 +647,18 @@ def _title_index_search(zim_name, query, limit=10):
             ).fetchall()
             # Filter: title must contain all other words
             results = []
+            seen = set()
+            for path, title in leading:
+                seen.add(path)
+                results.append({"path": path, "title": title, "snippet": ""})
             for path, title in rows:
+                if len(results) >= limit:
+                    break
+                if path in seen:
+                    continue
                 tl = title.lower()
                 if all(w in tl for w in other_words):
                     results.append({"path": path, "title": title, "snippet": ""})
-                    if len(results) >= limit:
-                        break
             if results:
                 return results
             # Prefix on first word found nothing — skip to SuggestionSearcher fallback
@@ -654,6 +668,23 @@ def _title_index_search(zim_name, query, limit=10):
         log.debug("Title index search failed for %s query %r: %s", zim_name, query, e)
         getattr(_srv, "_close_title_db", _close_title_db)(zim_name)
         return None  # fallback on DB error
+
+
+def _title_index_exact(zim_name, query):
+    """The entries whose title is `query`, ignoring case: one B-tree lookup.
+    [] when there are none or the ZIM has no title index."""
+    q = query.lower().strip()
+    conn = _get_title_db(zim_name) if q else None
+    if conn is None:
+        return []
+    try:
+        rows = conn.execute(
+            "SELECT path, title FROM titles WHERE title_lower = ? LIMIT 3", (q,)
+        ).fetchall()
+    except Exception as e:
+        log.debug("Exact title lookup failed for %s %r: %s", zim_name, query, e)
+        return []
+    return [{"path": r[0], "title": r[1], "snippet": ""} for r in rows]
 
 
 _title_index_status = {
@@ -1188,6 +1219,11 @@ def _zim_category(name):
     return "general"
 
 
+# Above the 100 a contained phrase gets by more than the rank term (20 at the
+# top of a source) can make up, so the exact title wins from any position.
+_EXACT_TITLE_SCORE = 125
+
+
 def _score_result(title, query_words, rank, entry_count, lang_match=False):
     """Score a search result for cross-ZIM ranking."""
     tl = title.lower()
@@ -1201,6 +1237,10 @@ def _score_result(title, query_words, rank, entry_count, lang_match=False):
     # Exact phrase match bonus
     if " ".join(query_words) in tl:
         title_score = 100
+    # The title IS the query (stop words aside): the article asked for, above
+    # every title that merely contains it ("List of things named after ...").
+    if [w for w in tl.split() if w not in STOP_WORDS] == list(query_words):
+        title_score = _EXACT_TITLE_SCORE
     # Position within source (rank 0 = 20, rank 5 = 3.3, capped at 5 if no title match)
     rank_score = 20 / (rank + 1)
     if title_score == 0:
@@ -2390,6 +2430,13 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
                     if results is None:
                         with lock:
                             results = suggest_search_zim(archive, cleaned, limit=limit)
+                # Xapian ranks by term weight, and can put "List of things
+                # named after X" above X or past the limit altogether. The
+                # entry titled exactly as asked leads its source.
+                exact = _title_index_exact(name, query_str)
+                if exact:
+                    have = {r.get("path") for r in exact}
+                    results = exact + [r for r in (results or []) if r.get("path") not in have]
                 dt = time.time() - t0
                 fts_results[name] = (results, dt)
             except Exception as e:
