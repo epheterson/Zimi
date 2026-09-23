@@ -44,6 +44,7 @@ A fix-up release from a pass over every feature Zimi has claimed since 1.0.
 - The Mac app reports its real version, so Sparkle stops offering an update that is already installed.
 - Manage no longer sticks on "Loading..." after a correct password.
 - A title index build interrupted by a restart no longer fails every start after it.
+- `zimi serve` prints its `READY <port>` line whole; a log line from startup could split it, and a script waiting for it missed it.
 
 ## [1.10.1] - 2026-09-22
 
