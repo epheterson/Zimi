@@ -959,8 +959,17 @@ async function setLanguage(lang) {
   if (_isPdfPage()) {
     try {
       var _pf = document.getElementById('reader-frame');
-      var _pm = /[?&]file=([^#&]*)/.exec(_pf.contentWindow.location.href);
-      if (_pm) _pf.contentWindow.location.replace(_pdfViewerUrl(_pm[1]));
+      var _pw = _pf.contentWindow;
+      var _pm = /[?&]file=([^#&]*)/.exec(_pw.location.href);
+      if (_pm) {
+        // The locale rides in the #fragment, and replacing a URL with one that
+        // differs only there is a scroll, not a load: the viewer kept its old
+        // language for every switch but the one to English (no fragment).
+        var _next = _pdfViewerUrl(_pm[1]);
+        var _onlyHash = _pw.location.href.split('#')[0] === new URL(_next, _pw.location.href).href.split('#')[0];
+        _pw.location.replace(_next);
+        if (_onlyHash) _pw.location.reload();
+      }
     } catch (e) {}
   }
   // Sync almanac: re-render all content with new translations
