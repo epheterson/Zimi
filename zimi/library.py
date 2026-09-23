@@ -1651,6 +1651,12 @@ def _kick_catalog_refresh(query, lang, count, start, _internal=False):
     failed round trip so an outage is not retried hot on every stale serve."""
     if not _OPDS_BG_REFRESH:
         return
+    from zimi import p2p as _p2p
+
+    # ZIMI_OFFLINE promises no packets leave the box: what is here is served
+    # and nothing goes to check it.
+    if _p2p.is_offline():
+        return
     if time.time() - _opds_last_fail < _OPDS_FAIL_COOLDOWN:
         return
     cache_key = f"{query}|{lang}|{count}|{start}"
@@ -1810,6 +1816,19 @@ def offline_catalog():
     return [], "none", ""
 
 
+def _offline_catalog_matching(query):
+    """The catalog on disk (or the package's snapshot), narrowed to `query`."""
+    items, _source, _as_of = offline_catalog()
+    if not query:
+        return items
+    needle = query.lower()
+    return [
+        it
+        for it in items
+        if needle in str(it.get("title", "")).lower() or needle in str(it.get("name", "")).lower()
+    ]
+
+
 def _fetch_kiwix_catalog(
     query="", lang="eng", count=20, start=0, _background=False, _internal=False
 ):
@@ -1874,18 +1893,19 @@ def _fetch_kiwix_catalog(
         # behind it, the same stale-while-revalidate as an expired page. The
         # first browse used to wait on Kiwix (Eric: "if catalog is baked in
         # and cached why did it take a while when I clicked maps").
-        fallback, _source, _as_of = offline_catalog()
-        if query:
-            needle = query.lower()
-            fallback = [
-                it
-                for it in fallback
-                if needle in str(it.get("title", "")).lower() or needle in str(it.get("name", "")).lower()
-            ]
+        fallback = _offline_catalog_matching(query)
         if fallback:
             _catalog_stale_ts = _catalog_stale_ts or time.time()
             _kick_catalog_refresh(query, lang, count, start, _internal=_internal)
             return len(fallback), fallback[start : start + count], None
+
+    from zimi import p2p as _p2p
+
+    if _p2p.is_offline():
+        # The network is not an option: the snapshot answers (matched as the
+        # cold path above matches it), or nothing does.
+        fallback = _offline_catalog_matching(query)
+        return len(fallback), fallback[start : start + count], None if fallback else "offline"
 
     params = {"count": str(count), "start": str(start)}
     if query:
