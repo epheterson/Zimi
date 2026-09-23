@@ -10758,7 +10758,12 @@ function _creatorLoadInventory() {
   // hangs. A timeout puts the fill after the caller's innerHTML assignment,
   // the same way _msCreatorHtml already defers its own first render.
   if (_creatorInventory) { setTimeout(fill, 0); return; }
-  manageFetch('/manage/creator/inventory').then(function(r) { return r.json(); }).then(function(d) {
+  // Never a sign-in prompt from here: a signed-in reader opening their own
+  // settings got the admin one, and Cancel sent them home.
+  authedFetch('/manage/creator/inventory').then(function(r) {
+    if (!r.ok) throw new Error('inventory ' + r.status);
+    return r.json();
+  }).then(function(d) {
     _creatorInventory = d;
     fill();
   }).catch(function() {
@@ -16915,6 +16920,10 @@ var _streetzimOffers = [];
 function _mapOfferItems() {
   if (_mapOfferLoaded) return Promise.resolve(_mapOfferAll());
   if (_mapOfferPending) return _mapOfferPending;
+  // Someone who cannot download has no use for the catalog, and asking for it
+  // put an admin sign-in in front of a visitor who only opened the picker;
+  // Cancel then threw them to the home page.
+  if (_managePwRequired && !_manageToken) return Promise.resolve([]);
   var placed = function(items) { return (items || []).filter(function(it) { return it && it.bounds; }); };
   _mapOfferPending = (async function() {
     try {
