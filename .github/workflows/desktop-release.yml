@@ -293,9 +293,15 @@ jobs:
           # The display first, so the portal's GTK backend can start on it.
           Xvfb :99 -screen 0 1280x800x24 >/tmp/xvfb.log 2>&1 &
           export DISPLAY=:99
+          export XDG_CURRENT_DESKTOP=GNOME
           sleep 2
+          # A desktop login hands its display to the services the session
+          # bus starts; without this the portal's GTK backend could not open
+          # one, and each portal call waited 25 s for it (six of them held
+          # WebKit's first page past the time limit).
+          dbus-update-activation-environment --systemd DISPLAY XDG_CURRENT_DESKTOP
           /usr/libexec/xdg-desktop-portal >/tmp/portal.log 2>&1 &
-          sleep 2
+          sleep 3
           ZIMI_DESKTOP_SMOKE=app ZIMI_DESKTOP_SMOKE_DWELL=2 ZIM_DIR="$HOME/zimi-smoke" \
             timeout 180 snap run zimi 2>&1 | tee /tmp/snap-smoke.log || true
           grep -i "portal" /tmp/snap-smoke.log /tmp/portal.log || true

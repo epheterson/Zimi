@@ -326,6 +326,7 @@ def test_a_snap_keeps_the_environment_its_extension_built():
     assert "GDK_PIXBUF_MODULE_FILE" not in plain
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="a snap is Linux-only; Windows keeps its own home and config paths")
 def test_a_snap_looks_for_zims_in_the_persons_home(monkeypatch, tmp_path):
     """Inside a snap $HOME is ~/snap/zimi/<revision>; the default library went
     there (issue #81: "No ZIM files found in /home/asus/snap/zimi/22/Zimi"),
@@ -340,13 +341,12 @@ def test_a_snap_looks_for_zims_in_the_persons_home(monkeypatch, tmp_path):
     mod = importlib.reload(desktop)
     try:
         assert mod._user_home() == "/home/asus"
-        # os.path.join: the suite runs on Windows too, where the separator is "\\".
-        assert mod.ConfigManager.DEFAULTS["zim_dir"] == os.path.join("/home/asus", "Zimi")
+        assert mod.ConfigManager.DEFAULTS["zim_dir"] == "/home/asus/Zimi"
         cfg_dir = tmp_path / "cfg"
         cfg_dir.mkdir()
         (cfg_dir / "config.json").write_text(json.dumps({"zim_dir": str(snap_home / "Zimi")}), encoding="utf-8")
         monkeypatch.setattr(mod, "_config_dir", lambda: str(cfg_dir))
-        assert mod.ConfigManager().get("zim_dir") == os.path.join("/home/asus", "Zimi")
+        assert mod.ConfigManager().get("zim_dir") == "/home/asus/Zimi"
         (cfg_dir / "config.json").write_text(json.dumps({"zim_dir": "/media/usb/zims"}), encoding="utf-8")
         assert mod.ConfigManager().get("zim_dir") == "/media/usb/zims"
     finally:
