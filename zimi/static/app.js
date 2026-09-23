@@ -20777,16 +20777,19 @@ document.addEventListener('contextmenu', function(e) {
 // Attach context menu to article links in the main page
 // Uses event delegation — checks data attributes first, then parses onclick
 document.addEventListener('contextmenu', function(e) {
-  var el = e.target.closest('[onclick*="openArticle"]');
+  // Search results became real links in 1.9.0 (<a class="result" data-zim
+  // data-path>, opened by _spaCardClick), and matching only openArticle
+  // handlers left them the browser's menu: Copy Title was gone.
+  var el = e.target.closest('[onclick*="openArticle"], a[data-zim][data-path]');
   if (!el) return;
   var zim, path, title;
   // Prefer data attributes (search results have data-zim/data-path)
   if (el.dataset.zim && el.dataset.path) {
     zim = el.dataset.zim;
     path = el.dataset.path;
-    // Try to get title from the result title element
-    var titleEl = el.querySelector('.result-title, .dc-title, .hp-title');
-    title = titleEl ? titleEl.textContent.trim() : null;
+    // The row's own title, else the title element inside it
+    var titleEl = el.querySelector('.result-title, .title, .dc-title, .hp-title');
+    title = el.dataset.title || (titleEl ? titleEl.textContent.trim() : null);
   } else {
     // Parse from onclick attribute
     var onclick = el.getAttribute('onclick') || '';
