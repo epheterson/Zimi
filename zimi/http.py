@@ -4114,30 +4114,31 @@ class ZimHandler(BaseHTTPRequestHandler):
     _index_etag = '"z-' + hashlib.md5(SEARCH_UI_HTML.encode()).hexdigest()[:12] + '"'
 
     def _serve_index(self, vary=None):
-        # ETag revalidation: if browser has current version, return 304 (no body).
-        # This is what makes Safari work — must-revalidate forces the check.
-        if self.headers.get("If-None-Match") == ZimHandler._index_etag:
-            self.send_response(304)
-            self.send_header("ETag", ZimHandler._index_etag)
-            self.send_header(
-                "Cache-Control", "public, max-age=0, must-revalidate, s-maxage=3600"
-            )
-            self.end_headers()
-            return
-        # Cache strategy:
-        #   max-age=0, must-revalidate — browser always revalidates (Safari-safe)
-        #   s-maxage=3600 — Cloudflare edge caches 1 hour (fast for users worldwide)
-        #   ETag — efficient revalidation (304 = no body, instant response)
-        #   deploy.sh purges Cloudflare edge after each deploy.
+        # The shell carries the apps this server offers (data-zimi-apps), so
+        # its ETag does too, and a revalidation is answered against THAT one.
+        # Comparing with the plain shell's ETag told a browser holding the
+        # every-app shell "not modified" after the apps were turned off, and
+        # a refresh brought them all back (#88).
         apps = _srv.apps_shown()
         stamp = _srv.apps_stamp(apps)
-        return self._html(
-            200,
-            _index_content(apps),
-            vary=vary,
-            cache="public, max-age=0, must-revalidate, s-maxage=3600",
-            etag=ZimHandler._index_etag if stamp is None else ZimHandler._index_etag.replace('"', '-apps-%s"' % stamp.replace(",", "-"), 1),
+        etag = (
+            ZimHandler._index_etag
+            if stamp is None
+            else ZimHandler._index_etag.replace('"', '-apps-%s"' % stamp.replace(",", "-"), 1)
         )
+        # Cache strategy:
+        #   max-age=0, must-revalidate — browser always revalidates (Safari-safe)
+        #   s-maxage=60 — an edge (Cloudflare) may hold it a minute: the shell
+        #     carries a setting now, and an hour kept a changed one stale
+        #   ETag — efficient revalidation (304 = no body, instant response)
+        cache = "public, max-age=0, must-revalidate, s-maxage=60"
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", cache)
+            self.end_headers()
+            return
+        return self._html(200, _index_content(apps), vary=vary, cache=cache, etag=etag)
 
     def _html(self, code, content, vary=None, cache=None, etag=None):
         self._send(

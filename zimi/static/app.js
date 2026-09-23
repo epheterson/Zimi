@@ -11727,6 +11727,9 @@ function _postServerApps(shown) {
         else document.body.dataset.zimiApps = d.shown.join(',') || '0';
       }
       _renderAppsSection();
+      // And the home page behind, if that is what is showing: the Apps row
+      // stayed until something else redrew it (#88).
+      if (mode === 'home' && typeof renderHome === 'function') renderHome();
     }).catch(function() { _renderAppsSection(); });
 }
 
