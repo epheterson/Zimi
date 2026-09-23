@@ -98,6 +98,18 @@ class BootstrapTakeoverTests(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read() or "{}")
 
+    def test_a_peer_is_told_whether_a_setup_key_exists(self):
+        """The desktop app never issues a key (only `zimi serve` prints one).
+        A key field for a key that does not exist is a dead end, so the page
+        is told, and sends the visitor to the host instead."""
+        self._as_peer(ADJACENT)
+        status, body = self._get("/manage/status")
+        self.assertEqual(status, 403, body)
+        self.assertIs(body.get("setup_key_issued"), False, body)
+        manage.ensure_setup_key()
+        status, body = self._get("/manage/status")
+        self.assertIs(body.get("setup_key_issued"), True, body)
+
     # ── the attack, now refused ──────────────────────────────────────────────
 
     def test_adjacent_client_cannot_claim_the_first_password(self):

@@ -1273,6 +1273,8 @@
   "manage_setup_key_pw_ph": "كلمة مرور المسؤول الجديدة",
   "manage_setup_key_submit": "تعيين كلمة المرور",
   "manage_setup_key_title": "أدخل مفتاح الإعداد",
+  "manage_setup_on_host_body": "عيّنها على الحاسوب الذي يعمل عليه Zimi، ثم سجّل الدخول بها هنا.",
+  "manage_setup_on_host_title": "لا توجد كلمة مرور للمسؤول بعد",
   "mini": "مصغّر",
   "mirror_backup_updated": "تم تحديث نسخة الكتالوج الاحتياطية {when}",
   "mirror_progress_archiving": "جارٍ نسخ تورنتات الكتالوج… {a}/{b}",

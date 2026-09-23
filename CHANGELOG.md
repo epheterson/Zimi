@@ -17,6 +17,8 @@ A fix-up release from a pass over every feature Zimi has claimed since 1.0.
 - Preferred languages narrow search. Other languages stay as dimmed pills you can tap.
 - A medicine or Wikipedia ZIM in two flavors (maxi and nopic) is served once, as the richer one, and old links to the other flavor redirect.
 
+- The desktop app can open Zimi to other devices on the network, from a switch in Settings (off by default). It shows the address to open on a phone. A visitor reads the library; Manage still needs the admin password, which is set on the computer running Zimi (#90).
+
 ### Fixed
 
 - The Linux snap opens its window on a real desktop (#81).

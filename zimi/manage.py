@@ -534,6 +534,10 @@ def _manage_auth_challenge(handler):
                     "error": "needs_setup_key",
                     "needs_password": False,
                     "needs_setup_key": True,
+                    # The desktop app issues none (only `zimi serve` prints
+                    # one), and a field for a key that does not exist is a
+                    # dead end: the page sends the visitor to the host.
+                    "setup_key_issued": bool(_read_setup_key()),
                 },
             )
         return (403, {"error": "public_locked", "needs_password": False})

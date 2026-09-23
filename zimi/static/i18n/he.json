@@ -1273,6 +1273,8 @@
   "manage_setup_key_pw_ph": "סיסמת מנהל חדשה",
   "manage_setup_key_submit": "הגדר סיסמה",
   "manage_setup_key_title": "הזן את מפתח ההגדרה",
+  "manage_setup_on_host_body": "הגדירו אותה במחשב שבו Zimi פועל, ואז היכנסו איתה כאן.",
+  "manage_setup_on_host_title": "עדיין אין סיסמת מנהל",
   "mini": "מיני",
   "mirror_backup_updated": "גיבוי הקטלוג עודכן {when}",
   "mirror_progress_archiving": "מגבה טורנטים של הקטלוג… {a}/{b}",

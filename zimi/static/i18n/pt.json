@@ -1273,6 +1273,8 @@
   "manage_setup_key_pw_ph": "Nova palavra-passe de administrador",
   "manage_setup_key_submit": "Definir palavra-passe",
   "manage_setup_key_title": "Introduza a chave de configuração",
+  "manage_setup_on_host_body": "Defina-a no computador onde o Zimi está a correr e depois entre aqui com ela.",
+  "manage_setup_on_host_title": "Ainda não há senha de administrador",
   "mini": "Mini",
   "mirror_backup_updated": "Backup do catálogo atualizado {when}",
   "mirror_progress_archiving": "Copiando torrents do catálogo… {a}/{b}",

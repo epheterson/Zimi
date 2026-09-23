@@ -1273,6 +1273,8 @@
   "manage_setup_key_pw_ph": "Новый пароль администратора",
   "manage_setup_key_submit": "Задать пароль",
   "manage_setup_key_title": "Введите ключ настройки",
+  "manage_setup_on_host_body": "Задайте его на компьютере, где работает Zimi, а затем войдите с ним здесь.",
+  "manage_setup_on_host_title": "Пароль администратора ещё не задан",
   "mini": "Мини",
   "mirror_backup_updated": "Резервная копия каталога обновлена {when}",
   "mirror_progress_archiving": "Резервное копирование торрентов каталога… {a}/{b}",

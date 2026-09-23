@@ -735,6 +735,7 @@ let _managePwRequired = false; // server is password-protected and we have no to
 // and there is no password to enter, so we explain instead of prompting (#36).
 let _managePublicLocked = false;
 let _manageNeedsSetupKey = false;
+let _manageSetupKeyIssued = true;
 let _manageUnlocked = true; // manage is always available (auth via env var only)
 
 // May we hit ambient /manage/* endpoints (activity bar, peer discovery)?
@@ -2239,6 +2240,7 @@ async function _probeManageAuth() {
       try {
         var _ld = await mres.clone().json();
         _manageNeedsSetupKey = !!(_ld && _ld.needs_setup_key);
+        _manageSetupKeyIssued = !(_ld && _ld.setup_key_issued === false);
       } catch (e) { _manageNeedsSetupKey = false; }
     } else if (mres.status === 401) {
       // Stored token went stale — drop BOTH copies (leaving the persisted
@@ -9893,6 +9895,16 @@ function _renderManagePublicLocked() {
   // one-time setup key the server logged — so offer a field for it, which on
   // success sets the first admin password in the same step. Otherwise (the
   // pre-existing #36 case) just explain the LAN-only state.
+  if (_manageNeedsSetupKey && !_manageSetupKeyIssued) {
+    output.innerHTML =
+      '<div class="manage-wrap"><div class="lang-welcome-card manage-locked-card">' +
+        '<div class="lang-welcome-text">' +
+          '<strong>' + tH('manage_setup_on_host_title') + '</strong>' +
+          '<p>' + tH('manage_setup_on_host_body') + '</p>' +
+        '</div>' +
+      '</div></div>';
+    return;
+  }
   if (_manageNeedsSetupKey) {
     output.innerHTML =
       '<div class="manage-wrap"><div class="lang-welcome-card manage-locked-card">' +

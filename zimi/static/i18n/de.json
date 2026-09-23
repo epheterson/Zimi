@@ -1273,6 +1273,8 @@
   "manage_setup_key_pw_ph": "Neues Administratorkennwort",
   "manage_setup_key_submit": "Kennwort festlegen",
   "manage_setup_key_title": "Setup-Schlüssel eingeben",
+  "manage_setup_on_host_body": "Lege es auf dem Computer fest, auf dem Zimi läuft, und melde dich dann hier damit an.",
+  "manage_setup_on_host_title": "Noch kein Admin-Passwort",
   "mini": "Mini",
   "mirror_backup_updated": "Katalog-Backup aktualisiert {when}",
   "mirror_progress_archiving": "Katalog-Torrents werden gesichert… {a}/{b}",

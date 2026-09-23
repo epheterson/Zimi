@@ -1273,6 +1273,8 @@
   "manage_setup_key_pw_ph": "新管理员密码",
   "manage_setup_key_submit": "设置密码",
   "manage_setup_key_title": "输入设置密钥",
+  "manage_setup_on_host_body": "请在运行 Zimi 的电脑上设置，然后在这里用它登录。",
+  "manage_setup_on_host_title": "尚未设置管理员密码",
   "mini": "精简版",
   "mirror_backup_updated": "目录备份更新于{when}",
   "mirror_progress_archiving": "正在备份目录种子… {a}/{b}",
