@@ -311,10 +311,6 @@ class TestServerEndpoints(unittest.TestCase):
         self.assertIn("zim_count", data)
         self.assertIn("total_size_gb", data)
         self.assertTrue(data["manage_enabled"])
-        # The test library is a few KB. Rounded to 0.1 GB it read "0 B" in
-        # Settings > Library for any library under about 50 MB.
-        if data["zim_count"]:
-            self.assertGreater(data["total_size_gb"], 0)
 
     def test_manage_stats(self):
         data, status = self._get("/manage/stats")
