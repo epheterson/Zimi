@@ -1381,6 +1381,18 @@ _GONE_STRINGS = {
         "of the library is fine."
     ),
     "zim_gone_home": "Back to the library",
+    "zim_gone_source": "Source",
+}
+
+# The page for a link, in an ordinary ZIM, to an article the ZIM does not hold
+# (a selection of a larger wiki linking outside itself). It used to be JSON.
+_MISSING_ENTRY_STRINGS = {
+    "entry_missing_title": "This article isn't in this ZIM",
+    "entry_missing_body": (
+        "The link leads to a page this ZIM does not contain. Many ZIMs are a "
+        "selection from a larger site, and their links can point outside it."
+    ),
+    "entry_missing_search": "Search the library for it",
 }
 
 # Deliberately self-contained: no app.css, no app.js. This renders inside the
@@ -1426,9 +1438,9 @@ _UNCAPTURED_PAGE = """<!DOCTYPE html>
     outline-offset:2px; }}
 </style></head>
 <body data-zimi-uncaptured="1"><main>
-  <h1 data-i18n="uncaptured_title">{title}</h1>
-  <p data-i18n="uncaptured_body">{body}</p>
-  <span class="label" data-i18n="uncaptured_url_label">{url_label}</span>
+  <h1 data-i18n="{title_key}">{title}</h1>
+  <p data-i18n="{body_key}">{body}</p>
+  <span class="label" data-i18n="{url_label_key}">{url_label}</span>
   <!-- dir=ltr because a URL is left-to-right text even on a right-to-left
        page: without it the trailing slash of https://host/path/ jumps to the
        front and the address reads as something the site never served. -->
@@ -1440,7 +1452,7 @@ _UNCAPTURED_PAGE = """<!DOCTYPE html>
          navigates straight back to this page. -->
     <a class="btn primary" id="live-link" href="{url_attr}" target="_blank"
        rel="noreferrer noopener" data-zimi-live="1"
-       data-i18n="uncaptured_open">{open_label}</a>
+       data-i18n="{open_key}">{open_label}</a>
     <button class="btn" onclick="history.back()"
        data-i18n="uncaptured_back">{back_label}</button>
   </div>
@@ -1453,6 +1465,7 @@ _UNCAPTURED_PAGE = """<!DOCTYPE html>
   // in-library copy as the first choice and let the live web stay the exit.
   try {{
     var missed = document.getElementById('live-link').getAttribute('href');
+    if (!/^https?:/.test(missed)) return;  // only a web address can be elsewhere
     fetch('/resolve?url=' + encodeURIComponent(missed))
       .then(function (r) {{ return r.ok ? r.json() : null; }})
       .then(function (data) {{
@@ -3130,6 +3143,10 @@ class ZimHandler(BaseHTTPRequestHandler):
             url_label=_text(_UNCAPTURED_STRINGS["uncaptured_url_label"]),
             open_label=_text(_UNCAPTURED_STRINGS["uncaptured_open"]),
             back_label=_text(_UNCAPTURED_STRINGS["uncaptured_back"]),
+            title_key="uncaptured_title",
+            body_key="uncaptured_body",
+            url_label_key="uncaptured_url_label",
+            open_key="uncaptured_open",
         )
         return self._send(
             200,
@@ -3156,9 +3173,16 @@ class ZimHandler(BaseHTTPRequestHandler):
             theme_key=_APP_THEME_KEY,
             title=_text(_GONE_STRINGS["zim_gone_title"]),
             body=_text(_GONE_STRINGS["zim_gone_body"]),
-            url_label=_text("Source"),
+            url_label=_text(_GONE_STRINGS["zim_gone_source"]),
             open_label=_text(_GONE_STRINGS["zim_gone_home"]),
             back_label=_text(_UNCAPTURED_STRINGS["uncaptured_back"]),
+            # Its own keys: with the uncaptured page's, every language but
+            # English replaced this page's words with "This page wasn't
+            # captured".
+            title_key="zim_gone_title",
+            body_key="zim_gone_body",
+            url_label_key="zim_gone_source",
+            open_key="zim_gone_home",
         ).replace('target="_blank"', 'target="_top"')
         return self._send(
             200,
@@ -3166,6 +3190,34 @@ class ZimHandler(BaseHTTPRequestHandler):
             "text/html; charset=utf-8",
             cache="no-store",
         )
+
+    def _send_entry_missing_page(self, zim_name, entry_path):
+        """The page for a link, in an ordinary ZIM, to an article it does not
+        hold: says so, names the article, and offers a search of the whole
+        library for it (another installed ZIM may have it). Top-level, so the
+        search opens in Zimi rather than inside the reader frame."""
+
+        def _text(value):
+            return escape(value, quote=False)
+
+        title = unquote(entry_path.rsplit("/", 1)[-1]).replace("_", " ").strip() or entry_path
+        body = _UNCAPTURED_PAGE.format(
+            url_attr=escape("/?q=" + quote(title), quote=True),
+            url_text=_text(title),
+            zim=_text(zim_name),
+            lang_key=_UI_LANG_KEY,
+            theme_key=_APP_THEME_KEY,
+            title=_text(_MISSING_ENTRY_STRINGS["entry_missing_title"]),
+            body=_text(_MISSING_ENTRY_STRINGS["entry_missing_body"]),
+            url_label=_text(_UNCAPTURED_STRINGS["uncaptured_url_label"]),
+            open_label=_text(_MISSING_ENTRY_STRINGS["entry_missing_search"]),
+            back_label=_text(_UNCAPTURED_STRINGS["uncaptured_back"]),
+            title_key="entry_missing_title",
+            body_key="entry_missing_body",
+            url_label_key="uncaptured_url_label",
+            open_key="entry_missing_search",
+        ).replace('target="_blank"', 'target="_top"')
+        return self._send(200, body.encode("utf-8"), "text/html; charset=utf-8", cache="no-store")
 
     def _send_entry_too_large(self, total_size):
         """413 for an entry Zimi refuses to materialize. Used by every /w/
@@ -3281,6 +3333,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                         return self._send_uncaptured_page(
                             zim_name, entry_path, url=live
                         )
+                    # An ordinary ZIM (Wikipedia, Gutenberg): no live address to
+                    # offer, but a person still deserves words, not JSON.
+                    return self._send_entry_missing_page(zim_name, entry_path)
                 return self._json(
                     404, {"error": f"Entry '{entry_path}' not found in {zim_name}"}
                 )

@@ -261,13 +261,28 @@ class TestUncapturedPage(unittest.TestCase):
 
     # ── everything this must NOT change ────────────────────────────────────
 
-    def test_an_article_zim_still_answers_a_miss_with_json(self):
-        status, headers, body = self._get(f"/w/{ARTICLE_ZIM}/A/Nope", AS_IFRAME)
-        self.assertEqual(status, 404)
-        self.assertIn("application/json", headers.get("Content-Type", ""))
-        self.assertEqual(
-            json.loads(body)["error"], f"Entry 'A/Nope' not found in {ARTICLE_ZIM}"
-        )
+    def test_an_article_zim_answers_an_opened_miss_with_words(self):
+        """An ordinary ZIM has no live address to offer, and used to answer a
+        link to an article it lacks with raw JSON in the reader. It says the
+        article is not in this ZIM, names it, and offers a library search."""
+        status, headers, body = self._get(f"/w/{ARTICLE_ZIM}/A/Nope_here", AS_IFRAME)
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers.get("Content-Type", ""))
+        text = body
+        self.assertIn('data-i18n="entry_missing_title"', text)
+        self.assertIn("Nope here", text)
+        self.assertIn('href="/?q=Nope%20here"', text)
+        self.assertIn('target="_top"', text)
+
+    def test_the_gone_page_translates_as_itself(self):
+        """The missing-ZIM page reused the uncaptured page's i18n keys, so in
+        any language but English its words became "This page wasn't
+        captured". Each page names its own keys now."""
+        status, headers, text = self._get("/w/no_such_zim_here/A/X", AS_IFRAME)
+        self.assertEqual(status, 200)
+        self.assertIn('data-i18n="zim_gone_title"', text)
+        self.assertIn('data-i18n="zim_gone_source"', text)
+        self.assertNotIn('data-i18n="uncaptured_title"', text)
 
     def test_a_missing_subresource_still_answers_with_json(self):
         for label, headers_in in (("script", AS_SCRIPT), ("xhr", AS_XHR)):
