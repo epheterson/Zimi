@@ -148,6 +148,8 @@ ZIM_CONTENT_MAX_AGE = 60
 # per credential per TTL — not on every polled request.
 _authed_cache = {}  # {sha256(bearer): expiry_ts}
 _AUTHED_CACHE_TTL = 300.0
+# How much of a page /snippet reads (see the handler).
+_SNIPPET_READ_BYTES = 64 * 1024
 
 # "Remember me" user-session cookie lifetime (seconds). 30 days — long enough
 # for a kid's device to stay logged in, short enough to age out abandoned tokens.
@@ -2156,8 +2158,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                         if item.size > _srv.MAX_CONTENT_BYTES:
                             _record_metric("/snippet", time.time() - t0)
                             return self._json(200, {"snippet": ""})
-                        # Read first 15KB — enough for <head> meta tags + initial content
-                        raw = bytes(item.content)[:15360]
+                        # The start of the page: <head> meta, and far enough in to
+                        # reach an encyclopedia article's lead past its infobox
+                        # (Einstein's is 34KB in). item.content is whole already,
+                        # so reading more costs nothing.
+                        raw = bytes(item.content)[:_SNIPPET_READ_BYTES]
                         text = raw.decode("UTF-8", errors="replace")
                         # Prefer the page's own summary, then meta description,
                         # then body prose — skipping boilerplate some ZIMs bake
