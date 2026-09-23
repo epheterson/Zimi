@@ -503,3 +503,189 @@ def test_ted2zim_3_talks_come_from_every_language_list(tmp_path, monkeypatch):
     assert got["poster"] == "videos/2437/thumbnail.webp"
     # 3.x keeps the decoder at assets/ogvjs; libzim finds it by the old path too.
     assert got["ogv"] == "-/assets/ogvjs"
+
+
+def _yt3_video(vid, title, **extra):
+    v = {
+        "id": vid,
+        "title": title,
+        "description": f"About {title}.",
+        "author": {"channelId": "UC1", "channelTitle": "Blender Studio"},
+        "publicationDate": "2010-09-30T13:28:21Z",
+        "videoPath": f"videos/{vid}/video.webm",
+        "thumbnailPath": f"videos/{vid}/video.webp",
+        "subtitlePath": f"videos/{vid}",
+        "subtitleList": [],
+        "chaptersPath": None,
+        "chapterList": [],
+        "duration": "PT14M48S",
+    }
+    v.update(extra)
+    return json.dumps(v).encode()
+
+
+def _yt3_playlist(slug, videos):
+    return json.dumps(
+        {
+            "id": "PL" + slug,
+            "slug": slug,
+            "author": {"channelTitle": "Blender Studio"},
+            "title": slug,
+            "videos": [
+                {
+                    "slug": s,
+                    "id": i,
+                    "title": t,
+                    "thumbnailPath": f"videos/{i}/video.webp",
+                    "duration": d,
+                }
+                for s, i, t, d in videos
+            ],
+        }
+    ).encode()
+
+
+YT3_FILES = {
+    "index.html": b"<!doctype html><html><body><div id='app'></div></body></html>",
+    "channel.json": json.dumps(
+        {"id": "UC1", "title": "Blender Studio films", "channelName": "Blender Studio"}
+    ).encode(),
+    "playlists.json": json.dumps(
+        {"playlists": [{"slug": "open_movies-tNCz"}, {"slug": "shorts-aB12"}]}
+    ).encode(),
+    "playlists/open_movies-tNCz.json": _yt3_playlist(
+        "open_movies-tNCz",
+        [
+            ("sintel-eRsG", "eRsGyueVLvQ", "Sintel", "PT14M48S"),
+            ("spring-WhWc", "WhWc3b3KhnY", "Spring", "PT7M45S"),
+        ],
+    ),
+    # A second playlist repeats a video: one row, not two.
+    "playlists/shorts-aB12.json": _yt3_playlist(
+        "shorts-aB12",
+        [
+            ("spring-WhWc", "WhWc3b3KhnY", "Spring", "PT7M45S"),
+            ("gone-XXXX", "XXXXgone", "Gone", "PT1M"),
+        ],
+    ),
+    "videos/sintel-eRsG.json": _yt3_video(
+        "eRsGyueVLvQ",
+        "Sintel",
+        subtitleList=[
+            {"code": "en", "name": "English - en"},
+            {"code": "nl-3qLcwtbWM-Y", "name": "Dutch - nl"},
+        ],
+    ),
+    "videos/spring-WhWc.json": _yt3_video(
+        "WhWc3b3KhnY",
+        "Spring",
+        duration="PT7M45S",
+        publicationDate="2019-04-04T00:00:00Z",
+    ),
+    "videos/gone-XXXX.json": _yt3_video("XXXXgone", "Gone"),
+    "index/sintel-eRsG": b'<html><head><meta http-equiv="refresh" content="0;URL=\'../index.html#/watch/sintel-eRsG\'" /></head><body></body></html>',
+    "videos/eRsGyueVLvQ/video.webm": WEBM,
+    "videos/eRsGyueVLvQ/video.webp": b"RIFF....WEBP",
+    "videos/eRsGyueVLvQ/video.en.vtt": b"WEBVTT\n",
+    "videos/eRsGyueVLvQ/video.nl-3qLcwtbWM-Y.vtt": b"WEBVTT\n",
+    "videos/WhWc3b3KhnY/video.webm": WEBM,
+    "assets/ogvjs/ogv.js": b"/* ogv */",
+}
+
+
+def test_youtube2zim_3_videos_come_from_the_playlists(tmp_path, monkeypatch):
+    """CrashCourse and Blender Studio (youtube2zim 3.5.0) have no
+    videos.json and no data.js: ZimiTube said no video ZIMs were installed."""
+    _library(
+        tmp_path,
+        monkeypatch,
+        [
+            (
+                "studio.blender.org_en_open-movies_2026-06.zim",
+                {"Scraper": "youtube2zim 3.5.0"},
+                YT3_FILES,
+                "index.html",
+            )
+        ],
+    )
+    rows = tube.videos_for("studio.blender.org_en_open-movies")
+    # The video whose file is not in the ZIM is left out, as for every reader.
+    assert rows == [
+        {
+            "id": "eRsGyueVLvQ",
+            "title": "Sintel",
+            "description": "About Sintel.",
+            "speaker": "Blender Studio",
+            "thumb": "videos/eRsGyueVLvQ/video.webp",
+            "page": "index/sintel-eRsG",
+            "duration": 888,
+            "date": "2010-09-30",
+        },
+        {
+            "id": "WhWc3b3KhnY",
+            "title": "Spring",
+            "description": "About Spring.",
+            "speaker": "Blender Studio",
+            "thumb": "videos/WhWc3b3KhnY/video.webp",
+            "page": "index/spring-WhWc",
+            "duration": 465,
+            "date": "2019-04-04",
+        },
+    ]
+    assert [v["title"] for v in tube.feed("sintel")["items"]] == ["Sintel"]
+
+
+def test_youtube2zim_3_plays_from_the_videos_json(tmp_path, monkeypatch):
+    _library(
+        tmp_path,
+        monkeypatch,
+        [
+            (
+                "yt3play.zim",
+                {"Scraper": "youtube2zim 3.5.0", "Name": "yt3play"},
+                YT3_FILES,
+                "index.html",
+            )
+        ],
+    )
+    got = tube.playback("yt3play", "index/sintel-eRsG")
+    assert got == {
+        "media": [{"path": "videos/eRsGyueVLvQ/video.webm", "type": "video/webm"}],
+        "missing": False,
+        "subs": [
+            {
+                "path": "videos/eRsGyueVLvQ/video.en.vtt",
+                "lang": "en",
+                "label": "English",
+            },
+            {
+                "path": "videos/eRsGyueVLvQ/video.nl-3qLcwtbWM-Y.vtt",
+                "lang": "nl",
+                "label": "Dutch",
+            },
+        ],
+        "poster": "videos/eRsGyueVLvQ/video.webp",
+        "page": "index/sintel-eRsG",
+        "ogv": "-/assets/ogvjs",
+    }
+    # Not a video page, and a video page whose JSON is not there.
+    assert tube.playback("yt3play", "index.html") is None
+    assert tube.playback("yt3play", "index/nothing-here") is None
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("PT6M31S", 391),
+        ("PT1H2M3S", 3723),
+        ("PT45S", 45),
+        ("P1DT1S", 86401),
+        (61, 61),
+        (None, None),
+        ("", None),
+        ("12:34", None),
+        ("P", None),
+    ],
+)
+def test_an_iso_duration_is_seconds(value, expected):
+    assert tube._iso_seconds(value) == expected

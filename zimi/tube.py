@@ -13,6 +13,10 @@ model is involved. Three shapes are known:
   ``videos/<id>/thumbnail.webp``.
 - youtube2zim (Kiwix's YouTube channels, Khan Academy): ``videos.json``
   when present; older builds keep ``assets/data.js`` in ted2zim's style.
+  youtube2zim 3.x (CrashCourse, Blender Studio) is a one-page app with no
+  page per video: ``playlists.json`` names the playlists,
+  ``playlists/<slug>.json`` lists each one's videos, ``videos/<slug>.json``
+  holds a video's facts and files, ``index/<slug>`` opens it in the app.
 - Zimi's own (``zimi create <video URL>``): ``videos.json`` from 1.10 on;
   before that, the index page's rows.
 
@@ -95,6 +99,21 @@ def _clean(value):
     first and last name with two between (``Magda  Sayeg``), and one talk
     in two builds must still read as one speaker."""
     return " ".join(str(value or "").split())
+
+
+_ISO_DURATION_RE = re.compile(r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$")
+_SECONDS_PER = (86400, 3600, 60, 1)
+
+
+def _iso_seconds(value):
+    """``PT6M31S`` (youtube2zim 3.x) as 391; a number stays as it is;
+    anything else None."""
+    if isinstance(value, (int, float)) or value is None:
+        return value
+    m = _ISO_DURATION_RE.match(str(value).strip())
+    if not m or not any(m.groups()):
+        return None
+    return int(sum(float(g or 0) * k for g, k in zip(m.groups(), _SECONDS_PER)))
 
 
 def _lang_text(value):
@@ -183,20 +202,65 @@ def _ted(archive):
     return out
 
 
+def _yt_media(vid):
+    return [f"videos/{vid}/video.webm", f"videos/{vid}/video.mp4"]
+
+
+def _yt_speaker(v):
+    author = v.get("author")
+    if isinstance(author, dict):
+        return _clean(author.get("channelTitle"))
+    return _clean(author or v.get("channel"))
+
+
+def _yt_video(archive, slug):
+    """youtube2zim 3.x's facts for one video, ``videos/<slug>.json``."""
+    v = _read_json(archive, f"videos/{slug}.json")
+    return v if isinstance(v, dict) else None
+
+
+def _youtube2zim_playlists(archive):
+    """youtube2zim 3.x: every video of every playlist, once each, in the
+    playlists' order. A playlist lists a video's slug, title, thumbnail
+    and length; its own file adds who made it, when, and its media."""
+    listing = _read_json(archive, "playlists.json")
+    playlists = listing.get("playlists") if isinstance(listing, dict) else None
+    if not isinstance(playlists, list):
+        return None
+    out, seen = [], set()
+    for pl in playlists:
+        slug = isinstance(pl, dict) and pl.get("slug")
+        body = _read_json(archive, f"playlists/{slug}.json") if slug else None
+        for v in (body.get("videos") if isinstance(body, dict) else None) or ():
+            vid = isinstance(v, dict) and str(v.get("id") or "")
+            if not vid or not v.get("slug") or vid in seen:
+                continue
+            seen.add(vid)
+            full = _yt_video(archive, v["slug"]) or {}
+            out.append(
+                {
+                    "id": vid,
+                    "title": str(full.get("title") or v.get("title") or ""),
+                    "description": str(full.get("description") or "")[:400],
+                    "speaker": _yt_speaker(full) or _yt_speaker(body),
+                    "thumb": full.get("thumbnailPath") or v.get("thumbnailPath") or f"videos/{vid}/video.webp",
+                    "page": f"index/{v['slug']}",
+                    "duration": _iso_seconds(full.get("duration") or v.get("duration")),
+                    "date": str(full.get("publicationDate") or "")[:10],
+                    "media": [full["videoPath"]] if full.get("videoPath") else _yt_media(vid),
+                }
+            )
+    return out or None
+
+
 def _youtube2zim(archive):
-    text = _read(archive, "videos.json")
-    rows = None
-    if text:
-        try:
-            rows = json.loads(text)
-        except ValueError:
-            rows = None
-        if isinstance(rows, dict):
-            rows = rows.get("videos")
+    rows = _read_json(archive, "videos.json")
+    if isinstance(rows, dict):
+        rows = rows.get("videos")
     if not rows:
         rows = _json_data(_read(archive, "assets/data.js"))
     if not rows:
-        return None
+        return _youtube2zim_playlists(archive)
     out = []
     for v in rows:
         if not isinstance(v, dict):
@@ -211,12 +275,12 @@ def _youtube2zim(archive):
                 "id": vid,
                 "title": _lang_text(v.get("title")),
                 "description": _lang_text(v.get("description"))[:400],
-                "speaker": str((v.get("author") or {}).get("channelTitle") if isinstance(v.get("author"), dict) else v.get("author") or v.get("channel") or "").strip(),
+                "speaker": _yt_speaker(v),
                 "thumb": thumb,
                 "page": page,
-                "duration": v.get("duration"),
+                "duration": _iso_seconds(v.get("duration")),
                 "date": str(v.get("publicationDate") or v.get("date") or "")[:10],
-                "media": [f"videos/{vid}/video.webm", f"videos/{vid}/video.mp4"],
+                "media": _yt_media(vid),
             }
         )
     return out
@@ -479,12 +543,56 @@ def decoder_first_on_ios(html):
     return html[: m.start()] + _IOS_DECODER_FIRST + html[m.start() :]
 
 
+def _page_media(html_text, page):
+    """``(media, subs, poster)`` from a page's plain <video>, as ZIM paths."""
+    media = []
+    for tag in _SRC_TAG_RE.findall(html_text):
+        attrs = {k.lower(): _html.unescape(v) for k, v in _ATTR_RE.findall(tag)}
+        path = _resolve_path(page, attrs.get("src", ""))
+        if path and path not in [x["path"] for x in media]:
+            media.append({"path": path, "type": attrs.get("type", "")})
+    subs = []
+    for t in _TRACK_RE.findall(html_text):
+        attrs = {k.lower(): _html.unescape(v) for k, v in _ATTR_RE.findall(t)}
+        src = _resolve_path(page, attrs.get("src", ""))
+        if src:
+            subs.append({"path": src, "lang": attrs.get("srclang", ""), "label": attrs.get("label", "")})
+    poster = _POSTER_RE.search(html_text)
+    return media, subs, _resolve_path(page, _html.unescape(poster.group(1))) if poster else ""
+
+
+_YT3_PAGE_PREFIX = "index/"
+
+
+def _yt3_media(archive, page):
+    """``(media, subs, poster)`` for a youtube2zim 3.x video, whose page
+    (``index/<slug>``) only sends the browser on to the app: the facts are
+    in ``videos/<slug>.json``. A subtitle's file is
+    ``<subtitlePath>/video.<code>.vtt``; its name reads ``Dutch - nl``, the
+    language after the dash (the code can carry YouTube's track id,
+    ``nl-3qLcwtbWM-Y``)."""
+    if not page.startswith(_YT3_PAGE_PREFIX):
+        return [], [], ""
+    v = _yt_video(archive, page[len(_YT3_PAGE_PREFIX) :])
+    if not v or not v.get("videoPath"):
+        return [], [], ""
+    subs = []
+    base = str(v.get("subtitlePath") or "").rstrip("/")
+    for t in v.get("subtitleList") or ():
+        code = isinstance(t, dict) and str(t.get("code") or "")
+        if not code or not base:
+            continue
+        label, _, lang = str(t.get("name") or "").rpartition(" - ")
+        subs.append({"path": f"{base}/video.{code}.vtt", "lang": lang.strip() or code, "label": label.strip() or code})
+    return [{"path": v["videoPath"], "type": ""}], subs, str(v.get("thumbnailPath") or "")
+
+
 def playback(name, page):
-    """What ZimiTube's own player needs for one video, read from the video's
-    page in the ZIM: its media sources, subtitle tracks and poster, as ZIM
-    paths. Every video ZIM Zimi knows (ted2zim, youtube2zim, Zimi's own)
-    writes a plain <video> with <source> and <track> children; the player
-    pages differ, the media does not. None when the page has no media."""
+    """What ZimiTube's own player needs for one video: its media sources,
+    subtitle tracks and poster, as ZIM paths. ted2zim, youtube2zim 2.x and
+    Zimi's own write a plain <video> with <source> and <track> children on
+    the video's page; youtube2zim 3.x has no such page and keeps the same
+    facts in a JSON file per video. None when there is no media."""
     from zimi.search import _get_fts_archive
 
     try:
@@ -502,39 +610,29 @@ def playback(name, page):
             html_text = bytes(entry.get_item().content).decode("utf-8", "replace")
         except Exception:
             return None
-    media = []
-    for tag in _SRC_TAG_RE.findall(html_text):
-        attrs = {k.lower(): _html.unescape(v) for k, v in _ATTR_RE.findall(tag)}
-        path = _resolve_path(page, attrs.get("src", ""))
-        if path and path not in [x["path"] for x in media]:
-            media.append({"path": path, "type": attrs.get("type", "")})
-    if not media:
-        return None
-    # The file the page names may be absent while its sibling is there:
-    # ted_en_technology_2023-09 names videos/N/video.webm for every talk and
-    # carries video.mp4 for some (the climate talk). Only when nothing is
-    # there is the video missing; say so then, rather than "cannot be played
-    # here", which blames the browser for a file that is not there.
-    with lock:
+        media, subs, poster = _page_media(html_text, page)
+        if not media:
+            media, subs, poster = _yt3_media(archive, page)
+        if not media:
+            return None
+        # The file the page names may be absent while its sibling is there:
+        # ted_en_technology_2023-09 names videos/N/video.webm for every talk and
+        # carries video.mp4 for some (the climate talk). Only when nothing is
+        # there is the video missing; say so then, rather than "cannot be played
+        # here", which blames the browser for a file that is not there.
         media = mend_media(archive, media)
         missing = not any(_present(archive, m["path"]) for m in media)
-    subs = []
-    for t in _TRACK_RE.findall(html_text):
-        attrs = {k.lower(): _html.unescape(v) for k, v in _ATTR_RE.findall(t)}
-        src = _resolve_path(page, attrs.get("src", ""))
-        if src:
-            subs.append({"path": src, "lang": attrs.get("srclang", ""), "label": attrs.get("label", "")})
-    poster = _POSTER_RE.search(html_text)
+        ogv = _OGV_BASE if _has(archive, _OGV_BASE + "/ogv.js") else ""
     return {
         "media": media,
         "missing": missing,
         "subs": subs,
-        "poster": _resolve_path(page, _html.unescape(poster.group(1))) if poster else "",
+        "poster": poster,
         "page": page,
         # TED's videos are WebM, which iPhones cannot decode; the ZIM ships
         # ogv.js, a decoder in JavaScript, for its own pages. ZimiTube's
         # player uses it where the browser cannot play the file.
-        "ogv": _OGV_BASE if _has(archive, _OGV_BASE + "/ogv.js") else "",
+        "ogv": ogv,
     }
 
 
