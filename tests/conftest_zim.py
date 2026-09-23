@@ -82,7 +82,11 @@ class _Article(Item):
 
 
 def build_fixture_zim(
-    path: str, metadata: dict | None = None, indexing: bool = True, files: dict | None = None
+    path: str,
+    metadata: dict | None = None,
+    indexing: bool = True,
+    files: dict | None = None,
+    main_path: str = "A/Water",
 ) -> str:
     """Write a 3-article ZIM at `path`; return the path.
 
@@ -90,7 +94,8 @@ def build_fixture_zim(
     for tests about what a ZIM says it is. ``indexing=False`` writes no
     full-text index, the shape of Kiwix's map ZIMs and some small captures.
     ``files`` adds plain entries, ``{path: bytes}`` (JSON for a map's config,
-    say), served as application/octet-stream."""
+    say), served as application/octet-stream. ``main_path`` names the main
+    entry, one of the articles or one of ``files``."""
     articles = [
         (
             "A/Water",
@@ -110,7 +115,7 @@ def build_fixture_zim(
         ),
     ]
     with Creator(path).config_indexing(indexing, "eng") as creator:
-        creator.set_mainpath("A/Water")
+        creator.set_mainpath(main_path)
         for p, t, h in articles:
             creator.add_item(_Article(p, t, h))
         for fpath, blob in (files or {}).items():
