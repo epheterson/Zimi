@@ -5169,13 +5169,17 @@ function _renderMeteorShowers(now, moon) {
   if (!el) return;
   var y = now.getFullYear();
   var upcoming = [];
+  // Calendar days, not hours rounded: a shower peaks on the NIGHT of its date,
+  // and rounding the time to that date's midnight said "Tonight!" on the peak
+  // evening and "Peak!" the morning after.
+  var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   // Check this year and next for upcoming showers
   for (var yr = y; yr <= y + 1; yr++) {
     for (var si = 0; si < _METEOR_SHOWERS.length; si++) {
       var s = _METEOR_SHOWERS[si];
       var peakDate = new Date(yr, s.peak[0] - 1, s.peak[1]);
-      var daysUntil = Math.round((peakDate - now) / MS_PER_DAY);
-      if (daysUntil >= -1 && daysUntil <= 365) {
+      var daysUntil = Math.round((peakDate - today) / MS_PER_DAY);
+      if (daysUntil >= 0 && daysUntil <= 365) {
         // Moon interference: check moon illumination on peak night
         var peakMoon = _moonPhase(peakDate);
         var moonInterference = peakMoon.illumination > 60 ? t('alm_moon_poor') : peakMoon.illumination > 30 ? t('alm_moon_fair') : t('alm_moon_ideal');
@@ -5197,8 +5201,8 @@ function _renderMeteorShowers(now, moon) {
     var s = upcoming[i];
     // A shower at (or just past) its peak gets a highlighted chip; everything
     // else is a plain amber countdown value.
-    var isPeaking = s.daysUntil < 0;
-    var untilStr = isPeaking ? t('alm_peak') : s.daysUntil === 0 ? t('alm_tonight') : s.daysUntil === 1 ? t('alm_tomorrow') : s.daysUntil + ' ' + t('alm_days');
+    var isPeaking = s.daysUntil === 0;  // tonight is the peak night
+    var untilStr = isPeaking ? t('alm_peak') : s.daysUntil === 1 ? t('alm_tomorrow') : s.daysUntil + ' ' + t('alm_days');
     var untilClass = 'almanac-eclipse-until' + (isPeaking ? ' almanac-eclipse-peak' : '');
     var rateDesc = s.zhr >= 100 ? t('alm_meteor_major') : s.zhr >= 25 ? t('alm_meteor_moderate') : t('alm_meteor_minor');
     var condColor = s.moonCondition === t('alm_moon_ideal') ? 'var(--accent)' : s.moonCondition === t('alm_moon_fair') ? 'var(--text2)' : 'var(--text3)';
