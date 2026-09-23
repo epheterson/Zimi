@@ -2548,6 +2548,18 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
     return result
 
 
+def read_unglued(zim_name, path, read):
+    """``read(path)``, and when that finds nothing and the path begins with
+    "<zim>/", ``read`` of the path without it: unglue_zim_path's rule (the
+    ZIM's own entry wins) for readers that go through a page cache rather
+    than an archive, such as the apps' question and post readers."""
+    got = read(path)
+    prefix = f"{zim_name}/"
+    if got is None and path.startswith(prefix):
+        got = read(path[len(prefix):])
+    return got
+
+
 def unglue_zim_path(archive, zim_name, path):
     """``path``, with a redundant "<zim>/" prefix removed only if it is one.
 

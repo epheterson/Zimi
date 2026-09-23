@@ -108,3 +108,18 @@ def test_every_agent_entry_point_that_takes_a_path_tolerates_the_glued_form(
         f"{entry_point} lives in {os.path.basename(module.__file__)}, which "
         "never unglues a path"
     )
+
+
+@pytest.mark.parametrize("module_name,reader", [("zimi.exchange", "question"), ("zimi.reddot", "post")])
+def test_the_apps_readers_take_the_glued_form(monkeypatch, module_name, reader):
+    """read_question and read_post rejected "<zim>/<path>" (found by the
+    regression pass); their own entry still wins when it exists."""
+    import importlib
+
+    mod = importlib.import_module(module_name)
+    pages = {"questions/1/x": "Q", "stack/own": "OWN"}
+    monkeypatch.setattr(mod, "_cached_page", lambda name, page, parse: pages.get(page))
+    assert getattr(mod, reader)("stack", "stack/questions/1/x") == "Q"
+    assert getattr(mod, reader)("stack", "questions/1/x") == "Q"
+    assert getattr(mod, reader)("stack", "stack/own") == "OWN"
+    assert getattr(mod, reader)("stack", "stack/missing") is None

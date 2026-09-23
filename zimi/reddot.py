@@ -585,7 +585,10 @@ def listing(name, sub, sort="top", page=1):
 
 
 def post(name, page):
-    return _cached_page(name, page, lambda t: post_from_page(t, page, name))
+    # An agent may send "<zim>/r/sub/id/" (openzim/Zimi#54's glued form).
+    from zimi.search import read_unglued
+
+    return read_unglued(name, page, lambda p: _cached_page(name, p, lambda t: post_from_page(t, p, name)))
 
 
 def random_post(rng=None):
