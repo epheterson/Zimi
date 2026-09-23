@@ -2483,9 +2483,14 @@ function _computeEclipses(fromDate, count) {
       // eclipses (~1/year). Use the actual P·cosF1 + Q·sinF1 formula.
       var W2 = Math.abs(Math.cos(F1rad));
       var gam = Math.abs((P * Math.cos(F1rad) + Q * Math.sin(F1rad)) * (1 - 0.0048 * W2));
-      // Must be within eclipse range
-      if (isSolar && gam > 1.5433) continue;
-      if (!isSolar && gam > 1.0944) continue;
+      // u: the radius of the Moon's umbral cone (solar) or the widening of
+      // Earth's shadow (lunar) at the fundamental plane, in Earth radii.
+      var u = 0.0059 + 0.0046 * Math.cos(Mrad) - 0.0182 * Math.cos(Mprad) + 0.0004 * Math.cos(2 * Mprad) - 0.0005 * Math.cos(Mrad + Mprad);
+      // Must be within eclipse range. For the Moon that is the edge of the
+      // penumbra, 1.5573 + u (Meeus 54): the old 1.0944 is near the umbra's
+      // edge, and dropped every shallow penumbral (2027 Jul 18, Aug 17).
+      if (isSolar && gam > 1.5433 + u) continue;
+      if (!isSolar && gam > 1.5573 + u) continue;
       // Compute JDE corrections for the eclipse
       var dJDE;
       if (isSolar) {
@@ -2514,8 +2519,7 @@ function _computeEclipses(fromDate, count) {
       var type;
       if (isSolar) {
         if (gam < 0.9972) {
-          // Check if annular or total using Moon's horizontal parallax vs semidiameter
-          var u = 0.0059 + 0.0046 * Math.cos(Mrad) - 0.0182 * Math.cos(Mprad) + 0.0004 * Math.cos(2 * Mprad) - 0.0005 * Math.cos(Mrad + Mprad);
+          // Total or annular: whether the Moon's umbral cone reaches Earth (u < 0)
           if (u < 0) type = t('alm_eclipse_total_solar');
           else if (u > 0.0047) type = t('alm_eclipse_annular_solar');
           else type = (gam < 0.9972 && u > 0 && u < 0.0047) ? t('alm_eclipse_hybrid_solar') : t('alm_eclipse_annular_solar');
@@ -2523,8 +2527,9 @@ function _computeEclipses(fromDate, count) {
           type = t('alm_eclipse_partial_solar');
         }
       } else {
-        if (gam < 0.4678) type = t('alm_eclipse_total_lunar');
-        else if (gam < 1.0128) type = t('alm_eclipse_partial_lunar');
+        // Umbral magnitude >= 1 is total, > 0 partial (Meeus 54).
+        if (gam < 0.4678 - u) type = t('alm_eclipse_total_lunar');
+        else if (gam < 1.0128 - u) type = t('alm_eclipse_partial_lunar');
         else type = t('alm_eclipse_penumbral_lunar');
       }
       // No visibility region: naming one from sub-solar longitude alone was
