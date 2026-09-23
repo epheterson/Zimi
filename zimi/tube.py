@@ -183,7 +183,14 @@ def _zimi(archive):
         try:
             rows = json.loads(text)
             if isinstance(rows, list):
-                return [r for r in rows if isinstance(r, dict) and r.get("page")]
+                rows = [r for r in rows if isinstance(r, dict) and r.get("page")]
+                for r in rows:
+                    # The writer stores one path; every reader's media is a list
+                    # of where the file may be. A string here was iterated
+                    # letter by letter and every video Zimi made dropped out.
+                    if isinstance(r.get("media"), str):
+                        r["media"] = [r["media"]]
+                return rows
         except ValueError:
             pass
     try:

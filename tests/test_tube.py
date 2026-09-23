@@ -155,6 +155,26 @@ def test_not_a_video_zim_has_no_videos(tmp_path, monkeypatch):
 # ── the feed ───────────────────────────────────────────────────────────────
 
 
+def test_a_video_zimi_made_is_in_the_feed(tmp_path, monkeypatch):
+    """videos.json as `zimi create <video URL>` writes it: media is one path,
+    a string. The feed checked each entry of a list, so it looked up the
+    string's characters, found none, and dropped every video Zimi made."""
+    own = [
+        {"id": "abc", "title": "Kept", "description": "", "speaker": "Ch", "thumb": "", "page": "videos/abc",
+         "duration": 61, "date": "", "media": "media/abc.mp4"},
+        {"id": "gone", "title": "No file", "description": "", "speaker": "Ch", "thumb": "", "page": "videos/gone",
+         "duration": 61, "date": "", "media": "media/gone.mp4"},
+    ]
+    _library(
+        tmp_path, monkeypatch,
+        [
+            ("made.zim", {"Scraper": "Zimi 1.10.0 + yt-dlp 2026.07.04", "Name": "made"},
+             {"videos.json": json.dumps(own).encode(), "media/abc.mp4": b"\x00" * 64}),
+        ],
+    )
+    assert [v["title"] for v in tube.feed()["items"]] == ["Kept"]
+
+
 def test_the_feed_interleaves_sources_and_a_query_keeps_every_word(tmp_path, monkeypatch):
     own = [{"id": str(i), "title": f"Own {i}", "description": "", "speaker": "Me", "thumb": "", "page": f"videos/{i}", "duration": None, "date": ""} for i in range(3)]
     _library(
