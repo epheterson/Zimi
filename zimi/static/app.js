@@ -811,6 +811,11 @@ function _updateHomeFiltersVisibility() {
 
 // ── Language filter ──
 let activeLanguageFilters = new Set();
+// Whether the language filter is the one preferred languages chose (and so
+// follows each new search) rather than one the person picked; and the query
+// it was chosen for.
+let _langFilterIsAuto = false;
+let _langAutoQuery = null;
 
 const RESULTS_PER_PAGE = 20;
 let visibleResultCount = RESULTS_PER_PAGE;
@@ -6683,7 +6688,26 @@ var _NATIVE_LANG_NAMES = {
   bn:'বাংলা',ta:'தமிழ்',te:'తెలుగు',ur:'اردو',mul:'Multiple'
 };
 
+// Search narrows to the preferred languages (Settings > Languages), 1.7.0's
+// promise that it never kept: once per query, and again as the full results
+// widen what is there, until the person taps a language pill themselves.
+// Only languages the results actually hold; none of them there, no filter.
+function _applyPreferredLanguages(data, langCodes) {
+  var prefs = _getPrefLanguages().map(_normLang).filter(Boolean);
+  if (!prefs.length) return;
+  if (data._query !== _langAutoQuery) {
+    if (activeLanguageFilters.size && !_langFilterIsAuto) return;  // their own pick holds
+    _langAutoQuery = data._query;
+    _langFilterIsAuto = true;
+  } else if (!_langFilterIsAuto) {
+    return;
+  }
+  var picked = langCodes.filter(function(l) { return prefs.indexOf(_normLang(l)) >= 0; });
+  activeLanguageFilters = new Set(picked);
+}
+
 function toggleLanguageFilter(lang) {
+  _langFilterIsAuto = false;
   if (activeLanguageFilters.has(lang)) activeLanguageFilters.delete(lang);
   else activeLanguageFilters.add(lang);
   renderSearchResults(allResults, currentSource);
@@ -6692,6 +6716,7 @@ function toggleLanguageFilter(lang) {
 // "All" reset pills at the head of each search filter row — one click each on
 // the two Alls returns the results to the unfiltered set.
 function clearLanguageFilter() {
+  _langFilterIsAuto = false;
   activeLanguageFilters.clear();
   renderSearchResults(allResults, currentSource);
 }
@@ -6730,6 +6755,7 @@ function renderSearchResults(data, scope) {
   // Language filter pills (global search only, multiple languages)
   var langPillsHtml = '';
   const langCodes = Object.keys(byLanguage);
+  if (!scope) _applyPreferredLanguages(data, langCodes);
   if (!scope && langCodes.length > 1) {
     // Sort by count descending, same as source pills
     langPillsHtml = '<div class="lang-pills" role="group" aria-label="' + escAttr(t('filter_by_language')) + '">' +
@@ -6738,7 +6764,10 @@ function renderSearchResults(data, scope) {
       var name = _NATIVE_LANG_NAMES[lang] || lang;
       // Dim language pills when a source filter is active and that source has no results in this language
       var dimmed = activeSourceFilters.size > 0 && ![...activeSourceFilters].some(function(s) { return langsBySource[s] && langsBySource[s].has(lang); });
-      return '<button class="pill' + (activeLanguageFilters.has(lang) ? ' active' : '') + (dimmed ? ' dimmed' : '') +
+      // While a language filter is on, the other languages stay in view,
+      // dimmed and still a tap away: there is more than the filter shows.
+      var other = activeLanguageFilters.size > 0 && !activeLanguageFilters.has(lang);
+      return '<button class="pill' + (activeLanguageFilters.has(lang) ? ' active' : '') + (dimmed ? ' dimmed' : (other ? ' other-lang' : '')) +
         '" aria-pressed="' + activeLanguageFilters.has(lang) + '" onclick="toggleLanguageFilter(\'' + escAttr(lang) + '\')">' +
         esc(name) + ' (' + byLanguage[lang] + ')</button>';
     }).join('') + '</div>';
