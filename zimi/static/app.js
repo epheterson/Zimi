@@ -20736,23 +20736,14 @@ function _sweepBlockingOverlays(frame) {
   } catch (e) {}
 }
 
-// A video page whose file the ZIM never got (the server marks the <video>
-// data-zimi-missing when none of its sources is there) says so, in the
-// reader's language, instead of showing a player that can never start.
+// A video page whose file the ZIM never got: the server has put a note where
+// the player was (tube.mend_sources), in English; say it in the reader's
+// language.
 function _sayMissingVideos(frame) {
   var doc = frame.contentDocument;
   if (!doc) return;
-  var vids = doc.querySelectorAll('video[data-zimi-missing]');
-  for (var i = 0; i < vids.length; i++) {
-    var v = vids[i];
-    var holder = v.closest('.video-js') || v;
-    var note = doc.createElement('p');
-    note.className = 'zimi-video-missing';
-    note.setAttribute('role', 'status');
-    note.textContent = t('tube_missing');
-    note.style.cssText = 'padding:1.5em 1em;border:1px dashed currentColor;border-radius:8px;opacity:.8;text-align:center';
-    holder.parentNode.replaceChild(note, holder);
-  }
+  var notes = doc.querySelectorAll('.zimi-video-missing[data-zimi-missing]');
+  for (var i = 0; i < notes.length; i++) notes[i].textContent = t('tube_missing');
 }
 
 function _defineAttachToDoc(frame) {

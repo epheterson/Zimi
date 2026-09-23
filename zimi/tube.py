@@ -334,6 +334,12 @@ def mend_media(archive, media):
 
 
 _SOURCE_TAG_RE = re.compile(r"<source\b[^>]*>", re.IGNORECASE)
+_VIDEO_ELEMENT_RE = re.compile(r"<video\b.*?</video>", re.IGNORECASE | re.DOTALL)
+_MISSING_VIDEO_HTML = (
+    '<p class="zimi-video-missing" data-zimi-missing="1" role="status" style="padding:1.5em 1em;'
+    'border:1px dashed currentColor;border-radius:8px;opacity:.8;text-align:center">'
+    "This video isn't in this ZIM.</p>"
+)
 
 
 def mend_sources(html, name, page):
@@ -388,9 +394,12 @@ def mend_sources(html, name, page):
 
             html = _SOURCE_TAG_RE.sub(fix, html)
             if found["sources"] and not found["playable"]:
-                # No file behind any source: the page says so (app.js,
-                # _sayMissingVideos) rather than offering a dead player.
-                html = re.sub(r"<video\b", '<video data-zimi-missing="1"', html, flags=re.I)
+                # No file behind any source: the page says so rather than
+                # offering a player that can never start. The whole element
+                # goes, not a mark on it: video.js replaces the <video> on
+                # load, before the reader could read a mark. The reader puts
+                # the sentence in its own language (app.js, _sayMissingVideos).
+                html = _VIDEO_ELEMENT_RE.sub(_MISSING_VIDEO_HTML, html)
             return html
     except Exception:
         return html

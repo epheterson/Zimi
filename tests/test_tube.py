@@ -417,6 +417,6 @@ def test_a_zero_byte_file_is_as_absent_as_none(tmp_path, monkeypatch):
     got = tube.playback("ted_en_zero", "why-tech-needs-the-humanities")
     assert got["missing"] is True
     mended = tube.mend_sources(TED_PAGE.decode(), "ted_en_zero", "why-tech-needs-the-humanities")
-    # The source is left as it is (nothing better to point at); the <video> is
-    # marked so the reader says the file is not in the ZIM.
-    assert mended == TED_PAGE.decode().replace("<video ", '<video data-zimi-missing="1" ', 1)
+    # The player is gone and a note says why; the rest of the page stays.
+    assert "<video" not in mended and "This video isn't in this ZIM." in mended
+    assert mended.startswith(TED_PAGE.decode().split("<video")[0])
