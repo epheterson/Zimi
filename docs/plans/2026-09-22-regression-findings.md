@@ -59,9 +59,9 @@ On `release-names`: release files named `Zimi-<version>-<platform>-<chip>`.
 3. **"Remember me" keeps the primary admin's password in localStorage in plain text** (`zimi_manage_pw`). Recommend: a session token, as secondary admins already get.
 4. **Preferred languages do not narrow search**, though 1.7.0 says they do. Build it, or correct the changelog.
 5. **A medicine maxi and nopic in one folder are both served.** Prefer one, as `_all` names already do?
+6. **Where the Mac app's perpetual update offer leaves 1.10.1 users**: the fix ships in the next build; users on 1.10.1 keep seeing the offer until they take one.
 7. **"About this data" (1.7.2 changelog) was never built.** No version of the code or translations has it. Build it, or drop the claim.
 8. **Quick search takes 5 to 12 s for many multi-word queries on the NAS.** When no title starts with the first word, 72 of 78 ZIMs fall back to libzim's SuggestionSearcher. Since 1.5 (which dropped FTS5 prefix queries at 5 to 6 s per ZIM); not a regression. Whole-word FTS5 measured up to 1 s per large ZIM cold. Needs a design pass: which ZIMs deserve the fallback, and whether results can stream per ZIM.
-6. **Where the Mac app's perpetual update offer leaves 1.10.1 users**: the fix ships in the next build; users on 1.10.1 keep seeing the offer until they take one.
 
 ## Still open (not yet fixed)
 
