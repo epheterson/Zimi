@@ -6741,10 +6741,12 @@ function renderSearchResults(data, scope) {
   document.getElementById('search-time').textContent = displayElapsed ? t('in_time', {time: displayElapsed}) : '';
   searchMeta.style.display = items.length ? 'flex' : 'none';
 
-  // "Did you mean X?" — a clickable correction, shown only when results are
-  // sparse (server already gates on <3, but merged counts can differ).
+  // "Did you mean X?" — a clickable correction. The server decides when one
+  // is worth offering (fewer than 30 results and a likely misspelling, since
+  // 1.8.0: "einstien" still matched 13 things); a second gate here at 3 hid
+  // nearly every suggestion it sent.
   var dymHtml = '';
-  if (data.did_you_mean && totalCount < 3) {
+  if (data.did_you_mean) {
     var sugg = data.did_you_mean;
     dymHtml = '<div class="did-you-mean">' +
       t('did_you_mean', {s: '<a href="#" data-sugg="' + escAttr(sugg) + '">' + esc(sugg) + '</a>'}) +
