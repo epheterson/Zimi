@@ -1424,6 +1424,7 @@
   "search_articles": "{n} लेखों में '{query}' खोजें →",
   "search_catalog": "कैटलॉग में खोजें…",
   "search_failed": "खोज विफल",
+  "search_rate_limited": "लगातार बहुत ज़्यादा खोजें। {s} सेकंड बाद फिर कोशिश करें।",
   "search_in": "{source} में खोजें…",
   "search_index": "सर्च इंडेक्स",
   "search_offline": "खोज के लिए आपका Zimi सर्वर चाहिए",

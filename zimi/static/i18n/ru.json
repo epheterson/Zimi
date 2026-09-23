@@ -1424,6 +1424,7 @@
   "search_articles": "Искать среди {n} статей по запросу «{query}» →",
   "search_catalog": "Искать в каталоге…",
   "search_failed": "Ошибка поиска",
+  "search_rate_limited": "Слишком много поисков подряд. Повторите через {s} с.",
   "search_in": "Искать в {source}…",
   "search_index": "Поисковый индекс",
   "search_offline": "Для поиска нужен ваш сервер Zimi",

@@ -1424,6 +1424,7 @@
   "search_articles": "Rechercher « {query} » dans {n} articles →",
   "search_catalog": "Rechercher dans le catalogue…",
   "search_failed": "Échec de la recherche",
+  "search_rate_limited": "Trop de recherches d'affilée. Réessayez dans {s} secondes.",
   "search_in": "Rechercher dans {source}…",
   "search_index": "Index de recherche",
   "search_offline": "La recherche nécessite votre serveur Zimi",

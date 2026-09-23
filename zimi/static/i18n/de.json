@@ -1424,6 +1424,7 @@
   "search_articles": "{n} Artikel nach „{query}“ durchsuchen →",
   "search_catalog": "Katalog durchsuchen…",
   "search_failed": "Suche fehlgeschlagen",
+  "search_rate_limited": "Zu viele Suchen hintereinander. Versuche es in {s} Sekunden erneut.",
   "search_in": "In {source} suchen…",
   "search_index": "Suchindex",
   "search_offline": "Die Suche benötigt Ihren Zimi-Server",

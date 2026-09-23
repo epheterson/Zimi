@@ -1424,6 +1424,7 @@
   "search_articles": "Search {n} articles for '{query}' →",
   "search_catalog": "Search catalog…",
   "search_failed": "Search failed",
+  "search_rate_limited": "Too many searches in a row. Try again in {s} seconds.",
   "search_in": "Search in {source}…",
   "search_index": "Search index",
   "search_offline": "Search needs your Zimi server",

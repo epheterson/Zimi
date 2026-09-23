@@ -1424,6 +1424,7 @@
   "search_articles": "חיפוש ב{n} מאמרים עבור '{query}' ←",
   "search_catalog": "חיפוש בקטלוג…",
   "search_failed": "החיפוש נכשל",
+  "search_rate_limited": "יותר מדי חיפושים ברצף. נסו שוב בעוד {s} שניות.",
   "search_in": "חיפוש בתוך {source}…",
   "search_index": "אינדקס חיפוש",
   "search_offline": "החיפוש דורש את שרת Zimi שלך",

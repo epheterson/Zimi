@@ -1424,6 +1424,7 @@
   "search_articles": "ابحث في {n} مقالة عن «{query}» ←",
   "search_catalog": "ابحث في الفهرس…",
   "search_failed": "فشل البحث",
+  "search_rate_limited": "عمليات بحث كثيرة متتالية. حاول مرة أخرى بعد {s} ثانية.",
   "search_in": "ابحث في {source}…",
   "search_index": "فهرس البحث",
   "search_offline": "البحث يتطلب خادم Zimi",

@@ -6496,6 +6496,7 @@ async function doSearch(query, push) {
     // Phase 1: fast title search (parallel per-ZIM, no lock contention)
     const r1 = await serverFetch('/search?q=' + encodeURIComponent(query) + '&limit=10' + zimParam + '&fast=1',
       { signal: searchController.signal });
+    _throwIfRateLimited(r1);
     const d1 = await r1.json();
     const phase1Elapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
     d1._clientElapsed = phase1Elapsed;
@@ -6538,6 +6539,7 @@ async function doSearch(query, push) {
       // Phase 2: full Xapian FTS (sequential under _zim_lock, searches every ZIM)
       const r2 = await serverFetch('/search?q=' + encodeURIComponent(query) + '&limit=10' + zimParam,
         { signal: searchController.signal });
+      _throwIfRateLimited(r2);
       const d2 = await r2.json();
       clearInterval(timerInterval);
       d2._clientElapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
@@ -6553,6 +6555,11 @@ async function doSearch(query, push) {
       output.innerHTML = '<div class="empty conn-empty"><p>' + tH('search_offline') + '</p>' +
         '<p class="hint">' + tH('search_offline_hint') + '</p>' +
         '<button type="button" class="conn-retry conn-retry-inline" onclick="_connRetryClick(this)">' + tH('conn_retry') + '</button></div>';
+      return;
+    }
+    // A throttled search is not an empty one: it used to read "No results".
+    if (e.rateLimited) {
+      output.innerHTML = '<div class="empty"><p>' + tH('search_rate_limited', {s: e.retryAfter}) + '</p></div>';
       return;
     }
     output.innerHTML = '<div class="empty"><p>' + tH('search_failed') + '</p><p class="hint">' + tH('try_again') + '</p></div>';

@@ -1424,6 +1424,7 @@
   "search_articles": "在 {n} 篇文章中搜索“{query}” →",
   "search_catalog": "搜索目录…",
   "search_failed": "搜索失败",
+  "search_rate_limited": "连续搜索次数过多。请在 {s} 秒后重试。",
   "search_in": "在 {source} 中搜索…",
   "search_index": "搜索索引",
   "search_offline": "搜索需要您的 Zimi 服务器",
