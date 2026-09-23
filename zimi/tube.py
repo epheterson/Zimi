@@ -7,7 +7,9 @@ maps code reads each map's own place index; nothing is re-indexed and no
 model is involved. Three shapes are known:
 
 - ted2zim (Kiwix's TED and TED-Ed): ``assets/data.js`` holds ``json_data``,
-  a list of talks; a talk page is ``<slug>``; its thumbnail is
+  a list of talks; ted2zim 3.x (every ``ted_mul_*``) splits it by subtitle
+  language, ``assets/data_<lang>.js``, the languages named in the home
+  page's picker. A talk page is ``<slug>``; its thumbnail is
   ``videos/<id>/thumbnail.webp``.
 - youtube2zim (Kiwix's YouTube channels, Khan Academy): ``videos.json``
   when present; older builds keep ``assets/data.js`` in ted2zim's style.
@@ -66,6 +68,35 @@ def _present(archive, path):
         return False
 
 
+def _read_json(archive, path):
+    """The JSON value at ``path``, or None when it is absent or not JSON."""
+    text = _read(archive, path)
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except ValueError:
+        return None
+
+
+def _main_text(archive):
+    """The main page's HTML, or None."""
+    try:
+        main = archive.main_entry
+        if main.is_redirect:
+            main = main.get_redirect_entry()
+        return bytes(main.get_item().content).decode("utf-8", "replace")
+    except Exception:
+        return None
+
+
+def _clean(value):
+    """A name with its runs of spaces made one: ted2zim writes a speaker's
+    first and last name with two between (``Magda  Sayeg``), and one talk
+    in two builds must still read as one speaker."""
+    return " ".join(str(value or "").split())
+
+
 def _lang_text(value):
     """ted2zim's ``[{lang, text}]`` lists, or a plain string."""
     if isinstance(value, str):
@@ -104,8 +135,31 @@ def _page_path(archive, path):
         return path
 
 
-def _ted(archive):
+_LANG_OPTION_RE = re.compile(r"""<option\s+value=["']([A-Za-z0-9-]+)["']""")
+
+
+def _ted_talks(archive):
+    """ted2zim's talk list: the one ``assets/data.js`` of 2.x, else 3.x's
+    ``assets/data_<lang>.js`` for every language the home page offers,
+    English first. Each language lists the talks with subtitles in it, so a
+    talk in no English list is still in another; the first list that has a
+    talk gives its title."""
     talks = _json_data(_read(archive, "assets/data.js"))
+    if talks:
+        return talks
+    langs = _LANG_OPTION_RE.findall(_main_text(archive) or "")
+    out, seen = [], set()
+    for lang in dict.fromkeys(["en"] + langs):
+        for t in _json_data(_read(archive, f"assets/data_{lang}.js")) or ():
+            key = isinstance(t, dict) and (t.get("id") or t.get("slug"))
+            if key and key not in seen:
+                seen.add(key)
+                out.append(t)
+    return out or None
+
+
+def _ted(archive):
+    talks = _ted_talks(archive)
     if not talks:
         return None
     out = []
@@ -118,7 +172,7 @@ def _ted(archive):
                 "id": vid or t["slug"],
                 "title": _lang_text(t.get("title")),
                 "description": _lang_text(t.get("description"))[:400],
-                "speaker": str(t.get("speaker") or "").strip(),
+                "speaker": _clean(t.get("speaker")),
                 "thumb": f"videos/{vid}/thumbnail.webp" if vid else "",
                 "page": _page_path(archive, t["slug"]),
                 "duration": None,
@@ -178,27 +232,18 @@ _ZIMI_ROW_RE = re.compile(
 def _zimi(archive):
     """Zimi's own video ZIMs: ``videos.json`` when the writer kept one, else
     the index page's rows."""
-    text = _read(archive, "videos.json")
-    if text:
-        try:
-            rows = json.loads(text)
-            if isinstance(rows, list):
-                rows = [r for r in rows if isinstance(r, dict) and r.get("page")]
-                for r in rows:
-                    # The writer stores one path; every reader's media is a list
-                    # of where the file may be. A string here was iterated
-                    # letter by letter and every video Zimi made dropped out.
-                    if isinstance(r.get("media"), str):
-                        r["media"] = [r["media"]]
-                return rows
-        except ValueError:
-            pass
-    try:
-        main = archive.main_entry
-        if main.is_redirect:
-            main = main.get_redirect_entry()
-        page_html = bytes(main.get_item().content).decode("utf-8", "replace")
-    except Exception:
+    rows = _read_json(archive, "videos.json")
+    if isinstance(rows, list):
+        rows = [r for r in rows if isinstance(r, dict) and r.get("page")]
+        for r in rows:
+            # The writer stores one path; every reader's media is a list
+            # of where the file may be. A string here was iterated
+            # letter by letter and every video Zimi made dropped out.
+            if isinstance(r.get("media"), str):
+                r["media"] = [r["media"]]
+        return rows
+    page_html = _main_text(archive)
+    if page_html is None:
         return None
     out = []
     for m in _ZIMI_ROW_RE.finditer(page_html):

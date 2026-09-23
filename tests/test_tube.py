@@ -59,8 +59,8 @@ def _library(tmp_path, monkeypatch, zims):
 
     zdir = tmp_path / "zims"
     zdir.mkdir()
-    for filename, metadata, files in zims:
-        build_fixture_zim(str(zdir / filename), metadata, files=files)
+    for filename, metadata, files, *main in zims:
+        build_fixture_zim(str(zdir / filename), metadata, files=files, **({"main_path": main[0]} if main else {}))
     monkeypatch.setattr(srv, "ZIM_DIR", str(zdir))
     monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(tmp_path / "data"))
     os.makedirs(str(tmp_path / "data"), exist_ok=True)
@@ -420,3 +420,86 @@ def test_a_zero_byte_file_is_as_absent_as_none(tmp_path, monkeypatch):
     # The player is gone and a note says why; the rest of the page stays.
     assert "<video" not in mended and "This video isn't in this ZIM." in mended
     assert mended.startswith(TED_PAGE.decode().split("<video")[0])
+# ── the 3.x scrapers (issue #89) ───────────────────────────────────────────
+# Layouts measured in Kiwix's own builds: ted_mul_street-art_2026-09
+# (ted2zim 3.2.1), studio.blender.org_en_open-movies_2026-06 and
+# crashcourse_en_all_2026-05 (youtube2zim 3.5.0).
+
+WEBM = b"\x1a\x45\xdf\xa3webm"
+
+
+def _ted_data(rows):
+    return ("window.json_data = " + json.dumps(rows)).encode()
+
+
+TED3_FILES = {
+    # ted2zim 3.x: no assets/data.js; one list per subtitle language, the
+    # languages named in the home page's picker.
+    "index": b"<html><body><select id='language-select'>"
+    b'<option value="ar">Arabic</option><option value="en">English</option></select></body></html>',
+    "assets/data_en.js": _ted_data(
+        [
+            {
+                "id": "2437",
+                "slug": "how-yarn-bombing-grew",
+                "title": "How yarn bombing grew",
+                "speaker": "Magda  Sayeg",
+            }
+        ]
+    ),
+    "assets/data_ar.js": _ted_data(
+        [
+            {
+                "id": "2437",
+                "slug": "how-yarn-bombing-grew",
+                "title": "Arabic title",
+                "speaker": "Magda  Sayeg",
+            },
+            {
+                "id": "2157",
+                "slug": "trash-cart-superheroes",
+                "title": "Arabic only",
+                "speaker": "  Mundano",
+            },
+        ]
+    ),
+    "how-yarn-bombing-grew": b"<html><body><video id='ted-video' poster=\"videos/2437/thumbnail.webp\">"
+    b'<source src="videos/2437/video.webm" type="video/webm" />'
+    b'<track kind="subtitles" src="videos/2437/subs/subs_en.vtt" srclang="en" label="English" /></video></body></html>',
+    "videos/2437/thumbnail.webp": b"RIFF....WEBP",
+    "videos/2437/video.webm": WEBM,
+    "videos/2157/video.webm": WEBM,
+    "assets/ogvjs/ogv.js": b"/* ogv */",
+}
+
+
+def test_ted2zim_3_talks_come_from_every_language_list(tmp_path, monkeypatch):
+    _library(
+        tmp_path,
+        monkeypatch,
+        [
+            (
+                "ted_mul_art_2026-09.zim",
+                {"Scraper": "ted2zim 3.2.1", "Name": "ted_mul_art"},
+                TED3_FILES,
+                "index",
+            )
+        ],
+    )
+    rows = tube.videos_for("ted_mul_art")
+    assert [(r["id"], r["title"], r["speaker"], r["page"]) for r in rows] == [
+        ("2437", "How yarn bombing grew", "Magda Sayeg", "how-yarn-bombing-grew"),
+        ("2157", "Arabic only", "Mundano", "trash-cart-superheroes"),
+    ]
+    assert rows[0]["thumb"] == "videos/2437/thumbnail.webp"
+    got = tube.playback("ted_mul_art", "how-yarn-bombing-grew")
+    assert (
+        got["media"] == [{"path": "videos/2437/video.webm", "type": "video/webm"}]
+        and not got["missing"]
+    )
+    assert got["subs"] == [
+        {"path": "videos/2437/subs/subs_en.vtt", "lang": "en", "label": "English"}
+    ]
+    assert got["poster"] == "videos/2437/thumbnail.webp"
+    # 3.x keeps the decoder at assets/ogvjs; libzim finds it by the old path too.
+    assert got["ogv"] == "-/assets/ogvjs"
