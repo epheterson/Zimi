@@ -6289,11 +6289,16 @@ function _hebrewDelay2(yr) {
   if (present - last === 382) return 1;
   return 0;
 }
+// The JDN (a whole day number) of 1 Tishrei of year yr. Fourmilab's
+// hebrew_to_jd is EPOCH + delay1 + delay2 + day + 1, a midnight (.5) Julian
+// Date; for day 1 that is EPOCH + delay1 + delay2 + 2, and the day it starts
+// is that + 0.5. Leaving out the + day + 1 and then flooring the midnight put
+// every Hebrew date 2 to 3 days late (tests/test_almanac_hebrew.cjs).
 function _hebrewNewYear(yr) {
-  return _HEBREW_EPOCH + _hebrewDelay1(yr) + _hebrewDelay2(yr);
+  return _HEBREW_EPOCH + 2.5 + _hebrewDelay1(yr) + _hebrewDelay2(yr);
 }
 function _hebrewDaysInYear(yr) {
-  return Math.round(_hebrewNewYear(yr + 1) - _hebrewNewYear(yr));
+  return _hebrewNewYear(yr + 1) - _hebrewNewYear(yr);
 }
 function _hebrewMonthDays(yr, mo) {
   var diy = _hebrewDaysInYear(yr);
@@ -6364,18 +6369,6 @@ function _chineseZodiac(year) {
 }
 
 // ── Reverse conversions — calendar date → JDN ──
-
-// Hebrew → JDN: sum days from Tishrei 1
-function _hebrewToJDN(year, monthIdx, day) {
-  // monthIdx is civil order: 0=Tishrei, 1=Marcheshvan, ...
-  var civilOrder = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]; // internal month codes
-  var jdn = Math.floor(_hebrewNewYear(year)) + day - 1;
-  for (var i = 0; i < monthIdx; i++) {
-    var days = _hebrewMonthDays(year, civilOrder[i]);
-    if (days > 0) jdn += days;
-  }
-  return jdn;
-}
 
 // Hebrew month list for a given year — [{name, days, idx}] in civil order
 function _hebrewMonthList(year) {
@@ -6525,10 +6518,10 @@ function _jdnToCalendar(sys, jdn) {
     // Find Hebrew year
     var approx = Math.floor((jdn - _HEBREW_EPOCH) / 365.25) + 1;
     var hYear = approx;
-    while (_hebrewNewYear(hYear) > jdn + 0.5) hYear--;
-    while (_hebrewNewYear(hYear + 1) <= jdn + 0.5) hYear++;
+    while (_hebrewNewYear(hYear) > jdn) hYear--;
+    while (_hebrewNewYear(hYear + 1) <= jdn) hYear++;
     var months = _hebrewMonthList(hYear);
-    var dayInYear = Math.round(jdn + 0.5 - _hebrewNewYear(hYear));
+    var dayInYear = jdn - _hebrewNewYear(hYear);
     var remaining = dayInYear;
     for (var i = 0; i < months.length; i++) {
       if (remaining < months[i].days) {
@@ -6791,7 +6784,7 @@ function _calFirstDayJDN(sys, year, month) {
   if (sys === 'gregorian') return _gregorianToJDN(year, month, 1);
   if (sys === 'hebrew') {
     var months = _hebrewMonthList(year);
-    var jdn = Math.floor(_hebrewNewYear(year));
+    var jdn = _hebrewNewYear(year);
     for (var i = 0; i < month - 1 && i < months.length; i++) {
       jdn += months[i].days;
     }
