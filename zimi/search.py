@@ -659,10 +659,12 @@ def _title_index_search(zim_name, query, limit=10):
                 tl = title.lower()
                 if all(w in tl for w in other_words):
                     results.append({"path": path, "title": title, "snippet": ""})
-            if results:
-                return results
-            # Prefix on first word found nothing — skip to SuggestionSearcher fallback
-            return None
+            # An index that has no such title is an answer, not a miss. None
+            # sent 72 of the NAS's 78 ZIMs to libzim's SuggestionSearcher for
+            # every multi-word query whose first word starts no title, and the
+            # quick pass took 5 to 12 s; the full pass behind it searches the
+            # article text anyway. Only a ZIM with no index falls back.
+            return results
     except Exception as e:
         # Connection may be stale (e.g. DB was rebuilt) — evict and retry once
         log.debug("Title index search failed for %s query %r: %s", zim_name, query, e)
