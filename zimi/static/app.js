@@ -3581,10 +3581,11 @@ function _zimLangBadgeInfo(z, force) {
   if (!lang || lang === 'all') return null;
   if (lang.includes(',')) { var n = lang.split(',').length; return n > 1 ? {multi: n} : null; }
   if (lang === 'mul' || lang === 'multi' || /^mul/i.test(z.name)) return null;
-  if (!force && lang === _currentLang) return null;
-  // Two-letter uppercase code (DE, AR, FR…). ISO 639-1 codes are already two
-  // letters; longer codes are clipped to their first two.
-  return {code: (lang.length > 2 ? lang.slice(0, 2) : lang).toUpperCase()};
+  if (!force && _normLang(lang) === _currentLang) return null;
+  // Uppercase ISO 639-1 code (DE, AR, FR…) via the 639-3 map. Never the first
+  // two letters of a 639-3 code: mlt (Maltese) is not ML (Malayalam), nor
+  // bos (Bosnian) BO (Tibetan). No 639-1 equivalent shows the 639-3 code.
+  return {code: _normLang(lang).toUpperCase()};
 }
 
 // Inline language badge (search + full list rows). Full language name in the
@@ -7560,7 +7561,7 @@ function formatLanguage(langStr) {
 }
 
 // 3-letter → 2-letter language code for tags
-const _LANG3TO2 = {eng:'en',fra:'fr',deu:'de',spa:'es',por:'pt',ita:'it',rus:'ru',ara:'ar',zho:'zh',jpn:'ja',kor:'ko',hin:'hi',tur:'tr',pol:'pl',nld:'nl',swe:'sv',vie:'vi',tha:'th',heb:'he',ell:'el',ron:'ro',hun:'hu',fas:'fa',far:'fa',ind:'id',ukr:'uk',ces:'cs',dan:'da',fin:'fi',nor:'no',cat:'ca',mul:'mul',msa:'ms',ben:'bn',tam:'ta',tel:'te',urd:'ur',srp:'sr',hrv:'hr',bos:'bs',slk:'sk',slv:'sl',bul:'bg',lit:'lt',lav:'lv',est:'et',swa:'sw',amh:'am',hau:'ha',yor:'yo',zul:'zu',afr:'af',gle:'ga',cym:'cy',eus:'eu',glg:'gl',kat:'ka',hye:'hy',mkd:'mk',sqi:'sq',bel:'be',kaz:'kk',uzb:'uz',tgl:'tl',mal:'ml',kan:'kn',guj:'gu',mar:'mr',mya:'my',khm:'km',lao:'lo',sin:'si',nep:'ne',pan:'pa',aze:'az',mon:'mn',tgk:'tg',kir:'ky',isl:'is',fao:'fo',kur:'ku',ori:'or',jav:'jv',sun:'su',asm:'as',snd:'sd',kas:'ks',kik:'ki',sme:'se',lim:'li',pam:'pam',tir:'ti',lin:'ln',wol:'wo',som:'so',run:'rn',bis:'bi',nav:'nv',dzo:'dz',vol:'vo',ina:'ia',tat:'tt',bak:'ba',chv:'cv',oss:'os',tuk:'tk',sah:'sah'};
+const _LANG3TO2 = {eng:'en',fra:'fr',deu:'de',spa:'es',por:'pt',ita:'it',rus:'ru',ara:'ar',zho:'zh',jpn:'ja',kor:'ko',hin:'hi',tur:'tr',pol:'pl',nld:'nl',swe:'sv',vie:'vi',tha:'th',heb:'he',ell:'el',ron:'ro',hun:'hu',fas:'fa',far:'fa',ind:'id',ukr:'uk',ces:'cs',dan:'da',fin:'fi',nor:'no',cat:'ca',mul:'mul',msa:'ms',ben:'bn',tam:'ta',tel:'te',urd:'ur',srp:'sr',hrv:'hr',bos:'bs',slk:'sk',slv:'sl',bul:'bg',lit:'lt',lav:'lv',est:'et',swa:'sw',amh:'am',hau:'ha',yor:'yo',zul:'zu',afr:'af',gle:'ga',cym:'cy',eus:'eu',glg:'gl',kat:'ka',hye:'hy',mkd:'mk',sqi:'sq',bel:'be',kaz:'kk',uzb:'uz',tgl:'tl',mal:'ml',kan:'kn',guj:'gu',mar:'mr',mya:'my',khm:'km',lao:'lo',sin:'si',nep:'ne',mlt:'mt',tsn:'tn',pan:'pa',aze:'az',mon:'mn',tgk:'tg',kir:'ky',isl:'is',fao:'fo',kur:'ku',ori:'or',jav:'jv',sun:'su',asm:'as',snd:'sd',kas:'ks',kik:'ki',sme:'se',lim:'li',pam:'pam',tir:'ti',lin:'ln',wol:'wo',som:'so',run:'rn',bis:'bi',nav:'nv',dzo:'dz',vol:'vo',ina:'ia',tat:'tt',bak:'ba',chv:'cv',oss:'os',tuk:'tk',sah:'sah'};
 // Extract actual language from ZIM name when catalog says "mul" or comma-separated
 // e.g. "ted_fr_design" → "fr", "wikipedia_de_all" → "de"
 function _langFromName(name) {
@@ -13751,7 +13752,7 @@ function _dlLangBadge(name, installedLang) {
     lang = (_langFromName(name) || '').toLowerCase();  // name-derived fallback
   }
   if (!lang || lang === 'en' || lang === 'eng') return '';
-  var code = lang.length > 2 ? (_LANG3TO2[lang] || lang.slice(0, 2)) : lang;
+  var code = _normLang(lang);
   if (code === 'en') return '';
   var full = _langDisplayName(code) || code.toUpperCase();
   return '<span class="lang-badge dl-lang-badge" title="' + escAttr(code.toUpperCase()) + '">' + esc(full) + '</span>';
