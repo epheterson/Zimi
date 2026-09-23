@@ -97,4 +97,4 @@ CI handles signing and notarization automatically. See `.github/workflows/deskto
 - The `.spec` file includes `zimi/templates/`, `zimi/assets/`, and `zimi/static/` as data
 - **When splitting modules:** any new `zimi/*.py` file must be added to `hiddenimports` in `desktop/zimi_desktop.spec` AND the CI smoke test must still pass. PyInstaller can't discover runtime imports.
 - **Workflow dispatch and refs:** `gh workflow run --ref v1.X.0` runs the workflow YAML from the tag, not main. Fixes to the workflow on main won't apply unless you omit `--ref`.
-- Windows: CI builds a desktop app (`Zimi-windows-x64.zip`, WinSparkle auto-update) via `desktop-release.yml`; `pip install zimi` also works
+- Windows: CI builds a desktop app (`Zimi-<version>-Windows-x64.zip` and `-Setup.exe`, WinSparkle auto-update) via `desktop-release.yml`; `pip install zimi` also works

@@ -506,6 +506,28 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
 
+      # The builds keep their short internal names; what people download is
+      # named here, once: Zimi-<version>-<platform>-<chip>. Everything below
+      # (the signatures, the appcasts, the cask, the release) reads release/.
+      # The five builds must all be there; the snap may not be (its build is
+      # allowed to fail, and one that will not open is never uploaded).
+      - name: Name the files for the release
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          V="${TAG#v}"
+          mkdir -p release
+          cp Zimi-AppleSilicon/Zimi-AppleSilicon.dmg          "release/Zimi-$V-macOS-AppleSilicon.dmg"
+          cp Zimi-Intel/Zimi-Intel.dmg                        "release/Zimi-$V-macOS-Intel.dmg"
+          cp Zimi-windows-x64-Setup/Zimi-windows-x64-Setup.exe "release/Zimi-$V-Windows-x64-Setup.exe"
+          cp Zimi-windows-x64/Zimi-windows-x64.zip            "release/Zimi-$V-Windows-x64.zip"
+          cp Zimi-Linux-amd64/Zimi-Linux-amd64.AppImage       "release/Zimi-$V-Linux-x64.AppImage"
+          for snap in Zimi-Linux-snap/*.snap; do
+            if [ -e "$snap" ]; then cp "$snap" "release/Zimi-$V-Linux-x64.snap"; fi
+          done
+          echo "ZIMI_STEM=Zimi-$V" >> "$GITHUB_ENV"
+          ls -la release
+
       # ── Sparkle/WinSparkle EdDSA signing + appcasts ─────────────────
       - name: Sign updates and update appcasts
         env:
@@ -575,8 +597,8 @@ jobs:
           }
 
           MAC_MINSYS=$'\n            <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>'
-          generate_appcast "Intel" "Zimi-Intel/Zimi-Intel.dmg" "Zimi-Intel.dmg" "appcast-intel.xml" "$MAC_MINSYS" ""
-          generate_appcast "Apple Silicon" "Zimi-AppleSilicon/Zimi-AppleSilicon.dmg" "Zimi-AppleSilicon.dmg" "appcast-arm64.xml" "$MAC_MINSYS" ""
+          generate_appcast "Intel" "release/$ZIMI_STEM-macOS-Intel.dmg" "$ZIMI_STEM-macOS-Intel.dmg" "appcast-intel.xml" "$MAC_MINSYS" ""
+          generate_appcast "Apple Silicon" "release/$ZIMI_STEM-macOS-AppleSilicon.dmg" "$ZIMI_STEM-macOS-AppleSilicon.dmg" "appcast-arm64.xml" "$MAC_MINSYS" ""
           # Windows enclosure is the Inno Setup installer; WinSparkle (0.9.4)
           # downloads it, runs it with sparkle:installerArguments via
           # ShellExecuteEx, then quits WITHOUT relaunching — so /SILENT gives a
@@ -584,7 +606,7 @@ jobs:
           # the relaunch (windows/zimi.iss). /SP- skips the "ready to install"
           # prompt. Per-user install (no UAC), so silent is safe.
           WIN_INSTALLER_ARGS=' sparkle:installerArguments="/SILENT /SP-"'
-          generate_appcast "Windows" "Zimi-windows-x64-Setup/Zimi-windows-x64-Setup.exe" "Zimi-windows-x64-Setup.exe" "appcast-windows.xml" "" "$WIN_INSTALLER_ARGS"
+          generate_appcast "Windows" "release/$ZIMI_STEM-Windows-x64-Setup.exe" "$ZIMI_STEM-Windows-x64-Setup.exe" "appcast-windows.xml" "" "$WIN_INSTALLER_ARGS"
 
           # Commit and push to main
           git config user.name "github-actions[bot]"
@@ -608,8 +630,8 @@ jobs:
           VERSION="${TAG#v}"
 
           # Compute SHA256 for both DMGs
-          SHA_ARM=$(shasum -a 256 Zimi-AppleSilicon/Zimi-AppleSilicon.dmg | awk '{print $1}')
-          SHA_INTEL=$(shasum -a 256 Zimi-Intel/Zimi-Intel.dmg | awk '{print $1}')
+          SHA_ARM=$(shasum -a 256 "release/$ZIMI_STEM-macOS-AppleSilicon.dmg" | awk '{print $1}')
+          SHA_INTEL=$(shasum -a 256 "release/$ZIMI_STEM-macOS-Intel.dmg" | awk '{print $1}')
           echo "Apple Silicon SHA256: $SHA_ARM"
           echo "Intel SHA256: $SHA_INTEL"
 
@@ -626,7 +648,7 @@ jobs:
             sha256 arm:   "${SHA_ARM}",
                    intel: "${SHA_INTEL}"
 
-            url "https://github.com/epheterson/Zimi/releases/download/v#{version}/Zimi-#{arch}.dmg"
+            url "https://github.com/epheterson/Zimi/releases/download/v#{version}/Zimi-#{version}-macOS-#{arch}.dmg"
             name "Zimi"
             desc "Offline knowledge server for ZIM files"
             homepage "https://github.com/epheterson/Zimi"
@@ -657,13 +679,7 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           draft: true
-          # The snap may not be there (its build is allowed to fail); the
-          # release is the other five files either way.
-          fail_on_unmatched_files: false
-          files: |
-            Zimi-Linux-amd64/Zimi-Linux-amd64.AppImage
-            Zimi-Linux-snap/*.snap
-            Zimi-Intel/Zimi-Intel.dmg
-            Zimi-AppleSilicon/Zimi-AppleSilicon.dmg
-            Zimi-windows-x64/Zimi-windows-x64.zip
-            Zimi-windows-x64-Setup/Zimi-windows-x64-Setup.exe
+          # release/ holds exactly what ships: the five builds, and the snap
+          # when it built and opened (checked when release/ was filled).
+          fail_on_unmatched_files: true
+          files: release/*

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- Release files are named `Zimi-<version>-<platform>-<chip>`: `Zimi-1.10.2-macOS-AppleSilicon.dmg`, `-macOS-Intel.dmg`, `-Windows-x64-Setup.exe`, `-Windows-x64.zip`, `-Linux-x64.AppImage`, `-Linux-x64.snap`. Updates and Homebrew follow the new names.
+
 ## [1.10.1] - 2026-09-22
 
 ### Fixed
