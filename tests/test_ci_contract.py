@@ -310,3 +310,21 @@ def test_a_snap_that_will_not_open_costs_only_the_snap():
     assert "continue-on-error: true" in steps[smoke]
     assert "id: snap_smoke" in steps[smoke]
     assert "steps.snap_smoke.outcome == 'success'" in steps[upload]
+
+
+def test_the_mac_app_reports_the_release_version():
+    """Info.plist said 1.4.0 from February to 1.10.1: every Mac build reported
+    1.4.0 and Sparkle, comparing it with the appcast's version, always had an
+    update to offer. The spec reads pyproject.toml, as the other builds do."""
+    import re as _re
+
+    spec = (ROOT / "desktop" / "zimi_desktop.spec").read_text(encoding="utf-8")
+    assert not _re.search(r"'CFBundle(Short)?Version(String)?':\s*'\d", spec), "a version is hard-coded in the spec"
+    start = spec.index("def _app_version(")
+    end = spec.index("\nAPP_VERSION", start)
+    scope = {"os": os}
+    exec(spec[start:end], scope)
+    version = _re.search(
+        r'^version\s*=\s*"([^"]+)"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"), _re.MULTILINE
+    ).group(1)
+    assert scope["_app_version"](str(ROOT)) == version

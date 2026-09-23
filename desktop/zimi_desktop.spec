@@ -32,6 +32,23 @@ block_cipher = None
 DESKTOP_DIR = SPECPATH
 REPO_ROOT = os.path.dirname(SPECPATH)
 
+
+def _app_version(repo_root):
+    """The release version, from pyproject.toml, as the snap and Windows builds
+    take it. Info.plist said 1.4.0 from February on: every Mac build since
+    reported 1.4.0, and Sparkle, comparing that with the appcast, offered an
+    update that never ended."""
+    import re
+
+    with open(os.path.join(repo_root, "pyproject.toml"), encoding="utf-8") as f:
+        m = re.search(r'^version\s*=\s*"([^"]+)"', f.read(), re.MULTILINE)
+    if not m:
+        raise SystemExit("zimi_desktop.spec: no version in pyproject.toml")
+    return m.group(1)
+
+
+APP_VERSION = _app_version(REPO_ROOT)
+
 # zeroconf (LAN peer discovery) loads submodules dynamically, so PyInstaller's
 # static analysis misses them unless we collect the whole package.
 zeroconf_hiddenimports = collect_submodules("zeroconf")
@@ -280,8 +297,8 @@ if platform.system() == 'Darwin':
         icon=os.path.join(REPO_ROOT, 'zimi/assets/icon.icns'),
         bundle_identifier='io.zosia.zimi',
         info_plist={
-            'CFBundleShortVersionString': '1.4.0',
-            'CFBundleVersion': '1.4.0',
+            'CFBundleShortVersionString': APP_VERSION,
+            'CFBundleVersion': APP_VERSION,
             'LSUIElement': False,  # show in Dock (native window app)
             'NSLocalNetworkUsageDescription': 'Zimi runs a local server on this computer to display your offline library. It does not access other devices.',
             'NSAppTransportSecurity': {
