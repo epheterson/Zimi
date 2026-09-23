@@ -20599,6 +20599,10 @@ function _isTransparent(color) {
   return parts.length === 4 && parseFloat(parts[3]) === 0;
 }
 
+// Everything Zimi puts into an article's document carries a zimi- class;
+// captured sites never do.
+var _ZIMI_OWN_CHROME = '[class^="zimi-"], [class*=" zimi-"]';
+
 function _sweepBlockingOverlays(frame) {
   var doc = frame.contentDocument;
   var win = frame.contentWindow;
@@ -20613,6 +20617,10 @@ function _sweepBlockingOverlays(frame) {
       var cs;
       try { cs = win.getComputedStyle(el); } catch (e) { continue; }
       if (!cs || cs.position !== 'fixed') continue;
+      // Zimi's own chrome in the article (the tap-to-zoom lightbox is fixed
+      // and full screen) is not a wall: removing it made zoom do nothing for
+      // the first OVERLAY_WATCH_MS of every article.
+      if (el.closest && el.closest(_ZIMI_OWN_CHROME)) continue;
       var r = el.getBoundingClientRect();
       if (r.width < 2 || r.height < 2) continue;
       var blocking = r.width * r.height >= covered;
