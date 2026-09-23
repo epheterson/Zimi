@@ -5263,7 +5263,10 @@ function _loadDiscover() {
         var item = { zim: s.name, path: d.path, title: d.title || _titleFromPath(d.path || ''),
                  thumbnail: d.thumbnail || null, blurb: d.blurb || null,
                  attribution: d.attribution || null, speaker: d.speaker || null, author: d.author || null, part_of_speech: d.part_of_speech || null,
-                 date: d.date || null, type: s.type, label: s.label || null, icon: s.icon || null };
+                 date: d.date || null, type: s.type, label: s.label || null, icon: s.icon || null,
+                 // On This Day's date line (renderDiscover reads these); left
+                 // behind here, the card never showed which day or year it was.
+                 event_text: d.event_text || null, event_year: d.event_year || null };
         _discoverResults[idx] = item; // Store immediately on resolve
         return item;
       })
