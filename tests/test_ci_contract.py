@@ -287,3 +287,26 @@ def test_every_text_file_operation_names_its_encoding():
     assert not offenders, "text file operation without an encoding:\n  " + "\n  ".join(
         offenders
     )
+
+
+def test_a_snap_that_will_not_open_costs_only_the_snap():
+    """The snap is built, tried and uploaded in the same job as the AppImage,
+    and the release job needs that job whole. 1.10.0 lost its release on every
+    platform to a snap step that failed the job. So the window check may fail
+    without failing the job, it runs before the upload, and the upload only
+    takes a snap that passed it: a broken snap is dropped, never shipped, and
+    never takes the Mac, Windows or AppImage builds down with it."""
+    text = (WORKFLOWS / "desktop-release.yml").read_text(encoding="utf-8")
+    steps = {}
+    for chunk in text.split("\n      - name: ")[1:]:
+        steps[chunk.split("\n", 1)[0].strip()] = chunk
+    names = list(steps)
+    smoke = "The snap installs and opens its window (Linux)"
+    upload = "Upload Snap artifact"
+    assert smoke in steps and upload in steps
+    assert names.index(smoke) < names.index(upload), (
+        "the snap must be tried before it is uploaded"
+    )
+    assert "continue-on-error: true" in steps[smoke]
+    assert "id: snap_smoke" in steps[smoke]
+    assert "steps.snap_smoke.outcome == 'success'" in steps[upload]

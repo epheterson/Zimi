@@ -251,26 +251,20 @@ jobs:
         continue-on-error: true
         uses: snapcore/action-build@v1
 
-      - name: Upload Snap artifact
-        if: runner.os == 'Linux'
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: Zimi-Linux-snap
-          path: "*.snap"
-
       # The snap's own window, which nothing ever opened: 1.10.0 shipped a
       # snap that installed and then did nothing at all, silently, because
       # the bundle's environment fixups took apart what the gnome extension
       # had set up (issue #81). Installed and run here the way a person
       # would, so the next one cannot ship untried.
-      # Not continue-on-error, unlike the build above: a snap the store
-      # would not let us build costs nothing, but a snap we did build and
-      # that will not open is the 1.10.0 bug, and it should stop the build
-      # rather than reach anyone. The `if` is what keeps the first case from
-      # failing here.
+      # A snap that will not open is dropped, not the release: this step
+      # comes before the AppImage in the same job, and a failure here once
+      # would have skipped every platform's release (the 1.10.0 outage).
+      # So it may fail without failing the job, it says so as an error on
+      # the run, and the upload below only takes a snap that passed.
       - name: The snap installs and opens its window (Linux)
+        id: snap_smoke
         if: runner.os == 'Linux' && hashFiles('*.snap') != ''
+        continue-on-error: true
         shell: bash
         run: |
           set -x
@@ -285,7 +279,18 @@ jobs:
           mkdir -p "$HOME/zimi-smoke"
           ZIMI_DESKTOP_SMOKE=app ZIMI_DESKTOP_SMOKE_DWELL=2 ZIM_DIR="$HOME/zimi-smoke" \
             timeout 180 xvfb-run -a snap run zimi 2>&1 | tee /tmp/snap-smoke.log || true
-          grep -q "SMOKE: app rendered" /tmp/snap-smoke.log
+          if ! grep -q "SMOKE: app rendered" /tmp/snap-smoke.log; then
+            echo "::error::The snap did not open its window; this release ships without it."
+            exit 1
+          fi
+
+      - name: Upload Snap artifact
+        if: steps.snap_smoke.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zimi-Linux-snap
+          path: "*.snap"
 
       - name: Say what the snap did (Linux)
         if: runner.os == 'Linux' && always()
