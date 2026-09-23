@@ -983,7 +983,8 @@ function _orreryUpdateDate() {
   if (!el) return;
   var d = new Date(_orrerySimTime());
   var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
-  el.textContent = d.toLocaleDateString(lang, { year: 'numeric', month: 'short', day: 'numeric' });
+  var opts = { year: 'numeric', month: 'short', day: 'numeric' };
+  el.textContent = d.toLocaleDateString(lang, typeof _almEraOpts === 'function' ? _almEraOpts(d, opts) : opts);
   // While the time machine owns the clock, its RETURN control is the honest
   // way back — a local "Now" would fight the almanac's focus, so hide it.
   var nowBtn = document.getElementById('orrery-now');

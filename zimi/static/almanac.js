@@ -478,6 +478,14 @@ function _almIsToday(d) {
 // zone-offset of midnight: pick 23:50 from Los Angeles with Tokyo stored and
 // the grid highlights the 22nd while the header reads the 23rd. One zone for
 // the whole instrument, and it is the device's.
+// Date options with the era added for a year before 1: Intl leaves the era
+// out unless asked, so -270000 read "January 1, 270001", the far future.
+// Asked only then, so an ordinary date does not gain an "AD".
+function _almEraOpts(d, opts) {
+  if (!(d && d.getFullYear && d.getFullYear() <= 0)) return opts;
+  return Object.assign({}, opts, { era: 'short' });
+}
+
 function _almClockParts(focus) {
   var loc = _getLocation();
   var locTz = null;
@@ -489,7 +497,7 @@ function _almClockParts(focus) {
   // frame, and each toLocale* call builds a fresh Intl.DateTimeFormat.
   return {
     loc: loc, locTz: locTz, lang: lang, live: live,
-    date: _tzFmt(displayTz, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(focus),
+    date: _tzFmt(displayTz, _almEraOpts(focus, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })).format(focus),
     time: _tzFmt(displayTz, { hour: 'numeric', minute: '2-digit' }).format(focus),
     tz: _formatTimezone(lang, displayTz)
   };
@@ -2597,7 +2605,7 @@ function _renderAstroPanel(now) {
     var untilStr = daysUntil <= 0 ? t('alm_today') : daysUntil === 1 ? t('alm_tomorrow') : t('alm_n_days', { n: daysUntil });
     eclipseRows += '<div class="almanac-eclipse-row">' +
       '<div><span class="almanac-eclipse-type">' + _alLink(ec.solar ? 'eclipse:total_solar' : 'eclipse:total_lunar', ec.type) + '</span><br><span class="almanac-eclipse-date">' +
-      ecDate.toLocaleDateString((typeof _currentLang !== 'undefined') ? _currentLang : undefined, { month: 'long', day: 'numeric', year: 'numeric' }) + '</span></div>' +
+      ecDate.toLocaleDateString((typeof _currentLang !== 'undefined') ? _currentLang : undefined, _almEraOpts(ecDate, { month: 'long', day: 'numeric', year: 'numeric' })) + '</span></div>' +
       '<div class="almanac-eclipse-until">' + untilStr + '</div></div>';
   }
   if (eclipseRows) {
@@ -5297,7 +5305,7 @@ function _renderCelestialEvents(now) {
     var allVisible = soonEvents.concat(laterEvents);
     for (var i = 0; i < allVisible.length; i++) {
       var ev = allVisible[i];
-      var dateStr = ev.date.toLocaleDateString(_almLocale, { month: 'short', day: 'numeric', year: 'numeric' });
+      var dateStr = ev.date.toLocaleDateString(_almLocale, _almEraOpts(ev.date, { month: 'short', day: 'numeric', year: 'numeric' }));
       var untilStr = ev.daysUntil <= 1 ? t('alm_now_exclaim') : ev.daysUntil + ' ' + t('alm_days');
       var title, detail;
       if (ev.type === 'conjunction') {
