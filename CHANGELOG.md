@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.10.1] - 2026-09-22
+
+### Fixed
+
+- An article reached through a redirect, or a section of one, opens in ZIMs whose titles are not Latin: Arabic, Cyrillic, Chinese and the rest. The redirect's address went out unencoded and the reader was told the server had failed (#86). Downloading an EPUB, or a ZIM from a peer, failed the same way when its name was not Latin; both now carry the name as RFC 6266 does.
+- Starting the server no longer waits on the Creator pane's engine check, which launches a browser to find out whether a browser is installed. It ran during boot; on a slow or busy machine that delayed the moment Zimi began answering. It now runs well after startup.
+- The Linux snap runs. 1.10.0's snap installed and then did nothing, silently: the app undid the GTK and WebKitGTK setup the snap's GNOME layer had done, could not open a window, and fell back to a browser a confined snap cannot open (#81). The build now installs the snap and opens its window before a release can carry it.
+
 ## [1.10.0] - 2026-09-21
 
 Offline maps, four apps over the library, a catalog that works with no internet, and the Linux desktop app fixed.

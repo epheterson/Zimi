@@ -2999,6 +2999,36 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(icon_data)
 
+    @staticmethod
+    def _attachment(filename):
+        """A Content-Disposition value for a file whose name is its own.
+
+        A header is Latin-1. An EPUB inside an Arabic or Russian ZIM, or a
+        ZIM `zimi create` named after a page that was not in English, has a
+        name that is not, and writing it raised inside the stdlib: the
+        download died as a server error (the same fault as the redirects in
+        issue #86). RFC 6266 is how a name that is not Latin-1 is carried:
+        an ASCII fallback for anything old, and filename* for everyone else.
+        """
+        ascii_name = filename.encode("ascii", "replace").decode("ascii").replace('"', "_")
+        value = 'attachment; filename="%s"' % ascii_name
+        if filename != ascii_name:
+            value += "; filename*=UTF-8''%s" % quote(filename, safe="")
+        return value
+
+    @staticmethod
+    def _w_location(zim_name, entry_path, fragment=""):
+        """The /w/ address a redirect sends the reader to.
+
+        Percent-encoded, name, path and fragment alike: a header is Latin-1
+        and a ZIM's paths and section names are whatever language the ZIM
+        is in (issue #86).
+        """
+        location = "/w/%s/%s" % (_srv.url_quote(zim_name), quote(entry_path, safe="/"))
+        if fragment:
+            location += "#" + quote(fragment, safe="")
+        return location
+
     def _wants_html_document(self):
         """Whether THIS request is a page being opened, rather than a
         subresource being fetched by one.
@@ -3187,10 +3217,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                     except KeyError:
                         base_path = None
                     if base_path is not None:
-                        quoted = "/".join(quote(seg) for seg in base_path.split("/"))
                         self.send_response(302)
                         self.send_header(
-                            "Location", f"/w/{quote(zim_name)}/{quoted}#{fragment}"
+                            "Location", self._w_location(zim_name, base_path, fragment)
                         )
                         self.send_header("Content-Length", "0")
                         self.end_headers()
@@ -3221,12 +3250,17 @@ class ZimHandler(BaseHTTPRequestHandler):
                     404, {"error": f"Entry '{entry_path}' not found in {zim_name}"}
                 )
 
-            # ZIM redirects → HTTP 302 so browser URL updates to canonical path
+            # ZIM redirects → HTTP 302 so browser URL updates to canonical path.
+            # Percent-encoded, because a header is Latin-1 and an entry path is
+            # not: every redirect in a ZIM whose titles are not Latin (Arabic
+            # Wikipedia, Russian, Chinese) raised inside the stdlib as the
+            # header was written, and the reader got a 500 with no clue
+            # (issue #86; the same link opened in Kiwix, which encodes it).
             if entry.is_redirect:
                 target = entry.get_redirect_entry()
                 target_path = target.path
                 self.send_response(302)
-                self.send_header("Location", f"/w/{zim_name}/{target_path}")
+                self.send_header("Location", self._w_location(zim_name, target_path))
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
@@ -3354,9 +3388,7 @@ class ZimHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", mimetype)
             self.send_header("Content-Length", str(len(content)))
-            self.send_header(
-                "Content-Disposition", f'attachment; filename="{epub_filename}"'
-            )
+            self.send_header("Content-Disposition", self._attachment(epub_filename))
             self.end_headers()
             self.wfile.write(content)
             return
@@ -3688,10 +3720,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/octet-stream")
         self.send_header("Content-Length", str(send_len))
         self.send_header("Accept-Ranges", "bytes")
-        self.send_header(
-            "Content-Disposition",
-            f'attachment; filename="{os.path.basename(path)}"',
-        )
+        self.send_header("Content-Disposition", self._attachment(os.path.basename(path)))
         self.end_headers()
 
         # Stream in 1 MB chunks. A peer disconnecting mid-pull (BrokenPipe)

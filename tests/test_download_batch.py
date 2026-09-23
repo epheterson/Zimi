@@ -1,9 +1,10 @@
 """Tests for the /manage/download-batch endpoint (multi-select downloads)."""
 
-import json
 import os
 import sys
 from unittest.mock import MagicMock
+
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,6 +19,14 @@ import zimi.server as server  # noqa: E402
 def _reset(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "ZIM_DIR", str(tmp_path))
     monkeypatch.setattr(server, "ZIMI_MANAGE", True)
+    # The queue is under test, not this machine's free disk: a 10 GB test
+    # download is refused on a laptop with 11 GB left. A roomy disk here;
+    # the disk-space tests below set their own.
+    monkeypatch.setattr(
+        library.shutil,
+        "disk_usage",
+        lambda p: SimpleNamespace(total=10**13, used=0, free=10**13),
+    )
     with library._download_lock:
         library._active_downloads.clear()
         library._download_queue.clear()

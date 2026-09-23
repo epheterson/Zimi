@@ -400,7 +400,7 @@ def test_config_reports_discovered_provenance(tmp_tree):
         cwd=tmp_tree,
         env=_clean_env({}),
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
     )
     assert proc.returncode == 0, proc.stderr
     assert f"(discovered: {tmp_tree})" in proc.stdout
@@ -415,7 +415,7 @@ def test_config_discovery_loses_to_env(tmp_tree):
         cwd=tmp_tree,
         env=_clean_env({"ZIM_DIR": "/env/zims"}),
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
     )
     assert proc.returncode == 0, proc.stderr
     assert "(env: ZIM_DIR)" in proc.stdout

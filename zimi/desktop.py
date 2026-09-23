@@ -62,7 +62,15 @@ def _linux_environment(env, frozen, typelib_dirs=_HOST_TYPELIB_DIRS, isdir=os.pa
     for key in ("WEBKIT_DISABLE_DMABUF_RENDERER", "WEBKIT_DISABLE_COMPOSITING_MODE"):
         if key not in env:
             env[key] = changed[key] = "1"
-    if frozen:
+    # Inside a snap the GNOME extension has already wired GTK, WebKitGTK and
+    # their data: LD_LIBRARY_PATH, GI_TYPELIB_PATH, the pixbuf loaders, the
+    # schemas and the GIO modules all point into the platform snap. Every
+    # line below would take that apart — clear the library path, delete the
+    # three data vars, and put the base image's typelib dirs first, where
+    # WebKit2 does not exist. The window then cannot open, the launch falls
+    # back to the browser, and a confined snap has no browser to open: the
+    # snap did nothing at all and said nothing either (issue #81, 1.10.0).
+    if frozen and not env.get("SNAP_NAME"):
         # The bundle carries no GLib, GTK or WebKit of its own on Linux (see
         # the spec): the host's are the ones that match the host's WebKitGTK
         # and drivers. So the host's typelibs come first (a fallback copy

@@ -51,7 +51,7 @@ def _alive(pid):
             out = subprocess.run(
                 ["tasklist", "/FI", f"PID eq {pid}"],
                 capture_output=True,
-                text=True,
+                text=True, encoding="utf-8", errors="replace",
                 timeout=10,
             ).stdout
         except Exception:
@@ -74,7 +74,7 @@ def _wait_gone(pid, seconds=10.0):
 
 
 def test_stop_ends_a_running_child_and_collects_it():
-    proc = subproc.popen(CHATTY_AND_LONG, stdout=subprocess.PIPE, text=True)
+    proc = subproc.popen(CHATTY_AND_LONG, stdout=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
     pid = proc.pid
     assert proc.stdout.readline().strip() == "hello"
     assert subproc.stop(proc) is not None
@@ -113,7 +113,7 @@ def test_stop_never_raises_over_a_broken_child():
 def test_the_child_gets_a_group_of_its_own():
     """Which is what makes it possible to reach Chrome's renderers rather than
     only the process Python is holding."""
-    proc = subproc.popen(CHATTY_AND_LONG, stdout=subprocess.PIPE, text=True)
+    proc = subproc.popen(CHATTY_AND_LONG, stdout=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
     try:
         proc.stdout.readline()
         assert os.getpgid(proc.pid) != os.getpgid(os.getpid())
@@ -134,7 +134,8 @@ def test_stopping_reaches_the_grandchildren():
         "time.sleep(120)\n"
     )
     proc = subproc.popen(
-        [sys.executable, "-u", "-c", script], stdout=subprocess.PIPE, text=True
+        [sys.executable, "-u", "-c", script], stdout=subprocess.PIPE, text=True,
+        encoding="utf-8", errors="replace"
     )
     grandchild = int(proc.stdout.readline().strip())
     assert _alive(grandchild)

@@ -117,7 +117,7 @@ def _run_driver(paths, fetch_fails=False):
     proc = subprocess.run(
         [node, "-e", driver, os.path.abspath(_SW), json.dumps(paths)],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         timeout=30,
     )
     if proc.returncode != 0:

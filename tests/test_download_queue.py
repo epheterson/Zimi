@@ -8,6 +8,8 @@ dispatch smallest-first as slots free up.
 import os
 import sys
 
+from types import SimpleNamespace
+
 import pytest
 
 # Ensure repo root on sys.path
@@ -23,6 +25,14 @@ import zimi.server as server  # noqa: E402
 def _reset_library_state(tmp_path, monkeypatch):
     """Reset queue + active state and stub out file-system pre-checks each test."""
     monkeypatch.setattr(server, "ZIM_DIR", str(tmp_path))
+    # The queue is under test, not this machine's free disk: a 10 GB test
+    # download is refused on a laptop with 11 GB left. A roomy disk here;
+    # the disk-space tests below set their own.
+    monkeypatch.setattr(
+        library.shutil,
+        "disk_usage",
+        lambda p: SimpleNamespace(total=10**13, used=0, free=10**13),
+    )
 
     with library._download_lock:
         library._active_downloads.clear()

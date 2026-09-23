@@ -76,7 +76,7 @@ class TestTheBrowserAgrees(unittest.TestCase):
             + "console.log(JSON.stringify(bad));\n"
         )
         out = subprocess.run(
-            ["node", "-e", script], capture_output=True, text=True, timeout=60
+            ["node", "-e", script], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60
         )
         self.assertEqual(out.returncode, 0, out.stderr)
         mismatches = json.loads(out.stdout.strip())

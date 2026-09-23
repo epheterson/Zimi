@@ -345,7 +345,7 @@ def test_cli_status_subprocess(tmp_path):
     r = subprocess.run(
         [sys.executable, "-m", "zimi", "import", "--status"],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         env=env,
         cwd=REPO_ROOT,
         timeout=120,

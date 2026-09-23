@@ -291,3 +291,31 @@ def test_the_window_keeps_its_storage_and_the_page_survives_without_one():
         js = f.read()
     assert js.index("_ensureStorage") < js.index("var _cfg = window.__ZIMI_CONFIG"), "the shim comes before the first read"
     assert "'localStorage', 'sessionStorage'" in js
+
+
+def test_a_snap_keeps_the_environment_its_extension_built():
+    """Inside a snap the GNOME extension has already pointed GTK, WebKitGTK
+    and their data at the platform snap. Taking that apart, which is right
+    for a bundle on a plain host, left the 1.10.0 snap unable to open a
+    window and unable to fall back to a browser: it did nothing, silently."""
+    snap = {
+        "SNAP": "/snap/zimi/42",
+        "SNAP_NAME": "zimi",
+        "LD_LIBRARY_PATH": "/snap/gnome-42-2204/current/usr/lib/x86_64-linux-gnu",
+        "GI_TYPELIB_PATH": "/snap/gnome-42-2204/current/usr/lib/x86_64-linux-gnu/girepository-1.0",
+        "GDK_PIXBUF_MODULE_FILE": "/snap/zimi/42/usr/lib/loaders.cache",
+        "GSETTINGS_SCHEMA_DIR": "/snap/zimi/42/usr/share/glib-2.0/schemas",
+        "GIO_MODULE_DIR": "/snap/zimi/42/usr/lib/gio/modules",
+    }
+    before = dict(snap)
+    changed = desktop._linux_environment(snap, frozen=True, isdir=lambda d: True)
+    for key in ("LD_LIBRARY_PATH", "GI_TYPELIB_PATH", "GDK_PIXBUF_MODULE_FILE", "GSETTINGS_SCHEMA_DIR", "GIO_MODULE_DIR"):
+        assert snap[key] == before[key], key
+        assert key not in changed, key
+    # The GPU hints are still wanted: a snap runs on the same machines.
+    assert changed == {"WEBKIT_DISABLE_DMABUF_RENDERER": "1", "WEBKIT_DISABLE_COMPOSITING_MODE": "1"}
+    # Outside a snap the same environment is still taken apart.
+    plain = dict(before)
+    del plain["SNAP"], plain["SNAP_NAME"]
+    desktop._linux_environment(plain, frozen=True, isdir=lambda d: True)
+    assert "GDK_PIXBUF_MODULE_FILE" not in plain

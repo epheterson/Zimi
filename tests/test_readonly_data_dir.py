@@ -257,7 +257,7 @@ def _run_cli(args, env):
         cwd=REPO_ROOT,
         env=env,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         timeout=60,
     )
 
@@ -307,7 +307,7 @@ def test_cli_config_reports_the_fallback_as_provenance(ro_zim_dir, tmp_path):
         ],
         env=_cache_env(str(home)),
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
     ).stdout.strip()
     assert expected in data_dir_line
 
