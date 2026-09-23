@@ -804,6 +804,56 @@ def _loadavg_throttle(threshold_ratio=0.8, max_sleep=2.0):
     time.sleep(sleep_for)
 
 
+# A build over a ZIM this big runs in a process of its own. libzim holds the
+# GIL while it reads, so a build on a server thread stalls every search thread
+# behind it: beside a scan thread a title lookup's p95 went from 0.14 ms to
+# 7.6 ms, and the NAS's quick search from 0.07 s to 2 to 7 s. Below this a
+# build finishes in about the time a child process takes to start (~2 s).
+_ISOLATE_BUILD_MIN_ENTRIES = 100_000
+
+
+def _zim_entry_count(zim_name):
+    for z in _srv._zim_list_cache or []:
+        if z.get("name") == zim_name:
+            entries = z.get("entries", 0)
+            return entries if isinstance(entries, int) else 0
+    return 0
+
+
+def _build_index_isolated(kind, zim_name, zim_path, build_fn, close_fn):
+    """build_fn(zim_name, zim_path), in a child process when the ZIM is big.
+
+    `kind` names the build for the child ("titles" or "qids"); close_fn evicts
+    this process's pooled connection to the index the child replaced. A frozen
+    desktop build has no `python -m` to start, and builds in this process."""
+    if (
+        getattr(sys, "frozen", False)
+        or _zim_entry_count(zim_name) < _ISOLATE_BUILD_MIN_ENTRIES
+    ):
+        return build_fn(zim_name, zim_path)
+    from zimi import subproc
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "zimi.search",
+        "--build-index",
+        kind,
+        _srv.ZIMI_DATA_DIR,
+        zim_name,
+        zim_path,
+    ]
+    proc = subproc.popen(cmd, stdin=subprocess.DEVNULL)
+    try:
+        code = proc.wait()
+    except BaseException:
+        subproc.stop(proc)
+        raise
+    if code != 0:
+        raise RuntimeError(f"{kind} index build process exited {code}")
+    close_fn(zim_name)
+
+
 _build_all_title_lock = threading.Lock()
 
 
@@ -846,7 +896,9 @@ def _build_all_title_indexes_inner():
         with _title_index_status_lock:
             _title_index_status["building_now"] = name
         try:
-            _build_title_index(name, path)
+            _build_index_isolated(
+                "titles", name, path, _build_title_index, _close_title_db
+            )
             built += 1
             with _title_index_status_lock:
                 _title_index_status["ready"] += 1
@@ -3432,5 +3484,25 @@ def _scan_vocab_child_main(index_dir, out):
     _srv._atomic_write_json(out, {"complete": complete, "words": vocab})
 
 
+def _build_index_child_main(kind, data_dir, zim_name, zim_path):
+    """`python -m zimi.search --build-index <kind> <data dir> <name> <path>`:
+    the build _build_index_isolated starts. It writes the index into the data
+    dir as a build in the server would, and exits nonzero if the build fails."""
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
+    )
+    _srv.ZIMI_DATA_DIR = data_dir
+    if kind == "titles":
+        _build_title_index(zim_name, zim_path)
+    elif kind == "qids":
+        from zimi import interlang
+
+        interlang._build_qid_index(zim_name, zim_path)
+    else:
+        raise SystemExit(f"unknown index kind {kind!r}")
+
+
 if __name__ == "__main__" and sys.argv[1:2] == ["--scan-vocab"]:
     _scan_vocab_child_main(sys.argv[2], sys.argv[3])
+elif __name__ == "__main__" and sys.argv[1:2] == ["--build-index"]:
+    _build_index_child_main(*sys.argv[2:6])

@@ -18,7 +18,7 @@ import time
 from urllib.parse import urlparse, parse_qs, quote, unquote
 
 import zimi.server as _srv
-from zimi.search import _loadavg_throttle
+from zimi.search import _build_index_isolated, _loadavg_throttle
 
 log = logging.getLogger("zimi")
 
@@ -884,7 +884,7 @@ def _build_all_qid_indexes_inner():
 
         for name, path in need_build:
             try:
-                _build_qid_index(name, path)
+                _build_index_isolated("qids", name, path, _build_qid_index, _close_qid_db)
                 current += 1
             except Exception as e:
                 log.warning("Q-ID index build failed for %s: %s", name, e)
