@@ -17295,6 +17295,7 @@ function openReader(url) {
     // wiktionary ZIM is installed). Works in the normal reader AND Reader View
     // (same document, listeners attached once per load survive the transform).
     try { _defineAttachToDoc(frame); } catch(e) {}
+    try { _sayMissingVideos(frame); } catch(e) {}
     // A consent wall the ARCHIVE rebuilds every time it is opened, and a
     // captured page's JS-driven chrome put back in its place. Both edit the
     // article's DOM, which is safe on a frozen capture and NOT safe on one
@@ -20733,6 +20734,25 @@ function _sweepBlockingOverlays(frame) {
     obs.observe(doc.documentElement, { childList: true, subtree: true });
     win.setTimeout(function() { obs.disconnect(); }, OVERLAY_WATCH_MS);
   } catch (e) {}
+}
+
+// A video page whose file the ZIM never got (the server marks the <video>
+// data-zimi-missing when none of its sources is there) says so, in the
+// reader's language, instead of showing a player that can never start.
+function _sayMissingVideos(frame) {
+  var doc = frame.contentDocument;
+  if (!doc) return;
+  var vids = doc.querySelectorAll('video[data-zimi-missing]');
+  for (var i = 0; i < vids.length; i++) {
+    var v = vids[i];
+    var holder = v.closest('.video-js') || v;
+    var note = doc.createElement('p');
+    note.className = 'zimi-video-missing';
+    note.setAttribute('role', 'status');
+    note.textContent = t('tube_missing');
+    note.style.cssText = 'padding:1.5em 1em;border:1px dashed currentColor;border-radius:8px;opacity:.8;text-align:center';
+    holder.parentNode.replaceChild(note, holder);
+  }
 }
 
 function _defineAttachToDoc(frame) {

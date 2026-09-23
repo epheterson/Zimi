@@ -362,12 +362,18 @@ def mend_sources(html, name, page):
             except Exception:
                 pass
 
+            found = {"sources": 0, "playable": 0}
+
             def fix(m):
                 tag = m.group(0)
                 attrs = {k.lower(): _html.unescape(v) for k, v in _ATTR_RE.findall(tag)}
                 src = attrs.get("src", "")
                 path = _resolve_path(page, src)
+                if path and tag.lower().startswith("<source"):
+                    found["sources"] += 1
                 if not path or _present(archive, path):
+                    if path:
+                        found["playable"] += 1
                     return tag
                 for alt in siblings_of(path):
                     if alt != path and _present(archive, alt):
@@ -376,10 +382,16 @@ def mend_sources(html, name, page):
                         esc_src = _html.escape(new_src, quote=True)
                         tag = re.sub(r"""src=(["'])[^"']*\1""", lambda q: 'src=%s%s%s' % (q.group(1), esc_src, q.group(1)), tag, count=1)
                         tag = re.sub(r"""type=(["'])[^"']*\1""", lambda q: 'type=%s%s%s' % (q.group(1), _SIBLING_TYPES[ext], q.group(1)), tag, count=1)
+                        found["playable"] += 1
                         return tag
                 return tag
 
-            return _SOURCE_TAG_RE.sub(fix, html)
+            html = _SOURCE_TAG_RE.sub(fix, html)
+            if found["sources"] and not found["playable"]:
+                # No file behind any source: the page says so (app.js,
+                # _sayMissingVideos) rather than offering a dead player.
+                html = re.sub(r"<video\b", '<video data-zimi-missing="1"', html, flags=re.I)
+            return html
     except Exception:
         return html
 

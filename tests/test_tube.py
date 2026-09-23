@@ -241,12 +241,27 @@ def test_a_talk_without_its_file_is_not_in_the_feed_and_its_page_says_so(tmp_pat
     files = dict(TED_FILES)
     del files["videos/13316/video.webm"]
     files["why-tech-needs-the-humanities"] = TED_PAGE
-    _library(tmp_path, monkeypatch, [("ted_en_gone_2023-09.zim", {"Scraper": "ted2zim 2.0.13", "Name": "ted_en_gone"}, files)])
+    whole = dict(TED_FILES)
+    whole["why-tech-needs-the-humanities"] = TED_PAGE
+    _library(
+        tmp_path, monkeypatch,
+        [
+            ("ted_en_gone_2023-09.zim", {"Scraper": "ted2zim 2.0.13", "Name": "ted_en_gone"}, files),
+            ("ted_en_x_2023-09.zim", {"Scraper": "ted2zim 2.0.13", "Name": "ted_en_x"}, whole),
+        ],
+    )
     assert [v["page"] for v in tube.videos_for("ted_en_gone")] == ["the-world-s-rarest-diseases"]
     assert "media" not in tube.videos_for("ted_en_gone")[0]
     got = tube.playback("ted_en_gone", "why-tech-needs-the-humanities")
     assert got["missing"] is True
     assert got["media"] == [{"path": "videos/13316/video.webm", "type": "video/webm"}]
+    # And the talk's own page in the reader: its <video> is marked, and the
+    # page says the file is not there instead of showing a dead player.
+    page_html = TED_PAGE.decode()
+    mended = tube.mend_sources(page_html, "ted_en_gone", "why-tech-needs-the-humanities")
+    assert 'data-zimi-missing="1"' in mended
+    present = tube.mend_sources(page_html, "ted_en_x", "why-tech-needs-the-humanities")
+    assert "data-zimi-missing" not in present
 
 
 def test_playback_names_the_zims_own_decoder_when_it_ships_one(tmp_path, monkeypatch):
@@ -401,4 +416,7 @@ def test_a_zero_byte_file_is_as_absent_as_none(tmp_path, monkeypatch):
     assert [v["page"] for v in tube.videos_for("ted_en_zero")] == ["the-world-s-rarest-diseases"]
     got = tube.playback("ted_en_zero", "why-tech-needs-the-humanities")
     assert got["missing"] is True
-    assert tube.mend_sources(TED_PAGE.decode(), "ted_en_zero", "why-tech-needs-the-humanities") == TED_PAGE.decode()
+    mended = tube.mend_sources(TED_PAGE.decode(), "ted_en_zero", "why-tech-needs-the-humanities")
+    # The source is left as it is (nothing better to point at); the <video> is
+    # marked so the reader says the file is not in the ZIM.
+    assert mended == TED_PAGE.decode().replace("<video ", '<video data-zimi-missing="1" ', 1)
