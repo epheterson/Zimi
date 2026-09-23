@@ -52,22 +52,34 @@ Each with a test that fails on the old code, and the page fixes checked in a bro
 
 On `release-names`: release files named `Zimi-<version>-<platform>-<chip>`.
 
-## Needs Eric
+## Decided by Eric (2026-09-23), done
 
-1. **Nearby announces a default install on the LAN.** Name `zimi-<hostname>` (here `zimi-Erics-iMac`), IP, port, exact version, ZIM count and BT port, while the Settings switch reads OFF and the README says off by default. Recommend: advertise only when Nearby is on.
-2. **UPnP opens router ports on a default install** (6884, 6885, 6899 seen). Recommend: only when sharing or seeding is switched on.
-3. **"Remember me" keeps the primary admin's password in localStorage in plain text** (`zimi_manage_pw`). Recommend: a session token, as secondary admins already get.
-4. **Preferred languages do not narrow search**, though 1.7.0 says they do. Build it, or correct the changelog.
-5. **A medicine maxi and nopic in one folder are both served.** Prefer one, as `_all` names already do?
-6. **Where the Mac app's perpetual update offer leaves 1.10.1 users**: the fix ships in the next build; users on 1.10.1 keep seeing the offer until they take one.
-7. **"About this data" (1.7.2 changelog) was never built.** No version of the code or translations has it. Build it, or drop the claim.
-8. **Quick search takes 5 to 12 s for many multi-word queries on the NAS.** When no title starts with the first word, 72 of 78 ZIMs fall back to libzim's SuggestionSearcher. Since 1.5 (which dropped FTS5 prefix queries at 5 to 6 s per ZIM); not a regression. Whole-word FTS5 measured up to 1 s per large ZIM cold. Needs a design pass: which ZIMs deserve the fallback, and whether results can stream per ZIM.
+1. Nearby announces only when it is switched on.
+2. UPnP opens router ports only when BitTorrent is on. Unchanged: that was already the rule, but BitTorrent is on by default since 1.7.0, so a default install opens them.
+3. "Remember me" keeps a session token; a stored password is removed from the browser.
+4. Preferred languages narrow search; the other languages stay as dimmed, tappable pills.
+5. Two flavors of one ZIM (maxi, nopic, mini) are served once, as the richer one; links to the other redirect.
+6. The Mac app reports its real version from 1.10.2; users on 1.10.1 see the update offer until they take it.
+7. "About this data" is built, in the almanac.
+8. Quick search: the fallback to libzim's SuggestionSearcher is gone for indexed ZIMs (warm 0.07 s on the NAS copy), and title and Q-ID index builds over big ZIMs run in a process of their own. Measured while a Q-ID build ran: a thread build put a title lookup's p95 at 7.6 ms (0.14 ms idle); on 42 ZIMs quick search p95 went from 123 ms to 23 ms with the build moved out.
 
-## Still open (not yet fixed)
+## Fixed on 2026-09-23
 
-- Apps: current youtube2zim 3.x ZIMs give no rows; on iPhone the docked TED video is clipped and has no subtitles, and tapping the dock pauses; zero ZIMs shows no Apps row; a new collection needs a reload while the service worker is on.
-- Reading: the Q-ID badge never shows; Reader View draws two lines under every title; CNN captures stay light under simulated dark mode.
-- Search, Home: Book of the Day differs between identical requests; On This Day never shows its date; the desktop Discover strip does not scroll with a mouse wheel; recent history shows file names for some entries; the `maps` title index fails to build.
-- Almanac: deep time shows nonsense instead of "beyond range"; the zone label stays PDT in January; the meteor "Peak!" badge is a day late; two 2027 penumbral lunar eclipses are missing. (Twilight and the Morning/Evening labels were not a regression: the labels are the planets', and present; twilight was always computed, never shown.)
-- Library, Sharing: a restart throws away BitTorrent download progress; two Zimis on one host clash on the Nearby name; the advertised BT port and ZIM count are frozen at startup.
-- Ops: `scripts/release-gate.sh` has three stale checks; stale Playwright specs (`test_tabs.mjs`, `visual_validation.spec.mjs`); none of the 20 Playwright specs run in CI; duplicate changelog bullets.
+- The snap under the desktop portal (#81) and sticky apps (#88).
+- A killed title index build no longer breaks the next start (the `maps` index).
+- Book of the Day is stable (the prefix fallback shuffled unseeded).
+- On This Day shows its date; recent history shows titles; Reader View draws one line; the Discover strip and pill rows scroll with a mouse wheel.
+- The Q-ID badge is set before the full scans, not hours after.
+- Nearby: two servers on one host get different names; the advert's ZIM count and BT port follow changes.
+- Almanac: zone label, meteor Peak!, deep time and the Chinese row say "beyond" past their spans, the orrery stays finite, the 2027 Aug 17 penumbral eclipse is listed (Jul 18, magnitude 0.001, stays out: Meeus's gamma cannot resolve it).
+- The release gate is green (51 checks): one real defect (the shot event in the progress stream), two checks stale since 1.10.0, and a fixture that relied on the guess the language globe no longer makes.
+- A multilingual ZIM's badge reads "18 languages".
+
+## Still open
+
+- Apps: current youtube2zim 3.x, multi-language TED and Blender Studio ZIMs give no rows (#89, in progress); on iPhone the docked TED video is clipped and has no subtitles, and tapping the dock pauses.
+- Desktop app binds to localhost only, so other devices cannot open it (#90, in progress).
+- CNN captures stay light under simulated dark mode.
+- A restart throws away BitTorrent download progress.
+- Stale Playwright specs (`test_tabs.mjs`, `visual_validation.spec.mjs`); none of the 20 Playwright specs run in CI.
+- The NAS Docker daemon hangs on operations on the test containers (the live container is unaffected).
