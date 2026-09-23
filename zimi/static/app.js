@@ -10695,7 +10695,19 @@ function _creatorSidecarCell(d) {
   return d.sidecar ? _creatorSidecarHtml(d.sidecar) : _creatorStateHtml(null);
 }
 function _creatorSidecarCmd(d) {
-  return _creatorInstallHtml(d.sidecar ? d.sidecar.installed : null, 'zimi import --setup');
+  return _creatorInstallHtml(d.sidecar ? d.sidecar.installed : null, _creatorSetupCmd('zimi import --setup', d));
+}
+// A setup command aimed at THIS server's data dir: run from a terminal without
+// the service's config, the bare command installs into another one and the
+// engine stays grey with nothing to say why (#61; the Create page already
+// names it, see create.js _createSidecarCommand).
+function _creatorSetupCmd(base, d) {
+  return d && d.data_dir ? base + ' --data-dir ' + _shellQuote(d.data_dir) : base;
+}
+// One word for a POSIX shell: as is when it is safe, else single-quoted.
+function _shellQuote(text) {
+  if (/^[A-Za-z0-9_@%+=:,.\/-]+$/.test(text)) return text;
+  return "'" + text.replace(/'/g, "'\\''") + "'";
 }
 
 function _creatorSidecarHtml(sidecar) {
@@ -10740,7 +10752,7 @@ function _creatorHtml(d) {
     '<div id="ms-cr-sidecar-cmd">' + _creatorSidecarCmd(d) + '</div>' +
     _mcRow(tH('creator_alive'), '<span id="ms-cr-alive">' + _creatorStateHtml(d.alive_ready) + '</span>') +
     _mcRow(tH('creator_reddit'), '<span id="ms-cr-reddit">' + _creatorStateHtml(d.reddit_ready) + '</span>') +
-    '<div id="ms-cr-reddit-cmd">' + _creatorInstallHtml(d.reddit_ready, 'zimi create --setup-reddit') + '</div>';
+    '<div id="ms-cr-reddit-cmd">' + _creatorInstallHtml(d.reddit_ready, _creatorSetupCmd('zimi create --setup-reddit', d)) + '</div>';
 
   // Made here LAST — an unbounded, growing list, and the slow half to gather
   // (a provenance walk of the library), so it never blocks the pane. It fills
@@ -10859,7 +10871,7 @@ function _patchCreatorSection(d) {
   put('ms-cr-sidecar', _creatorSidecarCell(d));
   put('ms-cr-sidecar-cmd', _creatorSidecarCmd(d));
   put('ms-cr-reddit', _creatorStateHtml(d.reddit_ready));
-  put('ms-cr-reddit-cmd', _creatorInstallHtml(d.reddit_ready, 'zimi create --setup-reddit'));
+  put('ms-cr-reddit-cmd', _creatorInstallHtml(d.reddit_ready, _creatorSetupCmd('zimi create --setup-reddit', d)));
   put('ms-cr-alive', _creatorStateHtml(d.alive_ready));
   put('ms-cr-queue', _creatorQueueHtml(d.queue));
   ['block_ads', 'capture_variants'].forEach(function(key) {

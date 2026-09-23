@@ -4098,6 +4098,10 @@ def _creator_payload():
         # None, not "", when no root is configured — the same shape the create
         # page's probe uses, so both readers treat "unset" the same way.
         "create_root": _create_root() or None,
+        # For the setup commands the pane prints: `zimi import --setup` from a
+        # terminal without this server's config installs into another data
+        # dir, and the engine stays grey (#61). The pane names this one.
+        "data_dir": _srv.ZIMI_DATA_DIR,
         "block_ads_default": _create_default("block_ads", CREATE_BLOCK_ADS),
         "capture_variants_default": _create_default(
             "capture_variants", CREATE_CAPTURE_VARIANTS

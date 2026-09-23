@@ -275,8 +275,7 @@ var _createSidecarDir = null;
 // and backticks, so a data dir containing either would paste as a different
 // path. Bare when the path has nothing a shell reads.
 function _createShellQuote(text) {
-  if (/^[A-Za-z0-9_@%+=:,.\/-]+$/.test(text)) return text;
-  return "'" + text.replace(/'/g, "'\\''") + "'";
+  return _shellQuote(text);  // app.js, shared with Manage's setup commands
 }
 
 // The sidecar command, aimed at THIS server's data dir.
