@@ -14,7 +14,7 @@ The mode lives in Zimi's state and is set from Manage or by `ZIMI_PUBLIC_ACCESS`
 
 **Named accounts & per-ZIM allowlists.** Beyond the single admin, Zimi supports multiple user accounts (`zimi/users.py`), each with a per-ZIM allowlist so different people see different slices of the library. Sessions are cookie-based.
 
-**Creator role.** An account can carry `can_create`, letting it drive the web Create page's URL modes (single page, `--site`, video) without full admin credentials. The server-disk modes — folder capture and web-archive import — stay with the **primary admin** only and are CLI-only regardless (see [Creating ZIMs](making-zims.md)).
+**Creator role.** An account can carry `can_create`, letting it drive the web Create page's URL modes (single page, `--site`, video) without full admin credentials. The server-disk modes stay with the **primary admin**: folder capture is CLI-only, and web-archive import is the CLI or the Create page's Import picker over the import directory (see [Creating ZIMs](making-zims.md)).
 
 **Secure first-run bootstrap (GHSA-5mw2-53vv-9pw6).** Setting the first admin password used to be "any private-tier client sets it" — on a LAN, a Docker bridge, or a tailnet, too many hands: an adjacent device could race the owner to claim admin. The fix splits the bootstrap door in two:
 
@@ -32,6 +32,8 @@ The key is a CSPRNG value shaped like `7Q2K-9F4M-XR8T`, stored `0600` in `ZIMI_D
 | `ZIMI_MANAGE_USER` | env / config | password file | Admin username (else read from the password file) |
 | `ZIMI_MANAGE_PASSWORD` | env / config | password file | Admin password (else the password file) |
 | `ZIMI_API_TOKEN` | env / config | token file | Bearer token for programmatic access (else the generated token file) |
+| `ZIMI_MANAGE_OPEN` | env | `0` | `1` turns management authentication off entirely: no password, no setup key. Only for a network you control; it warns at every boot. |
+| `ZIMI_LAN_ADMIN` | env | `0` | `1` makes any direct private-network client the admin while no password is set, as before 1.9.0. Not through a proxy. |
 | setup key | `ZIMI_DATA_DIR/setup-key` | auto-generated | One-time remote bootstrap secret; printed to the server log |
 
 ## Troubleshoot
@@ -40,7 +42,7 @@ The key is a CSPRNG value shaped like `7Q2K-9F4M-XR8T`, stored `0600` in `ZIMI_D
 - **Lost the setup key** — it's in the server log, and in `ZIMI_DATA_DIR/setup-key` while unspent. If a password is already set, the key is gone on purpose; reset via the password file / `ZIMI_MANAGE_PASSWORD`.
 - **Can't generate an API token** — you must set an admin password first; a passwordless instance refuses. If token generation returns a 500, the data dir isn't writable.
 - **A user can't see a ZIM they should** — check the mode (private/limited) and that ZIM's per-user allowlist.
-- **A creator account can't use folder/import** — expected. Those are primary-admin, CLI-only. Creators get the URL capture modes only.
+- **A creator account can't use folder/import** — expected. Those are primary-admin only (folder from the CLI, import from the CLI or the Import picker). Creators get the URL capture modes.
 - **Management endpoints 404** — `ZIMI_MANAGE=0` disables them. Set it back to `1`.
 
 ---

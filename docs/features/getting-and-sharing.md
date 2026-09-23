@@ -6,7 +6,7 @@ Your installed ZIM sources, the catalog you download more from, and how updates 
 
 **Installed library.** Zimi serves every `.zim` in `ZIM_DIR`. On first load it builds a metadata cache (`.zimi_cache.json` — entry counts, sizes, main paths, real article counts) so subsequent boots are fast. `zimi list` (or `GET /list`) shows what's installed.
 
-**Catalog & downloads.** The Catalog view proxies Kiwix's OPDS feed (`/manage/catalog`, count capped server-side). The client fetches the full item list once (~1,000+ items) for instant client-side category browsing and filtering, then downloads are driven through Zimi's own download machinery (with optional BitTorrent acceleration — see [Sharing](getting-and-sharing.md)). Sort order: Manage view alphabetical, Home by article count, Catalog installed-first then alphabetical.
+**Catalog & downloads.** The Catalog view proxies Kiwix's OPDS feed (`/manage/catalog`, count capped server-side). The client fetches the full item list once (~1,000+ items) for instant client-side category browsing and filtering, then downloads are driven through Zimi's own download machinery (with optional BitTorrent acceleration — see [Sharing](getting-and-sharing.md)). Sort order: Manage view alphabetical, Home alphabetical by default with a sort menu (recently added, recently updated, most articles), Catalog installed-first then alphabetical.
 
 **Folders as categories.** Subfolders under `ZIM_DIR` are scanned and surface as categories. Root always wins over a subfolder copy, and the subfolder scan respects quarantines.
 
@@ -31,7 +31,7 @@ Update *channel* and *delay* (which Zimi build to self-update to) are covered in
 - **A new ZIM isn't auto-updating** — the updater only maintains ZIMs it already knows. Seed the file once into `ZIM_DIR`; thereafter same-flavor updates are tracked.
 - **An update didn't offer itself** — Zimi only suggests same-flavor updates. A `nopic` install won't be replaced by a `maxi` catalog entry; that's intentional.
 - **A subfolder copy shadows the one you want** — root always wins. Move the intended file to the top of `ZIM_DIR`, or remove the duplicate.
-- **Catalog won't load offline** — the OPDS feed needs internet. With `ZIMI_OFFLINE=1` the catalog is unavailable by design; the installed library still works.
+- **Catalog offline** — with no internet (or `ZIMI_OFFLINE=1`) the catalog shows the last copy Zimi fetched, or the snapshot shipped in the package, and says how old it is. Downloading needs the network; with `ZIMI_OFFLINE=1` Zimi never tries to reach it.
 
 ---
 

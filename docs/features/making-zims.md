@@ -6,7 +6,7 @@ Turn a folder, a web page, a whole small site, a video source, or a subreddit in
 
 `zimi create` is one command with several input shapes. The positional `source` is either a folder path or one or more `http(s)://` URLs (several URLs land in a single ZIM behind a generated index page). Add `--site` to crawl one origin instead of capturing a single page; pass a video URL to package a playlist or channel via yt-dlp.
 
-Web captures run through one of four **engines**, chosen with `--engine`:
+Web captures run through one of five **engines**, chosen with `--engine`:
 
 - **builtin** (default) — no JavaScript, no install. Fetches HTML and assets directly. Fastest, smallest, and the only engine with zero dependencies.
 - **rendered** — runs a headless Chromium in-process so client-rendered pages produce real content. Needs `pip install 'zimi[browser]'` and `playwright install chromium`.
@@ -14,7 +14,7 @@ Web captures run through one of four **engines**, chosen with `--engine`:
 - **singlefile** — hands the page to [SingleFile](https://github.com/gildas-lormeau/SingleFile), the reference implementation of "save this page as one file". It drives a browser, waits for the page to finish, and inlines every image, stylesheet and font as a data URI. The result is a single self-contained entry that **cannot** break: there is nothing to lazy-load and no reference that can fail to resolve, so it is the only engine whose images survive a scroll on every site tested. Costs about a third in size (base64) and stores one entry rather than a browsable tree. Needs Node and `npm install -g single-file-cli`, plus a Chromium.
 - **zimit** — openZIM's browser-based crawler (browsertrix), run via Docker. Now available for a single page as well as a `--site` crawl, and offered in the web UI wherever Zimi can reach a Docker daemon. Extra crawler arguments pass through with `--engine-arg` (write it attached, e.g. `--engine-arg=--workers=2`).
 
-**What each engine trades.** They are not better and worse, they are three bargains. Measured on one CNN front page, iPhone width, served offline with the network sealed:
+**What each engine trades.** They are not better and worse, they are different bargains; the three that run in-process compare like this. Measured on one CNN front page, iPhone width, served offline with the network sealed:
 
 | Engine | Assets kept | Images that render | What it is for |
 | --- | --- | --- | --- |
@@ -61,7 +61,7 @@ The rendered and alive engines take them on the page they already have open. The
 | `--format` / `--audio-only` / `--limit` | flag | ~720p cap, H.264 first | Video source selection. H.264 plays in every browser; YouTube's default MP4 is AV1, which iPhones before the 15 Pro cannot decode. |
 | `--language` | flag | detected → `eng` | ISO 639-3 content language |
 | `--out` | flag | ZIM dir + register | Explicit output path |
-| `ZIMI_CREATE_ROOT` | env / config `create_root` | unset (web off) | The one directory tree the web UI may package a server path from. Unset means the web cannot read any server path; the CLI is unaffected. |
+| `ZIMI_CREATE_ROOT` | env / config `create_root` | unset (the ZIM directory) | The directory tree the Create page's Import picker lists archives from (subdirectories included). Unset, it lists the ZIM directory. No path is ever typed in the browser; the CLI is unaffected. |
 
 ## Troubleshoot
 
