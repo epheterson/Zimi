@@ -1303,6 +1303,8 @@
   "ms_users": "उपयोगकर्ता",
   "multi_lang": "बहुभाषी",
   "multilingual": "बहुभाषी ({n} भाषाएं)",
+  "n_languages_one": "{n} भाषा",
+  "n_languages_other": "{n} भाषाएँ",
   "n_available": "{n} उपलब्ध",
   "n_entries_one": "{n} प्रविष्टियाँ",
   "n_entries_other": "{n} प्रविष्टियाँ",

@@ -3648,7 +3648,7 @@ function _langBadge(z, force, full) {
   if (!info) return '';
   if (info.multi) {
     return '<span class="lang-badge multi" title="' + escAttr(t('multilingual', {n: info.multi})) + '">' +
-      info.multi + ' ' + tH('language').toLowerCase() + '</span>';
+      tPluralH('n_languages', info.multi) + '</span>';
   }
   var name = _langDisplayName(z.language) || info.code;
   if (full) {

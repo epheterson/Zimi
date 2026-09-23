@@ -1303,6 +1303,8 @@
   "ms_users": "Пользователи",
   "multi_lang": "Многоязычный",
   "multilingual": "Многоязычный ({n} языков)",
+  "n_languages_one": "{n} язык",
+  "n_languages_other": "{n} яз.",
   "n_available": "{n} доступно",
   "n_entries_one": "{n} запись",
   "n_entries_other": "Записей: {n}",

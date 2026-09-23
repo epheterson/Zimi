@@ -1303,6 +1303,8 @@
   "ms_users": "משתמשים",
   "multi_lang": "רב-לשוני",
   "multilingual": "רב־לשוני ({n} שפות)",
+  "n_languages_one": "שפה אחת",
+  "n_languages_other": "{n} שפות",
   "n_available": "{n} זמינים",
   "n_entries_one": "{n} רשומות",
   "n_entries_other": "{n} רשומות",

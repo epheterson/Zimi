@@ -1303,6 +1303,8 @@
   "ms_users": "用户",
   "multi_lang": "多语言",
   "multilingual": "多语言（{n} 种语言）",
+  "n_languages_one": "{n} 种语言",
+  "n_languages_other": "{n} 种语言",
   "n_available": "{n} 个可用",
   "n_entries_one": "{n} 个条目",
   "n_entries_other": "{n} 个条目",

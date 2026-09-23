@@ -1303,6 +1303,8 @@
   "ms_users": "Usuarios",
   "multi_lang": "Multi-idioma",
   "multilingual": "Multilingüe ({n} idiomas)",
+  "n_languages_one": "{n} idioma",
+  "n_languages_other": "{n} idiomas",
   "n_available": "{n} disponibles",
   "n_entries_one": "{n} entrada",
   "n_entries_other": "{n} entradas",
