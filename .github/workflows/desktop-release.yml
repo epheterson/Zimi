@@ -281,11 +281,23 @@ jobs:
           done
           snap connections zimi
           mkdir -p "$HOME/zimi-smoke"
+          # A real user session, not dbus-run-session: `snap run` asks the
+          # session bus's systemd for a scope, and a bare dbus-run-session
+          # bus has none, so snapd refused to start the app at all ("not a
+          # snap cgroup"). Lingering gives the runner user its own systemd
+          # and session bus, as a desktop login does.
+          sudo loginctl enable-linger "$(id -un)"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          for i in $(seq 1 30); do [ -S "$XDG_RUNTIME_DIR/bus" ] && break; sleep 1; done
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          # The display first, so the portal's GTK backend can start on it.
+          Xvfb :99 -screen 0 1280x800x24 >/tmp/xvfb.log 2>&1 &
+          export DISPLAY=:99
+          sleep 2
+          /usr/libexec/xdg-desktop-portal >/tmp/portal.log 2>&1 &
+          sleep 2
           ZIMI_DESKTOP_SMOKE=app ZIMI_DESKTOP_SMOKE_DWELL=2 ZIM_DIR="$HOME/zimi-smoke" \
-            timeout 180 dbus-run-session -- sh -c '
-              /usr/libexec/xdg-desktop-portal >/tmp/portal.log 2>&1 &
-              sleep 2
-              xvfb-run -a snap run zimi' 2>&1 | tee /tmp/snap-smoke.log || true
+            timeout 180 snap run zimi 2>&1 | tee /tmp/snap-smoke.log || true
           grep -i "portal" /tmp/snap-smoke.log /tmp/portal.log || true
           if ! grep -q "SMOKE: app rendered" /tmp/snap-smoke.log; then
             echo "::error::The snap did not open its window; this release ships without it."
