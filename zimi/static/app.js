@@ -1180,6 +1180,17 @@ let _manageUser = _readManageUser();
 let _manageSavedReader = null; // saved reader state when entering manage
 let _pwResolve = null;
 let _pwReject = null;
+// Manage calls that got a 401 while a manage sign-in was already open. Each is
+// retried with the token once the call that opened the prompt is accepted, and
+// rejected if it is cancelled. Two 401s at once (the Library pane and the
+// Creator prefetch) used to replace one resolver with the other, and the first
+// call waited forever: Manage stuck on "Loading…" after a correct password.
+let _pwQueued = [];
+let _pwQueueOwner = null;
+function _pwDropQueue(err) {
+  var q = _pwQueued; _pwQueued = []; _pwQueueOwner = null;
+  q.forEach(function(w) { w.reject(err || new Error('auth_cancelled')); });
+}
 
 // ── Multi-user session (v1.8) ──
 // A logged-in NAMED USER (not admin). The session cookie does the actual
@@ -1361,6 +1372,15 @@ function manageFetch(url, opts) {
   return fetch(url, opts).then(_throwIfRateLimited).then(function(res) {
     if (res.status === 401) {
       return new Promise(function(resolve, reject) {
+        var retryWith = function(token) {
+          var o = Object.assign({}, opts);
+          o.headers = Object.assign({}, o.headers, _authHeaders(token));
+          return fetch(url, o);
+        };
+        if (_pwResolve && _pwResolve === _pwQueueOwner) {
+          _pwQueued.push({ retry: retryWith, resolve: resolve, reject: reject });
+          return;
+        }
         // Single auth door: any unauthorized manage call opens the UNIFIED
         // sign-in modal (there is no separate "Sign in" entry). It accepts a
         // named user (→ their filtered library) OR the admin (→ full manage);
@@ -1369,6 +1389,7 @@ function manageFetch(url, opts) {
         _pwLoginMode = true;
         var rejectFn = function() {
           // User cancelled — leave manage view
+          _pwDropQueue();
           goHome();
           reject(new Error('auth_cancelled'));
         };
@@ -1376,9 +1397,7 @@ function manageFetch(url, opts) {
           // Verify password (and username, if any) before accepting it.
           // submitPw has already set _manageUser from the modal field, so
           // _authHeaders folds in the X-Zimi-User header.
-          var verifyOpts = Object.assign({}, opts);
-          verifyOpts.headers = Object.assign({}, verifyOpts.headers, _authHeaders(token));
-          fetch(url, verifyOpts).then(function(retryRes) {
+          retryWith(token).then(function(retryRes) {
             if (retryRes.status === 401) {
               // Wrong password — show error, restore reject handler, keep modal open
               document.getElementById('pw-error').textContent = t('wrong_password');
@@ -1391,10 +1410,14 @@ function manageFetch(url, opts) {
             // Correct password
             _manageToken = token;
             _saveManageToken(token, document.getElementById('pw-remember').checked);
+            var queued = _pwQueued; _pwQueued = []; _pwQueueOwner = null;
             closePwModal();
             resolve(retryRes);
+            queued.forEach(function(w) { w.retry(token).then(w.resolve, w.reject); });
           });
         };
+        _pwQueueOwner = _pwResolve;
+        _pwQueued = [];
         _pwReject = rejectFn;
         openPwModal(t('sign_in'));
       });
@@ -1523,6 +1546,7 @@ function submitPw() {
         // (it's admin-only — retrying would just 401 again) and switch to the
         // filtered library. Their account state lives in Manage → Users.
         _pwResolve = null; _pwReject = null;
+        _pwDropQueue();
         _pwLoginMode = false;
         // Leaving the private-mode gate: reload into a clean authenticated
         // state so the whole app boots with the session's filtered view.
