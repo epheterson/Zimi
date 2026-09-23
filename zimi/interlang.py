@@ -835,6 +835,40 @@ def _persist_qid_flags(qid_flags):
 _build_all_qid_lock = threading.Lock()
 
 
+def _detect_qid_flags(zims):
+    """{name: has_qids} for every ZIM: True where a Q-ID index exists, else
+    whether one sampled article carries a Q-ID. One read per ZIM, so the
+    badge does not wait for the full scans, which on a big library take
+    hours."""
+    flags = {}
+    sampled = 0
+    for name, path in zims.items():
+        if _qid_has_index(name):
+            flags[name] = True
+        else:
+            flags[name] = _check_one_article_for_qid(path)
+            sampled += 1
+    log.info(
+        "Q-ID support: %d/%d ZIMs have Q-IDs (%d sampled)",
+        sum(1 for v in flags.values() if v),
+        len(flags),
+        sampled,
+    )
+    return flags
+
+
+def _apply_qid_flags(flags):
+    """Set has_qids on the library list, and persist when anything changed."""
+    changed = 0
+    for zi in _srv._zim_list_cache or []:
+        zname = zi.get("name", "")
+        if zname in flags and zi.get("has_qids") != flags[zname]:
+            zi["has_qids"] = flags[zname]
+            changed += 1
+    if changed:
+        _persist_qid_flags(flags)
+
+
 def _build_all_qid_indexes():
     """Build Q-ID indexes for small Wikipedia ZIMs and detect has_qids for all ZIMs.
 
@@ -856,6 +890,8 @@ def _build_all_qid_indexes_inner():
     """
     os.makedirs(_qid_index_dir(), exist_ok=True)
     zims = _srv.get_zim_files()
+    # Which ZIMs carry Q-IDs is known first, from one article each.
+    _apply_qid_flags(_detect_qid_flags(zims))
     zim_info = {
         z.get("name"): z.get("entries", 0) for z in (_srv._zim_list_cache or [])
     }
@@ -886,6 +922,7 @@ def _build_all_qid_indexes_inner():
             try:
                 _build_index_isolated("qids", name, path, _build_qid_index, _close_qid_db)
                 current += 1
+                _apply_qid_flags({name: True})
             except Exception as e:
                 log.warning("Q-ID index build failed for %s: %s", name, e)
             # Yield to host between ZIMs if loadavg is high.
@@ -923,46 +960,6 @@ def _build_all_qid_indexes_inner():
             current,
             skipped_large,
         )
-
-    # Phase 2: Detect has_qids for all ZIMs
-    # Known Wikimedia projects always embed Q-IDs. For indexed ZIMs we know for sure.
-    # For unknown projects, sample a few articles to check.
-    indexed_zims = set()
-    for name in zims:
-        if _qid_has_index(name):
-            indexed_zims.add(name)
-
-    qid_flags = {}  # {name: bool}
-    sampled = 0
-    for name, path in zims.items():
-        if name in indexed_zims:
-            qid_flags[name] = True
-        else:
-            # Sample actual content — don't assume based on project name
-            has = _check_one_article_for_qid(path)
-            qid_flags[name] = has
-            sampled += 1
-
-    # Apply to _zim_list_cache and persist
-    changed = 0
-    for zi in _srv._zim_list_cache or []:
-        zname = zi.get("name", "")
-        if zname in qid_flags:
-            old = zi.get("has_qids")
-            zi["has_qids"] = qid_flags[zname]
-            if old != qid_flags[zname]:
-                changed += 1
-
-    if changed:
-        _persist_qid_flags(qid_flags)
-
-    has_count = sum(1 for v in qid_flags.values() if v)
-    log.info(
-        "Q-ID support: %d/%d ZIMs have Q-IDs (%d sampled)",
-        has_count,
-        len(qid_flags),
-        sampled,
-    )
 
 
 # ============================================================================
