@@ -17755,6 +17755,10 @@ function openReader(url) {
         var _navZim = decodeURIComponent(_wm[1]);
         var _navPath = decodeURIComponent(_wm[2]);
         currentArticle = { zim: _navZim, path: _navPath };
+        // The page's own title, now that it is here: a visit recorded before
+        // the page loaded (a deep link, a link inside an article) carried
+        // only its path, and Recent history read "ce.html", "cover.453".
+        try { _histRetitle(_navZim, _navPath, (frame.contentDocument.title || '').trim()); } catch (e) {}
         if (_tubeOpen || _exchangeOpen || _reddotOpen) {
           // A card in an app opened a ZIM page: a real page now, with the
           // history and address every page gets, and Back returns to the app.
@@ -17823,6 +17827,19 @@ function _histPushArticle(zim, path, title, pos, app) {
   h.unshift(entry);
   if (h.length > _HIST_MAX) h.length = _HIST_MAX;
   _histSave();
+}
+// Give a recent visit its page's real title when all it has is the one
+// guessed from its path. Never overwrites a real title or an app's.
+function _histRetitle(zim, path, title) {
+  if (!title) return;
+  var h = _histLoad();
+  for (var i = 0; i < Math.min(5, h.length); i++) {
+    var e = h[i];
+    if (e.type === 'article' && e.zim === zim && e.path === path && !e.app) {
+      if (e.title === _titleFromPath(path) && e.title !== title) { e.title = title; _histSave(); }
+      return;
+    }
+  }
 }
 // The fourth argument of a history row's openArticle: the place, when the
 // visit was one. Written into an inline handler, so it is source text.
