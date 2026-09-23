@@ -54,15 +54,36 @@ def _nearby_conf() -> dict:
 
 
 def is_enabled() -> bool:
-    """LAN discovery is on by default. ZIMI_NEARBY's discovery= field (or
-    legacy ZIMI_PEER_DISCOVERY) disables it."""
+    """Whether this instance announces itself on the LAN and looks for others.
+
+    Only while Nearby is on (Eric, 2026-09-23: "no advertising unless nearby
+    is on"). It used to be on by default on its own switch, so a default
+    install announced its name (zimi-<hostname>), address, version and ZIM
+    count to the network while the Nearby switch in Settings read OFF, which
+    the 1.7.0 promise and the README said it would not do. ZIMI_NEARBY's
+    discovery= field (or legacy ZIMI_PEER_DISCOVERY) still decides it
+    outright when set."""
     conf = _nearby_conf()
     if "discovery" in conf:
         return str(conf["discovery"]).lower() not in ("0", "false", "no", "off")
     if "enabled" in conf and not conf["enabled"]:
         return False  # NEARBY=off silences the whole feature, adverts included
-    val = os.environ.get("ZIMI_PEER_DISCOVERY", "1").strip().lower()
-    return val not in ("0", "false", "no", "off", "")
+    val = os.environ.get("ZIMI_PEER_DISCOVERY", "").strip().lower()
+    if val:
+        return val not in ("0", "false", "no", "off")
+    return is_share_enabled()
+
+
+def apply_enabled() -> bool:
+    """Start or stop announcing to match the Nearby switch, live. Needs the
+    arguments start() was first called with (it records them even when it
+    does not start). Returns whether discovery is running afterwards."""
+    if is_enabled():
+        if _zc is None and _last_start_args:
+            start(**_last_start_args)
+    elif _zc is not None:
+        stop()
+    return _zc is not None
 
 
 def is_share_enabled() -> bool:

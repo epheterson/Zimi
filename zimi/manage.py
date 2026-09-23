@@ -6417,6 +6417,8 @@ def handle_manage_post(handler, parsed, data):
                     500, {"error": "could not save setting (config dir not writable)"}
                 )
             changed["peer_share"] = bool(data["peer_share"])
+            # Nearby on or off decides announcing too, applied now.
+            threading.Thread(target=_disc.apply_enabled, daemon=True).start()
         if "bt_port" in data:
             if p2p.is_bt_port_env_locked():
                 return handler._json(

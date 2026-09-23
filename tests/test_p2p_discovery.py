@@ -76,7 +76,8 @@ def test_start_returns_false_when_zeroconf_unavailable(monkeypatch):
     assert disc._zc is None
 
 
-def test_start_creates_zeroconf_with_service_info():
+def test_start_creates_zeroconf_with_service_info(monkeypatch):
+    monkeypatch.setenv("ZIMI_PEER_DISCOVERY", "1")  # Nearby on: announcing is opt-in
     fake_zc = MagicMock()
     fake_si = MagicMock()
     mod = MagicMock()
@@ -197,7 +198,8 @@ def test_listener_handles_malformed_txt():
     assert peer["zim_count"] == 0  # bad value → fallback
 
 
-def test_start_idempotent():
+def test_start_idempotent(monkeypatch):
+    monkeypatch.setenv("ZIMI_PEER_DISCOVERY", "1")  # Nearby on: announcing is opt-in
     fake_zc = MagicMock()
     mod = MagicMock()
     mod.Zeroconf.return_value = fake_zc
@@ -256,4 +258,27 @@ def test_is_enabled_respects_env(monkeypatch):
     monkeypatch.setenv("ZIMI_PEER_DISCOVERY", "1")
     assert disc.is_enabled() is True
     monkeypatch.delenv("ZIMI_PEER_DISCOVERY", raising=False)
-    assert disc.is_enabled() is True  # default-on
+    # Unset, it follows the Nearby switch: nothing is announced while it is off.
+    monkeypatch.setattr(disc, "is_share_enabled", lambda: False)
+    assert disc.is_enabled() is False
+    monkeypatch.setattr(disc, "is_share_enabled", lambda: True)
+    assert disc.is_enabled() is True
+
+
+def test_a_default_install_announces_nothing_until_nearby_is_on(monkeypatch):
+    """A default install announced zimi-<hostname>, its address, version and
+    ZIM count to the LAN while the Nearby switch read OFF."""
+    for var in ("ZIMI_NEARBY", "ZIMI_PEER_DISCOVERY", "ZIMI_PEER_SHARE"):
+        monkeypatch.delenv(var, raising=False)
+    from zimi import p2p
+
+    monkeypatch.setattr(p2p, "_read_pref", lambda key, default=None: default)
+    started = []
+    monkeypatch.setattr(disc, "_import_zeroconf", lambda: started.append(1) or None)
+    monkeypatch.setattr(disc, "_zc", None)
+    assert disc.start(http_port=8899, bt_port=6881, zim_count=3, version="x") is False
+    assert started == [], "zeroconf was reached with Nearby off"
+    # Turned on, it starts with what start() was first given.
+    monkeypatch.setattr(p2p, "_read_pref", lambda key, default=None: True if key == "peer_share" else default)
+    disc.apply_enabled()
+    assert started == [1]
