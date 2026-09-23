@@ -2320,11 +2320,17 @@ class _CreateJob:
             # is serialized to the client on every poll, and a JPEG in it would
             # be both unserializable and enormous.
             jpeg = event.pop("jpeg", None)
+            from zimi import zimwriter as _zw
+
             with _create_lock:
                 self.progressed = now
                 if jpeg:
                     self.shot = jpeg
-                self._push_events([event])
+                # A picture is not progress: the page learns of it from
+                # has_shot, and the stream carries only phase/node/count
+                # events, which a bare {"event": "shot"} was not.
+                if event.get("event") != _zw.SHOT_EVENT:
+                    self._push_events([event])
             return
         text = str(message).rstrip("\n")
         # Derived outside the lock: it parses a string and may import a module,
