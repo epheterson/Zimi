@@ -1672,6 +1672,19 @@ function _almTmInit() {
 
 
 
+// "About this data": how close each figure on the page is, and to what. The
+// 1.7.2 changelog announced it; it was never built. Every line states a
+// method the code uses and a precision it has been checked against.
+var _ALM_ABOUT_ROWS = ['moon', 'seasons', 'sun', 'eclipses', 'planets', 'hebrew', 'islamic',
+  'persian', 'chinese', 'deeptime', 'timezones'];
+function _almAboutDataHtml() {
+  return '<details class="almanac-section alm-about">' +
+    '<summary class="almanac-section-title">' + _almEsc(t('alm_about_data')) + '</summary>' +
+    '<p class="alm-about-intro">' + _almEsc(t('alm_about_intro')) + '</p><ul class="alm-about-list">' +
+    _ALM_ABOUT_ROWS.map(function(k) { return '<li>' + _almEsc(t('alm_about_' + k)) + '</li>'; }).join('') +
+    '</ul></details>';
+}
+
 function _renderAlmanacContent() {
   var now = new Date();
   var m = _moonPhase(now);
@@ -1775,6 +1788,7 @@ function _renderAlmanacContent() {
   html += '<div class="almanac-section-title">' + t('alm_messages_across_time') + '</div>';
   html += '<div id="almanac-rosetta"></div>';
   html += '</div>';
+  html += _almAboutDataHtml();
 
 
   // The time machine — the almanac's skeuomorphic time-travel instrument.

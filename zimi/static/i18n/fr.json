@@ -1687,5 +1687,18 @@
   "env_empty": "(vide)",
   "env_unavailable": "Impossible de lire l'environnement.",
   "env_from_config": "Défini dans {path}",
-  "env_hint": "Ils sont définis là où Zimi démarre et priment sur les réglages. Modifiez-les là puis redémarrez."
+  "env_hint": "Ils sont définis là où Zimi démarre et priment sur les réglages. Modifiez-les là puis redémarrez.",
+  "alm_about_data": "À propos de ces données",
+  "alm_about_intro": "Tout ce qui figure ici est calculé sur cet appareil, hors ligne. Voici la précision de chaque valeur :",
+  "alm_about_moon": "Lune : phase à partir des nouvelles lunes calculées, distance et illumination selon la théorie lunaire de Meeus ; à environ 0,1 % des éphémérides de référence.",
+  "alm_about_seasons": "Équinoxes et solstices : Meeus, chapitre 27 ; à environ une minute des heures de l'USNO.",
+  "alm_about_sun": "Lever et coucher du soleil : position du Soleil avec réfraction ; en général à une ou deux minutes près, moins précis près des pôles.",
+  "alm_about_eclipses": "Éclipses : à partir du nœud lunaire et du Soleil (Meeus, chapitre 54) ; dates et types, pas les circonstances locales.",
+  "alm_about_planets": "Planètes : éléments képlériens du JPL ; précis à une fraction de degré sur quelques siècles autour d'aujourd'hui.",
+  "alm_about_hebrew": "Calendrier hébraïque : le calendrier arithmétique fixe, exact.",
+  "alm_about_islamic": "Calendrier musulman : le calendrier tabulaire (arithmétique) ; peut différer d'un ou deux jours d'un calendrier fondé sur l'observation de la lune.",
+  "alm_about_persian": "Calendrier persan : le cycle arithmétique de 33 ans, qui concorde avec le calendrier officiel pour notre époque.",
+  "alm_about_chinese": "Calendrier chinois : calculé à partir des nouvelles lunes et des termes solaires ; concorde avec l'Observatoire de Hong Kong de 1900 à 2100.",
+  "alm_about_deeptime": "Temps profond : jusqu'à 13 000 ans autour de l'an 2000 les méthodes tiennent ; au-delà, jusqu'à 270 000 ans, les valeurs sont seulement indicatives.",
+  "alm_about_timezones": "Fuseaux horaires : la plus proche d'une série de villes, faute de carte hors ligne des frontières de fuseaux ; peut se tromper près d'une frontière."
 }

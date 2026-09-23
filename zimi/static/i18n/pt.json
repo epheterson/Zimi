@@ -1687,5 +1687,18 @@
   "env_empty": "(vazio)",
   "env_unavailable": "Não foi possível ler o ambiente.",
   "env_from_config": "Definido em {path}",
-  "env_hint": "São definidas onde o Zimi arranca, por isso prevalecem sobre as definições. Altere-as aí e reinicie."
+  "env_hint": "São definidas onde o Zimi arranca, por isso prevalecem sobre as definições. Altere-as aí e reinicie.",
+  "alm_about_data": "Sobre estes dados",
+  "alm_about_intro": "Tudo aqui é calculado neste dispositivo, offline. A precisão de cada valor:",
+  "alm_about_moon": "Lua: fase a partir de luas novas calculadas; distância e iluminação pela teoria lunar de Meeus; com cerca de 0,1% de diferença de efemérides de referência.",
+  "alm_about_seasons": "Equinócios e solstícios: Meeus, capítulo 27; com cerca de um minuto de diferença dos horários do USNO.",
+  "alm_about_sun": "Nascer e pôr do sol: posição do Sol com refração; em geral com um ou dois minutos de diferença, menos exato perto dos polos.",
+  "alm_about_eclipses": "Eclipses: a partir do nó lunar e do Sol (Meeus, capítulo 54); datas e tipos, não as circunstâncias locais.",
+  "alm_about_planets": "Planetas: elementos keplerianos do JPL; precisos a uma fração de grau por alguns séculos em torno de hoje.",
+  "alm_about_hebrew": "Calendário hebraico: o calendário aritmético fixo, exato.",
+  "alm_about_islamic": "Calendário islâmico: o calendário tabular (aritmético); pode diferir em um ou dois dias de um baseado na observação da lua.",
+  "alm_about_persian": "Calendário persa: o ciclo aritmético de 33 anos, que coincide com o calendário oficial nesta era.",
+  "alm_about_chinese": "Calendário chinês: calculado a partir de luas novas e termos solares; coincide com o Observatório de Hong Kong de 1900 a 2100.",
+  "alm_about_deeptime": "Tempo profundo: até 13 000 anos em torno do ano 2000 os métodos valem; além disso, até 270 000 anos, os valores são apenas indicativos.",
+  "alm_about_timezones": "Fusos horários: a mais próxima de um conjunto de cidades, pois não há mapa offline das fronteiras de fusos; pode errar perto de uma fronteira."
 }

@@ -1687,5 +1687,18 @@
   "env_empty": "(leer)",
   "env_unavailable": "Umgebung konnte nicht gelesen werden.",
   "env_from_config": "Gesetzt in {path}",
-  "env_hint": "Diese werden dort gesetzt, wo Zimi gestartet wird, und haben Vorrang vor den Einstellungen. Dort ändern und neu starten."
+  "env_hint": "Diese werden dort gesetzt, wo Zimi gestartet wird, und haben Vorrang vor den Einstellungen. Dort ändern und neu starten.",
+  "alm_about_data": "Über diese Daten",
+  "alm_about_intro": "Alles hier wird auf diesem Gerät berechnet, offline. So genau ist jede Angabe:",
+  "alm_about_moon": "Mond: Phase aus berechneten Neumonden, Entfernung und Beleuchtung nach der Mondtheorie von Meeus; auf etwa 0,1 % genau gegenüber Referenz-Ephemeriden.",
+  "alm_about_seasons": "Tagundnachtgleichen und Sonnenwenden: Meeus, Kapitel 27; auf etwa eine Minute genau gegenüber den USNO-Zeiten.",
+  "alm_about_sun": "Sonnenauf- und -untergang: Sonnenstand mit Refraktion; meist auf ein bis zwei Minuten genau, weniger genau nahe den Polen.",
+  "alm_about_eclipses": "Finsternisse: aus Mondknoten und Sonne (Meeus, Kapitel 54); Datum und Art, nicht die örtlichen Umstände.",
+  "alm_about_planets": "Planeten: Kepler-Elemente des JPL; für einige Jahrhunderte um heute auf Bruchteile eines Grades genau.",
+  "alm_about_hebrew": "Jüdischer Kalender: der feste arithmetische Kalender, exakt.",
+  "alm_about_islamic": "Islamischer Kalender: der tabellarische (arithmetische) Kalender; kann um ein bis zwei Tage von einem Kalender nach Mondsichtung abweichen.",
+  "alm_about_persian": "Persischer Kalender: der arithmetische 33-Jahres-Zyklus, der für diese Epoche mit dem amtlichen Kalender übereinstimmt.",
+  "alm_about_chinese": "Chinesischer Kalender: aus Neumonden und Sonnenständen berechnet; stimmt von 1900 bis 2100 mit dem Hong Kong Observatory überein.",
+  "alm_about_deeptime": "Tiefe Zeit: bis 13.000 Jahre um das Jahr 2000 gelten die Verfahren; darüber hinaus, bis 270.000 Jahre, sind die Werte nur Anhaltspunkte.",
+  "alm_about_timezones": "Zeitzonen: die nächstgelegene aus einer Reihe von Städten, da es offline keine Karte der Zonengrenzen gibt; nahe einer Grenze kann sie abweichen."
 }

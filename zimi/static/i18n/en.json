@@ -1687,5 +1687,18 @@
   "env_empty": "(empty)",
   "env_unavailable": "Could not read the environment.",
   "env_from_config": "Set in {path}",
-  "env_hint": "These are set where Zimi is started, so they win over Settings. Change them there, then restart."
+  "env_hint": "These are set where Zimi is started, so they win over Settings. Change them there, then restart.",
+  "alm_about_data": "About this data",
+  "alm_about_intro": "Everything here is computed on this device, offline. How close each figure is:",
+  "alm_about_moon": "Moon: phase from computed new moons, distance and illumination from Meeus's lunar theory; within about 0.1% of reference ephemerides.",
+  "alm_about_seasons": "Equinoxes and solstices: Meeus, chapter 27; within about a minute of USNO times.",
+  "alm_about_sun": "Sunrise and sunset: the Sun's position with refraction; usually within a minute or two, less exact near the poles.",
+  "alm_about_eclipses": "Eclipses: from the Moon's node and the Sun (Meeus, chapter 54); dates and types, not local circumstances.",
+  "alm_about_planets": "Planets: JPL Keplerian elements; good to a fraction of a degree for a few centuries around today.",
+  "alm_about_hebrew": "Hebrew calendar: the fixed arithmetic calendar, exact.",
+  "alm_about_islamic": "Islamic calendar: the tabular (arithmetic) calendar; may differ by a day or two from one based on sighting the moon.",
+  "alm_about_persian": "Persian calendar: the 33-year arithmetic cycle, which matches the official calendar for this era.",
+  "alm_about_chinese": "Chinese calendar: computed from new moons and solar terms; matches the Hong Kong Observatory from 1900 to 2100.",
+  "alm_about_deeptime": "Deep time: within 13,000 years of 2000 the methods hold; beyond that, out to 270,000 years, figures are indicative only.",
+  "alm_about_timezones": "Time zones: the nearest of a set of cities, since there is no offline map of zone borders; may be off near a border."
 }
