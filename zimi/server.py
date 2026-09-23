@@ -2522,7 +2522,12 @@ def _zim_short_name(filename):
         r"_[a-z]{2}_2\d{3}.*", "", name
     )  # Only 2-letter codes before dates (avoids css/git)
     name = re.sub(r"_maxi_2\d{3}.*", "", name)
-    name = re.sub(r"_2\d{3}-\d{2}$", "", name)
+    name = re.sub(r"_2\d{3}-\d{2}[a-z]?$", "", name)
+    # A topic build's flavor, whichever it is: maxi was stripped above and
+    # nopic/mini were not, so wikipedia_en_medicine_maxi and _nopic became two
+    # sources with two names and both were served. One name, and the scan's
+    # collision rule (_FLAVOR_RANK) keeps the richer file.
+    name = re.sub(r"_(?:maxi|nopic|mini)$", "", name)
     # StreetZim: osm-hawaii-2026-09-08 -> osm-hawaii, so the name survives an
     # update and the catalog's toggle can tell installed from not.
     name = re.sub(r"^(osm-.+?)-2\d{3}-\d{2}-\d{2}$", r"\1", name)

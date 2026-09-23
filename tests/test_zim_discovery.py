@@ -450,6 +450,18 @@ def test_scan_collision_same_flavor_newer_date_wins(scan_dir):
     assert zims["wikipedia_zh"].endswith("mini_2026-07b.zim")
 
 
+def test_a_topic_builds_flavors_are_one_source(scan_dir):
+    """A topic ZIM's maxi and nopic in one folder were two sources, both
+    served (wikipedia_en_medicine and wikipedia_en_medicine_nopic): only maxi
+    lost its flavor in the name. Now one name, and the richer file serves."""
+    _touch_zim(scan_dir, "wikipedia_en_medicine_maxi_2026-01.zim", size=4)
+    _touch_zim(scan_dir, "wikipedia_en_medicine_nopic_2026-07.zim", size=4)
+    zims = server._scan_zim_files()
+    assert "wikipedia_en_medicine_nopic" not in zims
+    assert zims["wikipedia_en_medicine"].endswith("maxi_2026-01.zim")
+    assert server._zim_short_name("wikipedia_en_medicine_mini_2026-07.zim") == "wikipedia_en_medicine"
+
+
 def test_scan_collision_untagged_full_slots_between_maxi_and_nopic(scan_dir):
     _touch_zim(scan_dir, "source_en_all_2026-01.zim", size=4)
     _touch_zim(scan_dir, "source_en_all_nopic_2026-07.zim", size=4)

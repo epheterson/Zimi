@@ -3254,6 +3254,19 @@ class ZimHandler(BaseHTTPRequestHandler):
         with _srv._zim_lock:
             archive = _srv.get_archive(zim_name)
             if archive is None:
+                # A topic build's nopic/mini once had a name of its own
+                # (wikipedia_en_medicine_nopic); since both flavors share one
+                # name, a bookmark or link to the old one moves to the new.
+                current = re.sub(r"_(?:nopic|mini)$", "", zim_name)
+                if current != zim_name and current in _srv.get_zim_files():
+                    moved = "/w/%s/%s" % (_srv.url_quote(current), quote(entry_path, safe="/"))
+                    if self.path.find("?") >= 0:
+                        moved += self.path[self.path.find("?"):]
+                    self.send_response(301)
+                    self.send_header("Location", moved)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
                 # A page being OPENED gets prose — a deleted source's old
                 # bookmarks and history entries land here, and raw JSON on a
                 # phone reads as a server fault (Eric hit exactly that). A
