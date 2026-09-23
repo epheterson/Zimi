@@ -6402,6 +6402,9 @@ q.addEventListener('keydown', e => {
       return;
     }
     if (e.key === 'Escape') {
+      // This Escape is spent closing the dropdown. Left to bubble, the page's
+      // handler saw the dropdown already shut and cleared the query too.
+      e.stopPropagation();
       hideSuggest();
       return;
     }
