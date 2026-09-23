@@ -4735,6 +4735,17 @@ def warm_indexes():
         except Exception as e:
             log.warning("Title B-tree warm phase failed: %s", e)
 
+        # Phase 6: the did-you-mean vocabulary, loaded from disk or built now
+        # that the title indexes are final and the phases above are done with
+        # the machine. Waiting for the first misspelled search meant that
+        # search, and every one for the next few minutes, got no suggestion.
+        try:
+            from zimi import search as _search_mod
+
+            _search_mod._ensure_vocab()
+        except Exception as e:
+            log.warning("Did-you-mean vocab phase failed: %s", e)
+
     threading.Thread(
         target=_startup_worker, daemon=True, name="zimi-startup-worker"
     ).start()

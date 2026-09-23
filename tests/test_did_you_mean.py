@@ -479,6 +479,54 @@ class VocabCachePersistenceTests(unittest.TestCase):
         self.assertIn("python", data["words"])
         self.assertEqual(data["sig"], _search._vocab_signature(self.index_dir))
 
+    def test_a_build_that_ran_out_of_time_is_not_saved(self):
+        """A scan cut short by its budget is used for now, but never written
+        to disk: a saved partial vocabulary matches the indexes' signature, so
+        every later start would load it as if it were whole (the NAS saved one
+        built from 3 of 60 indexes while boot warm-up held the CPU)."""
+        partial = {"python": 5, "javascript": 3}
+        with (
+            mock.patch.object(_search, "_scan_vocab", lambda: (dict(partial), False)),
+            mock.patch.object(_search, "_VOCAB_BUILD_ATTEMPTS", 1),
+        ):
+            _search._vocab_build_worker()
+        self.assertFalse(os.path.exists(self.cache_path))
+        self.assertEqual(_search._vocab, partial)
+
+    def test_a_partial_build_is_tried_again_and_the_whole_one_saved(self):
+        results = iter([({"python": 5}, False), ({"python": 5, "asyncio": 2}, True)])
+        with (
+            mock.patch.object(_search, "_scan_vocab", lambda: next(results)),
+            mock.patch.object(_search, "_VOCAB_RETRY_DELAY_S", 0),
+        ):
+            _search._vocab_build_worker()
+            _search._join_vocab_retry()
+        self.assertEqual(_search._vocab, {"python": 5, "asyncio": 2})
+        with open(self.cache_path, encoding="utf-8") as f:
+            self.assertIn("asyncio", json.load(f)["words"])
+
+
+class VocabAtStartupTests(unittest.TestCase):
+    """The vocabulary is ready after startup without anyone having searched:
+    built on the first sparse search, it arrived minutes too late for that
+    search and every one after it."""
+
+    def test_warm_up_builds_the_vocabulary(self):
+        import threading
+
+        from zimi import server as _server
+
+        started = threading.Event()
+        with (
+            mock.patch.object(_server, "get_zim_files", lambda: {}),
+            mock.patch.object(_server, "get_hot_zims", lambda: []),
+            mock.patch.object(_server, "_build_all_title_indexes", lambda: None),
+            mock.patch.object(_server, "_build_all_qid_indexes", lambda: None),
+            mock.patch.object(_search, "_ensure_vocab", lambda: started.set()),
+        ):
+            _server.warm_indexes()
+            self.assertTrue(started.wait(10), "startup never asked for the vocabulary")
+
 
 class CorrectionTests(unittest.TestCase):
     def setUp(self):

@@ -1286,6 +1286,11 @@ _VOCAB_MIN_WORD_LEN = 3  # ignore 1-2 char fragments (noise, not misspellings)
 # index up to the per-file row cap below is a few minutes worst case; 300s
 # gives that room to actually finish instead of bailing mid-library.
 _VOCAB_BUILD_BUDGET_S = 300.0
+# A build cut short (by the budget, usually because startup was busy) is tried
+# again this much later, up to _VOCAB_BUILD_ATTEMPTS scans in all.
+_VOCAB_RETRY_DELAY_S = 600
+_VOCAB_BUILD_ATTEMPTS = 2
+_vocab_retry_timer = None
 # Per-file cap on rows sampled, independent of the overall time budget. A
 # single giant index (English Wikipedia's ~27M titles) can otherwise eat the
 # entire budget before any other index — including much smaller, equally
@@ -1459,7 +1464,14 @@ def _vocab_stride(conn, cap):
 
 
 def _build_vocab():
-    """Scan the SQLite title indexes into a {word: count} vocabulary.
+    """The vocabulary a scan of the title indexes yields (see _scan_vocab)."""
+    return _scan_vocab()[0]
+
+
+def _scan_vocab():
+    """Scan the SQLite title indexes into a {word: count} vocabulary, and say
+    whether the scan was whole: (vocab, complete). A scan that ran out of its
+    budget, or read fewer index files than there are, is not complete.
 
     Opens a FRESH connection per index (sqlite objects aren't shareable across
     threads). Files are scanned largest-first (by byte size) so the richest
@@ -1491,12 +1503,12 @@ def _build_vocab():
     index_dir = _title_index_dir()
     if not os.path.isdir(index_dir):
         log.info("Did-you-mean vocab: no title index dir at %s", index_dir)
-        return vocab
+        return vocab, False
     try:
         fnames = [f for f in os.listdir(index_dir) if f.endswith(".db")]
     except Exception as e:
         log.info("Did-you-mean vocab: cannot list %s: %s", index_dir, e)
-        return vocab
+        return vocab, False
     fnames.sort(key=lambda f: os.path.getsize(os.path.join(index_dir, f)), reverse=True)
     total_files = len(fnames)
     files_scanned = 0
@@ -1584,7 +1596,7 @@ def _build_vocab():
         evictions,
         admissions_frozen,
     )
-    return vocab
+    return vocab, (not budget_hit and files_scanned == total_files)
 
 
 def _vocab_signature(index_dir):
@@ -1664,7 +1676,7 @@ def _vocab_cache_load():
         return None
 
 
-def _vocab_build_worker():
+def _vocab_build_worker(attempt=1):
     """Load the vocab from disk if valid, else build it and persist. Never raises.
 
     A build error (or a broken index) caches an empty vocab so we don't retry
@@ -1684,16 +1696,36 @@ def _vocab_build_worker():
         _rebuild_trigram_index(cached)
         return
     try:
-        built = _build_vocab()
+        built, complete = _scan_vocab()
     except Exception as e:
         log.info("Did-you-mean vocab: build raised %s", e)
-        built = {}
+        built, complete = {}, False
     with _vocab_lock:
-        _vocab = built if built is not None else {}
-    if built:
+        # A retry that did worse than what is already here keeps what is here.
+        if attempt == 1 or len(built or {}) >= len(_vocab or {}):
+            _vocab = built if built is not None else {}
+    if built and complete:
         sig = _vocab_signature(_title_index_dir())
         if sig is not None:
             _vocab_cache_save(built, sig)
+    elif built:
+        # Never saved: a partial vocabulary matches the indexes' signature, so
+        # every later start would load it as whole. Used for now; tried again
+        # once the machine has had time to settle.
+        if attempt < _VOCAB_BUILD_ATTEMPTS:
+            log.info(
+                "Did-you-mean vocab: partial build kept in memory, not saved; "
+                "trying again in %ds",
+                _VOCAB_RETRY_DELAY_S,
+            )
+            global _vocab_retry_timer
+            _vocab_retry_timer = threading.Timer(
+                _VOCAB_RETRY_DELAY_S, _vocab_build_worker, kwargs={"attempt": attempt + 1}
+            )
+            _vocab_retry_timer.daemon = True
+            _vocab_retry_timer.start()
+        else:
+            log.info("Did-you-mean vocab: partial build kept in memory, not saved")
     _rebuild_trigram_index(_vocab)
 
 
@@ -1719,6 +1751,13 @@ def _ensure_vocab():
             )
             _vocab_builder_thread.start()
         return None
+
+
+def _join_vocab_retry(timeout=5.0):
+    """Block until a scheduled retry build has run. Tests only."""
+    t = _vocab_retry_timer
+    if t is not None:
+        t.join(timeout)
 
 
 def _join_vocab_build(timeout=5.0):
