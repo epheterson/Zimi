@@ -486,7 +486,7 @@ class VocabCachePersistenceTests(unittest.TestCase):
         built from 3 of 60 indexes while boot warm-up held the CPU)."""
         partial = {"python": 5, "javascript": 3}
         with (
-            mock.patch.object(_search, "_scan_vocab", lambda: (dict(partial), False)),
+            mock.patch.object(_search, "_scan_vocab_in_child", lambda: (dict(partial), False)),
             mock.patch.object(_search, "_VOCAB_BUILD_ATTEMPTS", 1),
         ):
             _search._vocab_build_worker()
@@ -496,7 +496,7 @@ class VocabCachePersistenceTests(unittest.TestCase):
     def test_a_partial_build_is_tried_again_and_the_whole_one_saved(self):
         results = iter([({"python": 5}, False), ({"python": 5, "asyncio": 2}, True)])
         with (
-            mock.patch.object(_search, "_scan_vocab", lambda: next(results)),
+            mock.patch.object(_search, "_scan_vocab_in_child", lambda: next(results)),
             mock.patch.object(_search, "_VOCAB_RETRY_DELAY_S", 0),
         ):
             _search._vocab_build_worker()
@@ -504,6 +504,18 @@ class VocabCachePersistenceTests(unittest.TestCase):
         self.assertEqual(_search._vocab, {"python": 5, "asyncio": 2})
         with open(self.cache_path, encoding="utf-8") as f:
             self.assertIn("asyncio", json.load(f)["words"])
+
+    def test_the_scan_runs_in_a_process_of_its_own(self):
+        """The scan is started as its own process and its words come back;
+        inside a busy server it was starved to 1 of 60 indexes."""
+        words, complete = _search._scan_vocab_in_child()
+        self.assertTrue(complete)
+        self.assertIn("python", words)
+        self.assertFalse(os.path.exists(self.cache_path + ".scan.json"))
+
+    def test_a_frozen_build_scans_in_a_thread_instead(self):
+        with mock.patch.object(_search.sys, "frozen", True, create=True):
+            self.assertIsNone(_search._scan_vocab_in_child())
 
 
 class VocabAtStartupTests(unittest.TestCase):

@@ -11,6 +11,8 @@ import math
 import os
 import re
 import sqlite3
+import subprocess
+import sys
 import threading
 import time
 import unicodedata
@@ -1468,7 +1470,7 @@ def _build_vocab():
     return _scan_vocab()[0]
 
 
-def _scan_vocab():
+def _scan_vocab(index_dir=None):
     """Scan the SQLite title indexes into a {word: count} vocabulary, and say
     whether the scan was whole: (vocab, complete). A scan that ran out of its
     budget, or read fewer index files than there are, is not complete.
@@ -1500,7 +1502,7 @@ def _scan_vocab():
     the empty case, so a starved scan is visible in production."""
     deadline = time.monotonic() + _VOCAB_BUILD_BUDGET_S
     vocab = {}
-    index_dir = _title_index_dir()
+    index_dir = index_dir or _title_index_dir()
     if not os.path.isdir(index_dir):
         log.info("Did-you-mean vocab: no title index dir at %s", index_dir)
         return vocab, False
@@ -1676,6 +1678,48 @@ def _vocab_cache_load():
         return None
 
 
+def _scan_vocab_in_child():
+    """(vocab, complete) from a scan run in a process of its own, or None when
+    one cannot be run here, and the caller then scans in this process.
+
+    A process of its own because the scan is pure Python over millions of
+    rows: inside a server that is answering requests it got a slice of one
+    interpreter, and on the NAS managed 1 of 60 indexes in its 300s budget
+    where the same scan as its own process read all 66 in 139s. The child
+    writes its result to a file beside the cache and exits; nothing is shared
+    but that file. A frozen desktop build has no `python -m` to start, and a
+    desktop library is small enough to scan in a thread.
+    """
+    if getattr(sys, "frozen", False):
+        return None
+    out = _vocab_cache_path() + ".scan.json"
+    cmd = [sys.executable, "-m", "zimi.search", "--scan-vocab", _title_index_dir(), out]
+    try:
+        from zimi import subproc
+
+        proc = subproc.popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        try:
+            proc.wait(timeout=_VOCAB_BUILD_BUDGET_S * 2)
+        except subprocess.TimeoutExpired:
+            subproc.stop(proc)
+            log.info("Did-you-mean vocab: the scan process did not finish; stopped it")
+            return None
+        if proc.returncode != 0:
+            log.info("Did-you-mean vocab: the scan process exited %s", proc.returncode)
+            return None
+        with open(out, encoding="utf-8") as f:
+            data = json.load(f)
+        return data["words"], bool(data["complete"])
+    except Exception as e:
+        log.info("Did-you-mean vocab: scanning in a process of its own failed: %s", e)
+        return None
+    finally:
+        try:
+            os.remove(out)
+        except OSError:
+            pass
+
+
 def _vocab_build_worker(attempt=1):
     """Load the vocab from disk if valid, else build it and persist. Never raises.
 
@@ -1696,7 +1740,8 @@ def _vocab_build_worker(attempt=1):
         _rebuild_trigram_index(cached)
         return
     try:
-        built, complete = _scan_vocab()
+        scanned = _scan_vocab_in_child()
+        built, complete = scanned if scanned is not None else _scan_vocab()
     except Exception as e:
         log.info("Did-you-mean vocab: build raised %s", e)
         built, complete = {}, False
@@ -3241,3 +3286,15 @@ def _xkcd_date_lookup(archive, path):
     if m:
         return _xkcd_date_cache.get(m.group(1))
     return None
+
+
+def _scan_vocab_child_main(index_dir, out):
+    """`python -m zimi.search --scan-vocab <index dir> <out>`: the scan
+    _scan_vocab_in_child starts, writing (words, complete) to `out`."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
+    vocab, complete = _scan_vocab(index_dir)
+    _srv._atomic_write_json(out, {"complete": complete, "words": vocab})
+
+
+if __name__ == "__main__" and sys.argv[1:2] == ["--scan-vocab"]:
+    _scan_vocab_child_main(sys.argv[2], sys.argv[3])
