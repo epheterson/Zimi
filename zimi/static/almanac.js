@@ -424,10 +424,18 @@ var _PRINCIPAL_PHASES = [
   { p: 0.75, name: 'Last Quarter' }
 ];
 
-function _principalPhaseOnDay(cellJDN) {
-  var noon = (cellJDN - 2440587.5) * 86400000 + 43200000;
-  var p0 = _moonPhase(new Date(noon - 43200000)).phase; // day start
-  var p1 = _moonPhase(new Date(noon + 43200000)).phase; // day end
+// The principal phase that falls on calendar day cellJDN as it is lived in
+// zone tz: local midnight to local midnight. Noon-to-noon UTC put a Tokyo full
+// moon at 02:00 on the day before (tests/test_almanac_phase_marks.cjs).
+function _principalPhaseOnDay(cellJDN, tz) {
+  var utcMidnight = (cellJDN - 2440588) * 86400000;
+  var localMidnight = function(ms) {
+    var off;
+    try { off = _tzUtcOffsetMin(tz || 'UTC', new Date(ms)); } catch (e) { off = 0; }
+    return ms - off * 60000;
+  };
+  var p0 = _moonPhase(new Date(localMidnight(utcMidnight))).phase; // day start
+  var p1 = _moonPhase(new Date(localMidnight(utcMidnight + 86400000))).phase; // day end
   for (var i = 0; i < _PRINCIPAL_PHASES.length; i++) {
     var tg = _PRINCIPAL_PHASES[i].p;
     // The cycle wraps 1 -> 0, so a new moon shows up as p0 > p1.
@@ -5942,6 +5950,7 @@ function _drawAlmanacGrid() {
   for (var i = 0; i < firstDow; i++) {
     html += '<div class="alm-cell alm-empty"></div>';
   }
+  var _gridTz = _almDisplayTz();
   for (var d = 1; d <= daysInMonth; d++) {
     var cellJDN = firstJDN + d - 1;
     var isToday = (cellJDN === todayJDN);
@@ -5950,8 +5959,8 @@ function _drawAlmanacGrid() {
     var dayEvents = events[d] || [];
     html += '<div class="' + cls + '" onclick="_almSelectDay(' + cellJDN + ')">';
     html += '<div class="alm-num">' + d + '</div>';
-    // Moon phase for this calendar day (noon UTC), tucked top-right.
-    var _pp = _principalPhaseOnDay(cellJDN);
+    // The principal moon phase of this day where the almanac is, top-right.
+    var _pp = _principalPhaseOnDay(cellJDN, _gridTz);
     if (_pp) {
       html += '<span class="cal-moon-wrap" title="' + _almEsc(_localMoonName(_pp.name)) + '">' +
         _moonGlyphSVG(_pp.p, 16) + '</span>';
