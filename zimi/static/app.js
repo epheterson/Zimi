@@ -1812,15 +1812,7 @@ function updateTopbar() {
   // body.creating, not an inline style: the mobile rule that shows ⋯ is
   // !important, which no inline display can outrank.
   document.body.classList.toggle('creating', !!_createOpen);
-  var moreBtn = document.querySelector('.topbar-more');
-  if (moreBtn) {
-    // A menu with nothing in it is no menu: on a wide screen an app page has
-    // no reading rows to fold, so the button goes too (Eric: "... menu is
-    // showing in tube and for no reason nothing behind it on desktop").
-    moreBtn.style.display = _createOpen ? 'none'
-      : (_createMenuRowAvailable() ? 'flex' : (readerOpen && !_buildTopbarMenuHtml() ? 'none' : ''));
-    _syncTopbarMoreSolo(moreBtn);
-  }
+  _syncTopbarMore();
   document.getElementById('lang-selector-btn').style.display =
     _getStorageFlag(SK.HIDE_LANG_CHOOSER) ? 'none' : '';
   _updateLibraryBtnIcon();
@@ -15746,6 +15738,7 @@ function _syncReaderViewBtn() {
   }
   if (!avail) _closeReaderPalette();
   else if (_readerViewOn) _maybeShowReaderCoach();
+  _syncTopbarMore();
 }
 
 // First time a device lands in Reader View, float a one-shot coachmark by the
@@ -19713,6 +19706,22 @@ function _topbarMenuSoloItem() {
 // restore path never hard-codes what index.html renders.
 var _topbarMoreDefault = null;
 var _topbarMoreIsSolo = false;
+// The ⋯ button: shown, hidden, or standing in for its only row. Its rows
+// depend on the article (Reader View needs extractable content), so this runs
+// again when the article loads (_syncReaderViewBtn), not only from
+// updateTopbar: on the first article it ran before the page existed, saw Read
+// aloud as the only row, and became a speaker for the whole article.
+function _syncTopbarMore() {
+  var moreBtn = document.querySelector('.topbar-more');
+  if (!moreBtn) return;
+  // A menu with nothing in it is no menu: on a wide screen an app page has
+  // no reading rows to fold, so the button goes too (Eric: "... menu is
+  // showing in tube and for no reason nothing behind it on desktop").
+  moreBtn.style.display = _createOpen ? 'none'
+    : (_createMenuRowAvailable() ? 'flex' : (readerOpen && !_buildTopbarMenuHtml() ? 'none' : ''));
+  _syncTopbarMoreSolo(moreBtn);
+}
+
 function _syncTopbarMoreSolo(btn) {
   if (!_topbarMoreDefault) {
     // Clone-and-strip: the activity badge is a child _applyActivityBadge owns;
