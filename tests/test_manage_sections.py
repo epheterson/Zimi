@@ -62,7 +62,14 @@ def _settled_creator(tries=200):
 def fresh_probe():
     """Each test finds out for itself. The answer is process-wide and cached on
     purpose, which between tests means one test's patched probes answering the
-    next one's assertions."""
+    next one's assertions. A probe an earlier test started can still be
+    running (a real browser launch is slow under a full suite), and would land
+    its answer after the reset, so wait it out first."""
+    import threading
+
+    for t in threading.enumerate():
+        if t.name == "creator-probe":
+            t.join(timeout=60)
     manage._creator_probed = None
     manage._creator_probed_at = 0.0
     manage._creator_probing = False

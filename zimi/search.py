@@ -441,6 +441,13 @@ def _build_title_index(zim_name, zim_path):
     t0 = time.time()
     count = 0
 
+    # A build killed mid-run (SIGKILL on a container restart) leaves its tmp
+    # behind, and the orphan sweep runs only after the build loop. Builds are
+    # serialized by _build_all_title_lock, so any tmp here is an orphan.
+    for leftover in (tmp_path, tmp_path + "-wal", tmp_path + "-shm"):
+        if os.path.exists(leftover):
+            os.remove(leftover)
+
     # Open dedicated archive handle — never touches shared pool
     archive = _srv.open_archive(zim_path)
     conn = sqlite3.connect(tmp_path)
@@ -1139,7 +1146,9 @@ def search_zim(archive, query_str, limit=10, snippets=True):
             _warned_unreadable_index.add(key)
             log.warning(
                 "Search index of %s matched %d entries the archive cannot read; "
-                "its results are dropped", key, dropped
+                "its results are dropped",
+                key,
+                dropped,
             )
     return results
 
@@ -1807,7 +1816,9 @@ def _vocab_build_worker(attempt=1):
             )
             global _vocab_retry_timer
             _vocab_retry_timer = threading.Timer(
-                _VOCAB_RETRY_DELAY_S, _vocab_build_worker, kwargs={"attempt": attempt + 1}
+                _VOCAB_RETRY_DELAY_S,
+                _vocab_build_worker,
+                kwargs={"attempt": attempt + 1},
             )
             _vocab_retry_timer.daemon = True
             _vocab_retry_timer.start()
@@ -2118,7 +2129,9 @@ _PLACES_PER_MAP = 8
 
 # Kiwix's maps2zim writes one page per place under search/<Name>, a meta
 # refresh onto the map at the place. The dice read the place out of it.
-_MAPS2ZIM_POS_RE = re.compile(r"#lat=(-?\d+(?:\.\d+)?)&lon=(-?\d+(?:\.\d+)?)(?:&zoom=(\d+))?")
+_MAPS2ZIM_POS_RE = re.compile(
+    r"#lat=(-?\d+(?:\.\d+)?)&lon=(-?\d+(?:\.\d+)?)(?:&zoom=(\d+))?"
+)
 _RANDOM_MAP_TRIES = 60
 
 
@@ -2128,7 +2141,9 @@ def _map_home_view(name):
     None for a map without one, which then opens where it opens itself."""
     from zimi import mapsearch
 
-    entry = next((z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None)
+    entry = next(
+        (z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None
+    )
     if not entry or entry.get("kind") != "map" or not _srv.zim_allowed(name):
         return None
     try:
@@ -2151,11 +2166,18 @@ def _random_map_place(name):
     few random draws find one."""
     from zimi import mapsearch
 
-    entry = next((z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None)
+    entry = next(
+        (z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None
+    )
     # A map this request may not read is one it cannot roll on either: the
     # pooled archive behind this has no gate of its own (the route's does not
     # reach get_archive on the map branch).
-    if not entry or entry.get("kind") != "map" or not entry.get("main_path") or not _srv.zim_allowed(name):
+    if (
+        not entry
+        or entry.get("kind") != "map"
+        or not entry.get("main_path")
+        or not _srv.zim_allowed(name)
+    ):
         return None
     try:
         archive, lock = _get_fts_archive(name)
@@ -2181,7 +2203,12 @@ def _random_map_place(name):
                     continue
                 m = _MAPS2ZIM_POS_RE.search(html)
                 if m:
-                    place = (e.title or e.path[7:], int(m.group(3) or 10), float(m.group(1)), float(m.group(2)))
+                    place = (
+                        e.title or e.path[7:],
+                        int(m.group(3) or 10),
+                        float(m.group(1)),
+                        float(m.group(2)),
+                    )
                     break
     if not place:
         return None
@@ -2203,7 +2230,9 @@ def _kiwix_places(archive, query_str, limit):
         if not path.startswith("search/"):
             continue
         try:
-            html = bytes(archive.get_entry_by_path(path).get_item().content).decode("utf-8", "replace")
+            html = bytes(archive.get_entry_by_path(path).get_item().content).decode(
+                "utf-8", "replace"
+            )
         except Exception:
             continue
         m = _MAPS2ZIM_POS_RE.search(html)
@@ -2254,7 +2283,12 @@ def find_places(query_str, limit=_PLACES_PER_MAP):
             continue
         if found:
             groups.append(
-                {"zim": name, "title": z.get("title") or name, "main_path": z.get("main_path") or "", "places": found}
+                {
+                    "zim": name,
+                    "title": z.get("title") or name,
+                    "main_path": z.get("main_path") or "",
+                    "places": found,
+                }
             )
     return groups
 
@@ -2273,7 +2307,9 @@ def _search_places(query_str, target_names):
             if archive is None or lock is None:
                 continue
             with lock:
-                found = mapsearch.search_places(archive, query_str, limit=_PLACES_PER_MAP)
+                found = mapsearch.search_places(
+                    archive, query_str, limit=_PLACES_PER_MAP
+                )
         except Exception as e:
             log.debug("place search failed on %s: %s", name, e)
             continue
@@ -2437,7 +2473,9 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
                 # asked the old way: the full-text search, which fails soft.
                 if getattr(archive, "has_fulltext_index", True):
                     with lock:
-                        results = search_zim(archive, cleaned, limit=limit, snippets=False)
+                        results = search_zim(
+                            archive, cleaned, limit=limit, snippets=False
+                        )
                 else:
                     # No Xapian index to ask (Kiwix's map ZIMs ship _ftindex:no,
                     # so do some small captures). Titles are still there, and
@@ -2453,7 +2491,9 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
                 exact = _title_index_exact(name, query_str)
                 if exact:
                     have = {r.get("path") for r in exact}
-                    results = exact + [r for r in (results or []) if r.get("path") not in have]
+                    results = exact + [
+                        r for r in (results or []) if r.get("path") not in have
+                    ]
                 dt = time.time() - t0
                 fts_results[name] = (results, dt)
             except Exception as e:
@@ -2558,7 +2598,7 @@ def read_unglued(zim_name, path, read):
     got = read(path)
     prefix = f"{zim_name}/"
     if got is None and path.startswith(prefix):
-        got = read(path[len(prefix):])
+        got = read(path[len(prefix) :])
     return got
 
 
@@ -3385,7 +3425,9 @@ def _xkcd_date_lookup(archive, path):
 def _scan_vocab_child_main(index_dir, out):
     """`python -m zimi.search --scan-vocab <index dir> <out>`: the scan
     _scan_vocab_in_child starts, writing (words, complete) to `out`."""
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
+    )
     vocab, complete = _scan_vocab(index_dir)
     _srv._atomic_write_json(out, {"complete": complete, "words": vocab})
 
