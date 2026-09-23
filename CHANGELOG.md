@@ -37,6 +37,7 @@ A fix-up release from a pass over every feature Zimi has claimed since 1.0.
 - "About this data" in the almanac says where each number comes from.
 - ZimiTube reads current Kiwix video ZIMs: multi-language TED (`ted_mul`) and youtube2zim 3.x channels such as CrashCourse and Blender Studio, with their subtitles (#89).
 - ZimiTube shows videos Zimi made and one card per TED talk; a talk whose video is missing says so.
+- ZimiTube search finds a video by its description as well as its title, for every source; multi-language TED and youtube2zim 3.x descriptions are read once in the background, so the feed opens without waiting for them, and the player shows the whole description.
 - The catalog: `ZIMI_OFFLINE` stays offline, "Part of" badges stay within a project, seeding survives being switched off and on, and a small library's size is not 0 B.
 - Nearby tells two servers on one host apart, and keeps its ZIM count current.
 - Maps: search from a map opened by link, Enter flies to the place, and visitors can open the map picker.

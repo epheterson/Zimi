@@ -392,6 +392,26 @@ def _index_is_current(db_path, zim_path, schema_version):
         return False
 
 
+def _write_index_meta(conn, archive, zim_path, schema_version, count):
+    """The rows _index_is_current reads back, into an index's meta table:
+    its schema, the ZIM's mtime and uuid (the uuid when libzim gives one),
+    when it was built and how many rows it holds."""
+    zim_uuid = ""
+    try:
+        zim_uuid = str(archive.uuid)
+    except Exception as e:
+        log.debug("UUID read during build failed for %s: %s", zim_path, e)
+    rows = [
+        ("schema_version", schema_version),
+        ("zim_mtime", str(os.path.getmtime(zim_path))),
+        ("built_at", str(time.time())),
+        ("entry_count", str(count)),
+    ]
+    if zim_uuid:
+        rows.append(("zim_uuid", zim_uuid))
+    conn.executemany("INSERT INTO meta VALUES (?, ?)", rows)
+
+
 def _title_index_is_current(zim_name, zim_path):
     """Check if title index exists, matches ZIM mtime, and is current schema version."""
     path_fn = getattr(_srv, "_title_index_path", _title_index_path)
@@ -531,20 +551,7 @@ def _build_title_index(zim_name, zim_path):
                 count,
                 _FTS5_ENTRY_THRESHOLD,
             )
-        zim_mtime = str(os.path.getmtime(zim_path))
-        zim_uuid = ""
-        try:
-            zim_uuid = str(archive.uuid)
-        except Exception as e:
-            log.debug("UUID read during build failed for %s: %s", zim_name, e)
-        conn.execute(
-            "INSERT INTO meta VALUES ('schema_version', ?)", (_TITLE_INDEX_VERSION,)
-        )
-        conn.execute("INSERT INTO meta VALUES ('zim_mtime', ?)", (zim_mtime,))
-        if zim_uuid:
-            conn.execute("INSERT INTO meta VALUES ('zim_uuid', ?)", (zim_uuid,))
-        conn.execute("INSERT INTO meta VALUES ('built_at', ?)", (str(time.time()),))
-        conn.execute("INSERT INTO meta VALUES ('entry_count', ?)", (str(count),))
+        _write_index_meta(conn, archive, zim_path, _TITLE_INDEX_VERSION, count)
         conn.execute("INSERT INTO meta VALUES ('has_fts', ?)", (has_fts,))
         conn.commit()
     except Exception:
@@ -820,16 +827,20 @@ def _zim_entry_count(zim_name):
     return 0
 
 
-def _build_index_isolated(kind, zim_name, zim_path, build_fn, close_fn):
+def _build_index_isolated(
+    kind, zim_name, zim_path, build_fn, close_fn, min_entries=None
+):
     """build_fn(zim_name, zim_path), in a child process when the ZIM is big.
 
-    `kind` names the build for the child ("titles" or "qids"); close_fn evicts
-    this process's pooled connection to the index the child replaced. A frozen
-    desktop build has no `python -m` to start, and builds in this process."""
-    if (
-        getattr(sys, "frozen", False)
-        or _zim_entry_count(zim_name) < _ISOLATE_BUILD_MIN_ENTRIES
-    ):
+    `kind` names the build for the child ("titles", "qids" or "tube");
+    close_fn evicts this process's pooled connection to the index the child
+    replaced. `min_entries` is where "big" starts, _ISOLATE_BUILD_MIN_ENTRIES
+    unless the build says otherwise: a build that reads every entry pays per
+    entry, one that reads a file per video pays per video. A frozen desktop
+    build has no `python -m` to start, and builds in this process."""
+    if min_entries is None:
+        min_entries = _ISOLATE_BUILD_MIN_ENTRIES
+    if getattr(sys, "frozen", False) or _zim_entry_count(zim_name) < min_entries:
         return build_fn(zim_name, zim_path)
     from zimi import subproc
 
@@ -3499,6 +3510,10 @@ def _build_index_child_main(kind, data_dir, zim_name, zim_path):
         from zimi import interlang
 
         interlang._build_qid_index(zim_name, zim_path)
+    elif kind == "tube":
+        from zimi import tube
+
+        tube.build_details(zim_name, zim_path)
     else:
         raise SystemExit(f"unknown index kind {kind!r}")
 
