@@ -15955,23 +15955,28 @@ function _readerSettingsRowsHtml() {
   // @media print rules in _readerViewInjectStyle); printing a raw ZIM page is out
   // of scope. Share rides navigator.share (mobile Safari / Android) — hidden when
   // the platform can't share.
-  var canPrint = _readerViewOn && _readerPrintable();
-  var canShare = _readerViewOn && typeof navigator !== 'undefined' && !!navigator.share;
-  if (canPrint || canShare) {
-    h += '<div class="rv-pal-divider" role="separator"></div>';
-    if (canPrint) {
-      h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderControls();_readerPrint()">' +
-        _RV_PRINT_ICON + '<span>' + tH('reader_print') + '</span></button>';
-    }
-    if (canShare) {
-      h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderControls();_readerShare()">' +
-        _RV_SHARE_ICON + '<span>' + tH('reader_share') + '</span></button>';
-    }
-  }
+  var actions = _readerActionRowsHtml();
+  if (actions) h += '<div class="rv-pal-divider" role="separator"></div>' + actions;
   h += '<div class="rv-pal-divider" role="separator"></div>';
   h += '<button type="button" class="rv-exit-row" onclick="_closeReaderControls();_readerViewToggle()">' +
     '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>' +
     tH('reader_exit') + '</button>';
+  return h;
+}
+// Print / Save as PDF and native Share, while Reader View is on and the
+// platform can do them. One source for both hosts: the book button's palette
+// and the ⋯ menu, which is where they are reachable while an article is open
+// (the book button is hidden then, so from the palette alone they were not).
+function _readerActionRowsHtml() {
+  var h = '';
+  if (_readerViewOn && _readerPrintable()) {
+    h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderControls();_readerPrint()">' +
+      _RV_PRINT_ICON + '<span>' + tH('reader_print') + '</span></button>';
+  }
+  if (_readerViewOn && typeof navigator !== 'undefined' && !!navigator.share) {
+    h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderControls();_readerShare()">' +
+      _RV_SHARE_ICON + '<span>' + tH('reader_share') + '</span></button>';
+  }
   return h;
 }
 function _renderReaderPalette() {
@@ -19661,6 +19666,7 @@ function _buildTopbarMenuHtml() {
     // theme swatches + font/size only, no title labels, no AUTO (settings-only).
     if (rvOn) {
       readerGroup += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
+      readerGroup += _readerActionRowsHtml();
     }
     // 3. Read aloud.
     if (_TTS_AVAILABLE && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage() && !_isPdfPage()) {
