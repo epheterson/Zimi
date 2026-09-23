@@ -534,7 +534,7 @@ class VocabAtStartupTests(unittest.TestCase):
             mock.patch.object(_server, "get_hot_zims", lambda: []),
             mock.patch.object(_server, "_build_all_title_indexes", lambda: None),
             mock.patch.object(_server, "_build_all_qid_indexes", lambda: None),
-            mock.patch.object(_search, "_ensure_vocab", lambda: started.set()),
+            mock.patch.object(_search, "_build_vocab_here", lambda: started.set()),
         ):
             _server.warm_indexes()
             self.assertTrue(started.wait(10), "startup never asked for the vocabulary")

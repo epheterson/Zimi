@@ -1838,6 +1838,21 @@ def _ensure_vocab():
         return None
 
 
+def _build_vocab_here():
+    """Load or build the vocabulary on the calling thread: the startup
+    worker's last phase, which runs its phases on one thread by design
+    (test_startup_serial). The thread is recorded as the builder, so a search
+    arriving meanwhile waits for it rather than starting a second build."""
+    global _vocab_builder_thread
+    with _vocab_lock:
+        if _vocab is not None:
+            return
+        if _vocab_builder_thread is not None and _vocab_builder_thread.is_alive():
+            return
+        _vocab_builder_thread = threading.current_thread()
+    _vocab_build_worker()
+
+
 def _join_vocab_retry(timeout=5.0):
     """Block until a scheduled retry build has run. Tests only."""
     t = _vocab_retry_timer

@@ -4742,7 +4742,7 @@ def warm_indexes():
         try:
             from zimi import search as _search_mod
 
-            _search_mod._ensure_vocab()
+            _search_mod._build_vocab_here()
         except Exception as e:
             log.warning("Did-you-mean vocab phase failed: %s", e)
 
