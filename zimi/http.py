@@ -196,6 +196,10 @@ _RATE_LIMITED_API_PATHS = (
     "/almanac-links",
 )
 
+# The apps' routes below their bare path (/exchange/question, /reddot/post):
+# matched exactly, they answered without limit.
+_RATE_LIMITED_API_PREFIXES = ("/exchange/", "/reddot/", "/tube/")
+
 # High-frequency read-only manage polls. While a download runs the manage UI
 # keeps three independent timers alive — downloads+seeding every 2s, activity
 # every 5s, BT status in bursts — which together demand ~72 req/min, over the
@@ -261,7 +265,10 @@ def _rate_class(path):
     """(is_rate_limited, uses_content_bucket) for a GET path."""
     is_content = path.startswith("/w/") or path == "/snippet" or path in _POLL_PATHS
     limited = (
-        is_content or path in _RATE_LIMITED_API_PATHS or path.startswith("/manage/")
+        is_content
+        or path in _RATE_LIMITED_API_PATHS
+        or path.startswith(_RATE_LIMITED_API_PREFIXES)
+        or path.startswith("/manage/")
     )
     return limited, is_content
 
