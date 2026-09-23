@@ -51,11 +51,11 @@ check(/if \(_isNarrow\(\)\) \{/.test(menu) && !/_isNarrow\(\) \|\| _createOpen/.
 // ── and the trigger itself ─────────────────────────────────────────────────
 // Checked on both axes because they fail differently: the inline style covers
 // the wide viewport, and only the class can beat the mobile rule.
-const sync = js.slice(js.indexOf("var moreBtn = document.querySelector('.topbar-more')") - 400,
-                      js.indexOf('_syncTopbarMoreSolo(moreBtn)') + 40);
-check(/classList\.toggle\('creating', !!_createOpen\)/.test(sync),
+// The ⋯ logic is its own function (_syncTopbarMore) so it can run again when
+// an article loads; updateTopbar still owns body.creating.
+check(/classList\.toggle\('creating', !!_createOpen\)/.test(fn('updateTopbar')),
       'body.creating tracks the page');
-check(/_createOpen \? 'none'/.test(sync), 'and the trigger is hidden while it is up');
+check(/_createOpen \? 'none'/.test(fn('_syncTopbarMore')), 'and the trigger is hidden while it is up');
 check(/body\.creating \.topbar-more \{ display: none !important; \}/.test(css),
       'with !important, because the mobile rule that shows ⋯ is !important too');
 
