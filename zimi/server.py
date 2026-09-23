@@ -615,6 +615,17 @@ DEFAULT_DATA_DIR_NAME = ".zimi"
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8899
 
+
+def announce_ready(port):
+    """Print `READY <port>` for whatever started us (CI smoke tests, the
+    desktop launcher, service managers), as ONE write.
+
+    print() writes the text and the newline separately, and on an
+    unbuffered stdout another thread's log line landed between them:
+    "READY 888323:07:20 Title indexes warmed", which reads as no READY."""
+    sys.stdout.write(f"READY {port}\n")
+    sys.stdout.flush()
+
 # ---------------------------------------------------------------------------
 # Zero-config ZIM discovery (1.9 portable mode)
 #
@@ -4531,7 +4542,7 @@ def main():
         # desktop launcher) can capture the bound port — important when
         # --port 0 is used to let the OS pick a free port.
         actual_port = server.server_address[1]
-        print(f"READY {actual_port}", flush=True)
+        announce_ready(actual_port)
         # The Creator pane's engines (a browser launch, two sidecars) are
         # found out in the background, so the first look at that pane is not
         # "Checking…" for as long as a browser takes to start. After READY

@@ -1090,7 +1090,9 @@ def _serve_headless():
         if discovered:
             zim_dir = discovered
 
-    _serve(zim_dir, port, lambda actual_port: print(f"READY {actual_port}", flush=True), _bind_host(config))
+    from zimi.server import announce_ready
+
+    _serve(zim_dir, port, announce_ready, _bind_host(config))
 
 
 def _cli_port_and_zim_dir(args):
@@ -1127,7 +1129,9 @@ def _run_in_browser(reason=""):
 
     def on_ready(actual_port):
         url = f"http://127.0.0.1:{actual_port}"
-        print(f"READY {actual_port}", flush=True)
+        from zimi.server import announce_ready
+
+        announce_ready(actual_port)
         if reason:
             print(f"Zimi: {reason}; opening {url} in your browser instead.", file=sys.stderr, flush=True)
         else:
