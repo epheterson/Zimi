@@ -5552,9 +5552,18 @@ def handle_manage_post(handler, parsed, data):
         # The setup key's life ends with the bootstrap it existed for.
         if new_pw:
             _clear_setup_key()
-        return handler._json(
-            200, {"status": "password set" if new_pw else "password cleared"}
-        )
+            # A new password ends the sessions the old one opened, and this
+            # browser gets a fresh one: it keeps a session, never a password.
+            from zimi import users as _users_pw
+
+            _users_pw.drop_admin_sessions()
+            token = _users_pw.create_admin_session()
+            return handler._json_cookie(
+                200,
+                {"status": "password set", "token": token},
+                handler._session_cookie(token, bool(data.get("remember"))),
+            )
+        return handler._json(200, {"status": "password cleared"})
 
     # API token management — requires existing auth + password must be set
     if parsed.path == "/manage/generate-token":

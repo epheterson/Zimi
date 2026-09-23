@@ -1320,6 +1320,7 @@
   "new_badge": "New",
   "new_collection": "New collection…",
   "new_password": "New password",
+  "current_password": "Current password",
   "no_active_downloads": "No active downloads",
   "no_bookmarks": "No bookmarks yet. Open an article and press B to bookmark it.",
   "no_collections": "No collections yet. Create one to group ZIMs for scoped search.",

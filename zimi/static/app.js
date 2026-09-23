@@ -76,7 +76,10 @@ var SK = {
   BM_FOLDERS: 'zimi_bm_folders',
   // Per-device UI state: ids of collapsed folders in the bookmarks tree.
   BM_COLLAPSED: 'zimi_bm_collapsed',
-  MANAGE_PW: 'zimi_manage_pw',
+  // The admin's session token. Never the password: that used to be kept here
+  // in plain text under the key zimi_manage_pw, which _purgeStoredPassword
+  // removes wherever an older version left it.
+  MANAGE_PW: 'zimi_manage_token',
   // Optional management username (v1.8) — a plain identifier, stored next to
   // the token so a remembered session keeps sending its X-Zimi-User header.
   MANAGE_USER: 'zimi_manage_user',
@@ -611,6 +614,13 @@ function _dismissOnOutside(keepEls, onDismiss) {
   }, 0);
   return detach;
 }
+
+// A password an older version stored (zimi_manage_pw) is deleted on load;
+// that browser signs in once more and keeps a session token instead.
+(function _purgeStoredPassword() {
+  try { localStorage.removeItem('zimi_manage_pw'); } catch (e) {}
+  try { sessionStorage.removeItem('zimi_manage_pw'); } catch (e) {}
+})();
 
 // ── Manage token storage ──
 // localStorage = persistent ("Remember me" checked).
@@ -4929,6 +4939,9 @@ function openCreate(replaceState) {
       openCreate(replaceState);
     };
     _pwResolve = _afterPw; _pwReject = function() {};
+    // Through /login, so what _afterPw keeps is a session token, not the
+    // password that was typed.
+    _pwLoginMode = true;
     openPwModal();
     return;
   }
@@ -13399,14 +13412,28 @@ async function managePassword() {
   const errEl = document.getElementById('pw-error');
   const overlay = document.getElementById('pw-overlay');
 
+  // Changing it asks for the current password first: the browser keeps a
+  // session token now, never the password, so it has nothing to offer as
+  // proof on its own.
+  let current = '';
+  if (has.has_password) {
+    current = await new Promise(function(resolve) {
+      openPwModal(t('change_password'), {placeholder: t('current_password'), hideRemember: true});
+      document.getElementById('pw-remove-btn').style.display = 'none';
+      _pwResolve = function(pw) { _pwResolve = null; resolve(pw); };
+      _pwReject = function() { resolve(null); };
+    });
+    if (current === null) return;
+  }
   openPwModal(has.has_password ? t('change_password') : t('set_password'), {placeholder: t('new_password'), hideRemember: true});
   document.getElementById('pw-remove-btn').style.display = has.has_password ? '' : 'none';
 
   _pwResolve = async function(newPw) {
     // submitPw set _manageUser from the (now visible) username field; store it
     // alongside the new password so future logins must present it.
-    const body = {password: newPw, username: _manageUser || 'admin'};
-    if (has.has_password && _manageToken) body.current = _manageToken;
+    const wasRemembered = !!localStorage.getItem(SK.MANAGE_PW);
+    const body = {password: newPw, username: _manageUser || 'admin', remember: wasRemembered};
+    if (has.has_password) body.current = current;
     const res = await manageFetch('/manage/set-password', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -13424,9 +13451,10 @@ async function managePassword() {
     // (localStorage), re-persist the new one so a password change doesn't
     // silently log them out next visit. Previously this always cleared storage,
     // which defeated Remember me for anyone who ever changed their password.
-    const wasRemembered = !!localStorage.getItem(SK.MANAGE_PW);
-    _manageToken = newPw || '';
-    if (newPw) _saveManageToken(newPw, wasRemembered);
+    // The server hands back a fresh session for the new password.
+    const d = await res.json().catch(() => ({}));
+    _manageToken = (newPw && d.token) || '';
+    if (_manageToken) _saveManageToken(_manageToken, wasRemembered);
     else _clearManageToken();
     closePwModal();
     renderManage();

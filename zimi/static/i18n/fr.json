@@ -1320,6 +1320,7 @@
   "new_badge": "Nouveau",
   "new_collection": "Nouvelle collection…",
   "new_password": "Nouveau mot de passe",
+  "current_password": "Mot de passe actuel",
   "no_active_downloads": "Aucun téléchargement en cours",
   "no_bookmarks": "Aucun signet. Ouvrez un article et appuyez sur B pour le mettre en signet.",
   "no_collections": "Aucune collection. Créez-en une pour regrouper des ZIM et cibler vos recherches.",

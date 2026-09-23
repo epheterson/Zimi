@@ -4245,8 +4245,11 @@ class ZimHandler(BaseHTTPRequestHandler):
         if _manage.verify_admin_credentials(username, password):
             token = _users.create_admin_session()
             log.info("Admin login (password account)")
+            # The session token, for the client to keep and send as its manage
+            # Bearer. It used to keep the password itself, in plain text in
+            # localStorage under "Remember me"; a password is kept nowhere now.
             return self._json_cookie(
-                200, {"role": "admin"}, self._session_cookie(token, remember)
+                200, {"role": "admin", "token": token}, self._session_cookie(token, remember)
             )
         return self._json(401, {"error": "invalid credentials"})
 
