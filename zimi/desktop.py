@@ -70,6 +70,13 @@ def _linux_environment(env, frozen, typelib_dirs=_HOST_TYPELIB_DIRS, isdir=os.pa
     # WebKit2 does not exist. The window then cannot open, the launch falls
     # back to the browser, and a confined snap has no browser to open: the
     # snap did nothing at all and said nothing either (issue #81, 1.10.0).
+    # And inside a snap, WebKit asks the desktop portal whether the network
+    # can be reached before it loads even 127.0.0.1; a confined snap is told
+    # "This call is not available inside the sandbox", the load fails, and
+    # WebKit shows that sentence on a black window (issue #81, 1.10.1, Xubuntu
+    # and Mint). GLib's own monitor answers without the portal.
+    if env.get("SNAP_NAME") and "GIO_USE_NETWORK_MONITOR" not in env:
+        env["GIO_USE_NETWORK_MONITOR"] = changed["GIO_USE_NETWORK_MONITOR"] = "base"
     if frozen and not env.get("SNAP_NAME"):
         # The bundle carries no GLib, GTK or WebKit of its own on Linux (see
         # the spec): the host's are the ones that match the host's WebKitGTK
@@ -278,11 +285,20 @@ def _config_dir():
         return os.path.join(xdg, "zimi")
 
 
+def _user_home():
+    """The person's home folder. Inside a snap $HOME is the snap's own
+    per-revision folder (~/snap/zimi/22), so the default library landed
+    there, somewhere nobody puts ZIMs and that moves with every update
+    (issue #81 logs: "No ZIM files found in /home/asus/snap/zimi/22/Zimi").
+    snapd names the real one."""
+    return os.environ.get("SNAP_REAL_HOME") or os.path.expanduser("~")
+
+
 class ConfigManager:
     """Read/write config.json with sensible defaults."""
 
     DEFAULTS = {
-        "zim_dir": os.path.join(os.path.expanduser("~"), "Zimi"),
+        "zim_dir": os.path.join(_user_home(), "Zimi"),
         "data_dir": "",  # empty = use ZIM_DIR/.zimi (backward compat)
         "port": 8899,
         "auto_open_browser": True,
@@ -311,6 +327,13 @@ class ConfigManager:
                 self._data.update(stored)
             except (json.JSONDecodeError, OSError):
                 pass  # corrupt file — use defaults
+        # A snap that ran 1.10.1 saved the old default, the snap's own
+        # per-revision home (see _user_home). Only that exact value moves; a
+        # folder someone chose stays theirs.
+        if os.environ.get("SNAP_REAL_HOME"):
+            old_default = os.path.join(os.path.expanduser("~"), "Zimi")
+            if self._data.get("zim_dir") == old_default:
+                self._data["zim_dir"] = self.DEFAULTS["zim_dir"]
 
     def save(self):
         os.makedirs(self.dir, exist_ok=True)
@@ -469,7 +492,7 @@ class DesktopAPI:
         import webview
 
         result = webview.windows[0].create_file_dialog(
-            webview.FOLDER_DIALOG, directory=initial or os.path.expanduser("~")
+            webview.FOLDER_DIALOG, directory=initial or _user_home()
         )
         return result[0] if result else None
 
@@ -530,7 +553,7 @@ class DesktopAPI:
 
         result = webview.windows[0].create_file_dialog(
             webview.SAVE_DIALOG,
-            directory=os.path.expanduser("~/Downloads"),
+            directory=os.path.join(_user_home(), "Downloads"),
             save_filename=suggested_name,
             file_types=file_types,
         )

@@ -23,7 +23,10 @@ apps:
     # no display access and no WebKit at all (issue #81), and the app died
     # on launch on every machine.
     extensions: [gnome]
-    plugs: [network, network-bind, home, removable-media, desktop, desktop-legacy, x11, wayland, opengl]
+    # network-status: the desktop portal answers WebKit's reachability check
+    # only for a snap that has it (issue #81: a black window reading "This call
+    # is not available inside the sandbox" on Xubuntu and Mint).
+    plugs: [network, network-bind, network-status, home, removable-media, desktop, desktop-legacy, x11, wayland, opengl]
 
 parts:
   zimi:

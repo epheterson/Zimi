@@ -225,7 +225,7 @@ def test_the_snap_has_a_display_and_a_webkit():
     with open(os.path.join(REPO, "snap", "snapcraft.yaml"), encoding="utf-8") as f:
         snap = f.read()
     assert "extensions: [gnome]" in snap
-    for plug in ("desktop", "x11", "wayland", "opengl"):
+    for plug in ("desktop", "x11", "wayland", "opengl", "network-status"):
         assert plug in snap, plug
 
 
@@ -312,10 +312,42 @@ def test_a_snap_keeps_the_environment_its_extension_built():
     for key in ("LD_LIBRARY_PATH", "GI_TYPELIB_PATH", "GDK_PIXBUF_MODULE_FILE", "GSETTINGS_SCHEMA_DIR", "GIO_MODULE_DIR"):
         assert snap[key] == before[key], key
         assert key not in changed, key
-    # The GPU hints are still wanted: a snap runs on the same machines.
-    assert changed == {"WEBKIT_DISABLE_DMABUF_RENDERER": "1", "WEBKIT_DISABLE_COMPOSITING_MODE": "1"}
+    # The GPU hints are still wanted: a snap runs on the same machines. And
+    # GLib's own network monitor, not the portal's, which refuses a snap.
+    assert changed == {
+        "WEBKIT_DISABLE_DMABUF_RENDERER": "1",
+        "WEBKIT_DISABLE_COMPOSITING_MODE": "1",
+        "GIO_USE_NETWORK_MONITOR": "base",
+    }
     # Outside a snap the same environment is still taken apart.
     plain = dict(before)
     del plain["SNAP"], plain["SNAP_NAME"]
     desktop._linux_environment(plain, frozen=True, isdir=lambda d: True)
     assert "GDK_PIXBUF_MODULE_FILE" not in plain
+
+
+def test_a_snap_looks_for_zims_in_the_persons_home(monkeypatch, tmp_path):
+    """Inside a snap $HOME is ~/snap/zimi/<revision>; the default library went
+    there (issue #81: "No ZIM files found in /home/asus/snap/zimi/22/Zimi"),
+    and a 1.10.1 snap saved that into its config."""
+    import importlib
+    import json
+
+    snap_home = tmp_path / "home" / "asus" / "snap" / "zimi" / "22"
+    snap_home.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(snap_home))
+    monkeypatch.setenv("SNAP_REAL_HOME", "/home/asus")
+    mod = importlib.reload(desktop)
+    try:
+        assert mod._user_home() == "/home/asus"
+        assert mod.ConfigManager.DEFAULTS["zim_dir"] == "/home/asus/Zimi"
+        cfg_dir = tmp_path / "cfg"
+        cfg_dir.mkdir()
+        (cfg_dir / "config.json").write_text(json.dumps({"zim_dir": str(snap_home / "Zimi")}), encoding="utf-8")
+        monkeypatch.setattr(mod, "_config_dir", lambda: str(cfg_dir))
+        assert mod.ConfigManager().get("zim_dir") == "/home/asus/Zimi"
+        (cfg_dir / "config.json").write_text(json.dumps({"zim_dir": "/media/usb/zims"}), encoding="utf-8")
+        assert mod.ConfigManager().get("zim_dir") == "/media/usb/zims"
+    finally:
+        monkeypatch.delenv("SNAP_REAL_HOME")
+        importlib.reload(desktop)

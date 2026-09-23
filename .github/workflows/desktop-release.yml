@@ -268,7 +268,11 @@ jobs:
         shell: bash
         run: |
           set -x
-          sudo apt-get install -y -qq xvfb dbus-x11 >/dev/null
+          # A desktop session, not a bare display: a session bus with
+          # xdg-desktop-portal on it. The 1.10.1 snap passed this check on a
+          # bare Xvfb and showed a black window on Xubuntu and Mint, because
+          # there the portal refused WebKit's network check (issue #81).
+          sudo apt-get install -y -qq xvfb dbus-x11 xdg-desktop-portal xdg-desktop-portal-gtk >/dev/null
           sudo snap install --dangerous ./*.snap
           # A sideloaded snap gets no auto-connections: wire what the
           # snapcraft.yaml asks for, and say so when one will not connect.
@@ -278,7 +282,11 @@ jobs:
           snap connections zimi
           mkdir -p "$HOME/zimi-smoke"
           ZIMI_DESKTOP_SMOKE=app ZIMI_DESKTOP_SMOKE_DWELL=2 ZIM_DIR="$HOME/zimi-smoke" \
-            timeout 180 xvfb-run -a snap run zimi 2>&1 | tee /tmp/snap-smoke.log || true
+            timeout 180 dbus-run-session -- sh -c '
+              /usr/libexec/xdg-desktop-portal >/tmp/portal.log 2>&1 &
+              sleep 2
+              xvfb-run -a snap run zimi' 2>&1 | tee /tmp/snap-smoke.log || true
+          grep -i "portal" /tmp/snap-smoke.log /tmp/portal.log || true
           if ! grep -q "SMOKE: app rendered" /tmp/snap-smoke.log; then
             echo "::error::The snap did not open its window; this release ships without it."
             exit 1
