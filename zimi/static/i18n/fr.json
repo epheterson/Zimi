@@ -1703,5 +1703,8 @@
   "alm_about_persian": "Calendrier persan : le cycle arithmétique de 33 ans, qui concorde avec le calendrier officiel pour notre époque.",
   "alm_about_chinese": "Calendrier chinois : calculé à partir des nouvelles lunes et des termes solaires ; concorde avec l'Observatoire de Hong Kong de 1900 à 2100.",
   "alm_about_deeptime": "Temps profond : jusqu'à 13 000 ans autour de l'an 2000 les méthodes tiennent ; au-delà, jusqu'à 270 000 ans, les valeurs sont seulement indicatives.",
-  "alm_about_timezones": "Fuseaux horaires : la plus proche d'une série de villes, faute de carte hors ligne des frontières de fuseaux ; peut se tromper près d'une frontière."
+  "alm_about_timezones": "Fuseaux horaires : la plus proche d'une série de villes, faute de carte hors ligne des frontières de fuseaux ; peut se tromper près d'une frontière.",
+  "desktop_lan_access": "Ouvrir Zimi sur les autres appareils de ce réseau",
+  "desktop_lan_hint": "Permet à un téléphone ou à un autre ordinateur sur le même Wi-Fi ou point d'accès de lire votre bibliothèque. Gérer la bibliothèque demande toujours votre mot de passe administrateur. Zimi redémarre quand vous modifiez ce réglage.",
+  "desktop_lan_open_at": "Sur un autre appareil, ouvrez :"
 }

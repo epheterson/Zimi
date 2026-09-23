@@ -178,6 +178,33 @@ def _local_ip() -> str:
         return "127.0.0.1"
 
 
+def local_ipv4s() -> list[str]:
+    """Every IPv4 on this machine another device could reach: the routed one
+    `_local_ip` finds first, then the other adapters the host name resolves
+    to. A Windows mobile hotspot (192.168.137.1) is one of the others: it has
+    no route to the internet, so `_local_ip` never sees it (issue #90)."""
+    import ipaddress as _ipa
+
+    candidates = [_local_ip()]
+    try:
+        candidates += [
+            a[4][0]
+            for a in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)
+        ]
+    except OSError:
+        pass
+    found = []
+    for ip in candidates:
+        try:
+            addr = _ipa.ip_address(ip)
+        except ValueError:
+            continue
+        if addr.is_loopback or addr.is_link_local or addr.is_unspecified or ip in found:
+            continue
+        found.append(ip)
+    return found
+
+
 def _hostname() -> str:
     try:
         return socket.gethostname().split(".")[0] or "zimi"
