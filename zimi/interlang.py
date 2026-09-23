@@ -18,7 +18,7 @@ import time
 from urllib.parse import urlparse, parse_qs, quote, unquote
 
 import zimi.server as _srv
-from zimi.search import _build_index_isolated, _loadavg_throttle
+from zimi.search import _build_index_isolated, _loadavg_throttle, _write_index_meta
 
 log = logging.getLogger("zimi")
 
@@ -301,20 +301,7 @@ def _build_qid_index(zim_name, zim_path):
 
         conn.execute("CREATE INDEX idx_qid ON qids(qid)")
 
-        zim_mtime = str(os.path.getmtime(zim_path))
-        zim_uuid = ""
-        try:
-            zim_uuid = str(archive.uuid)
-        except Exception as e:
-            log.debug("UUID read during Q-ID build failed for %s: %s", zim_name, e)
-        conn.execute(
-            "INSERT INTO meta VALUES ('schema_version', ?)", (_QID_INDEX_VERSION,)
-        )
-        conn.execute("INSERT INTO meta VALUES ('zim_mtime', ?)", (zim_mtime,))
-        if zim_uuid:
-            conn.execute("INSERT INTO meta VALUES ('zim_uuid', ?)", (zim_uuid,))
-        conn.execute("INSERT INTO meta VALUES ('built_at', ?)", (str(time.time()),))
-        conn.execute("INSERT INTO meta VALUES ('entry_count', ?)", (str(count),))
+        _write_index_meta(conn, archive, zim_path, _QID_INDEX_VERSION, count)
         conn.commit()
     except Exception:
         conn.close()
