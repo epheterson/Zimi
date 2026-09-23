@@ -1943,7 +1943,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if cached is not None:
                     _record_metric("/search", 0)
                     _record_usage("search", query=q)
-                    return self._json(200, cached)
+                    return self._json(404 if cached.get("error") else 200, cached)
                 t0 = time.time()
                 if fast:
                     # Fast path uses _suggest_pool internally, no _zim_lock needed
@@ -1970,7 +1970,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                     fast,
                     dt,
                 )
-                return self._json(200, result)
+                # Scoped to a ZIM that is not here: 404, as /read and /chunks.
+                return self._json(404 if result.get("error") else 200, result)
 
             elif parsed.path == "/read":
                 zim = param("zim")
@@ -1991,7 +1992,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                     result = _srv.read_article(zim, path, max_length=max_len)
                 _record_metric("/read", time.time() - t0)
                 _record_usage("read", zim)
-                return self._json(200, result)
+                # An unknown ZIM or article is a 404, as api-and-mcp.md
+                # promises and /chunks already answers; the body is the same.
+                return self._json(404 if result.get("error") else 200, result)
 
             elif parsed.path == "/chunks":
                 zim = param("zim")
