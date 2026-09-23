@@ -284,24 +284,26 @@ function _reopenAlmanacFromLink() {
 // pre-switch abbreviation until reload — an acceptable trade for dropping a
 // formatter construction + formatToParts from the per-frame path.)
 var _formatTzCache = {};
-function _formatTimezone(lang, tz) {
+// The zone's short name (e.g. "PST") at instant `at` (default now), for the
+// shown location's zone when tz is given. At the instant, not now: travelled
+// to January from September, the header read PDT. The formatter is cached;
+// the name depends on the date, so it is not.
+function _formatTimezone(lang, tz, at) {
   var loc = lang || ((typeof _currentLang !== 'undefined') ? _currentLang : 'en');
   var key = loc + '|' + (tz || '');
-  if (key in _formatTzCache) return _formatTzCache[key];
-  var name = '';
   try {
-    // Locale-aware short zone name (e.g. "PST"). An explicit tz names the
-    // shown location's zone, not the device's.
-    var opts = { timeZoneName: 'short' };
-    if (tz) opts.timeZone = tz;
-    var fmt = new Intl.DateTimeFormat(loc, opts);
-    var parts = fmt.formatToParts(new Date());
-    for (var i = 0; i < parts.length; i++) {
-      if (parts[i].type === 'timeZoneName') { name = parts[i].value; break; }
+    var fmt = _formatTzCache[key];
+    if (!fmt) {
+      var opts = { timeZoneName: 'short' };
+      if (tz) opts.timeZone = tz;
+      fmt = _formatTzCache[key] = new Intl.DateTimeFormat(loc, opts);
     }
-  } catch(e) { name = ''; }
-  _formatTzCache[key] = name;
-  return name;
+    var parts = fmt.formatToParts(at || new Date());
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i].type === 'timeZoneName') return parts[i].value;
+    }
+  } catch (e) {}
+  return '';
 }
 
 // Curated offline "on this day" feed — space & science milestones, keyed by
@@ -499,7 +501,7 @@ function _almClockParts(focus) {
     loc: loc, locTz: locTz, lang: lang, live: live,
     date: _tzFmt(displayTz, _almEraOpts(focus, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })).format(focus),
     time: _tzFmt(displayTz, { hour: 'numeric', minute: '2-digit' }).format(focus),
-    tz: _formatTimezone(lang, displayTz)
+    tz: _formatTimezone(lang, displayTz, focus)
   };
 }
 
