@@ -3252,7 +3252,11 @@ function renderHome(filter) {
     output.innerHTML = '<div id="discover-row"></div>'
       + '<div class="empty"><p>' + tH('no_sources_found') + '</p><p class="hint">' + tH('add_zims') + '</p>'
       + (manageEnabled ? '<a href="/?manage" onclick="event.preventDefault();enterManage();setTimeout(function(){switchManageTab(\'browse\')},50)" style="display:inline-block;margin-top:16px;color:var(--amber);font-weight:500;font-size:14px;text-decoration:none;border-bottom:1px solid var(--amber-border)">' + tH('catalog_link') + '</a>' : '')
-      + '</div>';
+      + '</div>'
+      // The apps on a fresh install too, each tile saying what it needs and
+      // opening its catalog category (docs/features/apps.md). The empty
+      // library returned before the row was ever built.
+      + _appsRowHtml();
     _loadDiscover();
     return;
   }
