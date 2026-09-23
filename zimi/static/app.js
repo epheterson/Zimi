@@ -6375,7 +6375,11 @@ q.addEventListener('input', () => {
     suggestTimer = setTimeout(function() { _tubeSearch(val); }, 150);
   } else if (val && val.length >= 1 && _isMapPage()) {
     // Zimi Maps: the box finds places, on every installed map, nothing else.
+    // Nothing else means returning here: falling through ran the article
+    // search half a second later, and a map opened from a link or a reload
+    // gave way to "No results found".
     if (val.length >= 2) suggestTimer = setTimeout(() => fetchPlaces(val), 200);
+    return;
   } else if (val && val.length >= 1 && mode !== 'manage') {
     // Show filtered history immediately, then fetch remote suggestions
     showHistoryDropdown(val);
