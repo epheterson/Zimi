@@ -7151,18 +7151,20 @@ function _renderGoldenRecordGallery() {
 function _openGrLightbox(idx) {
   _grLightboxIdx = idx;
   _renderGrLightbox();
-  document.addEventListener('keydown', _grKeyHandler);
+  // Capture on window: it runs before the app's own keydown handler, which
+  // otherwise saw the same Escape and closed the whole almanac.
+  window.addEventListener('keydown', _grKeyHandler, true);
 }
 
 function _closeGrLightbox() {
   _grLightboxIdx = -1;
   var lb = document.getElementById('gr-lightbox');
   if (lb) lb.remove();
-  document.removeEventListener('keydown', _grKeyHandler);
+  window.removeEventListener('keydown', _grKeyHandler, true);
 }
 
 function _grKeyHandler(e) {
-  if (e.key === 'Escape') _closeGrLightbox();
+  if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); _closeGrLightbox(); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); _grNav(1); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); _grNav(-1); }
 }
