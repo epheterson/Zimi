@@ -507,16 +507,25 @@ def feed(query="", limit=60, offset=0):
             if i < len(rows):
                 added = True
                 v = dict(rows[i])
-                key = (str(v.get("title") or "").strip().lower(), str(v.get("speaker") or "").strip().lower())
-                if key[0] and key in seen:
-                    seen[key].setdefault("also", []).append({"zim": name, "zim_title": title, "page": v.get("page")})
+                # The talk's id first (TED's own number, a YouTube id): two
+                # TED builds carry talk 56901 with the speaker spelled two
+                # ways, and title + speaker made that two cards.
+                keys = [k for k in (
+                    ("id", str(v.get("id") or "").strip()),
+                    ("ts", str(v.get("title") or "").strip().lower(), str(v.get("speaker") or "").strip().lower()),
+                ) if k[1]]
+                first = next((seen[k] for k in keys if k in seen), None)
+                if first is not None:
+                    first.setdefault("also", []).append({"zim": name, "zim_title": title, "page": v.get("page")})
+                    for k in keys:
+                        seen.setdefault(k, first)
                     continue
                 v["zim"] = name
                 v["zim_title"] = title
                 v["zim_icon"] = has_icon
                 merged.append(v)
-                if key[0]:
-                    seen[key] = v
+                for k in keys:
+                    seen[k] = v
         if not added:
             break
         i += 1

@@ -295,6 +295,27 @@ def test_one_card_per_talk_across_sources(tmp_path, monkeypatch):
     assert f["items"][0]["also"] == [{"zim": "ted_en_b", "zim_title": "Test Survival", "page": f["items"][0]["page"]}]
 
 
+def test_one_card_when_two_builds_spell_the_speaker_differently(tmp_path, monkeypatch):
+    """Found on the NAS: TED talk 56901 showed twice, because the two builds
+    carrying it spell the speaker differently and the card was keyed on title
+    and speaker. The talk's id is the same in both. Different videos that share
+    a plain title stay apart."""
+    def own(speaker, vid, title="The power of vulnerability"):
+        return {"id": vid, "title": title, "description": "", "speaker": speaker, "thumb": "", "page": "videos/" + vid,
+                "duration": None, "date": ""}
+
+    a = [own("Brene Brown", "56901"), own("Chan A", "x1", "Introduction")]
+    b = [own("Brené Brown", "56901"), own("Chan B", "x2", "Introduction")]
+    _library(
+        tmp_path, monkeypatch,
+        [
+            ("a.zim", {"Scraper": "Zimi 1.10.0 + yt-dlp 2026.07.04", "Name": "a"}, {"videos.json": json.dumps(a).encode()}),
+            ("b.zim", {"Scraper": "Zimi 1.10.0 + yt-dlp 2026.07.04", "Name": "b"}, {"videos.json": json.dumps(b).encode()}),
+        ],
+    )
+    titles = sorted(v["title"] for v in tube.feed()["items"])
+    assert titles == ["Introduction", "Introduction", "The power of vulnerability"]
+
 def test_a_ted_page_puts_the_decoder_first_on_iphones_only():
     """ted2zim's player asks the browser first; an iPhone says it can play
     WebM and then cannot. Served through Zimi the page gets one line, before
