@@ -148,6 +148,26 @@ ZIM_CONTENT_MAX_AGE = 60
 # per credential per TTL — not on every polled request.
 _authed_cache = {}  # {sha256(bearer): expiry_ts}
 _AUTHED_CACHE_TTL = 300.0
+# An article opened on its own over plain http (a bookmark, a shared link, a
+# new tab on http://knowledge.lan) cannot be told from the reader's own iframe
+# load: browsers send Sec-Fetch-Dest only to secure origins, so the server
+# served the bare page. The page can tell: framed, it stays; alone, it reopens
+# through the shell (?view=1, which the /w/ route already honours). Only added
+# where the header is missing; https and localhost never see it.
+_REOPEN_IN_SHELL_SCRIPT = (
+    "<script>(function(){if(window.top!==window.self)return;"
+    "var u=new URL(location.href);if(u.searchParams.has('raw'))return;"
+    "u.searchParams.set('view','1');location.replace(u.href)})()</script>"
+)
+_HEAD_OPEN_RE = re.compile(r"<head\b[^>]*>", re.IGNORECASE)
+
+
+def _with_reopen_in_shell(text):
+    m = _HEAD_OPEN_RE.search(text)
+    at = m.end() if m else 0
+    return text[:at] + _REOPEN_IN_SHELL_SCRIPT + text[at:]
+
+
 # How much of a page /snippet reads (see the handler).
 _SNIPPET_READ_BYTES = 64 * 1024
 
@@ -3402,6 +3422,8 @@ class ZimHandler(BaseHTTPRequestHandler):
         if mimetype.startswith("text/html"):
             text = content.decode("UTF-8", errors="replace")
             text = re.sub(r"<base\s[^>]*>", "", text, flags=re.IGNORECASE)
+            if not self.headers.get("Sec-Fetch-Dest"):
+                text = _with_reopen_in_shell(text)
             if "techOrder" in text or "<source" in text:
                 from zimi import tube as _tube
 

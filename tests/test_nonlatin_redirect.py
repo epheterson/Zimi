@@ -123,6 +123,40 @@ class TestNonLatinRedirect(unittest.TestCase):
             self.assertIn(b"family", resp.read())
 
 
+class TestArticleOpenedOnItsOwn(TestNonLatinRedirect):
+    """An article opened on its own over plain http reopens inside Zimi.
+
+    Browsers send Sec-Fetch-Dest only to secure origins, so on
+    http://knowledge.lan a bookmark to /w/... could not be told from the
+    reader's iframe load and got the bare page. Such a page now carries a
+    script that reopens it through the shell when it is not framed; where the
+    header does arrive (https, localhost) nothing is added. Rides on the
+    redirect suite's server and ZIM.
+    """
+
+    def _page(self, headers):
+        req = urllib.request.Request(
+            self._base + "/w/nonlatin/" + urllib.parse.quote(TARGET, safe="/"), headers=headers
+        )
+        with urllib.request.urlopen(req) as resp:
+            return resp.read().decode("utf-8")
+
+    def test_without_the_header_the_page_can_reopen_itself_in_zimi(self):
+        body = self._page({"Accept": "text/html"})
+        self.assertIn("window.top!==window.self", body)
+        self.assertIn("family", body)
+
+    def test_the_reader_frame_gets_the_page_as_it_is(self):
+        body = self._page({"Accept": "text/html", "Sec-Fetch-Dest": "iframe"})
+        self.assertNotIn("window.top!==window.self", body)
+
+    # The inherited redirect tests run once, in their own class.
+    test_an_arabic_redirect_names_its_target = None
+    test_a_cyrillic_redirect_names_its_target = None
+    test_a_section_of_a_non_latin_page_is_a_redirect_too = None
+    test_the_target_is_reachable_at_the_address_given = None
+
+
 if __name__ == "__main__":
     unittest.main()
 
