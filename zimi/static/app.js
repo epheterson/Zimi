@@ -15302,6 +15302,9 @@ function _readerViewInjectStyle(doc) {
     '.zimi-reader h1.zimi-reader-title{font-size:2em;margin:0 0 0.7em;line-height:1.2;',
       'border-bottom:1px solid var(--rv-border);padding-bottom:0.35em}',
     '.zimi-reader h2{font-size:1.5em;border-bottom:1px solid var(--rv-border);padding-bottom:0.2em}',
+    // The article's own title bar, emptied of its title: Vector 2022 still
+    // draws its rule (an ::after), a second line under Reader View's title.
+    '.zimi-reader .vector-page-titlebar,.zimi-reader .mw-body-header{display:none!important}',
     '.zimi-reader h3{font-size:1.25em}.zimi-reader h4{font-size:1.1em}',
     '.zimi-reader p{margin:0 0 1.1em}',
     '.zimi-reader a{color:var(--rv-link);text-decoration:none}',
