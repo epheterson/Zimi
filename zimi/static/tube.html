@@ -309,6 +309,8 @@ function play(e, i) {
   var stageEl = stage;
   fetch('/tube/play?zim=' + encodeURIComponent(v.zim) + '&page=' + encodeURIComponent(v.page)).then(function(r) { return r.ok ? r.json() : null; }).then(function(m) {
     if (_now !== i) return;
+    // The feed carries a description's first lines; the player's answer has it whole.
+    if (m && m.description) document.getElementById('w-desc').textContent = m.description;
     if (!m || !m.media || !m.media.length || m.missing) { noMedia(!!(m && m.missing)); return; }
     // A file the browser cannot decode (WebM on an iPhone): the ZIM's own
     // ogv.js decoder, the way the original page plays it.

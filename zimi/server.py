@@ -4680,6 +4680,17 @@ def warm_indexes():
         except Exception as e:
             log.warning("Title index build phase failed: %s", e)
 
+        # Phase 1b: ZimiTube's video details (descriptions, channels, dates
+        # kept in a file per video), so they are read before anyone opens
+        # ZimiTube rather than when someone does. Before the Q-ID phase,
+        # which can take hours on a big Wikipedia.
+        try:
+            from zimi import tube as _tube
+
+            _tube.build_all_details()
+        except Exception as e:
+            log.warning("ZimiTube details phase failed: %s", e)
+
         # Phase 2: build/refresh Q-ID indexes (one Archive open at a time).
         try:
             _build_all_qid_indexes()

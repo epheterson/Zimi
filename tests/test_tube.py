@@ -68,6 +68,10 @@ def _library(tmp_path, monkeypatch, zims):
     srv.load_cache(force=True)
 
 
+def _public(rows):
+    return [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]
+
+
 # ── what is a video ZIM ────────────────────────────────────────────────────
 
 
@@ -142,7 +146,7 @@ def test_the_index_page_reader_parses_the_rows():
 
 def test_youtube2zim_rows_come_from_videos_json(tmp_path, monkeypatch):
     _library(tmp_path, monkeypatch, [("yt.zim", {"Scraper": "youtube2zim 2.3.0", "Name": "yt_chan"}, YT_FILES)])
-    rows = tube.videos_for("yt")
+    rows = _public(tube.videos_for("yt"))
     assert rows == [{"id": "x1", "title": "Hello world", "description": "", "speaker": "Chan", "thumb": "videos/x1/video.webp", "page": "hello-world", "duration": 61, "date": "2025-05-05"}]
 
 
@@ -230,6 +234,7 @@ def test_playback_reads_the_media_and_tracks_behind_the_page(tmp_path, monkeypat
         "page": "why-tech-needs-the-humanities",
         "ogv": "",
         "missing": False,
+        "description": "Berridge on hiring.",
     }
 
 
@@ -608,7 +613,8 @@ def test_youtube2zim_3_videos_come_from_the_playlists(tmp_path, monkeypatch):
             )
         ],
     )
-    rows = tube.videos_for("studio.blender.org_en_open-movies")
+    tube.build_all_details()
+    rows = _public(tube.videos_for("studio.blender.org_en_open-movies"))
     # The video whose file is not in the ZIM is left out, as for every reader.
     assert rows == [
         {
@@ -648,6 +654,7 @@ def test_youtube2zim_3_plays_from_the_videos_json(tmp_path, monkeypatch):
             )
         ],
     )
+    tube.build_all_details()
     got = tube.playback("yt3play", "index/sintel-eRsG")
     assert got == {
         "media": [{"path": "videos/eRsGyueVLvQ/video.webm", "type": "video/webm"}],
@@ -667,6 +674,7 @@ def test_youtube2zim_3_plays_from_the_videos_json(tmp_path, monkeypatch):
         "poster": "videos/eRsGyueVLvQ/video.webp",
         "page": "index/sintel-eRsG",
         "ogv": "-/assets/ogvjs",
+        "description": "About Sintel.",
     }
     # Not a video page, and a video page whose JSON is not there.
     assert tube.playback("yt3play", "index.html") is None
@@ -689,3 +697,179 @@ def test_youtube2zim_3_plays_from_the_videos_json(tmp_path, monkeypatch):
 )
 def test_an_iso_duration_is_seconds(value, expected):
     assert tube._iso_seconds(value) == expected
+
+
+# ── descriptions, read once in the background ──────────────────────────────
+# Eric, 2026-09-23: "For zimitube we need to be able to search by video name
+# and description so they need to be there." ted2zim 3.x and youtube2zim 3.x
+# keep a video's description in a file of its own; the feed answers from the
+# lists and a background build reads those files once into the data dir.
+
+
+@pytest.fixture(autouse=True)
+def _no_build_outlives_its_test():
+    """A build a test started must not run on after it, into another test's
+    (or the real) data dir."""
+    yield
+    tube._reset_for_tests()
+
+
+def _wait_built(name, timeout=30):
+    import time
+
+    end = time.time() + timeout
+    while time.time() < end:
+        with tube._queue_lock:
+            if name not in tube._queued:
+                return
+        time.sleep(0.02)
+    raise AssertionError(f"details build for {name} still running after {timeout}s")
+
+
+YARN = "Magda Sayeg wraps lampposts in knitting: yarnbombing began as a quiet act in Houston."
+CART = 'In Brazil, "catadores" collect junk and recyclables; Mundano paints their carts.'
+
+
+def _ted_talk_file(tid, slug, description):
+    return (
+        "window.json_data = "
+        + json.dumps(
+            {
+                "id": tid,
+                "slug": slug,
+                "title": [{"lang": "default", "text": slug}],
+                "description": [{"lang": "default", "text": description}, {"lang": "fr", "text": "En francais."}],
+                "speaker": "x",
+                "languages": ["en"],
+            }
+        )
+    ).encode()
+
+
+TED3_DESC_FILES = dict(TED3_FILES)
+TED3_DESC_FILES["assets/data_en_how-yarn-bombing-grew.js"] = _ted_talk_file("2437", "how-yarn-bombing-grew", YARN)
+# The Arabic-only talk: its own file is in the language list it was found in.
+TED3_DESC_FILES["assets/data_ar_trash-cart-superheroes.js"] = _ted_talk_file("2157", "trash-cart-superheroes", CART)
+
+
+def _ted3_library(tmp_path, monkeypatch, name="ted_mul_desc"):
+    _library(tmp_path, monkeypatch, [(f"{name}_2026-09.zim", {"Scraper": "ted2zim 3.2.1", "Name": name}, TED3_DESC_FILES, "index")])
+    return name
+
+
+def _yt3_library(tmp_path, monkeypatch, name="yt3desc"):
+    _library(tmp_path, monkeypatch, [(f"{name}.zim", {"Scraper": "youtube2zim 3.5.0", "Name": name}, YT3_FILES, "index.html")])
+    return name
+
+
+def test_ted2zim_3_descriptions_arrive_from_each_talks_own_file(tmp_path, monkeypatch):
+    name = _ted3_library(tmp_path, monkeypatch)
+    tube.videos_for(name)  # the feed's first answer starts the build
+    _wait_built(name)
+    rows = {r["id"]: r for r in tube.videos_for(name)}
+    assert rows["2437"]["description"] == YARN
+    assert rows["2157"]["description"] == CART
+    assert rows["2437"]["title"] == "How yarn bombing grew"  # the list's title, English first
+    assert os.path.exists(os.path.join(srv.ZIMI_DATA_DIR, "tube", name + ".db"))
+    # A word only the description has finds the talk, across every source.
+    assert [v["title"] for v in tube.feed("catadores")["items"]] == ["Arabic only"]
+    assert [v["title"] for v in tube.feed("houston yarnbombing")["items"]] == ["How yarn bombing grew"]
+
+
+def test_youtube2zim_3_descriptions_arrive_from_each_videos_own_file(tmp_path, monkeypatch):
+    name = _yt3_library(tmp_path, monkeypatch)
+    first = {r["id"]: r for r in tube.videos_for(name)}
+    # What the playlists give, at once: title, length, thumbnail, channel.
+    assert first["eRsGyueVLvQ"]["title"] == "Sintel" and first["eRsGyueVLvQ"]["duration"] == 888
+    assert first["eRsGyueVLvQ"]["speaker"] == "Blender Studio"
+    _wait_built(name)
+    rows = {r["id"]: r for r in tube.videos_for(name)}
+    assert rows["eRsGyueVLvQ"]["description"] == "About Sintel."
+    assert rows["WhWc3b3KhnY"]["date"] == "2019-04-04"
+    assert [v["title"] for v in tube.feed("about spring")["items"]] == ["Spring"]
+
+
+def test_the_feed_answers_before_the_details_build_finishes(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    name = _yt3_library(tmp_path, monkeypatch, "yt3slow")
+    release = threading.Event()
+    real = tube.build_details
+
+    def slow(zim_name, zim_path):
+        release.wait(30)
+        return real(zim_name, zim_path)
+
+    monkeypatch.setattr(tube, "build_details", slow)
+    t0 = time.time()
+    f = tube.feed()
+    assert time.time() - t0 < 5
+    assert sorted(v["title"] for v in f["items"]) == ["Sintel", "Spring"]
+    assert all(v["description"] == "" for v in f["items"])
+    assert tube.feed("about")["total"] == 0  # not read yet
+    release.set()
+    _wait_built(name)
+    assert tube.feed("about")["total"] == 2
+
+
+def test_a_details_file_from_another_build_of_the_zim_is_read_again(tmp_path, monkeypatch):
+    import sqlite3
+
+    name = _yt3_library(tmp_path, monkeypatch, "yt3stale")
+    tube.build_all_details()
+    db = os.path.join(srv.ZIMI_DATA_DIR, "tube", name + ".db")
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE meta SET value='0' WHERE key='zim_mtime'")
+    conn.execute("UPDATE meta SET value='another-uuid' WHERE key='zim_uuid'")
+    conn.execute("UPDATE videos SET description='stale words'")
+    conn.commit()
+    conn.close()
+    path = srv.get_zim_files()[name]
+    assert not tube.details_current(name, path)
+    tube._reset_for_tests()
+    tube.build_all_details()
+    assert tube.details_current(name, path)
+    rows = {r["id"]: r for r in tube.videos_for(name)}
+    assert rows["eRsGyueVLvQ"]["description"] == "About Sintel."
+    assert tube.feed("stale")["total"] == 0
+
+
+def test_a_big_zims_details_are_read_in_a_process_of_its_own(tmp_path, monkeypatch):
+    """The build over a big ZIM goes through search._build_index_isolated as
+    `python -m zimi.search --build-index tube ...`: libzim holds the GIL while
+    it reads, and a read on a server thread stalls every search."""
+    from zimi import search
+
+    name = _ted3_library(tmp_path, monkeypatch, "ted_mul_child")
+    monkeypatch.setattr(tube, "_DETAILS_ISOLATE_MIN_ENTRIES", 0)
+    started = []
+    real_popen = __import__("zimi.subproc", fromlist=["popen"]).popen
+
+    def popen(cmd, **kw):
+        started.append(cmd)
+        return real_popen(cmd, **kw)
+
+    monkeypatch.setattr("zimi.subproc.popen", popen)
+    in_process = []
+    monkeypatch.setattr(tube, "build_details", lambda *a: in_process.append(a))
+    tube.build_all_details()
+    assert not in_process
+    assert [c[1:5] for c in started] == [["-m", "zimi.search", "--build-index", "tube"]]
+    assert search._ISOLATE_BUILD_MIN_ENTRIES == 100_000  # the title index's threshold is its own
+    rows = {r["id"]: r for r in tube.videos_for(name)}
+    assert rows["2157"]["description"] == CART
+
+
+def test_the_player_gets_the_whole_description_and_the_feed_its_start(tmp_path, monkeypatch):
+    long = "Opening words. " + "More about the film. " * 60 + "Closingword."
+    files = dict(YT3_FILES)
+    files["videos/sintel-eRsG.json"] = _yt3_video("eRsGyueVLvQ", "Sintel", description=long)
+    _library(tmp_path, monkeypatch, [("yt3long.zim", {"Scraper": "youtube2zim 3.5.0", "Name": "yt3long"}, files, "index.html")])
+    tube.build_all_details()
+    card = next(v for v in tube.feed()["items"] if v["title"] == "Sintel")
+    assert len(card["description"]) <= tube._FEED_DESCRIPTION_CHARS + 1 and card["description"].endswith("…")
+    assert not any(k.startswith("_") for k in card)
+    # The last word is past what the card carries, and still found.
+    assert [v["title"] for v in tube.feed("closingword")["items"]] == ["Sintel"]
+    assert tube.playback("yt3long", "index/sintel-eRsG")["description"] == long

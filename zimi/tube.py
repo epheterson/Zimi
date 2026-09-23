@@ -23,21 +23,51 @@ model is involved. Three shapes are known:
 Each entry: ``{id, title, description, speaker, thumb, page, duration,
 date}`` with ``thumb`` and ``page`` as ZIM paths. Read once per archive
 file and kept for the life of the process.
+
+Two layouts keep a video's description in a file of its own: ted2zim 3.x
+(``assets/data_<lang>_<slug>.js``, 8 to 40 KB, every language's title and
+description) and youtube2zim 3.x (``videos/<slug>.json``). Reading thousands
+of those on the request that opens ZimiTube is what made it slow, and libzim
+holds the GIL while it reads, so every other request waits too. The feed
+answers from the lists alone; the rest (description, channel, date) is read
+once, in the background, into ``<data dir>/tube/<name>.db``, checked against
+the ZIM like the title index is, and merged in when it is there.
 """
 
 import html as _html
 import json
 import logging
+import os
 import re
+import sqlite3
 import threading
+import time
 
 from zimi import server as _srv
 
 log = logging.getLogger("zimi")
 
 _MAX_INDEX_BYTES = 32 * 1024 * 1024
+# A description is kept whole up to this, and searched whole; the feed sends
+# the first _FEED_DESCRIPTION_CHARS of it, and the player asks for the rest.
+_MAX_DESCRIPTION_CHARS = 5000
+_FEED_DESCRIPTION_CHARS = 400
 _lock = threading.Lock()
-_cache = {}  # archive filename -> list
+_cache = {}  # archive filename -> the rows the feed serves
+_base = {}  # archive filename -> (name, rows from the lists alone)
+_details = {}  # name -> (real path of the ZIM they were read from, {id: (description, speaker, date)})
+
+# The details file: one row per video whose facts live in a file of its own.
+_DETAILS_VERSION = "1"
+# Past this many entries the details build runs in a process of its own (see
+# search._build_index_isolated). It reads one file per video, not every
+# entry, so it starts far lower than the title index's threshold.
+_DETAILS_ISOLATE_MIN_ENTRIES = 5_000
+# One details build at a time, as _build_all_title_lock serializes the title
+# index; _queued keeps a ZIM from being asked for twice while it waits.
+_build_lock = threading.Lock()
+_queue_lock = threading.Lock()
+_queued = set()
 
 
 def _read(archive, path, max_bytes=_MAX_INDEX_BYTES):
@@ -129,6 +159,20 @@ def _lang_text(value):
     return ""
 
 
+def _json_object(text):
+    """The object in ``window.json_data = {...}`` or a plain JSON file, or None."""
+    if not text:
+        return None
+    a, b = text.find("{"), text.rfind("}")
+    if a < 0 or b <= a:
+        return None
+    try:
+        data = json.loads(text[a : b + 1])
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def _json_data(text):
     """The list inside ``json_data = [...]``, or None."""
     if not text:
@@ -162,7 +206,8 @@ def _ted_talks(archive):
     ``assets/data_<lang>.js`` for every language the home page offers,
     English first. Each language lists the talks with subtitles in it, so a
     talk in no English list is still in another; the first list that has a
-    talk gives its title."""
+    talk gives its title, and its ``_lang``: the talk's own file in that
+    language, ``assets/data_<lang>_<slug>.js``, holds its description."""
     talks = _json_data(_read(archive, "assets/data.js"))
     if talks:
         return talks
@@ -173,6 +218,7 @@ def _ted_talks(archive):
             key = isinstance(t, dict) and (t.get("id") or t.get("slug"))
             if key and key not in seen:
                 seen.add(key)
+                t["_lang"] = lang
                 out.append(t)
     return out or None
 
@@ -186,19 +232,20 @@ def _ted(archive):
         if not isinstance(t, dict) or not t.get("slug"):
             continue
         vid = str(t.get("id") or "")
-        out.append(
-            {
-                "id": vid or t["slug"],
-                "title": _lang_text(t.get("title")),
-                "description": _lang_text(t.get("description"))[:400],
-                "speaker": _clean(t.get("speaker")),
-                "thumb": f"videos/{vid}/thumbnail.webp" if vid else "",
-                "page": _page_path(archive, t["slug"]),
-                "duration": None,
-                "date": "",
-                "media": [f"videos/{vid}/video.webm", f"videos/{vid}/video.mp4"] if vid else [],
-            }
-        )
+        row = {
+            "id": vid or t["slug"],
+            "title": _lang_text(t.get("title")),
+            "description": _lang_text(t.get("description"))[:_MAX_DESCRIPTION_CHARS],
+            "speaker": _clean(t.get("speaker")),
+            "thumb": f"videos/{vid}/thumbnail.webp" if vid else "",
+            "page": _page_path(archive, t["slug"]),
+            "duration": None,
+            "date": "",
+            "media": [f"videos/{vid}/video.webm", f"videos/{vid}/video.mp4"] if vid else [],
+        }
+        if not row["description"] and t.get("_lang"):
+            row["_detail"] = f"assets/data_{t['_lang']}_{t['slug']}.js"
+        out.append(row)
     return out
 
 
@@ -213,16 +260,21 @@ def _yt_speaker(v):
     return _clean(author or v.get("channel"))
 
 
+def _yt_video_path(slug):
+    return f"videos/{slug}.json"
+
+
 def _yt_video(archive, slug):
     """youtube2zim 3.x's facts for one video, ``videos/<slug>.json``."""
-    v = _read_json(archive, f"videos/{slug}.json")
+    v = _read_json(archive, _yt_video_path(slug))
     return v if isinstance(v, dict) else None
 
 
 def _youtube2zim_playlists(archive):
     """youtube2zim 3.x: every video of every playlist, once each, in the
     playlists' order. A playlist lists a video's slug, title, thumbnail
-    and length; its own file adds who made it, when, and its media."""
+    and length, and the channel; the video's own file adds its description
+    and date, read in the background (build_details), not here."""
     listing = _read_json(archive, "playlists.json")
     playlists = listing.get("playlists") if isinstance(listing, dict) else None
     if not isinstance(playlists, list):
@@ -236,18 +288,19 @@ def _youtube2zim_playlists(archive):
             if not vid or not v.get("slug") or vid in seen:
                 continue
             seen.add(vid)
-            full = _yt_video(archive, v["slug"]) or {}
             out.append(
                 {
                     "id": vid,
-                    "title": str(full.get("title") or v.get("title") or ""),
-                    "description": str(full.get("description") or "")[:400],
-                    "speaker": _yt_speaker(full) or _yt_speaker(body),
-                    "thumb": full.get("thumbnailPath") or v.get("thumbnailPath") or f"videos/{vid}/video.webp",
+                    "title": str(v.get("title") or ""),
+                    "description": "",
+                    "speaker": _yt_speaker(body),
+                    "thumb": v.get("thumbnailPath") or f"videos/{vid}/video.webp",
                     "page": f"index/{v['slug']}",
-                    "duration": _iso_seconds(full.get("duration") or v.get("duration")),
-                    "date": str(full.get("publicationDate") or "")[:10],
-                    "media": [full["videoPath"]] if full.get("videoPath") else _yt_media(vid),
+                    "duration": _iso_seconds(v.get("duration")),
+                    "date": "",
+                    # youtube2zim 3.x writes videoPath as videos/<id>/video.<ext>.
+                    "media": _yt_media(vid),
+                    "_detail": _yt_video_path(v["slug"]),
                 }
             )
     return out or None
@@ -274,7 +327,7 @@ def _youtube2zim(archive):
             {
                 "id": vid,
                 "title": _lang_text(v.get("title")),
-                "description": _lang_text(v.get("description"))[:400],
+                "description": _lang_text(v.get("description"))[:_MAX_DESCRIPTION_CHARS],
                 "speaker": _yt_speaker(v),
                 "thumb": thumb,
                 "page": page,
@@ -339,12 +392,72 @@ def reader_for(scraper):
     return None
 
 
+def _rows_of(archive):
+    """Every video the archive's index lists, by the reader its scraper names.
+    Caller holds the archive's lock, or owns the archive."""
+    try:
+        scraper = bytes(archive.get_metadata("Scraper")).decode("utf-8", "replace")
+    except Exception:
+        scraper = ""
+    read = reader_for(scraper)
+    rows = None
+    if read is not None:
+        try:
+            rows = read(archive)
+        except Exception as e:
+            log.debug("tube: %s unreadable: %s", getattr(archive, "filename", ""), e)
+    if rows is None:
+        # A video ZIM by its metadata whose index Zimi could not read: try
+        # every reader once, cheapest first.
+        for alt in (_ted, _youtube2zim, _zimi):
+            try:
+                rows = alt(archive)
+            except Exception:
+                rows = None
+            if rows:
+                break
+    return rows or []
+
+
+def _served(rows, details):
+    """The rows as the feed serves them: each video's details merged in when
+    they have been read, and ``_hay``, the lowercase text a query searches
+    (title, the whole description, speaker)."""
+    out = []
+    for r in rows:
+        v = dict(r)
+        d = details.get(str(v.get("id"))) if details else None
+        if d:
+            v["description"] = d[0] or v.get("description") or ""
+            v["speaker"] = d[1] or v.get("speaker") or ""
+            v["date"] = d[2] or v.get("date") or ""
+        v["_hay"] = " ".join(
+            str(v.get(k) or "") for k in ("title", "description", "speaker")
+        ).lower()
+        out.append(v)
+    return out
+
+
+def _details_for(name, key):
+    """The details read for ``name`` when they were read from the file the
+    feed has open (``key``); None when they are not read yet, or were read
+    from an earlier build of the ZIM."""
+    got = _details.get(name)
+    if got and got[0] == os.path.realpath(key):
+        return got[1]
+    return None
+
+
 def videos_for(name):
     """The videos in the installed ZIM ``name``, or [] when it is not a video
-    ZIM Zimi can read. Cached per archive file."""
+    ZIM Zimi can read. Cached per archive file. Answers from the ZIM's lists
+    at once; the details a layout keeps in a file per video are merged in
+    once the background build has read them (request_details)."""
     from zimi.search import _get_fts_archive
 
-    entry = next((z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None)
+    entry = next(
+        (z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None
+    )
     if not entry or entry.get("kind") != "video":
         return []
     try:
@@ -358,42 +471,197 @@ def videos_for(name):
         if key in _cache:
             return _cache[key]
     with lock:
-        try:
-            scraper = bytes(archive.get_metadata("Scraper")).decode("utf-8", "replace")
-        except Exception:
-            scraper = ""
-        read = reader_for(scraper)
-        rows = None
-        if read is not None:
-            try:
-                rows = read(archive)
-            except Exception as e:
-                log.debug("tube: %s unreadable: %s", name, e)
-        if rows is None:
-            # A video ZIM by its metadata whose index Zimi could not read: try
-            # every reader once, cheapest first.
-            for alt in (_ted, _youtube2zim, _zimi):
-                try:
-                    rows = alt(archive)
-                except Exception:
-                    rows = None
-                if rows:
-                    break
-    rows = rows or []
-    # A video whose file never made it into the ZIM (a talk the scrape
-    # skipped) is not a video the app can offer: left out of the feed (Eric:
-    # "If a zim has a video link and the source isn't there then exclude it
-    # from zimitube"). Every reader names where the file would be; a lookup
-    # per candidate is a dirent search, cheap even for thousands of talks.
-    with lock:
-        rows = [v for v in rows if not v.get("media") or any(_present(archive, m) for m in v["media"])]
+        rows = _rows_of(archive)
+        # A video whose file never made it into the ZIM (a talk the scrape
+        # skipped) is not a video the app can offer: left out of the feed
+        # (Eric: "If a zim has a video link and the source isn't there then
+        # exclude it from zimitube"). Every reader names where the file would
+        # be; a lookup per candidate is a dirent search, cheap even for
+        # thousands of talks.
+        rows = [
+            v
+            for v in rows
+            if not v.get("media") or any(_present(archive, m) for m in v["media"])
+        ]
+    needs = False
     for v in rows:
         v.pop("media", None)
+        needs = bool(v.pop("_detail", None)) or needs
     with _lock:
-        _cache[key] = rows
-    return rows
+        details = _details_for(name, key)
+        _base[key] = (name, rows)
+        _cache[key] = served = _served(rows, details)
+    if needs and details is None:
+        request_details(name)
+    return served
 
 
+def full_description(name, page):
+    """The whole description of the video at ``page`` in ``name``, as far as
+    the feed knows it (the feed sends the first _FEED_DESCRIPTION_CHARS)."""
+    for v in videos_for(name):
+        if v.get("page") == page:
+            return v.get("description") or ""
+    return ""
+
+
+# ── the details build ──────────────────────────────────────────────────────
+
+
+def _details_dir():
+    """A function, not a constant: ZIMI_DATA_DIR can be repointed after import."""
+    return os.path.join(_srv.ZIMI_DATA_DIR, "tube")
+
+
+def _details_path(name):
+    return os.path.join(_details_dir(), f"{name}.db")
+
+
+def details_current(name, zim_path):
+    """Whether ``<data dir>/tube/<name>.db`` was built from this ZIM: its
+    mtime, else its uuid, checked as the title index is."""
+    from zimi.search import _index_is_current
+
+    return _index_is_current(_details_path(name), zim_path, _DETAILS_VERSION)
+
+
+def _detail_of(obj):
+    """(description, speaker, date) from a video's own file: ted2zim 3.x's
+    ``{description: [{lang, text}], speaker}`` or youtube2zim 3.x's
+    ``{description, author: {channelTitle}, publicationDate}``."""
+    return (
+        _lang_text(obj.get("description"))[:_MAX_DESCRIPTION_CHARS],
+        _yt_speaker(obj) or _clean(obj.get("speaker")),
+        str(obj.get("publicationDate") or "")[:10],
+    )
+
+
+def build_details(zim_name, zim_path):
+    """Read every video's own file once, into the details file. Opens an
+    archive of its own, never the pool's, so it needs no lock; runs in a
+    child process for a big ZIM (search._build_index_isolated). A ZIM whose
+    index carries everything gets a file with no rows, so it is not read
+    again."""
+    from zimi.search import _write_index_meta
+
+    os.makedirs(_details_dir(), exist_ok=True)
+    db_path = _details_path(zim_name)
+    tmp_path = db_path + ".tmp"
+    if os.path.exists(tmp_path):
+        os.remove(tmp_path)  # builds are serialized by _build_lock: an orphan
+    archive = _srv.open_archive(zim_path)
+    rows = []
+    for r in _rows_of(archive):
+        obj = _json_object(_read(archive, r["_detail"])) if r.get("_detail") else None
+        if obj:
+            rows.append((str(r["id"]),) + _detail_of(obj))
+    conn = sqlite3.connect(tmp_path)
+    try:
+        conn.execute(
+            "CREATE TABLE videos (id TEXT PRIMARY KEY, description TEXT, speaker TEXT, date TEXT)"
+        )
+        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+        conn.executemany("INSERT OR REPLACE INTO videos VALUES (?, ?, ?, ?)", rows)
+        _write_index_meta(conn, archive, zim_path, _DETAILS_VERSION, len(rows))
+        conn.commit()
+    except Exception:
+        conn.close()
+        os.remove(tmp_path)
+        raise
+    conn.close()
+    os.replace(tmp_path, db_path)
+    return len(rows)
+
+
+def _load_details(name):
+    conn = sqlite3.connect(_details_path(name), timeout=5)
+    try:
+        return {
+            r[0]: tuple(r[1:])
+            for r in conn.execute("SELECT id, description, speaker, date FROM videos")
+        }
+    finally:
+        conn.close()
+
+
+def _install(name, zim_path, details):
+    """Keep ``details`` for ``name`` and serve them: the feed's cached rows
+    for that ZIM are merged again, so the next /tube has them."""
+    real = os.path.realpath(zim_path)
+    with _lock:
+        _details[name] = (real, details)
+        for key, (n, rows) in list(_base.items()):
+            if n == name and os.path.realpath(key) == real:
+                _cache[key] = _served(rows, details)
+
+
+def _build_one(name):
+    """Bring ``name``'s details file up to date and serve it."""
+    from zimi.search import _build_index_isolated
+
+    with _build_lock:
+        path = _srv.get_zim_files().get(name)
+        if not path:
+            return
+        try:
+            if not details_current(name, path):
+                t0 = time.time()
+                _build_index_isolated(
+                    "tube",
+                    name,
+                    path,
+                    build_details,
+                    lambda _name: None,
+                    min_entries=_DETAILS_ISOLATE_MIN_ENTRIES,
+                )
+                log.info(
+                    "ZimiTube: read the video details of %s (%.1fs)",
+                    name,
+                    time.time() - t0,
+                )
+            details = _load_details(name)
+        except Exception as e:
+            # Kept empty until the next start rather than rebuilt on every
+            # request: a ZIM that cannot be read now will not be in a second.
+            log.warning("ZimiTube: video details of %s failed: %s", name, e)
+            details = {}
+        _install(name, path, details)
+
+
+def _claim(name):
+    """True for the one caller that gets to build ``name`` now."""
+    with _queue_lock:
+        if name in _queued:
+            return False
+        _queued.add(name)
+        return True
+
+
+def _build_claimed(name):
+    try:
+        _build_one(name)
+    finally:
+        with _queue_lock:
+            _queued.discard(name)
+
+
+def request_details(name):
+    """Start ``name``'s details build in the background, unless it is
+    already waiting or running. Returns at once."""
+    if _claim(name):
+        threading.Thread(
+            target=_build_claimed, args=(name,), name="tube-details", daemon=True
+        ).start()
+
+
+def build_all_details():
+    """Every video ZIM's details, one after another. The startup worker runs
+    this after the title indexes, so descriptions are usually there before
+    anyone opens ZimiTube."""
+    for z in list(_srv._zim_list_cache or []):
+        name = z.get("name")
+        if z.get("kind") == "video" and name and _claim(name):
+            _build_claimed(name)
 _SRC_TAG_RE = re.compile(r"<(?:source|video|audio)\b[^>]*>", re.I | re.S)
 _TRACK_RE = re.compile(r"<track\b[^>]*>", re.I | re.S)
 _ATTR_RE = re.compile(r"\b([a-z-]+)=['\"]([^'\"]*)['\"]", re.I)
@@ -633,6 +901,8 @@ def playback(name, page):
         # ogv.js, a decoder in JavaScript, for its own pages. ZimiTube's
         # player uses it where the browser cannot play the file.
         "ogv": ogv,
+        # The feed sends a description's first lines; the player shows it whole.
+        "description": full_description(name, page),
     }
 
 
@@ -640,8 +910,17 @@ _OGV_BASE = "-/assets/ogvjs"
 
 
 def _matches(v, q):
-    hay = " ".join((v.get("title") or "", v.get("description") or "", v.get("speaker") or "")).lower()
-    return all(w in hay for w in q)
+    return all(w in v["_hay"] for w in q)
+
+
+def _card(v):
+    """A row as the feed sends it: no private fields, the description cut
+    to what a card and the player's first look need."""
+    out = {k: x for k, x in v.items() if not k.startswith("_")}
+    d = out.get("description") or ""
+    if len(d) > _FEED_DESCRIPTION_CHARS:
+        out["description"] = d[:_FEED_DESCRIPTION_CHARS].rstrip() + "\u2026"
+    return out
 
 
 def feed(query="", limit=60, offset=0):
@@ -670,7 +949,7 @@ def feed(query="", limit=60, offset=0):
         for name, title, has_icon, rows, _lang in per_zim:
             if i < len(rows):
                 added = True
-                v = dict(rows[i])
+                v = _card(rows[i])
                 # The talk's id first (TED's own number, a YouTube id): two
                 # TED builds carry talk 56901 with the speaker spelled two
                 # ways, and title + speaker made that two cards.
@@ -702,6 +981,15 @@ def feed(query="", limit=60, offset=0):
     }
 
 
-def _reset_for_tests():
+def _reset_for_tests(timeout=30):
+    """Forget what was read, once any build a test started has finished."""
+    end = time.time() + timeout
+    while time.time() < end:
+        with _queue_lock:
+            if not _queued:
+                break
+        time.sleep(0.02)
     with _lock:
         _cache.clear()
+        _base.clear()
+        _details.clear()
