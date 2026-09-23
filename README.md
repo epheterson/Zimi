@@ -96,7 +96,9 @@ Every created ZIM carries honest provenance (which Zimi, which tools, how many p
 ### macOS
 
 ```bash
-brew tap epheterson/zimi && brew install --cask zimi
+brew tap epheterson/zimi
+brew trust --tap epheterson/zimi   # Homebrew 6 and later; leave it out before 6
+brew install --cask zimi
 ```
 
 Or download from [GitHub Releases](https://github.com/epheterson/Zimi/releases).
