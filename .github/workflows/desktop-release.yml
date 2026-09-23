@@ -497,6 +497,38 @@ jobs:
           & $iscc "/DMyAppVersion=$ver" windows\zimi.iss
           Write-Host "Built installer: dist/Zimi-windows-x64-Setup.exe"
 
+      # The installer is what most people run and what WinSparkle applies on
+      # update, and nothing ever ran it: installed silently here, per-user
+      # as a person would get it, and the installed app has to render its
+      # home view.
+      - name: The installer installs an app that opens (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "ZimiInstalled"
+          $p = Start-Process -FilePath dist\Zimi-windows-x64-Setup.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/CURRENTUSER","/DIR=`"$dir`"","/LOG=installer.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content installer.log | Out-Host; throw "the installer exited $($p.ExitCode)" }
+          if (-not (Test-Path (Join-Path $dir "Zimi.exe"))) { Get-Content installer.log | Out-Host; throw "the installer left no Zimi.exe in $dir" }
+          # The installer relaunches Zimi even when silent: that is how an
+          # auto-update brings the app back (zimi.iss [Run]). It must have,
+          # and that copy is stopped so the smoke run below is the only one.
+          $relaunched = $null
+          for ($i = 0; $i -lt 30 -and -not $relaunched; $i++) { Start-Sleep -Seconds 1; $relaunched = Get-Process -Name Zimi -ErrorAction SilentlyContinue }
+          if (-not $relaunched) { throw "the installer did not relaunch Zimi, so an auto-update would leave it closed" }
+          $relaunched | Stop-Process -Force
+          Start-Sleep -Seconds 3
+          pwsh ci/smoke_windows.ps1 -Exe (Join-Path $dir "Zimi.exe") -Installed
+
+      - name: Upload the installed-app smoke screenshot
+        if: runner.os == 'Windows' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zimi-windows-installed-smoke
+          path: |
+            zimi-windows-installed-smoke.png
+            installer.log
+          if-no-files-found: ignore
+
       - name: Move asset to dist
         run: mv ${{ matrix.asset }} dist/ 2>/dev/null || true
         shell: bash
