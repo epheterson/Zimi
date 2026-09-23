@@ -1702,5 +1702,8 @@
   "alm_about_persian": "Persian calendar: the 33-year arithmetic cycle, which matches the official calendar for this era.",
   "alm_about_chinese": "Chinese calendar: computed from new moons and solar terms; matches the Hong Kong Observatory from 1900 to 2100.",
   "alm_about_deeptime": "Deep time: within 13,000 years of 2000 the methods hold; beyond that, out to 270,000 years, figures are indicative only.",
-  "alm_about_timezones": "Time zones: the nearest of a set of cities, since there is no offline map of zone borders; may be off near a border."
+  "alm_about_timezones": "Time zones: the nearest of a set of cities, since there is no offline map of zone borders; may be off near a border.",
+  "desktop_lan_access": "Open Zimi on other devices on this network",
+  "desktop_lan_hint": "Lets a phone or another computer on the same Wi-Fi or hotspot read your library. Managing the library still needs your admin password. Zimi restarts when you change this.",
+  "desktop_lan_open_at": "On another device, open:"
 }

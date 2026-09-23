@@ -11881,7 +11881,10 @@ function _msServerHtml() {
       '<div class="ms-hint">' + tH('data_folder_hint') + '</div>' +
       '<div class="ms-field" style="display:flex;align-items:center;gap:8px"><label style="margin:0">' + tH('port') + '</label><input type="number" id="ms-port" min="1024" max="65535" value="8899" style="width:90px">' +
         '<button class="manage-btn-action" onclick="settingsSaveInline()" style="margin-inline-start:auto">' + tH('save') + '</button></div>' +
-      '<div class="ms-hint">' + tH('restart_hint') + '</div>';
+      '<div class="ms-hint">' + tH('restart_hint') + '</div>' +
+      // Painted by _renderDesktopLan from the app's own config, not /manage.
+      '<div id="ms-lan"></div>';
+    setTimeout(_renderDesktopLan, 0);
   } else {
     storageSec +=
       '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
@@ -21068,6 +21071,39 @@ async function settingsSaveInline() {
     if (needsRestart) setTimeout(() => pywebview.api.restart(), 500);
   } catch(e) {}
 }
+// Desktop only: may other devices on this network open this Zimi (issue #90).
+// Off by default; saving restarts the embedded server, as the port does.
+async function _renderDesktopLan() {
+  var el = document.getElementById('ms-lan');
+  if (!el || !IS_DESKTOP || !window.pywebview) return;
+  var cfg, addrs = [];
+  try {
+    cfg = await pywebview.api.get_config();
+    if (cfg.lan_access || cfg.lan_access_env) addrs = await pywebview.api.lan_addresses();
+  } catch (e) { return; }
+  var locked = !!cfg.lan_access_env;
+  var h = '<label class="ms-toggle-row"><input type="checkbox" id="ms-lan-access"' +
+    (cfg.lan_access ? ' checked' : '') + (locked ? ' disabled' : '') +
+    ' onchange="_setDesktopLan(this)"> ' + tH('desktop_lan_access') + '</label>' +
+    '<div class="ms-hint">' + tH(locked ? 'configured_via_env' : 'desktop_lan_hint') + '</div>';
+  if (addrs.length) {
+    var port = location.port || '80';
+    h += '<div class="ms-hint">' + tH('desktop_lan_open_at') + ' ' + addrs.map(function(ip) {
+      return '<code dir="ltr">' + esc('http://' + ip + ':' + port) + '</code>';
+    }).join(' ') + '</div>';
+  }
+  el.innerHTML = h;
+}
+
+async function _setDesktopLan(cb) {
+  if (!IS_DESKTOP || !window.pywebview) return;
+  cb.disabled = true;
+  try {
+    var needsRestart = await pywebview.api.save_config({ lan_access: cb.checked });
+    if (needsRestart) setTimeout(function() { pywebview.api.restart(); }, 500);
+  } catch (e) { cb.disabled = false; }
+}
+
 async function msChooseZimFolder() {
   if (!IS_DESKTOP || !window.pywebview) return;
   try {

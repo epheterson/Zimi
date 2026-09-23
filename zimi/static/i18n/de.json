@@ -1702,5 +1702,8 @@
   "alm_about_persian": "Persischer Kalender: der arithmetische 33-Jahres-Zyklus, der für diese Epoche mit dem amtlichen Kalender übereinstimmt.",
   "alm_about_chinese": "Chinesischer Kalender: aus Neumonden und Sonnenständen berechnet; stimmt von 1900 bis 2100 mit dem Hong Kong Observatory überein.",
   "alm_about_deeptime": "Tiefe Zeit: bis 13.000 Jahre um das Jahr 2000 gelten die Verfahren; darüber hinaus, bis 270.000 Jahre, sind die Werte nur Anhaltspunkte.",
-  "alm_about_timezones": "Zeitzonen: die nächstgelegene aus einer Reihe von Städten, da es offline keine Karte der Zonengrenzen gibt; nahe einer Grenze kann sie abweichen."
+  "alm_about_timezones": "Zeitzonen: die nächstgelegene aus einer Reihe von Städten, da es offline keine Karte der Zonengrenzen gibt; nahe einer Grenze kann sie abweichen.",
+  "desktop_lan_access": "Zimi auf anderen Geräten in diesem Netzwerk öffnen",
+  "desktop_lan_hint": "Ein Handy oder ein anderer Computer im selben WLAN oder Hotspot kann deine Bibliothek lesen. Die Verwaltung der Bibliothek braucht weiterhin dein Admin-Passwort. Zimi startet neu, wenn du das änderst.",
+  "desktop_lan_open_at": "Auf einem anderen Gerät öffnen:"
 }
