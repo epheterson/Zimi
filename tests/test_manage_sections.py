@@ -91,6 +91,7 @@ def test_creator_payload_answers_every_question_the_section_asks(monkeypatch):
         "capture_variants_default",
         "queue",
         "offline",
+        "data_dir",  # for the setup commands the pane prints (#61)
     }
     # What needs no probe is in the first answer, which is the whole point of
     # not waiting for the ones that do.
