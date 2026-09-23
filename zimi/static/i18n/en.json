@@ -143,6 +143,7 @@
   "alm_dt_polaris": "Polaris Accuracy",
   "alm_dt_polaris_desc": "Earth wobbles like a spinning top. Polaris happens to be near the axis right now, but it’s drifting. Closest alignment ~2100 (0.45°), then it drifts away. In ~{years} years, Vega will be the “North Star.” Full wobble cycle: 25,772 years.",
   "alm_dt_tilt": "Earth’s Tilt",
+  "alm_dt_beyond_fit": "Beyond what this estimate covers",
   "alm_dt_tilt_desc": "This tilt is why seasons exist. It’s currently {trend}, meaning: {impact}. Cycles between 22.1° and 24.5° over 41,000 years (Milanković cycle). Currently {pct}% through the cycle.",
   "alm_earth_sun_dist": "Earth–Sun Distance",
   "alm_east": "East",

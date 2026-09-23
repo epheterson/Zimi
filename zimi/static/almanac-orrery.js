@@ -17,10 +17,14 @@ var _PLANETS = {
   Neptune: { a: 30.0699, e: 0.00895, I: 1.770, L: 304.223, LP: 46.682, N: 131.784, da: 0.00003, de: 0.00001, dI: 0.0001, dL: 218.460, dLP: 0.010, dN: -0.005, color: '#3868c8', glow: '#5888f0', vr: 0.016 }
 };
 
+var _ORRERY_MAX_ECC = 0.99;
 function _planetPosition(name, T) {
   var p = _PLANETS[name];
   var a = p.a + p.da * T;
-  var e = p.e + p.de * T;
+  // The element rates are linear fits for a few thousand years. Hundreds of
+  // millennia out they carry e past 1, sqrt(1 - e*e) turns NaN and the canvas
+  // throws; an orbit is an ellipse only for 0 <= e < 1, so hold it there.
+  var e = Math.min(Math.max(p.e + p.de * T, 0), _ORRERY_MAX_ECC);
   var L = (p.L + p.dL * T) % 360;
   var LP = (p.LP + p.dLP * T) % 360;
   var M = ((L - LP) % 360 + 360) % 360;

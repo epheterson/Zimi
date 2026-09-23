@@ -143,6 +143,7 @@
   "alm_dt_polaris": "Précision de Polaris",
   "alm_dt_polaris_desc": "La Terre oscille comme une toupie. Polaris se trouve près de l’axe en ce moment, mais elle dérive. Alignement le plus proche vers 2100 (0,45°), puis elle s’éloigne. Dans environ {years} ans, Véga sera l’« étoile du Nord ». Cycle complet de précession : 25 772 ans.",
   "alm_dt_tilt": "Inclinaison de la Terre",
+  "alm_dt_beyond_fit": "Au-delà de ce que couvre cette estimation",
   "alm_dt_tilt_desc": "Cette inclinaison est la raison pour laquelle les saisons existent. Elle est actuellement {trend}, ce qui signifie : {impact}. Elle oscille entre 22,1° et 24,5° sur 41 000 ans (cycle de Milanković). Actuellement à {pct}% du cycle.",
   "alm_earth_sun_dist": "Distance Terre–Soleil",
   "alm_east": "Est",

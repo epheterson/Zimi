@@ -610,13 +610,17 @@ function _almNextFullHtml(nfm, lang, focus) {
 // sun-map terminator, a meteor table). Catch it, drop a quiet "beyond range"
 // note into that panel's container, and let the rest — crucially the sky,
 // orrery and deep-time — carry on. One panel must never abort the repaint.
+function _almBeyondHtml(tag) {
+  tag = tag || 'div';
+  return '<' + tag + ' class="alm-beyond">' + _tLookup('alm_tm_beyond_range', "Beyond this calendar's range") + '</' + tag + '>';
+}
 function _almSafePanel(fn, containerId) {
   try { fn(); }
   catch (e) {
     if (window.console && console.warn) console.warn('almanac: panel skipped at this epoch —', e && e.message);
     if (containerId) {
       var el = document.getElementById(containerId);
-      if (el) el.innerHTML = '<div class="alm-beyond">' + _tLookup('alm_tm_beyond_range', "Beyond this calendar's range") + '</div>';
+      if (el) el.innerHTML = _almBeyondHtml();
     }
   }
 }
@@ -6136,6 +6140,18 @@ function _almSelectDay(jdn) {
 // left the span where it means anything.
 var _CAL_MAX_MONTHS = 13;              // lunisolar leap years reach 13
 var _CAL_MAX_DAY = 31;
+// The Gregorian years a calendar's conversion is good for, where that is less
+// than the whole travel range. The Chinese calendar stands on Meeus's
+// solstice series, which he gives for years -1000 to +3000; past that its
+// answers stay finite and plausible and mean nothing (-270000 came back as
+// "Jiuyue 6, Monkey").
+var _CAL_SPAN_YEARS = { chinese: [-1000, 3000] };
+function _calInSpan(sys, jdn) {
+  var span = _CAL_SPAN_YEARS[sys];
+  if (!span) return true;
+  var y = _jdnToGregorian(jdn).year;
+  return y >= span[0] && y <= span[1];
+}
 function _calResultUsable(cal) {
   return !!cal && isFinite(cal.year) && isFinite(cal.month) && isFinite(cal.day) &&
     cal.month >= 1 && cal.month <= _CAL_MAX_MONTHS &&
@@ -6152,6 +6168,7 @@ function _almRenderCrossRef(jdn) {
     // NaN or garbage. The Gregorian/Julian arithmetic stays valid throughout.
     var dateStr;
     try {
+      if (!_calInSpan(sys, jdn)) throw 0;
       var cal = _jdnToCalendar(sys, jdn);
       if (!_calResultUsable(cal)) throw 0;
       var monthName = _calMonthName(sys, cal.year, cal.month);
@@ -6165,7 +6182,7 @@ function _almRenderCrossRef(jdn) {
         dateStr = monthName + ' ' + cal.day + ' \u00b7 ' + _alLink('zodiac:' + chinese.animalKey, chinese.animal) + ' \u00b7 ' + yearStr;
       }
     } catch (e) {
-      dateStr = '<span class="alm-beyond">' + _tLookup('alm_tm_beyond_range', "Beyond this calendar's range") + '</span>';
+      dateStr = _almBeyondHtml('span');
     }
     var isActive = sys === _almSystem ? ' alm-crossref-active' : '';
     html += '<div class="alm-crossref-row' + isActive + '"' +
@@ -6903,11 +6920,29 @@ function _calMonthCount(sys, year) {
 
 // ── Deep Time — facts that transcend centuries ──
 
+// How far from J2000 the deep-time fits mean anything. The obliquity cubic
+// and the eccentricity line hold for about ten millennia (T in centuries);
+// the Polaris line is a rough fit around its closest approach in 2100. Past
+// these a row says so: at year -270000 the tilt read -10076 degrees beside
+// text saying it cycles between 22.1 and 24.5.
+var _DEEP_TIME_SPAN_CENTURIES = 100;
+// One deep-time fact: value, label, a line of explanation. A value of false
+// means its fit does not hold at this date; the row says so, without the
+// explanation, which would describe a number that is not there.
+function _deepTimeRow(val, lbl, desc) {
+  var beyond = '<span class="alm-beyond">' + _tLookup('alm_dt_beyond_fit', 'Beyond what this estimate covers') + '</span>';
+  return '<div class="almanac-info-item"><div class="almanac-info-val">' + (val === false ? beyond : val) + '</div>' +
+    '<div class="almanac-info-lbl">' + lbl + '</div>' +
+    (val === false ? '' : '<div style="font-size:11px;color:var(--text3);margin-top:4px">' + desc + '</div>') + '</div>';
+}
+var _POLARIS_SPAN_YEARS = [0, 4200];
 function _renderDeepTime(now) {
   var el = document.getElementById('almanac-deeptime');
   if (!el) return;
   var JD = _dateToJD(now.getTime());
   var T = _jdToJulianCentury(JD);
+  var fitsHold = Math.abs(T) <= _DEEP_TIME_SPAN_CENTURIES;
+  var polarisHolds = now.getFullYear() >= _POLARIS_SPAN_YEARS[0] && now.getFullYear() <= _POLARIS_SPAN_YEARS[1];
 
   // Axial tilt (obliquity of ecliptic)
   // IAU formula: ε = 23°26'21.448" - 46.8150"T - 0.00059"T² + 0.001813"T³
@@ -6951,39 +6986,32 @@ function _renderDeepTime(now) {
   var html = '<div class="almanac-info-grid">';
 
   // Axial tilt
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + obliquityDeg.toFixed(2) + '\u00b0</div>' +
-    '<div class="almanac-info-lbl">' + _lterm('axial_tilt', t('alm_dt_tilt')) + '</div>' +
-    '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    t('alm_dt_tilt_desc', { trend: tiltDir, impact: seasonImpact, pct: tiltInCycle }) + '</div></div>';
+  html += _deepTimeRow(fitsHold && obliquityDeg.toFixed(2) + '\u00b0',
+    _lterm('axial_tilt', t('alm_dt_tilt')),
+    t('alm_dt_tilt_desc', { trend: tiltDir, impact: seasonImpact, pct: tiltInCycle }));
 
   // North Star
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + polarisDist + '\u00b0 ' + t('alm_from_true_north') + '</div>' +
-    '<div class="almanac-info-lbl">' + _alLink('star:polaris', t('alm_dt_polaris')) + '</div>' +
-    '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    t('alm_dt_polaris_desc', { years: (14000 - now.getFullYear()).toLocaleString() }) + '</div></div>';
+  html += _deepTimeRow(polarisHolds && polarisDist + '\u00b0 ' + t('alm_from_true_north'),
+    _alLink('star:polaris', t('alm_dt_polaris')),
+    t('alm_dt_polaris_desc', { years: (14000 - now.getFullYear()).toLocaleString() }));
 
   // Day getting longer
   var totalExcessMs = (daySeconds - 86400) * 1000;
   var dayStr = totalExcessMs > 1 ? '+' + totalExcessMs.toFixed(1) + 'ms ' + t('alm_over_24h') :
                totalExcessMs > 0.01 ? '+' + (totalExcessMs * 1000).toFixed(0) + '\u00b5s ' + t('alm_over_24h') :
                '~24h';
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + dayStr + '</div>' +
-    '<div class="almanac-info-lbl">' + _lterm('tidal_acceleration', t('alm_dt_daylen')) + '</div>' +
-    '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    t('alm_dt_daylen_desc', { ms: excessMs.toFixed(1) }) + '</div></div>';
+  html += _deepTimeRow(fitsHold && dayStr,
+    _lterm('tidal_acceleration', t('alm_dt_daylen')),
+    t('alm_dt_daylen_desc', { ms: excessMs.toFixed(1) }));
 
   // Orbital eccentricity
   var eccTrendStr = parseFloat(earthEcc) < eccPrev ? t('alm_decreasing') : t('alm_increasing');
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + earthEcc + '</div>' +
-    '<div class="almanac-info-lbl">' + _lterm('orbital_eccentricity', t('alm_dt_orbit')) + '</div>' +
-    '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    t('alm_dt_orbit_desc', { trend: eccTrendStr }) + '</div></div>';
+  html += _deepTimeRow(fitsHold && earthEcc,
+    _lterm('orbital_eccentricity', t('alm_dt_orbit')),
+    t('alm_dt_orbit_desc', { trend: eccTrendStr }));
 
   // Julian Date
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">JD ' + julianDate + '</div>' +
-    '<div class="almanac-info-lbl">' + _lterm('julian_day', t('alm_dt_julian')) + '</div>' +
-    '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    t('alm_dt_julian_desc') + '</div></div>';
+  html += _deepTimeRow('JD ' + julianDate, _lterm('julian_day', t('alm_dt_julian')), t('alm_dt_julian_desc'));
 
   // Galactic Year
   var galacticPeriod = 225;
@@ -6991,10 +7019,9 @@ function _renderDeepTime(now) {
   var orbitsCompleted = Math.floor(sunAge / galacticPeriod);
   var currentOrbitPct = ((sunAge % galacticPeriod) / galacticPeriod * 100).toFixed(1);
 
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + t('alm_galactic_orbit', { pct: currentOrbitPct, n: orbitsCompleted + 1 }) + '</div>' +
-    '<div class="almanac-info-lbl">' + _lterm('galactic_year', t('alm_dt_galactic')) + '</div>' +
-    '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    t('alm_dt_galactic_desc', { age: (sunAge / 1000).toFixed(1), orbits: orbitsCompleted }) + '</div></div>';
+  html += _deepTimeRow(t('alm_galactic_orbit', { pct: currentOrbitPct, n: orbitsCompleted + 1 }),
+    _lterm('galactic_year', t('alm_dt_galactic')),
+    t('alm_dt_galactic_desc', { age: (sunAge / 1000).toFixed(1), orbits: orbitsCompleted }));
 
   html += '</div>';
   el.innerHTML = html;

@@ -143,6 +143,7 @@
   "alm_dt_polaris": "Precisão de Polaris",
   "alm_dt_polaris_desc": "A Terra oscila como um pião. Polaris está perto do eixo agora, mas está se afastando. Alinhamento mais próximo em ~2100 (0,45°), depois se afasta. Em ~{years} anos, Vega será a «Estrela do Norte». Ciclo completo de precessão: 25.772 anos.",
   "alm_dt_tilt": "Inclinação da Terra",
+  "alm_dt_beyond_fit": "Além do alcance desta estimativa",
   "alm_dt_tilt_desc": "Essa inclinação é a razão das estações. Atualmente está {trend}, o que significa: {impact}. Oscila entre 22,1° e 24,5° ao longo de 41.000 anos (ciclo de Milanković). Atualmente em {pct}% do ciclo.",
   "alm_earth_sun_dist": "Distância Terra–Sol",
   "alm_east": "Leste",

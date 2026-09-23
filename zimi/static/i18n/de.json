@@ -143,6 +143,7 @@
   "alm_dt_polaris": "Polaris-Genauigkeit",
   "alm_dt_polaris_desc": "Die Erde taumelt wie ein Kreisel. Polaris liegt gerade zufällig nahe der Achse, driftet aber ab. Nächste Annäherung um 2100 (0,45°), dann entfernt er sich. In etwa {years} Jahren wird Wega der „Nordstern“ sein. Voller Präzessionszyklus: 25.772 Jahre.",
   "alm_dt_tilt": "Erdneigung",
+  "alm_dt_beyond_fit": "Außerhalb dessen, was diese Schätzung abdeckt",
   "alm_dt_tilt_desc": "Diese Neigung ist der Grund für die Jahreszeiten. Sie ist derzeit {trend}, das bedeutet: {impact}. Sie schwankt zwischen 22,1° und 24,5° über 41.000 Jahre (Milanković-Zyklus). Derzeit bei {pct}% des Zyklus.",
   "alm_earth_sun_dist": "Erde–Sonne-Entfernung",
   "alm_east": "Osten",
