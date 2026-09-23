@@ -764,7 +764,7 @@ def _get_title_index_stats():
                 }
             )
 
-    status["total_size_gb"] = round(total_size / _srv._BYTES_PER_GB, 1)
+    status["total_size_gb"] = round(total_size / _srv._BYTES_PER_GB, 6)
     status["index_count"] = len(indexes)
     # Use live counts: ready = indexes on disk, total = ZIM files
     status["ready"] = len(indexes)

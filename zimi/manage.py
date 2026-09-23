@@ -4711,7 +4711,7 @@ def handle_manage_get(handler, parsed, params):
             200,
             {
                 "zim_count": zim_count,
-                "total_size_gb": round(total_gb, 1),
+                "total_size_gb": round(total_gb, 6),  # as each ZIM's size_gb: 0.1 GB read 0 B for small libraries
                 "manage_enabled": True,
                 "linked_zims": linked_zims,
                 "domain_count": len(_srv._domain_zim_map),
