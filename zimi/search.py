@@ -2980,6 +2980,24 @@ def random_entry(archive, max_attempts=8, rng=None):
                 log.debug("Random entry pick failed at index %d: %s", idx, e)
                 continue
 
+    # Phase 1b: libzim's own pick among the ZIM's front articles, the pages
+    # meant to be read. A capture of 446 entries with ONE page (the CNN front
+    # page) is almost never found by eight random indices, and the dice there
+    # answered "no articles found" and left the site. Seeded picks skip it:
+    # libzim's choice cannot be made deterministic.
+    if rng is _random and getattr(archive, "article_count", 0):
+        for _ in range(min(3, max_attempts)):
+            try:
+                entry = archive.get_random_entry()
+                if entry.is_redirect:
+                    entry = entry.get_redirect_entry()
+                mt = entry.get_item().mimetype or ""
+                if mt.startswith("text/html") or mt == "application/pdf":
+                    return {"path": entry.path, "title": entry.title or ""}
+            except Exception as e:
+                log.debug("Random front article failed: %s", e)
+                break
+
     # Phase 2: SuggestionSearcher fallback
     chars = "abcdefghijklmnopqrstuvwxyz"
     for _ in range(max_attempts):
