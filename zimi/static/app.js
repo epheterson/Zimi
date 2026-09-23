@@ -16923,7 +16923,9 @@ function _mapOfferItems() {
   // Someone who cannot download has no use for the catalog, and asking for it
   // put an admin sign-in in front of a visitor who only opened the picker;
   // Cancel then threw them to the home page.
-  if (_managePwRequired && !_manageToken) return Promise.resolve([]);
+  // Marked loaded (with nothing): the dropdown re-renders when the offers
+  // arrive and asks again, so an answer that is never "loaded" loops.
+  if (_managePwRequired && !_manageToken) { _mapOfferLoaded = true; return Promise.resolve([]); }
   var placed = function(items) { return (items || []).filter(function(it) { return it && it.bounds; }); };
   _mapOfferPending = (async function() {
     try {
