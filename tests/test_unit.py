@@ -2077,6 +2077,13 @@ class TestSetPasswordAuthGate(unittest.TestCase):
             self.responses.append((status, body))
             return (status, body)
 
+        # set-password answers with a fresh admin session as a cookie too.
+        def _json_cookie(self, status, body, cookie):
+            return self._json(status, body)
+
+        def _session_cookie(self, token, remember):
+            return "zimi_session=" + token
+
     def _post(self, private, data, stored_pw=None, api_token=""):
         import urllib.parse
         from unittest.mock import patch as _patch
