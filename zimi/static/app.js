@@ -7047,7 +7047,11 @@ async function fetchPlaces(query) {
     const data = await res.json();
     if (seq !== _suggestSeq || document.activeElement !== q) return;
     suggestItems = [];
-    for (const g of (data.groups || [])) {
+    // The map on screen first: Enter takes the first row, and in library
+    // order "Honolulu" on the Hawaii map flew to the World map instead.
+    const onScreen = currentArticle && currentArticle.zim;
+    const groups = (data.groups || []).slice().sort((a, b) => (b.zim === onScreen) - (a.zim === onScreen));
+    for (const g of groups) {
       for (const p of (g.places || [])) {
         const what = [p.sub || (p.type !== 'place' ? p.type : ''), p.locality].filter(Boolean)
           .map(x => String(x).replace(/_/g, ' ')).join(' \u00b7 ');
