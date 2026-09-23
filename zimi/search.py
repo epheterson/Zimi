@@ -3103,7 +3103,7 @@ def random_entry(archive, max_attempts=8, rng=None):
             if count == 0:
                 continue
             paths = list(suggestion.getResults(0, min(count, 30)))
-            result = _pick_html_entry(archive, paths)
+            result = _pick_html_entry(archive, paths, rng)
             if result:
                 return result
         except Exception as e:
@@ -3114,9 +3114,10 @@ def random_entry(archive, max_attempts=8, rng=None):
     return None
 
 
-def _pick_html_entry(archive, paths):
-    """From a list of entry paths, return the first valid HTML/PDF article."""
-    _random.shuffle(paths)
+def _pick_html_entry(archive, paths, rng=_random):
+    """From a list of entry paths, a valid HTML/PDF article in `rng`'s order,
+    so a seeded pick (Book of the Day) is the same pick on every call."""
+    rng.shuffle(paths)
     for path in paths:
         try:
             entry = archive.get_entry_by_path(path)
@@ -3426,7 +3427,7 @@ def _get_dated_entry(archive, zim_name, mmdd, rng=None):
         count = search.getEstimatedMatches()
         if count > 0:
             paths = list(search.getResults(0, min(count, 10)))
-            result = _pick_html_entry(archive, paths)
+            result = _pick_html_entry(archive, paths, rng or _random)
             if result:
                 return result
     except Exception as e:
