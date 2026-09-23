@@ -36,6 +36,19 @@ Each with a test that fails on the old code, and the page fixes checked in a bro
 - The Mac app reported version 1.4.0 since February, so Sparkle always had an update to offer.
 - Manage could stick on "Loading..." after a correct password (two 401s at once lost one resolver).
 - A visitor opening the map picker, or a signed-in reader opening settings, got the admin sign-in.
+- Maps: typing on a map opened from a link fell through to "No results found"; Enter on "Honolulu" on the Hawaii map flew to the World map.
+- Right-click on a search result gave the browser's menu (regressed in 1.9.0).
+- Home's filters left every Favorite and collection member on screen.
+- One ZimiTube card per talk when two TED builds spell the speaker differently.
+- A TED talk whose file is missing says so instead of showing a dead player.
+- A link to an article the ZIM lacks shows a page (with a library search), not raw JSON; the missing-ZIM page, which read "This page wasn't captured" in every language but English, translates as itself.
+- Random on a captured site lands on its page instead of leaving it.
+- Print and Share are reachable (the ... menu, with Reader View on).
+- The Define card closes when the article scrolls.
+- Almanac dates before year 1 keep their BC.
+- `/exchange/*` and `/reddot/*` are rate limited; `/read` and `/search` answer 404 for an unknown ZIM or article, as the API guide says; MCP `read_question`/`read_post` take a glued path.
+- Manage's setup commands name the server's data dir (#61); README brew line trusts the tap on Homebrew 6; seven doc contradictions corrected.
+- Tests added for the one-time `/dl/` ticket (the 1.9.0 security fix had none).
 
 On `release-names`: release files named `Zimi-<version>-<platform>-<chip>`.
 
@@ -46,16 +59,15 @@ On `release-names`: release files named `Zimi-<version>-<platform>-<chip>`.
 3. **"Remember me" keeps the primary admin's password in localStorage in plain text** (`zimi_manage_pw`). Recommend: a session token, as secondary admins already get.
 4. **Preferred languages do not narrow search**, though 1.7.0 says they do. Build it, or correct the changelog.
 5. **A medicine maxi and nopic in one folder are both served.** Prefer one, as `_all` names already do?
+7. **"About this data" (1.7.2 changelog) was never built.** No version of the code or translations has it. Build it, or drop the claim.
+8. **Quick search takes 5 to 12 s for many multi-word queries on the NAS.** When no title starts with the first word, 72 of 78 ZIMs fall back to libzim's SuggestionSearcher. Since 1.5 (which dropped FTS5 prefix queries at 5 to 6 s per ZIM); not a regression. Whole-word FTS5 measured up to 1 s per large ZIM cold. Needs a design pass: which ZIMs deserve the fallback, and whether results can stream per ZIM.
 6. **Where the Mac app's perpetual update offer leaves 1.10.1 users**: the fix ships in the next build; users on 1.10.1 keep seeing the offer until they take one.
 
 ## Still open (not yet fixed)
 
-Most noticeable first within each area.
-
-- Apps: place search on a map opened from a link falls through to text search; Enter can jump to another map; current youtube2zim 3.x ZIMs give no rows; on iPhone the docked TED video is clipped and has no subtitles; the same TED talk shows twice (speaker spelled differently); `/exchange/*` and `/reddot/*` are not rate limited; zero ZIMs shows no Apps row.
-- Reading: Print and Share unreachable; a TED talk with no file shows a dead player; Random on a captured site leaves it; the Define popover stays open on scroll; the Q-ID badge never shows; a missing article in a normal ZIM shows raw JSON.
-- Search, Home: right-click on a result gives the browser's menu (regressed in 1.9.0); Home filters ignore Favorites and collections.
-- Almanac: years before 1 lose BC; deep time shows nonsense instead of "beyond range"; twilight and the golden-hour labels are gone; "About this data" is gone.
-- Library, Sharing: a restart throws away BitTorrent download progress; two Zimis on one host clash on the Nearby name.
-- API: unknown ZIM or article answers 200 with an error, not 404, and lists every ZIM name; MCP `read_question`/`read_post` reject a glued path.
-- Ops, docs: README brew line needs `brew trust` on Homebrew 6; Creator's setup commands lack `--data-dir`; `scripts/release-gate.sh` has three stale checks; and the doc contradictions in the ledger's audit section (offline catalog, Nearby default, `ZIMI_CREATE_ROOT`, engine count, Home sort, bookmark sync, access.md).
+- Apps: current youtube2zim 3.x ZIMs give no rows; on iPhone the docked TED video is clipped and has no subtitles, and tapping the dock pauses; zero ZIMs shows no Apps row; a new collection needs a reload while the service worker is on.
+- Reading: the Q-ID badge never shows; Reader View draws two lines under every title; CNN captures stay light under simulated dark mode.
+- Search, Home: Book of the Day differs between identical requests; On This Day never shows its date; the desktop Discover strip does not scroll with a mouse wheel; recent history shows file names for some entries; the `maps` title index fails to build.
+- Almanac: deep time shows nonsense instead of "beyond range"; the zone label stays PDT in January; the meteor "Peak!" badge is a day late; two 2027 penumbral lunar eclipses are missing. (Twilight and the Morning/Evening labels were not a regression: the labels are the planets', and present; twilight was always computed, never shown.)
+- Library, Sharing: a restart throws away BitTorrent download progress; two Zimis on one host clash on the Nearby name; the advertised BT port and ZIM count are frozen at startup.
+- Ops: `scripts/release-gate.sh` has three stale checks; stale Playwright specs (`test_tabs.mjs`, `visual_validation.spec.mjs`); none of the 20 Playwright specs run in CI; duplicate changelog bullets.
