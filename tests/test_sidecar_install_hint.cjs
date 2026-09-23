@@ -40,6 +40,10 @@ const sandbox = {
   _createSidecarDir: null,
 };
 vm.createContext(sandbox);
+// The quoting itself lives in app.js (_shellQuote), shared with Manage's
+// setup commands; create.js's _createShellQuote hands off to it.
+const appSrc = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.js'), 'utf8');
+vm.runInContext(extractFn(appSrc, '_shellQuote'), sandbox);
 vm.runInContext(extractFn(src, '_createShellQuote'), sandbox);
 vm.runInContext(extractFn(src, '_createSidecarCommand'), sandbox);
 
