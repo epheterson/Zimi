@@ -1,8 +1,9 @@
 """Detect bundle/subset relationships among catalog items.
 
 Full content overlap requires parsing every ZIM, which is impractical. The
-heuristic uses two signals from the OPDS catalog: shared `category`+`language`
-("family"), and the convention that `_all` near the end of a name marks a
+heuristic uses two signals from the OPDS catalog: shared `category`,
+`language` and project (the name before its first underscore), the
+"family"; and the convention that `_all` near the end of a name marks a
 universal bundle:
 
   wikipedia_en_all_maxi   ←──┐
@@ -70,11 +71,16 @@ def _is_bundle(name):
 
 
 def _family_key(item):
+    """Category, language and project. Catalog names are project_lang_selection
+    (wikipedia_en_all, wikivoyage_en_europe, cheatography.com_en_all): without
+    the project, one category's bundle swallowed other projects, and every
+    English Dev Docs card read "Part of cheatography.com_en_all"."""
     cat = (item.get("category") or "").lower()
     lang = (item.get("language") or "").lower()
-    if not cat or not lang:
+    project = (item.get("name") or "").lower().split("_", 1)[0]
+    if not cat or not lang or not project:
         return None
-    return f"{cat}_{lang}"
+    return f"{cat}_{lang}_{project}"
 
 
 def _article_count(item):

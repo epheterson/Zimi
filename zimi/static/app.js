@@ -8158,13 +8158,15 @@ function _enrichCatalogHierarchy(items) {
     }
   }
 
-  // Group by category + language.
+  // Group by category + language + project (the name before its first
+  // underscore): as catalog_hierarchy._family_key, which says why.
   const families = new Map();
   for (const it of byName.values()) {
     const cat = (it.category || '').toLowerCase();
     const lang = (it.language || '').toLowerCase();
-    if (!cat || !lang) continue;
-    const key = cat + '_' + lang;
+    const project = (it.name || '').toLowerCase().split('_')[0];
+    if (!cat || !lang || !project) continue;
+    const key = cat + '_' + lang + '_' + project;
     if (!families.has(key)) families.set(key, []);
     families.get(key).push(it);
   }
