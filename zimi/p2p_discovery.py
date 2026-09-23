@@ -35,6 +35,11 @@ _service_info = None
 _browser = None
 _self_service_name: str | None = None
 _refresh_stop: threading.Event | None = None
+# What the advert says that can change while the server runs (the ZIM count,
+# the BT port), read again on every refresh; and the ServiceInfo arguments
+# that do not change, to announce a changed record with.
+_advert_now = None
+_advert_fixed: dict = {}
 
 
 def _import_zeroconf():
@@ -180,10 +185,14 @@ def _hostname() -> str:
         return "zimi"
 
 
-def _peer_instance_name() -> str:
+def _peer_instance_name(http_port: int | None = None) -> str:
     """Friendly name advertised on mDNS. ZIMI_PEER_NAME env var
     overrides the auto-detected `zimi-<hostname>` form. Sanitized to
-    `[a-zA-Z0-9-]+` to keep DNS-SD service names valid."""
+    `[a-zA-Z0-9-]+` to keep DNS-SD service names valid.
+
+    A server on another port than the default gets it in the default name
+    (`zimi-<hostname>-8900`): two Zimis on one host both announced
+    `zimi-<hostname>`, and a peer saw one of them."""
     raw = (
         str(_nearby_conf().get("name", "")).strip()
         or os.environ.get("ZIMI_PEER_NAME", "").strip()
@@ -198,6 +207,11 @@ def _peer_instance_name() -> str:
         # in DNS-SD are technically OK but cause friction in CLI tools.
         cleaned = "".join(c if (c.isalnum() or c in "-_ ") else "-" for c in raw)
         return cleaned.strip("- ")[:63] or _hostname()
+    from zimi.server import DEFAULT_PORT
+
+    port = http_port or _last_start_args.get("http_port")
+    if port and port != DEFAULT_PORT:
+        return f"zimi-{_hostname()}-{port}"
     return f"zimi-{_hostname()}"
 
 
@@ -287,6 +301,7 @@ def _refresh_loop(zc, listener, stop_evt):
     genuinely gone answers nothing and ages out through the stale cutoff.
     """
     while not stop_evt.wait(BROWSE_REFRESH_SECONDS):
+        _refresh_advert()
         with _peers_lock:
             names = list(_peers.keys())
         for name in names:
@@ -296,6 +311,30 @@ def _refresh_loop(zc, listener, stop_evt):
                 listener.add_service(zc, SERVICE_TYPE, name)
             except Exception as e:  # pragma: no cover — refresh must outlive hiccups
                 log.debug("peer refresh failed for %s: %s", name, e)
+
+
+def _refresh_advert() -> None:
+    """Announce the record again if the ZIM count or BT port changed since.
+
+    They were written once at start, so a peer kept being told the library
+    had the ZIMs it had at boot and the BT port it had before a restart of
+    the engine from Settings."""
+    global _service_info
+    if _zc is None or _service_info is None or _advert_now is None or not _advert_fixed:
+        return
+    try:
+        now = _advert_now()
+        props = dict(_service_info.properties)
+        new = dict(props)
+        new[b"zim_count"] = str(now["zim_count"]).encode()
+        new[b"bt_port"] = str(now["bt_port"]).encode()
+        if new == props:
+            return
+        si = _advert_fixed["mod"].ServiceInfo(*_advert_fixed["args"], properties=new, **_advert_fixed["kwargs"])
+        _zc.update_service(si)
+        _service_info = si
+    except Exception as e:  # pragma: no cover — refresh must outlive hiccups
+        log.debug("advert refresh failed: %s", e)
 
 
 _last_start_args: dict = {}
@@ -318,16 +357,19 @@ def start(
     bt_port: int,
     zim_count: int,
     version: str = "",
+    current=None,
 ) -> bool:
     """Start advertising + browsing. Returns True on success, False if
-    zeroconf is unavailable or already started."""
+    zeroconf is unavailable or already started. `current`, when given,
+    answers {"zim_count", "bt_port"} as they are now, for the refresh."""
     global _zc, _service_info, _browser, _self_service_name, _last_start_args
-    global _refresh_stop
+    global _refresh_stop, _advert_now, _advert_fixed
     _last_start_args = {
         "http_port": http_port,
         "bt_port": bt_port,
         "zim_count": zim_count,
         "version": version,
+        "current": current,
     }
 
     if _zc is not None:
@@ -342,7 +384,7 @@ def start(
         return False
 
     try:
-        instance = _peer_instance_name()
+        instance = _peer_instance_name(http_port)
         full_name = f"{instance}.{SERVICE_TYPE}"
         _self_service_name = instance
 
@@ -353,16 +395,17 @@ def start(
             b"bt_port": str(bt_port).encode(),
         }
         ip = get_advertise_ip()
-        si = mod.ServiceInfo(
-            SERVICE_TYPE,
-            full_name,
-            addresses=[socket.inet_aton(ip)],
-            port=http_port,
-            properties=properties,
-            server=f"{instance}.local.",
-        )
+        fixed_args = (SERVICE_TYPE, full_name)
+        fixed_kwargs = {
+            "addresses": [socket.inet_aton(ip)],
+            "port": http_port,
+            "server": f"{instance}.local.",
+        }
+        si = mod.ServiceInfo(*fixed_args, properties=properties, **fixed_kwargs)
         zc = mod.Zeroconf()
         zc.register_service(si)
+        _advert_now = current
+        _advert_fixed = {"mod": mod, "args": fixed_args, "kwargs": fixed_kwargs}
         listener = _PeerListener(self_name=instance)
         browser = mod.ServiceBrowser(zc, SERVICE_TYPE, listener)
         _refresh_stop = threading.Event()
@@ -392,6 +435,7 @@ def start(
 
 def stop() -> None:
     global _zc, _service_info, _browser, _self_service_name, _refresh_stop
+    global _advert_fixed
     if _refresh_stop is not None:
         _refresh_stop.set()
         _refresh_stop = None
@@ -410,6 +454,7 @@ def stop() -> None:
     _service_info = None
     _browser = None
     _self_service_name = None
+    _advert_fixed = {}
 
 
 def fetch_peer_list(peer_name: str):
@@ -458,6 +503,9 @@ def _reset_for_tests() -> None:
     """Test-only: clear all module state without trying to close real
     Zeroconf instances. Tests use mocks so we just zero everything."""
     global _zc, _service_info, _browser, _self_service_name, _refresh_stop
+    global _advert_now, _advert_fixed
+    _advert_now = None
+    _advert_fixed = {}
     with _peers_lock:
         _peers.clear()
     if _refresh_stop is not None:

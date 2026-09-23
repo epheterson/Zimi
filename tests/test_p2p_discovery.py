@@ -282,3 +282,44 @@ def test_a_default_install_announces_nothing_until_nearby_is_on(monkeypatch):
     monkeypatch.setattr(p2p, "_read_pref", lambda key, default=None: True if key == "peer_share" else default)
     disc.apply_enabled()
     assert started == [1]
+
+
+def _started_with(mod, **kw):
+    with patch.object(disc, "_import_zeroconf", return_value=mod):
+        return disc.start(http_port=8899, bt_port=6881, zim_count=42, version="1.10", **kw)
+
+
+def test_a_second_server_on_one_host_has_a_name_of_its_own(monkeypatch):
+    """Two Zimis on one host both announced zimi-<hostname>, and a peer saw
+    one of them. They cannot share a port, so the port tells them apart."""
+    monkeypatch.delenv("ZIMI_PEER_NAME", raising=False)
+    monkeypatch.setattr(disc, "_hostname", lambda: "box")
+    assert disc._peer_instance_name(8899) == "zimi-box"
+    assert disc._peer_instance_name(8900) == "zimi-box-8900"
+    monkeypatch.setenv("ZIMI_PEER_NAME", "Kitchen")
+    assert disc._peer_instance_name(8900) == "Kitchen"  # a chosen name is kept
+
+def test_the_advert_follows_the_library_and_the_bt_port(monkeypatch):
+    monkeypatch.setenv("ZIMI_PEER_DISCOVERY", "1")
+    mod = MagicMock()
+    first = MagicMock()
+    first.name = None
+    first.properties = {b"version": b"1.10", b"zim_count": b"42", b"port": b"8899", b"bt_port": b"6881"}
+    mod.ServiceInfo.return_value = first
+    now = {"zim_count": 42, "bt_port": 6881}
+    assert _started_with(mod, current=lambda: dict(now)) is True
+    zc = mod.Zeroconf.return_value
+
+    disc._refresh_advert()
+    zc.update_service.assert_not_called()  # nothing changed, nothing announced
+
+    now.update(zim_count=43, bt_port=16881)
+    second = MagicMock()
+    mod.ServiceInfo.return_value = second
+    disc._refresh_advert()
+    zc.update_service.assert_called_once_with(second)
+    _, kwargs = mod.ServiceInfo.call_args
+    assert kwargs["properties"][b"zim_count"] == b"43"
+    assert kwargs["properties"][b"bt_port"] == b"16881"
+    assert kwargs["properties"][b"version"] == b"1.10"
+    assert disc._service_info is second

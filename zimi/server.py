@@ -208,6 +208,10 @@ def start_background_services(http_port):
                 bt_port=p2p.get_bt_port(),
                 zim_count=len(list_zims()),
                 version=ZIMI_VERSION,
+                current=lambda: {
+                    "zim_count": len(list_zims()),
+                    "bt_port": p2p.get_bt_port(),
+                },
             )
             import atexit
 
