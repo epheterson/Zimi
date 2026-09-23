@@ -3347,6 +3347,9 @@ function renderHome(filter) {
   const sorted = homeRecentFilter === 'added' ? _recentAdded
     : homeRecentFilter === 'updated' ? _recentUpdated
     : _langSorted;
+  // The ZIMs the recency and language filters let through, for the sections
+  // (favourites, collections) that pick their own members by name.
+  const _homeShown = new Set(sorted.map(z => z.name));
 
   const groups = {};
   sorted.forEach(z => {
@@ -3475,7 +3478,9 @@ function renderHome(filter) {
     if (!filter && favNames.length > 0) {
       // The star order is the order they were starred in; the library's own
       // order is what the person chose, so it wins here too.
-      const favZims = _sortLibrary(favNames.map(n => _zimInfo(n)).filter(Boolean));
+      // Only what the filters let through: "Recently added" or a language
+      // left every favourite on screen (23 cards against the 15 it matched).
+      const favZims = _sortLibrary(favNames.map(n => _zimInfo(n)).filter(z => z && _homeShown.has(z.name)));
       if (favZims.length > 0) {
         const favZimNames = favZims.map(z => z.name);
         h += '<div class="cat-heading clickable" onclick="enterScope(\'favorites\',\'\u2605 ' + escJs(t('favorites')) + '\',' + escJs(JSON.stringify(favZimNames)) + ',true)">\u2605 ' + tH('favorites') + '</div>';
@@ -3524,7 +3529,7 @@ function renderHome(filter) {
     var _sections = [];
     if (!filter && collectionsCache && collectionsCache.collections) {
       for (const [cname, coll] of Object.entries(collectionsCache.collections)) {
-        const collZims = _sortLibrary((coll.zims || []).map(n => _zimInfo(n)).filter(Boolean));
+        const collZims = _sortLibrary((coll.zims || []).map(n => _zimInfo(n)).filter(z => z && _homeShown.has(z.name)));
         if (collZims.length > 0) {
           const collZimNames = collZims.map(z => z.name);
           _sections.push({ key: 'col:' + cname, html:
