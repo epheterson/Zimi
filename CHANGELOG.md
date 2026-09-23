@@ -33,6 +33,7 @@ A fix-up release from a pass over every feature Zimi has claimed since 1.0.
 - A link to a missing article shows a page with a library search, not raw JSON.
 - The almanac: Hebrew dates, moon-phase marks, the meteor "Peak!" day, the time zone label, BC years, the shallow penumbral eclipses, and "beyond range" where an estimate stops holding.
 - "About this data" in the almanac says where each number comes from.
+- ZimiTube reads current Kiwix video ZIMs: multi-language TED (`ted_mul`) and youtube2zim 3.x channels such as CrashCourse and Blender Studio, with their subtitles (#89).
 - ZimiTube shows videos Zimi made and one card per TED talk; a talk whose video is missing says so.
 - The catalog: `ZIMI_OFFLINE` stays offline, "Part of" badges stay within a project, seeding survives being switched off and on, and a small library's size is not 0 B.
 - Nearby tells two servers on one host apart, and keeps its ZIM count current.
