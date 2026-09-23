@@ -20792,6 +20792,10 @@ function _defineAttachToDoc(frame) {
   // dismiss it (like a native selection callout) rather than leave it stranded at
   // a stale position. Covers both the raw frame and Reader View (same window).
   try { frame.contentWindow.addEventListener('scroll', _defineHideOnScroll, { passive: true }); } catch (e) {}
+  // Capture on the document as well: a Wikipedia article scrolls on <body>,
+  // whose scroll event does not bubble to the window, so the card stayed open
+  // while its word scrolled away.
+  try { frame.contentDocument.addEventListener('scroll', _defineHideOnScroll, { passive: true, capture: true }); } catch (e) {}
   // No discovery tip. It was rate-limited twice and Eric still met it twice
   // more; a teaching aid that has to be tuned that often is one nobody wanted.
   // Define is still there on a selection or a double-tap, and it is now found
