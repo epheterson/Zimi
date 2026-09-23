@@ -5133,6 +5133,33 @@ function _dismissDiscover() {
 // the app's OWN cache keys and they pile up forever, silently. The date is
 // what makes a key safe to delete, not the stamp.
 var _DISCOVER_CACHE_KEY_RE = /^zimi_[A-Za-z0-9.-]+_\d{4}-\d{2}-\d{2}$/;
+
+// Strips that only scroll sideways. A mouse wheel only turns vertically, and
+// the pill rows hide their scrollbars, so on a desktop with a mouse none of
+// these could be moved at all. A trackpad's sideways swipe (deltaX) is left to
+// the browser. At either end the wheel goes back to scrolling the page.
+var _SIDEWAYS_STRIPS = '.discover-scroll, .pills-row, .lang-pills, .catalog-lang-scroll';
+var _WHEEL_LINE_PX = 16;       // deltaMode 1 (Firefox, some mice) counts lines
+var _WHEEL_STEP_REST_MS = 250; // one card per notch while a snap step animates
+document.addEventListener('wheel', function(e) {
+  if (e.ctrlKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+  var strip = e.target.closest && e.target.closest(_SIDEWAYS_STRIPS);
+  if (!strip) return;
+  var max = strip.scrollWidth - strip.clientWidth;
+  var dy = e.deltaMode === 1 ? e.deltaY * _WHEEL_LINE_PX : e.deltaY;
+  if (max <= 0 || (dy < 0 && strip.scrollLeft <= 0) || (dy > 0 && strip.scrollLeft >= max - 1)) return;
+  e.preventDefault();
+  // A mandatory snap pulls a small nudge back to the card it left, so a
+  // snapped strip moves a whole card per notch instead.
+  var style = getComputedStyle(strip);
+  if (style.scrollSnapType.indexOf('mandatory') === -1) { strip.scrollLeft += dy; return; }
+  if (strip._wheelStepping) return;
+  var card = strip.firstElementChild;
+  var step = card ? card.getBoundingClientRect().width + (parseFloat(style.columnGap) || 0) : strip.clientWidth;
+  strip._wheelStepping = true;
+  strip.scrollBy({ left: dy > 0 ? step : -step, behavior: 'smooth' });
+  setTimeout(function() { strip._wheelStepping = false; }, _WHEEL_STEP_REST_MS);
+}, { passive: false });
 function _loadDiscover() {
   if (_discoverLoading) return;
   var el = document.getElementById('discover-row');
