@@ -301,6 +301,10 @@ class ConfigManager:
         "zim_dir": os.path.join(_user_home(), "Zimi"),
         "data_dir": "",  # empty = use ZIM_DIR/.zimi (backward compat)
         "port": 8899,
+        # Off: the server answers this machine only. On: other devices on the
+        # same network (a phone on this PC's hotspot, issue #90) can open it.
+        # ZIMI_HOST in the environment wins either way, as for `zimi serve`.
+        "lan_access": False,
         "auto_open_browser": True,
         # Opt-out for the Sparkle/WinSparkle launch-time appcast check.
         # True by default so existing installs keep updating; no UI toggle
@@ -375,12 +379,30 @@ def _discover_portable_zim_dir(config):
 # ---------------------------------------------------------------------------
 
 
-def _find_open_port(start=8899, end=8910):
-    """Find the first available port in range."""
+LOOPBACK_HOST = "127.0.0.1"
+ALL_INTERFACES_HOST = "0.0.0.0"
+
+
+def _bind_host(config):
+    """The address the embedded server listens on.
+
+    ZIMI_HOST, when set, wins, exactly as it does for `zimi serve`. Otherwise
+    the desktop default is this machine only; the "other devices on this
+    network" setting opens it to every interface. The window itself always
+    loads 127.0.0.1, which both answer on."""
+    env = os.environ.get("ZIMI_HOST", "").strip()
+    if env:
+        return env
+    return ALL_INTERFACES_HOST if config.get("lan_access") else LOOPBACK_HOST
+
+
+def _find_open_port(start=8899, end=8910, host=LOOPBACK_HOST):
+    """Find the first available port in range, on the address the server
+    will bind."""
     for port in range(start, end + 1):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.bind(("127.0.0.1", port))
+                s.bind((host, port))
                 return port
         except OSError:
             continue
@@ -390,10 +412,11 @@ def _find_open_port(start=8899, end=8910):
 class ServerThread(threading.Thread):
     """Starts the Zimi server in a background thread."""
 
-    def __init__(self, zim_dir, port, data_dir=None):
+    def __init__(self, zim_dir, port, data_dir=None, host=LOOPBACK_HOST):
         super().__init__(daemon=True)
         self.zim_dir = zim_dir
         self.port = port
+        self.host = host
         self.data_dir = data_dir or os.path.join(zim_dir, ".zimi")
         self.actual_port = port
         self.ready = threading.Event()
@@ -406,7 +429,7 @@ class ServerThread(threading.Thread):
             os.environ["ZIMI_MANAGE"] = "1"
 
             # Try the configured port, fall back if in use
-            port = _find_open_port(self.port)
+            port = _find_open_port(self.port, host=self.host)
             if port is None:
                 self.error = f"No available port in range {self.port}-{self.port + 11}"
                 self.ready.set()
@@ -425,7 +448,7 @@ class ServerThread(threading.Thread):
 
             from http.server import ThreadingHTTPServer
 
-            server = ThreadingHTTPServer(("127.0.0.1", port), zimi.ZimHandler)
+            server = ThreadingHTTPServer((self.host, port), zimi.ZimHandler)
             self.ready.set()  # UI can load now — /list works from cache
 
             # BT sidecar, UPnP, LAN discovery, download resume, mirror
@@ -503,13 +526,31 @@ class DesktopAPI:
             "data_dir": self._config.get("data_dir"),
             "port": self._config.get("port"),
             "auto_open_browser": self._config.get("auto_open_browser"),
+            "lan_access": bool(self._config.get("lan_access")),
+            # ZIMI_HOST set: the environment decides, and the toggle is locked.
+            "lan_access_env": bool(os.environ.get("ZIMI_HOST", "").strip()),
             "is_first_run": self._config.is_first_run,
         }
+
+    def lan_addresses(self):
+        """The IPv4 addresses another device on the network can open this
+        server at, or [] while it answers this machine only. Asked only when
+        the setting is on, so opening Settings never pays for the lookup."""
+        host = _bind_host(self._config)
+        if host == LOOPBACK_HOST or host.startswith("127.") or host in ("localhost", "::1"):
+            return []
+        if host not in (ALL_INTERFACES_HOST, "::"):
+            return [host]  # ZIMI_HOST named one address: that is the one
+        from zimi import p2p_discovery
+
+        return p2p_discovery.local_ipv4s()
 
     def save_config(self, updates):
         """Save config updates. Returns True if restart is needed."""
         needs_restart = False
-        for key in ("zim_dir", "data_dir", "port"):
+        if "lan_access" in updates:
+            updates = dict(updates, lan_access=bool(updates["lan_access"]))
+        for key in ("zim_dir", "data_dir", "port", "lan_access"):
             if key in updates and updates[key] != self._config.get(key):
                 self._config.set(key, updates[key])
                 needs_restart = True
@@ -950,7 +991,7 @@ def _run():
         _set_macos_app_identity(window_ref)
 
         data_dir = config.get("data_dir") or os.path.join(zim_dir, ".zimi")
-        server = ServerThread(zim_dir, config.get("port"), data_dir=data_dir)
+        server = ServerThread(zim_dir, config.get("port"), data_dir=data_dir, host=_bind_host(config))
         server.start()
         server.ready.wait(timeout=60)
 
@@ -1039,8 +1080,8 @@ def _serve_headless():
     if port is None:
         port = 8899
 
+    config = ConfigManager()
     if zim_dir is None:
-        config = ConfigManager()
         zim_dir = config.get("zim_dir")
         # Same portable discovery as the GUI path — a --zim-dir flag above
         # skipped this entirely, and the gate inside refuses unless this is a
@@ -1049,7 +1090,7 @@ def _serve_headless():
         if discovered:
             zim_dir = discovered
 
-    _serve(zim_dir, port, lambda actual_port: print(f"READY {actual_port}", flush=True))
+    _serve(zim_dir, port, lambda actual_port: print(f"READY {actual_port}", flush=True), _bind_host(config))
 
 
 def _cli_port_and_zim_dir(args):
@@ -1100,19 +1141,20 @@ def _run_in_browser(reason=""):
         if not opened:
             print(f"Zimi: could not open a browser here; visit {url}", file=sys.stderr, flush=True)
 
+    host = _bind_host(config)
     try:
-        _serve(zim_dir, port, on_ready)
+        _serve(zim_dir, port, on_ready, host)
     except OSError as e:
         import errno
 
         if port and e.errno in (errno.EADDRINUSE, errno.EACCES):
             # The usual port is taken (another Zimi, say): any free one.
-            _serve(zim_dir, 0, on_ready)
+            _serve(zim_dir, 0, on_ready, host)
         else:
             raise
 
 
-def _serve(zim_dir, port, on_ready):
+def _serve(zim_dir, port, on_ready, host=LOOPBACK_HOST):
     """Run the HTTP server in this thread until interrupted; ``on_ready``
     gets the port once it listens."""
     os.environ["ZIM_DIR"] = zim_dir
@@ -1142,7 +1184,7 @@ def _serve(zim_dir, port, on_ready):
 
     from http.server import ThreadingHTTPServer
 
-    server = ThreadingHTTPServer(("127.0.0.1", port), zimi.ZimHandler)
+    server = ThreadingHTTPServer((host, port), zimi.ZimHandler)
     actual_port = server.server_address[1]
     # Same background services as the GUI and the serve CLI — this path
     # is what CI smoke-tests, so it must exercise the real thing.

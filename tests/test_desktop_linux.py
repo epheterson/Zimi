@@ -163,7 +163,7 @@ def test_browser_mode_serves_and_opens_the_browser(monkeypatch, tmp_path):
     monkeypatch.setattr(desktop, "_discover_portable_zim_dir", lambda config: None)
     ports = []
 
-    def fake_serve(zim_dir, port, on_ready):
+    def fake_serve(zim_dir, port, on_ready, host="127.0.0.1"):
         ports.append(port)
         on_ready(43210)
 
@@ -190,7 +190,7 @@ def test_a_taken_port_falls_back_to_any_free_one(monkeypatch, tmp_path):
     monkeypatch.setattr(desktop, "_discover_portable_zim_dir", lambda config: None)
     ports = []
 
-    def fake_serve(zim_dir, port, on_ready):
+    def fake_serve(zim_dir, port, on_ready, host="127.0.0.1"):
         ports.append(port)
         if port == 8899:
             raise OSError(errno.EADDRINUSE, "in use")
@@ -277,7 +277,7 @@ def test_browser_mode_honours_the_command_lines_port_and_folder(monkeypatch, tmp
     monkeypatch.setattr(desktop, "ConfigManager", lambda: type("C", (), {"get": lambda self, k: {"zim_dir": "/saved", "port": 8899}.get(k)})())
     monkeypatch.setattr(desktop, "_discover_portable_zim_dir", lambda config: "/a/stick")
     seen = []
-    monkeypatch.setattr(desktop, "_serve", lambda zim_dir, port, on_ready: seen.append((zim_dir, port)))
+    monkeypatch.setattr(desktop, "_serve", lambda zim_dir, port, on_ready, host="127.0.0.1": seen.append((zim_dir, port)))
     desktop._run_in_browser()
     assert seen == [(str(tmp_path / "here"), 0)]
     assert desktop._cli_port_and_zim_dir(["--port", "7", "x", "--zim-dir"]) == (7, None)
