@@ -20318,6 +20318,24 @@ function _defineRun() {
     '</div></div>';
   _defineReposition(); // the card is bigger than the chip — re-clamp to viewport
   var q = st.word;
+  var ql = q.toLowerCase();
+  // The word's own entry first. Wiktionary keeps "process" and "Process" as
+  // two entries, and /suggest can hand back only the capitalized one, so
+  // Define read "Obsolete spelling of Prozess" for process.
+  fetch(_articleUrl(st.zim, ql) + '?raw=1')
+    .then(function(r) { return r.ok ? r.text() : null; })
+    .catch(function() { return null; })
+    .then(function(html) {
+      if (html && _defineExtract(html)) {
+        st.path = ql;
+        _defineRenderResult(st, { path: ql, title: ql }, html);
+        return;
+      }
+      return _defineBySuggest(st, q);
+    });
+}
+
+function _defineBySuggest(st, q) {
   fetch('/suggest?q=' + encodeURIComponent(q.toLowerCase()) + '&limit=6&zim=' + encodeURIComponent(st.zim))
     .then(function(r) { return r.json(); })
     .then(function(data) {
