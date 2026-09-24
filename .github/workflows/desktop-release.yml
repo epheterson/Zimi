@@ -503,10 +503,14 @@ jobs:
       # home view.
       - name: The installer installs an app that opens (Windows)
         if: runner.os == 'Windows'
+        timeout-minutes: 12
         shell: pwsh
         run: |
           $dir = Join-Path $env:RUNNER_TEMP "ZimiInstalled"
-          $p = Start-Process -FilePath dist\Zimi-windows-x64-Setup.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/CURRENTUSER","/DIR=`"$dir`"","/LOG=installer.log" -Wait -PassThru
+          # WaitForExit, not -Wait: -Wait also waits for every process the
+          # installer starts, and it relaunches Zimi, which never exits.
+          $p = Start-Process -FilePath dist\Zimi-windows-x64-Setup.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/CURRENTUSER","/DIR=`"$dir`"","/LOG=installer.log" -PassThru
+          if (-not $p.WaitForExit(300000)) { $p.Kill(); Get-Content installer.log -ErrorAction SilentlyContinue | Out-Host; throw "the installer did not finish in 5 minutes" }
           if ($p.ExitCode -ne 0) { Get-Content installer.log | Out-Host; throw "the installer exited $($p.ExitCode)" }
           if (-not (Test-Path (Join-Path $dir "Zimi.exe"))) { Get-Content installer.log | Out-Host; throw "the installer left no Zimi.exe in $dir" }
           # The installer relaunches Zimi even when silent: that is how an
