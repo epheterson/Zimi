@@ -775,3 +775,27 @@ def test_the_status_payload_carries_a_readiness_answer_for_every_gated_mode():
     for key in ("import_ready", "browser_ready", "alive_ready", "video_ready"):
         assert key in payload, f"the client is never told {key}"
         assert isinstance(payload[key], bool), key
+
+
+def test_a_very_large_site_lifts_the_page_ceiling(stub_engine):
+    """Past 50,000 pages the number was clamped without a word; "Very large
+    site" in Advanced lifts the ceiling for that capture, and only that one."""
+    _post(
+        "/manage/create",
+        {"mode": "site", "source": "https://example.org/", "max_pages": 200000, "large_site": True},
+    )
+    _wait_done()
+    assert stub_engine["opts"]["max_pages"] == 200000
+
+    manage._create_job = None
+    _post(
+        "/manage/create",
+        {"mode": "site", "source": "https://example.org/", "max_pages": 10**9, "large_site": True},
+    )
+    _wait_done()
+    assert stub_engine["opts"]["max_pages"] == manage.CREATE_MAX_PAGES_LARGE
+
+    manage._create_job = None
+    _post("/manage/create", {"mode": "site", "source": "https://example.org/", "max_pages": 200000})
+    _wait_done()
+    assert stub_engine["opts"]["max_pages"] == manage.CREATE_MAX_PAGES_CEILING

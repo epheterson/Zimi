@@ -115,6 +115,9 @@ var CREATE_BOOKMARKS_DEF = {
 var CREATE_REDDIT_DEF = { id: 'reddit', network: true, flags: [], advanced: [] };
 var _createRedditPanel = false;
 
+var CREATE_MAX_PAGES = 50000;
+var CREATE_MAX_PAGES_LARGE = 500000;
+
 var CREATE_MODE_DEFS = [
   {
     id: 'page', network: true, multiline: true,
@@ -125,7 +128,7 @@ var CREATE_MODE_DEFS = [
     id: 'site', network: true,
     label: 'create_label_site_url', placeholder: 'create_ph_site_url',
     flags: ['engine', 'max_pages'],
-    advanced: ['max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
+    advanced: ['large_site', 'max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
       'language', 'ignore_robots'],
     pick: { max_bytes: '500M' }
   },
@@ -301,7 +304,11 @@ var CREATE_FIELDS = {
   },
   max_pages: {
     id: 'create-max-pages', control: 'number', label: 'create_max_pages',
-    kind: 'int', min: 1, max: 50000, ph: '200'
+    kind: 'int', min: 1, max: CREATE_MAX_PAGES, ph: '200'
+  },
+  large_site: {
+    id: 'create-large-site', control: 'check', label: 'create_large_site',
+    kind: 'bool', note: 'create_large_site_note', onchange: '_createSyncPageCap()'
   },
   limit: {
     id: 'create-limit', control: 'number', label: 'create_video_limit',
@@ -2006,6 +2013,14 @@ function _createOpenBookmarkExport() {
 // Audio-only makes the quality preset moot. Greying it out says that where the
 // admin is looking, instead of leaving a live-looking control that changes
 // nothing about the job.
+// The page limit's ceiling, and the one "Very large site" (Advanced) lifts it
+// to; the server holds the same two (manage.CREATE_MAX_PAGES_*).
+function _createSyncPageCap() {
+  var box = document.getElementById(CREATE_FIELDS.large_site.id);
+  var pages = document.getElementById(CREATE_FIELDS.max_pages.id);
+  if (pages) pages.max = (box && box.checked) ? CREATE_MAX_PAGES_LARGE : CREATE_MAX_PAGES;
+}
+
 function _createSyncFormat() {
   var fmt = document.getElementById(CREATE_FIELDS.format.id);
   var audio = document.getElementById(CREATE_FIELDS.audio_only.id);

@@ -129,7 +129,7 @@ for (const key of Object.keys(CREATE_FIELDS)) {
 // browser can reach; changing one is a product decision, not a refactor.
 eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
   ['page', ['block_ads', 'capture_variants', 'language']],
-  ['site', ['max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
+  ['site', ['large_site', 'max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
     'language', 'ignore_robots']],
   ['video', ['format', 'max_bytes', 'language']],
   ['bookmarks', []],

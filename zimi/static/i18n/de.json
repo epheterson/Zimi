@@ -1708,5 +1708,7 @@
   "alm_about_timezones": "Zeitzonen: die nächstgelegene aus einer Reihe von Städten, da es offline keine Karte der Zonengrenzen gibt; nahe einer Grenze kann sie abweichen.",
   "desktop_lan_access": "Zimi auf anderen Geräten in diesem Netzwerk öffnen",
   "desktop_lan_hint": "Ein Handy oder ein anderer Computer im selben WLAN oder Hotspot kann deine Bibliothek lesen. Die Verwaltung der Bibliothek braucht weiterhin dein Admin-Passwort. Zimi startet neu, wenn du das änderst.",
-  "desktop_lan_open_at": "Auf einem anderen Gerät öffnen:"
+  "desktop_lan_open_at": "Auf einem anderen Gerät öffnen:",
+  "create_large_site": "Sehr große Website (bis 500.000 Seiten)",
+  "create_large_site_note": "Für eine Website über der üblichen Grenze von 50.000 Seiten. Die Größengrenze gilt weiter, und so ein Crawl kann Tage dauern."
 }

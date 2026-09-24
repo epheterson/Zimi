@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Search finds an article under its other names again: "العائلة اللغوية" leads to "أسرة لغات", as in Kiwix (#86). Title indexes rebuild in the background after the update; search keeps working while they do.
 - Quick search answers in about a tenth of a second on a large library, including for words not searched recently. It read hundreds of rows per ZIM from disk; it now reads the title index alone, and finds matches it used to miss.
+- Create a ZIM: **Very large site** under Advanced raises a site capture's page limit from 50,000 to 500,000. A larger number used to be cut to 50,000 without a word.
 
 ## [1.10.2] - 2026-09-23
 

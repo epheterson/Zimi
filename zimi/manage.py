@@ -2173,6 +2173,11 @@ CREATE_MAX_TITLE = 200
 # pages is a large documentation site whole; the crawler's memory for it is
 # 200,000 URLs in a set, and the byte ceiling below still bounds the file.
 CREATE_MAX_PAGES_CEILING = 50000
+# "Very large site", ticked in Advanced, for a site past that: 500,000 pages is
+# about two million URLs in the crawler's set, a few hundred MB, and the byte
+# budget still bounds the file. Asked for by the same person, who had outgrown
+# 50,000 (r/Kiwix, 2026-09-24).
+CREATE_MAX_PAGES_LARGE = 500000
 CREATE_MAX_DEPTH_CEILING = 10
 CREATE_MAX_DELAY = 60.0  # seconds between page requests
 # Video jobs: a playlist cap, same reasoning.
@@ -2935,7 +2940,9 @@ def _create_validate(data):
             )
     if mode == "site":
         opts["max_pages"] = _create_int(
-            data.get("max_pages"), 1, CREATE_MAX_PAGES_CEILING
+            data.get("max_pages"),
+            1,
+            CREATE_MAX_PAGES_LARGE if data.get("large_site") else CREATE_MAX_PAGES_CEILING,
         )
         opts["max_depth"] = _create_int(
             data.get("max_depth"), 0, CREATE_MAX_DEPTH_CEILING
