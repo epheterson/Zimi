@@ -275,6 +275,23 @@ def _dedupe_jsonl(path):
     return len(kept)
 
 
+def _remove_part_files(out):
+    """The build's leftovers beside the ZIM: ``<zim>.part`` when it failed, and
+    libzim's ``<zim>.part_title.idx`` / ``.part_fulltext.idx`` files and their
+    ``.tmp`` folders, which on Windows outlived a successful build and sat in
+    the library folder (a CI capture of r/kiwix left four)."""
+    import glob as _glob
+
+    for leftover in _glob.glob(_glob.escape(out) + ".part*"):
+        try:
+            if os.path.isdir(leftover):
+                shutil.rmtree(leftover, ignore_errors=True)
+            else:
+                os.remove(leftover)
+        except OSError:
+            pass
+
+
 def create_reddit_zim(subreddit, *, title=None, out_dir=None, out_path=None, register=False, progress=None, stop=None):
     """Build one subreddit into a ZIM. Returns ``{"path", "name", "registered",
     "title"}``; raises CreateError with a sentence for the person."""
@@ -309,11 +326,7 @@ def create_reddit_zim(subreddit, *, title=None, out_dir=None, out_path=None, reg
         os.replace(out + ".part", out)
     finally:
         shutil.rmtree(work, ignore_errors=True)
-        try:
-            if os.path.exists(out + ".part"):
-                os.remove(out + ".part")
-        except OSError:
-            pass
+        _remove_part_files(out)
     registered = _try_register(out) if register else False
     say(f"ZIM written: {out}")
     return {"path": out, "name": zim_name, "registered": registered, "title": title or f"r/{sub}"}

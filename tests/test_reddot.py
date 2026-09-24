@@ -451,3 +451,15 @@ def test_a_sidecar_from_before_the_sqlalchemy_pin_is_reinstalled(tmp_path, monke
     with open(os.path.join(venv, reddot._MARKER)) as f:
         assert _json.load(f)["spec"] == reddot._SIDECAR_SPEC
     assert reddot.sidecar_status()["current"]
+
+
+def test_the_builds_leftovers_do_not_stay_in_the_library(tmp_path):
+    """On Windows libzim's index scratch files outlived a finished build and
+    sat beside the ZIM; the finished ZIM itself stays."""
+    out = os.path.join(str(tmp_path), "reddit_kiwix.zim")
+    for name in ("reddit_kiwix.zim", "reddit_kiwix.zim.part", "reddit_kiwix.zim.part_title.idx",
+                 "reddit_kiwix.zim.part_fulltext.idx"):
+        open(os.path.join(str(tmp_path), name), "w").close()
+    os.makedirs(os.path.join(str(tmp_path), "reddit_kiwix.zim.part_title.idx.tmp", "x"))
+    reddot._remove_part_files(out)
+    assert sorted(os.listdir(str(tmp_path))) == ["reddit_kiwix.zim"]
