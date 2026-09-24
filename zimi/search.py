@@ -242,7 +242,7 @@ def _suggest_cache_restore():
 # Title Index (was section 7)
 # ---------------------------------------------------------------------------
 
-_TITLE_INDEX_VERSION = "4"  # bump to force rebuild (v4: add FTS5 for multi-word search)
+_TITLE_INDEX_VERSION = "5"  # bump to force rebuild (v5: redirect titles; v4: FTS5)
 _FTS5_ENTRY_THRESHOLD = (
     2_000_000  # skip FTS5 build for ZIMs above this (can be triggered manually)
 )
@@ -490,10 +490,16 @@ def _build_title_index(zim_name, zim_path):
         for i in range(total_entries):
             try:
                 entry = archive._get_entry_by_id(i)
-                if entry.is_redirect:
-                    continue
                 path = entry.path
-                if pages is not None:
+                if entry.is_redirect:
+                    # A redirect is an article's other name, and people
+                    # search by it: "العائلة اللغوية" for "أسرة لغات" (#86),
+                    # which Kiwix's suggestions find. Indexed under its own
+                    # path when it leads to a page; the reader follows it.
+                    # A capture lists its pages, and a redirect is not one.
+                    if pages is not None or not _looks_like_a_page(entry.get_redirect_entry()):
+                        continue
+                elif pages is not None:
                     if path not in pages:
                         continue
                 else:
