@@ -224,8 +224,10 @@ def test_parse_size_accepts_the_usual_spellings():
     assert crawler.parse_size("2GiB") == 2 * 1024**3
     with pytest.raises(creator.CreateError, match="not a byte size"):
         crawler.parse_size("lots")
-    with pytest.raises(creator.CreateError, match="positive"):
-        crawler.parse_size("0")
+    # 0 is a size: no limit. A negative is not.
+    assert crawler.parse_size("0") == 0
+    with pytest.raises(creator.CreateError, match="negative"):
+        crawler.parse_size("-5M")
 
 
 # ── the crawl, end to end ───────────────────────────────────────────────────
@@ -496,6 +498,27 @@ def test_max_pages_stops_the_crawl_and_says_so(fixture_server, tmp_path):
     assert Archive(info["path"]).main_entry.get_item().path == "A/index"
 
 
+def test_zero_pages_and_zero_bytes_mean_no_limit(fixture_server, tmp_path):
+    """0 is no limit for both (the Create page and --max-pages/--max-bytes).
+    The chain is bounded here only by its end and the depth."""
+    info = _site(tmp_path, "/chain/0.html", max_pages=0, max_bytes=0, max_depth=20)
+    (tmp_path / "b").mkdir()
+    bounded = _site(tmp_path / "b", "/chain/0.html", max_pages=10**6, max_depth=20)
+    assert info["pages"] == bounded["pages"] > 3
+    assert info["stopped"] is None
+
+
+def test_zero_is_no_limit_but_a_negative_is_refused():
+    from zimi import crawler
+    from zimi.creator import CreateError
+
+    assert crawler.parse_size("0") == 0
+    budget = crawler.ByteBudget(0)
+    assert budget.spend(10**15) and not budget.exhausted
+    with pytest.raises(CreateError):
+        crawler.parse_size("-1")
+
+
 def test_max_depth_bounds_the_chain(fixture_server, tmp_path):
     info = _site(tmp_path, "/chain/0.html", max_depth=2)
     # seed (depth 0) + two hops, and nothing beyond.
@@ -532,8 +555,9 @@ def test_byte_budget_also_stops_asset_traffic(fixture_server, tmp_path):
 
 
 def test_bounds_must_be_positive(tmp_path):
+    """0 pages is no limit now; a negative bound is still refused."""
     with pytest.raises(creator.CreateError, match="positive"):
-        _site(tmp_path, "/", max_pages=0)
+        _site(tmp_path, "/", max_pages=-1)
     with pytest.raises(creator.CreateError, match="positive"):
         _site(tmp_path, "/", delay=-1)
 

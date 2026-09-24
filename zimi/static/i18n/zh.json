@@ -898,8 +898,10 @@
   "create_log": "服务器日志",
   "create_shot_alt": "正在捕获的页面",
   "create_max_bytes": "大小上限",
+  "create_max_bytes_note": "大小：选择一项，或选“自定义”填写任意大小（20G、1T），填 0 表示不限。",
   "create_max_depth": "最大深度",
   "create_max_pages": "最多页数",
+  "create_max_pages_note": "页数：任意数字，0 表示整个网站。",
   "create_metric_assets": "资源",
   "create_metric_assets_one": "资源",
   "create_metric_bytes": "大小",
@@ -1708,7 +1710,5 @@
   "alm_about_timezones": "时区：取一组城市中最近的一个，因为离线没有时区边界地图；在边界附近可能不准。",
   "desktop_lan_access": "允许此网络中的其他设备打开 Zimi",
   "desktop_lan_hint": "让同一 Wi-Fi 或热点下的手机或其他电脑阅读你的资料库。管理资料库仍需管理员密码。更改此设置后 Zimi 会重新启动。",
-  "desktop_lan_open_at": "在其他设备上打开：",
-  "create_large_site": "超大网站（最多 500,000 页）",
-  "create_large_site_note": "用于超过常规 50,000 页上限的网站。大小限制仍然适用，这样的抓取可能需要数天。"
+  "desktop_lan_open_at": "在其他设备上打开："
 }

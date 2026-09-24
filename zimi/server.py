@@ -4207,7 +4207,7 @@ def main():
         "--max-pages",
         type=int,
         default=None,
-        help=f"Pages to capture at most (--site default: {_crawler.DEFAULT_MAX_PAGES})",
+        help=f"Pages to capture at most; 0 for no limit (--site default: {_crawler.DEFAULT_MAX_PAGES})",
     )
     p_create.add_argument(
         "--max-depth",
@@ -4236,7 +4236,7 @@ def main():
     p_create.add_argument(
         "--max-bytes",
         default=None,
-        help="Total size budget, e.g. 512MiB or 4G. For --site: pages plus "
+        help="Total size budget, e.g. 512MiB or 4G; 0 for no limit. For --site: pages plus "
         f"assets (default {_crawler.DEFAULT_MAX_BYTES // 1024**2}MiB); for "
         "video sources: total media (default 4G)",
     )

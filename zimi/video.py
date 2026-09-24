@@ -753,8 +753,8 @@ def create_video_zim(
             "ZIMI_OFFLINE is set — refusing to fetch from the network. "
             "Video capture downloads media; it cannot run offline."
         )
-    if max_bytes <= 0:
-        raise CreateError("--max-bytes must be positive")
+    if max_bytes < 0:
+        raise CreateError("--max-bytes cannot be negative (0 means no limit)")
     say = progress or (lambda _msg: None)
     fmt = fmt or (DEFAULT_AUDIO_FORMAT if audio_only else default_video_format())
     if not audio_only and not ffmpeg_available():
@@ -772,7 +772,7 @@ def create_video_zim(
     try:
         for i, entry in enumerate(entries, 1):
             label = str(entry.get("title") or entry.get("id") or f"video {i}")
-            if budget_hit or used >= max_bytes:
+            if budget_hit or (max_bytes and used >= max_bytes):
                 budget_hit = True
                 skipped.append(label)
                 continue
@@ -790,7 +790,7 @@ def create_video_zim(
             )
             # The first video always ships (a one-entry ZIM beats an empty
             # one); after that, the first entry over budget stops the build.
-            if videos and used + size > max_bytes:
+            if videos and max_bytes and used + size > max_bytes:
                 budget_hit = True
                 skipped.append(str(info.get("title") or label))
                 continue

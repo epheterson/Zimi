@@ -2167,24 +2167,15 @@ CREATE_FINISHABLE_MODES = ("site",)
 # nothing — the client hides it the moment the server stops saying so.
 CREATE_FINISHABLE_PHASES = ("probe", "fetch", "assets")
 CREATE_MAX_TITLE = 200
-# Site crawls: what the form offers. The page ceiling was 5,000 with "past
-# this, use the CLI"; the first Windows user to make a ZIM asked for more
-# (r/Kiwix, 2026-09-19), and on the desktop app the form IS the CLI. 50,000
-# pages is a large documentation site whole; the crawler's memory for it is
-# 200,000 URLs in a set, and the byte ceiling below still bounds the file.
-CREATE_MAX_PAGES_CEILING = 50000
-# "Very large site", ticked in Advanced, for a site past that: 500,000 pages is
-# about two million URLs in the crawler's set, a few hundred MB, and the byte
-# budget still bounds the file. Asked for by the same person, who had outgrown
-# 50,000 (r/Kiwix, 2026-09-24).
-CREATE_MAX_PAGES_LARGE = 500000
+# Site crawls: the page limit has no ceiling. It was 5,000 ("past this, use
+# the CLI"), then 50,000 when the first Windows user to make a ZIM asked
+# (r/Kiwix, 2026-09-19), and the same person outgrew that five days later; on
+# the desktop app the form IS the CLI. Any number is taken, and 0 is none: the
+# byte ceiling below still bounds the file.
 CREATE_MAX_DEPTH_CEILING = 10
 CREATE_MAX_DELAY = 60.0  # seconds between page requests
 # Video jobs: a playlist cap, same reasoning.
 CREATE_VIDEO_LIMIT_CEILING = 500
-# Size budgets. The ceiling is not a guess about disk, it is about the shape of
-# a job a browser tab is willing to watch — past this, use the CLI.
-CREATE_MAX_BYTES_CEILING = 64 * 1024**3
 CREATE_MAX_SIZE_TEXT = 32  # "512MiB" is 6; nothing real is longer than this
 _CREATE_LANGUAGE_RE = re.compile(r"^[a-z]{2,3}$")
 # The video quality the web form may ask for, as named presets mapped to yt-dlp
@@ -2939,11 +2930,10 @@ def _create_validate(data):
                 _create_default("capture_variants", CREATE_CAPTURE_VARIANTS),
             )
     if mode == "site":
-        opts["max_pages"] = _create_int(
-            data.get("max_pages"),
-            1,
-            CREATE_MAX_PAGES_LARGE if data.get("large_site") else CREATE_MAX_PAGES_CEILING,
-        )
+        # Any number, and 0 for none: the byte budget bounds the capture. A
+        # negative is a typo, not "no limit", so it falls back to the default.
+        pages = _create_int(data.get("max_pages"), -1, None)
+        opts["max_pages"] = None if pages is None or pages < 0 else pages
         opts["max_depth"] = _create_int(
             data.get("max_depth"), 0, CREATE_MAX_DEPTH_CEILING
         )
@@ -3013,7 +3003,7 @@ def _create_int(value, low, high):
         n = int(value)
     except (TypeError, ValueError):
         return None
-    return max(low, min(high, n))
+    return max(low, n if high is None else min(high, n))
 
 
 def _create_float(value, low, high):
@@ -3030,8 +3020,8 @@ def _create_float(value, low, high):
 
 
 def _create_bytes(value):
-    """A size budget typed as ``500M`` or ``2G``, in bytes and under the web
-    ceiling. None when absent. Raises ValueError — which the route turns into a
+    """A size budget typed as ``500M`` or ``2G``, in bytes; 0 is no limit.
+    None when absent. Raises ValueError — which the route turns into a
     400 naming the fix — when it is not a size at all, because a budget nobody
     can read is not a budget to guess at."""
     if value in (None, ""):
@@ -3048,7 +3038,7 @@ def _create_bytes(value):
     from zimi.creator import CreateError
 
     try:
-        return min(CREATE_MAX_BYTES_CEILING, parse_size(text))
+        return parse_size(text)
     except CreateError as e:
         raise ValueError(str(e))
 

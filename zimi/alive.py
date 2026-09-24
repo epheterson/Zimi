@@ -640,8 +640,8 @@ def create_alive_site_zim(
         )
     if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
-    if max_pages < 1 or max_depth < 0 or max_bytes < 1 or delay < 0:
-        raise CreateError("crawl bounds must be positive")
+    if max_pages < 0 or max_depth < 0 or max_bytes < 0 or delay < 0:
+        raise CreateError("crawl bounds must be positive (0 pages or 0 bytes means no limit)")
     require_alive()
 
     origin = _origin_of(url)

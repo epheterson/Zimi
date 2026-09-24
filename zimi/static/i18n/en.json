@@ -898,8 +898,10 @@
   "create_log": "Server log",
   "create_shot_alt": "The page being captured",
   "create_max_bytes": "Size budget",
+  "create_max_bytes_note": "Size: pick one, or Custom for any size (20G, 1T), or 0 for no limit.",
   "create_max_depth": "Max depth",
   "create_max_pages": "Max pages",
+  "create_max_pages_note": "Pages: any number, or 0 for the whole site.",
   "create_metric_assets": "assets",
   "create_metric_assets_one": "asset",
   "create_metric_bytes": "size",
@@ -1708,7 +1710,5 @@
   "alm_about_timezones": "Time zones: the nearest of a set of cities, since there is no offline map of zone borders; may be off near a border.",
   "desktop_lan_access": "Open Zimi on other devices on this network",
   "desktop_lan_hint": "Lets a phone or another computer on the same Wi-Fi or hotspot read your library. Managing the library still needs your admin password. Zimi restarts when you change this.",
-  "desktop_lan_open_at": "On another device, open:",
-  "create_large_site": "Very large site (up to 500,000 pages)",
-  "create_large_site_note": "For a site past the usual 50,000-page limit. The size limit still applies, and a crawl this long can take days."
+  "desktop_lan_open_at": "On another device, open:"
 }

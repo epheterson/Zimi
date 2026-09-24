@@ -219,13 +219,18 @@ def test_url_modes_reject_non_http_schemes():
             assert h.status == 400, (mode, bad)
 
 
-def test_option_clamping_keeps_absurd_numbers_out_of_the_engine(stub_engine):
-    _post(
-        "/manage/create",
-        {"mode": "site", "source": "https://example.org/", "max_pages": 10**9},
-    )
-    _wait_done()
-    assert stub_engine["opts"]["max_pages"] == manage.CREATE_MAX_PAGES_CEILING
+def test_the_page_limit_is_whatever_is_typed_and_0_is_none(stub_engine):
+    """It was clamped to 50,000 without a word, and the person who asked for
+    50,000 outgrew it. Any number goes through; 0 is no limit; a negative is
+    a typo and falls back to the default rather than meaning "no limit"."""
+    for typed, sent in ((10**9, 10**9), (0, 0), (-5, None)):
+        manage._create_job = None
+        _post(
+            "/manage/create",
+            {"mode": "site", "source": "https://example.org/", "max_pages": typed},
+        )
+        _wait_done()
+        assert stub_engine["opts"].get("max_pages") == sent, typed
 
     manage._create_job = None
     _post(
@@ -309,13 +314,17 @@ def test_a_size_budget_that_is_not_a_size_is_refused_with_the_reason():
     assert h.status == 400
 
 
-def test_a_huge_size_budget_is_clamped_not_refused(stub_engine):
-    _post(
-        "/manage/create",
-        {"mode": "site", "source": "https://example.org/", "max_bytes": "500T"},
-    )
-    _wait_done()
-    assert stub_engine["opts"]["max_bytes"] == manage.CREATE_MAX_BYTES_CEILING
+def test_the_size_budget_is_whatever_is_typed_and_0_is_none(stub_engine):
+    """It was clamped to 64 GB without a word. With no page limit the size
+    budget is what bounds a capture, so it takes any size, and 0 is none."""
+    for typed, sent in (("500T", 500 * 1000**4), ("0", 0)):
+        manage._create_job = None
+        _post(
+            "/manage/create",
+            {"mode": "site", "source": "https://example.org/", "max_bytes": typed},
+        )
+        _wait_done()
+        assert stub_engine["opts"]["max_bytes"] == sent, typed
 
 
 def test_out_of_range_depth_and_delay_clamp(stub_engine):
@@ -775,27 +784,3 @@ def test_the_status_payload_carries_a_readiness_answer_for_every_gated_mode():
     for key in ("import_ready", "browser_ready", "alive_ready", "video_ready"):
         assert key in payload, f"the client is never told {key}"
         assert isinstance(payload[key], bool), key
-
-
-def test_a_very_large_site_lifts_the_page_ceiling(stub_engine):
-    """Past 50,000 pages the number was clamped without a word; "Very large
-    site" in Advanced lifts the ceiling for that capture, and only that one."""
-    _post(
-        "/manage/create",
-        {"mode": "site", "source": "https://example.org/", "max_pages": 200000, "large_site": True},
-    )
-    _wait_done()
-    assert stub_engine["opts"]["max_pages"] == 200000
-
-    manage._create_job = None
-    _post(
-        "/manage/create",
-        {"mode": "site", "source": "https://example.org/", "max_pages": 10**9, "large_site": True},
-    )
-    _wait_done()
-    assert stub_engine["opts"]["max_pages"] == manage.CREATE_MAX_PAGES_LARGE
-
-    manage._create_job = None
-    _post("/manage/create", {"mode": "site", "source": "https://example.org/", "max_pages": 200000})
-    _wait_done()
-    assert stub_engine["opts"]["max_pages"] == manage.CREATE_MAX_PAGES_CEILING

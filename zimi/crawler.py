@@ -112,6 +112,8 @@ from zimi.zimwriter import (
 log = logging.getLogger("zimi.crawler")
 
 # ── crawl bounds ────────────────────────────────────────────────────────────
+# 0 is no page limit: the byte budget and depth still bound the crawl, and the
+# URL queue, sized from the page limit when there is one, is bounded by them.
 DEFAULT_MAX_PAGES = 200
 DEFAULT_MAX_DEPTH = 5
 DEFAULT_MAX_BYTES = 512 * 1024**2  # every byte fetched: pages AND assets
@@ -275,7 +277,8 @@ def extract_links(page, base_url):
 
 class ByteBudget:
     """A running total against a ceiling. ``spend`` charges and reports
-    whether the budget still holds — charging zero is the pre-flight check."""
+    whether the budget still holds — charging zero is the pre-flight check.
+    A limit of 0 is no limit: it counts, and always holds."""
 
     def __init__(self, limit):
         self.limit = limit
@@ -283,11 +286,11 @@ class ByteBudget:
 
     def spend(self, n):
         self.used += n
-        return self.used <= self.limit
+        return not self.limit or self.used <= self.limit
 
     @property
     def exhausted(self):
-        return self.used >= self.limit
+        return bool(self.limit) and self.used >= self.limit
 
 
 class _StopFlag:
@@ -436,7 +439,7 @@ def _crawl(
         if depth > max_depth:
             return
         for link in links:
-            if len(seen) >= max_pages * FRONTIER_FACTOR:
+            if max_pages and len(seen) >= max_pages * FRONTIER_FACTOR:
                 return
             key = normalize_url(upgrade_scheme(link, origin))
             if (
@@ -469,7 +472,7 @@ def _crawl(
         # asset nothing counts.
         _report_new_assets(carried, reported, keys[0], note)
         note(
-            f"  [{len(pages)}/{max_pages}] {keys[0]}  "
+            f"  [{len(pages)}/{max_pages or 'no limit'}] {keys[0]}  "
             f"({len(queue)} queued, {_fmt_bytes(budget.used)} fetched)"
         )
 
@@ -485,7 +488,7 @@ def _crawl(
         if stop.hit:
             reason = "interrupted"
             break
-        if len(pages) >= max_pages:
+        if max_pages and len(pages) >= max_pages:
             reason = f"page cap ({max_pages})"
             break
         if budget.exhausted:
@@ -671,8 +674,8 @@ def create_site_zim(
         )
     if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
         raise CreateError(f"not an http(s) URL: {url}")
-    if max_pages < 1 or max_depth < 0 or max_bytes < 1 or delay < 0:
-        raise CreateError("crawl bounds must be positive")
+    if max_pages < 0 or max_depth < 0 or max_bytes < 0 or delay < 0:
+        raise CreateError("crawl bounds must be positive (0 pages or 0 bytes means no limit)")
 
     origin = _origin_of(url)
     robots = None
@@ -1301,6 +1304,6 @@ def parse_size(text):
         value = int(float(number) * units[unit])
     except (ValueError, KeyError):
         raise CreateError(f"not a byte size: {text} (try 512MiB, 2G, or 1048576)")
-    if value < 1:
-        raise CreateError(f"byte size must be positive: {text}")
+    if value < 0:
+        raise CreateError(f"byte size cannot be negative: {text}")
     return value

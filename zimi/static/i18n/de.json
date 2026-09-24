@@ -898,8 +898,10 @@
   "create_log": "Serverprotokoll",
   "create_shot_alt": "Die erfasste Seite",
   "create_max_bytes": "Größenbudget",
+  "create_max_bytes_note": "Größe: eine wählen, oder Benutzerdefiniert für jede Größe (20G, 1T), oder 0 für keine Grenze.",
   "create_max_depth": "Max. Tiefe",
   "create_max_pages": "Max. Seiten",
+  "create_max_pages_note": "Seiten: jede Zahl, oder 0 für die ganze Website.",
   "create_metric_assets": "Ressourcen",
   "create_metric_assets_one": "Asset",
   "create_metric_bytes": "Größe",
@@ -1708,7 +1710,5 @@
   "alm_about_timezones": "Zeitzonen: die nächstgelegene aus einer Reihe von Städten, da es offline keine Karte der Zonengrenzen gibt; nahe einer Grenze kann sie abweichen.",
   "desktop_lan_access": "Zimi auf anderen Geräten in diesem Netzwerk öffnen",
   "desktop_lan_hint": "Ein Handy oder ein anderer Computer im selben WLAN oder Hotspot kann deine Bibliothek lesen. Die Verwaltung der Bibliothek braucht weiterhin dein Admin-Passwort. Zimi startet neu, wenn du das änderst.",
-  "desktop_lan_open_at": "Auf einem anderen Gerät öffnen:",
-  "create_large_site": "Sehr große Website (bis 500.000 Seiten)",
-  "create_large_site_note": "Für eine Website über der üblichen Grenze von 50.000 Seiten. Die Größengrenze gilt weiter, und so ein Crawl kann Tage dauern."
+  "desktop_lan_open_at": "Auf einem anderen Gerät öffnen:"
 }
