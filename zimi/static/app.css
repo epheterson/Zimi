@@ -444,6 +444,9 @@
   /* Dark chip on the amber active pill — amber-on-amber is unreadable */
   .pill.active .pill-count { opacity: 1; background: rgba(0, 0, 0, 0.22); color: var(--on-amber); padding: 1px 6px; border-radius: 8px; }
   .pill.dimmed, .lang-pill.dimmed { opacity: 0.35; pointer-events: none; }
+  /* A language the filter leaves out: faded, and still a tap away. */
+  .pill.other-lang { opacity: 0.5; }
+  .pill.other-lang:hover, .pill.other-lang:focus-visible { opacity: 1; }
   .pills-divider { width: 60px; height: 1px; background: var(--border); margin: 0 auto 4px; opacity: 0.5; }
   /* Collection pills carry the layers glyph so they read as groupings, not
      categories, in the filter row. */

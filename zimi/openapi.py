@@ -111,6 +111,7 @@ def build_openapi():
                         },
                     ),
                     **_json_response("400", error),
+                    **_json_response("404", error),
                 },
             }
         },
@@ -171,6 +172,7 @@ def build_openapi():
                         },
                     ),
                     **_json_response("400", error),
+                    **_json_response("404", error),
                 },
             }
         },

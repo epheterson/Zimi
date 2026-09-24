@@ -260,3 +260,26 @@ def test_bundle_detection_fixture():
         if got != expected:
             failures.append(f"  {name!r}: expected {expected}, got {got}")
     assert not failures, "bundle detection mismatches:\n" + "\n".join(failures)
+
+
+def _cat(name, category, language="eng", count=100):
+    return {"name": name, "category": category, "language": language, "article_count": count}
+
+
+def test_a_bundle_contains_only_its_own_project():
+    """Found on the real catalog: every English Dev Docs card said "Part of
+    cheatography.com_en_all" (244 of them), and wikivoyage_en_europe was hidden
+    as already had because wikipedia_en_all was installed. Category and
+    language alone make a family of unrelated projects."""
+    items = [
+        _cat("cheatography.com_en_all", "other", count=5000),
+        _cat("devdocs_en_python", "other", count=300),
+        _cat("wikipedia_en_all", "wikipedia", count=6_000_000),
+        _cat("wikipedia_en_medicine", "wikipedia", count=70_000),
+        _cat("wikivoyage_en_europe", "wikipedia", count=20_000),
+    ]
+    rel = bundle_relationships(items)
+    assert rel["devdocs_en_python"]["is_subset_of"] == []
+    assert rel["wikivoyage_en_europe"]["is_subset_of"] == []
+    assert rel["wikipedia_en_medicine"]["is_subset_of"] == ["wikipedia_en_all"]
+    assert rel["wikipedia_en_all"]["supersedes"] == ["wikipedia_en_medicine"]

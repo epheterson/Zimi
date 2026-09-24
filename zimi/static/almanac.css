@@ -105,6 +105,11 @@
 @media (prefers-reduced-motion: reduce) { .almanac-moon-anim { display: none; } }
 .almanac-section { margin-top: 32px; border-top: 1px solid var(--border); padding-top: 24px; }
 .almanac-section-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.06em; }
+/* About this data: closed until asked for; a reference, not a panel. */
+.alm-about summary.almanac-section-title { cursor: pointer; margin-bottom: 0; list-style-position: inside; }
+.alm-about[open] summary.almanac-section-title { margin-bottom: 12px; }
+.alm-about-intro { color: var(--text2); font-size: 13px; margin: 0 0 10px; }
+.alm-about-list { margin: 0; padding-inline-start: 18px; display: grid; gap: 8px; color: var(--text2); font-size: 13px; line-height: 1.5; max-width: 68ch; }
 .almanac-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .almanac-info-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
 .almanac-info-val { font-size: 16px; font-weight: 600; color: var(--text); }

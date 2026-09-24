@@ -116,3 +116,31 @@ def test_short_own_summary_ignored():
 
 def test_empty_html_returns_empty_string():
     assert extract_snippet("", "x") == ""
+
+
+# A Wikipedia article as mwoffliner writes it: no <meta description>, an
+# infobox table before the lead, citation markers in the lead.
+WIKIPEDIA_NO_META = """<!DOCTYPE html><html><head><title>Albert Einstein</title></head><body>
+<div class="hatnote">"Einstein" redirects here. For other uses, see Einstein (disambiguation).</div>
+<table class="infobox biography vcard"><tbody><tr><th scope="row" class="infobox-label">Born</th>
+<td class="infobox-data">14 March 1879<br><div class="birthplace"><a rel="mw:WikiLink" href="Ulm" title="Ulm">Ulm</a>,
+Kingdom of Wurttemberg</div></td></tr></tbody></table>
+<p></p>
+<p><b>Albert Einstein</b><sup class="mw-ref reference"><a href="#cite_note-1">[a]</a></sup> (14 March 1879 - 18 April 1955)
+was a German-born theoretical physicist best known for developing the theory of relativity.</p>
+<p>Born as a subject to the Kingdom of Wurttemberg, Einstein moved to Switzerland in 1895.</p>
+</body></html>"""
+
+
+def test_a_wikipedia_article_without_meta_gives_its_lead_sentence():
+    """Found on the NAS: the snippet was infobox debris ending in a raw tag,
+    '14 March 1879 <a rel="mw:WikiLink" href="Ulm" t'."""
+    snip = extract_snippet(WIKIPEDIA_NO_META, "wikipedia")
+    assert snip.startswith("Albert Einstein (14 March 1879"), snip
+    assert "[a]" not in snip and "<" not in snip
+
+
+def test_a_tag_cut_off_at_the_end_of_the_read_is_not_left_as_text():
+    """The handler reads the start of a page; a read can end inside a tag."""
+    snip = extract_snippet('<html><body><main>Born 14 March 1879 in <a rel="mw:WikiLink" href="Ulm" t', "x")
+    assert "<" not in snip and "href" not in snip, snip

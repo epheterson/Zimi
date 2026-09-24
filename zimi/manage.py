@@ -534,6 +534,10 @@ def _manage_auth_challenge(handler):
                     "error": "needs_setup_key",
                     "needs_password": False,
                     "needs_setup_key": True,
+                    # The desktop app issues none (only `zimi serve` prints
+                    # one), and a field for a key that does not exist is a
+                    # dead end: the page sends the visitor to the host.
+                    "setup_key_issued": bool(_read_setup_key()),
                 },
             )
         return (403, {"error": "public_locked", "needs_password": False})
@@ -2320,11 +2324,17 @@ class _CreateJob:
             # is serialized to the client on every poll, and a JPEG in it would
             # be both unserializable and enormous.
             jpeg = event.pop("jpeg", None)
+            from zimi import zimwriter as _zw
+
             with _create_lock:
                 self.progressed = now
                 if jpeg:
                     self.shot = jpeg
-                self._push_events([event])
+                # A picture is not progress: the page learns of it from
+                # has_shot, and the stream carries only phase/node/count
+                # events, which a bare {"event": "shot"} was not.
+                if event.get("event") != _zw.SHOT_EVENT:
+                    self._push_events([event])
             return
         text = str(message).rstrip("\n")
         # Derived outside the lock: it parses a string and may import a module,
@@ -4098,6 +4108,10 @@ def _creator_payload():
         # None, not "", when no root is configured — the same shape the create
         # page's probe uses, so both readers treat "unset" the same way.
         "create_root": _create_root() or None,
+        # For the setup commands the pane prints: `zimi import --setup` from a
+        # terminal without this server's config installs into another data
+        # dir, and the engine stays grey (#61). The pane names this one.
+        "data_dir": _srv.ZIMI_DATA_DIR,
         "block_ads_default": _create_default("block_ads", CREATE_BLOCK_ADS),
         "capture_variants_default": _create_default(
             "capture_variants", CREATE_CAPTURE_VARIANTS
@@ -4711,7 +4725,7 @@ def handle_manage_get(handler, parsed, params):
             200,
             {
                 "zim_count": zim_count,
-                "total_size_gb": round(total_gb, 1),
+                "total_size_gb": round(total_gb, 6),  # as each ZIM's size_gb: 0.1 GB read 0 B for small libraries
                 "manage_enabled": True,
                 "linked_zims": linked_zims,
                 "domain_count": len(_srv._domain_zim_map),
@@ -5548,9 +5562,18 @@ def handle_manage_post(handler, parsed, data):
         # The setup key's life ends with the bootstrap it existed for.
         if new_pw:
             _clear_setup_key()
-        return handler._json(
-            200, {"status": "password set" if new_pw else "password cleared"}
-        )
+            # A new password ends the sessions the old one opened, and this
+            # browser gets a fresh one: it keeps a session, never a password.
+            from zimi import users as _users_pw
+
+            _users_pw.drop_admin_sessions()
+            token = _users_pw.create_admin_session()
+            return handler._json_cookie(
+                200,
+                {"status": "password set", "token": token},
+                handler._session_cookie(token, bool(data.get("remember"))),
+            )
+        return handler._json(200, {"status": "password cleared"})
 
     # API token management — requires existing auth + password must be set
     if parsed.path == "/manage/generate-token":
@@ -6368,10 +6391,10 @@ def handle_manage_post(handler, parsed, data):
                 )
             changed["seed"] = bool(data["seed"])
             # Settings govern LIVE seeds too: toggling seeding off stops the
-            # running library seeds (files stay); on re-caps them.
+            # running library seeds (files and intent stay); on re-seeds them.
             from zimi import library as _lib_seed
 
-            threading.Thread(target=_lib_seed.apply_seed_policy, daemon=True).start()
+            threading.Thread(target=_lib_seed.apply_seed_settings, daemon=True).start()
         if "mirror" in data:
             if p2p.is_mirror_env_locked():
                 return handler._json(
@@ -6413,6 +6436,8 @@ def handle_manage_post(handler, parsed, data):
                     500, {"error": "could not save setting (config dir not writable)"}
                 )
             changed["peer_share"] = bool(data["peer_share"])
+            # Nearby on or off decides announcing too, applied now.
+            threading.Thread(target=_disc.apply_enabled, daemon=True).start()
         if "bt_port" in data:
             if p2p.is_bt_port_env_locked():
                 return handler._json(
@@ -6515,10 +6540,11 @@ def handle_manage_post(handler, parsed, data):
                 )
             changed["seed_ratio"] = ratio
             # Apply the new cap to every live library seed, not just future
-            # adds — the ledger stops seeds already past the new ratio.
+            # adds — the ledger stops seeds already past the new ratio, and a
+            # ratio raised from 0 brings back the seeds it had stopped.
             from zimi import library as _lib_ratio
 
-            threading.Thread(target=_lib_ratio.apply_seed_policy, daemon=True).start()
+            threading.Thread(target=_lib_ratio.apply_seed_settings, daemon=True).start()
         # Global bandwidth caps (KB/s, 0 = unlimited). Applied live to the
         # running session so a new limit takes effect without a restart.
         for _field, _envlock in (

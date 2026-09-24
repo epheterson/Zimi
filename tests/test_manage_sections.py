@@ -62,7 +62,14 @@ def _settled_creator(tries=200):
 def fresh_probe():
     """Each test finds out for itself. The answer is process-wide and cached on
     purpose, which between tests means one test's patched probes answering the
-    next one's assertions."""
+    next one's assertions. A probe an earlier test started can still be
+    running (a real browser launch is slow under a full suite), and would land
+    its answer after the reset, so wait it out first."""
+    import threading
+
+    for t in threading.enumerate():
+        if t.name == "creator-probe":
+            t.join(timeout=60)
     manage._creator_probed = None
     manage._creator_probed_at = 0.0
     manage._creator_probing = False
@@ -91,6 +98,7 @@ def test_creator_payload_answers_every_question_the_section_asks(monkeypatch):
         "capture_variants_default",
         "queue",
         "offline",
+        "data_dir",  # for the setup commands the pane prints (#61)
     }
     # What needs no probe is in the first answer, which is the whole point of
     # not waiting for the ones that do.

@@ -11,6 +11,8 @@ import math
 import os
 import re
 import sqlite3
+import subprocess
+import sys
 import threading
 import time
 import unicodedata
@@ -390,6 +392,26 @@ def _index_is_current(db_path, zim_path, schema_version):
         return False
 
 
+def _write_index_meta(conn, archive, zim_path, schema_version, count):
+    """The rows _index_is_current reads back, into an index's meta table:
+    its schema, the ZIM's mtime and uuid (the uuid when libzim gives one),
+    when it was built and how many rows it holds."""
+    zim_uuid = ""
+    try:
+        zim_uuid = str(archive.uuid)
+    except Exception as e:
+        log.debug("UUID read during build failed for %s: %s", zim_path, e)
+    rows = [
+        ("schema_version", schema_version),
+        ("zim_mtime", str(os.path.getmtime(zim_path))),
+        ("built_at", str(time.time())),
+        ("entry_count", str(count)),
+    ]
+    if zim_uuid:
+        rows.append(("zim_uuid", zim_uuid))
+    conn.executemany("INSERT INTO meta VALUES (?, ?)", rows)
+
+
 def _title_index_is_current(zim_name, zim_path):
     """Check if title index exists, matches ZIM mtime, and is current schema version."""
     path_fn = getattr(_srv, "_title_index_path", _title_index_path)
@@ -438,6 +460,13 @@ def _build_title_index(zim_name, zim_path):
     tmp_path = db_path + ".tmp"
     t0 = time.time()
     count = 0
+
+    # A build killed mid-run (SIGKILL on a container restart) leaves its tmp
+    # behind, and the orphan sweep runs only after the build loop. Builds are
+    # serialized by _build_all_title_lock, so any tmp here is an orphan.
+    for leftover in (tmp_path, tmp_path + "-wal", tmp_path + "-shm"):
+        if os.path.exists(leftover):
+            os.remove(leftover)
 
     # Open dedicated archive handle — never touches shared pool
     archive = _srv.open_archive(zim_path)
@@ -522,20 +551,7 @@ def _build_title_index(zim_name, zim_path):
                 count,
                 _FTS5_ENTRY_THRESHOLD,
             )
-        zim_mtime = str(os.path.getmtime(zim_path))
-        zim_uuid = ""
-        try:
-            zim_uuid = str(archive.uuid)
-        except Exception as e:
-            log.debug("UUID read during build failed for %s: %s", zim_name, e)
-        conn.execute(
-            "INSERT INTO meta VALUES ('schema_version', ?)", (_TITLE_INDEX_VERSION,)
-        )
-        conn.execute("INSERT INTO meta VALUES ('zim_mtime', ?)", (zim_mtime,))
-        if zim_uuid:
-            conn.execute("INSERT INTO meta VALUES ('zim_uuid', ?)", (zim_uuid,))
-        conn.execute("INSERT INTO meta VALUES ('built_at', ?)", (str(time.time()),))
-        conn.execute("INSERT INTO meta VALUES ('entry_count', ?)", (str(count),))
+        _write_index_meta(conn, archive, zim_path, _TITLE_INDEX_VERSION, count)
         conn.execute("INSERT INTO meta VALUES ('has_fts', ?)", (has_fts,))
         conn.commit()
     except Exception:
@@ -625,6 +641,14 @@ def _title_index_search(zim_name, query, limit=10):
             ).fetchall()
             return [{"path": r[0], "title": r[1], "snippet": ""} for r in rows]
         else:
+            # Titles starting with the whole phrase first, the exact title
+            # first among them: a first-word scan is alphabetical and runs out
+            # of rows among thousands of "Albert ..." before "Albert Einstein".
+            phrase_upper = q[:-1] + chr(ord(q[-1]) + 1)
+            leading = conn.execute(
+                "SELECT path, title FROM titles WHERE title_lower >= ? AND title_lower < ? LIMIT ?",
+                (q, phrase_upper, limit),
+            ).fetchall()
             # Multi-word: B-tree prefix on first word, then filter in Python.
             first_word = words[0]
             other_words = [w for w in words[1:]]
@@ -637,21 +661,46 @@ def _title_index_search(zim_name, query, limit=10):
             ).fetchall()
             # Filter: title must contain all other words
             results = []
+            seen = set()
+            for path, title in leading:
+                seen.add(path)
+                results.append({"path": path, "title": title, "snippet": ""})
             for path, title in rows:
+                if len(results) >= limit:
+                    break
+                if path in seen:
+                    continue
                 tl = title.lower()
                 if all(w in tl for w in other_words):
                     results.append({"path": path, "title": title, "snippet": ""})
-                    if len(results) >= limit:
-                        break
-            if results:
-                return results
-            # Prefix on first word found nothing — skip to SuggestionSearcher fallback
-            return None
+            # An index that has no such title is an answer, not a miss. None
+            # sent 72 of the NAS's 78 ZIMs to libzim's SuggestionSearcher for
+            # every multi-word query whose first word starts no title, and the
+            # quick pass took 5 to 12 s; the full pass behind it searches the
+            # article text anyway. Only a ZIM with no index falls back.
+            return results
     except Exception as e:
         # Connection may be stale (e.g. DB was rebuilt) — evict and retry once
         log.debug("Title index search failed for %s query %r: %s", zim_name, query, e)
         getattr(_srv, "_close_title_db", _close_title_db)(zim_name)
         return None  # fallback on DB error
+
+
+def _title_index_exact(zim_name, query):
+    """The entries whose title is `query`, ignoring case: one B-tree lookup.
+    [] when there are none or the ZIM has no title index."""
+    q = query.lower().strip()
+    conn = _get_title_db(zim_name) if q else None
+    if conn is None:
+        return []
+    try:
+        rows = conn.execute(
+            "SELECT path, title FROM titles WHERE title_lower = ? LIMIT 3", (q,)
+        ).fetchall()
+    except Exception as e:
+        log.debug("Exact title lookup failed for %s %r: %s", zim_name, query, e)
+        return []
+    return [{"path": r[0], "title": r[1], "snippet": ""} for r in rows]
 
 
 _title_index_status = {
@@ -731,7 +780,7 @@ def _get_title_index_stats():
                 }
             )
 
-    status["total_size_gb"] = round(total_size / _srv._BYTES_PER_GB, 1)
+    status["total_size_gb"] = round(total_size / _srv._BYTES_PER_GB, 6)
     status["index_count"] = len(indexes)
     # Use live counts: ready = indexes on disk, total = ZIM files
     status["ready"] = len(indexes)
@@ -760,6 +809,60 @@ def _loadavg_throttle(threshold_ratio=0.8, max_sleep=2.0):
         return
     sleep_for = min((ratio - threshold_ratio) * max_sleep, max_sleep)
     time.sleep(sleep_for)
+
+
+# A build over a ZIM this big runs in a process of its own. libzim holds the
+# GIL while it reads, so a build on a server thread stalls every search thread
+# behind it: beside a scan thread a title lookup's p95 went from 0.14 ms to
+# 7.6 ms, and the NAS's quick search from 0.07 s to 2 to 7 s. Below this a
+# build finishes in about the time a child process takes to start (~2 s).
+_ISOLATE_BUILD_MIN_ENTRIES = 100_000
+
+
+def _zim_entry_count(zim_name):
+    for z in _srv._zim_list_cache or []:
+        if z.get("name") == zim_name:
+            entries = z.get("entries", 0)
+            return entries if isinstance(entries, int) else 0
+    return 0
+
+
+def _build_index_isolated(
+    kind, zim_name, zim_path, build_fn, close_fn, min_entries=None
+):
+    """build_fn(zim_name, zim_path), in a child process when the ZIM is big.
+
+    `kind` names the build for the child ("titles", "qids" or "tube");
+    close_fn evicts this process's pooled connection to the index the child
+    replaced. `min_entries` is where "big" starts, _ISOLATE_BUILD_MIN_ENTRIES
+    unless the build says otherwise: a build that reads every entry pays per
+    entry, one that reads a file per video pays per video. A frozen desktop
+    build has no `python -m` to start, and builds in this process."""
+    if min_entries is None:
+        min_entries = _ISOLATE_BUILD_MIN_ENTRIES
+    if getattr(sys, "frozen", False) or _zim_entry_count(zim_name) < min_entries:
+        return build_fn(zim_name, zim_path)
+    from zimi import subproc
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "zimi.search",
+        "--build-index",
+        kind,
+        _srv.ZIMI_DATA_DIR,
+        zim_name,
+        zim_path,
+    ]
+    proc = subproc.popen(cmd, stdin=subprocess.DEVNULL)
+    try:
+        code = proc.wait()
+    except BaseException:
+        subproc.stop(proc)
+        raise
+    if code != 0:
+        raise RuntimeError(f"{kind} index build process exited {code}")
+    close_fn(zim_name)
 
 
 _build_all_title_lock = threading.Lock()
@@ -804,7 +907,9 @@ def _build_all_title_indexes_inner():
         with _title_index_status_lock:
             _title_index_status["building_now"] = name
         try:
-            _build_title_index(name, path)
+            _build_index_isolated(
+                "titles", name, path, _build_title_index, _close_title_db
+            )
             built += 1
             with _title_index_status_lock:
                 _title_index_status["ready"] += 1
@@ -1104,7 +1209,9 @@ def search_zim(archive, query_str, limit=10, snippets=True):
             _warned_unreadable_index.add(key)
             log.warning(
                 "Search index of %s matched %d entries the archive cannot read; "
-                "its results are dropped", key, dropped
+                "its results are dropped",
+                key,
+                dropped,
             )
     return results
 
@@ -1186,6 +1293,11 @@ def _zim_category(name):
     return "general"
 
 
+# Above the 100 a contained phrase gets by more than the rank term (20 at the
+# top of a source) can make up, so the exact title wins from any position.
+_EXACT_TITLE_SCORE = 125
+
+
 def _score_result(title, query_words, rank, entry_count, lang_match=False):
     """Score a search result for cross-ZIM ranking."""
     tl = title.lower()
@@ -1199,6 +1311,10 @@ def _score_result(title, query_words, rank, entry_count, lang_match=False):
     # Exact phrase match bonus
     if " ".join(query_words) in tl:
         title_score = 100
+    # The title IS the query (stop words aside): the article asked for, above
+    # every title that merely contains it ("List of things named after ...").
+    if [w for w in tl.split() if w not in STOP_WORDS] == list(query_words):
+        title_score = _EXACT_TITLE_SCORE
     # Position within source (rank 0 = 20, rank 5 = 3.3, capped at 5 if no title match)
     rank_score = 20 / (rank + 1)
     if title_score == 0:
@@ -1286,6 +1402,11 @@ _VOCAB_MIN_WORD_LEN = 3  # ignore 1-2 char fragments (noise, not misspellings)
 # index up to the per-file row cap below is a few minutes worst case; 300s
 # gives that room to actually finish instead of bailing mid-library.
 _VOCAB_BUILD_BUDGET_S = 300.0
+# A build cut short (by the budget, usually because startup was busy) is tried
+# again this much later, up to _VOCAB_BUILD_ATTEMPTS scans in all.
+_VOCAB_RETRY_DELAY_S = 600
+_VOCAB_BUILD_ATTEMPTS = 2
+_vocab_retry_timer = None
 # Per-file cap on rows sampled, independent of the overall time budget. A
 # single giant index (English Wikipedia's ~27M titles) can otherwise eat the
 # entire budget before any other index — including much smaller, equally
@@ -1459,7 +1580,14 @@ def _vocab_stride(conn, cap):
 
 
 def _build_vocab():
-    """Scan the SQLite title indexes into a {word: count} vocabulary.
+    """The vocabulary a scan of the title indexes yields (see _scan_vocab)."""
+    return _scan_vocab()[0]
+
+
+def _scan_vocab(index_dir=None):
+    """Scan the SQLite title indexes into a {word: count} vocabulary, and say
+    whether the scan was whole: (vocab, complete). A scan that ran out of its
+    budget, or read fewer index files than there are, is not complete.
 
     Opens a FRESH connection per index (sqlite objects aren't shareable across
     threads). Files are scanned largest-first (by byte size) so the richest
@@ -1488,15 +1616,15 @@ def _build_vocab():
     the empty case, so a starved scan is visible in production."""
     deadline = time.monotonic() + _VOCAB_BUILD_BUDGET_S
     vocab = {}
-    index_dir = _title_index_dir()
+    index_dir = index_dir or _title_index_dir()
     if not os.path.isdir(index_dir):
         log.info("Did-you-mean vocab: no title index dir at %s", index_dir)
-        return vocab
+        return vocab, False
     try:
         fnames = [f for f in os.listdir(index_dir) if f.endswith(".db")]
     except Exception as e:
         log.info("Did-you-mean vocab: cannot list %s: %s", index_dir, e)
-        return vocab
+        return vocab, False
     fnames.sort(key=lambda f: os.path.getsize(os.path.join(index_dir, f)), reverse=True)
     total_files = len(fnames)
     files_scanned = 0
@@ -1584,7 +1712,7 @@ def _build_vocab():
         evictions,
         admissions_frozen,
     )
-    return vocab
+    return vocab, (not budget_hit and files_scanned == total_files)
 
 
 def _vocab_signature(index_dir):
@@ -1664,7 +1792,49 @@ def _vocab_cache_load():
         return None
 
 
-def _vocab_build_worker():
+def _scan_vocab_in_child():
+    """(vocab, complete) from a scan run in a process of its own, or None when
+    one cannot be run here, and the caller then scans in this process.
+
+    A process of its own because the scan is pure Python over millions of
+    rows: inside a server that is answering requests it got a slice of one
+    interpreter, and on the NAS managed 1 of 60 indexes in its 300s budget
+    where the same scan as its own process read all 66 in 139s. The child
+    writes its result to a file beside the cache and exits; nothing is shared
+    but that file. A frozen desktop build has no `python -m` to start, and a
+    desktop library is small enough to scan in a thread.
+    """
+    if getattr(sys, "frozen", False):
+        return None
+    out = _vocab_cache_path() + ".scan.json"
+    cmd = [sys.executable, "-m", "zimi.search", "--scan-vocab", _title_index_dir(), out]
+    try:
+        from zimi import subproc
+
+        proc = subproc.popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        try:
+            proc.wait(timeout=_VOCAB_BUILD_BUDGET_S * 2)
+        except subprocess.TimeoutExpired:
+            subproc.stop(proc)
+            log.info("Did-you-mean vocab: the scan process did not finish; stopped it")
+            return None
+        if proc.returncode != 0:
+            log.info("Did-you-mean vocab: the scan process exited %s", proc.returncode)
+            return None
+        with open(out, encoding="utf-8") as f:
+            data = json.load(f)
+        return data["words"], bool(data["complete"])
+    except Exception as e:
+        log.info("Did-you-mean vocab: scanning in a process of its own failed: %s", e)
+        return None
+    finally:
+        try:
+            os.remove(out)
+        except OSError:
+            pass
+
+
+def _vocab_build_worker(attempt=1):
     """Load the vocab from disk if valid, else build it and persist. Never raises.
 
     A build error (or a broken index) caches an empty vocab so we don't retry
@@ -1684,16 +1854,39 @@ def _vocab_build_worker():
         _rebuild_trigram_index(cached)
         return
     try:
-        built = _build_vocab()
+        scanned = _scan_vocab_in_child()
+        built, complete = scanned if scanned is not None else _scan_vocab()
     except Exception as e:
         log.info("Did-you-mean vocab: build raised %s", e)
-        built = {}
+        built, complete = {}, False
     with _vocab_lock:
-        _vocab = built if built is not None else {}
-    if built:
+        # A retry that did worse than what is already here keeps what is here.
+        if attempt == 1 or len(built or {}) >= len(_vocab or {}):
+            _vocab = built if built is not None else {}
+    if built and complete:
         sig = _vocab_signature(_title_index_dir())
         if sig is not None:
             _vocab_cache_save(built, sig)
+    elif built:
+        # Never saved: a partial vocabulary matches the indexes' signature, so
+        # every later start would load it as whole. Used for now; tried again
+        # once the machine has had time to settle.
+        if attempt < _VOCAB_BUILD_ATTEMPTS:
+            log.info(
+                "Did-you-mean vocab: partial build kept in memory, not saved; "
+                "trying again in %ds",
+                _VOCAB_RETRY_DELAY_S,
+            )
+            global _vocab_retry_timer
+            _vocab_retry_timer = threading.Timer(
+                _VOCAB_RETRY_DELAY_S,
+                _vocab_build_worker,
+                kwargs={"attempt": attempt + 1},
+            )
+            _vocab_retry_timer.daemon = True
+            _vocab_retry_timer.start()
+        else:
+            log.info("Did-you-mean vocab: partial build kept in memory, not saved")
     _rebuild_trigram_index(_vocab)
 
 
@@ -1719,6 +1912,28 @@ def _ensure_vocab():
             )
             _vocab_builder_thread.start()
         return None
+
+
+def _build_vocab_here():
+    """Load or build the vocabulary on the calling thread: the startup
+    worker's last phase, which runs its phases on one thread by design
+    (test_startup_serial). The thread is recorded as the builder, so a search
+    arriving meanwhile waits for it rather than starting a second build."""
+    global _vocab_builder_thread
+    with _vocab_lock:
+        if _vocab is not None:
+            return
+        if _vocab_builder_thread is not None and _vocab_builder_thread.is_alive():
+            return
+        _vocab_builder_thread = threading.current_thread()
+    _vocab_build_worker()
+
+
+def _join_vocab_retry(timeout=5.0):
+    """Block until a scheduled retry build has run. Tests only."""
+    t = _vocab_retry_timer
+    if t is not None:
+        t.join(timeout)
 
 
 def _join_vocab_build(timeout=5.0):
@@ -1977,7 +2192,9 @@ _PLACES_PER_MAP = 8
 
 # Kiwix's maps2zim writes one page per place under search/<Name>, a meta
 # refresh onto the map at the place. The dice read the place out of it.
-_MAPS2ZIM_POS_RE = re.compile(r"#lat=(-?\d+(?:\.\d+)?)&lon=(-?\d+(?:\.\d+)?)(?:&zoom=(\d+))?")
+_MAPS2ZIM_POS_RE = re.compile(
+    r"#lat=(-?\d+(?:\.\d+)?)&lon=(-?\d+(?:\.\d+)?)(?:&zoom=(\d+))?"
+)
 _RANDOM_MAP_TRIES = 60
 
 
@@ -1987,7 +2204,9 @@ def _map_home_view(name):
     None for a map without one, which then opens where it opens itself."""
     from zimi import mapsearch
 
-    entry = next((z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None)
+    entry = next(
+        (z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None
+    )
     if not entry or entry.get("kind") != "map" or not _srv.zim_allowed(name):
         return None
     try:
@@ -2010,11 +2229,18 @@ def _random_map_place(name):
     few random draws find one."""
     from zimi import mapsearch
 
-    entry = next((z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None)
+    entry = next(
+        (z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None
+    )
     # A map this request may not read is one it cannot roll on either: the
     # pooled archive behind this has no gate of its own (the route's does not
     # reach get_archive on the map branch).
-    if not entry or entry.get("kind") != "map" or not entry.get("main_path") or not _srv.zim_allowed(name):
+    if (
+        not entry
+        or entry.get("kind") != "map"
+        or not entry.get("main_path")
+        or not _srv.zim_allowed(name)
+    ):
         return None
     try:
         archive, lock = _get_fts_archive(name)
@@ -2040,7 +2266,12 @@ def _random_map_place(name):
                     continue
                 m = _MAPS2ZIM_POS_RE.search(html)
                 if m:
-                    place = (e.title or e.path[7:], int(m.group(3) or 10), float(m.group(1)), float(m.group(2)))
+                    place = (
+                        e.title or e.path[7:],
+                        int(m.group(3) or 10),
+                        float(m.group(1)),
+                        float(m.group(2)),
+                    )
                     break
     if not place:
         return None
@@ -2062,7 +2293,9 @@ def _kiwix_places(archive, query_str, limit):
         if not path.startswith("search/"):
             continue
         try:
-            html = bytes(archive.get_entry_by_path(path).get_item().content).decode("utf-8", "replace")
+            html = bytes(archive.get_entry_by_path(path).get_item().content).decode(
+                "utf-8", "replace"
+            )
         except Exception:
             continue
         m = _MAPS2ZIM_POS_RE.search(html)
@@ -2113,7 +2346,12 @@ def find_places(query_str, limit=_PLACES_PER_MAP):
             continue
         if found:
             groups.append(
-                {"zim": name, "title": z.get("title") or name, "main_path": z.get("main_path") or "", "places": found}
+                {
+                    "zim": name,
+                    "title": z.get("title") or name,
+                    "main_path": z.get("main_path") or "",
+                    "places": found,
+                }
             )
     return groups
 
@@ -2132,7 +2370,9 @@ def _search_places(query_str, target_names):
             if archive is None or lock is None:
                 continue
             with lock:
-                found = mapsearch.search_places(archive, query_str, limit=_PLACES_PER_MAP)
+                found = mapsearch.search_places(
+                    archive, query_str, limit=_PLACES_PER_MAP
+                )
         except Exception as e:
             log.debug("place search failed on %s: %s", name, e)
             continue
@@ -2296,7 +2536,9 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
                 # asked the old way: the full-text search, which fails soft.
                 if getattr(archive, "has_fulltext_index", True):
                     with lock:
-                        results = search_zim(archive, cleaned, limit=limit, snippets=False)
+                        results = search_zim(
+                            archive, cleaned, limit=limit, snippets=False
+                        )
                 else:
                     # No Xapian index to ask (Kiwix's map ZIMs ship _ftindex:no,
                     # so do some small captures). Titles are still there, and
@@ -2306,6 +2548,15 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
                     if results is None:
                         with lock:
                             results = suggest_search_zim(archive, cleaned, limit=limit)
+                # Xapian ranks by term weight, and can put "List of things
+                # named after X" above X or past the limit altogether. The
+                # entry titled exactly as asked leads its source.
+                exact = _title_index_exact(name, query_str)
+                if exact:
+                    have = {r.get("path") for r in exact}
+                    results = exact + [
+                        r for r in (results or []) if r.get("path") not in have
+                    ]
                 dt = time.time() - t0
                 fts_results[name] = (results, dt)
             except Exception as e:
@@ -2400,6 +2651,18 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
         if suggestion:
             result["did_you_mean"] = suggestion
     return result
+
+
+def read_unglued(zim_name, path, read):
+    """``read(path)``, and when that finds nothing and the path begins with
+    "<zim>/", ``read`` of the path without it: unglue_zim_path's rule (the
+    ZIM's own entry wins) for readers that go through a page cache rather
+    than an archive, such as the apps' question and post readers."""
+    got = read(path)
+    prefix = f"{zim_name}/"
+    if got is None and path.startswith(prefix):
+        got = read(path[len(prefix) :])
+    return got
 
 
 def unglue_zim_path(archive, zim_name, path):
@@ -2822,6 +3085,24 @@ def random_entry(archive, max_attempts=8, rng=None):
                 log.debug("Random entry pick failed at index %d: %s", idx, e)
                 continue
 
+    # Phase 1b: libzim's own pick among the ZIM's front articles, the pages
+    # meant to be read. A capture of 446 entries with ONE page (the CNN front
+    # page) is almost never found by eight random indices, and the dice there
+    # answered "no articles found" and left the site. Seeded picks skip it:
+    # libzim's choice cannot be made deterministic.
+    if rng is _random and getattr(archive, "article_count", 0):
+        for _ in range(min(3, max_attempts)):
+            try:
+                entry = archive.get_random_entry()
+                if entry.is_redirect:
+                    entry = entry.get_redirect_entry()
+                mt = entry.get_item().mimetype or ""
+                if mt.startswith("text/html") or mt == "application/pdf":
+                    return {"path": entry.path, "title": entry.title or ""}
+            except Exception as e:
+                log.debug("Random front article failed: %s", e)
+                break
+
     # Phase 2: SuggestionSearcher fallback
     chars = "abcdefghijklmnopqrstuvwxyz"
     for _ in range(max_attempts):
@@ -2833,7 +3114,7 @@ def random_entry(archive, max_attempts=8, rng=None):
             if count == 0:
                 continue
             paths = list(suggestion.getResults(0, min(count, 30)))
-            result = _pick_html_entry(archive, paths)
+            result = _pick_html_entry(archive, paths, rng)
             if result:
                 return result
         except Exception as e:
@@ -2844,9 +3125,10 @@ def random_entry(archive, max_attempts=8, rng=None):
     return None
 
 
-def _pick_html_entry(archive, paths):
-    """From a list of entry paths, return the first valid HTML/PDF article."""
-    _random.shuffle(paths)
+def _pick_html_entry(archive, paths, rng=_random):
+    """From a list of entry paths, a valid HTML/PDF article in `rng`'s order,
+    so a seeded pick (Book of the Day) is the same pick on every call."""
+    rng.shuffle(paths)
     for path in paths:
         try:
             entry = archive.get_entry_by_path(path)
@@ -3156,7 +3438,7 @@ def _get_dated_entry(archive, zim_name, mmdd, rng=None):
         count = search.getEstimatedMatches()
         if count > 0:
             paths = list(search.getResults(0, min(count, 10)))
-            result = _pick_html_entry(archive, paths)
+            result = _pick_html_entry(archive, paths, rng or _random)
             if result:
                 return result
     except Exception as e:
@@ -3202,3 +3484,41 @@ def _xkcd_date_lookup(archive, path):
     if m:
         return _xkcd_date_cache.get(m.group(1))
     return None
+
+
+def _scan_vocab_child_main(index_dir, out):
+    """`python -m zimi.search --scan-vocab <index dir> <out>`: the scan
+    _scan_vocab_in_child starts, writing (words, complete) to `out`."""
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
+    )
+    vocab, complete = _scan_vocab(index_dir)
+    _srv._atomic_write_json(out, {"complete": complete, "words": vocab})
+
+
+def _build_index_child_main(kind, data_dir, zim_name, zim_path):
+    """`python -m zimi.search --build-index <kind> <data dir> <name> <path>`:
+    the build _build_index_isolated starts. It writes the index into the data
+    dir as a build in the server would, and exits nonzero if the build fails."""
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
+    )
+    _srv.ZIMI_DATA_DIR = data_dir
+    if kind == "titles":
+        _build_title_index(zim_name, zim_path)
+    elif kind == "qids":
+        from zimi import interlang
+
+        interlang._build_qid_index(zim_name, zim_path)
+    elif kind == "tube":
+        from zimi import tube
+
+        tube.build_details(zim_name, zim_path)
+    else:
+        raise SystemExit(f"unknown index kind {kind!r}")
+
+
+if __name__ == "__main__" and sys.argv[1:2] == ["--scan-vocab"]:
+    _scan_vocab_child_main(sys.argv[2], sys.argv[3])
+elif __name__ == "__main__" and sys.argv[1:2] == ["--build-index"]:
+    _build_index_child_main(*sys.argv[2:6])

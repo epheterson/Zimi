@@ -284,24 +284,26 @@ function _reopenAlmanacFromLink() {
 // pre-switch abbreviation until reload — an acceptable trade for dropping a
 // formatter construction + formatToParts from the per-frame path.)
 var _formatTzCache = {};
-function _formatTimezone(lang, tz) {
+// The zone's short name (e.g. "PST") at instant `at` (default now), for the
+// shown location's zone when tz is given. At the instant, not now: travelled
+// to January from September, the header read PDT. The formatter is cached;
+// the name depends on the date, so it is not.
+function _formatTimezone(lang, tz, at) {
   var loc = lang || ((typeof _currentLang !== 'undefined') ? _currentLang : 'en');
   var key = loc + '|' + (tz || '');
-  if (key in _formatTzCache) return _formatTzCache[key];
-  var name = '';
   try {
-    // Locale-aware short zone name (e.g. "PST"). An explicit tz names the
-    // shown location's zone, not the device's.
-    var opts = { timeZoneName: 'short' };
-    if (tz) opts.timeZone = tz;
-    var fmt = new Intl.DateTimeFormat(loc, opts);
-    var parts = fmt.formatToParts(new Date());
-    for (var i = 0; i < parts.length; i++) {
-      if (parts[i].type === 'timeZoneName') { name = parts[i].value; break; }
+    var fmt = _formatTzCache[key];
+    if (!fmt) {
+      var opts = { timeZoneName: 'short' };
+      if (tz) opts.timeZone = tz;
+      fmt = _formatTzCache[key] = new Intl.DateTimeFormat(loc, opts);
     }
-  } catch(e) { name = ''; }
-  _formatTzCache[key] = name;
-  return name;
+    var parts = fmt.formatToParts(at || new Date());
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i].type === 'timeZoneName') return parts[i].value;
+    }
+  } catch (e) {}
+  return '';
 }
 
 // Curated offline "on this day" feed — space & science milestones, keyed by
@@ -424,10 +426,18 @@ var _PRINCIPAL_PHASES = [
   { p: 0.75, name: 'Last Quarter' }
 ];
 
-function _principalPhaseOnDay(cellJDN) {
-  var noon = (cellJDN - 2440587.5) * 86400000 + 43200000;
-  var p0 = _moonPhase(new Date(noon - 43200000)).phase; // day start
-  var p1 = _moonPhase(new Date(noon + 43200000)).phase; // day end
+// The principal phase that falls on calendar day cellJDN as it is lived in
+// zone tz: local midnight to local midnight. Noon-to-noon UTC put a Tokyo full
+// moon at 02:00 on the day before (tests/test_almanac_phase_marks.cjs).
+function _principalPhaseOnDay(cellJDN, tz) {
+  var utcMidnight = (cellJDN - 2440588) * 86400000;
+  var localMidnight = function(ms) {
+    var off;
+    try { off = _tzUtcOffsetMin(tz || 'UTC', new Date(ms)); } catch (e) { off = 0; }
+    return ms - off * 60000;
+  };
+  var p0 = _moonPhase(new Date(localMidnight(utcMidnight))).phase; // day start
+  var p1 = _moonPhase(new Date(localMidnight(utcMidnight + 86400000))).phase; // day end
   for (var i = 0; i < _PRINCIPAL_PHASES.length; i++) {
     var tg = _PRINCIPAL_PHASES[i].p;
     // The cycle wraps 1 -> 0, so a new moon shows up as p0 > p1.
@@ -470,6 +480,14 @@ function _almIsToday(d) {
 // zone-offset of midnight: pick 23:50 from Los Angeles with Tokyo stored and
 // the grid highlights the 22nd while the header reads the 23rd. One zone for
 // the whole instrument, and it is the device's.
+// Date options with the era added for a year before 1: Intl leaves the era
+// out unless asked, so -270000 read "January 1, 270001", the far future.
+// Asked only then, so an ordinary date does not gain an "AD".
+function _almEraOpts(d, opts) {
+  if (!(d && d.getFullYear && d.getFullYear() <= 0)) return opts;
+  return Object.assign({}, opts, { era: 'short' });
+}
+
 function _almClockParts(focus) {
   var loc = _getLocation();
   var locTz = null;
@@ -481,9 +499,9 @@ function _almClockParts(focus) {
   // frame, and each toLocale* call builds a fresh Intl.DateTimeFormat.
   return {
     loc: loc, locTz: locTz, lang: lang, live: live,
-    date: _tzFmt(displayTz, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(focus),
+    date: _tzFmt(displayTz, _almEraOpts(focus, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })).format(focus),
     time: _tzFmt(displayTz, { hour: 'numeric', minute: '2-digit' }).format(focus),
-    tz: _formatTimezone(lang, displayTz)
+    tz: _formatTimezone(lang, displayTz, focus)
   };
 }
 
@@ -592,13 +610,17 @@ function _almNextFullHtml(nfm, lang, focus) {
 // sun-map terminator, a meteor table). Catch it, drop a quiet "beyond range"
 // note into that panel's container, and let the rest — crucially the sky,
 // orrery and deep-time — carry on. One panel must never abort the repaint.
+function _almBeyondHtml(tag) {
+  tag = tag || 'div';
+  return '<' + tag + ' class="alm-beyond">' + _tLookup('alm_tm_beyond_range', "Beyond this calendar's range") + '</' + tag + '>';
+}
 function _almSafePanel(fn, containerId) {
   try { fn(); }
   catch (e) {
     if (window.console && console.warn) console.warn('almanac: panel skipped at this epoch —', e && e.message);
     if (containerId) {
       var el = document.getElementById(containerId);
-      if (el) el.innerHTML = '<div class="alm-beyond">' + _tLookup('alm_tm_beyond_range', "Beyond this calendar's range") + '</div>';
+      if (el) el.innerHTML = _almBeyondHtml();
     }
   }
 }
@@ -1656,6 +1678,19 @@ function _almTmInit() {
 
 
 
+// "About this data": how close each figure on the page is, and to what. The
+// 1.7.2 changelog announced it; it was never built. Every line states a
+// method the code uses and a precision it has been checked against.
+var _ALM_ABOUT_ROWS = ['moon', 'seasons', 'sun', 'eclipses', 'planets', 'hebrew', 'islamic',
+  'persian', 'chinese', 'deeptime', 'timezones'];
+function _almAboutDataHtml() {
+  return '<details class="almanac-section alm-about">' +
+    '<summary class="almanac-section-title">' + _almEsc(t('alm_about_data')) + '</summary>' +
+    '<p class="alm-about-intro">' + _almEsc(t('alm_about_intro')) + '</p><ul class="alm-about-list">' +
+    _ALM_ABOUT_ROWS.map(function(k) { return '<li>' + _almEsc(t('alm_about_' + k)) + '</li>'; }).join('') +
+    '</ul></details>';
+}
+
 function _renderAlmanacContent() {
   var now = new Date();
   var m = _moonPhase(now);
@@ -1759,6 +1794,7 @@ function _renderAlmanacContent() {
   html += '<div class="almanac-section-title">' + t('alm_messages_across_time') + '</div>';
   html += '<div id="almanac-rosetta"></div>';
   html += '</div>';
+  html += _almAboutDataHtml();
 
 
   // The time machine — the almanac's skeuomorphic time-travel instrument.
@@ -2447,9 +2483,14 @@ function _computeEclipses(fromDate, count) {
       // eclipses (~1/year). Use the actual P·cosF1 + Q·sinF1 formula.
       var W2 = Math.abs(Math.cos(F1rad));
       var gam = Math.abs((P * Math.cos(F1rad) + Q * Math.sin(F1rad)) * (1 - 0.0048 * W2));
-      // Must be within eclipse range
-      if (isSolar && gam > 1.5433) continue;
-      if (!isSolar && gam > 1.0944) continue;
+      // u: the radius of the Moon's umbral cone (solar) or the widening of
+      // Earth's shadow (lunar) at the fundamental plane, in Earth radii.
+      var u = 0.0059 + 0.0046 * Math.cos(Mrad) - 0.0182 * Math.cos(Mprad) + 0.0004 * Math.cos(2 * Mprad) - 0.0005 * Math.cos(Mrad + Mprad);
+      // Must be within eclipse range. For the Moon that is the edge of the
+      // penumbra, 1.5573 + u (Meeus 54): the old 1.0944 is near the umbra's
+      // edge, and dropped every shallow penumbral (2027 Jul 18, Aug 17).
+      if (isSolar && gam > 1.5433 + u) continue;
+      if (!isSolar && gam > 1.5573 + u) continue;
       // Compute JDE corrections for the eclipse
       var dJDE;
       if (isSolar) {
@@ -2478,8 +2519,7 @@ function _computeEclipses(fromDate, count) {
       var type;
       if (isSolar) {
         if (gam < 0.9972) {
-          // Check if annular or total using Moon's horizontal parallax vs semidiameter
-          var u = 0.0059 + 0.0046 * Math.cos(Mrad) - 0.0182 * Math.cos(Mprad) + 0.0004 * Math.cos(2 * Mprad) - 0.0005 * Math.cos(Mrad + Mprad);
+          // Total or annular: whether the Moon's umbral cone reaches Earth (u < 0)
           if (u < 0) type = t('alm_eclipse_total_solar');
           else if (u > 0.0047) type = t('alm_eclipse_annular_solar');
           else type = (gam < 0.9972 && u > 0 && u < 0.0047) ? t('alm_eclipse_hybrid_solar') : t('alm_eclipse_annular_solar');
@@ -2487,8 +2527,9 @@ function _computeEclipses(fromDate, count) {
           type = t('alm_eclipse_partial_solar');
         }
       } else {
-        if (gam < 0.4678) type = t('alm_eclipse_total_lunar');
-        else if (gam < 1.0128) type = t('alm_eclipse_partial_lunar');
+        // Umbral magnitude >= 1 is total, > 0 partial (Meeus 54).
+        if (gam < 0.4678 - u) type = t('alm_eclipse_total_lunar');
+        else if (gam < 1.0128 - u) type = t('alm_eclipse_partial_lunar');
         else type = t('alm_eclipse_penumbral_lunar');
       }
       // No visibility region: naming one from sub-solar longitude alone was
@@ -2589,7 +2630,7 @@ function _renderAstroPanel(now) {
     var untilStr = daysUntil <= 0 ? t('alm_today') : daysUntil === 1 ? t('alm_tomorrow') : t('alm_n_days', { n: daysUntil });
     eclipseRows += '<div class="almanac-eclipse-row">' +
       '<div><span class="almanac-eclipse-type">' + _alLink(ec.solar ? 'eclipse:total_solar' : 'eclipse:total_lunar', ec.type) + '</span><br><span class="almanac-eclipse-date">' +
-      ecDate.toLocaleDateString((typeof _currentLang !== 'undefined') ? _currentLang : undefined, { month: 'long', day: 'numeric', year: 'numeric' }) + '</span></div>' +
+      ecDate.toLocaleDateString((typeof _currentLang !== 'undefined') ? _currentLang : undefined, _almEraOpts(ecDate, { month: 'long', day: 'numeric', year: 'numeric' })) + '</span></div>' +
       '<div class="almanac-eclipse-until">' + untilStr + '</div></div>';
   }
   if (eclipseRows) {
@@ -5137,13 +5178,17 @@ function _renderMeteorShowers(now, moon) {
   if (!el) return;
   var y = now.getFullYear();
   var upcoming = [];
+  // Calendar days, not hours rounded: a shower peaks on the NIGHT of its date,
+  // and rounding the time to that date's midnight said "Tonight!" on the peak
+  // evening and "Peak!" the morning after.
+  var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   // Check this year and next for upcoming showers
   for (var yr = y; yr <= y + 1; yr++) {
     for (var si = 0; si < _METEOR_SHOWERS.length; si++) {
       var s = _METEOR_SHOWERS[si];
       var peakDate = new Date(yr, s.peak[0] - 1, s.peak[1]);
-      var daysUntil = Math.round((peakDate - now) / MS_PER_DAY);
-      if (daysUntil >= -1 && daysUntil <= 365) {
+      var daysUntil = Math.round((peakDate - today) / MS_PER_DAY);
+      if (daysUntil >= 0 && daysUntil <= 365) {
         // Moon interference: check moon illumination on peak night
         var peakMoon = _moonPhase(peakDate);
         var moonInterference = peakMoon.illumination > 60 ? t('alm_moon_poor') : peakMoon.illumination > 30 ? t('alm_moon_fair') : t('alm_moon_ideal');
@@ -5165,8 +5210,8 @@ function _renderMeteorShowers(now, moon) {
     var s = upcoming[i];
     // A shower at (or just past) its peak gets a highlighted chip; everything
     // else is a plain amber countdown value.
-    var isPeaking = s.daysUntil < 0;
-    var untilStr = isPeaking ? t('alm_peak') : s.daysUntil === 0 ? t('alm_tonight') : s.daysUntil === 1 ? t('alm_tomorrow') : s.daysUntil + ' ' + t('alm_days');
+    var isPeaking = s.daysUntil === 0;  // tonight is the peak night
+    var untilStr = isPeaking ? t('alm_peak') : s.daysUntil === 1 ? t('alm_tomorrow') : s.daysUntil + ' ' + t('alm_days');
     var untilClass = 'almanac-eclipse-until' + (isPeaking ? ' almanac-eclipse-peak' : '');
     var rateDesc = s.zhr >= 100 ? t('alm_meteor_major') : s.zhr >= 25 ? t('alm_meteor_moderate') : t('alm_meteor_minor');
     var condColor = s.moonCondition === t('alm_moon_ideal') ? 'var(--accent)' : s.moonCondition === t('alm_moon_fair') ? 'var(--text2)' : 'var(--text3)';
@@ -5289,7 +5334,7 @@ function _renderCelestialEvents(now) {
     var allVisible = soonEvents.concat(laterEvents);
     for (var i = 0; i < allVisible.length; i++) {
       var ev = allVisible[i];
-      var dateStr = ev.date.toLocaleDateString(_almLocale, { month: 'short', day: 'numeric', year: 'numeric' });
+      var dateStr = ev.date.toLocaleDateString(_almLocale, _almEraOpts(ev.date, { month: 'short', day: 'numeric', year: 'numeric' }));
       var untilStr = ev.daysUntil <= 1 ? t('alm_now_exclaim') : ev.daysUntil + ' ' + t('alm_days');
       var title, detail;
       if (ev.type === 'conjunction') {
@@ -5942,6 +5987,7 @@ function _drawAlmanacGrid() {
   for (var i = 0; i < firstDow; i++) {
     html += '<div class="alm-cell alm-empty"></div>';
   }
+  var _gridTz = _almDisplayTz();
   for (var d = 1; d <= daysInMonth; d++) {
     var cellJDN = firstJDN + d - 1;
     var isToday = (cellJDN === todayJDN);
@@ -5950,8 +5996,8 @@ function _drawAlmanacGrid() {
     var dayEvents = events[d] || [];
     html += '<div class="' + cls + '" onclick="_almSelectDay(' + cellJDN + ')">';
     html += '<div class="alm-num">' + d + '</div>';
-    // Moon phase for this calendar day (noon UTC), tucked top-right.
-    var _pp = _principalPhaseOnDay(cellJDN);
+    // The principal moon phase of this day where the almanac is, top-right.
+    var _pp = _principalPhaseOnDay(cellJDN, _gridTz);
     if (_pp) {
       html += '<span class="cal-moon-wrap" title="' + _almEsc(_localMoonName(_pp.name)) + '">' +
         _moonGlyphSVG(_pp.p, 16) + '</span>';
@@ -6099,6 +6145,18 @@ function _almSelectDay(jdn) {
 // left the span where it means anything.
 var _CAL_MAX_MONTHS = 13;              // lunisolar leap years reach 13
 var _CAL_MAX_DAY = 31;
+// The Gregorian years a calendar's conversion is good for, where that is less
+// than the whole travel range. The Chinese calendar stands on Meeus's
+// solstice series, which he gives for years -1000 to +3000; past that its
+// answers stay finite and plausible and mean nothing (-270000 came back as
+// "Jiuyue 6, Monkey").
+var _CAL_SPAN_YEARS = { chinese: [-1000, 3000] };
+function _calInSpan(sys, jdn) {
+  var span = _CAL_SPAN_YEARS[sys];
+  if (!span) return true;
+  var y = _jdnToGregorian(jdn).year;
+  return y >= span[0] && y <= span[1];
+}
 function _calResultUsable(cal) {
   return !!cal && isFinite(cal.year) && isFinite(cal.month) && isFinite(cal.day) &&
     cal.month >= 1 && cal.month <= _CAL_MAX_MONTHS &&
@@ -6115,6 +6173,7 @@ function _almRenderCrossRef(jdn) {
     // NaN or garbage. The Gregorian/Julian arithmetic stays valid throughout.
     var dateStr;
     try {
+      if (!_calInSpan(sys, jdn)) throw 0;
       var cal = _jdnToCalendar(sys, jdn);
       if (!_calResultUsable(cal)) throw 0;
       var monthName = _calMonthName(sys, cal.year, cal.month);
@@ -6128,7 +6187,7 @@ function _almRenderCrossRef(jdn) {
         dateStr = monthName + ' ' + cal.day + ' \u00b7 ' + _alLink('zodiac:' + chinese.animalKey, chinese.animal) + ' \u00b7 ' + yearStr;
       }
     } catch (e) {
-      dateStr = '<span class="alm-beyond">' + _tLookup('alm_tm_beyond_range', "Beyond this calendar's range") + '</span>';
+      dateStr = _almBeyondHtml('span');
     }
     var isActive = sys === _almSystem ? ' alm-crossref-active' : '';
     html += '<div class="alm-crossref-row' + isActive + '"' +
@@ -6289,11 +6348,16 @@ function _hebrewDelay2(yr) {
   if (present - last === 382) return 1;
   return 0;
 }
+// The JDN (a whole day number) of 1 Tishrei of year yr. Fourmilab's
+// hebrew_to_jd is EPOCH + delay1 + delay2 + day + 1, a midnight (.5) Julian
+// Date; for day 1 that is EPOCH + delay1 + delay2 + 2, and the day it starts
+// is that + 0.5. Leaving out the + day + 1 and then flooring the midnight put
+// every Hebrew date 2 to 3 days late (tests/test_almanac_hebrew.cjs).
 function _hebrewNewYear(yr) {
-  return _HEBREW_EPOCH + _hebrewDelay1(yr) + _hebrewDelay2(yr);
+  return _HEBREW_EPOCH + 2.5 + _hebrewDelay1(yr) + _hebrewDelay2(yr);
 }
 function _hebrewDaysInYear(yr) {
-  return Math.round(_hebrewNewYear(yr + 1) - _hebrewNewYear(yr));
+  return _hebrewNewYear(yr + 1) - _hebrewNewYear(yr);
 }
 function _hebrewMonthDays(yr, mo) {
   var diy = _hebrewDaysInYear(yr);
@@ -6364,18 +6428,6 @@ function _chineseZodiac(year) {
 }
 
 // ── Reverse conversions — calendar date → JDN ──
-
-// Hebrew → JDN: sum days from Tishrei 1
-function _hebrewToJDN(year, monthIdx, day) {
-  // monthIdx is civil order: 0=Tishrei, 1=Marcheshvan, ...
-  var civilOrder = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]; // internal month codes
-  var jdn = Math.floor(_hebrewNewYear(year)) + day - 1;
-  for (var i = 0; i < monthIdx; i++) {
-    var days = _hebrewMonthDays(year, civilOrder[i]);
-    if (days > 0) jdn += days;
-  }
-  return jdn;
-}
 
 // Hebrew month list for a given year — [{name, days, idx}] in civil order
 function _hebrewMonthList(year) {
@@ -6525,10 +6577,10 @@ function _jdnToCalendar(sys, jdn) {
     // Find Hebrew year
     var approx = Math.floor((jdn - _HEBREW_EPOCH) / 365.25) + 1;
     var hYear = approx;
-    while (_hebrewNewYear(hYear) > jdn + 0.5) hYear--;
-    while (_hebrewNewYear(hYear + 1) <= jdn + 0.5) hYear++;
+    while (_hebrewNewYear(hYear) > jdn) hYear--;
+    while (_hebrewNewYear(hYear + 1) <= jdn) hYear++;
     var months = _hebrewMonthList(hYear);
-    var dayInYear = Math.round(jdn + 0.5 - _hebrewNewYear(hYear));
+    var dayInYear = jdn - _hebrewNewYear(hYear);
     var remaining = dayInYear;
     for (var i = 0; i < months.length; i++) {
       if (remaining < months[i].days) {
@@ -6791,7 +6843,7 @@ function _calFirstDayJDN(sys, year, month) {
   if (sys === 'gregorian') return _gregorianToJDN(year, month, 1);
   if (sys === 'hebrew') {
     var months = _hebrewMonthList(year);
-    var jdn = Math.floor(_hebrewNewYear(year));
+    var jdn = _hebrewNewYear(year);
     for (var i = 0; i < month - 1 && i < months.length; i++) {
       jdn += months[i].days;
     }
@@ -6873,11 +6925,29 @@ function _calMonthCount(sys, year) {
 
 // ── Deep Time — facts that transcend centuries ──
 
+// How far from J2000 the deep-time fits mean anything. The obliquity cubic
+// and the eccentricity line hold for about ten millennia (T in centuries);
+// the Polaris line is a rough fit around its closest approach in 2100. Past
+// these a row says so: at year -270000 the tilt read -10076 degrees beside
+// text saying it cycles between 22.1 and 24.5.
+var _DEEP_TIME_SPAN_CENTURIES = 100;
+// One deep-time fact: value, label, a line of explanation. A value of false
+// means its fit does not hold at this date; the row says so, without the
+// explanation, which would describe a number that is not there.
+function _deepTimeRow(val, lbl, desc) {
+  var beyond = '<span class="alm-beyond">' + _tLookup('alm_dt_beyond_fit', 'Beyond what this estimate covers') + '</span>';
+  return '<div class="almanac-info-item"><div class="almanac-info-val">' + (val === false ? beyond : val) + '</div>' +
+    '<div class="almanac-info-lbl">' + lbl + '</div>' +
+    (val === false ? '' : '<div style="font-size:11px;color:var(--text3);margin-top:4px">' + desc + '</div>') + '</div>';
+}
+var _POLARIS_SPAN_YEARS = [0, 4200];
 function _renderDeepTime(now) {
   var el = document.getElementById('almanac-deeptime');
   if (!el) return;
   var JD = _dateToJD(now.getTime());
   var T = _jdToJulianCentury(JD);
+  var fitsHold = Math.abs(T) <= _DEEP_TIME_SPAN_CENTURIES;
+  var polarisHolds = now.getFullYear() >= _POLARIS_SPAN_YEARS[0] && now.getFullYear() <= _POLARIS_SPAN_YEARS[1];
 
   // Axial tilt (obliquity of ecliptic)
   // IAU formula: ε = 23°26'21.448" - 46.8150"T - 0.00059"T² + 0.001813"T³
@@ -6921,39 +6991,32 @@ function _renderDeepTime(now) {
   var html = '<div class="almanac-info-grid">';
 
   // Axial tilt
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + obliquityDeg.toFixed(2) + '\u00b0</div>' +
-    '<div class="almanac-info-lbl">' + _lterm('axial_tilt', t('alm_dt_tilt')) + '</div>' +
-    '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    t('alm_dt_tilt_desc', { trend: tiltDir, impact: seasonImpact, pct: tiltInCycle }) + '</div></div>';
+  html += _deepTimeRow(fitsHold && obliquityDeg.toFixed(2) + '\u00b0',
+    _lterm('axial_tilt', t('alm_dt_tilt')),
+    t('alm_dt_tilt_desc', { trend: tiltDir, impact: seasonImpact, pct: tiltInCycle }));
 
   // North Star
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + polarisDist + '\u00b0 ' + t('alm_from_true_north') + '</div>' +
-    '<div class="almanac-info-lbl">' + _alLink('star:polaris', t('alm_dt_polaris')) + '</div>' +
-    '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    t('alm_dt_polaris_desc', { years: (14000 - now.getFullYear()).toLocaleString() }) + '</div></div>';
+  html += _deepTimeRow(polarisHolds && polarisDist + '\u00b0 ' + t('alm_from_true_north'),
+    _alLink('star:polaris', t('alm_dt_polaris')),
+    t('alm_dt_polaris_desc', { years: (14000 - now.getFullYear()).toLocaleString() }));
 
   // Day getting longer
   var totalExcessMs = (daySeconds - 86400) * 1000;
   var dayStr = totalExcessMs > 1 ? '+' + totalExcessMs.toFixed(1) + 'ms ' + t('alm_over_24h') :
                totalExcessMs > 0.01 ? '+' + (totalExcessMs * 1000).toFixed(0) + '\u00b5s ' + t('alm_over_24h') :
                '~24h';
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + dayStr + '</div>' +
-    '<div class="almanac-info-lbl">' + _lterm('tidal_acceleration', t('alm_dt_daylen')) + '</div>' +
-    '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    t('alm_dt_daylen_desc', { ms: excessMs.toFixed(1) }) + '</div></div>';
+  html += _deepTimeRow(fitsHold && dayStr,
+    _lterm('tidal_acceleration', t('alm_dt_daylen')),
+    t('alm_dt_daylen_desc', { ms: excessMs.toFixed(1) }));
 
   // Orbital eccentricity
   var eccTrendStr = parseFloat(earthEcc) < eccPrev ? t('alm_decreasing') : t('alm_increasing');
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + earthEcc + '</div>' +
-    '<div class="almanac-info-lbl">' + _lterm('orbital_eccentricity', t('alm_dt_orbit')) + '</div>' +
-    '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    t('alm_dt_orbit_desc', { trend: eccTrendStr }) + '</div></div>';
+  html += _deepTimeRow(fitsHold && earthEcc,
+    _lterm('orbital_eccentricity', t('alm_dt_orbit')),
+    t('alm_dt_orbit_desc', { trend: eccTrendStr }));
 
   // Julian Date
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">JD ' + julianDate + '</div>' +
-    '<div class="almanac-info-lbl">' + _lterm('julian_day', t('alm_dt_julian')) + '</div>' +
-    '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    t('alm_dt_julian_desc') + '</div></div>';
+  html += _deepTimeRow('JD ' + julianDate, _lterm('julian_day', t('alm_dt_julian')), t('alm_dt_julian_desc'));
 
   // Galactic Year
   var galacticPeriod = 225;
@@ -6961,10 +7024,9 @@ function _renderDeepTime(now) {
   var orbitsCompleted = Math.floor(sunAge / galacticPeriod);
   var currentOrbitPct = ((sunAge % galacticPeriod) / galacticPeriod * 100).toFixed(1);
 
-  html += '<div class="almanac-info-item"><div class="almanac-info-val">' + t('alm_galactic_orbit', { pct: currentOrbitPct, n: orbitsCompleted + 1 }) + '</div>' +
-    '<div class="almanac-info-lbl">' + _lterm('galactic_year', t('alm_dt_galactic')) + '</div>' +
-    '<div style="font-size:11px;color:var(--text3);margin-top:4px">' +
-    t('alm_dt_galactic_desc', { age: (sunAge / 1000).toFixed(1), orbits: orbitsCompleted }) + '</div></div>';
+  html += _deepTimeRow(t('alm_galactic_orbit', { pct: currentOrbitPct, n: orbitsCompleted + 1 }),
+    _lterm('galactic_year', t('alm_dt_galactic')),
+    t('alm_dt_galactic_desc', { age: (sunAge / 1000).toFixed(1), orbits: orbitsCompleted }));
 
   html += '</div>';
   el.innerHTML = html;
@@ -7149,18 +7211,20 @@ function _renderGoldenRecordGallery() {
 function _openGrLightbox(idx) {
   _grLightboxIdx = idx;
   _renderGrLightbox();
-  document.addEventListener('keydown', _grKeyHandler);
+  // Capture on window: it runs before the app's own keydown handler, which
+  // otherwise saw the same Escape and closed the whole almanac.
+  window.addEventListener('keydown', _grKeyHandler, true);
 }
 
 function _closeGrLightbox() {
   _grLightboxIdx = -1;
   var lb = document.getElementById('gr-lightbox');
   if (lb) lb.remove();
-  document.removeEventListener('keydown', _grKeyHandler);
+  window.removeEventListener('keydown', _grKeyHandler, true);
 }
 
 function _grKeyHandler(e) {
-  if (e.key === 'Escape') _closeGrLightbox();
+  if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); _closeGrLightbox(); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); _grNav(1); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); _grNav(-1); }
 }

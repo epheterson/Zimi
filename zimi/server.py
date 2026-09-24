@@ -125,7 +125,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.10.1"
+ZIMI_VERSION = "1.10.2"
 
 # Standing maintenance cadence: catalog TTL is 24h and UPnP leases are
 # 24h — run every 12h so both stay fresh at half-life.
@@ -208,6 +208,10 @@ def start_background_services(http_port):
                 bt_port=p2p.get_bt_port(),
                 zim_count=len(list_zims()),
                 version=ZIMI_VERSION,
+                current=lambda: {
+                    "zim_count": len(list_zims()),
+                    "bt_port": p2p.get_bt_port(),
+                },
             )
             import atexit
 
@@ -610,6 +614,17 @@ DEFAULT_ZIM_DIR = "/zims"
 DEFAULT_DATA_DIR_NAME = ".zimi"
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8899
+
+
+def announce_ready(port):
+    """Print `READY <port>` for whatever started us (CI smoke tests, the
+    desktop launcher, service managers), as ONE write.
+
+    print() writes the text and the newline separately, and on an
+    unbuffered stdout another thread's log line landed between them:
+    "READY 888323:07:20 Title indexes warmed", which reads as no READY."""
+    sys.stdout.write(f"READY {port}\n")
+    sys.stdout.flush()
 
 # ---------------------------------------------------------------------------
 # Zero-config ZIM discovery (1.9 portable mode)
@@ -2522,7 +2537,12 @@ def _zim_short_name(filename):
         r"_[a-z]{2}_2\d{3}.*", "", name
     )  # Only 2-letter codes before dates (avoids css/git)
     name = re.sub(r"_maxi_2\d{3}.*", "", name)
-    name = re.sub(r"_2\d{3}-\d{2}$", "", name)
+    name = re.sub(r"_2\d{3}-\d{2}[a-z]?$", "", name)
+    # A topic build's flavor, whichever it is: maxi was stripped above and
+    # nopic/mini were not, so wikipedia_en_medicine_maxi and _nopic became two
+    # sources with two names and both were served. One name, and the scan's
+    # collision rule (_FLAVOR_RANK) keeps the richer file.
+    name = re.sub(r"_(?:maxi|nopic|mini)$", "", name)
     # StreetZim: osm-hawaii-2026-09-08 -> osm-hawaii, so the name survives an
     # update and the catalog's toggle can tell installed from not.
     name = re.sub(r"^(osm-.+?)-2\d{3}-\d{2}-\d{2}$", r"\1", name)
@@ -4522,7 +4542,7 @@ def main():
         # desktop launcher) can capture the bound port — important when
         # --port 0 is used to let the OS pick a free port.
         actual_port = server.server_address[1]
-        print(f"READY {actual_port}", flush=True)
+        announce_ready(actual_port)
         # The Creator pane's engines (a browser launch, two sidecars) are
         # found out in the background, so the first look at that pane is not
         # "Checking…" for as long as a browser takes to start. After READY
@@ -4671,6 +4691,17 @@ def warm_indexes():
         except Exception as e:
             log.warning("Title index build phase failed: %s", e)
 
+        # Phase 1b: ZimiTube's video details (descriptions, channels, dates
+        # kept in a file per video), so they are read before anyone opens
+        # ZimiTube rather than when someone does. Before the Q-ID phase,
+        # which can take hours on a big Wikipedia.
+        try:
+            from zimi import tube as _tube
+
+            _tube.build_all_details()
+        except Exception as e:
+            log.warning("ZimiTube details phase failed: %s", e)
+
         # Phase 2: build/refresh Q-ID indexes (one Archive open at a time).
         try:
             _build_all_qid_indexes()
@@ -4734,6 +4765,17 @@ def warm_indexes():
             log.info("Title indexes warmed: %d/%d", opened, len(zim_files))
         except Exception as e:
             log.warning("Title B-tree warm phase failed: %s", e)
+
+        # Phase 6: the did-you-mean vocabulary, loaded from disk or built now
+        # that the title indexes are final and the phases above are done with
+        # the machine. Waiting for the first misspelled search meant that
+        # search, and every one for the next few minutes, got no suggestion.
+        try:
+            from zimi import search as _search_mod
+
+            _search_mod._build_vocab_here()
+        except Exception as e:
+            log.warning("Did-you-mean vocab phase failed: %s", e)
 
     threading.Thread(
         target=_startup_worker, daemon=True, name="zimi-startup-worker"

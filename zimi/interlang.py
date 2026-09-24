@@ -18,7 +18,7 @@ import time
 from urllib.parse import urlparse, parse_qs, quote, unquote
 
 import zimi.server as _srv
-from zimi.search import _loadavg_throttle
+from zimi.search import _build_index_isolated, _loadavg_throttle, _write_index_meta
 
 log = logging.getLogger("zimi")
 
@@ -139,6 +139,9 @@ def _detect_query_language(query):
 # still providing authoritative Q-ID matching on first use.
 
 _QID_INDEX_VERSION = "3"
+# The on-demand cache (_qid_cache.db). 2: cross-cached entries are verified
+# matches only; version 1 rows could be same-title guesses.
+_QID_CACHE_VERSION = "2"
 _QID_RE = re.compile(rb"wikidata\.org/wiki/(Q\d+)")
 # Authority control Q-ID pattern (article's own Q-ID, not cited references)
 _QID_AUTH_RE = re.compile(rb"wikidata\.org/wiki/(Q\d+)#identifiers")
@@ -298,20 +301,7 @@ def _build_qid_index(zim_name, zim_path):
 
         conn.execute("CREATE INDEX idx_qid ON qids(qid)")
 
-        zim_mtime = str(os.path.getmtime(zim_path))
-        zim_uuid = ""
-        try:
-            zim_uuid = str(archive.uuid)
-        except Exception as e:
-            log.debug("UUID read during Q-ID build failed for %s: %s", zim_name, e)
-        conn.execute(
-            "INSERT INTO meta VALUES ('schema_version', ?)", (_QID_INDEX_VERSION,)
-        )
-        conn.execute("INSERT INTO meta VALUES ('zim_mtime', ?)", (zim_mtime,))
-        if zim_uuid:
-            conn.execute("INSERT INTO meta VALUES ('zim_uuid', ?)", (zim_uuid,))
-        conn.execute("INSERT INTO meta VALUES ('built_at', ?)", (str(time.time()),))
-        conn.execute("INSERT INTO meta VALUES ('entry_count', ?)", (str(count),))
+        _write_index_meta(conn, archive, zim_path, _QID_INDEX_VERSION, count)
         conn.commit()
     except Exception:
         conn.close()
@@ -352,6 +342,17 @@ def _get_qid_cache():
             "CREATE TABLE IF NOT EXISTS qid_cache (zim TEXT, path TEXT, qid INTEGER, PRIMARY KEY(zim, path))"
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cache_qid ON qid_cache(qid)")
+        conn.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)")
+        row = conn.execute("SELECT value FROM meta WHERE key='cache_version'").fetchone()
+        if not row or row[0] != _QID_CACHE_VERSION:
+            # Rows from before the version was stamped may be title guesses
+            # cached as if verified, and cannot be told from real ones. It is
+            # an on-demand cache: emptied once, it refills as articles are read.
+            conn.execute("DELETE FROM qid_cache")
+            conn.execute(
+                "INSERT OR REPLACE INTO meta VALUES ('cache_version', ?)", (_QID_CACHE_VERSION,)
+            )
+            conn.commit()
         _qid_cache_conn = conn
         return conn
 
@@ -821,6 +822,40 @@ def _persist_qid_flags(qid_flags):
 _build_all_qid_lock = threading.Lock()
 
 
+def _detect_qid_flags(zims):
+    """{name: has_qids} for every ZIM: True where a Q-ID index exists, else
+    whether one sampled article carries a Q-ID. One read per ZIM, so the
+    badge does not wait for the full scans, which on a big library take
+    hours."""
+    flags = {}
+    sampled = 0
+    for name, path in zims.items():
+        if _qid_has_index(name):
+            flags[name] = True
+        else:
+            flags[name] = _check_one_article_for_qid(path)
+            sampled += 1
+    log.info(
+        "Q-ID support: %d/%d ZIMs have Q-IDs (%d sampled)",
+        sum(1 for v in flags.values() if v),
+        len(flags),
+        sampled,
+    )
+    return flags
+
+
+def _apply_qid_flags(flags):
+    """Set has_qids on the library list, and persist when anything changed."""
+    changed = 0
+    for zi in _srv._zim_list_cache or []:
+        zname = zi.get("name", "")
+        if zname in flags and zi.get("has_qids") != flags[zname]:
+            zi["has_qids"] = flags[zname]
+            changed += 1
+    if changed:
+        _persist_qid_flags(flags)
+
+
 def _build_all_qid_indexes():
     """Build Q-ID indexes for small Wikipedia ZIMs and detect has_qids for all ZIMs.
 
@@ -842,6 +877,8 @@ def _build_all_qid_indexes_inner():
     """
     os.makedirs(_qid_index_dir(), exist_ok=True)
     zims = _srv.get_zim_files()
+    # Which ZIMs carry Q-IDs is known first, from one article each.
+    _apply_qid_flags(_detect_qid_flags(zims))
     zim_info = {
         z.get("name"): z.get("entries", 0) for z in (_srv._zim_list_cache or [])
     }
@@ -870,8 +907,9 @@ def _build_all_qid_indexes_inner():
 
         for name, path in need_build:
             try:
-                _build_qid_index(name, path)
+                _build_index_isolated("qids", name, path, _build_qid_index, _close_qid_db)
                 current += 1
+                _apply_qid_flags({name: True})
             except Exception as e:
                 log.warning("Q-ID index build failed for %s: %s", name, e)
             # Yield to host between ZIMs if loadavg is high.
@@ -909,46 +947,6 @@ def _build_all_qid_indexes_inner():
             current,
             skipped_large,
         )
-
-    # Phase 2: Detect has_qids for all ZIMs
-    # Known Wikimedia projects always embed Q-IDs. For indexed ZIMs we know for sure.
-    # For unknown projects, sample a few articles to check.
-    indexed_zims = set()
-    for name in zims:
-        if _qid_has_index(name):
-            indexed_zims.add(name)
-
-    qid_flags = {}  # {name: bool}
-    sampled = 0
-    for name, path in zims.items():
-        if name in indexed_zims:
-            qid_flags[name] = True
-        else:
-            # Sample actual content — don't assume based on project name
-            has = _check_one_article_for_qid(path)
-            qid_flags[name] = has
-            sampled += 1
-
-    # Apply to _zim_list_cache and persist
-    changed = 0
-    for zi in _srv._zim_list_cache or []:
-        zname = zi.get("name", "")
-        if zname in qid_flags:
-            old = zi.get("has_qids")
-            zi["has_qids"] = qid_flags[zname]
-            if old != qid_flags[zname]:
-                changed += 1
-
-    if changed:
-        _persist_qid_flags(qid_flags)
-
-    has_count = sum(1 for v in qid_flags.values() if v)
-    log.info(
-        "Q-ID support: %d/%d ZIMs have Q-IDs (%d sampled)",
-        has_count,
-        len(qid_flags),
-        sampled,
-    )
 
 
 # ============================================================================
@@ -1405,6 +1403,12 @@ def get_article_languages(zim_name, article_path):
                 r'\.org/wiki/([^"#]+)"'
             )
             for m in pattern.finditer(content):
+                # Only the page's own language links. An inline cross-wiki link
+                # (class "extiw": French Eau's "symetrie tetraedrique (en)")
+                # names some other article, and was taken for Eau's English
+                # counterpart.
+                if not _is_interlanguage_link(content, m.start()):
+                    continue
                 lang = m.group(1)
                 lang = _srv._ISO639_3_TO_1.get(lang, lang)
                 if lang in seen_langs:
@@ -1439,15 +1443,19 @@ def get_article_languages(zim_name, article_path):
             try:
                 cand_entry = cand_archive.get_entry_by_path(try_path)
                 resolved_path = try_path
-                if cand_entry.is_redirect:
+                via_redirect = cand_entry.is_redirect
+                if via_redirect:
                     resolved_path = cand_entry.get_redirect_entry().path
-                # Q-ID verification: reject same-title different-article
+                cand_qid = None
                 if qid is not None:
                     cand_qid = _qid_extract_from_html(cand_archive, resolved_path)
                     if cand_qid is not None:
                         _qid_cache_store(n, resolved_path, cand_qid)
-                    if cand_qid is not None and cand_qid != qid:
-                        continue
+                verdict = _title_match_verdict(qid, cand_qid, via_redirect)
+                # Nothing to verify against without a Q-ID here: stop reading
+                # candidates' HTML for this language.
+                if verdict is None:
+                    continue
                 seen_langs.add(lang)
                 installed.append(
                     {
@@ -1455,6 +1463,7 @@ def get_article_languages(zim_name, article_path):
                         "name": _LANG_NATIVE_NAMES.get(lang, lang),
                         "zim": n,
                         "path": resolved_path,
+                        "_verified": verdict == "verified",
                     }
                 )
                 break
@@ -1466,15 +1475,48 @@ def get_article_languages(zim_name, article_path):
     # Cross-cache: store the Q-ID for ALL found matches so any→any direction works.
     # Without this, hopping English→Hebrew caches Q-ID for Hebrew, but Hebrew→German
     # fails because German's sparse nopic index doesn't have the Q-ID.
+    # Only matches something vouched for: a guess cached under the source's
+    # Q-ID reads as verified from then on, in every direction.
     if qid is not None and len(installed) > 0:
         all_paths = [(zim_name, article_path)] + [
-            (m["zim"], m["path"]) for m in installed
+            (m["zim"], m["path"]) for m in installed if m.get("_verified", True)
         ]
         for z, p in all_paths:
             _qid_cache_store(z, p, qid)
 
+    for m in installed:
+        m.pop("_verified", None)
     installed.sort(key=lambda x: x["name"])
     return {"languages": installed[:20]}
+
+
+def _title_match_verdict(src_qid, cand_qid, via_redirect):
+    """"verified" when a same-title article in another language carries this
+    article's Q-ID, else None: not offered.
+
+    A same title proves nothing. Accepting it offered French "Water" (a
+    disambiguation page) and Spanish "Water", a redirect to "Inodoro" (a
+    toilet), for English Water, and German "Eau" for French Eau.
+    get_article_languages promises verified entries only; a language with no
+    way to verify is left out rather than guessed.
+    """
+    if src_qid is not None and cand_qid == src_qid:
+        return "verified"
+    return None
+
+
+_INTERLANG_ATTR_RE = re.compile(r"interlanguage-link|hreflang=", re.IGNORECASE)
+
+
+def _is_interlanguage_link(content, href_at):
+    """Whether the <a> holding the href at `href_at` is one of the page's own
+    language links (Wikipedia marks them interlanguage-link / hreflang), not a
+    cross-wiki link inside the text."""
+    tag_start = content.rfind("<", 0, href_at)
+    tag_end = content.find(">", href_at)
+    if tag_start < 0 or tag_end < 0:
+        return False
+    return bool(_INTERLANG_ATTR_RE.search(content, tag_start, tag_end))
 
 
 def _zim_project_name(zim_name):

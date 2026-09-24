@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.10.2] - 2026-09-23
+
+A fix-up release from a pass over every feature Zimi has claimed since 1.0.
+
+### Changed
+
+- Release files are named `Zimi-<version>-<platform>-<chip>`: `Zimi-1.10.2-macOS-AppleSilicon.dmg`, `-macOS-Intel.dmg`, `-Windows-x64-Setup.exe`, `-Windows-x64.zip`, `-Linux-x64.AppImage`, `-Linux-x64.snap`. Updates and Homebrew follow the new names.
+- Nearby announces this server on the network only when it is switched on. Every install announced itself before, whatever the switch said.
+- "Remember me" keeps a session, not the admin password. A password stored by an earlier version is removed from the browser. Changing the password asks for the current one.
+- Preferred languages narrow search. Other languages stay as dimmed pills you can tap.
+- A medicine or Wikipedia ZIM in two flavors (maxi and nopic) is served once, as the richer one, and old links to the other flavor redirect.
+
+- The desktop app can open Zimi to other devices on the network, from a switch in Settings (off by default). It shows the address to open on a phone. A visitor reads the library; Manage still needs the admin password, which is set on the computer running Zimi (#90).
+
+### Fixed
+
+- The Linux snap opens its window on a real desktop (#81).
+- Apps switched off in Settings stay off (#88).
+- Quick search answers in a fraction of a second. Multi-word queries fell back to a slow title scan on most ZIMs, and index builds on the server stalled searches while they ran; big builds now run in a process of their own.
+- Did-you-mean works from startup on every ZIM. Its vocabulary was stale, built late and partial.
+- Search puts the article titled as typed first, shows the article's lead sentence as the snippet, and says when it was throttled.
+- The language globe offers the same article in another language, or nothing. It offered look-alikes (English Water gave Spanish "Inodoro").
+- The Q-ID badge shows from the start instead of after hours of indexing.
+- Book of the Day is the same book on every visit that day.
+- The On This Day card shows its date; recent history shows page titles, not file names.
+- A mouse wheel scrolls the Discover strip and the pill rows.
+- Reader View draws one line under the title; tap-to-zoom, Print, Share and Define work on every article; the PDF viewer follows the language setting.
+- A link to a missing article shows a page with a library search, not raw JSON.
+- The almanac: Hebrew dates, moon-phase marks, the meteor "Peak!" day, the time zone label, BC years, the shallow penumbral eclipses, and "beyond range" where an estimate stops holding.
+- "About this data" in the almanac says where each number comes from.
+- ZimiTube reads current Kiwix video ZIMs: multi-language TED (`ted_mul`) and youtube2zim 3.x channels such as CrashCourse and Blender Studio, with their subtitles (#89).
+- ZimiTube shows videos Zimi made and one card per TED talk; a talk whose video is missing says so.
+- ZimiTube search finds a video by its description as well as its title, for every source; multi-language TED and youtube2zim 3.x descriptions are read once in the background, so the feed opens without waiting for them, and the player shows the whole description.
+- The catalog: `ZIMI_OFFLINE` stays offline, "Part of" badges stay within a project, seeding survives being switched off and on, and a small library's size is not 0 B.
+- Nearby tells two servers on one host apart, and keeps its ZIM count current.
+- Maps: search from a map opened by link, Enter flies to the place, and visitors can open the map picker.
+- The Mac app reports its real version, so Sparkle stops offering an update that is already installed.
+- Manage no longer sticks on "Loading..." after a correct password.
+- A title index build interrupted by a restart no longer fails every start after it.
+- `zimi serve` prints its `READY <port>` line whole; a log line from startup could split it, and a script waiting for it missed it.
+
 ## [1.10.1] - 2026-09-22
 
 ### Fixed

@@ -76,7 +76,10 @@ var SK = {
   BM_FOLDERS: 'zimi_bm_folders',
   // Per-device UI state: ids of collapsed folders in the bookmarks tree.
   BM_COLLAPSED: 'zimi_bm_collapsed',
-  MANAGE_PW: 'zimi_manage_pw',
+  // The admin's session token. Never the password: that used to be kept here
+  // in plain text under the key zimi_manage_pw, which _purgeStoredPassword
+  // removes wherever an older version left it.
+  MANAGE_PW: 'zimi_manage_token',
   // Optional management username (v1.8) — a plain identifier, stored next to
   // the token so a remembered session keeps sending its X-Zimi-User header.
   MANAGE_USER: 'zimi_manage_user',
@@ -612,6 +615,13 @@ function _dismissOnOutside(keepEls, onDismiss) {
   return detach;
 }
 
+// A password an older version stored (zimi_manage_pw) is deleted on load;
+// that browser signs in once more and keeps a session token instead.
+(function _purgeStoredPassword() {
+  try { localStorage.removeItem('zimi_manage_pw'); } catch (e) {}
+  try { sessionStorage.removeItem('zimi_manage_pw'); } catch (e) {}
+})();
+
 // ── Manage token storage ──
 // localStorage = persistent ("Remember me" checked).
 // sessionStorage = current-tab-only (default). Read both, prefer persistent.
@@ -725,6 +735,7 @@ let _managePwRequired = false; // server is password-protected and we have no to
 // and there is no password to enter, so we explain instead of prompting (#36).
 let _managePublicLocked = false;
 let _manageNeedsSetupKey = false;
+let _manageSetupKeyIssued = true;
 let _manageUnlocked = true; // manage is always available (auth via env var only)
 
 // May we hit ambient /manage/* endpoints (activity bar, peer discovery)?
@@ -801,6 +812,11 @@ function _updateHomeFiltersVisibility() {
 
 // ── Language filter ──
 let activeLanguageFilters = new Set();
+// Whether the language filter is the one preferred languages chose (and so
+// follows each new search) rather than one the person picked; and the query
+// it was chosen for.
+let _langFilterIsAuto = false;
+let _langAutoQuery = null;
 
 const RESULTS_PER_PAGE = 20;
 let visibleResultCount = RESULTS_PER_PAGE;
@@ -959,8 +975,17 @@ async function setLanguage(lang) {
   if (_isPdfPage()) {
     try {
       var _pf = document.getElementById('reader-frame');
-      var _pm = /[?&]file=([^#&]*)/.exec(_pf.contentWindow.location.href);
-      if (_pm) _pf.contentWindow.location.replace(_pdfViewerUrl(_pm[1]));
+      var _pw = _pf.contentWindow;
+      var _pm = /[?&]file=([^#&]*)/.exec(_pw.location.href);
+      if (_pm) {
+        // The locale rides in the #fragment, and replacing a URL with one that
+        // differs only there is a scroll, not a load: the viewer kept its old
+        // language for every switch but the one to English (no fragment).
+        var _next = _pdfViewerUrl(_pm[1]);
+        var _onlyHash = _pw.location.href.split('#')[0] === new URL(_next, _pw.location.href).href.split('#')[0];
+        _pw.location.replace(_next);
+        if (_onlyHash) _pw.location.reload();
+      }
     } catch (e) {}
   }
   // Sync almanac: re-render all content with new translations
@@ -1180,6 +1205,17 @@ let _manageUser = _readManageUser();
 let _manageSavedReader = null; // saved reader state when entering manage
 let _pwResolve = null;
 let _pwReject = null;
+// Manage calls that got a 401 while a manage sign-in was already open. Each is
+// retried with the token once the call that opened the prompt is accepted, and
+// rejected if it is cancelled. Two 401s at once (the Library pane and the
+// Creator prefetch) used to replace one resolver with the other, and the first
+// call waited forever: Manage stuck on "Loading…" after a correct password.
+let _pwQueued = [];
+let _pwQueueOwner = null;
+function _pwDropQueue(err) {
+  var q = _pwQueued; _pwQueued = []; _pwQueueOwner = null;
+  q.forEach(function(w) { w.reject(err || new Error('auth_cancelled')); });
+}
 
 // ── Multi-user session (v1.8) ──
 // A logged-in NAMED USER (not admin). The session cookie does the actual
@@ -1361,6 +1397,15 @@ function manageFetch(url, opts) {
   return fetch(url, opts).then(_throwIfRateLimited).then(function(res) {
     if (res.status === 401) {
       return new Promise(function(resolve, reject) {
+        var retryWith = function(token) {
+          var o = Object.assign({}, opts);
+          o.headers = Object.assign({}, o.headers, _authHeaders(token));
+          return fetch(url, o);
+        };
+        if (_pwResolve && _pwResolve === _pwQueueOwner) {
+          _pwQueued.push({ retry: retryWith, resolve: resolve, reject: reject });
+          return;
+        }
         // Single auth door: any unauthorized manage call opens the UNIFIED
         // sign-in modal (there is no separate "Sign in" entry). It accepts a
         // named user (→ their filtered library) OR the admin (→ full manage);
@@ -1369,6 +1414,7 @@ function manageFetch(url, opts) {
         _pwLoginMode = true;
         var rejectFn = function() {
           // User cancelled — leave manage view
+          _pwDropQueue();
           goHome();
           reject(new Error('auth_cancelled'));
         };
@@ -1376,9 +1422,7 @@ function manageFetch(url, opts) {
           // Verify password (and username, if any) before accepting it.
           // submitPw has already set _manageUser from the modal field, so
           // _authHeaders folds in the X-Zimi-User header.
-          var verifyOpts = Object.assign({}, opts);
-          verifyOpts.headers = Object.assign({}, verifyOpts.headers, _authHeaders(token));
-          fetch(url, verifyOpts).then(function(retryRes) {
+          retryWith(token).then(function(retryRes) {
             if (retryRes.status === 401) {
               // Wrong password — show error, restore reject handler, keep modal open
               document.getElementById('pw-error').textContent = t('wrong_password');
@@ -1391,10 +1435,14 @@ function manageFetch(url, opts) {
             // Correct password
             _manageToken = token;
             _saveManageToken(token, document.getElementById('pw-remember').checked);
+            var queued = _pwQueued; _pwQueued = []; _pwQueueOwner = null;
             closePwModal();
             resolve(retryRes);
+            queued.forEach(function(w) { w.retry(token).then(w.resolve, w.reject); });
           });
         };
+        _pwQueueOwner = _pwResolve;
+        _pwQueued = [];
         _pwReject = rejectFn;
         openPwModal(t('sign_in'));
       });
@@ -1523,6 +1571,7 @@ function submitPw() {
         // (it's admin-only — retrying would just 401 again) and switch to the
         // filtered library. Their account state lives in Manage → Users.
         _pwResolve = null; _pwReject = null;
+        _pwDropQueue();
         _pwLoginMode = false;
         // Leaving the private-mode gate: reload into a clean authenticated
         // state so the whole app boots with the session's filtered view.
@@ -1779,15 +1828,7 @@ function updateTopbar() {
   // body.creating, not an inline style: the mobile rule that shows ⋯ is
   // !important, which no inline display can outrank.
   document.body.classList.toggle('creating', !!_createOpen);
-  var moreBtn = document.querySelector('.topbar-more');
-  if (moreBtn) {
-    // A menu with nothing in it is no menu: on a wide screen an app page has
-    // no reading rows to fold, so the button goes too (Eric: "... menu is
-    // showing in tube and for no reason nothing behind it on desktop").
-    moreBtn.style.display = _createOpen ? 'none'
-      : (_createMenuRowAvailable() ? 'flex' : (readerOpen && !_buildTopbarMenuHtml() ? 'none' : ''));
-    _syncTopbarMoreSolo(moreBtn);
-  }
+  _syncTopbarMore();
   document.getElementById('lang-selector-btn').style.display =
     _getStorageFlag(SK.HIDE_LANG_CHOOSER) ? 'none' : '';
   _updateLibraryBtnIcon();
@@ -2199,6 +2240,7 @@ async function _probeManageAuth() {
       try {
         var _ld = await mres.clone().json();
         _manageNeedsSetupKey = !!(_ld && _ld.needs_setup_key);
+        _manageSetupKeyIssued = !(_ld && _ld.setup_key_issued === false);
       } catch (e) { _manageNeedsSetupKey = false; }
     } else if (mres.status === 401) {
       // Stored token went stale — drop BOTH copies (leaving the persisted
@@ -3227,7 +3269,11 @@ function renderHome(filter) {
     output.innerHTML = '<div id="discover-row"></div>'
       + '<div class="empty"><p>' + tH('no_sources_found') + '</p><p class="hint">' + tH('add_zims') + '</p>'
       + (manageEnabled ? '<a href="/?manage" onclick="event.preventDefault();enterManage();setTimeout(function(){switchManageTab(\'browse\')},50)" style="display:inline-block;margin-top:16px;color:var(--amber);font-weight:500;font-size:14px;text-decoration:none;border-bottom:1px solid var(--amber-border)">' + tH('catalog_link') + '</a>' : '')
-      + '</div>';
+      + '</div>'
+      // The apps on a fresh install too, each tile saying what it needs and
+      // opening its catalog category (docs/features/apps.md). The empty
+      // library returned before the row was ever built.
+      + _appsRowHtml();
     _loadDiscover();
     return;
   }
@@ -3322,6 +3368,9 @@ function renderHome(filter) {
   const sorted = homeRecentFilter === 'added' ? _recentAdded
     : homeRecentFilter === 'updated' ? _recentUpdated
     : _langSorted;
+  // The ZIMs the recency and language filters let through, for the sections
+  // (favourites, collections) that pick their own members by name.
+  const _homeShown = new Set(sorted.map(z => z.name));
 
   const groups = {};
   sorted.forEach(z => {
@@ -3450,7 +3499,9 @@ function renderHome(filter) {
     if (!filter && favNames.length > 0) {
       // The star order is the order they were starred in; the library's own
       // order is what the person chose, so it wins here too.
-      const favZims = _sortLibrary(favNames.map(n => _zimInfo(n)).filter(Boolean));
+      // Only what the filters let through: "Recently added" or a language
+      // left every favourite on screen (23 cards against the 15 it matched).
+      const favZims = _sortLibrary(favNames.map(n => _zimInfo(n)).filter(z => z && _homeShown.has(z.name)));
       if (favZims.length > 0) {
         const favZimNames = favZims.map(z => z.name);
         h += '<div class="cat-heading clickable" onclick="enterScope(\'favorites\',\'\u2605 ' + escJs(t('favorites')) + '\',' + escJs(JSON.stringify(favZimNames)) + ',true)">\u2605 ' + tH('favorites') + '</div>';
@@ -3499,7 +3550,7 @@ function renderHome(filter) {
     var _sections = [];
     if (!filter && collectionsCache && collectionsCache.collections) {
       for (const [cname, coll] of Object.entries(collectionsCache.collections)) {
-        const collZims = _sortLibrary((coll.zims || []).map(n => _zimInfo(n)).filter(Boolean));
+        const collZims = _sortLibrary((coll.zims || []).map(n => _zimInfo(n)).filter(z => z && _homeShown.has(z.name)));
         if (collZims.length > 0) {
           const collZimNames = collZims.map(z => z.name);
           _sections.push({ key: 'col:' + cname, html:
@@ -3581,10 +3632,11 @@ function _zimLangBadgeInfo(z, force) {
   if (!lang || lang === 'all') return null;
   if (lang.includes(',')) { var n = lang.split(',').length; return n > 1 ? {multi: n} : null; }
   if (lang === 'mul' || lang === 'multi' || /^mul/i.test(z.name)) return null;
-  if (!force && lang === _currentLang) return null;
-  // Two-letter uppercase code (DE, AR, FR…). ISO 639-1 codes are already two
-  // letters; longer codes are clipped to their first two.
-  return {code: (lang.length > 2 ? lang.slice(0, 2) : lang).toUpperCase()};
+  if (!force && _normLang(lang) === _currentLang) return null;
+  // Uppercase ISO 639-1 code (DE, AR, FR…) via the 639-3 map. Never the first
+  // two letters of a 639-3 code: mlt (Maltese) is not ML (Malayalam), nor
+  // bos (Bosnian) BO (Tibetan). No 639-1 equivalent shows the 639-3 code.
+  return {code: _normLang(lang).toUpperCase()};
 }
 
 // Inline language badge (search + full list rows). Full language name in the
@@ -3598,7 +3650,7 @@ function _langBadge(z, force, full) {
   if (!info) return '';
   if (info.multi) {
     return '<span class="lang-badge multi" title="' + escAttr(t('multilingual', {n: info.multi})) + '">' +
-      info.multi + ' ' + tH('language').toLowerCase() + '</span>';
+      tPluralH('n_languages', info.multi) + '</span>';
   }
   var name = _langDisplayName(z.language) || info.code;
   if (full) {
@@ -4894,6 +4946,9 @@ function openCreate(replaceState) {
       openCreate(replaceState);
     };
     _pwResolve = _afterPw; _pwReject = function() {};
+    // Through /login, so what _afterPw keeps is a session token, not the
+    // password that was typed.
+    _pwLoginMode = true;
     openPwModal();
     return;
   }
@@ -5080,6 +5135,33 @@ function _dismissDiscover() {
 // the app's OWN cache keys and they pile up forever, silently. The date is
 // what makes a key safe to delete, not the stamp.
 var _DISCOVER_CACHE_KEY_RE = /^zimi_[A-Za-z0-9.-]+_\d{4}-\d{2}-\d{2}$/;
+
+// Strips that only scroll sideways. A mouse wheel only turns vertically, and
+// the pill rows hide their scrollbars, so on a desktop with a mouse none of
+// these could be moved at all. A trackpad's sideways swipe (deltaX) is left to
+// the browser. At either end the wheel goes back to scrolling the page.
+var _SIDEWAYS_STRIPS = '.discover-scroll, .pills-row, .lang-pills, .catalog-lang-scroll';
+var _WHEEL_LINE_PX = 16;       // deltaMode 1 (Firefox, some mice) counts lines
+var _WHEEL_STEP_REST_MS = 250; // one card per notch while a snap step animates
+document.addEventListener('wheel', function(e) {
+  if (e.ctrlKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+  var strip = e.target.closest && e.target.closest(_SIDEWAYS_STRIPS);
+  if (!strip) return;
+  var max = strip.scrollWidth - strip.clientWidth;
+  var dy = e.deltaMode === 1 ? e.deltaY * _WHEEL_LINE_PX : e.deltaY;
+  if (max <= 0 || (dy < 0 && strip.scrollLeft <= 0) || (dy > 0 && strip.scrollLeft >= max - 1)) return;
+  e.preventDefault();
+  // A mandatory snap pulls a small nudge back to the card it left, so a
+  // snapped strip moves a whole card per notch instead.
+  var style = getComputedStyle(strip);
+  if (style.scrollSnapType.indexOf('mandatory') === -1) { strip.scrollLeft += dy; return; }
+  if (strip._wheelStepping) return;
+  var card = strip.firstElementChild;
+  var step = card ? card.getBoundingClientRect().width + (parseFloat(style.columnGap) || 0) : strip.clientWidth;
+  strip._wheelStepping = true;
+  strip.scrollBy({ left: dy > 0 ? step : -step, behavior: 'smooth' });
+  setTimeout(function() { strip._wheelStepping = false; }, _WHEEL_STEP_REST_MS);
+}, { passive: false });
 function _loadDiscover() {
   if (_discoverLoading) return;
   var el = document.getElementById('discover-row');
@@ -5210,7 +5292,10 @@ function _loadDiscover() {
         var item = { zim: s.name, path: d.path, title: d.title || _titleFromPath(d.path || ''),
                  thumbnail: d.thumbnail || null, blurb: d.blurb || null,
                  attribution: d.attribution || null, speaker: d.speaker || null, author: d.author || null, part_of_speech: d.part_of_speech || null,
-                 date: d.date || null, type: s.type, label: s.label || null, icon: s.icon || null };
+                 date: d.date || null, type: s.type, label: s.label || null, icon: s.icon || null,
+                 // On This Day's date line (renderDiscover reads these); left
+                 // behind here, the card never showed which day or year it was.
+                 event_text: d.event_text || null, event_year: d.event_year || null };
         _discoverResults[idx] = item; // Store immediately on resolve
         return item;
       })
@@ -6349,7 +6434,11 @@ q.addEventListener('input', () => {
     suggestTimer = setTimeout(function() { _tubeSearch(val); }, 150);
   } else if (val && val.length >= 1 && _isMapPage()) {
     // Zimi Maps: the box finds places, on every installed map, nothing else.
+    // Nothing else means returning here: falling through ran the article
+    // search half a second later, and a map opened from a link or a reload
+    // gave way to "No results found".
     if (val.length >= 2) suggestTimer = setTimeout(() => fetchPlaces(val), 200);
+    return;
   } else if (val && val.length >= 1 && mode !== 'manage') {
     // Show filtered history immediately, then fetch remote suggestions
     showHistoryDropdown(val);
@@ -6402,6 +6491,9 @@ q.addEventListener('keydown', e => {
       return;
     }
     if (e.key === 'Escape') {
+      // This Escape is spent closing the dropdown. Left to bubble, the page's
+      // handler saw the dropdown already shut and cleared the query too.
+      e.stopPropagation();
       hideSuggest();
       return;
     }
@@ -6496,6 +6588,7 @@ async function doSearch(query, push) {
     // Phase 1: fast title search (parallel per-ZIM, no lock contention)
     const r1 = await serverFetch('/search?q=' + encodeURIComponent(query) + '&limit=10' + zimParam + '&fast=1',
       { signal: searchController.signal });
+    _throwIfRateLimited(r1);
     const d1 = await r1.json();
     const phase1Elapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
     d1._clientElapsed = phase1Elapsed;
@@ -6538,6 +6631,7 @@ async function doSearch(query, push) {
       // Phase 2: full Xapian FTS (sequential under _zim_lock, searches every ZIM)
       const r2 = await serverFetch('/search?q=' + encodeURIComponent(query) + '&limit=10' + zimParam,
         { signal: searchController.signal });
+      _throwIfRateLimited(r2);
       const d2 = await r2.json();
       clearInterval(timerInterval);
       d2._clientElapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
@@ -6553,6 +6647,11 @@ async function doSearch(query, push) {
       output.innerHTML = '<div class="empty conn-empty"><p>' + tH('search_offline') + '</p>' +
         '<p class="hint">' + tH('search_offline_hint') + '</p>' +
         '<button type="button" class="conn-retry conn-retry-inline" onclick="_connRetryClick(this)">' + tH('conn_retry') + '</button></div>';
+      return;
+    }
+    // A throttled search is not an empty one: it used to read "No results".
+    if (e.rateLimited) {
+      output.innerHTML = '<div class="empty"><p>' + tH('search_rate_limited', {s: e.retryAfter}) + '</p></div>';
       return;
     }
     output.innerHTML = '<div class="empty"><p>' + tH('search_failed') + '</p><p class="hint">' + tH('try_again') + '</p></div>';
@@ -6621,7 +6720,26 @@ var _NATIVE_LANG_NAMES = {
   bn:'বাংলা',ta:'தமிழ்',te:'తెలుగు',ur:'اردو',mul:'Multiple'
 };
 
+// Search narrows to the preferred languages (Settings > Languages), 1.7.0's
+// promise that it never kept: once per query, and again as the full results
+// widen what is there, until the person taps a language pill themselves.
+// Only languages the results actually hold; none of them there, no filter.
+function _applyPreferredLanguages(data, langCodes) {
+  var prefs = _getPrefLanguages().map(_normLang).filter(Boolean);
+  if (!prefs.length) return;
+  if (data._query !== _langAutoQuery) {
+    if (activeLanguageFilters.size && !_langFilterIsAuto) return;  // their own pick holds
+    _langAutoQuery = data._query;
+    _langFilterIsAuto = true;
+  } else if (!_langFilterIsAuto) {
+    return;
+  }
+  var picked = langCodes.filter(function(l) { return prefs.indexOf(_normLang(l)) >= 0; });
+  activeLanguageFilters = new Set(picked);
+}
+
 function toggleLanguageFilter(lang) {
+  _langFilterIsAuto = false;
   if (activeLanguageFilters.has(lang)) activeLanguageFilters.delete(lang);
   else activeLanguageFilters.add(lang);
   renderSearchResults(allResults, currentSource);
@@ -6630,6 +6748,7 @@ function toggleLanguageFilter(lang) {
 // "All" reset pills at the head of each search filter row — one click each on
 // the two Alls returns the results to the unfiltered set.
 function clearLanguageFilter() {
+  _langFilterIsAuto = false;
   activeLanguageFilters.clear();
   renderSearchResults(allResults, currentSource);
 }
@@ -6668,6 +6787,7 @@ function renderSearchResults(data, scope) {
   // Language filter pills (global search only, multiple languages)
   var langPillsHtml = '';
   const langCodes = Object.keys(byLanguage);
+  if (!scope) _applyPreferredLanguages(data, langCodes);
   if (!scope && langCodes.length > 1) {
     // Sort by count descending, same as source pills
     langPillsHtml = '<div class="lang-pills" role="group" aria-label="' + escAttr(t('filter_by_language')) + '">' +
@@ -6676,7 +6796,10 @@ function renderSearchResults(data, scope) {
       var name = _NATIVE_LANG_NAMES[lang] || lang;
       // Dim language pills when a source filter is active and that source has no results in this language
       var dimmed = activeSourceFilters.size > 0 && ![...activeSourceFilters].some(function(s) { return langsBySource[s] && langsBySource[s].has(lang); });
-      return '<button class="pill' + (activeLanguageFilters.has(lang) ? ' active' : '') + (dimmed ? ' dimmed' : '') +
+      // While a language filter is on, the other languages stay in view,
+      // dimmed and still a tap away: there is more than the filter shows.
+      var other = activeLanguageFilters.size > 0 && !activeLanguageFilters.has(lang);
+      return '<button class="pill' + (activeLanguageFilters.has(lang) ? ' active' : '') + (dimmed ? ' dimmed' : (other ? ' other-lang' : '')) +
         '" aria-pressed="' + activeLanguageFilters.has(lang) + '" onclick="toggleLanguageFilter(\'' + escAttr(lang) + '\')">' +
         esc(name) + ' (' + byLanguage[lang] + ')</button>';
     }).join('') + '</div>';
@@ -6731,10 +6854,12 @@ function renderSearchResults(data, scope) {
   document.getElementById('search-time').textContent = displayElapsed ? t('in_time', {time: displayElapsed}) : '';
   searchMeta.style.display = items.length ? 'flex' : 'none';
 
-  // "Did you mean X?" — a clickable correction, shown only when results are
-  // sparse (server already gates on <3, but merged counts can differ).
+  // "Did you mean X?" — a clickable correction. The server decides when one
+  // is worth offering (fewer than 30 results and a likely misspelling, since
+  // 1.8.0: "einstien" still matched 13 things); a second gate here at 3 hid
+  // nearly every suggestion it sent.
   var dymHtml = '';
-  if (data.did_you_mean && totalCount < 3) {
+  if (data.did_you_mean) {
     var sugg = data.did_you_mean;
     dymHtml = '<div class="did-you-mean">' +
       t('did_you_mean', {s: '<a href="#" data-sugg="' + escAttr(sugg) + '">' + esc(sugg) + '</a>'}) +
@@ -7005,7 +7130,11 @@ async function fetchPlaces(query) {
     const data = await res.json();
     if (seq !== _suggestSeq || document.activeElement !== q) return;
     suggestItems = [];
-    for (const g of (data.groups || [])) {
+    // The map on screen first: Enter takes the first row, and in library
+    // order "Honolulu" on the Hawaii map flew to the World map instead.
+    const onScreen = currentArticle && currentArticle.zim;
+    const groups = (data.groups || []).slice().sort((a, b) => (b.zim === onScreen) - (a.zim === onScreen));
+    for (const g of groups) {
       for (const p of (g.places || [])) {
         const what = [p.sub || (p.type !== 'place' ? p.type : ''), p.locality].filter(Boolean)
           .map(x => String(x).replace(/_/g, ' ')).join(' \u00b7 ');
@@ -7548,7 +7677,7 @@ function formatLanguage(langStr) {
 }
 
 // 3-letter → 2-letter language code for tags
-const _LANG3TO2 = {eng:'en',fra:'fr',deu:'de',spa:'es',por:'pt',ita:'it',rus:'ru',ara:'ar',zho:'zh',jpn:'ja',kor:'ko',hin:'hi',tur:'tr',pol:'pl',nld:'nl',swe:'sv',vie:'vi',tha:'th',heb:'he',ell:'el',ron:'ro',hun:'hu',fas:'fa',far:'fa',ind:'id',ukr:'uk',ces:'cs',dan:'da',fin:'fi',nor:'no',cat:'ca',mul:'mul',msa:'ms',ben:'bn',tam:'ta',tel:'te',urd:'ur',srp:'sr',hrv:'hr',bos:'bs',slk:'sk',slv:'sl',bul:'bg',lit:'lt',lav:'lv',est:'et',swa:'sw',amh:'am',hau:'ha',yor:'yo',zul:'zu',afr:'af',gle:'ga',cym:'cy',eus:'eu',glg:'gl',kat:'ka',hye:'hy',mkd:'mk',sqi:'sq',bel:'be',kaz:'kk',uzb:'uz',tgl:'tl',mal:'ml',kan:'kn',guj:'gu',mar:'mr',mya:'my',khm:'km',lao:'lo',sin:'si',nep:'ne',pan:'pa',aze:'az',mon:'mn',tgk:'tg',kir:'ky',isl:'is',fao:'fo',kur:'ku',ori:'or',jav:'jv',sun:'su',asm:'as',snd:'sd',kas:'ks',kik:'ki',sme:'se',lim:'li',pam:'pam',tir:'ti',lin:'ln',wol:'wo',som:'so',run:'rn',bis:'bi',nav:'nv',dzo:'dz',vol:'vo',ina:'ia',tat:'tt',bak:'ba',chv:'cv',oss:'os',tuk:'tk',sah:'sah'};
+const _LANG3TO2 = {eng:'en',fra:'fr',deu:'de',spa:'es',por:'pt',ita:'it',rus:'ru',ara:'ar',zho:'zh',jpn:'ja',kor:'ko',hin:'hi',tur:'tr',pol:'pl',nld:'nl',swe:'sv',vie:'vi',tha:'th',heb:'he',ell:'el',ron:'ro',hun:'hu',fas:'fa',far:'fa',ind:'id',ukr:'uk',ces:'cs',dan:'da',fin:'fi',nor:'no',cat:'ca',mul:'mul',msa:'ms',ben:'bn',tam:'ta',tel:'te',urd:'ur',srp:'sr',hrv:'hr',bos:'bs',slk:'sk',slv:'sl',bul:'bg',lit:'lt',lav:'lv',est:'et',swa:'sw',amh:'am',hau:'ha',yor:'yo',zul:'zu',afr:'af',gle:'ga',cym:'cy',eus:'eu',glg:'gl',kat:'ka',hye:'hy',mkd:'mk',sqi:'sq',bel:'be',kaz:'kk',uzb:'uz',tgl:'tl',mal:'ml',kan:'kn',guj:'gu',mar:'mr',mya:'my',khm:'km',lao:'lo',sin:'si',nep:'ne',mlt:'mt',tsn:'tn',pan:'pa',aze:'az',mon:'mn',tgk:'tg',kir:'ky',isl:'is',fao:'fo',kur:'ku',ori:'or',jav:'jv',sun:'su',asm:'as',snd:'sd',kas:'ks',kik:'ki',sme:'se',lim:'li',pam:'pam',tir:'ti',lin:'ln',wol:'wo',som:'so',run:'rn',bis:'bi',nav:'nv',dzo:'dz',vol:'vo',ina:'ia',tat:'tt',bak:'ba',chv:'cv',oss:'os',tuk:'tk',sah:'sah'};
 // Extract actual language from ZIM name when catalog says "mul" or comma-separated
 // e.g. "ted_fr_design" → "fr", "wikipedia_de_all" → "de"
 function _langFromName(name) {
@@ -8145,13 +8274,15 @@ function _enrichCatalogHierarchy(items) {
     }
   }
 
-  // Group by category + language.
+  // Group by category + language + project (the name before its first
+  // underscore): as catalog_hierarchy._family_key, which says why.
   const families = new Map();
   for (const it of byName.values()) {
     const cat = (it.category || '').toLowerCase();
     const lang = (it.language || '').toLowerCase();
-    if (!cat || !lang) continue;
-    const key = cat + '_' + lang;
+    const project = (it.name || '').toLowerCase().split('_')[0];
+    if (!cat || !lang || !project) continue;
+    const key = cat + '_' + lang + '_' + project;
     if (!families.has(key)) families.set(key, []);
     families.get(key).push(it);
   }
@@ -9764,6 +9895,16 @@ function _renderManagePublicLocked() {
   // one-time setup key the server logged — so offer a field for it, which on
   // success sets the first admin password in the same step. Otherwise (the
   // pre-existing #36 case) just explain the LAN-only state.
+  if (_manageNeedsSetupKey && !_manageSetupKeyIssued) {
+    output.innerHTML =
+      '<div class="manage-wrap"><div class="lang-welcome-card manage-locked-card">' +
+        '<div class="lang-welcome-text">' +
+          '<strong>' + tH('manage_setup_on_host_title') + '</strong>' +
+          '<p>' + tH('manage_setup_on_host_body') + '</p>' +
+        '</div>' +
+      '</div></div>';
+    return;
+  }
   if (_manageNeedsSetupKey) {
     output.innerHTML =
       '<div class="manage-wrap"><div class="lang-welcome-card manage-locked-card">' +
@@ -10642,7 +10783,19 @@ function _creatorSidecarCell(d) {
   return d.sidecar ? _creatorSidecarHtml(d.sidecar) : _creatorStateHtml(null);
 }
 function _creatorSidecarCmd(d) {
-  return _creatorInstallHtml(d.sidecar ? d.sidecar.installed : null, 'zimi import --setup');
+  return _creatorInstallHtml(d.sidecar ? d.sidecar.installed : null, _creatorSetupCmd('zimi import --setup', d));
+}
+// A setup command aimed at THIS server's data dir: run from a terminal without
+// the service's config, the bare command installs into another one and the
+// engine stays grey with nothing to say why (#61; the Create page already
+// names it, see create.js _createSidecarCommand).
+function _creatorSetupCmd(base, d) {
+  return d && d.data_dir ? base + ' --data-dir ' + _shellQuote(d.data_dir) : base;
+}
+// One word for a POSIX shell: as is when it is safe, else single-quoted.
+function _shellQuote(text) {
+  if (/^[A-Za-z0-9_@%+=:,.\/-]+$/.test(text)) return text;
+  return "'" + text.replace(/'/g, "'\\''") + "'";
 }
 
 function _creatorSidecarHtml(sidecar) {
@@ -10687,7 +10840,7 @@ function _creatorHtml(d) {
     '<div id="ms-cr-sidecar-cmd">' + _creatorSidecarCmd(d) + '</div>' +
     _mcRow(tH('creator_alive'), '<span id="ms-cr-alive">' + _creatorStateHtml(d.alive_ready) + '</span>') +
     _mcRow(tH('creator_reddit'), '<span id="ms-cr-reddit">' + _creatorStateHtml(d.reddit_ready) + '</span>') +
-    '<div id="ms-cr-reddit-cmd">' + _creatorInstallHtml(d.reddit_ready, 'zimi create --setup-reddit') + '</div>';
+    '<div id="ms-cr-reddit-cmd">' + _creatorInstallHtml(d.reddit_ready, _creatorSetupCmd('zimi create --setup-reddit', d)) + '</div>';
 
   // Made here LAST — an unbounded, growing list, and the slow half to gather
   // (a provenance walk of the library), so it never blocks the pane. It fills
@@ -10718,7 +10871,12 @@ function _creatorLoadInventory() {
   // hangs. A timeout puts the fill after the caller's innerHTML assignment,
   // the same way _msCreatorHtml already defers its own first render.
   if (_creatorInventory) { setTimeout(fill, 0); return; }
-  manageFetch('/manage/creator/inventory').then(function(r) { return r.json(); }).then(function(d) {
+  // Never a sign-in prompt from here: a signed-in reader opening their own
+  // settings got the admin one, and Cancel sent them home.
+  authedFetch('/manage/creator/inventory').then(function(r) {
+    if (!r.ok) throw new Error('inventory ' + r.status);
+    return r.json();
+  }).then(function(d) {
     _creatorInventory = d;
     fill();
   }).catch(function() {
@@ -10801,7 +10959,7 @@ function _patchCreatorSection(d) {
   put('ms-cr-sidecar', _creatorSidecarCell(d));
   put('ms-cr-sidecar-cmd', _creatorSidecarCmd(d));
   put('ms-cr-reddit', _creatorStateHtml(d.reddit_ready));
-  put('ms-cr-reddit-cmd', _creatorInstallHtml(d.reddit_ready, 'zimi create --setup-reddit'));
+  put('ms-cr-reddit-cmd', _creatorInstallHtml(d.reddit_ready, _creatorSetupCmd('zimi create --setup-reddit', d)));
   put('ms-cr-alive', _creatorStateHtml(d.alive_ready));
   put('ms-cr-queue', _creatorQueueHtml(d.queue));
   ['block_ads', 'capture_variants'].forEach(function(key) {
@@ -11653,6 +11811,9 @@ function _postServerApps(shown) {
         else document.body.dataset.zimiApps = d.shown.join(',') || '0';
       }
       _renderAppsSection();
+      // And the home page behind, if that is what is showing: the Apps row
+      // stayed until something else redrew it (#88).
+      if (mode === 'home' && typeof renderHome === 'function') renderHome();
     }).catch(function() { _renderAppsSection(); });
 }
 
@@ -11732,7 +11893,10 @@ function _msServerHtml() {
       '<div class="ms-hint">' + tH('data_folder_hint') + '</div>' +
       '<div class="ms-field" style="display:flex;align-items:center;gap:8px"><label style="margin:0">' + tH('port') + '</label><input type="number" id="ms-port" min="1024" max="65535" value="8899" style="width:90px">' +
         '<button class="manage-btn-action" onclick="settingsSaveInline()" style="margin-inline-start:auto">' + tH('save') + '</button></div>' +
-      '<div class="ms-hint">' + tH('restart_hint') + '</div>';
+      '<div class="ms-hint">' + tH('restart_hint') + '</div>' +
+      // Painted by _renderDesktopLan from the app's own config, not /manage.
+      '<div id="ms-lan"></div>';
+    setTimeout(_renderDesktopLan, 0);
   } else {
     storageSec +=
       '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
@@ -13322,14 +13486,28 @@ async function managePassword() {
   const errEl = document.getElementById('pw-error');
   const overlay = document.getElementById('pw-overlay');
 
+  // Changing it asks for the current password first: the browser keeps a
+  // session token now, never the password, so it has nothing to offer as
+  // proof on its own.
+  let current = '';
+  if (has.has_password) {
+    current = await new Promise(function(resolve) {
+      openPwModal(t('change_password'), {placeholder: t('current_password'), hideRemember: true});
+      document.getElementById('pw-remove-btn').style.display = 'none';
+      _pwResolve = function(pw) { _pwResolve = null; resolve(pw); };
+      _pwReject = function() { resolve(null); };
+    });
+    if (current === null) return;
+  }
   openPwModal(has.has_password ? t('change_password') : t('set_password'), {placeholder: t('new_password'), hideRemember: true});
   document.getElementById('pw-remove-btn').style.display = has.has_password ? '' : 'none';
 
   _pwResolve = async function(newPw) {
     // submitPw set _manageUser from the (now visible) username field; store it
     // alongside the new password so future logins must present it.
-    const body = {password: newPw, username: _manageUser || 'admin'};
-    if (has.has_password && _manageToken) body.current = _manageToken;
+    const wasRemembered = !!localStorage.getItem(SK.MANAGE_PW);
+    const body = {password: newPw, username: _manageUser || 'admin', remember: wasRemembered};
+    if (has.has_password) body.current = current;
     const res = await manageFetch('/manage/set-password', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -13347,9 +13525,10 @@ async function managePassword() {
     // (localStorage), re-persist the new one so a password change doesn't
     // silently log them out next visit. Previously this always cleared storage,
     // which defeated Remember me for anyone who ever changed their password.
-    const wasRemembered = !!localStorage.getItem(SK.MANAGE_PW);
-    _manageToken = newPw || '';
-    if (newPw) _saveManageToken(newPw, wasRemembered);
+    // The server hands back a fresh session for the new password.
+    const d = await res.json().catch(() => ({}));
+    _manageToken = (newPw && d.token) || '';
+    if (_manageToken) _saveManageToken(_manageToken, wasRemembered);
     else _clearManageToken();
     closePwModal();
     renderManage();
@@ -13739,7 +13918,7 @@ function _dlLangBadge(name, installedLang) {
     lang = (_langFromName(name) || '').toLowerCase();  // name-derived fallback
   }
   if (!lang || lang === 'en' || lang === 'eng') return '';
-  var code = lang.length > 2 ? (_LANG3TO2[lang] || lang.slice(0, 2)) : lang;
+  var code = _normLang(lang);
   if (code === 'en') return '';
   var full = _langDisplayName(code) || code.toUpperCase();
   return '<span class="lang-badge dl-lang-badge" title="' + escAttr(code.toUpperCase()) + '">' + esc(full) + '</span>';
@@ -15168,6 +15347,9 @@ function _readerViewInjectStyle(doc) {
     '.zimi-reader h1.zimi-reader-title{font-size:2em;margin:0 0 0.7em;line-height:1.2;',
       'border-bottom:1px solid var(--rv-border);padding-bottom:0.35em}',
     '.zimi-reader h2{font-size:1.5em;border-bottom:1px solid var(--rv-border);padding-bottom:0.2em}',
+    // The article's own title bar, emptied of its title: Vector 2022 still
+    // draws its rule (an ::after), a second line under Reader View's title.
+    '.zimi-reader .vector-page-titlebar,.zimi-reader .mw-body-header{display:none!important}',
     '.zimi-reader h3{font-size:1.25em}.zimi-reader h4{font-size:1.1em}',
     '.zimi-reader p{margin:0 0 1.1em}',
     '.zimi-reader a{color:var(--rv-link);text-decoration:none}',
@@ -15698,6 +15880,7 @@ function _syncReaderViewBtn() {
   }
   if (!avail) _closeReaderPalette();
   else if (_readerViewOn) _maybeShowReaderCoach();
+  _syncTopbarMore();
 }
 
 // First time a device lands in Reader View, float a one-shot coachmark by the
@@ -15884,23 +16067,28 @@ function _readerSettingsRowsHtml() {
   // @media print rules in _readerViewInjectStyle); printing a raw ZIM page is out
   // of scope. Share rides navigator.share (mobile Safari / Android) — hidden when
   // the platform can't share.
-  var canPrint = _readerViewOn && _readerPrintable();
-  var canShare = _readerViewOn && typeof navigator !== 'undefined' && !!navigator.share;
-  if (canPrint || canShare) {
-    h += '<div class="rv-pal-divider" role="separator"></div>';
-    if (canPrint) {
-      h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderControls();_readerPrint()">' +
-        _RV_PRINT_ICON + '<span>' + tH('reader_print') + '</span></button>';
-    }
-    if (canShare) {
-      h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderControls();_readerShare()">' +
-        _RV_SHARE_ICON + '<span>' + tH('reader_share') + '</span></button>';
-    }
-  }
+  var actions = _readerActionRowsHtml();
+  if (actions) h += '<div class="rv-pal-divider" role="separator"></div>' + actions;
   h += '<div class="rv-pal-divider" role="separator"></div>';
   h += '<button type="button" class="rv-exit-row" onclick="_closeReaderControls();_readerViewToggle()">' +
     '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>' +
     tH('reader_exit') + '</button>';
+  return h;
+}
+// Print / Save as PDF and native Share, while Reader View is on and the
+// platform can do them. One source for both hosts: the book button's palette
+// and the ⋯ menu, which is where they are reachable while an article is open
+// (the book button is hidden then, so from the palette alone they were not).
+function _readerActionRowsHtml() {
+  var h = '';
+  if (_readerViewOn && _readerPrintable()) {
+    h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderControls();_readerPrint()">' +
+      _RV_PRINT_ICON + '<span>' + tH('reader_print') + '</span></button>';
+  }
+  if (_readerViewOn && typeof navigator !== 'undefined' && !!navigator.share) {
+    h += '<button type="button" class="rv-action-row" onclick="event.stopPropagation();_closeReaderControls();_readerShare()">' +
+      _RV_SHARE_ICON + '<span>' + tH('reader_share') + '</span></button>';
+  }
   return h;
 }
 function _renderReaderPalette() {
@@ -16874,6 +17062,12 @@ var _streetzimOffers = [];
 function _mapOfferItems() {
   if (_mapOfferLoaded) return Promise.resolve(_mapOfferAll());
   if (_mapOfferPending) return _mapOfferPending;
+  // Someone who cannot download has no use for the catalog, and asking for it
+  // put an admin sign-in in front of a visitor who only opened the picker;
+  // Cancel then threw them to the home page.
+  // Marked loaded (with nothing): the dropdown re-renders when the offers
+  // arrive and asks again, so an answer that is never "loaded" loops.
+  if (_managePwRequired && !_manageToken) { _mapOfferLoaded = true; return Promise.resolve([]); }
   var placed = function(items) { return (items || []).filter(function(it) { return it && it.bounds; }); };
   _mapOfferPending = (async function() {
     try {
@@ -17230,6 +17424,7 @@ function openReader(url) {
     // wiktionary ZIM is installed). Works in the normal reader AND Reader View
     // (same document, listeners attached once per load survive the transform).
     try { _defineAttachToDoc(frame); } catch(e) {}
+    try { _sayMissingVideos(frame); } catch(e) {}
     // A consent wall the ARCHIVE rebuilds every time it is opened, and a
     // captured page's JS-driven chrome put back in its place. Both edit the
     // article's DOM, which is safe on a frozen capture and NOT safe on one
@@ -17602,6 +17797,10 @@ function openReader(url) {
         var _navZim = decodeURIComponent(_wm[1]);
         var _navPath = decodeURIComponent(_wm[2]);
         currentArticle = { zim: _navZim, path: _navPath };
+        // The page's own title, now that it is here: a visit recorded before
+        // the page loaded (a deep link, a link inside an article) carried
+        // only its path, and Recent history read "ce.html", "cover.453".
+        try { _histRetitle(_navZim, _navPath, (frame.contentDocument.title || '').trim()); } catch (e) {}
         if (_tubeOpen || _exchangeOpen || _reddotOpen) {
           // A card in an app opened a ZIM page: a real page now, with the
           // history and address every page gets, and Back returns to the app.
@@ -17670,6 +17869,19 @@ function _histPushArticle(zim, path, title, pos, app) {
   h.unshift(entry);
   if (h.length > _HIST_MAX) h.length = _HIST_MAX;
   _histSave();
+}
+// Give a recent visit its page's real title when all it has is the one
+// guessed from its path. Never overwrites a real title or an app's.
+function _histRetitle(zim, path, title) {
+  if (!title) return;
+  var h = _histLoad();
+  for (var i = 0; i < Math.min(5, h.length); i++) {
+    var e = h[i];
+    if (e.type === 'article' && e.zim === zim && e.path === path && !e.app) {
+      if (e.title === _titleFromPath(path) && e.title !== title) { e.title = title; _histSave(); }
+      return;
+    }
+  }
 }
 // The fourth argument of a history row's openArticle: the place, when the
 // visit was one. Written into an inline handler, so it is source text.
@@ -19583,6 +19795,7 @@ function _buildTopbarMenuHtml() {
     // theme swatches + font/size only, no title labels, no AUTO (settings-only).
     if (rvOn) {
       readerGroup += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
+      readerGroup += _readerActionRowsHtml();
     }
     // 3. Read aloud.
     if (_TTS_AVAILABLE && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage() && !_isPdfPage()) {
@@ -19665,6 +19878,22 @@ function _topbarMenuSoloItem() {
 // restore path never hard-codes what index.html renders.
 var _topbarMoreDefault = null;
 var _topbarMoreIsSolo = false;
+// The ⋯ button: shown, hidden, or standing in for its only row. Its rows
+// depend on the article (Reader View needs extractable content), so this runs
+// again when the article loads (_syncReaderViewBtn), not only from
+// updateTopbar: on the first article it ran before the page existed, saw Read
+// aloud as the only row, and became a speaker for the whole article.
+function _syncTopbarMore() {
+  var moreBtn = document.querySelector('.topbar-more');
+  if (!moreBtn) return;
+  // A menu with nothing in it is no menu: on a wide screen an app page has
+  // no reading rows to fold, so the button goes too (Eric: "... menu is
+  // showing in tube and for no reason nothing behind it on desktop").
+  moreBtn.style.display = _createOpen ? 'none'
+    : (_createMenuRowAvailable() ? 'flex' : (readerOpen && !_buildTopbarMenuHtml() ? 'none' : ''));
+  _syncTopbarMoreSolo(moreBtn);
+}
+
 function _syncTopbarMoreSolo(btn) {
   if (!_topbarMoreDefault) {
     // Clone-and-strip: the activity badge is a child _applyActivityBadge owns;
@@ -20261,6 +20490,24 @@ function _defineRun() {
     '</div></div>';
   _defineReposition(); // the card is bigger than the chip — re-clamp to viewport
   var q = st.word;
+  var ql = q.toLowerCase();
+  // The word's own entry first. Wiktionary keeps "process" and "Process" as
+  // two entries, and /suggest can hand back only the capitalized one, so
+  // Define read "Obsolete spelling of Prozess" for process.
+  fetch(_articleUrl(st.zim, ql) + '?raw=1')
+    .then(function(r) { return r.ok ? r.text() : null; })
+    .catch(function() { return null; })
+    .then(function(html) {
+      if (html && _defineExtract(html)) {
+        st.path = ql;
+        _defineRenderResult(st, { path: ql, title: ql }, html);
+        return;
+      }
+      return _defineBySuggest(st, q);
+    });
+}
+
+function _defineBySuggest(st, q) {
   fetch('/suggest?q=' + encodeURIComponent(q.toLowerCase()) + '&limit=6&zim=' + encodeURIComponent(st.zim))
     .then(function(r) { return r.json(); })
     .then(function(data) {
@@ -20584,6 +20831,10 @@ function _isTransparent(color) {
   return parts.length === 4 && parseFloat(parts[3]) === 0;
 }
 
+// Everything Zimi puts into an article's document carries a zimi- class;
+// captured sites never do.
+var _ZIMI_OWN_CHROME = '[class^="zimi-"], [class*=" zimi-"]';
+
 function _sweepBlockingOverlays(frame) {
   var doc = frame.contentDocument;
   var win = frame.contentWindow;
@@ -20598,6 +20849,10 @@ function _sweepBlockingOverlays(frame) {
       var cs;
       try { cs = win.getComputedStyle(el); } catch (e) { continue; }
       if (!cs || cs.position !== 'fixed') continue;
+      // Zimi's own chrome in the article (the tap-to-zoom lightbox is fixed
+      // and full screen) is not a wall: removing it made zoom do nothing for
+      // the first OVERLAY_WATCH_MS of every article.
+      if (el.closest && el.closest(_ZIMI_OWN_CHROME)) continue;
       var r = el.getBoundingClientRect();
       if (r.width < 2 || r.height < 2) continue;
       var blocking = r.width * r.height >= covered;
@@ -20628,6 +20883,16 @@ function _sweepBlockingOverlays(frame) {
   } catch (e) {}
 }
 
+// A video page whose file the ZIM never got: the server has put a note where
+// the player was (tube.mend_sources), in English; say it in the reader's
+// language.
+function _sayMissingVideos(frame) {
+  var doc = frame.contentDocument;
+  if (!doc) return;
+  var notes = doc.querySelectorAll('.zimi-video-missing[data-zimi-missing]');
+  for (var i = 0; i < notes.length; i++) notes[i].textContent = t('tube_missing');
+}
+
 function _defineAttachToDoc(frame) {
   var doc = frame.contentDocument;
   if (!doc) return;
@@ -20656,6 +20921,10 @@ function _defineAttachToDoc(frame) {
   // dismiss it (like a native selection callout) rather than leave it stranded at
   // a stale position. Covers both the raw frame and Reader View (same window).
   try { frame.contentWindow.addEventListener('scroll', _defineHideOnScroll, { passive: true }); } catch (e) {}
+  // Capture on the document as well: a Wikipedia article scrolls on <body>,
+  // whose scroll event does not bubble to the window, so the card stayed open
+  // while its word scrolled away.
+  try { frame.contentDocument.addEventListener('scroll', _defineHideOnScroll, { passive: true, capture: true }); } catch (e) {}
   // No discovery tip. It was rate-limited twice and Eric still met it twice
   // more; a teaching aid that has to be tuned that often is one nobody wanted.
   // Define is still there on a selection or a double-tap, and it is now found
@@ -20683,16 +20952,19 @@ document.addEventListener('contextmenu', function(e) {
 // Attach context menu to article links in the main page
 // Uses event delegation — checks data attributes first, then parses onclick
 document.addEventListener('contextmenu', function(e) {
-  var el = e.target.closest('[onclick*="openArticle"]');
+  // Search results became real links in 1.9.0 (<a class="result" data-zim
+  // data-path>, opened by _spaCardClick), and matching only openArticle
+  // handlers left them the browser's menu: Copy Title was gone.
+  var el = e.target.closest('[onclick*="openArticle"], a[data-zim][data-path]');
   if (!el) return;
   var zim, path, title;
   // Prefer data attributes (search results have data-zim/data-path)
   if (el.dataset.zim && el.dataset.path) {
     zim = el.dataset.zim;
     path = el.dataset.path;
-    // Try to get title from the result title element
-    var titleEl = el.querySelector('.result-title, .dc-title, .hp-title');
-    title = titleEl ? titleEl.textContent.trim() : null;
+    // The row's own title, else the title element inside it
+    var titleEl = el.querySelector('.result-title, .title, .dc-title, .hp-title');
+    title = el.dataset.title || (titleEl ? titleEl.textContent.trim() : null);
   } else {
     // Parse from onclick attribute
     var onclick = el.getAttribute('onclick') || '';
@@ -20811,6 +21083,39 @@ async function settingsSaveInline() {
     if (needsRestart) setTimeout(() => pywebview.api.restart(), 500);
   } catch(e) {}
 }
+// Desktop only: may other devices on this network open this Zimi (issue #90).
+// Off by default; saving restarts the embedded server, as the port does.
+async function _renderDesktopLan() {
+  var el = document.getElementById('ms-lan');
+  if (!el || !IS_DESKTOP || !window.pywebview) return;
+  var cfg, addrs = [];
+  try {
+    cfg = await pywebview.api.get_config();
+    if (cfg.lan_access || cfg.lan_access_env) addrs = await pywebview.api.lan_addresses();
+  } catch (e) { return; }
+  var locked = !!cfg.lan_access_env;
+  var h = '<label class="ms-toggle-row"><input type="checkbox" id="ms-lan-access"' +
+    (cfg.lan_access ? ' checked' : '') + (locked ? ' disabled' : '') +
+    ' onchange="_setDesktopLan(this)"> ' + tH('desktop_lan_access') + '</label>' +
+    '<div class="ms-hint">' + tH(locked ? 'configured_via_env' : 'desktop_lan_hint') + '</div>';
+  if (addrs.length) {
+    var port = location.port || '80';
+    h += '<div class="ms-hint">' + tH('desktop_lan_open_at') + ' ' + addrs.map(function(ip) {
+      return '<code dir="ltr">' + esc('http://' + ip + ':' + port) + '</code>';
+    }).join(' ') + '</div>';
+  }
+  el.innerHTML = h;
+}
+
+async function _setDesktopLan(cb) {
+  if (!IS_DESKTOP || !window.pywebview) return;
+  cb.disabled = true;
+  try {
+    var needsRestart = await pywebview.api.save_config({ lan_access: cb.checked });
+    if (needsRestart) setTimeout(function() { pywebview.api.restart(); }, 500);
+  } catch (e) { cb.disabled = false; }
+}
+
 async function msChooseZimFolder() {
   if (!IS_DESKTOP || !window.pywebview) return;
   try {

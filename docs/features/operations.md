@@ -39,7 +39,7 @@ Running Zimi as a service: resolving configuration, backing it up, air-gapping i
 
 - **A setting isn't taking effect** — run `zimi config` and read the provenance column. Remember a config-file value loses to the same environment variable and to a CLI flag.
 - **Config file ignored** — check the resolution order: `--config`, then `ZIMI_CONFIG`, then `<data-dir>/zimi.json`. An unknown key warns but never fails the boot; a typo silently does nothing.
-- **Data dir not writable** — Zimi logs the reason and falls back to a per-library cache dir. Fix permissions or point `--data-dir`/`ZIMI_DATA_DIR` somewhere writable to keep state where you want it.
+- **Data dir not writable** — for the default location (under the ZIM directory) Zimi logs the reason and falls back to a per-library cache dir. A data dir you set yourself (`--data-dir`/`ZIMI_DATA_DIR`) that is not writable stops Zimi at startup (exit 2), since quietly keeping state elsewhere would lose it. Fix the permissions or point it somewhere writable.
 - **`/metrics` returns 401** — it's admin-gated. Give the Prometheus scrape the manage credential (Bearer/basic).
 - **Instance keeps reaching the network on an air-gapped host** — set `ZIMI_OFFLINE=1` (and `ZIMI_NEARBY=off` if you want mDNS silent too).
 - **Air-gap bundle won't install on the target** — you built for the wrong platform. Wheels are OS/arch/Python-version specific; rebuild with the correct `--target` and `--python-version`. The script refuses to emit a bundle whose deps didn't all resolve to wheels.

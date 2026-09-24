@@ -76,7 +76,8 @@ def test_start_returns_false_when_zeroconf_unavailable(monkeypatch):
     assert disc._zc is None
 
 
-def test_start_creates_zeroconf_with_service_info():
+def test_start_creates_zeroconf_with_service_info(monkeypatch):
+    monkeypatch.setenv("ZIMI_PEER_DISCOVERY", "1")  # Nearby on: announcing is opt-in
     fake_zc = MagicMock()
     fake_si = MagicMock()
     mod = MagicMock()
@@ -197,7 +198,8 @@ def test_listener_handles_malformed_txt():
     assert peer["zim_count"] == 0  # bad value → fallback
 
 
-def test_start_idempotent():
+def test_start_idempotent(monkeypatch):
+    monkeypatch.setenv("ZIMI_PEER_DISCOVERY", "1")  # Nearby on: announcing is opt-in
     fake_zc = MagicMock()
     mod = MagicMock()
     mod.Zeroconf.return_value = fake_zc
@@ -256,4 +258,68 @@ def test_is_enabled_respects_env(monkeypatch):
     monkeypatch.setenv("ZIMI_PEER_DISCOVERY", "1")
     assert disc.is_enabled() is True
     monkeypatch.delenv("ZIMI_PEER_DISCOVERY", raising=False)
-    assert disc.is_enabled() is True  # default-on
+    # Unset, it follows the Nearby switch: nothing is announced while it is off.
+    monkeypatch.setattr(disc, "is_share_enabled", lambda: False)
+    assert disc.is_enabled() is False
+    monkeypatch.setattr(disc, "is_share_enabled", lambda: True)
+    assert disc.is_enabled() is True
+
+
+def test_a_default_install_announces_nothing_until_nearby_is_on(monkeypatch):
+    """A default install announced zimi-<hostname>, its address, version and
+    ZIM count to the LAN while the Nearby switch read OFF."""
+    for var in ("ZIMI_NEARBY", "ZIMI_PEER_DISCOVERY", "ZIMI_PEER_SHARE"):
+        monkeypatch.delenv(var, raising=False)
+    from zimi import p2p
+
+    monkeypatch.setattr(p2p, "_read_pref", lambda key, default=None: default)
+    started = []
+    monkeypatch.setattr(disc, "_import_zeroconf", lambda: started.append(1) or None)
+    monkeypatch.setattr(disc, "_zc", None)
+    assert disc.start(http_port=8899, bt_port=6881, zim_count=3, version="x") is False
+    assert started == [], "zeroconf was reached with Nearby off"
+    # Turned on, it starts with what start() was first given.
+    monkeypatch.setattr(p2p, "_read_pref", lambda key, default=None: True if key == "peer_share" else default)
+    disc.apply_enabled()
+    assert started == [1]
+
+
+def _started_with(mod, **kw):
+    with patch.object(disc, "_import_zeroconf", return_value=mod):
+        return disc.start(http_port=8899, bt_port=6881, zim_count=42, version="1.10", **kw)
+
+
+def test_a_second_server_on_one_host_has_a_name_of_its_own(monkeypatch):
+    """Two Zimis on one host both announced zimi-<hostname>, and a peer saw
+    one of them. They cannot share a port, so the port tells them apart."""
+    monkeypatch.delenv("ZIMI_PEER_NAME", raising=False)
+    monkeypatch.setattr(disc, "_hostname", lambda: "box")
+    assert disc._peer_instance_name(8899) == "zimi-box"
+    assert disc._peer_instance_name(8900) == "zimi-box-8900"
+    monkeypatch.setenv("ZIMI_PEER_NAME", "Kitchen")
+    assert disc._peer_instance_name(8900) == "Kitchen"  # a chosen name is kept
+
+def test_the_advert_follows_the_library_and_the_bt_port(monkeypatch):
+    monkeypatch.setenv("ZIMI_PEER_DISCOVERY", "1")
+    mod = MagicMock()
+    first = MagicMock()
+    first.name = None
+    first.properties = {b"version": b"1.10", b"zim_count": b"42", b"port": b"8899", b"bt_port": b"6881"}
+    mod.ServiceInfo.return_value = first
+    now = {"zim_count": 42, "bt_port": 6881}
+    assert _started_with(mod, current=lambda: dict(now)) is True
+    zc = mod.Zeroconf.return_value
+
+    disc._refresh_advert()
+    zc.update_service.assert_not_called()  # nothing changed, nothing announced
+
+    now.update(zim_count=43, bt_port=16881)
+    second = MagicMock()
+    mod.ServiceInfo.return_value = second
+    disc._refresh_advert()
+    zc.update_service.assert_called_once_with(second)
+    _, kwargs = mod.ServiceInfo.call_args
+    assert kwargs["properties"][b"zim_count"] == b"43"
+    assert kwargs["properties"][b"bt_port"] == b"16881"
+    assert kwargs["properties"][b"version"] == b"1.10"
+    assert disc._service_info is second

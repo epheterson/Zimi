@@ -90,7 +90,10 @@ async function checkVersion() {
 // preferences (/me) expose the library or an identity the same way, so they
 // fail closed too: a cached feed served to the wrong visitor, or an old feed
 // after a deploy, is the same bug twice.
-const NETWORK_ONLY_PREFIXES = ['/whoami', '/login', '/logout', '/list', '/search', '/suggest', '/random', '/places', '/tube', '/exchange', '/reddot', '/me'];
+// /collections too: a person's own collections and favorites, which name ZIMs
+// as /list does; left to the default stale-while-revalidate, a collection
+// created or deleted did not show until the next reload.
+const NETWORK_ONLY_PREFIXES = ['/whoami', '/login', '/logout', '/list', '/search', '/suggest', '/random', '/places', '/tube', '/exchange', '/reddot', '/me', '/collections'];
 
 // Non-identity API/data (article reads, health, manage, language lists). These
 // do not expose the library index and tolerate a cached fallback when offline.

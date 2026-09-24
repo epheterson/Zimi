@@ -96,7 +96,9 @@ Every created ZIM carries honest provenance (which Zimi, which tools, how many p
 ### macOS
 
 ```bash
-brew tap epheterson/zimi && brew install --cask zimi
+brew tap epheterson/zimi
+brew trust --tap epheterson/zimi   # Homebrew 6 and later; leave it out before 6
+brew install --cask zimi
 ```
 
 Or download from [GitHub Releases](https://github.com/epheterson/Zimi/releases).
@@ -311,7 +313,7 @@ For Docker on a remote host:
 }
 ```
 
-Tools: `search` (with `lang` filter), `read`, `get_chunks`, `suggest`, `list_sources`, `random`, `article_languages`, `read_with_links`, `deep_search`, `list_collections`, `manage_collection`, `manage_favorites`
+Tools: `search` (with `lang` filter), `read`, `get_chunks`, `suggest`, `list_sources`, `random`, `article_languages`, `read_with_links`, `deep_search`, `list_collections`, `manage_collection`, `manage_favorites`, and the apps' `list_videos`, `list_questions`, `read_question`, `list_posts`, `read_post`
 
 ## Integrations
 

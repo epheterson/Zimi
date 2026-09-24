@@ -11,10 +11,12 @@ The library it builds:
   survival_en_2026-06.zim        a second source so cross-source search is real
   field-guides/mushrooms_en_2026-01.zim   a subfolder, for folder→category
 
-The two wikipedia editions share article paths on purpose: that is what the
-language switcher matches on when a ZIM carries no Wikidata Q-ID index. Articles
-are kept under 2 KB so Q-ID extraction is skipped and the title path is what
-gets exercised.
+The two wikipedia editions share article paths, and each pair carries the same
+Wikidata item in an authority-control link, as real Wikipedia articles do: the
+language switcher offers another edition only when the Q-IDs agree (a same
+title alone once offered Spanish "Inodoro" for English "Water"). Each page is
+padded past the 2,000 bytes below which Zimi takes a page for a stub and reads
+no Q-ID, as a real article is.
 """
 
 import os
@@ -73,6 +75,28 @@ _FR_BODY = {
         b"<html><body><h1>Chlore</h1><p>Un desinfectant.</p></body></html>"
     ),
 }
+
+# The Wikidata item each article pair is about, linked the way a Wikipedia
+# page's authority-control box links it.
+_QIDS = {
+    "A/Water_purification": "Q339484",
+    "A/Fire": "Q3196",
+    "A/Boiling": "Q41716",
+    "A/Chlorine_(disinfectant)": "Q688",
+}
+
+
+# A real article's length: Zimi reads no Q-ID from a page under 2,000 bytes.
+_ARTICLE_PADDING = b"<p>" + b"Further reading. " * 150 + b"</p>"
+
+
+def _with_qid(path, body):
+    link = b'<a href="https://www.wikidata.org/wiki/%s#identifiers">Wikidata</a>' % _QIDS[path].encode()
+    return body.replace(b"</body>", _ARTICLE_PADDING + link + b"</body>")
+
+
+_EN_BODY = {p: _with_qid(p, b) for p, b in _EN_BODY.items()}
+_FR_BODY = {p: _with_qid(p, b) for p, b in _FR_BODY.items()}
 
 _EN_TITLES = {
     "A/Water_purification": "Water purification",

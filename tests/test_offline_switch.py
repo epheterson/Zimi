@@ -330,3 +330,52 @@ def test_winsparkle_env_parse_matches_server():
             assert zimi_desktop._env_offline() == p2p.is_offline(), val
         finally:
             del os.environ["ZIMI_OFFLINE"]
+
+
+# ── the catalog ─────────────────────────────────────────────────────────────
+
+
+def _catalog_fresh(monkeypatch, tmp_path):
+    """No catalog cached; the refresh machinery live; the network a tripwire."""
+    monkeypatch.setattr(library, "_opds_cache", {})
+    monkeypatch.setattr(library, "_opds_validators", {})
+    monkeypatch.setattr(library, "_opds_refreshing", set())
+    monkeypatch.setattr(library, "_opds_last_fail", 0)
+    monkeypatch.setattr(library, "_OPDS_BG_REFRESH", True)
+    monkeypatch.setattr(library, "_load_opds_disk_cache", lambda: None)
+    reached = []
+
+    def tripwire(*a, **k):
+        reached.append(a)
+        raise AssertionError("the catalog went to the network while offline")
+
+    monkeypatch.setattr(library.urllib.request, "urlopen", tripwire)
+    started = []
+    monkeypatch.setattr(library.threading, "Thread", lambda *a, **k: started.append(k) or _NoThread())
+    return reached, started
+
+
+class _NoThread:
+    daemon = True
+
+    def start(self):
+        pass
+
+
+def test_the_catalog_serves_the_snapshot_and_fetches_nothing_when_offline(monkeypatch, tmp_path):
+    """Found on a real library: ZIMI_OFFLINE served the snapshot and then
+    revalidated it against library.kiwix.org behind it."""
+    monkeypatch.setenv("ZIMI_OFFLINE", "1")
+    reached, started = _catalog_fresh(monkeypatch, tmp_path)
+    total, items, err = library._fetch_kiwix_catalog("", "eng", 20, 0)
+    assert items, "the shipped snapshot should answer offline"
+    assert not started, "a background refresh was started while offline"
+    assert not reached
+
+
+def test_a_background_catalog_refresh_fetches_nothing_when_offline(monkeypatch, tmp_path):
+    monkeypatch.setenv("ZIMI_OFFLINE", "1")
+    reached, _ = _catalog_fresh(monkeypatch, tmp_path)
+    library._fetch_kiwix_catalog("", "eng", 20, 0, _background=True)
+    library._fetch_kiwix_catalog("", "eng", 20, 0, _internal=True)
+    assert not reached

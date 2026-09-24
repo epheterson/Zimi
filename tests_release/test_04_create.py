@@ -95,17 +95,16 @@ def test_folder_mode_is_a_closed_door_not_a_hidden_one(gate_server, source_folde
         assert "CLI" in body.get("error", ""), body
 
 
-def test_import_mode_is_a_closed_door_not_a_hidden_one(gate_server):
-    """Archive import followed folder off the web ("remove archive as well only
-    in cli"). Refused through both doors, naming `zimi import` — and, like
-    folder, this holds even on an instance that has a root configured."""
+def test_import_takes_only_an_archive_the_picker_listed(gate_server):
+    """Since 1.10.0 the web imports an archive from the library folder's own
+    listing. Any other path is refused through both doors, so the web never
+    names a file on the server for it to open."""
     for endpoint in ("/manage/create/probe", "/manage/create"):
         status, body = gate_server.post_json(
             endpoint, {"mode": "import", "source": __file__}
         )
-        assert status == 400, f"{endpoint} accepted import mode: {body}"
-        assert "CLI" in body.get("error", ""), body
-        assert "zimi import" in body.get("error", ""), body
+        assert status == 400, f"{endpoint} imported an unlisted path: {body}"
+        assert body.get("error") == "choose an archive from the list", body
 
 
 def test_a_page_becomes_a_zim_that_serves(gate_server, source_site):
@@ -172,16 +171,20 @@ def test_without_a_configured_root_the_web_cannot_reach_the_filesystem(
     ) as server:
         status, body = server.get_json("/manage/create/browse?path=/")
         assert status == 410, f"the retired picker endpoint answered: {body}"
-        # Both server-path modes are CLI-only: refused with the CLI pointer, not
-        # a root complaint — the server never reaches the filesystem at all.
-        for mode, door in (("import", "zimi import"), ("folder", "zimi create")):
-            for endpoint in ("/manage/create", "/manage/create/probe"):
-                status, body = server.post_json(
-                    endpoint, {"mode": mode, "source": __file__}
-                )
-                assert status == 400, f"{endpoint} took {mode} with no root: {body}"
-                assert "CLI" in body.get("error", ""), body
-                assert door in body.get("error", ""), body
+        # Folder capture is CLI-only, and import takes only a listed archive:
+        # neither lets the web name a path on the server.
+        for endpoint in ("/manage/create", "/manage/create/probe"):
+            status, body = server.post_json(
+                endpoint, {"mode": "folder", "source": __file__}
+            )
+            assert status == 400, f"{endpoint} took folder with no root: {body}"
+            assert "CLI" in body.get("error", ""), body
+            assert "zimi create" in body.get("error", ""), body
+            status, body = server.post_json(
+                endpoint, {"mode": "import", "source": __file__}
+            )
+            assert status == 400, f"{endpoint} took import with no root: {body}"
+            assert body.get("error") == "choose an archive from the list", body
         # …and the URL modes, which read nothing local, are unaffected.
         status, body = server.post_json(
             "/manage/create/probe", {"mode": "page", "source": "nonsense"}

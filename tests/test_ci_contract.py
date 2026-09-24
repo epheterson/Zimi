@@ -310,3 +310,82 @@ def test_a_snap_that_will_not_open_costs_only_the_snap():
     assert "continue-on-error: true" in steps[smoke]
     assert "id: snap_smoke" in steps[smoke]
     assert "steps.snap_smoke.outcome == 'success'" in steps[upload]
+
+
+def test_the_mac_app_reports_the_release_version():
+    """Info.plist said 1.4.0 from February to 1.10.1: every Mac build reported
+    1.4.0 and Sparkle, comparing it with the appcast's version, always had an
+    update to offer. The spec reads pyproject.toml, as the other builds do."""
+    import re as _re
+
+    spec = (ROOT / "desktop" / "zimi_desktop.spec").read_text(encoding="utf-8")
+    assert not _re.search(r"'CFBundle(Short)?Version(String)?':\s*'\d", spec), "a version is hard-coded in the spec"
+    start = spec.index("def _app_version(")
+    end = spec.index("\nAPP_VERSION", start)
+    scope = {"os": os}
+    exec(spec[start:end], scope)
+    version = _re.search(
+        r'^version\s*=\s*"([^"]+)"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"), _re.MULTILINE
+    ).group(1)
+    assert scope["_app_version"](str(ROOT)) == version
+
+
+def _release_naming_script(tag):
+    text = (WORKFLOWS / "desktop-release.yml").read_text(encoding="utf-8")
+    body = text.split("- name: Name the files for the release\n        run: |\n", 1)[1]
+    body = body.split("\n\n", 1)[0]
+    script = "\n".join(line[10:] for line in body.splitlines())
+    return script.replace("${{ github.event.inputs.tag || github.ref_name }}", tag)
+
+
+_BUILDS = [
+    ("Zimi-AppleSilicon", "Zimi-AppleSilicon.dmg"),
+    ("Zimi-Intel", "Zimi-Intel.dmg"),
+    ("Zimi-windows-x64-Setup", "Zimi-windows-x64-Setup.exe"),
+    ("Zimi-windows-x64", "Zimi-windows-x64.zip"),
+    ("Zimi-Linux-amd64", "Zimi-Linux-amd64.AppImage"),
+]
+
+
+def _run_release_naming(tmp, builds):
+    for folder, name in builds:
+        (tmp / folder).mkdir(parents=True, exist_ok=True)
+        (tmp / folder / name).write_text("x", encoding="utf-8")
+    env = dict(os.environ, GITHUB_ENV=str(tmp / "env"))
+    return subprocess.run(
+        [shutil.which("bash"), "-c", _release_naming_script("v1.2.3")],
+        cwd=tmp, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+
+
+@pytest.mark.skipif(os.name == "nt" or not shutil.which("bash"), reason="the release job runs on macOS")
+def test_release_files_are_named_version_platform_chip(tmp_path):
+    """What people download is Zimi-<version>-<platform>-<chip>, named in one
+    step of the release job; the appcasts, the cask and the release all read
+    those files, so a name changed there is changed everywhere."""
+    done = _run_release_naming(tmp_path, _BUILDS + [("Zimi-Linux-snap", "zimi_1.2.3_amd64.snap")])
+    assert done.returncode == 0, done.stderr
+    assert sorted(p.name for p in (tmp_path / "release").iterdir()) == [
+        "Zimi-1.2.3-Linux-x64.AppImage",
+        "Zimi-1.2.3-Linux-x64.snap",
+        "Zimi-1.2.3-Windows-x64-Setup.exe",
+        "Zimi-1.2.3-Windows-x64.zip",
+        "Zimi-1.2.3-macOS-AppleSilicon.dmg",
+        "Zimi-1.2.3-macOS-Intel.dmg",
+    ]
+    text = (WORKFLOWS / "desktop-release.yml").read_text(encoding="utf-8")
+    assert "files: release/*" in text
+    assert 'Zimi-#{version}-macOS-#{arch}.dmg' in text
+
+
+@pytest.mark.skipif(os.name == "nt" or not shutil.which("bash"), reason="the release job runs on macOS")
+def test_a_release_without_its_snap_still_ships_the_rest(tmp_path):
+    done = _run_release_naming(tmp_path, _BUILDS)
+    assert done.returncode == 0, done.stderr
+    assert len(list((tmp_path / "release").iterdir())) == 5
+
+
+@pytest.mark.skipif(os.name == "nt" or not shutil.which("bash"), reason="the release job runs on macOS")
+def test_a_release_missing_a_build_stops(tmp_path):
+    done = _run_release_naming(tmp_path, _BUILDS[1:])
+    assert done.returncode != 0

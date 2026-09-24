@@ -171,9 +171,13 @@ class TestServerEndpoints(unittest.TestCase):
         self.assertFalse(data["partial"])
 
     def test_search_nonexistent_zim(self):
-        data, status = self._get("/search?q=test&zim=does_not_exist")
-        self.assertEqual(status, 200)
-        self.assertIn("error", data)
+        # 404, as api-and-mcp.md documents for an unknown zim; the body still
+        # carries the error.
+        req = self._auth_request(f"{self._base}/search?q=test&zim=does_not_exist")
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(req, timeout=10)
+        self.assertEqual(ctx.exception.code, 404)
+        self.assertIn("error", json.loads(ctx.exception.read()))
 
     def test_search_missing_query(self):
         status = self._get_status("/search")

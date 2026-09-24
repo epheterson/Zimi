@@ -148,6 +148,28 @@ ZIM_CONTENT_MAX_AGE = 60
 # per credential per TTL — not on every polled request.
 _authed_cache = {}  # {sha256(bearer): expiry_ts}
 _AUTHED_CACHE_TTL = 300.0
+# An article opened on its own over plain http (a bookmark, a shared link, a
+# new tab on http://knowledge.lan) cannot be told from the reader's own iframe
+# load: browsers send Sec-Fetch-Dest only to secure origins, so the server
+# served the bare page. The page can tell: framed, it stays; alone, it reopens
+# through the shell (?view=1, which the /w/ route already honours). Only added
+# where the header is missing; https and localhost never see it.
+_REOPEN_IN_SHELL_SCRIPT = (
+    "<script>(function(){if(window.top!==window.self)return;"
+    "var u=new URL(location.href);if(u.searchParams.has('raw'))return;"
+    "u.searchParams.set('view','1');location.replace(u.href)})()</script>"
+)
+_HEAD_OPEN_RE = re.compile(r"<head\b[^>]*>", re.IGNORECASE)
+
+
+def _with_reopen_in_shell(text):
+    m = _HEAD_OPEN_RE.search(text)
+    at = m.end() if m else 0
+    return text[:at] + _REOPEN_IN_SHELL_SCRIPT + text[at:]
+
+
+# How much of a page /snippet reads (see the handler).
+_SNIPPET_READ_BYTES = 64 * 1024
 
 # "Remember me" user-session cookie lifetime (seconds). 30 days — long enough
 # for a kid's device to stay logged in, short enough to age out abandoned tokens.
@@ -173,6 +195,10 @@ _RATE_LIMITED_API_PATHS = (
     "/openapi.json",
     "/almanac-links",
 )
+
+# The apps' routes below their bare path (/exchange/question, /reddot/post):
+# matched exactly, they answered without limit.
+_RATE_LIMITED_API_PREFIXES = ("/exchange/", "/reddot/", "/tube/")
 
 # High-frequency read-only manage polls. While a download runs the manage UI
 # keeps three independent timers alive — downloads+seeding every 2s, activity
@@ -239,7 +265,10 @@ def _rate_class(path):
     """(is_rate_limited, uses_content_bucket) for a GET path."""
     is_content = path.startswith("/w/") or path == "/snippet" or path in _POLL_PATHS
     limited = (
-        is_content or path in _RATE_LIMITED_API_PATHS or path.startswith("/manage/")
+        is_content
+        or path in _RATE_LIMITED_API_PATHS
+        or path.startswith(_RATE_LIMITED_API_PREFIXES)
+        or path.startswith("/manage/")
     )
     return limited, is_content
 
@@ -1352,6 +1381,18 @@ _GONE_STRINGS = {
         "of the library is fine."
     ),
     "zim_gone_home": "Back to the library",
+    "zim_gone_source": "Source",
+}
+
+# The page for a link, in an ordinary ZIM, to an article the ZIM does not hold
+# (a selection of a larger wiki linking outside itself). It used to be JSON.
+_MISSING_ENTRY_STRINGS = {
+    "entry_missing_title": "This article isn't in this ZIM",
+    "entry_missing_body": (
+        "The link leads to a page this ZIM does not contain. Many ZIMs are a "
+        "selection from a larger site, and their links can point outside it."
+    ),
+    "entry_missing_search": "Search the library for it",
 }
 
 # Deliberately self-contained: no app.css, no app.js. This renders inside the
@@ -1397,9 +1438,9 @@ _UNCAPTURED_PAGE = """<!DOCTYPE html>
     outline-offset:2px; }}
 </style></head>
 <body data-zimi-uncaptured="1"><main>
-  <h1 data-i18n="uncaptured_title">{title}</h1>
-  <p data-i18n="uncaptured_body">{body}</p>
-  <span class="label" data-i18n="uncaptured_url_label">{url_label}</span>
+  <h1 data-i18n="{title_key}">{title}</h1>
+  <p data-i18n="{body_key}">{body}</p>
+  <span class="label" data-i18n="{url_label_key}">{url_label}</span>
   <!-- dir=ltr because a URL is left-to-right text even on a right-to-left
        page: without it the trailing slash of https://host/path/ jumps to the
        front and the address reads as something the site never served. -->
@@ -1411,7 +1452,7 @@ _UNCAPTURED_PAGE = """<!DOCTYPE html>
          navigates straight back to this page. -->
     <a class="btn primary" id="live-link" href="{url_attr}" target="_blank"
        rel="noreferrer noopener" data-zimi-live="1"
-       data-i18n="uncaptured_open">{open_label}</a>
+       data-i18n="{open_key}">{open_label}</a>
     <button class="btn" onclick="history.back()"
        data-i18n="uncaptured_back">{back_label}</button>
   </div>
@@ -1424,6 +1465,7 @@ _UNCAPTURED_PAGE = """<!DOCTYPE html>
   // in-library copy as the first choice and let the live web stay the exit.
   try {{
     var missed = document.getElementById('live-link').getAttribute('href');
+    if (!/^https?:/.test(missed)) return;  // only a web address can be elsewhere
     fetch('/resolve?url=' + encodeURIComponent(missed))
       .then(function (r) {{ return r.ok ? r.json() : null; }})
       .then(function (data) {{
@@ -1914,7 +1956,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if cached is not None:
                     _record_metric("/search", 0)
                     _record_usage("search", query=q)
-                    return self._json(200, cached)
+                    return self._json(404 if cached.get("error") else 200, cached)
                 t0 = time.time()
                 if fast:
                     # Fast path uses _suggest_pool internally, no _zim_lock needed
@@ -1941,7 +1983,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                     fast,
                     dt,
                 )
-                return self._json(200, result)
+                # Scoped to a ZIM that is not here: 404, as /read and /chunks.
+                return self._json(404 if result.get("error") else 200, result)
 
             elif parsed.path == "/read":
                 zim = param("zim")
@@ -1962,7 +2005,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                     result = _srv.read_article(zim, path, max_length=max_len)
                 _record_metric("/read", time.time() - t0)
                 _record_usage("read", zim)
-                return self._json(200, result)
+                # An unknown ZIM or article is a 404, as api-and-mcp.md
+                # promises and /chunks already answers; the body is the same.
+                return self._json(404 if result.get("error") else 200, result)
 
             elif parsed.path == "/chunks":
                 zim = param("zim")
@@ -2156,8 +2201,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                         if item.size > _srv.MAX_CONTENT_BYTES:
                             _record_metric("/snippet", time.time() - t0)
                             return self._json(200, {"snippet": ""})
-                        # Read first 15KB — enough for <head> meta tags + initial content
-                        raw = bytes(item.content)[:15360]
+                        # The start of the page: <head> meta, and far enough in to
+                        # reach an encyclopedia article's lead past its infobox
+                        # (Einstein's is 34KB in). item.content is whole already,
+                        # so reading more costs nothing.
+                        raw = bytes(item.content)[:_SNIPPET_READ_BYTES]
                         text = raw.decode("UTF-8", errors="replace")
                         # Prefer the page's own summary, then meta description,
                         # then body prose — skipping boilerplate some ZIMs bake
@@ -3095,6 +3143,10 @@ class ZimHandler(BaseHTTPRequestHandler):
             url_label=_text(_UNCAPTURED_STRINGS["uncaptured_url_label"]),
             open_label=_text(_UNCAPTURED_STRINGS["uncaptured_open"]),
             back_label=_text(_UNCAPTURED_STRINGS["uncaptured_back"]),
+            title_key="uncaptured_title",
+            body_key="uncaptured_body",
+            url_label_key="uncaptured_url_label",
+            open_key="uncaptured_open",
         )
         return self._send(
             200,
@@ -3121,9 +3173,16 @@ class ZimHandler(BaseHTTPRequestHandler):
             theme_key=_APP_THEME_KEY,
             title=_text(_GONE_STRINGS["zim_gone_title"]),
             body=_text(_GONE_STRINGS["zim_gone_body"]),
-            url_label=_text("Source"),
+            url_label=_text(_GONE_STRINGS["zim_gone_source"]),
             open_label=_text(_GONE_STRINGS["zim_gone_home"]),
             back_label=_text(_UNCAPTURED_STRINGS["uncaptured_back"]),
+            # Its own keys: with the uncaptured page's, every language but
+            # English replaced this page's words with "This page wasn't
+            # captured".
+            title_key="zim_gone_title",
+            body_key="zim_gone_body",
+            url_label_key="zim_gone_source",
+            open_key="zim_gone_home",
         ).replace('target="_blank"', 'target="_top"')
         return self._send(
             200,
@@ -3131,6 +3190,34 @@ class ZimHandler(BaseHTTPRequestHandler):
             "text/html; charset=utf-8",
             cache="no-store",
         )
+
+    def _send_entry_missing_page(self, zim_name, entry_path):
+        """The page for a link, in an ordinary ZIM, to an article it does not
+        hold: says so, names the article, and offers a search of the whole
+        library for it (another installed ZIM may have it). Top-level, so the
+        search opens in Zimi rather than inside the reader frame."""
+
+        def _text(value):
+            return escape(value, quote=False)
+
+        title = unquote(entry_path.rsplit("/", 1)[-1]).replace("_", " ").strip() or entry_path
+        body = _UNCAPTURED_PAGE.format(
+            url_attr=escape("/?q=" + quote(title), quote=True),
+            url_text=_text(title),
+            zim=_text(zim_name),
+            lang_key=_UI_LANG_KEY,
+            theme_key=_APP_THEME_KEY,
+            title=_text(_MISSING_ENTRY_STRINGS["entry_missing_title"]),
+            body=_text(_MISSING_ENTRY_STRINGS["entry_missing_body"]),
+            url_label=_text(_UNCAPTURED_STRINGS["uncaptured_url_label"]),
+            open_label=_text(_MISSING_ENTRY_STRINGS["entry_missing_search"]),
+            back_label=_text(_UNCAPTURED_STRINGS["uncaptured_back"]),
+            title_key="entry_missing_title",
+            body_key="entry_missing_body",
+            url_label_key="uncaptured_url_label",
+            open_key="entry_missing_search",
+        ).replace('target="_blank"', 'target="_top"')
+        return self._send(200, body.encode("utf-8"), "text/html; charset=utf-8", cache="no-store")
 
     def _send_entry_too_large(self, total_size):
         """413 for an entry Zimi refuses to materialize. Used by every /w/
@@ -3167,6 +3254,19 @@ class ZimHandler(BaseHTTPRequestHandler):
         with _srv._zim_lock:
             archive = _srv.get_archive(zim_name)
             if archive is None:
+                # A topic build's nopic/mini once had a name of its own
+                # (wikipedia_en_medicine_nopic); since both flavors share one
+                # name, a bookmark or link to the old one moves to the new.
+                current = re.sub(r"_(?:nopic|mini)$", "", zim_name)
+                if current != zim_name and current in _srv.get_zim_files():
+                    moved = "/w/%s/%s" % (_srv.url_quote(current), quote(entry_path, safe="/"))
+                    if self.path.find("?") >= 0:
+                        moved += self.path[self.path.find("?"):]
+                    self.send_response(301)
+                    self.send_header("Location", moved)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
                 # A page being OPENED gets prose — a deleted source's old
                 # bookmarks and history entries land here, and raw JSON on a
                 # phone reads as a server fault (Eric hit exactly that). A
@@ -3246,6 +3346,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                         return self._send_uncaptured_page(
                             zim_name, entry_path, url=live
                         )
+                    # An ordinary ZIM (Wikipedia, Gutenberg): no live address to
+                    # offer, but a person still deserves words, not JSON.
+                    return self._send_entry_missing_page(zim_name, entry_path)
                 return self._json(
                     404, {"error": f"Entry '{entry_path}' not found in {zim_name}"}
                 )
@@ -3397,6 +3500,8 @@ class ZimHandler(BaseHTTPRequestHandler):
         if mimetype.startswith("text/html"):
             text = content.decode("UTF-8", errors="replace")
             text = re.sub(r"<base\s[^>]*>", "", text, flags=re.IGNORECASE)
+            if not self.headers.get("Sec-Fetch-Dest"):
+                text = _with_reopen_in_shell(text)
             if "techOrder" in text or "<source" in text:
                 from zimi import tube as _tube
 
@@ -4022,30 +4127,31 @@ class ZimHandler(BaseHTTPRequestHandler):
     _index_etag = '"z-' + hashlib.md5(SEARCH_UI_HTML.encode()).hexdigest()[:12] + '"'
 
     def _serve_index(self, vary=None):
-        # ETag revalidation: if browser has current version, return 304 (no body).
-        # This is what makes Safari work — must-revalidate forces the check.
-        if self.headers.get("If-None-Match") == ZimHandler._index_etag:
-            self.send_response(304)
-            self.send_header("ETag", ZimHandler._index_etag)
-            self.send_header(
-                "Cache-Control", "public, max-age=0, must-revalidate, s-maxage=3600"
-            )
-            self.end_headers()
-            return
-        # Cache strategy:
-        #   max-age=0, must-revalidate — browser always revalidates (Safari-safe)
-        #   s-maxage=3600 — Cloudflare edge caches 1 hour (fast for users worldwide)
-        #   ETag — efficient revalidation (304 = no body, instant response)
-        #   deploy.sh purges Cloudflare edge after each deploy.
+        # The shell carries the apps this server offers (data-zimi-apps), so
+        # its ETag does too, and a revalidation is answered against THAT one.
+        # Comparing with the plain shell's ETag told a browser holding the
+        # every-app shell "not modified" after the apps were turned off, and
+        # a refresh brought them all back (#88).
         apps = _srv.apps_shown()
         stamp = _srv.apps_stamp(apps)
-        return self._html(
-            200,
-            _index_content(apps),
-            vary=vary,
-            cache="public, max-age=0, must-revalidate, s-maxage=3600",
-            etag=ZimHandler._index_etag if stamp is None else ZimHandler._index_etag.replace('"', '-apps-%s"' % stamp.replace(",", "-"), 1),
+        etag = (
+            ZimHandler._index_etag
+            if stamp is None
+            else ZimHandler._index_etag.replace('"', '-apps-%s"' % stamp.replace(",", "-"), 1)
         )
+        # Cache strategy:
+        #   max-age=0, must-revalidate — browser always revalidates (Safari-safe)
+        #   s-maxage=60 — an edge (Cloudflare) may hold it a minute: the shell
+        #     carries a setting now, and an hour kept a changed one stale
+        #   ETag — efficient revalidation (304 = no body, instant response)
+        cache = "public, max-age=0, must-revalidate, s-maxage=60"
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", cache)
+            self.end_headers()
+            return
+        return self._html(200, _index_content(apps), vary=vary, cache=cache, etag=etag)
 
     def _html(self, code, content, vary=None, cache=None, etag=None):
         self._send(
@@ -4152,8 +4258,11 @@ class ZimHandler(BaseHTTPRequestHandler):
         if _manage.verify_admin_credentials(username, password):
             token = _users.create_admin_session()
             log.info("Admin login (password account)")
+            # The session token, for the client to keep and send as its manage
+            # Bearer. It used to keep the password itself, in plain text in
+            # localStorage under "Remember me"; a password is kept nowhere now.
             return self._json_cookie(
-                200, {"role": "admin"}, self._session_cookie(token, remember)
+                200, {"role": "admin", "token": token}, self._session_cookie(token, remember)
             )
         return self._json(401, {"error": "invalid credentials"})
 

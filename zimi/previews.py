@@ -13,6 +13,9 @@ def strip_html(text):
     text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL)
     text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL)
     text = re.sub(r"<[^>]+>", " ", text)
+    # A read of the start of a page can end inside a tag, which the pattern
+    # above cannot close: '... 1879 <a rel="mw:WikiLink" href="Ulm" t'.
+    text = re.sub(r"<[^>]*$", "", text)
     text = html.unescape(text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
@@ -58,6 +61,17 @@ _SNIPPET_BOILERPLATE_RE = re.compile(
 )
 
 
+_SNIPPET_PARAGRAPH_RE = re.compile(r"<p\b[^>]*>(.*?)</p>", re.IGNORECASE | re.DOTALL)
+# Citation markers only: a <sup> is also the 2 in E = mc2.
+_SNIPPET_CITATION_RE = re.compile(
+    r"<sup\b[^>]*\bclass=[\"'][^\"']*\breference\b[^>]*>.*?</sup>", re.IGNORECASE | re.DOTALL
+)
+# Tags become spaces when stripped, which leaves "relativity ." behind.
+_SNIPPET_SPACE_BEFORE_PUNCT_RE = re.compile(r"\s+([.,;:!?)\]])|([(\[])\s+")
+# Shorter than this is a caption, a byline or an empty <p></p>, not a lead.
+_SNIPPET_MIN_PARAGRAPH = 60
+
+
 def extract_snippet(text, zim_name=""):
     """Best short text snippet for the /snippet endpoint.
 
@@ -87,6 +101,14 @@ def extract_snippet(text, zim_name=""):
                 return s
     # 3/4. Body prose, with repeated chrome removed first.
     cleaned = _SNIPPET_BOILERPLATE_RE.sub(" ", text)
+    # 3. The first real paragraph, citation markers out. An encyclopedia page
+    # opens with hatnotes and an infobox table; its lead sentence is the
+    # first <p> with some length to it.
+    for m in _SNIPPET_PARAGRAPH_RE.finditer(cleaned):
+        s = strip_html(_SNIPPET_CITATION_RE.sub("", m.group(1)))
+        s = _SNIPPET_SPACE_BEFORE_PUNCT_RE.sub(lambda g: g.group(1) or g.group(2), s)
+        if len(s) >= _SNIPPET_MIN_PARAGRAPH:
+            return s[:300].strip()
     for tag in ("main", "article"):
         tag_m = re.search(r"<" + tag + r"[\s>]", cleaned, re.IGNORECASE)
         if tag_m:

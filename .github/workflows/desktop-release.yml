@@ -268,7 +268,11 @@ jobs:
         shell: bash
         run: |
           set -x
-          sudo apt-get install -y -qq xvfb dbus-x11 >/dev/null
+          # A desktop session, not a bare display: a session bus with
+          # xdg-desktop-portal on it. The 1.10.1 snap passed this check on a
+          # bare Xvfb and showed a black window on Xubuntu and Mint, because
+          # there the portal refused WebKit's network check (issue #81).
+          sudo apt-get install -y -qq xvfb dbus-x11 xdg-desktop-portal xdg-desktop-portal-gtk >/dev/null
           sudo snap install --dangerous ./*.snap
           # A sideloaded snap gets no auto-connections: wire what the
           # snapcraft.yaml asks for, and say so when one will not connect.
@@ -277,8 +281,30 @@ jobs:
           done
           snap connections zimi
           mkdir -p "$HOME/zimi-smoke"
+          # A real user session, not dbus-run-session: `snap run` asks the
+          # session bus's systemd for a scope, and a bare dbus-run-session
+          # bus has none, so snapd refused to start the app at all ("not a
+          # snap cgroup"). Lingering gives the runner user its own systemd
+          # and session bus, as a desktop login does.
+          sudo loginctl enable-linger "$(id -un)"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          for i in $(seq 1 30); do [ -S "$XDG_RUNTIME_DIR/bus" ] && break; sleep 1; done
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          # The display first, so the portal's GTK backend can start on it.
+          Xvfb :99 -screen 0 1280x800x24 >/tmp/xvfb.log 2>&1 &
+          export DISPLAY=:99
+          export XDG_CURRENT_DESKTOP=GNOME
+          sleep 2
+          # A desktop login hands its display to the services the session
+          # bus starts; without this the portal's GTK backend could not open
+          # one, and each portal call waited 25 s for it (six of them held
+          # WebKit's first page past the time limit).
+          dbus-update-activation-environment --systemd DISPLAY XDG_CURRENT_DESKTOP
+          /usr/libexec/xdg-desktop-portal >/tmp/portal.log 2>&1 &
+          sleep 3
           ZIMI_DESKTOP_SMOKE=app ZIMI_DESKTOP_SMOKE_DWELL=2 ZIM_DIR="$HOME/zimi-smoke" \
-            timeout 180 xvfb-run -a snap run zimi 2>&1 | tee /tmp/snap-smoke.log || true
+            timeout 180 snap run zimi 2>&1 | tee /tmp/snap-smoke.log || true
+          grep -i "portal" /tmp/snap-smoke.log /tmp/portal.log || true
           if ! grep -q "SMOKE: app rendered" /tmp/snap-smoke.log; then
             echo "::error::The snap did not open its window; this release ships without it."
             exit 1
@@ -471,6 +497,42 @@ jobs:
           & $iscc "/DMyAppVersion=$ver" windows\zimi.iss
           Write-Host "Built installer: dist/Zimi-windows-x64-Setup.exe"
 
+      # The installer is what most people run and what WinSparkle applies on
+      # update, and nothing ever ran it: installed silently here, per-user
+      # as a person would get it, and the installed app has to render its
+      # home view.
+      - name: The installer installs an app that opens (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 12
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "ZimiInstalled"
+          # WaitForExit, not -Wait: -Wait also waits for every process the
+          # installer starts, and it relaunches Zimi, which never exits.
+          $p = Start-Process -FilePath dist\Zimi-windows-x64-Setup.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/CURRENTUSER","/DIR=`"$dir`"","/LOG=installer.log" -PassThru
+          if (-not $p.WaitForExit(300000)) { $p.Kill(); Get-Content installer.log -ErrorAction SilentlyContinue | Out-Host; throw "the installer did not finish in 5 minutes" }
+          if ($p.ExitCode -ne 0) { Get-Content installer.log | Out-Host; throw "the installer exited $($p.ExitCode)" }
+          if (-not (Test-Path (Join-Path $dir "Zimi.exe"))) { Get-Content installer.log | Out-Host; throw "the installer left no Zimi.exe in $dir" }
+          # The installer relaunches Zimi even when silent: that is how an
+          # auto-update brings the app back (zimi.iss [Run]). It must have,
+          # and that copy is stopped so the smoke run below is the only one.
+          $relaunched = $null
+          for ($i = 0; $i -lt 30 -and -not $relaunched; $i++) { Start-Sleep -Seconds 1; $relaunched = Get-Process -Name Zimi -ErrorAction SilentlyContinue }
+          if (-not $relaunched) { throw "the installer did not relaunch Zimi, so an auto-update would leave it closed" }
+          $relaunched | Stop-Process -Force
+          Start-Sleep -Seconds 3
+          pwsh ci/smoke_windows.ps1 -Exe (Join-Path $dir "Zimi.exe") -Installed
+
+      - name: Upload the installed-app smoke screenshot
+        if: runner.os == 'Windows' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zimi-windows-installed-smoke
+          path: |
+            zimi-windows-installed-smoke.png
+            installer.log
+          if-no-files-found: ignore
+
       - name: Move asset to dist
         run: mv ${{ matrix.asset }} dist/ 2>/dev/null || true
         shell: bash
@@ -505,6 +567,28 @@ jobs:
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
+
+      # The builds keep their short internal names; what people download is
+      # named here, once: Zimi-<version>-<platform>-<chip>. Everything below
+      # (the signatures, the appcasts, the cask, the release) reads release/.
+      # The five builds must all be there; the snap may not be (its build is
+      # allowed to fail, and one that will not open is never uploaded).
+      - name: Name the files for the release
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          V="${TAG#v}"
+          mkdir -p release
+          cp Zimi-AppleSilicon/Zimi-AppleSilicon.dmg          "release/Zimi-$V-macOS-AppleSilicon.dmg"
+          cp Zimi-Intel/Zimi-Intel.dmg                        "release/Zimi-$V-macOS-Intel.dmg"
+          cp Zimi-windows-x64-Setup/Zimi-windows-x64-Setup.exe "release/Zimi-$V-Windows-x64-Setup.exe"
+          cp Zimi-windows-x64/Zimi-windows-x64.zip            "release/Zimi-$V-Windows-x64.zip"
+          cp Zimi-Linux-amd64/Zimi-Linux-amd64.AppImage       "release/Zimi-$V-Linux-x64.AppImage"
+          for snap in Zimi-Linux-snap/*.snap; do
+            if [ -e "$snap" ]; then cp "$snap" "release/Zimi-$V-Linux-x64.snap"; fi
+          done
+          echo "ZIMI_STEM=Zimi-$V" >> "$GITHUB_ENV"
+          ls -la release
 
       # ── Sparkle/WinSparkle EdDSA signing + appcasts ─────────────────
       - name: Sign updates and update appcasts
@@ -575,8 +659,8 @@ jobs:
           }
 
           MAC_MINSYS=$'\n            <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>'
-          generate_appcast "Intel" "Zimi-Intel/Zimi-Intel.dmg" "Zimi-Intel.dmg" "appcast-intel.xml" "$MAC_MINSYS" ""
-          generate_appcast "Apple Silicon" "Zimi-AppleSilicon/Zimi-AppleSilicon.dmg" "Zimi-AppleSilicon.dmg" "appcast-arm64.xml" "$MAC_MINSYS" ""
+          generate_appcast "Intel" "release/$ZIMI_STEM-macOS-Intel.dmg" "$ZIMI_STEM-macOS-Intel.dmg" "appcast-intel.xml" "$MAC_MINSYS" ""
+          generate_appcast "Apple Silicon" "release/$ZIMI_STEM-macOS-AppleSilicon.dmg" "$ZIMI_STEM-macOS-AppleSilicon.dmg" "appcast-arm64.xml" "$MAC_MINSYS" ""
           # Windows enclosure is the Inno Setup installer; WinSparkle (0.9.4)
           # downloads it, runs it with sparkle:installerArguments via
           # ShellExecuteEx, then quits WITHOUT relaunching — so /SILENT gives a
@@ -584,7 +668,7 @@ jobs:
           # the relaunch (windows/zimi.iss). /SP- skips the "ready to install"
           # prompt. Per-user install (no UAC), so silent is safe.
           WIN_INSTALLER_ARGS=' sparkle:installerArguments="/SILENT /SP-"'
-          generate_appcast "Windows" "Zimi-windows-x64-Setup/Zimi-windows-x64-Setup.exe" "Zimi-windows-x64-Setup.exe" "appcast-windows.xml" "" "$WIN_INSTALLER_ARGS"
+          generate_appcast "Windows" "release/$ZIMI_STEM-Windows-x64-Setup.exe" "$ZIMI_STEM-Windows-x64-Setup.exe" "appcast-windows.xml" "" "$WIN_INSTALLER_ARGS"
 
           # Commit and push to main
           git config user.name "github-actions[bot]"
@@ -608,8 +692,8 @@ jobs:
           VERSION="${TAG#v}"
 
           # Compute SHA256 for both DMGs
-          SHA_ARM=$(shasum -a 256 Zimi-AppleSilicon/Zimi-AppleSilicon.dmg | awk '{print $1}')
-          SHA_INTEL=$(shasum -a 256 Zimi-Intel/Zimi-Intel.dmg | awk '{print $1}')
+          SHA_ARM=$(shasum -a 256 "release/$ZIMI_STEM-macOS-AppleSilicon.dmg" | awk '{print $1}')
+          SHA_INTEL=$(shasum -a 256 "release/$ZIMI_STEM-macOS-Intel.dmg" | awk '{print $1}')
           echo "Apple Silicon SHA256: $SHA_ARM"
           echo "Intel SHA256: $SHA_INTEL"
 
@@ -626,7 +710,7 @@ jobs:
             sha256 arm:   "${SHA_ARM}",
                    intel: "${SHA_INTEL}"
 
-            url "https://github.com/epheterson/Zimi/releases/download/v#{version}/Zimi-#{arch}.dmg"
+            url "https://github.com/epheterson/Zimi/releases/download/v#{version}/Zimi-#{version}-macOS-#{arch}.dmg"
             name "Zimi"
             desc "Offline knowledge server for ZIM files"
             homepage "https://github.com/epheterson/Zimi"
@@ -657,13 +741,7 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           draft: true
-          # The snap may not be there (its build is allowed to fail); the
-          # release is the other five files either way.
-          fail_on_unmatched_files: false
-          files: |
-            Zimi-Linux-amd64/Zimi-Linux-amd64.AppImage
-            Zimi-Linux-snap/*.snap
-            Zimi-Intel/Zimi-Intel.dmg
-            Zimi-AppleSilicon/Zimi-AppleSilicon.dmg
-            Zimi-windows-x64/Zimi-windows-x64.zip
-            Zimi-windows-x64-Setup/Zimi-windows-x64-Setup.exe
+          # release/ holds exactly what ships: the five builds, and the snap
+          # when it built and opened (checked when release/ was filled).
+          fail_on_unmatched_files: true
+          files: release/*
