@@ -300,8 +300,18 @@ def _get_title_db(zim_name):
 
 
 def _close_title_db(zim_name):
-    """Close and remove a pooled title index connection."""
+    """Close and remove a pooled title index connection, and forget the quick
+    search's answers for that ZIM: they came from the index being replaced,
+    or from the no-index fallback before there was one. A search in the
+    seconds before startup built the index was otherwise answered "nothing"
+    for the cache's 15 minutes after the index was ready."""
     _close_pooled_db(zim_name, _title_db_pool, _title_db_pool_lock)
+    with _suggest_cache_lock:
+        for key in [k for k in _suggest_cache if k[1] == zim_name]:
+            del _suggest_cache[key]
+    # Whole responses span every ZIM, so they all go; an index is replaced
+    # rarely (startup, a download, an update).
+    _search_cache_clear()
 
 
 def _title_index_dir():
