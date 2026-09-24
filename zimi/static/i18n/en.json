@@ -1690,7 +1690,7 @@
   "sort_entries": "Most articles",
   "env_section": "Environment",
   "env_none": "Nothing is overridden here. Every setting is controlled in Zimi.",
-  "env_locks": "locks {v}",
+  "env_locks": "Locks “{v}”",
   "env_empty": "(empty)",
   "env_unavailable": "Could not read the environment.",
   "env_from_config": "Set in {path}",

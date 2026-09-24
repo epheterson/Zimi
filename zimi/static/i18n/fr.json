@@ -1690,7 +1690,7 @@
   "sort_entries": "Plus d'articles",
   "env_section": "Environnement",
   "env_none": "Rien n'est remplacé. Tous les réglages se contrôlent dans Zimi.",
-  "env_locks": "verrouille {v}",
+  "env_locks": "Verrouille « {v} »",
   "env_empty": "(vide)",
   "env_unavailable": "Impossible de lire l'environnement.",
   "env_from_config": "Défini dans {path}",

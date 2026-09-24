@@ -1556,7 +1556,8 @@
   .env-value { font-size: 12px; color: var(--amber); word-break: break-all; }
   .env-secret { color: var(--text3); font-style: italic; }
   .env-what { grid-column: 1 / -1; font-size: 12px; color: var(--text2); }
-  .env-locks { color: var(--text3); }
+  /* On a line of its own: run on, "…unauthenticated locks Set password" read as one sentence. */
+  .env-locks { color: var(--text3); display: block; }
   @media (max-width: 560px) {
     /* Value under the name rather than beside it: a long path or a proxy list
        otherwise pushes the row sideways on a phone. */

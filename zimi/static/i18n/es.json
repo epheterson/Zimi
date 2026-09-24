@@ -1690,7 +1690,7 @@
   "sort_entries": "Más artículos",
   "env_section": "Entorno",
   "env_none": "No se anula nada. Todos los ajustes se controlan en Zimi.",
-  "env_locks": "bloquea {v}",
+  "env_locks": "Bloquea «{v}»",
   "env_empty": "(vacío)",
   "env_unavailable": "No se pudo leer el entorno.",
   "env_from_config": "Definido en {path}",

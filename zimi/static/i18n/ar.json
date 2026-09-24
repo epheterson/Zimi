@@ -1690,7 +1690,7 @@
   "sort_entries": "الأكثر مقالات",
   "env_section": "البيئة",
   "env_none": "لا شيء مُتجاوَز. تُضبط جميع الإعدادات داخل Zimi.",
-  "env_locks": "يقفل {v}",
+  "env_locks": "يقفل «{v}»",
   "env_empty": "(فارغ)",
   "env_unavailable": "تعذّر قراءة البيئة.",
   "env_from_config": "مضبوط في {path}",

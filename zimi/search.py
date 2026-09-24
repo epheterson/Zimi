@@ -885,6 +885,18 @@ def _loadavg_throttle(threshold_ratio=0.8, max_sleep=2.0):
 _ISOLATE_BUILD_MIN_ENTRIES = 100_000
 
 
+# How this module starts a copy of itself for a build. `python -m zimi.search`
+# imports the zimi package first, which imports zimi.search, so runpy warns
+# that the module is already loaded; harmless, and it printed on every build.
+_CHILD_PYTHON = (
+    sys.executable,
+    "-W",
+    "ignore:'zimi.search' found in sys.modules:RuntimeWarning",
+    "-m",
+    "zimi.search",
+)
+
+
 def _zim_entry_count(zim_name):
     for z in _srv._zim_list_cache or []:
         if z.get("name") == zim_name:
@@ -911,9 +923,7 @@ def _build_index_isolated(
     from zimi import subproc
 
     cmd = [
-        sys.executable,
-        "-m",
-        "zimi.search",
+        *_CHILD_PYTHON,
         "--build-index",
         kind,
         _srv.ZIMI_DATA_DIR,
@@ -1873,7 +1883,7 @@ def _scan_vocab_in_child():
     if getattr(sys, "frozen", False):
         return None
     out = _vocab_cache_path() + ".scan.json"
-    cmd = [sys.executable, "-m", "zimi.search", "--scan-vocab", _title_index_dir(), out]
+    cmd = [*_CHILD_PYTHON, "--scan-vocab", _title_index_dir(), out]
     try:
         from zimi import subproc
 

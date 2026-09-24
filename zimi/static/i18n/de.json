@@ -1690,7 +1690,7 @@
   "sort_entries": "Meiste Artikel",
   "env_section": "Umgebung",
   "env_none": "Nichts wird überschrieben. Alle Einstellungen werden in Zimi gesteuert.",
-  "env_locks": "sperrt {v}",
+  "env_locks": "Sperrt „{v}“",
   "env_empty": "(leer)",
   "env_unavailable": "Umgebung konnte nicht gelesen werden.",
   "env_from_config": "Gesetzt in {path}",
