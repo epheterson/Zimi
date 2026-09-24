@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.10.3] - 2026-09-24
+
+### Fixed
+
+- Search finds an article under its other names again: "العائلة اللغوية" leads to "أسرة لغات", as in Kiwix (#86). Title indexes rebuild in the background after the update; search keeps working while they do.
+- Quick search answers in about a tenth of a second on a large library, including for words not searched recently. It read hundreds of rows per ZIM from disk; it now reads the title index alone, and finds matches it used to miss.
+
 ## [1.10.2] - 2026-09-23
 
 A fix-up release from a pass over every feature Zimi has claimed since 1.0.
