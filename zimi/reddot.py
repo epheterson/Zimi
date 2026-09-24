@@ -41,6 +41,12 @@ log = logging.getLogger("zimi")
 # the same ArcticZim on every machine until Zimi moves it on purpose.
 ARCTICZIM_COMMIT = "8281389c2bc27d56702a2eecb3a568a0af3749b9"  # master, 2026-03-22
 ARCTICZIM_REQUIREMENT = "arcticzim[integration,optimize] @ https://github.com/IMayBeABitShy/ArcticZim/archive/%s.zip" % ARCTICZIM_COMMIT
+# ArcticZim asks for any SQLAlchemy, and 2.1.0 (2026-09-24) took multi-key
+# undefer(a, b) away: every build worker died adding a subreddit's wiki and
+# rules, and the creator waited for them. Pinned below 2.1 until ArcticZim
+# moves; the pins are part of what an installed sidecar must match.
+ARCTICZIM_PINS = ("sqlalchemy>=2.0,<2.1",)
+_SIDECAR_SPEC = " ".join((ARCTICZIM_REQUIREMENT,) + ARCTICZIM_PINS)
 SUBREDDIT_RE = re.compile(r"^[A-Za-z0-9_]{2,21}$")
 _MARKER = ".zimi-sidecar.json"
 _MAX_PAGE_BYTES = 8 * 1024 * 1024
@@ -119,10 +125,21 @@ def _cmd(*args):
     return [_venv_bin(sidecar_dir(), "python"), _launcher(), *args]
 
 
+def _marker_spec(venv):
+    try:
+        with open(os.path.join(venv, _MARKER), encoding="utf-8") as f:
+            return json.load(f).get("spec")
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 def sidecar_status():
+    """``installed``: there is a sidecar. ``current``: it was installed with
+    today's requirement and pins; one that is not gets reinstalled when next
+    used, online (a sidecar from before the SQLAlchemy pin cannot build)."""
     venv = sidecar_dir()
     installed = os.path.exists(_exe()) and os.path.exists(os.path.join(venv, _MARKER))
-    return {"installed": installed, "dir": venv}
+    return {"installed": installed, "current": installed and _marker_spec(venv) == _SIDECAR_SPEC, "dir": venv}
 
 
 def _is_offline():
@@ -137,8 +154,11 @@ def ensure_sidecar(sink=None):
     say = sink or (lambda _line: None)
     venv = sidecar_dir()
     exe = _exe()
-    if sidecar_status()["installed"]:
+    status = sidecar_status()
+    if status["current"] or (status["installed"] and _is_offline()):
         return exe
+    if status["installed"]:
+        say("updating the ArcticZim sidecar (a dependency it relies on changed)")
     if _is_offline():
         raise CreateError(
             "the Reddit maker (ArcticZim) is not installed yet and offline mode is on. "
@@ -150,12 +170,13 @@ def ensure_sidecar(sink=None):
     say(f"creating the ArcticZim sidecar at {venv}")
     rc = _run_stream([sys.executable, "-m", "venv", venv], say)
     if rc == 0:
-        rc = _run_stream([_venv_bin(venv, "python"), "-m", "pip", "install", "--upgrade", ARCTICZIM_REQUIREMENT], say)
+        rc = _run_stream([_venv_bin(venv, "python"), "-m", "pip", "install", "--upgrade", ARCTICZIM_REQUIREMENT, *ARCTICZIM_PINS], say)
     if rc != 0 or not os.path.exists(exe):
         shutil.rmtree(venv, ignore_errors=True)
         raise CreateError("ArcticZim sidecar install failed (the job log has pip's output). Nothing was left behind; re-run to try again.")
     with open(os.path.join(venv, _MARKER), "w", encoding="utf-8") as f:
-        f.write('{"tool": "arcticzim"}\n')
+        json.dump({"tool": "arcticzim", "spec": _SIDECAR_SPEC}, f)
+        f.write("\n")
     say("ArcticZim ready")
     return exe
 
