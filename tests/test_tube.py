@@ -855,7 +855,9 @@ def test_a_big_zims_details_are_read_in_a_process_of_its_own(tmp_path, monkeypat
     monkeypatch.setattr(tube, "build_details", lambda *a: in_process.append(a))
     tube.build_all_details()
     assert not in_process
-    assert [c[1:5] for c in started] == [["-m", "zimi.search", "--build-index", "tube"]]
+    # Where the module and its arguments sit, not fixed positions: the launch
+    # carries interpreter flags (a warning filter) before -m.
+    assert [c[c.index("-m"):c.index("-m") + 4] for c in started] == [["-m", "zimi.search", "--build-index", "tube"]]
     assert search._ISOLATE_BUILD_MIN_ENTRIES == 100_000  # the title index's threshold is its own
     rows = {r["id"]: r for r in tube.videos_for(name)}
     assert rows["2157"]["description"] == CART
