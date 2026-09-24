@@ -615,6 +615,12 @@ def _build_fts_for_index(zim_name):
         raise
 
 
+# Titles starting with a multi-word query's first word that the quick search
+# looks through for the other words. They are read from the prefix index
+# only, so ten times the old 200 costs less than the old read did.
+_QUICK_CANDIDATES = 2000
+
+
 def _title_index_search(zim_name, query, limit=10):
     """Search title index. Returns list or None if no index.
 
@@ -649,17 +655,22 @@ def _title_index_search(zim_name, query, limit=10):
                 "SELECT path, title FROM titles WHERE title_lower >= ? AND title_lower < ? LIMIT ?",
                 (q, phrase_upper, limit),
             ).fetchall()
-            # Multi-word: B-tree prefix on first word, then filter in Python.
+            # Then titles starting with the first word that contain the
+            # others. The filter runs on the prefix index alone (it holds
+            # title_lower), and the table is read only for the matches: the
+            # old shape read 200 candidate rows per ZIM from the table, 15,600
+            # random reads over the NAS's 78 ZIMs for a first word not yet in
+            # the page cache (4 to 5 s cold; this shape, 0.07 to 0.22 s).
             first_word = words[0]
-            other_words = [w for w in words[1:]]
+            other_words = words[1:]
             first_upper = first_word[:-1] + chr(ord(first_word[-1]) + 1)
-            # Fetch more candidates (10x limit) to filter down
-            fetch_limit = limit * 20
+            contains = " AND ".join(["instr(s.tl, ?) > 0"] * len(other_words))
             rows = conn.execute(
-                "SELECT path, title FROM titles WHERE title_lower >= ? AND title_lower < ? LIMIT ?",
-                (first_word, first_upper, fetch_limit),
+                "SELECT t.path, t.title FROM (SELECT rowid AS r, title_lower AS tl FROM titles"
+                " WHERE title_lower >= ? AND title_lower < ? LIMIT ?) s"
+                " JOIN titles t ON t.rowid = s.r WHERE " + contains + " LIMIT ?",
+                (first_word, first_upper, _QUICK_CANDIDATES, *other_words, limit * 2),
             ).fetchall()
-            # Filter: title must contain all other words
             results = []
             seen = set()
             for path, title in leading:
@@ -668,10 +679,8 @@ def _title_index_search(zim_name, query, limit=10):
             for path, title in rows:
                 if len(results) >= limit:
                     break
-                if path in seen:
-                    continue
-                tl = title.lower()
-                if all(w in tl for w in other_words):
+                if path not in seen:
+                    seen.add(path)
                     results.append({"path": path, "title": title, "snippet": ""})
             # An index that has no such title is an answer, not a miss. None
             # sent 72 of the NAS's 78 ZIMs to libzim's SuggestionSearcher for
