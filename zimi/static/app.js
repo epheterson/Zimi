@@ -11968,6 +11968,7 @@ function _msServerHtml() {
       (c.title_indexes.count || 0) + ' files, ' + _fmtBytes(c.title_indexes.size_bytes) + '</span></div>' +
       '<div class="mc-row"><span class="mc-label">' + tH('qid_indexes') + '</span><span class="mc-value">' +
       (c.qid_indexes.count || 0) + ' files, ' + _fmtBytes(c.qid_indexes.size_bytes) + '</span></div>' +
+      '<div id="ms-bg-work" style="margin-top:10px"></div>' +
       '<div class="ms-cache-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">' +
         '<button class="pill" onclick="_cacheAction(this,\'clear-search\')">' + tH('clear_search_cache') + '</button>' +
         '<button class="pill" onclick="_cacheAction(this,\'clear-suggest\')">' + tH('clear_suggest_cache') + '</button>' +
@@ -11976,6 +11977,7 @@ function _msServerHtml() {
         '<span id="ms-cache-status" class="ms-hint" style="margin:0;align-self:center"></span>' +
       '</div>';
     el.innerHTML = sh;
+    _renderBackgroundWork();
   }).catch(function() {});
   // Async fill from stats
   _msFetch('/manage/stats').then(function(s) {
@@ -11997,6 +11999,42 @@ function _msServerHtml() {
   return h;
 }
 
+
+// What the server is still building on its own: the title indexes, the Q-ID
+// scan, did-you-mean and ZimiTube's video details, which after a start or an
+// update can run for minutes to hours. From the activity poll (in-memory, no
+// disk), refreshed while anything is building and only while this section is
+// open; when nothing is, it says so, which is the other half of the answer.
+const _BG_WORK_POLL_MS = 5000;
+const _BG_WORK_LABEL = { qids: 'qid_indexes', vocab: 'bg_vocab', tube: 'bg_tube' };
+let _bgWorkTimer = null;
+
+function _bgWorkRow(label, value) {
+  return '<div class="mc-row"><span class="mc-label">' + label + '</span>' +
+    '<span class="mc-value" style="color:var(--amber)">' + value + '</span></div>';
+}
+
+async function _renderBackgroundWork() {
+  clearTimeout(_bgWorkTimer);
+  const el = document.getElementById('ms-bg-work');
+  if (!el || _msSection !== 'server') return;
+  let a;
+  try { a = await (await manageFetch('/manage/activity')).json(); } catch (e) { return; }
+  const rows = [];
+  const ix = a.indexing || {};
+  if (ix.state === 'building') {
+    rows.push(_bgWorkRow(tH('title_indexes'),
+      tH('n_of_total', {n: ix.ready || 0, total: ix.total || 0}) + (ix.current ? ' · ' + esc(ix.current) + '&hellip;' : '')));
+  }
+  for (const job of (a.background || [])) {
+    const where = job.current ? esc(job.current) + '&hellip;' : tH('in_progress');
+    const count = job.total ? tH('n_of_total', {n: Math.min(job.done + 1, job.total), total: job.total}) + ' · ' : '';
+    rows.push(_bgWorkRow(tH(_BG_WORK_LABEL[job.kind] || job.kind), count + where));
+  }
+  el.innerHTML = '<div class="ms-hint" style="margin:0 0 4px">' + tH('bg_heading') + '</div>' +
+    (rows.length ? rows.join('') : '<div class="ms-hint" style="margin:0">' + tH('bg_idle') + '</div>');
+  if (rows.length) _bgWorkTimer = setTimeout(_renderBackgroundWork, _BG_WORK_POLL_MS);
+}
 
 // Below this many installed ZIMs, the warm-everything default is fine and
 // the hot-cache UI gets in the way. Render it collapsed under a "Show" toggle
@@ -21255,6 +21293,9 @@ function _renderActivity(a) {
   const ex = a.export || {};
   if (ex.phase === 'running') {
     parts.push(t('activity_exporting') + (ex.total ? ' ' + (ex.done || 0) + '/' + ex.total : ''));
+  }
+  for (const job of (a.background || [])) {
+    parts.push(t(_BG_WORK_LABEL[job.kind] || job.kind) + (job.current ? ' · ' + job.current : ''));
   }
   const hc = a.health || {};
   if (hc.phase === 'running') {

@@ -1710,5 +1710,9 @@
   "alm_about_timezones": "Time zones: the nearest of a set of cities, since there is no offline map of zone borders; may be off near a border.",
   "desktop_lan_access": "Open Zimi on other devices on this network",
   "desktop_lan_hint": "Lets a phone or another computer on the same Wi-Fi or hotspot read your library. Managing the library still needs your admin password. Zimi restarts when you change this.",
-  "desktop_lan_open_at": "On another device, open:"
+  "desktop_lan_open_at": "On another device, open:",
+  "bg_heading": "Background work",
+  "bg_idle": "Nothing building; every index is up to date.",
+  "bg_vocab": "Did-you-mean words",
+  "bg_tube": "ZimiTube descriptions"
 }

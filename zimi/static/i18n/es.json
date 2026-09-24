@@ -1710,5 +1710,9 @@
   "alm_about_timezones": "Husos horarios: la ciudad más cercana de un conjunto, porque no hay un mapa de fronteras de husos sin conexión; puede fallar cerca de una frontera.",
   "desktop_lan_access": "Abrir Zimi en otros dispositivos de esta red",
   "desktop_lan_hint": "Permite que un teléfono u otro ordenador en la misma Wi-Fi o punto de acceso lea tu biblioteca. Administrar la biblioteca sigue requiriendo tu contraseña de administrador. Zimi se reinicia al cambiar esto.",
-  "desktop_lan_open_at": "En otro dispositivo, abre:"
+  "desktop_lan_open_at": "En otro dispositivo, abre:",
+  "bg_heading": "Trabajo en segundo plano",
+  "bg_idle": "Nada en construcción; todos los índices están al día.",
+  "bg_vocab": "Palabras de «Quizás quisiste decir»",
+  "bg_tube": "Descripciones de ZimiTube"
 }

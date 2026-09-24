@@ -1710,5 +1710,9 @@
   "alm_about_timezones": "Fusos horários: a mais próxima de um conjunto de cidades, pois não há mapa offline das fronteiras de fusos; pode errar perto de uma fronteira.",
   "desktop_lan_access": "Abrir o Zimi em outros dispositivos desta rede",
   "desktop_lan_hint": "Permite que um celular ou outro computador na mesma Wi-Fi ou hotspot leia sua biblioteca. Gerenciar a biblioteca continua exigindo sua senha de administrador. O Zimi reinicia quando você muda isto.",
-  "desktop_lan_open_at": "Em outro dispositivo, abra:"
+  "desktop_lan_open_at": "Em outro dispositivo, abra:",
+  "bg_heading": "Trabalho em segundo plano",
+  "bg_idle": "Nada em construção; todos os índices estão atualizados.",
+  "bg_vocab": "Palavras de «Quis dizer»",
+  "bg_tube": "Descrições do ZimiTube"
 }

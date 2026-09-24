@@ -753,6 +753,47 @@ def _get_title_index_status_brief():
     return status
 
 
+# Background work the server does on its own besides the title indexes (which
+# keep _title_index_status): the Q-ID scan, the did-you-mean vocabulary and
+# ZimiTube's video details. Each marks what it is on, so Manage can say what is
+# still building and the activity poll can carry it; nothing here touches disk.
+_background = {}  # kind -> {"current": str|None, "done": int, "total": int, "started": float}
+_background_lock = threading.Lock()
+
+
+def _background_start(kind, total=0):
+    with _background_lock:
+        _background[kind] = {"current": None, "done": 0, "total": total, "started": time.time()}
+
+
+def _background_step(kind, current, done=None):
+    with _background_lock:
+        job = _background.get(kind)
+        if job is not None:
+            job["current"] = current
+            if done is not None:
+                job["done"] = done
+
+
+def _background_end(kind):
+    with _background_lock:
+        _background.pop(kind, None)
+
+
+def background_work():
+    """What is being built right now, oldest first: [{kind, current, done,
+    total, seconds}]. Cheap, for the 5-second activity poll."""
+    now = time.time()
+    with _background_lock:
+        jobs = [dict(v, kind=k) for k, v in _background.items()]
+    jobs.sort(key=lambda j: j["started"])
+    return [
+        {"kind": j["kind"], "current": j["current"], "done": j["done"], "total": j["total"],
+         "seconds": int(now - j["started"])}
+        for j in jobs
+    ]
+
+
 def _get_title_index_stats():
     """Return title index status + per-ZIM details for the stats API.
     Walks the title index dir and opens each index — DO NOT call on a hot
@@ -1866,6 +1907,15 @@ def _vocab_build_worker(attempt=1):
     on every query and never surface an exception to callers. A successful
     fresh build is persisted to disk (see _vocab_cache_save) so the next
     process start hits _vocab_cache_load instead of re-scanning every index."""
+    global _vocab
+    _background_start("vocab")
+    try:
+        _vocab_build_worker_inner(attempt)
+    finally:
+        _background_end("vocab")
+
+
+def _vocab_build_worker_inner(attempt):
     global _vocab
     cached = _vocab_cache_load()
     if cached is not None:

@@ -1028,6 +1028,12 @@ def _app_update_payload(force=False):
     }
 
 
+def _search_background_work():
+    from zimi.search import background_work
+
+    return background_work()
+
+
 def _cache_info_payload():
     """Size breakdown of the Zimi data dir (indexes + caches, NOT the ZIM
     library). Walks only the small-file-count data dir — never the ZIM files.
@@ -5017,6 +5023,9 @@ def handle_manage_get(handler, parsed, params):
                 "seeding": {"torrents": seeding_count},
                 "export": export_op,
                 "health": health_op,
+                # The Q-ID scan, did-you-mean and ZimiTube details, while
+                # they run: Manage's cache section says what is still building.
+                "background": _search_background_work(),
             },
         )
 

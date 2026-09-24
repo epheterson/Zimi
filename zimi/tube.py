@@ -597,7 +597,7 @@ def _install(name, zim_path, details):
 
 def _build_one(name):
     """Bring ``name``'s details file up to date and serve it."""
-    from zimi.search import _build_index_isolated
+    from zimi.search import _background_end, _background_start, _background_step, _build_index_isolated
 
     with _build_lock:
         path = _srv.get_zim_files().get(name)
@@ -606,14 +606,19 @@ def _build_one(name):
         try:
             if not details_current(name, path):
                 t0 = time.time()
-                _build_index_isolated(
-                    "tube",
-                    name,
-                    path,
-                    build_details,
-                    lambda _name: None,
-                    min_entries=_DETAILS_ISOLATE_MIN_ENTRIES,
-                )
+                _background_start("tube")
+                _background_step("tube", name)
+                try:
+                    _build_index_isolated(
+                        "tube",
+                        name,
+                        path,
+                        build_details,
+                        lambda _name: None,
+                        min_entries=_DETAILS_ISOLATE_MIN_ENTRIES,
+                    )
+                finally:
+                    _background_end("tube")
                 log.info(
                     "ZimiTube: read the video details of %s (%.1fs)",
                     name,
