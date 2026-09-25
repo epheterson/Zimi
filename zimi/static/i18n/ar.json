@@ -819,6 +819,7 @@
   "books_book": "كتاب",
   "books_books": "كتب",
   "books_bce": "{from} إلى {to} ق.م",
+  "books_bce_ce": "{from} ق.م إلى {to} م",
   "books_pending": "تظهر العصور والمواضيع بعد قراءة الكتب، بضع دقائق لمكتبة كبيرة.",
   "books_epub_only": "هذا الكتاب في هذا الـZIM بصيغة EPUB فقط.",
   "books_prev_chapter": "الفصل السابق",

@@ -819,6 +819,7 @@
   "books_book": "libro",
   "books_books": "libros",
   "books_bce": "{from} a {to} a. C.",
+  "books_bce_ce": "{from} a. C. a {to} d. C.",
   "books_pending": "Las épocas y los temas aparecen cuando se han leído los libros, unos minutos en una biblioteca grande.",
   "books_epub_only": "Este ZIM solo tiene este libro en EPUB.",
   "books_prev_chapter": "Capítulo anterior",

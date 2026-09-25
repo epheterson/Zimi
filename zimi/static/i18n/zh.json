@@ -819,6 +819,7 @@
   "books_book": "本书",
   "books_books": "本书",
   "books_bce": "公元前 {from} 至 {to} 年",
+  "books_bce_ce": "公元前 {from} 年至公元 {to} 年",
   "books_pending": "读完图书后会显示年代和主题，大型书库需要几分钟。",
   "books_epub_only": "此 ZIM 中这本书只有 EPUB。",
   "books_prev_chapter": "上一章",

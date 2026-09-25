@@ -819,6 +819,7 @@
   "books_book": "livre",
   "books_books": "livres",
   "books_bce": "{from} à {to} av. J.-C.",
+  "books_bce_ce": "{from} av. J.-C. à {to} apr. J.-C.",
   "books_pending": "Les époques et les sujets apparaissent une fois les livres lus, quelques minutes pour une grande bibliothèque.",
   "books_epub_only": "Ce ZIM n’a ce livre qu’en EPUB.",
   "books_prev_chapter": "Chapitre précédent",

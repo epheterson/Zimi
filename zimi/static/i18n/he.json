@@ -819,6 +819,7 @@
   "books_book": "ספר",
   "books_books": "ספרים",
   "books_bce": "{from} עד {to} לפנה״ס",
+  "books_bce_ce": "{from} לפנה״ס עד {to} לספירה",
   "books_pending": "התקופות והנושאים יופיעו אחרי שהספרים ייקראו, כמה דקות בספרייה גדולה.",
   "books_epub_only": "ב־ZIM הזה הספר קיים רק כ־EPUB.",
   "books_prev_chapter": "הפרק הקודם",

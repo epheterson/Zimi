@@ -819,6 +819,7 @@
   "books_book": "किताब",
   "books_books": "किताबें",
   "books_bce": "ईसा पूर्व {from} से {to}",
+  "books_bce_ce": "ईसा पूर्व {from} से ईसवी {to}",
   "books_pending": "किताबें पढ़ ली जाने पर युग और विषय दिखेंगे, बड़ी लाइब्रेरी में कुछ मिनट लगते हैं।",
   "books_epub_only": "इस ZIM में यह किताब सिर्फ़ EPUB में है।",
   "books_prev_chapter": "पिछला अध्याय",
