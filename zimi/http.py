@@ -188,6 +188,7 @@ _RATE_LIMITED_API_PATHS = (
     "/exchange",
     "/reddot",
     "/wiki",
+    "/books",
     "/map-home",
     "/read",
     "/suggest",
@@ -199,7 +200,7 @@ _RATE_LIMITED_API_PATHS = (
 
 # The apps' routes below their bare path (/exchange/question, /reddot/post):
 # matched exactly, they answered without limit.
-_RATE_LIMITED_API_PREFIXES = ("/exchange/", "/reddot/", "/tube/", "/wiki/")
+_RATE_LIMITED_API_PREFIXES = ("/exchange/", "/reddot/", "/tube/", "/wiki/", "/books/")
 
 # High-frequency read-only manage polls. While a download runs the manage UI
 # keeps three independent timers alive — downloads+seeding every 2s, activity
@@ -845,6 +846,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("exchange.html")
             + _static_hash("reddot.html")
             + _static_hash("wiki.html")
+            + _static_hash("books.html")
             + _static_hash("apps.css")
             + _static_hash("apps.js")
             + _i18n_hash
@@ -1593,7 +1595,7 @@ def _reconstruct_source_url(archive, entry_path):
 # ============================================================================
 
 
-APP_PAGES = ("tube.html", "exchange.html", "reddot.html", "wiki.html")
+APP_PAGES = ("tube.html", "exchange.html", "reddot.html", "wiki.html", "books.html")
 _APPS_CSS_MARK = b"<!--@apps.css@-->"
 _APPS_JS_MARK = b"<!--@apps.js@-->"
 _APP_ASSETS = (
@@ -2375,6 +2377,27 @@ class ZimHandler(BaseHTTPRequestHandler):
                     if not zim or zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
                         return self._json(404, {"error": "not found"})
                     return self._json(200, {"events": _wiki.on_this_day(zim, param("date"))})
+                return self._json(404, {"error": "not found"})
+            elif parsed.path == "/books" or parsed.path.startswith("/books/"):
+                # Bookshelf: every Project Gutenberg ZIM in the library, as one shelf.
+                from zimi import books as _books
+
+                sub = parsed.path[len("/books"):].strip("/")
+                if sub in ("", "home"):
+                    return self._json(200, _books.home())
+                if sub == "list":
+                    return self._json(200, _books.listing(
+                        q=param("q") or "", author=param("author") or "", shelf_code=param("shelf") or "",
+                        lang=param("lang") or "", era=param("era") or "", zim=param("zim") or "",
+                        sort=param("sort") or "popular", offset=param("offset") or 0, limit=param("limit") or _books.LIST_LIMIT))
+                if sub == "authors":
+                    return self._json(200, _books.authors(
+                        q=param("q") or "", lang=param("lang") or "", shelf_code=param("shelf") or "",
+                        era=param("era") or "", sort=param("sort") or "name", offset=param("offset") or 0,
+                        limit=param("limit") or _books.LIST_LIMIT))
+                if sub == "book":
+                    got = _books.book(param("zim") or "", param("id"))
+                    return self._json(200, got) if got else self._json(404, {"error": "not found"})
                 return self._json(404, {"error": "not found"})
             elif parsed.path == "/exchange" or parsed.path.startswith("/exchange/"):
                 # ZimiExchange: every Stack Exchange site in the library.
