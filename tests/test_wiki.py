@@ -260,3 +260,10 @@ def test_pills_scope_search_to_the_chosen_wikis(served):
     )
     assert got["results"]
     assert {r["zim"] for r in got["results"]} <= {w["name"] for w in home["wikis"]}
+
+
+def test_the_page_is_served_with_the_shared_parts_inlined(served):
+    with urllib.request.urlopen(served + "/static/wiki.html", timeout=10) as r:
+        body = r.read().decode()
+    assert "<!--@apps.css@-->" not in body and "<!--@apps.js@-->" not in body
+    assert "function zpath(" in body and ".chips {" in body

@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zimipedia</title>
+<!--@apps.css@-->
+<style>
+  /* A wiki's pill carries its language as a badge; a thin rule parts the projects. */
+  .chip .lg { font-size: 10px; font-weight: 700; letter-spacing: .04em; padding: 1px 5px; border-radius: 4px; background: var(--surface2); color: var(--text2); text-transform: uppercase; }
+  .chip.on .lg { background: rgba(127,127,127,0.28); color: inherit; }
+  .chips .sep { flex: none; width: 1px; align-self: stretch; margin: 4px 2px; background: var(--border); }
+  /* The head: what is shown, and the two ways to show it. */
+  .head .views { display: inline-flex; gap: 2px; margin-inline-start: auto; border: 1px solid var(--border); border-radius: 10px; padding: 2px; background: var(--surface); }
+  .head .views button { border: 0; background: none; padding: 4px 7px; border-radius: 8px; cursor: pointer; color: var(--text2); display: inline-flex; line-height: 0; }
+  .head .views button.on { background: var(--surface2); color: var(--text); }
+  .head .views svg { width: 16px; height: 16px; }
+  .head .n .spin { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--border); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -1px; margin-inline-end: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  /* Cards: a picture when the article has one, its wiki, its title, its first lines. */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+  /* Today's pictures and its word, quote and place: three across, whatever
+     the width, so six pictures are two full rows. */
+  @media (min-width: 700px) { .grid.feat, .grid.days, .grid.otd { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 480px) { .grid { grid-template-columns: 1fr 1fr; gap: 10px; } .grid.days, .grid.otd { grid-template-columns: 1fr; } }
+  .card { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; color: inherit; min-width: 0; }
+  .card:hover, .card:focus-visible { border-color: var(--amber); outline: none; }
+  .card .pic { aspect-ratio: 16 / 10; background: var(--surface2); display: block; overflow: hidden; }
+  .card .pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .card .pic.mark { display: flex; align-items: center; justify-content: center; }
+  .card .pic.mark img { width: 44px; height: 44px; object-fit: contain; opacity: .55; border-radius: 10px; }
+  .card .bd { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .src { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text2); min-width: 0; }
+  .src img { width: 14px; height: 14px; border-radius: 4px; flex: none; }
+  .src span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .src .lg { font-size: 9.5px; font-weight: 700; padding: 0 4px; border-radius: 3px; background: var(--surface2); text-transform: uppercase; flex: none; }
+  .card .kick { font-size: 12px; font-weight: 600; color: var(--amber); }
+  .card .t { font-weight: 600; font-size: 14.5px; line-height: 1.3; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card .ex { color: var(--text2); font-size: 13px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  /* On this day: the year is the headline. */
+  .card.ev .kick { font-size: 20px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .card.ev .ex { color: var(--text); -webkit-line-clamp: 4; }
+  .card.ev .t { font-size: 12.5px; font-weight: 600; color: var(--amber); -webkit-line-clamp: 1; }
+  /* A quote reads as a quote. */
+  .card.quote .ex { color: var(--text); font-size: 15px; line-height: 1.45; font-style: italic; -webkit-line-clamp: 6; }
+  .card .day { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text2); }
+  /* The list: the apps' rows, a small picture or the year where the number goes. */
+  .row { color: inherit; }
+  .row .stat img { width: 52px; height: 52px; object-fit: cover; border-radius: var(--radius-s); display: block; }
+  .row .stat .yr { display: block; font-size: 14px; font-weight: 700; color: var(--text); padding-top: 1px; }
+  .row .stat .ic { width: 28px; height: 28px; margin: 2px auto 0; border-radius: 7px; display: block; }
+  .row .kick { color: var(--amber); font-size: 12px; font-weight: 600; }
+  .row .t + .ex { margin-top: 2px; }
+  .row.quote .ex { font-style: italic; color: var(--text); -webkit-line-clamp: 4; }
+  /* Waiting for a card. */
+  .sk { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-height: 180px; }
+  .sk.row-sk { min-height: 64px; border-radius: var(--radius-s); }
+  .dym { margin: 0 0 10px; color: var(--text2); font-size: 13px; }
+  .dym button { border: 0; background: none; color: var(--amber); font: inherit; font-weight: 600; cursor: pointer; padding: 0; }
+  .card .bd, .row .t, .row .ex, .card .ex, .card .t { unicode-bidi: plaintext; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="chips" id="pills" role="group"></div>
+  <div class="head">
+    <h2 id="h"></h2><span class="n" id="n"></span>
+    <span class="views" id="views" role="group"></span>
+  </div>
+  <div id="today"></div>
+  <div id="results" hidden></div>
+  <div class="empty" id="empty" hidden></div>
+</div>
+<!--@apps.js@-->
+<script>
+// Zimipedia. Every wiki in the library as one: a pill per wiki (all of them
+// on until one is tapped), a Today page made of what the wikis already hold
+// (On this day from Wikipedia's own date page, pictures from across the
+// wikis, a word, a quote and a place when Wiktionary, Wikiquote and
+// Wikivoyage are here), and search across the wikis chosen. Articles open
+// in Zimi's reader, where the language button offers the same article in
+// the other languages installed. Zimi's top bar drives wikiSearch(q).
+var STR = strings({ title: 'Zimipedia', all: 'All', today: 'Today', on_this_day: 'On this day', featured: 'From the wikis', word: 'Word of the day',
+  quote: 'Quote of the day', place: 'A place to go', none: 'Nothing matches.', empty: 'No wiki installed yet.', catalog: 'Browse the catalog',
+  cards: 'Cards', list: 'List', searching: 'Searching the full text', did_you_mean: 'Did you mean', results: 'results', result: 'result', langs: {} });
+
+// ── pure parts (tests/test_wiki_page.cjs runs these) ──────────────────────
+var FEATURED_SLOTS = 6;
+var OTD_SHOWN = 6;
+var SEARCH_LIMIT = 30;
+var SNIPPETS_FETCHED = 12;
+// The projects with a section of their own on Today; the rest feed the pictures.
+var DAY_ROLES = { wiktionary: 'word', wikiquote: 'quote', wikivoyage: 'place' };
+
+// The browser's own date, as the day the picks belong to.
+function dayStamp(d) { return d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2); }
+
+// A pill's words: the project for a Wikimedia wiki, the ZIM's title for any
+// other, and the title too when two wikis of one project share a language
+// (all of English Wikipedia beside its top-100 subset).
+function pillLabels(wikis) {
+  var seen = {};
+  wikis.forEach(function(w) { var k = (w.project_title || w.title) + '|' + w.language; seen[k] = (seen[k] || 0) + 1; });
+  var out = {};
+  wikis.forEach(function(w) {
+    var base = w.project_title || w.title;
+    out[w.name] = seen[base + '|' + w.language] > 1 ? w.title : base;
+  });
+  return out;
+}
+
+// The interface's language first, then English, then the rest in order.
+function byLanguage(list, lang) {
+  var rank = function(w) { return w.language === lang ? 0 : w.language === 'en' ? 1 : 2; };
+  return list.map(function(w, i) { return [rank(w), i, w]; }).sort(function(a, b) { return a[0] - b[0] || a[1] - b[1]; }).map(function(x) { return x[2]; });
+}
+// The one wiki of a list to read first.
+function preferred(list, lang) { return byLanguage(list, lang)[0] || null; }
+
+// What Today asks for, from the wikis in scope: every request is one Zimi
+// already answers (/random with a day seed, so a day's picks hold all day;
+// /wiki/onthisday, kept by the server), and a section whose wiki is not
+// here is not asked for.
+function todayPlan(wikis, day, lang) {
+  var byRole = { word: [], quote: [], place: [] }, wps = [], feed = [];
+  wikis.forEach(function(w) {
+    var role = DAY_ROLES[w.project];
+    if (role) byRole[role].push(w); else feed.push(w);
+    if (w.project === 'wikipedia') wps.push(w);
+  });
+  wps = byLanguage(wps, lang);
+  feed = byLanguage(feed, lang);
+  var mmdd = day.slice(4);
+  var plan = { otd: wps.map(function(w) { return { zim: w.name, url: '/wiki/onthisday?zim=' + encodeURIComponent(w.name) + '&date=' + mmdd }; }), featured: [], days: [] };
+  for (var i = 0; feed.length && i < FEATURED_SLOTS; i++) {
+    var w = feed[i % feed.length];
+    plan.featured.push({ zim: w.name, url: '/random?zim=' + encodeURIComponent(w.name) + '&thumb=1&require_thumb=1&seed=' + day + '-' + i });
+  }
+  ['word', 'quote', 'place'].forEach(function(role) {
+    var w = preferred(byRole[role], lang);
+    if (w) plan.days.push({ role: role, zim: w.name, url: '/random?zim=' + encodeURIComponent(w.name) + '&thumb=1' + (role === 'place' ? '&require_thumb=1' : '') + '&seed=' + day });
+  });
+  return plan;
+}
+
+// Quick title matches first, then the full text's, each article once.
+function mergeResults(first, second) {
+  var seen = {}, out = [];
+  (first || []).concat(second || []).forEach(function(r) {
+    var k = r.zim + '/' + r.path;
+    if (!seen[k]) { seen[k] = 1; out.push(r); }
+  });
+  return out;
+}
+
+function stripTags(s) { return String(s || '').replace(/<[^>]+>/g, ''); }
+// A lead's first lines as a card reads them: no footnote marks ([1],
+// [ note 1 ], [ b ]), no space inside brackets or before punctuation, and a
+// quote in one pair of quotation marks.
+function cleanBlurb(s) {
+  return stripTags(s).replace(/\[\s*[^\]\s][^\]]{0,14}\]/g, '').replace(/([(\[])\s+/g, '$1').replace(/\s+([)\],.;:!?])/g, '$1')
+    .replace(/^“\s*["“]\s*/, '“').replace(/\s*["”]\s*”$/, '”').replace(/\s{2,}/g, ' ').trim();
+}
+
+// ── state ────────────────────────────────────────────────────────────────
+var VIEW_KEY = 'zimi_wiki_view';
+var TODAY_KEY = 'zimi_wiki_today';
+var _wikis = [], _by = {}, _labels = {}, _sel = [], _q = '', _hits = [], _searchSeq = 0, _view = 'cards';
+var _day = dayStamp(new Date());
+var _picks = {};  // url -> answer, for today
+try { _view = localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'cards'; } catch (e) {}
+try { var kept = JSON.parse(localStorage.getItem(TODAY_KEY) || 'null'); if (kept && kept.day === _day) _picks = kept.picks || {}; } catch (e) {}
+
+function scoped() { return _sel.length ? _wikis.filter(function(w) { return _sel.indexOf(w.name) >= 0; }) : _wikis; }
+function langName(code) { return (STR.langs && STR.langs[code]) || code; }
+function badge(w) { return w && w.language ? '<span class="lg" title="' + esc(langName(w.language)) + '">' + esc(w.language) + '</span>' : ''; }
+function srcLine(zim) {
+  var w = _by[zim] || { name: zim, title: zim };
+  return '<span class="src">' + (w.icon ? zimIcon(w.name) : '') + '<span>' + esc(_labels[zim] || w.title) + '</span>' + badge(w) + '</span>';
+}
+
+// A day's pick, asked once and kept for the day in this browser.
+function pick(url) {
+  if (_picks[url]) return Promise.resolve(_picks[url]);
+  return fetch(url).then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
+    if (!d || d.error) return null;
+    _picks[url] = d;
+    try { localStorage.setItem(TODAY_KEY, JSON.stringify({ day: _day, picks: _picks })); } catch (e) {}
+    return d;
+  }).catch(function() { return null; });
+}
+
+// ── views ────────────────────────────────────────────────────────────────
+var ICON_CARDS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>';
+var ICON_LIST = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>';
+function renderViews() {
+  document.getElementById('views').innerHTML = [['cards', ICON_CARDS, STR.cards], ['list', ICON_LIST, STR.list]].map(function(v) {
+    return '<button type="button" class="' + (_view === v[0] ? 'on' : '') + '" aria-pressed="' + (_view === v[0]) + '" title="' + esc(v[2]) + '" aria-label="' + esc(v[2]) + '" onclick="setView(\'' + v[0] + '\')">' + v[1] + '</button>';
+  }).join('');
+}
+function setView(v) {
+  _view = v;
+  try { localStorage.setItem(VIEW_KEY, v); } catch (e) {}
+  renderViews();
+  if (_q) renderResults(); else renderToday();
+}
+
+// One article, as a card or a row. it: {zim, path, title, blurb, thumb,
+// kick, year, day, cls}. An event and a quote lead with their words and
+// name the article after them. In a grid where some cards have a picture,
+// a card without one shows its wiki's mark in the picture's place, so the
+// rows keep one shape.
+function itemHtml(it, framed) {
+  var href = esc(zpath(it.zim, it.path));
+  var data = ' href="' + href + '" data-zim="' + esc(it.zim) + '" data-path="' + esc(it.path) + '"';
+  if (_view === 'list') {
+    var w = _by[it.zim] || {};
+    var stat = it.year ? '<span class="yr">' + esc(it.year) + '</span>' : it.thumb ? '<img src="' + esc(it.thumb) + '" alt="" loading="lazy">' : (w.icon ? zimIcon(w.name, 'ic') : '');
+    return '<a class="row ' + (it.cls || '') + '"' + data + '><div class="stat">' + stat + '</div><div>' +
+      (it.kick ? '<div class="kick">' + esc(it.kick) + '</div>' : '') +
+      '<div class="t">' + esc(it.title) + '</div>' + (it.blurb ? '<div class="ex">' + esc(it.blurb) + '</div>' : '') +
+      '<div class="m">' + srcLine(it.zim) + '</div></div></a>';
+  }
+  var w2 = _by[it.zim] || {};
+  var pic = it.thumb ? '<span class="pic"><img src="' + esc(it.thumb) + '" alt="" loading="lazy"></span>'
+    : framed ? '<span class="pic mark">' + (w2.icon ? zimIcon(w2.name) : '') + '</span>' : '';
+  var title = '<span class="t">' + esc(it.title) + '</span>', ex = it.blurb ? '<span class="ex">' + esc(it.blurb) + '</span>' : '';
+  var textFirst = it.cls === 'ev' || it.cls === 'quote';
+  return '<a class="card ' + (it.cls || '') + '"' + data + '>' + pic +
+    '<span class="bd">' + (it.day ? '<span class="day">' + esc(it.day) + '</span>' : '') + srcLine(it.zim) +
+    (it.year ? '<span class="kick">' + esc(it.year) + '</span>' : it.kick ? '<span class="kick">' + esc(it.kick) + '</span>' : '') +
+    (textFirst ? ex + title : title + ex) + '</span></a>';
+}
+function itemsHtml(items, gridCls) {
+  if (_view === 'list') return '<div class="rows">' + items.map(function(it) { return itemHtml(it); }).join('') + '</div>';
+  var framed = items.some(function(it) { return it.thumb; });
+  return '<div class="grid ' + (gridCls || '') + '">' + items.map(function(it) { return itemHtml(it, framed); }).join('') + '</div>';
+}
+function skeletons(n) {
+  var one = _view === 'list' ? '<div class="sk row-sk"></div>' : '<div class="sk"></div>';
+  return _view === 'list' ? new Array(n + 1).join(one) : '<div class="grid">' + new Array(n + 1).join(one) + '</div>';
+}
+function section(id, title, inner) {
+  return '<section class="shelf" id="s-' + id + '">' + (title ? '<div class="shelf-h"><h2>' + esc(title) + '</h2></div>' : '') + '<div class="sb">' + inner + '</div></section>';
+}
+function fill(id, html) {
+  var s = document.getElementById('s-' + id);
+  if (!s) return;
+  if (html) s.querySelector('.sb').innerHTML = html; else s.remove();
+}
+
+// ── Today ────────────────────────────────────────────────────────────────
+var _todaySeq = 0;
+function fromRandom(d, zim) {
+  return { zim: zim, path: d.path, title: d.title || d.path, blurb: cleanBlurb(d.blurb || ''), thumb: d.thumbnail || '' };
+}
+function renderToday() {
+  var seq = ++_todaySeq;
+  var wikis = scoped();
+  var plan = todayPlan(wikis, _day, STR.lang || 'en');
+  var dateText = new Date().toLocaleDateString(STR.lang || undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  document.getElementById('h').textContent = STR.today;
+  document.getElementById('n').textContent = dateText;
+  var host = document.getElementById('today');
+  host.innerHTML = (plan.featured.length ? section('featured', STR.featured, skeletons(Math.min(plan.featured.length, _view === 'list' ? 3 : 6))) : '') +
+    (plan.otd.length ? section('otd', STR.on_this_day, skeletons(_view === 'list' ? 3 : 3)) : '') +
+    (plan.days.length ? section('days', '', skeletons(plan.days.length)) : '');
+  var stale = function() { return seq !== _todaySeq || !!_q; };
+
+  // Pictures from across the wikis: each slot as it lands, in plan order.
+  if (plan.featured.length) {
+    var got = new Array(plan.featured.length), left = plan.featured.length;
+    plan.featured.forEach(function(slot, i) {
+      pick(slot.url).then(function(d) {
+        got[i] = d ? fromRandom(d, slot.zim) : null;
+        if (stale()) return;
+        left -= 1;
+        var seen = {};
+        var items = got.filter(function(it) { if (!it || !it.path || seen[it.zim + it.path]) return false; seen[it.zim + it.path] = 1; return true; });
+        // The ones with a picture first (a wiki made without pictures, a
+        // nopic build, still has its say, after them).
+        items = items.filter(function(it) { return it.thumb; }).concat(items.filter(function(it) { return !it.thumb; }));
+        if (items.length || !left) fill('featured', items.length ? itemsHtml(items, 'feat') : '');
+      });
+    });
+  }
+  // On this day: the first Wikipedia whose date page answers.
+  (function tryOtd(i) {
+    if (i >= plan.otd.length) { if (!stale()) fill('otd', ''); return; }
+    pick(plan.otd[i].url).then(function(d) {
+      if (stale()) return;
+      var evs = (d && d.events) || [];
+      if (!evs.length) { tryOtd(i + 1); return; }
+      fill('otd', itemsHtml(evs.slice(0, OTD_SHOWN).map(function(e) {
+        return { zim: plan.otd[i].zim, path: e.path, title: e.title, blurb: cleanBlurb(e.event_text), year: e.event_year, cls: 'ev' };
+      }), 'otd'));
+    });
+  })(0);
+  // A word, a quote, a place: one each, from the wiki that has them.
+  if (plan.days.length) {
+    Promise.all(plan.days.map(function(slot) { return pick(slot.url).then(function(d) { return d ? { slot: slot, d: d } : null; }); })).then(function(all) {
+      if (stale()) return;
+      var items = all.filter(Boolean).map(function(x) {
+        var it = fromRandom(x.d, x.slot.zim);
+        it.day = STR[x.slot.role];
+        it.cls = x.slot.role;
+        if (x.slot.role === 'word') it.kick = x.d.part_of_speech || '';
+        if (x.slot.role === 'quote') {
+          // Said by the page's subject, or by whoever the page attributes it to.
+          var by = x.d.attribution || x.d.speaker || x.d.author || '';
+          it.kick = by && by !== it.title ? by : '';
+          it.thumb = '';
+        }
+        return it;
+      });
+      fill('days', items.length ? itemsHtml(items, 'days') : '');
+    });
+  }
+  showEmpty();
+}
+
+// ── search ───────────────────────────────────────────────────────────────
+function wikiSearch(q) {
+  _q = (q || '').trim();
+  var seq = ++_searchSeq;
+  if (!_q) { showToday(); return; }
+  document.getElementById('today').hidden = true;
+  document.getElementById('results').hidden = false;
+  var zims = scoped().map(function(w) { return w.name; }).join(',');
+  if (!zims) return;
+  _hits = []; _dym = '';
+  document.getElementById('h').textContent = '“' + _q + '”';
+  setCount(true);
+  document.getElementById('results').innerHTML = skeletons(_view === 'list' ? 4 : 6);
+  var base = '/search?q=' + encodeURIComponent(_q) + '&zim=' + encodeURIComponent(zims) + '&limit=' + SEARCH_LIMIT;
+  var get = function(url) { return fetch(url).then(function(r) { return r.ok ? r.json() : { results: [] }; }).catch(function() { return { results: [] }; }); };
+  get(base + '&fast=1').then(function(d1) {
+    if (seq !== _searchSeq) return;
+    _hits = mergeResults(d1.results, []);
+    _dym = d1.did_you_mean || '';
+    renderResults(!!d1.partial);
+    snippets(seq);
+    if (!d1.partial) return;
+    get(base).then(function(d2) {
+      if (seq !== _searchSeq) return;
+      _hits = mergeResults(_hits, d2.results);
+      _dym = _dym || d2.did_you_mean || '';
+      renderResults(false);
+      snippets(seq);
+    });
+  });
+}
+var _dym = '';
+function setCount(busy) {
+  var n = _hits.length;
+  document.getElementById('n').innerHTML = (busy ? '<span class="spin"></span>' + esc(STR.searching) : '') +
+    (!busy || n ? (busy ? ' · ' : '') + esc(count(n, STR.result, STR.results)) : '');
+}
+function renderResults(busy) {
+  var host = document.getElementById('results');
+  setCount(!!busy);
+  var dym = _dym && _dym.toLowerCase() !== _q.toLowerCase() ? '<div class="dym">' + esc(STR.did_you_mean) + ' <button type="button" onclick="wikiSearch(' + J(_dym) + ')">' + esc(_dym) + '</button></div>' : '';
+  if (!_hits.length) { host.innerHTML = dym + (busy ? skeletons(3) : '<div class="empty">' + esc(STR.none) + '</div>'); return; }
+  host.innerHTML = dym + itemsHtml(_hits.map(function(r) {
+    return { zim: r.zim, path: r.path, title: r.title || r.path, blurb: cleanBlurb(r._blurb || r.snippet || ''), thumb: _view === 'cards' ? (r._thumb || '') : '' };
+  }));
+}
+// The first lines and a picture for the top results, as the main search
+// does: /snippet reads the start of each page once.
+function snippets(seq) {
+  _hits.slice(0, SNIPPETS_FETCHED).forEach(function(r) {
+    if (r._asked) return;
+    r._asked = true;
+    fetch('/snippet?zim=' + encodeURIComponent(r.zim) + '&path=' + encodeURIComponent(r.path)).then(function(x) { return x.ok ? x.json() : null; }).then(function(d) {
+      if (!d || seq !== _searchSeq) return;
+      r._blurb = d.snippet || r.snippet || '';
+      r._thumb = d.thumbnail || '';
+      renderResults(false);
+    }).catch(function() {});
+  });
+}
+function showToday() {
+  _q = ''; _searchSeq++;
+  document.getElementById('results').hidden = true;
+  document.getElementById('results').innerHTML = '';
+  document.getElementById('today').hidden = false;
+  renderToday();
+}
+
+// ── pills ────────────────────────────────────────────────────────────────
+function renderPills() {
+  var host = document.getElementById('pills');
+  var h = '<button type="button" class="chip' + (!_sel.length ? ' on' : '') + '" aria-pressed="' + !_sel.length + '" onclick="pillAll()">' + esc(STR.all) + '</button>';
+  var group = null;
+  _wikis.forEach(function(w) {
+    if (group !== null && w.project !== group) h += '<span class="sep" aria-hidden="true"></span>';
+    group = w.project;
+    var on = _sel.indexOf(w.name) >= 0;
+    h += '<button type="button" class="chip' + (on ? ' on' : '') + '" aria-pressed="' + on + '" title="' + esc(w.title + (w.language ? ' · ' + langName(w.language) : '')) + '" onclick="pill(' + J(w.name) + ')">' +
+      (w.icon ? zimIcon(w.name) : '') + esc(_labels[w.name]) + badge(w) + '</button>';
+  });
+  host.innerHTML = h;
+  host.hidden = _wikis.length < 2;
+}
+// All on until one is tapped: the first tap narrows to that wiki, the next
+// ones add or take away, and the last one taken away is all again.
+function pill(name) {
+  var i = _sel.indexOf(name);
+  if (i >= 0) _sel.splice(i, 1); else _sel.push(name);
+  scopeChanged();
+}
+function pillAll() { _sel = []; scopeChanged(); }
+function scopeChanged() {
+  renderPills();
+  if (_q) wikiSearch(_q); else renderToday();
+}
+
+function showEmpty() {
+  var empty = document.getElementById('empty');
+  empty.hidden = _wikis.length > 0;
+  empty.innerHTML = esc(STR.empty) + '<br><a class="door" href="/?manage" onclick="return goCatalog()">' + esc(STR.catalog) + CHEV + '</a>';
+  document.querySelector('.head').hidden = !_wikis.length;
+}
+function goCatalog() { tell({ zimi: 'catalog', category: 'wikipedia' }); return false; }
+
+// An article opens in Zimi's reader, with Zimipedia as the step behind it.
+// A modified click keeps the link's own address for a new tab.
+document.addEventListener('click', function(e) {
+  var a = e.target.closest && e.target.closest('a[data-zim][data-path]');
+  if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+  e.preventDefault();
+  tell({ zimi: 'open', zim: a.getAttribute('data-zim'), path: a.getAttribute('data-path') });
+});
+
+function load() {
+  renderViews();
+  fetch('/wiki/home').then(function(r) { return r.json(); }).then(function(d) {
+    _wikis = d.wikis || [];
+    _by = {}; _wikis.forEach(function(w) { _by[w.name] = w; });
+    _labels = pillLabels(_wikis);
+    renderPills();
+    renderToday();
+  }).catch(function() { showEmpty(); });
+}
+
+window.wikiSearch = wikiSearch; window.pill = pill; window.pillAll = pillAll; window.setView = setView;
+window.__top = function() { return !_q; };
+window.__back = function() { if (_q) { showToday(); return true; } return false; };
+window.__home = function() { showToday(); window.scrollTo(0, 0); };
+window.__route = function() { showToday(); };
+// The dice: an article from one of the wikis chosen.
+window.__random = function() {
+  var ws = scoped();
+  if (!ws.length) return;
+  var w = ws[Math.floor(Math.random() * ws.length)];
+  fetch('/random?zim=' + encodeURIComponent(w.name)).then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
+    if (d && d.path) tell({ zimi: 'open', zim: w.name, path: d.path });
+  }).catch(function() {});
+};
+load();
+</script>
+</body>
+</html>
