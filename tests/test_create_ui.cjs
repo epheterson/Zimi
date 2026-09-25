@@ -44,8 +44,16 @@ function eq(got, want, label) {
 
 const {
   CREATE_MODE_DEFS, CREATE_FIELDS, CREATE_CREDITS, CREATE_LOG_MAX,
-  _createModeAvailable, _createBuildRequest, _createMergeLines
+  _createModeAvailable, _createBuildRequest, _createMergeLines, _createLimitHit
 } = sandbox;
+
+// Which stop reasons are a limit, the ones the finished card calls incomplete
+// and offers to capture again without: the finish button and an interruption
+// are not limits.
+check(_createLimitHit('page cap (10000)') === 'pages', 'a page cap is a page limit');
+check(_createLimitHit('byte budget (4.0 GB)') === 'bytes', 'a byte budget is a size limit');
+check(_createLimitHit('finished early') === null, 'the finish button is not a limit');
+check(_createLimitHit('') === null && _createLimitHit(null) === null, 'no reason, no limit');
 
 // The slice must actually contain the logic — a refactor that moves one of
 // these below the marker would otherwise silently stop testing it.
