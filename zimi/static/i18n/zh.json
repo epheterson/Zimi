@@ -925,7 +925,7 @@
   "create_mode_page": "网页",
   "create_mode_page_desc": "一个页面或一组页面，连同它们的图片和样式。",
   "create_mode_site": "整个网站",
-  "create_mode_site_desc": "对一个网站进行有限抓取，不离开它自己的域名。",
+  "create_mode_site_desc": "对单个网站的有限抓取，限于其自身域名，或你给出的路径之下（example.org/docs/）。",
   "create_mode_video": "视频或播放列表",
   "create_mode_video_desc": "播放列表或频道中的视频，每个视频一个页面。",
   "create_name": "文件名",

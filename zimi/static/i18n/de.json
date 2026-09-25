@@ -925,7 +925,7 @@
   "create_mode_page": "Webseite",
   "create_mode_page_desc": "Eine Seite oder eine Liste davon, mit Bildern und Stilen.",
   "create_mode_site": "Ganze Website",
-  "create_mode_site_desc": "Ein begrenzter Crawl einer Website, der ihre eigene Domain nicht verlässt.",
+  "create_mode_site_desc": "Ein begrenzter Crawl einer Website, auf ihrer eigenen Domain oder unter dem angegebenen Pfad (example.org/docs/).",
   "create_mode_video": "Video oder Playlist",
   "create_mode_video_desc": "Videos aus einer Playlist oder einem Kanal, mit je einer Seite.",
   "create_name": "Dateiname",

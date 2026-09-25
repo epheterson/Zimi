@@ -925,7 +925,7 @@
   "create_mode_page": "דף אינטרנט",
   "create_mode_page_desc": "דף אחד או רשימה של דפים, עם התמונות והעיצוב שלהם.",
   "create_mode_site": "אתר שלם",
-  "create_mode_site_desc": "סריקה מוגבלת של אתר אחד, בלי לצאת מהדומיין שלו.",
+  "create_mode_site_desc": "סריקה מוגבלת של אתר אחד, בתוך הדומיין שלו או מתחת לנתיב שנתתם (example.org/docs/).",
   "create_mode_video": "וידאו או פלייליסט",
   "create_mode_video_desc": "סרטונים מפלייליסט או מערוץ, לכל אחד דף משלו.",
   "create_name": "שם קובץ",

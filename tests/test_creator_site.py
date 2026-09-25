@@ -508,6 +508,34 @@ def test_zero_pages_and_zero_bytes_mean_no_limit(fixture_server, tmp_path):
     assert info["stopped"] is None
 
 
+def test_an_address_with_a_path_stays_under_it(fixture_server, tmp_path):
+    """Given /docs/intro.html, a whole-site capture keeps to /docs/: the home
+    page it links back to is left out, and the logo it shows from /img/ is
+    still fetched, or the page would break."""
+    notes = []
+    info = _site(tmp_path, "/docs/intro.html", progress=notes.append)
+    assert info["pages"] == 2
+    assert "/docs/next.html" in REQUESTS
+    assert "/" not in REQUESTS
+    assert "/chain/0.html" not in REQUESTS
+    assert "/img/logo.png" in REQUESTS
+    assert any("staying under /docs/" in n for n in notes)
+
+
+def test_the_path_rule():
+    assert crawler.path_scope("https://e.org") is None
+    assert crawler.path_scope("https://e.org/") is None
+    assert crawler.path_scope("https://e.org/index.html") is None
+    assert crawler.path_scope("https://e.org/docs/guide/") == "/docs/guide/"
+    assert crawler.path_scope("https://e.org/docs/intro.html") == "/docs/"
+    assert crawler.path_scope("https://e.org/blog") == "/blog/"
+    assert crawler.in_path_scope("https://e.org/blog", "/blog/")
+    assert crawler.in_path_scope("https://e.org/blog/post-1", "/blog/")
+    assert not crawler.in_path_scope("https://e.org/blogroll", "/blog/")
+    assert not crawler.in_path_scope("https://e.org/", "/blog/")
+    assert crawler.in_path_scope("https://e.org/anything", None)
+
+
 def test_no_limits_still_has_a_queue_ceiling(fixture_server, tmp_path, monkeypatch):
     """0 pages and 0 bytes left only depth and memory; the queue of pages to
     visit has a ceiling of its own, and the log says when it is reached."""

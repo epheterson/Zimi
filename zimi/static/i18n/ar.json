@@ -925,7 +925,7 @@
   "create_mode_page": "صفحة ويب",
   "create_mode_page_desc": "صفحة واحدة أو قائمة منها، مع صورها وأنماطها.",
   "create_mode_site": "موقع كامل",
-  "create_mode_site_desc": "زحف محدود لموقع واحد، دون مغادرة نطاقه.",
+  "create_mode_site_desc": "زحف محدود لموقع واحد، داخل نطاقه أو تحت المسار الذي تحدده (example.org/docs/).",
   "create_mode_video": "فيديو أو قائمة تشغيل",
   "create_mode_video_desc": "مقاطع من قائمة تشغيل أو قناة، لكل مقطع صفحة.",
   "create_name": "اسم الملف",

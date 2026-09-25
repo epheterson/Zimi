@@ -618,6 +618,7 @@ def create_alive_site_zim(
         _StopFlag,
         load_robots,
         normalize_url,
+        path_scope,
         same_origin,
         spool_target,
     )
@@ -644,6 +645,9 @@ def create_alive_site_zim(
         raise CreateError("crawl bounds must be positive (0 pages or 0 bytes means no limit)")
     if not max_pages and not max_bytes:
         note(f"warning: no page limit and no size limit: only depth {max_depth} and the disk bound this capture")
+    scope = path_scope(url)
+    if scope:
+        note(f"staying under {scope} (the path in the address); pages elsewhere on the site are left out")
     require_alive()
 
     origin = _origin_of(url)
@@ -715,6 +719,7 @@ def create_alive_site_zim(
                 max_depth=max_depth,
                 delay=delay,
                 note=note,
+                scope=scope,
             )
             del seed_text
             note(

@@ -201,6 +201,34 @@ def normalize_url(url):
     )
 
 
+def path_scope(url):
+    """The path a whole-site capture stays under, from the address a person
+    gave, or None for the whole site. ``/docs/guide/`` stays under itself;
+    ``/docs/intro.html``, a page, under its folder ``/docs/``; ``/blog``, no
+    slash and no extension, is taken as the folder ``/blog/``. A bare origin
+    or a page at the root is the whole site, as before. From the address
+    given, not the one the site redirects to: ``/`` redirecting to
+    ``/en/home.html`` must not shrink a whole-site capture to ``/en/``."""
+    path = urllib.parse.urlsplit(url).path or "/"
+    if path.endswith("/"):
+        prefix = path
+    elif "." in path.rsplit("/", 1)[-1]:
+        prefix = path[: path.rfind("/") + 1]
+    else:
+        prefix = path + "/"
+    return None if prefix == "/" else prefix
+
+
+def in_path_scope(url, prefix):
+    """Whether a page is under ``prefix`` (``/blog`` itself counts for
+    ``/blog/``). Pages only: the images, styles and scripts a page needs are
+    fetched wherever on the site they are, or the pages would break."""
+    if not prefix:
+        return True
+    path = urllib.parse.urlsplit(url).path or "/"
+    return path.startswith(prefix) or path == prefix.rstrip("/")
+
+
 def _origin_of(url):
     parts = urllib.parse.urlsplit(url)
     return f"{parts.scheme.lower()}://{parts.netloc.lower()}"
@@ -407,8 +435,9 @@ def _crawl(
     max_depth,
     delay,
     note,
+    scope=None,
 ):
-    """Breadth-first over one origin, capturing each page COMPLETELY as it
+    """Breadth-first over one origin (and, given ``scope``, one path in it), capturing each page COMPLETELY as it
     goes: fetched, rendered, its assets pulled down, page and assets spooled.
 
     Returns ``(pages, reason, mimetypes)`` where each page is a dict of
@@ -455,6 +484,7 @@ def _crawl(
             if (
                 key in seen
                 or not same_origin(key, origin)
+                or not in_path_scope(key, scope)
                 or not looks_like_a_page(key)
             ):
                 continue
@@ -688,6 +718,9 @@ def create_site_zim(
         raise CreateError("crawl bounds must be positive (0 pages or 0 bytes means no limit)")
     if not max_pages and not max_bytes:
         note(f"warning: no page limit and no size limit: only depth {max_depth} and the disk bound this capture")
+    scope = path_scope(url)
+    if scope:
+        note(f"staying under {scope} (the path in the address); pages elsewhere on the site are left out")
 
     origin = _origin_of(url)
     robots = None
@@ -779,6 +812,7 @@ def create_site_zim(
                 max_depth=max_depth,
                 delay=delay,
                 note=note,
+                scope=scope,
             )
             del seed_text  # spooled; the crawl holds one page at a time
             blocked = report_blocked(capture, note)
@@ -911,6 +945,7 @@ def probe_site(url, *, ignore_robots=False, timeout=PROBE_TIMEOUT):
 
     deadline = time.monotonic() + PROBE_DEADLINE
     origin = _origin_of(url)
+    scope = path_scope(url)
     robots = None if ignore_robots else load_robots(origin, timeout=timeout)
     verdict = (
         "ignored" if ignore_robots else ("absent" if robots is None else "allowed")
@@ -949,6 +984,7 @@ def probe_site(url, *, ignore_robots=False, timeout=PROBE_TIMEOUT):
             if (
                 key in seen
                 or not same_origin(key, origin)
+                or not in_path_scope(key, scope)
                 or not looks_like_a_page(key)
             ):
                 continue

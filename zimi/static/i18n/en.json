@@ -925,7 +925,7 @@
   "create_mode_page": "Web page",
   "create_mode_page_desc": "One page or a list of them, with their images and styles.",
   "create_mode_site": "Whole site",
-  "create_mode_site_desc": "A bounded crawl of one site, staying on its own domain.",
+  "create_mode_site_desc": "A bounded crawl of one site, staying on its own domain, or under the path you give (example.org/docs/).",
   "create_mode_video": "Video or playlist",
   "create_mode_video_desc": "Videos from a playlist or channel, with a page for each.",
   "create_name": "File name",

@@ -925,7 +925,7 @@
   "create_mode_page": "वेब पेज",
   "create_mode_page_desc": "एक पेज या उनकी सूची, छवियों और शैलियों के साथ।",
   "create_mode_site": "पूरी साइट",
-  "create_mode_site_desc": "एक साइट का सीमित क्रॉल, उसके अपने डोमेन के भीतर।",
+  "create_mode_site_desc": "एक साइट की सीमित क्रॉलिंग, उसके अपने डोमेन में या आपके दिए पथ के नीचे (example.org/docs/)।",
   "create_mode_video": "वीडियो या प्लेलिस्ट",
   "create_mode_video_desc": "प्लेलिस्ट या चैनल के वीडियो, हर एक के लिए एक पेज।",
   "create_name": "फ़ाइल नाम",

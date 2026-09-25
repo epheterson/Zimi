@@ -925,7 +925,7 @@
   "create_mode_page": "Page web",
   "create_mode_page_desc": "Une page ou une liste de pages, avec leurs images et leurs styles.",
   "create_mode_site": "Site entier",
-  "create_mode_site_desc": "Une exploration limitée d'un site, sans quitter son domaine.",
+  "create_mode_site_desc": "Une exploration bornée d'un site, sur son propre domaine ou sous le chemin indiqué (example.org/docs/).",
   "create_mode_video": "Vidéo ou playlist",
   "create_mode_video_desc": "Les vidéos d'une playlist ou d'une chaîne, avec une page chacune.",
   "create_name": "Nom de fichier",

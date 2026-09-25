@@ -925,7 +925,7 @@
   "create_mode_page": "Página web",
   "create_mode_page_desc": "Una página o una lista de ellas, con sus imágenes y estilos.",
   "create_mode_site": "Sitio completo",
-  "create_mode_site_desc": "Un rastreo acotado de un sitio, sin salir de su propio dominio.",
+  "create_mode_site_desc": "Un rastreo acotado de un sitio, dentro de su propio dominio o bajo la ruta que indiques (example.org/docs/).",
   "create_mode_video": "Vídeo o lista de reproducción",
   "create_mode_video_desc": "Vídeos de una lista o canal, con una página para cada uno.",
   "create_name": "Nombre de archivo",

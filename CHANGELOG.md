@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- Create a ZIM, whole site: an address with a path (`https://example.org/docs/`) keeps the capture under that path; pages elsewhere on the site are left out, and the images, styles and scripts its pages use are still fetched. A bare address still captures the whole site.
+
 ## [1.10.3] - 2026-09-24
 
 ### Fixed

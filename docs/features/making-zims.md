@@ -4,7 +4,7 @@ Turn a folder, a web page, a whole small site, a video source, or a subreddit in
 
 ## How it works
 
-`zimi create` is one command with several input shapes. The positional `source` is either a folder path or one or more `http(s)://` URLs (several URLs land in a single ZIM behind a generated index page). Add `--site` to crawl one origin instead of capturing a single page; pass a video URL to package a playlist or channel via yt-dlp.
+`zimi create` is one command with several input shapes. The positional `source` is either a folder path or one or more `http(s)://` URLs (several URLs land in a single ZIM behind a generated index page). Add `--site` to crawl one origin instead of capturing a single page (an address with a path, like `https://example.org/docs/`, keeps the crawl under that path; the images, styles and scripts its pages use are fetched from anywhere on the site); pass a video URL to package a playlist or channel via yt-dlp.
 
 Web captures run through one of five **engines**, chosen with `--engine`:
 
