@@ -2369,13 +2369,29 @@ class ZimHandler(BaseHTTPRequestHandler):
 
                 sub = parsed.path[len("/wiki"):].strip("/")
                 if sub in ("", "home"):
-                    return self._json(200, _wiki.home())
-                if sub == "onthisday":
-                    zim = param("zim")
-                    if not zim or zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
-                        return self._json(404, {"error": "not found"})
-                    return self._json(200, {"events": _wiki.on_this_day(zim, param("date"))})
-                return self._json(404, {"error": "not found"})
+                    return self._json(200, _wiki.home(param("day")))
+                # Only the days a browser can be on: a caller cannot make
+                # the server read a year of date pages.
+                if sub == "today":
+                    day = param("day")
+                    if not _wiki.day_open(day):
+                        return self._json(400, {"error": "day not open"})
+                    names = [n for n in (param("zim") or "").split(",") if n]
+                    if not names or len(names) > _wiki.TODAY_BATCH_MAX:
+                        return self._json(400, {"error": "zim"})
+                    return self._json(200, _wiki.today(day, names))
+                if sub != "onthisday":
+                    return self._json(404, {"error": "not found"})
+                zim = param("zim")
+                if not zim or not _wiki.is_wiki(zim):
+                    return self._json(404, {"error": "not found"})
+                date = param("date")
+                if not _wiki.mmdd_open(date):
+                    return self._json(400, {"error": "date not open"})
+                events = _wiki.on_this_day(zim, date)
+                if events is None:
+                    return self._json(503, {"error": "unavailable"})
+                return self._json(200, {"events": events})
             elif parsed.path == "/exchange" or parsed.path.startswith("/exchange/"):
                 # ZimiExchange: every Stack Exchange site in the library.
                 from zimi import exchange as _ex

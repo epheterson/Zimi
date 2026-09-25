@@ -38,6 +38,15 @@ def _json_response(description, schema):
     }
 
 
+# Zimipedia's day: one pick per wiki, and each Wikipedia's dated events.
+_WIKI_EVENT = {"type": "object", "properties": {"event_year": {"type": "string"}, "event_text": {"type": "string"}, "path": {"type": "string"}, "title": {"type": "string"}}}
+_WIKI_PICKS = {"type": "object", "additionalProperties": {"type": "object", "properties": {
+    "zim": {"type": "string"}, "role": {"type": "string", "enum": ["article", "word", "quote", "place", "book", "text", "course", "news", "species"]},
+    "path": {"type": "string"}, "title": {"type": "string"}, "lang": {"type": "string"}, "blurb": {"type": "string"},
+    "thumbnail": {"type": "string"}, "kick": {"type": "string", "description": "A word's part of speech, a quote's author"}}}}
+_WIKI_OTD = {"type": "object", "additionalProperties": {"type": "array", "items": _WIKI_EVENT}}
+
+
 def build_openapi():
     """Return the OpenAPI 3.1 document as a plain dict (version from VERSION)."""
     error = _error_schema()
@@ -422,10 +431,28 @@ def build_openapi():
             "get": {
                 "summary": "Every wiki in the library (MediaWiki ZIMs: Wikipedia and its sister projects, and other wikis), grouped by project then language",
                 "operationId": "wikiHome",
+                "parameters": [
+                    _param("day", {"type": "string", "pattern": "^[0-9]{8}$"}, description="YYYYMMDD, yesterday to tomorrow: adds what is already known of that day (picks, otd)"),
+                ],
                 "responses": {**_json_response("200", {"type": "object", "properties": {"wikis": {"type": "array", "items": {"type": "object", "properties": {
                     "name": {"type": "string"}, "title": {"type": "string"}, "project": {"type": "string"}, "project_title": {"type": "string"},
-                    "language": {"type": "string"}, "icon": {"type": "boolean"}, "main_path": {"type": "string"}, "entries": {"type": "integer"},
-                }}}}, "required": ["wikis"]})},
+                    "role": {"type": "string"}, "language": {"type": "string"}, "icon": {"type": "boolean"}, "main_path": {"type": "string"}, "entries": {"type": "integer"},
+                }}}, "day": {"type": "string"}, "picks": _WIKI_PICKS, "otd": _WIKI_OTD}, "required": ["wikis"]})},
+            }
+        },
+        "/wiki/today": {
+            "get": {
+                "summary": "The day's pick from each wiki named (an article, a word, a quote, a place, a book...) and each Wikipedia's On this day, worked out once a day and kept",
+                "operationId": "wikiToday",
+                "parameters": [
+                    _param("day", {"type": "string", "pattern": "^[0-9]{8}$"}, required=True, description="YYYYMMDD, yesterday to tomorrow"),
+                    _param("zim", {"type": "string"}, required=True, description="Up to 8 wiki names, comma-separated"),
+                ],
+                "responses": {
+                    **_json_response("200", {"type": "object", "properties": {"picks": _WIKI_PICKS, "otd": _WIKI_OTD,
+                        "failed": {"type": "array", "items": {"type": "string"}}}, "required": ["picks", "otd", "failed"]}),
+                    **_json_response("400", error),
+                },
             }
         },
         "/wiki/onthisday": {
@@ -434,13 +461,15 @@ def build_openapi():
                 "operationId": "wikiOnThisDay",
                 "parameters": [
                     _param("zim", {"type": "string"}, required=True),
-                    _param("date", {"type": "string", "pattern": "^[0-9]{4}$"}, required=True, description="MMDD"),
+                    _param("date", {"type": "string", "pattern": "^[0-9]{4}$"}, required=True, description="MMDD, yesterday to tomorrow"),
                 ],
                 "responses": {
                     **_json_response("200", {"type": "object", "properties": {"events": {"type": "array", "items": {"type": "object", "properties": {
                         "event_year": {"type": "string"}, "event_text": {"type": "string"}, "path": {"type": "string"}, "title": {"type": "string"},
                     }}}}, "required": ["events"]}),
+                    **_json_response("400", error),
                     **_json_response("404", error),
+                    **_json_response("503", error),
                 },
             }
         },
