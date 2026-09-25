@@ -121,15 +121,15 @@ ok('the empty page is a door to the Wikipedia category', /category: 'wikipedia'/
 
 // ── the shell ───────────────────────────────────────────────────────────
 ok('the tile is one line in the apps row, like the others', /function _wikiTileHtml\(\) \{\n\s*return _appTileHtml\('wiki', t\('wiki'\), _WIKI_SVG, _installedWikiZims\(\)/.test(src) && /_appShown\('wiki'\) \? _wikiTileHtml\(\) : ''/.test(src));
-ok('an app like the others: switched per server and per account by its name', /var APP_NAMES = \['maps', 'tube', 'exchange', 'reddot', 'wiki'\];/.test(src));
-ok('it is the page Zimi owns, in the reader, at /#wiki', /openReader\(_WIKI_PAGE \+ '#' \+ _wikiStrings\(\)\)/.test(src) && /if \(location\.hash === '#wiki'\) \{ enterHome\(false\); openWiki\(true\); return; \}/.test(src));
+ok('an app like the others: switched per server and per account by its name', /var APP_NAMES = \['maps', 'tube', 'exchange', 'reddot', 'wiki', 'books'\];/.test(src));
+ok('it is the page Zimi owns, in the reader, at /#wiki', /_openHashApp\('wiki', replaceState, function\(\) \{ _wikiOpen = true; return _WIKI_PAGE \+ '#' \+ _wikiStrings\(\); \}\)/.test(src) && /history\.pushState\(st, '', '\/#' \+ app\)/.test(src) && /if \(location\.hash === '#wiki'\) \{ enterHome\(false\); openWiki\(true\); return; \}/.test(src));
 ok('the shell hands the page its strings and the names of its languages', /_appStrings\('wiki', \['wiki_all'/.test(src) && /langs\[c\] = _langDisplayName\(c\) \|\| c;/.test(src));
-ok('typing and Enter in the box search inside the page', /if \(_isWikiPage\(\)\) \{\n\s*hideSuggest\(\);\n\s*suggestTimer = setTimeout\(function\(\) \{ _wikiSearch\(val\); \}, 250\);/.test(src) && /if \(_isWikiPage\(\)\) \{ _wikiSearch\(q\.value\.trim\(\)\); return; \}/.test(src) && /win\.wikiSearch\(val\)/.test(src));
-ok('the breadcrumb is Zimipedia and the box says what it is for', /bcIcon\.title = t\('wiki'\)/.test(src) && /if \(_isWikiPage\(\)\) return t\('wiki_search_placeholder'\);/.test(src));
-ok('an app page: no reading controls, and the arrow asks the page first', /function _isAppPage\(\) \{\n\s*return [^\n]*_isWikiPage\(\);/.test(src));
-ok('Back from an article returns to Zimipedia', /s\.mode === 'reader' && s\.wiki\) \{\n\s*if \(!_appFrameRoute\(_wikiOpen, ''\)\) openWiki\(true\);/.test(src) && /\|\| app\.wiki\);/.test(src));
+ok('typing and Enter in the box search inside the page', /if \(_isWikiPage\(\) \|\| _isBooksPage\(\)\) \{\n\s*hideSuggest\(\);\n\s*suggestTimer = setTimeout\(function\(\) \{ \(_isWikiPage\(\) \? _wikiSearch : _booksSearch\)\(val\); \}, 250\);/.test(src) && /if \(_isWikiPage\(\)\) \{ _wikiSearch\(q\.value\.trim\(\)\); return; \}/.test(src) && /_appFrameCall\('wikiSearch', val\)/.test(src) && /win\[fn\]\(val\)/.test(src));
+ok('the breadcrumb is Zimipedia and the box says what it is for', /var hashApp = _isWikiPage\(\) \? 'wiki' : 'books';/.test(src) && /bcIcon\.title = t\(hashApp\)/.test(src) && /if \(_isWikiPage\(\)\) return t\('wiki_search_placeholder'\);/.test(src));
+ok('an app page: no reading controls, and the arrow asks the page first', /function _isAppPage\(\) \{\n\s*return [^\n]*_isWikiPage\(\)[^\n]*;/.test(src));
+ok('Back from an article returns to Zimipedia', /s\.mode === 'reader' && s\.wiki\) \{\n\s*if \(!_appFrameRoute\(_wikiOpen, ''\)\) openWiki\(true\);/.test(src) && /\|\| app\.wiki \|\| app\.books\);/.test(src));
 ok('the icon in the breadcrumb goes to its front page', /_wikiOpen \? \['wiki', 'q', '\/#wiki'\]/.test(src));
-ok('the catalog door is allowed', /_APP_CATEGORY_KEYS = \[[^\]]*'wikipedia'\]/.test(src) && /wiki: 'wikipedia' \}/.test(src));
+ok('the catalog door is allowed', /_APP_CATEGORY_KEYS = \[[^\]]*'wikipedia'[^\]]*\]/.test(src) && /wiki: 'wikipedia'[,}]/.test(src));
 
 for (const lang of fs.readdirSync(path.join(root, 'i18n'))) {
   const d = JSON.parse(fs.readFileSync(path.join(root, 'i18n', lang), 'utf8'));

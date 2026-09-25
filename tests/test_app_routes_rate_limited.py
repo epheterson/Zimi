@@ -17,7 +17,7 @@ from zimi import http  # noqa: E402
 
 @pytest.mark.parametrize(
     "path",
-    ["/exchange", "/exchange/question", "/exchange/tags", "/reddot", "/reddot/post", "/reddot/list", "/tube", "/tube/play", "/wiki", "/wiki/home", "/wiki/onthisday"],
+    ["/exchange", "/exchange/question", "/exchange/tags", "/reddot", "/reddot/post", "/reddot/list", "/tube", "/tube/play", "/wiki", "/wiki/home", "/wiki/onthisday", "/books", "/books/home", "/books/list", "/books/book"],
 )
 def test_an_app_route_is_limited_as_an_api_path(path):
     limited, content = http._rate_class(path)

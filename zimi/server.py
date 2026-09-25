@@ -1889,9 +1889,12 @@ WIKI_PROJECTS = (
     "wikisource",
     "wikispecies",
 )
+# Books, by the scraper that made them: Kiwix builds every Project Gutenberg
+# ZIM with gutenberg2zim; one too old to carry a Scraper is known by its Name.
+_BOOK_SCRAPERS = ("gutenberg2zim",)
 # Bumped when _zim_kind learns a new kind, so a cache record decided under an
 # older rule ("" for a TED ZIM) is read once more.
-KIND_VERSION = 5
+KIND_VERSION = 6
 
 
 def _wiki_project(meta_name, name=""):
@@ -1937,6 +1940,8 @@ def _zim_kind(scraper, tags, meta_name):
         return "reddit"
     if s.startswith(_WIKI_SCRAPERS) or (meta_name or "").lower().startswith(WIKI_PROJECTS):
         return "wiki"
+    if s.startswith(_BOOK_SCRAPERS) or (meta_name or "").lower().startswith("gutenberg_"):
+        return "books"
     return None
 
 
@@ -2054,7 +2059,7 @@ def _read_map_facts(path):
 
 
 APPS_ENV = "ZIMI_APPS"
-APP_NAMES = ("maps", "tube", "exchange", "reddot", "wiki")
+APP_NAMES = ("maps", "tube", "exchange", "reddot", "wiki", "books")
 _APPS_OFF = ("0", "false", "no", "off", "none")
 _APPS_ON = ("1", "true", "yes", "on", "all")
 
@@ -2111,7 +2116,7 @@ def url_quote(name):
 
 
 def _zim_kind_of(name):
-    """The cached kind of an installed ZIM (map, video, qa, reddit, wiki) or ""."""
+    """The cached kind of an installed ZIM (map, video, qa, reddit, wiki, books) or ""."""
     for z in _zim_list_cache or []:
         if z.get("name") == name:
             return z.get("kind") or ""
@@ -2119,7 +2124,7 @@ def _zim_kind_of(name):
 
 
 def apps_shown():
-    """The apps (Maps, ZimiTube, ZimiExchange, Reddot, Zimipedia) offered on this server:
+    """The apps (Maps, ZimiTube, ZimiExchange, Reddot, Zimipedia, Bookshelf) offered on this server:
     ``ZIMI_APPS`` when set (``0``, ``1`` or a comma list of names), else the
     setting saved from Server settings, else all of them. A signed-in user
     can also hide any of them for themselves (their account's preferences).
@@ -4756,6 +4761,17 @@ def warm_indexes():
             _tube.build_all_details()
         except Exception as e:
             log.warning("ZimiTube details phase failed: %s", e)
+
+        # Phase 1c: Bookshelf's book records (authors' years, subjects, the
+        # day each book came to Gutenberg), read from each book's head. Half
+        # an hour for all of English Gutenberg on a NAS; the shelf opens
+        # without them and gains eras and subjects when they are there.
+        try:
+            from zimi import books as _books
+
+            _books.build_all_details()
+        except Exception as e:
+            log.warning("Bookshelf details phase failed: %s", e)
 
         # Phase 2: build/refresh Q-ID indexes (one Archive open at a time).
         try:

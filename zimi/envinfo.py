@@ -77,7 +77,7 @@ VARS: dict[str, tuple[str, str]] = {
     ),
     # ── sharing: BitTorrent ───────────────────────────────────────────────
     "ZIMI_OFFLINE": ("Air-gap switch: turns off everything internet-bound", "Sharing"),
-    "ZIMI_APPS": ("The apps on the home page: 0 hides them all, or a comma list of maps, tube, exchange, reddot, wiki keeps only those", "Apps"),
+    "ZIMI_APPS": ("The apps on the home page: 0 hides them all, or a comma list of maps, tube, exchange, reddot, wiki, books keeps only those", "Apps"),
     # ── the desktop app ────────────────────────────────────────────────────
     "ZIMI_DESKTOP_BROWSER": ("1 runs the desktop app in the system browser instead of a native window", "Desktop"),
     "ZIMI_APPCAST_URL": ("Where the Windows desktop app looks for updates", "Desktop"),
