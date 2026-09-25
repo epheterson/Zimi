@@ -347,7 +347,7 @@ def _convert(archive, out, *, zim_name, note, **fields):
     return out
 
 
-def finish_zim(out, *, seed_url, pages, assets, live_shot, note=None):
+def finish_zim(out, *, seed_url, pages, assets, live_shot, note=None, stopped=None):
     """Put into the ZIM what only this capture could know.
 
     warc2zim wrote the file and takes no arbitrary metadata, so this is where
@@ -362,7 +362,7 @@ def finish_zim(out, *, seed_url, pages, assets, live_shot, note=None):
     on any trouble the file stays exactly as the converter wrote it."""
     say = note or (lambda _m: None)
     record = zimpatch.build_record(
-        seed_url=seed_url, engine=ENGINE_NAME, pages=pages, assets=assets
+        seed_url=seed_url, engine=ENGINE_NAME, pages=pages, assets=assets, stopped=stopped
     )
 
     # The picture is taken DURING the rewrite, from the document the rewrite is
@@ -618,7 +618,6 @@ def create_alive_site_zim(
         _StopFlag,
         load_robots,
         normalize_url,
-        path_scope,
         same_origin,
         spool_target,
     )
@@ -645,9 +644,6 @@ def create_alive_site_zim(
         raise CreateError("crawl bounds must be positive (0 pages or 0 bytes means no limit)")
     if not max_pages and not max_bytes:
         note(f"warning: no page limit and no size limit: only depth {max_depth} and the disk bound this capture")
-    scope = path_scope(url)
-    if scope:
-        note(f"staying under {scope} (the path in the address); pages elsewhere on the site are left out")
     require_alive()
 
     origin = _origin_of(url)
@@ -719,7 +715,6 @@ def create_alive_site_zim(
                 max_depth=max_depth,
                 delay=delay,
                 note=note,
-                scope=scope,
             )
             del seed_text
             note(
@@ -754,6 +749,7 @@ def create_alive_site_zim(
                 assets=capture.count,
                 live_shot=capture.last_shot,
                 note=note,
+                stopped=reason,
             )
     except BaseException:
         capture.discard()

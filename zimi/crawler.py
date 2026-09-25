@@ -50,9 +50,12 @@ boundary and the license boundary are the same boundary.
 
 import contextlib
 import html as _html
+import itertools
+import json
 import logging
 import mimetypes
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -81,7 +84,6 @@ from zimi.creator import (
     _page_title_from_html,
     _try_register,
     _user_agent,
-    ARCHIVE_ENGINES,
     AssetSpool,
     capture_engine,
     CreateError,
@@ -205,31 +207,85 @@ def normalize_url(url):
     )
 
 
-def path_scope(url):
+def _scope_path(path):
+    """A path as the scope rules compare it: percent-decoded, so ``%C3%A9``,
+    ``%c3%a9`` and ``é`` (or ``%7E`` and ``~``) are one path, with runs of
+    slashes collapsed so ``//`` is the root and not a folder named nothing."""
+    return re.sub(r"/{2,}", "/", urllib.parse.unquote(path or "/")) or "/"
+
+
+def _folder_of(path):
+    """The folder a path names or sits in: itself when it ends in ``/``, else
+    everything up to its last slash."""
+    return path if path.endswith("/") else path[: path.rfind("/") + 1]
+
+
+def path_scope(url, links=()):
     """The path a whole-site capture stays under, from the address a person
-    gave, or None for the whole site. ``/docs/guide/`` stays under itself;
-    ``/docs/intro.html``, a page, under its folder ``/docs/``; ``/blog``, no
-    slash and no extension, is taken as the folder ``/blog/``. A bare origin
-    or a page at the root is the whole site, as before. From the address
-    given, not the one the site redirects to: ``/`` redirecting to
-    ``/en/home.html`` must not shrink a whole-site capture to ``/en/``."""
-    path = urllib.parse.urlsplit(url).path or "/"
-    if path.endswith("/"):
-        prefix = path
-    elif "." in path.rsplit("/", 1)[-1]:
-        prefix = path[: path.rfind("/") + 1]
+    gave, or None for the whole site.
+
+    A path ending in ``/`` is a folder, always: ``/docs/guide/`` stays under
+    itself. A last segment with an extension is a page, and the capture stays
+    in its folder: ``/docs/intro.html`` under ``/docs/``. A last segment with
+    neither is ambiguous, and the seed page decides it: gov.uk's
+    ``/foreign-travel-advice`` is a section whose pages live under
+    ``/foreign-travel-advice/``, while a wiki's ``/wiki/Main_Page`` is one page
+    among its siblings. It is a folder when ``links`` (the seed's own links)
+    reach at least one page under it, and a page otherwise, so the capture
+    stays in its parent folder. The site's root is the whole site."""
+    path = _scope_path(urllib.parse.urlsplit(url).path)
+    last = path.rsplit("/", 1)[-1]
+    if path.endswith("/") or "." in last:
+        prefix = _folder_of(path)
     else:
-        prefix = path + "/"
+        folder = path + "/"
+        under = any(
+            _scope_path(urllib.parse.urlsplit(link).path).startswith(folder)
+            for link in links
+        )
+        prefix = folder if under else _folder_of(path)
     return None if prefix == "/" else prefix
+
+
+def crawl_scope(given_url, seed_url, seed_links, note=None):
+    """The scope a whole-site capture keeps to, decided once the seed page is
+    in hand, and said out loud in plain words.
+
+    From the address the person typed, unless the site redirected it
+    somewhere outside that path: ``/docs`` answered by ``/en/docs/`` is the
+    ``/en/docs/`` section, and staying under ``/docs/`` would capture one page.
+    A bare origin is the whole site, wherever it redirects: ``/`` answered by
+    ``/en/home.html`` must not shrink a whole-site capture to ``/en/``."""
+    say = note or _noop
+    given = _scope_path(urllib.parse.urlsplit(given_url).path)
+    if given == "/":
+        return None
+    address = given_url
+    # The widest the typed path could mean. The seed landing outside even
+    # that is a redirect to another section, and the section is where it went.
+    widest = _folder_of(given) if "." in given.rsplit("/", 1)[-1] else given.rstrip("/") + "/"
+    if not in_path_scope(seed_url, widest):
+        address = seed_url
+        say(f"the site sent {given} to {_scope_path(urllib.parse.urlsplit(seed_url).path)}; following it")
+    scope = path_scope(address, seed_links)
+    path = _scope_path(urllib.parse.urlsplit(address).path)
+    if scope is None:
+        say(f"capturing the whole site: {path} is a page, and nothing it links to is under it")
+    elif scope.rstrip("/") == path.rstrip("/"):
+        say(f"staying under {scope} (the path in the address); pages elsewhere on the site are left out")
+    else:
+        say(f"staying under {scope}: {path} is a page there, and nothing it links to is under it")
+    return scope
 
 
 def in_path_scope(url, prefix):
     """Whether a page is under ``prefix`` (``/blog`` itself counts for
     ``/blog/``). Pages only: the images, styles and scripts a page needs are
-    fetched wherever on the site they are, or the pages would break."""
+    fetched wherever on the site they are, or the pages would break. Compared
+    decoded, so an encoding difference is never a different section."""
     if not prefix:
         return True
-    path = urllib.parse.urlsplit(url).path or "/"
+    path = _scope_path(urllib.parse.urlsplit(url).path)
     return path.startswith(prefix) or path == prefix.rstrip("/")
 
 
@@ -439,15 +495,18 @@ def _crawl(
     max_depth,
     delay,
     note,
-    scope=None,
 ):
-    """Breadth-first over one origin (and, given ``scope``, one path in it), capturing each page COMPLETELY as it
-    goes: fetched, rendered, its assets pulled down, page and assets spooled.
+    """Breadth-first over one origin (and, when the address named one, one path
+    in it: see ``crawl_scope``), capturing each page COMPLETELY as it goes:
+    fetched, rendered, its assets pulled down, page and assets spooled.
 
     Returns ``(pages, reason, mimetypes)`` where each page is a dict of
     ``keys`` (every normalized URL that should resolve to it), ``final_url``,
     ``depth``, ``title`` and ``spool``. ``reason`` names the bound that ended
-    the crawl, or None when the frontier simply ran dry; ``mimetypes`` is what
+    the crawl, or None when the frontier simply ran dry: a page cap, a byte
+    budget, an interruption, the depth limit when it left pages unvisited, or
+    "nothing under <path>" when a capture kept to a path found no page there
+    but the one it was given; ``mimetypes`` is what
     the assets turned out to be, which is the evidence behind the ZIM's
     ``_pictures:`` / ``_videos:`` tags.
 
@@ -466,7 +525,9 @@ def _crawl(
     queue = deque()
     reason = None
     carried = engine.carried  # asset key -> in-ZIM path (or None), every page
-    reported = set()  # asset keys already announced; see _report_new_assets
+    reported = 0  # how many of carried's keys are announced; _report_new_assets
+    captured = set()  # every key of every captured page, for the redirect check
+    too_deep = [False]  # a page was left unvisited because of max_depth
     # The page cadence, as a clock rather than as a sleep: the next page
     # request may go out at this time and not before. Asset traffic in the
     # meantime spends the interval instead of extending it.
@@ -476,14 +537,7 @@ def _crawl(
     frontier_full = [False]
 
     def enqueue(links, depth):
-        if depth > max_depth:
-            return
         for link in links:
-            if len(seen) >= frontier_cap:
-                if frontier_cap == FRONTIER_MAX and not frontier_full[0]:
-                    frontier_full[0] = True
-                    note(f"  the queue of pages to visit is full at {FRONTIER_MAX:,}; carrying on with those")
-                return
             key = normalize_url(upgrade_scheme(link, origin))
             if (
                 key in seen
@@ -494,11 +548,22 @@ def _crawl(
                 continue
             if not _robots_allows(robots, key):
                 continue
+            if depth > max_depth:
+                # A page the crawl would have visited, one link too far. Said,
+                # because a capture that dropped it silently reads as complete.
+                too_deep[0] = True
+                return
+            if len(seen) >= frontier_cap:
+                if frontier_cap == FRONTIER_MAX and not frontier_full[0]:
+                    frontier_full[0] = True
+                    note(f"  the queue of pages to visit is full at {FRONTIER_MAX:,}; carrying on with those")
+                return
             seen.add(key)
             queue.append((key, depth))
 
     def capture(keys, final_url, depth, text):
         """Everything one page needs before the crawl may move on."""
+        nonlocal reported
         page = {
             "keys": keys,
             "final_url": final_url,
@@ -511,10 +576,11 @@ def _crawl(
         html = engine.render(target, text, final_url)
         page["spool"] = _spool_page(spool_dir, len(pages), html)
         pages.append(page)
+        captured.update(keys)
         # keys[0], not final_url: this is the name the page was announced
         # under, and an asset that claims a parent no row answers to is an
         # asset nothing counts.
-        _report_new_assets(carried, reported, keys[0], note)
+        reported = _report_new_assets(carried, reported, keys[0], note)
         note(
             f"  [{len(pages)}/{max_pages or 'no limit'}] {keys[0]}  "
             f"({len(queue)} queued, {_fmt_bytes(budget.used)} fetched)"
@@ -525,7 +591,9 @@ def _crawl(
     if seed_final != seed_id:
         seed_keys.append(seed_final)  # the seed redirected; both keys are it
     seen.update(seed_keys)
-    enqueue(extract_links(seed_text, seed_url), 1)
+    seed_links = extract_links(seed_text, seed_url)
+    scope = crawl_scope(seed_id, seed_url, seed_links, note)
+    enqueue(seed_links, 1)
     capture(seed_keys, seed_url, 0, seed_text)
 
     while queue:
@@ -560,13 +628,20 @@ def _crawl(
         keys = [url]
         final_key = normalize_url(final_url)
         if final_key != url:
-            if final_key in seen and any(final_key in p["keys"] for p in pages):
+            if final_key in captured:
                 note(f"skipped {url}: already captured after its redirect")
                 continue
             seen.add(final_key)
             keys.append(final_key)
         enqueue(extract_links(text, final_url), depth + 1)
         capture(keys, final_url, depth, text)
+    if reason is None and too_deep[0]:
+        reason = f"depth limit ({max_depth})"
+    if reason is None and scope and len(pages) == 1:
+        # Every link on the seed went somewhere else on the site. A one-page
+        # "site" the card called complete was the defect; the card offers the
+        # whole site instead.
+        reason = f"nothing under {scope}"
     return pages, reason, engine.mimetypes
 
 
@@ -598,7 +673,7 @@ def _assign_article_paths(pages):
     return by_key
 
 
-def _report_new_assets(carried, seen, page_url, note):
+def _report_new_assets(carried, reported, page_url, note):
     """Report every asset this page pulled in, as a line per asset naming what
     it was and which page wanted it.
 
@@ -610,22 +685,28 @@ def _report_new_assets(carried, seen, page_url, note):
     including the ones that did NOT land, which the carrier records as a None
     and which no other line has ever mentioned.
 
-    ``seen`` is the caller's running set of keys already reported; the map is
-    shared across the whole crawl so a site's common stylesheet belongs to the
-    first page that wanted it and is not re-reported for every page after.
+    ``reported`` is how many of the map's keys have been announced already,
+    and the new count is returned. The map is shared across the whole crawl,
+    so a site's common stylesheet belongs to the first page that wanted it and
+    is not re-reported for every page after. It only grows and never loses a
+    key, so the unannounced keys are exactly the newest ones, read from the
+    end: a page costs what it added, not what the whole crawl has carried.
 
     Called from the crawl, between a page's last asset landing and the line
     that reports the page captured. That position is the contract: everything
     a page dragged along is on the wire BEFORE the page is called done."""
-    for key, in_zim_path in carried.items():
-        if key in seen:
-            continue
-        seen.add(key)
+    fresh = len(carried) - reported
+    if fresh <= 0:
+        return reported
+    newest = list(itertools.islice(reversed(carried), fresh))
+    for key in reversed(newest):
+        in_zim_path = carried[key]
         # The carrier keys by "<label>\n<resolved>", which for a site crawl is
         # the host and the asset's path — together, the asset's identity.
         label, _sep, resolved = key.partition("\n")
         state = "done" if in_zim_path else "failed"
         note(f"    asset {state} {label}/{resolved} for {page_url}")
+    return len(carried)
 
 
 def _link_resolver(by_key):
@@ -683,11 +764,30 @@ def create_site_zim(
     from zimi.p2p import is_offline
 
     note = progress or _noop
+    name = str(engine or "").strip().lower()
+    # zimit is its own crawler in its own container: none of the frontier
+    # below applies, and the only bound Zimi can hand it is the page limit.
+    # Routed by name, never by membership in ARCHIVE_ENGINES: that check once
+    # sent a whole-site zimit request to the alive engine without a word.
+    if name == "zimit":
+        return create_zimit_zim(
+            url,
+            site=True,
+            out_dir=out_dir,
+            out_path=out_path,
+            title=title,
+            description=description,
+            language=language,
+            creator_name=creator_name,
+            max_pages=max_pages,
+            register=register,
+            progress=progress,
+        )
     # An alive crawl walks THIS frontier — it calls _crawl below with the same
     # bounds and the same politeness — but it ends in a WARC and a warc2zim
     # run rather than in the Creator this function opens. Handed over before
     # anything starts; see zimi.alive.
-    if str(engine or "").strip().lower() in ARCHIVE_ENGINES:
+    if name == "alive":
         from zimi.alive import create_alive_site_zim
 
         return create_alive_site_zim(
@@ -722,9 +822,6 @@ def create_site_zim(
         raise CreateError("crawl bounds must be positive (0 pages or 0 bytes means no limit)")
     if not max_pages and not max_bytes:
         note(f"warning: no page limit and no size limit: only depth {max_depth} and the disk bound this capture")
-    scope = path_scope(url)
-    if scope:
-        note(f"staying under {scope} (the path in the address); pages elsewhere on the site are left out")
 
     origin = _origin_of(url)
     robots = None
@@ -816,7 +913,6 @@ def create_site_zim(
                 max_depth=max_depth,
                 delay=delay,
                 note=note,
-                scope=scope,
             )
             del seed_text  # spooled; the crawl holds one page at a time
             blocked = report_blocked(capture, note)
@@ -950,7 +1046,6 @@ def probe_site(url, *, ignore_robots=False, timeout=PROBE_TIMEOUT):
 
     deadline = time.monotonic() + PROBE_DEADLINE
     origin = _origin_of(url)
-    scope = path_scope(url)
     robots = None if ignore_robots else load_robots(origin, timeout=timeout)
     verdict = (
         "ignored" if ignore_robots else ("absent" if robots is None else "allowed")
@@ -963,6 +1058,7 @@ def probe_site(url, *, ignore_robots=False, timeout=PROBE_TIMEOUT):
     )
     if not same_origin(seed_url, origin):
         origin = _origin_of(seed_url)
+    scope = crawl_scope(url, seed_url, extract_links(seed_text, seed_url))
     language, language_source = resolve_language(LANGUAGE_AUTO, seed_text, seed_clang)
 
     root = {
@@ -1211,6 +1307,32 @@ def _zimit_command(docker, image, container, tmp_dir, url, opts):
     return cmd
 
 
+def _read_crawl_status(line, status):
+    """Fold one line of zimit's output into ``status`` when it is
+    browsertrix's periodic "Crawl statistics" record, a JSON object whose
+    details carry ``crawled`` and ``limit: {max, hit}``. The last one printed
+    is the crawl's own account of how many pages it took and whether its page
+    limit is what ended it. Anything else is left alone."""
+    start = line.find("{")
+    if start < 0 or "crawlStatus" not in line:
+        return
+    try:
+        record = json.loads(line[start:])
+    except ValueError:
+        return
+    if not isinstance(record, dict) or record.get("context") != "crawlStatus":
+        return
+    details = record.get("details")
+    if not isinstance(details, dict):
+        return
+    if isinstance(details.get("crawled"), int):
+        status["crawled"] = details["crawled"]
+    limit = details.get("limit")
+    if isinstance(limit, dict):
+        status["limit_hit"] = bool(limit.get("hit"))
+        status["limit_max"] = limit.get("max")
+
+
 def create_zimit_zim(
     url,
     *,
@@ -1299,9 +1421,15 @@ def create_zimit_zim(
         },
     )
     note(f"running zimit: {' '.join(cmd)}")
+    status = {}
+
+    def watch(line):
+        _read_crawl_status(line, status)
+        note(line)
+
     try:
         try:
-            rc, tail = _run_streaming(cmd, note)
+            rc, tail = _run_streaming(cmd, watch)
         except KeyboardInterrupt:
             _probe([docker, "rm", "-f", container])
             raise CreateError(
@@ -1323,14 +1451,20 @@ def create_zimit_zim(
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
+    # The crawler's own last word on its page limit: a capture it cut short
+    # says so on the card, like every other engine's.
+    stopped = None
+    if status.get("limit_hit"):
+        stopped = f"page cap ({status.get('limit_max') or max_pages})"
     return {
         "path": out,
-        "pages": None,
+        "pages": status.get("crawled"),
         "assets": None,
         "main": None,
         "registered": _try_register(out) if register else False,
         "url": url,
         "engine": "zimit",
+        "stopped": stopped,
     }
 
 

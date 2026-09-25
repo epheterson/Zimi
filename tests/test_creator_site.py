@@ -98,6 +98,44 @@ ROUTES = {
     "/away": ("redirect", b"https://elsewhere.invalid/gone"),
     "/moved": ("redirect", b"/docs/next.html"),
 }
+# Path-scope shapes. A section whose pages live under its own address (gov.uk's
+# /foreign-travel-advice, discussion #93); a wiki page whose siblings sit beside
+# it; a section the site moved; and a folder with nothing else in it.
+ROUTES.update(
+    {
+        "/travel-advice": (
+            "text/html; charset=utf-8",
+            _page(
+                '<a href="/travel-advice/france">France</a>'
+                '<a href="/travel-advice/spain">Spain</a>'
+                '<a href="/news.html">news</a>'
+            ),
+        ),
+        "/travel-advice/france": ("text/html; charset=utf-8", _page("<h1>France</h1>")),
+        "/travel-advice/spain": ("text/html; charset=utf-8", _page("<h1>Spain</h1>")),
+        "/news.html": ("text/html; charset=utf-8", _page("<h1>News</h1>")),
+        "/wiki/Main_Page": (
+            "text/html; charset=utf-8",
+            _page(
+                '<a href="/wiki/Tea">Tea</a><a href="/wiki/Coffee">Coffee</a>'
+                '<a href="/news.html">news</a>'
+            ),
+        ),
+        "/wiki/Tea": ("text/html; charset=utf-8", _page("<h1>Tea</h1>")),
+        "/wiki/Coffee": ("text/html; charset=utf-8", _page("<h1>Coffee</h1>")),
+        "/manual": ("redirect", b"/en/manual/"),
+        "/en/manual/": (
+            "text/html; charset=utf-8",
+            _page('<a href="/en/manual/start.html">start</a><a href="/news.html">news</a>'),
+        ),
+        "/en/manual/start.html": ("text/html; charset=utf-8", _page("<h1>Start</h1>")),
+        "/lonely/": (
+            "text/html; charset=utf-8",
+            _page('<a href="/news.html">news</a><a href="/">home</a>'),
+        ),
+    }
+)
+
 # A link chain deep enough to exercise --max-depth without the seed's other
 # links muddying the count.
 for _i in range(7):
@@ -238,7 +276,8 @@ def test_site_capture_end_to_end(fixture_server, tmp_path):
     arc = Archive(info["path"])
 
     assert arc.main_entry.get_item().path == "A/index"
-    assert info["stopped"] is None and info["bytes"] > 0
+    # Depth 1 from the home page leaves /docs/next.html one link too far.
+    assert info["stopped"] == "depth limit (1)" and info["bytes"] > 0
     home = _text(arc, "A/index")
 
     # A link to a page this crawl captured becomes internal navigation: a bare
@@ -525,15 +564,112 @@ def test_an_address_with_a_path_stays_under_it(fixture_server, tmp_path):
 def test_the_path_rule():
     assert crawler.path_scope("https://e.org") is None
     assert crawler.path_scope("https://e.org/") is None
+    assert crawler.path_scope("https://e.org//") is None  # not a folder named nothing
     assert crawler.path_scope("https://e.org/index.html") is None
     assert crawler.path_scope("https://e.org/docs/guide/") == "/docs/guide/"
     assert crawler.path_scope("https://e.org/docs/intro.html") == "/docs/"
-    assert crawler.path_scope("https://e.org/blog") == "/blog/"
+    # No slash and no extension: the seed's links decide whether it is a
+    # section or a page among its siblings.
+    assert crawler.path_scope("https://e.org/blog", ["https://e.org/blog/post-1"]) == "/blog/"
+    assert crawler.path_scope("https://e.org/blog", ["https://e.org/about"]) is None
+    assert crawler.path_scope("https://e.org/wiki/Main_Page", ["https://e.org/wiki/Tea"]) == "/wiki/"
     assert crawler.in_path_scope("https://e.org/blog", "/blog/")
     assert crawler.in_path_scope("https://e.org/blog/post-1", "/blog/")
     assert not crawler.in_path_scope("https://e.org/blogroll", "/blog/")
     assert not crawler.in_path_scope("https://e.org/", "/blog/")
     assert crawler.in_path_scope("https://e.org/anything", None)
+
+
+def test_the_path_rule_ignores_how_a_path_is_encoded():
+    """%C3%A9, %c3%a9 and é are one path; so are %7E and ~."""
+    assert crawler.in_path_scope("https://e.org/caf%c3%a9/menu", "/caf\u00e9/")
+    assert crawler.in_path_scope("https://e.org/caf%C3%A9/menu", crawler.path_scope("https://e.org/caf%c3%a9/"))
+    assert crawler.in_path_scope("https://e.org/~ann/notes", crawler.path_scope("https://e.org/%7Eann/"))
+    assert crawler.in_path_scope("https://e.org//docs//a.html", "/docs/")
+
+
+def test_a_section_stays_a_section(fixture_server, tmp_path):
+    """gov.uk's /foreign-travel-advice (discussion #93) links to its own
+    pages under /foreign-travel-advice/: the capture keeps to them."""
+    notes = []
+    info = _site(tmp_path, "/travel-advice", progress=notes.append)
+    assert info["pages"] == 3
+    assert "/news.html" not in REQUESTS
+    assert info["stopped"] is None
+    assert any("staying under /travel-advice/" in n for n in notes)
+
+
+def test_a_page_among_its_siblings_widens_to_their_folder(fixture_server, tmp_path):
+    """/wiki/Main_Page has no pages under it. Taking it as a folder captured
+    one page and called that the site; its siblings are what was meant."""
+    notes = []
+    info = _site(tmp_path, "/wiki/Main_Page", progress=notes.append)
+    assert info["pages"] == 3
+    assert "/wiki/Tea" in REQUESTS and "/wiki/Coffee" in REQUESTS
+    assert "/news.html" not in REQUESTS
+    assert info["stopped"] is None
+    assert any("staying under /wiki/: /wiki/Main_Page is a page" in n for n in notes)
+
+
+def test_a_page_at_the_root_is_the_whole_site(fixture_server, tmp_path):
+    notes = []
+    info = _site(tmp_path, "/news.html", max_depth=1, progress=notes.append)
+    assert info["pages"] == 1  # news links nowhere; nothing scoped it out
+    assert info["stopped"] is None
+    notes.clear()
+    (tmp_path / "list").mkdir()
+    _site(tmp_path / "list", "/list", max_depth=0, progress=notes.append)
+    assert any("capturing the whole site" in n for n in notes)
+
+
+def test_a_section_the_site_moved_is_followed(fixture_server, tmp_path):
+    """/manual answered by /en/manual/: staying under /manual/ would capture
+    one page. The scope follows the redirect."""
+    notes = []
+    info = _site(tmp_path, "/manual", progress=notes.append)
+    assert info["pages"] == 2
+    assert "/en/manual/start.html" in REQUESTS
+    assert "/news.html" not in REQUESTS
+    assert info["stopped"] is None
+    assert any("staying under /en/manual/" in n for n in notes)
+
+
+def test_a_path_with_nothing_under_it_says_so(fixture_server, tmp_path):
+    """Every link went elsewhere on the site. The capture is one page, and the
+    card must not call that the finished site."""
+    from zimi import zimwriter
+
+    info = _site(tmp_path, "/lonely/")
+    assert info["pages"] == 1
+    assert info["stopped"] == "nothing under /lonely/"
+    raw = bytes(Archive(info["path"]).get_metadata(zimwriter.HISTORY_METADATA_KEY)).decode()
+    assert zimwriter.parse_history(raw)[0]["stopped"] == "nothing under /lonely/"
+
+
+def test_new_assets_are_read_from_the_end_not_the_whole_map():
+    """A 10,000-page crawl announced each page's assets by walking every asset
+    the crawl had ever carried. The map only grows, so the new ones are the
+    newest, read backwards."""
+
+    class NoWalking(dict):
+        def __iter__(self):
+            raise AssertionError("walked the whole map")
+
+        def items(self):
+            raise AssertionError("walked the whole map")
+
+    carried = NoWalking()
+    for i in range(50):
+        dict.__setitem__(carried, f"h\n/old{i}.png", f"_assets/old{i}")
+    dict.__setitem__(carried, "h\n/new.png", "_assets/new")
+    dict.__setitem__(carried, "h\n/gone.png", None)
+    notes = []
+    assert crawler._report_new_assets(carried, 50, "http://h/p", notes.append) == 52
+    assert notes == [
+        "    asset done h//new.png for http://h/p",
+        "    asset failed h//gone.png for http://h/p",
+    ]
+    assert crawler._report_new_assets(carried, 52, "http://h/p", notes.append) == 52
 
 
 def test_no_limits_still_has_a_queue_ceiling(fixture_server, tmp_path, monkeypatch):
@@ -573,11 +709,24 @@ def test_the_zim_records_the_limit_that_stopped_it(fixture_server, tmp_path):
 
 
 def test_max_depth_bounds_the_chain(fixture_server, tmp_path):
+    from zimi import zimwriter
+
     info = _site(tmp_path, "/chain/0.html", max_depth=2)
     # seed (depth 0) + two hops, and nothing beyond.
     assert info["pages"] == 3
     assert "/chain/2.html" in REQUESTS and "/chain/3.html" not in REQUESTS
-    assert info["stopped"] is None  # the frontier ran dry, no bound was hit
+    # /chain/3.html was one link too far: the depth limit cut this capture
+    # short, and a capture that says nothing about it reads as complete.
+    assert info["stopped"] == "depth limit (2)"
+    raw = bytes(Archive(info["path"]).get_metadata(zimwriter.HISTORY_METADATA_KEY)).decode()
+    assert zimwriter.parse_history(raw)[0]["stopped"] == "depth limit (2)"
+
+
+def test_depth_that_reaches_the_end_is_not_a_limit(fixture_server, tmp_path):
+    """The chain ends at /chain/7.html, which links nowhere new: depth 20
+    reached everything, so nothing was cut short."""
+    info = _site(tmp_path, "/chain/0.html", max_depth=20)
+    assert info["stopped"] is None
 
 
 def test_max_depth_zero_captures_only_the_seed(fixture_server, tmp_path):
@@ -871,6 +1020,55 @@ def test_zimit_site_scope_and_engine_arg_passthrough(zimit_docker, tmp_path):
     assert "--scopeType" not in cmd  # zimit's own prefix default applies
     assert "--limit" not in cmd  # never guessed at when the user didn't ask
     assert cmd[-2:] == ["--workers", "2"]
+
+
+def test_a_whole_site_asked_of_zimit_runs_zimit(zimit_docker, tmp_path):
+    """The web's whole-site capture goes through create_site_zim, which sent
+    every engine in ARCHIVE_ENGINES to the alive engine: asking for zimit
+    recorded the site with Zimi's own browser and said nothing. It reaches
+    zimit, with the page limit the counters promise."""
+    info = crawler.create_site_zim(
+        "https://example.com/", engine="zimit", out_dir=str(tmp_path / "zims")
+    )
+    assert info["engine"] == "zimit"
+    cmd = zimit_docker["runs"][0]
+    assert "--scopeType" not in cmd
+    assert cmd[cmd.index("--limit") + 1] == str(crawler.DEFAULT_MAX_PAGES)
+
+    zimit_docker["runs"].clear()
+    crawler.create_site_zim(
+        "https://example.com/", engine="zimit", max_pages=0, out_dir=str(tmp_path / "zims")
+    )
+    assert "--limit" not in zimit_docker["runs"][0]  # 0 is no limit
+
+
+def test_zimit_says_when_its_page_limit_cut_it_short(zimit_docker, monkeypatch, tmp_path):
+    """browsertrix prints its crawl statistics as JSON, page limit included.
+    The last record is its own word on whether the limit ended the crawl."""
+
+    def run(cmd, note, timeout=None):
+        zimit_docker["runs"].append(cmd)
+        note('{"timestamp":"t","logLevel":"info","context":"crawlStatus","message":"Crawl statistics",'
+             '"details":{"crawled":3,"total":9,"pending":1,"failed":0,"limit":{"max":5,"hit":false},"pendingPages":[]}}')
+        note('{"timestamp":"t","logLevel":"info","context":"crawlStatus","message":"Crawl statistics",'
+             '"details":{"crawled":5,"total":9,"pending":0,"failed":0,"limit":{"max":5,"hit":true},"pendingPages":[]}}')
+        note("not json {at all")
+        out_dir = cmd[cmd.index("-v") + 1].rsplit(":", 1)[0]
+        with open(os.path.join(out_dir, "whatever.zim"), "wb") as fh:
+            fh.write(b"ZIMITOUTPUT")
+        return 0, []
+
+    monkeypatch.setattr(crawler, "_run_streaming", run)
+    info = crawler.create_zimit_zim(
+        "https://example.com/", site=True, max_pages=5, out_dir=str(tmp_path / "zims")
+    )
+    assert (info["stopped"], info["pages"]) == ("page cap (5)", 5)
+
+    zimit_docker["runs"].clear()
+    monkeypatch.setattr(crawler, "_run_streaming", lambda cmd, note, timeout=None: (
+        open(os.path.join(cmd[cmd.index("-v") + 1].rsplit(":", 1)[0], "w.zim"), "wb").close() or (0, [])))
+    quiet = crawler.create_zimit_zim("https://example.com/", site=True, out_dir=str(tmp_path / "zims"))
+    assert quiet["stopped"] is None and quiet["pages"] is None
 
 
 def test_zimit_pull_is_announced_never_implicit(monkeypatch, tmp_path):

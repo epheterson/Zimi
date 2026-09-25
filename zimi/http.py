@@ -1233,6 +1233,7 @@ def _capture_summary(meta):
         "captured": record.get("captured", ""),
         "assets": record.get("assets", 0),
         "pages": len(record.get("pages") or []),
+        "stopped": str(record.get("stopped") or ""),
     }
 
 

@@ -117,9 +117,12 @@ def zim_path_for_url(url):
     return ""
 
 
-def build_record(*, seed_url, engine, pages, assets):
-    """The capture record, as a plain dict ready to be stored."""
-    return {
+def build_record(*, seed_url, engine, pages, assets, stopped=None):
+    """The capture record, as a plain dict ready to be stored. ``stopped`` is
+    the bound that ended a crawl short ("page cap (40)"), kept so the info
+    panel can say the ZIM is incomplete: warc2zim writes no Zimi history, so
+    this record is the only place that fact can live."""
+    record = {
         "version": RECORD_VERSION,
         "engine": engine,
         "source": seed_url,
@@ -135,6 +138,9 @@ def build_record(*, seed_url, engine, pages, assets):
             if zim_path_for_url(p.get("url") or "")
         ],
     }
+    if stopped:
+        record["stopped"] = str(stopped)
+    return record
 
 
 def patch(
