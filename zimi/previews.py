@@ -10,8 +10,11 @@ log = logging.getLogger("zimi")
 
 def strip_html(text):
     """Remove HTML tags and decode entities, return plain text."""
-    text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL)
-    text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL)
+    # A script or style the read cut off before its end runs to the end:
+    # mwoffliner's Wikivoyage pages open with a config script longer than
+    # /snippet's read, and its code came back as the page's snippet.
+    text = re.sub(r"<script[^>]*>.*?(?:</script>|$)", "", text, flags=re.DOTALL)
+    text = re.sub(r"<style[^>]*>.*?(?:</style>|$)", "", text, flags=re.DOTALL)
     text = re.sub(r"<[^>]+>", " ", text)
     # A read of the start of a page can end inside a tag, which the pattern
     # above cannot close: '... 1879 <a rel="mw:WikiLink" href="Ulm" t'.
