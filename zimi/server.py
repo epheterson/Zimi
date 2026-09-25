@@ -4237,8 +4237,8 @@ def main():
         "--max-bytes",
         default=None,
         help="Total size budget, e.g. 512MiB or 4G; 0 for no limit. For --site: pages plus "
-        f"assets (default {_crawler.DEFAULT_MAX_BYTES // 1024**2}MiB); for "
-        "video sources: total media (default 4G)",
+        f"assets (default {_crawler.DEFAULT_MAX_BYTES // 1000**3}G); for "
+        "video sources: total media (default 16G)",
     )
     p_create.add_argument(
         "--delay",

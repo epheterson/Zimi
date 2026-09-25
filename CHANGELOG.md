@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Create a ZIM has bigger defaults: a whole-site capture takes up to 10,000 pages, 4 GB and 10 links deep (was 200 pages, 500 MB, 5 deep), and a video capture up to 16 GB (was 4 GB). Blank fields use them; 0 still means no limit.
 - Create a ZIM, whole site: an address with a path (`https://example.org/docs/`) keeps the capture under that path; pages elsewhere on the site are left out, and the images, styles and scripts its pages use are still fetched. A bare address still captures the whole site.
+
+### Fixed
+
+- A capture with no page limit (0) shows its pages and count while it runs; since 1.10.3 they stood still, and the capture looked stuck.
 
 ## [1.10.3] - 2026-09-24
 

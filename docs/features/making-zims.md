@@ -30,7 +30,7 @@ A capture is also **refused rather than packaged** when the site does not return
 
 **Capture defaults.** Ad, tracker, and consent-manager requests are blocked during capture by default (`--block-ads`, on for the rendered and alive engines) — smaller ZIMs, and pages that gate on those endpoints render their real content. `--no-block-ads` captures everything. The blocklist snapshot ships in `zimi/assets/blocklist-snapshot.txt.gz` (StevenBlack/hosts, MIT) and is not auto-refreshed. Image-variant capture is a Manage/Creator toggle (`capture_variants`) and a `create` internal option.
 
-**Size budget.** `--max-bytes` caps output (e.g. `512MiB`, `4G`; 0 for no limit, and any size under Custom in the Create page). For `--site` it counts pages plus assets (default 512MiB); for video sources it caps total media (default 4G). Crawls are also bounded by `--max-pages` (site default 200; any number, 0 for no limit, and the same in the Create page's Max pages box), `--max-depth` (site default 5), and `--delay` between requests (site default 0.5s; robots.txt `Crawl-delay` wins when larger). `--ignore-robots` (site only) crawls disallowed pages and prints a warning.
+**Size budget.** `--max-bytes` caps output (e.g. `512MiB`, `4G`; 0 for no limit, and any size under Custom in the Create page). For `--site` it counts pages plus assets (default 4G); for video sources it caps total media (default 16G). Crawls are also bounded by `--max-pages` (site default 10,000; any number, 0 for no limit, and the same in the Create page's Max pages box), `--max-depth` (site default 10), and `--delay` between requests (site default 0.5s; robots.txt `Crawl-delay` wins when larger). `--ignore-robots` (site only) crawls disallowed pages and prints a warning.
 
 **Language** is read off the source (a page's `lang`, a folder's HTML, video metadata) and falls back to `eng`; override with `--language` (ISO 639-3). **Output** defaults to the ZIM directory with library registration; `--out` writes an explicit `.zim` path instead. Title/description/creator metadata is set with `--title` / `--description` / `--creator` (creator defaults to `Zimi`).
 
@@ -53,9 +53,9 @@ The rendered and alive engines take them on the page they already have open. The
 | `--engine` | flag | `builtin` | `builtin` / `rendered` / `singlefile` / `alive` / `zimit` |
 | `ZIMI_BEHAVIORS` | env | unset | Path to a `behaviors.js`. Zimi otherwise looks in npm's global roots; without it the browser engines fall back to a plain scroll |
 | `--block-ads` / `--no-block-ads` | flag | on (rendered/alive) | Block ad/tracker/consent requests at capture time |
-| `--max-bytes` | flag | 512MiB (site) / 4G (video) | Total size budget |
-| `--max-pages` | flag | 200 (site) | Page cap for `--site` |
-| `--max-depth` | flag | 5 (site) | Link hops from the start page |
+| `--max-bytes` | flag | 4G (site) / 16G (video) | Total size budget |
+| `--max-pages` | flag | 10,000 (site) | Page cap for `--site` |
+| `--max-depth` | flag | 10 (site) | Link hops from the start page |
 | `--delay` | flag | 0.5s (site) | Seconds between requests |
 | `--ignore-robots` | flag | off | Crawl robots-disallowed pages (site only) |
 | `--format` / `--audio-only` / `--limit` | flag | ~720p cap, H.264 first | Video source selection. H.264 plays in every browser; YouTube's default MP4 is AV1, which iPhones before the 15 Pro cannot decode. |

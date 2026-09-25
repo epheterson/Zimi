@@ -63,7 +63,7 @@ from zimi.zimwriter import (
 
 log = logging.getLogger("zimi.video")
 
-DEFAULT_MAX_ZIM_BYTES = 4 * 1024**3  # total budget: keep video ZIMs shareable
+DEFAULT_MAX_ZIM_BYTES = 16 * 1000**3  # total budget; was 4 GiB, which cut most channels short
 # Progressive-first ~720p: no merge step, so ffmpeg is never required.
 # H.264 (avc1) before anything else at the same cap: YouTube's "best" MP4 is
 # AV1 now, which Safari cannot decode on any iPhone before the 15 Pro, so a

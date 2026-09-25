@@ -114,9 +114,13 @@ log = logging.getLogger("zimi.crawler")
 # ── crawl bounds ────────────────────────────────────────────────────────────
 # 0 is no page limit: the byte budget and depth still bound the crawl, and the
 # URL queue, sized from the page limit when there is one, is bounded by them.
-DEFAULT_MAX_PAGES = 200
-DEFAULT_MAX_DEPTH = 5
-DEFAULT_MAX_BYTES = 512 * 1024**2  # every byte fetched: pages AND assets
+# Sized for the sites people actually capture (Eric, 2026-09-25: "people want
+# bigger zims and shouldn't have to change it"). They were 200 pages, 5 hops
+# and 512 MiB, and gov.uk's travel advice alone is about 2,000 pages. At the
+# default half-second between pages, 10,000 is about an hour and a half.
+DEFAULT_MAX_PAGES = 10_000
+DEFAULT_MAX_DEPTH = 10
+DEFAULT_MAX_BYTES = 4 * 1000**3  # every byte fetched: pages AND assets
 DEFAULT_DELAY = 0.5  # seconds between page requests
 ROBOTS_TIMEOUT = 10.0
 MAX_ROBOTS_BYTES = 512 * 1024
