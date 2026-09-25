@@ -986,8 +986,8 @@
   "create_step_package": "Упаковка",
   "create_step_ready": "Готово",
   "create_stopped_early": "Остановлено досрочно — включено всё, что было захвачено до остановки.",
-  "create_stopped_page_cap": "Reached the {n}-page limit — a bigger limit captures more.",
-  "create_stopped_byte_budget": "Reached the {size} size budget — everything up to it is here.",
+  "create_stopped_page_cap": "Не полностью: захват остановился на пределе в {n} страниц.",
+  "create_stopped_byte_budget": "Не полностью: захват остановился на лимите размера {size}.",
   "create_tree_more": "ещё {n} страниц захвачено",
   "create_unavailable_offline": "Страница создания ещё не сохранена в кэше — подключитесь один раз, чтобы работать с ней автономно.",
   "create_uncancellable": "Начатое здесь доводится до конца.",
@@ -1716,5 +1716,6 @@
   "bg_vocab": "Слова для «Возможно, вы имели в виду»",
   "bg_tube": "Описания ZimiTube",
   "bg_failed": "Сбой",
-  "bg_starting": "Проверка индексов…"
+  "bg_starting": "Проверка индексов…",
+  "create_again_no_limit": "Захватить снова без ограничения"
 }

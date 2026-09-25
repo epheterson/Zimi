@@ -986,8 +986,8 @@
   "create_step_package": "Empaquetar",
   "create_step_ready": "Listo",
   "create_stopped_early": "Detenido antes de tiempo — se incluye todo lo capturado hasta la parada.",
-  "create_stopped_page_cap": "Reached the {n}-page limit — a bigger limit captures more.",
-  "create_stopped_byte_budget": "Reached the {size} size budget — everything up to it is here.",
+  "create_stopped_page_cap": "Incompleto: la captura se detuvo en su límite de {n} páginas.",
+  "create_stopped_byte_budget": "Incompleto: la captura se detuvo en su presupuesto de {size}.",
   "create_tree_more": "+{n} páginas más capturadas",
   "create_unavailable_offline": "La página de creación aún no está en caché: conéctate una vez para usarla sin conexión.",
   "create_uncancellable": "Una vez iniciado, esto llega hasta el final.",
@@ -1716,5 +1716,6 @@
   "bg_vocab": "Palabras de «Quizás quisiste decir»",
   "bg_tube": "Descripciones de ZimiTube",
   "bg_failed": "Falló",
-  "bg_starting": "Comprobando los índices…"
+  "bg_starting": "Comprobando los índices…",
+  "create_again_no_limit": "Capturar de nuevo sin límite"
 }

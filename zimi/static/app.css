@@ -831,6 +831,7 @@
   .create-done-warn { color: var(--amber2); }
   .create-report { color: var(--amber2); text-decoration: underline; }
   .create-done-open { flex: 0 0 auto; }
+  .create-again-row { margin-top: 8px; }
   /* What the finished ZIM is made of: the shared segmented bar (.cache-bar /
      .cache-legend) under the done card, with the on-disk total on its header
      row. Sits on the 4px grid and borrows the card's radius. */

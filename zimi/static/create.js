@@ -1320,8 +1320,9 @@ var CREATE_FALLBACK_TEXT = {
   create_finish_now: 'Stop early',
   create_finishing: 'Stopping…',
   create_stopped_early: 'Stopped early — this is everything captured up to the stop.',
-  create_stopped_page_cap: 'Reached the {n}-page limit — a bigger limit captures more.',
-  create_stopped_byte_budget: 'Reached the {size} size budget — everything up to it is here.',
+  create_stopped_page_cap: 'Incomplete: this capture stopped at its {n}-page limit.',
+  create_stopped_byte_budget: 'Incomplete: this capture stopped at its {size} size budget.',
+  create_again_no_limit: 'Capture again with no limit',
   create_starting: 'Starting…'
 };
 
@@ -1334,6 +1335,38 @@ function _createT(key) {
 // ended it — "page cap (40)", "byte budget (500 MB)", "interrupted" — and the
 // card used to say "Stopped early" for all three. Nobody stopped a crawl that
 // reached the limit it was given; that one reached it (survey finding F10).
+// Which limit stopped a capture, if one did: "pages", "bytes" or null (the
+// finish button and an interruption are not limits).
+function _createLimitHit(stopped) {
+  var why = String(stopped || '');
+  if (/^page cap \(/.test(why)) return 'pages';
+  if (/^byte budget \(/.test(why)) return 'bytes';
+  return null;
+}
+
+// Capture again with the limit that stopped the last one lifted (0 is none):
+// the same request, one bound changed, through the normal submit path.
+async function _createAgainNoLimit() {
+  var s = _createLastDone;
+  var hit = s && s.result && _createLimitHit(s.result.stopped);
+  if (!s || !s.request || !hit) return;
+  var body = Object.assign({}, s.request);
+  if (hit === 'pages') body.max_pages = 0;
+  else body.max_bytes = '0';
+  _createForgetFinished();
+  try {
+    var res = await authedFetch('/manage/create', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    var data = {};
+    try { data = await res.json(); } catch (e) {}
+    if (!res.ok) { _createFormError(data.error || t('create_error_generic')); return; }
+    _createStartWatching(data);
+  } catch (e) {
+    _createFormError(t('create_error_generic'));
+  }
+}
+
 function _createStoppedText(stopped) {
   var why = String(stopped || '');
   if (!why) return '';
@@ -3396,7 +3429,10 @@ function _createFreshenForm(s) {
   _renderCreatePreview();
 }
 
+var _createLastDone = null;  // the finished job the card shows, for "capture again"
+
 function _createMountDone(s) {
+  _createLastDone = s;
   var host = document.getElementById('create-done-slot');
   if (!host) return;
   var r = s.result || {};
@@ -3426,9 +3462,16 @@ function _createMountDone(s) {
         // A crawl that stopped at a bound — the finish button, a page cap, a
         // byte budget — says so on the card: "40 pages" without "and I stopped
         // there" reads like a capture that believes it got everything.
-        (r.stopped
-          ? '<div class="create-caption">' + esc(_createStoppedText(r.stopped)) + '</div>'
-          : '') +
+        // A limit that stopped it is louder than a caption: the ZIM is
+        // incomplete, and one tap captures it again with that limit lifted.
+        (r.stopped && _createLimitHit(r.stopped)
+          ? '<div class="create-caption create-done-warn" id="create-done-limit">' +
+              esc(_createStoppedText(r.stopped)) + '</div>' +
+            (s.request ? '<div class="create-again-row"><button type="button" class="ms-btn ms-btn-primary create-again"' +
+              ' onclick="_createAgainNoLimit()">' + tH('create_again_no_limit') + '</button></div>' : '')
+          : r.stopped
+            ? '<div class="create-caption">' + esc(_createStoppedText(r.stopped)) + '</div>'
+            : '') +
         // A page with almost no readable text is more likely a login, consent
         // or paywall gate than the article (medium.com: 227 characters to
         // every engine, survey finding O5). Said here, on the card, because

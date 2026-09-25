@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A capture stopped by its page limit or size budget says so on its finished card ("Incomplete: this capture stopped at its 10,000-page limit") with a button to capture again with no limit, and its counters show the limits while it runs ("1,234 / 10,000 pages", "120 MB / 4 GB").
 - A capture with no page limit (0) shows its pages and count while it runs; since 1.10.3 they stood still, and the capture looked stuck.
 
 ## [1.10.3] - 2026-09-24

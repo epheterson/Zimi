@@ -986,8 +986,8 @@
   "create_step_package": "打包",
   "create_step_ready": "完成",
   "create_stopped_early": "提前停止 — 已包含停止前捕获的全部内容。",
-  "create_stopped_page_cap": "Reached the {n}-page limit — a bigger limit captures more.",
-  "create_stopped_byte_budget": "Reached the {size} size budget — everything up to it is here.",
+  "create_stopped_page_cap": "不完整：抓取在 {n} 页的上限处停止。",
+  "create_stopped_byte_budget": "不完整：抓取在 {size} 的大小预算处停止。",
   "create_tree_more": "另有 {n} 个页面已抓取",
   "create_unavailable_offline": "创建页面尚未缓存 — 请联网一次以便离线使用。",
   "create_uncancellable": "此项一旦开始就会运行到结束。",
@@ -1716,5 +1716,6 @@
   "bg_vocab": "“您是不是要找”词汇",
   "bg_tube": "ZimiTube 描述",
   "bg_failed": "失败",
-  "bg_starting": "正在检查索引…"
+  "bg_starting": "正在检查索引…",
+  "create_again_no_limit": "不设上限重新抓取"
 }
