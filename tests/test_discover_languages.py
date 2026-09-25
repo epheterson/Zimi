@@ -295,3 +295,79 @@ def test_a_hebrew_wiktionary_zim_reads_as_hebrew(tmp_path):
     assert _extract_preview(archive, "renamed-wiktionary", "Geschäft").get(
         "other_language"
     )
+
+
+# ── Quote of the day ──────────────────────────────────────────────────────
+
+# fixture -> (language, page title, the quote starts with, who said it).
+# Each edition lays its quotes out its own way (see _wikiquote_candidates).
+QUOTES = {
+    # German: the quote in its own marks, then "– the work it is from".
+    "quote_de_heidegger.html": (
+        "de",
+        "Martin Heidegger",
+        "Der Mensch ist der Nachbar des Seins.",
+        "Martin Heidegger",
+    ),
+    "quote_de_pruederie.html": ("de", "Prüderie", "Prüderie ist eine Art", "Stendhal"),
+    # French: <div class="citation">, the source in a list after it.
+    "quote_fr_cezanne.html": (
+        "fr",
+        "Paul Cézanne",
+        "Toute ma vie, j'ai travaillé",
+        "Paul Cézanne",
+    ),
+    # Spanish: «…» with the author in a list nested under it.
+    "quote_es_fiesta.html": (
+        "es",
+        "Fiesta",
+        "El primer mérito de un cuadro",
+        "Eugène Delacroix",
+    ),
+    # Portuguese: the quote in a list, "- Fonte: Author." indented after it.
+    "quote_pt_comic_sans.html": (
+        "pt",
+        "Comic Sans",
+        "Se você ama a Comic Sans",
+        "Vincent Connare",
+    ),
+    # Hebrew: a bare list of quotes on the person's own page.
+    "quote_he_richter.html": ("he", "הדוויג ריכטר", "דמוקרטיה היא", "הדוויג ריכטר"),
+    # Chinese: "quote。—— author 《work》".
+    "quote_zh_hangzhou.html": ("zh", "杭州市", "江南忆，最忆是杭州。", "白居易"),
+    # Arabic: a paragraph between «…».
+    "quote_ar_einstein.html": (
+        "ar",
+        "ألبرت أينشتاين",
+        "شيئان لا حدود لهما",
+        "ألبرت أينشتاين",
+    ),
+    # Hindi: one quote per list, no marks.
+    "quote_hi_gupt.html": ("hi", "मन्मथनाथ गुप्त", "प्रगतिशील होना", "मन्मथनाथ गुप्त"),
+}
+
+
+@pytest.mark.parametrize("fixture", sorted(QUOTES))
+def test_quote_of_the_day_reads_each_wikiquotes_layout(fixture):
+    from zimi.previews import _extract_preview_wikiquote
+
+    lang, title, quote, author = QUOTES[fixture]
+    got = {"title": None}
+    _extract_preview_wikiquote(_fixture(fixture), got, title, lang)
+    assert (got.get("blurb") or "").startswith("“" + quote), got
+    assert got["blurb"].endswith("”")
+    assert (got.get("attribution") or "").startswith(author), got
+
+
+def test_a_quote_in_another_script_is_passed_over_for_one_in_the_wikis_own():
+    from zimi.previews import _extract_preview_wikiquote
+
+    page = (
+        "<ul><li>It is hard to win an argument with a smart person, but it is "
+        "damn near impossible to win an argument with a stupid person.</li></ul>"
+        "<ul><li>想要吵贏一個聰明的人是很困難的，但是想要吵贏一個智障根本幾乎不可能。</li></ul>"
+    )
+    got = {"title": None}
+    _extract_preview_wikiquote(page, got, "比爾·莫瑞", "zh")
+    assert got["blurb"].startswith("“想要吵贏")
+    assert got["attribution"] == "比爾·莫瑞"
