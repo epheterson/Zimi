@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Zimipedia, an app for every wiki in the library as one (Wikipedia in any language, Wiktionary, Wikivoyage, Wikiquote and the other MediaWiki wikis): a pill per wiki that narrows everything below it, a Today page (pictures from across the wikis, On this day, a word, a quote and a place to go), search across the chosen wikis, and cards or a list. Its name for `ZIMI_APPS` is `wiki`.
+- Zimipedia, an app for every wiki in the library as one (Wikipedia in any language, Wiktionary, Wikivoyage, Wikiquote and the other MediaWiki wikis): a pill per wiki that narrows everything below it, a Today page with something from every wiki chosen, in that wiki's own language (an article with its picture from each Wikipedia, a word and its meaning from each Wiktionary, a quote, a place to go, a book, a text, a lesson, a species), led by the Wikipedia in your interface's language, and On this day from every Wikipedia's own date page (English, German, French, Spanish, Portuguese, Italian, Russian, Ukrainian, Polish, Dutch, Turkish, Chinese, Japanese, Korean, Hebrew, Arabic, Persian, Hindi, Vietnamese, Indonesian, Swedish and more), search across the chosen wikis, and cards or a list. The day's picks are worked out once, soon after the server starts and after each midnight, so opening Today is one request. Its name for `ZIMI_APPS` is `wiki`. Its name for `ZIMI_APPS` is `wiki`.
 
 ### Fixed
 
