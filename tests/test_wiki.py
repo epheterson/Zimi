@@ -582,3 +582,20 @@ def test_today_route_bounds_what_a_caller_can_ask(served):
     assert (
         _get(served + "/wiki/today?day=20260925&zim=" + ",".join(["x"] * 9))[0] == 400
     )
+
+
+class _BrokenArchive:
+    def get_entry_by_path(self, path):
+        raise RuntimeError("disk gone")
+
+
+def test_an_event_s_article_that_cannot_be_read_is_an_error_not_a_miss():
+    """A subset not holding an event's article is a miss (KeyError: the next
+    line is tried); a read that fails is an error, so the day is not kept
+    as if it had no events."""
+    from zimi import search
+
+    with pytest.raises(RuntimeError):
+        search._otd_event_entry(
+            _BrokenArchive(), {"link": "X", "year": "1", "text": "t"}
+        )
