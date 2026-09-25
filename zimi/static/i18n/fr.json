@@ -1714,5 +1714,7 @@
   "bg_heading": "Travail en arrière-plan",
   "bg_idle": "Rien en cours ; tous les index sont à jour.",
   "bg_vocab": "Mots de « Vouliez-vous dire »",
-  "bg_tube": "Descriptions ZimiTube"
+  "bg_tube": "Descriptions ZimiTube",
+  "bg_failed": "Échec",
+  "bg_starting": "Vérification des index…"
 }

@@ -246,3 +246,33 @@ class BackgroundWorkTests(unittest.TestCase):
                 search._vocab_build_worker()
         self.assertNotIn("vocab", [j["kind"] for j in search.background_work()],
                          "a failed build must not read as running forever")
+
+
+class FailuresAreReported(unittest.TestCase):
+    """Manage said "every index is up to date" while a rebuild had failed and
+    the ZIM kept its old index. Failures ride on the activity poll until a
+    later build of the same ZIM succeeds."""
+
+    def tearDown(self):
+        from zimi import search
+
+        for kind in ("qids", "tube", "vocab"):
+            search._background_failed.pop(kind, None)
+
+    def test_a_failed_build_is_reported_until_it_succeeds(self):
+        from zimi import search
+
+        search._background_fail("qids", "wikipedia_ru")
+        h = ActivityEndpointTests()
+        status = h._idle_status()
+        status["errors"] = [("wikipedia", "child exited -9")]
+        with (
+            mock.patch.object(_srv, "_get_title_index_status_brief", return_value=status),
+            mock.patch.object(_srv, "_get_downloads", return_value=[]),
+        ):
+            _, body = h._call()
+        self.assertEqual(body["indexing"]["failed"], ["wikipedia"])
+        self.assertIn({"kind": "qids", "name": "wikipedia_ru"}, body["failed"])
+
+        search._background_ok("qids", "wikipedia_ru")
+        self.assertNotIn({"kind": "qids", "name": "wikipedia_ru"}, search.background_failures())

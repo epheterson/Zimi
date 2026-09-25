@@ -20,6 +20,8 @@ from urllib.parse import urlparse, parse_qs, quote, unquote
 import zimi.server as _srv
 from zimi.search import (
     _background_end,
+    _background_fail,
+    _background_ok,
     _background_start,
     _background_step,
     _build_index_isolated,
@@ -920,8 +922,10 @@ def _build_all_qid_indexes_inner():
                     _build_index_isolated("qids", name, path, _build_qid_index, _close_qid_db)
                     current += 1
                     _apply_qid_flags({name: True})
+                    _background_ok("qids", name)
                 except Exception as e:
                     log.warning("Q-ID index build failed for %s: %s", name, e)
+                    _background_fail("qids", name)
                 # Yield to host between ZIMs if loadavg is high.
                 _loadavg_throttle()
         finally:

@@ -1714,5 +1714,7 @@
   "bg_heading": "后台工作",
   "bg_idle": "没有正在构建的内容；所有索引都是最新的。",
   "bg_vocab": "“您是不是要找”词汇",
-  "bg_tube": "ZimiTube 描述"
+  "bg_tube": "ZimiTube 描述",
+  "bg_failed": "失败",
+  "bg_starting": "正在检查索引…"
 }

@@ -1034,6 +1034,12 @@ def _search_background_work():
     return background_work()
 
 
+def _search_background_failures():
+    from zimi.search import background_failures
+
+    return background_failures()
+
+
 def _cache_info_payload():
     """Size breakdown of the Zimi data dir (indexes + caches, NOT the ZIM
     library). Walks only the small-file-count data dir — never the ZIM files.
@@ -2173,11 +2179,12 @@ CREATE_FINISHABLE_MODES = ("site",)
 # nothing — the client hides it the moment the server stops saying so.
 CREATE_FINISHABLE_PHASES = ("probe", "fetch", "assets")
 CREATE_MAX_TITLE = 200
-# Site crawls: the page limit has no ceiling. It was 5,000 ("past this, use
-# the CLI"), then 50,000 when the first Windows user to make a ZIM asked
-# (r/Kiwix, 2026-09-19), and the same person outgrew that five days later; on
-# the desktop app the form IS the CLI. Any number is taken, and 0 is none: the
-# byte ceiling below still bounds the file.
+# Site crawls: the page limit and the size budget have no ceiling. The page
+# ceiling was 5,000 ("past this, use the CLI"), then 50,000 when the first
+# Windows user to make a ZIM asked (r/Kiwix, 2026-09-19), and the same person
+# outgrew that five days later; on the desktop app the form IS the CLI. Any
+# number is taken, and 0 is none. With both at 0 only the depth and the disk
+# bound a crawl, and the job log says so.
 CREATE_MAX_DEPTH_CEILING = 10
 CREATE_MAX_DELAY = 60.0  # seconds between page requests
 # Video jobs: a playlist cap, same reasoning.
@@ -5014,6 +5021,9 @@ def handle_manage_get(handler, parsed, params):
                     "ready": idx.get("ready", 0),
                     "total": idx.get("total", 0),
                     "current": idx.get("building_now"),
+                    # Names only: a ZIM whose index failed to build (it keeps
+                    # its old one, or has none).
+                    "failed": sorted({name for name, _ in idx.get("errors", [])}),
                 },
                 "downloads": {
                     "active": active_dl,
@@ -5026,6 +5036,7 @@ def handle_manage_get(handler, parsed, params):
                 # The Q-ID scan, did-you-mean and ZimiTube details, while
                 # they run: Manage's cache section says what is still building.
                 "background": _search_background_work(),
+                "failed": _search_background_failures(),
             },
         )
 

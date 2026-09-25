@@ -597,7 +597,14 @@ def _install(name, zim_path, details):
 
 def _build_one(name):
     """Bring ``name``'s details file up to date and serve it."""
-    from zimi.search import _background_end, _background_start, _background_step, _build_index_isolated
+    from zimi.search import (
+        _background_end,
+        _background_fail,
+        _background_ok,
+        _background_start,
+        _background_step,
+        _build_index_isolated,
+    )
 
     with _build_lock:
         path = _srv.get_zim_files().get(name)
@@ -625,7 +632,9 @@ def _build_one(name):
                     time.time() - t0,
                 )
             details = _load_details(name)
+            _background_ok("tube", name)
         except Exception as e:
+            _background_fail("tube", name)
             # Kept empty until the next start rather than rebuilt on every
             # request: a ZIM that cannot be read now will not be in a second.
             log.warning("ZimiTube: video details of %s failed: %s", name, e)

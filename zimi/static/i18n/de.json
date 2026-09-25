@@ -1714,5 +1714,7 @@
   "bg_heading": "Hintergrundarbeit",
   "bg_idle": "Nichts wird aufgebaut; alle Indizes sind aktuell.",
   "bg_vocab": "Wörter für „Meinten Sie“",
-  "bg_tube": "ZimiTube-Beschreibungen"
+  "bg_tube": "ZimiTube-Beschreibungen",
+  "bg_failed": "Fehlgeschlagen",
+  "bg_starting": "Indizes werden geprüft…"
 }

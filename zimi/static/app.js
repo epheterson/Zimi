@@ -12031,9 +12031,24 @@ async function _renderBackgroundWork() {
     const count = job.total ? tH('n_of_total', {n: Math.min(job.done + 1, job.total), total: job.total}) + ' · ' : '';
     rows.push(_bgWorkRow(tH(_BG_WORK_LABEL[job.kind] || job.kind), count + where));
   }
-  el.innerHTML = '<div class="ms-hint" style="margin:0 0 4px">' + tH('bg_heading') + '</div>' +
-    (rows.length ? rows.join('') : '<div class="ms-hint" style="margin:0">' + tH('bg_idle') + '</div>');
-  if (rows.length) _bgWorkTimer = setTimeout(_renderBackgroundWork, _BG_WORK_POLL_MS);
+  // What failed stays on screen: a ZIM whose rebuild failed keeps its old
+  // index, and "up to date" would say otherwise.
+  const failed = {};
+  for (const name of (ix.failed || [])) (failed.titles = failed.titles || []).push(name);
+  for (const f of (a.failed || [])) (failed[f.kind] = failed[f.kind] || []).push(f.name);
+  const fails = Object.keys(failed).map(function(kind) {
+    const label = kind === 'titles' ? tH('title_indexes') : tH(_BG_WORK_LABEL[kind] || kind);
+    const names = failed[kind].filter(Boolean).map(esc).join(', ');
+    return '<div class="mc-row"><span class="mc-label">' + label + '</span>' +
+      '<span class="mc-value" style="color:var(--error)">' + tH('bg_failed') + (names ? ' · ' + names : '') + '</span></div>';
+  });
+  // Before the startup builder has begun there is nothing to report yet,
+  // which is not the same as nothing left to do.
+  const starting = !rows.length && ix.state === 'idle';
+  let status = '';
+  if (!rows.length && !fails.length) status = '<div class="ms-hint" style="margin:0">' + tH(starting ? 'bg_starting' : 'bg_idle') + '</div>';
+  el.innerHTML = '<div class="ms-hint" style="margin:0 0 4px">' + tH('bg_heading') + '</div>' + rows.join('') + fails.join('') + status;
+  if (rows.length || starting) _bgWorkTimer = setTimeout(_renderBackgroundWork, _BG_WORK_POLL_MS);
 }
 
 // Below this many installed ZIMs, the warm-everything default is fine and

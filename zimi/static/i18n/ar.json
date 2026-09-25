@@ -1714,5 +1714,7 @@
   "bg_heading": "عمل في الخلفية",
   "bg_idle": "لا شيء قيد البناء؛ كل الفهارس محدَّثة.",
   "bg_vocab": "كلمات «هل تقصد»",
-  "bg_tube": "أوصاف ZimiTube"
+  "bg_tube": "أوصاف ZimiTube",
+  "bg_failed": "فشل",
+  "bg_starting": "جارٍ فحص الفهارس…"
 }

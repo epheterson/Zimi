@@ -1714,5 +1714,7 @@
   "bg_heading": "Background work",
   "bg_idle": "Nothing building; every index is up to date.",
   "bg_vocab": "Did-you-mean words",
-  "bg_tube": "ZimiTube descriptions"
+  "bg_tube": "ZimiTube descriptions",
+  "bg_failed": "Failed",
+  "bg_starting": "Checking the indexes…"
 }

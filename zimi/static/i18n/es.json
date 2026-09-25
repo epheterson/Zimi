@@ -1714,5 +1714,7 @@
   "bg_heading": "Trabajo en segundo plano",
   "bg_idle": "Nada en construcción; todos los índices están al día.",
   "bg_vocab": "Palabras de «Quizás quisiste decir»",
-  "bg_tube": "Descripciones de ZimiTube"
+  "bg_tube": "Descripciones de ZimiTube",
+  "bg_failed": "Falló",
+  "bg_starting": "Comprobando los índices…"
 }
