@@ -106,6 +106,10 @@ var SK = {
   // Video resume ledger: {"<zim>\n<path>#<i>": {t, d, ts}} — playback position
   // per video, restored on reopen and dropped once watched to completion.
   VIDEO_RESUME: 'zimi_video_resume',
+  // Where you are in each book: {"<zim>\n<path>": {f, ts, id, title, author,
+  // cover}}, f the fraction of the book read. The reader keeps f; Bookshelf
+  // (static/books.html, same key) shows the books under Continue reading.
+  BOOK_PLACES: 'zimi_book_places',
   // Whole-app theme: 'auto' (follow prefers-color-scheme, dark fallback) |
   // 'dark' | 'light'. Default auto. Read/written via _appTheme/_setAppTheme;
   // the head bootstrap in index.html stamps the resolved value pre-paint.
@@ -1049,6 +1053,7 @@ function _applyI18nToDOM() {
 // phone's box: "Where to?", "Find a video", "Ask a question".
 function _appPlaceholder() {
   if (_isWikiPage()) return t('wiki_search_placeholder');
+  if (_isBooksPage()) return t('books_search_placeholder');
   if (_isReddotPage()) return t('reddot_search_placeholder');
   if (_isExchangePage()) return t('exchange_search_placeholder');
   if (_isTubePage()) return t('tube_search_placeholder');
@@ -1661,12 +1666,13 @@ function updateTopbar() {
     bcIcon.innerHTML = _ALMANAC_BC_ICON;
     // Identity only — no destination behind it, so no link affordance either.
     bcIcon.removeAttribute('href');
-  } else if (_isWikiPage()) {
+  } else if (_isWikiPage() || _isBooksPage()) {
+    var hashApp = _isWikiPage() ? 'wiki' : 'books';
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
-    bcIcon.title = t('wiki');
-    bcIcon.innerHTML = _WIKI_SVG.replace('width="26" height="26"', 'width="20" height="20"');
-    bcIcon.setAttribute('href', '/#wiki');
+    bcIcon.title = t(hashApp);
+    bcIcon.innerHTML = _appIcon(hashApp).replace('width="26" height="26"', 'width="20" height="20"');
+    bcIcon.setAttribute('href', '/#' + hashApp);
   } else if (_isReddotPage()) {
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
@@ -1768,7 +1774,7 @@ function updateTopbar() {
   var _foldReaderExtras = _readingArticle && _isNarrow();
   // A map is read with the eyes and the hands: no type size, no read-aloud,
   // no Reader View. _syncReaderViewBtn and the ⋯ menu know the same rule.
-  var _readingText = _readingArticle && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage() && !_isWikiPage() && !_isPdfPage();
+  var _readingText = _readingArticle && !_isMapPage() && !_isAppPage() && !_isPdfPage();
   var fontBtn = document.getElementById('font-btn');
   if (fontBtn) fontBtn.style.display = (_readingText && !_foldReaderExtras) ? 'flex' : 'none';
   // Bookmarks-panel opener — reader only (#65). Everywhere else the library
@@ -2336,6 +2342,7 @@ function route(push) {
   if (params.get('exchange') !== null) { enterHome(false); openExchange(true, params.get('exchange') || ''); return; }
   if (params.get('reddot') !== null) { enterHome(false); openReddot(true, params.get('reddot') || ''); return; }
   if (location.hash === '#wiki') { enterHome(false); openWiki(true); return; }
+  if (location.hash === '#books') { enterHome(false); openBooks(true); return; }
   if (location.hash === '#reddot' || location.hash.indexOf('#reddot?') === 0) {
     enterHome(false);
     var rdQ = new URLSearchParams(location.hash.slice(location.hash.indexOf('?') + 1));
@@ -2566,7 +2573,7 @@ function goHome(e) {
 }
 
 function _isAppPage() {
-  return _isTubePage() || _isExchangePage() || _isReddotPage() || _isWikiPage();
+  return _isTubePage() || _isExchangePage() || _isReddotPage() || _isWikiPage() || _isBooksPage();
 }
 // The reader is on the PDF viewer: nothing to read aloud, no type size.
 function _isPdfPage() {
@@ -2577,7 +2584,7 @@ function _isPdfPage() {
 // The app's home, in place of the item a shared link landed on.
 function _appEntryHome() {
   var app = _tubeOpen ? ['tube', 'play', _tubeUrl('')] : _exchangeOpen ? ['exchange', 'q', _exchangeUrl('')]
-    : _wikiOpen ? ['wiki', 'q', '/#wiki'] : ['reddot', 'p', _reddotUrl('')];
+    : _wikiOpen ? ['wiki', 'q', '/#wiki'] : _booksOpen ? ['books', 'q', '/#books'] : ['reddot', 'p', _reddotUrl('')];
   var st = { mode: 'reader' }; st[app[0]] = true; st[app[1]] = '';
   _appHome(st, app[2], app[1]);
   // "home", not a route to nothing: a route only closes the thing on
@@ -6454,9 +6461,9 @@ q.addEventListener('input', () => {
   const val = q.value.trim();
   // Suggest (200ms debounce) — include history items when typing
   clearTimeout(suggestTimer);
-  if (_isWikiPage()) {
+  if (_isWikiPage() || _isBooksPage()) {
     hideSuggest();
-    suggestTimer = setTimeout(function() { _wikiSearch(val); }, 250);
+    suggestTimer = setTimeout(function() { (_isWikiPage() ? _wikiSearch : _booksSearch)(val); }, 250);
   } else if (_isReddotPage()) {
     hideSuggest();
     suggestTimer = setTimeout(function() { _reddotSearch(val); }, 250);
@@ -6543,6 +6550,7 @@ q.addEventListener('keydown', e => {
     if (_isExchangePage()) { _exchangeSearch(q.value.trim()); return; }
     if (_isReddotPage()) { _reddotSearch(q.value.trim()); return; }
     if (_isWikiPage()) { _wikiSearch(q.value.trim()); return; }
+    if (_isBooksPage()) { _booksSearch(q.value.trim()); return; }
     if (_isMapPage()) {
       if (suggestItems.length && suggestItems[0]._place) selectSuggest(0);
       else if (q.value.trim().length >= 2) fetchPlaces(q.value.trim());
@@ -12042,7 +12050,7 @@ function _msServerHtml() {
 // disk), refreshed while anything is building and only while this section is
 // open; when nothing is, it says so, which is the other half of the answer.
 const _BG_WORK_POLL_MS = 5000;
-const _BG_WORK_LABEL = { qids: 'qid_indexes', vocab: 'bg_vocab', tube: 'bg_tube' };
+const _BG_WORK_LABEL = { qids: 'qid_indexes', vocab: 'bg_vocab', tube: 'bg_tube', books: 'bg_books' };
 let _bgWorkTimer = null;
 
 function _bgWorkRow(label, value) {
@@ -14976,7 +14984,7 @@ function _stepBackToArticle(prev, replaceState) {
   // one before, and the popstate routing reopens it where it was.
   if (prev.app) { history.back(); return; }
   // An article on screen is not an app page, whichever way it was reached.
-  _tubeOpen = false; _exchangeOpen = false; _reddotOpen = false; _wikiOpen = false;
+  _appsOff();
   // Navigate reader to a previous article from history.
   // replaceState=true for in-app back (URL hasn't changed yet),
   // replaceState=false for browser back (URL already changed by popstate).
@@ -15109,7 +15117,18 @@ function _readerMainContent(doc) {
   if (!doc) return null;
   var main = null;
   try { main = doc.querySelector(_READER_MAIN_SELECTOR); } catch(e) {}
+  if (!main && _isBookDoc(doc)) main = doc.body;
   return main;
+}
+// A Project Gutenberg book page, from its own head: Gutenberg's Dublin Core
+// record names the book it is a format of. Its body is the book (no <main>),
+// and it is read in Reader View.
+function _isBookDoc(doc) {
+  try { return !!doc.querySelector('link[rel="dcterms.isFormatOf"][href*="gutenberg.org"]'); } catch (e) { return false; }
+}
+// Reader View reads the article element; a book's is its body.
+function _readerViewReadable(doc, main) {
+  return !!main && (main !== doc.body || _isBookDoc(doc));
 }
 function _ttsExtractText(doc) {
   if (!doc) return '';
@@ -15291,7 +15310,7 @@ function _readerViewAvailable() {
   // When already applied, the stash proves it was readerable — keep it offered.
   if (doc[_READER_VIEW_STASH]) return true;
   var main = _readerMainContent(doc);
-  if (!main || main === doc.body) return false;
+  if (!_readerViewReadable(doc, main)) return false;
   var len = (main.innerText || main.textContent || '').trim().length;
   return len >= READER_VIEW_MIN_CHARS;
 }
@@ -15308,7 +15327,7 @@ function _readerViewTitle(doc) {
 // the live document is untouched until the caller swaps it in.
 function _readerViewClean(root, doc) {
   try {
-    var junk = root.querySelectorAll(_READER_VIEW_STRIP);
+    var junk = root.querySelectorAll(_isBookDoc(doc) ? 'script,style,link,noscript' : _READER_VIEW_STRIP);
     for (var i = 0; i < junk.length; i++) {
       if (junk[i].parentNode) junk[i].parentNode.removeChild(junk[i]);
     }
@@ -15859,11 +15878,18 @@ function _readerViewApply(doc) {
   if (!doc || !doc.body) return false;
   if (doc[_READER_VIEW_STASH]) return true; // already applied to this document
   var main = _readerMainContent(doc);
-  if (!main || main === doc.body) return false;
+  if (!_readerViewReadable(doc, main)) return false;
   var text = (main.innerText || main.textContent || '').trim();
   if (text.length < READER_VIEW_MIN_CHARS) return false;
 
-  var clone = main.cloneNode(true);
+  var clone;
+  if (main === doc.body) {
+    // A book: its body's children, in a block of their own.
+    clone = doc.createElement('div');
+    Array.prototype.forEach.call(main.childNodes, function(n) { clone.appendChild(n.cloneNode(true)); });
+  } else {
+    clone = main.cloneNode(true);
+  }
   _readerViewClean(clone, doc);
   var title = _readerViewTitle(doc);
   // Some ZIMs put the article's title <h1> INSIDE the main container; our styled
@@ -16594,7 +16620,7 @@ function openReddot(replaceState, p) {
   if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
   currentArticle = null;
   readerSource = null;
-  _tubeOpen = false; _exchangeOpen = false; _wikiOpen = false;
+  _appsOff();
   _reddotOpen = true;
   _appTop = !p;
   var st = { mode: 'reader', reddot: true, p: p || '' };
@@ -16644,7 +16670,16 @@ function _wikiStrings() {
     'wiki_cards', 'wiki_list', 'wiki_searching', 'wiki_did_you_mean', 'wiki_result', 'wiki_results'], { langs: langs });
 }
 function openWiki(replaceState) {
-  if (_isModClick()) { _lastMouseEvent = null; window.open('/#wiki', '_blank'); return; }
+  _openHashApp('wiki', replaceState, function() { _wikiOpen = true; return _WIKI_PAGE + '#' + _wikiStrings(); });
+}
+function _wikiSearch(val) { _appFrameCall('wikiSearch', val); }
+
+// Zimipedia and Bookshelf open alike: a page Zimi owns at /#<app>, with no
+// item of its own (what it opens, an article or a book, opens in the reader
+// with the app as the step behind it). `show` marks the app open and names
+// the page to load.
+function _openHashApp(app, replaceState, show) {
+  if (_isModClick()) { _lastMouseEvent = null; window.open('/#' + app, '_blank'); return; }
   if (_createOpen) closeCreate();
   if (_almanacOpen) closeAlmanac();
   if (mode === 'manage') { mode = 'home'; updateTopbar(); }
@@ -16652,22 +16687,202 @@ function openWiki(replaceState) {
   if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
   currentArticle = null;
   readerSource = null;
-  _tubeOpen = false; _exchangeOpen = false; _reddotOpen = false;
-  _wikiOpen = true;
+  _appsOff();
+  var page = show();
   _appTop = true;
-  var st = { mode: 'reader', wiki: true };
-  if (replaceState === true) history.replaceState(st, '', '/#wiki');
-  else history.pushState(st, '', '/#wiki');
-  openReader(_WIKI_PAGE + '#' + _wikiStrings());
-  document.title = t('wiki') + ' — Zimi';
+  var st = { mode: 'reader' };
+  st[app] = true;
+  if (replaceState === true) history.replaceState(st, '', '/#' + app);
+  else history.pushState(st, '', '/#' + app);
+  openReader(page);
+  document.title = t(app) + ' — Zimi';
   _setWindowTitle(document.title);
   updateTopbar();
 }
-function _wikiSearch(val) {
+// A word to the app page in the reader: the box's query, by the function
+// the page exposes for it.
+function _appFrameCall(fn, val) {
   try {
     var win = document.getElementById('reader-frame').contentWindow;
-    if (win && typeof win.wikiSearch === 'function') win.wikiSearch(val);
+    if (win && typeof win[fn] === 'function') win[fn](val);
   } catch (e) {}
+}
+// No app is on screen: an article, the home page, or another app about to
+// say it is.
+function _appsOff() {
+  _tubeOpen = false; _exchangeOpen = false; _reddotOpen = false; _wikiOpen = false; _booksOpen = false;
+}
+function _anyAppOpen() {
+  return _tubeOpen || _exchangeOpen || _reddotOpen || _wikiOpen || _booksOpen;
+}
+
+// ── Bookshelf ──
+// Every Project Gutenberg ZIM in the library as one shelf (/static/books.html),
+// shown in the reader like the other apps. Eric, 2026-09-25: "Book app with
+// nice browsing interface by author and date or whatever and reading view of
+// course." A book opens in the reader itself, in Reader View, where
+// _bookAttach keeps its place and steps chapter by chapter.
+var _booksOpen = false;
+var _BOOKS_PAGE = '/static/books.html?v=1';
+var _BOOKS_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H8v18H5.5A1.5 1.5 0 0 1 4 19.5z"/><path d="M8 3h3.5v18H8z"/><path d="M13.2 4.2l3-.8 4.3 16.1-3 .8z"/></svg>';
+// The Library of Congress classes Gutenberg files books under, and the
+// literature subclasses that hold most of them, named in the shell's language.
+var _BOOKS_LCC = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'Z',
+  'PA', 'PC', 'PG', 'PH', 'PJ', 'PK', 'PL', 'PM', 'PN', 'PQ', 'PR', 'PS', 'PT', 'PZ'];
+
+function _installedBookZims() {
+  return _installedOfKind('books');
+}
+function _isBooksPage() {
+  return !!(_booksOpen && readerOpen && !_almanacOpen && !_createOpen);
+}
+function _booksTileHtml() {
+  return _appTileHtml('books', t('books'), _BOOKS_SVG, _installedBookZims().map(function(z) { return z.title || z.name; }), 'openBooks');
+}
+function _booksStrings() {
+  var lcc = {};
+  _BOOKS_LCC.forEach(function(c) { lcc[c] = t('books_lcc_' + c); });
+  return _appStrings('books', ['books_shelf', 'books_authors', 'books_subjects', 'books_eras', 'books_languages', 'books_popular', 'books_recent',
+    'books_continue', 'books_all_books', 'books_see_all', 'books_sort_popular', 'books_sort_title', 'books_sort_author', 'books_sort_recent',
+    'books_sort_name', 'books_sort_books', 'books_read', 'books_resume', 'books_epub', 'books_more_by', 'books_added', 'books_language',
+    'books_subject', 'books_era', 'books_author', 'books_more', 'books_none', 'books_empty', 'books_book', 'books_books', 'books_bce',
+    'books_pending', 'books_epub_only'], { lcc: lcc });
+}
+function openBooks(replaceState) {
+  _openHashApp('books', replaceState, function() { _booksOpen = true; return _BOOKS_PAGE + '#' + _booksStrings(); });
+}
+function _booksSearch(val) { _appFrameCall('booksSearch', val); }
+
+// ── Reading a book ──
+// A book opens in Reader View (the reader's own type, width and palette),
+// returns to where you left it, and steps chapter by chapter with a bar at
+// the foot of the page. The place is a fraction of the book, so a change of
+// type size or width lands on the same passage.
+var _BOOK_PLACES_MAX = 200;       // books remembered (oldest dropped first)
+var _BOOK_PLACE_THROTTLE = 800;   // ms between writes while scrolling
+var _BOOK_CHAPTERS_MIN = 2;       // fewer headings than this is not a book of chapters
+var _BOOK_NAV_TOP = 90;           // px: a heading this near the top (or in the top third) is the chapter you are in
+var _BOOK_CSS = [
+  '.zimi-book-nav{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:2147482000;display:flex;align-items:center;gap:2px;',
+    'max-width:min(560px,calc(100vw - 24px));padding:4px;border-radius:22px;background:var(--rv-bg,#fff);color:var(--rv-fg,#222);',
+    'border:1px solid var(--rv-border,#ddd);box-shadow:0 4px 18px rgba(0,0,0,.16);font:13px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}',
+  '.zimi-book-nav button{border:0;background:none;color:inherit;font:inherit;width:34px;height:34px;border-radius:17px;cursor:pointer;font-size:20px;line-height:1;flex:none}',
+  '.zimi-book-nav button:hover:not(:disabled){background:var(--rv-code,rgba(0,0,0,.06))}',
+  '.zimi-book-nav button:disabled{opacity:.3;cursor:default}',
+  '.zimi-book-nav .ch{flex:1;min-width:0;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;unicode-bidi:plaintext}',
+  '.zimi-book-nav .pc{color:var(--rv-muted,#777);font-variant-numeric:tabular-nums;padding:0 6px 0 0;flex:none}',
+  '@media print{.zimi-book-nav{display:none}}',
+  // Gutenberg's own sheet justifies everything, headings too; on a phone a
+  // justified heading is three words a line apart.
+  '.zimi-reader{text-align:start}.zimi-reader h1,.zimi-reader h2,.zimi-reader h3,.zimi-reader h4{text-align:center}',
+  '.zimi-reader pre:empty{display:none}'
+].join('');
+
+function _bookPlaceKey(zim, path) { return zim + '\n' + path; }
+function _bookPlaces() { return _getStorageJSON(SK.BOOK_PLACES, {}) || {}; }
+// Keep a book's place, with what Bookshelf needs to show it (its number,
+// title and author from the page's own record) when it was opened elsewhere.
+function _bookSavePlace(doc, zim, path, f) {
+  var all = _bookPlaces(), key = _bookPlaceKey(zim, path), cur = all[key] || {};
+  var m = path.match(/\.(\d+)$/);
+  var meta = function(n) { var el = doc.querySelector('meta[name="' + n + '"]'); return el ? el.getAttribute('content') || '' : ''; };
+  all[key] = { f: Math.round(f * 1e5) / 1e5, ts: Date.now(), id: cur.id || (m ? Number(m[1]) : 0),
+    title: cur.title || meta('dc.title'), author: cur.author || _bookAuthorName(meta('dc.creator')),
+    cover: cur.cover || (m ? 'covers/' + m[1] + '_cover_image.jpg' : '') };
+  var keys = Object.keys(all);
+  if (keys.length > _BOOK_PLACES_MAX) {
+    keys.sort(function(a, b) { return (all[a].ts || 0) - (all[b].ts || 0); });
+    keys.slice(0, keys.length - _BOOK_PLACES_MAX).forEach(function(k) { delete all[k]; });
+  }
+  _setStorageJSON(SK.BOOK_PLACES, all);
+}
+// "Ewald, Carl, 1856-1908" as a cover prints it: "Carl Ewald".
+function _bookAuthorName(creator) {
+  var parts = String(creator || '').split(',').map(function(p) { return p.trim(); }).filter(function(p) { return p && !/\d/.test(p); });
+  return parts.length > 1 ? parts.slice(1).join(' ') + ' ' + parts[0] : (parts[0] || '');
+}
+// The book's chapters: the heading level with the most different headings
+// (a novel's h2s, a play's h3s; not the running title the Aeneid repeats
+// above each of its twelve books), in reading order.
+function _bookChapters(doc) {
+  var body = doc.querySelector('.zimi-reader-body') || doc.body;
+  var best = [];
+  ['h1', 'h2', 'h3'].forEach(function(tag) {
+    var hs = Array.prototype.filter.call(body.querySelectorAll(tag), function(h) {
+      return !h.classList.contains('zimi-reader-title') && (h.textContent || '').trim();
+    });
+    var distinct = {};
+    hs.forEach(function(h) { distinct[h.textContent.replace(/\s+/g, ' ').trim()] = 1; });
+    hs._n = Object.keys(distinct).length;
+    if (hs._n > (best._n || 0)) best = hs;
+  });
+  return best.length >= _BOOK_CHAPTERS_MIN ? best : [];
+}
+// Where a book is scrolled to, and how far it can go. A Gutenberg page has no
+// doctype, so the viewport scrolls in quirks mode: the window's numbers are
+// the ones that hold in both modes.
+function _bookScroll(win) {
+  var doc = win.document;
+  return {
+    at: function() { return win.scrollY || 0; },
+    to: function(y) { win.scrollTo(0, Math.max(0, y)); },
+    room: function() { return Math.max(1, Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight) - win.innerHeight); }
+  };
+}
+function _bookAttach(frame, zim, path) {
+  var doc = frame.contentDocument, win = frame.contentWindow;
+  if (!doc || !win || doc.__zimiBook) return;
+  doc.__zimiBook = true;
+  var sc = _bookScroll(win);
+  var st = doc.createElement('style');
+  st.textContent = _BOOK_CSS;
+  doc.head.appendChild(st);
+  var place = _bookPlaces()[_bookPlaceKey(zim, path)];
+  // A link to a place in the book (#chapter) goes there; otherwise back to
+  // where you were.
+  if (place && place.f > 0 && !(win.location.hash || '').slice(1)) sc.to(place.f * sc.room());
+  var last = 0, timer = null;
+  var save = function() { last = Date.now(); _bookSavePlace(doc, zim, path, Math.min(1, sc.at() / sc.room())); };
+  var chapters = _bookChapters(doc), nav = null;
+  if (chapters.length) {
+    var rtl = document.documentElement.getAttribute('dir') === 'rtl';
+    nav = doc.createElement('nav');
+    nav.className = 'zimi-book-nav';
+    nav.setAttribute('dir', rtl ? 'rtl' : 'ltr');
+    nav.innerHTML = '<button type="button" class="pv"></button><span class="ch"></span><span class="pc"></span><button type="button" class="nx"></button>';
+    var pv = nav.querySelector('.pv'), nx = nav.querySelector('.nx');
+    pv.textContent = rtl ? '\u203A' : '\u2039';
+    nx.textContent = rtl ? '\u2039' : '\u203A';
+    pv.title = t('books_prev_chapter'); pv.setAttribute('aria-label', pv.title);
+    nx.title = t('books_next_chapter'); nx.setAttribute('aria-label', nx.title);
+    doc.body.appendChild(nav);
+    var current = function() {
+      var i = -1;
+      for (var k = 0; k < chapters.length; k++) { if (chapters[k].getBoundingClientRect().top <= Math.max(_BOOK_NAV_TOP, win.innerHeight / 3)) i = k; else break; }
+      return i;
+    };
+    var goTo = function(i) {
+      sc.to(i < 0 ? 0 : sc.at() + chapters[i].getBoundingClientRect().top - 12);
+    };
+    // Back goes to the start of this chapter, and from its start to the one before.
+    pv.onclick = function() { var i = current(); if (i >= 0 && chapters[i].getBoundingClientRect().top < -8) goTo(i); else goTo(i - 1); };
+    nx.onclick = function() { goTo(Math.min(chapters.length - 1, current() + 1)); };
+    var paint = function() {
+      var i = current();
+      nav.querySelector('.ch').textContent = i >= 0 ? (chapters[i].textContent || '').replace(/\s+/g, ' ').trim() : (doc.title || '');
+      nav.querySelector('.pc').textContent = Math.round(Math.min(1, sc.at() / sc.room()) * 100) + '%';
+      pv.disabled = sc.at() <= 2;
+      nx.disabled = i >= chapters.length - 1;
+    };
+    paint();
+  }
+  doc.addEventListener('scroll', function() {
+    if (nav) paint();
+    clearTimeout(timer);
+    if (Date.now() - last > _BOOK_PLACE_THROTTLE) save();
+    else timer = setTimeout(save, _BOOK_PLACE_THROTTLE);
+  }, { passive: true, capture: true });
+  win.addEventListener('pagehide', save);
 }
 
 // ── ZimiExchange ──
@@ -16704,7 +16919,7 @@ function openExchange(replaceState, q) {
   if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
   currentArticle = null;
   readerSource = null;
-  _tubeOpen = false; _reddotOpen = false; _wikiOpen = false;
+  _appsOff();
   _exchangeOpen = true;
   _appTop = !q;
   var st = { mode: 'reader', exchange: true, q: q || '' };
@@ -16862,7 +17077,7 @@ window.addEventListener('message', function(e) {
     _openCategory(d.category);
   }
 });
-var _APP_CATEGORY_KEYS = ['maps', 'ted', 'stack_exchange', 'wikipedia'];
+var _APP_CATEGORY_KEYS = ['maps', 'ted', 'stack_exchange', 'wikipedia', 'gutenberg'];
 
 function _tubeSearch(val) {
   try {
@@ -16889,7 +17104,7 @@ function openTube(replaceState, play) {
   if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
   currentArticle = null;
   readerSource = null;
-  _exchangeOpen = false; _reddotOpen = false; _wikiOpen = false;
+  _appsOff();
   _tubeOpen = true;
   _appTop = !play;
   var st = { mode: 'reader', tube: true, play: play || '' };
@@ -16908,7 +17123,7 @@ function openTube(replaceState, play) {
 // can exist on a fresh install and suggest which zims to add or pop to
 // relevant catalog categories." An app with data opens; one without opens
 // the catalog category that feeds it, and its tile says so.
-var _APP_CATEGORY = { maps: 'maps', tube: 'ted', exchange: 'stack_exchange', wiki: 'wikipedia' };  // reddot: made, not downloaded
+var _APP_CATEGORY = { maps: 'maps', tube: 'ted', exchange: 'stack_exchange', wiki: 'wikipedia', books: 'gutenberg' };  // reddot: made, not downloaded
 // A mode the Create page should open on, set by whoever sends someone there.
 var _createRememberMode = '';
 var _createRememberSource = '';
@@ -16922,7 +17137,7 @@ var _REDDIT_ADDRESS_START = 'https://www.reddit.com/r/Kiwix';
 // (ZIMI_APPS, or the switch in Server settings; stamped on the shell) or
 // this signed-in person turned it off for their account. Never per
 // browser (Eric: "Not per browser only per user or server").
-var APP_NAMES = ['maps', 'tube', 'exchange', 'reddot', 'wiki'];
+var APP_NAMES = ['maps', 'tube', 'exchange', 'reddot', 'wiki', 'books'];
 var _userPrefs = { apps: true, shown: null };
 // The stamp: nothing when every app is offered, '0' for none, else the names.
 function _appsAllowedByServer(app) {
@@ -16972,7 +17187,7 @@ function _setUserApp(app, on) {
 // and a name, lit when offered (Eric: "the lil app tiles with icons and i
 // can select or deselect which to show").
 function _appIcon(app) {
-  return app === 'maps' ? _MAPS_SVG : app === 'tube' ? _TUBE_PLAY_SVG : app === 'exchange' ? _EXCHANGE_SVG : app === 'wiki' ? _WIKI_SVG : _REDDOT_SVG;
+  return app === 'maps' ? _MAPS_SVG : app === 'tube' ? _TUBE_PLAY_SVG : app === 'exchange' ? _EXCHANGE_SVG : app === 'wiki' ? _WIKI_SVG : app === 'books' ? _BOOKS_SVG : _REDDOT_SVG;
 }
 // What the library holds for each app, in a line under its name.
 function _appCountLine(app) {
@@ -16980,6 +17195,7 @@ function _appCountLine(app) {
     : app === 'tube' ? _installedVideoZims().length
     : app === 'exchange' ? _installedQaZims().length
     : app === 'wiki' ? _installedWikiZims().length
+    : app === 'books' ? _installedBookZims().length
     : _installedRedditZims().reduce(function(s, z) { return s + (z.subreddits && z.subreddits.length ? z.subreddits.length : 1); }, 0);
   return tPlural('apps_count_' + app, n);
 }
@@ -16995,7 +17211,7 @@ function _appsRowHtml() {
   if (!_appsEnabled()) return '';
   var tiles = (_appShown('maps') ? _mapsTileHtml() : '') + (_appShown('tube') ? _tubeTileHtml() : '') +
     (_appShown('exchange') ? _exchangeTileHtml() : '') + (_appShown('reddot') ? _reddotTileHtml() : '') +
-    (_appShown('wiki') ? _wikiTileHtml() : '');
+    (_appShown('wiki') ? _wikiTileHtml() : '') + (_appShown('books') ? _booksTileHtml() : '');
   if (!tiles) return '';
   var isTiles = _getLibraryView() === 'tiles';
   // Labelled like every section around it (Discover above, the categories
@@ -17545,7 +17761,8 @@ function openReader(url) {
     // or AUTO is armed → re-apply to this doc. The tinted loading overlay stays up
     // until the shell exists, so the raw ZIM page never flashes ("dark mode
     // unbroken"). Non-eligible docs (PDF viewer, thin pages) fall through silently.
-    var _wantReader = _readerViewOn || _readerAuto();
+    var _bookDoc = false; try { _bookDoc = _isBookDoc(frame.contentDocument); } catch (e) {}
+    var _wantReader = _readerViewOn || _readerAuto() || _bookDoc;
     _readerViewOn = false; // the new document has no shell yet
     if (_wantReader) {
       var _rdoc = null; try { _rdoc = frame.contentDocument; } catch(e) { _rdoc = null; }
@@ -17710,6 +17927,7 @@ function openReader(url) {
       try {
         var _vm = _frameLoc.match(/^\/w\/([^\/]+)\/(.+)$/);
         if (_vm) _bindVideoResume(frame, decodeURIComponent(_vm[1]), decodeURIComponent(_vm[2]));
+        if (_vm && _bookDoc) _bookAttach(frame, decodeURIComponent(_vm[1]), decodeURIComponent(_vm[2]));
       } catch(e) {}
       // Dead-player affordance for broken-scrape ZIMs (0-byte / missing media).
       // Independent of the resume binding above — runs for any /w/ article frame.
@@ -17947,13 +18165,10 @@ function openReader(url) {
         // the page loaded (a deep link, a link inside an article) carried
         // only its path, and Recent history read "ce.html", "cover.453".
         try { _histRetitle(_navZim, _navPath, (frame.contentDocument.title || '').trim()); } catch (e) {}
-        if (_tubeOpen || _exchangeOpen || _reddotOpen || _wikiOpen) {
+        if (_anyAppOpen()) {
           // A card in an app opened a ZIM page: a real page now, with the
           // history and address every page gets, and Back returns to the app.
-          _tubeOpen = false;
-          _exchangeOpen = false;
-          _reddotOpen = false;
-          _wikiOpen = false;
+          _appsOff();
           readerSource = _navZim;
           history.pushState({ mode: 'reader', zim: _navZim, path: _navPath }, '', _articleDeepLinkPath(_navZim, _navPath));
           _histPushArticle(_navZim, _navPath, _titleFromPath(_navPath));
@@ -19512,10 +19727,7 @@ function _fallbackTitle(zim, path) {
 }
 
 function openArticle(zim, path, title, opts) {
-  _tubeOpen = false;
-  _exchangeOpen = false;
-  _reddotOpen = false;
-  _wikiOpen = false;
+  _appsOff();
   // A place on the map already on screen: fly there. Reloading an 800,000
   // entry map to move within it is a second of grey; the map is right here.
   // History gets the place (Back returns to the last one), the address gets
@@ -19629,10 +19841,7 @@ function openArticle(zim, path, title, opts) {
 
 function closeReader() {
   if (!readerOpen) return;
-  _tubeOpen = false;
-  _exchangeOpen = false;
-  _reddotOpen = false;
-  _wikiOpen = false;
+  _appsOff();
   _ttsStop(); // stop read-aloud when leaving the reader
   // Sync the address bar back to the view the reader was covering — an
   // explicit close otherwise strands the article URL (a reload would
@@ -20303,11 +20512,12 @@ window.addEventListener('popstate', async (e) => {
     if (app.exchange && _appFrameRoute(_exchangeOpen, app.q)) return;
     if (app.reddot && _appFrameRoute(_reddotOpen, app.p)) return;
     if (app.wiki && _appFrameRoute(_wikiOpen, '')) return;
+    if (app.books && _appFrameRoute(_booksOpen, '')) return;
   }
   // Landing on an app's address from the article opened out of it: the app
   // is reopened below, not stepped past. (The article history's own copy of
   // that step would otherwise take a second step back.)
-  var toApp = app && app.mode === 'reader' && (app.tube || app.exchange || app.reddot || app.wiki);
+  var toApp = app && app.mode === 'reader' && (app.tube || app.exchange || app.reddot || app.wiki || app.books);
   // Step through article history when reader is open (mirrors in-app back button)
   if (readerOpen && articleHistory.length > 0 && !toApp) {
     _stepBackToArticle(articleHistory.pop(), false);
@@ -20345,6 +20555,8 @@ window.addEventListener('popstate', async (e) => {
     }
   } else if (s && s.mode === 'reader' && s.wiki) {
     if (!_appFrameRoute(_wikiOpen, '')) openWiki(true);
+  } else if (s && s.mode === 'reader' && s.books) {
+    if (!_appFrameRoute(_booksOpen, '')) openBooks(true);
   } else if (s && s.mode === 'reader' && s.reddot) {
     if (!_appFrameRoute(_reddotOpen, s.p)) openReddot(true, s.p || '');
   } else if (s && s.mode === 'reader' && s.exchange) {
