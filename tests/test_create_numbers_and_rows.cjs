@@ -99,9 +99,11 @@ function eq(got, want, label) {
 // What ended a crawl, in the person's words (survey finding F10): a crawl
 // that reached the limit it was given was not "stopped early" by anyone.
 {
-  check(_createStoppedText('page cap (40)') === 'Reached the 40-page limit — a bigger limit captures more.',
+  // And that the ZIM is incomplete: a quiet "reached the limit" read as a
+  // capture that had everything (Eric, 2026-09-25).
+  check(_createStoppedText('page cap (40)') === 'Incomplete: this capture stopped at its 40-page limit.',
         'a page cap says the limit was reached, with the number: ' + _createStoppedText('page cap (40)'));
-  check(_createStoppedText('byte budget (500 MB)') === 'Reached the 500 MB size budget — everything up to it is here.',
+  check(_createStoppedText('byte budget (500 MB)') === 'Incomplete: this capture stopped at its 500 MB size budget.',
         'a byte budget says which budget: ' + _createStoppedText('byte budget (500 MB)'));
   check(_createStoppedText('interrupted') === 'Stopped early — this is everything captured up to the stop.',
         'a Stop from the person still reads as stopped early');
