@@ -11,7 +11,7 @@ The fix parses the page's EVENT LINES ("1777 – <a>Battle…</a> …") and pick
 article the event actually names, returning the event context (year + sentence)
 so the card can show the date even when the target article doesn't restate it.
 
-These tests cover the parser (`_extract_otd_events`, `_otd_norm_link`) and the
+These tests cover the parser (`datepages.extract_events`, `_norm_link`) and the
 `_get_dated_entry` Wikipedia strategy: specific-link choice, year-link skip,
 citation cleanup, section boundary, large-section (no 100KB truncation),
 404 link fall-through, and missing-page fallback.
@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import zimi.search as search  # noqa: E402
+from zimi import datepages  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Synthetic Month_Day fixture — shaped like real mwoffliner/Parsoid HTML:
@@ -64,40 +65,41 @@ FIXTURE = """
 class TestNormLink(unittest.TestCase):
     def test_absolute_wiki_url(self):
         self.assertEqual(
-            search._otd_norm_link(
-                "https://en.wikipedia.org/wiki/Siward,_Earl_of_Northumbria"
+            datepages._norm_link(
+                "https://en.wikipedia.org/wiki/Siward,_Earl_of_Northumbria", "en"
             ),
             "Siward,_Earl_of_Northumbria",
         )
 
     def test_relative_dot(self):
-        self.assertEqual(search._otd_norm_link("./1777"), "1777")
+        self.assertEqual(datepages._norm_link("./1777", "en"), "1777")
 
     def test_relative_dotdot_namespace(self):
         self.assertEqual(
-            search._otd_norm_link("../A/Battle_of_Dunsinane"), "Battle_of_Dunsinane"
+            datepages._norm_link("../A/Battle_of_Dunsinane", "en"), "Battle_of_Dunsinane"
         )
 
     def test_strips_fragment_and_query(self):
-        self.assertEqual(search._otd_norm_link("A/Foo#section?x=1"), "Foo")
+        self.assertEqual(datepages._norm_link("A/Foo#section?x=1", "en"), "Foo")
 
     def test_bare_relative(self):
         self.assertEqual(
-            search._otd_norm_link("Temple_of_Artemis"), "Temple_of_Artemis"
+            datepages._norm_link("Temple_of_Artemis", "en"), "Temple_of_Artemis"
         )
 
 
 class TestExtractEvents(unittest.TestCase):
     def setUp(self):
-        self.events = search._extract_otd_events(FIXTURE)
+        self.events = datepages.extract_events(FIXTURE, "en")
 
-    def test_parses_events_and_births_not_holidays(self):
-        # 1777, 356 BC, 1824 — the no-link 1900 line and the Christmas holiday
+    def test_parses_events_not_births_or_holidays(self):
+        # 1777 and 356 BC: the Events section only (datepages reads no births),
+        # and the no-link 1900 line and the Christmas holiday
         # line are both excluded.
-        self.assertEqual(len(self.events), 3)
+        self.assertEqual(len(self.events), 2)
 
     def test_years_in_document_order(self):
-        self.assertEqual([e["year"] for e in self.events], ["1777", "356 BC", "1824"])
+        self.assertEqual([e["year"] for e in self.events], ["1777", "356 BC"])
 
     def test_picks_most_specific_link_not_year(self):
         # Longest anchor text on the line wins ("Battle of Foo" > "George W");
@@ -139,7 +141,7 @@ class TestLargeSectionNotTruncated(unittest.TestCase):
             '<div class="mw-heading mw-heading2"><h2 id="References">References</h2></div>'
         )
         self.assertGreater(len(big), 100000)
-        events = search._extract_otd_events(big)
+        events = datepages.extract_events(big, "en")
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]["link"], "Late_Event")
 

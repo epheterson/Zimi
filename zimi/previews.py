@@ -5,6 +5,8 @@ import logging
 import re
 from urllib.parse import unquote
 
+from zimi import wikilang as _wikilang
+
 log = logging.getLogger("zimi")
 
 
@@ -52,6 +54,19 @@ def inline_text(fragment):
     return re.sub(r"\s+", " ", text).strip()
 
 
+_FOOTNOTE_RE = re.compile(r"<sup\b[^>]*>.*?</sup>", re.DOTALL | re.IGNORECASE)
+
+
+def strip_html_inline(text):
+    """inline_text for a card: footnote marks dropped, and no space left
+    before a closing punctuation mark ("word [ 2 ] ." is "word.")."""
+    text = inline_text(_FOOTNOTE_RE.sub("", text))
+    text = re.sub(r"\[\s*\d+\s*\]", "", text)  # a footnote mark left as text
+    return _SNIPPET_SPACE_BEFORE_PUNCT_RE.sub(
+        lambda g: g.group(1) or g.group(2), text
+    ).strip()
+
+
 # Some ZIMs bake a single repeated <meta description> into every page — iFixit
 # device pages carry a featured-guide blurb ("How to replace the SSD in your
 # Lenovo Legion…") rather than the device's own description. When a page exposes
@@ -95,10 +110,11 @@ _SNIPPET_BOILERPLATE_RE = re.compile(
 _SNIPPET_PARAGRAPH_RE = re.compile(r"<p\b[^>]*>(.*?)</p>", re.IGNORECASE | re.DOTALL)
 # Citation markers only: a <sup> is also the 2 in E = mc2.
 _SNIPPET_CITATION_RE = re.compile(
-    r"<sup\b[^>]*\bclass=[\"'][^\"']*\breference\b[^>]*>.*?</sup>", re.IGNORECASE | re.DOTALL
+    r"<sup\b[^>]*\bclass=[\"'][^\"']*\breference\b[^>]*>.*?</sup>",
+    re.IGNORECASE | re.DOTALL,
 )
 # Tags become spaces when stripped, which leaves "relativity ." behind.
-_SNIPPET_SPACE_BEFORE_PUNCT_RE = re.compile(r"\s+([.,;:!?)\]])|([(\[])\s+")
+_SNIPPET_SPACE_BEFORE_PUNCT_RE = re.compile(r"\s+([.,;:!?)\]。、，；：])|([(\[])\s+")
 # Shorter than this is a caption, a byline or an empty <p></p>, not a lead.
 _SNIPPET_MIN_PARAGRAPH = 60
 
@@ -236,7 +252,110 @@ def _is_real_quote(text):
         return False
     if re.match(r"^[\w\s,]+\(\s*\d{4}\s*\)", text):  # "Author Name (Year)" citation
         return False
+    # A note, not a quote: "(Original engl.: ...)", "[1]", or a source line
+    # set off by a dash ("- Fonte: ...", "——2012年7月31日，...").
+    if text[:1] in "([" or text[:1] in _QUOTE_DASHES:
+        return False
+    # A film's or a book's credits: "Regie: X Drehbuch: Y Genre: Drama".
+    if len(_CREDIT_LABEL_RE.findall(text)) >= 2:
+        return False
+    if _CJK_RE.search(text) and " " not in text.strip():
+        return len(text) >= 10  # Chinese and Japanese write no spaces
     return len(text.split()) > 6
+
+
+_QUOTE_DASHES = "-–—―~"
+_CREDIT_LABEL_RE = re.compile(r"(?:^|\s)[^\s:：]{2,20}\s?[:：]\s")
+_CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff]")
+# The quotation marks a Wikiquote may wrap a quote in, opening -> closing:
+# English and Hebrew straight quotes, German „…“, French and Arabic «…»,
+# Chinese and Japanese 「…」.
+_QUOTE_MARKS = {
+    '"': '"',
+    "\u201c": "\u201d",
+    "\u201e": "\u201c",
+    "\u00ab": "\u00bb",
+    "\u300c": "\u300d",
+    "\u300e": "\u300f",
+    "\u2039": "\u203a",
+    "\u201d": "\u201d",
+}
+# A quote followed by who said it: "... ~ Author", "...。—— 白居易 《忆江南》",
+# '"..." – Brief über den Humanismus'.
+_QUOTE_SOURCE_SPLIT_RE = re.compile(r"\s+~\s+|\s*(?:——|―)\s*|\s+(?:--|[–—-])\s+")
+
+
+_QUOTE_LABEL_RE = re.compile(r"^[^\s:：\"“„«「]{1,12}\s?[:：]\s*(?=[\"“„«「])")
+# An indented line that is a notice, not a quote: a disambiguation or
+# maintenance banner set in a <div>, or a line wholly in italics.
+_QUOTE_NOTICE_RE = re.compile(r"^\s*(?:<div\b|<i>(?:(?!</i>).)*</i>\s*$)", re.DOTALL)
+
+
+def _unwrap_quote(text):
+    """(the quote without the marks around it, what follows it) when the
+    text opens with a quotation mark and closes it, else (text, "")."""
+    close = _QUOTE_MARKS.get(text[:1])
+    if not close:
+        return text, ""
+    # The closing mark is the first one that ends the quote: what follows it
+    # is nothing, or a source set off by a dash. A later mark belongs to the
+    # source ('"Der Mensch ..." – Brief über den "Humanismus"').
+    ends = [i for i, c in enumerate(text) if c == close and i > 0]
+    for end in ends:
+        rest = text[end + 1 :].strip()
+        if not rest or rest[:1] in _QUOTE_DASHES + "(（":
+            return text[1:end].strip(), rest
+    if not ends:
+        return text, ""
+    return text[1 : ends[-1]].strip(), text[ends[-1] + 1 :].strip()
+
+
+def _starts_like_name(text):
+    """Whether text opens the way a name does: a capital, or a letter of a
+    script with no capitals (Hebrew, Arabic, Devanagari, Chinese)."""
+    c = text[:1]
+    return c.isalpha() and (c.isupper() or c.lower() == c.upper())
+
+
+def _name_from_source(source):
+    """Who a source line names first: "Fonte: Vincent Connare. cf. ..." is
+    Vincent Connare, "白居易 《忆江南》" is 白居易. None when the line opens
+    with something that is not a name (a title, a date)."""
+    s = source.strip().lstrip(_QUOTE_DASHES).strip()
+    s = re.sub(r"^[^\s:：]{1,12}\s?[:：]\s*", "", s)  # a label: "Fonte:", "出处："
+    name = re.split(r"[,(，（《«\"“.;；]", s)[0].strip()
+    return name if _plausible_name(name) and not re.search(r"\d", name) else None
+
+
+def _plausible_name(name):
+    """Whether a string could be a person's name: short, a few words, and
+    opening like a name. A run of Chinese longer than a name is a sentence
+    ("毛泽东在中共七届二中全会上的讲话")."""
+    return (
+        2 < len(name) <= (12 if _CJK_RE.search(name) else 60)
+        and len(name.split()) <= 6
+        and _starts_like_name(name)
+    )
+
+
+def _title_names_a_person(title):
+    """Whether a Wikiquote page title reads as a person's name: two to four
+    words, capitalized where the script has capitals ("Albert Einstein", not
+    "artificial intelligence"), or a transliterated name ("弗里德里希·谢林")."""
+    if "·" in title and not re.search(r"\d", title):
+        return True
+    words = title.split()
+    if not 2 <= len(words) <= 4 or re.search(r"[\d()（）]", title):
+        return False
+    first = words[0]
+    if first[:1].lower() == first[:1].upper():  # no capitals in this script
+        return first[:1].isalpha() and len(words) <= 3
+    # "Albert Einstein", "Frank-Walter Steinmeier", "Лев Толстой".
+    given = first.split("-")
+    return (
+        all(g[:1].isupper() and g[1:].islower() for g in given)
+        and words[-1][:1].isupper()
+    )
 
 
 def _extract_wikiquote_attribution(block, inner_ul_pos, page_title):
@@ -245,8 +364,8 @@ def _extract_wikiquote_attribution(block, inner_ul_pos, page_title):
     Returns author name string or None.
     """
     author = None
-    # Use page title as fallback only if it looks like a person name (has a space)
-    if " " in page_title and re.match(r"^[A-Z][a-z]+ [A-Z]", page_title):
+    # Use page title as fallback only if it looks like a person name
+    if _title_names_a_person(page_title):
         author = page_title
     inner_block = block[inner_ul_pos:]
     attr_raw = strip_html(inner_block).strip()
@@ -301,118 +420,138 @@ def _extract_wikiquote_attribution(block, inner_ul_pos, page_title):
                             # "Last, First ..." — but only if second part is short (a name, not a book title)
                             if len(parts[1].split()) <= 3:
                                 name_part = parts[1] + " " + parts[0]
-                # Validate: must start with uppercase letter, reasonable length
-                if (
-                    name_part
-                    and 2 < len(name_part) < 60
-                    and re.match(r"^[A-Z]", name_part)
-                    and not re.match(
-                        r"^(p\.|ch\.|vol\.|see |ibid)", name_part, re.IGNORECASE
-                    )
+                # Validate: must start like a name, reasonable length
+                if _plausible_name(name_part) and not re.match(
+                    r"^(p\.|ch\.|vol\.|see |ibid)", name_part, re.IGNORECASE
                 ):
                     author = name_part
     return author
 
 
-def _extract_preview_wikiquote(html_str, result, entry_title):
-    """Extract a quote and attribution from a Wikiquote article.
+def _wikiquote_candidates(html_str):
+    """Where a Wikiquote keeps its quotes, in the page's order, as
+    (position, strong, quote html, attribution html, source html).
 
-    Populates result["blurb"] and result["attribution"] in place.
-    """
-    # Wikiquote structure: <ul><li>Quote text<ul><li>Attribution</li></ul></li></ul>
-    # Strategy: find <ul> blocks that contain nested <ul> (quote + attribution).
-    # Use a simple stack-based approach to find balanced top-level <ul> blocks.
-    for ul_m in re.finditer(r"<ul>", html_str):
-        start = ul_m.start()
-        # Find the matching </ul> by counting nesting depth
-        depth = 1
-        pos = ul_m.end()
-        while depth > 0 and pos < len(html_str) and pos < start + 5000:
-            next_open = html_str.find("<ul", pos)
-            next_close = html_str.find("</ul>", pos)
-            if next_close < 0:
-                break
-            if next_open >= 0 and next_open < next_close:
-                depth += 1
-                pos = next_open + 3
-            else:
-                depth -= 1
-                pos = next_close + 5
-        if depth != 0:
-            continue
-        block = html_str[start:pos]
-        # Must have a nested <ul> (attribution) to be a quote block
-        if block.count("<ul") < 2:
-            continue
-        # Extract text before the first nested <ul> as the quote
-        inner_ul_pos = block.find("<ul", 4)  # skip the outer <ul>
-        if inner_ul_pos < 0:
-            continue
-        quote_html = block[4:inner_ul_pos]  # between outer <ul> and first nested <ul>
-        # Strip the wrapping <li> tag
-        quote_html = re.sub(r"^\s*<li[^>]*>", "", quote_html)
-        text = strip_html(quote_html).strip()
-        # Check for inline tilde attribution: "Quote text. ~ Author Name"
-        tilde_match = re.search(r"\s*~\s*(.+)$", text)
-        tilde_author = None
-        if tilde_match:
-            text = text[: tilde_match.start()].rstrip()
-            tilde_author = tilde_match.group(1).strip()
-        if 20 < len(text) < 400 and _is_real_quote(text):
-            if text.startswith(
-                ("Category:", "See also", "External links", "Retrieved")
-            ):
-                continue
-            result["blurb"] = "\u201c" + text[:250] + "\u201d"
-            # Attribution: tilde author takes priority (inline convention),
-            # then try nested <ul> for author name, fall back to page title.
-            if (
-                tilde_author
-                and 2 < len(tilde_author) < 60
-                and re.match(r"^[A-Z]", tilde_author)
-            ):
-                result["attribution"] = tilde_author[:100]
-                break
-            page_title = result.get("title") or entry_title
-            author = _extract_wikiquote_attribution(block, inner_ul_pos, page_title)
-            if author:
-                result["attribution"] = author[:100]
-            break
-    # Fallback: if <ul><li> parsing found nothing, try <dd> blocks or <li> after "Quotes" heading
-    if not result.get("blurb"):
-        # Try <dd> blocks (definition list format used on some wikiquote pages)
-        for dd_m in re.finditer(r"<dd>(.*?)</dd>", html_str, re.DOTALL):
-            dd_text = strip_html(dd_m.group(1)).strip()
-            if 30 < len(dd_text) < 400 and _is_real_quote(dd_text):
-                if not dd_text.startswith(
-                    ("Category:", "See also", "External", "Retrieved", "Source")
-                ):
-                    result["blurb"] = "\u201c" + dd_text[:250] + "\u201d"
-                    _pg = result.get("title") or entry_title
-                    if " " in _pg and re.match(r"^[A-Z][a-z]+ [A-Z]", _pg):
-                        result["attribution"] = _pg
-                    break
-    if not result.get("blurb"):
-        # Try text after a "Quotes" section heading
-        quotes_section = re.search(
-            r"<h[23][^>]*>(?:<[^>]*>)*\s*Quotes?\s*(?:<[^>]*>)*</h[23]>(.*?)(?:<h[23]|$)",
-            html_str,
+    Every edition lays them out its own way: English and Spanish put the
+    quote in a list item and who said it in a list nested under it; German,
+    Hebrew and Chinese put the quote alone in a list item, with the source
+    after a dash; Portuguese puts the source in an indented line after the
+    list; French wraps the quote in <div class="citation">; Arabic and Hindi
+    set it in a paragraph between quotation marks. "Strong" candidates are
+    shaped like a quote (quoted, attributed or classed as one); a bare list
+    item or indented line is taken only when the page has nothing stronger."""
+    out = []
+    for m in re.finditer(r"<li\b[^>]*>", html_str, re.IGNORECASE):
+        rest = html_str[m.end() : m.end() + _QUOTE_SCAN]
+        stop = re.search(r"</li>|<(?:ul|ol|dl)\b", rest, re.IGNORECASE)
+        own = rest[: stop.start()] if stop else rest
+        nested = ""
+        if stop and not stop.group(0).startswith("</"):
+            nested = rest[stop.start() :]
+            close = re.search(r"</(?:ul|ol|dl)>", nested, re.IGNORECASE)
+            nested = nested[: close.end()] if close else nested
+        source = ""
+        after = re.match(
+            r"\s*</li>\s*</ul>\s*<dl\b[^>]*>\s*<dd\b[^>]*>(.*?)</dd>",
+            rest[stop.start() :] if stop else "",
             re.DOTALL | re.IGNORECASE,
         )
-        if quotes_section:
-            for li_m in re.finditer(
-                r"<li>(.*?)</li>", quotes_section.group(1), re.DOTALL
-            ):
-                li_text = strip_html(li_m.group(1)).strip()
-                if 30 < len(li_text) < 400 and _is_real_quote(li_text):
-                    if not li_text.startswith(
-                        ("Category:", "See also", "External", "Retrieved")
-                    ):
-                        result["blurb"] = "\u201c" + li_text[:250] + "\u201d"
-                        _pg = result.get("title") or entry_title
-                        if " " in _pg and re.match(r"^[A-Z][a-z]+ [A-Z]", _pg):
-                            result["attribution"] = _pg
-                        break
+        if after and strip_html(after.group(1))[:1] in _QUOTE_DASHES:
+            source = after.group(1)
+        out.append((m.start(), bool(nested or source), own, nested, source))
+    for m in re.finditer(
+        r"<div\b[^>]*class=[\"'][^\"']*\bcitation\b[^\"']*[\"'][^>]*>(.*?)</div>",
+        html_str,
+        re.DOTALL | re.IGNORECASE,
+    ):
+        out.append((m.start(), True, m.group(1), "", ""))
+    for m in re.finditer(r"<p\b[^>]*>(.*?)</p>", html_str, re.DOTALL | re.IGNORECASE):
+        text = strip_html_inline(m.group(1))
+        for opening, closing in _QUOTE_MARKS.items():
+            q = re.search(
+                re.escape(opening)
+                + r"([^"
+                + re.escape(closing)
+                + r"]{20,400})"
+                + re.escape(closing),
+                text,
+            )
+            # Most of the paragraph: a pair of marks inside an introduction
+            # is an abbreviation (Hebrew writes חב"ד with one) or a title.
+            if q and len(q.group(0)) * 2 >= len(text):
+                out.append((m.start(), True, opening + q.group(1) + closing, "", ""))
+                break
+    for m in re.finditer(r"<dd>(.*?)</dd>", html_str, re.DOTALL):
+        if not _QUOTE_NOTICE_RE.match(m.group(1)):
+            out.append((m.start(), False, m.group(1), "", ""))
+    out.sort(key=lambda c: c[0])
+    return [c for c in out if c[1]] + [c for c in out if not c[1]]
+
+
+_QUOTE_SCAN = 5000  # how far into a list item to look for its end
+_QUOTE_MAX = 250
+
+
+def _extract_preview_wikiquote(html_str, result, entry_title, lang=""):
+    """A quote and who said it, from a Wikiquote article in any language.
+
+    Populates result["blurb"] (the quote between “ ”) and
+    result["attribution"] in place. A quote in a script other than the
+    wiki's own (the original of a translated quote on the Chinese Wikiquote)
+    is passed over for one its readers can read."""
+    page_title = result.get("title") or entry_title
+    for _pos, _strong, own, nested, source in _wikiquote_candidates(html_str):
+        # A label before a quote in marks: "תרגום: "..."" (a translation).
+        text = _QUOTE_LABEL_RE.sub("", strip_html_inline(own), count=1)
+        quote, tail = _unwrap_quote(text)
+        tilde = None
+        if quote == text:
+            # "Quote. ~ Author" names its author whatever follows; a dash
+            # sets off a source only on a line with nothing nested under it.
+            parts = _QUOTE_SOURCE_SPLIT_RE.split(text, maxsplit=1)
+            if len(parts) == 2 and len(parts[0]) >= len(parts[1]):
+                if re.search(r"\s~\s", text):
+                    quote, tilde = parts[0].strip(), parts[1].strip()
+                elif not nested:
+                    quote, tail = parts[0].strip(), parts[1].strip()
+        if not 20 < len(quote) < 400 or not _is_real_quote(quote):
+            continue
+        if not _wikilang.in_own_script(quote, lang):
+            continue
+        if quote.startswith(("Category:", "See also", "External links", "Retrieved")):
+            continue
+        # The page's own introduction of its subject: "Name (born \u2013 died) ...".
+        if page_title and quote.startswith(page_title):
+            if quote[len(page_title) :].lstrip()[:1] in "(\uff08":
+                continue
+        result["blurb"] = "\u201c" + quote[:_QUOTE_MAX] + "\u201d"
+        author = _wikiquote_author(page_title, tilde, tail, source, nested)
+        if author:
+            result["attribution"] = author[:100]
+        return
+
+
+def _wikiquote_author(page_title, tilde, tail, source, nested):
+    """Who said a quote, from the likeliest place first. A name after a
+    tilde is the author. A line under the quote names who said it (English,
+    Spanish, Portuguese). What follows a dash on the quote's own line is
+    mostly the work it is from ("\u2013 Brief \u00fcber den Humanismus"), so a page
+    named for a person names the author before that line does; on a page
+    about a thing, the line is all there is ("\u2014\u2014 \u767d\u5c45\u6613 \u300a\u5fc6\u6c5f\u5357\u300b").
+    """
+    if tilde:
+        name = _name_from_source(tilde)
+        if name:
+            return name
+    if source:
+        name = _name_from_source(strip_html_inline(source))
+        if name:
+            return name
+    if nested:
+        return _extract_wikiquote_attribution(nested, 0, page_title)
+    if _title_names_a_person(page_title):
+        return page_title
+    return _name_from_source(tail) if tail else None
 
 
 def _extract_preview_ted(html_str, archive, zim_name, path, result):
@@ -610,90 +749,174 @@ def _extract_preview_gutenberg(html_str, archive, zim_name, path, entry, result)
                     result["thumbnail"] = f"/w/{zim_name}/{resolved}"
 
 
-def _extract_wiktionary_pos_and_def(section_html, result, pos_heading_levels):
-    """Extract part of speech and definition from a wiktionary section.
+_HEADING_RE = re.compile(r"<h([1-6])\b[^>]*>(.*?)</h\1>", re.DOTALL | re.IGNORECASE)
+# What a definition carries after its sense and is not the sense: nested
+# examples and quotations, and Russian's "◆" example lines.
+_WIKT_DEF_TAIL_RE = re.compile(r"<(?:ul|ol|dl|table)\b|◆", re.IGNORECASE)
+_WIKT_DEF_MAX = 200
+# Where a sense can be: the first filled item of a numbered list, an indented
+# line (German and Spanish number their senses in a definition list), or a
+# paragraph (Hindi).
+_WIKT_SENSE_OPENERS = (
+    r"<ol\b[^>]*>\s*(?:<li\b[^>]*>\s*</li>\s*)*<li\b[^>]*>",
+    r"<dd\b[^>]*>",
+    r"<p\b[^>]*>",
+)
+# A sense numbered in the text rather than by a list: "[1]" on German
+# Wiktionary, "१." in Hindi Wiktionary's dictionary transcriptions.
+_WIKT_SENSE_NUMBER_RE = re.compile(r"^\s*(?:\[\s*1\s*\]|[1१]\s*[.)])\s*")
+# A paragraph that opens on a bold label names what follows it and then the
+# next thing: "<b>परिभाषा</b>: ... <b>उदाहरण</b>: ..." (definition, example).
+_WIKT_LABEL_RE = re.compile(r"^\s*<b\b[^>]*>[^<]{1,20}</b>\s*[:：]", re.IGNORECASE)
+_WIKT_SMALL_LABEL_RE = re.compile(
+    r"^\s*(?:<span\b[^>]*>\s*)?<small\b.*?</small>\s*(?:</span>)?",
+    re.DOTALL | re.IGNORECASE,
+)
+_ARABIC_MARKS_RE = re.compile(r"[ً-ٰٟ]")
 
-    pos_heading_levels: regex character class for heading levels to search,
-    e.g. '34' for <h3>/<h4> or '234' for <h2>/<h3>/<h4>.
-    Populates result["part_of_speech"], result["blurb"], result["boring"] in place.
-    """
-    pos_pattern = r"<h[" + pos_heading_levels + r"][^>]*>(.*?)</h"
-    for pos_m in re.finditer(pos_pattern, section_html, re.DOTALL | re.IGNORECASE):
-        pos_text = strip_html(pos_m.group(1)).strip()
-        if pos_text.lower() in (
-            "noun",
-            "verb",
-            "adjective",
-            "adverb",
-            "pronoun",
-            "preposition",
-            "conjunction",
-            "interjection",
-            "determiner",
-            "particle",
-            "prefix",
-            "suffix",
-        ):
-            result["part_of_speech"] = pos_text
-            break
-    # Definition from first <ol><li> — skip boring inflected forms
-    _boring_def = re.compile(
-        r"^(plural of |third-person |simple past |past participle |present participle |alternative |archaic |obsolete |misspelling |eye dialect |nonstandard )",
-        re.IGNORECASE,
+
+def _wiktionary_headings(html_str):
+    """[(start, end, level, text)] for every heading of a page."""
+    return [
+        (m.start(), m.end(), int(m.group(1)), strip_html_inline(m.group(2)))
+        for m in _HEADING_RE.finditer(html_str)
+    ]
+
+
+def _is_language_heading(text, names):
+    """Whether a heading names one of ``names``: "Français", "Haus (Deutsch)"."""
+    t = re.sub(r"\s+", "", text)
+    return any(t == n or t.endswith("(" + n + ")") for n in names)
+
+
+def _wiktionary_section(html_str, facts):
+    """The part of an entry written in the wiki's own language, as
+    (html, headings within it), or None when the page has no such part (an
+    English word on German Wiktionary). A wiki that writes one language only
+    has no language headings, and its whole page is the part."""
+    heads = _wiktionary_headings(html_str)
+    if not facts or facts.get("monolingual"):
+        return html_str, heads
+    for i, (start, _end, level, text) in enumerate(heads):
+        if _is_language_heading(text, facts["names"]):
+            stop = next((h[0] for h in heads[i + 1 :] if h[2] <= level), len(html_str))
+            inner = [
+                (s - start, e - start, lv, t)
+                for s, e, lv, t in heads[i + 1 :]
+                if s < stop
+            ]
+            return html_str[start:stop], inner
+    return None
+
+
+def _first_definition(html_str):
+    """The first sense a stretch of an entry defines, without its examples,
+    trimmed to fit a card; "" when it defines none."""
+    for opener in _WIKT_SENSE_OPENERS:
+        bodies = []
+        for m in re.finditer(opener, html_str, re.IGNORECASE):
+            closing = re.search(r"</(?:li|dd|p)>", html_str[m.end() :])
+            if closing:
+                bodies.append(html_str[m.end() : m.end() + closing.start()])
+        # German indents its hyphenation and pronunciation the way it
+        # indents its senses; the senses are the lines numbered "[1]".
+        numbered = [b for b in bodies if _WIKT_SENSE_NUMBER_RE.match(strip_html(b))]
+        for body in numbered or bodies:
+            text = _definition_text(body)
+            if text:
+                return text
+    return ""
+
+
+def _definition_text(body):
+    """One list item, indented line or paragraph of an entry as a sense."""
+    # A register label set small before the sense ("לשון המקרא", Biblical
+    # Hebrew) runs into it once the tags are gone.
+    body = _WIKT_SMALL_LABEL_RE.sub("", body, count=1)
+    label = _WIKT_LABEL_RE.match(body)
+    if label:
+        body = body[label.end() :]
+        nxt = re.search(r"<b\b", body, re.IGNORECASE)
+        body = body[: nxt.start()] if nxt else body
+    tail = _WIKT_DEF_TAIL_RE.search(body)
+    if tail:
+        body = body[: tail.start()]
+    # A paragraph that lists its senses line by line: the first numbered
+    # line is the sense ("घर संज्ञा पुं॰ [सं॰ गृह]<br><br>१. मनुष्यों के ...").
+    lines = [strip_html_inline(part) for part in re.split(r"<br\b[^>]*>", body)]
+    lines = [ln for ln in lines if ln]
+    numbered = [ln for ln in lines if _WIKT_SENSE_NUMBER_RE.match(ln)]
+    text = _WIKT_SENSE_NUMBER_RE.sub("", (numbered or lines or [""])[0]).strip()
+    return text[:_WIKT_DEF_MAX] if len(text) > 1 else ""
+
+
+def _wiktionary_pos(section, heads, facts):
+    """(part of speech, is an inflected form, where its senses start). The
+    start is None for an edition that heads its senses ("釋義", "Значение")
+    when the part read holds no such heading: what comes first there is
+    pronunciation or etymology, and is no definition."""
+    pos_words = tuple(w.lower() for w in facts.get("pos", ()))
+    forms = tuple(w.lower() for w in facts.get("forms", ()))
+    senses = tuple(w.lower() for w in facts.get("senses", ()))
+    for _s, e, _level, text in heads:
+        t = text.lower()
+        if forms and t.startswith(forms):
+            return None, True, e
+        if pos_words and t.startswith(pos_words):
+            return text[:40], False, e
+    start = next(
+        (e for _s, e, _lv, t in heads if senses and t.lower().startswith(senses)),
+        None if senses else 0,
     )
-    for def_m in re.finditer(
-        r"<ol[^>]*>\s*<li[^>]*>(.*?)</li>", section_html, re.DOTALL
-    ):
-        def_text = strip_html(def_m.group(1)).strip()
-        def_text = re.split(r"\n", def_text)[0].strip()
-        if len(def_text) > 5 and not def_text.startswith(("Category:", "See also")):
-            if _boring_def.match(def_text):
-                result["boring"] = True  # signal to retry
-            else:
-                result["blurb"] = def_text[:200]
-            break
-
-
-def _extract_preview_wiktionary(html_str, zim_name, result):
-    """Extract definition and part of speech from a Wiktionary article (English only).
-
-    Populates result["part_of_speech"], result["blurb"], result["boring"],
-    and result["non_english"] in place.
-    """
-    # Only extract from the English section of the page
-    eng_m = re.search(r'<h2[^>]*id=["\']English["\']', html_str[:30000], re.IGNORECASE)
-    if eng_m:
-        # Slice from English header to next <h2> (next language section) or end
-        eng_start = eng_m.start()
-        next_h2 = re.search(
-            r"<h2[^>]*id=", html_str[eng_start + 50 : 30000], re.IGNORECASE
+    # Hebrew states the part of speech in a table row ("חלק דיבר | שם־עצם").
+    label = facts.get("pos_label")
+    if label:
+        m = re.search(
+            re.escape(label) + r"\s*(?:</[^>]+>\s*)+<td\b[^>]*>(.*?)</td>",
+            section,
+            re.DOTALL,
         )
-        eng_end = (eng_start + 50 + next_h2.start()) if next_h2 else 30000
-        eng_section = html_str[eng_start:eng_end]
-        # Part of speech from <h3>/<h4>, definition from <ol><li>
-        _extract_wiktionary_pos_and_def(eng_section, result, "34")
-    else:
-        # No <h2 id="English"> — could be Simple Wiktionary (monolingual, no language headers)
-        # or a non-English entry. Check if page has any <ol><li> definitions.
-        is_simple = "simple" in zim_name.lower()
-        if is_simple:
-            # Simple Wiktionary: treat entire page as English content
-            eng_section = html_str[:30000]
-            # Part of speech: Simple Wiktionary uses <h2> for POS (not nested under language)
-            _extract_wiktionary_pos_and_def(eng_section, result, "234")
-            if not result.get("part_of_speech"):
-                # Try inline pattern: (noun), (verb), etc.
-                pos_inline = re.search(r"\((\w+)\)", eng_section[:3000])
-                if pos_inline and pos_inline.group(1).lower() in (
-                    "noun",
-                    "verb",
-                    "adjective",
-                    "adverb",
-                ):
-                    result["part_of_speech"] = pos_inline.group(1).capitalize()
-        else:
-            # Full Wiktionary, no English section — flag for the random endpoint to skip
-            result["non_english"] = True
+        if m and strip_html_inline(m.group(1)):
+            return strip_html_inline(m.group(1))[:40], False, start
+    # Russian and Hindi's dictionary pages say it in a sentence
+    # ("Существительное, неодушевлённое, ..."): the first such word.
+    plain = strip_html_inline(section[:8000])
+    hits = sorted((plain.find(w), w) for w in facts.get("pos", ()) if w in plain)
+    return (hits[0][1] if hits else None), False, start
+
+
+def _extract_preview_wiktionary(html_str, zim_name, result, lang="", title=""):
+    """Part of speech and first definition of a Wiktionary entry, read in the
+    wiki's own language (zimi/wikilang.py has what each edition calls things).
+
+    Populates result["part_of_speech"], result["blurb"], and the two flags
+    the random endpoint uses to pass a pick over: result["boring"] (an
+    inflected form) and result["other_language"] (the page defines a word of
+    another language: it has no section in the wiki's own, or, in a language
+    with a script of its own, its headword is written in another script)."""
+    facts = _wikilang.wiktionary_facts(lang, zim_name) or {}
+    found = _wiktionary_section(html_str, facts)
+    if found is None or (title and not _wikilang.in_own_script(title, lang)):
+        result["other_language"] = True
+        return
+    section, heads = found
+    pos, is_form, start = _wiktionary_pos(section, heads, facts)
+    if pos:
+        result["part_of_speech"] = pos
+    definition = "" if start is None else _first_definition(section[start:])
+    if title and definition.startswith(title + " "):
+        # A dictionary transcription restates the headword and its grammar
+        # before the sense: "सालुर संज्ञा पुं॰ [सं॰] मेढ़क ।" is "मेढ़क ।".
+        definition = re.sub(r"^.*?\]\s*", "", definition, count=1)
+    form_defs = facts.get("form_defs")
+    if is_form or (
+        definition
+        and form_defs
+        and re.match(form_defs, _ARABIC_MARKS_RE.sub("", definition), re.IGNORECASE)
+    ):
+        result["boring"] = True
+    elif definition:
+        result["blurb"] = definition
 
 
 def _extract_preview_blurb(html_str):
@@ -717,7 +940,11 @@ def _extract_preview_blurb(html_str):
     )
     for pm in re.finditer(r"<p\b[^>]*>(.*?)</p>", html_str, re.DOTALL | re.IGNORECASE):
         text = strip_html(pm.group(1))
-        if len(text) > 40 and not _skip_blurb.search(text):
+        # Chinese and Japanese say in 12 characters what takes 40 in English:
+        # "鄞州区是浙江省宁波市的一个市辖区。" is a whole lead sentence.
+        if len(text) > (12 if _CJK_RE.search(text) else 40) and not _skip_blurb.search(
+            text
+        ):
             return text[:200]
     return None
 
@@ -846,7 +1073,9 @@ def _extract_preview(archive, zim_name, path):
     zim_lower = zim_name.lower()
 
     if "wikiquote" in zim_lower:
-        _extract_preview_wikiquote(html_str, result, entry_title)
+        _extract_preview_wikiquote(
+            html_str, result, entry_title, _wikilang.archive_language(archive)
+        )
 
     if "ted" in zim_lower:
         _extract_preview_ted(html_str, archive, zim_name, path, result)
@@ -861,7 +1090,13 @@ def _extract_preview(archive, zim_name, path):
         _extract_preview_gutenberg(html_str, archive, zim_name, path, entry, result)
 
     if "wiktionary" in zim_lower:
-        _extract_preview_wiktionary(html_str, zim_name, result)
+        _extract_preview_wiktionary(
+            html_str,
+            zim_name,
+            result,
+            _wikilang.archive_language(archive),
+            entry_title,
+        )
 
     # -- Generic blurb fallback --
     if not result["blurb"]:

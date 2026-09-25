@@ -20,6 +20,8 @@ import unicodedata
 from libzim.search import Query, Searcher
 from libzim.suggestion import SuggestionSearcher
 
+from zimi import datepages as _datepages
+from zimi import wikilang as _wikilang
 from zimi.previews import strip_html
 
 log = logging.getLogger("zimi")
@@ -3317,142 +3319,33 @@ def _pick_html_entry(archive, paths, rng=_random):
     return None
 
 
-# On-this-day event lines look like "1777 – <event text>" under the
-# Events/Births/Deaths sections of a Wikipedia "Month_Day" page. Following a
-# random link off such a page frequently lands on the generic background topic
-# of an event (e.g. American Revolution) rather than a date-anchored article, so
-# the card feels broken. We instead parse the event lines and pick the article
-# the event actually names, returning the event context alongside it.
-_OTD_DASH = "–—-"  # en-dash, em-dash, hyphen — Wikipedia uses en-dash
-_otd_line_re = re.compile(
-    r"^\s*(\d{1,4}(?:\s*BC)?)\s*[" + _OTD_DASH + r"]\s*(.+)$", re.DOTALL
-)
-_otd_year_re = re.compile(r"^\d{1,4}(?:\s*BC)?$")
-_OTD_TEXT_CAP = 240  # keep event blurbs card-sized
-_OTD_SCAN_CAP = 600000  # bound the regex scan on huge Month_Day pages
+# On this day: a Wikipedia's page for the day, named and read in the wiki's
+# own language by zimi/datepages.py. Following a random link off such a page
+# frequently lands on the generic background topic of an event (e.g.
+# American Revolution) rather than a date-anchored article, so the card felt
+# broken; the pick is the article an event line names, with its year and
+# sentence carried along.
 
 
-def _otd_norm_link(href):
-    """Normalize a Wikipedia anchor href to a bare ZIM article path.
-
-    Handles ZIM-relative (./Foo, ../A/Foo, A/Foo) and absolute
-    (https://en.wikipedia.org/wiki/Foo) forms; drops fragments and queries.
-    The caller retries with an "A/" prefix, so we strip a leading namespace.
-    """
-    href = href.split("#")[0].split("?")[0]
-    href = re.sub(r"^https?://[^/]+/wiki/", "", href)
-    href = re.sub(r"^(?:\.\./|\./)+", "", href)
-    href = re.sub(r"^(?:A/|/wiki/|/)", "", href)
-    return href
+def _date_page(archive, mmdd):
+    """(the day's page as text, its language) for a Wikipedia ZIM, or
+    (None, lang). The language is the one the ZIM says it is in; one that
+    does not say is read as English. Must be called with _zim_lock held."""
+    lang = _wikilang.archive_language(archive) or "en"
+    return _datepages.read_page(archive, mmdd, lang), lang
 
 
-def _extract_otd_events(page_html):
-    """Parse date-anchored event lines from a Wikipedia "Month_Day" page.
-
-    Returns a list of {"year", "text", "link"} in document order, covering the
-    Events/Births/Deaths sections. For each line, "link" is the most specific
-    (longest-text) non-year article link on that line, so the pick is an
-    article the event names — not a random topic off the page. Fail-soft: any
-    parse trouble yields [].
-    """
-    try:
-        # Bound the scan to the dated sections: from the "Events" heading to the
-        # first of Holidays/References/See also/External links (or a cap). Lines
-        # in those sections are all "YEAR – ..." shaped; nav/holidays lines are
-        # not year-prefixed and get filtered out anyway.
-        # Anchor on the section HEADING tag (<h2 id="Events">Events…), not any
-        # bare ">Events<" — the latter also matches table-of-contents chrome.
-        start = re.search(r"<h[2-4][^>]*>(?:\s|<[^>]+>)*Events\b", page_html)
-        scan = page_html[start.start() :] if start else page_html
-        end = re.search(
-            r"<h[2-4][^>]*>(?:\s|<[^>]+>)*"
-            r"(?:Holidays and observances|Holidays|References|See also"
-            r"|External links)\b",
-            scan,
-        )
-        scan = scan[: end.start()] if end else scan[:_OTD_SCAN_CAP]
-        events = []
-        for li in re.findall(r"<li\b[^>]*>(.*?)</li>", scan, re.DOTALL | re.IGNORECASE):
-            # Drop <sup> footnote/citation markers before flattening so they
-            # don't leave "[ 19 ]" litter in the sentence.
-            li = re.sub(
-                r"<sup\b[^>]*>.*?</sup>", "", li, flags=re.DOTALL | re.IGNORECASE
-            )
-            plain = strip_html(li)
-            plain = re.sub(r"\[\s*\d+\s*\]", "", plain)  # any remaining [1] marks
-            plain = re.sub(r"\s+([,.;:])", r"\1", plain).strip()
-            m = _otd_line_re.match(plain)
-            if not m:
-                continue
-            year, text = m.group(1).strip(), m.group(2).strip()
-            if len(text) < 3:
-                continue
-            if len(text) > _OTD_TEXT_CAP:
-                text = text[:_OTD_TEXT_CAP].rsplit(" ", 1)[0] + "…"
-            # Pick the most specific link on the line: longest anchor text that
-            # isn't a bare year (year-page links are skipped entirely).
-            best_link, best_len = None, 0
-            for href, inner in re.findall(
-                r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
-                li,
-                re.DOTALL | re.IGNORECASE,
-            ):
-                atext = strip_html(inner)
-                if not atext or _otd_year_re.match(atext):
-                    continue
-                link = _otd_norm_link(href)
-                if not link or _otd_year_re.match(link.replace("_", " ")):
-                    continue
-                if ":" in link or re.search(
-                    r"\.(png|jpg|jpeg|gif|svg|ico)$", link, re.IGNORECASE
-                ):
-                    continue  # File:/Category: namespaces and images
-                if len(atext) > best_len:
-                    best_link, best_len = link, len(atext)
-            if best_link:
-                events.append({"year": year, "text": text, "link": best_link})
-        return events
-    except Exception as e:
-        log.debug("On-this-day event parse failed: %s", e)
-        return []
+def _title_too_short(title):
+    """Whether an article title is too short to be a real pick ("A", "12").
+    Two characters is a whole name in Chinese, Japanese or Korean (明朝,
+    東京), and one is a whole word (水)."""
+    title = title.strip()
+    if any(ord(c) >= _CJK_FIRST for c in title):
+        return not title
+    return len(title) < 3
 
 
-_MONTH_NAMES = (
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-)
-
-
-def _date_page_html(archive, mmdd):
-    """A Wikipedia's "Month_Day" page (``September_25``) as text, or None when
-    the ZIM has none (a subset, or a language that names its date pages in
-    its own words). Must be called with _zim_lock held."""
-    try:
-        month_name = _MONTH_NAMES[int(mmdd[:2]) - 1]
-        day_num = str(int(mmdd[2:]))  # strip leading zero
-    except (ValueError, IndexError):
-        return None
-    for prefix in ["A/", ""]:
-        try:
-            entry = archive.get_entry_by_path(f"{prefix}{month_name}_{day_num}")
-            if entry.is_redirect:
-                entry = entry.get_redirect_entry()
-            # Full body (already in memory) so the Events/Births/Deaths
-            # sections aren't truncated on big Month_Day pages.
-            return bytes(entry.get_item().content).decode("utf-8", errors="replace")
-        except KeyError:
-            continue
-    return None
+_CJK_FIRST = 0x2E80  # the first CJK radical; everything above is ideographic or kana
 
 
 def _otd_event_entry(archive, ev):
@@ -3468,7 +3361,7 @@ def _otd_event_entry(archive, ev):
             if not (item.mimetype or "").startswith("text/html"):
                 continue
             title = entry.title or ""
-            if _meta_title_re.search(title) or len(title) < 3:
+            if _meta_title_re.search(title) or _title_too_short(title):
                 continue
             return {
                 "path": entry.path,
@@ -3488,11 +3381,11 @@ def otd_events(archive, mmdd, limit=8, max_tries=40):
     page read and a bounded number of entry lookups (``max_tries`` lines), so
     a subset ZIM that holds few of the named articles costs the same. Must be
     called with _zim_lock held."""
-    page = _date_page_html(archive, mmdd)
+    page, lang = _date_page(archive, mmdd)
     if not page:
         return []
     out, seen = [], set()
-    for ev in _extract_otd_events(page)[:max_tries]:
+    for ev in _datepages.extract_events(page, lang)[:max_tries]:
         hit = _otd_event_entry(archive, ev)
         if hit and hit["path"] not in seen:
             seen.add(hit["path"])
@@ -3515,8 +3408,6 @@ def _get_dated_entry(archive, zim_name, mmdd, rng=None):
     from urllib.parse import unquote
 
     mm, dd = mmdd[:2], mmdd[2:]
-    month_name = _MONTH_NAMES[int(mm) - 1]
-    day_num = str(int(dd))  # strip leading zero
 
     # APOD: try paths like apod.nasa.gov/apod/ap{YY}{MM}{DD}.html for recent years
     if "apod" in zim_name.lower():
@@ -3533,12 +3424,12 @@ def _get_dated_entry(archive, zim_name, mmdd, rng=None):
 
     # Wikipedia: load the "Month_Day" article and follow a random internal link
     if "wikipedia" in zim_name.lower():
-        date_page_html = _date_page_html(archive, mmdd)
+        date_page_html, lang = _date_page(archive, mmdd)
         if date_page_html:
             # Preferred: pick an article a dated event actually names, and carry
             # the event context (year + sentence) back so the card can show the
             # date even when the target article never restates it.
-            events = _extract_otd_events(date_page_html)
+            events = _datepages.extract_events(date_page_html, lang)
             _rng = rng or _random
             _rng.shuffle(events)
             for ev in events:
@@ -3614,7 +3505,7 @@ def _get_dated_entry(archive, zim_name, mmdd, rng=None):
                         if not (item.mimetype or "").startswith("text/html"):
                             continue
                         title = entry.title or ""
-                        if _meta_title_re.search(title) or len(title) < 3:
+                        if _meta_title_re.search(title) or _title_too_short(title):
                             continue
                         result = {"path": entry.path, "title": title}
                         if best_fallback is None:
@@ -3643,10 +3534,18 @@ def _get_dated_entry(archive, zim_name, mmdd, rng=None):
             title = re.sub(r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s*::\s*", "", title)
             return {"path": path, "title": title.strip()}
 
-    # FTS search: look for "month day" in article titles
+    # FTS search: look for the day, in the words of the ZIM's language
+    # ("September 25", "25. September", "9月25日")
+    lang = _wikilang.archive_language(archive) or "en"
+    words = _datepages.date_page_titles(lang, mmdd) or _datepages.date_page_titles(
+        "en", mmdd
+    )
+    if not words:
+        return None
+    day_words = words[0].replace("_", " ")
     try:
         searcher = Searcher(archive)
-        query = Query().set_query(f"{month_name} {day_num}")
+        query = Query().set_query(day_words)
         search = searcher.search(query)
         count = search.getEstimatedMatches()
         if count > 0:
@@ -3655,10 +3554,7 @@ def _get_dated_entry(archive, zim_name, mmdd, rng=None):
             if result:
                 return result
     except Exception as e:
-        log.debug(
-            "Dated entry FTS search failed for '%s %s': %s", month_name, day_num, e
-        )
-        pass
+        log.debug("Dated entry FTS search failed for '%s': %s", day_words, e)
 
     return None
 
