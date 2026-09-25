@@ -5,6 +5,7 @@ suggestion search, and article content reading.
 """
 
 import hashlib as _hashlib
+import html as _html
 import json
 import logging
 import math
@@ -16,10 +17,12 @@ import sys
 import threading
 import time
 import unicodedata
+from urllib.parse import unquote
 
 from libzim.search import Query, Searcher
 from libzim.suggestion import SuggestionSearcher
 
+from zimi import wikilang as _wikilang
 from zimi.previews import strip_html
 
 log = logging.getLogger("zimi")
@@ -3318,18 +3321,38 @@ def _pick_html_entry(archive, paths, rng=_random):
 
 
 # On-this-day event lines look like "1777 – <event text>" under the
-# Events/Births/Deaths sections of a Wikipedia "Month_Day" page. Following a
-# random link off such a page frequently lands on the generic background topic
-# of an event (e.g. American Revolution) rather than a date-anchored article, so
-# the card feels broken. We instead parse the event lines and pick the article
-# the event actually names, returning the event context alongside it.
-_OTD_DASH = "–—-"  # en-dash, em-dash, hyphen — Wikipedia uses en-dash
-_otd_line_re = re.compile(
-    r"^\s*(\d{1,4}(?:\s*BC)?)\s*[" + _OTD_DASH + r"]\s*(.+)$", re.DOTALL
-)
-_otd_year_re = re.compile(r"^\d{1,4}(?:\s*BC)?$")
+# Events/Births/Deaths sections of a Wikipedia date page, in whichever words
+# the wiki's language uses for all of that (zimi/wikilang.py has them).
+# Following a random link off such a page frequently lands on the generic
+# background topic of an event (e.g. American Revolution) rather than a
+# date-anchored article, so the card feels broken. We instead parse the event
+# lines and pick the article the event actually names, returning the event
+# context alongside it.
+_otd_line_re = _wikilang.OTD_LINE_RE
+_otd_year_re = _wikilang.OTD_YEAR_RE
 _OTD_TEXT_CAP = 240  # keep event blurbs card-sized
 _OTD_SCAN_CAP = 600000  # bound the regex scan on huge Month_Day pages
+
+
+def _otd_heading_re(words):
+    """A section heading whose text starts with one of ``words``."""
+    alt = "|".join(re.escape(w) for w in sorted(words, key=len, reverse=True))
+    return re.compile(r"<h[2-4][^>]*>(?:\s|<[^>]+>)*(?:" + alt + r")")
+
+
+_INLINE_TAG_RE = re.compile(
+    r"</?(?:a|b|i|u|s|em|strong|span|small|big|abbr|bdi|bdo|q|sub|cite|time|font)"
+    r"\b[^>]*>",
+    re.IGNORECASE,
+)
+_otd_start_re = _otd_heading_re(_wikilang.OTD_START_HEADINGS)
+_otd_end_re = _otd_heading_re(_wikilang.OTD_END_HEADINGS)
+# A link that leaves the wiki: another language's article, or one this wiki
+# has not written yet (a red link). Neither is in the ZIM.
+_otd_foreign_link_re = re.compile(
+    r'class=["\'][^"\']*\b(?:extiw|external|new)\b|rel=["\']mw:WikiLink/Interwiki',
+    re.IGNORECASE,
+)
 
 
 def _otd_norm_link(href):
@@ -3343,11 +3366,14 @@ def _otd_norm_link(href):
     href = re.sub(r"^https?://[^/]+/wiki/", "", href)
     href = re.sub(r"^(?:\.\./|\./)+", "", href)
     href = re.sub(r"^(?:A/|/wiki/|/)", "", href)
-    return href
+    # A path in the ZIM is the title itself: Hindi and Arabic pages write
+    # their links percent-encoded ("%E0%A4%87...").
+    return unquote(_html.unescape(href))
 
 
 def _extract_otd_events(page_html):
-    """Parse date-anchored event lines from a Wikipedia "Month_Day" page.
+    """Parse date-anchored event lines from a Wikipedia date page, in any of
+    the languages zimi/wikilang.py knows.
 
     Returns a list of {"year", "text", "link"} in document order, covering the
     Events/Births/Deaths sections. For each line, "link" is the most specific
@@ -3356,20 +3382,16 @@ def _extract_otd_events(page_html):
     parse trouble yields [].
     """
     try:
-        # Bound the scan to the dated sections: from the "Events" heading to the
-        # first of Holidays/References/See also/External links (or a cap). Lines
-        # in those sections are all "YEAR – ..." shaped; nav/holidays lines are
-        # not year-prefixed and get filtered out anyway.
-        # Anchor on the section HEADING tag (<h2 id="Events">Events…), not any
-        # bare ">Events<" — the latter also matches table-of-contents chrome.
-        start = re.search(r"<h[2-4][^>]*>(?:\s|<[^>]+>)*Events\b", page_html)
+        # Bound the scan to the dated sections: from the Events heading to the
+        # first of Holidays/References/See also/External links (or a cap), in
+        # the page's language. Lines in those sections are all "YEAR – ..."
+        # shaped; nav/holidays lines are not year-prefixed and get filtered
+        # out anyway. Anchor on the section HEADING tag (<h2 id="Events">
+        # Events…), not any bare ">Events<" — the latter also matches
+        # table-of-contents chrome.
+        start = _otd_start_re.search(page_html)
         scan = page_html[start.start() :] if start else page_html
-        end = re.search(
-            r"<h[2-4][^>]*>(?:\s|<[^>]+>)*"
-            r"(?:Holidays and observances|Holidays|References|See also"
-            r"|External links)\b",
-            scan,
-        )
+        end = _otd_end_re.search(scan, 1)
         scan = scan[: end.start()] if end else scan[:_OTD_SCAN_CAP]
         events = []
         for li in re.findall(r"<li\b[^>]*>(.*?)</li>", scan, re.DOTALL | re.IGNORECASE):
@@ -3378,13 +3400,16 @@ def _extract_otd_events(page_html):
             li = re.sub(
                 r"<sup\b[^>]*>.*?</sup>", "", li, flags=re.DOTALL | re.IGNORECASE
             )
-            plain = strip_html(li)
+            # Inline tags come off without leaving a space where the page has
+            # none: a Hebrew prefix letter is written against its link
+            # ("ל<a>קיסר</a>") and Chinese puts no spaces between words.
+            plain = strip_html(_INLINE_TAG_RE.sub("", li))
             plain = re.sub(r"\[\s*\d+\s*\]", "", plain)  # any remaining [1] marks
             plain = re.sub(r"\s+([,.;:])", r"\1", plain).strip()
             m = _otd_line_re.match(plain)
             if not m:
                 continue
-            year, text = m.group(1).strip(), m.group(2).strip()
+            year, text = _wikilang.otd_year(m.group(1)), m.group(2).strip()
             if len(text) < 3:
                 continue
             if len(text) > _OTD_TEXT_CAP:
@@ -3392,16 +3417,18 @@ def _extract_otd_events(page_html):
             # Pick the most specific link on the line: longest anchor text that
             # isn't a bare year (year-page links are skipped entirely).
             best_link, best_len = None, 0
-            for href, inner in re.findall(
-                r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+            for attrs, href, inner in re.findall(
+                r'<a\b([^>]*?href=["\']([^"\']+)["\'][^>]*)>(.*?)</a>',
                 li,
                 re.DOTALL | re.IGNORECASE,
             ):
+                if _otd_foreign_link_re.search(attrs):
+                    continue
                 atext = strip_html(inner)
                 if not atext or _otd_year_re.match(atext):
                     continue
                 link = _otd_norm_link(href)
-                if not link or _otd_year_re.match(link.replace("_", " ")):
+                if not link or _otd_year_re.match(unquote(link).replace("_", " ")):
                     continue
                 if ":" in link or re.search(
                     r"\.(png|jpg|jpeg|gif|svg|ico)$", link, re.IGNORECASE
@@ -3434,24 +3461,33 @@ _MONTH_NAMES = (
 
 
 def _date_page_html(archive, mmdd):
-    """A Wikipedia's "Month_Day" page (``September_25``) as text, or None when
-    the ZIM has none (a subset, or a language that names its date pages in
-    its own words). Must be called with _zim_lock held."""
+    """A Wikipedia's page for the day (``September_25``, ``25._September``,
+    ``9月25日``: named in the words of the language the ZIM says it is in)
+    as text, or None when the ZIM has none (a subset). A ZIM that does not say
+    its language is tried in each language wikilang knows. Must be called
+    with _zim_lock held."""
     try:
-        month_name = _MONTH_NAMES[int(mmdd[:2]) - 1]
-        day_num = str(int(mmdd[2:]))  # strip leading zero
+        month, day = int(mmdd[:2]), int(mmdd[2:])
     except (ValueError, IndexError):
         return None
-    for prefix in ["A/", ""]:
-        try:
-            entry = archive.get_entry_by_path(f"{prefix}{month_name}_{day_num}")
-            if entry.is_redirect:
-                entry = entry.get_redirect_entry()
-            # Full body (already in memory) so the Events/Births/Deaths
-            # sections aren't truncated on big Month_Day pages.
-            return bytes(entry.get_item().content).decode("utf-8", errors="replace")
-        except KeyError:
-            continue
+    lang = _wikilang.archive_language(archive)
+    langs = [lang] if lang in _wikilang.DATE_PAGE_LANGUAGES else []
+    if "en" not in langs:
+        langs.append("en")
+    if not lang:
+        langs += [code for code in _wikilang.DATE_PAGE_LANGUAGES if code not in langs]
+    for code in langs:
+        for title in _wikilang.date_page_titles(code, month, day):
+            for prefix in ["A/", ""]:
+                try:
+                    entry = archive.get_entry_by_path(prefix + title)
+                except KeyError:
+                    continue
+                if entry.is_redirect:
+                    entry = entry.get_redirect_entry()
+                # Full body (already in memory) so the Events/Births/Deaths
+                # sections aren't truncated on big date pages.
+                return bytes(entry.get_item().content).decode("utf-8", errors="replace")
     return None
 
 
