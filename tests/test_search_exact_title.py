@@ -88,3 +88,34 @@ class ExactTitleTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QuickSearchCandidatesTests(unittest.TestCase):
+    """The quick search looks through the titles that start with the first
+    word for the others. It read 200 table rows per ZIM to do it (4 to 5 s
+    over the NAS's 78 ZIMs for a first word not in the page cache), and a
+    match past the 200th never showed. It now filters on the prefix index
+    and reads the table only for matches."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="zimi-quick-")
+        self.db = os.path.join(self.tmp, "wikipedia.db")
+        many = [(f"Albert_A{i:04d}", f"Albert A{i:04d}") for i in range(1500)]
+        _title_index(self.db, many + [("Albert_zebra_stripes", "Albert zebra stripes")])
+        self.patch = mock.patch.object(_server, "_title_index_path", lambda name: self.db)
+        self.patch.start()
+        _search._close_title_db("wikipedia")
+
+    def tearDown(self):
+        _search._close_title_db("wikipedia")
+        self.patch.stop()
+        import shutil
+
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_a_match_past_the_old_window_is_found(self):
+        titles = [r["title"] for r in _search._title_index_search("wikipedia", "albert stripes")]
+        self.assertEqual(titles, ["Albert zebra stripes"])
+
+    def test_every_other_word_must_be_in_the_title(self):
+        self.assertEqual(_search._title_index_search("wikipedia", "albert stripes tiger"), [])

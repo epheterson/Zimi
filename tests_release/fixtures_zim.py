@@ -113,7 +113,12 @@ _FR_TITLES = {
 }
 
 
-def _build_wiki_edition(path, lang_iso3, index_lang, source_url, bodies, titles, title):
+# An article's other name. Search has to find it: 1.10.2 lost every one
+# (#86), and only a user comparing with Kiwix noticed.
+WIKI_EN_REDIRECT = ("A/Purifying_water", "Purifying water", "A/Water_purification")
+
+
+def _build_wiki_edition(path, lang_iso3, index_lang, source_url, bodies, titles, title, redirects=()):
     """A wikipedia-shaped ZIM whose Source metadata puts it on a real host."""
     from libzim.writer import Creator
 
@@ -123,6 +128,8 @@ def _build_wiki_edition(path, lang_iso3, index_lang, source_url, bodies, titles,
             creator.add_item(
                 _Article(entry_path, titles[entry_path], bodies[entry_path])
             )
+        for source, other_name, target in redirects:
+            creator.add_redirection(source, other_name, target, {})
         creator.add_metadata("Title", title)
         creator.add_metadata("Language", lang_iso3)
         creator.add_metadata("Description", "release gate fixture")
@@ -147,6 +154,7 @@ def build_gate_library(zim_dir):
         _EN_BODY,
         _EN_TITLES,
         "Test Wikipedia (en)",
+        redirects=[WIKI_EN_REDIRECT],
     )
     _build_wiki_edition(
         paths["wiki_fr"],

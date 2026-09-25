@@ -195,6 +195,15 @@ eq(_createBuildRequest('page', noise),
 eq(_createBuildRequest('site', noise),
   { mode: 'site', source: 'https://example.org/', max_pages: 300 },
   'site sends only max_pages');
+// 0 is "no limit" for pages and size, and has to reach the server as 0; a
+// blank box stays absent (the engine's default), and a huge number is sent
+// as typed (the server no longer clamps it).
+eq(_createBuildRequest('site', { source: 'https://example.org/', max_pages: '0', max_bytes: '0' }),
+  { mode: 'site', source: 'https://example.org/', max_pages: 0, max_bytes: '0' },
+  'site sends 0 pages and 0 bytes as 0');
+eq(_createBuildRequest('site', { source: 'https://example.org/', max_pages: '2000000', max_bytes: '1T' }),
+  { mode: 'site', source: 'https://example.org/', max_pages: 2000000, max_bytes: '1T' },
+  'site sends a huge limit as typed');
 eq(_createBuildRequest('video', noise),
   { mode: 'video', source: 'https://example.org/', audio_only: true, limit: 9 },
   'video sends only audio_only + limit');

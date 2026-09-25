@@ -898,8 +898,10 @@
   "create_log": "יומן השרת",
   "create_shot_alt": "הדף הנלכד",
   "create_max_bytes": "תקציב נפח",
+  "create_max_bytes_note": "גודל: בחרו אחד, או \"מותאם אישית\" לכל גודל (20G, 1T), או 0 ללא הגבלה.",
   "create_max_depth": "עומק מרבי",
   "create_max_pages": "מקסימום דפים",
+  "create_max_pages_note": "עמודים: כל מספר, או 0 לכל האתר.",
   "create_metric_assets": "משאבים",
   "create_metric_assets_one": "נכס",
   "create_metric_bytes": "גודל",
@@ -1688,7 +1690,7 @@
   "sort_entries": "הכי הרבה ערכים",
   "env_section": "סביבה",
   "env_none": "שום דבר לא נדרס. כל ההגדרות נשלטות בתוך Zimi.",
-  "env_locks": "נועל {v}",
+  "env_locks": "נועל את „{v}”",
   "env_empty": "(ריק)",
   "env_unavailable": "לא ניתן לקרוא את הסביבה.",
   "env_from_config": "מוגדר ב-{path}",
@@ -1708,5 +1710,11 @@
   "alm_about_timezones": "אזורי זמן: הקרובה מבין קבוצת ערים, כי אין מפה לא מקוונת של גבולות האזורים; עשוי לטעות ליד גבול.",
   "desktop_lan_access": "לפתוח את Zimi במכשירים אחרים ברשת הזו",
   "desktop_lan_hint": "מאפשר לטלפון או למחשב אחר באותה רשת Wi-Fi או נקודה חמה לקרוא את הספרייה שלך. ניהול הספרייה עדיין דורש את סיסמת המנהל. Zimi מופעל מחדש כשמשנים הגדרה זו.",
-  "desktop_lan_open_at": "במכשיר אחר, פתחו:"
+  "desktop_lan_open_at": "במכשיר אחר, פתחו:",
+  "bg_heading": "עבודה ברקע",
+  "bg_idle": "שום דבר לא נבנה; כל האינדקסים מעודכנים.",
+  "bg_vocab": "מילים ל„האם התכוונת”",
+  "bg_tube": "תיאורי ZimiTube",
+  "bg_failed": "נכשל",
+  "bg_starting": "בודק את האינדקסים…"
 }

@@ -898,8 +898,10 @@
   "create_log": "Journal du serveur",
   "create_shot_alt": "La page en cours de capture",
   "create_max_bytes": "Budget de taille",
+  "create_max_bytes_note": "Taille : choisissez-en une, ou Personnalisé pour n'importe quelle taille (20G, 1T), ou 0 pour aucune limite.",
   "create_max_depth": "Profondeur max.",
   "create_max_pages": "Pages max.",
+  "create_max_pages_note": "Pages : n'importe quel nombre, ou 0 pour tout le site.",
   "create_metric_assets": "ressources",
   "create_metric_assets_one": "ressource",
   "create_metric_bytes": "taille",
@@ -1688,7 +1690,7 @@
   "sort_entries": "Plus d'articles",
   "env_section": "Environnement",
   "env_none": "Rien n'est remplacé. Tous les réglages se contrôlent dans Zimi.",
-  "env_locks": "verrouille {v}",
+  "env_locks": "Verrouille « {v} »",
   "env_empty": "(vide)",
   "env_unavailable": "Impossible de lire l'environnement.",
   "env_from_config": "Défini dans {path}",
@@ -1708,5 +1710,11 @@
   "alm_about_timezones": "Fuseaux horaires : la plus proche d'une série de villes, faute de carte hors ligne des frontières de fuseaux ; peut se tromper près d'une frontière.",
   "desktop_lan_access": "Ouvrir Zimi sur les autres appareils de ce réseau",
   "desktop_lan_hint": "Permet à un téléphone ou à un autre ordinateur sur le même Wi-Fi ou point d'accès de lire votre bibliothèque. Gérer la bibliothèque demande toujours votre mot de passe administrateur. Zimi redémarre quand vous modifiez ce réglage.",
-  "desktop_lan_open_at": "Sur un autre appareil, ouvrez :"
+  "desktop_lan_open_at": "Sur un autre appareil, ouvrez :",
+  "bg_heading": "Travail en arrière-plan",
+  "bg_idle": "Rien en cours ; tous les index sont à jour.",
+  "bg_vocab": "Mots de « Vouliez-vous dire »",
+  "bg_tube": "Descriptions ZimiTube",
+  "bg_failed": "Échec",
+  "bg_starting": "Vérification des index…"
 }

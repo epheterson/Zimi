@@ -82,9 +82,12 @@ Eric: "We're on a new major release here maps release and each of those apps of 
 
 ## Apps of the internet, one release each (Eric's list)
 
-- Wayback: keep old ZIM versions and diff them. Shdwdrgn on the Kiwix subreddit has 10 TB of old ZIMs. Design doc exists (true-release-diff). Parked by Eric until maps ship.
-- Reddot: ArcticZim makes subreddit ZIMs. Wrap its seven-step CLI as a create-flow engine, then a spliced multi-subreddit feed. Parked by Eric.
-- ZimiTube: a browsing interface over video ZIMs. `zimi create <video URL>` already makes them. Not designed.
+- Wayback: keep old ZIM versions and diff them. Shdwdrgn on the Kiwix subreddit has 10 TB of old ZIMs. Design doc exists (true-release-diff). Parked by Eric until maps ship; Eric, 2026-09-24, wants to look into it ("of course our wayback machine").
+- Living ZIMs, built incrementally and continuously. Eric, 2026-09-24: "ZIMs that are incrementally and continuously built. Snapshot a subreddit monthly and update. Snapshot a wiki and increment. Etc." Pairs with Wayback: each snapshot is a version to keep and diff. Open questions: whether an update is a new ZIM beside the last (simple, and Wayback gets the history for free) or a patch applied to it; how a schedule is set (per ZIM, in Create); what the reader shows as "new since last month".
+- Zimipedia, the wiki app. Eric, 2026-09-24: "a wiki app that like has pills for all the individual wikis but builds a unified one and has the today page suggesting articles or whatever and good scoped search and display views and whatnot." The ZimiExchange pattern over wikis: a pill per installed wiki (Wikipedia editions, Wiktionary, Wikivoyage, Wikibooks, others) over one unified view; a Today page from what Discover already computes (On This Day, featured articles, suggestions); search scoped by the pills; the same article across languages through the Q-ID matching.
+- Zibrary, the book app. Eric, 2026-09-24: "Book app with nice browsing interface by author and date or whatever and reading view of course." Gutenberg ZIMs carry author, language and Library of Congress subject shelves (the lcc-k in a file name), EPUB download and Reader View exist; the new part is browsing by author, date and subject, and a reading view made for books (position kept, chapters). Wikisource and zimgit PDF collections could be further shelves.
+- Reddot: shipped in 1.10 (ArcticZim makes subreddit ZIMs; the reader shows them). Next: a spliced multi-subreddit feed.
+- ZimiTube: shipped in 1.10; 1.10.3 reads ted2zim 3.x and youtube2zim 3.x and searches descriptions.
 - Peer chat or forums between Zimi instances. mDNS discovery and `/dl/` peer HTTP exist. Genuinely new; not designed.
 
 ## Almanac ("I gotta get back to almanac amazingness")
@@ -96,6 +99,7 @@ Eric: "We're on a new major release here maps release and each of those apps of 
 - Sky objects: boats, planes, a whale breaching, shooting stars passing through the simulated sky. Captured, no QA, future.
 - Orrery: Venus and Neptune position bugs, a missions panel, spinning globe (PLAN.md, unchecked).
 - Period newspaper that re-typesets as you scrub the time control. 2.0, pairs with the LLM work.
+- The printed almanac's breadth. Eric, 2026-09-24: "we've been neglecting almanac, it needs some cool touches not sure what. I want more things that would be in a printed almanac they were like 1k pages or whatever. I could see this project being loved by lots of people eventually." Suggestions to pick from, all offline (Claude's list, not decided): solunar tables (best fishing and hunting hours from the moon's transits); a month's rise and set table for sun, moon and planets, printable; a planting calendar by frost dates (needs a climate-normals source); the year's movable feasts across calendars (Easter by computus, Ramadan, Diwali, Lunar New Year); weather lore and folk sayings for the date; birthstones, birth flowers and anniversary gifts; weights, measures and conversions; a "year at a glance" page to print; each linking into the installed library the way the deep-links do.
 
 ## Users and auth
 
@@ -123,6 +127,7 @@ Eric: "We're on a new major release here maps release and each of those apps of 
 - Lists across the apps: saved places, videos, questions, posts as one thing, in place of the reader's bookmark and history buttons, which the apps hide. Eric, 2026-09-21: "what does bookmark/history tab thing do in maps app? Feels like they should be removed and we do lists and stuff across all the apps properly eventually."
 - Apps per user (an admin limits which apps an account sees). Eric, 2026-09-21: "Wanted to see if I can limit apps to users yet but that can be future." The server-wide and per-account switches shipped in 1.10; the per-user allowlist is the remaining piece and fits the allowlist editor.
 
+- Index rebuilds per feature, not per version. Eric, 2026-09-24: "We gotta find a way for indexes to rebuild iff the logic underpinning them improves otherwise why?" Today a version bump rebuilds every title index; 1.10.3's redirect change only alters ZIMs that have redirects, yet Stack Overflow spends 35 minutes on it. An index should record the features it holds, and only ZIMs whose content a new feature changes rebuild.
 - Localization: `pl()` pluralization, about fifteen hardcoded strings, a full localization revamp "eventually, not this PR".
 - @ and # search tokens with a picker; query-shape ranking. Both parked by Eric after the first cut was reverted.
 - #69 update frequency not selectable. Open; needs a decision on whether the schedule is a setting.

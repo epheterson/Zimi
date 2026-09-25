@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.10.3] - 2026-09-24
+
+### Fixed
+
+- Search finds an article under its other names again: "العائلة اللغوية" leads to "أسرة لغات", as in Kiwix (#86). Title indexes rebuild in the background after the update; search keeps working while they do.
+- Quick search answers in about a tenth of a second on a large library, including for words not searched recently. It read hundreds of rows per ZIM from disk; it now reads the title index alone, and finds matches it used to miss.
+- Making a subreddit into a ZIM works again: SQLAlchemy 2.1, released 2026-09-24, broke the Reddit maker's build. It is pinned below 2.1, and a maker installed with 2.1 is reinstalled the next time it runs online.
+- A search made in the first seconds after Zimi starts, before its title indexes are ready, no longer keeps its empty answer for 15 minutes.
+- Manage → Server shows the background work still running under the cache sizes: title indexes, the Q-ID scan, did-you-mean and ZimiTube descriptions, each with what it is on and how far along, refreshing until it is done; then it says nothing is building.
+- Create a ZIM: a site capture's **Max pages** takes any number and its size budget any size, and 0 means no limit for either. They used to be cut to 50,000 pages and 64 GB without a word.
+
 ## [1.10.2] - 2026-09-23
 
 A fix-up release from a pass over every feature Zimi has claimed since 1.0.

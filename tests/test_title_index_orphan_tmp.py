@@ -62,3 +62,39 @@ class OrphanTmpTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RedirectTitleTests(unittest.TestCase):
+    """An article is found under its other names (#86, reopened on 1.10.2).
+
+    "العائلة اللغوية" redirects to "أسرة لغات" in wikipedia_ar_top_maxi, and
+    Kiwix's search finds it. The title index skipped every redirect, and once
+    1.10.2 stopped sending a quick search with no title match to libzim's
+    suggestions (the slow path that did include redirects), the other names
+    found nothing."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="zimi-redirect-")
+        self.zim = os.path.join(self.tmp, "fixture.zim")
+        _build(self.zim)
+        self.patch = mock.patch.object(_server, "ZIMI_DATA_DIR", self.tmp)
+        self.patch.start()
+        _search._close_title_db("fixture")
+        _search._build_title_index("fixture", self.zim)
+
+    def tearDown(self):
+        _search._close_title_db("fixture")
+        self.patch.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_a_redirect_title_is_found(self):
+        from test_nonlatin_redirect import TARGET
+
+        found = _search._title_index_search("fixture", "العائلة اللغوية")
+        self.assertEqual([r["path"] for r in found], [TARGET])
+
+    def test_a_cyrillic_redirect_title_is_found(self):
+        from test_nonlatin_redirect import CYRILLIC_TARGET
+
+        found = _search._title_index_search("fixture", "Семья языков")
+        self.assertEqual([r["path"] for r in found], [CYRILLIC_TARGET])

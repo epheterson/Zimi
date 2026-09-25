@@ -41,6 +41,12 @@ log = logging.getLogger("zimi")
 # the same ArcticZim on every machine until Zimi moves it on purpose.
 ARCTICZIM_COMMIT = "8281389c2bc27d56702a2eecb3a568a0af3749b9"  # master, 2026-03-22
 ARCTICZIM_REQUIREMENT = "arcticzim[integration,optimize] @ https://github.com/IMayBeABitShy/ArcticZim/archive/%s.zip" % ARCTICZIM_COMMIT
+# ArcticZim asks for any SQLAlchemy, and 2.1.0 (2026-09-24) took multi-key
+# undefer(a, b) away: every build worker died adding a subreddit's wiki and
+# rules, and the creator waited for them. Pinned below 2.1 until ArcticZim
+# moves; the pins are part of what an installed sidecar must match.
+ARCTICZIM_PINS = ("sqlalchemy>=2.0,<2.1",)
+_SIDECAR_SPEC = " ".join((ARCTICZIM_REQUIREMENT,) + ARCTICZIM_PINS)
 SUBREDDIT_RE = re.compile(r"^[A-Za-z0-9_]{2,21}$")
 _MARKER = ".zimi-sidecar.json"
 _MAX_PAGE_BYTES = 8 * 1024 * 1024
@@ -119,10 +125,21 @@ def _cmd(*args):
     return [_venv_bin(sidecar_dir(), "python"), _launcher(), *args]
 
 
+def _marker_spec(venv):
+    try:
+        with open(os.path.join(venv, _MARKER), encoding="utf-8") as f:
+            return json.load(f).get("spec")
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 def sidecar_status():
+    """``installed``: there is a sidecar. ``current``: it was installed with
+    today's requirement and pins; one that is not gets reinstalled when next
+    used, online (a sidecar from before the SQLAlchemy pin cannot build)."""
     venv = sidecar_dir()
     installed = os.path.exists(_exe()) and os.path.exists(os.path.join(venv, _MARKER))
-    return {"installed": installed, "dir": venv}
+    return {"installed": installed, "current": installed and _marker_spec(venv) == _SIDECAR_SPEC, "dir": venv}
 
 
 def _is_offline():
@@ -131,14 +148,39 @@ def _is_offline():
     return bool(p2p.is_offline())
 
 
+def _write_marker(venv):
+    with open(os.path.join(venv, _MARKER), "w", encoding="utf-8") as f:
+        json.dump({"tool": "arcticzim", "spec": _SIDECAR_SPEC}, f)
+        f.write("\n")
+
+
+def _update_sidecar(venv, exe, say):
+    """A sidecar installed before the pins: install them into it, in place.
+    Nothing is removed first, so a failed update (no network, a pip error)
+    leaves the sidecar as it was rather than taking a working one away."""
+    if _is_offline():
+        say("note: the Reddit maker was installed before a fix it needs; it updates the next time Zimi runs it online")
+        return exe
+    say("updating the ArcticZim sidecar (a library it relies on changed)")
+    rc = _run_stream([_venv_bin(venv, "python"), "-m", "pip", "install", *ARCTICZIM_PINS], say)
+    if rc != 0:
+        raise CreateError("could not update the Reddit maker (the job log has pip's output). It is still installed; try again when online.")
+    _write_marker(venv)
+    say("ArcticZim updated")
+    return exe
+
+
 def ensure_sidecar(sink=None):
     """The arcticzim console script, installing the sidecar venv on first
     use. Needs the internet once (it is a git install), and git."""
     say = sink or (lambda _line: None)
     venv = sidecar_dir()
     exe = _exe()
-    if sidecar_status()["installed"]:
+    status = sidecar_status()
+    if status["current"]:
         return exe
+    if status["installed"]:
+        return _update_sidecar(venv, exe, say)
     if _is_offline():
         raise CreateError(
             "the Reddit maker (ArcticZim) is not installed yet and offline mode is on. "
@@ -150,12 +192,11 @@ def ensure_sidecar(sink=None):
     say(f"creating the ArcticZim sidecar at {venv}")
     rc = _run_stream([sys.executable, "-m", "venv", venv], say)
     if rc == 0:
-        rc = _run_stream([_venv_bin(venv, "python"), "-m", "pip", "install", "--upgrade", ARCTICZIM_REQUIREMENT], say)
+        rc = _run_stream([_venv_bin(venv, "python"), "-m", "pip", "install", "--upgrade", ARCTICZIM_REQUIREMENT, *ARCTICZIM_PINS], say)
     if rc != 0 or not os.path.exists(exe):
         shutil.rmtree(venv, ignore_errors=True)
         raise CreateError("ArcticZim sidecar install failed (the job log has pip's output). Nothing was left behind; re-run to try again.")
-    with open(os.path.join(venv, _MARKER), "w", encoding="utf-8") as f:
-        f.write('{"tool": "arcticzim"}\n')
+    _write_marker(venv)
     say("ArcticZim ready")
     return exe
 
@@ -254,6 +295,25 @@ def _dedupe_jsonl(path):
     return len(kept)
 
 
+def _remove_part_files(out):
+    """The build's leftovers beside the ZIM: ``<zim>.part`` when it failed, and
+    libzim's ``<zim>.part_title.idx`` / ``.part_fulltext.idx`` files and their
+    ``.tmp`` folders, which on Windows outlived a successful build and sat in
+    the library folder (a CI capture of r/kiwix left four)."""
+    import glob as _glob
+
+    for leftover in _glob.glob(_glob.escape(out) + ".part*"):
+        try:
+            if os.path.isdir(leftover):
+                shutil.rmtree(leftover)
+            else:
+                os.remove(leftover)
+        except OSError as e:
+            # Windows keeps a file libzim still holds; say so, since cleaning
+            # up is what this is for.
+            log.warning("Reddit capture: could not remove %s: %s", leftover, e)
+
+
 def create_reddit_zim(subreddit, *, title=None, out_dir=None, out_path=None, register=False, progress=None, stop=None):
     """Build one subreddit into a ZIM. Returns ``{"path", "name", "registered",
     "title"}``; raises CreateError with a sentence for the person."""
@@ -288,11 +348,7 @@ def create_reddit_zim(subreddit, *, title=None, out_dir=None, out_path=None, reg
         os.replace(out + ".part", out)
     finally:
         shutil.rmtree(work, ignore_errors=True)
-        try:
-            if os.path.exists(out + ".part"):
-                os.remove(out + ".part")
-        except OSError:
-            pass
+        _remove_part_files(out)
     registered = _try_register(out) if register else False
     say(f"ZIM written: {out}")
     return {"path": out, "name": zim_name, "registered": registered, "title": title or f"r/{sub}"}

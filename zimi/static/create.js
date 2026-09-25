@@ -301,7 +301,7 @@ var CREATE_FIELDS = {
   },
   max_pages: {
     id: 'create-max-pages', control: 'number', label: 'create_max_pages',
-    kind: 'int', min: 1, max: 50000, ph: '200'
+    kind: 'int', min: 0, ph: '200', note: 'create_max_pages_note'
   },
   limit: {
     id: 'create-limit', control: 'number', label: 'create_video_limit',
@@ -321,7 +321,7 @@ var CREATE_FIELDS = {
   },
   max_bytes: {
     id: 'create-max-bytes', control: 'select', label: 'create_max_bytes',
-    kind: 'text', options: CREATE_SIZE_OPTIONS, customSize: true
+    kind: 'text', options: CREATE_SIZE_OPTIONS, customSize: true, note: 'create_max_bytes_note'
   },
   ignore_robots: {
     id: 'create-ignore-robots', control: 'check', label: 'create_ignore_robots',

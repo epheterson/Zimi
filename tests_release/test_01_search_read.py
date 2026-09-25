@@ -86,3 +86,25 @@ def test_list_and_random_and_health(gate_server):
     assert status == 200
     assert body["status"] == "ok"
     assert body["zim_count"] == len(listing)
+
+
+def test_an_article_is_found_under_its_other_name(gate_server):
+    """A redirect's title is how people search for an article (#86): the quick
+    search the page runs first must find it once the title index is built."""
+    import time
+    import urllib.parse
+
+    from fixtures_zim import WIKI_EN_REDIRECT
+
+    _source, other_name, target = WIKI_EN_REDIRECT
+    url = "/search?" + urllib.parse.urlencode({"q": other_name, "limit": 20, "fast": 1})
+    deadline = time.time() + 60
+    paths = set()
+    while time.time() < deadline:
+        status, body = gate_server.get_json(url)
+        assert status == 200, body
+        paths = {r["path"] for r in body.get("results", [])}
+        if target in paths:  # an alias answers with its article
+            return
+        time.sleep(1)
+    raise AssertionError(f"searching {other_name!r} never found {target}: {sorted(paths)}")

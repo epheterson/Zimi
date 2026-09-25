@@ -121,7 +121,7 @@ def test_offline_without_the_maker_says_how_to_get_it(tmp_path, monkeypatch):
     with pytest.raises(CreateError) as e:
         reddot.ensure_sidecar()
     assert "--setup-reddit" in str(e.value)
-    assert reddot.sidecar_status() == {"installed": False, "dir": os.path.join(str(tmp_path), "tools", "arcticzim")}
+    assert reddot.sidecar_status() == {"installed": False, "current": False, "dir": os.path.join(str(tmp_path), "tools", "arcticzim")}
 
 
 def test_the_pipeline_runs_the_four_steps_and_registers(tmp_path, monkeypatch):
@@ -412,3 +412,61 @@ def test_the_dice_land_on_a_post(monkeypatch):
     assert all(s[2] == "top" for s in seen)
     monkeypatch.setattr(reddot, "zims", lambda: [])
     assert reddot.random_post(random.Random(5)) is None
+
+
+def test_a_sidecar_from_before_the_sqlalchemy_pin_is_reinstalled(tmp_path, monkeypatch):
+    """SQLAlchemy 2.1.0 (2026-09-24) broke ArcticZim's build: every worker
+    died on undefer(a, b), and on Windows the job then sat waiting for them.
+    The install pins it, and a sidecar installed without the pin (its marker
+    has no spec, or another) is reinstalled when next used online; offline,
+    the one there is kept rather than taken away."""
+    import json as _json
+
+    monkeypatch.setattr(reddot._srv, "ZIMI_DATA_DIR", str(tmp_path))
+    venv = reddot.sidecar_dir()
+    exe = reddot._exe()
+    os.makedirs(os.path.dirname(exe), exist_ok=True)
+    open(exe, "w").close()
+    with open(os.path.join(venv, reddot._MARKER), "w") as f:
+        f.write('{"tool": "arcticzim"}\n')  # what 1.10.2 wrote
+    assert reddot.sidecar_status()["installed"] and not reddot.sidecar_status()["current"]
+
+    monkeypatch.setattr(reddot, "_is_offline", lambda: True)
+    assert reddot.ensure_sidecar() == exe  # offline: keep it
+
+    ran = []
+
+    def fake_run(cmd, say, **kw):
+        ran.append(cmd)
+        if "pip" in cmd:
+            os.makedirs(os.path.dirname(exe), exist_ok=True)
+            open(exe, "w").close()
+        return 0
+
+    # Online: the pin goes into the sidecar in place; a failed pip leaves the
+    # sidecar where it was, and says so.
+    monkeypatch.setattr(reddot, "_is_offline", lambda: False)
+    monkeypatch.setattr(reddot, "_run_stream", lambda cmd, say, **kw: 1)
+    with pytest.raises(reddot.CreateError, match="still installed"):
+        reddot.ensure_sidecar()
+    assert os.path.exists(exe) and reddot.sidecar_status()["installed"]
+
+    monkeypatch.setattr(reddot, "_run_stream", fake_run)
+    reddot.ensure_sidecar()
+    pip = [c for c in ran if "pip" in c][0]
+    assert "sqlalchemy>=2.0,<2.1" in pip and reddot.ARCTICZIM_REQUIREMENT not in pip
+    with open(os.path.join(venv, reddot._MARKER)) as f:
+        assert _json.load(f)["spec"] == reddot._SIDECAR_SPEC
+    assert reddot.sidecar_status()["current"]
+
+
+def test_the_builds_leftovers_do_not_stay_in_the_library(tmp_path):
+    """On Windows libzim's index scratch files outlived a finished build and
+    sat beside the ZIM; the finished ZIM itself stays."""
+    out = os.path.join(str(tmp_path), "reddit_kiwix.zim")
+    for name in ("reddit_kiwix.zim", "reddit_kiwix.zim.part", "reddit_kiwix.zim.part_title.idx",
+                 "reddit_kiwix.zim.part_fulltext.idx"):
+        open(os.path.join(str(tmp_path), name), "w").close()
+    os.makedirs(os.path.join(str(tmp_path), "reddit_kiwix.zim.part_title.idx.tmp", "x"))
+    reddot._remove_part_files(out)
+    assert sorted(os.listdir(str(tmp_path))) == ["reddit_kiwix.zim"]

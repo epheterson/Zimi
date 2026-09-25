@@ -898,8 +898,10 @@
   "create_log": "سجل الخادم",
   "create_shot_alt": "الصفحة التي يتم التقاطها",
   "create_max_bytes": "حد الحجم",
+  "create_max_bytes_note": "الحجم: اختر واحدًا، أو «مخصص» لأي حجم (20G، 1T)، أو 0 بلا حد.",
   "create_max_depth": "أقصى عمق",
   "create_max_pages": "أقصى عدد صفحات",
+  "create_max_pages_note": "الصفحات: أي رقم، أو 0 للموقع كله.",
   "create_metric_assets": "موارد",
   "create_metric_assets_one": "أصل",
   "create_metric_bytes": "الحجم",
@@ -1688,7 +1690,7 @@
   "sort_entries": "الأكثر مقالات",
   "env_section": "البيئة",
   "env_none": "لا شيء مُتجاوَز. تُضبط جميع الإعدادات داخل Zimi.",
-  "env_locks": "يقفل {v}",
+  "env_locks": "يقفل «{v}»",
   "env_empty": "(فارغ)",
   "env_unavailable": "تعذّر قراءة البيئة.",
   "env_from_config": "مضبوط في {path}",
@@ -1708,5 +1710,11 @@
   "alm_about_timezones": "المناطق الزمنية: أقرب مدينة من مجموعة مدن، إذ لا توجد خريطة لحدود المناطق دون اتصال؛ قد تخطئ قرب الحدود.",
   "desktop_lan_access": "فتح Zimi على الأجهزة الأخرى في هذه الشبكة",
   "desktop_lan_hint": "يتيح لهاتف أو حاسوب آخر على شبكة Wi-Fi نفسها أو نقطة الاتصال نفسها قراءة مكتبتك. تظل إدارة المكتبة تتطلب كلمة مرور المسؤول. يُعاد تشغيل Zimi عند تغيير هذا الإعداد.",
-  "desktop_lan_open_at": "على جهاز آخر، افتح:"
+  "desktop_lan_open_at": "على جهاز آخر، افتح:",
+  "bg_heading": "عمل في الخلفية",
+  "bg_idle": "لا شيء قيد البناء؛ كل الفهارس محدَّثة.",
+  "bg_vocab": "كلمات «هل تقصد»",
+  "bg_tube": "أوصاف ZimiTube",
+  "bg_failed": "فشل",
+  "bg_starting": "جارٍ فحص الفهارس…"
 }

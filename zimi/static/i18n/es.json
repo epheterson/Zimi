@@ -898,8 +898,10 @@
   "create_log": "Registro del servidor",
   "create_shot_alt": "La página que se está capturando",
   "create_max_bytes": "Límite de tamaño",
+  "create_max_bytes_note": "Tamaño: elige uno, o Personalizado para cualquier tamaño (20G, 1T), o 0 sin límite.",
   "create_max_depth": "Profundidad máx.",
   "create_max_pages": "Páginas máx.",
+  "create_max_pages_note": "Páginas: cualquier número, o 0 para el sitio entero.",
   "create_metric_assets": "recursos",
   "create_metric_assets_one": "recurso",
   "create_metric_bytes": "tamaño",
@@ -1688,7 +1690,7 @@
   "sort_entries": "Más artículos",
   "env_section": "Entorno",
   "env_none": "No se anula nada. Todos los ajustes se controlan en Zimi.",
-  "env_locks": "bloquea {v}",
+  "env_locks": "Bloquea «{v}»",
   "env_empty": "(vacío)",
   "env_unavailable": "No se pudo leer el entorno.",
   "env_from_config": "Definido en {path}",
@@ -1708,5 +1710,11 @@
   "alm_about_timezones": "Husos horarios: la ciudad más cercana de un conjunto, porque no hay un mapa de fronteras de husos sin conexión; puede fallar cerca de una frontera.",
   "desktop_lan_access": "Abrir Zimi en otros dispositivos de esta red",
   "desktop_lan_hint": "Permite que un teléfono u otro ordenador en la misma Wi-Fi o punto de acceso lea tu biblioteca. Administrar la biblioteca sigue requiriendo tu contraseña de administrador. Zimi se reinicia al cambiar esto.",
-  "desktop_lan_open_at": "En otro dispositivo, abre:"
+  "desktop_lan_open_at": "En otro dispositivo, abre:",
+  "bg_heading": "Trabajo en segundo plano",
+  "bg_idle": "Nada en construcción; todos los índices están al día.",
+  "bg_vocab": "Palabras de «Quizás quisiste decir»",
+  "bg_tube": "Descripciones de ZimiTube",
+  "bg_failed": "Falló",
+  "bg_starting": "Comprobando los índices…"
 }

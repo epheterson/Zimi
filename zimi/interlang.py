@@ -18,7 +18,16 @@ import time
 from urllib.parse import urlparse, parse_qs, quote, unquote
 
 import zimi.server as _srv
-from zimi.search import _build_index_isolated, _loadavg_throttle, _write_index_meta
+from zimi.search import (
+    _background_end,
+    _background_fail,
+    _background_ok,
+    _background_start,
+    _background_step,
+    _build_index_isolated,
+    _loadavg_throttle,
+    _write_index_meta,
+)
 
 log = logging.getLogger("zimi")
 
@@ -905,15 +914,22 @@ def _build_all_qid_indexes_inner():
             )
         )
 
-        for name, path in need_build:
-            try:
-                _build_index_isolated("qids", name, path, _build_qid_index, _close_qid_db)
-                current += 1
-                _apply_qid_flags({name: True})
-            except Exception as e:
-                log.warning("Q-ID index build failed for %s: %s", name, e)
-            # Yield to host between ZIMs if loadavg is high.
-            _loadavg_throttle()
+        _background_start("qids", len(need_build))
+        try:
+            for i, (name, path) in enumerate(need_build):
+                _background_step("qids", name, i)
+                try:
+                    _build_index_isolated("qids", name, path, _build_qid_index, _close_qid_db)
+                    current += 1
+                    _apply_qid_flags({name: True})
+                    _background_ok("qids", name)
+                except Exception as e:
+                    log.warning("Q-ID index build failed for %s: %s", name, e)
+                    _background_fail("qids", name)
+                # Yield to host between ZIMs if loadavg is high.
+                _loadavg_throttle()
+        finally:
+            _background_end("qids")
 
     # Clean stale indexes + .tmp orphans from interrupted builds (SIGKILL
     # mid-build leaves <name>.qid.db.tmp files that aren't tracked anymore).
