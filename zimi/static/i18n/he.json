@@ -1003,9 +1003,11 @@
   "create_step_fetch": "הבאה",
   "create_step_package": "אריזה",
   "create_step_ready": "מוכן",
-  "create_stopped_early": "נעצר מוקדם — כל מה שנלכד עד העצירה כלול.",
+  "create_stopped_early": "נעצר מוקדם: כל מה שנלכד עד העצירה כלול.",
   "create_stopped_page_cap": "לא שלם: הלכידה נעצרה במגבלה של {n} עמודים.",
   "create_stopped_byte_budget": "לא שלם: הלכידה נעצרה בתקציב הגודל {size}.",
+  "create_stopped_depth": "לא שלם: הלכידה נעצרה במגבלת העומק, {n} קישורים מהעמוד הראשון.",
+  "create_stopped_nothing_under": "רק העמוד שנתת נלכד: אין באתר הזה שום דבר נוסף תחת {path}.",
   "create_tree_more": "עוד {n} עמודים נלכדו",
   "create_unavailable_offline": "דף היצירה עדיין לא נשמר במטמון — התחברו פעם אחת כדי להשתמש בו במצב לא מקוון.",
   "create_uncancellable": "אחרי שזה מתחיל, זה רץ עד הסוף.",
@@ -1737,5 +1739,6 @@
   "bg_tube": "תיאורי ZimiTube",
   "bg_failed": "נכשל",
   "bg_starting": "בודק את האינדקסים…",
-  "create_again_no_limit": "ללכוד שוב ללא הגבלה"
+  "create_again_no_limit": "ללכוד שוב ללא הגבלות",
+  "create_again_whole_site": "ללכוד את כל האתר"
 }

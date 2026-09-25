@@ -1003,9 +1003,11 @@
   "create_step_fetch": "Récupérer",
   "create_step_package": "Empaqueter",
   "create_step_ready": "Prêt",
-  "create_stopped_early": "Arrêt anticipé — tout ce qui a été capturé jusqu'à l'arrêt est inclus.",
+  "create_stopped_early": "Arrêt anticipé : tout ce qui a été capturé jusqu'à l'arrêt est inclus.",
   "create_stopped_page_cap": "Incomplet : la capture s'est arrêtée à sa limite de {n} pages.",
   "create_stopped_byte_budget": "Incomplet : la capture s'est arrêtée à son budget de {size}.",
+  "create_stopped_depth": "Incomplet : la capture s'est arrêtée à sa limite de profondeur, à {n} liens de la première page.",
+  "create_stopped_nothing_under": "Seule la page indiquée a été capturée : rien d'autre sur ce site ne se trouve sous {path}.",
   "create_tree_more": "+{n} pages capturées en plus",
   "create_unavailable_offline": "La page de création n'est pas encore en cache — connectez-vous une fois pour l'utiliser hors ligne.",
   "create_uncancellable": "Une fois lancé, ceci va jusqu'au bout.",
@@ -1737,5 +1739,6 @@
   "bg_tube": "Descriptions ZimiTube",
   "bg_failed": "Échec",
   "bg_starting": "Vérification des index…",
-  "create_again_no_limit": "Recapturer sans limite"
+  "create_again_no_limit": "Recapturer sans aucune limite",
+  "create_again_whole_site": "Capturer tout le site"
 }

@@ -4206,19 +4206,39 @@ function _ziRecordHtml(record) {
     '</li>';
 }
 
-// A capture that ended short: incomplete, and which limit, in the reader's
-// language (the record keeps the engine's words: "page cap (10000)").
-function _ziStoppedText(stopped) {
+// ── why a capture stopped ──
+// A capture that ended short: incomplete, and why, in the reader's language.
+// The engines name the bound in their own words ("page cap (10000)", "byte
+// budget (4.0 GB)", "depth limit (10)", "nothing under /about/", or
+// "interrupted" for a Stop), and a ZIM's history keeps those words. The Create
+// page's finished card and a ZIM's info panel both read them here, so the two
+// can never describe the same file differently.
+// Which bound stopped it: 'pages', 'bytes', 'depth', 'scope' (a path with no
+// other page under it), or null when nothing did or a person stopped it.
+function captureStopKind(stopped) {
+  var why = String(stopped || '');
+  if (/^page cap \(/.test(why)) return 'pages';
+  if (/^byte budget \(/.test(why)) return 'bytes';
+  if (/^depth limit \(/.test(why)) return 'depth';
+  if (/^nothing under /.test(why)) return 'scope';
+  return null;
+}
+function captureStopText(stopped) {
   var why = String(stopped || '');
   if (!why) return '';
-  var cap = why.match(/^page cap \((\d+)\)/);
-  if (cap) return t('create_stopped_page_cap', {n: Number(cap[1]).toLocaleString()});
-  var budget = why.match(/^byte budget \((.+)\)/);
-  if (budget) return t('create_stopped_byte_budget', {size: budget[1]});
+  var m = why.match(/^page cap \((\d+)\)/);
+  if (m) return t('create_stopped_page_cap', {n: Number(m[1]).toLocaleString()});
+  m = why.match(/^byte budget \((.+)\)/);
+  if (m) return t('create_stopped_byte_budget', {size: m[1]});
+  m = why.match(/^depth limit \((\d+)\)/);
+  if (m) return t('create_stopped_depth', {n: Number(m[1]).toLocaleString()});
+  m = why.match(/^nothing under (\S+)/);
+  if (m) return t('create_stopped_nothing_under', {path: m[1]});
   return t('create_stopped_early');
 }
+// ── end why a capture stopped ──
 function _ziStoppedHtml(stopped) {
-  var text = _ziStoppedText(stopped);
+  var text = captureStopText(stopped);
   return text ? '<div class="zi-ev-fact zi-ev-stopped">' + esc(text) + '</div>' : '';
 }
 
@@ -4291,9 +4311,12 @@ function _ziBodyHtml(info) {
     '</div>';
   // Incomplete, at the top as well as in the history: the latest record that
   // made or re-made the file is the one that decides what is in it now.
+  // A ZIM warc2zim wrote (the alive engine) has no history; its capture
+  // record carries the same fact.
   var latestMade = (info.history || []).filter(function (r) { return r.op === 'created' || r.op === 'updated'; }).pop();
-  var incomplete = latestMade && latestMade.stopped
-    ? '<div class="zi-warn zi-incomplete">' + esc(_ziStoppedText(latestMade.stopped)) + '</div>' : '';
+  var stoppedWhy = (latestMade && latestMade.stopped) || (info.capture && info.capture.stopped);
+  var incomplete = stoppedWhy
+    ? '<div class="zi-warn zi-incomplete">' + esc(captureStopText(stoppedWhy)) + '</div>' : '';
   rows = incomplete + rows;
   // A ZIM Zimi did not make has no history, and says so plainly rather than
   // showing an empty heading or inventing rows from its publisher's fields.

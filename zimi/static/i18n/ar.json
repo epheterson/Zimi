@@ -1003,9 +1003,11 @@
   "create_step_fetch": "جلب",
   "create_step_package": "تحزيم",
   "create_step_ready": "جاهز",
-  "create_stopped_early": "توقف مبكرًا — تم تضمين كل ما تم التقاطه حتى لحظة التوقف.",
+  "create_stopped_early": "توقف مبكرًا: تم تضمين كل ما تم التقاطه حتى لحظة التوقف.",
   "create_stopped_page_cap": "غير مكتمل: توقف الالتقاط عند حد {n} صفحة.",
   "create_stopped_byte_budget": "غير مكتمل: توقف الالتقاط عند ميزانية الحجم {size}.",
+  "create_stopped_depth": "غير مكتمل: توقف الالتقاط عند حد العمق، على بعد {n} روابط من الصفحة الأولى.",
+  "create_stopped_nothing_under": "تم التقاط الصفحة التي أعطيتها فقط: لا يوجد شيء آخر في هذا الموقع تحت {path}.",
   "create_tree_more": "و{n} صفحة أخرى تم التقاطها",
   "create_unavailable_offline": "صفحة الإنشاء غير مخزَّنة مؤقتًا بعد — اتصل مرة واحدة لاستخدامها دون اتصال.",
   "create_uncancellable": "هذا يكمل حتى النهاية بمجرد أن يبدأ.",
@@ -1737,5 +1739,6 @@
   "bg_tube": "أوصاف ZimiTube",
   "bg_failed": "فشل",
   "bg_starting": "جارٍ فحص الفهارس…",
-  "create_again_no_limit": "التقط مجددًا بلا حد"
+  "create_again_no_limit": "التقط مجددًا بلا أي حدود",
+  "create_again_whole_site": "التقط الموقع بأكمله"
 }

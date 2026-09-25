@@ -1003,9 +1003,11 @@
   "create_step_fetch": "Fetch",
   "create_step_package": "Package",
   "create_step_ready": "Ready",
-  "create_stopped_early": "Stopped early — this is everything captured up to the stop.",
+  "create_stopped_early": "Stopped early: this is everything captured up to the stop.",
   "create_stopped_page_cap": "Incomplete: this capture stopped at its {n}-page limit.",
   "create_stopped_byte_budget": "Incomplete: this capture stopped at its {size} size budget.",
+  "create_stopped_depth": "Incomplete: this capture stopped at its depth limit, {n} links from the first page.",
+  "create_stopped_nothing_under": "Only the page you gave was captured: nothing else on this site is under {path}.",
   "create_tree_more": "+{n} more pages captured",
   "create_unavailable_offline": "The Create page has not been cached yet — connect once to use it offline.",
   "create_uncancellable": "This one runs to the end once it starts.",
@@ -1737,5 +1739,6 @@
   "bg_tube": "ZimiTube descriptions",
   "bg_failed": "Failed",
   "bg_starting": "Checking the indexes…",
-  "create_again_no_limit": "Capture again with no limit"
+  "create_again_no_limit": "Capture again with no limits",
+  "create_again_whole_site": "Capture the whole site"
 }

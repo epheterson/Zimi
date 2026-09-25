@@ -31,11 +31,24 @@ const MARKER = '// ── the surface ──';
 const cut = SRC.indexOf(MARKER);
 if (cut < 0) throw new Error('the pure/DOM boundary marker moved — update this test');
 
+// The real en.json behind t(), and app.js's capture-stop block, which is
+// where the card's words for what ended a capture now come from.
+const STRINGS = JSON.parse(fs.readFileSync(
+  path.join(__dirname, '..', 'zimi', 'static', 'i18n', 'en.json'), 'utf8'));
+const APP = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.js'), 'utf8');
+const STOP_BLOCK = APP.match(/\/\/ ── why a capture stopped ──[\s\S]*?\/\/ ── end why a capture stopped ──/);
+if (!STOP_BLOCK) throw new Error('the capture-stop block in app.js moved: update this test');
 const sandbox = { localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
-                  t: (k) => k };
+                  t: (k, vars) => {
+                    let s = k in STRINGS ? STRINGS[k] : k;
+                    if (vars) for (const v in vars) s = s.replaceAll('{' + v + '}', vars[v]);
+                    return s;
+                  } };
 vm.createContext(sandbox);
+vm.runInContext(STOP_BLOCK[0] + '\n', sandbox);
 vm.runInContext(SRC.slice(0, cut), sandbox);
-const { _createDoneBytes, _createMetricLive, _createRowGone, _createStoppedText, _createChipTarget, _createEngineFor } = sandbox;
+const { _createDoneBytes, _createMetricLive, _createRowGone, _createChipTarget, _createEngineFor } = sandbox;
+const _createStoppedText = sandbox.captureStopText;
 
 let failures = 0;
 function check(ok, label) {
@@ -105,7 +118,7 @@ function eq(got, want, label) {
         'a page cap says the limit was reached, with the number: ' + _createStoppedText('page cap (40)'));
   check(_createStoppedText('byte budget (500 MB)') === 'Incomplete: this capture stopped at its 500 MB size budget.',
         'a byte budget says which budget: ' + _createStoppedText('byte budget (500 MB)'));
-  check(_createStoppedText('interrupted') === 'Stopped early — this is everything captured up to the stop.',
+  check(_createStoppedText('interrupted') === 'Stopped early: this is everything captured up to the stop.',
         'a Stop from the person still reads as stopped early');
   check(_createStoppedText(null) === '' && _createStoppedText('') === '', 'nothing ended it: no caption');
 }

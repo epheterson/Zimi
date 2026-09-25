@@ -1003,9 +1003,11 @@
   "create_step_fetch": "प्राप्ति",
   "create_step_package": "पैकेजिंग",
   "create_step_ready": "तैयार",
-  "create_stopped_early": "जल्दी रोका गया — रोक तक कैप्चर की गई हर चीज़ शामिल है।",
+  "create_stopped_early": "जल्दी रोका गया: रोक तक कैप्चर की गई हर चीज़ शामिल है।",
   "create_stopped_page_cap": "अधूरा: कैप्चर {n} पेज की सीमा पर रुक गया।",
   "create_stopped_byte_budget": "अधूरा: कैप्चर {size} के आकार बजट पर रुक गया।",
+  "create_stopped_depth": "अधूरा: कैप्चर अपनी गहराई सीमा पर रुक गया, पहले पेज से {n} लिंक दूर।",
+  "create_stopped_nothing_under": "केवल आपका दिया पेज कैप्चर हुआ: इस साइट पर {path} के अंतर्गत और कुछ नहीं है।",
   "create_tree_more": "{n} और पृष्ठ कैप्चर किए गए",
   "create_unavailable_offline": "बनाने वाला पेज अभी कैश नहीं हुआ — ऑफ़लाइन उपयोग के लिए एक बार कनेक्ट करें।",
   "create_uncancellable": "यह शुरू होने के बाद अंत तक चलता है।",
@@ -1737,5 +1739,6 @@
   "bg_tube": "ZimiTube विवरण",
   "bg_failed": "विफल",
   "bg_starting": "इंडेक्स जाँचे जा रहे हैं…",
-  "create_again_no_limit": "बिना सीमा के फिर से कैप्चर करें"
+  "create_again_no_limit": "बिना किसी सीमा के फिर से कैप्चर करें",
+  "create_again_whole_site": "पूरी साइट कैप्चर करें"
 }

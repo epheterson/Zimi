@@ -11,19 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Zimipedia, an app for every wiki in the library as one (Wikipedia in any language, Wiktionary, Wikivoyage, Wikiquote and the other MediaWiki wikis): a pill per wiki that narrows everything below it, a Today page (pictures from across the wikis, On this day, a word, a quote and a place to go), search across the chosen wikis, and cards or a list. Its name for `ZIMI_APPS` is `wiki`.
 
-### Fixed
-
-- A search result from a Wikivoyage page no longer shows the page's JavaScript as its snippet.
-
 ### Changed
 
 - Create a ZIM has bigger defaults: a whole-site capture takes up to 10,000 pages, 4 GB and 10 links deep (was 200 pages, 500 MB, 5 deep), and a video capture up to 16 GB (was 4 GB). Blank fields use them; 0 still means no limit.
-- Create a ZIM, whole site: an address with a path (`https://example.org/docs/`) keeps the capture under that path; pages elsewhere on the site are left out, and the images, styles and scripts its pages use are still fetched. A bare address still captures the whole site.
+- Create a ZIM, whole site: an address with a path (`https://example.org/docs/`) keeps the capture under that path; pages elsewhere on the site are left out, and the images, styles and scripts its pages use are still fetched. A bare address still captures the whole site. An address that names a page rather than a section (`https://example.org/wiki/Main_Page`) captures the pages beside it, a section the site redirects (`/docs` to `/en/docs/`) is followed, and a path with nothing else under it says so on the finished card, with a button to capture the whole site.
+- Create a ZIM: sizes in a capture's log and its stop reason use the same decimal units as the form and the card, so a 4 GB budget reads as 4 GB, not 3.7 GB.
 
 ### Fixed
 
-- A capture stopped by its page limit or size budget says so on its finished card ("Incomplete: this capture stopped at its 10,000-page limit") with a button to capture again with no limit, and its counters show the limits while it runs ("1,234 / 10,000 pages", "120 MB / 4 GB").
-- A ZIM that a limit cut short says so in its info panel, at the top and in its history, with the limit it hit; the ZIM file records it, so it stays true after the job is gone. Site and video captures.
+- A search result from a Wikivoyage page no longer shows the page's JavaScript as its snippet, and a page that loads a script with a self-closing tag (`<script src="..."/>`) no longer shows an empty snippet.
+- A capture stopped by its page limit, size budget or link depth says so on its finished card ("Incomplete: this capture stopped at its 10,000-page limit") with a button to capture again with no limits, and its counters show the limits while it runs ("1,234 / 10,000 pages", "120 MB / 4 GB"). Capturing again lifts every limit, not only the one it hit, keeps the chosen video quality, and keeps the finished card if the server turns the new capture down.
+- A ZIM that a limit cut short says so in its info panel, at the top and in its history, with the limit it hit; the ZIM file records it, so it stays true after the job is gone. Site, video and alive captures.
+- Create a ZIM, whole site with the zimit engine: the capture runs zimit (it ran Zimi's own alive engine instead), with the page limit its counter shows, and says when that limit cut it short.
+- The library no longer reopens every ZIM and rewrites its cache on every start after an upgrade.
 - A capture with no page limit (0) shows its pages and count while it runs; since 1.10.3 they stood still, and the capture looked stuck.
 
 ## [1.10.3] - 2026-09-24

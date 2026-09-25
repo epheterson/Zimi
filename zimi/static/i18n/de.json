@@ -1003,9 +1003,11 @@
   "create_step_fetch": "Abrufen",
   "create_step_package": "Verpacken",
   "create_step_ready": "Fertig",
-  "create_stopped_early": "Vorzeitig gestoppt — enthalten ist alles, was bis zum Stopp erfasst wurde.",
+  "create_stopped_early": "Vorzeitig gestoppt: enthalten ist alles, was bis zum Stopp erfasst wurde.",
   "create_stopped_page_cap": "Unvollständig: Die Aufnahme endete an ihrer Grenze von {n} Seiten.",
   "create_stopped_byte_budget": "Unvollständig: Die Aufnahme endete an ihrem Größenbudget von {size}.",
+  "create_stopped_depth": "Unvollständig: Die Aufnahme endete an ihrer Tiefengrenze, {n} Links von der ersten Seite entfernt.",
+  "create_stopped_nothing_under": "Nur die angegebene Seite wurde erfasst: Unter {path} gibt es auf dieser Website sonst nichts.",
   "create_tree_more": "+{n} weitere Seiten erfasst",
   "create_unavailable_offline": "Die Erstellungsseite ist noch nicht zwischengespeichert — einmal verbinden, um sie offline zu nutzen.",
   "create_uncancellable": "Dieser Vorgang läuft nach dem Start bis zum Ende.",
@@ -1737,5 +1739,6 @@
   "bg_tube": "ZimiTube-Beschreibungen",
   "bg_failed": "Fehlgeschlagen",
   "bg_starting": "Indizes werden geprüft…",
-  "create_again_no_limit": "Ohne Grenze erneut aufnehmen"
+  "create_again_no_limit": "Ohne Grenzen erneut aufnehmen",
+  "create_again_whole_site": "Die ganze Website aufnehmen"
 }
