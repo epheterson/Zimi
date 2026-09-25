@@ -187,6 +187,7 @@ _RATE_LIMITED_API_PATHS = (
     "/tube/play",
     "/exchange",
     "/reddot",
+    "/wiki",
     "/map-home",
     "/read",
     "/suggest",
@@ -198,7 +199,7 @@ _RATE_LIMITED_API_PATHS = (
 
 # The apps' routes below their bare path (/exchange/question, /reddot/post):
 # matched exactly, they answered without limit.
-_RATE_LIMITED_API_PREFIXES = ("/exchange/", "/reddot/", "/tube/")
+_RATE_LIMITED_API_PREFIXES = ("/exchange/", "/reddot/", "/tube/", "/wiki/")
 
 # High-frequency read-only manage polls. While a download runs the manage UI
 # keeps three independent timers alive — downloads+seeding every 2s, activity
@@ -843,6 +844,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("tube.html")
             + _static_hash("exchange.html")
             + _static_hash("reddot.html")
+            + _static_hash("wiki.html")
             + _static_hash("apps.css")
             + _static_hash("apps.js")
             + _i18n_hash
@@ -1591,7 +1593,7 @@ def _reconstruct_source_url(archive, entry_path):
 # ============================================================================
 
 
-APP_PAGES = ("tube.html", "exchange.html", "reddot.html")
+APP_PAGES = ("tube.html", "exchange.html", "reddot.html", "wiki.html")
 _APPS_CSS_MARK = b"<!--@apps.css@-->"
 _APPS_JS_MARK = b"<!--@apps.js@-->"
 _APP_ASSETS = (
@@ -2360,6 +2362,19 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if sub == "post":
                     got = _rd.post(zim, param("p"))
                     return self._json(200, got) if got else self._json(404, {"error": "not a post page"})
+                return self._json(404, {"error": "not found"})
+            elif parsed.path == "/wiki" or parsed.path.startswith("/wiki/"):
+                # Zimipedia: every wiki in the library, as one.
+                from zimi import wiki as _wiki
+
+                sub = parsed.path[len("/wiki"):].strip("/")
+                if sub in ("", "home"):
+                    return self._json(200, _wiki.home())
+                if sub == "onthisday":
+                    zim = param("zim")
+                    if not zim or zim not in _srv.get_zim_files() or not _srv.zim_allowed(zim):
+                        return self._json(404, {"error": "not found"})
+                    return self._json(200, {"events": _wiki.on_this_day(zim, param("date"))})
                 return self._json(404, {"error": "not found"})
             elif parsed.path == "/exchange" or parsed.path.startswith("/exchange/"):
                 # ZimiExchange: every Stack Exchange site in the library.

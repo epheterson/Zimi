@@ -120,10 +120,15 @@ def build_fixture_zim(
             creator.add_item(_Article(p, t, h))
         for fpath, blob in (files or {}).items():
             creator.add_item(_File(fpath, blob))
-        creator.add_metadata("Title", "Test Survival")
-        creator.add_metadata("Language", "eng")
-        creator.add_metadata("Description", "tiny fixture")
-        for key, value in (metadata or {}).items():
+        # The defaults give way to a Title, Language or Description the
+        # caller names (a metadata key can be written only once).
+        meta = {
+            "Title": "Test Survival",
+            "Language": "eng",
+            "Description": "tiny fixture",
+        }
+        meta.update(metadata or {})
+        for key, value in meta.items():
             creator.add_metadata(key, value)
     assert os.path.exists(path)
     return path

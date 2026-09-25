@@ -38,7 +38,7 @@ def _library(tmp_path, monkeypatch, zims):
 
 def test_a_sotoki_zim_is_a_qa_site():
     assert srv._zim_kind("sotoki v3.1.1", "_category:stack_exchange;stack_exchange", "") == "qa"
-    assert srv._zim_kind("mwoffliner 1.13", "stack_exchange", "") is None
+    assert srv._zim_kind("mwoffliner 1.13", "stack_exchange", "") == "wiki"
 
 
 def test_the_listing_is_the_sites_own_order_with_votes_answers_and_tags():

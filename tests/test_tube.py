@@ -81,7 +81,7 @@ def _public(rows):
         ("ted2zim 2.0.13", "_category:ted;ted;_videos:yes", "video"),
         ("youtube2zim 2.3.0", "_videos:yes", "video"),
         ("Zimi 1.10.0 + yt-dlp 2026.07.04", "_videos:yes", "video"),
-        ("mwoffliner 1.13", "wikipedia;_videos:yes", None),  # Wikipedia has videos; it is not a video ZIM
+        ("mwoffliner 1.13", "wikipedia;_videos:yes", "wiki"),  # Wikipedia has videos; it is not a video ZIM
         ("maps2zim v0.2.1", "", "map"),
         ("Zimi 1.10.0", "", None),
     ],
