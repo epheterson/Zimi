@@ -864,7 +864,7 @@ def create_site_zim(
                         "created",
                         "site",
                         f"captured {_plural(len(pages), 'page')} from {seed_url}"
-                        + (f" — stopped early at the {reason}" if reason else "")
+                        + (f"; stopped early at the {reason}" if reason else "")
                         + blocked_phrase(blocked.get("blocked")),
                         counts={
                             "pages": len(pages),
@@ -872,6 +872,7 @@ def create_site_zim(
                             "bytes": budget.used,
                         },
                         blocked=blocked.get("blocked"),
+                        stopped=reason,
                     ),
                 )
     finally:

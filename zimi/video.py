@@ -961,6 +961,7 @@ def create_video_zim(
                     + (" (audio only)" if audio_only else ""),
                     tools={"yt-dlp": tool_version},
                     counts={"videos": len(rows), "bytes": used},
+                    stopped=f"byte budget ({_fmt_bytes(max_bytes)})" if budget_hit else None,
                 ),
             )
     finally:

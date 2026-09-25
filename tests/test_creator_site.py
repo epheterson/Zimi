@@ -557,6 +557,21 @@ def test_zero_is_no_limit_but_a_negative_is_refused():
         crawler.parse_size("-1")
 
 
+def test_the_zim_records_the_limit_that_stopped_it(fixture_server, tmp_path):
+    """The info panel says a ZIM is incomplete and which limit it hit; the
+    file has to carry that, since the job that made it is long gone."""
+    from zimi import zimwriter
+
+    info = _site(tmp_path, "/chain/0.html", max_pages=3)
+    raw = bytes(Archive(info["path"]).get_metadata(zimwriter.HISTORY_METADATA_KEY)).decode()
+    (created,) = [r for r in zimwriter.parse_history(raw) if r["op"] == "created"]
+    assert created["stopped"] == "page cap (3)"
+
+    whole = _site(tmp_path / "w", "/chain/0.html", max_depth=20) if (tmp_path / "w").mkdir() is None else None
+    raw = bytes(Archive(whole["path"]).get_metadata(zimwriter.HISTORY_METADATA_KEY)).decode()
+    assert "stopped" not in zimwriter.parse_history(raw)[0]
+
+
 def test_max_depth_bounds_the_chain(fixture_server, tmp_path):
     info = _site(tmp_path, "/chain/0.html", max_depth=2)
     # seed (depth 0) + two hops, and nothing beyond.

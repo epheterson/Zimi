@@ -4192,8 +4192,25 @@ function _ziRecordHtml(record) {
     (record.detail ? '<div class="zi-ev-detail">' + esc(record.detail) + '</div>' : '') +
     (counts ? '<div class="zi-ev-fact">' + esc(counts) + '</div>' : '') +
     _ziBlockedHtml(record.blocked) +
+    _ziStoppedHtml(record.stopped) +
     (tools ? '<div class="zi-ev-fact zi-ev-sub">' + esc(tools) + '</div>' : '') +
     '</li>';
+}
+
+// A capture that ended short: incomplete, and which limit, in the reader's
+// language (the record keeps the engine's words: "page cap (10000)").
+function _ziStoppedText(stopped) {
+  var why = String(stopped || '');
+  if (!why) return '';
+  var cap = why.match(/^page cap \((\d+)\)/);
+  if (cap) return t('create_stopped_page_cap', {n: Number(cap[1]).toLocaleString()});
+  var budget = why.match(/^byte budget \((.+)\)/);
+  if (budget) return t('create_stopped_byte_budget', {size: budget[1]});
+  return t('create_stopped_early');
+}
+function _ziStoppedHtml(stopped) {
+  var text = _ziStoppedText(stopped);
+  return text ? '<div class="zi-ev-fact zi-ev-stopped">' + esc(text) + '</div>' : '';
 }
 
 // Metadata fields with no row of their own, listed under their own keys. The
@@ -4263,6 +4280,12 @@ function _ziBodyHtml(info) {
     _ziRow('zi_flavour', esc(info.flavour)) +
     _ziRow('zi_tags', _ziTagsHtml(info.tags)) +
     '</div>';
+  // Incomplete, at the top as well as in the history: the latest record that
+  // made or re-made the file is the one that decides what is in it now.
+  var latestMade = (info.history || []).filter(function (r) { return r.op === 'created' || r.op === 'updated'; }).pop();
+  var incomplete = latestMade && latestMade.stopped
+    ? '<div class="zi-warn zi-incomplete">' + esc(_ziStoppedText(latestMade.stopped)) + '</div>' : '';
+  rows = incomplete + rows;
   // A ZIM Zimi did not make has no history, and says so plainly rather than
   // showing an empty heading or inventing rows from its publisher's fields.
   var history = (info.history && info.history.length)
