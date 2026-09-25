@@ -3248,6 +3248,9 @@ def load_cache(force=False):
                 # 1.9 half an hour before 1.10 booted and sat under Other with
                 # nothing to say otherwise.
                 cached["kind"], cached["map_search"] = _read_zim_kind(path)
+                # Stamped, or the next boot finds the same old version and
+                # opens every ZIM again, and rewrites the cache, forever.
+                cached["kind_v"] = KIND_VERSION
                 kind_backfilled = True
             if cached.get("kind") == "map" and "map_bounds" not in cached:
                 # A record from before Zimi kept a map's ground and publisher.
