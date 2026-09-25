@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Zimipedia, an app for every wiki in the library as one (Wikipedia in any language, Wiktionary, Wikivoyage, Wikiquote and the other MediaWiki wikis): a pill per wiki that narrows everything below it, a Today page (pictures from across the wikis, On this day, a word, a quote and a place to go), search across the chosen wikis, and cards or a list. Its name for `ZIMI_APPS` is `wiki`.
+- Bookshelf, an app for every Project Gutenberg ZIM in the library as one shelf: continue reading, most read, newest to Gutenberg, authors with their years, subjects, eras and languages, a page per book with its cover and EPUB, and search by title or author. A book opens in Reader View, keeps your place and steps chapter by chapter. Its name for `ZIMI_APPS` is `books`.
 
 ### Fixed
 
