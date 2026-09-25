@@ -1048,6 +1048,7 @@ function _applyI18nToDOM() {
 // On an app's page the box asks the app's question, short enough for a
 // phone's box: "Where to?", "Find a video", "Ask a question".
 function _appPlaceholder() {
+  if (_isWikiPage()) return t('wiki_search_placeholder');
   if (_isReddotPage()) return t('reddot_search_placeholder');
   if (_isExchangePage()) return t('exchange_search_placeholder');
   if (_isTubePage()) return t('tube_search_placeholder');
@@ -1660,6 +1661,12 @@ function updateTopbar() {
     bcIcon.innerHTML = _ALMANAC_BC_ICON;
     // Identity only — no destination behind it, so no link affordance either.
     bcIcon.removeAttribute('href');
+  } else if (_isWikiPage()) {
+    bcSep.style.display = 'inline';
+    bcIcon.style.display = 'inline-flex';
+    bcIcon.title = t('wiki');
+    bcIcon.innerHTML = _WIKI_SVG.replace('width="26" height="26"', 'width="20" height="20"');
+    bcIcon.setAttribute('href', '/#wiki');
   } else if (_isReddotPage()) {
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
@@ -1761,7 +1768,7 @@ function updateTopbar() {
   var _foldReaderExtras = _readingArticle && _isNarrow();
   // A map is read with the eyes and the hands: no type size, no read-aloud,
   // no Reader View. _syncReaderViewBtn and the ⋯ menu know the same rule.
-  var _readingText = _readingArticle && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage() && !_isPdfPage();
+  var _readingText = _readingArticle && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage() && !_isWikiPage() && !_isPdfPage();
   var fontBtn = document.getElementById('font-btn');
   if (fontBtn) fontBtn.style.display = (_readingText && !_foldReaderExtras) ? 'flex' : 'none';
   // Bookmarks-panel opener — reader only (#65). Everywhere else the library
@@ -1781,7 +1788,7 @@ function updateTopbar() {
     // holds the bookmarks too.
     document.body.classList.toggle('map-page', !!(_readingArticle && currentArticle && _isMapZim(currentArticle.zim)));
     // An app page is not an article: nothing on it to bookmark as one.
-    document.body.classList.toggle('app-page', _isTubePage() || _isExchangePage() || _isReddotPage());
+    document.body.classList.toggle('app-page', _isAppPage());
   document.body.classList.toggle('app-noitem', _isAppPage() && !_appItem);
     mapSrcBtn.style.display = showMapSrc ? 'flex' : 'none';
     if (!showMapSrc) _closeMapSourceDropdown();
@@ -2328,6 +2335,7 @@ function route(push) {
   if (params.get('tube') !== null) { enterHome(false); openTube(true, params.get('tube') || ''); return; }
   if (params.get('exchange') !== null) { enterHome(false); openExchange(true, params.get('exchange') || ''); return; }
   if (params.get('reddot') !== null) { enterHome(false); openReddot(true, params.get('reddot') || ''); return; }
+  if (location.hash === '#wiki') { enterHome(false); openWiki(true); return; }
   if (location.hash === '#reddot' || location.hash.indexOf('#reddot?') === 0) {
     enterHome(false);
     var rdQ = new URLSearchParams(location.hash.slice(location.hash.indexOf('?') + 1));
@@ -2558,7 +2566,7 @@ function goHome(e) {
 }
 
 function _isAppPage() {
-  return _isTubePage() || _isExchangePage() || _isReddotPage();
+  return _isTubePage() || _isExchangePage() || _isReddotPage() || _isWikiPage();
 }
 // The reader is on the PDF viewer: nothing to read aloud, no type size.
 function _isPdfPage() {
@@ -2568,7 +2576,8 @@ function _isPdfPage() {
 }
 // The app's home, in place of the item a shared link landed on.
 function _appEntryHome() {
-  var app = _tubeOpen ? ['tube', 'play', _tubeUrl('')] : _exchangeOpen ? ['exchange', 'q', _exchangeUrl('')] : ['reddot', 'p', _reddotUrl('')];
+  var app = _tubeOpen ? ['tube', 'play', _tubeUrl('')] : _exchangeOpen ? ['exchange', 'q', _exchangeUrl('')]
+    : _wikiOpen ? ['wiki', 'q', '/#wiki'] : ['reddot', 'p', _reddotUrl('')];
   var st = { mode: 'reader' }; st[app[0]] = true; st[app[1]] = '';
   _appHome(st, app[2], app[1]);
   // "home", not a route to nothing: a route only closes the thing on
@@ -6445,7 +6454,10 @@ q.addEventListener('input', () => {
   const val = q.value.trim();
   // Suggest (200ms debounce) — include history items when typing
   clearTimeout(suggestTimer);
-  if (_isReddotPage()) {
+  if (_isWikiPage()) {
+    hideSuggest();
+    suggestTimer = setTimeout(function() { _wikiSearch(val); }, 250);
+  } else if (_isReddotPage()) {
     hideSuggest();
     suggestTimer = setTimeout(function() { _reddotSearch(val); }, 250);
   } else if (_isExchangePage()) {
@@ -6530,6 +6542,7 @@ q.addEventListener('keydown', e => {
     if (_isTubePage()) { _tubeSearch(q.value.trim()); return; }
     if (_isExchangePage()) { _exchangeSearch(q.value.trim()); return; }
     if (_isReddotPage()) { _reddotSearch(q.value.trim()); return; }
+    if (_isWikiPage()) { _wikiSearch(q.value.trim()); return; }
     if (_isMapPage()) {
       if (suggestItems.length && suggestItems[0]._place) selectSuggest(0);
       else if (q.value.trim().length >= 2) fetchPlaces(q.value.trim());
@@ -14963,7 +14976,7 @@ function _stepBackToArticle(prev, replaceState) {
   // one before, and the popstate routing reopens it where it was.
   if (prev.app) { history.back(); return; }
   // An article on screen is not an app page, whichever way it was reached.
-  _tubeOpen = false; _exchangeOpen = false; _reddotOpen = false;
+  _tubeOpen = false; _exchangeOpen = false; _reddotOpen = false; _wikiOpen = false;
   // Navigate reader to a previous article from history.
   // replaceState=true for in-app back (URL hasn't changed yet),
   // replaceState=false for browser back (URL already changed by popstate).
@@ -15938,7 +15951,7 @@ function _readerViewToggle() {
 function _syncReaderViewBtn() {
   // Never on Create, whatever is open behind it: there is no article there to
   // read a reading mode into.
-  var avail = _readerViewAvailable() && !_createOpen && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage();
+  var avail = _readerViewAvailable() && !_createOpen && !_isMapPage() && !_isAppPage();
   var btn = document.getElementById('readerview-btn');
   if (btn) {
     btn.style.display = avail ? 'flex' : 'none';
@@ -16581,7 +16594,7 @@ function openReddot(replaceState, p) {
   if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
   currentArticle = null;
   readerSource = null;
-  _tubeOpen = false; _exchangeOpen = false;
+  _tubeOpen = false; _exchangeOpen = false; _wikiOpen = false;
   _reddotOpen = true;
   _appTop = !p;
   var st = { mode: 'reader', reddot: true, p: p || '' };
@@ -16599,6 +16612,61 @@ function _reddotSearch(val) {
   try {
     var win = document.getElementById('reader-frame').contentWindow;
     if (win && typeof win.reddotSearch === 'function') win.reddotSearch(val);
+  } catch (e) {}
+}
+
+// ── Zimipedia ──
+// Every wiki in the library as one (Wikipedia in each language, its sister
+// projects, and the MediaWiki wikis beyond them), in a page Zimi owns
+// (/static/wiki.html) shown in the reader like the other apps. Eric,
+// 2026-09-24: "a wiki app that like has pills for all the individual wikis
+// but builds a unified one and has the today page suggesting articles".
+// Its articles open in the reader itself, so it has no item of its own.
+var _wikiOpen = false;
+var _WIKI_PAGE = '/static/wiki.html?v=1';
+var _WIKI_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></svg>';
+
+function _installedWikiZims() {
+  return _installedOfKind('wiki');
+}
+function _isWikiPage() {
+  return !!(_wikiOpen && readerOpen && !_almanacOpen && !_createOpen);
+}
+function _wikiTileHtml() {
+  return _appTileHtml('wiki', t('wiki'), _WIKI_SVG, _installedWikiZims().map(function(z) { return z.title || z.name; }), 'openWiki');
+}
+function _wikiStrings() {
+  // A pill names its wiki's language by its code; the page shows the name,
+  // in the shell's language, on hover.
+  var langs = {};
+  _installedWikiZims().forEach(function(z) { var c = String(z.language || '').split(',')[0]; if (c) langs[c] = _langDisplayName(c) || c; });
+  return _appStrings('wiki', ['wiki_all', 'wiki_today', 'wiki_on_this_day', 'wiki_featured', 'wiki_word', 'wiki_quote', 'wiki_place', 'wiki_none', 'wiki_empty',
+    'wiki_cards', 'wiki_list', 'wiki_searching', 'wiki_did_you_mean', 'wiki_result', 'wiki_results'], { langs: langs });
+}
+function openWiki(replaceState) {
+  if (_isModClick()) { _lastMouseEvent = null; window.open('/#wiki', '_blank'); return; }
+  if (_createOpen) closeCreate();
+  if (_almanacOpen) closeAlmanac();
+  if (mode === 'manage') { mode = 'home'; updateTopbar(); }
+  if (_mapWatched) { _mapWatched = null; clearTimeout(_mapHashTimer); }
+  if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
+  currentArticle = null;
+  readerSource = null;
+  _tubeOpen = false; _exchangeOpen = false; _reddotOpen = false;
+  _wikiOpen = true;
+  _appTop = true;
+  var st = { mode: 'reader', wiki: true };
+  if (replaceState === true) history.replaceState(st, '', '/#wiki');
+  else history.pushState(st, '', '/#wiki');
+  openReader(_WIKI_PAGE + '#' + _wikiStrings());
+  document.title = t('wiki') + ' — Zimi';
+  _setWindowTitle(document.title);
+  updateTopbar();
+}
+function _wikiSearch(val) {
+  try {
+    var win = document.getElementById('reader-frame').contentWindow;
+    if (win && typeof win.wikiSearch === 'function') win.wikiSearch(val);
   } catch (e) {}
 }
 
@@ -16636,7 +16704,7 @@ function openExchange(replaceState, q) {
   if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
   currentArticle = null;
   readerSource = null;
-  _tubeOpen = false; _reddotOpen = false;
+  _tubeOpen = false; _reddotOpen = false; _wikiOpen = false;
   _exchangeOpen = true;
   _appTop = !q;
   var st = { mode: 'reader', exchange: true, q: q || '' };
@@ -16794,7 +16862,7 @@ window.addEventListener('message', function(e) {
     _openCategory(d.category);
   }
 });
-var _APP_CATEGORY_KEYS = ['maps', 'ted', 'stack_exchange'];
+var _APP_CATEGORY_KEYS = ['maps', 'ted', 'stack_exchange', 'wikipedia'];
 
 function _tubeSearch(val) {
   try {
@@ -16821,7 +16889,7 @@ function openTube(replaceState, play) {
   if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
   currentArticle = null;
   readerSource = null;
-  _exchangeOpen = false; _reddotOpen = false;
+  _exchangeOpen = false; _reddotOpen = false; _wikiOpen = false;
   _tubeOpen = true;
   _appTop = !play;
   var st = { mode: 'reader', tube: true, play: play || '' };
@@ -16840,7 +16908,7 @@ function openTube(replaceState, play) {
 // can exist on a fresh install and suggest which zims to add or pop to
 // relevant catalog categories." An app with data opens; one without opens
 // the catalog category that feeds it, and its tile says so.
-var _APP_CATEGORY = { maps: 'maps', tube: 'ted', exchange: 'stack_exchange' };  // reddot: made, not downloaded
+var _APP_CATEGORY = { maps: 'maps', tube: 'ted', exchange: 'stack_exchange', wiki: 'wikipedia' };  // reddot: made, not downloaded
 // A mode the Create page should open on, set by whoever sends someone there.
 var _createRememberMode = '';
 var _createRememberSource = '';
@@ -16854,7 +16922,7 @@ var _REDDIT_ADDRESS_START = 'https://www.reddit.com/r/Kiwix';
 // (ZIMI_APPS, or the switch in Server settings; stamped on the shell) or
 // this signed-in person turned it off for their account. Never per
 // browser (Eric: "Not per browser only per user or server").
-var APP_NAMES = ['maps', 'tube', 'exchange', 'reddot'];
+var APP_NAMES = ['maps', 'tube', 'exchange', 'reddot', 'wiki'];
 var _userPrefs = { apps: true, shown: null };
 // The stamp: nothing when every app is offered, '0' for none, else the names.
 function _appsAllowedByServer(app) {
@@ -16904,13 +16972,14 @@ function _setUserApp(app, on) {
 // and a name, lit when offered (Eric: "the lil app tiles with icons and i
 // can select or deselect which to show").
 function _appIcon(app) {
-  return app === 'maps' ? _MAPS_SVG : app === 'tube' ? _TUBE_PLAY_SVG : app === 'exchange' ? _EXCHANGE_SVG : _REDDOT_SVG;
+  return app === 'maps' ? _MAPS_SVG : app === 'tube' ? _TUBE_PLAY_SVG : app === 'exchange' ? _EXCHANGE_SVG : app === 'wiki' ? _WIKI_SVG : _REDDOT_SVG;
 }
 // What the library holds for each app, in a line under its name.
 function _appCountLine(app) {
   var n = app === 'maps' ? _installedMaps().length
     : app === 'tube' ? _installedVideoZims().length
     : app === 'exchange' ? _installedQaZims().length
+    : app === 'wiki' ? _installedWikiZims().length
     : _installedRedditZims().reduce(function(s, z) { return s + (z.subreddits && z.subreddits.length ? z.subreddits.length : 1); }, 0);
   return tPlural('apps_count_' + app, n);
 }
@@ -16925,7 +16994,8 @@ function _appPicksHtml(apps, checked, onchange, disabled) {
 function _appsRowHtml() {
   if (!_appsEnabled()) return '';
   var tiles = (_appShown('maps') ? _mapsTileHtml() : '') + (_appShown('tube') ? _tubeTileHtml() : '') +
-    (_appShown('exchange') ? _exchangeTileHtml() : '') + (_appShown('reddot') ? _reddotTileHtml() : '');
+    (_appShown('exchange') ? _exchangeTileHtml() : '') + (_appShown('reddot') ? _reddotTileHtml() : '') +
+    (_appShown('wiki') ? _wikiTileHtml() : '');
   if (!tiles) return '';
   var isTiles = _getLibraryView() === 'tiles';
   // Labelled like every section around it (Discover above, the categories
@@ -17877,12 +17947,13 @@ function openReader(url) {
         // the page loaded (a deep link, a link inside an article) carried
         // only its path, and Recent history read "ce.html", "cover.453".
         try { _histRetitle(_navZim, _navPath, (frame.contentDocument.title || '').trim()); } catch (e) {}
-        if (_tubeOpen || _exchangeOpen || _reddotOpen) {
+        if (_tubeOpen || _exchangeOpen || _reddotOpen || _wikiOpen) {
           // A card in an app opened a ZIM page: a real page now, with the
           // history and address every page gets, and Back returns to the app.
           _tubeOpen = false;
           _exchangeOpen = false;
           _reddotOpen = false;
+          _wikiOpen = false;
           readerSource = _navZim;
           history.pushState({ mode: 'reader', zim: _navZim, path: _navPath }, '', _articleDeepLinkPath(_navZim, _navPath));
           _histPushArticle(_navZim, _navPath, _titleFromPath(_navPath));
@@ -19444,6 +19515,7 @@ function openArticle(zim, path, title, opts) {
   _tubeOpen = false;
   _exchangeOpen = false;
   _reddotOpen = false;
+  _wikiOpen = false;
   // A place on the map already on screen: fly there. Reloading an 800,000
   // entry map to move within it is a second of grey; the map is right here.
   // History gets the place (Back returns to the last one), the address gets
@@ -19560,6 +19632,7 @@ function closeReader() {
   _tubeOpen = false;
   _exchangeOpen = false;
   _reddotOpen = false;
+  _wikiOpen = false;
   _ttsStop(); // stop read-aloud when leaving the reader
   // Sync the address bar back to the view the reader was covering — an
   // explicit close otherwise strands the article URL (a reload would
@@ -19857,7 +19930,7 @@ function _buildTopbarMenuHtml() {
   var readerGroup = '';
   if (readerOpen && !_almanacOpen && !_createOpen) {
     // On a map there is nothing to read: none of the reading rows.
-    var rvAvail = _readerViewAvailable() && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage();
+    var rvAvail = _readerViewAvailable() && !_isMapPage() && !_isAppPage();
     var rvOn = _readerViewOn && rvAvail;
     // 1. Reader View toggle — always first. A switch: tapping flips it and the
     // menu rebuilds in place (compact controls appear/disappear beneath).
@@ -19874,7 +19947,7 @@ function _buildTopbarMenuHtml() {
       readerGroup += _readerActionRowsHtml();
     }
     // 3. Read aloud.
-    if (_TTS_AVAILABLE && !_isMapPage() && !_isTubePage() && !_isExchangePage() && !_isReddotPage() && !_isPdfPage()) {
+    if (_TTS_AVAILABLE && !_isMapPage() && !_isAppPage() && !_isPdfPage()) {
       readerGroup += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
         '" onclick="event.stopPropagation();_ttsToggle()">' + _TBM_TTS_ICON +
         ' <span class="tbm-label">' + tH(_ttsSpeaking ? 'tts_stop' : 'tts_speak') + '</span></button>';
@@ -20229,11 +20302,12 @@ window.addEventListener('popstate', async (e) => {
     if (app.tube && _appFrameRoute(_tubeOpen, app.play)) return;
     if (app.exchange && _appFrameRoute(_exchangeOpen, app.q)) return;
     if (app.reddot && _appFrameRoute(_reddotOpen, app.p)) return;
+    if (app.wiki && _appFrameRoute(_wikiOpen, '')) return;
   }
   // Landing on an app's address from the article opened out of it: the app
   // is reopened below, not stepped past. (The article history's own copy of
   // that step would otherwise take a second step back.)
-  var toApp = app && app.mode === 'reader' && (app.tube || app.exchange || app.reddot);
+  var toApp = app && app.mode === 'reader' && (app.tube || app.exchange || app.reddot || app.wiki);
   // Step through article history when reader is open (mirrors in-app back button)
   if (readerOpen && articleHistory.length > 0 && !toApp) {
     _stepBackToArticle(articleHistory.pop(), false);
@@ -20269,6 +20343,8 @@ window.addEventListener('popstate', async (e) => {
     } else {
       doSearch(s.query, false);
     }
+  } else if (s && s.mode === 'reader' && s.wiki) {
+    if (!_appFrameRoute(_wikiOpen, '')) openWiki(true);
   } else if (s && s.mode === 'reader' && s.reddot) {
     if (!_appFrameRoute(_reddotOpen, s.p)) openReddot(true, s.p || '');
   } else if (s && s.mode === 'reader' && s.exchange) {

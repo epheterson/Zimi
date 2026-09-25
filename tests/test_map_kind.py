@@ -38,7 +38,6 @@ def test_a_map_is_recognised_from_its_metadata(scraper, tags, meta_name):
 @pytest.mark.parametrize(
     "scraper,tags,meta_name",
     [
-        ("mwoffliner 1.13", "wikipedia;_category:wikipedia", "wikipedia_en_all"),
         ("", "sitemaps;seo", "sitemaps_en"),  # a tag merely containing "maps"
         ("", "", "openstreetmap-wiki_en_all"),  # the wiki about OSM, not a map
         ("", "", ""),
@@ -46,6 +45,10 @@ def test_a_map_is_recognised_from_its_metadata(scraper, tags, meta_name):
 )
 def test_everything_else_is_not(scraper, tags, meta_name):
     assert srv._zim_kind(scraper, tags, meta_name) is None
+
+
+def test_a_wikipedia_is_a_wiki_not_a_map():
+    assert srv._zim_kind("mwoffliner 1.13", "wikipedia;_category:wikipedia", "wikipedia_en_all") == "wiki"
 
 
 def test_kind_beats_the_filename_but_not_the_folder(monkeypatch):

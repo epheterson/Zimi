@@ -1870,9 +1870,24 @@ _VIDEO_SCRAPERS = ("ted2zim", "youtube2zim")
 _QA_SCRAPERS = ("sotoki",)
 # Subreddits, by the scraper that made them (ArcticZim, which Zimi wraps).
 _REDDIT_SCRAPERS = ("arcticzim",)
+# Wikis, by the scraper that made them: Kiwix builds every MediaWiki wiki
+# (Wikipedia and its sister projects, and wikis beyond Wikimedia) with
+# mwoffliner. A ZIM too old to carry a Scraper is still known by its Name.
+_WIKI_SCRAPERS = ("mwoffliner",)
+WIKI_PROJECTS = (
+    "wikipedia",
+    "wiktionary",
+    "wikivoyage",
+    "wikiquote",
+    "wikibooks",
+    "wikiversity",
+    "wikinews",
+    "wikisource",
+    "wikispecies",
+)
 # Bumped when _zim_kind learns a new kind, so a cache record decided under an
 # older rule ("" for a TED ZIM) is read once more.
-KIND_VERSION = 4
+KIND_VERSION = 5
 
 
 def _zim_kind(scraper, tags, meta_name):
@@ -1896,6 +1911,8 @@ def _zim_kind(scraper, tags, meta_name):
         return "qa"
     if s.startswith(_REDDIT_SCRAPERS):
         return "reddit"
+    if s.startswith(_WIKI_SCRAPERS) or (meta_name or "").lower().startswith(WIKI_PROJECTS):
+        return "wiki"
     return None
 
 
@@ -2013,7 +2030,7 @@ def _read_map_facts(path):
 
 
 APPS_ENV = "ZIMI_APPS"
-APP_NAMES = ("maps", "tube", "exchange", "reddot")
+APP_NAMES = ("maps", "tube", "exchange", "reddot", "wiki")
 _APPS_OFF = ("0", "false", "no", "off", "none")
 _APPS_ON = ("1", "true", "yes", "on", "all")
 
@@ -2070,7 +2087,7 @@ def url_quote(name):
 
 
 def _zim_kind_of(name):
-    """The cached kind of an installed ZIM (map, video, qa, reddit) or ""."""
+    """The cached kind of an installed ZIM (map, video, qa, reddit, wiki) or ""."""
     for z in _zim_list_cache or []:
         if z.get("name") == name:
             return z.get("kind") or ""
@@ -2078,7 +2095,7 @@ def _zim_kind_of(name):
 
 
 def apps_shown():
-    """The apps (Maps, ZimiTube, ZimiExchange, Reddot) offered on this server:
+    """The apps (Maps, ZimiTube, ZimiExchange, Reddot, Zimipedia) offered on this server:
     ``ZIMI_APPS`` when set (``0``, ``1`` or a comma list of names), else the
     setting saved from Server settings, else all of them. A signed-in user
     can also hide any of them for themselves (their account's preferences).

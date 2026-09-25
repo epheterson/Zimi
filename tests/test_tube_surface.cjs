@@ -59,6 +59,9 @@ vm.runInContext([
   extract(/function _installedRedditZims\(\) \{[\s\S]*?\n\}/, '_installedRedditZims'),
   extract(/function _reddotTileHtml\(\) \{[\s\S]*?\n\}/, '_reddotTileHtml'),
   extract(/function _tubeTileHtml\(\) \{[\s\S]*?\n\}/, '_tubeTileHtml'),
+  extract(/var _WIKI_SVG = [^\n]*\n/, '_WIKI_SVG'),
+  extract(/function _installedWikiZims\(\) \{[\s\S]*?\n\}/, '_installedWikiZims'),
+  extract(/function _wikiTileHtml\(\) \{[\s\S]*?\n\}/, '_wikiTileHtml'),
   extract(/function _appsRowHtml\(\) \{[\s\S]*?\n\}/, '_appsRowHtml'),
 ].join('\n'), ctx);
 
@@ -69,7 +72,7 @@ ok('the ZimiTube tile names the video ZIMs', /<span class="zt">ZimiTube<\/span>/
 ctx.zimsCache = ctx.zimsCache.filter(z => z.kind !== 'video');
 ok('no video ZIM: the tile stays, empty, and opens the Video category', /app-empty tube-tile/.test(ctx._appsRowHtml()) && /No videos yet/.test(ctx._appsRowHtml()) && /_openCategory\(_APP_CATEGORY\.tube\)/.test(ctx._appsRowHtml()));
 ctx.zimsCache = [];
-ok('a fresh install still has the apps row, every tile a door', (ctx._appsRowHtml().match(/app-empty/g) || []).length === 4);
+ok('a fresh install still has the apps row, every tile a door', (ctx._appsRowHtml().match(/app-empty/g) || []).length === 5);
 ok('the row can be turned off for everyone (the server stamps the shell) or for a signed-in person (their account), never per browser', /dataset\.zimiApps/.test(src) && /function _appShown\(app\)/.test(src) && /APP_NAMES\.some\(_appShown\)/.test(src) && /if \(!_appsEnabled\(\)\) return '';/.test(src) && /fetch\('\/me\/prefs'/.test(src) && !/zimi_hide_apps/.test(src));
 ok('the server switch sits in Server settings, one checkbox per app, and reads its state from the server', /_msFetch\('\/manage\/apps'\)/.test(src) && /_setAppForServer\(app, on\)/.test(src) && /body: JSON\.stringify\(\{ shown: shown \}\)/.test(src));
 ctx.document.body.dataset.zimiApps = '0';
@@ -85,7 +88,7 @@ ok('an account keeps only what the server offers', ctx._appsRowHtml() === '');
 delete ctx.document.body.dataset.zimiApps; ctx._userPrefs.shown = null;
 ok('and back on', ctx._appsRowHtml() !== '');
 ctx._userSession = null;
-ok('the categories behind the doors', /_APP_CATEGORY = \{ maps: 'maps', tube: 'ted', exchange: 'stack_exchange' \}/.test(src));
+ok('the categories behind the doors', /_APP_CATEGORY = \{ maps: 'maps', tube: 'ted', exchange: 'stack_exchange', wiki: 'wikipedia' \}/.test(src));
 ok('the home page draws the row before favorites', /h \+= _appsRowHtml\(\);/.test(src));
 
 // ── opening it ───────────────────────────────────────────────────────────
@@ -107,18 +110,18 @@ const css = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.cs
 ok("the header's arrow shows on every app page: a video is a history step back, a list asks the page, the home leaves the app", /homeScope \|\| \(_isAppPage\(\) && !_appTop\);/.test(src) && /if \(_isAppPage\(\)\) \{[\s\S]*?if \(st && \(st\.play \|\| st\.q \|\| st\.p\)\) \{ if \(st\.entry\) _appEntryHome\(\); else history\.back\(\); return; \}[\s\S]*?postMessage\(\{ zimi: 'back-request' \}/.test(src) && /d\.zimi === 'at-home'[\s\S]*?if \(_isAppPage\(\)\) closeReader\(\);/.test(src) && /e\.data\.zimi === 'back-request'[\s\S]*?window\.__back\(\)[\s\S]*?tell\(\{ zimi: 'at-home' \}\)/.test(shared) && /window\.__back = function\(\) \{\s*if \(_now >= 0\) \{ closePlayer\(\); return true; \}/.test(page));
 ok('a video, a question, a post is bookmarked and remembered as the app\'s, and opens back into it', /function _appItemOpened\(app, id, title\)/.test(src) && /_histPushArticle\(zim, path, title, null, app\)/.test(src) && /if \(app\) record\.app = app;/.test(src) && /_openAppItem\(row\.dataset\.app, row\.dataset\.zim, row\.dataset\.path\)/.test(src) && /var cur = currentArticle \|\| _appItem;/.test(src));
 ok('the reader\'s bookmark buttons are for articles, not app pages', /body\.app-page #bm-panel-btn, body\.app-page\.app-noitem #library-btn, body\.map-page #bm-panel-btn, body\.map-page #library-btn \{ display: none !important; \}/.test(css));
-ok('"Open the original page" is a step: the shell opens the article with the app behind it, and the arrow (or Back) returns to the video', /function openLink\(a, zim, page, label\)/.test(shared) && /tell\(\{ zimi: 'open', zim: zim, path: page \}\)/.test(shared) && /openLink\(document\.getElementById\('w-open'\), v\.zim, v\.page, STR\.open_page\)/.test(page) && /d\.zimi === 'open'[\s\S]*?openArticle\(d\.zim, d\.path\);\n\s*if \(fromApp\) \{ articleHistory\.push\(\{ app: true \}\); updateTopbar\(\); \}/.test(src) && /if \(prev\.app\) \{ history\.back\(\); return; \}/.test(src) && /if \(replaceState && play\) st\.entry = true;/.test(src) && /if \(st\.entry\) _appEntryHome\(\); else history\.back\(\);/.test(src) && /var toApp = app && app\.mode === 'reader' && \(app\.tube \|\| app\.exchange \|\| app\.reddot\);/.test(src) && /if \(readerOpen && articleHistory\.length > 0 && !toApp\) \{/.test(src));
+ok('"Open the original page" is a step: the shell opens the article with the app behind it, and the arrow (or Back) returns to the video', /function openLink\(a, zim, page, label\)/.test(shared) && /tell\(\{ zimi: 'open', zim: zim, path: page \}\)/.test(shared) && /openLink\(document\.getElementById\('w-open'\), v\.zim, v\.page, STR\.open_page\)/.test(page) && /d\.zimi === 'open'[\s\S]*?openArticle\(d\.zim, d\.path\);\n\s*if \(fromApp\) \{ articleHistory\.push\(\{ app: true \}\); updateTopbar\(\); \}/.test(src) && /if \(prev\.app\) \{ history\.back\(\); return; \}/.test(src) && /if \(replaceState && play\) st\.entry = true;/.test(src) && /if \(st\.entry\) _appEntryHome\(\); else history\.back\(\);/.test(src) && /var toApp = app && app\.mode === 'reader' && \(app\.tube \|\| app\.exchange \|\| app\.reddot \|\| app\.wiki\);/.test(src) && /if \(readerOpen && articleHistory\.length > 0 && !toApp\) \{/.test(src));
 ok('Theater and Picture in picture sit on the stage; PIP only where a native video plays', /function stageTools\(stage, pip\)/.test(page) && /\.stage-tools \{ position: absolute; top: 8px; inset-inline-end: 8px;/.test(page) && /stageTools\(stage, pipAvailable\(vid\)\);/.test(page) && /stageTools\(stage, false\);\s*ogvControls\(stage, p\);\s*p\.play\(\);/.test(page) && !/<button id="theater"/.test(page) && !/<button id="pip"/.test(page));
 ok('an iPhone gets the decoder first for a WebM-only talk: it says it can play WebM and then cannot', /var apple = \/iPhone\|iPad\|iPod\/\.test\(ua\)[^\n]*Safari/.test(page) && /webmOnly = m\.media\.every/.test(page) && /if \(\(!playable \|\| \(apple && webmOnly\)\) && m\.ogv\) \{ playWithOgv\(v, m, stage, i\); return; \}/.test(page));
 
 // ── the box and the chrome ───────────────────────────────────────────────
 ok('typing on Tube filters the feed inside the page', /if \(_isTubePage\(\)\) \{\n\s*\/\/ Tube[^\n]*\n\s*hideSuggest\(\);\n\s*suggestTimer = setTimeout\(function\(\) \{ _tubeSearch\(val\); \}, 150\);/.test(src));
 ok('the hand-off calls the page\'s own function', /win\.tubeSearch\(val\)/.test(extract(/function _tubeSearch\(val\) \{[\s\S]*?\n\}/, '_tubeSearch')));
-ok('no reading controls on Tube, in the bar or the ⋯', /_readingText = _readingArticle && !_isMapPage\(\) && !_isTubePage\(\)/.test(src) && /_TTS_AVAILABLE && !_isMapPage\(\) && !_isTubePage\(\)/.test(src));
+ok('no reading controls on Tube, in the bar or the ⋯', /_readingText = _readingArticle && !_isMapPage\(\) && !_isTubePage\(\)/.test(src) && /_TTS_AVAILABLE && !_isMapPage\(\) && !_isAppPage\(\)/.test(src) && /function _isAppPage\(\) \{\n\s*return _isTubePage\(\)/.test(src));
 ok('the breadcrumb is ZimiTube and the box says what it is for', /bcIcon\.title = t\('tube'\)/.test(src) && /return t\('tube_search_placeholder'\)/.test(src) && (src.match(/q\.placeholder = _appPlaceholder\(\)/g) || []).length === 2);
 
 // ── a card becomes a page ────────────────────────────────────────────────
-ok('a ZIM page opened from an app gets history and an address, and the app closes', /if \(_tubeOpen \|\| _exchangeOpen \|\| _reddotOpen\) \{[\s\S]*?_tubeOpen = false;[\s\S]*?_exchangeOpen = false;[\s\S]*?_reddotOpen = false;[\s\S]*?history\.pushState\(\{ mode: 'reader', zim: _navZim, path: _navPath \}, '', _articleDeepLinkPath\(_navZim, _navPath\)\);/.test(src));
+ok('a ZIM page opened from an app gets history and an address, and the app closes', /if \(_tubeOpen \|\| _exchangeOpen \|\| _reddotOpen \|\| _wikiOpen\) \{[\s\S]*?_tubeOpen = false;[\s\S]*?_exchangeOpen = false;[\s\S]*?_reddotOpen = false;[\s\S]*?history\.pushState\(\{ mode: 'reader', zim: _navZim, path: _navPath \}, '', _articleDeepLinkPath\(_navZim, _navPath\)\);/.test(src));
 ok('closing the reader or opening any article leaves Tube', /function closeReader\(\) \{\n\s*if \(!readerOpen\) return;\n\s*_tubeOpen = false;/.test(src) && /function openArticle\(zim, path, title, opts\) \{\n\s*_tubeOpen = false;/.test(src));
 
 // ── the page ─────────────────────────────────────────────────────────────

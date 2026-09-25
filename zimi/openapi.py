@@ -418,6 +418,32 @@ def build_openapi():
                 },
             }
         },
+        "/wiki/home": {
+            "get": {
+                "summary": "Every wiki in the library (MediaWiki ZIMs: Wikipedia and its sister projects, and other wikis), grouped by project then language",
+                "operationId": "wikiHome",
+                "responses": {**_json_response("200", {"type": "object", "properties": {"wikis": {"type": "array", "items": {"type": "object", "properties": {
+                    "name": {"type": "string"}, "title": {"type": "string"}, "project": {"type": "string"}, "project_title": {"type": "string"},
+                    "language": {"type": "string"}, "icon": {"type": "boolean"}, "main_path": {"type": "string"}, "entries": {"type": "integer"},
+                }}}}, "required": ["wikis"]})},
+            }
+        },
+        "/wiki/onthisday": {
+            "get": {
+                "summary": "The day's dated events from a Wikipedia's own date page, each naming an article the ZIM holds",
+                "operationId": "wikiOnThisDay",
+                "parameters": [
+                    _param("zim", {"type": "string"}, required=True),
+                    _param("date", {"type": "string", "pattern": "^[0-9]{4}$"}, required=True, description="MMDD"),
+                ],
+                "responses": {
+                    **_json_response("200", {"type": "object", "properties": {"events": {"type": "array", "items": {"type": "object", "properties": {
+                        "event_year": {"type": "string"}, "event_text": {"type": "string"}, "path": {"type": "string"}, "title": {"type": "string"},
+                    }}}}, "required": ["events"]}),
+                    **_json_response("404", error),
+                },
+            }
+        },
         "/exchange/home": {
             "get": {
                 "summary": "Every Stack Exchange site in the library, each with its first page and top tags",

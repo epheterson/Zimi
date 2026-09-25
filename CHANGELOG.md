@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Zimipedia, an app for every wiki in the library as one (Wikipedia in any language, Wiktionary, Wikivoyage, Wikiquote and the other MediaWiki wikis): a pill per wiki that narrows everything below it, a Today page (pictures from across the wikis, On this day, a word, a quote and a place to go), search across the chosen wikis, and cards or a list. Its name for `ZIMI_APPS` is `wiki`.
+
+### Fixed
+
+- A search result from a Wikivoyage page no longer shows the page's JavaScript as its snippet.
+
 ### Changed
 
 - Create a ZIM has bigger defaults: a whole-site capture takes up to 10,000 pages, 4 GB and 10 links deep (was 200 pages, 500 MB, 5 deep), and a video capture up to 16 GB (was 4 GB). Blank fields use them; 0 still means no limit.

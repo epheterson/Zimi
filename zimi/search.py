@@ -3417,6 +3417,91 @@ def _extract_otd_events(page_html):
         return []
 
 
+_MONTH_NAMES = (
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+)
+
+
+def _date_page_html(archive, mmdd):
+    """A Wikipedia's "Month_Day" page (``September_25``) as text, or None when
+    the ZIM has none (a subset, or a language that names its date pages in
+    its own words). Must be called with _zim_lock held."""
+    try:
+        month_name = _MONTH_NAMES[int(mmdd[:2]) - 1]
+        day_num = str(int(mmdd[2:]))  # strip leading zero
+    except (ValueError, IndexError):
+        return None
+    for prefix in ["A/", ""]:
+        try:
+            entry = archive.get_entry_by_path(f"{prefix}{month_name}_{day_num}")
+            if entry.is_redirect:
+                entry = entry.get_redirect_entry()
+            # Full body (already in memory) so the Events/Births/Deaths
+            # sections aren't truncated on big Month_Day pages.
+            return bytes(entry.get_item().content).decode("utf-8", errors="replace")
+        except KeyError:
+            continue
+    return None
+
+
+def _otd_event_entry(archive, ev):
+    """The article one On-this-day line names, carrying the line's year and
+    sentence, or None when this ZIM does not hold it (a subset). Must be
+    called with _zim_lock held."""
+    for prefix in ["A/", ""]:
+        try:
+            entry = archive.get_entry_by_path(prefix + ev["link"])
+            if entry.is_redirect:
+                entry = entry.get_redirect_entry()
+            item = entry.get_item()
+            if not (item.mimetype or "").startswith("text/html"):
+                continue
+            title = entry.title or ""
+            if _meta_title_re.search(title) or len(title) < 3:
+                continue
+            return {
+                "path": entry.path,
+                "title": title,
+                "event_year": ev["year"],
+                "event_text": ev["text"],
+            }
+        except (KeyError, Exception):
+            # Subset ZIMs may not hold the target — try next line.
+            continue
+    return None
+
+
+def otd_events(archive, mmdd, limit=8, max_tries=40):
+    """Up to ``limit`` of the day's dated events whose article this ZIM holds,
+    in the page's own order, each with its year, sentence, path and title. One
+    page read and a bounded number of entry lookups (``max_tries`` lines), so
+    a subset ZIM that holds few of the named articles costs the same. Must be
+    called with _zim_lock held."""
+    page = _date_page_html(archive, mmdd)
+    if not page:
+        return []
+    out, seen = [], set()
+    for ev in _extract_otd_events(page)[:max_tries]:
+        hit = _otd_event_entry(archive, ev)
+        if hit and hit["path"] not in seen:
+            seen.add(hit["path"])
+            out.append(hit)
+            if len(out) >= limit:
+                break
+    return out
+
+
 def _get_dated_entry(archive, zim_name, mmdd, rng=None):
     """Try to find an article for today's date in date-based or content ZIMs.
 
@@ -3430,21 +3515,7 @@ def _get_dated_entry(archive, zim_name, mmdd, rng=None):
     from urllib.parse import unquote
 
     mm, dd = mmdd[:2], mmdd[2:]
-    months = [
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-    ]
-    month_name = months[int(mm) - 1]
+    month_name = _MONTH_NAMES[int(mm) - 1]
     day_num = str(int(dd))  # strip leading zero
 
     # APOD: try paths like apod.nasa.gov/apod/ap{YY}{MM}{DD}.html for recent years
@@ -3462,20 +3533,7 @@ def _get_dated_entry(archive, zim_name, mmdd, rng=None):
 
     # Wikipedia: load the "Month_Day" article and follow a random internal link
     if "wikipedia" in zim_name.lower():
-        date_page_html = None
-        for prefix in ["A/", ""]:
-            dpath = f"{prefix}{month_name}_{day_num}"
-            try:
-                entry = archive.get_entry_by_path(dpath)
-                if entry.is_redirect:
-                    entry = entry.get_redirect_entry()
-                raw = bytes(entry.get_item().content)
-                # Full body (already in memory) so the Events/Births/Deaths
-                # sections aren't truncated on big Month_Day pages.
-                date_page_html = raw.decode("utf-8", errors="replace")
-                break
-            except KeyError:
-                continue
+        date_page_html = _date_page_html(archive, mmdd)
         if date_page_html:
             # Preferred: pick an article a dated event actually names, and carry
             # the event context (year + sentence) back so the card can show the
@@ -3484,26 +3542,9 @@ def _get_dated_entry(archive, zim_name, mmdd, rng=None):
             _rng = rng or _random
             _rng.shuffle(events)
             for ev in events:
-                for prefix in ["A/", ""]:
-                    try:
-                        entry = archive.get_entry_by_path(prefix + ev["link"])
-                        if entry.is_redirect:
-                            entry = entry.get_redirect_entry()
-                        item = entry.get_item()
-                        if not (item.mimetype or "").startswith("text/html"):
-                            continue
-                        title = entry.title or ""
-                        if _meta_title_re.search(title) or len(title) < 3:
-                            continue
-                        return {
-                            "path": entry.path,
-                            "title": title,
-                            "event_year": ev["year"],
-                            "event_text": ev["text"],
-                        }
-                    except (KeyError, Exception):
-                        # Subset ZIMs may not hold the target — try next line.
-                        continue
+                hit = _otd_event_entry(archive, ev)
+                if hit:
+                    return hit
             # Fallback: no event line resolved — follow a random internal link.
             # Extract article links from the date page
             links = re.findall(
