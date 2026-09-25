@@ -443,11 +443,18 @@ def test_a_sidecar_from_before_the_sqlalchemy_pin_is_reinstalled(tmp_path, monke
             open(exe, "w").close()
         return 0
 
+    # Online: the pin goes into the sidecar in place; a failed pip leaves the
+    # sidecar where it was, and says so.
     monkeypatch.setattr(reddot, "_is_offline", lambda: False)
+    monkeypatch.setattr(reddot, "_run_stream", lambda cmd, say, **kw: 1)
+    with pytest.raises(reddot.CreateError, match="still installed"):
+        reddot.ensure_sidecar()
+    assert os.path.exists(exe) and reddot.sidecar_status()["installed"]
+
     monkeypatch.setattr(reddot, "_run_stream", fake_run)
     reddot.ensure_sidecar()
     pip = [c for c in ran if "pip" in c][0]
-    assert "sqlalchemy>=2.0,<2.1" in pip and reddot.ARCTICZIM_REQUIREMENT in pip
+    assert "sqlalchemy>=2.0,<2.1" in pip and reddot.ARCTICZIM_REQUIREMENT not in pip
     with open(os.path.join(venv, reddot._MARKER)) as f:
         assert _json.load(f)["spec"] == reddot._SIDECAR_SPEC
     assert reddot.sidecar_status()["current"]

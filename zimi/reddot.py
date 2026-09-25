@@ -148,6 +148,28 @@ def _is_offline():
     return bool(p2p.is_offline())
 
 
+def _write_marker(venv):
+    with open(os.path.join(venv, _MARKER), "w", encoding="utf-8") as f:
+        json.dump({"tool": "arcticzim", "spec": _SIDECAR_SPEC}, f)
+        f.write("\n")
+
+
+def _update_sidecar(venv, exe, say):
+    """A sidecar installed before the pins: install them into it, in place.
+    Nothing is removed first, so a failed update (no network, a pip error)
+    leaves the sidecar as it was rather than taking a working one away."""
+    if _is_offline():
+        say("note: the Reddit maker was installed before a fix it needs; it updates the next time Zimi runs it online")
+        return exe
+    say("updating the ArcticZim sidecar (a library it relies on changed)")
+    rc = _run_stream([_venv_bin(venv, "python"), "-m", "pip", "install", *ARCTICZIM_PINS], say)
+    if rc != 0:
+        raise CreateError("could not update the Reddit maker (the job log has pip's output). It is still installed; try again when online.")
+    _write_marker(venv)
+    say("ArcticZim updated")
+    return exe
+
+
 def ensure_sidecar(sink=None):
     """The arcticzim console script, installing the sidecar venv on first
     use. Needs the internet once (it is a git install), and git."""
@@ -155,10 +177,10 @@ def ensure_sidecar(sink=None):
     venv = sidecar_dir()
     exe = _exe()
     status = sidecar_status()
-    if status["current"] or (status["installed"] and _is_offline()):
+    if status["current"]:
         return exe
     if status["installed"]:
-        say("updating the ArcticZim sidecar (a dependency it relies on changed)")
+        return _update_sidecar(venv, exe, say)
     if _is_offline():
         raise CreateError(
             "the Reddit maker (ArcticZim) is not installed yet and offline mode is on. "
@@ -174,9 +196,7 @@ def ensure_sidecar(sink=None):
     if rc != 0 or not os.path.exists(exe):
         shutil.rmtree(venv, ignore_errors=True)
         raise CreateError("ArcticZim sidecar install failed (the job log has pip's output). Nothing was left behind; re-run to try again.")
-    with open(os.path.join(venv, _MARKER), "w", encoding="utf-8") as f:
-        json.dump({"tool": "arcticzim", "spec": _SIDECAR_SPEC}, f)
-        f.write("\n")
+    _write_marker(venv)
     say("ArcticZim ready")
     return exe
 
@@ -285,11 +305,13 @@ def _remove_part_files(out):
     for leftover in _glob.glob(_glob.escape(out) + ".part*"):
         try:
             if os.path.isdir(leftover):
-                shutil.rmtree(leftover, ignore_errors=True)
+                shutil.rmtree(leftover)
             else:
                 os.remove(leftover)
-        except OSError:
-            pass
+        except OSError as e:
+            # Windows keeps a file libzim still holds; say so, since cleaning
+            # up is what this is for.
+            log.warning("Reddit capture: could not remove %s: %s", leftover, e)
 
 
 def create_reddit_zim(subreddit, *, title=None, out_dir=None, out_path=None, register=False, progress=None, stop=None):
