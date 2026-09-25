@@ -938,16 +938,21 @@ def _random_pick_verdict(
     Its own function because the judging happens OUTSIDE the libzim lock while
     the reading happens inside it, and because each source wants a different
     thing: a Gutenberg cover page rather than chapter nine, a Wiktionary entry
-    that is English and not a bare inflection, a Wikiquote page that actually
-    carries a quote, and for the Discover strip, anything with a picture."""
+    for a word of the wiki's own language that it defines and that is not a
+    bare inflection, a Wikiquote page that actually carries a quote, and for
+    the Discover strip, anything with a picture."""
     # A Gutenberg pick that is not the cover is only ever a fallback. One that
     # IS the cover still has to satisfy whatever else was asked for, so it
     # falls through rather than being accepted here.
     if is_gutenberg and "_cover" not in (result.get("path") or ""):
         return "fallback"
     if is_wiktionary and preview:
-        boring = preview.get("non_english") or preview.get("boring")
-        return "fallback" if boring else "accept"
+        dull = (
+            preview.get("other_language")
+            or preview.get("boring")
+            or not preview.get("blurb")
+        )
+        return "fallback" if dull else "accept"
     if is_wikiquote and preview:
         blurb = preview.get("blurb") or ""
         return "accept" if (blurb and blurb[0] in ("\u201c", '"')) else "fallback"

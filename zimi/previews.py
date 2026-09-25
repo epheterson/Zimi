@@ -5,6 +5,8 @@ import logging
 import re
 from urllib.parse import unquote
 
+from zimi import wikilang as _wikilang
+
 log = logging.getLogger("zimi")
 
 
@@ -22,6 +24,28 @@ def strip_html(text):
     text = html.unescape(text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+
+# Tags that sit inside a run of text. strip_html turns every tag into a space,
+# which is right between blocks and wrong inside a sentence: a Hebrew prefix
+# letter is written against its link ("ל<a>קיסר</a>"), Chinese puts no space
+# between words, and a footnote mark leaves "word [ 2 ] ." behind.
+_INLINE_TAG_RE = re.compile(
+    r"</?(?:a|b|i|u|s|em|strong|span|small|big|abbr|bdi|bdo|q|sub|cite|time|font)"
+    r"\b[^>]*>",
+    re.IGNORECASE,
+)
+_FOOTNOTE_RE = re.compile(r"<sup\b[^>]*>.*?</sup>", re.DOTALL | re.IGNORECASE)
+
+
+def strip_html_inline(text):
+    """strip_html for a sentence: footnote marks dropped, and inline tags
+    removed without leaving a space the page did not have."""
+    text = strip_html(_INLINE_TAG_RE.sub("", _FOOTNOTE_RE.sub("", text)))
+    text = re.sub(r"\[\s*\d+\s*\]", "", text)  # a footnote mark left as text
+    return _SNIPPET_SPACE_BEFORE_PUNCT_RE.sub(
+        lambda g: g.group(1) or g.group(2), text
+    ).strip()
 
 
 # Some ZIMs bake a single repeated <meta description> into every page — iFixit
@@ -67,10 +91,11 @@ _SNIPPET_BOILERPLATE_RE = re.compile(
 _SNIPPET_PARAGRAPH_RE = re.compile(r"<p\b[^>]*>(.*?)</p>", re.IGNORECASE | re.DOTALL)
 # Citation markers only: a <sup> is also the 2 in E = mc2.
 _SNIPPET_CITATION_RE = re.compile(
-    r"<sup\b[^>]*\bclass=[\"'][^\"']*\breference\b[^>]*>.*?</sup>", re.IGNORECASE | re.DOTALL
+    r"<sup\b[^>]*\bclass=[\"'][^\"']*\breference\b[^>]*>.*?</sup>",
+    re.IGNORECASE | re.DOTALL,
 )
 # Tags become spaces when stripped, which leaves "relativity ." behind.
-_SNIPPET_SPACE_BEFORE_PUNCT_RE = re.compile(r"\s+([.,;:!?)\]])|([(\[])\s+")
+_SNIPPET_SPACE_BEFORE_PUNCT_RE = re.compile(r"\s+([.,;:!?)\]。、，；：])|([(\[])\s+")
 # Shorter than this is a caption, a byline or an empty <p></p>, not a lead.
 _SNIPPET_MIN_PARAGRAPH = 60
 
@@ -582,90 +607,174 @@ def _extract_preview_gutenberg(html_str, archive, zim_name, path, entry, result)
                     result["thumbnail"] = f"/w/{zim_name}/{resolved}"
 
 
-def _extract_wiktionary_pos_and_def(section_html, result, pos_heading_levels):
-    """Extract part of speech and definition from a wiktionary section.
+_HEADING_RE = re.compile(r"<h([1-6])\b[^>]*>(.*?)</h\1>", re.DOTALL | re.IGNORECASE)
+# What a definition carries after its sense and is not the sense: nested
+# examples and quotations, and Russian's "◆" example lines.
+_WIKT_DEF_TAIL_RE = re.compile(r"<(?:ul|ol|dl|table)\b|◆", re.IGNORECASE)
+_WIKT_DEF_MAX = 200
+# Where a sense can be: the first filled item of a numbered list, an indented
+# line (German and Spanish number their senses in a definition list), or a
+# paragraph (Hindi).
+_WIKT_SENSE_OPENERS = (
+    r"<ol\b[^>]*>\s*(?:<li\b[^>]*>\s*</li>\s*)*<li\b[^>]*>",
+    r"<dd\b[^>]*>",
+    r"<p\b[^>]*>",
+)
+# A sense numbered in the text rather than by a list: "[1]" on German
+# Wiktionary, "१." in Hindi Wiktionary's dictionary transcriptions.
+_WIKT_SENSE_NUMBER_RE = re.compile(r"^\s*(?:\[\s*1\s*\]|[1१]\s*[.)])\s*")
+# A paragraph that opens on a bold label names what follows it and then the
+# next thing: "<b>परिभाषा</b>: ... <b>उदाहरण</b>: ..." (definition, example).
+_WIKT_LABEL_RE = re.compile(r"^\s*<b\b[^>]*>[^<]{1,20}</b>\s*[:：]", re.IGNORECASE)
+_WIKT_SMALL_LABEL_RE = re.compile(
+    r"^\s*(?:<span\b[^>]*>\s*)?<small\b.*?</small>\s*(?:</span>)?",
+    re.DOTALL | re.IGNORECASE,
+)
+_ARABIC_MARKS_RE = re.compile(r"[ً-ٰٟ]")
 
-    pos_heading_levels: regex character class for heading levels to search,
-    e.g. '34' for <h3>/<h4> or '234' for <h2>/<h3>/<h4>.
-    Populates result["part_of_speech"], result["blurb"], result["boring"] in place.
-    """
-    pos_pattern = r"<h[" + pos_heading_levels + r"][^>]*>(.*?)</h"
-    for pos_m in re.finditer(pos_pattern, section_html, re.DOTALL | re.IGNORECASE):
-        pos_text = strip_html(pos_m.group(1)).strip()
-        if pos_text.lower() in (
-            "noun",
-            "verb",
-            "adjective",
-            "adverb",
-            "pronoun",
-            "preposition",
-            "conjunction",
-            "interjection",
-            "determiner",
-            "particle",
-            "prefix",
-            "suffix",
-        ):
-            result["part_of_speech"] = pos_text
-            break
-    # Definition from first <ol><li> — skip boring inflected forms
-    _boring_def = re.compile(
-        r"^(plural of |third-person |simple past |past participle |present participle |alternative |archaic |obsolete |misspelling |eye dialect |nonstandard )",
-        re.IGNORECASE,
+
+def _wiktionary_headings(html_str):
+    """[(start, end, level, text)] for every heading of a page."""
+    return [
+        (m.start(), m.end(), int(m.group(1)), strip_html_inline(m.group(2)))
+        for m in _HEADING_RE.finditer(html_str)
+    ]
+
+
+def _is_language_heading(text, names):
+    """Whether a heading names one of ``names``: "Français", "Haus (Deutsch)"."""
+    t = re.sub(r"\s+", "", text)
+    return any(t == n or t.endswith("(" + n + ")") for n in names)
+
+
+def _wiktionary_section(html_str, facts):
+    """The part of an entry written in the wiki's own language, as
+    (html, headings within it), or None when the page has no such part (an
+    English word on German Wiktionary). A wiki that writes one language only
+    has no language headings, and its whole page is the part."""
+    heads = _wiktionary_headings(html_str)
+    if not facts or facts.get("monolingual"):
+        return html_str, heads
+    for i, (start, _end, level, text) in enumerate(heads):
+        if _is_language_heading(text, facts["names"]):
+            stop = next((h[0] for h in heads[i + 1 :] if h[2] <= level), len(html_str))
+            inner = [
+                (s - start, e - start, lv, t)
+                for s, e, lv, t in heads[i + 1 :]
+                if s < stop
+            ]
+            return html_str[start:stop], inner
+    return None
+
+
+def _first_definition(html_str):
+    """The first sense a stretch of an entry defines, without its examples,
+    trimmed to fit a card; "" when it defines none."""
+    for opener in _WIKT_SENSE_OPENERS:
+        bodies = []
+        for m in re.finditer(opener, html_str, re.IGNORECASE):
+            closing = re.search(r"</(?:li|dd|p)>", html_str[m.end() :])
+            if closing:
+                bodies.append(html_str[m.end() : m.end() + closing.start()])
+        # German indents its hyphenation and pronunciation the way it
+        # indents its senses; the senses are the lines numbered "[1]".
+        numbered = [b for b in bodies if _WIKT_SENSE_NUMBER_RE.match(strip_html(b))]
+        for body in numbered or bodies:
+            text = _definition_text(body)
+            if text:
+                return text
+    return ""
+
+
+def _definition_text(body):
+    """One list item, indented line or paragraph of an entry as a sense."""
+    # A register label set small before the sense ("לשון המקרא", Biblical
+    # Hebrew) runs into it once the tags are gone.
+    body = _WIKT_SMALL_LABEL_RE.sub("", body, count=1)
+    label = _WIKT_LABEL_RE.match(body)
+    if label:
+        body = body[label.end() :]
+        nxt = re.search(r"<b\b", body, re.IGNORECASE)
+        body = body[: nxt.start()] if nxt else body
+    tail = _WIKT_DEF_TAIL_RE.search(body)
+    if tail:
+        body = body[: tail.start()]
+    # A paragraph that lists its senses line by line: the first numbered
+    # line is the sense ("घर संज्ञा पुं॰ [सं॰ गृह]<br><br>१. मनुष्यों के ...").
+    lines = [strip_html_inline(part) for part in re.split(r"<br\b[^>]*>", body)]
+    lines = [ln for ln in lines if ln]
+    numbered = [ln for ln in lines if _WIKT_SENSE_NUMBER_RE.match(ln)]
+    text = _WIKT_SENSE_NUMBER_RE.sub("", (numbered or lines or [""])[0]).strip()
+    return text[:_WIKT_DEF_MAX] if len(text) > 1 else ""
+
+
+def _wiktionary_pos(section, heads, facts):
+    """(part of speech, is an inflected form, where its senses start). The
+    start is None for an edition that heads its senses ("釋義", "Значение")
+    when the part read holds no such heading: what comes first there is
+    pronunciation or etymology, and is no definition."""
+    pos_words = tuple(w.lower() for w in facts.get("pos", ()))
+    forms = tuple(w.lower() for w in facts.get("forms", ()))
+    senses = tuple(w.lower() for w in facts.get("senses", ()))
+    for _s, e, _level, text in heads:
+        t = text.lower()
+        if forms and t.startswith(forms):
+            return None, True, e
+        if pos_words and t.startswith(pos_words):
+            return text[:40], False, e
+    start = next(
+        (e for _s, e, _lv, t in heads if senses and t.lower().startswith(senses)),
+        None if senses else 0,
     )
-    for def_m in re.finditer(
-        r"<ol[^>]*>\s*<li[^>]*>(.*?)</li>", section_html, re.DOTALL
-    ):
-        def_text = strip_html(def_m.group(1)).strip()
-        def_text = re.split(r"\n", def_text)[0].strip()
-        if len(def_text) > 5 and not def_text.startswith(("Category:", "See also")):
-            if _boring_def.match(def_text):
-                result["boring"] = True  # signal to retry
-            else:
-                result["blurb"] = def_text[:200]
-            break
-
-
-def _extract_preview_wiktionary(html_str, zim_name, result):
-    """Extract definition and part of speech from a Wiktionary article (English only).
-
-    Populates result["part_of_speech"], result["blurb"], result["boring"],
-    and result["non_english"] in place.
-    """
-    # Only extract from the English section of the page
-    eng_m = re.search(r'<h2[^>]*id=["\']English["\']', html_str[:30000], re.IGNORECASE)
-    if eng_m:
-        # Slice from English header to next <h2> (next language section) or end
-        eng_start = eng_m.start()
-        next_h2 = re.search(
-            r"<h2[^>]*id=", html_str[eng_start + 50 : 30000], re.IGNORECASE
+    # Hebrew states the part of speech in a table row ("חלק דיבר | שם־עצם").
+    label = facts.get("pos_label")
+    if label:
+        m = re.search(
+            re.escape(label) + r"\s*(?:</[^>]+>\s*)+<td\b[^>]*>(.*?)</td>",
+            section,
+            re.DOTALL,
         )
-        eng_end = (eng_start + 50 + next_h2.start()) if next_h2 else 30000
-        eng_section = html_str[eng_start:eng_end]
-        # Part of speech from <h3>/<h4>, definition from <ol><li>
-        _extract_wiktionary_pos_and_def(eng_section, result, "34")
-    else:
-        # No <h2 id="English"> — could be Simple Wiktionary (monolingual, no language headers)
-        # or a non-English entry. Check if page has any <ol><li> definitions.
-        is_simple = "simple" in zim_name.lower()
-        if is_simple:
-            # Simple Wiktionary: treat entire page as English content
-            eng_section = html_str[:30000]
-            # Part of speech: Simple Wiktionary uses <h2> for POS (not nested under language)
-            _extract_wiktionary_pos_and_def(eng_section, result, "234")
-            if not result.get("part_of_speech"):
-                # Try inline pattern: (noun), (verb), etc.
-                pos_inline = re.search(r"\((\w+)\)", eng_section[:3000])
-                if pos_inline and pos_inline.group(1).lower() in (
-                    "noun",
-                    "verb",
-                    "adjective",
-                    "adverb",
-                ):
-                    result["part_of_speech"] = pos_inline.group(1).capitalize()
-        else:
-            # Full Wiktionary, no English section — flag for the random endpoint to skip
-            result["non_english"] = True
+        if m and strip_html_inline(m.group(1)):
+            return strip_html_inline(m.group(1))[:40], False, start
+    # Russian and Hindi's dictionary pages say it in a sentence
+    # ("Существительное, неодушевлённое, ..."): the first such word.
+    plain = strip_html_inline(section[:8000])
+    hits = sorted((plain.find(w), w) for w in facts.get("pos", ()) if w in plain)
+    return (hits[0][1] if hits else None), False, start
+
+
+def _extract_preview_wiktionary(html_str, zim_name, result, lang="", title=""):
+    """Part of speech and first definition of a Wiktionary entry, read in the
+    wiki's own language (zimi/wikilang.py has what each edition calls things).
+
+    Populates result["part_of_speech"], result["blurb"], and the two flags
+    the random endpoint uses to pass a pick over: result["boring"] (an
+    inflected form) and result["other_language"] (the page defines a word of
+    another language: it has no section in the wiki's own, or, in a language
+    with a script of its own, its headword is written in another script)."""
+    facts = _wikilang.wiktionary_facts(lang, zim_name) or {}
+    found = _wiktionary_section(html_str, facts)
+    if found is None or (title and not _wikilang.in_own_script(title, lang)):
+        result["other_language"] = True
+        return
+    section, heads = found
+    pos, is_form, start = _wiktionary_pos(section, heads, facts)
+    if pos:
+        result["part_of_speech"] = pos
+    definition = "" if start is None else _first_definition(section[start:])
+    if title and definition.startswith(title + " "):
+        # A dictionary transcription restates the headword and its grammar
+        # before the sense: "सालुर संज्ञा पुं॰ [सं॰] मेढ़क ।" is "मेढ़क ।".
+        definition = re.sub(r"^.*?\]\s*", "", definition, count=1)
+    form_defs = facts.get("form_defs")
+    if is_form or (
+        definition
+        and form_defs
+        and re.match(form_defs, _ARABIC_MARKS_RE.sub("", definition), re.IGNORECASE)
+    ):
+        result["boring"] = True
+    elif definition:
+        result["blurb"] = definition
 
 
 def _extract_preview_blurb(html_str):
@@ -833,7 +942,13 @@ def _extract_preview(archive, zim_name, path):
         _extract_preview_gutenberg(html_str, archive, zim_name, path, entry, result)
 
     if "wiktionary" in zim_lower:
-        _extract_preview_wiktionary(html_str, zim_name, result)
+        _extract_preview_wiktionary(
+            html_str,
+            zim_name,
+            result,
+            _wikilang.archive_language(archive),
+            entry_title,
+        )
 
     # -- Generic blurb fallback --
     if not result["blurb"]:

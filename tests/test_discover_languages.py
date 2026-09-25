@@ -155,3 +155,143 @@ def test_the_dated_pick_comes_from_the_wikis_own_date_page(tmp_path, lang):
     assert got["event_year"] == FIRST_EVENT[lang][0]
     listed = search.otd_events(archive, "0925")
     assert [e["path"] for e in listed] == [article]
+
+
+# ── Word of the day ───────────────────────────────────────────────────────
+
+# fixture -> (part of speech, the definition starts with), from each
+# edition's entry for a word of its own language.
+WORDS = {
+    "wikt_en_kettle.html": ("Noun", "(cooking) A vessel for boiling a liquid"),
+    "wikt_de_Haus.html": (
+        "Substantiv, n",
+        "zu einem bestimmten Zweck erbautes Gebäude",
+    ),
+    "wikt_fr_maison.html": ("Nom commun", "(Construction) Bâtiment servant de logis"),
+    "wikt_es_casa.html": ("Sustantivo femenino", "Edificación destinada a vivienda."),
+    "wikt_pt_casa.html": ("Substantivo", "construção que serve de moradia"),
+    "wikt_ru_dom.html": (
+        "Существительное",
+        "архитектурное сооружение, предназначенное",
+    ),
+    "wikt_zh_diannao.html": ("名詞", "原用於數字計算的電子計算機"),
+    "wikt_ar_qahafa.html": ("فعل", "قحف المطرُ ـ قَحْفًا: اشتدّ فجأة"),
+    "wikt_he_revava.html": ("שם־עצם", "עשרת אלפים; 10,000."),
+    "wikt_hi_ghar.html": ("संज्ञा", "निवास या रहने का स्थान।"),
+    # Hindi Wiktionary's transcriptions of a printed dictionary: headword,
+    # grammar and etymology, then the numbered senses.
+    "wikt_hi_chinghad.html": ("संज्ञा", "चीख मारने का शब्द । चिल्लाहट ।"),
+}
+# The headwords of the fixtures whose file names are transliterated, so the
+# repository's paths stay ASCII.
+HEADWORDS = {
+    "dom": "дом",
+    "diannao": "電腦",
+    "qahafa": "قَحَفَ",
+    "revava": "רבבה",
+    "ghar": "घर",
+    "chinghad": "चिंघाड़",
+    "Haeuser": "Häuser",
+}
+
+
+def _word(fixture):
+    from zimi.previews import _extract_preview_wiktionary
+
+    _, lang, word = fixture[: -len(".html")].split("_", 2)
+    word = HEADWORDS.get(word, word)
+    result = {}
+    _extract_preview_wiktionary(
+        _fixture(fixture), f"wiktionary_{lang}_all", result, lang, word
+    )
+    return result
+
+
+@pytest.mark.parametrize("fixture", sorted(WORDS))
+def test_word_of_the_day_reads_the_editions_own_language_section(fixture):
+    got = _word(fixture)
+    pos, definition = WORDS[fixture]
+    assert got.get("part_of_speech") == pos
+    assert (got.get("blurb") or "").startswith(definition), got
+    assert not got.get("other_language") and not got.get("boring")
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    [
+        "wikt_de_house.html",  # "house (Englisch)"
+        "wikt_es_house.html",  # "Inglés"
+        "wikt_pt_house.html",  # "Inglês"
+        "wikt_ru_house.html",  # "Английский"
+        "wikt_zh_house.html",  # "英語"
+        "wikt_ar_mashers.html",  # "إنجليزية"
+    ],
+)
+def test_a_word_of_another_language_is_passed_over(fixture):
+    assert _word(fixture).get("other_language") is True
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    [
+        "wikt_en_houses.html",  # "plural of house"
+        "wikt_de_Haeuser.html",  # "Deklinierte Form"
+        "wikt_fr_maisons.html",  # "Forme de nom commun"
+        "wikt_pt_casas.html",  # "Forma de substantivo"
+    ],
+)
+def test_an_inflected_form_is_passed_over(fixture):
+    assert _word(fixture).get("boring") is True
+
+
+def test_a_french_word_on_french_wiktionary_is_french_even_when_english_too():
+    # fr.wiktionary's "house" opens with a French section (house music);
+    # that is the word of the day there, not the English noun below it.
+    got = _word("wikt_fr_house.html")
+    assert got.get("part_of_speech") == "Nom commun"
+    assert "Genre musical" in got.get("blurb", "")
+
+
+def test_the_card_passes_over_what_it_cannot_show():
+    from zimi.http import _random_pick_verdict
+
+    def verdict(preview):
+        return _random_pick_verdict(
+            {"path": "A/x"},
+            dict({"thumbnail": None, "blurb": "a sense"}, **preview),
+            is_gutenberg=False,
+            is_wiktionary=True,
+            is_wikiquote=False,
+            require_thumb=True,
+        )
+
+    assert verdict({}) == "accept"
+    assert verdict({"other_language": True}) == "fallback"
+    assert verdict({"boring": True}) == "fallback"
+    assert verdict({"blurb": None}) == "fallback"
+
+
+def test_a_hebrew_wiktionary_zim_reads_as_hebrew(tmp_path):
+    """Through the ZIM, as /random reads it: the language comes from the
+    archive's own metadata, not from its file name."""
+    from libzim.reader import Archive
+
+    from zimi.previews import _extract_preview
+
+    path = _html_zim(
+        str(tmp_path / "renamed.zim"),
+        "heb",
+        "wiktionary_he_all",
+        {
+            "רבבה": ("רבבה", _fixture("wikt_he_revava.html")),
+            "Geschäft": ("Geschäft", "<h2>Geschäft</h2><ol><li>עסק</li></ol>"),
+        },
+    )
+    archive = Archive(path)
+    got = _extract_preview(archive, "renamed-wiktionary", "רבבה")
+    assert got["part_of_speech"] == "שם־עצם"
+    assert got["blurb"].startswith("עשרת אלפים")
+    # A German word on the Hebrew Wiktionary is not the Hebrew word of the day.
+    assert _extract_preview(archive, "renamed-wiktionary", "Geschäft").get(
+        "other_language"
+    )

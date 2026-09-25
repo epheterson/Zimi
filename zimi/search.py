@@ -23,7 +23,7 @@ from libzim.search import Query, Searcher
 from libzim.suggestion import SuggestionSearcher
 
 from zimi import wikilang as _wikilang
-from zimi.previews import strip_html
+from zimi.previews import strip_html, strip_html_inline
 
 log = logging.getLogger("zimi")
 
@@ -3340,11 +3340,6 @@ def _otd_heading_re(words):
     return re.compile(r"<h[2-4][^>]*>(?:\s|<[^>]+>)*(?:" + alt + r")")
 
 
-_INLINE_TAG_RE = re.compile(
-    r"</?(?:a|b|i|u|s|em|strong|span|small|big|abbr|bdi|bdo|q|sub|cite|time|font)"
-    r"\b[^>]*>",
-    re.IGNORECASE,
-)
 _otd_start_re = _otd_heading_re(_wikilang.OTD_START_HEADINGS)
 _otd_end_re = _otd_heading_re(_wikilang.OTD_END_HEADINGS)
 # A link that leaves the wiki: another language's article, or one this wiki
@@ -3395,18 +3390,9 @@ def _extract_otd_events(page_html):
         scan = scan[: end.start()] if end else scan[:_OTD_SCAN_CAP]
         events = []
         for li in re.findall(r"<li\b[^>]*>(.*?)</li>", scan, re.DOTALL | re.IGNORECASE):
-            # Drop <sup> footnote/citation markers before flattening so they
-            # don't leave "[ 19 ]" litter in the sentence.
-            li = re.sub(
-                r"<sup\b[^>]*>.*?</sup>", "", li, flags=re.DOTALL | re.IGNORECASE
-            )
-            # Inline tags come off without leaving a space where the page has
-            # none: a Hebrew prefix letter is written against its link
-            # ("ל<a>קיסר</a>") and Chinese puts no spaces between words.
-            plain = strip_html(_INLINE_TAG_RE.sub("", li))
-            plain = re.sub(r"\[\s*\d+\s*\]", "", plain)  # any remaining [1] marks
-            plain = re.sub(r"\s+([,.;:])", r"\1", plain).strip()
-            m = _otd_line_re.match(plain)
+            # Footnote marks dropped, and inline tags removed without pushing
+            # a space into a Hebrew prefix letter or between Chinese words.
+            m = _otd_line_re.match(strip_html_inline(li))
             if not m:
                 continue
             year, text = _wikilang.otd_year(m.group(1)), m.group(2).strip()
