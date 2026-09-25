@@ -371,3 +371,33 @@ def test_a_quote_in_another_script_is_passed_over_for_one_in_the_wikis_own():
     _extract_preview_wikiquote(page, got, "比爾·莫瑞", "zh")
     assert got["blurb"].startswith("“想要吵贏")
     assert got["attribution"] == "比爾·莫瑞"
+
+
+def test_a_translation_label_and_a_disambiguation_notice_are_not_the_quote():
+    from zimi.previews import _extract_preview_wikiquote
+
+    # he.wikiquote gives a film's English line, then its translation.
+    page = (
+        '<ul><li>".You can\'t stop the time Charlie, Time is changing, People are '
+        'changing"<ul><li>תרגום: "אתה לא יכול לעצור את הזמן צ\'רלי, הזמן משתנה, '
+        'אנשים משתנים."</li></ul></li></ul>'
+    )
+    got = {"title": None}
+    _extract_preview_wikiquote(page, got, "כבלים", "he")
+    assert got["blurb"].startswith("“אתה לא יכול"), got
+    # fr.wikiquote opens a disambiguation page with an italic notice.
+    page = (
+        "<dl><dd><div class=\"\"><i>Cette page d’homonymie répertorie les "
+        "différents sujets et articles partageant un même nom.</i></div></dd></dl>"
+    )
+    got = {"title": None}
+    _extract_preview_wikiquote(page, got, "Disque", "fr")
+    assert not got.get("blurb")
+
+
+def test_a_chinese_lead_sentence_is_a_blurb():
+    from zimi.previews import _extract_preview_blurb
+
+    assert _extract_preview_blurb("<p>鄞州区是浙江省宁波市的一个市辖区。</p>") == (
+        "鄞州区是浙江省宁波市的一个市辖区。"
+    )

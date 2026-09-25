@@ -3665,10 +3665,14 @@ def _get_dated_entry(archive, zim_name, mmdd, rng=None):
             title = re.sub(r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s*::\s*", "", title)
             return {"path": path, "title": title.strip()}
 
-    # FTS search: look for "month day" in article titles
+    # FTS search: look for the day, in the words of the ZIM's language
+    # ("September 25", "25. September", "9月25日")
+    lang = _wikilang.archive_language(archive)
+    words = _wikilang.date_page_titles(lang, int(mm), int(dd))
+    day_words = words[0].replace("_", " ") if words else f"{month_name} {day_num}"
     try:
         searcher = Searcher(archive)
-        query = Query().set_query(f"{month_name} {day_num}")
+        query = Query().set_query(day_words)
         search = searcher.search(query)
         count = search.getEstimatedMatches()
         if count > 0:
@@ -3677,10 +3681,7 @@ def _get_dated_entry(archive, zim_name, mmdd, rng=None):
             if result:
                 return result
     except Exception as e:
-        log.debug(
-            "Dated entry FTS search failed for '%s %s': %s", month_name, day_num, e
-        )
-        pass
+        log.debug("Dated entry FTS search failed for '%s': %s", day_words, e)
 
     return None
 

@@ -266,6 +266,12 @@ _QUOTE_MARKS = {
 _QUOTE_SOURCE_SPLIT_RE = re.compile(r"\s+~\s+|\s*(?:——|―)\s*|\s+(?:--|[–—-])\s+")
 
 
+_QUOTE_LABEL_RE = re.compile(r"^[^\s:：\"“„«「]{1,12}\s?[:：]\s*(?=[\"“„«「])")
+# An indented line that is a notice, not a quote: a disambiguation or
+# maintenance banner set in a <div>, or a line wholly in italics.
+_QUOTE_NOTICE_RE = re.compile(r"^\s*(?:<div\b|<i>(?:(?!</i>).)*</i>\s*$)", re.DOTALL)
+
+
 def _unwrap_quote(text):
     """(the quote without the marks around it, what follows it) when the
     text opens with a quotation mark and closes it, else (text, "")."""
@@ -457,7 +463,8 @@ def _wikiquote_candidates(html_str):
                 out.append((m.start(), True, opening + q.group(1) + closing, "", ""))
                 break
     for m in re.finditer(r"<dd>(.*?)</dd>", html_str, re.DOTALL):
-        out.append((m.start(), False, m.group(1), "", ""))
+        if not _QUOTE_NOTICE_RE.match(m.group(1)):
+            out.append((m.start(), False, m.group(1), "", ""))
     out.sort(key=lambda c: c[0])
     return [c for c in out if c[1]] + [c for c in out if not c[1]]
 
@@ -475,7 +482,8 @@ def _extract_preview_wikiquote(html_str, result, entry_title, lang=""):
     is passed over for one its readers can read."""
     page_title = result.get("title") or entry_title
     for _pos, _strong, own, nested, source in _wikiquote_candidates(html_str):
-        text = strip_html_inline(own)
+        # A label before a quote in marks: "תרגום: "..."" (a translation).
+        text = _QUOTE_LABEL_RE.sub("", strip_html_inline(own), count=1)
         quote, tail = _unwrap_quote(text)
         tilde = None
         if quote == text:
@@ -913,7 +921,11 @@ def _extract_preview_blurb(html_str):
     )
     for pm in re.finditer(r"<p\b[^>]*>(.*?)</p>", html_str, re.DOTALL | re.IGNORECASE):
         text = strip_html(pm.group(1))
-        if len(text) > 40 and not _skip_blurb.search(text):
+        # Chinese and Japanese say in 12 characters what takes 40 in English:
+        # "鄞州区是浙江省宁波市的一个市辖区。" is a whole lead sentence.
+        if len(text) > (12 if _CJK_RE.search(text) else 40) and not _skip_blurb.search(
+            text
+        ):
             return text[:200]
     return None
 
