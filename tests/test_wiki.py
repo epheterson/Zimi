@@ -3,7 +3,9 @@
 Run: pytest tests/test_wiki.py -v
 """
 
+import datetime
 import json
+import logging
 import os
 import sys
 import threading
@@ -17,7 +19,7 @@ sys.path.insert(
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import zimi.server as srv  # noqa: E402
-from zimi import wiki  # noqa: E402
+from zimi import datepages, wiki  # noqa: E402
 
 MW = "mwoffliner 1.14.0"
 
@@ -123,6 +125,42 @@ def test_a_mediawiki_zim_is_a_wiki_by_its_maker_or_its_name():
     assert srv._zim_kind("sotoki v3.1.1", "", "") == "qa"
 
 
+def test_a_renamed_wiki_is_filed_by_its_metadata_name(tmp_path, monkeypatch):
+    """server._zim_kind knows a renamed enwiki.zim is a wiki by its Name;
+    Zimipedia files it under the same Name, not the filename."""
+    _library(
+        tmp_path,
+        monkeypatch,
+        [
+            (
+                "enwiki.zim",
+                {
+                    "Scraper": MW,
+                    "Name": "wikipedia_en_all",
+                    "Language": "eng",
+                    "Title": "Wikipedia",
+                },
+                {},
+            ),
+            (
+                "wikipedia_quotes.zim",
+                {
+                    "Scraper": MW,
+                    "Name": "wikiquote_en_all",
+                    "Language": "eng",
+                    "Title": "Wikiquote",
+                },
+                {},
+            ),
+        ],
+    )
+    got = {w["name"]: w["project"] for w in wiki.wikis()}
+    assert got == {"enwiki": "wikipedia", "wikipedia_quotes": "wikiquote"}
+    # A library read before the project was kept reads the Name once.
+    path = str(tmp_path / "zims" / "enwiki.zim")
+    assert srv._read_wiki_project(path, "enwiki") == "wikipedia"
+
+
 def test_project_of_names_the_wikimedia_project():
     assert wiki.project_of("wikipedia_fr") == "wikipedia"
     assert wiki.project_of("wiktionary") == "wiktionary"
@@ -208,6 +246,9 @@ def test_the_dated_pick_still_carries_its_event(tmp_path, monkeypatch):
 # ── through HTTP ────────────────────────────────────────────────────────────
 
 
+DAY = datetime.date(2026, 9, 25)
+
+
 @pytest.fixture
 def served(tmp_path, monkeypatch):
     from http.server import ThreadingHTTPServer
@@ -215,6 +256,7 @@ def served(tmp_path, monkeypatch):
     from zimi.http import ZimHandler
 
     _library(tmp_path, monkeypatch, LIBRARY)
+    monkeypatch.setattr(wiki, "_today", lambda: DAY)
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
     t = threading.Thread(target=httpd.serve_forever, daemon=True)
     t.start()
@@ -267,3 +309,276 @@ def test_the_page_is_served_with_the_shared_parts_inlined(served):
         body = r.read().decode()
     assert "<!--@apps.css@-->" not in body and "<!--@apps.js@-->" not in body
     assert "function zpath(" in body and ".chips {" in body
+
+
+# ── On this day: what can be asked, and what a failure does ───────────────
+
+
+def test_only_today_yesterday_and_tomorrow_can_be_asked_for(monkeypatch):
+    monkeypatch.setattr(wiki, "_today", lambda: datetime.date(2026, 1, 1))
+    assert wiki.open_days() == {"20251231", "20260101", "20260102"}
+    assert wiki.mmdd_open("1231") and wiki.mmdd_open("0102")
+    assert not wiki.mmdd_open("0925")
+    # Month 00 is not December, and September has no 31st.
+    assert not wiki.mmdd_open("0015") and not wiki.mmdd_open("0931")
+
+
+def test_the_date_is_checked_before_anything_is_read(served):
+    en = _get(served + "/wiki/home")[1]["wikis"][0]["name"]
+    for bad in ("0015", "1301", "0931", "1225", "x"):
+        assert _get(served + "/wiki/onthisday?zim=%s&date=%s" % (en, bad))[0] == 400
+    assert _get(served + "/wiki/onthisday?zim=%s&date=0926" % en)[0] == 200  # tomorrow
+
+
+def _broken(*a, **k):
+    raise RuntimeError("disk gone")
+
+
+def test_a_failed_read_is_logged_not_kept(tmp_path, monkeypatch, caplog):
+    _library(tmp_path, monkeypatch, LIBRARY)
+    en = next(
+        w["name"]
+        for w in wiki.wikis()
+        if w["language"] == "en" and w["project"] == "wikipedia"
+    )
+    real = datepages.read_page
+    monkeypatch.setattr(datepages, "read_page", _broken)
+    with caplog.at_level(logging.WARNING, logger="zimi"):
+        assert wiki.on_this_day(en, "0925") is None
+    assert any(
+        "disk gone" in r.getMessage()
+        for r in caplog.records
+        if r.levelno == logging.WARNING
+    )
+    # Not kept: once the page reads again, the events are there.
+    monkeypatch.setattr(datepages, "read_page", real)
+    assert [e["event_year"] for e in wiki.on_this_day(en, "0925")] == ["1666", "1854"]
+
+
+def test_a_failure_answers_503_not_an_empty_day(served, monkeypatch):
+    en = _get(served + "/wiki/home")[1]["wikis"][0]["name"]
+    monkeypatch.setattr(datepages, "read_page", _broken)
+    assert _get(served + "/wiki/onthisday?zim=%s&date=0925" % en)[0] == 503
+
+
+class _CountingLock:
+    def __init__(self, lock):
+        self.lock, self.n = lock, 0
+
+    def __enter__(self):
+        self.n += 1
+        return self.lock.__enter__()
+
+    def __exit__(self, *a):
+        return self.lock.__exit__(*a)
+
+
+def test_the_library_lock_is_held_per_read_not_for_the_whole_day(tmp_path, monkeypatch):
+    """Every other request needs the library lock: On this day takes it for
+    the date page and again for each line's article, never across them."""
+    _library(tmp_path, monkeypatch, LIBRARY)
+    en = next(
+        w["name"]
+        for w in wiki.wikis()
+        if w["language"] == "en" and w["project"] == "wikipedia"
+    )
+    counting = _CountingLock(srv._zim_lock)
+    monkeypatch.setattr(srv, "_zim_lock", counting)
+    wiki.on_this_day(en, "0925")
+    # The archive, the page, and each of the three lines: five times.
+    assert counting.n == 5
+
+
+def test_every_wikipedia_language_reads_its_own_date_page(tmp_path, monkeypatch):
+    """A German Wikipedia's page for the day is 25._September, a Hebrew
+    one's 25_בספטמבר, each under its own heading for the events."""
+    de_page = (
+        '<h2>Ereignisse</h2><ul><li><a href="./1666">1666</a>: Der '
+        '<a href="./Fire">Große Brand</a> von London beginnt.</li></ul>'
+        '<h2>Geboren</h2><ul><li>1854: <a href="./Water">Wasser</a></li></ul>'
+    ).encode()
+    he_page = (
+        '<h2>אירועים היסטוריים ביום זה</h2><ul><li><a href="./1854">1854</a> – '
+        '<a href="./Water">מים</a> נושאים כולרה</li></ul>'
+    ).encode()
+    _library(
+        tmp_path,
+        monkeypatch,
+        [
+            (
+                "wikipedia_de_all_2026-08.zim",
+                {
+                    "Scraper": MW,
+                    "Name": "wikipedia_de_all",
+                    "Language": "deu",
+                    "Title": "Wikipedia",
+                },
+                {"25._September": de_page},
+            ),
+            (
+                "wikipedia_he_all_2026-08.zim",
+                {
+                    "Scraper": MW,
+                    "Name": "wikipedia_he_all",
+                    "Language": "heb",
+                    "Title": "ויקיפדיה",
+                },
+                {"25_בספטמבר": he_page},
+            ),
+        ],
+    )
+    got = {w["language"]: wiki.on_this_day(w["name"], "0925") for w in wiki.wikis()}
+    assert [(e["event_year"], e["path"]) for e in got["de"]] == [("1666", "A/Fire")]
+    assert [(e["event_year"], e["path"]) for e in got["he"]] == [("1854", "A/Water")]
+
+
+# ── Today: one thing from every wiki ──────────────────────────────────────
+
+
+def _wiki_zim(path, name, language, title, pages, main="Main_Page"):
+    """A wiki ZIM holding only ``pages`` ({path: (title, html)}) and a front
+    page, so a day's pick can only land on one of them."""
+    from conftest_zim import _Article
+    from libzim.writer import Creator
+
+    with Creator(path).config_indexing(True, "eng") as c:
+        c.set_mainpath(main)
+        c.add_item(
+            _Article(
+                main,
+                "Main Page",
+                b"<html><body><p>Welcome to the wiki, the front page.</p></body></html>",
+            )
+        )
+        for p, (t, h) in pages.items():
+            c.add_item(_Article(p, t, h.encode()))
+        for k, v in {
+            "Scraper": MW,
+            "Name": name,
+            "Language": language,
+            "Title": title,
+            "Description": "x",
+        }.items():
+            c.add_metadata(k, v)
+
+
+def _page(inner):
+    return '<html><body><div id="mw-content-text">%s</div></body></html>' % inner
+
+
+TODAY_LIBRARY = {
+    "wiktionary_he_all": (
+        "heb",
+        "ויקימילון",
+        {
+            "צנף": (
+                "צנף",
+                _page(
+                    "<table><tr><td><p>ניתוח דקדוקי של המילה, טבלה ולא הגדרה</p></td></tr></table>"
+                    "<ol><li><small>עברית חדשה</small> כרך מסביב, עטף. ”הצטנף בשמיכה“<ul><li>דוגמה</li></ul></li></ol>"
+                ),
+            )
+        },
+    ),
+    "wikiquote_fr_all": (
+        "fra",
+        "Wikiquote",
+        {
+            "Voltaire": (
+                "Voltaire",
+                _page(
+                    '<ul><li><a href="Candide">Candide</a> (1759)</li></ul>'
+                    "<ul><li>« Il faut cultiver notre jardin. » ~ Candide</li></ul>"
+                    "<h2>Voir aussi</h2><h2>Liens</h2>"
+                ),
+            )
+        },
+    ),
+    "wikibooks_en_all": (
+        "eng",
+        "Wikibooks",
+        {
+            "Cookbook": (
+                "Cookbook",
+                _page(
+                    "<p>A cookbook of recipes from around the world, free to read and to change.</p>"
+                ),
+            ),
+            "Cookbook/Bread": (
+                "Cookbook/Bread",
+                _page(
+                    "<p>Chapter on bread: flour, water, salt and yeast, and time.</p>"
+                ),
+            ),
+        },
+    ),
+}
+
+
+@pytest.fixture
+def today_lib(tmp_path, monkeypatch):
+    zdir = tmp_path / "zims"
+    zdir.mkdir()
+    for name, (lang, title, pages) in TODAY_LIBRARY.items():
+        _wiki_zim(str(zdir / (name + "_2026-08.zim")), name, lang, title, pages)
+    monkeypatch.setattr(srv, "ZIM_DIR", str(zdir))
+    monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(tmp_path / "data"))
+    os.makedirs(str(tmp_path / "data"), exist_ok=True)
+    monkeypatch.setattr(wiki, "_today", lambda: DAY)
+    wiki._reset_for_tests()
+    srv.load_cache(force=True)
+    return {w["project"]: w["name"] for w in wiki.wikis()}
+
+
+def test_each_wiki_gives_the_thing_it_is_for_in_its_own_language(today_lib):
+    word = wiki.pick(today_lib["wiktionary"], "20260925")
+    assert word["role"] == "word" and word["title"] == "צנף" and word["lang"] == "he"
+    # The sense: not the table, the register label, or the example after it.
+    assert word["blurb"] == "כרך מסביב, עטף."
+    quote = wiki.pick(today_lib["wikiquote"], "20260925")
+    # Not the list of works; the quote, its marks left to the page's language.
+    assert (
+        quote["role"] == "quote" and quote["blurb"] == "Il faut cultiver notre jardin."
+    )
+    assert quote["kick"] == "Candide"
+    book = wiki.pick(today_lib["wikibooks"], "20260925")
+    # A book is its front page, never a chapter.
+    assert book["role"] == "book" and book["path"] == "Cookbook"
+
+
+def test_a_day_s_pick_holds_all_day_and_is_read_once(today_lib, monkeypatch):
+    name = today_lib["wikibooks"]
+    first = wiki.pick(name, "20260925")
+    calls = []
+    monkeypatch.setattr(wiki, "_work_pick", lambda *a: calls.append(a) or {})
+    assert wiki.pick(name, "20260925") is first and not calls
+
+
+def test_today_answers_for_the_wikis_named_and_home_carries_what_is_known(
+    today_lib, monkeypatch
+):
+    # No background pass here: what home carries is what today() worked out.
+    monkeypatch.setattr(
+        wiki.threading,
+        "Thread",
+        lambda *a, **k: type("T", (), {"start": lambda self: None})(),
+    )
+    names = list(today_lib.values())
+    home = wiki.home("20260925")
+    assert home["day"] == "20260925" and home["picks"] == {}
+    got = wiki.today("20260925", names + ["not_a_wiki"])
+    assert set(got["picks"]) == set(names) and not got["failed"]
+    assert set(wiki.home("20260925")["picks"]) == set(names)
+    assert "picks" not in wiki.home("20270101")  # a day that cannot be asked for
+
+
+def test_today_route_bounds_what_a_caller_can_ask(served):
+    wikis = _get(served + "/wiki/home")[1]["wikis"]
+    names = ",".join(w["name"] for w in wikis)
+    status, got = _get(served + "/wiki/today?day=20260925&zim=" + names)
+    assert status == 200 and set(got["picks"]) == {w["name"] for w in wikis}
+    assert [e["event_year"] for e in got["otd"][wikis[0]["name"]]] == ["1666", "1854"]
+    assert _get(served + "/wiki/today?day=20260101&zim=" + names)[0] == 400
+    assert (
+        _get(served + "/wiki/today?day=20260925&zim=" + ",".join(["x"] * 9))[0] == 400
+    )
