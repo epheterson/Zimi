@@ -21,7 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 
-from zimi import search, wikilang  # noqa: E402
+from zimi import datepages, search  # noqa: E402
 
 FIX = os.path.join(HERE, "fixtures", "discover_i18n")
 LANGS = ("en", "de", "fr", "es", "pt", "ru", "zh", "ar", "he", "hi")
@@ -48,19 +48,18 @@ def _fixture(name):
         ("ar", ["25_سبتمبر"]),
         ("he", ["25_בספטמבר"]),
         # Hindi files the page as "२५ सितम्बर"; "25 सितंबर" redirects to it.
-        ("hi", ["25_सितंबर", "25_सितम्बर", "२५_सितंबर", "२५_सितम्बर"]),
+        ("hi", ["25_सितंबर", "२५_सितंबर", "25_सितम्बर", "२५_सितम्बर"]),
     ],
 )
 def test_a_day_page_is_named_in_the_wikis_own_words(lang, expected):
-    assert wikilang.date_page_titles(lang, 9, 25) == expected
+    assert datepages.date_page_titles(lang, "0925") == expected
 
 
 def test_the_first_of_the_month_and_unknown_languages():
-    assert wikilang.date_page_titles("fr", 1, 1) == ["1er_janvier"]
-    assert wikilang.date_page_titles("de", 3, 1) == ["1._März"]
-    assert wikilang.date_page_titles("zh", 12, 31) == ["12月31日"]
-    assert wikilang.date_page_titles("it", 9, 25) == []
-    assert wikilang.date_page_titles("en", 13, 1) == []
+    assert datepages.date_page_titles("fr", "0101") == ["1er_janvier"]
+    assert datepages.date_page_titles("de", "0301") == ["1._März"]
+    assert datepages.date_page_titles("zh", "1231") == ["12月31日"]
+    assert datepages.date_page_titles("en", "1301") == []
 
 
 # The first dated line of each page whose article the line names, as the
@@ -81,10 +80,16 @@ FIRST_EVENT = {
 }
 
 
+def _events(lang):
+    return datepages.extract_events(_fixture(f"otd_{lang}.html"), lang)
+
+
 @pytest.mark.parametrize("lang", LANGS)
 def test_on_this_day_reads_each_wikipedias_date_page(lang):
-    events = search._extract_otd_events(_fixture(f"otd_{lang}.html"))
-    assert len(events) >= 5, lang
+    events = _events(lang)
+    # Hindi's events section is two lines long on this day; the rest of the
+    # page is births and deaths, which On this day does not read.
+    assert len(events) >= (2 if lang == "hi" else 5), lang
     year, link, text = FIRST_EVENT[lang]
     assert (events[0]["year"], events[0]["link"]) == (year, link)
     assert events[0]["text"].startswith(text), events[0]["text"]
@@ -92,15 +97,23 @@ def test_on_this_day_reads_each_wikipedias_date_page(lang):
 
 def test_russian_holidays_before_the_events_are_not_events():
     # ru.wikipedia puts "Праздники и памятные дни" above "События".
-    events = search._extract_otd_events(_fixture("otd_ru.html"))
+    events = _events("ru")
     assert all(e["year"].isdigit() and int(e["year"]) >= 1000 for e in events)
 
 
 def test_links_that_leave_the_wiki_are_not_picked():
     # he.wikipedia follows a name with "(אנג')", a link to the English
     # article. It is not in the ZIM, so it must not be the line's pick.
-    for ev in search._extract_otd_events(_fixture("otd_he.html")):
+    for ev in _events("he"):
         assert not ev["link"].isascii(), ev
+
+
+def test_a_two_character_chinese_title_is_an_article():
+    # 明朝 (the Ming dynasty) is a whole title; "A" is not.
+    assert not search._title_too_short("明朝")
+    assert not search._title_too_short("水")
+    assert search._title_too_short("A1")
+    assert not search._title_too_short("Ulm")
 
 
 # ── On this day, through a real ZIM ───────────────────────────────────────
@@ -378,7 +391,7 @@ def test_a_translation_label_and_a_disambiguation_notice_are_not_the_quote():
 
     # he.wikiquote gives a film's English line, then its translation.
     page = (
-        '<ul><li>".You can\'t stop the time Charlie, Time is changing, People are '
+        "<ul><li>\".You can't stop the time Charlie, Time is changing, People are "
         'changing"<ul><li>תרגום: "אתה לא יכול לעצור את הזמן צ\'רלי, הזמן משתנה, '
         'אנשים משתנים."</li></ul></li></ul>'
     )
@@ -387,7 +400,7 @@ def test_a_translation_label_and_a_disambiguation_notice_are_not_the_quote():
     assert got["blurb"].startswith("“אתה לא יכול"), got
     # fr.wikiquote opens a disambiguation page with an italic notice.
     page = (
-        "<dl><dd><div class=\"\"><i>Cette page d’homonymie répertorie les "
+        '<dl><dd><div class=""><i>Cette page d’homonymie répertorie les '
         "différents sujets et articles partageant un même nom.</i></div></dd></dl>"
     )
     got = {"title": None}

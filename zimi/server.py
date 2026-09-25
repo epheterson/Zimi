@@ -268,6 +268,10 @@ def start_background_services(http_port):
     threading.Thread(target=_maintenance_loop, daemon=True, name="maintenance").start()
     threading.Thread(target=_shape_backfill, daemon=True, name="zim-shapes").start()
     threading.Thread(target=_sweep_working_files, daemon=True, name="zim-sweep").start()
+    # Zimipedia's Today, worked out before anyone opens it.
+    from zimi import wiki as _wiki
+
+    threading.Thread(target=_wiki.warm_daily, daemon=True, name="zimipedia-daily").start()
 
 
 # Working files a capture left behind.
@@ -1890,6 +1894,26 @@ WIKI_PROJECTS = (
 KIND_VERSION = 5
 
 
+def _wiki_project(meta_name, name=""):
+    """Which Wikimedia project a wiki ZIM is, by its metadata Name when it has
+    one (a renamed enwiki.zim is still wikipedia_en_all inside), else by its
+    filename; "" for a wiki beyond Wikimedia. The same Name _zim_kind reads,
+    so a ZIM is never a wiki by one rule and misfiled by the other."""
+    n = (meta_name or name or "").lower()
+    return next((p for p in WIKI_PROJECTS if n.startswith(p)), "")
+
+
+def _read_wiki_project(path, name):
+    """``_wiki_project`` for a cache record written before it was kept: one
+    metadata read."""
+    try:
+        meta_name = bytes(open_archive(path).get_metadata("Name")).decode("utf-8", "replace")
+    except Exception as e:
+        log.debug("could not read the Name of %s: %s", path, e)
+        meta_name = ""
+    return _wiki_project(meta_name.strip(), name)
+
+
 def _zim_kind(scraper, tags, meta_name):
     """What a ZIM is, from its own metadata, for when its filename says nothing.
 
@@ -2373,6 +2397,7 @@ _ISO639_3_TO_1 = {
     "hun": "hu",
     "ell": "el",
     "heb": "he",
+    "yid": "yi",
     "ukr": "uk",
     "cat": "ca",
     "ind": "id",
@@ -2952,6 +2977,8 @@ def _extract_zim_metadata(name, path):
     # category without reopening the archive.
     if kind:
         info["kind"] = kind
+    if kind == "wiki":
+        info["project"] = _wiki_project(meta_name, name)
     if map_search:
         info["map_search"] = True
     if map_facts:
@@ -3256,6 +3283,10 @@ def load_cache(force=False):
             if cached.get("kind") == "reddit" and "subreddits" not in cached:
                 cached.update(_read_reddit_facts(path))
                 kind_backfilled = True
+            if cached.get("kind") == "wiki" and "project" not in cached:
+                # A record from before Zimipedia kept the project by Name.
+                cached["project"] = _read_wiki_project(path, name)
+                kind_backfilled = True
             entry = {
                 "name": name,
                 "file": filename,
@@ -3294,6 +3325,8 @@ def load_cache(force=False):
                 entry["folder"] = folder
             if cached.get("kind"):
                 entry["kind"] = cached["kind"]
+            if "project" in cached:
+                entry["project"] = cached["project"]
             if cached.get("map_search"):
                 entry["map_search"] = True
             if "map_bounds" in cached:
@@ -3371,6 +3404,8 @@ def load_cache(force=False):
             # on every boot as if it were a record from before the field.
             new_cached["kind"] = entry.get("kind") or ""
             new_cached["kind_v"] = KIND_VERSION
+            if "project" in entry:
+                new_cached["project"] = entry["project"]
             if entry.get("map_search"):
                 new_cached["map_search"] = True
             # A map's ground and publisher, null included: a map whose config

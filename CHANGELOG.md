@@ -9,11 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Zimipedia, an app for every wiki in the library as one (Wikipedia in any language, Wiktionary, Wikivoyage, Wikiquote and the other MediaWiki wikis): a pill per wiki that narrows everything below it, a Today page (pictures from across the wikis, On this day, a word, a quote and a place to go), search across the chosen wikis, and cards or a list. Its name for `ZIMI_APPS` is `wiki`.
+- Zimipedia, an app for every wiki in the library as one (Wikipedia in any language, Wiktionary, Wikivoyage, Wikiquote and the other MediaWiki wikis): a pill per wiki that narrows everything below it, a Today page with something from every wiki chosen, in that wiki's own language (an article with its picture from each Wikipedia, a word and its meaning from each Wiktionary, a quote, a place to go, a book, a text, a lesson, a species), led by the Wikipedia in your interface's language, and On this day from every Wikipedia's own date page (English, German, French, Spanish, Portuguese, Italian, Russian, Ukrainian, Polish, Dutch, Turkish, Chinese, Japanese, Korean, Hebrew, Arabic, Persian, Hindi, Vietnamese, Indonesian, Swedish and more), search across the chosen wikis, and cards or a list. The day's picks are worked out once, soon after the server starts and after each midnight, so opening Today is one request. Its name for `ZIMI_APPS` is `wiki`. Its name for `ZIMI_APPS` is `wiki`.
 
 ### Fixed
 
 - A search result from a Wikivoyage page no longer shows the page's JavaScript as its snippet.
+- Discover works in every language. Each card reads the ZIM in your interface's language when one is installed, then English, then whatever is there, and reads that wiki's own pages: On this day from any Wikipedia's date page (a German, French, Hindi or Chinese Wikipedia alone had no card before), Word of the day from the section of a Wiktionary entry in that Wiktionary's language with its part of speech in the same words (every non-English Wiktionary used to fall back to a random page with no definition), and Quote of the day from however each Wikiquote lays out its quotes, with who said it. Blurbs in Hebrew, Arabic, Hindi, Russian and Chinese are shown (they were all dropped as a repeat of the title), On this day's date is written your language's way, and switching the interface language chooses the cards again.
 
 ### Changed
 

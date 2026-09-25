@@ -26,22 +26,32 @@ def strip_html(text):
     return text
 
 
-# Tags that sit inside a run of text. strip_html turns every tag into a space,
-# which is right between blocks and wrong inside a sentence: a Hebrew prefix
-# letter is written against its link ("ל<a>קיסר</a>"), Chinese puts no space
-# between words, and a footnote mark leaves "word [ 2 ] ." behind.
-_INLINE_TAG_RE = re.compile(
-    r"</?(?:a|b|i|u|s|em|strong|span|small|big|abbr|bdi|bdo|q|sub|cite|time|font)"
-    r"\b[^>]*>",
+_BLOCK_TAG_RE = re.compile(
+    r"</?(?:br|p|div|li|ul|ol|dl|dd|dt|table|tr|td|th|h[1-6]|section|blockquote)\b[^>]*>",
     re.IGNORECASE,
 )
+
+
+def inline_text(fragment):
+    """A fragment of running text as it reads. Unlike strip_html, a link or
+    a span inside a word leaves no space behind: Hebrew and Arabic glue a
+    prefix to the word a link starts ("ל<a>קיסר</a>" is one word), and
+    Chinese and Japanese put no spaces between words at all."""
+    text = re.sub(r"<!--.*?-->", "", fragment, flags=re.DOTALL)
+    text = re.sub(r"<(script|style)\b[^>]*>.*?(?:</\1>|$)", "", text, flags=re.DOTALL)
+    text = _BLOCK_TAG_RE.sub(" ", text)
+    text = re.sub(r"<[^>]*>?", "", text)
+    text = html.unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 _FOOTNOTE_RE = re.compile(r"<sup\b[^>]*>.*?</sup>", re.DOTALL | re.IGNORECASE)
 
 
 def strip_html_inline(text):
-    """strip_html for a sentence: footnote marks dropped, and inline tags
-    removed without leaving a space the page did not have."""
-    text = strip_html(_INLINE_TAG_RE.sub("", _FOOTNOTE_RE.sub("", text)))
+    """inline_text for a card: footnote marks dropped, and no space left
+    before a closing punctuation mark ("word [ 2 ] ." is "word.")."""
+    text = inline_text(_FOOTNOTE_RE.sub("", text))
     text = re.sub(r"\[\s*\d+\s*\]", "", text)  # a footnote mark left as text
     return _SNIPPET_SPACE_BEFORE_PUNCT_RE.sub(
         lambda g: g.group(1) or g.group(2), text
