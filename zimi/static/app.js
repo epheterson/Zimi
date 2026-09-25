@@ -5194,6 +5194,35 @@ document.addEventListener('wheel', function(e) {
   strip.scrollBy({ left: dy > 0 ? step : -step, behavior: 'smooth' });
   setTimeout(function() { strip._wheelStepping = false; }, _WHEEL_STEP_REST_MS);
 }, { passive: false });
+// A whole Wikipedia, as the library names one: "wikipedia" (English) or
+// "wikipedia_de". A topic build ("wikipedia_de_climate-change") has no page
+// for the day, so On this day never reads one.
+var _WHOLE_WIKIPEDIA_RE = /^wikipedia(?:_[a-z]{2,3})?$/;
+
+// The installed ZIM a Discover card reads: one in the language the interface
+// speaks when there is one, else English, else any; among those the fullest.
+// Simple English Wiktionary is the English Word of the day's first choice:
+// every entry in it is an English word, where a full English Wiktionary is
+// mostly other languages' words. Reads only the library list already held.
+function _featuredZimFor(feat, names) {
+  var ui = _defineLang2(_currentLang);
+  var best = null, bestRank = null;
+  for (var i = 0; i < names.length; i++) {
+    var n = names[i];
+    if (n !== feat.match && n.indexOf(feat.match) !== 0) continue;
+    if (feat.match === 'wikipedia' && !_WHOLE_WIKIPEDIA_RE.test(n)) continue;
+    var info = _zimInfo(n) || {};
+    var lang = _defineLang2((info.language || '').split(',')[0]);
+    var entries = typeof info.entries === 'number' ? info.entries : 0;
+    var simple = feat.match === 'wiktionary' && /simple/i.test(n) ? 1 : 0;
+    var rank = [lang === ui ? 2 : (lang === 'en' ? 1 : 0), simple, entries];
+    if (!bestRank || rank[0] > bestRank[0] || (rank[0] === bestRank[0] &&
+        (rank[1] > bestRank[1] || (rank[1] === bestRank[1] && rank[2] > bestRank[2])))) {
+      best = n; bestRank = rank;
+    }
+  }
+  return best;
+}
 function _loadDiscover() {
   if (_discoverLoading) return;
   var el = document.getElementById('discover-row');
@@ -5207,7 +5236,10 @@ function _loadDiscover() {
   // today's cards under tomorrow-UTC's key, serving yesterday's Picture
   // of the Day all the next day.
   var today = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2) + '-' + ('0' + now.getDate()).slice(-2);
-  var cacheKey = 'zimi_' + (window.__ZIMI_CONFIG && __ZIMI_CONFIG.discoverStamp || 'disc6') + '_' + today;
+  // The cards are chosen for the interface's language, so the day's cache is
+  // kept per language: switching it chooses again rather than showing
+  // another language's picks.
+  var cacheKey = 'zimi_' + (window.__ZIMI_CONFIG && __ZIMI_CONFIG.discoverStamp || 'disc6') + '-' + _currentLang + '_' + today;
   // Clean up old Discover cache keys (from previous days or old versions).
   //
   // Matched on SHAPE, not on a prefix. This used to delete anything starting
@@ -5254,21 +5286,7 @@ function _loadDiscover() {
   var usedNames = {};
   for (var fi = 0; fi < FEATURED_ZIMS.length; fi++) {
     var feat = FEATURED_ZIMS[fi];
-    var zimName = null;
-    var zimEntries = -1;
-    for (var ni = 0; ni < names.length; ni++) {
-      var n = names[ni];
-      if (n === feat.match || n.indexOf(feat.match) === 0) {
-        // For wikipedia, prefer _en_all or exact match (skip _en_medicine etc.)
-        if (feat.match === 'wikipedia' && n !== 'wikipedia' && !/^wikipedia_en_all/i.test(n)) continue;
-        // For wiktionary, prefer simple (English-only — no language filtering needed)
-        if (feat.match === 'wiktionary' && /simple/i.test(n)) { zimName = n; zimEntries = Infinity; continue; }
-        // Prefer ZIM with most entries (richest content)
-        var zInfo = _zimInfo(n);
-        var ec = (zInfo && typeof zInfo.entries === 'number') ? zInfo.entries : 0;
-        if (ec > zimEntries) { zimName = n; zimEntries = ec; }
-      }
-    }
+    var zimName = _featuredZimFor(feat, names);
     if (!zimName) continue;
     usedNames[zimName] = true;
     var dated = feat.type === 'apod' || feat.type === 'onthisday' || feat.type === 'country';
@@ -5472,13 +5490,11 @@ function _renderDiscover(el, items) {
       displayTitle = displayTitle.replace(/^Portal:Current events\/?/, '').replace(/_/g, ' ');
       if (!displayTitle) displayTitle = it.title || t('historical_event');
     }
-    // On This Day: put the date context on the card ("July 27, 1777 — event")
+    // On This Day: put the date context on the card ("July 27, 1777: event")
     // so it reads honestly even if the target article never restates the date.
     // The headline stays the article title; this replaces the blurb.
     if (it.type === 'onthisday' && it.event_text) {
-      var _otdLang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
-      var _otdDate = new Date().toLocaleDateString(_otdLang, { month: 'long', day: 'numeric' });
-      it.blurb = _otdDate + (it.event_year ? ', ' + it.event_year : '') + ' — ' + it.event_text;
+      it.blurb = _otdDateLine(it.event_year) + ': ' + it.event_text;
     }
 
     // Detect quote content (for special card template)
@@ -5537,15 +5553,8 @@ function _renderDiscover(el, items) {
       } else if (it.author) {
         speakerHtml = '<div class="dc-speaker">' + esc(it.author) + '</div>';
       }
-      // Skip blurb if it essentially duplicates the title
-      var showBlurb = blurbHtml;
-      if (it.blurb && displayTitle) {
-        var blurbNorm = it.blurb.replace(/[^\w\s]/g, '').toLowerCase().trim();
-        var titleNorm = displayTitle.replace(/[^\w\s]/g, '').toLowerCase().trim();
-        if (blurbNorm === titleNorm || titleNorm.indexOf(blurbNorm) >= 0 || blurbNorm.indexOf(titleNorm) >= 0) {
-          showBlurb = '';
-        }
-      }
+      // Skip blurb if it only repeats the title
+      var showBlurb = _blurbRepeatsTitle(it.blurb, displayTitle) ? '' : blurbHtml;
       // Video ZIMs: overlay a play badge on the thumbnail and mark the card so
       // it reads as "play a random video" for AT users, not "open article".
       var _isVid = _isVideoZim(it.zim);
@@ -5573,6 +5582,32 @@ function _renderDiscover(el, items) {
       sessionStorage.removeItem('zimi_disc_scroll');
     }
   } catch(e) {}
+}
+// Whether a card's blurb says nothing its title does not: the same words,
+// or a part of them. Letters and digits of every script count; this matched
+// [\w] once, which is ASCII only, so every Hebrew, Arabic, Hindi, Russian
+// and Chinese blurb normalized to "" and was dropped as a repeat. A blurb
+// that opens with the title and goes on ("Athens is the capital...") says
+// more than the title and is kept.
+function _blurbRepeatsTitle(blurb, title) {
+  if (!blurb || !title) return false;
+  var norm = function(s) { return s.replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').toLowerCase().trim(); };
+  var b = norm(blurb), t = norm(title);
+  return !b || b === t || t.indexOf(b) >= 0;
+}
+// The day of an On this day line, in the interface's own way of writing a
+// date: "September 25, 1066", "25. September 1066", "1066年9月25日". A year
+// the calendar cannot hold ("356 BC", "前4713") follows the day as written.
+function _otdDateLine(year) {
+  var now = new Date();
+  var y = /^\d{1,4}$/.test(year || '') ? parseInt(year, 10) : null;
+  if (y !== null && y >= 100) {
+    var d = new Date(2000, now.getMonth(), now.getDate());
+    d.setFullYear(y);
+    return d.toLocaleDateString(_currentLang, { year: 'numeric', month: 'long', day: 'numeric' });
+  }
+  var day = now.toLocaleDateString(_currentLang, { month: 'long', day: 'numeric' });
+  return year ? day + ' ' + year : day;
 }
 function _fmtDiscoverDate(dateStr) {
   try {
