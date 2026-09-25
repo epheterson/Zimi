@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Zimipedia, an app for every wiki in the library as one (Wikipedia in any language, Wiktionary, Wikivoyage, Wikiquote and the other MediaWiki wikis): a pill per wiki that narrows everything below it, a Today page (pictures from across the wikis, On this day, a word, a quote and a place to go), search across the chosen wikis, and cards or a list. Its name for `ZIMI_APPS` is `wiki`.
+
+### Fixed
+
+- A search result from a Wikivoyage page no longer shows the page's JavaScript as its snippet.
+
 ### Changed
 
 - Create a ZIM, whole site: an address with a path (`https://example.org/docs/`) keeps the capture under that path; pages elsewhere on the site are left out, and the images, styles and scripts its pages use are still fetched. A bare address still captures the whole site.

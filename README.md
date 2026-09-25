@@ -32,12 +32,13 @@ A modern experience for your ZIM files.
 
 ## Apps
 
-Some ZIMs hold a map, a video library, a Q&A site or a subreddit. Zimi gives each kind a view of its own, over whatever you already have.
+Some ZIMs hold a map, a video library, a Q&A site, a subreddit or a wiki. Zimi gives each kind a view of its own, over whatever you already have.
 
 - **Maps.** Kiwix's regional maps and StreetZim's larger builds. Type a town, a street or an address and the map flies there; the position lives in the address bar, so a link or a bookmark comes back to the same place at the same zoom.
 - **ZimiTube.** Every video ZIM as one feed: Kiwix's TED and TED-Ed, YouTube channels, and the ones `zimi create` makes. Subtitles, Up next, autoplay, a dock so a video keeps playing while you browse.
 - **ZimiExchange.** Every Stack Exchange site as one place: a shelf per site with its top tags, paged lists, and a question with its answers scored, the accepted one first.
 - **Reddot.** Subreddits as ZIMs. `zimi create r/<name>` builds one from the public Arctic Shift archive; the app reads shelves, Top and New, and a post's whole comment tree.
+- **Zimipedia.** Every wiki as one: Wikipedia in each language, Wiktionary, Wikivoyage, Wikiquote and the other MediaWiki wikis. A pill per wiki narrows everything; Today brings On this day, pictures from across the wikis, a word, a quote and a place; search covers the wikis you picked, as cards or a list.
 
 They share the shell: one search box, one back arrow, bookmarks and history, right to left where the language runs that way. Each can be offered or not, for the whole server or per account, and an agent reads the same content through the API and MCP tools. See the [apps guide](docs/features/apps.md).
 
@@ -239,7 +240,7 @@ Single sign-on through Cloudflare Access is available for tunnel deployments (ex
 Each guide is structured as How it works / Configure / Troubleshoot. Start at the [feature guide index](docs/features/README.md).
 
 - [Reading](docs/features/reading.md), search and ranking, the reader and Reader View, bookmarks and history, word lookup, cross-language articles, PDFs, offline/PWA, accessibility, the almanac.
-- [Apps](docs/features/apps.md), Maps, ZimiTube, ZimiExchange and Reddot: Zimi's own views over the map, video, Q&A and subreddit ZIMs in the library; one thing once across builds; the apps switch.
+- [Apps](docs/features/apps.md), Maps, ZimiTube, ZimiExchange, Reddot and Zimipedia: Zimi's own views over the map, video, Q&A, subreddit and wiki ZIMs in the library; one thing once across builds; the apps switch.
 - [Making ZIMs](docs/features/making-zims.md), `zimi create` for a folder, page, `--site` crawl, video or subreddit; the engines and what each trades; bookmarks as a standalone ZIM; import for WARC/WACZ.
 - [Getting & sharing](docs/features/getting-and-sharing.md), catalog and downloads, folders as categories, same-flavor auto-update, BitTorrent seeding, Nearby (mDNS LAN), the `/dl/` peer transport.
 - [Access](docs/features/access.md), public-access modes, named accounts, per-ZIM allowlists, the creator role, the first-run bootstrap, Cloudflare Access SSO.

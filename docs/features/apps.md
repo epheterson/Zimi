@@ -1,6 +1,6 @@
 # Apps
 
-Four views Zimi owns over the ZIMs in your library. Each is a page inside the reader with the library's search box on top, and each reads its ZIMs' own indexes rather than a copy, so nothing is rebuilt and nothing goes stale.
+Five views Zimi owns over the ZIMs in your library. Each is a page inside the reader with the library's search box on top, and each reads its ZIMs' own indexes rather than a copy, so nothing is rebuilt and nothing goes stale.
 
 ## How it works
 
@@ -10,6 +10,7 @@ The home page shows an **Apps** row above the sources when the library holds som
 - **ZimiTube** is one feed across every video ZIM (TED, YouTube, and the ones Zimi makes). Browsing is a shelf per source; a source, a query, or a library with one source is a list with an order of its own (Top, Title, Newest, Longest). A card plays in ZimiTube's own player with the page's subtitles, the rest of the list up next, and autoplay into it. Leave the player with a video playing and it docks in a corner while you browse; tap it to come back. Theater mode gives the stage the whole width, and Picture in picture appears where the browser has it. TED's videos are WebM, which iPhones cannot decode; on an iPhone or iPad ZimiTube plays them through the decoder the TED ZIM ships (ogv.js) from the start, and the talk's original page, read through Zimi, does the same. The same talk carried by two ZIMs is one card. The original page is one tap away.
 - **ZimiExchange** is every Stack Exchange site in the library as one place: a shelf per site of its most voted questions with its top tags, a site or a tag as a paged list, and a question with its answers, the accepted one first. The box searches question titles across the installed sites.
 - **Reddot** reads subreddit ZIMs (ArcticZim's, and the ones Zimi makes): a shelf per subreddit (a library with one subreddit opens on that subreddit's list), a subreddit as a list (Top, New), a post with its comment tree. Follow subreddits with the star on their shelves and **Home** lists their top posts in one place; followed shelves come first. What you follow is kept in your browser. To make one, paste a subreddit's reddit.com address into Create under Web page; see [making ZIMs](making-zims.md).
+- **Zimipedia** is every wiki in the library as one: Wikipedia in any language, Wiktionary, Wikivoyage, Wikiquote, Wikibooks, Wikiversity, Wikinews, Wikisource, Wikispecies, and other MediaWiki wikis (any ZIM made by mwoffliner). A pill per wiki, grouped by project with its language as a badge, sits across the top; all are on until you tap one, which narrows everything below to it, and further taps add or take away. **Today** is the landing view: pictures from across the chosen wikis, **On this day** from Wikipedia's own date page, and a word, a quote and a place to go when Wiktionary, Wikiquote and Wikivoyage are among them. The picks are the day's: they hold until midnight. The box searches the chosen wikis only, title matches first and then the full text, each result naming its wiki and language. Cards or a list, remembered in your browser. An article opens in the reader, where the language button offers the same article in the other installed languages.
 
 **Getting around.** The app's icon in the breadcrumb is the way to its front page. The arrow in Zimi's header is the only back there is, and it works inside an app as it does in an article: it appears once you are inside (a video, a question, a post, a list) and steps back to where you were; a list (a subreddit, a tag, a search) steps to the app's home; at the home there is no arrow, as on a ZIM's front page. **Open the original page** is a step too: the arrow returns to the video, the question or the post. A shared link to one of those has no home beneath it, so the arrow makes one in place. The dice stay inside the app: a video, a question or a post by chance. A shared link to a video, a question or a post is a query (`/?tube=…`, `/?exchange=…`, `/?reddot=…`), which survives a sign-in on the way in.
 
@@ -17,20 +18,22 @@ The home page shows an **Apps** row above the sources when the library holds som
 
 **One thing once.** When two ZIMs carry the same thing, an app shows it once, from the newest build (then the fullest): last month's file still beside this month's, a nopic beside a maxi of one site, the same region from the same map source, a subreddit in two bundles. The library itself lists every file; only the apps' views are deduplicated.
 
-**Choosing apps.** Each app can be offered or not. `ZIMI_APPS=0` hides them all for the whole server and `ZIMI_APPS=maps,tube` keeps only those (the names are `maps`, `tube`, `exchange`, `reddot`); the **Apps** tiles at the top of Preferences do the same without a restart, and each account can untick apps for itself under its own settings. The pages and endpoints stay reachable by address for anyone allowed to read the ZIMs behind them.
+**Choosing apps.** Each app can be offered or not. `ZIMI_APPS=0` hides them all for the whole server and `ZIMI_APPS=maps,tube` keeps only those (the names are `maps`, `tube`, `exchange`, `reddot`, `wiki`); the **Apps** tiles at the top of Preferences do the same without a restart, and each account can untick apps for itself under its own settings. The pages and endpoints stay reachable by address for anyone allowed to read the ZIMs behind them.
 
 ## Configure
 
 | Setting | Where | Effect |
 | --- | --- | --- |
-| `ZIMI_APPS` | environment | `0` offers no app to anyone; a comma list of `maps`, `tube`, `exchange`, `reddot` offers only those. Overrides the saved choice. |
-| Apps | Preferences, first section | The server's choice: the four app tiles, lit when offered, with All and None; each tile says what the library holds for it. Saved with the other server preferences. |
+| `ZIMI_APPS` | environment | `0` offers no app to anyone; a comma list of `maps`, `tube`, `exchange`, `reddot`, `wiki` offers only those. Overrides the saved choice. |
+| Apps | Preferences, first section | The server's choice: the five app tiles, lit when offered, with All and None; each tile says what the library holds for it. Saved with the other server preferences. |
 | Apps on my home page | account settings | One account's own choice among the apps the server offers, kept with its bookmarks and history. |
 
 ## Troubleshoot
 
 - **A video ZIM is missing from ZimiTube** — Zimi reads ted2zim, youtube2zim and its own index shapes. Another scraper's ZIM opens as a source but not in ZimiTube. Restart after installing one made by an older version so its kind is read again.
 - **A talk I can see in the ZIM is not in ZimiTube** — its file is not in the ZIM (the scraper wrote the page and skipped a download that failed), so the feed leaves it out. Its page still opens as an article and says so.
+- **A wiki is missing from Zimipedia**: Zimipedia lists ZIMs made by mwoffliner, or named for a Wikimedia project. A wiki made with another tool opens as a source but not here. Restart after installing a ZIM made by an older version so its kind is read again.
+- **On this day is missing**: it is read from a Wikipedia's English date page (`September_25`). A subset (top 100, a topic) and most other languages have none, and the section is left out.
 - **A site shows twice in ZimiExchange** — two ZIMs with different titles are two sites. Two builds with one title collapse to the newest.
 - **"This video cannot be played here."** — the file is in the ZIM but this browser cannot decode it. When a page names a WebM and the ZIM also carries an MP4 of the same talk, the MP4 is played instead; Safari gets the ZIM's own decoder for a WebM, as an iPhone does. The link under the message opens the video's own page, which may carry a decoder of its own (TED's pages do). A ZIM Zimi makes from a video site takes H.264 first for this reason; one made before 1.10 may carry AV1, which no iPhone before the 15 Pro decodes.
 - **"This video isn't in this ZIM."** — the video's page is there but its file never was: the scraper wrote the page and skipped a download that failed (the CRISPR talk in the 2023 TED technology ZIM). Nothing on your side is wrong; a newer build of the ZIM may carry it.
