@@ -642,6 +642,8 @@ def create_alive_site_zim(
         raise CreateError(f"not an http(s) URL: {url}")
     if max_pages < 0 or max_depth < 0 or max_bytes < 0 or delay < 0:
         raise CreateError("crawl bounds must be positive (0 pages or 0 bytes means no limit)")
+    if not max_pages and not max_bytes:
+        note(f"warning: no page limit and no size limit: only depth {max_depth} and the disk bound this capture")
     require_alive()
 
     origin = _origin_of(url)

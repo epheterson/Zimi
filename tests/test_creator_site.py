@@ -508,6 +508,16 @@ def test_zero_pages_and_zero_bytes_mean_no_limit(fixture_server, tmp_path):
     assert info["stopped"] is None
 
 
+def test_no_limits_still_has_a_queue_ceiling(fixture_server, tmp_path, monkeypatch):
+    """0 pages and 0 bytes left only depth and memory; the queue of pages to
+    visit has a ceiling of its own, and the log says when it is reached."""
+    monkeypatch.setattr(crawler, "FRONTIER_MAX", 3)
+    notes = []
+    info = _site(tmp_path, "/chain/0.html", max_pages=0, max_bytes=0, max_depth=20, progress=notes.append)
+    assert info["pages"] <= 3
+    assert any("queue of pages to visit is full" in n for n in notes)
+
+
 def test_zero_is_no_limit_but_a_negative_is_refused():
     from zimi import crawler
     from zimi.creator import CreateError

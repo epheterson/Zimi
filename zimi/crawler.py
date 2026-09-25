@@ -125,6 +125,10 @@ MAX_ROBOTS_BYTES = 512 * 1024
 # a crawler that remembers every URL it has ever seen is how a Pi runs out of
 # memory on a wiki.
 FRONTIER_FACTOR = 4
+# The queue's ceiling whatever the page limit says: 0 (no limit) or a huge
+# number left it growing until memory ran out. Two million URLs is a few
+# hundred MB; a crawl that fills it carries on with what it has queued.
+FRONTIER_MAX = 2_000_000
 
 # Query strings are the classic crawler trap: session ids, sort orders, and
 # tracking parameters multiply one page into thousands. The rule is that a
@@ -435,11 +439,17 @@ def _crawl(
     # meantime spends the interval instead of extending it.
     next_fetch_at = time.monotonic() + delay
 
+    frontier_cap = min(max_pages * FRONTIER_FACTOR, FRONTIER_MAX) if max_pages else FRONTIER_MAX
+    frontier_full = [False]
+
     def enqueue(links, depth):
         if depth > max_depth:
             return
         for link in links:
-            if max_pages and len(seen) >= max_pages * FRONTIER_FACTOR:
+            if len(seen) >= frontier_cap:
+                if frontier_cap == FRONTIER_MAX and not frontier_full[0]:
+                    frontier_full[0] = True
+                    note(f"  the queue of pages to visit is full at {FRONTIER_MAX:,}; carrying on with those")
                 return
             key = normalize_url(upgrade_scheme(link, origin))
             if (
@@ -676,6 +686,8 @@ def create_site_zim(
         raise CreateError(f"not an http(s) URL: {url}")
     if max_pages < 0 or max_depth < 0 or max_bytes < 0 or delay < 0:
         raise CreateError("crawl bounds must be positive (0 pages or 0 bytes means no limit)")
+    if not max_pages and not max_bytes:
+        note(f"warning: no page limit and no size limit: only depth {max_depth} and the disk bound this capture")
 
     origin = _origin_of(url)
     robots = None
@@ -1306,4 +1318,8 @@ def parse_size(text):
         raise CreateError(f"not a byte size: {text} (try 512MiB, 2G, or 1048576)")
     if value < 0:
         raise CreateError(f"byte size cannot be negative: {text}")
+    # Only a real 0 is "no limit". "0.5" with the unit left off truncated to 0
+    # and read as no limit at all.
+    if value == 0 and float(number) != 0:
+        raise CreateError(f"byte size is less than a byte: {text} (try 512M or 2G; 0 means no limit)")
     return value
