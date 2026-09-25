@@ -5500,7 +5500,7 @@ function _renderDiscover(el, items) {
     // Detect quote content (for special card template)
     var isQuote = it.blurb && (it.blurb.charAt(0) === '\u201c' || it.blurb.charAt(0) === '"');
     if (!isQuote && /wikiquote/i.test(it.zim || '') && (it.blurb || it.title)) isQuote = true;
-    var blurbHtml = it.blurb ? '<div class="dc-blurb' + (isQuote ? ' dc-quote' : '') + '">' + esc(it.blurb) + '</div>' : '';
+    var blurbHtml = it.blurb ? '<div dir="auto" class="dc-blurb' + (isQuote ? ' dc-quote' : '') + '">' + esc(it.blurb) + '</div>' : '';
 
     // ─── Card: Quote ────────────────────────────────────────────────
     // Full-width card with decorative quote mark, serif text, and attribution.
@@ -5509,13 +5509,13 @@ function _renderDiscover(el, items) {
       var attrName = it.attribution || it.speaker || (/^[A-Z][a-z]+ [A-Z]/.test(displayTitle) ? displayTitle : '');
       var cleanQuote = it.blurb ? it.blurb.replace(/^[\u201c\u201d"]+\s*/, '').replace(/[\u201d"]+\s*$/, '') : displayTitle;
       var attrLine = (attrName && attrName !== cleanQuote)
-        ? '<div class="dc-attribution">\u2014 ' + esc(attrName) + '</div>'
+        ? '<div dir="auto" class="dc-attribution">\u2014 ' + esc(attrName) + '</div>'
         : '';
       h += '<a class="discover-card dc-quote-card" href="' + escAttr(_articleDeepLinkPath(it.zim, it.path)) + '" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="return _spaCardClick(event, this)">' +
         '<div class="dc-body">' +
           '<div class="dc-header">' + iconHtml + '<span>' + esc(sourceLabel || t('quote_of_day')) + '</span></div>' +
           '<div class="dc-quote-mark">\u201C</div>' +
-          '<div class="dc-blurb dc-quote">' + esc(cleanQuote) + '</div>' +
+          '<div dir="auto" class="dc-blurb dc-quote">' + esc(cleanQuote) + '</div>' +
           attrLine +
         '</div></a>';
 
@@ -5526,9 +5526,9 @@ function _renderDiscover(el, items) {
       h += '<a class="discover-card dc-quote-card dc-word-card" href="' + escAttr(_articleDeepLinkPath(it.zim, it.path)) + '" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="return _spaCardClick(event, this)">' +
         '<div class="dc-body">' +
           '<div class="dc-header">' + iconHtml + '<span>' + esc(sourceLabel) + '</span></div>' +
-          '<div class="dc-headword">' + esc(displayTitle) + '</div>' +
+          '<div dir="auto" class="dc-headword">' + esc(displayTitle) + '</div>' +
           (it.part_of_speech ? '<div class="dc-pos">' + esc(it.part_of_speech) + '</div>' : '') +
-          (it.blurb ? '<div class="dc-def">' + esc(it.blurb) + '</div>' : '') +
+          (it.blurb ? '<div dir="auto" class="dc-def">' + esc(it.blurb) + '</div>' : '') +
         '</div></a>';
 
     // ─── Card: Standard ─────────────────────────────────────────────
@@ -5564,7 +5564,7 @@ function _renderDiscover(el, items) {
         thumbHtml + playBadge +
         '<div class="dc-body">' +
           '<div class="dc-source">' + iconHtml + '<span>' + esc(sourceLabel) + '</span>' + badgeHtml + dateHtml + '</div>' +
-          '<div class="dc-title">' + esc(displayTitle) + '</div>' +
+          '<div dir="auto" class="dc-title">' + esc(displayTitle) + '</div>' +
           speakerHtml +
           showBlurb +
         '</div></a>';
