@@ -45,6 +45,10 @@ def test_every_reported_site_is_a_site_the_suite_can_run():
         assert site.get("engine", "rendered") in ENGINES, f"{url}: unknown engine"
         assert isinstance(site.get("issue"), int), f"{url}: which issue reported it?"
         assert site.get("why"), f"{url}: say in one line what went wrong"
+        if site.get("mode") == "site":
+            # A whole-site entry is checked by where the crawl went.
+            assert site.get("expect_under", "").startswith("/"), f"{url}: say which path the crawl must stay under"
+            continue
         interact = site.get("interact") or {}
         assert (
             "click" in interact or "type_into" in interact
