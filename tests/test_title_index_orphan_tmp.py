@@ -88,13 +88,13 @@ class RedirectTitleTests(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_a_redirect_title_is_found(self):
-        from test_nonlatin_redirect import SOURCE
+        from test_nonlatin_redirect import TARGET
 
         found = _search._title_index_search("fixture", "العائلة اللغوية")
-        self.assertEqual([r["path"] for r in found], [SOURCE])
+        self.assertEqual([r["path"] for r in found], [TARGET])
 
     def test_a_cyrillic_redirect_title_is_found(self):
-        from test_nonlatin_redirect import CYRILLIC_SOURCE
+        from test_nonlatin_redirect import CYRILLIC_TARGET
 
         found = _search._title_index_search("fixture", "Семья языков")
-        self.assertEqual([r["path"] for r in found], [CYRILLIC_SOURCE])
+        self.assertEqual([r["path"] for r in found], [CYRILLIC_TARGET])

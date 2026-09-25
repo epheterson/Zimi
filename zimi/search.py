@@ -242,7 +242,7 @@ def _suggest_cache_restore():
 # Title Index (was section 7)
 # ---------------------------------------------------------------------------
 
-_TITLE_INDEX_VERSION = "5"  # bump to force rebuild (v5: redirect titles; v4: FTS5)
+_TITLE_INDEX_VERSION = "6"  # bump to force rebuild (v6: a redirect's target; v5: redirect titles; v4: FTS5)
 _FTS5_ENTRY_THRESHOLD = (
     2_000_000  # skip FTS5 build for ZIMs above this (can be triggered manually)
 )
@@ -299,13 +299,28 @@ def _get_title_db(zim_name):
     return _get_pooled_db(zim_name, _title_db_pool, _title_db_pool_lock, path_fn)
 
 
+# Per ZIM: the columns its title index has (see _title_select), and the ZIMs
+# whose title query has failed (warned about once).
+_title_cols = {}
+_title_query_failed = set()
+_title_cols_lock = threading.Lock()
+
+
 def _close_title_db(zim_name):
-    """Close and remove a pooled title index connection, and forget the quick
-    search's answers for that ZIM: they came from the index being replaced,
-    or from the no-index fallback before there was one. A search in the
-    seconds before startup built the index was otherwise answered "nothing"
-    for the cache's 15 minutes after the index was ready."""
+    """Close and remove a pooled title index connection."""
     _close_pooled_db(zim_name, _title_db_pool, _title_db_pool_lock)
+    with _title_cols_lock:
+        _title_cols.pop(zim_name, None)
+
+
+def _title_index_replaced(zim_name):
+    """A new title index for ``zim_name`` is in place: close the old one and
+    forget the answers it gave, and the no-index fallback's before it. A
+    search in the seconds before startup built the index was otherwise
+    answered "nothing" for the caches' 15 minutes after it was ready. Called
+    after the file is replaced, so a search in between cannot re-cache the
+    old answer; not on a query error, which replaces nothing."""
+    _close_title_db(zim_name)
     with _suggest_cache_lock:
         for key in [k for k in _suggest_cache if k[1] == zim_name]:
             del _suggest_cache[key]
@@ -484,8 +499,10 @@ def _build_title_index(zim_name, zim_path):
     try:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=OFF")  # safe: tmp file, rebuilt on failure
+        # target: the article a redirect leads to, NULL for the article
+        # itself. Search shows one result per article, not one per alias.
         conn.execute(
-            "CREATE TABLE titles (path TEXT PRIMARY KEY, title TEXT, title_lower TEXT)"
+            "CREATE TABLE titles (path TEXT PRIMARY KEY, title TEXT, title_lower TEXT, target TEXT)"
         )
         conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
 
@@ -501,14 +518,20 @@ def _build_title_index(zim_name, zim_path):
             try:
                 entry = archive._get_entry_by_id(i)
                 path = entry.path
+                target = None
                 if entry.is_redirect:
                     # A redirect is an article's other name, and people
                     # search by it: "العائلة اللغوية" for "أسرة لغات" (#86),
-                    # which Kiwix's suggestions find. Indexed under its own
-                    # path when it leads to a page; the reader follows it.
-                    # A capture lists its pages, and a redirect is not one.
-                    if pages is not None or not _looks_like_a_page(entry.get_redirect_entry()):
+                    # which Kiwix's suggestions find. Indexed with the page it
+                    # leads to. A capture lists its pages, and a redirect is
+                    # not one; nor is a web archive's HTTP redirect, whose
+                    # "title" is only its own address.
+                    if pages is not None or not entry.title or entry.title == path:
                         continue
+                    dest = entry.get_redirect_entry()
+                    if not _looks_like_a_page(dest):
+                        continue
+                    target = dest.path
                 elif pages is not None:
                     if path not in pages:
                         continue
@@ -525,10 +548,10 @@ def _build_title_index(zim_name, zim_path):
                 title = entry.title
                 if not title:
                     continue
-                batch.append((path, title, title.lower()))
+                batch.append((path, title, title.lower(), target))
                 if len(batch) >= 10000:
                     conn.executemany(
-                        "INSERT OR IGNORE INTO titles VALUES (?,?,?)", batch
+                        "INSERT OR IGNORE INTO titles VALUES (?,?,?,?)", batch
                     )
                     conn.commit()
                     count += len(batch)
@@ -538,7 +561,7 @@ def _build_title_index(zim_name, zim_path):
                 continue
 
         if batch:
-            conn.executemany("INSERT OR IGNORE INTO titles VALUES (?,?,?)", batch)
+            conn.executemany("INSERT OR IGNORE INTO titles VALUES (?,?,?,?)", batch)
             count += len(batch)
 
         if count == 0:
@@ -581,6 +604,7 @@ def _build_title_index(zim_name, zim_path):
         _close_title_db(zim_name)
         # Atomic replace (os.replace is atomic on POSIX, avoids remove+rename race)
         os.replace(tmp_path, db_path)
+        _title_index_replaced(zim_name)
         dt = time.time() - t0
         log.info(
             "Title index: built %s (%d entries%s, %.1fs)",
@@ -637,12 +661,53 @@ def _build_fts_for_index(zim_name):
 _QUICK_CANDIDATES = 2000
 
 
+def _title_select(zim_name, conn):
+    """The columns to read from ``conn``'s titles: an index from before v6 has
+    no ``target``, and reads NULL there until its rebuild lands, rather than
+    failing into libzim's slow suggestions for the hours a library's rebuild
+    takes."""
+    with _title_cols_lock:
+        cols = _title_cols.get(zim_name)
+    if cols is None:
+        names = {r[1] for r in conn.execute("PRAGMA table_info(titles)")}
+        cols = "path, title, target" if "target" in names else "path, title, NULL"
+        with _title_cols_lock:
+            _title_cols[zim_name] = cols
+    return cols
+
+
+def _collapse_titles(rows, limit, results, seen):
+    """(path, title, target) rows into ``results``, one per article: an alias
+    (a redirect) stands for the page it leads to, and the article's own title
+    replaces an alias's when both are there. Without it Wikipedia's aliases
+    (about 1.5 per article) came back as separate hits for one page and
+    pushed other articles out of the ZIM's slots."""
+    for path, title, target in rows:
+        key = target or path
+        hit = seen.get(key)
+        if hit is not None:
+            if not target:
+                hit["title"] = title
+            continue
+        if len(results) >= limit:
+            continue
+        hit = {"path": key, "title": title, "snippet": ""}
+        seen[key] = hit
+        results.append(hit)
+    return results
+
+
+def _prefix_upper(text):
+    """The smallest string above every string that starts with ``text``."""
+    return text[:-1] + chr(min(ord(text[-1]) + 1, 0x10FFFF))
+
+
 def _title_index_search(zim_name, query, limit=10):
     """Search title index. Returns list or None if no index.
 
-    For single-word queries: B-tree prefix range scan (instant, <1ms).
-    For multi-word queries: FTS5 inverted index search — finds titles
-    containing ALL query words regardless of position.
+    Titles starting with the query (a B-tree prefix range scan), and for
+    several words, titles starting with the first that contain the others.
+    One result per article: an alias leads to its article's path.
 
     Uses pooled connections to avoid per-query sqlite3.connect() overhead.
     """
@@ -654,61 +719,52 @@ def _title_index_search(zim_name, query, limit=10):
         return []
     words = q.split()
     try:
+        cols = _title_select(zim_name, conn)
+        # Room for aliases collapsing into their article.
+        fetch = limit * 3
+        # Titles starting with the whole phrase first, the exact title first
+        # among them: a first-word scan is alphabetical and runs out of rows
+        # among thousands of "Albert ..." before "Albert Einstein".
+        leading = conn.execute(
+            "SELECT " + cols + " FROM titles WHERE title_lower >= ? AND title_lower < ? LIMIT ?",
+            (q, _prefix_upper(q), fetch),
+        ).fetchall()
+        results = _collapse_titles(leading, limit, [], {})
         if len(words) == 1:
-            # Single word: B-tree prefix range scan
-            q_upper = q[:-1] + chr(ord(q[-1]) + 1)
-            rows = conn.execute(
-                "SELECT path, title FROM titles WHERE title_lower >= ? AND title_lower < ? LIMIT ?",
-                (q, q_upper, limit),
-            ).fetchall()
-            return [{"path": r[0], "title": r[1], "snippet": ""} for r in rows]
-        else:
-            # Titles starting with the whole phrase first, the exact title
-            # first among them: a first-word scan is alphabetical and runs out
-            # of rows among thousands of "Albert ..." before "Albert Einstein".
-            phrase_upper = q[:-1] + chr(ord(q[-1]) + 1)
-            leading = conn.execute(
-                "SELECT path, title FROM titles WHERE title_lower >= ? AND title_lower < ? LIMIT ?",
-                (q, phrase_upper, limit),
-            ).fetchall()
-            # Then titles starting with the first word that contain the
-            # others. The filter runs on the prefix index alone (it holds
-            # title_lower), and the table is read only for the matches: the
-            # old shape read 200 candidate rows per ZIM from the table, 15,600
-            # random reads over the NAS's 78 ZIMs for a first word not yet in
-            # the page cache (4 to 5 s cold; this shape, 0.07 to 0.22 s).
-            first_word = words[0]
-            other_words = words[1:]
-            first_upper = first_word[:-1] + chr(ord(first_word[-1]) + 1)
-            contains = " AND ".join(["instr(s.tl, ?) > 0"] * len(other_words))
-            rows = conn.execute(
-                "SELECT t.path, t.title FROM (SELECT rowid AS r, title_lower AS tl FROM titles"
-                " WHERE title_lower >= ? AND title_lower < ? LIMIT ?) s"
-                " JOIN titles t ON t.rowid = s.r WHERE " + contains + " LIMIT ?",
-                (first_word, first_upper, _QUICK_CANDIDATES, *other_words, limit * 2),
-            ).fetchall()
-            results = []
-            seen = set()
-            for path, title in leading:
-                seen.add(path)
-                results.append({"path": path, "title": title, "snippet": ""})
-            for path, title in rows:
-                if len(results) >= limit:
-                    break
-                if path not in seen:
-                    seen.add(path)
-                    results.append({"path": path, "title": title, "snippet": ""})
-            # An index that has no such title is an answer, not a miss. None
-            # sent 72 of the NAS's 78 ZIMs to libzim's SuggestionSearcher for
-            # every multi-word query whose first word starts no title, and the
-            # quick pass took 5 to 12 s; the full pass behind it searches the
-            # article text anyway. Only a ZIM with no index falls back.
             return results
+        seen = {r["path"]: r for r in results}
+        # Then titles starting with the first word that contain the others.
+        # The filter runs on the prefix index alone (it holds title_lower),
+        # and the table is read only for the matches: the old shape read 200
+        # candidate rows per ZIM from the table, 15,600 random reads over the
+        # NAS's 78 ZIMs for a first word not yet in the page cache (4 to 5 s
+        # cold; this shape, 0.07 to 0.22 s).
+        first_word, other_words = words[0], words[1:]
+        contains = " AND ".join(["instr(s.tl, ?) > 0"] * len(other_words))
+        rows = conn.execute(
+            "SELECT " + ", ".join("t." + c if c != "NULL" else c for c in cols.split(", ")) +
+            " FROM (SELECT rowid AS r, title_lower AS tl FROM titles"
+            " WHERE title_lower >= ? AND title_lower < ? LIMIT ?) s"
+            " JOIN titles t ON t.rowid = s.r WHERE " + contains + " LIMIT ?",
+            (first_word, _prefix_upper(first_word), _QUICK_CANDIDATES, *other_words, fetch),
+        ).fetchall()
+        # An index that has no such title is an answer, not a miss. None
+        # sent 72 of the NAS's 78 ZIMs to libzim's SuggestionSearcher for
+        # every multi-word query whose first word starts no title, and the
+        # quick pass took 5 to 12 s; the full pass behind it searches the
+        # article text anyway. Only a ZIM with no index falls back.
+        return _collapse_titles(rows, limit, results, seen)
     except Exception as e:
-        # Connection may be stale (e.g. DB was rebuilt) — evict and retry once
-        log.debug("Title index search failed for %s query %r: %s", zim_name, query, e)
+        # A stale connection (the file was rebuilt) or a query this index
+        # cannot answer: the slow fallback answers instead, so say so once.
+        with _title_cols_lock:
+            first = zim_name not in _title_query_failed
+            _title_query_failed.add(zim_name)
+        (log.warning if first else log.debug)(
+            "Title index search failed for %s (falling back to libzim): %s", zim_name, e
+        )
         getattr(_srv, "_close_title_db", _close_title_db)(zim_name)
-        return None  # fallback on DB error
+        return None
 
 
 def _title_index_exact(zim_name, query):
@@ -720,8 +776,9 @@ def _title_index_exact(zim_name, query):
         return []
     try:
         rows = conn.execute(
-            "SELECT path, title FROM titles WHERE title_lower = ? LIMIT 3", (q,)
+            "SELECT " + _title_select(zim_name, conn) + " FROM titles WHERE title_lower = ? LIMIT 3", (q,)
         ).fetchall()
+        rows = [(h["path"], h["title"]) for h in _collapse_titles(rows, 3, [], {})]
     except Exception as e:
         log.debug("Exact title lookup failed for %s %r: %s", zim_name, query, e)
         return []
@@ -778,6 +835,32 @@ def _background_step(kind, current, done=None):
 def _background_end(kind):
     with _background_lock:
         _background.pop(kind, None)
+
+
+# What failed since the server started, so Manage does not call a library
+# "up to date" when a rebuild failed and a ZIM kept its old index: kind ->
+# set of ZIM names (None for a job with no single ZIM, like did-you-mean). A
+# later success for the same ZIM takes it off.
+_background_failed = {}
+
+
+def _background_fail(kind, name=None):
+    with _background_lock:
+        _background_failed.setdefault(kind, set()).add(name)
+
+
+def _background_ok(kind, name=None):
+    with _background_lock:
+        _background_failed.get(kind, set()).discard(name)
+
+
+def background_failures():
+    """[{kind, name}] for what failed and has not since succeeded."""
+    with _background_lock:
+        return sorted(
+            ({"kind": k, "name": n} for k, names in _background_failed.items() for n in names),
+            key=lambda f: (f["kind"], f["name"] or ""),
+        )
 
 
 def background_work():
@@ -984,7 +1067,7 @@ def _build_all_title_indexes_inner():
             _title_index_status["building_now"] = name
         try:
             _build_index_isolated(
-                "titles", name, path, _build_title_index, _close_title_db
+                "titles", name, path, _build_title_index, _title_index_replaced
             )
             built += 1
             with _title_index_status_lock:
@@ -1944,6 +2027,10 @@ def _vocab_build_worker_inner(attempt):
     except Exception as e:
         log.info("Did-you-mean vocab: build raised %s", e)
         built, complete = {}, False
+    if built:
+        _background_ok("vocab")
+    else:
+        _background_fail("vocab")
     with _vocab_lock:
         # A retry that did worse than what is already here keeps what is here.
         if attempt == 1 or len(built or {}) >= len(_vocab or {}):

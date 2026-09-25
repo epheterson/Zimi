@@ -39,6 +39,9 @@ ARTICLES = [
     ("A/أسرة_لغات", "أسرة لغات"),
     ("A/Языковая_семья", "Языковая семья"),
     ("A/语系", "语系"),
+    # No alias starts with "relativity": libzim's suggestions find it by a
+    # word inside the title, the quick search does not (the known gap below).
+    ("A/Theory_of_relativity", "Theory of relativity"),
 ]
 # (path, title, target path): an article's other names.
 REDIRECTS = [
@@ -113,21 +116,36 @@ class SearchFindsEveryTitle(unittest.TestCase):
             body = json.load(resp)
         return {r["path"] for r in body.get("results", [])}
 
+    @staticmethod
+    def _page(entry):
+        """The page a title leads to: an article is its own, an alias (a
+        redirect) leads to its article, and search answers with that."""
+        return entry[2] if len(entry) == 3 else entry[0]
+
     def test_every_title_finds_its_entry_in_the_quick_search(self):
         missing = []
-        for path, title, *_ in ARTICLES + REDIRECTS:
-            if path not in self._paths(title, fast=True):
-                missing.append(title)
+        for entry in ARTICLES + REDIRECTS:
+            if self._page(entry) not in self._paths(entry[1], fast=True):
+                missing.append(entry[1])
         self.assertEqual(missing, [], "titles the quick search cannot find")
+
+    def test_an_article_and_its_aliases_are_one_result(self):
+        """Arabic "أسرة لغات" has three aliases; a search they all match
+        answers with the article once, under its own title."""
+        url = "%s/search?%s" % (self._base, urllib.parse.urlencode({"q": "أسر", "limit": 50, "fast": 1}))
+        with urllib.request.urlopen(url) as resp:
+            results = json.load(resp)["results"]
+        hits = [r for r in results if r["path"] == "A/أسرة_لغات"]
+        self.assertEqual(len(hits), 1, results)
+        self.assertEqual(hits[0]["title"], "أسرة لغات")
 
     def test_every_title_is_found_by_search_as_the_page_runs_it(self):
         """The page asks the quick search and then the full one; what a person
         sees is the two together."""
         missing = []
-        for path, title, *_ in ARTICLES + REDIRECTS:
-            if path not in self._paths(title, fast=True) | self._paths(
-                title, fast=False
-            ):
+        for entry in ARTICLES + REDIRECTS:
+            title = entry[1]
+            if self._page(entry) not in self._paths(title, fast=True) | self._paths(title, fast=False):
                 missing.append(title)
         self.assertEqual(missing, [], "titles a person searching cannot find")
 
@@ -142,12 +160,16 @@ class SearchFindsEveryTitle(unittest.TestCase):
         searcher = SuggestionSearcher(archive)
         queries = [t for _, t, *_ in ARTICLES + REDIRECTS]
         queries += sorted({t.split()[0] for t in queries})  # first words alone
+        queries.append("relativity")  # a word inside a title, no alias
         gaps = {}
         for q in queries:
             s = searcher.suggest(q)
             oracle = set(s.getResults(0, s.getEstimatedMatches()))
             if prefix_only:
                 oracle = {p for p in oracle if archive.get_entry_by_path(p).title.lower().startswith(q.lower())}
+            # libzim answers an alias with its article, as the quick search does.
+            oracle = {archive.get_entry_by_path(p).get_redirect_entry().path
+                      if archive.get_entry_by_path(p).is_redirect else p for p in oracle}
             lost = oracle - self._paths(q, fast=True)
             if lost:
                 gaps[q] = sorted(lost)
@@ -158,11 +180,12 @@ class SearchFindsEveryTitle(unittest.TestCase):
 
     @unittest.expectedFailure
     def test_whatever_libzim_suggests_anywhere_the_quick_search_finds(self):
-        """Not yet: libzim matches a word anywhere in a title, stemmed
-        ("Einstein" finds "Albert Einstein", "Language families" finds
-        "Language family"); the quick search matches titles that start with
-        the first word, and the full search behind it finds the rest. When the
-        quick search matches words anywhere, this passes and the marker goes."""
+        """Not yet: libzim matches a word anywhere in a title ("relativity"
+        finds "Theory of relativity"); the quick search matches titles that
+        start with the first word, and the full search behind it finds the
+        rest. (Aliases used to be gaps here too, "Einstein" for "Albert
+        Einstein"; since v6 an alias answers with its article.) When the quick
+        search matches words anywhere, this passes and the marker goes."""
         self.assertEqual(self._libzim_gaps(prefix_only=False), {})
 
 
@@ -215,7 +238,7 @@ class ASearchBeforeTheIndexIsNotKept(unittest.TestCase):
 
             paths()  # before the index: the fallback's answer, cached
             search._build_all_title_indexes()
-            self.assertIn("A/Purifying_water", paths())
+            self.assertIn("A/Water_purification", paths())
         finally:
             srv.shutdown()
 
