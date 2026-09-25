@@ -8,13 +8,22 @@ from urllib.parse import unquote
 log = logging.getLogger("zimi")
 
 
+# A <script> or <style> element with its body, to its end tag or, when a
+# read stopped inside it, to the end of the text. The name must END there (a
+# space, a slash or the >), so <script-loader> is not a script; a self-closed
+# <script .../> has no body to remove, and taking it as an opening tag
+# swallowed the whole page after it.
+_SCRIPT_OR_STYLE_RE = re.compile(
+    r"<(script|style)(?=[\s/>])(?![^>]*/>)[^>]*>.*?(?:</\1\s*>|$)", re.DOTALL | re.IGNORECASE
+)
+
+
 def strip_html(text):
     """Remove HTML tags and decode entities, return plain text."""
     # A script or style the read cut off before its end runs to the end:
     # mwoffliner's Wikivoyage pages open with a config script longer than
     # /snippet's read, and its code came back as the page's snippet.
-    text = re.sub(r"<script[^>]*>.*?(?:</script>|$)", "", text, flags=re.DOTALL)
-    text = re.sub(r"<style[^>]*>.*?(?:</style>|$)", "", text, flags=re.DOTALL)
+    text = _SCRIPT_OR_STYLE_RE.sub("", text)
     text = re.sub(r"<[^>]+>", " ", text)
     # A read of the start of a page can end inside a tag, which the pattern
     # above cannot close: '... 1879 <a rel="mw:WikiLink" href="Ulm" t'.

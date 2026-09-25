@@ -1764,6 +1764,19 @@ class TestStripHtmlEdgeCases(unittest.TestCase):
         self.assertIn("before", result)
         self.assertIn("after", result)
 
+    def test_a_self_closed_script_keeps_the_page_after_it(self):
+        """Read as an opening tag, <script .../> ran to the end of the text
+        and the snippet came back empty."""
+        self.assertEqual(self.strip('<script src="a"/><p>Hello</p>'), "Hello")
+
+    def test_an_element_whose_name_starts_with_script_is_not_one(self):
+        self.assertEqual(self.strip("<script-loader>x</script-loader><p>Hi</p>"), "x Hi")
+        self.assertEqual(self.strip("<styled-box>kept</styled-box>"), "kept")
+
+    def test_scripts_still_go_in_any_case_and_when_cut_off(self):
+        self.assertEqual(self.strip("<SCRIPT>bad()</SCRIPT>ok"), "ok")
+        self.assertEqual(self.strip("<p>a</p><script>var config = {"), "a")
+
 
 class TestCategorizationExtended(unittest.TestCase):
     """Extended edge cases for ZIM categorization."""
