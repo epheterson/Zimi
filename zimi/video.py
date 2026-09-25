@@ -805,6 +805,7 @@ def create_video_zim(
             )
         if not videos:
             raise CreateError("nothing fit under the size budget — raise --max-bytes")
+        stopped = f"byte budget ({_fmt_bytes(max_bytes)})" if budget_hit else None
 
         language, language_source = _video_language(language, videos)
         if language_source != "requested":
@@ -961,7 +962,7 @@ def create_video_zim(
                     + (" (audio only)" if audio_only else ""),
                     tools={"yt-dlp": tool_version},
                     counts={"videos": len(rows), "bytes": used},
-                    stopped=f"byte budget ({_fmt_bytes(max_bytes)})" if budget_hit else None,
+                    stopped=stopped,
                 ),
             )
     finally:
@@ -976,6 +977,9 @@ def create_video_zim(
         "main": "index",
         "registered": registered,
         "url": url,
+        # The card's warning and the info panel's Incomplete read the same
+        # bound: this key and the history record's are one value.
+        "stopped": stopped,
         "language": language,
         "language_source": language_source,
     }

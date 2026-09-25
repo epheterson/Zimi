@@ -799,6 +799,30 @@ def test_a_crawl_with_no_page_limit_still_shows_its_pages():
         assert any(e.get("t") == "node" for e in events), line
 
 
+def test_capture_again_sends_what_was_asked_not_what_was_validated(stub_engine):
+    """The rerun is the remembered request sent again. It was the validated
+    options, which spell the video quality ``fmt`` where the form says
+    ``format``: capturing again quietly dropped the chosen 1080p."""
+    asked = {"mode": "video", "source": "https://www.youtube.com/playlist?list=PLx", "format": "1080p"}
+    _post("/manage/create", asked)
+    _wait_done()
+    remembered = _get("/manage/create/status").body["request"]
+    assert remembered == asked
+    # Sent again, it validates to the same quality.
+    _mode, _source, _title, opts = manage._create_validate(remembered)
+    assert opts["fmt"] == manage.CREATE_VIDEO_FORMATS["1080p"]
+
+
+def test_zimit_reports_only_the_bound_it_enforces():
+    """zimit is handed a page limit and nothing else, so the counters must not
+    promise a 4 GB size budget it never sees."""
+    from zimi import crawler
+
+    assert manage._create_limits("site", {"engine": "zimit"}) == {"pages": crawler.DEFAULT_MAX_PAGES}
+    assert manage._create_limits("site", {"engine": "zimit", "max_pages": 0}) == {"pages": 0}
+    assert set(manage._create_limits("site", {"engine": "builtin"})) == {"pages", "bytes"}
+
+
 def test_a_job_reports_the_limits_it_runs_with(stub_engine):
     """So the page can show "1,234 of 10,000 pages" and name the limit that
     stopped it; blank is the engine's default, 0 is none."""

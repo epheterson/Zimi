@@ -384,6 +384,27 @@ def test_budget_stops_cleanly_and_index_names_skipped(monkeypatch, tmp_path):
     assert "--max-bytes" in idx
 
 
+def test_the_card_and_the_file_agree_a_budget_cut_it_short(monkeypatch, tmp_path):
+    """The card reads the reply and the info panel reads the file. Only the
+    file said a budget cut the capture short, so the panel called it
+    Incomplete while the card showed nothing wrong."""
+    _install_fake_ytdlp(monkeypatch, _videos())
+    info = video.create_video_zim(
+        PLAYLIST_URL,
+        out_dir=str(tmp_path / "out"),
+        work_dir=str(tmp_path),
+        max_bytes=1200,
+    )
+    rec = parse_history(Archive(info["path"]).get_metadata(HISTORY_METADATA_KEY))[0]
+    assert info["stopped"] == rec["stopped"] == "byte budget (1.2 KB)"
+
+    (tmp_path / "whole").mkdir()
+    whole = video.create_video_zim(
+        PLAYLIST_URL, out_dir=str(tmp_path / "whole"), work_dir=str(tmp_path / "whole")
+    )
+    assert whole["stopped"] is None
+
+
 def test_first_video_always_ships_even_over_budget(monkeypatch, tmp_path):
     _install_fake_ytdlp(monkeypatch, _videos())
     info = video.create_video_zim(

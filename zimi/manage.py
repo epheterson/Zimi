@@ -3496,6 +3496,11 @@ def _create_limits(mode, opts):
         value = opts.get(key)
         return default if value is None else value
 
+    if mode == "site" and opts.get("engine") == "zimit":
+        # zimit enforces a page limit (browsertrix's --limit) and nothing else
+        # Zimi hands it; a size counter out of 4 GB would be a promise nobody
+        # keeps.
+        return {"pages": bound("max_pages", crawler.DEFAULT_MAX_PAGES)}
     if mode == "site":
         return {"pages": bound("max_pages", crawler.DEFAULT_MAX_PAGES),
                 "bytes": bound("max_bytes", crawler.DEFAULT_MAX_BYTES)}
@@ -3519,9 +3524,11 @@ def _create_start(data, actor=None):
     global _create_job
     job = _CreateJob(mode, source, title)
     job.limits = _create_limits(mode, opts)
-    # What to send again for "capture again with no limit": the request as
-    # validated, so a rerun is this job with one bound lifted.
-    job.request = dict(opts, mode=mode, source=source, **({"title": title} if title else {}))
+    # What to send again for "capture again with no limits": the request as it
+    # was SUBMITTED, so a rerun is this job with its bounds lifted. Not the
+    # validated opts: those are the engine's spelling (``fmt`` for the form's
+    # ``format``), and a rerun of them lost the chosen video quality.
+    job.request = dict(data)
     if actor:
         job.actor = actor
     position = 0
