@@ -16745,7 +16745,7 @@ function _booksStrings() {
   return _appStrings('books', ['books_shelf', 'books_authors', 'books_subjects', 'books_eras', 'books_languages', 'books_popular', 'books_recent',
     'books_continue', 'books_all_books', 'books_see_all', 'books_sort_popular', 'books_sort_title', 'books_sort_author', 'books_sort_recent',
     'books_sort_name', 'books_sort_books', 'books_read', 'books_resume', 'books_epub', 'books_more_by', 'books_added', 'books_language',
-    'books_subject', 'books_era', 'books_author', 'books_more', 'books_none', 'books_empty', 'books_book', 'books_books', 'books_bce',
+    'books_subject', 'books_era', 'books_author', 'books_more', 'books_none', 'books_empty', 'books_book', 'books_books', 'books_bce', 'books_bce_ce',
     'books_pending', 'books_epub_only'], { lcc: lcc });
 }
 function openBooks(replaceState) {

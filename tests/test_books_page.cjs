@@ -31,7 +31,7 @@ function memoryStorage() {
 
 // ── the page's pure parts ───────────────────────────────────────────────
 const ctx = { localStorage: memoryStorage(), Intl, Date, Math, JSON, String, Number, Object,
-  STR: { lang: 'en', bce: '{from} to {to} BCE', lcc: { P: 'Language and literature', PR: 'English literature', Q: 'Science' } } };
+  STR: { lang: 'en', bce: '{from} to {to} BCE', bce_ce: '{from} BCE to {to} CE', lcc: { P: 'Language and literature', PR: 'English literature', Q: 'Science' } } };
 vm.createContext(ctx);
 vm.runInContext([
   extract(page, /var PLACES_KEY = [^\n]*\n/, 'PLACES_KEY'),
@@ -52,7 +52,7 @@ const plain = s => s.replace(/[\u2066\u2069]/g, '');
 ok('a hundred years is named by its span', plain(ctx.eraLabel(1800)) === '1800–1899' && plain(ctx.eraLabel(0)) === '0–99');
 ok('before the common era in the shell\'s words', ctx.eraLabel(-100) === '100 to 1 BCE' && ctx.eraLabel(-700) === '700 to 601 BCE');
 ok('a span of years stays left to right in a right-to-left line', /^\u2066.*\u2069$/.test(ctx.eraLabel(1900)) && /^\u2066.*\u2069$/.test(ctx.yearsLabel(1856, 1908)));
-ok('a writer\'s years, and BCE ones', plain(ctx.yearsLabel(1856, 1908)) === '1856–1908' && ctx.yearsLabel(-71, -20) === '71 to 20 BCE' && ctx.yearsLabel(null, null) === '');
+ok('a writer\'s years, and BCE ones', plain(ctx.yearsLabel(1856, 1908)) === '1856–1908' && ctx.yearsLabel(-71, -20) === '71 to 20 BCE' && ctx.yearsLabel(-63, 14) === '63 BCE to 14 CE' && ctx.yearsLabel(null, null) === '');
 ok('a shelf by its subclass name, else its class\'s', ctx.shelfName('PR') === 'English literature' && ctx.shelfName('PQ') === 'Language and literature' && ctx.shelfName('QA') === 'Science' && ctx.shelfName('XX') === 'XX');
 ok('a language by its name, in the shell\'s language', ctx.langName('la') === 'Latin' && ctx.langName('he') === 'Hebrew');
 ok('a cover set in type keeps its colour wherever it is shown', ctx.coverHue('Aeneidos') === ctx.coverHue('Aeneidos') && ctx.COVER_HUES.indexOf(ctx.coverHue('Tales')) >= 0);
@@ -109,7 +109,7 @@ ok('Back from a book returns to Bookshelf', /s\.mode === 'reader' && s\.books\) 
 ok('the catalog door is allowed', /_APP_CATEGORY_KEYS = \[[^\]]*'gutenberg'\]/.test(src) && /books: 'gutenberg' \}/.test(src));
 ok('its background work has a name in Manage', /books: 'bg_books'/.test(src));
 
-const need = ['books', 'books_search_placeholder', 'books_prev_chapter', 'books_next_chapter', 'app_empty_books', 'apps_count_books_one', 'apps_count_books_other', 'bg_books', 'books_bce'];
+const need = ['books', 'books_search_placeholder', 'books_prev_chapter', 'books_next_chapter', 'app_empty_books', 'apps_count_books_one', 'apps_count_books_other', 'bg_books', 'books_bce', 'books_bce_ce'];
 const pageKeys = (extract(src, /_appStrings\('books', \[[\s\S]*?\]/, 'keys').match(/'books_[a-z_]+'/g) || []).map(k => k.slice(1, -1));
 const lcc = JSON.parse(extract(src, /var _BOOKS_LCC = \[[\s\S]*?\];/, 'lcc').replace(/^var _BOOKS_LCC = /, '').replace(/;$/, '').replace(/'/g, '"'));
 for (const lang of fs.readdirSync(path.join(root, 'i18n'))) {
@@ -117,10 +117,12 @@ for (const lang of fs.readdirSync(path.join(root, 'i18n'))) {
   const missing = need.concat(pageKeys).concat(lcc.map(c => 'books_lcc_' + c)).filter(k => !d[k]);
   if (missing.length) ok('every string in ' + lang, false, missing.join(', '));
   if (d.books !== 'Bookshelf') ok('it is called Bookshelf in ' + lang, false, d.books);
-  if (!/\{from\}/.test(d.books_bce) || !/\{to\}/.test(d.books_bce) || !/\{name\}/.test(d.books_more_by)) ok('the placeholders survive in ' + lang, false);
+  if (!/\{from\}/.test(d.books_bce) || !/\{to\}/.test(d.books_bce) || !/\{from\}[\s\S]*\{to\}/.test(d.books_bce_ce) || !/\{name\}/.test(d.books_more_by)) ok('the placeholders survive in ' + lang, false);
   if (Object.keys(d).filter(k => /^books|_books/.test(k)).some(k => /\u2014/.test(d[k]))) ok('no em dash in ' + lang, false);
 }
 ok('the strings are in all ten languages', fs.readdirSync(path.join(root, 'i18n')).length === 10);
 
 console.log(failures ? '\n' + failures + ' FAILED' : '\nall books-page checks passed');
+const css = fs.readFileSync(path.join(root, 'apps.css'), 'utf8');
+ok('a chosen small chip (a sort) reads as chosen: .chip.on comes after .chip.tag', css.indexOf('.chip.on {') > css.indexOf('.chip.tag {'));
 process.exit(failures ? 1 : 0);

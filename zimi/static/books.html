@@ -64,6 +64,8 @@
   .book .by { font-size: 15px; margin: 0 0 16px; }
   .book .by a { font-weight: 600; cursor: pointer; }
   .book .by .yrs { color: var(--text2); font-size: 13px; }
+  /* A writer's years keep their own order beside a name in either direction. */
+  .yrs { unicode-bidi: isolate; }
   .facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; font-size: 13px; margin: 0 0 16px; }
   .facts dt { color: var(--text2); }
   .facts dd { margin: 0; min-width: 0; }
@@ -98,7 +100,7 @@ var STR = strings({ title: 'Bookshelf', shelf: 'Shelf', authors: 'Authors', subj
   sort_popular: 'Most read', sort_title: 'Title', sort_author: 'Author', sort_recent: 'Newest', sort_name: 'A to Z', sort_books: 'Most books',
   read: 'Read', resume: 'Continue', epub: 'Download EPUB', more_by: 'More by {name}', added: 'Added to Project Gutenberg', language: 'Language',
   subject: 'Subject', era: 'Era', author: 'Author', more: 'More', none: 'No books match.', empty: 'No books installed yet.', book: 'book', books: 'books',
-  bce: '{from} to {to} BCE', pending: 'Eras and subjects appear once the books have been read, a few minutes for a big library.',
+  bce: '{from} to {to} BCE', bce_ce: '{from} BCE to {to} CE', pending: 'Eras and subjects appear once the books have been read, a few minutes for a big library.',
   epub_only: 'This ZIM has this book as an EPUB only.', catalog: 'Browse the catalog', lcc: {} });
 
 // ── pure parts (tests/test_books_page.cjs runs these) ─────────────────────
@@ -121,13 +123,14 @@ function eraLabel(from) {
   if (from >= 0) return ltr(from + '–' + (from + 99));
   return STR.bce.replace('{from}', -from).replace('{to}', -from - 99);
 }
-// A writer's years: "1856–1908", "71–20 BCE", "b. 1961" is left to the number.
+// A writer's years: "1856–1908", "71 to 20 BCE", "63 BCE to 14 CE" for a
+// life across the two eras; "b. 1961" is left to the number.
 function yearsLabel(born, died) {
   var y = function(v) { return v == null ? '' : v < 0 ? String(-v) : String(v); };
   if (born == null && died == null) return '';
-  var bce = (died != null ? died : born) < 0;
-  var s = ltr(y(born) + '–' + y(died));
-  return bce ? STR.bce.replace('{from}', y(born)).replace('{to}', y(died)) : s;
+  var fill = function(s) { return s.replace('{from}', y(born)).replace('{to}', y(died)); };
+  if (born != null && born < 0 && died != null && died >= 0) return fill(STR.bce_ce);
+  return (died != null ? died : born) < 0 ? fill(STR.bce) : ltr(y(born) + '–' + y(died));
 }
 // The LCC shelf a book is filed on, in words: the literature subclasses by
 // name, every other class by its letter's.

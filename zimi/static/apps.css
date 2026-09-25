@@ -33,8 +33,9 @@ button { font: inherit; color: inherit; }
 .chips::-webkit-scrollbar { display: none; }
 .chip { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); font-size: 13px; line-height: 1.2; cursor: pointer; white-space: nowrap; }
 .chip img { width: 16px; height: 16px; border-radius: 4px; }
-.chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
 .chip.tag { font-size: 12px; padding: 4px 10px; background: var(--surface2); }
+/* After .tag: a chosen small chip is chosen, not grey on grey. */
+.chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
 .chip .n { opacity: .6; font-variant-numeric: tabular-nums; }
 
 /* A shelf: a heading with its icon and its way to everything, then rows. */
