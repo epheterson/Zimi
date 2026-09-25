@@ -1770,7 +1770,9 @@ class TestStripHtmlEdgeCases(unittest.TestCase):
         self.assertEqual(self.strip('<script src="a"/><p>Hello</p>'), "Hello")
 
     def test_an_element_whose_name_starts_with_script_is_not_one(self):
-        self.assertEqual(self.strip("<script-loader>x</script-loader><p>Hi</p>"), "x Hi")
+        self.assertEqual(
+            self.strip("<script-loader>x</script-loader><p>Hi</p>"), "x Hi"
+        )
         self.assertEqual(self.strip("<styled-box>kept</styled-box>"), "kept")
 
     def test_scripts_still_go_in_any_case_and_when_cut_off(self):
@@ -1938,8 +1940,13 @@ class PerfTestSearch(unittest.TestCase):
                 self.assertIn(field, r, f"Missing field '{field}' in result")
 
     def test_nonexistent_zim_returns_error(self):
-        data, _ = self._fetch("/search?q=test&zim=does_not_exist_xyz")
-        self.assertIn("error", data)
+        # A missing ZIM is a 404 carrying the error (since 1.10.2).
+        import urllib.error
+
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            self._fetch("/search?q=test&zim=does_not_exist_xyz")
+        self.assertEqual(caught.exception.code, 404)
+        self.assertIn("error", json.loads(caught.exception.read()))
 
     def test_progressive_search_timing(self):
         """Phase 1 (fast) should complete before Phase 2 (FTS) for uncached queries."""
