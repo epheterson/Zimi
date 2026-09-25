@@ -96,7 +96,7 @@ def test_an_article_is_found_under_its_other_name(gate_server):
 
     from fixtures_zim import WIKI_EN_REDIRECT
 
-    source, other_name, _target = WIKI_EN_REDIRECT
+    _source, other_name, target = WIKI_EN_REDIRECT
     url = "/search?" + urllib.parse.urlencode({"q": other_name, "limit": 20, "fast": 1})
     deadline = time.time() + 60
     paths = set()
@@ -104,7 +104,7 @@ def test_an_article_is_found_under_its_other_name(gate_server):
         status, body = gate_server.get_json(url)
         assert status == 200, body
         paths = {r["path"] for r in body.get("results", [])}
-        if source in paths:
+        if target in paths:  # an alias answers with its article
             return
         time.sleep(1)
-    raise AssertionError(f"searching {other_name!r} never found {source}: {sorted(paths)}")
+    raise AssertionError(f"searching {other_name!r} never found {target}: {sorted(paths)}")
