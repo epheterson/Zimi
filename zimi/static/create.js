@@ -127,14 +127,14 @@ var CREATE_MODE_DEFS = [
     flags: ['engine', 'max_pages'],
     advanced: ['max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
       'language', 'ignore_robots'],
-    pick: { max_bytes: '500M' }
+    pick: { max_bytes: '4G' }
   },
   {
     id: 'video', network: true,
     label: 'create_label_video_url', placeholder: 'create_ph_video',
     flags: ['audio_only', 'limit'],
     advanced: ['format', 'max_bytes', 'language'],
-    pick: { max_bytes: '4G' }
+    pick: { max_bytes: '16G' }
   },
   // No subreddit tile. A reddit.com/r/<name> address under Web page is a
   // subreddit, and the server says so (Eric: "let's be coy. You put in the
@@ -301,7 +301,7 @@ var CREATE_FIELDS = {
   },
   max_pages: {
     id: 'create-max-pages', control: 'number', label: 'create_max_pages',
-    kind: 'int', min: 0, ph: '200', note: 'create_max_pages_note'
+    kind: 'int', min: 0, ph: '10000', note: 'create_max_pages_note'
   },
   limit: {
     id: 'create-limit', control: 'number', label: 'create_video_limit',
@@ -313,7 +313,7 @@ var CREATE_FIELDS = {
   },
   max_depth: {
     id: 'create-max-depth', control: 'number', label: 'create_max_depth',
-    kind: 'int', min: 0, max: 10, ph: '5'
+    kind: 'int', min: 0, max: 50, ph: '10'
   },
   delay: {
     id: 'create-delay', control: 'number', label: 'create_delay',
@@ -2965,9 +2965,13 @@ function _createSyncMetrics(s) {
     // same thing, because there is nothing left to smooth toward.
     var shown = _createCountShownValue(what, _createChipTarget(what, c.n, s), s);
     var value = what === 'bytes' ? _fmtBytes(shown) : Number(shown).toLocaleString();
-    var of = (typeof c.total === 'number' && c.total > 0)
+    // The bound it runs against: the server's total, or for bytes the size
+    // budget the job was started with (0 is none, and shows no bound).
+    var bound = (typeof c.total === 'number' && c.total > 0) ? c.total
+      : (what === 'bytes' && s.active && s.limits && s.limits.bytes > 0 ? s.limits.bytes : 0);
+    var of = bound
       ? '<span class="create-metric-of">/ ' +
-        (what === 'bytes' ? esc(_fmtBytes(c.total)) : esc(c.total.toLocaleString())) + '</span>'
+        (what === 'bytes' ? esc(_fmtBytes(bound)) : esc(bound.toLocaleString())) + '</span>'
       : '';
     html += '<div class="create-metric">' +
       '<span class="create-metric-n" data-count="' + escAttr(what) + '">' +
