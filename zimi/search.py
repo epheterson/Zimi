@@ -3476,7 +3476,7 @@ def _otd_event_entry(archive, ev):
                 "event_year": ev["year"],
                 "event_text": ev["text"],
             }
-        except (KeyError, Exception):
+        except KeyError:
             # Subset ZIMs may not hold the target — try next line.
             continue
     return None

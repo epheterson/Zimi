@@ -33,6 +33,25 @@ def strip_html(text):
     return text
 
 
+_BLOCK_TAG_RE = re.compile(
+    r"</?(?:br|p|div|li|ul|ol|dl|dd|dt|table|tr|td|th|h[1-6]|section|blockquote)\b[^>]*>",
+    re.IGNORECASE,
+)
+
+
+def inline_text(fragment):
+    """A fragment of running text as it reads. Unlike strip_html, a link or
+    a span inside a word leaves no space behind: Hebrew and Arabic glue a
+    prefix to the word a link starts ("ל<a>קיסר</a>" is one word), and
+    Chinese and Japanese put no spaces between words at all."""
+    text = re.sub(r"<!--.*?-->", "", fragment, flags=re.DOTALL)
+    text = re.sub(r"<(script|style)\b[^>]*>.*?(?:</\1>|$)", "", text, flags=re.DOTALL)
+    text = _BLOCK_TAG_RE.sub(" ", text)
+    text = re.sub(r"<[^>]*>?", "", text)
+    text = html.unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 # Some ZIMs bake a single repeated <meta description> into every page — iFixit
 # device pages carry a featured-guide blurb ("How to replace the SSD in your
 # Lenovo Legion…") rather than the device's own description. When a page exposes
