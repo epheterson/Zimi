@@ -100,6 +100,7 @@ Eric: "We're on a new major release here maps release and each of those apps of 
 - Orrery: Venus and Neptune position bugs, a missions panel, spinning globe (PLAN.md, unchecked).
 - Period newspaper that re-typesets as you scrub the time control. 2.0, pairs with the LLM work.
 - The printed almanac's breadth. Eric, 2026-09-24: "we've been neglecting almanac, it needs some cool touches not sure what. I want more things that would be in a printed almanac they were like 1k pages or whatever. I could see this project being loved by lots of people eventually." Suggestions to pick from, all offline (Claude's list, not decided): solunar tables (best fishing and hunting hours from the moon's transits); a month's rise and set table for sun, moon and planets, printable; a planting calendar by frost dates (needs a climate-normals source); the year's movable feasts across calendars (Easter by computus, Ramadan, Diwali, Lunar New Year); weather lore and folk sayings for the date; birthstones, birth flowers and anniversary gifts; weights, measures and conversions; a "year at a glance" page to print; each linking into the installed library the way the deep-links do.
+- Relativity panel (Eric, 2026-09-25: "Is there anything we can do with time dilation in the almanac? Feynman" / "Maybe for later"): light-travel clock per planet from the orrery's positions, GPS clock drift counter (+38 us/day), twin paradox on the orrery's rocket with a speed slider, muon rain in the sky scene (Feynman Lectures Vol. I ch. 15); your altitude's clock rate needs an elevation source. Links out to Wikipedia via Q-ID.
 
 ## Users and auth
 
@@ -139,6 +140,7 @@ Eric: "We're on a new major release here maps release and each of those apps of 
 - Extensibility: card plugin system (card types in files, ZIMs shipping Discover metadata); ZIM metadata extensions; the extended ZIM format proposal and almanac-as-ZIM.
 - 2.0 "Vox": chat with your library, the voice or video librarian. Once the 1.8 hero, now behind maps and sources.
 - Kiwix and NOMAD outreach. Parked.
+- Lists, bookmarks and all the saving things, per app (Eric, 2026-09-25: "I want to get to the lists and bookmarks and all the saving things per app but can be next release"). Next release.
 
 ## Killed, and staying killed
 
