@@ -190,7 +190,7 @@ def test_sw_asset_version_is_content_hashed():
     assert len(digest) == 8 and digest != "dev"
 
     # The unsubstituted on-disk placeholder must never reach a client.
-    src = open("zimi/static/sw.js").read()
+    src = open("zimi/static/sw.js", encoding="utf-8").read()
     assert "zimi-vdev" in src  # placeholder present in source
     assert token not in src  # real token only injected at serve time
 
