@@ -89,6 +89,8 @@ Eric: "We're on a new major release here maps release and each of those apps of 
 - Reddot: shipped in 1.10 (ArcticZim makes subreddit ZIMs; the reader shows them). Next: a spliced multi-subreddit feed.
 - ZimiTube: shipped in 1.10; 1.10.3 reads ted2zim 3.x and youtube2zim 3.x and searches descriptions.
 - Peer chat or forums between Zimi instances. mDNS discovery and `/dl/` peer HTTP exist. Genuinely new; not designed.
+- Zimipedia v2 (Eric, 2026-09-25: "what's the experience just a homepage of mostly reused discover content? It not useful it doesn't own the pages or help dive in and learn better... I figured we'd use Q-ID for language swaps and... Have a refined article reader and stuff"). Held out of 1.11 (off unless ZIMI_APPS names wiki). Design: Zimipedia owns the article (Bookshelf's reading settings, lead image, following contents, infobox beside/folded); languages by Q-ID (only languages that have the article, land on the same section, side by side on desktop, Simple English as a reading level); one topic, every wiki via Q-ID (Wiktionary entry, Wikivoyage guide, Wikiquote, Wikibooks, a map for coordinates); tap-a-link preview cards, a trail, read next; Today shrinks to a front door; saving plugs in with per-app saving.
+- An arcade (Eric, 2026-09-25: "I can see like a dozen apps eventually maybe a few built in games in an arcade or something"): a few built-in offline games; candidates that draw on the library (a Wikipedia link race, geography from StreetZim maps, a Wiktionary word game, on-this-day trivia) before generic ones.
 
 ## Almanac ("I gotta get back to almanac amazingness")
 
