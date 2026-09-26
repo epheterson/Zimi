@@ -11894,15 +11894,20 @@ async function _renderAppsSection() {
   if (!el) return;
   if (!d) { if (wrap) wrap.hidden = true; return; }
   if (wrap) wrap.hidden = false;
-  var shown = Array.isArray(d.shown) ? d.shown : (d.enabled ? APP_NAMES : []);
+  var shown = Array.isArray(d.shown) ? d.shown : (d.enabled ? APPS_DEFAULT : []);
   _serverApps = shown;
-  el.innerHTML = _appPicksHtml(APP_NAMES, function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', d.env_locked) +
+  el.innerHTML = _appPicksHtml(_serverOfferable(shown), function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', d.env_locked) +
     (d.env_locked ? '<div class="ms-hint">' + tH('env_controlled', { v: 'ZIMI_APPS' }) + '</div>'
       : '<div class="app-picks-all"><button type="button" class="pill" onclick="_setAppsForServerAll(true)">' + tH('filter_all') + '</button>' +
         '<button type="button" class="pill" onclick="_setAppsForServerAll(false)">' + tH('apps_none') + '</button></div>');
 }
-var _serverApps = APP_NAMES;
-function _setAppsForServerAll(on) { _postServerApps(on ? APP_NAMES.slice() : []); }
+var _serverApps = APPS_DEFAULT;
+// The apps the server switch lists: the default ones, and an opt-in one only
+// while the server already offers it (named in ZIMI_APPS or a saved list).
+function _serverOfferable(shown) {
+  return APP_NAMES.filter(function(a) { return !_appOptIn(a) || shown.indexOf(a) >= 0; });
+}
+function _setAppsForServerAll(on) { _postServerApps(on ? _serverOfferable(_serverApps) : []); }
 function _setAppForServer(app, on) {
   _postServerApps(APP_NAMES.filter(function(a) { return a === app ? on : _serverApps.indexOf(a) >= 0; }));
 }
@@ -11913,7 +11918,7 @@ function _postServerApps(shown) {
       // The shell's stamp is read at render; refresh it here so the home
       // page follows without a reload.
       if (document.body && document.body.dataset && d && Array.isArray(d.shown)) {
-        if (d.shown.length === APP_NAMES.length) delete document.body.dataset.zimiApps;
+        if (d.shown.join(',') === APPS_DEFAULT.join(',')) delete document.body.dataset.zimiApps;
         else document.body.dataset.zimiApps = d.shown.join(',') || '0';
       }
       _renderAppsSection();
@@ -16753,6 +16758,13 @@ function _wikiStrings() {
     ['zero', 'one', 'two', 'few', 'many', 'other'].map(function(c) { return 'wiki_results_' + c; })), { langs: langs });
 }
 function openWiki(replaceState) {
+  // Not offered here (off unless the server names it): home, and an
+  // address that says so, not a page whose every call is a 404.
+  if (!_appsAllowedByServer('wiki')) {
+    if (mode !== 'home') enterHome(false);
+    if (location.hash === '#wiki') history.replaceState({ mode: 'home' }, '', '/');
+    return;
+  }
   _openHashApp('wiki', replaceState, function() { _wikiOpen = true; return _WIKI_PAGE + '#' + _wikiStrings(); });
 }
 function _wikiSearch(val) { _appFrameCall('wikiSearch', val); }
@@ -18018,11 +18030,17 @@ var _REDDIT_ADDRESS_START = 'https://www.reddit.com/r/Kiwix';
 // this signed-in person turned it off for their account. Never per
 // browser (Eric: "Not per browser only per user or server").
 var APP_NAMES = ['maps', 'tube', 'exchange', 'reddot', 'wiki', 'books'];
+// Offered only when the server names them (ZIMI_APPS=...,wiki or a saved
+// list): Zimipedia is a preview being redesigned. Mirrors server.APPS_OPT_IN.
+var APPS_OPT_IN = ['wiki'];
+function _appOptIn(app) { return APPS_OPT_IN.indexOf(app) >= 0; }
+var APPS_DEFAULT = APP_NAMES.filter(function(a) { return !_appOptIn(a); });
 var _userPrefs = { apps: true, shown: null };
-// The stamp: nothing when every app is offered, '0' for none, else the names.
+// The stamp: nothing when the default apps (all but the opt-in ones) are
+// offered, '0' for none, else the names.
 function _appsAllowedByServer(app) {
   var stamp = document.body && document.body.dataset ? document.body.dataset.zimiApps : undefined;
-  if (stamp === undefined || stamp === '') return true;
+  if (stamp === undefined || stamp === '') return !app || !_appOptIn(app);
   if (stamp === '0') return false;
   return app ? stamp.split(',').indexOf(app) >= 0 : true;
 }

@@ -44,6 +44,8 @@ vm.runInContext([
   extract(/function _installedMaps\(\) \{[\s\S]*?\n\}/, '_installedMaps'),
   extract(/function _installedVideoZims\(\) \{[\s\S]*?\n\}/, '_installedVideoZims'),
   extract(/var APP_NAMES = [^\n]*\n/, 'APP_NAMES'),
+  extract(/var APPS_OPT_IN = [^\n]*\n/, 'APPS_OPT_IN'),
+  extract(/function _appOptIn\(app\) \{[^\n]*\n/, '_appOptIn'),
   extract(/var _userPrefs = [^\n]*\n/, '_userPrefs'),
   extract(/function _appsAllowedByServer\(app\) \{[\s\S]*?\n\}/, '_appsAllowedByServer'),
   extract(/function _appShown\(app\) \{[\s\S]*?\n\}/, '_appShown'),
@@ -75,7 +77,10 @@ ok('the ZimiTube tile names the video ZIMs', /<span class="zt">ZimiTube<\/span>/
 ctx.zimsCache = ctx.zimsCache.filter(z => z.kind !== 'video');
 ok('no video ZIM: the tile stays, empty, and opens the Video category', /app-empty tube-tile/.test(ctx._appsRowHtml()) && /No videos yet/.test(ctx._appsRowHtml()) && /_openCategory\(_APP_CATEGORY\.tube\)/.test(ctx._appsRowHtml()));
 ctx.zimsCache = [];
-ok('a fresh install still has the apps row, every tile a door', (ctx._appsRowHtml().match(/app-empty/g) || []).length === 6);
+ok('a fresh install still has the apps row, every tile a door (Zimipedia, a preview, only when the server names it)', (ctx._appsRowHtml().match(/app-empty/g) || []).length === 5 && !/wiki-tile/.test(ctx._appsRowHtml()));
+ctx.document.body.dataset.zimiApps = 'maps,tube,exchange,reddot,wiki,books';
+ok('a server that names wiki offers its tile', (ctx._appsRowHtml().match(/app-empty/g) || []).length === 6 && /wiki-tile/.test(ctx._appsRowHtml()));
+delete ctx.document.body.dataset.zimiApps;
 ok('the row can be turned off for everyone (the server stamps the shell) or for a signed-in person (their account), never per browser', /dataset\.zimiApps/.test(src) && /function _appShown\(app\)/.test(src) && /APP_NAMES\.some\(_appShown\)/.test(src) && /if \(!_appsEnabled\(\)\) return '';/.test(src) && /fetch\('\/me\/prefs'/.test(src) && !/zimi_hide_apps/.test(src));
 ok('the server switch sits in Server settings, one checkbox per app, and reads its state from the server', /_msFetch\('\/manage\/apps'\)/.test(src) && /_setAppForServer\(app, on\)/.test(src) && /body: JSON\.stringify\(\{ shown: shown \}\)/.test(src));
 ctx.document.body.dataset.zimiApps = '0';

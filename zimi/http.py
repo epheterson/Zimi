@@ -2375,6 +2375,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # Zimipedia: every wiki in the library, as one.
                 from zimi import wiki as _wiki
 
+                # A preview, off unless ZIMI_APPS (or a saved list) names it:
+                # not offered, it is not here at all.
+                if "wiki" not in _srv.apps_shown():
+                    return self._json(404, {"error": "not found"})
                 sub = parsed.path[len("/wiki"):].strip("/")
                 if sub in ("", "home"):
                     return self._json(200, _wiki.home(param("day"), param("lang")))
@@ -2825,7 +2829,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 prefs = blob.get("preferences") if isinstance(blob.get("preferences"), dict) else {}
                 if "apps" in data:
                     # True, False, or the names of the apps to keep.
-                    prefs["apps"] = _srv._apps_setting(_srv._apps_value(data.get("apps")) or frozenset())
+                    prefs["apps"] = _srv._apps_setting(_srv._apps_value(data.get("apps"), _srv.APPS_ALL) or frozenset(), _srv.APPS_ALL)
                 blob["preferences"] = prefs
                 ok, err = _users.save_user_data(name, blob)
                 if not ok:
