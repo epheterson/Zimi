@@ -78,7 +78,7 @@ _ABOUT_WIKI_RE = re.compile(
 # A line of separated words (a list of portals, of subjects): links in a
 # ZIM that holds none of their pages, so they read as plain text.
 _LIST_SEP_RE = re.compile(r"\s[-–•·|]\s")
-_LIST_PARTS, _LIST_PART_LEN = 4, 25
+_LIST_PARTS, _LIST_PART_LEN = 3, 25
 
 
 class _Lines(HTMLParser):
@@ -227,14 +227,14 @@ def highlights(page_html):
     label, taken, box = None, True, []
     for line in p.lines:
         text = _norm(line["text"])
-        # A title names a box; one that calls out ("Visitez le Salon !") is
-        # an invitation, not a box's name.
-        titled = line["title"] and not text.endswith(("!", "！"))
-        if titled and 2 <= len(text) <= _LABEL_MAX:
+        if line["title"] and 2 <= len(text) <= _LABEL_MAX:
             label, taken, box = text.rstrip(":：").strip(), False, [line]
             continue
         box.append(line)
         if taken or label is None or len(text) < _TEXT_MIN:
+            continue
+        # A line all in bold is a heading of the page's own, not prose.
+        if _norm(line["bold"]) == text:
             continue
         links = [(k, _internal(k)) for k in line["links"]]
         if any(_namespaced(path) for _k, path in links if path):
