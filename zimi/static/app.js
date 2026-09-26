@@ -15357,6 +15357,12 @@ function _applyReaderTheme(doc) {
 // Is Reader View offer-able for whatever is currently in the frame? False for
 // pdf.js viewer pages, zimgit catalogs, and any doc whose main content is too
 // thin to be worth re-rendering (guards against a broken half-render).
+// How much text the article holds. innerText lays the page out first, which
+// for a book (its body is the article) is seconds on a long one; a book's
+// text is all text, so it is counted as it stands.
+function _readerTextLen(doc, main) {
+  return (main === doc.body ? main.textContent : (main.innerText || main.textContent || '')).trim().length;
+}
 function _readerViewAvailable() {
   if (!readerOpen || _almanacOpen) return false;
   var frame = document.getElementById('reader-frame');
@@ -15369,14 +15375,19 @@ function _readerViewAvailable() {
   if (doc[_READER_VIEW_STASH]) return true;
   var main = _readerMainContent(doc);
   if (!_readerViewReadable(doc, main)) return false;
-  var len = (main.innerText || main.textContent || '').trim().length;
-  return len >= READER_VIEW_MIN_CHARS;
+  return _readerTextLen(doc, main) >= READER_VIEW_MIN_CHARS;
 }
 
+// An element's text as shown. In a book, as it stands: innerText lays the
+// page out first, and a book is the one page long enough for that to cost.
+function _readerElText(doc, el) {
+  if (_isBookDoc(doc)) return (el.textContent || '').replace(/\s+/g, ' ').trim();
+  return (el.innerText || el.textContent || '').trim();
+}
 function _readerViewTitle(doc) {
   var el = null;
   try { el = doc.querySelector('#firstHeading, .mw-first-heading, h1, .title'); } catch(e) {}
-  var txt = el && (el.innerText || el.textContent || '').trim();
+  var txt = el && _readerElText(doc, el);
   if (txt) return txt;
   return (doc.title || '').trim();
 }
@@ -15937,8 +15948,7 @@ function _readerViewApply(doc) {
   if (doc[_READER_VIEW_STASH]) return true; // already applied to this document
   var main = _readerMainContent(doc);
   if (!_readerViewReadable(doc, main)) return false;
-  var text = (main.innerText || main.textContent || '').trim();
-  if (text.length < READER_VIEW_MIN_CHARS) return false;
+  if (_readerTextLen(doc, main) < READER_VIEW_MIN_CHARS) return false;
 
   var clone;
   if (main === doc.body) {
@@ -15956,7 +15966,7 @@ function _readerViewApply(doc) {
   if (title) {
     try {
       var dup = clone.querySelector('#firstHeading, .mw-first-heading, h1');
-      if (dup && (dup.innerText || dup.textContent || '').trim() === title && dup.parentNode) {
+      if (dup && _readerElText(doc, dup) === title && dup.parentNode) {
         dup.parentNode.removeChild(dup);
       }
     } catch(e) {}
@@ -17913,7 +17923,8 @@ function openReader(url) {
     // again for pdf.js's own observer, and no page ever rendered. Reported by
     // Joe (WB3IHY), with the cause and the fix (#71).
     var _settlePasses = function() {
-      if (_frameIsOurOwnPage(frame)) return;
+      // A book is no capture: nothing of a web page's chrome to put back.
+      if (_frameIsOurOwnPage(frame) || _bookDoc) return;
       try { _sweepBlockingOverlays(frame); } catch(e) {}
       try { _settleCapturedChrome(frame); } catch(e) {}
     };
