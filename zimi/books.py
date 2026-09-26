@@ -124,7 +124,7 @@ def _languages(archive):
     out = []
     for row in _js_array(_read(archive, "languages.js")):
         if isinstance(row, list) and len(row) >= 3 and isinstance(row[1], str):
-            out.append((row[1], int(row[2] or 0)))
+            out.append((row[1], _int(row[2], 0)))
     return out
 
 
@@ -143,8 +143,9 @@ def books_of(archive):
         only = ""
         for code, _n in langs:
             for r in _js_array(_read(archive, f"lang_{code}_by_title.js")):
-                if isinstance(r, list) and len(r) >= 4:
-                    lang_of.setdefault(r[3], code)
+                book_id = _int(r[3]) if isinstance(r, list) and len(r) >= 4 else None
+                if book_id is not None:
+                    lang_of.setdefault(book_id, code)
     out = []
     for rank, r in enumerate(rows):
         if not isinstance(r, list) or len(r) < 5:
@@ -254,9 +255,13 @@ def _books_for(name):
 
     try:
         archive, lock = _get_fts_archive(name)
-    except Exception:
-        return None, []
+    except Exception as e:
+        archive, lock = None, None
+        log.warning("Bookshelf: could not open %s: %s", name, e)
     if archive is None or lock is None:
+        # Nothing to read, so nothing to wait for: the shelf is ready without
+        # it. Not kept in _base, so the next look tries the file again.
+        _store_details(name, name, {})
         return None, []
     # Keyed by the file the library has registered under the name, so a new
     # build of the ZIM is read afresh.
@@ -264,13 +269,28 @@ def _books_for(name):
     with _lock:
         if key in _base:
             return key, _base[key][1]
-    with lock:
-        rows = books_of(archive)
+    try:
+        with lock:
+            rows = books_of(archive)
+    except Exception as e:
+        # One malformed ZIM is skipped, never the whole shelf.
+        log.warning("Bookshelf: the listings of %s could not be read: %s", name, e)
+        rows = []
     with _lock:
         _base[key] = (name, rows)
-    if rows and _details_for(name, key) is None:
+    if not rows:
+        _store_details(name, key, {})
+    elif _details_for(name, key) is None:
         request_details(name)
     return key, rows
+
+
+def _store_details(name, key, details):
+    """``name``'s book records, for the file ``key``; {} when there are none
+    to read, so the shelf stops waiting for them."""
+    with _lock:
+        _details[name] = (os.path.realpath(key), details)
+        _shelf["key"] = None
 
 
 def _details_for(name, key):
@@ -555,6 +575,8 @@ def _base_key(name):
 
 def book(zim, book_id):
     """One book with everything known of it, and more by its author."""
+    if zim and not _srv.zim_allowed(zim):
+        return None
     books, by_id = shelf()
     b = by_id.get(_int(book_id))
     if not b or (zim and b["zim"] != zim and not _has_book(zim, b["id"])):
@@ -693,6 +715,8 @@ def _build_one(name):
     with _build_lock:
         path = _srv.get_zim_files().get(name)
         if not path:
+            log.warning("Bookshelf: %s is no longer in the library", name)
+            _store_details(name, _base_key(name), {})
             return
         try:
             if not details_current(name, path):
@@ -721,9 +745,7 @@ def _build_one(name):
             _background_fail("books", name)
             log.warning("Bookshelf: book records of %s failed: %s", name, e)
             details = {}
-        with _lock:
-            _details[name] = (os.path.realpath(path), details)
-            _shelf["key"] = None
+        _store_details(name, path, details)
 
 
 def _claim(name):

@@ -1334,10 +1334,15 @@ function _createT(key) {
 // nothing did. A limit lifts EVERY bound, not just the one that hit: lifting
 // only the page cap let the rerun stop at the size budget and offer the same
 // button again. A path with nothing under it becomes the whole site, from the
-// front page of wherever the capture actually landed.
+// front page of wherever the capture actually landed. A depth stop already at
+// the deepest the server allows would stop the same way: no rerun then.
 function _createAgainRequest(request, result) {
   var kind = request && result && captureStopKind(result.stopped);
   if (!kind) return null;
+  if (kind === 'depth') {
+    var hit = String(result.stopped).match(/^depth limit \((\d+)\)/);
+    if (hit && Number(hit[1]) >= CREATE_FIELDS.max_depth.max) return null;
+  }
   var body = Object.assign({}, request);
   if (kind === 'scope') {
     var landed = result.url || request.source || '';
@@ -1353,22 +1358,28 @@ function _createAgainRequest(request, result) {
 // Capture again as _createAgainRequest says, through the normal submit path.
 // The finished card stays until the server has taken the new job: a refusal
 // (a full queue, a lost session) must not leave the page with neither the
-// result nor the rerun.
+// result nor the rerun. A refusal is said beside the button pressed: the
+// form's own error line can be hidden behind the card.
 async function _createAgainNoLimit() {
   var s = _createLastDone;
   var body = s && _createAgainRequest(s.request, s.result);
   if (!body) return;
+  var fail = function(msg) {
+    var el = document.getElementById('create-again-error');
+    if (el) el.textContent = msg; else _createFormError(msg);
+  };
+  fail('');
   try {
     var res = await authedFetch('/manage/create', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
     });
     var data = {};
     try { data = await res.json(); } catch (e) {}
-    if (!res.ok) { _createFormError(data.error || t('create_error_generic')); return; }
+    if (!res.ok) { fail(data.error || t('create_error_generic')); return; }
     _createForgetFinished();
     _createStartWatching(data);
   } catch (e) {
-    _createFormError(t('create_error_generic'));
+    fail(t('create_error_generic'));
   }
 }
 
@@ -3462,10 +3473,10 @@ function _createMountDone(s) {
         (captureStopKind(r.stopped)
           ? '<div class="create-caption create-done-warn" id="create-done-limit">' +
               esc(captureStopText(r.stopped)) + '</div>' +
-            (s.request ? '<div class="create-again-row"><button type="button" class="ms-btn ms-btn-primary create-again"' +
+            (_createAgainRequest(s.request, r) ? '<div class="create-again-row"><button type="button" class="ms-btn ms-btn-primary create-again"' +
               ' onclick="_createAgainNoLimit()">' +
               tH(captureStopKind(r.stopped) === 'scope' ? 'create_again_whole_site' : 'create_again_no_limit') +
-              '</button></div>' : '')
+              '</button><div class="create-error" id="create-again-error" role="alert"></div></div>' : '')
           : r.stopped
             ? '<div class="create-caption">' + esc(captureStopText(r.stopped)) + '</div>'
             : '') +

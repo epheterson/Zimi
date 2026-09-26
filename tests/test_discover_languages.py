@@ -170,6 +170,64 @@ def test_the_dated_pick_comes_from_the_wikis_own_date_page(tmp_path, lang):
     assert [e["path"] for e in listed] == [article]
 
 
+class _Watched:
+    """A real archive, with each entry lookup watched: whether Zimi's lock
+    was held, and a damaged entry for every line but the one named."""
+
+    def __init__(self, archive, page, article, damaged=False):
+        self._a, self._keep, self.damaged = archive, {page, article}, damaged
+        self.locked = []
+
+    def __getattr__(self, name):
+        return getattr(self._a, name)
+
+    def get_entry_by_path(self, path):
+        import zimi.server as srv
+
+        self.locked.append(srv._zim_lock.locked())
+        if self.damaged and path not in self._keep and not path.startswith("A/"):
+            raise RuntimeError("damaged cluster")
+        return self._a.get_entry_by_path(path)
+
+
+def _otd_archive(tmp_path, lang="de"):
+    from libzim.reader import Archive
+
+    iso3, page, article = OTD_ZIMS[lang]
+    name = f"wikipedia_{lang}_all"
+    path = _html_zim(
+        str(tmp_path / f"{name}_nopic_2026-07.zim"),
+        iso3,
+        name,
+        {
+            page: (page.replace("_", " "), _fixture(f"otd_{lang}.html")),
+            article: (article.replace("_", " "), "<p>article</p>"),
+        },
+    )
+    return name, page, article, Archive(path)
+
+
+def test_a_damaged_event_article_is_passed_over_not_a_lost_card(tmp_path):
+    name, page, article, archive = _otd_archive(tmp_path)
+    watched = _Watched(archive, page, article, damaged=True)
+    for seed in range(5):
+        got = search._get_dated_entry(watched, name, "0925", rng=random.Random(seed))
+        assert got and got["path"] == article, got
+
+
+def test_the_days_events_take_the_lock_for_each_read_not_the_walk(tmp_path):
+    """Wiki's On this day and Discover's share one walk, which holds
+    Zimi's lock for a read at a time so a search is never held behind it."""
+    import zimi.server as srv
+
+    _name, page, article, archive = _otd_archive(tmp_path)
+    watched = _Watched(archive, page, article)
+    listed = search.otd_events(watched, "0925", "de")
+    assert [e["path"] for e in listed] == [article]
+    assert len(watched.locked) > 2 and all(watched.locked)
+    assert not srv._zim_lock.locked()
+
+
 # ── Word of the day ───────────────────────────────────────────────────────
 
 # fixture -> (part of speech, the definition starts with), from each

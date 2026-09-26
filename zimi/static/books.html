@@ -101,13 +101,17 @@ var STR = strings({ title: 'Bookshelf', shelf: 'Shelf', authors: 'Authors', subj
   read: 'Read', resume: 'Continue', epub: 'Download EPUB', more_by: 'More by {name}', added: 'Added to Project Gutenberg', language: 'Language',
   subject: 'Subject', era: 'Era', author: 'Author', more: 'More', none: 'No books match.', empty: 'No books installed yet.', book: 'book', books: 'books',
   bce: '{from} to {to} BCE', bce_ce: '{from} BCE to {to} CE', pending: 'Eras and subjects appear once the books have been read, a few minutes for a big library.',
-  epub_only: 'This ZIM has this book as an EPUB only.', catalog: 'Browse the catalog', lcc: {} });
+  epub_only: 'This ZIM has this book as an EPUB only.', catalog: 'Browse the catalog', load_failed: 'Couldn\'t load the shelf.',
+  load_part: 'Couldn\'t load this.', retry: 'Retry', lcc: {} });
 
 // ── pure parts (tests/test_books_page.cjs runs these) ─────────────────────
-var PLACES_KEY = 'zimi_book_places';
 var PAGE = 60;
 var STRIP = 24;
 var CONTINUE_SHOWN = 12;
+// While the book records are read in the background the front looks again
+// this often; after a failed look, twice as long each time, up to the most.
+var HOME_POLL_MS = 8000;
+var HOME_POLL_MAX_MS = 60000;
 // A cover set in type takes one of these, chosen by the title, so a book
 // keeps its colour wherever it is shown.
 var COVER_HUES = [8, 28, 44, 150, 175, 200, 222, 262, 290, 340];
@@ -145,7 +149,7 @@ function langName(code) {
 // {f, ts, id, title, author, cover}}, the most recently read first.
 function places() {
   var all = {};
-  try { all = JSON.parse(localStorage.getItem(PLACES_KEY) || '{}') || {}; } catch (e) {}
+  try { all = JSON.parse(localStorage.getItem(BOOK_PLACES_KEY) || '{}') || {}; } catch (e) {}
   return Object.keys(all).map(function(k) { var v = all[k] || {}; var i = k.indexOf('\n'); v.zim = k.slice(0, i); v.path = k.slice(i + 1); return v; })
     .filter(function(v) { return v.zim && v.path && v.f > 0.005; })
     .sort(function(a, b) { return (b.ts || 0) - (a.ts || 0); });
@@ -159,10 +163,10 @@ function placeOf(b) {
 // reading; the reader adds the place.
 function noteOpened(b) {
   try {
-    var all = JSON.parse(localStorage.getItem(PLACES_KEY) || '{}') || {};
+    var all = JSON.parse(localStorage.getItem(BOOK_PLACES_KEY) || '{}') || {};
     var k = b.zim + '\n' + b.path, cur = all[k] || {};
     all[k] = { f: cur.f || 0, ts: Date.now(), id: b.id, title: b.title, author: b.author || '', cover: b.cover || '' };
-    localStorage.setItem(PLACES_KEY, JSON.stringify(all));
+    localStorage.setItem(BOOK_PLACES_KEY, JSON.stringify(all));
   } catch (e) {}
 }
 
@@ -193,7 +197,15 @@ function shelfHtml(title, list, onAll, cls) {
     (cls === 'raw' ? list : booksHtml(list, cls || 'strip')) + '</section>';
 }
 function skeleton(n) { return '<div class="grid">' + new Array(n + 1).join('<div><div class="sk"></div></div>') + '</div>'; }
-function get(url) { return fetch(url).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }); }
+// A request that did not come back (a server error, too many at once, no
+// network) is FAILED, never nothing: an empty shelf and a shelf that could
+// not be read are different things to say.
+var FAILED = { failed: true };
+function get(url) { return fetch(url).then(function(r) { return r.ok ? r.json() : FAILED; }).catch(function() { return FAILED; }); }
+// What could not be loaded, and a way to try again.
+function failedHtml(msg, retry) {
+  return '<div class="empty failed" role="alert">' + esc(msg) + '<button type="button" class="more" onclick="' + retry + '">' + esc(STR.retry) + '</button></div>';
+}
 
 function renderTabs() {
   var v = cur().v, h = _home || {};
@@ -311,7 +323,8 @@ function renderList(v) {
 }
 function more(v, seq) {
   get(listUrl(v, v.got.length)).then(function(d) {
-    if (seq !== _seq || !d) return;
+    if (seq !== _seq) return;
+    if (d === FAILED) { $('books').innerHTML = (v.got.length ? booksHtml(v.got) : '') + failedHtml(STR.load_part, 'moreClick()'); return; }
     v.got = v.got.concat(remember(d.books));
     v.total = d.total;
     $('n').textContent = count(d.total, STR.book, STR.books);
@@ -330,15 +343,19 @@ function renderAuthors(v) {
   v.got = [];
   moreAuthors(v, seq);
 }
+function authorsHtml(list) {
+  return list.map(function(a) {
+    return '<a class="au" onclick="go({v:\'list\',author:' + J(a.name) + '})"><span class="nm">' + esc(a.name) + '</span>' +
+      '<span class="yrs">' + esc(yearsLabel(a.born, a.died)) + '</span><span class="c">' + esc(count(a.n, STR.book, STR.books)) + '</span></a>';
+  }).join('');
+}
 function moreAuthors(v, seq) {
   get('/books/authors?sort=' + v.sort + '&offset=' + v.got.length + '&limit=' + PAGE).then(function(d) {
-    if (seq !== _seq || !d) return;
+    if (seq !== _seq) return;
+    if (d === FAILED) { $('authors').innerHTML = authorsHtml(v.got) + failedHtml(STR.load_part, 'moreAuthors(cur(), _seq)'); return; }
     v.got = v.got.concat(d.authors);
     $('n').textContent = d.total;
-    $('authors').innerHTML = v.got.map(function(a) {
-      return '<a class="au" onclick="go({v:\'list\',author:' + J(a.name) + '})"><span class="nm">' + esc(a.name) + '</span>' +
-        '<span class="yrs">' + esc(yearsLabel(a.born, a.died)) + '</span><span class="c">' + esc(count(a.n, STR.book, STR.books)) + '</span></a>';
-    }).join('') + (v.got.length < d.total ? '<button type="button" class="more" onclick="moreAuthors(cur(), _seq)">' + esc(STR.more) + '</button>' : '');
+    $('authors').innerHTML = authorsHtml(v.got) + (v.got.length < d.total ? '<button type="button" class="more" onclick="moreAuthors(cur(), _seq)">' + esc(STR.more) + '</button>' : '');
   });
 }
 
@@ -348,7 +365,8 @@ function renderBook(v) {
   var b = _known[v.id];
   if (b) $('view').innerHTML = bookPage(b, null);
   get('/books/book?zim=' + encodeURIComponent(v.zim || '') + '&id=' + encodeURIComponent(v.id)).then(function(d) {
-    if (seq !== _seq || !d) return;
+    if (seq !== _seq) return;
+    if (d === FAILED) { $('view').innerHTML = (b ? bookPage(b, null) : '') + failedHtml(STR.load_part, 'show()'); return; }
     _known[d.id] = d;
     remember(d.more);
     $('view').innerHTML = bookPage(d, d);
@@ -407,22 +425,30 @@ document.addEventListener('click', function(e) {
 function load() {
   _stack = [{ v: 'home' }];
   get('/books/home').then(function(d) {
-    _home = d || { total: 0 };
+    if (d === FAILED) { _home = null; renderTabs(); $('view').innerHTML = failedHtml(STR.load_failed, 'load()'); return; }
+    _home = d;
     remember(_home.popular); remember(_home.recent);
     show();
     // The records are read in the background the first time: look again
     // until they are there, so eras and subjects arrive without a reload.
-    if (_home.total && !_home.details) setTimeout(refreshHome, 8000);
+    if (_home.total && !_home.details) setTimeout(refreshHome, HOME_POLL_MS);
   });
 }
+var _pollMs = HOME_POLL_MS;
 function refreshHome() {
   get('/books/home').then(function(d) {
-    if (!d) return;
+    if (d === FAILED) {
+      // A look that failed is no answer: look again, less often.
+      _pollMs = Math.min(_pollMs * 2, HOME_POLL_MAX_MS);
+      setTimeout(refreshHome, _pollMs);
+      return;
+    }
+    _pollMs = HOME_POLL_MS;
     var was = _home;
     _home = d;
     remember(d.popular); remember(d.recent);
     if (d.details && !was.details && cur().v === 'home') show(); else renderTabs();
-    if (!d.details) setTimeout(refreshHome, 8000);
+    if (!d.details) setTimeout(refreshHome, _pollMs);
   });
 }
 

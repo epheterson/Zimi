@@ -15,6 +15,10 @@ function openLink(a, zim, page, label) {
     e.preventDefault(); tell({ zimi: 'open', zim: zim, path: page });
   };
 }
+// Where you are in each book, kept by Zimi's reader and shown by Bookshelf.
+// The shell does not load this file: app.js's SK.BOOK_PLACES is the same key,
+// and tests/test_books_page.cjs holds the two together.
+var BOOK_PLACES_KEY = 'zimi_book_places';
 // A value into an onclick attribute.
 function J(v) { return JSON.stringify(v).replace(/"/g, '&quot;'); }
 // A word to the shell (the app's address, its title, a door to the catalog).

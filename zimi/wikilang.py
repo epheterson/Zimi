@@ -12,8 +12,11 @@ Nothing here opens an archive except ``archive_language``, which reads one
 metadata entry once per file and keeps it.
 """
 
+import logging
 import threading
 import unicodedata
+
+log = logging.getLogger("zimi")
 
 # ── The language a ZIM is written in ──────────────────────────────────────
 
@@ -29,12 +32,19 @@ def archive_language(archive):
     with _lang_lock:
         if key in _lang_cache:
             return _lang_cache[key]
-    code = ""
     try:
-        raw = bytes(archive.get_metadata("Language")).decode("utf-8", "replace")
-        code = raw.split(",")[0].strip().lower()
-    except Exception:
-        code = ""
+        # libzim raises the same RuntimeError for a missing entry as for a
+        # damaged one: a ZIM that does not say is known by its keys.
+        if "Language" in archive.metadata_keys:
+            raw = bytes(archive.get_metadata("Language")).decode("utf-8", "replace")
+            code = raw.split(",")[0].strip().lower()
+        else:
+            code = ""
+    except Exception as e:
+        # A read that failed says nothing about the file: not kept, so the
+        # next card asks again.
+        log.debug("could not read the Language of %s: %s", key, e)
+        return ""
     if len(code) == 3:
         from zimi.server import _ISO639_3_TO_1
 

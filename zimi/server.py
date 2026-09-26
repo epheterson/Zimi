@@ -1908,12 +1908,21 @@ def _wiki_project(meta_name, name=""):
 
 def _read_wiki_project(path, name):
     """``_wiki_project`` for a cache record written before it was kept: one
-    metadata read."""
+    metadata read. None when the Name could not be read (the file still
+    being copied, say), so nothing is kept and the next boot reads it again;
+    a ZIM with no Name is placed by its filename, for good."""
     try:
-        meta_name = bytes(open_archive(path).get_metadata("Name")).decode("utf-8", "replace")
+        archive = open_archive(path)
+        # libzim raises the same RuntimeError for a missing entry as for a
+        # damaged one: a ZIM without a Name is known by its keys.
+        meta_name = (
+            bytes(archive.get_metadata("Name")).decode("utf-8", "replace")
+            if "Name" in archive.metadata_keys
+            else ""
+        )
     except Exception as e:
-        log.debug("could not read the Name of %s: %s", path, e)
-        meta_name = ""
+        log.warning("could not read the Name of %s: %s", path, e)
+        return None
     return _wiki_project(meta_name.strip(), name)
 
 
@@ -3305,8 +3314,10 @@ def load_cache(force=False):
                 kind_backfilled = True
             if cached.get("kind") == "wiki" and "project" not in cached:
                 # A record from before Zimipedia kept the project by Name.
-                cached["project"] = _read_wiki_project(path, name)
-                kind_backfilled = True
+                project = _read_wiki_project(path, name)
+                if project is not None:
+                    cached["project"] = project
+                    kind_backfilled = True
             entry = {
                 "name": name,
                 "file": filename,
