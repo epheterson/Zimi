@@ -161,6 +161,52 @@ def test_a_renamed_wiki_is_filed_by_its_metadata_name(tmp_path, monkeypatch):
     assert srv._read_wiki_project(path, "enwiki") == "wikipedia"
 
 
+def test_a_wiki_whose_name_cannot_be_read_yet_is_not_guessed_for_good(
+    tmp_path, monkeypatch
+):
+    """A ZIM still being copied will not open: its project is left unset,
+    so the next boot reads the Name, rather than a guess by the filename
+    being kept in the cache for good."""
+    path = str(tmp_path / "wikipedia_copying.zim")
+    with open(path, "wb") as f:
+        f.write(b"ZIM\x04 half a file")
+    assert srv._read_wiki_project(path, "wikipedia_copying") is None
+
+
+def test_a_wiki_with_no_name_is_placed_by_its_filename(tmp_path):
+    from conftest_zim import build_fixture_zim
+
+    path = build_fixture_zim(str(tmp_path / "wikiquote_en_all.zim"), {})
+    assert srv._read_wiki_project(path, "wikiquote_en_all") == "wikiquote"
+
+
+def test_a_failed_language_read_is_not_kept():
+    from zimi import wikilang
+
+    class Flaky:
+        filename = "/zims/flaky_he.zim"
+        metadata_keys = ["Language"]
+        reads = 0
+
+        def get_metadata(self, key):
+            Flaky.reads += 1
+            if Flaky.reads == 1:
+                raise RuntimeError("damaged cluster")
+            return b"heb"
+
+    class Silent:
+        filename = "/zims/silent.zim"
+        metadata_keys = []
+
+        def get_metadata(self, key):
+            raise AssertionError("not asked: it has no Language")
+
+    assert wikilang.archive_language(Flaky()) == ""
+    assert wikilang.archive_language(Flaky()) == "he"
+    assert wikilang.archive_language(Silent()) == ""
+    assert wikilang._lang_cache["/zims/silent.zim"] == ""
+
+
 def test_project_of_names_the_wikimedia_project():
     assert wiki.project_of("wikipedia_fr") == "wikipedia"
     assert wiki.project_of("wiktionary") == "wiktionary"
