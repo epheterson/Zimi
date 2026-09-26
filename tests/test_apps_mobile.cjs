@@ -73,8 +73,8 @@ ok('each app keeps its place as a thing opens from the list and returns to it on
 
 // ── no jump-to-top in Zimi's own pages ─────────────────────────────────────
 const inject = app.indexOf("_topBtn.id = 'zimi-top'");
-const guard = app.lastIndexOf('if (!_frameIsOurOwnPage(frame)) try {', inject);
-ok('the jump-to-top button and the capture corset are for captured pages, not the apps', guard > 0 && inject - guard < 6000);
+const guard = app.lastIndexOf('if (!_frameIsOurOwnPage(frame) && !_bookDoc) try {', inject);
+ok('the jump-to-top button and the capture corset are for captured pages, not the apps or a book', guard > 0 && inject - guard < 6000);
 
 // ── a video sideways ───────────────────────────────────────────────────────
 ok('ZimiTube fits the picture to a sideways screen and holds the header away while it plays',

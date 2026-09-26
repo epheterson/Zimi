@@ -38,11 +38,12 @@ const cLevels = extract(/var READER_FONT_LEVELS = \[[^\]]*\];/, 'READER_FONT_LEV
 const cDefault = extract(/var READER_FONT_DEFAULT = \d+;/, 'READER_FONT_DEFAULT');
 const fLevel = extract(/function _readerFontLevel\(\)\s*\{[\s\S]*?\n\}/, '_readerFontLevel');
 const fApply = extract(/function _applyReaderFont\(doc\)\s*\{[\s\S]*?\n\}/, '_applyReaderFont');
+const fBook = extract(/function _isBookDoc\(doc\)\s*\{[\s\S]*?\n\}/, '_isBookDoc');
 
 // A fake document mirroring the CSSStyleDeclaration surface the code touches:
 // body.style.zoom (set + removeProperty) and documentElement.style.fontSize
 // (set + removeProperty), each recorded.
-function makeDoc() {
+function makeDoc(book) {
   const rec = {
     zoomSet: 0, zoomRemoved: 0, zoomValue: undefined, zoomPresent: false,
     fsSet: 0, fsRemoved: 0, fsPresent: false,
@@ -65,7 +66,9 @@ function makeDoc() {
       if (name === 'font-size') { if (rec.fsPresent) rec.fsRemoved++; rec.fsPresent = false; }
     },
   };
-  return { doc: { documentElement: { style: rootStyle }, body: { style: bodyStyle } }, rec };
+  // A Gutenberg book is known by its Dublin Core link (_isBookDoc).
+  const querySelector = (sel) => (book && /dcterms\.isFormatOf/.test(sel) ? {} : null);
+  return { doc: { documentElement: { style: rootStyle }, body: { style: bodyStyle }, querySelector }, rec };
 }
 
 const store = {};
@@ -77,7 +80,7 @@ const sandbox = {
   SK: { READER_FONT: 'zimi_reader_font_scale' },
 };
 vm.createContext(sandbox);
-vm.runInContext([cLevels, cDefault, fLevel, fApply].join('\n'), sandbox);
+vm.runInContext([cLevels, cDefault, fLevel, fApply, fBook].join('\n'), sandbox);
 
 let failures = 0;
 function check(name, cond) {
@@ -142,6 +145,14 @@ function check(name, cond) {
   const { doc, rec } = makeDoc();
   vm.runInContext('_applyReaderFont(globalThis.__doc)', Object.assign(sandbox, { __doc: doc }));
   check('garbage value falls back to default and removes zoom', rec.zoomRemoved === 1 && rec.zoomSet === 0);
+}
+
+// A book sizes its own type (the book reader's settings): no zoom at any level.
+{
+  store['zimi_reader_font_scale'] = '130';
+  const { doc, rec } = makeDoc(true);
+  vm.runInContext('_applyReaderFont(globalThis.__doc)', Object.assign(sandbox, { __doc: doc }));
+  check('a book is never zoomed, and a zoom left on it is taken off', rec.zoomSet === 0 && rec.zoomRemoved === 1);
 }
 
 if (failures) { console.log('\n' + failures + ' check(s) FAILED'); process.exit(1); }

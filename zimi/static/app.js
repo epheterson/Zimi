@@ -106,10 +106,14 @@ var SK = {
   // Video resume ledger: {"<zim>\n<path>#<i>": {t, d, ts}} — playback position
   // per video, restored on reopen and dropped once watched to completion.
   VIDEO_RESUME: 'zimi_video_resume',
-  // Where you are in each book: {"<zim>\n<path>": {f, ts, id, title, author,
-  // cover}}, f the fraction of the book read. The reader keeps f; Bookshelf
-  // (static/books.html, same key) shows the books under Continue reading.
+  // Where you are in each book: {"<zim>\n<path>": {f, c, ts, id, title,
+  // author, cover}}, f the fraction of the book read and c the character it
+  // is at. The reader keeps them; Bookshelf (static/books.html, same key)
+  // shows the books under Continue reading.
   BOOK_PLACES: 'zimi_book_places',
+  // How books are read in this browser: {mode: 'scroll'|'pages', size (px),
+  // lh and margin (indexes into _BOOK_LEADINGS / _BOOK_MARGINS)}.
+  BOOK_PREFS: 'zimi_book_prefs',
   // Whole-app theme: 'auto' (follow prefers-color-scheme, dark fallback) |
   // 'dark' | 'light'. Default auto. Read/written via _appTheme/_setAppTheme;
   // the head bootstrap in index.html stamps the resolved value pre-paint.
@@ -15084,6 +15088,9 @@ function _applyReaderFont(doc) {
     // Safari/Chrome forever and Firefox 126+. We never combine the two: root% ×
     // zoom would double-scale rem docs.
     var body = doc.body || doc.documentElement;
+    // A book sets its own type size (the book's reading settings); a zoom
+    // would scale its pages and its header too.
+    if (_isBookDoc(doc)) { body.style.removeProperty('zoom'); return; }
     if (level === READER_FONT_DEFAULT) {
       // Default (100%): REMOVE the override rather than pin zoom:1. Also strip any
       // leftover root font-size an older (pre-zoom) session may have pinned, so a
@@ -15528,7 +15535,8 @@ function _readerViewInjectStyle(doc) {
     // draws its rule (an ::after), a second line under Reader View's title.
     '.zimi-reader .vector-page-titlebar,.zimi-reader .mw-body-header{display:none!important}',
     '.zimi-reader h3{font-size:1.25em}.zimi-reader h4{font-size:1.1em}',
-    '.zimi-reader p{margin:0 0 1.1em}',
+    // A book keeps its own paragraphs: an indent and no gap, as printed.
+    _isBookDoc(doc) ? '' : '.zimi-reader p{margin:0 0 1.1em}',
     '.zimi-reader a{color:var(--rv-link);text-decoration:none}',
     '.zimi-reader a:hover{text-decoration:underline}',
     // Strictly contain wide media. !important out-specifies any width the ZIM's
@@ -15997,7 +16005,9 @@ function _readerViewApply(doc) {
   _applyReaderTheme(doc); // stamp theme + family classes → CSS var palette
   try { doc.defaultView.scrollTo(0, 0); } catch(e) {}
   _applyReaderFont(doc); // font zoom composes over the shell
-  _readerBindLightbox(shell, doc); // tap-to-full-size on scaled-down images
+  // Tap-to-full-size on scaled-down images: measured, so a book (whose pages
+  // are laid out by the book reader) binds it once they are.
+  if (!_isBookDoc(doc)) _readerBindLightbox(shell, doc);
   return true;
 }
 
@@ -16159,7 +16169,7 @@ function _toggleReaderAuto() {
 function _tintReaderChrome() {
   var frame = document.getElementById('reader-frame');
   var loading = document.getElementById('reader-loading');
-  var bg = (_readerViewOn || _readerAuto()) ? _readerThemeBg() : '';
+  var bg = (_readerViewOn || _readerAuto() || _bookReading) ? _readerThemeBg() : '';
   if (frame) frame.style.background = bg || '#fff';
   if (loading) loading.style.background = bg || '';
 }
@@ -16826,39 +16836,149 @@ function openBooks(replaceState) {
 function _booksSearch(val) { _appFrameCall('booksSearch', val); }
 
 // ── Reading a book ──
-// A book opens in Reader View (the reader's own type, width and palette),
-// returns to where you left it, and steps chapter by chapter with a bar at
-// the foot of the page. The place is a fraction of the book, so a change of
-// type size or width lands on the same passage.
+// Eric, 2026-09-25: "For the book reader it needs to be awesome on mobile:
+// fixed footer and header that hide while scrolling or on tap, support
+// turning pages or scrolling ... a full proper experience."
+//
+// A book opens in Reader View and reads like an e-reader. A header (back,
+// the title, contents, reading settings) and a footer (the chapter, pages
+// left in it, where you are in the book) step aside while you read and come
+// back on a tap or a scroll up; Zimi's own header steps aside for the book's
+// (held away, _chromeImmersive). It scrolls, or turns pages (a tap at either side, a
+// swipe, the arrow keys), with type, spacing, margins and theme of your own.
+//
+// The book is cut into sections at its chapters, so turning pages lays out
+// one chapter in columns, never the whole book: Gutenberg's Chekhov
+// collection as one run of columns is 11,000 pages and 9 s to find a place
+// on it. A place in the book is
+// a character offset into its text, which holds across scrolling and pages,
+// a turn of the phone, a change of type, and reopening.
 var _BOOK_PLACES_MAX = 200;       // books remembered (oldest dropped first)
-var _BOOK_PLACE_THROTTLE = 800;   // ms between writes while scrolling
+var _BOOK_PLACE_THROTTLE = 800;   // ms between writes while reading
 var _BOOK_CHAPTERS_MIN = 2;       // fewer headings than this is not a book of chapters
-var _BOOK_NAV_TOP = 90;           // px: a heading this near the top (or in the top third) is the chapter you are in
+var _BOOK_FRONT_MIN = 200;        // chars: a first "chapter" with less than this before it is the title page's
+var _BOOK_SECTION_CHARS = 150000; // chars: the longest run laid out as pages at once
+var _BOOK_SETTLE_MS = 350;        // ms of quiet after a scroll or a turn (its slide is _BOOK_SLIDE_MS) before the place is read
+var _BOOK_SLIDE_MS = 280;         // ms a page takes to slide over
+var _BOOK_BARS_HIDE = 24;         // px scrolled down (or up) before the bars leave (or come back)
+var _BOOK_SWIPE = 40;             // px a swipe travels to turn the page
+var _BOOK_EDGE = 0.3;             // share of the width at either side where a tap turns the page
+var _BOOK_SPREAD_MIN = 1000;      // px wide (and _BOOK_SPREAD_MIN_H tall) from which pages come two at a time
+var _BOOK_SPREAD_MIN_H = 480;
+var _BOOK_WHEEL_GAP = 350;        // ms between page turns by the wheel or trackpad
+var _BOOK_HEAD_H = 48;            // px: the header's height, under the top inset
+var _BOOK_PAGE_TOP = 44;          // px above and below the text of a page
+var _BOOK_PAGE_BOTTOM = 40;
+var _BOOK_SIZES = [14, 16, 17, 19, 21, 23, 26, 30, 34];  // px
+var _BOOK_LEADINGS = [1.35, 1.5, 1.65, 1.8, 2];
+var _BOOK_MARGINS = [8, 16, 24, 40];      // px at either side on a phone
+var _BOOK_MEASURES = [42, 36, 33, 29];    // em: the longest line, by the same setting
+var _BOOK_PREFS_DEFAULT = { size: 19, lh: 2, margin: 1 };
+var _BOOK_RTL_LANGS = /^(ar|arc|ckb|dv|fa|he|ku|ps|sd|ug|ur|yi)(-|$)/i;
 var _BOOK_CSS = [
-  '.zimi-book-nav{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:2147482000;display:flex;align-items:center;gap:2px;',
-    'max-width:min(560px,calc(100vw - 24px));padding:4px;border-radius:22px;background:var(--rv-bg,#fff);color:var(--rv-fg,#222);',
-    'border:1px solid var(--rv-border,#ddd);box-shadow:0 4px 18px rgba(0,0,0,.16);font:13px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}',
-  '.zimi-book-nav button{border:0;background:none;color:inherit;font:inherit;width:34px;height:34px;border-radius:17px;cursor:pointer;font-size:20px;line-height:1;flex:none}',
-  '.zimi-book-nav button:hover:not(:disabled){background:var(--rv-code,rgba(0,0,0,.06))}',
-  '.zimi-book-nav button:disabled{opacity:.3;cursor:default}',
-  '.zimi-book-nav .ch{flex:1;min-width:0;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;unicode-bidi:plaintext}',
-  '.zimi-book-nav .pc{color:var(--rv-muted,#777);font-variant-numeric:tabular-nums;padding:0 6px 0 0;flex:none}',
-  '@media print{.zimi-book-nav{display:none}}',
-  // Gutenberg's own sheet justifies everything, headings too; on a phone a
-  // justified heading is three words a line apart.
-  '.zimi-reader{text-align:start}.zimi-reader h1,.zimi-reader h2,.zimi-reader h3,.zimi-reader h4{text-align:center}',
-  '.zimi-reader pre:empty{display:none}'
+  // ── the page ──
+  'html.zb-book .zimi-reader{text-align:start;font-size:var(--zb-size);line-height:var(--zb-lh);',
+    'padding:calc(' + (_BOOK_HEAD_H + 12) + 'px + var(--zb-sat)) calc(var(--zb-m) + var(--zb-sar)) calc(96px + var(--zb-sab)) calc(var(--zb-m) + var(--zb-sal));',
+    '-webkit-hyphens:auto;hyphens:auto}',
+  'html.zb-book .zimi-reader-body{max-width:var(--zb-measure)}',
+  // Gutenberg's own paragraphs (an indent, no gap) are a book's; its screen
+  // margins and justified headings are not.
+  'html.zb-book .zimi-reader h1,html.zb-book .zimi-reader h2,html.zb-book .zimi-reader h3,html.zb-book .zimi-reader h4{',
+    'text-align:center;border:0;margin:1.4em 0 .7em;line-height:1.3;letter-spacing:.02em;-webkit-hyphens:manual;hyphens:manual}',
+  'html.zb-book .zimi-reader h1.zimi-reader-title{border:0;margin:.3em 0 .5em;font-size:1.8em;letter-spacing:.03em}',
+  'html.zb-book .zimi-reader hr{width:30%;margin:1.2em auto;border:0;border-top:1px solid var(--rv-border);height:0}',
+  'html.zb-book .zimi-reader div.chapter{margin-top:0}',
+  'html.zb-book .zimi-reader pre:empty{display:none}',
+  // The title page: its blocks close together.
+  'html.zb-book .zb-front h2,html.zb-book .zb-front h3,html.zb-book .zb-front h4{margin:.5em 0}',
+  // ── pages ──
+  'html.zb-paged,html.zb-paged body{overflow:hidden!important;height:100%}',
+  'html.zb-paged .zimi-reader{position:fixed;top:0;left:0;width:100%;height:100%;min-height:0;margin:0;overflow:hidden;box-sizing:border-box}',
+  'html.zb-paged .zimi-reader-body{max-width:none;box-sizing:content-box;column-fill:auto;will-change:transform}',
+  'html.zb-paged .zb-sec:not(.zb-cur){display:none}',
+  'html.zb-paged .zb-sec > :first-child{margin-top:0}',
+  'html.zb-paged .zimi-reader img{max-height:var(--zb-colh)!important;width:auto;object-fit:contain;break-inside:avoid}',
+  'html.zb-paged .zimi-reader h1,html.zb-paged .zimi-reader h2,html.zb-paged .zimi-reader h3{break-after:avoid}',
+  // ── the bars ──
+  '.zb-bar{position:fixed;left:0;right:0;z-index:2147482000;display:flex;align-items:center;gap:2px;box-sizing:border-box;',
+    'background:var(--rv-bg);color:var(--rv-fg);font:14px/1.25 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;',
+    'transition:transform .25s ease,opacity .25s ease;-webkit-user-select:none;user-select:none}',
+  '@supports (background:color-mix(in srgb,red 50%,transparent)){.zb-bar{background:color-mix(in srgb,var(--rv-bg) 90%,transparent);',
+    '-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%)}}',
+  '.zb-head{top:0;height:calc(' + _BOOK_HEAD_H + 'px + var(--zb-sat));padding:var(--zb-sat) calc(6px + var(--zb-sar)) 0 calc(6px + var(--zb-sal));border-bottom:1px solid var(--rv-border)}',
+  '.zb-foot{bottom:0;flex-direction:column;align-items:stretch;gap:4px;padding:6px calc(10px + var(--zb-sar)) calc(6px + var(--zb-sab)) calc(10px + var(--zb-sal));border-top:1px solid var(--rv-border)}',
+  'html.zb-away .zb-head{transform:translateY(-100%);opacity:0;pointer-events:none}',
+  'html.zb-away .zb-foot{transform:translateY(100%);opacity:0;pointer-events:none}',
+  '.zb-bar button{border:0;background:none;color:inherit;font:inherit;min-width:44px;height:44px;border-radius:22px;cursor:pointer;flex:none;',
+    'display:inline-flex;align-items:center;justify-content:center;padding:0 6px;-webkit-tap-highlight-color:transparent}',
+  '@media (hover:hover){.zb-bar button:hover:not(:disabled),.zb-sheet button:hover:not(:disabled){background:var(--rv-code)}}',
+  '.zb-bar button:focus-visible,.zb-sheet button:focus-visible,.zb-sheet input:focus-visible{outline:2px solid var(--rv-link);outline-offset:1px}',
+  '.zb-bar button:disabled{opacity:.3;cursor:default}',
+  '.zb-aa{font:600 17px/1 Georgia,serif!important;letter-spacing:.02em}',
+  '.zb-title{flex:1;min-width:0;text-align:center;line-height:1.2}',
+  '.zb-title b,.zb-title span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;unicode-bidi:plaintext}',
+  '.zb-title b{font-weight:600;font-size:14.5px}.zb-title span{font-size:12px;color:var(--rv-muted)}',
+  '.zb-row{display:flex;align-items:center;gap:2px}',
+  '.zb-info{flex:1;min-width:0;text-align:center;line-height:1.3}',
+  '.zb-info .zb-ch{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;unicode-bidi:plaintext}',
+  '.zb-info .zb-left{display:block;font-size:12px;color:var(--rv-muted);font-variant-numeric:tabular-nums}',
+  '.zb-scrub{width:100%;margin:2px 0 0;height:24px;accent-color:var(--rv-link);cursor:pointer;touch-action:none}',
+  // The line a page keeps at its foot while the bars are away.
+  '.zb-mini{position:fixed;left:0;right:0;bottom:calc(10px + var(--zb-sab));text-align:center;font:11.5px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;',
+    'color:var(--rv-muted);pointer-events:none;opacity:0;transition:opacity .25s;font-variant-numeric:tabular-nums;z-index:1}',
+  'html.zb-paged.zb-away .zb-mini{opacity:1}',
+  // ── the sheets: contents and reading settings ──
+  '.zb-scrim{position:fixed;inset:0;z-index:2147482100;background:rgba(0,0,0,.28);opacity:0;pointer-events:none;transition:opacity .2s}',
+  'html.zb-sheet-open .zb-scrim{opacity:1;pointer-events:auto}',
+  '.zb-sheet{position:fixed;left:0;right:0;bottom:0;z-index:2147482200;max-height:min(82vh,680px);overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;',
+    'box-sizing:border-box;padding:6px calc(16px + var(--zb-sar)) calc(18px + var(--zb-sab)) calc(16px + var(--zb-sal));border-radius:16px 16px 0 0;',
+    'background:var(--rv-bg);color:var(--rv-fg);border:1px solid var(--rv-border);box-shadow:0 -8px 30px rgba(0,0,0,.25);',
+    'font:15px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;transform:translateY(105%);visibility:hidden;',
+    'transition:transform .25s ease,visibility 0s linear .25s}',
+  '.zb-sheet.zb-open{transform:none;visibility:visible;transition:transform .25s ease}',
+  '@media (min-width:700px){.zb-sheet{left:auto;right:calc(16px + var(--zb-sar));bottom:auto;top:calc(' + (_BOOK_HEAD_H + 8) + 'px + var(--zb-sat));width:380px;',
+    'max-height:calc(100vh - ' + (_BOOK_HEAD_H + 32) + 'px);border-radius:14px;transform:translateY(-8px);opacity:0;transition:transform .2s,opacity .2s,visibility 0s linear .2s}',
+    '.zb-sheet.zb-open{transform:none;opacity:1;transition:transform .2s,opacity .2s}}',
+  '.zb-sheet-head{display:flex;align-items:center;justify-content:space-between;position:sticky;top:-6px;background:var(--rv-bg);padding:6px 0;z-index:1}',
+  '.zb-sheet-head b{font-size:16px}',
+  '.zb-sheet button{border:0;background:none;color:inherit;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}',
+  '.zb-x{width:40px;height:40px;border-radius:20px;font-size:22px!important;line-height:1}',
+  '.zb-toc-list{list-style:none;margin:0;padding:0}',
+  '.zb-toc-list button{display:block;width:100%;text-align:start;padding:11px 10px;border-radius:10px;unicode-bidi:plaintext}',
+  '.zb-toc-list .zb-sub button{padding-inline-start:28px;color:var(--rv-muted)}',
+  '.zb-toc-list [aria-current="true"] button{background:var(--rv-code);color:var(--rv-link);font-weight:600}',
+  '.zb-set{padding:7px 0;border-top:1px solid var(--rv-border)}.zb-set:first-of-type{border-top:0}',
+  '.zb-set-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--rv-muted);margin:0 0 6px}',
+  '.zb-seg{display:flex;gap:6px}',
+  '.zb-seg button{flex:1;min-height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;padding:0 8px}',
+  '.zb-seg button[aria-pressed="true"],.zb-seg button[aria-checked="true"]{border-color:var(--rv-link)!important;color:var(--rv-link);box-shadow:inset 0 0 0 1px var(--rv-link)}',
+  '.zb-themes button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;padding:6px 2px;min-height:0}',
+  '.zb-dot{width:22px;height:22px;border-radius:50%;border:1px solid rgba(128,128,128,.45);box-sizing:border-box}',
+  '.zb-dot-auto{background:linear-gradient(135deg,#fbfbf9 50%,#0a0a0b 50%)}.zb-dot-light{background:#fbfbf9}.zb-dot-sepia{background:#f4ecd8}.zb-dot-dark{background:#0a0a0b}',
+  '.zb-step{display:flex;align-items:center;gap:8px}',
+  '.zb-step button{width:52px;height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;font-family:Georgia,serif}',
+  '.zb-step output{flex:1;text-align:center;font-variant-numeric:tabular-nums;color:var(--rv-muted)}',
+  '.zb-range{width:100%;accent-color:var(--rv-link);height:26px;margin:0}',
+  '@media print{.zb-bar,.zb-sheet,.zb-scrim,.zb-mini{display:none!important}',
+    'html.zb-paged,html.zb-paged body{overflow:visible!important;height:auto}',
+    'html.zb-paged .zimi-reader{position:static!important;height:auto!important;overflow:visible!important;padding:0!important}',
+    'html.zb-paged .zimi-reader-body{height:auto!important;width:auto!important;margin:0!important;column-count:auto!important;transform:none!important}',
+    'html.zb-paged .zb-sec{display:block!important}}',
+  '@media (prefers-reduced-motion:reduce){.zb-bar,.zb-sheet,.zb-scrim,.zb-mini{transition:none!important}}'
 ].join('');
+var _BOOK_SVG_BACK = '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
+var _BOOK_SVG_TOC = '<svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".6" fill="currentColor"/><circle cx="4.5" cy="12" r=".6" fill="currentColor"/><circle cx="4.5" cy="18" r=".6" fill="currentColor"/></svg>';
 
 function _bookPlaceKey(zim, path) { return zim + '\n' + path; }
 function _bookPlaces() { return _getStorageJSON(SK.BOOK_PLACES, {}) || {}; }
-// Keep a book's place, with what Bookshelf needs to show it (its number,
+// Keep a book's place: f the share of it read (Bookshelf shows it), c the
+// character it is at. With what Bookshelf needs to show it (its number,
 // title and author from the page's own record) when it was opened elsewhere.
-function _bookSavePlace(doc, zim, path, f) {
+function _bookSavePlace(doc, zim, path, f, c) {
   var all = _bookPlaces(), key = _bookPlaceKey(zim, path), cur = all[key] || {};
   var m = path.match(/\.(\d+)$/);
   var meta = function(n) { var el = doc.querySelector('meta[name="' + n + '"]'); return el ? el.getAttribute('content') || '' : ''; };
-  all[key] = { f: Math.round(f * 1e5) / 1e5, ts: Date.now(), id: cur.id || (m ? Number(m[1]) : 0),
+  all[key] = { f: Math.round(f * 1e5) / 1e5, c: c, ts: Date.now(), id: cur.id || (m ? Number(m[1]) : 0),
     title: cur.title || meta('dc.title'), author: cur.author || _bookAuthorName(meta('dc.creator')),
     cover: cur.cover || (m ? 'covers/' + m[1] + '_cover_image.jpg' : '') };
   var keys = Object.keys(all);
@@ -16872,6 +16992,51 @@ function _bookSavePlace(doc, zim, path, f) {
 function _bookAuthorName(creator) {
   var parts = String(creator || '').split(',').map(function(p) { return p.trim(); }).filter(function(p) { return p && !/\d/.test(p); });
   return parts.length > 1 ? parts.slice(1).join(' ') + ' ' + parts[0] : (parts[0] || '');
+}
+// How you like to read, per browser. Turning pages is the default where
+// fingers are; scrolling where a wheel is.
+function _bookPrefs() {
+  var p = _getStorageJSON(SK.BOOK_PREFS, {}) || {}, coarse = false;
+  try { coarse = window.matchMedia('(pointer: coarse)').matches; } catch (e) {}
+  var idx = function(v, list, d) { return typeof v === 'number' && v >= 0 && v < list.length ? v : d; };
+  return {
+    mode: p.mode === 'pages' || p.mode === 'scroll' ? p.mode : (coarse ? 'pages' : 'scroll'),
+    size: _BOOK_SIZES.indexOf(p.size) >= 0 ? p.size : _BOOK_PREFS_DEFAULT.size,
+    lh: idx(p.lh, _BOOK_LEADINGS, _BOOK_PREFS_DEFAULT.lh),
+    margin: idx(p.margin, _BOOK_MARGINS, _BOOK_PREFS_DEFAULT.margin)
+  };
+}
+// Is this reader address a book? Known before it loads (the ZIM is a
+// Gutenberg one and the page is a book's, <title>.<number>), so Zimi's
+// header can step aside before the book is laid out, not after (a change
+// of the frame's size then would lay the book out twice).
+function _bookUrl(url) {
+  var m = /^\/w\/([^\/?#]+)\/([^?#]+)/.exec(url || '');
+  if (!m || !/\.\d+$/.test(m[2]) || /_cover\.\d+$/.test(m[2])) return false;
+  var zim = ''; try { zim = decodeURIComponent(m[1]); } catch (e) { return false; }
+  return (zimsCache || []).some(function(z) { return z.name === zim && z.kind === 'books'; });
+}
+// Zimi's header steps aside while a book is read (held away, as the apps'
+// header does, at every size: the book has a header of its own).
+var _bookReading = false;
+function _bookChrome(on) {
+  on = !!on;
+  if (on !== _chromeHeld) _chromeImmersive(on);
+  _bookReading = on;
+}
+// The screen's safe-area insets (a notch, the home indicator). A page in a
+// frame is not told them, so the shell measures and hands them in.
+function _bookInsets() {
+  var el = document.getElementById('zb-insets');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'zb-insets';
+    el.style.cssText = 'position:fixed;top:0;left:0;visibility:hidden;pointer-events:none;' +
+      'padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
+    document.body.appendChild(el);
+  }
+  var cs = getComputedStyle(el);
+  return { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 };
 }
 // The book's chapters: the heading level with the most different headings
 // (a novel's h2s, a play's h3s; not the running title the Aeneid repeats
@@ -16890,71 +17055,675 @@ function _bookChapters(doc) {
   });
   return best.length >= _BOOK_CHAPTERS_MIN ? best : [];
 }
-// Where a book is scrolled to, and how far it can go. A Gutenberg page has no
-// doctype, so the viewport scrolls in quirks mode: the window's numbers are
-// the ones that hold in both modes.
-function _bookScroll(win) {
-  var doc = win.document;
-  return {
-    at: function() { return win.scrollY || 0; },
-    to: function(y) { win.scrollTo(0, Math.max(0, y)); },
-    room: function() { return Math.max(1, Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight) - win.innerHeight); }
-  };
+function _bookText(el) { return (el.textContent || '').replace(/\s+/g, ' ').trim(); }
+// Blank: whitespace, a comment, or an element with no text and nothing to see
+// (the empty <a id> Gutenberg sets before a chapter's heading).
+function _bookBlank(n) {
+  if (n.nodeType === 3) return !/\S/.test(n.nodeValue);
+  if (n.nodeType !== 1) return true;
+  if (/^(IMG|SVG|HR|TABLE|VIDEO|AUDIO|IFRAME|OBJECT)$/.test(n.nodeName) || n.querySelector('img,svg,hr,table,video,audio')) return false;
+  var w = n.ownerDocument.createTreeWalker(n, NodeFilter.SHOW_TEXT), t;
+  while ((t = w.nextNode())) if (/\S/.test(t.nodeValue)) return false;
+  return true;
 }
-function _bookAttach(frame, zim, path) {
+// Make `node` (with the blank siblings just before it) the first of a run
+// of root's children, splitting every element between them in two: the
+// copy takes the element's tag and classes, never its id.
+function _bookSplitBefore(node, root) {
+  for (;;) {
+    while (node.previousSibling && _bookBlank(node.previousSibling)) node = node.previousSibling;
+    var parent = node.parentNode;
+    if (!parent || parent === root) return node;
+    if (!node.previousSibling) { node = parent; continue; }
+    var copy = parent.cloneNode(false);
+    copy.removeAttribute('id');
+    for (var n = node; n; ) { var next = n.nextSibling; copy.appendChild(n); n = next; }
+    parent.parentNode.insertBefore(copy, parent.nextSibling);
+    node = copy;
+  }
+}
+// Cut root's content into <section class="zb-sec">s, one starting at each
+// point (the last first, so each node moves about once).
+function _bookSections(doc, root, points) {
+  for (var i = points.length - 1; i >= 0; i--) _bookSplitBefore(points[i], root).__zbStart = true;
+  var secs = [], cur = null;
+  Array.prototype.slice.call(root.childNodes).forEach(function(n) {
+    if (!cur || n.__zbStart) { cur = doc.createElement('section'); cur.className = 'zb-sec'; secs.push(cur); }
+    n.__zbStart = false;
+    cur.appendChild(n);
+  });
+  secs.forEach(function(s) { root.appendChild(s); });
+  return secs;
+}
+// A run too long to lay out as pages at once (a book without chapters, a
+// chapter the length of a novel) is cut again, at a paragraph.
+function _bookSplitLong(doc, sec, len) {
+  if (len <= _BOOK_SECTION_CHARS) return [sec];
+  var ps = sec.querySelectorAll('p'), points = [], acc = 0, step = len / Math.ceil(len / _BOOK_SECTION_CHARS);
+  for (var i = 0; i < ps.length; i++) {
+    if (acc >= step && ps[i] !== ps[0]) { points.push(ps[i]); acc = 0; }
+    acc += ps[i].textContent.length;
+  }
+  if (!points.length) return [sec];
+  var parts = _bookSections(doc, sec, points);
+  parts.forEach(function(p) { sec.parentNode.insertBefore(p, sec); });
+  sec.parentNode.removeChild(sec);
+  return parts;
+}
+// The title page: no stacked line breaks, no empty paragraphs, so its title
+// blocks sit together (Gutenberg spaces them with <br>s and empty <p>s).
+function _bookTidyFront(sec) {
+  sec.classList.add('zb-front');
+  var sib = function(n, dir) { n = n[dir]; while (n && n.nodeType === 3 && !/\S/.test(n.nodeValue)) n = n[dir]; return n; };
+  Array.prototype.slice.call(sec.querySelectorAll('br')).forEach(function(br) {
+    var prev = sib(br, 'previousSibling'), next = sib(br, 'nextSibling');
+    if (!prev || !next || next.nodeName === 'BR') br.parentNode.removeChild(br);
+  });
+  Array.prototype.slice.call(sec.querySelectorAll('p,div')).reverse().forEach(function(el) {
+    if (el.parentNode && _bookBlank(el)) el.parentNode.removeChild(el);
+  });
+}
+// Where a point on the screen is in the text: (node, offset), or null.
+function _bookCaretAt(doc, x, y) {
+  try {
+    if (doc.caretRangeFromPoint) { var r = doc.caretRangeFromPoint(x, y); return r ? { node: r.startContainer, off: r.startOffset } : null; }
+    if (doc.caretPositionFromPoint) { var p = doc.caretPositionFromPoint(x, y); return p ? { node: p.offsetNode, off: p.offset } : null; }
+  } catch (e) {}
+  return null;
+}
+// Characters in sec before (node, off).
+function _bookOffsetIn(doc, sec, node, off) {
+  var r = doc.createRange();
+  r.setStart(sec, 0);
+  try { r.setEnd(node, off); } catch (e) { return 0; }
+  return r.toString().length;
+}
+// A range on the character at offset o of sec (collapsed at its end when o
+// is past the text), for its place on the screen.
+function _bookRangeAt(doc, sec, o) {
+  var w = doc.createTreeWalker(sec, NodeFilter.SHOW_TEXT), t, c = 0, last = null;
+  var r = doc.createRange();
+  while ((t = w.nextNode())) {
+    var n = t.nodeValue.length;
+    if (c + n > o && /\S/.test(t.nodeValue)) {
+      var i = Math.max(0, o - c);
+      r.setStart(t, i); r.setEnd(t, Math.min(n, i + 1));
+      return r;
+    }
+    c += n; last = t;
+  }
+  if (last) { r.setStart(last, last.nodeValue.length); r.collapse(true); return r; }
+  r.selectNodeContents(sec); r.collapse(true);
+  return r;
+}
+function _bookRangeRect(r) {
+  var rs = r.getClientRects();
+  return rs.length ? rs[0] : r.getBoundingClientRect();
+}
+
+function _bookAttach(frame) {
   var doc = frame.contentDocument, win = frame.contentWindow;
-  if (!doc || !win || doc.__zimiBook) return;
+  if (!doc || !win || doc.__zimiBook) return false;
+  var shell = doc.querySelector('.zimi-reader'), article = doc.querySelector('.zimi-reader-body');
+  if (!shell || !article) return false;
+  var loc = win.location.pathname.match(/^\/w\/([^\/]+)\/(.+)$/);
+  if (!loc) return false;
+  var zim = decodeURIComponent(loc[1]), path = decodeURIComponent(loc[2]);
   doc.__zimiBook = true;
-  var sc = _bookScroll(win);
+  var html = doc.documentElement, uiRtl = document.documentElement.getAttribute('dir') === 'rtl';
   var st = doc.createElement('style');
   st.textContent = _BOOK_CSS;
   doc.head.appendChild(st);
-  var place = _bookPlaces()[_bookPlaceKey(zim, path)];
-  // A link to a place in the book (#chapter) goes there; otherwise back to
-  // where you were.
-  if (place && place.f > 0 && !(win.location.hash || '').slice(1)) sc.to(place.f * sc.room());
-  var last = 0, timer = null;
-  var save = function() { last = Date.now(); _bookSavePlace(doc, zim, path, Math.min(1, sc.at() / sc.room())); };
-  var chapters = _bookChapters(doc), nav = null;
-  if (chapters.length) {
-    var rtl = document.documentElement.getAttribute('dir') === 'rtl';
-    nav = doc.createElement('nav');
-    nav.className = 'zimi-book-nav';
-    nav.setAttribute('dir', rtl ? 'rtl' : 'ltr');
-    nav.innerHTML = '<button type="button" class="pv"></button><span class="ch"></span><span class="pc"></span><button type="button" class="nx"></button>';
-    var pv = nav.querySelector('.pv'), nx = nav.querySelector('.nx');
-    pv.textContent = rtl ? '\u203A' : '\u2039';
-    nx.textContent = rtl ? '\u2039' : '\u203A';
-    pv.title = t('books_prev_chapter'); pv.setAttribute('aria-label', pv.title);
-    nx.title = t('books_next_chapter'); nx.setAttribute('aria-label', nx.title);
-    doc.body.appendChild(nav);
-    var current = function() {
-      var i = -1;
-      for (var k = 0; k < chapters.length; k++) { if (chapters[k].getBoundingClientRect().top <= Math.max(_BOOK_NAV_TOP, win.innerHeight / 3)) i = k; else break; }
-      return i;
-    };
-    var goTo = function(i) {
-      sc.to(i < 0 ? 0 : sc.at() + chapters[i].getBoundingClientRect().top - 12);
-    };
-    // Back goes to the start of this chapter, and from its start to the one before.
-    pv.onclick = function() { var i = current(); if (i >= 0 && chapters[i].getBoundingClientRect().top < -8) goTo(i); else goTo(i - 1); };
-    nx.onclick = function() { goTo(Math.min(chapters.length - 1, current() + 1)); };
-    var paint = function() {
-      var i = current();
-      nav.querySelector('.ch').textContent = i >= 0 ? (chapters[i].textContent || '').replace(/\s+/g, ' ').trim() : (doc.title || '');
-      nav.querySelector('.pc').textContent = Math.round(Math.min(1, sc.at() / sc.room()) * 100) + '%';
-      pv.disabled = sc.at() <= 2;
-      nx.disabled = i >= chapters.length - 1;
-    };
-    paint();
+  html.classList.add('zb-book');
+  // Gutenberg's own page-top links (the book's page, its EPUB, a jump up)
+  // belong to the ZIM's reader, not this one.
+  Array.prototype.forEach.call(article.querySelectorAll('.zim_info,.zim_epub,.zim_up'), function(n) { n.parentNode.removeChild(n); });
+  // A book in a right-to-left language reads, and turns, right to left.
+  var meta = function(n) { var el = doc.querySelector('meta[name="' + n + '"]'); return el ? el.getAttribute('content') || '' : ''; };
+  var lang = html.getAttribute('lang') || meta('dc.language');
+  var bookRtl = (html.getAttribute('dir') || doc.body.getAttribute('dir') || (_BOOK_RTL_LANGS.test(lang) ? 'rtl' : '')) === 'rtl';
+  shell.setAttribute('dir', bookRtl ? 'rtl' : 'ltr');
+  if (lang) shell.setAttribute('lang', lang);
+
+  // ── the book in sections, and how long each is ──
+  var chapters = _bookChapters(doc);
+  var pre = doc.createRange();
+  // A "chapter" with no more than a title before it is the title page's
+  // (By Fyodor Dostoevsky, Contents): the book starts where there is more.
+  while (chapters.length) {
+    pre.setStart(article, 0); pre.setEndBefore(chapters[0]);
+    if (pre.toString().replace(/\s+/g, '').length >= _BOOK_FRONT_MIN) break;
+    chapters = Array.prototype.slice.call(chapters, 1);
   }
-  doc.addEventListener('scroll', function() {
-    if (nav) paint();
-    clearTimeout(timer);
+  if (chapters.length < _BOOK_CHAPTERS_MIN) chapters = [];
+  var secs = [];
+  _bookSections(doc, article, chapters).forEach(function(s) {
+    secs.push.apply(secs, _bookSplitLong(doc, s, s.textContent.length));
+  });
+  if (chapters.length && secs.length) _bookTidyFront(secs[0]);
+  var lens = [], cum = [], total = 0;
+  secs.forEach(function(s, i) { s.__zbI = i; cum.push(total); lens.push(s.textContent.length); total += lens[i]; });
+  total = Math.max(1, total);
+  var chapSec = chapters.map(function(h) { var s = h.closest('.zb-sec'); return s ? s.__zbI : 0; });
+  // The chapter a section is in (-1: before the first).
+  var chapterOf = function(s) { var k = -1; for (var i = 0; i < chapSec.length && chapSec[i] <= s; i++) k = i; return k; };
+  var bookTitle = meta('dc.title') || _readerViewTitle(doc) || doc.title || '';
+  var author = _bookAuthorName(meta('dc.creator'));
+
+  // ── the bars, the sheets ──
+  var el = function(tag, cls, htmlStr) { var e = doc.createElement(tag); if (cls) e.className = cls; if (htmlStr) e.innerHTML = htmlStr; return e; };
+  var head = el('div', 'zb-bar zb-head');
+  head.setAttribute('dir', uiRtl ? 'rtl' : 'ltr');
+  head.innerHTML = '<button type="button" class="zb-back" aria-label="' + tH('go_back') + '" title="' + tH('go_back') + '"' +
+      (uiRtl ? ' style="transform:scaleX(-1)"' : '') + '>' + _BOOK_SVG_BACK + '</button>' +
+    '<div class="zb-title"><b></b><span></span></div>' +
+    '<button type="button" class="zb-toc" aria-label="' + tH('books_contents') + '" title="' + tH('books_contents') + '" aria-haspopup="dialog">' + _BOOK_SVG_TOC + '</button>' +
+    '<button type="button" class="zb-aa" aria-label="' + tH('books_settings') + '" title="' + tH('books_settings') + '" aria-haspopup="dialog">Aa</button>';
+  head.querySelector('.zb-title b').textContent = bookTitle;
+  head.querySelector('.zb-title span').textContent = author;
+  if (!author) head.querySelector('.zb-title span').style.display = 'none';
+  var foot = el('div', 'zb-bar zb-foot');
+  foot.setAttribute('dir', uiRtl ? 'rtl' : 'ltr');
+  foot.innerHTML = '<input type="range" class="zb-scrub" min="0" max="1000" step="1" value="0" aria-label="' + tH('books_position') + '">' +
+    '<div class="zb-row"><button type="button" class="zb-pv" aria-label="' + tH('books_prev_chapter') + '" title="' + tH('books_prev_chapter') + '"></button>' +
+    '<div class="zb-info"><span class="zb-ch"></span><span class="zb-left"></span></div>' +
+    '<button type="button" class="zb-nx" aria-label="' + tH('books_next_chapter') + '" title="' + tH('books_next_chapter') + '"></button></div>';
+  var pv = foot.querySelector('.zb-pv'), nx = foot.querySelector('.zb-nx'), scrub = foot.querySelector('.zb-scrub');
+  pv.innerHTML = _BOOK_SVG_BACK; nx.innerHTML = _BOOK_SVG_BACK;
+  // The chapter arrows point the way the interface reads.
+  (uiRtl ? pv : nx).firstChild.style.transform = 'scaleX(-1)';
+  var mini = el('div', 'zb-mini');
+  mini.setAttribute('aria-hidden', 'true');
+  var scrim = el('div', 'zb-scrim');
+  var tocSheet = el('div', 'zb-sheet zb-toc-sheet');
+  var setSheet = el('div', 'zb-sheet zb-set-sheet');
+  [tocSheet, setSheet].forEach(function(s) { s.setAttribute('role', 'dialog'); s.setAttribute('dir', uiRtl ? 'rtl' : 'ltr'); });
+  tocSheet.setAttribute('aria-label', t('books_contents'));
+  setSheet.setAttribute('aria-label', t('books_settings'));
+  [head, foot, mini, scrim, tocSheet, setSheet].forEach(function(n) { doc.body.appendChild(n); });
+
+  // ── how you read: the settings, laid onto the page ──
+  var prefs = _bookPrefs(), paged = false, W = 0, H = 0;
+  var cur = 0, page = 0, pages = 1;     // paged: the section on screen, its page, its pages
+  var anchor = { s: 0, o: 0 };          // where you are: a section and a character in it
+  // Held after the book is laid out again (a turn of the phone, bigger type):
+  // the passage stays the one you were reading until you move, rather than
+  // becoming whatever now tops the page, which would drift back a page a time.
+  var held = false;
+  var insets = _bookInsets();
+  var applyVars = function() {
+    var s = html.style;
+    s.setProperty('--zb-size', prefs.size + 'px');
+    s.setProperty('--zb-lh', String(_BOOK_LEADINGS[prefs.lh]));
+    s.setProperty('--zb-m', _BOOK_MARGINS[prefs.margin] + 'px');
+    s.setProperty('--zb-measure', _BOOK_MEASURES[prefs.margin] + 'em');
+    s.setProperty('--zb-sat', insets.t + 'px'); s.setProperty('--zb-sar', insets.r + 'px');
+    s.setProperty('--zb-sab', insets.b + 'px'); s.setProperty('--zb-sal', insets.l + 'px');
+  };
+  // Pages: the section on screen in columns the width of the page (two on a
+  // wide screen), each column no wider than the measure, so a page is one
+  // step of the page's width. The columns run off the side of the article
+  // and it slides (a transform, not a scroll: a scroller stops short of a
+  // last page that is half empty, and slides smoothly under a finger).
+  var padX = 0;
+  var layoutPages = function() {
+    W = win.innerWidth; H = win.innerHeight;
+    var cols = W >= _BOOK_SPREAD_MIN && H >= _BOOK_SPREAD_MIN_H ? 2 : 1;
+    var m = _BOOK_MARGINS[prefs.margin] + Math.max(insets.l, insets.r);
+    var colW = Math.floor(Math.min(W / cols - 2 * m, _BOOK_MEASURES[prefs.margin] * prefs.size));
+    var gap = (W - cols * colW) / cols;
+    var top = _BOOK_PAGE_TOP + insets.t, bottom = _BOOK_PAGE_BOTTOM + insets.b;
+    var colh = Math.max(80, H - top - bottom);
+    padX = gap / 2;
+    shell.style.padding = top + 'px 0 ' + bottom + 'px';
+    var s = article.style;
+    s.width = (W - gap) + 'px';
+    // !important: Reader View frees every element of its height (!important).
+    s.setProperty('height', colh + 'px', 'important');
+    s.marginLeft = s.marginRight = padX + 'px';
+    s.columnCount = String(cols);
+    s.columnGap = gap + 'px';
+    html.style.setProperty('--zb-colh', colh + 'px');
+    pages = Math.max(1, Math.ceil((article.scrollWidth + gap) / W - 0.02));
+  };
+  var showSec = function(s) {
+    s = Math.max(0, Math.min(secs.length - 1, s));
+    if (secs[cur]) secs[cur].classList.remove('zb-cur');
+    cur = s;
+    secs[cur].classList.add('zb-cur');
+    layoutPages();
+    _readerMarkImages(secs[cur]);
+  };
+  var dir = function() { return bookRtl ? -1 : 1; };
+  var slide = function(x, smooth) {
+    article.style.transition = smooth ? 'transform ' + _BOOK_SLIDE_MS + 'ms ease' : 'none';
+    article.style.transform = 'translateX(' + x + 'px)';
+  };
+  var pageX = function(p) { return -dir() * p * W; };
+  var setPage = function(p, smooth) {
+    page = Math.max(0, Math.min(pages - 1, p));
+    slide(pageX(page), smooth);
+  };
+  // The page of the section a point on the screen is on.
+  var pageOfRect = function(r) {
+    var ar = article.getBoundingClientRect();
+    var pos = bookRtl ? ar.right - r.right : r.left - ar.left;
+    return Math.max(0, Math.min(pages - 1, Math.floor((pos + 1) / W)));
+  };
+  var barsShown = function() { return !html.classList.contains('zb-away'); };
+  var topGap = function() { return barsShown() ? _BOOK_HEAD_H + insets.t + 8 : 8; };
+  // Go to a character of the book.
+  var goTo = function(a) {
+    if (!secs.length) return;
+    var s = Math.max(0, Math.min(secs.length - 1, a.s));
+    var r = _bookRangeAt(doc, secs[s], Math.max(0, a.o));
+    if (paged) {
+      if (s !== cur || !secs[s].classList.contains('zb-cur')) showSec(s);
+      setPage(pageOfRect(_bookRangeRect(r)));
+    } else {
+      win.scrollTo(0, Math.max(0, (win.scrollY || 0) + _bookRangeRect(r).top - topGap()));
+    }
+    anchor = { s: s, o: Math.max(0, a.o) };
+  };
+  var goToChar = function(c) {
+    var s = 0;
+    while (s < secs.length - 1 && cum[s + 1] <= c) s++;
+    goTo({ s: s, o: c - cum[s] });
+  };
+  // Where you are now, read off the screen: the first character at the top
+  // of the page (or, scrolling, under the header).
+  var readAnchor = function() {
+    var x, y0;
+    if (paged) {
+      x = bookRtl ? W - padX - 3 : padX + 3;
+      y0 = _BOOK_PAGE_TOP + insets.t + 4;
+    } else {
+      var ar = article.getBoundingClientRect();
+      x = bookRtl ? ar.right - 3 : ar.left + 3;
+      y0 = topGap();
+    }
+    for (var y = y0, tries = 0; tries < 8; tries++, y += 24) {
+      var c = _bookCaretAt(doc, x, y);
+      var n = c && (c.node.nodeType === 1 ? c.node : c.node.parentNode);
+      var s = n && n.closest && n.closest('.zb-sec');
+      if (s && (!paged || s === secs[cur])) return { s: s.__zbI, o: _bookOffsetIn(doc, s, c.node, c.off) };
+    }
+    return paged ? { s: cur, o: Math.round(lens[cur] * page / pages) } : anchor;
+  };
+  var charOf = function(a) { return Math.min(total, cum[a.s] + a.o); };
+
+  // ── the footer: the chapter, the pages left in it, the place in the book ──
+  var fmtPct = null;
+  try { fmtPct = new Intl.NumberFormat(_currentLang, { style: 'percent', maximumFractionDigits: 0 }); } catch (e) {}
+  var pct = function(f) { return fmtPct ? fmtPct.format(f) : Math.round(f * 100) + '%'; };
+  var scrubbing = false;
+  var paint = function() {
+    var f, s, left;
+    if (paged) {
+      s = cur;
+      f = (cum[cur] + lens[cur] * (pages > 1 ? page / (pages - 1) : 1)) / total;
+    } else {
+      s = anchor.s;
+      f = Math.min(1, charOf(anchor) / total);
+      var room = Math.max(1, Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight) - win.innerHeight);
+      if ((win.scrollY || 0) >= room - 2) f = 1;
+    }
+    var k = chapterOf(s);
+    foot.querySelector('.zb-ch').textContent = k >= 0 ? _bookText(chapters[k]) : bookTitle;
+    if (chapters.length) {
+      var n;
+      if (paged) {
+        n = pages - page - 1;
+        // The pages of the chapter's later sections, when it was cut in parts.
+        for (var j = cur + 1; j < secs.length && chapterOf(j) === k; j++) n += Math.max(1, Math.round(lens[j] / Math.max(1, lens[cur]) * pages));
+      } else {
+        var next = k + 1 < chapters.length ? chapters[k + 1] : null;
+        var end = next ? next.getBoundingClientRect().top : article.getBoundingClientRect().bottom;
+        n = Math.max(0, Math.ceil((end - win.innerHeight) / Math.max(1, win.innerHeight - topGap())));
+      }
+      left = n > 0 ? tPlural('books_left', n) : t('books_left_none');
+      left += ' · ' + pct(f);
+    } else {
+      left = pct(f);
+    }
+    foot.querySelector('.zb-left').textContent = left;
+    mini.textContent = left;
+    if (!scrubbing) scrub.value = String(Math.round(f * 1000));
+    pv.disabled = paged ? (cur === 0 && page === 0) : (win.scrollY || 0) <= 2;
+    nx.disabled = !chapters.length || k >= chapters.length - 1;
+  };
+  var last = 0, saveTimer = null;
+  var save = function() {
+    last = Date.now();
+    var c = charOf(anchor);
+    _bookSavePlace(doc, zim, path, c / total, c);
+  };
+  var settleTimer = null;
+  // After a scroll or a turn has come to rest: read where you are, show it, keep it.
+  var settled = function() {
+    if (!held) anchor = readAnchor();
+    paint();
+    clearTimeout(saveTimer);
     if (Date.now() - last > _BOOK_PLACE_THROTTLE) save();
-    else timer = setTimeout(save, _BOOK_PLACE_THROTTLE);
+    else saveTimer = setTimeout(save, _BOOK_PLACE_THROTTLE);
+  };
+  var settleSoon = function() { clearTimeout(settleTimer); settleTimer = setTimeout(settled, _BOOK_SETTLE_MS); };
+
+  // ── the bars come and go ──
+  var showBars = function(on) { html.classList.toggle('zb-away', !on); };
+  var sheetOpen = function() { return html.classList.contains('zb-sheet-open'); };
+  var closeSheets = function() {
+    [tocSheet, setSheet].forEach(function(s) { s.classList.remove('zb-open'); });
+    html.classList.remove('zb-sheet-open');
+  };
+  var openSheet = function(s) {
+    closeSheets();
+    s.classList.add('zb-open');
+    html.classList.add('zb-sheet-open');
+    showBars(true);
+  };
+
+  // ── moving through the book ──
+  var turn = function(d) {
+    held = false;
+    if (!paged) { win.scrollBy(0, d * (win.innerHeight - topGap() - 24)); return; }
+    if (d > 0 && page < pages - 1) setPage(page + 1, true);
+    else if (d > 0 && cur < secs.length - 1) { showSec(cur + 1); setPage(0); }
+    else if (d < 0 && page > 0) setPage(page - 1, true);
+    else if (d < 0 && cur > 0) { showSec(cur - 1); setPage(pages - 1); }
+    else setPage(page, true);
+    showBars(false);
+    paint();
+    settleSoon();
+  };
+  var goChapter = function(k) {
+    held = false;
+    if (k < 0) { goTo({ s: 0, o: 0 }); if (!paged) win.scrollTo(0, 0); }
+    else if (paged) { showSec(chapSec[k]); setPage(pageOfRect(chapters[k].getBoundingClientRect())); }
+    else win.scrollTo(0, Math.max(0, (win.scrollY || 0) + chapters[k].getBoundingClientRect().top - topGap()));
+    paint();
+    settleSoon();
+  };
+  // Back goes to the start of this chapter, and from its start to the one before.
+  pv.onclick = function() {
+    var k = chapterOf(paged ? cur : anchor.s);
+    var atStart = paged ? (cur === chapSec[k] && page === 0) : (k < 0 || chapters[k].getBoundingClientRect().top >= topGap() - 8);
+    goChapter(atStart ? k - 1 : k);
+  };
+  nx.onclick = function() { goChapter(Math.min(chapters.length - 1, chapterOf(paged ? cur : anchor.s) + 1)); };
+  head.querySelector('.zb-back').onclick = function() { goBack(); };
+  var relayout = function(keep) {
+    applyVars();
+    html.classList.toggle('zb-paged', paged);
+    if (paged) { showSec(keep.s); } else {
+      if (secs[cur]) secs[cur].classList.remove('zb-cur');
+      shell.style.padding = '';
+      ['width', 'height', 'margin-left', 'margin-right', 'column-count', 'column-gap', 'transform', 'transition'].forEach(function(k) { article.style.removeProperty(k); });
+    }
+    goTo(keep);
+    held = true;
+    paint();
+    settleSoon();
+  };
+
+  // The scrubber: drag to anywhere in the book.
+  scrub.addEventListener('input', function() {
+    scrubbing = true;
+    var c = Number(scrub.value) / 1000 * total, s = 0;
+    while (s < secs.length - 1 && cum[s + 1] <= c) s++;
+    var k = chapterOf(s);
+    foot.querySelector('.zb-ch').textContent = k >= 0 ? _bookText(chapters[k]) : bookTitle;
+    foot.querySelector('.zb-left').textContent = pct(Number(scrub.value) / 1000);
+  });
+  scrub.addEventListener('change', function() {
+    scrubbing = false;
+    held = false;
+    goToChar(Math.min(total - 1, Number(scrub.value) / 1000 * total));
+    paint();
+    settleSoon();
+  });
+
+  // ── contents ──
+  var renderToc = function() {
+    var k = chapterOf(paged ? cur : anchor.s), seen = {};
+    chapters.forEach(function(h) { var x = _bookText(h); seen[x] = (seen[x] || 0) + 1; });
+    var h = '<div class="zb-sheet-head"><b>' + tH('books_contents') + '</b><button type="button" class="zb-x" aria-label="' + tH('close') + '">×</button></div><ol class="zb-toc-list">';
+    h += '<li' + (k < 0 ? ' aria-current="true"' : '') + '><button type="button" data-k="-1">' + esc(bookTitle) + '</button></li>';
+    chapters.forEach(function(ch, i) {
+      var x = _bookText(ch);
+      // A name that recurs (CHAPTER I in every part) sits under the one before it that does not.
+      h += '<li' + (seen[x] > 1 ? ' class="zb-sub"' : '') + (i === k ? ' aria-current="true"' : '') + '><button type="button" data-k="' + i + '">' + esc(x) + '</button></li>';
+    });
+    tocSheet.innerHTML = h + '</ol>';
+  };
+  tocSheet.addEventListener('click', function(e) {
+    var b = e.target.closest('button');
+    if (!b) return;
+    closeSheets();
+    if (b.hasAttribute('data-k')) { goChapter(Number(b.getAttribute('data-k'))); showBars(false); }
+  });
+  head.querySelector('.zb-toc').onclick = function() {
+    renderToc();
+    openSheet(tocSheet);
+    var on = tocSheet.querySelector('[aria-current="true"]');
+    if (on && on.scrollIntoView) on.scrollIntoView({ block: 'center' });
+    var first = on ? on.querySelector('button') : tocSheet.querySelector('.zb-x');
+    if (first) first.focus({ preventScroll: true });
+  };
+
+  // ── reading settings: theme and font are Reader View's; the rest the book's ──
+  var seg = function(attr, items, curVal, label) {
+    return '<div class="zb-seg" role="group" aria-label="' + label + '">' + items.map(function(it) {
+      return '<button type="button" data-' + attr + '="' + it[0] + '" aria-pressed="' + (String(it[0]) === String(curVal)) + '"' + (it[2] ? ' style="' + it[2] + '"' : '') + '>' + it[1] + '</button>';
+    }).join('') + '</div>';
+  };
+  var row = function(label, body) { return '<div class="zb-set"><div class="zb-set-label">' + label + '</div>' + body + '</div>'; };
+  var renderSettings = function() {
+    var mode = _readerThemeMode(), fam = _readerFamily(), si = _BOOK_SIZES.indexOf(prefs.size);
+    var themes = ['auto', 'light', 'sepia', 'dark'].map(function(k) {
+      var lbl = tH(k === 'auto' ? 'theme_auto' : 'reader_theme_' + k);
+      return [k, '<span class="zb-dot zb-dot-' + k + '"></span>' + lbl];
+    });
+    setSheet.innerHTML = '<div class="zb-sheet-head"><b>' + tH('books_settings') + '</b><button type="button" class="zb-x" aria-label="' + tH('close') + '">×</button></div>' +
+      row(tH('reader_theme'), seg('theme', themes, mode, tH('reader_theme')).replace('zb-seg', 'zb-seg zb-themes')) +
+      row(tH('reader_font_family'), seg('fam', [['serif', tH('reader_font_serif'), 'font-family:Georgia,serif'], ['sans', tH('reader_font_sans'), 'font-family:-apple-system,sans-serif']], fam, tH('reader_font_family'))) +
+      row(tH('reader_text_size'), '<div class="zb-step"><button type="button" data-size="-1" aria-label="' + tH('reader_size_smaller') + '"' + (si <= 0 ? ' disabled' : '') + ' style="font-size:14px">A</button>' +
+        '<output>' + prefs.size + ' px</output><button type="button" data-size="1" aria-label="' + tH('reader_size_larger') + '"' + (si >= _BOOK_SIZES.length - 1 ? ' disabled' : '') + ' style="font-size:21px">A</button></div>') +
+      row('<label for="zb-lh">' + tH('books_line_spacing') + '</label>', '<input id="zb-lh" class="zb-range" type="range" min="0" max="' + (_BOOK_LEADINGS.length - 1) + '" step="1" value="' + prefs.lh + '" data-pref="lh">') +
+      row('<label for="zb-mg">' + tH('books_margins') + '</label>', '<input id="zb-mg" class="zb-range" type="range" min="0" max="' + (_BOOK_MARGINS.length - 1) + '" step="1" value="' + prefs.margin + '" data-pref="margin">') +
+      row(tH('books_layout'), seg('mode', [['scroll', tH('books_mode_scroll')], ['pages', tH('books_mode_pages')]], prefs.mode, tH('books_layout')));
+  };
+  // A change of type or layout keeps the passage you were reading on screen.
+  var setPrefs = function(change) {
+    var keep = anchor;
+    for (var k in change) prefs[k] = change[k];
+    _setStorageJSON(SK.BOOK_PREFS, prefs);
+    paged = prefs.mode === 'pages';
+    relayout(keep);
+    renderSettings();
+  };
+  setSheet.addEventListener('click', function(e) {
+    var b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    if (b.classList.contains('zb-x')) { closeSheets(); return; }
+    var key = ['theme', 'fam', 'size', 'mode'].filter(function(a) { return b.hasAttribute('data-' + a); })[0];
+    if (!key) return;
+    var val = b.getAttribute('data-' + key), keep = anchor;
+    if (key === 'theme') { _setReaderTheme(val); renderSettings(); }
+    else if (key === 'fam') { _setReaderFamily(val); relayout(keep); renderSettings(); }
+    else if (key === 'size') setPrefs({ size: _BOOK_SIZES[Math.max(0, Math.min(_BOOK_SIZES.length - 1, _BOOK_SIZES.indexOf(prefs.size) + Number(val)))] });
+    else setPrefs({ mode: val });
+    var again = setSheet.querySelector('[data-' + key + '="' + val + '"]');
+    if (again && !again.disabled) again.focus({ preventScroll: true });
+  });
+  setSheet.addEventListener('change', function(e) {
+    var p = e.target.getAttribute && e.target.getAttribute('data-pref');
+    if (!p) return;
+    var o = {}; o[p] = Number(e.target.value);
+    setPrefs(o);
+    var again = setSheet.querySelector('[data-pref="' + p + '"]');
+    if (again) again.focus({ preventScroll: true });
+  });
+  head.querySelector('.zb-aa').onclick = function() {
+    renderSettings();
+    openSheet(setSheet);
+    var x = setSheet.querySelector('[aria-pressed="true"]');
+    if (x) x.focus({ preventScroll: true });
+  };
+  scrim.onclick = closeSheets;
+
+  // ── taps, swipes, keys, the wheel ──
+  var UI = '.zb-bar,.zb-sheet,.zb-scrim';
+  var TAPPABLE = 'a,button,input,select,textarea,label,summary,video,audio,.zimi-zoomable,.' + _READER_LIGHTBOX_CLASS + ',' + UI;
+  // A link to a place in the book goes there, in pages as in scrolling.
+  doc.addEventListener('click', function(e) {
+    var a = e.target.closest && e.target.closest('a[href]');
+    if (!a || !a.hash || a.pathname !== win.location.pathname) return;
+    var id = a.hash.slice(1), tgt = null;
+    try { id = decodeURIComponent(id); } catch (err) {}
+    tgt = doc.getElementById(id) || doc.querySelector('[name="' + _cssEsc(id) + '"]');
+    if (!tgt) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    var s = tgt.closest('.zb-sec');
+    if (!s) return;
+    held = false;
+    if (paged) { showSec(s.__zbI); setPage(pageOfRect(tgt.getBoundingClientRect())); }
+    else win.scrollTo(0, Math.max(0, (win.scrollY || 0) + tgt.getBoundingClientRect().top - topGap()));
+    showBars(false);
+    paint();
+    settleSoon();
+  }, true);
+  // On the shell, not the document: iOS sends a tap on plain text to a
+  // listener on an element, never to one on the document.
+  var swipedAt = 0;
+  shell.addEventListener('click', function(e) {
+    if (e.defaultPrevented || Date.now() - swipedAt < 400) return;
+    if (e.target.closest && e.target.closest(TAPPABLE)) return;
+    var sel = win.getSelection && win.getSelection();
+    if (sel && !sel.isCollapsed && String(sel).trim()) return;
+    if (sheetOpen()) { closeSheets(); return; }
+    if (paged) {
+      var rel = e.clientX / W;
+      // The side you tap is the way the page goes: left is back in a
+      // left-to-right book and on in a right-to-left one.
+      if (rel < _BOOK_EDGE) { turn(bookRtl ? 1 : -1); return; }
+      if (rel > 1 - _BOOK_EDGE) { turn(bookRtl ? -1 : 1); return; }
+    }
+    showBars(!barsShown());
+  });
+  var sw = null;
+  doc.addEventListener('touchstart', function(e) {
+    sw = null;
+    if (!paged || e.touches.length !== 1 || sheetOpen() || (e.target.closest && e.target.closest(UI + ',pre,.zimi-table-wrap'))) return;
+    sw = { x: e.touches[0].clientX, y: e.touches[0].clientY, horiz: null };
+  }, { passive: true });
+  doc.addEventListener('touchmove', function(e) {
+    if (!sw || e.touches.length !== 1) return;
+    var dx = e.touches[0].clientX - sw.x, dy = e.touches[0].clientY - sw.y;
+    if (sw.horiz === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) sw.horiz = Math.abs(dx) > Math.abs(dy);
+    if (sw.horiz) { e.preventDefault(); slide(pageX(page) + dx, false); }
+    else if (sw.horiz === false) e.preventDefault();
+  }, { passive: false });
+  doc.addEventListener('touchend', function(e) {
+    if (!sw) return;
+    var s = sw; sw = null;
+    if (!s.horiz) return;
+    swipedAt = Date.now();
+    var dx = (e.changedTouches[0] || {}).clientX - s.x;
+    // The finger drags the page: to the left shows what lies to the right.
+    if (Math.abs(dx) > _BOOK_SWIPE) turn((dx < 0) === !bookRtl ? 1 : -1);
+    else setPage(page, true);
+  });
+  var wheelAt = 0;
+  doc.addEventListener('wheel', function(e) {
+    if (!paged || sheetOpen() || (e.target.closest && e.target.closest('.zb-sheet,pre,.zimi-table-wrap'))) return;
+    var d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX * (bookRtl ? -1 : 1) : e.deltaY;
+    if (Math.abs(d) < 4) return;
+    e.preventDefault();
+    if (Date.now() - wheelAt < _BOOK_WHEEL_GAP) return;
+    wheelAt = Date.now();
+    turn(d > 0 ? 1 : -1);
+  }, { passive: false });
+  doc.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && sheetOpen()) { closeSheets(); e.preventDefault(); return; }
+    if (sheetOpen() || e.metaKey || e.ctrlKey || e.altKey || (e.target.closest && e.target.closest('input,textarea,select,[contenteditable]'))) return;
+    var d = 0;
+    if (e.key === 'ArrowRight') d = bookRtl ? -1 : 1;
+    else if (e.key === 'ArrowLeft') d = bookRtl ? 1 : -1;
+    else if (paged && (e.key === 'PageDown' || e.key === 'ArrowDown' || (e.key === ' ' && !e.shiftKey))) d = 1;
+    else if (paged && (e.key === 'PageUp' || e.key === 'ArrowUp' || (e.key === ' ' && e.shiftKey))) d = -1;
+    if (!d) return;
+    e.preventDefault();
+    turn(d);
+  });
+
+  // A hand on the page (not on the bars or a sheet) lets the held place go.
+  ['touchstart', 'wheel', 'keydown', 'mousedown'].forEach(function(ev) {
+    doc.addEventListener(ev, function(e) { if (!(e.target.closest && e.target.closest(UI))) held = false; }, { passive: true, capture: true });
+  });
+
+  // ── scrolling ──
+  var lastY = 0, down = 0, up = 0, ticking = false;
+  doc.addEventListener('scroll', function() {
+    if (!paged && !ticking) {
+      ticking = true;
+      win.requestAnimationFrame(function() {
+        ticking = false;
+        var y = win.scrollY || 0, dy = y - lastY;
+        lastY = y;
+        var room = Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight) - win.innerHeight;
+        if (y < 8 || y >= room - 8) { showBars(true); down = up = 0; }
+        else if (dy > 0) { down += dy; up = 0; if (down > _BOOK_BARS_HIDE && !sheetOpen()) showBars(false); }
+        else if (dy < 0) { up -= dy; down = 0; if (up > _BOOK_BARS_HIDE) showBars(true); }
+        if (!held) anchor = readAnchor();
+        paint();
+      });
+    }
+    settleSoon();
   }, { passive: true, capture: true });
-  win.addEventListener('pagehide', save);
+  // A turn of the phone, a window made wider: the same passage, laid out again.
+  var sizeAt = win.innerWidth + 'x' + win.innerHeight, resizeRaf = 0;
+  win.addEventListener('resize', function() {
+    if (resizeRaf) return;
+    resizeRaf = win.requestAnimationFrame(function() {
+      resizeRaf = 0;
+      var size = win.innerWidth + 'x' + win.innerHeight;
+      if (size === sizeAt) return;
+      var widthChanged = size.split('x')[0] !== sizeAt.split('x')[0];
+      sizeAt = size;
+      insets = _bookInsets();
+      if (paged || widthChanged) relayout(anchor);
+    });
+  });
+  // Leaving: the place as last read (the frame may already be hidden, with
+  // nothing on screen to read it from).
+  win.addEventListener('pagehide', function() { clearTimeout(settleTimer); save(); });
+
+  // ── open where you left it (or where the link points) ──
+  paged = prefs.mode === 'pages';
+  applyVars();
+  html.classList.toggle('zb-paged', paged);
+  var place = _bookPlaces()[_bookPlaceKey(zim, path)];
+  var hash = (win.location.hash || '').slice(1), tgt = null;
+  if (hash) { try { hash = decodeURIComponent(hash); } catch (e) {} tgt = doc.getElementById(hash); }
+  var tgtSec = tgt && tgt.closest('.zb-sec');
+  if (tgtSec) {
+    if (paged) { showSec(tgtSec.__zbI); setPage(pageOfRect(tgt.getBoundingClientRect())); }
+    else win.scrollTo(0, Math.max(0, (win.scrollY || 0) + tgt.getBoundingClientRect().top - topGap()));
+    anchor = readAnchor();
+  } else if (place && (place.c > 0 || place.f > 0)) {
+    goToChar(place.c > 0 ? place.c : place.f * total);
+  } else {
+    goTo({ s: 0, o: 0 });
+    if (!paged) win.scrollTo(0, 0);
+  }
+  lastY = win.scrollY || 0;
+  held = true;
+  paint();
+  _readerBindLightbox(shell, doc);
+  try { win.focus(); } catch (e) {}
+  return true;
 }
 
 // ── ZimiExchange ──
@@ -17164,6 +17933,8 @@ var _CHROME_STEP = 12, _CHROME_TOP = 64;
 var _chromeBase = 0, _chromeHeld = false;
 function _setChromeAway(on) {
   document.body.classList.toggle('chrome-away', !!on);
+  // Held is away at every size (app.css), not only on a phone.
+  document.body.classList.toggle('chrome-held', !!(on && _chromeHeld));
 }
 function _chromeScroll(y) {
   var away;
@@ -17174,7 +17945,8 @@ function _chromeScroll(y) {
   _chromeBase = y;
   _setChromeAway(away || _chromeHeld);
 }
-// Held away (a video playing on a phone turned sideways) until let go.
+// Held away (a video playing on a phone turned sideways, a book being read)
+// until let go.
 function _chromeImmersive(on) {
   _chromeHeld = on;
   _setChromeAway(on);
@@ -17824,6 +18596,9 @@ function openReader(url) {
   // Hide main document scroll so iframe becomes primary scroller (iOS tap-to-top)
   document.documentElement.style.overflowY = 'hidden';
   loading.classList.remove('hidden');
+  // A book: Zimi's header steps aside for the book's before it loads.
+  var _bookLoading = _bookUrl(url);
+  _bookChrome(_bookLoading);
   // Tint the iframe + loading overlay to the reader theme when Reader View is
   // sticky or AUTO is armed, so the load gap shows theme bg (never ZIM-white).
   _tintReaderChrome();
@@ -17833,7 +18608,7 @@ function openReader(url) {
   // it can't be trusted to fully mask the raw white ZIM paint — hiding the frame
   // outright guarantees the first painted frame is the reader, never the original.
   // (visibility:hidden preserves layout + load, so extraction still works.)
-  var _maskFrame = _readerViewOn || _readerAuto();
+  var _maskFrame = _readerViewOn || _readerAuto() || _bookLoading;
   frame.style.visibility = _maskFrame ? 'hidden' : 'visible';
 
   // Punch-out button: for pdf.js viewer URLs, link to the raw PDF for download
@@ -17878,6 +18653,13 @@ function openReader(url) {
         if (_rok) _readerViewOn = true;
       }
     }
+    // A book: the e-reader, set up before anything measures the page, so the
+    // book is laid out once, as it will be shown.
+    var _bookOn = false;
+    if (_bookDoc && _readerViewOn) {
+      try { _bookOn = _bookAttach(frame); } catch (e) { console.warn('Book reader:', e); }
+    }
+    _bookChrome(_bookOn);
     _tintReaderChrome(); // reset frame bg to #fff if reader ended up off
     _syncReaderViewBtn();
     // Auto-darken a raw (non-Reader-View) ZIM page when the app is dark, so the
@@ -17940,7 +18722,8 @@ function openReader(url) {
     // Inject responsive CSS + scroll-to-top button for mobile. Not into
     // Zimi's own pages (the apps, the PDF viewer): they lay themselves out,
     // and the button sat on a video's dock and over a thread's last lines.
-    if (!_frameIsOurOwnPage(frame)) try {
+    // Nor into a book: the book reader has its own footer and way through.
+    if (!_frameIsOurOwnPage(frame) && !_bookDoc) try {
       // Web-mirror pages (alive engine, zimit) ship a browser's-eye recording of
       // a real site: their own viewport meta, their own responsive CSS, their own
       // replay shim (wombat). The mwoffliner first-aid below actively BREAKS them
@@ -18037,7 +18820,6 @@ function openReader(url) {
       try {
         var _vm = _frameLoc.match(/^\/w\/([^\/]+)\/(.+)$/);
         if (_vm) _bindVideoResume(frame, decodeURIComponent(_vm[1]), decodeURIComponent(_vm[2]));
-        if (_vm && _bookDoc) _bookAttach(frame, decodeURIComponent(_vm[1]), decodeURIComponent(_vm[2]));
       } catch(e) {}
       // Dead-player affordance for broken-scrape ZIMs (0-byte / missing media).
       // Independent of the resume binding above — runs for any /w/ article frame.
@@ -19977,6 +20759,7 @@ function closeReader() {
   articleHistory = [];
   _manageSavedReader = null; // discard saved state when reader is explicitly closed
   document.getElementById('reader').classList.remove('open');
+  _bookChrome(false);
   // Use location.replace to avoid adding a history entry (iframe.src pollutes back button)
   var f = document.getElementById('reader-frame');
   try { f.contentWindow.location.replace('about:blank'); } catch(e) { f.src = 'about:blank'; }
