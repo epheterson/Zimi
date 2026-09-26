@@ -14,6 +14,7 @@ const vm = require('vm');
 const root = path.join(__dirname, '..', 'zimi', 'static');
 const page = fs.readFileSync(path.join(root, 'books.html'), 'utf8').replace(/\r\n/g, '\n');
 const src = fs.readFileSync(path.join(root, 'app.js'), 'utf8').replace(/\r\n/g, '\n');
+const apps = fs.readFileSync(path.join(root, 'apps.js'), 'utf8').replace(/\r\n/g, '\n');
 let failures = 0;
 function ok(label, cond, detail) {
   console.log((cond ? 'PASS  ' : 'FAIL  ') + label + (detail ? '  ' + detail : ''));
@@ -34,7 +35,7 @@ const ctx = { localStorage: memoryStorage(), Intl, Date, Math, JSON, String, Num
   STR: { lang: 'en', bce: '{from} to {to} BCE', bce_ce: '{from} BCE to {to} CE', lcc: { P: 'Language and literature', PR: 'English literature', Q: 'Science' } } };
 vm.createContext(ctx);
 vm.runInContext([
-  extract(page, /var PLACES_KEY = [^\n]*\n/, 'PLACES_KEY'),
+  extract(apps, /var BOOK_PLACES_KEY = [^\n]*\n/, 'BOOK_PLACES_KEY'),
   extract(page, /var COVER_HUES = [^\n]*\n/, 'COVER_HUES'),
   extract(page, /function hash\(s\) \{[^\n]*\n/, 'hash'),
   extract(page, /function coverHue\(title\) \{[^\n]*\n/, 'coverHue'),
@@ -76,7 +77,7 @@ ok('at the shelf the shell leaves; inside it the arrow steps back', /window\.__t
 ok('a cover is a real link, and a modified click keeps it for a new tab', /'<a class="bk" href="' \+ esc\(zpath\(b\.zim, b\.path\)\)/.test(page) && /e\.metaKey \|\| e\.ctrlKey \|\| e\.shiftKey \|\| e\.button === 1/.test(page));
 ok('a missing picture becomes a cover set in type', /onerror="noCover\(this\)"/.test(page) && /function noCover\(img\)/.test(page));
 ok('Read opens the book in Zimi\'s reader, noted first for Continue reading', /noteOpened\(b\);\n\s*tell\(\{ zimi: 'open', zim: b\.zim, path: b\.path \}\);/.test(page));
-ok('the page and the reader keep places under one key', /var PLACES_KEY = 'zimi_book_places';/.test(page) && /BOOK_PLACES: 'zimi_book_places'/.test(src));
+ok('the page and the reader keep places under one key', /var BOOK_PLACES_KEY = 'zimi_book_places';/.test(apps) && /BOOK_PLACES: 'zimi_book_places'/.test(src) && !/'zimi_book_places'/.test(page));
 ok('the empty page is a door to the Books category', /category: 'gutenberg'/.test(page));
 ok('eras and subjects arrive without a reload once the records are read', /if \(_home\.total && !_home\.details\) setTimeout\(refreshHome, /.test(page));
 
@@ -95,12 +96,42 @@ ok('Zimi\'s header is held away for a book, known from its address before it loa
 ok('no jump-to-top button and no capture passes on a book', /if \(!_frameIsOurOwnPage\(frame\) && !_bookDoc\) try \{/.test(src) && /if \(_frameIsOurOwnPage\(frame\) \|\| _bookDoc\) return;/.test(src));
 ok('opening a book lays nothing out early: its text is counted, not measured', /return \(main === doc\.body \? main\.textContent :/.test(src) && /if \(!_isBookDoc\(doc\)\) _readerBindLightbox\(shell, doc\);/.test(src));
 ok('pages are one chapter at a time, and a long run is cut again', /html\.zb-paged \.zb-sec:not\(\.zb-cur\)\{display:none\}/.test(src) && /var _BOOK_SECTION_CHARS = \d+;/.test(src));
-ok('the place is a character of the book, kept with the share read', /all\[key\] = \{ f: Math\.round\(f \* 1e5\) \/ 1e5, c: c,/.test(src));
+ok('the place is a character of the book, kept with the share read', /all\[key\] = \{ f: Math\.round\(f \* _BOOK_PLACE_SCALE\) \/ _BOOK_PLACE_SCALE, c: c,/.test(src) && /var _BOOK_PLACE_SCALE = 1e5;/.test(src));
+ok('a tap just after a swipe is the swipe\'s, by a named window', /Date\.now\(\) - swipedAt < _BOOK_SWIPE_TAP_MS\) return;/.test(src) && /var _BOOK_SWIPE_TAP_MS = \d+;/.test(src));
+// A book that never loads (an error, the 15 s stall) gives Zimi's header back:
+// it was held away before the load for a book header that never came.
+ok('a book that fails to load gives Zimi\'s header back', /frame\.onerror = function\(\) \{[^}]*if \(_bookReading\) _bookChrome\(false\);/.test(src) &&
+  /_readerTimeout = setTimeout\(function\(\) \{[\s\S]{0,300}if \(_bookReading\) _bookChrome\(false\);[\s\S]{0,80}\}, 15000\);/.test(src));
+ok('a book view that fails says so, and the plain page stays', /try \{ _bookOn = _bookAttach\(frame\); \} catch \(e\) \{ console\.warn\('Book reader:', e\); _showToast\(t\('books_view_unavailable'\)\); \}/.test(src));
 ok('a link to a place in the book wins over the remembered place', /if \(tgtSec\) \{[\s\S]{0,300}\} else if \(place && \(place\.c > 0 \|\| place\.f > 0\)\)/.test(src));
 ok('a right-to-left book turns the other way', /if \(rel < _BOOK_EDGE\) \{ turn\(bookRtl \? 1 : -1\); return; \}/.test(src));
 ok('chapters: the heading level with the most different headings', /hs\._n = Object\.keys\(distinct\)\.length;/.test(src));
 ok('the chapter arrows point the way the interface reads', /\(uiRtl \? pv : nx\)\.firstChild\.style\.transform = 'scaleX\(-1\)';/.test(src));
 ok('places are capped, the oldest dropped first', /var _BOOK_PLACES_MAX = \d+;/.test(src) && /keys\.slice\(0, keys\.length - _BOOK_PLACES_MAX\)/.test(src));
+
+// A layout that throws is taken back off the page, and the document is not
+// marked done, so the next load of it tries again.
+{
+  const classes = new Set(['zimi', 'zb-book', 'zb-paged']);
+  const removed = [];
+  const doc = {
+    documentElement: { classList: { remove: (...c) => c.forEach(x => classes.delete(x)) } },
+    querySelectorAll: sel => (/#zb-style/.test(sel) && /\.zb-bar/.test(sel) && /\.zb-sheet/.test(sel)
+      ? ['style', 'head', 'foot'].map(n => ({ remove: () => removed.push(n) })) : [])
+  };
+  const actx = { Array };
+  vm.createContext(actx);
+  vm.runInContext([
+    extract(src, /function _bookAttach\(frame\) \{[\s\S]*?\n\}/, '_bookAttach'),
+    extract(src, /function _bookUndo\(doc\) \{[\s\S]*?\n\}/, '_bookUndo'),
+    'function _bookLay(frame) { if (frame.fail) throw new Error("no chapters"); return true; }',
+  ].join('\n'), actx);
+  let threw = false;
+  try { actx._bookAttach({ contentDocument: doc, fail: true }); } catch (e) { threw = true; }
+  ok('a book layout that throws is taken back off the page', threw && !classes.has('zb-book') && !classes.has('zb-paged') && classes.has('zimi') && removed.join() === 'style,head,foot');
+  ok('and the document is not marked as a book', !doc.__zimiBook);
+  ok('a layout that works marks it, once', actx._bookAttach({ contentDocument: doc }) === true && doc.__zimiBook === true && actx._bookAttach({ contentDocument: doc }) === false);
+}
 
 // ── the shell ───────────────────────────────────────────────────────────
 ok('the tile is one line in the apps row, like the others', /function _booksTileHtml\(\) \{\n\s*return _appTileHtml\('books', t\('books'\), _BOOKS_SVG, _installedBookZims\(\)/.test(src) && /_appShown\('books'\) \? _booksTileHtml\(\) : ''/.test(src));
@@ -114,7 +145,7 @@ ok('Back from a book returns to Bookshelf', /s\.mode === 'reader' && s\.books\) 
 ok('the catalog door is allowed', /_APP_CATEGORY_KEYS = \[[^\]]*'gutenberg'\]/.test(src) && /books: 'gutenberg' \}/.test(src));
 ok('its background work has a name in Manage', /books: 'bg_books'/.test(src));
 
-const need = ['books', 'books_search_placeholder', 'books_prev_chapter', 'books_next_chapter', 'books_contents', 'books_settings',
+const need = ['books', 'books_view_unavailable', 'books_search_placeholder', 'books_prev_chapter', 'books_next_chapter', 'books_contents', 'books_settings',
   'books_line_spacing', 'books_margins', 'books_layout', 'books_mode_scroll', 'books_mode_pages', 'books_left_one', 'books_left_other',
   'books_left_none', 'books_position', 'app_empty_books', 'apps_count_books_one', 'apps_count_books_other', 'bg_books', 'books_bce', 'books_bce_ce'];
 const pageKeys = (extract(src, /_appStrings\('books', \[[\s\S]*?\]/, 'keys').match(/'books_[a-z_]+'/g) || []).map(k => k.slice(1, -1));

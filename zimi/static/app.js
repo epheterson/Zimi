@@ -108,8 +108,9 @@ var SK = {
   VIDEO_RESUME: 'zimi_video_resume',
   // Where you are in each book: {"<zim>\n<path>": {f, c, ts, id, title,
   // author, cover}}, f the fraction of the book read and c the character it
-  // is at. The reader keeps them; Bookshelf (static/books.html, same key)
-  // shows the books under Continue reading.
+  // is at. The reader keeps them; Bookshelf shows the books under Continue
+  // reading, through apps.js's BOOK_PLACES_KEY (the same key: the shell does
+  // not load apps.js, and tests/test_books_page.cjs holds the two together).
   BOOK_PLACES: 'zimi_book_places',
   // How books are read in this browser: {mode: 'scroll'|'pages', size (px),
   // lh and margin (indexes into _BOOK_LEADINGS / _BOOK_MARGINS)}.
@@ -16830,7 +16831,7 @@ function _booksStrings() {
     'books_continue', 'books_all_books', 'books_see_all', 'books_sort_popular', 'books_sort_title', 'books_sort_author', 'books_sort_recent',
     'books_sort_name', 'books_sort_books', 'books_read', 'books_resume', 'books_epub', 'books_more_by', 'books_added', 'books_language',
     'books_subject', 'books_era', 'books_author', 'books_more', 'books_none', 'books_empty', 'books_book', 'books_books', 'books_bce', 'books_bce_ce',
-    'books_pending', 'books_epub_only'], { lcc: lcc });
+    'books_pending', 'books_epub_only', 'books_load_failed', 'books_load_part'], { lcc: lcc, retry: t('retry') });
 }
 function openBooks(replaceState) {
   _openHashApp('books', replaceState, function() { _booksOpen = true; return _BOOKS_PAGE + '#' + _booksStrings(); });
@@ -16857,6 +16858,7 @@ function _booksSearch(val) { _appFrameCall('booksSearch', val); }
 // a turn of the phone, a change of type, and reopening.
 var _BOOK_PLACES_MAX = 200;       // books remembered (oldest dropped first)
 var _BOOK_PLACE_THROTTLE = 800;   // ms between writes while reading
+var _BOOK_PLACE_SCALE = 1e5;      // the share read is kept to five decimal places
 var _BOOK_CHAPTERS_MIN = 2;       // fewer headings than this is not a book of chapters
 var _BOOK_FRONT_MIN = 200;        // chars: a first "chapter" with less than this before it is the title page's
 var _BOOK_SECTION_CHARS = 150000; // chars: the longest run laid out as pages at once
@@ -16864,6 +16866,7 @@ var _BOOK_SETTLE_MS = 350;        // ms of quiet after a scroll or a turn (its s
 var _BOOK_SLIDE_MS = 280;         // ms a page takes to slide over
 var _BOOK_BARS_HIDE = 24;         // px scrolled down (or up) before the bars leave (or come back)
 var _BOOK_SWIPE = 40;             // px a swipe travels to turn the page
+var _BOOK_SWIPE_TAP_MS = 400;     // ms after a swipe in which a tap is the swipe's own, not a tap
 var _BOOK_EDGE = 0.3;             // share of the width at either side where a tap turns the page
 var _BOOK_SPREAD_MIN = 1000;      // px wide (and _BOOK_SPREAD_MIN_H tall) from which pages come two at a time
 var _BOOK_SPREAD_MIN_H = 480;
@@ -16980,7 +16983,7 @@ function _bookSavePlace(doc, zim, path, f, c) {
   var all = _bookPlaces(), key = _bookPlaceKey(zim, path), cur = all[key] || {};
   var m = path.match(/\.(\d+)$/);
   var meta = function(n) { var el = doc.querySelector('meta[name="' + n + '"]'); return el ? el.getAttribute('content') || '' : ''; };
-  all[key] = { f: Math.round(f * 1e5) / 1e5, c: c, ts: Date.now(), id: cur.id || (m ? Number(m[1]) : 0),
+  all[key] = { f: Math.round(f * _BOOK_PLACE_SCALE) / _BOOK_PLACE_SCALE, c: c, ts: Date.now(), id: cur.id || (m ? Number(m[1]) : 0),
     title: cur.title || meta('dc.title'), author: cur.author || _bookAuthorName(meta('dc.creator')),
     cover: cur.cover || (m ? 'covers/' + m[1] + '_cover_image.jpg' : '') };
   var keys = Object.keys(all);
@@ -17163,17 +17166,34 @@ function _bookRangeRect(r) {
   return rs.length ? rs[0] : r.getBoundingClientRect();
 }
 
+// The e-reader, once per document. A layout that throws is taken back off
+// the page, so the plain page is there to read, and the document is not
+// marked as a book, so the next load of it tries again.
 function _bookAttach(frame) {
+  var doc = frame.contentDocument;
+  if (!doc || doc.__zimiBook) return false;
+  var ok;
+  try { ok = _bookLay(frame); } catch (e) { _bookUndo(doc); throw e; }
+  if (ok) doc.__zimiBook = true;
+  return ok;
+}
+function _bookUndo(doc) {
+  try {
+    doc.documentElement.classList.remove('zb-book', 'zb-paged', 'zb-away', 'zb-sheet-open');
+    Array.prototype.forEach.call(doc.querySelectorAll('#zb-style,.zb-bar,.zb-mini,.zb-scrim,.zb-sheet'), function(n) { n.remove(); });
+  } catch (e) {}
+}
+function _bookLay(frame) {
   var doc = frame.contentDocument, win = frame.contentWindow;
-  if (!doc || !win || doc.__zimiBook) return false;
+  if (!doc || !win) return false;
   var shell = doc.querySelector('.zimi-reader'), article = doc.querySelector('.zimi-reader-body');
   if (!shell || !article) return false;
   var loc = win.location.pathname.match(/^\/w\/([^\/]+)\/(.+)$/);
   if (!loc) return false;
   var zim = decodeURIComponent(loc[1]), path = decodeURIComponent(loc[2]);
-  doc.__zimiBook = true;
   var html = doc.documentElement, uiRtl = document.documentElement.getAttribute('dir') === 'rtl';
   var st = doc.createElement('style');
+  st.id = 'zb-style';
   st.textContent = _BOOK_CSS;
   doc.head.appendChild(st);
   html.classList.add('zb-book');
@@ -17600,7 +17620,7 @@ function _bookAttach(frame) {
   // listener on an element, never to one on the document.
   var swipedAt = 0;
   shell.addEventListener('click', function(e) {
-    if (e.defaultPrevented || Date.now() - swipedAt < 400) return;
+    if (e.defaultPrevented || Date.now() - swipedAt < _BOOK_SWIPE_TAP_MS) return;
     if (e.target.closest && e.target.closest(TAPPABLE)) return;
     var sel = win.getSelection && win.getSelection();
     if (sel && !sel.isCollapsed && String(sel).trim()) return;
@@ -18627,6 +18647,7 @@ function openReader(url) {
   frame.onerror = function() {
     loading.classList.add('hidden');
     frame.style.visibility = 'visible'; // never leave the frame masked on error
+    if (_bookReading) _bookChrome(false); // no book, so no book header: Zimi's comes back
   };
   // Safety timeout: if iframe doesn't load within 15s, hide spinner
   if (_readerTimeout) clearTimeout(_readerTimeout);
@@ -18635,6 +18656,7 @@ function openReader(url) {
       loading.classList.add('hidden');
     }
     frame.style.visibility = 'visible'; // reveal even if the load stalled
+    if (_bookReading) _bookChrome(false); // and give Zimi's header back until a book is shown
   }, 15000);
   frame.onload = function() {
     clearTimeout(_readerTimeout);
@@ -18659,7 +18681,7 @@ function openReader(url) {
     // book is laid out once, as it will be shown.
     var _bookOn = false;
     if (_bookDoc && _readerViewOn) {
-      try { _bookOn = _bookAttach(frame); } catch (e) { console.warn('Book reader:', e); }
+      try { _bookOn = _bookAttach(frame); } catch (e) { console.warn('Book reader:', e); _showToast(t('books_view_unavailable')); }
     }
     _bookChrome(_bookOn);
     _tintReaderChrome(); // reset frame bg to #fff if reader ended up off
