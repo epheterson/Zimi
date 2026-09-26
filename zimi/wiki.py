@@ -7,16 +7,19 @@ a ZIM is was already decided when the library was read (its ``kind`` is
 ``wiki``, its ``project`` read from its metadata Name). Nothing here opens
 an archive to find the wikis: the list is a view of the library cache.
 
-Today is made of one thing from each wiki, the kind of thing that wiki is
-for (an article with its picture, a word with its meaning, a quote, a
-place, a book, a species), in the wiki's own language, chosen by the day so
-it holds until midnight; and On this day, read from every Wikipedia's own
-date page in its own language (zimi.datepages knows what each calls it).
-Both are worked out once per wiki per day and kept here, by a background
-pass soon after the server starts and after each of its midnights, so the
-first page open of a day finds them ready. A browser on another day (its
-time zone is not the server's) starts that day's pass with its first ask,
-and asks for the rest a few wikis at a time.
+Today is one language at a time, and reads like a wiki's front page:
+the day's article from that language's Wikipedia, with its picture; On this
+day, read from the Wikipedia's own date page; a few "did you know" facts
+from the leads of the day's articles; a picture of the day; a rabbit hole
+of links followed from the day's article; one thing from each other wiki in
+the language (a word, a quote, a place, a book, a species); and what each
+wiki's own front page featured when the copy was made (zimi.frontpage).
+Everything is chosen by the day, so it holds until midnight, and worked
+out once per wiki per day and kept here, by a background pass soon after
+the server starts and after each of its midnights, so the first page open
+of a day finds it ready. A browser on another day (its time zone is not
+the server's) starts that day's pass with its first ask, and asks for the
+rest a few wikis at a time.
 
 Only today, yesterday and tomorrow (the server's, covering every time zone
 a browser may be in) can be asked for: a caller cannot make the server read
@@ -27,7 +30,9 @@ wikis but builds a unified one and has the today page suggesting articles
 or whatever and good scoped search and display views and whatnot."
 Eric, 2026-09-25: "let's make that main view in Zimipedia awesome, dipping
 into most/all included ZIMs" and "All features should be first-class in all
-languages."
+languages." Later that day: "I don't want all the languages together I want
+it to support all languages well, separately. Doesn't real wiki have more
+than that on their homepage? Make it really alive and interesting."
 """
 
 import datetime
@@ -37,7 +42,7 @@ import random
 import re
 import threading
 
-from zimi import datepages
+from zimi import datepages, frontpage
 from zimi import server as _srv
 
 log = logging.getLogger("zimi")
@@ -47,6 +52,11 @@ _lock = threading.Lock()
 # give) and (name, build date, mmdd) -> [event]. A failure is never kept.
 _pick_cache = {}
 _otd_cache = {}
+# (name, build date, day) -> a Wikipedia's facts, picture and rabbit hole;
+# (name, build date, "front") -> what its front page featured (per copy,
+# not per day: the page does not change until the ZIM does).
+_extra_cache = {}
+_front_cache = {}
 _inflight = {}  # key -> threading.Event, so two asks for one key read once
 _warming = set()  # days a background pass is running for
 # Every wiki a library could hold, three days over: small, and cleared whole
@@ -526,6 +536,12 @@ def _work_otd(name, mmdd):
             out.append(hit)
             if len(out) >= OTD_LIMIT:
                 break
+    # The day with pictures: each event's article's own, where the ZIM keeps
+    # them (a nopic build has none, and says so quickly).
+    for hit in out:
+        thumb = _thumbnail(archive, name, hit["path"])
+        if thumb:
+            hit["thumbnail"] = thumb
     return out
 
 
@@ -546,17 +562,235 @@ def project_of_name(name):
     return _project(_record(name) or {"name": name})
 
 
+# ── the rest of a Wikipedia's day: facts, a picture, a rabbit hole ────────
+
+# Random pages read for the day's facts and its picture.
+FACT_TRIES = 24
+FACTS_MAX = 5
+# Articles in the rabbit hole after the day's own.
+TRAIL_HOPS = 4
+# The links of a page's opening a rabbit hole chooses among.
+_TRAIL_DOORS = 12
+_FACT_MIN, _FACT_MAX = 50, 230
+_TRAIL_BLURB = 150
+_PHOTO_RE = re.compile(r"\.(?:jpe?g|webp)$", re.IGNORECASE)
+# A sentence ends at a stop and a space, or at a CJK full stop.
+_SENTENCE_RE = re.compile(r"(?<=[.!?։۔।])\s+|(?<=[。！？])")
+
+
+def _thumbnail(archive, name, path):
+    """An article's picture as a URL, or "" (reads under the library lock)."""
+    from zimi.previews import _extract_preview_thumbnail
+
+    with _srv._zim_lock:
+        page = _read_page(archive, path)
+        if not page:
+            return ""
+        return _extract_preview_thumbnail(page[2][:80000], archive, name, page[0]) or ""
+
+
+def _sentences(text):
+    return [t.strip() for t in _SENTENCE_RE.split(text or "") if t.strip()]
+
+
+def _fact(lead_text):
+    """The sentence of a lead that makes the best "did you know": a later
+    one with a number in it (the surprise is rarely in the definition), else
+    the first, when it is a sentence's length."""
+    ss = [t for t in _sentences(lead_text) if _FACT_MIN <= len(t) <= _FACT_MAX]
+    later = [t for t in ss[1:] if re.search(r"\d", datepages.to_ascii_digits(t))]
+    if later:
+        return later[0]
+    return ss[0] if ss else ""
+
+
+def _lead_links(html):
+    """The articles a page's opening paragraphs link to, as ZIM paths, in
+    order, each once: the doors a rabbit hole goes through."""
+    out = []
+    paras = re.findall(r"<p\b[^>]*>(.*?)</p>", _body(html), re.DOTALL | re.IGNORECASE)
+    for para in paras[:3]:
+        for attrs, href in re.findall(
+            r"<a\b([^>]*?)href=[\"']([^\"']+)[\"']", _drop_blocks(para), re.IGNORECASE
+        ):
+            if re.search(r"\b(?:extiw|external|new)\b", attrs):
+                continue
+            link = frontpage.internal_path(href)
+            if link and ":" not in link and link not in out:
+                out.append(link)
+    return out
+
+
+def _page_facts(archive, name, path, want_picture):
+    """``(path, title, lead, thumbnail)`` of one page, or None."""
+    with _srv._zim_lock:
+        page = _read_page(archive, path)
+    if not page:
+        return None
+    lead = _lead(page[2])
+    if not lead:
+        return None
+    thumb = _thumbnail(archive, name, page[0]) if want_picture else ""
+    return page[0], page[1].replace("_", " "), lead, thumb
+
+
+def _trail(archive, start, seen, rng):
+    """The rabbit hole: from ``start``, a seeded link of each page's opening
+    to the next, TRAIL_HOPS deep, never back: ``[{path, title, blurb}]``."""
+    out, here = [], start
+    for _ in range(TRAIL_HOPS):
+        doors = []
+        with _srv._zim_lock:
+            page = _read_page(archive, here) if here else None
+            for link in _lead_links(page[2]) if page else []:
+                if link in seen:
+                    continue
+                try:
+                    archive.get_entry_by_path(link)
+                except KeyError:
+                    continue
+                doors.append(link)
+                if len(doors) >= _TRAIL_DOORS:
+                    break
+        if not doors:
+            break
+        with _srv._zim_lock:
+            page = _read_page(archive, rng.choice(doors))
+        if not page:
+            break
+        seen.add(page[0])
+        first = (_sentences(_lead(page[2])) or [""])[0]
+        out.append(
+            {
+                "path": page[0],
+                "title": page[1].replace("_", " "),
+                "blurb": _cap(first, _TRAIL_BLURB),
+            }
+        )
+        here = page[0]
+    return out
+
+
+def _work_extras(name, day, start):
+    """A Wikipedia's day beyond its article: ``{facts: [{path, title, text}],
+    picture: {path, title, thumbnail, blurb} or None, trail: [{path, title,
+    blurb}]}``. Random pages in an order seeded by the wiki and the day
+    (another order than the pick's), and the rabbit hole from ``start``, the
+    day's article."""
+    from zimi.search import _meta_title_re, random_entry
+
+    main = _record(name).get("main_path") or ""
+    archive = _archive(name)
+    seed = int(hashlib.md5(("%s|%s|more" % (name, day)).encode()).hexdigest()[:12], 16)
+    rng = random.Random(seed)
+    facts, picture, drawing, seen = [], None, None, {start, main}
+    for _ in range(FACT_TRIES):
+        if len(facts) >= FACTS_MAX and picture:
+            break
+        with _srv._zim_lock:
+            got = random_entry(archive, max_attempts=4, rng=rng)
+        if not got:
+            continue
+        path = got["path"]
+        if path in seen or ":" in path or _meta_title_re.search(got.get("title") or ""):
+            continue
+        seen.add(path)
+        page = _page_facts(archive, name, path, want_picture=not picture)
+        if not page:
+            continue
+        path, title, lead, thumb = page
+        fact = _fact(lead)
+        if fact and len(facts) < FACTS_MAX:
+            facts.append({"path": path, "title": title, "text": fact})
+        if thumb:
+            got = {"path": path, "title": title, "thumbnail": thumb, "blurb": lead}
+            # A photograph makes the picture of the day; a diagram, a map or
+            # a logo (drawn, so a PNG or a GIF) only when there is no photo.
+            if _PHOTO_RE.search(thumb):
+                picture = got
+            else:
+                drawing = drawing or got
+    return {
+        "facts": facts,
+        "picture": picture or drawing,
+        # The rabbit hole may pass through the day's facts; it only never
+        # goes back.
+        "trail": _trail(archive, start, {start, main}, rng),
+    }
+
+
+def extras(name, day):
+    """A Wikipedia's facts, picture and rabbit hole for the day YYYYMMDD
+    (see _work_extras), {} for a wiki that is not a Wikipedia, None when it
+    could not be read (not kept). The rabbit hole starts at the day's pick,
+    so the pick is worked out first."""
+    if project_of_name(name) != "wikipedia":
+        return {}
+    p = pick(name, day)
+    if p is None:
+        return None
+    start = p.get("path") or ""
+    return _kept(_extra_cache, _key(name, day), lambda: _work_extras(name, day, start))
+
+
+# ── what a wiki's own front page featured ─────────────────────────────────
+
+# A copy made from a list of articles (a "top" or a subject selection) opens
+# on a page of its own; the wiki's real front page is usually still inside,
+# under the name mwoffliner gives it.
+_FRONT_NAMES = ("Main_Page",)
+
+
+def _front_item(archive, name, page_path, it):
+    """One featured box as a card: the article it is about (its bold words
+    when they name one, else its link, else the front page itself) and its
+    picture. Call with the library lock held."""
+    from zimi.previews import _resolve_img_path
+
+    target, title = page_path, ""
+    for cand in (it["bold"].replace(" ", "_"), it["link"]):
+        hit = _read_page(archive, cand) if cand and ":" not in cand else None
+        if hit:
+            target, title = hit[0], hit[1].replace("_", " ")
+            break
+    item = {"label": it["label"], "text": it["text"], "path": target, "title": title}
+    img = _resolve_img_path(archive, page_path, it["img"]) if it["img"] else None
+    if img:
+        item["thumbnail"] = "/w/%s/%s" % (name, img)
+    return item
+
+
+def _work_front(name):
+    z = _record(name)
+    archive = _archive(name)
+    for path in dict.fromkeys(p for p in (z.get("main_path"),) + _FRONT_NAMES if p):
+        with _srv._zim_lock:
+            page = _read_page(archive, path)
+        items = frontpage.highlights(page[2]) if page else []
+        if items:
+            with _srv._zim_lock:
+                out = [_front_item(archive, name, page[0], it) for it in items]
+            return {"path": page[0], "as_of": z.get("date") or "", "items": out}
+    return {}
+
+
+def front(name):
+    """What a wiki's own front page featured when the copy was made:
+    ``{path, as_of, items: [{label, text, path, title, thumbnail?}]}``, {}
+    when it features nothing Zimi can read (a mini build, a selection's own
+    index), None when it could not be read (not kept). Kept per copy."""
+    return _kept(_front_cache, _key(name, "front"), lambda: _work_front(name))
+
+
 # ── the page's first ask ───────────────────────────────────────────────────
 
 
 def _warm(day, names):
-    """Work out the day's picks and On this day for every wiki, in the
-    background, so the ones a page has not asked for yet are ready."""
+    """Work out every wiki's day, in the background, so the ones a page has
+    not asked for yet are ready."""
     try:
         for name in names:
-            pick(name, day)
-            if project_of_name(name) == "wikipedia":
-                on_this_day(name, day[4:])
+            _day_of(name, day)
     finally:
         with _lock:
             _warming.discard(day)
@@ -611,31 +845,83 @@ def warm_daily():
         time.sleep(_seconds_to_midnight() + WARM_DELAY)
 
 
-def home(day=None):
-    """The wikis this request may read, and for a day that can be asked
-    for, what is already known of it (``picks``, ``otd``): kept answers
-    only, never a read. The first ask of a day starts the background pass
-    that works out the rest."""
+def languages(ws):
+    """The languages the wikis are in, most wikis first: ``[{code, wikis}]``."""
+    n = {}
+    for w in ws:
+        n[w["language"]] = n.get(w["language"], 0) + 1
+    return [
+        {"code": c, "wikis": k}
+        for c, k in sorted(n.items(), key=lambda x: (-x[1], x[0]))
+    ]
+
+
+def choose_language(ws, wanted):
+    """The language Today shows: the one asked for (a browser's choice, or
+    its interface's language) when a wiki is in it, else English, else the
+    language with the most wikis; "" when there is no wiki."""
+    have = {w["language"] for w in ws}
+    wanted = (wanted or "").strip()
+    for c in (wanted, wanted.split("-")[0].lower(), "en"):
+        if c and c in have:
+            return c
+    langs = languages(ws)
+    return langs[0]["code"] if langs else ""
+
+
+# The parts of a wiki's day, as each answer names them.
+_PARTS = ("picks", "otd", "extras", "front")
+
+
+def _day_of(name, day):
+    """Every part of a wiki's day, worked out where it is not known yet:
+    ``{part: answer}``, None for a part that could not be read."""
+    got = {"picks": pick(name, day), "front": front(name)}
+    if project_of_name(name) == "wikipedia":
+        got["otd"] = on_this_day(name, day[4:])
+        got["extras"] = extras(name, day)
+    return got
+
+
+def _known_day(w, day):
+    """The parts of a wiki's day already known, and how many it has."""
+    name = w["name"]
+    got = {
+        "picks": _peek(_pick_cache, _key(name, day)),
+        "front": _peek(_front_cache, _key(name, "front")),
+    }
+    if w["project"] == "wikipedia":
+        got["otd"] = _peek(_otd_cache, _key(name, day[4:]))
+        got["extras"] = _peek(_extra_cache, _key(name, day))
+    return {k: v for k, v in got.items() if v is not None}, len(got)
+
+
+def home(day=None, lang=None):
+    """The wikis this request may read and the languages they are in; the
+    language Today shows (``lang``, see choose_language); and for a day that
+    can be asked for, what is already known of that language's wikis
+    (``picks``, ``otd``, ``extras``, ``front``: {name: answer}): kept
+    answers only, never a read. The first ask of a day starts the background
+    pass that works out the rest, the language shown first."""
     ws = wikis()
-    out = {"wikis": ws}
+    chosen = choose_language(ws, lang)
+    out = {"wikis": ws, "languages": languages(ws), "lang": chosen}
     if not day_open(day):
         return out
-    picks, otd, missing = {}, {}, []
+    parts = {k: {} for k in _PARTS}
+    missing = []
     for w in ws:
-        p = _peek(_pick_cache, _key(w["name"], day))
-        if p is None:
+        if w["language"] != chosen:
+            continue
+        got, n = _known_day(w, day)
+        for k, v in got.items():
+            parts[k][w["name"]] = v
+        if len(got) < n:
             missing.append(w["name"])
-        else:
-            picks[w["name"]] = p
-        if w["project"] == "wikipedia":
-            ev = _peek(_otd_cache, _key(w["name"], day[4:]))
-            if ev is None:
-                missing.append(w["name"])
-            else:
-                otd[w["name"]] = ev
-    out.update(day=day, picks=picks, otd=otd)
+    out.update(day=day, **parts)
     if missing:
-        _start_warm(day, dict.fromkeys(missing))
+        rest = [w["name"] for w in ws if w["language"] != chosen]
+        _start_warm(day, dict.fromkeys(missing + rest))
     return out
 
 
@@ -646,29 +932,22 @@ TODAY_BATCH_MAX = 8
 
 
 def today(day, names):
-    """The day's picks and On this day for the wikis named that this
-    request may read, worked out now where they are not known yet:
-    ``{picks: {name: pick}, otd: {name: [event]}, failed: [name]}``. A wiki
-    not readable here is left out; one that failed to read is named in
-    ``failed`` and asked again next time."""
-    mine = {w["name"]: w for w in wikis()}
-    out = {"picks": {}, "otd": {}, "failed": []}
+    """The day of each wiki named that this request may read, worked out now
+    where it is not known yet: ``{picks, otd, extras, front: {name:
+    answer}, failed: [name]}``. A wiki not readable here is left out; one
+    with a part that failed to read is named in ``failed`` and asked again
+    next time."""
+    mine = {w["name"] for w in wikis()}
+    out = {k: {} for k in _PARTS}
+    out["failed"] = []
     for name in dict.fromkeys(names):
-        w = mine.get(name)
-        if not w:
+        if name not in mine:
             continue
-        got = pick(name, day)
-        if got is None:
-            out["failed"].append(name)
-        else:
-            out["picks"][name] = got
-        if w["project"] == "wikipedia":
-            ev = on_this_day(name, day[4:])
-            if ev is None:
-                if name not in out["failed"]:
-                    out["failed"].append(name)
-            else:
-                out["otd"][name] = ev
+        for k, v in _day_of(name, day).items():
+            if v is not None:
+                out[k][name] = v
+            elif name not in out["failed"]:
+                out["failed"].append(name)
     return out
 
 
@@ -676,5 +955,7 @@ def _reset_for_tests():
     with _lock:
         _pick_cache.clear()
         _otd_cache.clear()
+        _extra_cache.clear()
+        _front_cache.clear()
         _inflight.clear()
         _warming.clear()

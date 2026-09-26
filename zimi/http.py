@@ -2377,7 +2377,7 @@ class ZimHandler(BaseHTTPRequestHandler):
 
                 sub = parsed.path[len("/wiki"):].strip("/")
                 if sub in ("", "home"):
-                    return self._json(200, _wiki.home(param("day")))
+                    return self._json(200, _wiki.home(param("day"), param("lang")))
                 # Only the days a browser can be on: a caller cannot make
                 # the server read a year of date pages.
                 if sub == "today":
