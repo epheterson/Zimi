@@ -1575,6 +1575,7 @@
   "search_offline": "Для поиска нужен ваш сервер Zimi",
   "search_offline_hint": "Восстановите связь, чтобы искать по библиотеке. Уже открытые статьи по-прежнему читаются.",
   "search_placeholder": "Искать везде…",
+  "search_syntax_hint": "Уточнить: -ted исключает, \"точные слова\" в этом порядке, кошки OR собаки, lang:fr, in:wikipedia",
   "searches": "поисков",
   "searching_content": "Поиск по содержимому статей…",
   "searching_content_time": "Поиск по содержимому статей… ({time} с)",

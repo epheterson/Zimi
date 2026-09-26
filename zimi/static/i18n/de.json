@@ -1575,6 +1575,7 @@
   "search_offline": "Die Suche benötigt Ihren Zimi-Server",
   "search_offline_hint": "Stellen Sie die Verbindung wieder her, um Ihre Bibliothek zu durchsuchen. Bereits geöffnete Artikel bleiben lesbar.",
   "search_placeholder": "Alles durchsuchen…",
+  "search_syntax_hint": "Eingrenzen: -ted schließt aus, \"genaue Wörter\" in dieser Reihenfolge, Katzen OR Hunde, lang:fr, in:wikipedia",
   "searches": "Suchen",
   "searching_content": "Artikelinhalte werden durchsucht…",
   "searching_content_time": "Artikelinhalte werden durchsucht… ({time}s)",

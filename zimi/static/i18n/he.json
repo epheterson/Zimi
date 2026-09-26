@@ -1575,6 +1575,7 @@
   "search_offline": "החיפוש דורש את שרת Zimi שלך",
   "search_offline_hint": "התחברו מחדש כדי לחפש בספרייה. מאמרים שכבר נפתחו עדיין ניתנים לקריאה.",
   "search_placeholder": "חיפוש בכל…",
+  "search_syntax_hint": "צמצום החיפוש: ⁦-ted⁩ מוציא, \"מילים מדויקות\" באותו סדר, חתולים OR כלבים, ⁦lang:fr⁩, ⁦in:wikipedia⁩",
   "searches": "חיפושים",
   "searching_content": "חיפוש בתוכן מאמרים…",
   "searching_content_time": "חיפוש בתוכן מאמרים… ({time} שנ׳)",

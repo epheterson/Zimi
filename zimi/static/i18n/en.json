@@ -1575,6 +1575,7 @@
   "search_offline": "Search needs your Zimi server",
   "search_offline_hint": "Reconnect to search your library. Articles you've already opened are still readable.",
   "search_placeholder": "Search everything…",
+  "search_syntax_hint": "Narrow it down: -ted leaves out, \"exact words\" in that order, cats OR dogs, lang:fr, in:wikipedia",
   "searches": "searches",
   "searching_content": "Searching article content…",
   "searching_content_time": "Searching article content… ({time}s)",

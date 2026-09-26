@@ -6972,19 +6972,16 @@ function renderSearchResults(data, scope) {
   }
 
   if (!items.length) {
-    output.innerHTML = '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH('try_different') + '</p></div>';
+    output.innerHTML = '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH('try_different') + '</p>' + _searchSyntaxHint() + '</div>';
     return;
   }
 
   // Show matching ZIM sources above results (global search only)
   let zimMatchHtml = '';
   if (!scope && zimsCache && data._query) {
-    const ql = data._query.toLowerCase();
-    const qw = ql.split(/\s+/).filter(Boolean);
-    const matches = zimsCache.filter(z => {
-      const t = ((z.title || '') + ' ' + z.name + ' ' + (z.description || '')).toLowerCase();
-      return qw.every(w => t.includes(w));
-    });
+    const parsed = parseSearchQuery(data._query);
+    const matches = parsed.groups.length ? zimsCache.filter(z =>
+      searchQueryMatches(parsed, (z.title || '') + '\u0001' + z.name + '\u0001' + (z.description || ''))) : [];
     if (matches.length > 0 && matches.length <= 8) {
       zimMatchHtml = '<div class="stats-grid" style="margin-bottom:16px">' + matches.map(z => {
         const icon = z.has_icon
@@ -8946,6 +8943,122 @@ function drillCategory(catKey, namePrefix) {
   });
 }
 
+// ── Search grammar (#94) ──
+// The same parser as zimi/query.py, which the library search uses; the cases
+// both must agree on are tests/fixtures/search_query_cases.json.
+//   word  "two words"  -word  -"two words"  a OR b  key:value  -key:value
+// A hyphen inside a word (e-mail) is part of it; a lone "-", a stray quote
+// and a dangling OR are dropped. Filters are a table: a new one is a new key.
+const SEARCH_QUOTES = '"“”„';
+// Scripts written without spaces (Thai, Lao, Myanmar, Khmer, kana, CJK): a
+// term there matches anywhere, since a word boundary means nothing.
+const _SEARCH_UNSPACED = /[฀-໿က-႟ក-៿぀-ヿ㐀-䶿一-鿿豈-﫿]/;
+const CATALOG_FILTERS = { in: 'source', source: 'source', lang: 'lang' };
+
+function _searchTokens(q) {
+  const out = [], n = q.length, isQ = c => SEARCH_QUOTES.includes(c), isS = c => /\s/.test(c);
+  let i = 0;
+  while (i < n) {
+    let ch = q[i];
+    if (isS(ch)) { i++; continue; }
+    let neg = false, start = i;
+    if (ch === '-' && i + 1 < n && isQ(q[i + 1])) { neg = true; i++; ch = q[i]; }
+    if (isQ(ch)) {
+      let end = -1;
+      for (let j = i + 1; j < n; j++) if (isQ(q[j])) { end = j; break; }
+      if (end >= 0) {
+        const text = q.slice(i + 1, end).split(/\s+/).filter(Boolean).join(' ');
+        if (text) out.push([text, true, neg]);
+        i = end + 1;
+        continue;
+      }
+      i++; // unbalanced: the quote goes, its words stay
+      if (neg) continue;
+      start = i;
+      if (start >= n) break;
+    }
+    let j = start;
+    while (j < n && !isS(q[j])) j++;
+    out.push([q.slice(start, j), false, false]);
+    i = j;
+  }
+  return out;
+}
+
+function parseSearchQuery(q, filters) {
+  filters = filters || CATALOG_FILTERS;
+  const groups = [], exclude = [], found = [];
+  let joinNext = false;
+  for (let [text, phrase, neg] of _searchTokens(q || '')) {
+    if (!phrase) {
+      if (text === 'OR') { joinNext = groups.length > 0; continue; }
+      if (text.startsWith('-')) {
+        text = text.replace(/^-+/, ''); neg = true;
+        if (!text) { joinNext = false; continue; }
+      }
+      const c = text.indexOf(':');
+      const key = c > 0 ? text.slice(0, c).toLowerCase() : '';
+      if (c > 0 && c < text.length - 1 && Object.prototype.hasOwnProperty.call(filters, key)) {
+        found.push({ key: filters[key], value: text.slice(c + 1).toLowerCase(), negate: neg });
+        joinNext = false;
+        continue;
+      }
+      if ([...text].some(ch => SEARCH_QUOTES.includes(ch))) {
+        text = [...text].filter(ch => !SEARCH_QUOTES.includes(ch)).join('');
+        if (!text) continue;
+      }
+    }
+    const term = { text: text.toLowerCase(), phrase: phrase };
+    if (neg) { exclude.push(term); joinNext = false; continue; }
+    if (joinNext) groups[groups.length - 1].push(term); else groups.push([term]);
+    joinNext = false;
+  }
+  const typed = (q || '').toLowerCase().split(/\s+/).filter(Boolean);
+  const plain = !exclude.length && !found.length &&
+    groups.every(g => g.length === 1 && !g[0].phrase) &&
+    groups.length === typed.length && groups.every((g, k) => g[0].text === typed[k]);
+  return { groups: groups, exclude: exclude, filters: found, plain: plain };
+}
+
+// A phrase or an exclusion matches from the start of a word ("-ted" drops
+// TED and TEDx, not United), or anywhere in a script without spaces.
+function _searchTermRe(text) {
+  const body = text.split(/\s+/).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
+  return new RegExp((_SEARCH_UNSPACED.test(text[0]) ? '' : '(?<![\\p{L}\\p{N}_])') + body, 'u');
+}
+
+// The whole query against one text: a word anywhere (so "wiki" still finds
+// Wikipedia, as the catalog always did), phrases and exclusions as above.
+function searchQueryMatches(parsed, text) {
+  const low = (text || '').toLowerCase();
+  const hit = t => t.phrase ? _searchTermRe(t.text).test(low) : low.includes(t.text);
+  return parsed.groups.every(g => g.some(hit)) &&
+    !parsed.exclude.some(t => _searchTermRe(t.text).test(low));
+}
+
+// What a catalog filter asks of an item. source:/in: is the name, title or
+// category; lang: one of the item's languages, which the catalog lists in
+// three letters ("fra") and people type in either.
+const _catalogLang = c => (typeof _LANG3TO2 !== 'undefined' && _LANG3TO2[c]) || c;
+const _CATALOG_FILTER_TESTS = {
+  source: (v, item) => [item.name, item.title, item.category].some(s => (s || '').toLowerCase().includes(v)),
+  lang: (v, item) => (item.language || '').toLowerCase().split(',').some(c => _catalogLang(c.trim()) === _catalogLang(v)),
+};
+
+function catalogItemMatches(parsed, item) {
+  // Fields joined by a separator that is not a space, so a phrase cannot
+  // run from the end of the title into the summary.
+  const text = [item.title, item.summary, item.name].join('\u0001');
+  return searchQueryMatches(parsed, text) &&
+    parsed.filters.every(f => _CATALOG_FILTER_TESTS[f.key](f.value, item) !== f.negate);
+}
+
+// The syntax, where a search is typed: the catalog's results and an empty
+// library search.
+function _searchSyntaxHint() {
+  return '<p class="hint search-syntax">' + tH('search_syntax_hint') + '</p>';
+}
+
 function browseCatalogFilter(query) {
   if (!query) { renderBrowseGallery(); return; }
   const results = document.getElementById('catalog-results');
@@ -8958,7 +9071,7 @@ function browseCatalogFilter(query) {
     results.innerHTML = _loadingHtml('loading_catalog');
   }
   loadFullCatalog().then(items => {
-    const lq = query.toLowerCase();
+    const parsed = parseSearchQuery(query, CATALOG_FILTERS);
     const knownKeys = new Set(BROWSE_CATEGORIES.map(c => c.key));
     // Filter within current category if drilled down, otherwise all
     let pool = items;
@@ -8969,11 +9082,7 @@ function browseCatalogFilter(query) {
         return cat === manageCategoryFilter;
       });
     }
-    const filtered = pool.filter(item => {
-      const title = (item.title || item.name || '').toLowerCase();
-      const summary = (item.summary || '').toLowerCase();
-      return title.includes(lq) || summary.includes(lq) || (item.name || '').toLowerCase().includes(lq);
-    });
+    const filtered = pool.filter(item => catalogItemMatches(parsed, item));
     const grouped = groupVariants(filtered);
     // Sort: actionable items first (not installed, not covered by an installed bundle),
     // then installed/covered items pushed to the back. Within each group, alphabetical.
@@ -8986,7 +9095,7 @@ function browseCatalogFilter(query) {
     let h = '<div class="browse-drilldown-header">' +
       '<button class="browse-back" onclick="' + (manageCategoryFilter ? "drillCategory('" + escAttr(manageCategoryFilter) + "')" : 'renderBrowseGallery()') + '">\u2190 Back</button>' +
       '<span class="browse-drilldown-count">' + t('n_results', {n: filtered.length}) + ' \u2014 \u201C' + esc(query) + '\u201D</span>' +
-    '</div>';
+    '</div>' + _searchSyntaxHint();
     if (grouped.length) {
       h += _renderCatalogGrid(grouped);
     } else {

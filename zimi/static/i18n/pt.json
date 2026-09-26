@@ -1575,6 +1575,7 @@
   "search_offline": "A pesquisa precisa do seu servidor Zimi",
   "search_offline_hint": "Volte a ligar-se para pesquisar na sua biblioteca. Os artigos que já abriu continuam legíveis.",
   "search_placeholder": "Buscar em tudo…",
+  "search_syntax_hint": "Refine a busca: -ted exclui, \"palavras exatas\" nessa ordem, gatos OR cachorros, lang:fr, in:wikipedia",
   "searches": "pesquisas",
   "searching_content": "Buscando no conteúdo dos artigos…",
   "searching_content_time": "Buscando no conteúdo dos artigos… ({time}s)",

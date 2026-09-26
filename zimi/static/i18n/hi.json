@@ -1575,6 +1575,7 @@
   "search_offline": "खोज के लिए आपका Zimi सर्वर चाहिए",
   "search_offline_hint": "लाइब्रेरी में खोजने के लिए फिर से जुड़ें। पहले खोले गए लेख अब भी पढ़े जा सकते हैं।",
   "search_placeholder": "सब कुछ खोजें…",
+  "search_syntax_hint": "खोज सीमित करें: -ted हटाता है, \"सटीक शब्द\" इसी क्रम में, बिल्ली OR कुत्ता, lang:fr, in:wikipedia",
   "searches": "खोज",
   "searching_content": "लेखों की सामग्री में खोजा जा रहा है…",
   "searching_content_time": "लेखों की सामग्री में खोजा जा रहा है… ({time} से.)",

@@ -2439,6 +2439,10 @@
   .ci-pin { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; color: var(--amber); }
   .ci-pin svg { width: 24px; height: 24px; }
   .browse-drilldown-count { font-size: 12px; color: var(--text2); margin-inline-start: auto; }
+  /* The search grammar, one quiet line: under the catalog's results header
+     and in an empty library search. */
+  .search-syntax { font-size: 12px; color: var(--text2); margin: 0 0 12px; overflow-wrap: anywhere; }
+  .empty .search-syntax { margin: 8px auto 0; max-width: 34em; }
 
   /* ── Mobile ── */
   /* ── Results summary ── */

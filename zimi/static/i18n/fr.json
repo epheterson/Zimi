@@ -1575,6 +1575,7 @@
   "search_offline": "La recherche nécessite votre serveur Zimi",
   "search_offline_hint": "Reconnectez-vous pour chercher dans votre bibliothèque. Les articles déjà ouverts restent lisibles.",
   "search_placeholder": "Rechercher partout…",
+  "search_syntax_hint": "Affiner : -ted exclut, \"mots exacts\" dans cet ordre, chats OR chiens, lang:fr, in:wikipedia",
   "searches": "recherches",
   "searching_content": "Recherche dans le contenu des articles…",
   "searching_content_time": "Recherche dans le contenu des articles… ({time}s)",

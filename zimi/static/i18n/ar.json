@@ -1575,6 +1575,7 @@
   "search_offline": "البحث يتطلب خادم Zimi",
   "search_offline_hint": "أعد الاتصال للبحث في مكتبتك. المقالات التي فتحتها من قبل لا تزال قابلة للقراءة.",
   "search_placeholder": "ابحث في كل شيء…",
+  "search_syntax_hint": "تضييق البحث: ⁦-ted⁩ يستبعد، \"كلمات مطابقة\" بالترتيب نفسه، قطط OR كلاب، ⁦lang:fr⁩، ⁦in:wikipedia⁩",
   "searches": "عمليات بحث",
   "searching_content": "جارٍ البحث في محتوى المقالات…",
   "searching_content_time": "جارٍ البحث في محتوى المقالات… ({time} ث.)",
