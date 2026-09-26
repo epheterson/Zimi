@@ -613,6 +613,52 @@ def test_a_crawl_records_every_page_into_one_archive(
 
 
 @browser
+def test_an_alive_crawl_cut_short_hands_its_reason_to_the_record(
+    fixture_site, tmp_path, monkeypatch
+):
+    _FakeSidecar(tmp_path).install(monkeypatch)
+    handed = {}
+    real_finish = alive.finish_zim
+
+    def finish(out, **kw):
+        handed["stopped"] = kw.get("stopped")
+        return real_finish(out, **kw)
+
+    monkeypatch.setattr(alive, "finish_zim", finish)
+    info = alive.create_alive_site_zim(
+        fixture_site + "/", out_dir=str(tmp_path), max_pages=1, delay=0, extra_wait=0.2
+    )
+    assert info["stopped"] == handed["stopped"] == "page cap (1)"
+
+
+def test_the_capture_record_says_what_cut_it_short(monkeypatch):
+    """warc2zim writes no Zimi history, so the capture record is the only
+    place an alive ZIM can say it is incomplete, and the info panel reads it
+    from there."""
+    from zimi import http as zhttp
+    from zimi import zimpatch
+
+    record = zimpatch.build_record(
+        seed_url="https://e.org/", engine="alive", pages=[], assets=0, stopped="page cap (5)"
+    )
+    assert record["stopped"] == "page cap (5)"
+    whole = zimpatch.build_record(seed_url="https://e.org/", engine="alive", pages=[], assets=0)
+    assert "stopped" not in whole
+    meta = {zimpatch.CAPTURE_METADATA_KEY: json.dumps(record)}
+    assert zhttp._capture_summary(meta)["stopped"] == "page cap (5)"
+
+    written = {}
+    monkeypatch.setattr(
+        zimpatch, "patch", lambda path, rec, **kw: written.update(rec) or True
+    )
+    alive.finish_zim(
+        "/nowhere.zim", seed_url="https://e.org/", pages=[], assets=0,
+        live_shot=None, stopped="depth limit (2)",
+    )
+    assert written["stopped"] == "depth limit (2)"
+
+
+@browser
 def test_the_archive_is_gone_when_the_capture_is_over(
     fixture_site, tmp_path, monkeypatch
 ):

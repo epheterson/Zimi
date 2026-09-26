@@ -127,14 +127,14 @@ var CREATE_MODE_DEFS = [
     flags: ['engine', 'max_pages'],
     advanced: ['max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
       'language', 'ignore_robots'],
-    pick: { max_bytes: '500M' }
+    pick: { max_bytes: '4G' }
   },
   {
     id: 'video', network: true,
     label: 'create_label_video_url', placeholder: 'create_ph_video',
     flags: ['audio_only', 'limit'],
     advanced: ['format', 'max_bytes', 'language'],
-    pick: { max_bytes: '4G' }
+    pick: { max_bytes: '16G' }
   },
   // No subreddit tile. A reddit.com/r/<name> address under Web page is a
   // subreddit, and the server says so (Eric: "let's be coy. You put in the
@@ -301,7 +301,7 @@ var CREATE_FIELDS = {
   },
   max_pages: {
     id: 'create-max-pages', control: 'number', label: 'create_max_pages',
-    kind: 'int', min: 0, ph: '200', note: 'create_max_pages_note'
+    kind: 'int', min: 0, ph: '10000', note: 'create_max_pages_note'
   },
   limit: {
     id: 'create-limit', control: 'number', label: 'create_video_limit',
@@ -313,7 +313,7 @@ var CREATE_FIELDS = {
   },
   max_depth: {
     id: 'create-max-depth', control: 'number', label: 'create_max_depth',
-    kind: 'int', min: 0, max: 10, ph: '5'
+    kind: 'int', min: 0, max: 50, ph: '10'
   },
   delay: {
     id: 'create-delay', control: 'number', label: 'create_delay',
@@ -1319,9 +1319,6 @@ function _createRowGone(job, known) {
 var CREATE_FALLBACK_TEXT = {
   create_finish_now: 'Stop early',
   create_finishing: 'Stopping…',
-  create_stopped_early: 'Stopped early — this is everything captured up to the stop.',
-  create_stopped_page_cap: 'Reached the {n}-page limit — a bigger limit captures more.',
-  create_stopped_byte_budget: 'Reached the {size} size budget — everything up to it is here.',
   create_starting: 'Starting…'
 };
 
@@ -1330,18 +1327,60 @@ function _createT(key) {
   return out === key && CREATE_FALLBACK_TEXT[key] ? CREATE_FALLBACK_TEXT[key] : out;
 }
 
-// What ended a crawl, in the person's words. The server names the bound that
-// ended it — "page cap (40)", "byte budget (500 MB)", "interrupted" — and the
-// card used to say "Stopped early" for all three. Nobody stopped a crawl that
-// reached the limit it was given; that one reached it (survey finding F10).
-function _createStoppedText(stopped) {
-  var why = String(stopped || '');
-  if (!why) return '';
-  var cap = why.match(/^page cap \((\d+)\)/);
-  if (cap) return _createT('create_stopped_page_cap').replace('{n}', Number(cap[1]).toLocaleString());
-  var budget = why.match(/^byte budget \((.+)\)/);
-  if (budget) return _createT('create_stopped_byte_budget').replace('{size}', budget[1]);
-  return _createT('create_stopped_early');
+// What ended a capture, and what it said, are app.js's captureStopKind and
+// captureStopText: the info panel reads the same words off the file.
+
+// The request that captures it again without what stopped it, or null when
+// nothing did. A limit lifts EVERY bound, not just the one that hit: lifting
+// only the page cap let the rerun stop at the size budget and offer the same
+// button again. A path with nothing under it becomes the whole site, from the
+// front page of wherever the capture actually landed. A depth stop already at
+// the deepest the server allows would stop the same way: no rerun then.
+function _createAgainRequest(request, result) {
+  var kind = request && result && captureStopKind(result.stopped);
+  if (!kind) return null;
+  if (kind === 'depth') {
+    var hit = String(result.stopped).match(/^depth limit \((\d+)\)/);
+    if (hit && Number(hit[1]) >= CREATE_FIELDS.max_depth.max) return null;
+  }
+  var body = Object.assign({}, request);
+  if (kind === 'scope') {
+    var landed = result.url || request.source || '';
+    try { body.source = new URL(landed).origin + '/'; } catch (e) { return null; }
+    return body;
+  }
+  body.max_pages = 0;
+  body.max_bytes = '0';
+  if (body.mode === 'site') body.max_depth = CREATE_FIELDS.max_depth.max;
+  return body;
+}
+
+// Capture again as _createAgainRequest says, through the normal submit path.
+// The finished card stays until the server has taken the new job: a refusal
+// (a full queue, a lost session) must not leave the page with neither the
+// result nor the rerun. A refusal is said beside the button pressed: the
+// form's own error line can be hidden behind the card.
+async function _createAgainNoLimit() {
+  var s = _createLastDone;
+  var body = s && _createAgainRequest(s.request, s.result);
+  if (!body) return;
+  var fail = function(msg) {
+    var el = document.getElementById('create-again-error');
+    if (el) el.textContent = msg; else _createFormError(msg);
+  };
+  fail('');
+  try {
+    var res = await authedFetch('/manage/create', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    var data = {};
+    try { data = await res.json(); } catch (e) {}
+    if (!res.ok) { fail(data.error || t('create_error_generic')); return; }
+    _createForgetFinished();
+    _createStartWatching(data);
+  } catch (e) {
+    fail(t('create_error_generic'));
+  }
 }
 
 // What a live counter chip shows once the job is over. The bytes chip counts
@@ -2965,9 +3004,13 @@ function _createSyncMetrics(s) {
     // same thing, because there is nothing left to smooth toward.
     var shown = _createCountShownValue(what, _createChipTarget(what, c.n, s), s);
     var value = what === 'bytes' ? _fmtBytes(shown) : Number(shown).toLocaleString();
-    var of = (typeof c.total === 'number' && c.total > 0)
+    // The bound it runs against: the server's total, or for bytes the size
+    // budget the job was started with (0 is none, and shows no bound).
+    var bound = (typeof c.total === 'number' && c.total > 0) ? c.total
+      : (what === 'bytes' && s.active && s.limits && s.limits.bytes > 0 ? s.limits.bytes : 0);
+    var of = bound
       ? '<span class="create-metric-of">/ ' +
-        (what === 'bytes' ? esc(_fmtBytes(c.total)) : esc(c.total.toLocaleString())) + '</span>'
+        (what === 'bytes' ? esc(_fmtBytes(bound)) : esc(bound.toLocaleString())) + '</span>'
       : '';
     html += '<div class="create-metric">' +
       '<span class="create-metric-n" data-count="' + escAttr(what) + '">' +
@@ -3392,7 +3435,10 @@ function _createFreshenForm(s) {
   _renderCreatePreview();
 }
 
+var _createLastDone = null;  // the finished job the card shows, for "capture again"
+
 function _createMountDone(s) {
+  _createLastDone = s;
   var host = document.getElementById('create-done-slot');
   if (!host) return;
   var r = s.result || {};
@@ -3422,9 +3468,18 @@ function _createMountDone(s) {
         // A crawl that stopped at a bound — the finish button, a page cap, a
         // byte budget — says so on the card: "40 pages" without "and I stopped
         // there" reads like a capture that believes it got everything.
-        (r.stopped
-          ? '<div class="create-caption">' + esc(_createStoppedText(r.stopped)) + '</div>'
-          : '') +
+        // A limit that stopped it is louder than a caption: the ZIM is
+        // incomplete, and one tap captures it again with that limit lifted.
+        (captureStopKind(r.stopped)
+          ? '<div class="create-caption create-done-warn" id="create-done-limit">' +
+              esc(captureStopText(r.stopped)) + '</div>' +
+            (_createAgainRequest(s.request, r) ? '<div class="create-again-row"><button type="button" class="ms-btn ms-btn-primary create-again"' +
+              ' onclick="_createAgainNoLimit()">' +
+              tH(captureStopKind(r.stopped) === 'scope' ? 'create_again_whole_site' : 'create_again_no_limit') +
+              '</button><div class="create-error" id="create-again-error" role="alert"></div></div>' : '')
+          : r.stopped
+            ? '<div class="create-caption">' + esc(captureStopText(r.stopped)) + '</div>'
+            : '') +
         // A page with almost no readable text is more likely a login, consent
         // or paywall gate than the article (medium.com: 227 characters to
         // every engine, survey finding O5). Said here, on the card, because

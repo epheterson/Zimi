@@ -831,6 +831,7 @@
   .create-done-warn { color: var(--amber2); }
   .create-report { color: var(--amber2); text-decoration: underline; }
   .create-done-open { flex: 0 0 auto; }
+  .create-again-row { margin-top: 8px; }
   /* What the finished ZIM is made of: the shared segmented bar (.cache-bar /
      .cache-legend) under the done card, with the on-disk total on its header
      row. Sits on the 4px grid and borrows the card's radius. */
@@ -1340,6 +1341,24 @@
   .reader-view.open { display: flex; animation: fadeIn 0.15s ease; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   #reader-frame { flex: 1; border: none; width: 100%; background: #fff; }
+  /* The header steps aside on a phone while an app or the Almanac is read
+     (body.chrome-away, set by _chromeScroll in app.js): it slides up and
+     the page takes its room. Keyboard focus in it brings it back. */
+  @media (max-width: 900px), (max-height: 500px) {
+    .topbar { transition: transform 0.2s ease; }
+    .reader-view, body .almanac-view { transition: top 0.2s ease; }
+    body.chrome-away { --under-topbar: var(--conn-h); }
+    body.chrome-away .topbar:not(:focus-within) { transform: translateY(-100%); }
+    body.chrome-away .conn-banner { top: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .topbar, .reader-view, body .almanac-view { transition: none; }
+  }
+  /* Held away (a book being read, a video on a phone turned sideways):
+     at every size, since the book's own header takes its place. */
+  body.chrome-held { --under-topbar: var(--conn-h); }
+  body.chrome-held .topbar:not(:focus-within) { transform: translateY(-100%); }
+  body.chrome-held .conn-banner { top: 0; }
 
   /* ── Context Menu ── */
   .zimi-ctx {
@@ -1557,6 +1576,7 @@
   .env-secret { color: var(--text3); font-style: italic; }
   .env-what { grid-column: 1 / -1; font-size: 12px; color: var(--text2); }
   /* On a line of its own: run on, "…unauthenticated locks Set password" read as one sentence. */
+  .zi-ev-fact.zi-ev-stopped, .zi-warn.zi-incomplete { color: var(--amber2); }
   .env-locks { color: var(--text3); display: block; }
   @media (max-width: 560px) {
     /* Value under the name rather than beside it: a long path or a proxy list

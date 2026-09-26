@@ -38,6 +38,25 @@ def _json_response(description, schema):
     }
 
 
+# Zimipedia is a preview, off unless ZIMI_APPS names it.
+_WIKI_PREVIEW = "Zimipedia (preview): answers 404 unless ZIMI_APPS names wiki."
+
+# Zimipedia's day: one pick per wiki, and each Wikipedia's dated events.
+_WIKI_EVENT = {"type": "object", "properties": {"event_year": {"type": "string"}, "event_text": {"type": "string"}, "path": {"type": "string"}, "title": {"type": "string"}}}
+_WIKI_PICKS = {"type": "object", "additionalProperties": {"type": "object", "properties": {
+    "zim": {"type": "string"}, "role": {"type": "string", "enum": ["article", "word", "quote", "place", "book", "text", "course", "news", "species"]},
+    "path": {"type": "string"}, "title": {"type": "string"}, "lang": {"type": "string"}, "blurb": {"type": "string"},
+    "thumbnail": {"type": "string"}, "kick": {"type": "string", "description": "A word's part of speech, a quote's author"}}}}
+_WIKI_OTD = {"type": "object", "additionalProperties": {"type": "array", "items": _WIKI_EVENT}}
+# One book as Bookshelf's endpoints return it.
+_BOOK = {"type": "object", "properties": {
+    "zim": {"type": "string"}, "id": {"type": "integer"}, "title": {"type": "string"}, "subtitle": {"type": "string"},
+    "author": {"type": "string"}, "lang": {"type": "string"}, "shelf": {"type": "string"}, "path": {"type": "string"},
+    "cover": {"type": "string"}, "html": {"type": "boolean"}, "born": {"type": "integer"}, "died": {"type": "integer"},
+    "era": {"type": "integer"}, "created": {"type": "string"},
+}}
+
+
 def build_openapi():
     """Return the OpenAPI 3.1 document as a plain dict (version from VERSION)."""
     error = _error_schema()
@@ -416,6 +435,109 @@ def build_openapi():
                     ),
                     **_json_response("404", error),
                 },
+            }
+        },
+        "/wiki/home": {
+            "get": {
+                "summary": "Every wiki in the library (MediaWiki ZIMs: Wikipedia and its sister projects, and other wikis), grouped by project then language",
+                "operationId": "wikiHome",
+                "description": _WIKI_PREVIEW,
+                "parameters": [
+                    _param("day", {"type": "string", "pattern": "^[0-9]{8}$"}, description="YYYYMMDD, yesterday to tomorrow: adds what is already known of that day (picks, otd)"),
+                ],
+                "responses": {**_json_response("200", {"type": "object", "properties": {"wikis": {"type": "array", "items": {"type": "object", "properties": {
+                    "name": {"type": "string"}, "title": {"type": "string"}, "project": {"type": "string"}, "project_title": {"type": "string"},
+                    "role": {"type": "string"}, "language": {"type": "string"}, "icon": {"type": "boolean"}, "main_path": {"type": "string"}, "entries": {"type": "integer"},
+                }}}, "day": {"type": "string"}, "picks": _WIKI_PICKS, "otd": _WIKI_OTD}, "required": ["wikis"]}),
+                    **_json_response("404", error)},
+            }
+        },
+        "/wiki/today": {
+            "get": {
+                "summary": "The day's pick from each wiki named (an article, a word, a quote, a place, a book...) and each Wikipedia's On this day, worked out once a day and kept",
+                "operationId": "wikiToday",
+                "description": _WIKI_PREVIEW,
+                "parameters": [
+                    _param("day", {"type": "string", "pattern": "^[0-9]{8}$"}, required=True, description="YYYYMMDD, yesterday to tomorrow"),
+                    _param("zim", {"type": "string"}, required=True, description="Up to 8 wiki names, comma-separated"),
+                ],
+                "responses": {
+                    **_json_response("200", {"type": "object", "properties": {"picks": _WIKI_PICKS, "otd": _WIKI_OTD,
+                        "failed": {"type": "array", "items": {"type": "string"}}}, "required": ["picks", "otd", "failed"]}),
+                    **_json_response("400", error),
+                    **_json_response("404", error),
+                },
+            }
+        },
+        "/wiki/onthisday": {
+            "get": {
+                "summary": "The day's dated events from a Wikipedia's own date page, each naming an article the ZIM holds",
+                "operationId": "wikiOnThisDay",
+                "description": _WIKI_PREVIEW,
+                "parameters": [
+                    _param("zim", {"type": "string"}, required=True),
+                    _param("date", {"type": "string", "pattern": "^[0-9]{4}$"}, required=True, description="MMDD, yesterday to tomorrow"),
+                ],
+                "responses": {
+                    **_json_response("200", {"type": "object", "properties": {"events": {"type": "array", "items": {"type": "object", "properties": {
+                        "event_year": {"type": "string"}, "event_text": {"type": "string"}, "path": {"type": "string"}, "title": {"type": "string"},
+                    }}}}, "required": ["events"]}),
+                    **_json_response("400", error),
+                    **_json_response("404", error),
+                    **_json_response("503", error),
+                },
+            }
+        },
+        "/books/home": {
+            "get": {
+                "summary": "Bookshelf: every Project Gutenberg ZIM as one shelf; the count, the sources, what there is to browse by (languages, LCC shelves, eras) and the first most read and newest books",
+                "operationId": "booksHome",
+                "responses": {**_json_response("200", {"type": "object", "properties": {
+                    "total": {"type": "integer"}, "details": {"type": "boolean"},
+                    "sources": {"type": "array", "items": {"type": "object"}}, "languages": {"type": "array", "items": {"type": "object"}},
+                    "shelves": {"type": "array", "items": {"type": "object"}}, "eras": {"type": "array", "items": {"type": "object"}},
+                    "popular": {"type": "array", "items": _BOOK}, "recent": {"type": "array", "items": _BOOK},
+                }, "required": ["total", "popular"]})},
+            }
+        },
+        "/books/list": {
+            "get": {
+                "summary": "Books on the shelf, filtered and ordered, a page at a time",
+                "operationId": "booksList",
+                "parameters": [
+                    _param("q", {"type": "string"}, description="Words in the title or the author's name"),
+                    _param("author", {"type": "string"}),
+                    _param("shelf", {"type": "string"}, description="LCC class or subclass (PR, Q)"),
+                    _param("lang", {"type": "string"}),
+                    _param("era", {"type": "integer"}, description="First year of the hundred years the author worked in (1800; -100 for 100 to 1 BCE)"),
+                    _param("sort", {"type": "string", "enum": ["popular", "title", "author", "recent"]}),
+                    _param("offset", {"type": "integer"}),
+                    _param("limit", {"type": "integer", "maximum": 200}),
+                ],
+                "responses": {**_json_response("200", {"type": "object", "properties": {"total": {"type": "integer"}, "books": {"type": "array", "items": _BOOK}}, "required": ["total", "books"]})},
+            }
+        },
+        "/books/authors": {
+            "get": {
+                "summary": "The writers on the shelf with how many books each, by surname, by count or by how read they are",
+                "operationId": "booksAuthors",
+                "parameters": [
+                    _param("q", {"type": "string"}),
+                    _param("sort", {"type": "string", "enum": ["name", "books", "popular"]}),
+                    _param("offset", {"type": "integer"}),
+                    _param("limit", {"type": "integer", "maximum": 200}),
+                ],
+                "responses": {**_json_response("200", {"type": "object", "properties": {"total": {"type": "integer"}, "authors": {"type": "array", "items": {"type": "object", "properties": {
+                    "name": {"type": "string"}, "n": {"type": "integer"}, "born": {"type": "integer"}, "died": {"type": "integer"},
+                }}}}, "required": ["total", "authors"]})},
+            }
+        },
+        "/books/book": {
+            "get": {
+                "summary": "One book with its subjects, its EPUB and more by its author",
+                "operationId": "booksBook",
+                "parameters": [_param("id", {"type": "integer"}, required=True), _param("zim", {"type": "string"})],
+                "responses": {**_json_response("200", _BOOK), **_json_response("404", error)},
             }
         },
         "/exchange/home": {

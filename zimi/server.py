@@ -125,7 +125,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.10.3"
+ZIMI_VERSION = "1.11.0"
 
 # Standing maintenance cadence: catalog TTL is 24h and UPnP leases are
 # 24h — run every 12h so both stay fresh at half-life.
@@ -268,6 +268,10 @@ def start_background_services(http_port):
     threading.Thread(target=_maintenance_loop, daemon=True, name="maintenance").start()
     threading.Thread(target=_shape_backfill, daemon=True, name="zim-shapes").start()
     threading.Thread(target=_sweep_working_files, daemon=True, name="zim-sweep").start()
+    # Zimipedia's Today, worked out before anyone opens it.
+    from zimi import wiki as _wiki
+
+    threading.Thread(target=_wiki.warm_daily, daemon=True, name="zimipedia-daily").start()
 
 
 # Working files a capture left behind.
@@ -1870,9 +1874,56 @@ _VIDEO_SCRAPERS = ("ted2zim", "youtube2zim")
 _QA_SCRAPERS = ("sotoki",)
 # Subreddits, by the scraper that made them (ArcticZim, which Zimi wraps).
 _REDDIT_SCRAPERS = ("arcticzim",)
+# Wikis, by the scraper that made them: Kiwix builds every MediaWiki wiki
+# (Wikipedia and its sister projects, and wikis beyond Wikimedia) with
+# mwoffliner. A ZIM too old to carry a Scraper is still known by its Name.
+_WIKI_SCRAPERS = ("mwoffliner",)
+WIKI_PROJECTS = (
+    "wikipedia",
+    "wiktionary",
+    "wikivoyage",
+    "wikiquote",
+    "wikibooks",
+    "wikiversity",
+    "wikinews",
+    "wikisource",
+    "wikispecies",
+)
+# Books, by the scraper that made them: Kiwix builds every Project Gutenberg
+# ZIM with gutenberg2zim; one too old to carry a Scraper is known by its Name.
+_BOOK_SCRAPERS = ("gutenberg2zim",)
 # Bumped when _zim_kind learns a new kind, so a cache record decided under an
 # older rule ("" for a TED ZIM) is read once more.
-KIND_VERSION = 4
+KIND_VERSION = 6
+
+
+def _wiki_project(meta_name, name=""):
+    """Which Wikimedia project a wiki ZIM is, by its metadata Name when it has
+    one (a renamed enwiki.zim is still wikipedia_en_all inside), else by its
+    filename; "" for a wiki beyond Wikimedia. The same Name _zim_kind reads,
+    so a ZIM is never a wiki by one rule and misfiled by the other."""
+    n = (meta_name or name or "").lower()
+    return next((p for p in WIKI_PROJECTS if n.startswith(p)), "")
+
+
+def _read_wiki_project(path, name):
+    """``_wiki_project`` for a cache record written before it was kept: one
+    metadata read. None when the Name could not be read (the file still
+    being copied, say), so nothing is kept and the next boot reads it again;
+    a ZIM with no Name is placed by its filename, for good."""
+    try:
+        archive = open_archive(path)
+        # libzim raises the same RuntimeError for a missing entry as for a
+        # damaged one: a ZIM without a Name is known by its keys.
+        meta_name = (
+            bytes(archive.get_metadata("Name")).decode("utf-8", "replace")
+            if "Name" in archive.metadata_keys
+            else ""
+        )
+    except Exception as e:
+        log.warning("could not read the Name of %s: %s", path, e)
+        return None
+    return _wiki_project(meta_name.strip(), name)
 
 
 def _zim_kind(scraper, tags, meta_name):
@@ -1896,6 +1947,10 @@ def _zim_kind(scraper, tags, meta_name):
         return "qa"
     if s.startswith(_REDDIT_SCRAPERS):
         return "reddit"
+    if s.startswith(_WIKI_SCRAPERS) or (meta_name or "").lower().startswith(WIKI_PROJECTS):
+        return "wiki"
+    if s.startswith(_BOOK_SCRAPERS) or (meta_name or "").lower().startswith("gutenberg_"):
+        return "books"
     return None
 
 
@@ -2013,18 +2068,27 @@ def _read_map_facts(path):
 
 
 APPS_ENV = "ZIMI_APPS"
-APP_NAMES = ("maps", "tube", "exchange", "reddot")
+APP_NAMES = ("maps", "tube", "exchange", "reddot", "wiki", "books")
+# Apps offered only when named: a comma list in ZIMI_APPS (or a saved list)
+# that says "wiki" turns Zimipedia on; "1", "all", the default and a saved
+# True leave it off. Zimipedia is a preview being redesigned, so nobody meets
+# it without asking for it.
+APPS_OPT_IN = frozenset({"wiki"})
+APPS_ALL = frozenset(APP_NAMES)
+APPS_DEFAULT = APPS_ALL - APPS_OPT_IN
 _APPS_OFF = ("0", "false", "no", "off", "none")
 _APPS_ON = ("1", "true", "yes", "on", "all")
 
 
-def _apps_value(raw):
+def _apps_value(raw, every=APPS_DEFAULT):
     """A setting (True/False, a list of app names, or a string of ``0``/``1``
-    or a comma list) as the set of apps shown; None when it says nothing."""
+    or a comma list) as the set of apps shown; None when it says nothing.
+    ``every`` is what "all" means: for the server, every app but the opt-in
+    ones; for an account's own filter, everything the server offers."""
     if raw is None:
         return None
     if isinstance(raw, bool):
-        return frozenset(APP_NAMES) if raw else frozenset()
+        return every if raw else frozenset()
     if isinstance(raw, str):
         text = raw.strip().lower()
         if not text:
@@ -2032,16 +2096,17 @@ def _apps_value(raw):
         if text in _APPS_OFF:
             return frozenset()
         if text in _APPS_ON:
-            return frozenset(APP_NAMES)
+            return every
         raw = text.split(",")
     if isinstance(raw, (list, tuple, set, frozenset)):
         return frozenset(n for n in (str(x).strip().lower() for x in raw) if n in APP_NAMES)
-    return frozenset(APP_NAMES) if raw else frozenset()
+    return every if raw else frozenset()
 
 
-def _apps_setting(shown):
-    """The set as it is saved: True for all, False for none, else the names."""
-    if shown >= frozenset(APP_NAMES):
+def _apps_setting(shown, every=APPS_DEFAULT):
+    """The set as it is saved: True for "all" (``every``), False for none,
+    else the names (so a list naming an opt-in app keeps it)."""
+    if shown == every:
         return True
     if not shown:
         return False
@@ -2049,10 +2114,11 @@ def _apps_setting(shown):
 
 
 def apps_stamp(shown):
-    """What the shell carries in ``data-zimi-apps``: nothing when every app
-    is offered, ``0`` for none, else the names offered."""
+    """What the shell carries in ``data-zimi-apps``: nothing when the default
+    apps are offered (every app but the opt-in ones), ``0`` for none, else
+    the names offered."""
     shown = _apps_value(shown)
-    if shown is None or shown >= frozenset(APP_NAMES):
+    if shown is None or shown == APPS_DEFAULT:
         return None
     return ",".join(n for n in APP_NAMES if n in shown) or "0"
 
@@ -2070,7 +2136,7 @@ def url_quote(name):
 
 
 def _zim_kind_of(name):
-    """The cached kind of an installed ZIM (map, video, qa, reddit) or ""."""
+    """The cached kind of an installed ZIM (map, video, qa, reddit, wiki, books) or ""."""
     for z in _zim_list_cache or []:
         if z.get("name") == name:
             return z.get("kind") or ""
@@ -2078,9 +2144,10 @@ def _zim_kind_of(name):
 
 
 def apps_shown():
-    """The apps (Maps, ZimiTube, ZimiExchange, Reddot) offered on this server:
+    """The apps (Maps, ZimiTube, ZimiExchange, Reddot, Zimipedia, Bookshelf) offered on this server:
     ``ZIMI_APPS`` when set (``0``, ``1`` or a comma list of names), else the
-    setting saved from Server settings, else all of them. A signed-in user
+    setting saved from Server settings, else all of them but the opt-in ones
+    (``APPS_OPT_IN``: Zimipedia, only when a list names it). A signed-in user
     can also hide any of them for themselves (their account's preferences).
     Never per browser (Eric: "Not per browser only per user or server")."""
     verdict = _apps_env()
@@ -2089,7 +2156,7 @@ def apps_shown():
     from zimi import manage
 
     saved = _apps_value(manage._read_app_update_prefs().get("apps"))
-    return frozenset(APP_NAMES) if saved is None else saved
+    return APPS_DEFAULT if saved is None else saved
 
 
 def apps_enabled():
@@ -2099,7 +2166,7 @@ def apps_enabled():
 
 def user_apps_shown(setting):
     """What an account's saved preference leaves of the server's offer."""
-    mine = _apps_value(setting)
+    mine = _apps_value(setting, APPS_ALL)
     shown = apps_shown()
     return shown if mine is None else shown & mine
 
@@ -2356,6 +2423,7 @@ _ISO639_3_TO_1 = {
     "hun": "hu",
     "ell": "el",
     "heb": "he",
+    "yid": "yi",
     "ukr": "uk",
     "cat": "ca",
     "ind": "id",
@@ -2935,6 +3003,8 @@ def _extract_zim_metadata(name, path):
     # category without reopening the archive.
     if kind:
         info["kind"] = kind
+    if kind == "wiki":
+        info["project"] = _wiki_project(meta_name, name)
     if map_search:
         info["map_search"] = True
     if map_facts:
@@ -3231,6 +3301,9 @@ def load_cache(force=False):
                 # 1.9 half an hour before 1.10 booted and sat under Other with
                 # nothing to say otherwise.
                 cached["kind"], cached["map_search"] = _read_zim_kind(path)
+                # Stamped, or the next boot finds the same old version and
+                # opens every ZIM again, and rewrites the cache, forever.
+                cached["kind_v"] = KIND_VERSION
                 kind_backfilled = True
             if cached.get("kind") == "map" and "map_bounds" not in cached:
                 # A record from before Zimi kept a map's ground and publisher.
@@ -3239,6 +3312,12 @@ def load_cache(force=False):
             if cached.get("kind") == "reddit" and "subreddits" not in cached:
                 cached.update(_read_reddit_facts(path))
                 kind_backfilled = True
+            if cached.get("kind") == "wiki" and "project" not in cached:
+                # A record from before Zimipedia kept the project by Name.
+                project = _read_wiki_project(path, name)
+                if project is not None:
+                    cached["project"] = project
+                    kind_backfilled = True
             entry = {
                 "name": name,
                 "file": filename,
@@ -3277,6 +3356,8 @@ def load_cache(force=False):
                 entry["folder"] = folder
             if cached.get("kind"):
                 entry["kind"] = cached["kind"]
+            if "project" in cached:
+                entry["project"] = cached["project"]
             if cached.get("map_search"):
                 entry["map_search"] = True
             if "map_bounds" in cached:
@@ -3354,6 +3435,8 @@ def load_cache(force=False):
             # on every boot as if it were a record from before the field.
             new_cached["kind"] = entry.get("kind") or ""
             new_cached["kind_v"] = KIND_VERSION
+            if "project" in entry:
+                new_cached["project"] = entry["project"]
             if entry.get("map_search"):
                 new_cached["map_search"] = True
             # A map's ground and publisher, null included: a map whose config
@@ -4237,8 +4320,8 @@ def main():
         "--max-bytes",
         default=None,
         help="Total size budget, e.g. 512MiB or 4G; 0 for no limit. For --site: pages plus "
-        f"assets (default {_crawler.DEFAULT_MAX_BYTES // 1024**2}MiB); for "
-        "video sources: total media (default 4G)",
+        f"assets (default {_crawler.DEFAULT_MAX_BYTES // 1000**3}G); for "
+        "video sources: total media (default 16G)",
     )
     p_create.add_argument(
         "--delay",
@@ -4701,6 +4784,17 @@ def warm_indexes():
             _tube.build_all_details()
         except Exception as e:
             log.warning("ZimiTube details phase failed: %s", e)
+
+        # Phase 1c: Bookshelf's book records (authors' years, subjects, the
+        # day each book came to Gutenberg), read from each book's head. Half
+        # an hour for all of English Gutenberg on a NAS; the shelf opens
+        # without them and gains eras and subjects when they are there.
+        try:
+            from zimi import books as _books
+
+            _books.build_all_details()
+        except Exception as e:
+            log.warning("Bookshelf details phase failed: %s", e)
 
         # Phase 2: build/refresh Q-ID indexes (one Archive open at a time).
         try:

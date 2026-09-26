@@ -380,11 +380,10 @@ def _guess_mime(name):
 
 
 def _fmt_bytes(n):
-    for unit in ("bytes", "KB", "MB", "GB"):
-        if n < 1024 or unit == "GB":
-            return f"{n:.0f} {unit}" if unit == "bytes" else f"{n:.1f} {unit}"
-        n /= 1024.0
-    return f"{n} bytes"
+    """Sizes in the engines' log lines, stop reasons and refusals, spelled the
+    one way the rest of Zimi spells them (decimal, like the form and the
+    card): a 4 GB budget read back as "3.7 GB" was two units for one number."""
+    return _srv.format_bytes(n)
 
 
 def _finish_output(out_dir, out_path, base):

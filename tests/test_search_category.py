@@ -63,7 +63,7 @@ def test_search_all_results_include_category_field():
     """Guard against the helper-defined-but-never-called gap."""
     import zimi.search as search
 
-    src = open(search.__file__).read()
+    src = open(search.__file__, encoding="utf-8").read()
     # Both append sites for raw_results must reference _zim_category
     append_blocks = src.count("raw_results.append(")
     category_calls = src.count('"category": _zim_category(')

@@ -187,6 +187,8 @@ _RATE_LIMITED_API_PATHS = (
     "/tube/play",
     "/exchange",
     "/reddot",
+    "/wiki",
+    "/books",
     "/map-home",
     "/read",
     "/suggest",
@@ -198,7 +200,7 @@ _RATE_LIMITED_API_PATHS = (
 
 # The apps' routes below their bare path (/exchange/question, /reddot/post):
 # matched exactly, they answered without limit.
-_RATE_LIMITED_API_PREFIXES = ("/exchange/", "/reddot/", "/tube/")
+_RATE_LIMITED_API_PREFIXES = ("/exchange/", "/reddot/", "/tube/", "/wiki/", "/books/")
 
 # High-frequency read-only manage polls. While a download runs the manage UI
 # keeps three independent timers alive — downloads+seeding every 2s, activity
@@ -843,6 +845,8 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("tube.html")
             + _static_hash("exchange.html")
             + _static_hash("reddot.html")
+            + _static_hash("wiki.html")
+            + _static_hash("books.html")
             + _static_hash("apps.css")
             + _static_hash("apps.js")
             + _i18n_hash
@@ -936,16 +940,21 @@ def _random_pick_verdict(
     Its own function because the judging happens OUTSIDE the libzim lock while
     the reading happens inside it, and because each source wants a different
     thing: a Gutenberg cover page rather than chapter nine, a Wiktionary entry
-    that is English and not a bare inflection, a Wikiquote page that actually
-    carries a quote, and for the Discover strip, anything with a picture."""
+    for a word of the wiki's own language that it defines and that is not a
+    bare inflection, a Wikiquote page that actually carries a quote, and for
+    the Discover strip, anything with a picture."""
     # A Gutenberg pick that is not the cover is only ever a fallback. One that
     # IS the cover still has to satisfy whatever else was asked for, so it
     # falls through rather than being accepted here.
     if is_gutenberg and "_cover" not in (result.get("path") or ""):
         return "fallback"
     if is_wiktionary and preview:
-        boring = preview.get("non_english") or preview.get("boring")
-        return "fallback" if boring else "accept"
+        dull = (
+            preview.get("other_language")
+            or preview.get("boring")
+            or not preview.get("blurb")
+        )
+        return "fallback" if dull else "accept"
     if is_wikiquote and preview:
         blurb = preview.get("blurb") or ""
         return "accept" if (blurb and blurb[0] in ("\u201c", '"')) else "fallback"
@@ -1231,6 +1240,7 @@ def _capture_summary(meta):
         "captured": record.get("captured", ""),
         "assets": record.get("assets", 0),
         "pages": len(record.get("pages") or []),
+        "stopped": str(record.get("stopped") or ""),
     }
 
 
@@ -1591,7 +1601,7 @@ def _reconstruct_source_url(archive, entry_path):
 # ============================================================================
 
 
-APP_PAGES = ("tube.html", "exchange.html", "reddot.html")
+APP_PAGES = ("tube.html", "exchange.html", "reddot.html", "wiki.html", "books.html")
 _APPS_CSS_MARK = b"<!--@apps.css@-->"
 _APPS_JS_MARK = b"<!--@apps.js@-->"
 _APP_ASSETS = (
@@ -2361,6 +2371,60 @@ class ZimHandler(BaseHTTPRequestHandler):
                     got = _rd.post(zim, param("p"))
                     return self._json(200, got) if got else self._json(404, {"error": "not a post page"})
                 return self._json(404, {"error": "not found"})
+            elif parsed.path == "/wiki" or parsed.path.startswith("/wiki/"):
+                # Zimipedia: every wiki in the library, as one.
+                from zimi import wiki as _wiki
+
+                # A preview, off unless ZIMI_APPS (or a saved list) names it:
+                # not offered, it is not here at all.
+                if "wiki" not in _srv.apps_shown():
+                    return self._json(404, {"error": "not found"})
+                sub = parsed.path[len("/wiki"):].strip("/")
+                if sub in ("", "home"):
+                    return self._json(200, _wiki.home(param("day"), param("lang")))
+                # Only the days a browser can be on: a caller cannot make
+                # the server read a year of date pages.
+                if sub == "today":
+                    day = param("day")
+                    if not _wiki.day_open(day):
+                        return self._json(400, {"error": "day not open"})
+                    names = [n for n in (param("zim") or "").split(",") if n]
+                    if not names or len(names) > _wiki.TODAY_BATCH_MAX:
+                        return self._json(400, {"error": "zim"})
+                    return self._json(200, _wiki.today(day, names))
+                if sub != "onthisday":
+                    return self._json(404, {"error": "not found"})
+                zim = param("zim")
+                if not zim or not _wiki.is_wiki(zim):
+                    return self._json(404, {"error": "not found"})
+                date = param("date")
+                if not _wiki.mmdd_open(date):
+                    return self._json(400, {"error": "date not open"})
+                events = _wiki.on_this_day(zim, date)
+                if events is None:
+                    return self._json(503, {"error": "unavailable"})
+                return self._json(200, {"events": events})
+            elif parsed.path == "/books" or parsed.path.startswith("/books/"):
+                # Bookshelf: every Project Gutenberg ZIM in the library, as one shelf.
+                from zimi import books as _books
+
+                sub = parsed.path[len("/books"):].strip("/")
+                if sub in ("", "home"):
+                    return self._json(200, _books.home())
+                if sub == "list":
+                    return self._json(200, _books.listing(
+                        q=param("q") or "", author=param("author") or "", shelf_code=param("shelf") or "",
+                        lang=param("lang") or "", era=param("era") or "", zim=param("zim") or "",
+                        sort=param("sort") or "popular", offset=param("offset") or 0, limit=param("limit") or _books.LIST_LIMIT))
+                if sub == "authors":
+                    return self._json(200, _books.authors(
+                        q=param("q") or "", lang=param("lang") or "", shelf_code=param("shelf") or "",
+                        era=param("era") or "", sort=param("sort") or "name", offset=param("offset") or 0,
+                        limit=param("limit") or _books.LIST_LIMIT))
+                if sub == "book":
+                    got = _books.book(param("zim") or "", param("id"))
+                    return self._json(200, got) if got else self._json(404, {"error": "not found"})
+                return self._json(404, {"error": "not found"})
             elif parsed.path == "/exchange" or parsed.path.startswith("/exchange/"):
                 # ZimiExchange: every Stack Exchange site in the library.
                 from zimi import exchange as _ex
@@ -2765,7 +2829,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 prefs = blob.get("preferences") if isinstance(blob.get("preferences"), dict) else {}
                 if "apps" in data:
                     # True, False, or the names of the apps to keep.
-                    prefs["apps"] = _srv._apps_setting(_srv._apps_value(data.get("apps")) or frozenset())
+                    prefs["apps"] = _srv._apps_setting(_srv._apps_value(data.get("apps"), _srv.APPS_ALL) or frozenset(), _srv.APPS_ALL)
                 blob["preferences"] = prefs
                 ok, err = _users.save_user_data(name, blob)
                 if not ok:
