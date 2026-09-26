@@ -1341,6 +1341,19 @@
   .reader-view.open { display: flex; animation: fadeIn 0.15s ease; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   #reader-frame { flex: 1; border: none; width: 100%; background: #fff; }
+  /* The header steps aside on a phone while an app or the Almanac is read
+     (body.chrome-away, set by _chromeScroll in app.js): it slides up and
+     the page takes its room. Keyboard focus in it brings it back. */
+  @media (max-width: 900px), (max-height: 500px) {
+    .topbar { transition: transform 0.2s ease; }
+    .reader-view, body .almanac-view { transition: top 0.2s ease; }
+    body.chrome-away { --under-topbar: var(--conn-h); }
+    body.chrome-away .topbar:not(:focus-within) { transform: translateY(-100%); }
+    body.chrome-away .conn-banner { top: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .topbar, .reader-view, body .almanac-view { transition: none; }
+  }
 
   /* ── Context Menu ── */
   .zimi-ctx {

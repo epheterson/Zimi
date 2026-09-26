@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Create a ZIM, whole site with the zimit engine: the capture runs zimit (it ran Zimi's own alive engine instead), with the page limit its counter shows, and says when that limit cut it short.
 - The library no longer reopens every ZIM and rewrites its cache on every start after an upgrade.
 - A capture with no page limit (0) shows its pages and count while it runs; since 1.10.3 they stood still, and the capture looked stuck.
+- The apps on a phone. Zimi's header slides away as you scroll down a video's page, a question, a thread or the Almanac, and comes back as you scroll up. A video playing on a phone turned sideways fills the screen, and a pause brings the header back. The round jump-to-top button no longer appears in ZimiTube, ZimiExchange or Reddot, where it covered a docked video and a thread's last lines. Back from a question, a post or a video lands where you were in the list, not at its top. Tapping a comment's line in Reddot folds it with its replies. Chips, tags and buttons are bigger on a touch screen, and an answer or a post in a left-to-right language reads left to right under a right-to-left interface (its full stops sat at the wrong end, its code ran backwards).
 
 ## [1.10.3] - 2026-09-24
 

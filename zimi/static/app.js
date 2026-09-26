@@ -16772,6 +16772,7 @@ function _appFrameCall(fn, val) {
 // say it is.
 function _appsOff() {
   _tubeOpen = false; _exchangeOpen = false; _reddotOpen = false; _wikiOpen = false; _booksOpen = false;
+  _chromeReset();
 }
 function _anyAppOpen() {
   return _tubeOpen || _exchangeOpen || _reddotOpen || _wikiOpen || _booksOpen;
@@ -17106,6 +17107,10 @@ window.addEventListener('message', function(e) {
   } else if (d.zimi === 'top') {
     _appTop = d.top !== false;
     updateTopbar();
+  } else if (d.zimi === 'scroll' && typeof d.y === 'number' && _isAppPage()) {
+    _chromeScroll(d.y);
+  } else if (d.zimi === 'immersive' && _isAppPage()) {
+    _chromeImmersive(!!d.on);
   } else if (d.zimi === 'at-home') {
     // The header's arrow at the app's home: out of the app.
     if (_isAppPage()) closeReader();
@@ -17139,6 +17144,36 @@ window.addEventListener('message', function(e) {
   }
 });
 var _APP_CATEGORY_KEYS = ['maps', 'ted', 'stack_exchange', 'wikipedia', 'gutenberg'];
+
+// The header steps aside on a phone while an app page or the Almanac is
+// read: scrolling down into the content hides it, scrolling up or coming
+// back near the top returns it (app.css does the hiding, on small screens
+// only). A move counts once it passes _CHROME_STEP from where the last
+// decision was taken, so a slow scroll still adds up and a bounce does not.
+var _CHROME_STEP = 12, _CHROME_TOP = 64;
+var _chromeBase = 0, _chromeHeld = false;
+function _setChromeAway(on) {
+  document.body.classList.toggle('chrome-away', !!on);
+}
+function _chromeScroll(y) {
+  var away;
+  if (y < _CHROME_TOP) away = false;
+  else if (y - _chromeBase > _CHROME_STEP) away = true;
+  else if (_chromeBase - y > _CHROME_STEP) away = false;
+  else return;
+  _chromeBase = y;
+  _setChromeAway(away || _chromeHeld);
+}
+// Held away (a video playing on a phone turned sideways) until let go.
+function _chromeImmersive(on) {
+  _chromeHeld = on;
+  _setChromeAway(on);
+}
+// Leaving the page: the header comes back and nothing is held.
+function _chromeReset() {
+  _chromeHeld = false; _chromeBase = 0;
+  _setChromeAway(false);
+}
 
 function _tubeSearch(val) {
   try {
@@ -17710,6 +17745,7 @@ function _readerShare() {
 
 // ── Reader ──
 function openReader(url) {
+  _chromeReset(); // a new page starts with the header in place
   // Same-document fragment scroll fast-path. When the frame already holds the
   // target document and only the #fragment differs, a location.replace() below
   // performs a SAME-DOCUMENT scroll and fires NO load event — so the loading
@@ -17890,8 +17926,10 @@ function openReader(url) {
     _restoreMapPosition(_mapPos, 0);
     _applyMapFind(0);
     setTimeout(_watchReaderMap, 400);
-    // Inject responsive CSS + scroll-to-top button for mobile
-    try {
+    // Inject responsive CSS + scroll-to-top button for mobile. Not into
+    // Zimi's own pages (the apps, the PDF viewer): they lay themselves out,
+    // and the button sat on a video's dock and over a thread's last lines.
+    if (!_frameIsOurOwnPage(frame)) try {
       // Web-mirror pages (alive engine, zimit) ship a browser's-eye recording of
       // a real site: their own viewport meta, their own responsive CSS, their own
       // replay shim (wombat). The mwoffliner first-aid below actively BREAKS them

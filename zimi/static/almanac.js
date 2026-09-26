@@ -192,6 +192,13 @@ function _openAlmanacInner(replaceState) {
   else history.pushState({ mode: 'almanac' }, '', url);
   var el = document.getElementById('almanac-view');
   el.classList.add('open');
+  // The header steps aside on a phone as the Almanac is scrolled, as it
+  // does in the apps (_chromeScroll in app.js).
+  var content = document.getElementById('almanac-content');
+  if (content && !content._chromeWatch && typeof _chromeScroll === 'function') {
+    content._chromeWatch = true;
+    content.addEventListener('scroll', function() { if (_almanacOpen) _chromeScroll(content.scrollTop); }, { passive: true });
+  }
   // Deep-links: fresh library check per open, and one delegated tap handler.
   if (window.AlmanacLinks) { window.AlmanacLinks.reset(); window.AlmanacLinks.bind(el); }
   var mv = document.getElementById('main-view');
@@ -209,6 +216,7 @@ function _openAlmanacInner(replaceState) {
 // close) or preserve it (a deep-link suspend that Back should return to).
 function _almanacTeardown() {
   _almanacOpen = false;
+  if (typeof _chromeReset === 'function') _chromeReset();
   document.body.classList.remove('almanac-mode');
   if (typeof _almTravelUnfreeze === 'function') _almTravelUnfreeze();
   _cancelAllRAF();
