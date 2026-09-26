@@ -973,9 +973,7 @@ async function setLanguage(lang) {
     renderHome();
   }
   updateTopbar();
-  // Re-render library panel if open
-  var libPanel = document.getElementById('history-panel');
-  if (libPanel && libPanel.classList.contains('open')) renderLibraryPanel();
+  _refreshLibraryPanelIfOpen();
   // If reading an article, re-check language banner in reader context
   if (readerOpen && currentArticle) _checkReaderLangBanner();
   // The PDF viewer speaks the shell's language too: reopened with the new
@@ -19256,6 +19254,13 @@ function toggleLibraryPanel(forceTab) {
     _libPanelBtnState(true);
   }
 }
+// The panel draws what is saved when it opens; anything that changes the
+// saved lists while it is open redraws it (#96: a bookmark added with the
+// list open did not appear until it was reopened).
+function _refreshLibraryPanelIfOpen() {
+  var panel = document.getElementById('history-panel');
+  if (panel && panel.classList.contains('open')) renderLibraryPanel();
+}
 function _closeLibraryPanel() {
   var panel = document.getElementById('history-panel');
   if (panel) panel.classList.remove('open');
@@ -20587,6 +20592,7 @@ function toggleBookmark() {
     if (_bkIsBookmarked(_appItem.zim, _appItem.path)) _bkRemove(_appItem.zim, _appItem.path);
     else _bkAdd(_appItem.zim, _appItem.path, _appItem.title || document.title.replace(/ \u2014 .*$/, ''), null, _appItem.app);
     _updateLibraryBtnIcon();
+    _refreshLibraryPanelIfOpen();
     return;
   }
   if (!currentArticle) return;
@@ -20609,6 +20615,7 @@ function toggleBookmark() {
     _bkAdd(zim, path, title, _currentMapPositionHash());
   }
   _updateLibraryBtnIcon();
+  _refreshLibraryPanelIfOpen();
 }
 var _libClockSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
 var _libBookmarkSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
