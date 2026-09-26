@@ -88,7 +88,49 @@ check(captureStopKind('') === null && captureStopKind(null) === null, 'no reason
     'a path with nothing under it reruns as the whole site, bounds as they were');
   check(_createAgainRequest(asked, { stopped: 'interrupted' }) === null, 'a Stop offers no rerun');
   check(_createAgainRequest(null, { stopped: 'page cap (40)' }) === null, 'no request, no rerun');
+  // A depth stop at the deepest the server allows would stop the same way.
+  const ceiling = CREATE_FIELDS.max_depth.max;
+  check(_createAgainRequest(asked, { stopped: 'depth limit (' + ceiling + ')' }) === null,
+    'a depth stop already at the ceiling offers no rerun');
+  check(_createAgainRequest(asked, { stopped: 'depth limit (' + (ceiling - 1) + ')' }) !== null,
+    'a depth stop under the ceiling still offers one');
+  const manage = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'manage.py'), 'utf8');
+  eq(Number((manage.match(/^CREATE_MAX_DEPTH_CEILING = (\d+)/m) || [])[1]), ceiling,
+    'the form\'s deepest depth is the server\'s ceiling');
 }
+
+// A refused rerun says so beside the button pressed, not in the form's error
+// line, which the finished card can hide.
+{
+  const els = {
+    'create-again-error': { textContent: 'stale' },
+    'create-form-error': { textContent: '' }
+  };
+  sandbox.document = { getElementById: id => els[id] || null };
+  sandbox._createLastDone = {
+    request: { mode: 'site', source: 'example.org/', max_pages: 40 },
+    result: { stopped: 'page cap (40)' }
+  };
+  let forgot = false;
+  sandbox._createForgetFinished = () => { forgot = true; };
+  sandbox._createStartWatching = () => {};
+  sandbox.authedFetch = async () => ({ ok: false, json: async () => ({ error: 'The queue is full.' }) });
+  vm.runInContext('_createAgainNoLimit()', sandbox).then(() => {
+    eq([els['create-again-error'].textContent, els['create-form-error'].textContent, forgot],
+      ['The queue is full.', '', false],
+      'a refused rerun is said beside its button, and the finished card stays');
+    sandbox.authedFetch = async () => { throw new Error('offline'); };
+    return vm.runInContext('_createAgainNoLimit()', sandbox);
+  }).then(() => {
+    eq(els['create-again-error'].textContent, 'create_error_generic',
+      'a rerun that never reached the server is said beside its button too');
+    if (failures) { console.error(failures + ' FAILED'); process.exit(1); }
+  });
+}
+const _mountSrc = SRC.slice(SRC.indexOf('function _createMountDone('));
+check(/\(_createAgainRequest\(s\.request, r\) \? '<div class="create-again-row">/.test(_mountSrc) &&
+  /id="create-again-error"/.test(_mountSrc),
+  'the card offers a rerun only when there is one, with a place for its error beside it');
 
 // The slice must actually contain the logic — a refactor that moves one of
 // these below the marker would otherwise silently stop testing it.
