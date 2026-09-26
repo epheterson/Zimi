@@ -2060,17 +2060,26 @@ def _read_map_facts(path):
 
 APPS_ENV = "ZIMI_APPS"
 APP_NAMES = ("maps", "tube", "exchange", "reddot", "wiki", "books")
+# Apps offered only when named: a comma list in ZIMI_APPS (or a saved list)
+# that says "wiki" turns Zimipedia on; "1", "all", the default and a saved
+# True leave it off. Zimipedia is a preview being redesigned, so nobody meets
+# it without asking for it.
+APPS_OPT_IN = frozenset({"wiki"})
+APPS_ALL = frozenset(APP_NAMES)
+APPS_DEFAULT = APPS_ALL - APPS_OPT_IN
 _APPS_OFF = ("0", "false", "no", "off", "none")
 _APPS_ON = ("1", "true", "yes", "on", "all")
 
 
-def _apps_value(raw):
+def _apps_value(raw, every=APPS_DEFAULT):
     """A setting (True/False, a list of app names, or a string of ``0``/``1``
-    or a comma list) as the set of apps shown; None when it says nothing."""
+    or a comma list) as the set of apps shown; None when it says nothing.
+    ``every`` is what "all" means: for the server, every app but the opt-in
+    ones; for an account's own filter, everything the server offers."""
     if raw is None:
         return None
     if isinstance(raw, bool):
-        return frozenset(APP_NAMES) if raw else frozenset()
+        return every if raw else frozenset()
     if isinstance(raw, str):
         text = raw.strip().lower()
         if not text:
@@ -2078,16 +2087,17 @@ def _apps_value(raw):
         if text in _APPS_OFF:
             return frozenset()
         if text in _APPS_ON:
-            return frozenset(APP_NAMES)
+            return every
         raw = text.split(",")
     if isinstance(raw, (list, tuple, set, frozenset)):
         return frozenset(n for n in (str(x).strip().lower() for x in raw) if n in APP_NAMES)
-    return frozenset(APP_NAMES) if raw else frozenset()
+    return every if raw else frozenset()
 
 
-def _apps_setting(shown):
-    """The set as it is saved: True for all, False for none, else the names."""
-    if shown >= frozenset(APP_NAMES):
+def _apps_setting(shown, every=APPS_DEFAULT):
+    """The set as it is saved: True for "all" (``every``), False for none,
+    else the names (so a list naming an opt-in app keeps it)."""
+    if shown == every:
         return True
     if not shown:
         return False
@@ -2095,10 +2105,11 @@ def _apps_setting(shown):
 
 
 def apps_stamp(shown):
-    """What the shell carries in ``data-zimi-apps``: nothing when every app
-    is offered, ``0`` for none, else the names offered."""
+    """What the shell carries in ``data-zimi-apps``: nothing when the default
+    apps are offered (every app but the opt-in ones), ``0`` for none, else
+    the names offered."""
     shown = _apps_value(shown)
-    if shown is None or shown >= frozenset(APP_NAMES):
+    if shown is None or shown == APPS_DEFAULT:
         return None
     return ",".join(n for n in APP_NAMES if n in shown) or "0"
 
@@ -2126,7 +2137,8 @@ def _zim_kind_of(name):
 def apps_shown():
     """The apps (Maps, ZimiTube, ZimiExchange, Reddot, Zimipedia, Bookshelf) offered on this server:
     ``ZIMI_APPS`` when set (``0``, ``1`` or a comma list of names), else the
-    setting saved from Server settings, else all of them. A signed-in user
+    setting saved from Server settings, else all of them but the opt-in ones
+    (``APPS_OPT_IN``: Zimipedia, only when a list names it). A signed-in user
     can also hide any of them for themselves (their account's preferences).
     Never per browser (Eric: "Not per browser only per user or server")."""
     verdict = _apps_env()
@@ -2135,7 +2147,7 @@ def apps_shown():
     from zimi import manage
 
     saved = _apps_value(manage._read_app_update_prefs().get("apps"))
-    return frozenset(APP_NAMES) if saved is None else saved
+    return APPS_DEFAULT if saved is None else saved
 
 
 def apps_enabled():
@@ -2145,7 +2157,7 @@ def apps_enabled():
 
 def user_apps_shown(setting):
     """What an account's saved preference leaves of the server's offer."""
-    mine = _apps_value(setting)
+    mine = _apps_value(setting, APPS_ALL)
     shown = apps_shown()
     return shown if mine is None else shown & mine
 

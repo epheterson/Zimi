@@ -249,19 +249,42 @@ def test_the_dated_pick_still_carries_its_event(tmp_path, monkeypatch):
 DAY = datetime.date(2026, 9, 25)
 
 
-@pytest.fixture
-def served(tmp_path, monkeypatch):
+def _serve(tmp_path, monkeypatch, apps):
     from http.server import ThreadingHTTPServer
 
     from zimi.http import ZimHandler
 
+    # Zimipedia is a preview, offered only when ZIMI_APPS names it.
+    if apps is None:
+        monkeypatch.delenv("ZIMI_APPS", raising=False)
+    else:
+        monkeypatch.setenv("ZIMI_APPS", apps)
     _library(tmp_path, monkeypatch, LIBRARY)
     monkeypatch.setattr(wiki, "_today", lambda: DAY)
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
     t = threading.Thread(target=httpd.serve_forever, daemon=True)
     t.start()
-    yield "http://127.0.0.1:%d" % httpd.server_address[1]
+    return httpd, "http://127.0.0.1:%d" % httpd.server_address[1]
+
+
+@pytest.fixture
+def served(tmp_path, monkeypatch):
+    httpd, url = _serve(tmp_path, monkeypatch, "maps,tube,exchange,reddot,books,wiki")
+    yield url
     httpd.shutdown()
+
+
+@pytest.mark.parametrize("apps", [None, "1", "all", "maps,tube,exchange,reddot,books"])
+def test_the_routes_are_not_there_unless_wiki_is_named(tmp_path, monkeypatch, apps):
+    """Off unless named: the default, "1" and "all" leave Zimipedia off, and
+    its endpoints answer 404 as if they did not exist."""
+    httpd, url = _serve(tmp_path, monkeypatch, apps)
+    try:
+        assert _get(url + "/wiki/home")[0] == 404
+        assert _get(url + "/wiki/onthisday?zim=x&date=0925")[0] == 404
+        assert _get(url + "/wiki/today?day=%s&zim=x" % DAY.strftime("%Y%m%d"))[0] == 404
+    finally:
+        httpd.shutdown()
 
 
 def _get(url):
