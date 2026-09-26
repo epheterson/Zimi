@@ -1354,6 +1354,11 @@
   @media (prefers-reduced-motion: reduce) {
     .topbar, .reader-view, body .almanac-view { transition: none; }
   }
+  /* Held away (a book being read, a video on a phone turned sideways):
+     at every size, since the book's own header takes its place. */
+  body.chrome-held { --under-topbar: var(--conn-h); }
+  body.chrome-held .topbar:not(:focus-within) { transform: translateY(-100%); }
+  body.chrome-held .conn-banner { top: 0; }
 
   /* ── Context Menu ── */
   .zimi-ctx {

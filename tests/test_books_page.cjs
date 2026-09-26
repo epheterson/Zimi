@@ -90,11 +90,16 @@ ok('a record\'s "Surname, Given, years" prints as a cover does', rctx._bookAutho
 ok('a Gutenberg page is known by its own record', /function _isBookDoc\(doc\) \{\n\s*try \{ return !!doc\.querySelector\('link\[rel="dcterms\.isFormatOf"\]\[href\*="gutenberg\.org"\]'\);/.test(src));
 ok('a book has no <main>: Reader View reads its body', /if \(!main && _isBookDoc\(doc\)\) main = doc\.body;/.test(src) && /return !!main && \(main !== doc\.body \|\| _isBookDoc\(doc\)\);/.test(src));
 ok('a book keeps its contents list in Reader View', /_isBookDoc\(doc\) \? 'script,style,link,noscript' : _READER_VIEW_STRIP/.test(src));
-ok('a book opens in Reader View, and the reader keeps its place', /var _wantReader = _readerViewOn \|\| _readerAuto\(\) \|\| _bookDoc;/.test(src) && /if \(_vm && _bookDoc\) _bookAttach\(frame,/.test(src));
-ok('the place is the window\'s scroll: a Gutenberg page has no doctype, so quirks mode scrolls the viewport', /at: function\(\) \{ return win\.scrollY \|\| 0; \}/.test(src));
-ok('a link to a place in the book wins over the remembered place', /if \(place && place\.f > 0 && !\(win\.location\.hash \|\| ''\)\.slice\(1\)\) sc\.to\(place\.f \* sc\.room\(\)\);/.test(src));
+ok('a book opens in Reader View, and the e-reader is set up before anything measures it', /var _wantReader = _readerViewOn \|\| _readerAuto\(\) \|\| _bookDoc;/.test(src) && /if \(_bookDoc && _readerViewOn\) \{\n\s*try \{ _bookOn = _bookAttach\(frame\);/.test(src));
+ok('Zimi\'s header is held away for a book, known from its address before it loads', /var _bookLoading = _bookUrl\(url\);\n\s*_bookChrome\(_bookLoading\);/.test(src) && /if \(on !== _chromeHeld\) _chromeImmersive\(on\);/.test(src));
+ok('no jump-to-top button and no capture passes on a book', /if \(!_frameIsOurOwnPage\(frame\) && !_bookDoc\) try \{/.test(src) && /if \(_frameIsOurOwnPage\(frame\) \|\| _bookDoc\) return;/.test(src));
+ok('opening a book lays nothing out early: its text is counted, not measured', /return \(main === doc\.body \? main\.textContent :/.test(src) && /if \(!_isBookDoc\(doc\)\) _readerBindLightbox\(shell, doc\);/.test(src));
+ok('pages are one chapter at a time, and a long run is cut again', /html\.zb-paged \.zb-sec:not\(\.zb-cur\)\{display:none\}/.test(src) && /var _BOOK_SECTION_CHARS = \d+;/.test(src));
+ok('the place is a character of the book, kept with the share read', /all\[key\] = \{ f: Math\.round\(f \* 1e5\) \/ 1e5, c: c,/.test(src));
+ok('a link to a place in the book wins over the remembered place', /if \(tgtSec\) \{[\s\S]{0,300}\} else if \(place && \(place\.c > 0 \|\| place\.f > 0\)\)/.test(src));
+ok('a right-to-left book turns the other way', /if \(rel < _BOOK_EDGE\) \{ turn\(bookRtl \? 1 : -1\); return; \}/.test(src));
 ok('chapters: the heading level with the most different headings', /hs\._n = Object\.keys\(distinct\)\.length;/.test(src));
-ok('the arrows point the way the interface reads', /pv\.textContent = rtl \? '\\u203A' : '\\u2039';/.test(src));
+ok('the chapter arrows point the way the interface reads', /\(uiRtl \? pv : nx\)\.firstChild\.style\.transform = 'scaleX\(-1\)';/.test(src));
 ok('places are capped, the oldest dropped first', /var _BOOK_PLACES_MAX = \d+;/.test(src) && /keys\.slice\(0, keys\.length - _BOOK_PLACES_MAX\)/.test(src));
 
 // ── the shell ───────────────────────────────────────────────────────────
@@ -109,7 +114,9 @@ ok('Back from a book returns to Bookshelf', /s\.mode === 'reader' && s\.books\) 
 ok('the catalog door is allowed', /_APP_CATEGORY_KEYS = \[[^\]]*'gutenberg'\]/.test(src) && /books: 'gutenberg' \}/.test(src));
 ok('its background work has a name in Manage', /books: 'bg_books'/.test(src));
 
-const need = ['books', 'books_search_placeholder', 'books_prev_chapter', 'books_next_chapter', 'app_empty_books', 'apps_count_books_one', 'apps_count_books_other', 'bg_books', 'books_bce', 'books_bce_ce'];
+const need = ['books', 'books_search_placeholder', 'books_prev_chapter', 'books_next_chapter', 'books_contents', 'books_settings',
+  'books_line_spacing', 'books_margins', 'books_layout', 'books_mode_scroll', 'books_mode_pages', 'books_left_one', 'books_left_other',
+  'books_left_none', 'books_position', 'app_empty_books', 'apps_count_books_one', 'apps_count_books_other', 'bg_books', 'books_bce', 'books_bce_ce'];
 const pageKeys = (extract(src, /_appStrings\('books', \[[\s\S]*?\]/, 'keys').match(/'books_[a-z_]+'/g) || []).map(k => k.slice(1, -1));
 const lcc = JSON.parse(extract(src, /var _BOOKS_LCC = \[[\s\S]*?\];/, 'lcc').replace(/^var _BOOKS_LCC = /, '').replace(/;$/, '').replace(/'/g, '"'));
 for (const lang of fs.readdirSync(path.join(root, 'i18n'))) {

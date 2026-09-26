@@ -90,8 +90,8 @@ const settleBlock = src.slice(
   src.indexOf('var _settlePasses = function()'),
   src.indexOf('if (_replayAlive) setTimeout(_settlePasses')
 );
-check(/_frameIsOurOwnPage\(frame\)\s*\)\s*return;/.test(settleBlock),
-      'the settle passes ask before touching the document');
+check(/_frameIsOurOwnPage\(frame\)(\s*\|\|\s*_bookDoc)?\s*\)\s*return;/.test(settleBlock),
+      'the settle passes ask before touching the document (and pass a book by)');
 check(settleBlock.indexOf('_frameIsOurOwnPage') <
       settleBlock.indexOf('_sweepBlockingOverlays'),
       'and they ask FIRST, before either pass runs');
