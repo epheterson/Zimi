@@ -62,10 +62,6 @@ _warming = set()  # days a background pass is running for
 # Every wiki a library could hold, three days over: small, and cleared whole
 # rather than aged.
 _CACHE_MAX = 512
-OTD_LIMIT = 8
-# Lines of a date page tried for an article the ZIM holds: a subset holds
-# few of them, and each try is a lookup.
-OTD_TRIES = 40
 # Random pages read to find a wiki's pick of the day: enough to find one
 # with a picture in most wikis, few enough that a wiki made without
 # pictures (a nopic build) settles quickly.
@@ -519,23 +515,10 @@ def pick(name, day):
 
 
 def _work_otd(name, mmdd):
-    from zimi.search import _otd_event_entry
+    from zimi.search import otd_events
 
-    lang = _language(_record(name))
     archive = _archive(name)
-    with _srv._zim_lock:
-        page = datepages.read_page(archive, mmdd, lang or "en")
-    if not page:
-        return []
-    out, seen = [], set()
-    for ev in datepages.extract_events(page, lang or "en")[:OTD_TRIES]:
-        with _srv._zim_lock:
-            hit = _otd_event_entry(archive, ev)
-        if hit and hit["path"] not in seen:
-            seen.add(hit["path"])
-            out.append(hit)
-            if len(out) >= OTD_LIMIT:
-                break
+    out = otd_events(archive, mmdd, _language(_record(name)) or "en")
     # The day with pictures: each event's article's own, where the ZIM keeps
     # them (a nopic build has none, and says so quickly).
     for hit in out:
