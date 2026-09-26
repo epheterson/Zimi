@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Search operators, in the library search, the catalog and the API: `-word` leaves out, `"exact words"` keeps words together, `cats OR dogs` takes either, and `in:wikipedia`, `lang:fr` (and `-in:ted`, `-lang:en`) choose the sources. `science -ted` in the catalog now hides the hundreds of TED ZIMs. A hyphenated word like `e-mail` is still one word. In the library, exclusions and phrases apply to a result's title. A line under the catalog's results and in an empty search shows how. ([#94](https://github.com/epheterson/Zimi/issues/94))
+
 ## [1.11.0] - 2026-09-27
 
 ### Added

@@ -85,7 +85,14 @@ def build_openapi():
                 "summary": "Full-text search across ZIM sources",
                 "operationId": "search",
                 "parameters": [
-                    _param("q", {"type": "string"}, required=True),
+                    _param(
+                        "q",
+                        {"type": "string"},
+                        required=True,
+                        description='The words. Also: -word leaves out, "exact words" in order, '
+                        "a OR b, in:<source> and lang:<code> (negate with -). "
+                        "Exclusions and phrases apply to result titles.",
+                    ),
                     _param(
                         "zim",
                         {"type": "string"},
