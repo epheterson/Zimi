@@ -5,6 +5,7 @@ suggestion search, and article content reading.
 """
 
 import hashlib as _hashlib
+import itertools
 import json
 import logging
 import math
@@ -21,6 +22,7 @@ from libzim.search import Query, Searcher
 from libzim.suggestion import SuggestionSearcher
 
 from zimi import datepages as _datepages
+from zimi import query as _query
 from zimi import wikilang as _wikilang
 from zimi.previews import strip_html
 
@@ -2562,6 +2564,76 @@ def _search_places(query_str, target_names):
     return groups
 
 
+# An operator query asks each source for this many times the results, so the
+# ones its exclusions and phrases remove leave enough behind.
+_OPERATOR_OVERFETCH = 2
+
+
+def _filter_sources(parsed, names):
+    """``names`` narrowed by the query's filters: source:/in: keeps the ZIMs
+    whose name or title contains the value, lang: those in that language
+    (two- or three-letter code); either one negated drops them instead."""
+    if not parsed["filters"]:
+        return names
+    meta = {z["name"]: z for z in (_srv._zim_list_cache or [])}
+
+    def holds(name, f):
+        z = meta.get(name, {})
+        if f["key"] == "lang":
+            lang = z.get("language", "")
+            return bool(lang) and lang in (
+                f["value"],
+                _srv._ISO639_3_TO_1.get(f["value"]),
+            )
+        return (
+            f["value"] in name.lower() or f["value"] in (z.get("title") or "").lower()
+        )
+
+    return [
+        n for n in names if all(holds(n, f) != f["negate"] for f in parsed["filters"])
+    ]
+
+
+def _operator_hits(parsed, alts, run, name, limit):
+    """One source's results for an operator query: ``run(name, words, n)``
+    once per alternative, what the exclusions and phrases rule out removed,
+    and the alternatives taken in turn so an OR shows both sides.
+
+    libzim's own query parser treats "-", quotes and OR as plain words
+    (every query is all of its words), so they are applied here, to the
+    title: the one thing a result shows that both phases can check without
+    reading the article."""
+    filtering = parsed["exclude"] or any(t["phrase"] for a in alts for t in a)
+    fetch = limit * _OPERATOR_OVERFETCH if filtering else limit
+    per_alt = []
+    for alt in alts:
+        got = run(name, _query.term_words(alt), fetch) or []
+        per_alt.append(
+            [
+                r
+                for r in got
+                if "error" not in r
+                and not _query.excluded(parsed, r.get("title", ""))
+                and _query.phrases_in(alt, r.get("title", ""))
+            ]
+        )
+    merged, seen = [], set()
+    for row in itertools.zip_longest(*per_alt):
+        for r in row:
+            if r is not None and r["path"] not in seen:
+                seen.add(r["path"])
+                merged.append(r)
+    return merged[:limit]
+
+
+def _best_score(title, word_sets, rank, entry_count, lang_match):
+    """The score by whichever alternative of the query the title fits best."""
+    return max(
+        _score_result(title, words, rank, entry_count, lang_match=lang_match)
+        for words in word_sets
+    )
+
+
 def search_all(query_str, limit=5, filter_zim=None, fast=False):
     """Search across all ZIM files, a specific one, or a list.
 
@@ -2593,8 +2665,13 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
         z["name"]: z.get("has_qids", False) for z in (_srv._zim_list_cache or [])
     }
 
+    # The grammar (#94). A plain query takes the path it always took.
+    parsed = _query.parse_query(query_str)
+    plan = None if parsed["plain"] else _query.alternatives(parsed)
+    base_query = _query.term_words(plan[0]) if plan else query_str
+
     # Detect query language for scoring boost
-    detected_lang = _srv._detect_query_language(query_str)
+    detected_lang = _srv._detect_query_language(base_query)
 
     # Normalize filter_zim to None or list
     if isinstance(filter_zim, str):
@@ -2621,11 +2698,30 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
     else:
         target_names = sorted(zims.keys(), key=lambda n: cache_meta.get(n, 0))
 
+    if plan is not None:
+        target_names = _filter_sources(parsed, target_names)
+        if not plan or not target_names:
+            # Only exclusions or filters: nothing asked for, nothing found.
+            return {
+                "results": [],
+                "by_source": {},
+                "by_language": {},
+                "total": 0,
+                "elapsed": 0,
+                "partial": fast,
+            }
+
+    def _words(q, cleaned_q):
+        return [
+            w.lower() for w in cleaned_q.split() if w.lower() not in STOP_WORDS
+        ] or [w.lower() for w in q.split()]
+
     # Clean query for Xapian (only pass raw query for single-ZIM scope)
     cleaned = _clean_query(query_str) if not single_zim else query_str
-    query_words = [
-        w.lower() for w in cleaned.split() if w.lower() not in STOP_WORDS
-    ] or [w.lower() for w in query_str.split()]
+    if plan:
+        word_sets = [_words(w, _clean_query(w)) for w in map(_query.term_words, plan)]
+    else:
+        word_sets = [_words(query_str, cleaned)]
 
     raw_results = []
     by_source = {}
@@ -2637,24 +2733,32 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
         q_lower = query_str.lower().strip()
         thread_results = {}  # {name: [results]}
 
+        def _quick(name, text, lim):
+            # Try SQLite title index first (instant, <10ms)
+            idx_results = _title_index_search(name, text, limit=lim)
+            if idx_results is not None:
+                return idx_results
+            # Fallback: SuggestionSearcher (slow for large ZIMs on spinning disk)
+            archive, lock = _get_suggest_archive(name)
+            if archive is None or lock is None:
+                return None
+            with lock:
+                return suggest_search_zim(archive, text, limit=lim)
+
         def _search_one_zim(name):
             try:
+                if plan:
+                    thread_results[name] = _operator_hits(
+                        parsed, plan, _quick, name, limit
+                    )
+                    return
                 cached_suggest = _suggest_cache_get(q_lower, name)
                 if cached_suggest is not None:
                     thread_results[name] = cached_suggest
                     return
-                # Try SQLite title index first (instant, <10ms)
-                idx_results = _title_index_search(name, query_str, limit=limit)
-                if idx_results is not None:
-                    _suggest_cache_put(q_lower, name, idx_results)
-                    thread_results[name] = idx_results
+                results = _quick(name, query_str, limit)
+                if results is None:
                     return
-                # Fallback: SuggestionSearcher (slow for large ZIMs on spinning disk)
-                archive, lock = _get_suggest_archive(name)
-                if archive is None or lock is None:
-                    return
-                with lock:
-                    results = suggest_search_zim(archive, query_str, limit=limit)
                 _suggest_cache_put(q_lower, name, results)
                 thread_results[name] = results
             except Exception as e:
@@ -2680,9 +2784,7 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
                 entry_count = cache_meta.get(name, 1)
                 for rank, r in enumerate(valid):
                     lm = bool(detected_lang and cache_lang.get(name) == detected_lang)
-                    score = _score_result(
-                        r["title"], query_words, rank, entry_count, lang_match=lm
-                    )
+                    score = _best_score(r["title"], word_sets, rank, entry_count, lm)
                     raw_results.append(
                         {
                             "zim": name,
@@ -2700,37 +2802,52 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
         # ── Full path: Xapian FTS — search every ZIM in parallel ──
         fts_results = {}  # {name: (results_list, dt)}
 
+        def _full(name, text, lim, exact_title):
+            archive, lock = _get_fts_archive(name)
+            if archive is None or lock is None:
+                return None
+            # An archive that cannot say (older libzim, a test double) is
+            # asked the old way: the full-text search, which fails soft.
+            if getattr(archive, "has_fulltext_index", True):
+                with lock:
+                    results = search_zim(archive, text, limit=lim, snippets=False)
+            else:
+                # No Xapian index to ask (Kiwix's map ZIMs ship _ftindex:no,
+                # so do some small captures). Titles are still there, and
+                # the title index is how suggest already finds them; the
+                # search bar was returning nothing for the same words.
+                results = _title_index_search(name, text, limit=lim)
+                if results is None:
+                    with lock:
+                        results = suggest_search_zim(archive, text, limit=lim)
+            # Xapian ranks by term weight, and can put "List of things
+            # named after X" above X or past the limit altogether. The
+            # entry titled exactly as asked leads its source.
+            exact = _title_index_exact(name, exact_title)
+            if exact:
+                have = {r.get("path") for r in exact}
+                results = exact + [
+                    r for r in (results or []) if r.get("path") not in have
+                ]
+            return results
+
         def _fts_one_zim(name):
             try:
-                archive, lock = _get_fts_archive(name)
-                if archive is None or lock is None:
-                    return
                 t0 = time.time()
-                # An archive that cannot say (older libzim, a test double) is
-                # asked the old way: the full-text search, which fails soft.
-                if getattr(archive, "has_fulltext_index", True):
-                    with lock:
-                        results = search_zim(
-                            archive, cleaned, limit=limit, snippets=False
-                        )
+                if plan:
+                    results = _operator_hits(
+                        parsed,
+                        plan,
+                        lambda n, text, lim: _full(
+                            n, text if single_zim else _clean_query(text), lim, text
+                        ),
+                        name,
+                        limit,
+                    )
                 else:
-                    # No Xapian index to ask (Kiwix's map ZIMs ship _ftindex:no,
-                    # so do some small captures). Titles are still there, and
-                    # the title index is how suggest already finds them; the
-                    # search bar was returning nothing for the same words.
-                    results = _title_index_search(name, cleaned, limit=limit)
+                    results = _full(name, cleaned, limit, query_str)
                     if results is None:
-                        with lock:
-                            results = suggest_search_zim(archive, cleaned, limit=limit)
-                # Xapian ranks by term weight, and can put "List of things
-                # named after X" above X or past the limit altogether. The
-                # entry titled exactly as asked leads its source.
-                exact = _title_index_exact(name, query_str)
-                if exact:
-                    have = {r.get("path") for r in exact}
-                    results = exact + [
-                        r for r in (results or []) if r.get("path") not in have
-                    ]
+                        return
                 dt = time.time() - t0
                 fts_results[name] = (results, dt)
             except Exception as e:
@@ -2758,9 +2875,7 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
                 entry_count = cache_meta.get(name, 1)
                 for rank, r in enumerate(valid):
                     lm = bool(detected_lang and cache_lang.get(name) == detected_lang)
-                    score = _score_result(
-                        r["title"], query_words, rank, entry_count, lang_match=lm
-                    )
+                    score = _best_score(r["title"], word_sets, rank, entry_count, lm)
                     raw_results.append(
                         {
                             "zim": name,
@@ -2810,7 +2925,7 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
     # shown as its own group with the map to open and where to fly. Full path
     # only; the fast path is the keystroke path and reads no shards.
     if not fast:
-        places = _search_places(query_str, target_names)
+        places = _search_places(base_query, target_names)
         if places:
             result["places"] = places
     # "Did you mean" — only on the full path (the fast path is a partial,
@@ -2821,7 +2936,7 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
     # small but real cross-allowlist leak. Admin/anonymous/all-access
     # (current_allow() is None) keep the feature.
     if not fast and len(deduped) < _DYM_MIN_RESULTS and _srv.current_allow() is None:
-        suggestion = _maybe_did_you_mean(query_str)
+        suggestion = _maybe_did_you_mean(base_query)
         if suggestion:
             result["did_you_mean"] = suggestion
     return result
