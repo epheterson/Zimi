@@ -349,6 +349,113 @@ def test_a_restricted_account_sees_only_the_books_it_may_read(tmp_path, monkeypa
     assert {b["zim"] for b in books.listing(limit=50)["books"]} == {"gutenberg_la"}
 
 
+# ── a damaged ZIM is one ZIM, never the whole shelf ────────────────────────
+
+# Listings a broken build could leave: a count that is not a number, a book
+# number that is a list.
+BROKEN = {
+    "full_by_popularity.js": _js(
+        "json_data", [["Odyssea", "Homer", "110", 1727, "PA"]]
+    ),
+    "languages.js": _js(
+        "languages_json_data", [["Graeca", "grc", "many"], ["Latina", "la", None]]
+    ),
+    "lang_grc_by_title.js": _js("json_data", [["Odyssea", "", "110", [1727], "PA"]]),
+}
+
+
+def _with(*extra):
+    return LIBRARY + [
+        (
+            filename,
+            {"Scraper": G2Z, "Name": filename.rsplit("_", 1)[0]},
+            files,
+        )
+        for filename, files in extra
+    ]
+
+
+def test_malformed_listings_do_not_break_the_shelf(tmp_path, monkeypatch):
+    _library(
+        tmp_path, monkeypatch, _with(("gutenberg_grc_all_2026-02.zim", BROKEN))
+    )
+    home = books.home()
+    assert home["total"] == 8 and home["details"] is True
+    odyssea = books.listing(q="odyssea")["books"]
+    assert [b["id"] for b in odyssea] == [1727] and "lang" not in odyssea[0]
+
+
+def test_a_zim_whose_listings_raise_is_skipped(tmp_path, monkeypatch, caplog):
+    real = books.books_of
+
+    def books_of(archive):
+        if "grc" in str(getattr(archive, "filename", "")):
+            raise RuntimeError("damaged cluster")
+        return real(archive)
+
+    monkeypatch.setattr(books, "books_of", books_of)
+    with caplog.at_level("WARNING", logger="zimi"):
+        _library(
+            tmp_path, monkeypatch, _with(("gutenberg_grc_all_2026-02.zim", BROKEN))
+        )
+        home = books.home()
+    assert home["total"] == 7 and home["details"] is True
+    assert any("could not be read" in r.getMessage() for r in caplog.records)
+
+
+def test_a_zim_with_no_listings_does_not_hold_the_catalog_back(tmp_path, monkeypatch):
+    """"Reading the catalog" ends: a Gutenberg ZIM with no listings has no
+    records to wait for."""
+    zims = [
+        ("gutenberg_xx_all_2026-02.zim", {"Scraper": G2Z, "Name": "gutenberg_xx"}, {})
+    ]
+    _library(tmp_path, monkeypatch, zims, details=False)
+    assert books.home()["details"] is True
+
+
+def test_a_zim_that_will_not_open_does_not_hold_the_catalog_back(
+    tmp_path, monkeypatch, caplog
+):
+    import zimi.search as search
+
+    real = search._get_fts_archive
+
+    def get(name):
+        if name == "gutenberg_la":
+            raise OSError("still copying")
+        return real(name)
+
+    monkeypatch.setattr(search, "_get_fts_archive", get)
+    with caplog.at_level("WARNING", logger="zimi"):
+        _library(tmp_path, monkeypatch)
+        home = books.home()
+    assert home["total"] == 2 and home["details"] is True
+    assert any("gutenberg_la" in r.getMessage() for r in caplog.records)
+
+
+def test_a_zim_gone_before_its_records_are_read_does_not_hold_them_back(
+    tmp_path, monkeypatch
+):
+    _library(tmp_path, monkeypatch, details=False)
+    books.home()
+    monkeypatch.setattr(srv, "get_zim_files", lambda: {})
+    for z in books._book_zims():
+        books._build_one(z["name"])
+    assert books.home()["details"] is True
+
+
+def test_a_book_is_not_shown_by_way_of_a_zim_the_account_may_not_read(
+    tmp_path, monkeypatch
+):
+    """Aeneidos is in both ZIMs: asked for by way of the one the account may
+    not read, it is not found there."""
+    _library(tmp_path, monkeypatch, details=False)
+    assert books.book("gutenberg_la", 227) is not None
+    monkeypatch.setattr(srv, "zim_allowed", lambda name: name != "gutenberg_la")
+    assert books.book("gutenberg_la", 227) is None
+    assert books.book("", 227)["zim"] == "gutenberg_en_lcc-pa"
+
+
 # ── through HTTP ────────────────────────────────────────────────────────────
 
 
