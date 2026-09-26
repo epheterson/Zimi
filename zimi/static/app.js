@@ -16726,7 +16726,9 @@ function _wikiStrings() {
   _installedWikiZims().forEach(function(z) { var c = String(z.language || '').split(',')[0]; if (c) langs[c] = _langDisplayName(c) || c; });
   return _appStrings('wiki', ['wiki_all', 'wiki_today', 'wiki_on_this_day', 'wiki_featured', 'wiki_word', 'wiki_quote', 'wiki_place', 'wiki_none', 'wiki_empty',
     'wiki_cards', 'wiki_list', 'wiki_searching', 'wiki_did_you_mean', 'wiki_search_heading', 'wiki_article', 'wiki_book', 'wiki_text', 'wiki_course',
-    'wiki_news', 'wiki_species', 'wiki_otd_unavailable', 'wiki_load_failed', 'wiki_search_failed', 'wiki_retry'].concat(
+    'wiki_news', 'wiki_species', 'wiki_otd_unavailable', 'wiki_load_failed', 'wiki_search_failed', 'wiki_retry', 'wiki_languages', 'wiki_did_you_know',
+    'wiki_picture', 'wiki_rabbit_hole', 'wiki_rabbit_hint', 'wiki_front', 'wiki_front_as_of', 'wiki_read_more', 'wiki_search_all_languages',
+    'wiki_search_one_language'].concat(
     // Every plural form the language has; the page picks one by Intl.PluralRules.
     ['zero', 'one', 'two', 'few', 'many', 'other'].map(function(c) { return 'wiki_results_' + c; })), { langs: langs });
 }

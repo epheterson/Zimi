@@ -17,7 +17,7 @@ is one copy of what a date page is called and how its events are read.
 
 Checked against each language's real date page (the Parsoid HTML mwoffliner
 builds its ZIMs from) for en, simple, de, fr, es, pt, it, ru, uk, zh, ja, ko,
-he, ar, fa, hi, nl, pl, tr, sv, id and vi. A language not listed here falls
+he, yi, ar, fa, hi, nl, pl, tr, sv, id and vi. A language not listed here falls
 back to the English name and the numeric CJK name, and to any heading that
 any listed language uses for its events.
 """
@@ -52,6 +52,7 @@ _MONTHS = {
     # Hindi's pages exist under both spellings of several months, one a
     # redirect to the other; either lands on the page.
     "hi": "जनवरी फ़रवरी मार्च अप्रैल मई जून जुलाई अगस्त सितंबर अक्टूबर नवंबर दिसंबर",
+    "yi": "יאנואר פעברואר מערץ אפריל מאי יוני יולי אויגוסט סעפטעמבער אקטאבער נאוועמבער דעצעמבער",
 }
 _MONTHS = {k: v.split() for k, v in _MONTHS.items()}
 _HI_ALT = (
