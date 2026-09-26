@@ -596,13 +596,26 @@ FRONT = _page(
     # The welcome talks about the wiki, and is passed over.
     "<h2>Welcome to Wikipedia</h2><p>Wikipedia is the free encyclopedia that anyone can edit, with many articles.</p>"
     # A box titled by an <h2>: its bold words name the article.
-    '<h2>From today\'s featured article</h2><p><b><a href="Water">Water</a></b> is an inorganic compound '
+    # Its picture's caption is not what it featured.
+    "<h2>From today's featured article</h2><figure><figcaption>A glass of it, on a table by a window</figcaption></figure>"
+    '<p><b><a href="Water">Water</a></b> is an inorganic compound '
     "with the chemical formula H2O, and it is transparent.</p>"
     # A box of links (portals) gives nothing.
     '<h2>Portals</h2><p><a href="A">Arts</a> - <a href="B">Biography</a> - <a href="G">Geography</a> - <a href="H">History</a></p>'
-    # A box titled by a class, not a heading (French Wikiquote).
+    # Nor does navigation left as text (Hebrew Wikipedia: FAQ, how to
+    # register, guidelines), help that leads into the wiki's own pages,
+    # a door to a page named like the box, or a note about the wiki's
+    # guides that names nothing (Hebrew Wikivoyage).
+    "<h2>Questions</h2><p>Frequently asked questions • How to register • Guidelines</p>"
+    '<h2>Get involved</h2><p>Read the <a href="Help:FAQ">questions</a> and the <a href="Help:Contents">help</a> '
+    'before you write your first <a href="Article">article</a> here.</p>'
+    '<h2>Destinations</h2><div>Choose a destination by clicking a continent below, or see the <a href="Destinations">map</a></div>'
+    "<h2>Featured content</h2><p>Recommended guides - the most complete guides, reviewed by other travellers.</p>"
+    # A box titled by a class, not a heading (French Wikiquote): a quote
+    # with its author on the line after it.
     '<div><span class="boite-coloree-titre">Citation du 27 août 2026</span></div>'
-    "<blockquote><p>Il y a des éraflures écarlates sur la main verte<br> De ma rêverie églantine.</p></blockquote>"
+    "<blockquote><p>Il y a des éraflures écarlates sur la main verte<br> De ma rêverie églantine.</p><p>»</p></blockquote>"
+    '<p>— <a href="Joyce_Mansour">Joyce Mansour</a></p>'
     # The front page's own On this day was the scrape's day: passed over.
     '<h2>On this day</h2><ul><li>1066 – <a href="Fire">A fire</a> in a town that burned for three days.</li></ul>'
 )
@@ -644,9 +657,7 @@ def _lead_page(text, links=()):
     )
 
 
-def test_a_wikipedia_s_day_has_facts_and_a_rabbit_hole(
-    tmp_path, monkeypatch
-):
+def test_a_wikipedia_s_day_has_facts_and_a_rabbit_hole(tmp_path, monkeypatch):
     long = "is a thing that people have written about for 200 years, in many books."
     pages = {
         "Water": ("Water", _lead_page("Water " + long, ["Fire"])),

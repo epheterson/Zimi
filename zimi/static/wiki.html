@@ -117,6 +117,13 @@
   .sk.hero-sk { min-height: 260px; margin: 0 0 28px; }
   .dym, .alllang { margin: 0 0 10px; color: var(--text2); font-size: 13px; }
   .dym button, .alllang button { border: 0; background: none; color: var(--amber); font: inherit; font-weight: 600; cursor: pointer; padding: 0; }
+  /* The interface's words sit on the side the page is laid out from, and
+     read in their own direction. */
+  html[dir="rtl"] :is(.kick, .more-l, .sec-note, .note, .alllang, .dym) { text-align: right; }
+  html:not([dir="rtl"]) :is(.kick, .more-l, .sec-note, .note, .alllang, .dym) { text-align: left; }
+  /* The way onward points the way its own words run, whatever the page's. */
+  .chev:dir(ltr)::before { content: '\203A'; }
+  .chev:dir(rtl)::before { content: '\2039'; }
   /* A page's words keep their own direction under the shell's. */
   .card .bd > *, .hero .bd > *, .row .t, .row .ex, .otd-list .tx, .dyk li, .trail .t, .trail .ex, .potd .cap { unicode-bidi: plaintext; }
 </style>
@@ -187,12 +194,25 @@ function pillLabels(wikis) {
 // A language named in itself (עברית, Français, ייִדיש), which is how a
 // reader finds their own; the interface's name for it when the browser
 // cannot say, the code when neither can.
+// The languages a browser may not know how to name in themselves.
+var ENDONYMS = { yi: 'ייִדיש' };
+// The languages written right to left: the page takes the direction of
+// the language it shows.
+var RTL_LANGS = /^(ar|arc|arz|azb|ckb|dv|fa|glk|he|ks|lrc|mzn|nqo|pnb|ps|sd|skr|ug|ur|yi)$/;
+function dirOf(code) { return RTL_LANGS.test(String(code || '').split('-')[0]) ? 'rtl' : 'ltr'; }
+// The interface's own words (a heading, a kicker, a date) keep the
+// interface's language and direction on a page laid out in the content's,
+// so an English "Did you know…" over Hebrew reads left to right with its
+// ellipsis at its end.
+function ui() { var l = STR.lang || 'en'; return ' lang="' + esc(l) + '" dir="' + dirOf(l) + '"'; }
+function uiEl(el) { var l = STR.lang || 'en'; el.setAttribute('lang', l); el.setAttribute('dir', dirOf(l)); return el; }
+function capitalised(name, code) { try { return name.charAt(0).toLocaleUpperCase(code) + name.slice(1); } catch (e) { return name; } }
 function endonym(code, fallback) {
   var name = '', english = '';
   try { name = new Intl.DisplayNames([code], { type: 'language' }).of(code) || ''; english = new Intl.DisplayNames(['en'], { type: 'language' }).of(code) || ''; } catch (e) {}
   // A browser that does not speak the language answers in English.
-  if (!name || name === code || (code !== 'en' && name === english)) return fallback || code;
-  try { return name.charAt(0).toLocaleUpperCase(code) + name.slice(1); } catch (e) { return name; }
+  if (!name || name === code || (code !== 'en' && name === english)) name = ENDONYMS[code] || fallback || code;
+  return capitalised(name, code);
 }
 
 // The wikis of one language.
@@ -252,7 +272,8 @@ function plural(n) {
   return String(STR['results_' + cat] || STR.results_other).replace('{n}', n);
 }
 // A search's heading, in the quotation marks of the interface's language.
-function heading(q) { return String(STR.search_heading || '“{q}”').replace('{q}', q); }
+// The words searched for keep their own direction inside the marks: HTML.
+function heading(q) { return esc(String(STR.search_heading || '“{q}”')).replace('{q}', '<bdi>' + esc(q) + '</bdi>'); }
 // "As featured on 6 July 2026": a copy's date (YYYY-MM-DD) in the
 // interface's words.
 function asOf(date, lang) {
@@ -269,7 +290,7 @@ function asOf(date, lang) {
 // before it. Escaped.
 function boldTitle(title, text, sep) {
   var i = title ? text.toLowerCase().indexOf(title.toLowerCase()) : -1;
-  if (i < 0) return (title ? '<b>' + esc(title) + '</b>' + esc(sep) : '') + esc(text);
+  if (i < 0) return (title ? '<bdi><b>' + esc(title) + '</b></bdi>' + esc(sep) : '') + esc(text);
   return esc(text.slice(0, i)) + '<b>' + esc(text.slice(i, i + title.length)) + '</b>' + esc(text.slice(i + title.length));
 }
 
@@ -330,6 +351,12 @@ function absorb(d) {
   try { localStorage.setItem(TODAY_KEY, JSON.stringify(store)); } catch (e) {}
 }
 
+// The page is laid out in the direction of the language it shows.
+function applyDir() {
+  var code = _lang || STR.lang || 'en';
+  document.documentElement.lang = code;
+  document.documentElement.dir = dirOf(code);
+}
 function langWikis() { return inLanguage(_wikis, _lang); }
 function scoped() { return _sel.length ? langWikis().filter(function(w) { return _sel.indexOf(w.name) >= 0; }) : langWikis(); }
 function langName(code) { return (STR.langs && STR.langs[code]) || code; }
@@ -385,7 +412,7 @@ function itemHtml(it, asRow) {
     body = (it.title ? title : '') + (it.blurb ? '<span class="ex"' + la + '>' + esc(it.blurb) + '</span>' : '');
   }
   return '<a class="card ' + cls + '"' + data + '>' + pic +
-    '<span class="bd">' + (it.role ? '<span class="kick"' + (it.roleLang ? la : '') + '>' + esc(it.role) + '</span>' : '') + body + srcLine(it.zim) + '</span></a>';
+    '<span class="bd">' + (it.role ? '<span class="kick"' + (it.roleLang ? la : ui()) + '>' + esc(it.role) + '</span>' : '') + body + srcLine(it.zim) + '</span></a>';
 }
 function itemsHtml(items, pending) {
   var asRow = !!_q && _view === 'list';
@@ -400,7 +427,7 @@ function skeletons(n) {
 }
 // A part of Today: a heading, a line under it, and what it holds.
 function section(id, title, inner, sub) {
-  return '<section class="sec" id="s-' + id + '"><div class="sec-h"><h2 class="serif">' + esc(title) + '</h2>' + (sub ? '<span class="sub">' + esc(sub) + '</span>' : '') +
+  return '<section class="sec" id="s-' + id + '"><div class="sec-h"><h2 class="serif"' + ui() + '>' + esc(title) + '</h2>' + (sub ? '<span class="sub"' + ui() + '>' + esc(sub) + '</span>' : '') +
     '</div><div class="sb">' + inner + '</div></section>';
 }
 function fill(id, html) {
@@ -408,7 +435,7 @@ function fill(id, html) {
   if (s) s.querySelector('.sb').innerHTML = html;
 }
 function drop(id) { var s = document.getElementById('s-' + id); if (s) s.remove(); }
-function note(text) { return '<p class="note">' + esc(text) + '</p>'; }
+function note(text) { return '<p class="note"' + ui() + '>' + esc(text) + '</p>'; }
 
 // ── Today ────────────────────────────────────────────────────────────────
 var _todaySeq = 0;
@@ -424,10 +451,10 @@ function heroHtml(p) {
   var la = langAttr(p.zim);
   return '<a class="hero' + (p.thumbnail ? ' has-pic' : '') + '"' + linkAttrs(p.zim, p.path) + '>' +
     (p.thumbnail ? '<span class="pic"><img src="' + esc(p.thumbnail) + '" alt=""></span>' : '') +
-    '<span class="bd"><span class="kick">' + esc(STR[p.role || 'article'] || STR.article) + '</span>' +
+    '<span class="bd"><span class="kick"' + ui() + '>' + esc(STR[p.role || 'article'] || STR.article) + '</span>' +
     '<span class="t serif"' + la + '>' + esc(p.title || p.path) + '</span>' +
     (p.blurb ? '<span class="ex"' + la + '>' + esc(cleanBlurb(p.blurb)) + '</span>' : '') +
-    '<span class="more-l">' + esc(STR.read_more) + CHEV + '</span>' + srcLine(p.zim) + '</span></a>';
+    '<span class="more-l"' + ui() + '>' + esc(STR.read_more) + CHEV + '</span>' + srcLine(p.zim) + '</span></a>';
 }
 function otdHtml(evs) {
   return '<ol class="otd-list">' + evs.map(function(x) {
@@ -445,7 +472,7 @@ function dykHtml(zim, facts) {
 function trailHtml(zim, start, trail) {
   var la = langAttr(zim);
   var steps = [{ path: start.path, title: start.title, blurb: '' }].concat(trail);
-  return '<p class="sec-note">' + esc(STR.rabbit_hint) + '</p><ol class="trail">' + steps.map(function(s, i) {
+  return '<p class="sec-note"' + ui() + '>' + esc(STR.rabbit_hint) + '</p><ol class="trail">' + steps.map(function(s, i) {
     return '<li data-n="' + (i + 1) + '"><a' + linkAttrs(zim, s.path) + '><span class="t"' + la + '>' + esc(s.title) + '</span>' +
       (s.blurb ? '<span class="ex"' + la + '>' + esc(cleanBlurb(s.blurb)) + '</span>' : '') + '</a></li>';
   }).join('') + '</ol>';
@@ -472,8 +499,8 @@ function renderToday() {
   var wikis = scoped();
   var plan = todayPlan(wikis);
   var dateText = new Date().toLocaleDateString(STR.lang || undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-  document.getElementById('h').textContent = STR.today;
-  document.getElementById('n').textContent = dateText;
+  uiEl(document.getElementById('h')).textContent = STR.today;
+  uiEl(document.getElementById('n')).textContent = dateText;
   renderViews();
   var host = document.getElementById('today');
   var heroWp = plan.hero && _by[plan.hero] && _by[plan.hero].project === 'wikipedia';
@@ -534,7 +561,7 @@ function renderToday() {
         }), fwait));
         var dates = fitems.map(function(x) { return x.as_of; }).filter(Boolean);
         var s = document.querySelector('#s-front .sec-h');
-        if (s && dates.length && !s.querySelector('.sub')) s.insertAdjacentHTML('beforeend', '<span class="sub">' + esc(asOf(dates.sort()[0], STR.lang)) + '</span>');
+        if (s && dates.length && !s.querySelector('.sub')) s.insertAdjacentHTML('beforeend', '<span class="sub"' + ui() + '>' + esc(asOf(dates.sort()[0], STR.lang)) + '</span>');
       }
     }
   };
@@ -573,7 +600,7 @@ function wikiSearch(q) {
   var zims = (_everyLanguage ? _wikis : scoped()).map(function(w) { return w.name; }).join(',');
   if (!zims) return;
   _hits = []; _dym = '';
-  document.getElementById('h').textContent = heading(_q);
+  uiEl(document.getElementById('h')).innerHTML = heading(_q);
   setCount(true);
   document.getElementById('results').innerHTML = skeletons(_view === 'list' ? 4 : 6);
   var base = '/search?q=' + encodeURIComponent(_q) + '&zim=' + encodeURIComponent(zims) + '&limit=' + SEARCH_LIMIT;
@@ -612,12 +639,12 @@ function everyLanguage(on) { _everyLanguage = !!on; if (_q) wikiSearch(_q); }
 function allLangLine() {
   if (_langs.length < 2) return '';
   var label = _everyLanguage ? String(STR.search_one_language).replace('{lang}', endonym(_lang, langName(_lang))) : STR.search_all_languages;
-  return '<div class="alllang"><button type="button" onclick="everyLanguage(' + !_everyLanguage + ')">' + esc(label) + '</button></div>';
+  return '<div class="alllang"' + ui() + '><button type="button" onclick="everyLanguage(' + !_everyLanguage + ')">' + esc(label) + '</button></div>';
 }
 function renderResults(busy) {
   var host = document.getElementById('results');
   setCount(!!busy);
-  var dym = _dym && _dym.toLowerCase() !== _q.toLowerCase() ? '<div class="dym">' + esc(STR.did_you_mean) + ' <button type="button" onclick="wikiSearch(' + J(_dym) + ')">' + esc(_dym) + '</button></div>' : '';
+  var dym = _dym && _dym.toLowerCase() !== _q.toLowerCase() ? '<div class="dym"' + ui() + '>' + esc(STR.did_you_mean) + ' <button type="button" onclick="wikiSearch(' + J(_dym) + ')">' + esc(_dym) + '</button></div>' : '';
   var head = dym + allLangLine();
   if (!_hits.length) { host.innerHTML = head + (busy ? skeletons(3) : '<div class="empty">' + esc(STR.none) + '</div>'); return; }
   host.innerHTML = head + itemsHtml(_hits.map(function(r) {
@@ -660,7 +687,7 @@ function renderLangs() {
 function renderPills() {
   var host = document.getElementById('pills');
   var ws = langWikis();
-  var h = '<button type="button" class="chip' + (!_sel.length ? ' on' : '') + '" aria-pressed="' + !_sel.length + '" onclick="pillAll()">' + esc(STR.all) + '</button>';
+  var h = '<button type="button" class="chip' + (!_sel.length ? ' on' : '') + '" aria-pressed="' + !_sel.length + '" onclick="pillAll()"' + ui() + '>' + esc(STR.all) + '</button>';
   var group = null;
   ws.forEach(function(w) {
     if (group !== null && w.project !== group) h += '<span class="sep" aria-hidden="true"></span>';
@@ -689,6 +716,7 @@ function scopeChanged() {
 function setLang(code) {
   if (code === _lang) return;
   _lang = code; _sel = [];
+  applyDir();
   try { localStorage.setItem(LANG_KEY, code); } catch (e) {}
   renderLangs(); renderPills();
   if (_q) wikiSearch(_q); else renderToday();
@@ -698,7 +726,7 @@ function setLang(code) {
 }
 
 function showEmpty() {
-  var empty = document.getElementById('empty');
+  var empty = uiEl(document.getElementById('empty'));
   empty.hidden = _wikis.length > 0;
   empty.innerHTML = esc(STR.empty) + '<br><a class="door" href="/?manage" onclick="return goCatalog()">' + esc(STR.catalog) + CHEV + '</a>';
   document.querySelector('.head').hidden = !_wikis.length;
@@ -706,7 +734,7 @@ function showEmpty() {
 // The list of wikis could not be read (the server rate limited this
 // browser, a login lapsed, the server erred): not "no wiki installed".
 function showLoadFailed() {
-  var empty = document.getElementById('empty');
+  var empty = uiEl(document.getElementById('empty'));
   empty.hidden = false;
   empty.innerHTML = esc(STR.load_failed) + '<br><button type="button" onclick="load()">' + esc(STR.retry) + '</button>';
   document.querySelector('.head').hidden = true;
@@ -736,6 +764,7 @@ function load() {
     _labels = pillLabels(_wikis);
     _langs = d.languages || [];
     _lang = d.lang || '';
+    applyDir();
     if (d.day === _day) absorb(d);
     renderLangs(); renderPills();
     if (_q) wikiSearch(_q); else renderToday();

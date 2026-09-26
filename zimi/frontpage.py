@@ -79,6 +79,8 @@ _ABOUT_WIKI_RE = re.compile(
 # ZIM that holds none of their pages, so they read as plain text.
 _LIST_SEP_RE = re.compile(r"\s[-–•·|]\s")
 _LIST_PARTS, _LIST_PART_LEN = 3, 25
+# How far into a line its bold subject may start (a share of its length).
+_SUBJECT_AT = 0.4
 
 
 class _Lines(HTMLParser):
@@ -163,6 +165,9 @@ class _Lines(HTMLParser):
             return
         if self.cur["title"] is None:
             self.cur["title"] = self._titled()
+            # A picture's caption says what is in the picture, not what
+            # the box featured.
+            self.cur["caption"] = any(t == "figcaption" for t, _a in self.stack)
         self.cur["text"] += data
         if self.link is not None:
             self.link["text"] += data
@@ -207,6 +212,21 @@ def _is_list(text):
     return len(parts) >= _LIST_PARTS and len(text) / len(parts) < _LIST_PART_LEN
 
 
+def _names_a_subject(line, text, label, links, nxt):
+    """Whether a line of prose is about something: it links an article (not
+    the page its box is named after, which makes the box a door, like
+    "Destinations"), or opens with its subject in bold (the word, the
+    book), or is a quote with its author on the next line. Instructions
+    ("choose a continent below") and notes about the wiki name nothing."""
+    door = label.lower().replace(" ", "_")
+    if any(p and not _namespaced(p) and p.lower() != door for _k, p in links):
+        return True
+    bold = _norm(line["bold"])
+    if bold and 0 <= text.find(bold) <= _SUBJECT_AT * len(text):
+        return True
+    return nxt.startswith(("—", "–", "~", "- "))
+
+
 def highlights(page_html):
     """The boxes of a front page and what each featured: ``[{label, text,
     link, img}]`` in the page's order, one per box, at most ITEMS_MAX.
@@ -225,19 +245,36 @@ def highlights(page_html):
         return []
     out, labels, texts = [], set(), set()
     label, taken, box = None, True, []
-    for line in p.lines:
+    for i, line in enumerate(p.lines):
         text = _norm(line["text"])
         if line["title"] and 2 <= len(text) <= _LABEL_MAX:
             label, taken, box = text.rstrip(":：").strip(), False, [line]
             continue
         box.append(line)
-        if taken or label is None or len(text) < _TEXT_MIN:
+        if taken or label is None or len(text) < _TEXT_MIN or line.get("caption"):
             continue
         # A line all in bold is a heading of the page's own, not prose.
         if _norm(line["bold"]) == text:
             continue
         links = [(k, _internal(k)) for k in line["links"]]
         if any(_namespaced(path) for _k, path in links if path):
+            continue
+        # A box that leads into the wiki's own pages (help, portals, the
+        # community) more than to articles is about the wiki.
+        paths = [_internal(k) for ln in box for k in ln["links"]]
+        inward = sum(1 for x in paths if x and _namespaced(x))
+        if inward and inward >= sum(1 for x in paths if x and not _namespaced(x)):
+            continue
+        # The next line with words in it (a closing quotation mark is not).
+        nxt = next(
+            (
+                t
+                for t in (_norm(ln["text"]) for ln in p.lines[i + 1 : i + 4])
+                if len(t) > 2
+            ),
+            "",
+        )
+        if not _names_a_subject(line, text, label, links, nxt):
             continue
         linked = sum(len(_norm(k["text"])) for k in line["links"])
         if linked > _LINK_SHARE_MAX * len(text) or _DATED_RE.match(text):

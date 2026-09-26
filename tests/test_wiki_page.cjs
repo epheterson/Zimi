@@ -32,6 +32,10 @@ vm.runInContext([
   extract(page, /var TODAY_BATCH = [^\n]*\n/, 'TODAY_BATCH'),
   extract(page, /function dayStamp\(d\) \{[^\n]*\n/, 'dayStamp'),
   extract(page, /function pillLabels\(wikis\) \{[\s\S]*?\n\}/, 'pillLabels'),
+  extract(page, /var ENDONYMS = [^\n]*\n/, 'ENDONYMS'),
+  extract(page, /var RTL_LANGS = [^\n]*\n/, 'RTL_LANGS'),
+  extract(page, /function dirOf\(code\) \{[^\n]*\n/, 'dirOf'),
+  extract(page, /function capitalised\(name, code\) \{[^\n]*\n/, 'capitalised'),
   extract(page, /function endonym\(code, fallback\) \{[\s\S]*?\n\}/, 'endonym'),
   extract(page, /function inLanguage\(wikis, lang\) \{[^\n]*\n/, 'inLanguage'),
   extract(page, /function todayPlan\(wikis\) \{[\s\S]*?\n\}/, 'todayPlan'),
@@ -78,8 +82,10 @@ ok('with no Wikipedia: another wiki leads and no On this day is asked', plan.her
 plan = ctx.todayPlan([]);
 ok('with no wiki chosen: nothing asked at all', plan.hero === null && plan.otd.length === 0 && plan.cards.length === 0);
 ok('a language is named in itself', ctx.endonym('fr', 'French') === 'Français' && ctx.endonym('he', 'Hebrew') === 'עברית');
-ok('a language the browser cannot name in itself takes the interface\'s name', ctx.endonym('zz', 'Zed') === 'Zed');
-ok('a fact names its article in bold, in place when the sentence names it', ctx.boldTitle('Water', 'Water is wet.', ': ') === '<b>Water</b> is wet.' && ctx.boldTitle('Chênedollé', 'It merged in 2016.', ': ') === '<b>Chênedollé</b>: It merged in 2016.' && ctx.boldTitle('Air', 'Clean <air>', ' ') === 'Clean &lt;<b>air</b>>');
+ok('a language the browser cannot name in itself takes the interface\'s name, capitalised', ctx.endonym('zz', 'zed') === 'Zed');
+ok('Yiddish is named in itself even where the browser cannot', ctx.endonym('yi', 'yiddish') === 'ייִדיש');
+ok('the page is laid out in the direction of the language it shows', ctx.dirOf('he') === 'rtl' && ctx.dirOf('yi') === 'rtl' && ctx.dirOf('ar') === 'rtl' && ctx.dirOf('fr-CA') === 'ltr' && ctx.dirOf('en') === 'ltr');
+ok('a fact names its article in bold, in place when the sentence names it', ctx.boldTitle('Water', 'Water is wet.', ': ') === '<b>Water</b> is wet.' && ctx.boldTitle('Chênedollé', 'It merged in 2016.', ': ') === '<bdi><b>Chênedollé</b></bdi>: It merged in 2016.' && ctx.boldTitle('Air', 'Clean <air>', ' ') === 'Clean &lt;<b>air</b>>');
 ok('a front page is dated in the interface\'s words', ctx.asOf('2026-07-06', 'en') === 'As featured on July 6, 2026, when this copy was made' && ctx.asOf('', 'en') === '');
 ok('the wikis are asked for a few at a time', JSON.stringify(ctx.batches([1, 2, 3, 4, 5], ctx.TODAY_BATCH)) === '[[1,2,3,4],[5]]');
 
@@ -96,7 +102,7 @@ vm.runInContext("STR = { lang: 'ru', results_one: '{n} результат', resu
 ok('Russian has three forms, and the page uses them', ctx.plural(1) === '1 результат' && ctx.plural(3) === '3 результата' && ctx.plural(5) === '5 результатов' && ctx.plural(21) === '21 результат');
 vm.runInContext("STR = { lang: 'ar', results_zero: 'لا نتائج', results_one: 'نتيجة واحدة', results_two: 'نتيجتان', results_few: '{n} نتائج', results_many: '{n} نتيجة', results_other: '{n} نتيجة', search_heading: '«{q}»' };", ctx);
 ok('Arabic has six, and the page uses them', ctx.plural(0) === 'لا نتائج' && ctx.plural(2) === 'نتيجتان' && ctx.plural(3) === '3 نتائج' && ctx.plural(11) === '11 نتيجة');
-ok('a search is headed in the interface\'s own quotation marks', ctx.heading('ماء') === '«ماء»');
+ok('a search is headed in the interface\'s own quotation marks', ctx.heading('ماء') === '«<bdi>ماء</bdi>»' && ctx.heading('<x>') === '«<bdi>&lt;x></bdi>»');
 
 const mergedR = ctx.mergeResults([{ zim: 'a', path: '1' }, { zim: 'b', path: '1' }], [{ zim: 'b', path: '1' }, { zim: 'a', path: '2' }]);
 ok('search: the quick title matches first, then the full text\'s, each article once', mergedR.map(r => r.zim + r.path).join() === 'a1,b1,a2');
@@ -118,6 +124,8 @@ ok('a part with nothing to show is left out, not left waiting', /if \(evs\.lengt
 ok('the language is remembered in this browser, and the whole page follows it', /var LANG_KEY = 'zimi_wiki_lang';/.test(page) && /try \{ localStorage\.setItem\(LANG_KEY, code\); \} catch \(e\) \{\}/.test(page) && /_lang = code; _sel = \[\];/.test(page));
 ok('the page asks for the language it wants; the server settles it', /'\/wiki\/home\?day=' \+ _day \+ '&lang=' \+ encodeURIComponent\(storedLang\(\) \|\| STR\.lang \|\| 'en'\)/.test(page) && /_lang = d\.lang \|\| '';/.test(page));
 ok('search reaches the language chosen, and every language when asked', /\(_everyLanguage \? _wikis : scoped\(\)\)/.test(page) && /STR\.search_all_languages/.test(page));
+ok('the page takes the direction of the language shown; the interface\'s own words keep the interface\'s', /document\.documentElement\.dir = dirOf\(code\);/.test(page) && /_lang = code; _sel = \[\];\s*applyDir\(\);/.test(page) && /<h2 class="serif"' \+ ui\(\) \+ '>/.test(page) && /<span class="kick"' \+ ui\(\) \+ '>'/.test(page) && /\(it\.roleLang \? la : ui\(\)\)/.test(page) && /'<span class="more-l"' \+ ui\(\) \+ '>'/.test(page) && /'<p class="sec-note"' \+ ui\(\) \+ '>'/.test(page) && /uiEl\(document\.getElementById\('n'\)\)/.test(page));
+ok('the way onward points the way its own words run', /\.chev:dir\(ltr\)::before \{ content: '\\203A'; \}/.test(page) && /\.chev:dir\(rtl\)::before \{ content: '\\2039'; \}/.test(page));
 ok('what a front page featured is dated as the copy\'s, never as today\'s', /asOf\(dates\.sort\(\)\[0\], STR\.lang\)/.test(page));
 ok('a page left open past midnight moves to the new day', /document\.addEventListener\('visibilitychange'/.test(page) && /function checkDay\(\) \{\s*var d = dayStamp\(new Date\(\)\);\s*if \(d === _day\) return;/.test(page));
 ok('the wikis failing to load is not "no wiki installed": it says so, with a retry', /if \(!r\.ok\) throw new Error/.test(page) && /\.catch\(function\(\) \{ showLoadFailed\(\); \}\)/.test(page) && /STR\.load_failed/.test(page));
