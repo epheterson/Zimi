@@ -699,17 +699,17 @@ def _work_extras(name, day, start):
         if not page:
             continue
         path, title, lead, thumb = page
-        fact = _fact(lead)
-        if fact and len(facts) < FACTS_MAX:
-            facts.append({"path": path, "title": title, "text": fact})
         if thumb:
             got = {"path": path, "title": title, "thumbnail": thumb, "blurb": lead}
             # A photograph makes the picture of the day; a diagram, a map or
             # a logo (drawn, so a PNG or a GIF) only when there is no photo.
             if _PHOTO_RE.search(thumb):
                 picture = got
-            else:
-                drawing = drawing or got
+                continue  # the picture's page is not a fact as well
+            drawing = drawing or got
+        fact = _fact(lead)
+        if fact and len(facts) < FACTS_MAX:
+            facts.append({"path": path, "title": title, "text": fact})
     return {
         "facts": facts,
         "picture": picture or drawing,

@@ -227,7 +227,10 @@ def highlights(page_html):
     label, taken, box = None, True, []
     for line in p.lines:
         text = _norm(line["text"])
-        if line["title"] and 2 <= len(text) <= _LABEL_MAX:
+        # A title names a box; one that calls out ("Visitez le Salon !") is
+        # an invitation, not a box's name.
+        titled = line["title"] and not text.endswith(("!", "！"))
+        if titled and 2 <= len(text) <= _LABEL_MAX:
             label, taken, box = text.rstrip(":：").strip(), False, [line]
             continue
         box.append(line)
@@ -264,7 +267,11 @@ def highlights(page_html):
             # A box whose subject is in bold but not a link (the featured
             # article named, its first link a word in its first sentence)
             # is about its bold words, not about that word.
-            or ("" if line["bold"] or any(ln["bold"] for ln in box[1:]) else (own[0][1] if own else ""))
+            or (
+                ""
+                if line["bold"] or any(ln["bold"] for ln in box[1:])
+                else (own[0][1] if own else "")
+            )
         )
         img = next(
             (
