@@ -20,6 +20,8 @@ Search across every ZIM at once, open an article, and read it — the part of Zi
 
 A hyphen inside a word (`e-mail`, `x-ray`) is part of the word, a lone `-` or a stray quote is ignored, and a lower-case `or` is an ordinary word. An exclusion matches from the start of a word, so `-ted` leaves out TED and TEDx but not United States; in Chinese, Japanese, Thai and other scripts written without spaces it matches anywhere.
 
+What each operator did shows as a chip above the results, in the UI's language, the same in the library and the catalog: `-ted` reads "without ted", `"solar panel"` "exact: solar panel", `lang:fr` the language's name (French, Français, צרפתית), `in:wikipedia` the source's title, `cats OR dogs` "cats or dogs". A chip's × searches again without that one operator (a phrase keeps its words, as words). The ? beside the search box lists a few examples written for each language, each a tap from a search.
+
 In the library, exclusions and phrases are checked against a result's title. libzim's own search treats `-`, quotes and `OR` as plain words, and reading every article to check its text would make these queries slow; the words themselves still match anywhere in the article. A query with only exclusions or filters (`-ted`) finds nothing in the library, since it asks for nothing; in the catalog it lists everything else. A query with no operators takes exactly the path it always did.
 
 **The reader** opens an article in place. Titles, history and the address stay in step, so Back does what a browser's Back does and a link you share reopens the same article. `?a=<zim>/<path>` is the deep link; `/w/<zim>/<path>` serves the raw article.
