@@ -111,8 +111,8 @@ ok('the current map is not reopened', opened === null);
 
 // The button: a map page, with somewhere else to go, and the bookmark reads
 // its position through the same helper (one way to ask where the map is).
-ok('the topbar shows the button on a map page with company only',
-  /_readingArticle && currentArticle && _isMapZim\(currentArticle\.zim\) && _installedMaps\(\)\.length > 1/.test(src));
+ok('the topbar shows the button on every map page: it is Places and maps, where a place is saved',
+  /var showMapSrc = !!\(_readingArticle && currentArticle && _isMapZim\(currentArticle\.zim\)\);/.test(src));
 ok('bookmarking a map reads the position the same way', /var pos = _currentMapPositionHash\(\);\n\s*return \{ kind: 'place', app: 'maps', zim: zim, path: path, title: title, where: pos \? \{ pos: _normMapPos\(pos\) \}/.test(src));
 ok('the language dropdown and this one hang from the same helper', (src.match(/_placeDropdownUnder\(dd, btn\);/g) || []).length === 2);
 

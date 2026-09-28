@@ -103,6 +103,14 @@ button { font: inherit; color: inherit; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0 0; }
 .actions a, .actions button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: 12.5px; }
 .actions .on { background: var(--amber-glow); border-color: var(--amber); color: var(--amber); }
+/* Like, Save, Lists on the thing open (apps.js savedBar): the heart and the
+   bookmark fill once it is kept. */
+.svbar { display: contents; }
+/* Under a thread's title, where they are reached before the thread is read. */
+.actions.top { margin: 0 0 14px; }
+.actions.top:has(> .svbar:empty) { display: none; }
+.svb svg { width: 15px; height: 15px; flex: none; }
+.svb.on svg.fill { fill: currentColor; }
 
 /* A finger, not a pointer: the small parts grow to where a thumb lands on
    them the first time. A part inside a heading's line takes the extra back
@@ -113,5 +121,13 @@ button { font: inherit; color: inherit; }
   .tg { padding: 5px 10px; }
   .shelf-h .all { padding: 13px 4px; margin-block: -9px; }
   .actions a, .actions button { min-height: 44px; padding-inline: 16px; }
+  /* A chip is drawn smaller than a thumb; what takes the tap reaches 44px
+     (the pseudo-element hangs from inside the chip's 1px border, so 36px
+     needs 5px each way and 32px needs 7), and a row of chips keeps room for
+     that inside its scroll box (the extra padding given back by the margin). */
+  .chips { padding-block: 6px; margin-block: -4px 8px; }
+  .chip { position: relative; }
+  .chip::after { content: ''; position: absolute; inset: -5px 0; }
+  .chip.tag::after { inset: -7px 0; }
   .more { min-height: 44px; }
 }
