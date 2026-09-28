@@ -17,6 +17,16 @@
   .thumb .dur { position: absolute; inset-inline-end: 8px; bottom: 8px; font-size: 11px; padding: 2px 6px; border-radius: 4px; background: rgba(0,0,0,0.75); color: #fff; font-variant-numeric: tabular-nums; }
   .thumb .play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; opacity: 0; transition: opacity .15s; background: rgba(0,0,0,0.18); }
   .card:hover .play { opacity: 1; }
+  /* No picture: a still in its place, what the thing is at its centre (a
+     document library's video, a folder's file, an audiobook). A picture
+     that fails to load leaves the still showing. */
+  .thumb .still { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text2); }
+  .thumb .still svg { width: 34%; max-width: 64px; height: auto; opacity: .5; }
+  .thumb img { position: relative; }
+  /* Sound: a warm panel, headphones, the tracks where a video's length goes. */
+  .audio .thumb, .stage.audio { background: linear-gradient(150deg, var(--surface2) 0%, var(--amber-glow) 100%), var(--surface2); }
+  .audio .thumb .still { color: var(--amber); }
+  .audio .thumb .still svg { opacity: .75; }
   .body { padding: 12px; display: flex; gap: 10px; }
   .body img { width: 26px; height: 26px; border-radius: 7px; flex: none; margin-top: 1px; }
   .body .letter { width: 26px; height: 26px; border-radius: 7px; flex: none; background: var(--surface2); color: var(--text2); font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center; }
@@ -48,6 +58,22 @@
   .ctl input[type=range] { flex: 1; accent-color: #fff; min-width: 0; }
   .ctl .t { min-width: 5.5em; text-align: center; }
   .stage video { width: 100%; height: 100%; display: block; background: #000; }
+  /* Sound only: its picture (or headphones) above, the track playing, the controls below. */
+  .stage.audio { display: flex; flex-direction: column; color: var(--text); }
+  .stage.audio .art { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 16px 16px 4px; color: var(--amber); }
+  .stage.audio .art img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--radius-s); }
+  .stage.audio .art svg { width: 72px; height: 72px; opacity: .8; }
+  .stage.audio .now { text-align: center; font-size: 13px; font-weight: 600; padding: 0 16px 6px; min-height: 1.3em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; unicode-bidi: plaintext; }
+  .stage.audio audio { display: block; width: calc(100% - 24px); margin: 0 12px 12px; }
+  .dock audio { display: block; width: 100%; }
+  /* An audiobook's tracks, in order, the one playing marked. */
+  .tracks-h { margin: 16px 0 4px; font-size: 12px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .04em; }
+  .tracks { list-style: none; margin: 0; padding: 0; max-width: 70ch; }
+  .tracks li { border-top: 1px solid var(--border); }
+  .tracks button { display: flex; gap: 12px; width: 100%; padding: 9px 2px; background: none; border: 0; text-align: start; cursor: pointer; font-size: 13.5px; unicode-bidi: plaintext; }
+  .tracks button .k { min-width: 1.8em; text-align: end; color: var(--text2); font-variant-numeric: tabular-nums; }
+  .tracks button.on { color: var(--amber); font-weight: 600; }
+  .tracks button.on .k { color: var(--amber); }
   .stage .nomedia { color: #ddd; padding: 32px; text-align: center; line-height: 1.8; }
   .stage .nomedia a { color: #fff; font-weight: 600; }
   .about { padding: 12px 2px 0; }
@@ -97,6 +123,7 @@
           <h1 id="w-title"></h1>
           <div class="who" id="w-who"></div>
           <div class="desc" id="w-desc"></div>
+          <div id="w-tracks"></div>
           <div class="actions">
             <button id="autoplay" onclick="toggleAutoplay()"></button>
             <a id="w-open" href="#"></a>
@@ -124,7 +151,7 @@
 // box in Zimi's top bar drives tubeSearch(q).
 var PAGE = 60;
 var STR = strings({ title: 'ZimiTube', videos: 'videos', video: 'video', langs: {}, more: 'More', none: 'No videos match.', empty: 'No video ZIMs installed yet.',
-  up_next: 'Up next', autoplay: 'Autoplay', theater: 'Theater', pip: 'Picture in picture', open_page: 'Open the original page', all: 'All',
+  up_next: 'Up next', autoplay: 'Autoplay', theater: 'Theater', pip: 'Picture in picture', open_page: 'Open the original page', all: 'All', track: 'track', tracks: 'tracks',
   sort_top: 'Top', sort_title: 'Title', sort_newest: 'Newest', sort_longest: 'Longest', no_media: 'This video cannot be played here.', missing: 'This video isn\'t in this ZIM.', play_pause: 'Play or pause', seek: 'Seek', sound: 'Sound', full_screen: 'Full screen' });
 var SORTS = ['top', 'title', 'newest', 'longest'];
 var _q = '', _zim = '', _sort = 'top', _all = [], _zims = [], _list = [], _shown = 0, _busy = false, _autoplay = true, _theater = false, _now = -1, _video = null;
@@ -140,13 +167,21 @@ function langOf(z) {
   return Object.keys(langs).length > 1 && z.language ? ' <span class="n">' + esc(STR.langs[z.language] || z.language) + '</span>' : '';
 }
 
+var _HEADPHONES_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>';
+var _FILM_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3z" fill="currentColor"/></svg>';
+// A card's picture, over a still that shows when there is none (or it fails).
+function thumbInner(v) {
+  var still = '<span class="still">' + (v.audio ? _HEADPHONES_SVG : _FILM_SVG) + '</span>';
+  return still + (v.thumb ? '<img src="' + esc(zpath(v.zim, v.thumb)) + '" alt="" loading="lazy" onerror="this.remove()">' : '');
+}
+// Where a video's length goes: its length, or an audiobook's tracks.
+function badge(v) { return v.tracks > 1 ? count(v.tracks, STR.track, STR.tracks) : fmtDur(v.duration); }
 function card(v, i) {
-  var thumb = v.thumb ? zpath(v.zim, v.thumb) : '';
   var who = [v.speaker, v.zim_title].filter(Boolean).join(' · ');
-  return '<a class="card" href="' + esc(zpath(v.zim, v.page)) + '" data-i="' + i + '" onclick="return play(event, ' + i + ')">' +
-    '<span class="thumb">' + (thumb ? '<img src="' + esc(thumb) + '" alt="" loading="lazy" onerror="this.remove()">' : '') +
+  return '<a class="card' + (v.audio ? ' audio' : '') + '" href="' + esc(zpath(v.zim, v.page)) + '" data-i="' + i + '" onclick="return play(event, ' + i + ')">' +
+    '<span class="thumb">' + thumbInner(v) +
       '<span class="play"><svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>' +
-      (fmtDur(v.duration) ? '<span class="dur">' + esc(fmtDur(v.duration)) + '</span>' : '') + '</span>' +
+      (badge(v) ? '<span class="dur">' + esc(badge(v)) + '</span>' : '') + '</span>' +
     '<span class="body">' + iconHtml(v, '') + '<span class="txt"><span class="title">' + esc(v.title) + '</span>' +
       '<span class="meta">' + esc(who) + '</span></span></span></a>';
 }
@@ -302,10 +337,11 @@ function play(e, i) {
   document.getElementById('w-title').textContent = v.title;
   document.getElementById('w-who').innerHTML = iconHtml(v, '') + '<span>' + (v.speaker ? '<b>' + esc(v.speaker) + '</b> · ' : '') + esc(v.zim_title) + (v.date ? ' · ' + esc(v.date) : '') + '</span>';
   document.getElementById('w-desc').textContent = v.description || '';
+  document.getElementById('w-tracks').innerHTML = '';
   openLink(document.getElementById('w-open'), v.zim, v.page, STR.open_page);
   paintAutoplay(); paintTheater();
   document.getElementById('dock').hidden = true;
-  var stage = document.getElementById('stage'); stage.innerHTML = ''; _video = null;
+  var stage = document.getElementById('stage'); stage.innerHTML = ''; stage.classList.remove('audio'); _video = null;
   stageTools(stage, false);
   window.scrollTo(0, 0);
   tell({ zimi: 'tube-play', play: v.zim + '/' + v.page, title: v.title });
@@ -313,13 +349,14 @@ function play(e, i) {
   // in a shape a browser plays.
   // Two different truths: the file is not in the ZIM (the page names one
   // the scrape never got), or it is there and this browser cannot decode it.
-  var noMedia = function(missing) { stage.innerHTML = '<div class="nomedia">' + esc(missing ? STR.missing : STR.no_media) + (missing ? '' : '<br><a href="' + esc(zpath(v.zim, v.page)) + '">' + esc(STR.open_page) + CHEV + '</a>') + '</div>'; };
+  var noMedia = function(missing) { stage.classList.remove('audio'); stage.innerHTML = '<div class="nomedia">' + esc(missing ? STR.missing : STR.no_media) + (missing ? '' : '<br><a href="' + esc(zpath(v.zim, v.page)) + '">' + esc(STR.open_page) + CHEV + '</a>') + '</div>'; };
   var stageEl = stage;
   fetch('/tube/play?zim=' + encodeURIComponent(v.zim) + '&page=' + encodeURIComponent(v.page)).then(function(r) { return r.ok ? r.json() : null; }).then(function(m) {
     if (_now !== i) return;
     // The feed carries a description's first lines; the player's answer has it whole.
     if (m && m.description) document.getElementById('w-desc').textContent = m.description;
     if (!m || !m.media || !m.media.length || m.missing) { noMedia(!!(m && m.missing)); return; }
+    if (m.audio && playAudio(v, m, stage, i, noMedia)) return;
     // A file the browser cannot decode (WebM on an iPhone): the ZIM's own
     // ogv.js decoder, the way the original page plays it.
     // An iPhone says it might play WebM and then cannot decode it; the
@@ -355,10 +392,45 @@ function play(e, i) {
   document.getElementById('w-nexth').textContent = upcoming.length ? STR.up_next : '';
   document.getElementById('w-next').innerHTML = upcoming.map(function(w) {
     var j = _list.indexOf(w);
-    return '<div class="item-r" onclick="play(null, ' + j + ')"><span class="thumb">' + (w.thumb ? '<img src="' + esc(zpath(w.zim, w.thumb)) + '" alt="" loading="lazy" onerror="this.remove()">' : '') +
-      (fmtDur(w.duration) ? '<span class="dur">' + esc(fmtDur(w.duration)) + '</span>' : '') + '</span><div><div class="t">' + esc(w.title) + '</div><div class="m">' + esc([w.speaker, w.zim_title].filter(Boolean).join(' · ')) + '</div></div></div>';
+    return '<div class="item-r' + (w.audio ? ' audio' : '') + '" onclick="play(null, ' + j + ')"><span class="thumb">' + thumbInner(w) +
+      (badge(w) ? '<span class="dur">' + esc(badge(w)) + '</span>' : '') + '</span><div><div class="t">' + esc(w.title) + '</div><div class="m">' + esc([w.speaker, w.zim_title].filter(Boolean).join(' · ')) + '</div></div></div>';
   }).join('');
   return false;
+}
+// Sound only (an audiobook, a folder's songs, a video Zimi kept as audio):
+// its picture or headphones on the stage, the browser's own controls, and an
+// audiobook's tracks listed under the description, played in turn, on into
+// the next item when autoplay is on. The tracks go on in the dock. False
+// when this browser cannot play the file, so the caller tries the decoder.
+function playAudio(v, m, stage, i, noMedia) {
+  var aud = document.createElement('audio');
+  var type = m.media[0].type || '';
+  if (type && aud.canPlayType(type) === '' && m.ogv) return false;
+  var tracks = m.tracks && m.tracks.length ? m.tracks : [{ path: m.media[0].path, title: '' }];
+  stage.classList.add('audio');
+  stage.innerHTML = '<div class="art">' + (m.poster ? '<img src="' + esc(zpath(v.zim, m.poster)) + '" alt="">' : _HEADPHONES_SVG) + '</div><div class="now"></div>';
+  aud.controls = true; aud.preload = 'auto';
+  var list = document.getElementById('w-tracks');
+  list.innerHTML = tracks.length > 1 ? '<div class="tracks-h">' + esc(count(tracks.length, STR.track, STR.tracks)) + '</div><ol class="tracks">' +
+    tracks.map(function(t, n) { return '<li><button type="button" data-n="' + n + '"><span class="k">' + (n + 1) + '</span><span>' + esc(t.title || String(n + 1)) + '</span></button></li>'; }).join('') + '</ol>' : '';
+  var at = 0;
+  var go = function(n) {
+    at = n;
+    aud.src = zpath(v.zim, tracks[n].path);
+    stage.querySelector('.now').textContent = tracks.length > 1 ? (n + 1) + '. ' + (tracks[n].title || '') : '';
+    list.querySelectorAll('.tracks button').forEach(function(b) { b.classList.toggle('on', +b.dataset.n === n); });
+    var p = aud.play(); if (p && p.catch) p.catch(function() {});
+  };
+  list.onclick = function(e) { var b = e.target.closest('button[data-n]'); if (b && _now === i) go(+b.dataset.n); };
+  aud.addEventListener('ended', function() {
+    if (_now !== i && _docked !== i) return;
+    if (at + 1 < tracks.length) go(at + 1);
+    else if (_autoplay && _now === i && _list[i + 1]) play(null, i + 1);
+  });
+  aud.addEventListener('error', function() { if (_now === i) noMedia(); });
+  stage.appendChild(aud); _video = aud;
+  go(0);
+  return true;
 }
 function goCatalog() { tell({ zimi: 'catalog', category: 'ted' }); return false; }
 // A phone turned sideways with a video playing: Zimi's header steps aside
@@ -412,7 +484,7 @@ function closePlayer(silent) {
     document.getElementById('dock-t').textContent = (_list[_now] || {}).title || '';
     document.getElementById('dock').hidden = false;
   } else {
-    stage.innerHTML = ''; stage.classList.remove('quiet'); _video = null;
+    stage.innerHTML = ''; stage.classList.remove('quiet', 'audio'); _video = null;
     document.getElementById('dock').hidden = true;
   }
   if (_now >= 0) tell({ zimi: 'tube-home' });

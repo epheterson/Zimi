@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Signed in, what you save and where you are in each book follow your account to every device, and a delete on one stays deleted on the others.
 - Bookshelf has My shelf, and Continue reading picks up on any device where you left off.
 - The Almanac zooms from the solar system to a 3D Earth: lit by the real Sun, with the Moon, eclipses as they fall, the ISS and the GPS satellites (tap one: its clock gains 38 microseconds a day).
+- ZimiTube plays the videos and audiobooks in Kiwix's document libraries (Maître Lucas, YouScribe's audiobooks, Zaya and more): an audiobook is one card, its tracks listed and played in turn.
+- A folder of videos or audio made with Create a ZIM plays in ZimiTube.
 
 ### Changed
 
@@ -26,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A subreddit made with Create a ZIM now says it was made by Zimi: the Subreddit badge on its card, and a place in Manage's list of ZIMs made here.
 - In Arabic and Hebrew the search box's clear button no longer sits on its magnifier, and a catalog search inside a category says Back in your language.
 - A catalog search typed while the catalog was still loading is no longer replaced by the category gallery.
 - My data's export and import carry your history, and Restore from server no longer restores an old copy.

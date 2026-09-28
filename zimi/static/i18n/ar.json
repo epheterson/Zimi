@@ -733,6 +733,8 @@
   "tube_sort_longest": "الأطول",
   "tube_no_media": "لا يمكن تشغيل هذا الفيديو هنا.",
   "tube_missing": "هذا الفيديو غير موجود في ملف ZIM هذا.",
+  "tube_track": "مقطع",
+  "tube_tracks": "مقاطع",
   "app_empty_maps": "أضف خريطة من الفهرس",
   "app_empty_tube": "أضف مقاطع فيديو من الفهرس",
   "app_empty_exchange": "أضف موقع أسئلة وأجوبة من الفهرس",

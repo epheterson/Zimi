@@ -733,6 +733,8 @@
   "tube_sort_longest": "सबसे लंबे",
   "tube_no_media": "यह वीडियो यहाँ नहीं चलाया जा सकता।",
   "tube_missing": "यह वीडियो इस ZIM में नहीं है।",
+  "tube_track": "ट्रैक",
+  "tube_tracks": "ट्रैक",
   "app_empty_maps": "कैटलॉग से एक नक्शा जोड़ें",
   "app_empty_tube": "कैटलॉग से वीडियो जोड़ें",
   "app_empty_exchange": "कैटलॉग से एक प्रश्नोत्तर साइट जोड़ें",

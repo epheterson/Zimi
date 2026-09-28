@@ -4011,6 +4011,8 @@ var _PROV_MODE_KEYS = {
   video: 'zi_kind_video',
   bookmarks: 'zi_kind_bookmarks',
   import: 'zi_kind_import',
+  // A subreddit Zimi built with ArcticZim, named as the Create page names it.
+  reddit: 'create_mode_reddit',
 };
 // The engine outranks the mode where the two differ: a replay ZIM opens into a
 // replay shell and behaves unlike an article ZIM, whatever it captured.
@@ -11308,7 +11310,7 @@ function _creatorLoadInventory() {
 var _CREATOR_TYPE_KEYS = {
   page: 'zi_kind_page', site: 'zi_kind_site', video: 'zi_kind_video',
   import: 'zi_kind_import', folder: 'zi_kind_folder',
-  export: 'zi_kind_export', edit: 'zi_kind_edit'
+  export: 'zi_kind_export', edit: 'zi_kind_edit', reddit: 'create_mode_reddit'
 };
 var _creatorSort = { key: 'created_ts', dir: -1 };  // newest first by default
 
@@ -18149,8 +18151,10 @@ function _openAppItem(app, zim, path) {
 }
 var _TUBE_PAGE = '/static/tube.html?v=1';
 
+// Video ZIMs, and the ZIMs that feed ZimiTube beside their own kind: a
+// document library's videos and audiobooks, a folder of videos Zimi made.
 function _installedVideoZims() {
-  return _installedOfKind('video');
+  return _installedFor('video', 'tube');
 }
 
 function _isTubePage() {
@@ -18165,7 +18169,8 @@ function _tubeStrings(play) {
   var langs = {};
   _installedVideoZims().forEach(function(z) { if (z.language) langs[z.language] = _langDisplayName(z.language) || z.language; });
   return _appStrings('tube', ['tube_videos', 'tube_video', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay',
-    'tube_theater', 'tube_pip', 'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_no_media', 'tube_missing'], { play: play || '', langs: langs });
+    'tube_theater', 'tube_pip', 'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_track', 'tube_tracks',
+    'tube_no_media', 'tube_missing'], { play: play || '', langs: langs });
 }
 
 // A thing inside an app (a video, a question, a post) is a step in history

@@ -102,12 +102,15 @@ const KINDS = {
   newsroom: { mode: '', engine: 'alive', edits: 0 },
   archive: { mode: 'import', engine: '', edits: 0 },
   mystery: { mode: '', engine: '', edits: 0 },
+  reddit_kiwix: { mode: 'reddit', engine: '', edits: 0, ts: 1786747674, counts: { posts: 12, comments: 40 } },
 };
 let s = makeSandbox(KINDS);
 
 has('folder ZIM gets the Folder badge', s._provBadgeHtml('notes'), '>Folder<');
 has('site ZIM gets the Site badge', s._provBadgeHtml('handbook'), '>Site<');
 has('import gets the Import badge', s._provBadgeHtml('archive'), '>Import<');
+// ArcticZim writes a subreddit's ZIM; Zimi's launcher adds the record.
+has('a subreddit Zimi made gets the Subreddit badge', s._provBadgeHtml('reddit_kiwix'), '>Subreddit<');
 // The whole reason the badge exists: "(alive)" in a TITLE is a demo artifact,
 // the zimi:alive TAG is the fact — and only the latter reaches this map.
 has('alive engine outranks the (absent) mode', s._provBadgeHtml('newsroom'), '>Alive<');
