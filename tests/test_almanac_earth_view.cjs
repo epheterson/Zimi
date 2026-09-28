@@ -10,6 +10,9 @@
 //
 //   1. The clock: the view shows the orrery's instant (a ride moves it), a
 //      clock moved off now is not Live, and Now brings the orrery back too.
+//   2. The orbital data: told the server is refreshing, the open view asks
+//      once more and gets the fresh elements; a failed load says so and is
+//      asked for again at the next open; no data at all is said plainly.
 //
 // Run: node tests/test_almanac_earth_view.cjs   (exit 0 = pass)
 
@@ -95,7 +98,15 @@ class FakeRenderer {
 }
 const mapPlan = {};      // url -> 'fail' to make that map fail to load
 const mapAsks = [];      // every url asked for
+const textures = [];     // every map handed to the view
 let THREE = null;
+// The vendored three.js is tree-shaken to what the view uses, which has no
+// Texture class of its own: a map here is what the view touches of one.
+function fakeTexture(url) {
+  const tx = { isTexture: true, url, anisotropy: 1, disposed: false, dispose() { this.disposed = true; } };
+  textures.push(tx);
+  return tx;
+}
 
 // ── Timers, frames and the network ──
 const timers = [];
@@ -137,7 +148,7 @@ const run = (code) => vm.runInContext(code, S);
   class FakeLoader {
     load(url, onLoad, onProgress, onError) {
       mapAsks.push(url);
-      setImmediate(() => (mapPlan[url] === 'fail' ? onError(new Error('404')) : onLoad(new T.Texture())));
+      setImmediate(() => (mapPlan[url] === 'fail' ? onError(new Error('404')) : onLoad(fakeTexture(url))));
     }
   }
   THREE = Object.assign({}, T, { WebGLRenderer: FakeRenderer, TextureLoader: FakeLoader });
@@ -162,6 +173,44 @@ const run = (code) => vm.runInContext(code, S);
     S._orreryTimeOffset = 259 * DAY;
     run('_aeNow()');
     check(S._orreryTimeOffset === 0 && run('_aeIsLive()') === true, 'Now brings the orrery back to now as well');
+  }
+
+  // ── 2. The orbital data ───────────────────────────────────────────────
+  const snap = JSON.parse(fs.readFileSync(path.join(ROOT, 'zimi', 'assets', 'satellites-snapshot.json'), 'utf8'));
+  const answer = (over) => Object.assign({ source: 'snapshot', fetched: snap.fetched, gps: snap.gps, iss: snap.iss, refreshing: false }, over);
+  const refetchTimers = () => timers.filter((x) => x.ms === S.AE_SATS_REFETCH_MS);
+  const reopen = async () => { run('_aeClose()'); run('openAlmanacEarth()'); await flush(); };
+  const note = () => { run('_aeUpdateText(_aeDisplayMs())'); return text('ae-note'); };
+  {
+    run('_ae = null;');
+    fetches.push(answer({ refreshing: true }));
+    run('openAlmanacEarth()');
+    await flush();
+    check(run('_ae.sats.list.length') === snap.gps.length + 1, 'the view loads the elements the server has');
+    check(typeof S.AE_SATS_REFETCH_MS === 'number' && refetchTimers().length === 1,
+      'told a refresh is running, it asks again once the refresh has had time to land');
+    fetches.push(answer({ source: 'cache', fetched: '2026-09-28T12:00:00Z', refreshing: false }));
+    if (refetchTimers()[0]) refetchTimers()[0].fn();
+    await flush();
+    check(run('_ae.sats.source') === 'cache', 'the fresh elements reach the view while it is open');
+    check(refetchTimers().length === 1, 'one refresh, one more ask: never a loop');
+
+    // A failed load is asked for again at the next open, and says so meanwhile.
+    run('_ae.sats = null;');
+    fetches.push('fail');
+    await reopen();
+    check(run('_ae.satsFailed') === true && note().includes('alm_earth_sats_unavailable'), 'a failed load says the satellites are unavailable');
+    const before = fetchCount;
+    fetches.push(answer({}));
+    await reopen();
+    check(fetchCount === before + 1 && run('!!_ae.sats && _ae.sats.list.length > 0'), 'the next open asks again and draws them');
+
+    // Nothing here at all: no claim of data "from today".
+    fetches.push(answer({ source: 'none', fetched: null, gps: [], iss: null }));
+    await reopen();
+    const n = note();
+    check(n.includes('alm_earth_no_orbital_data') && !n.includes('alm_earth_data_from'),
+      'with no orbital data the note says there is none (' + n + ')');
   }
 
   if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }

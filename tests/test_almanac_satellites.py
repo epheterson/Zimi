@@ -7,17 +7,22 @@ hands it. The rules under test:
     cache) and never waits on the network;
   - a stale answer starts one background refresh, never more at a time, and
     a failed one backs off and leaves the old elements in place;
+  - the answer says when a refresh is under way, so an open view asks again
+    once it can have landed;
+  - a fetch outlives a data directory that cannot be written;
   - ZIMI_OFFLINE means no refresh at all;
   - the upstream request carries Zimi's user agent and nothing else;
   - a bad or partial answer from upstream is refused, field by field;
   - the route is rate limited like the other API reads, and the service
     worker asks the network first but keeps a copy for offline;
-  - the shipped snapshot is recent enough for the view to draw it.
+  - the shipped snapshot is recent enough for an offline install to draw
+    satellites for months.
 
 Run: pytest tests/test_almanac_satellites.py -v
 """
 
 import json
+import math
 import os
 import re
 import sys
@@ -46,11 +51,12 @@ SNAPSHOT_MAX_AGE_DAYS = 30
 OFFLINE_RUNWAY_DAYS = 150
 
 
-def _earth_js_days(name):
+def _earth_js_number(name):
+    """A constant of almanac-earth.js written as a product of integers."""
     with open(_EARTH_JS, encoding="utf-8") as f:
-        m = re.search(r"^var " + name + r" = (\d+);", f.read(), re.M)
+        m = re.search(r"^var " + name + r" = ([\d *]+);", f.read(), re.M)
     assert m, f"{name} not found in almanac-earth.js"
-    return int(m.group(1))
+    return math.prod(int(x) for x in m.group(1).split("*"))
 
 
 def _omm(
@@ -202,6 +208,13 @@ def test_a_stale_answer_is_served_at_once_and_refreshed_behind_it(
     got = satellites.get()
     assert got["gps"][0]["OBJECT_ID"] == "live"
     assert got["refreshing"] is False
+
+
+def test_an_open_view_asks_again_only_once_a_refresh_can_have_landed():
+    """Told a refresh is running, the Earth view asks once more after
+    AE_SATS_REFETCH_MS: long enough for both CelesTrak requests to time out."""
+    wait_s = _earth_js_number("AE_SATS_REFETCH_MS") / 1000
+    assert wait_s > 2 * satellites.FETCH_TIMEOUT_S
 
 
 def test_a_fresh_answer_asks_nothing(data_dir, monkeypatch):
@@ -434,7 +447,7 @@ def test_the_shipped_snapshot_is_whole_and_recent():
 def test_the_release_gate_leaves_an_offline_install_months_of_satellites():
     """Gating at the drawing window itself let a release ship a snapshot the
     view would stop drawing the next day: every GPS satellite gone, offline."""
-    window = _earth_js_days("AE_SAT_WINDOW_DAYS")
+    window = _earth_js_number("AE_SAT_WINDOW_DAYS")
     assert window - SNAPSHOT_MAX_AGE_DAYS >= OFFLINE_RUNWAY_DAYS, (
         f"a {SNAPSHOT_MAX_AGE_DAYS}-day-old snapshot leaves only "
         f"{window - SNAPSHOT_MAX_AGE_DAYS} of the view's {window} days"

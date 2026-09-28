@@ -526,6 +526,10 @@ var AE_TEX_DAY = '/static/earth/earth-day-v1.webp';
 var AE_TEX_NIGHT = '/static/earth/earth-night-v1.webp';
 var AE_TEX_MOON = '/static/earth/moon-v1.webp';
 var AE_SATS_URL = '/almanac-satellites';
+// When the server says it is fetching fresher elements, ask again after this:
+// its refresh is two CelesTrak requests of up to 20 s each (satellites.py
+// FETCH_TIMEOUT_S), and a little over.
+var AE_SATS_REFETCH_MS = 45 * 1000;
 
 // Camera.
 var AE_FOV_DEG = 35;
@@ -1028,8 +1032,8 @@ function _aeNewState(el) {
     target: 'earth', az: 0, el_: 0, dist: AE_FLY_START_DIST,
     fly: null,                            // { start, from:{target pos, dist}, to }
     pointers: {}, pinch: null, drag: null,
-    sats: null, satsFailed: false, satsFetchedAt: null,
-    selected: null,                       // { kind: 'gps'|'iss', idx, tapMs }
+    sats: null, satsFailed: false, satsLoading: false,
+    selected: null,                       // { norad, tapMs }: the tapped satellite
     ringsAt: null, issRingAt: null, moonPathAt: null,
     positions: [],                        // projected satellites for tapping
     lastTs: 0, lastRender: 0, lastText: 0, dirty: true,
@@ -1152,29 +1156,53 @@ function _aeMarkViews() {
 }
 
 // ── Satellites ──
-function _aeLoadSats() {
+// Asked for at every open. The server answers at once with what it has and,
+// when that is stale, fetches fresher elements behind the answer and says so
+// (refreshing): then the view asks once more when that fetch has had time to
+// land, so an open view gets them too. A failed load keeps whatever was drawn
+// before, says so if nothing was, and is asked for again at the next open.
+function _aeLoadSats(again) {
+  if (_ae.satsLoading) return;
+  _ae.satsLoading = true;
   Promise.all([_aeLoadSgp4(), fetch(AE_SATS_URL).then(function (r) {
     if (!r.ok) throw new Error('status ' + r.status);
     return r.json();
   })]).then(function (res) {
-    var lib = res[0], data = res[1];
-    var list = [];
-    (data.gps || []).forEach(function (omm) {
-      try { var rec = lib.json2satrec(omm); if (!rec.error) list.push({ omm: omm, rec: rec, iss: false }); } catch (e) {}
-    });
-    if (data.iss) {
-      try { var r2 = lib.json2satrec(data.iss); if (!r2.error) list.push({ omm: data.iss, rec: r2, iss: true }); } catch (e) {}
-    }
-    list = list.slice(0, AE_SAT_CAPACITY);
-    list.forEach(function (s) { s.epochMs = _aeSatEpochMs(s.rec); });
-    _ae.sats = { lib: lib, list: list, source: data.source || '' };
-    _ae.ringsAt = _ae.issRingAt = null;
+    var data = res[1];
+    if (!_ae.sats || _ae.sats.fetched !== data.fetched) _aeSetSats(res[0], data);
+    _ae.satsFailed = false;
+    if (data.refreshing && !again) setTimeout(function () { _aeLoadSats(true); }, AE_SATS_REFETCH_MS);
+  }).catch(function () {
+    _ae.satsFailed = !_ae.sats;
+  }).then(function () {
+    _ae.satsLoading = false;
     _ae.dirty = true;
     _aeKick();
-  }).catch(function () {
-    _ae.satsFailed = true;
-    _ae.dirty = true;
   });
+}
+function _aeSetSats(lib, data) {
+  var list = [];
+  (data.gps || []).forEach(function (omm) {
+    try { var rec = lib.json2satrec(omm); if (!rec.error) list.push({ omm: omm, rec: rec, iss: false }); } catch (e) {}
+  });
+  if (data.iss) {
+    try { var r2 = lib.json2satrec(data.iss); if (!r2.error) list.push({ omm: data.iss, rec: r2, iss: true }); } catch (e) {}
+  }
+  list = list.slice(0, AE_SAT_CAPACITY);
+  list.forEach(function (s) { s.epochMs = _aeSatEpochMs(s.rec); });
+  _ae.sats = { lib: lib, list: list, source: data.source || '', fetched: data.fetched };
+  _ae.ringsAt = _ae.issRingAt = null;
+  // The tapped satellite is kept by its catalogue number, so fresher
+  // elements for it keep its card open; one no longer here closes it.
+  if (_ae.selected) _aeRenderCard();
+}
+// The satellite a tap picked, from the elements now drawn, or null.
+function _aeSelectedSat() {
+  if (!_ae.selected || !_ae.sats) return null;
+  for (var i = 0; i < _ae.sats.list.length; i++) {
+    if (_ae.sats.list[i].omm.NORAD_CAT_ID === _ae.selected.norad) return _ae.sats.list[i];
+  }
+  return null;
 }
 
 // Position (scene) and velocity (km/s) of a satellite at a JS time, or null.
@@ -1212,7 +1240,7 @@ function _aeUpdateSats(ms, sc) {
     if (standing === 'none') continue;
     var st = _aeSatAt(s, ms, eqeq);
     if (!st) continue;
-    var sel = _ae.selected && _ae.selected.idx === i;
+    var sel = !!_ae.selected && _ae.selected.norad === s.omm.NORAD_CAT_ID;
     var color = sel ? AE_SELECTED_COLOR : (s.iss ? AE_ISS_COLOR : AE_GPS_COLOR);
     var alpha = (s.iss && standing === 'approximate') ? AE_ISS_FADED_ALPHA : 1;
     var size = sel ? AE_SAT_SELECTED_PX : (s.iss ? AE_ISS_POINT_PX : AE_SAT_POINT_PX);
@@ -1402,7 +1430,7 @@ function _aeTap(x, y) {
     if (d < bestD) { bestD = d; best = p; }
   }
   if (best) {
-    _ae.selected = { idx: best.idx, tapMs: _aeDisplayMs() };
+    _ae.selected = { norad: _ae.sats.list[best.idx].omm.NORAD_CAT_ID, tapMs: _aeDisplayMs() };
     _aeRenderCard();
     _ae.dirty = true;
     _aeKick();
@@ -1420,8 +1448,8 @@ function _aeTap(x, y) {
 function _aeRenderCard() {
   var card = _aeById('ae-card');
   if (!card) return;
-  if (!_ae.selected || !_ae.sats) { card.hidden = true; card.innerHTML = ''; return; }
-  var s = _ae.sats.list[_ae.selected.idx];
+  var s = _aeSelectedSat();
+  if (!s) { _ae.selected = null; card.hidden = true; card.innerHTML = ''; return; }
   var html = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>';
   if (s.iss) {
     html += '<h3>' + _aeLink('term:iss', _almEsc(_aeT('alm_earth_iss_name'))) + '</h3>' +
@@ -1438,8 +1466,8 @@ function _aeRenderCard() {
 }
 
 function _aeUpdateCard(ms) {
-  if (!_ae.selected || !_ae.sats) return;
-  var s = _ae.sats.list[_ae.selected.idx];
+  var s = _aeSelectedSat();
+  if (!s) return;
   var body = _aeById('ae-card-body');
   if (!body) return;
   var eqeq = _ae.scene ? _aeEqEq(_ae.scene) : 0;
@@ -1473,6 +1501,26 @@ function _aeUpdateCard(ms) {
   if (count) count.textContent = _aeT('alm_earth_since_tap', { ns: _orrNum(gainedNs, null, gainedNs < 100 ? 2 : 0) });
 }
 
+// The note under the controls: where the drawn orbits come from, or why
+// none are drawn, and the images' credit.
+function _aeNoteText() {
+  var parts = [], sats = _ae.sats;
+  if (sats && sats.list.length) {
+    var newest = 0, anyShown = false;
+    sats.list.forEach(function (s) {
+      newest = Math.max(newest, s.epochMs);
+      if (s.standing && s.standing !== 'none') anyShown = true;
+    });
+    parts.push(_aeT(anyShown ? 'alm_earth_data_from' : 'alm_earth_no_sat_data', { date: _aeFmtDate(newest) }));
+  } else if (sats) {
+    parts.push(_aeT('alm_earth_no_orbital_data'));
+  } else if (_ae.satsFailed) {
+    parts.push(_aeT('alm_earth_sats_unavailable'));
+  }
+  parts.push(_aeT('alm_earth_credit'));
+  return parts.join(' · ');
+}
+
 // ── Text: the clock, the eclipse line, the data note ──
 function _aeUpdateText(ms) {
   var when = _aeById('ae-when');
@@ -1498,25 +1546,7 @@ function _aeUpdateText(ms) {
     }
     if (status.textContent !== txt) status.textContent = txt;
   }
-  var note = _aeById('ae-note');
-  if (note) {
-    var parts = [];
-    if (_ae.sats) {
-      var newest = 0, anyShown = false;
-      _ae.sats.list.forEach(function (s) {
-        if (!s.iss) newest = Math.max(newest, s.epochMs);
-        if (s.standing && s.standing !== 'none') anyShown = true;
-      });
-      parts.push(anyShown || !newest
-        ? _aeT('alm_earth_data_from', { date: _aeFmtDate(newest || Date.now()) })
-        : _aeT('alm_earth_no_sat_data', { date: _aeFmtDate(newest) }));
-    } else if (_ae.satsFailed) {
-      parts.push(_aeT('alm_earth_sats_unavailable'));
-    }
-    parts.push(_aeT('alm_earth_credit'));
-    var nt = parts.join(' · ');
-    if (note.textContent !== nt) note.textContent = nt;
-  }
+  _aeSetText(_aeById('ae-note'), _aeNoteText());
   var canvas = _aeById('ae-canvas');
   if (canvas && sc) {
     var aria = _aeT('alm_earth_aria', { when: whenText, place: _aeFmtLatLon(_aeSubsolarPoint(sc)) });
@@ -1802,7 +1832,7 @@ function openAlmanacEarth() {
   _aeCoverAlmanac(true);
   var back = _aeById('ae-back');
   if (back) back.focus({ preventScroll: true });
-  if (!_ae.sats && !_ae.satsLoading) { _ae.satsLoading = true; _aeLoadSats(); }
+  _aeLoadSats();
   if (_ae.gl) { _aeResize(); _aeEnter(); _aeKick(); return; }
   if (_ae.failed) { _aeMessage(_aeT('alm_earth_nogl')); return; }
   if (_ae.loading) return;
