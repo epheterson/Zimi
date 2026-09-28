@@ -2011,29 +2011,35 @@ def _zim_feeds(kind, project, scraper, meta_name, counter, history):
     return feeds
 
 
+def archive_feeds(archive, kind=None, project=None):
+    """``_zim_feeds`` from an open archive's metadata: a few small reads.
+    ``kind`` and ``project`` are what the library already knows of it, or
+    None to decide them here too (a details build in a child process,
+    which has no library)."""
+    vals = {}
+    for key in ("Scraper", "Tags", "Name", "Counter", "X-Zimi-History"):
+        try:
+            vals[key] = bytes(archive.get_metadata(key)).decode("utf-8", "replace")
+        except Exception:
+            vals[key] = ""
+    scraper, name = vals["Scraper"].strip(), vals["Name"].strip()
+    if kind is None:
+        kind = _zim_kind(scraper, vals["Tags"], name) or ""
+    if project is None:
+        project = _wiki_project(name) if kind == "wiki" else ""
+    return _zim_feeds(kind, project, scraper, name, vals["Counter"], vals["X-Zimi-History"])
+
+
 def _read_zim_feeds(path, kind, project):
-    """``_zim_feeds`` for a cache record written before it was kept: four
-    metadata reads. None when the ZIM could not be opened, so nothing is kept
-    and the next boot reads it again."""
+    """``_zim_feeds`` for a cache record written before it was kept. None
+    when the ZIM could not be opened, so nothing is kept and the next boot
+    reads it again."""
     try:
         archive = open_archive(path)
     except Exception as e:
         log.debug("could not read what apps %s feeds: %s", path, e)
         return None
-    vals = {}
-    for key in ("Scraper", "Name", "Counter", "X-Zimi-History"):
-        try:
-            vals[key] = bytes(archive.get_metadata(key)).decode("utf-8", "replace")
-        except Exception:
-            vals[key] = ""
-    return _zim_feeds(
-        kind,
-        project,
-        vals["Scraper"].strip(),
-        vals["Name"].strip(),
-        vals["Counter"],
-        vals["X-Zimi-History"],
-    )
+    return archive_feeds(archive, kind, project)
 
 
 def _zim_kind(scraper, tags, meta_name):

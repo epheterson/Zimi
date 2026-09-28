@@ -26,6 +26,7 @@ path). Both are read by the same code; the caller holds the archive's lock.
 import ast
 import logging
 import posixpath
+import re
 
 log = logging.getLogger("zimi")
 
@@ -115,6 +116,13 @@ def media_of(item):
     if "document" in kinds:
         return "document"
     return ""
+
+
+def title_from_name(path):
+    """A document's title from its file name: "the_long-walk.pdf" is
+    "the long-walk"."""
+    stem = posixpath.splitext(posixpath.basename(path or ""))[0]
+    return re.sub(r"[_\s]+", " ", stem).strip() or stem
 
 
 def listing_text(rows):

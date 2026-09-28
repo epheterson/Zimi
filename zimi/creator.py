@@ -849,13 +849,6 @@ def _pdf_facts(fs_path):
     }
 
 
-def _title_from_name(zim_path):
-    """A document's title from its file name: "the_long-walk.pdf" is
-    "the long-walk"."""
-    stem = posixpath.splitext(posixpath.basename(zim_path))[0]
-    return re.sub(r"[_\s]+", " ", stem).strip() or stem
-
-
 def _folder_documents(files):
     """The folder's PDFs and EPUBs as a listing in nautilus's database.js
     shape (zimi.nautilus), which the Bookshelf reads as it reads Kiwix's
@@ -874,7 +867,7 @@ def _folder_documents(files):
         facts = (_epub.facts_of_file(fs_path) if ext == ".epub" else _pdf_facts(fs_path)) or {}
         row = {
             "_id": "%05d" % len(rows),
-            "ti": facts.get("title") or _title_from_name(zim_path),
+            "ti": facts.get("title") or _nautilus.title_from_name(zim_path),
             "dsc": facts.get("description") or "",
             "aut": " & ".join(facts.get("creators") or []),
             "fp": [zim_path],
