@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- The Almanac's orrery: hover or tap a planet for its distance and radio delay, ride the rocket there as the delay home grows, and try the twin paradox at up to 0.99c.
+
 ## [1.11.0] - 2026-09-27
 
 ### Added
