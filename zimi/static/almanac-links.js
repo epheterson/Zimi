@@ -479,6 +479,8 @@
     'term:galactic_year':        { q: 'Q268391',  en: 'Galactic year' },
     'term:milankovitch':         { q: 'Q211446',  en: 'Milankovitch cycles' },
     'term:tidal_acceleration':   { q: 'Q2477230', en: 'Tidal acceleration' },
+    // Relativity, on the orrery's ride (Q33539 verified 2026-09-27: enwiki pageprops)
+    'term:twin_paradox':         { q: 'Q33539',   en: 'Twin paradox' },
     // Structure & timekeeping
     'term:solar_system': { q: 'Q544',   en: 'Solar System' },
     'term:zodiac':       { q: 'Q40540', en: 'Zodiac' },
