@@ -8582,7 +8582,13 @@ function _newestPer(list, key) {
 
 // The installed ZIMs of one kind, by title; with a key, one per identity.
 function _installedOfKind(kind, key) {
-  var all = (zimsCache || []).filter(function(z) { return z.kind === kind && z.main_path; })
+  return _installedFor(kind, '', key);
+}
+// The ZIMs an app reads: its own kind, and those that feed it beside
+// another (server._zim_feeds: Wikisource on the Bookshelf, a document
+// library's videos in ZimiTube).
+function _installedFor(kind, app, key) {
+  var all = (zimsCache || []).filter(function(z) { return z.main_path && (z.kind === kind || !!(app && z.feeds && z.feeds[app])); })
     .sort(function(a, b) { return (a.title || a.name).localeCompare(b.title || b.name); });
   return key ? _newestPer(all, key) : all;
 }
@@ -12422,7 +12428,7 @@ function _msServerHtml() {
 // disk), refreshed while anything is building and only while this section is
 // open; when nothing is, it says so, which is the other half of the answer.
 const _BG_WORK_POLL_MS = 5000;
-const _BG_WORK_LABEL = { qids: 'qid_indexes', vocab: 'bg_vocab', tube: 'bg_tube', books: 'bg_books' };
+const _BG_WORK_LABEL = { qids: 'qid_indexes', vocab: 'bg_vocab', tube: 'bg_tube', books: 'bg_books', shelf: 'bg_shelf' };
 let _bgWorkTimer = null;
 
 function _bgWorkRow(label, value) {
@@ -15489,9 +15495,10 @@ function _readerMainContent(doc) {
 }
 // A Project Gutenberg book page, from its own head: Gutenberg's Dublin Core
 // record names the book it is a format of. Its body is the book (no <main>),
-// and it is read in Reader View.
+// and it is read in Reader View. An EPUB's chapters served as one page
+// (zimi/epub.py) say so in their head.
 function _isBookDoc(doc) {
-  try { return !!doc.querySelector('link[rel="dcterms.isFormatOf"][href*="gutenberg.org"]'); } catch (e) { return false; }
+  try { return !!doc.querySelector('link[rel="dcterms.isFormatOf"][href*="gutenberg.org"],meta[name="zimi-book"]'); } catch (e) { return false; }
 }
 // Reader View reads the article element; a book's is its body.
 function _readerViewReadable(doc, main) {
@@ -17123,8 +17130,10 @@ var _BOOKS_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24
 var _BOOKS_LCC = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'Z',
   'PA', 'PC', 'PG', 'PH', 'PJ', 'PK', 'PL', 'PM', 'PN', 'PQ', 'PR', 'PS', 'PT', 'PZ'];
 
+// Gutenberg's, and the ZIMs that feed the shelf beside another app
+// (server._zim_feeds: document libraries, LibreTexts, Wikisource...).
 function _installedBookZims() {
-  return _installedOfKind('books');
+  return _installedFor('books', 'books');
 }
 function _isBooksPage() {
   return !!(_booksOpen && readerOpen && !_almanacOpen && !_createOpen);
@@ -17139,7 +17148,7 @@ function _booksStrings() {
     'books_continue', 'books_my_shelf', 'books_add_shelf', 'books_on_shelf', 'books_all_books', 'books_see_all', 'books_sort_popular', 'books_sort_title', 'books_sort_author', 'books_sort_recent',
     'books_sort_name', 'books_sort_books', 'books_read', 'books_resume', 'books_epub', 'books_more_by', 'books_added', 'books_language',
     'books_subject', 'books_era', 'books_author', 'books_more', 'books_none', 'books_empty', 'books_book', 'books_books', 'books_bce', 'books_bce_ce',
-    'books_pending', 'books_epub_only', 'books_load_failed', 'books_load_part'], { lcc: lcc, retry: t('retry') });
+    'books_pending', 'books_epub_only', 'books_load_failed', 'books_load_part', 'books_reading'], { lcc: lcc, retry: t('retry') });
 }
 function openBooks(replaceState) {
   _openHashApp('books', replaceState, function() { _booksOpen = true; return _BOOKS_PAGE + '#' + _booksStrings(); });
@@ -17313,11 +17322,13 @@ function _bookPrefs() {
   };
 }
 // Is this reader address a book? Known before it loads (the ZIM is a
-// Gutenberg one and the page is a book's, <title>.<number>), so Zimi's
-// header can step aside before the book is laid out, not after (a change
-// of the frame's size then would lay the book out twice).
+// Gutenberg one and the page is a book's, <title>.<number>; or it is an
+// EPUB's chapters, <book>.epub/), so Zimi's header can step aside before
+// the book is laid out, not after (a change of the frame's size then would
+// lay the book out twice).
 function _bookUrl(url) {
   var m = /^\/w\/([^\/?#]+)\/([^?#]+)/.exec(url || '');
+  if (m && /\.epub\/$/i.test(m[2])) return true;
   if (!m || !/\.\d+$/.test(m[2]) || /_cover\.\d+$/.test(m[2])) return false;
   var zim = ''; try { zim = decodeURIComponent(m[1]); } catch (e) { return false; }
   return (zimsCache || []).some(function(z) { return z.name === zim && z.kind === 'books'; });

@@ -1892,6 +1892,37 @@ WIKI_PROJECTS = (
 # Books, by the scraper that made them: Kiwix builds every Project Gutenberg
 # ZIM with gutenberg2zim; one too old to carry a Scraper is known by its Name.
 _BOOK_SCRAPERS = ("gutenberg2zim",)
+# Apps that read a ZIM beside the one its kind opens it in. A ZIM can feed
+# two: Wikisource is Zimipedia's and on the Bookshelf too, a nautilus
+# library's documents are on the shelf and its videos in ZimiTube. Each is
+# named with the reader that app uses for it (``{"books": "wikisource"}``),
+# decided once here from metadata the load reads anyway (Scraper, Name, the
+# Counter of mimetypes, Zimi's creation record), so no app opens a ZIM to
+# find out whether it is one of its own.
+_NAUTILUS_SCRAPERS = ("nautiluszim",)
+_LIBRETEXTS_SCRAPERS = ("mindtouch2zim",)
+BOOK_WIKI_PROJECTS = ("wikisource", "wikibooks")
+_DOC_MIMETYPES = ("application/pdf", "application/epub+zip")
+_MEDIA_MIME_PREFIXES = ("video/", "audio/")
+# ZIMs that are one book each, by Name: a textbook or a guide captured whole
+# by zimit, with nothing in its metadata that says "book" (from the 1.12
+# coverage audit, docs/plans/2026-09-28-app-coverage.md). Any other ZIM can
+# be put on the shelf by hand (books.set_whole).
+WHOLE_BOOK_NAMES = frozenset(
+    (
+        "jeffe.cs.illinois.edu_en_all",
+        "stacks.math.columbia.edu_en_all",
+        "opendatastructures.org_en_all",
+        "openmusictheory.com_en_all",
+        "htdp.org_en_all",
+        "learningstatisticswithr.com_en_all",
+        "learningstatistics_en_all",
+        "ethanweed_en_all",
+        "mspeekenbrink_en_all",
+        "privacydefence.org_en_opsecbible",
+        "anonymousplanet.org_en_all",
+    )
+)
 # Bumped when _zim_kind learns a new kind, so a cache record decided under an
 # older rule ("" for a TED ZIM) is read once more.
 KIND_VERSION = 6
@@ -1924,6 +1955,91 @@ def _read_wiki_project(path, name):
         log.warning("could not read the Name of %s: %s", path, e)
         return None
     return _wiki_project(meta_name.strip(), name)
+
+
+def _mimetype_counts(counter):
+    """``{mimetype: n}`` from a ZIM's Counter metadata
+    (``application/pdf=7;image/png=2``); {} when it has none."""
+    out = {}
+    for part in (counter or "").split(";"):
+        mime, sep, n = part.rpartition("=")
+        if sep and mime.strip():
+            try:
+                out[mime.strip().lower()] = int(n)
+            except ValueError:
+                continue
+    return out
+
+
+def _created_mode(history):
+    """The mode of the ZIM's creation record in ``X-Zimi-History`` (``folder``,
+    ``site``, ``video``...), "" for a ZIM Zimi did not make."""
+    from zimi import zimwriter as _zw
+
+    for record in _zw.parse_history(history or ""):
+        if record.get("op") == "created":
+            return str(record.get("mode") or "")
+    return ""
+
+
+def _zim_feeds(kind, project, scraper, meta_name, counter, history):
+    """The apps beside its kind's that read a ZIM, each with its reader:
+    ``{"books": "nautilus", "tube": "nautilus"}``, {} for most ZIMs."""
+    s = (scraper or "").lower()
+    mimes = _mimetype_counts(counter)
+    docs = any(mimes.get(m) for m in _DOC_MIMETYPES)
+    media = any(n and m.startswith(_MEDIA_MIME_PREFIXES) for m, n in mimes.items())
+    feeds = {}
+    if kind == "wiki" and project in BOOK_WIKI_PROJECTS:
+        feeds["books"] = project
+    elif s.startswith(_NAUTILUS_SCRAPERS):
+        # Its documents may be pages only (python-class-vc): a library with
+        # no video or audio is on the shelf whatever its files are.
+        if docs or not media:
+            feeds["books"] = "nautilus"
+        if media:
+            feeds["tube"] = "nautilus"
+    elif s.startswith(_LIBRETEXTS_SCRAPERS):
+        feeds["books"] = "libretexts"
+    elif _created_mode(history) == "folder":
+        if docs:
+            feeds["books"] = "folder"
+        if media:
+            feeds["tube"] = "folder"
+    elif not kind and (meta_name or "").lower() in WHOLE_BOOK_NAMES:
+        feeds["books"] = "whole"
+    return feeds
+
+
+def archive_feeds(archive, kind=None, project=None):
+    """``_zim_feeds`` from an open archive's metadata: a few small reads.
+    ``kind`` and ``project`` are what the library already knows of it, or
+    None to decide them here too (a details build in a child process,
+    which has no library)."""
+    vals = {}
+    for key in ("Scraper", "Tags", "Name", "Counter", "X-Zimi-History"):
+        try:
+            vals[key] = bytes(archive.get_metadata(key)).decode("utf-8", "replace")
+        except Exception:
+            vals[key] = ""
+    scraper, name = vals["Scraper"].strip(), vals["Name"].strip()
+    if kind is None:
+        kind = _zim_kind(scraper, vals["Tags"], name) or ""
+    if project is None:
+        project = _wiki_project(name) if kind == "wiki" else ""
+    return _zim_feeds(kind, project, scraper, name, vals["Counter"], vals["X-Zimi-History"])
+
+
+def _read_zim_feeds(path, kind, project):
+    """``_zim_feeds`` for a cache record written before it was kept. None
+    when the ZIM could not be opened, so nothing is kept and the next boot
+    reads it again."""
+    try:
+        archive = open_archive(path)
+    except Exception as e:
+        log.debug("could not read what apps %s feeds: %s", path, e)
+        return None
+    return archive_feeds(archive, kind, project)
 
 
 def _zim_kind(scraper, tags, meta_name):
@@ -2910,6 +3026,8 @@ def _extract_zim_metadata(name, path):
     map_facts = None
     meta_tags = ""
     meta_name = ""
+    meta_counter = ""
+    meta_history = ""
     has_icon = False
     main_path = ""
     archive = None
@@ -2941,6 +3059,10 @@ def _extract_zim_metadata(name, path):
                     meta_tags = val.decode("utf-8", errors="replace").strip()
                 elif key == "Name":
                     meta_name = val.decode("utf-8", errors="replace").strip()
+                elif key == "Counter":
+                    meta_counter = val.decode("utf-8", errors="replace")
+                elif key == "X-Zimi-History":
+                    meta_history = val.decode("utf-8", errors="replace")
                 elif key == "Language":
                     raw_lang = val.decode("utf-8", errors="replace").strip().lower()
                     # Handle multilingual ZIMs (comma-separated codes)
@@ -3005,6 +3127,11 @@ def _extract_zim_metadata(name, path):
         info["kind"] = kind
     if kind == "wiki":
         info["project"] = _wiki_project(meta_name, name)
+    feeds = _zim_feeds(
+        kind, info.get("project", ""), meta_scraper, meta_name, meta_counter, meta_history
+    )
+    if feeds:
+        info["feeds"] = feeds
     if map_search:
         info["map_search"] = True
     if map_facts:
@@ -3318,6 +3445,14 @@ def load_cache(force=False):
                 if project is not None:
                     cached["project"] = project
                     kind_backfilled = True
+            if "feeds" not in cached:
+                # A record from before a ZIM could feed two apps.
+                feeds = _read_zim_feeds(
+                    path, cached.get("kind") or "", cached.get("project") or ""
+                )
+                if feeds is not None:
+                    cached["feeds"] = feeds
+                    kind_backfilled = True
             entry = {
                 "name": name,
                 "file": filename,
@@ -3358,6 +3493,8 @@ def load_cache(force=False):
                 entry["kind"] = cached["kind"]
             if "project" in cached:
                 entry["project"] = cached["project"]
+            if cached.get("feeds"):
+                entry["feeds"] = cached["feeds"]
             if cached.get("map_search"):
                 entry["map_search"] = True
             if "map_bounds" in cached:
@@ -3437,6 +3574,8 @@ def load_cache(force=False):
             new_cached["kind_v"] = KIND_VERSION
             if "project" in entry:
                 new_cached["project"] = entry["project"]
+            # Always, {} included: a ZIM that feeds no other app is decided.
+            new_cached["feeds"] = entry.get("feeds") or {}
             if entry.get("map_search"):
                 new_cached["map_search"] = True
             # A map's ground and publisher, null included: a map whose config

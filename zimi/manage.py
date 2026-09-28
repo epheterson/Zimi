@@ -5299,6 +5299,12 @@ def handle_manage_get(handler, parsed, params):
             {"enabled": bool(shown), "shown": [n for n in _srv.APP_NAMES if n in shown], "env_locked": _srv._apps_env() is not None},
         )
 
+    elif parsed.path == "/manage/books/whole":
+        # The ZIMs put on the Bookshelf as one book, or taken off it, by hand.
+        from zimi import books as _books
+
+        return handler._json(200, {"zims": _books._whole_overrides()})
+
     elif parsed.path == "/manage/catalog-streetzim":
         # StreetZim's regions, from the Internet Archive, for the toggle in
         # the Maps category. Cached and served stale while a refresh runs.
@@ -6246,6 +6252,22 @@ def handle_manage_post(handler, parsed, data):
         shown = _srv.apps_shown()
         log.info("Apps offered: %s", ", ".join(n for n in _srv.APP_NAMES if n in shown) or "none")
         return handler._json(200, {"enabled": enabled, "shown": [n for n in _srv.APP_NAMES if n in shown], "env_locked": False})
+
+    elif parsed.path == "/manage/books/whole":
+        # A ZIM that is one book (a textbook captured whole) onto the
+        # Bookshelf: {"zim": name, "whole": true}; false takes a ZIM off
+        # the shelf, null leaves it to what it is.
+        from zimi import books as _books
+
+        name = data.get("zim")
+        whole = data.get("whole")
+        if not isinstance(name, str) or name not in _srv.get_zim_files():
+            return handler._json(404, {"error": "No such ZIM"})
+        if whole not in (True, False, None):
+            return handler._json(400, {"error": "whole is true, false or null"})
+        reader = _books.set_whole(name, whole)
+        log.info("Bookshelf: %s set by hand to %s", name, whole)
+        return handler._json(200, {"zim": name, "whole": whole, "reader": reader})
 
     elif parsed.path == "/manage/app-update-channel":
         # Latest vs beta for the APP release check. Same env-lock contract
