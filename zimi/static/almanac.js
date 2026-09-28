@@ -92,7 +92,7 @@ function _almSetHolidayScope(scope) {
 }
 
 function _signalDelay(au) {
-  var sec = au * 499;
+  var sec = _lightDelaySeconds(au);
   return { h: Math.floor(sec / 3600), m: Math.floor((sec % 3600) / 60) };
 }
 
@@ -1746,6 +1746,8 @@ function _renderAlmanacContent() {
   html += '</div>';
   // Missions panel — inline with controls
   html += '<div id="orrery-missions" style="display:none;margin-top:4px;font-size:11px;color:var(--text3)"></div>';
+  // The ride: distance and delay home, and the twin paradox (almanac-orrery.js)
+  html += '<div id="orrery-ride" class="orrery-ride" style="display:none"></div>';
   // Voyager detail card — appears on click
   html += '<div id="voyager-card" style="display:none"></div>';
   html += '</div>';
@@ -2391,7 +2393,7 @@ function _updateVoyagerCard() {
   var simTime = _orrerySimTime();
   var dist = _voyagerDist(v, simTime);
   var yearsInSpace = ((simTime - v.launch) / (365.25 * MS_PER_DAY));
-  var speed = v.vel * 149597870.7 / (365.25 * 24 * 3600);
+  var speed = v.vel * AU_KM / SECONDS_PER_JULIAN_YEAR;
   var sig = _signalDelay(dist);
 
   var html = '<div class="voyager-card-inner">';
