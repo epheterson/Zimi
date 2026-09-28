@@ -12,10 +12,13 @@ file.
 Nothing inside the zip is trusted. A member is found by its normalized
 name, never by a path that climbs out (``../``) or starts at the root; the
 number of members, each member's size and the chapters' total are bounded
-before anything is read; scripts and event handlers are dropped from the
-chapters. A parsed book is kept (the zip, its package and the page built
-from it) for the next request, a few books and a few tens of megabytes at
-most.
+before anything is read. No script of the book runs: every answer carries
+CSP (``script-src 'none'``, no plugins, no frames, no ``<base>``), which is
+the guarantee; scripts, frames and event handlers are also dropped from the
+chapters, which a regex cannot promise. The book reader drives the page
+from the shell and puts no script in it. A parsed book is kept (the zip,
+its package and the page built from it) for the next request, a few books
+and a few tens of megabytes at most.
 """
 
 import html as _html
@@ -51,14 +54,31 @@ _XHTML_TYPES = ("application/xhtml+xml", "text/html", "application/xml")
 _NOT_VOID = "a|abbr|b|big|blockquote|cite|code|dd|div|dl|dt|em|h[1-6]|i|li|ol|p|pre|q|s|small|span|strong|sub|sup|table|tbody|td|th|thead|tr|tt|u|ul|section|article|aside|header|footer|figure|figcaption|title|iframe|script|style|textarea|video|audio|canvas|object"
 _SELF_CLOSED_RE = re.compile(r"<(" + _NOT_VOID + r")(\s[^<>]*?)?\s*/>", re.I)
 _BODY_RE = re.compile(r"<body\b[^>]*>(.*)</body\s*>", re.I | re.S)
+# What every answer from inside an EPUB is allowed: its own pictures, fonts
+# and styles (and the reader's, set from the shell), nothing that runs.
+CSP = (
+    "default-src 'self' data: blob:; script-src 'none'; object-src 'none'; "
+    "frame-src 'none'; child-src 'none'; worker-src 'none'; base-uri 'none'; "
+    "form-action 'none'; style-src 'self' 'unsafe-inline'; frame-ancestors 'self'"
+)
 _DROP_RE = re.compile(
-    r"<(script|style|iframe|object|embed)\b[^>]*>.*?</\1\s*>|<(script|iframe|object|embed)\b[^>]*/?>",
+    r"<(script|style|iframe|frame|frameset|object|embed|applet|base|meta|link)\b[^>]*>.*?</\1\s*>"
+    r"|<(script|iframe|frame|frameset|object|embed|applet|base|meta|link)\b[^>]*>",
     re.I | re.S,
 )
-_EVENT_ATTR_RE = re.compile(r"""\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)""", re.I)
-_URL_ATTR_RE = re.compile(
-    r"""(\s(?:src|href|xlink:href|poster)\s*=\s*)(["'])(.*?)\2""", re.I | re.S
+# An event handler after a space, a slash or a quote (<img/onerror=...>,
+# <img src="x"onerror=...>), and srcdoc, which is a document of its own.
+_EVENT_ATTR_RE = re.compile(
+    r"""(?<=[\s/"'])(?:on[a-z]+|srcdoc)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)""", re.I
 )
+_URL_ATTR_RE = re.compile(
+    r"""(\s(?:src|href|xlink:href|poster|action|formaction)\s*=\s*)(["'])(.*?)\2""",
+    re.I | re.S,
+)
+# Browsers drop tabs, newlines and controls from a URL before reading its
+# scheme ("jav&#x09;ascript:" is javascript:).
+_URL_NOISE_RE = re.compile(r"[\x00-\x20\x7f]+")
+_UNSAFE_SCHEMES = ("javascript:", "vbscript:", "data:text/html", "data:image/svg")
 _TEXT_RE = re.compile(r"<[^>]+>")
 
 
@@ -310,7 +330,7 @@ def _rewrite_urls(body, base_dir, index):
     def one(m):
         lead, quote, value = m.group(1), m.group(2), _html.unescape(m.group(3))
         v = value.strip()
-        if v.lower().startswith("javascript:"):
+        if _URL_NOISE_RE.sub("", v).lower().startswith(_UNSAFE_SCHEMES):
             return f"{lead}{quote}#{quote}"
         if not v or v.startswith("#"):
             return m.group(0)

@@ -397,13 +397,13 @@ HOSTILE = (
 )
 
 
-def _hostile_epub():
+def _hostile_epub(chapter=None):
     opf = fx.GUTENBERG_EPUB["OEBPS/content.opf"]
     opf = opf.replace(
         "</manifest>",
         '<item href="hostile.xhtml" id="hostile" media-type="application/xhtml+xml"/></manifest>',
     ).replace("</spine>", '<itemref idref="hostile"/></spine>')
-    data = fx.gutenberg_epub({"OEBPS/hostile.xhtml": HOSTILE})
+    data = fx.gutenberg_epub({"OEBPS/hostile.xhtml": chapter or HOSTILE})
     import io
     import zipfile
 
@@ -1132,3 +1132,145 @@ def test_newest_to_gutenberg_holds_only_gutenberg_books(shelf_lib):
     home = books.home()
     assert home["details"] is True and home["total"] == 9
     assert home["recent"] == []
+
+
+# ── no script of a book runs ───────────────────────────────────────────────
+
+# The classic ways past a regex sanitizer, each of which would set a mark in
+# the shell (the reader's frame's parent) if it ran.
+BYPASS = (
+    '<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml">'
+    "<head><title>Bypass</title></head><body><h2>Bypass</h2><p>A chapter with a past.</p>"
+    "<svg><script>window.parent.__pwned='svg-script'</script></svg>"
+    "<img src=x onerror=\"window.parent.__pwned='img-onerror'\">"
+    "<img/src=\"x\"/onerror=\"window.parent.__pwned='img-slash'\">"
+    "<img src=\"x\"onerror=\"window.parent.__pwned='img-quote'\">"
+    "<IMG\tSRC=x\tONERROR=\"window.parent.__pwned='img-tab'\">"
+    "<a id=\"js\" href=\"jav&#x09;ascript:window.parent.__pwned='js-url'\">a link</a>"
+    "<iframe srcdoc=\"<script>window.parent.parent.__pwned='srcdoc'</script>\"></iframe>"
+    "<details open ontoggle=\"window.parent.__pwned='toggle'\"><summary>more</summary>x</details>"
+    "</body></html>"
+)
+_BYPASS_MARKS = (
+    "svg-script", "img-onerror", "img-slash", "img-quote", "img-tab", "js-url", "srcdoc", "toggle",
+)
+
+
+@pytest.fixture
+def served_bypass(tmp_path, monkeypatch):
+    """A ZIM holding an EPUB whose last chapter is BYPASS, served."""
+    from http.server import ThreadingHTTPServer
+    import threading
+
+    from zimi import epub
+    from zimi.http import ZimHandler
+
+    epub._reset_for_tests()
+    _library(
+        tmp_path,
+        monkeypatch,
+        [
+            (
+                "bypass_en_2026-09.zim",
+                {"Name": "bypass_en"},
+                {
+                    "index": ("text/html", "<html><body>Books</body></html>", "Books"),
+                    "bypass.epub": ("application/epub+zip", _hostile_epub(BYPASS), ""),
+                },
+                "index",
+            )
+        ],
+    )
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield "http://127.0.0.1:%d" % httpd.server_address[1], srv.list_zims()[0]["name"]
+    httpd.shutdown()
+    epub._reset_for_tests()
+    srv.release_zim_handles(list(srv.get_zim_files()))
+
+
+def test_every_answer_from_inside_an_epub_blocks_its_scripts(served_bypass):
+    """The guarantee, whatever gets past the strip: the book's page, a
+    chapter opened on its own and a picture (an SVG is a document too) all
+    carry a policy under which no script runs."""
+    base, zim = served_bypass
+    book = base + "/w/" + zim + "/bypass.epub/"
+    for url in (book, book + "OEBPS/hostile.xhtml", book + fx.GUTENBERG_EPUB_COVER):
+        status, _ctype, _body, headers = _fetch(url)
+        csp = headers.get("Content-Security-Policy") or ""
+        assert status == 200, url
+        for rule in ("script-src 'none'", "object-src 'none'", "base-uri 'none'", "frame-src 'none'"):
+            assert rule in csp, (url, rule, csp)
+        assert "'unsafe-inline'" not in csp.split("script-src", 1)[1].split(";")[0]
+        assert headers.get("X-Content-Type-Options") == "nosniff"
+
+
+def test_the_strip_drops_the_classic_bypasses_too():
+    """The second layer: what the policy blocks is not sent either."""
+    from zimi import epub
+
+    page = epub.Book(_hostile_epub(BYPASS)).page().decode()
+    chapter = page.split('id="zb-c3"', 1)[1]
+    low = chapter.lower()
+    for bad in ("<script", "onerror", "ontoggle", "srcdoc", "<iframe", "ascript:"):
+        assert bad not in low, bad
+    assert 'id="js" href="#"' in chapter and "A chapter with a past." in chapter
+
+
+def _open_in_the_reader(base, zim, path):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = br.new_context(**pw.devices["iPhone 13"]).new_page()
+        try:
+            pg.goto(base + "/")
+            pg.wait_for_function(
+                "() => typeof zimsCache !== 'undefined' && (zimsCache || []).length > 0",
+                timeout=30000,
+            )
+            pg.evaluate("(a) => openArticle(a[0], a[1])", [zim, path])
+            pg.wait_for_function(
+                "() => { var f = document.getElementById('reader-frame'); return f && f.contentDocument && f.contentDocument.querySelector('.zb-foot'); }",
+                timeout=30000,
+            )
+            pg.wait_for_timeout(800)
+            # Follow the javascript: link as a reader's tap would.
+            pg.evaluate(
+                "() => { var a = document.getElementById('reader-frame').contentDocument.getElementById('js'); if (a) a.click(); }"
+            )
+            pg.wait_for_timeout(800)
+            return pg.evaluate(
+                """() => { var d = document.getElementById('reader-frame').contentDocument;
+                  return { pwned: window.__pwned === undefined ? null : String(window.__pwned),
+                    text: d.body.textContent.indexOf('A chapter with a past.') >= 0,
+                    handlers: d.querySelectorAll('[onerror],[ontoggle],iframe[srcdoc],svg script').length }; }"""
+            )
+        finally:
+            br.close()
+
+
+def test_a_chapter_that_gets_past_the_strip_still_runs_nothing(served_bypass, monkeypatch):
+    """With the strip turned off entirely, every bypass reaches the reader,
+    and the policy alone keeps each one from running."""
+    import zimi.renderer as renderer
+    from zimi import epub
+
+    if not renderer.browser_available():
+        pytest.skip("playwright + chromium are not usable here")
+    monkeypatch.setattr(epub, "_chapter_body", lambda text: epub._BODY_RE.search(text).group(1))
+    monkeypatch.setattr(epub, "_rewrite_urls", lambda body, base_dir, index: body)
+    base, zim = served_bypass
+    got = _open_in_the_reader(base, zim, "bypass.epub/")
+    assert got["text"] and got["handlers"] >= 4, got  # the payload is really there
+    assert got["pwned"] is None, got
+
+
+def test_a_hostile_chapter_runs_nothing_in_the_reader(served_bypass):
+    import zimi.renderer as renderer
+
+    if not renderer.browser_available():
+        pytest.skip("playwright + chromium are not usable here")
+    base, zim = served_bypass
+    got = _open_in_the_reader(base, zim, "bypass.epub/")
+    assert got["text"] and got["pwned"] is None and got["handlers"] == 0, got

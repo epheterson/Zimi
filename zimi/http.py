@@ -3311,11 +3311,11 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", mimetype)
         self.send_header("Cache-Control", f"private, max-age={ZIM_CONTENT_MAX_AGE}")
         self.send_header("Vary", "Sec-Fetch-Dest")
-        if mimetype.startswith("text/html"):
-            self.send_header(
-                "Content-Security-Policy",
-                "default-src 'self' 'unsafe-inline' data: blob:; frame-ancestors 'self'",
-            )
+        # On every answer, not only the page: an SVG inside the book, opened
+        # on its own, is a document too. No script of the book runs; the
+        # reader drives the page from the shell.
+        self.send_header("Content-Security-Policy", _epub.CSP)
+        self.send_header("X-Content-Type-Options", "nosniff")
         if (
             any(mimetype.startswith(t) for t in COMPRESSIBLE_TYPES)
             and self._accepts_gzip()
