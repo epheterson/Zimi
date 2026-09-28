@@ -309,6 +309,11 @@ def test_lists_by_hand(served):
         pg.evaluate("() => _bmCloseExport()")
         pg.locator(".bm-folder[data-fid='f_med']").click(button="right")
         pg.locator(".ctx-item", has_text="Delete list").click()
+        # A list with something in it asks first, and says its items stay.
+        pg.wait_for_selector(".ctx-note")
+        assert "stays saved" in pg.locator(".ctx-note").inner_text()
+        assert "# Health" in _rows(pg)
+        pg.locator(".ctx-item.danger", has_text="Delete list").click()
         pg.wait_for_timeout(250)
         assert "# Health" not in _rows(pg) and pg.evaluate(
             "() => Saved.has('wiki\\nA/Sun') && Saved.has('wiki\\nA/Sol')"

@@ -1562,7 +1562,7 @@
   "saved_none_app": "In {app} ist noch nichts gespeichert.",
   "saved_export_list": "Als ZIM exportieren…",
   "saved_delete_list": "Liste löschen",
-  "saved_list_deleted": "Liste gelöscht. Ihr Inhalt bleibt gespeichert.",
+  "saved_delete_list_q": "Die Liste „{name}“ löschen? Ihr Inhalt bleibt gespeichert.",
   "saved_remove_continue": "Aus „Fortsetzen“ entfernen",
   "saved_lists": "Listen",
   "saved_remove_from_list": "Aus dieser Liste entfernen",

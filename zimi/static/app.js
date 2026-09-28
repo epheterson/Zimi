@@ -19413,6 +19413,8 @@ function _bmExpand(id) {
 }
 
 function _renderBookmarksContent() {
+  // Left the app with the panel open: its slice goes with it.
+  if (_bmScope && _savedCurrentApp() !== _bmScope) _bmScope = '';
   var q = _bmScopeQuery();
   var lists = Saved.lists(q).filter(function (l) { return !_bmScope || l.count; });
   var loose = Saved.itemsFor({ list: _BM_ROOT, app: q.app });
@@ -19703,10 +19705,22 @@ function _bmInlineRenameRow(row, value, apply) {
   _bmBindEditInput(input, done);
 }
 
-// ── Delete a list: its items stay saved, so no question to ask ──
+// ── Delete a list: its items stay saved; a list with something in it asks
+// first (what is lost is the grouping, and there is no undo) ──
 function _bmDeleteList(lid) {
-  Saved.deleteList(lid);
-  _showToast(t('saved_list_deleted'));
+  var l = Saved.lists().filter(function (x) { return x.id === lid; })[0];
+  if (!l || l.builtin) return;
+  if (!l.count) { Saved.deleteList(lid); return; }
+  var html = '<div class="ctx-note">' + tH('saved_delete_list_q', { name: l.name }) + '</div>' +
+    '<div class="ctx-item danger" data-action="delete">' + tH('saved_delete_list') + '</div>' +
+    '<div class="ctx-item" data-action="keep">' + tH('cancel') + '</div>';
+  // Deferred so the list menu's own close (after this action) does not shut
+  // the question as it opens.
+  setTimeout(function () {
+    window._openMenuAt(html, window.innerWidth / 2 - 90, window.innerHeight / 2 - 60, function (action) {
+      if (action === 'delete') Saved.deleteList(lid);
+    });
+  }, 0);
 }
 
 // The Lists submenu: every list with a tick where the item is, and a new one.

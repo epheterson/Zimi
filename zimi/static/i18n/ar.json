@@ -1562,7 +1562,7 @@
   "saved_none_app": "لا شيء محفوظ في {app} بعد.",
   "saved_export_list": "تصدير إلى ZIM…",
   "saved_delete_list": "حذف القائمة",
-  "saved_list_deleted": "حُذفت القائمة. ما كان فيها لا يزال محفوظًا.",
+  "saved_delete_list_q": "حذف القائمة «{name}»؟ ما فيها يبقى محفوظًا.",
   "saved_remove_continue": "إزالة من «تابع»",
   "saved_lists": "القوائم",
   "saved_remove_from_list": "إزالة من هذه القائمة",

@@ -1562,7 +1562,7 @@
   "saved_none_app": "В {app} пока ничего не сохранено.",
   "saved_export_list": "Экспорт в ZIM…",
   "saved_delete_list": "Удалить список",
-  "saved_list_deleted": "Список удалён. Его содержимое по-прежнему сохранено.",
+  "saved_delete_list_q": "Удалить список «{name}»? Его содержимое останется сохранённым.",
   "saved_remove_continue": "Убрать из «Продолжить»",
   "saved_lists": "Списки",
   "saved_remove_from_list": "Убрать из этого списка",

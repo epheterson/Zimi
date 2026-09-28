@@ -1562,7 +1562,7 @@
   "saved_none_app": "{app} में अभी कुछ सहेजा नहीं गया है।",
   "saved_export_list": "ZIM में निर्यात करें…",
   "saved_delete_list": "सूची हटाएं",
-  "saved_list_deleted": "सूची हटा दी गई। उसमें जो था वह अब भी सहेजा हुआ है।",
+  "saved_delete_list_q": "सूची “{name}” हटाएं? उसमें जो है वह सहेजा रहेगा।",
   "saved_remove_continue": "“जारी रखें” से हटाएं",
   "saved_lists": "सूचियाँ",
   "saved_remove_from_list": "इस सूची से हटाएं",

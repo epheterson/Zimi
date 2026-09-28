@@ -1562,7 +1562,7 @@
   "saved_none_app": "Nada salvo em {app} ainda.",
   "saved_export_list": "Exportar para ZIM…",
   "saved_delete_list": "Excluir lista",
-  "saved_list_deleted": "Lista excluída. O que estava nela continua salvo.",
+  "saved_delete_list_q": "Excluir a lista “{name}”? O que está nela continua salvo.",
   "saved_remove_continue": "Remover de Continuar",
   "saved_lists": "Listas",
   "saved_remove_from_list": "Remover desta lista",

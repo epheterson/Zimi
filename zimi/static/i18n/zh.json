@@ -1562,7 +1562,7 @@
   "saved_none_app": "{app} 中还没有保存的内容。",
   "saved_export_list": "导出为 ZIM…",
   "saved_delete_list": "删除列表",
-  "saved_list_deleted": "列表已删除，其中的内容仍然保存着。",
+  "saved_delete_list_q": "删除列表“{name}”？其中的内容仍会保存。",
   "saved_remove_continue": "从“继续”中移除",
   "saved_lists": "列表",
   "saved_remove_from_list": "从此列表中移除",

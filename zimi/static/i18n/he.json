@@ -1562,7 +1562,7 @@
   "saved_none_app": "עדיין לא נשמר דבר ב-{app}.",
   "saved_export_list": "ייצוא ל-ZIM…",
   "saved_delete_list": "מחיקת הרשימה",
-  "saved_list_deleted": "הרשימה נמחקה. מה שהיה בה עדיין שמור.",
+  "saved_delete_list_q": "למחוק את הרשימה ״{name}״? מה שבה יישאר שמור.",
   "saved_remove_continue": "הסרה מ״להמשיך״",
   "saved_lists": "רשימות",
   "saved_remove_from_list": "הסרה מהרשימה הזו",
