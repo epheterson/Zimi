@@ -196,6 +196,7 @@ _RATE_LIMITED_API_PATHS = (
     "/chunks",
     "/openapi.json",
     "/almanac-links",
+    "/almanac-satellites",
 )
 
 # The apps' routes below their bare path (/exchange/question, /reddot/post):
@@ -842,6 +843,7 @@ if os.path.isdir(_STATIC_DIR):
             # bundle hash or a change to one ships behind a stale SW cache.
             + _static_hash("almanac-orrery.js")
             + _static_hash("almanac-sky.js")
+            + _static_hash("almanac-earth.js")
             + _static_hash("tube.html")
             + _static_hash("exchange.html")
             + _static_hash("reddot.html")
@@ -2089,6 +2091,14 @@ class ZimHandler(BaseHTTPRequestHandler):
                 qids = [q for q in (param("qids") or "").split(",") if q]
                 langs = [x for x in (param("langs") or "").split(",") if x]
                 return _almanac_links_response(self, qids, langs)
+
+            elif parsed.path == "/almanac-satellites":
+                # Orbital elements for the Almanac's Earth view: answered at
+                # once from the snapshot or cache; a stale set refreshes in
+                # the background (never under ZIMI_OFFLINE).
+                from zimi import satellites as _sats
+
+                return self._json(200, _sats.get())
 
             elif parsed.path == "/list":
                 result = _srv.list_zims()
