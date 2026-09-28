@@ -39,9 +39,10 @@ vm.createContext(ctx);
 // is decided by the order things happen here, not by how fast they ran).
 let clock = 1700000000000;
 const shell = { localStorage: memoryStorage(), Math, JSON, Object, Array, String, Number, isFinite, Date: { now: () => ++clock },
-  SK: { SAVED: 'zimi_saved', BOOKMARKS: 'zimi_bookmarks', BM_FOLDERS: 'zimi_bm_folders', BOOK_PLACES: 'zimi_book_places' } };
+  SK: { SAVED: 'zimi_saved', SAVED_POS: 'zimi_saved_pos', SAVED_LEGACY_ASKED: 'zimi_saved_legacy_asked', BOOKMARKS: 'zimi_bookmarks', BM_FOLDERS: 'zimi_bm_folders', BOOK_PLACES: 'zimi_book_places' } };
 vm.createContext(shell);
-vm.runInContext(extract(src, /var Saved = \(function \(\) \{[\s\S]*?\n\}\)\(\);/, 'Saved'), shell);
+vm.runInContext(extract(src, /function _getStorageJSON\(key, fallback, session\) \{[\s\S]*?\nfunction _setStorageJSON\(key, value\) \{[\s\S]*?\n\}/, 'the storage helpers') + '\n' +
+  extract(src, /var Saved = \(function \(\) \{[\s\S]*?\n\}\)\(\);/, 'Saved'), shell);
 ctx.saved = () => shell.Saved;
 vm.runInContext([
   extract(page, /var COVER_HUES = [^\n]*\n/, 'COVER_HUES'),
@@ -137,7 +138,7 @@ ok('a link to a place in the book wins over the remembered place', /if \(tgtSec\
 ok('a right-to-left book turns the other way', /if \(rel < _BOOK_EDGE\) \{ turn\(bookRtl \? 1 : -1\); return; \}/.test(src));
 ok('chapters: the heading level with the most different headings', /hs\._n = Object\.keys\(distinct\)\.length;/.test(src));
 ok('the chapter arrows point the way the interface reads', /\(uiRtl \? pv : nx\)\.firstChild\.style\.transform = 'scaleX\(-1\)';/.test(src));
-ok('places are capped, the oldest dropped first', /var MAX = \{ items: \d+, lists: \d+, members: \d+, positions: \d+, highlights: \d+, gone: \d+ \};/.test(src) && /cap\(s\.positions, MAX\.positions, recTs\);/.test(src));
+ok('places are capped per app, the oldest dropped first (a Zimipedia article never pushes out a book)', /var POS_PER_APP = \d+;/.test(src) && /capPlaces\(s\.positions\);\n\s*commit\(false, true, 'pos'\);/.test(src));
 
 // A layout that throws is taken back off the page, and the document is not
 // marked done, so the next load of it tries again.

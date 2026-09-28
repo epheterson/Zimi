@@ -40,13 +40,14 @@ function ok(label, cond, detail) {
   const store = {};
   const sandbox = {
     localStorage: { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } },
-    SK: { SAVED: 'zimi_saved', BOOKMARKS: 'zimi_bookmarks', BM_FOLDERS: 'zimi_bm_folders', BOOK_PLACES: 'zimi_book_places' },
+    SK: { SAVED: 'zimi_saved', SAVED_POS: 'zimi_saved_pos', SAVED_LEGACY_ASKED: 'zimi_saved_legacy_asked', BOOKMARKS: 'zimi_bookmarks', BM_FOLDERS: 'zimi_bm_folders', BOOK_PLACES: 'zimi_book_places' },
     Math, JSON, Object, Array, String, Number, isFinite, Date,
     saves: 0,
   };
   sandbox._savedChanged = function () { sandbox.saves++; };
   vm.createContext(sandbox);
-  vm.runInContext(extract(/var Saved = \(function \(\) \{[\s\S]*?\n\}\)\(\);/, 'Saved'), sandbox);
+  vm.runInContext(extract(/function _getStorageJSON\(key, fallback, session\) \{[\s\S]*?\nfunction _setStorageJSON\(key, value\) \{[\s\S]*?\n\}/, 'the storage helpers') + '\n' +
+    extract(/var Saved = \(function \(\) \{[\s\S]*?\n\}\)\(\);/, 'Saved'), sandbox);
   const S = sandbox.Saved;
   const key = S.save({ zim: 'w', path: 'A/B', title: 'Original' });
   const b = () => S.get(key);

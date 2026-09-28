@@ -40,7 +40,7 @@ function memoryStorage() {
 function page(extra) {
   const bars = [{ innerHTML: '' }];
   const ctx = Object.assign({
-    localStorage: memoryStorage(), SK: { SAVED: 'zimi_saved', BOOKMARKS: 'b', BM_FOLDERS: 'f', BOOK_PLACES: 'p' },
+    localStorage: memoryStorage(), SK: { SAVED: 'zimi_saved', SAVED_POS: 'zimi_saved_pos', SAVED_LEGACY_ASKED: 'a', BOOKMARKS: 'b', BM_FOLDERS: 'f', BOOK_PLACES: 'p' },
     Math, JSON, Object, Array, String, Number, isFinite, Infinity,
     // A clock a second on at every look, so "the latest first" has a latest.
     clock: 1790000000000,
@@ -53,7 +53,8 @@ function page(extra) {
   ctx.Date = { now: () => (ctx.clock += 1000) };
   ctx.window = { addEventListener: () => {}, innerHeight: 800, get scrollY() { return ctx.scrolled; } };
   vm.createContext(ctx);
-  vm.runInContext(extract(src, /var Saved = \(function \(\) \{[\s\S]*?\n\}\)\(\);/, 'Saved'), ctx);
+  vm.runInContext(extract(src, /function _getStorageJSON\(key, fallback, session\) \{[\s\S]*?\nfunction _setStorageJSON\(key, value\) \{[\s\S]*?\n\}/, 'the storage helpers') + '\n' +
+    extract(src, /var Saved = \(function \(\) \{[\s\S]*?\n\}\)\(\);/, 'Saved'), ctx);
   ctx.window.parent = { Saved: ctx.Saved };
   vm.runInContext([
     extract(shared, /function esc\(x\) \{[^\n]*\n/, 'esc'),

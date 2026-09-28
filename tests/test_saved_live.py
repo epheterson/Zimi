@@ -336,6 +336,13 @@ def test_a_delete_on_one_device_survives_the_others_sync(served):
             },
         )
         _sign_in(phone)
+        # 1.11's bookmarks are this browser's, not the account's: offered.
+        assert phone.evaluate("() => Saved.all().length") == 0
+        phone.evaluate("() => toggleLibraryPanel('bookmarks')")
+        phone.locator(".bm-note button", has_text="Add them to my account").click()
+        phone.evaluate("() => _savedFlush()")
+        phone.wait_for_timeout(800)
+        phone.evaluate("() => _closeLibraryPanel()")
         assert (
             "wiki\nA/Sol" in users.load_user_data("alice")["saved"]["items"]
         ), "the phone's bookmarks did not reach the account"
@@ -433,4 +440,184 @@ def test_bookshelf_continue_reading_and_my_shelf_follow_the_account(served):
             "() => Saved.position({ zim: 'gutenberg_mul', path: 'Liber.1' }).where"
         )
         assert abs(back["f"] - where["f"]) < 0.05, (back, where)
+        br.close()
+
+
+def _item(path, title):
+    return {
+        "kind": "article",
+        "zim": "wiki",
+        "path": path,
+        "title": title,
+        "added": T0,
+        "ts": T0,
+    }
+
+
+def _flushed(pg):
+    """Everything this browser holds is on the account."""
+    pg.evaluate("() => _savedFlush()")
+    pg.wait_for_function("() => !_savedDelta() && !_savedPushing", timeout=10000)
+
+
+def test_a_shared_browser_offers_its_old_bookmarks_and_keeps_nothing_after_sign_out(
+    served,
+):
+    """1.11 kept bookmarks per browser: signed out they come in, but an
+    account that signs in on the same screen is asked, once, and gets
+    nothing by itself. Signing out takes the account's copy (a note in a
+    highlight included) out of the browser once the account has it."""
+    from playwright.sync_api import sync_playwright
+
+    seed = {
+        "zimi_bookmarks": json.dumps(BOOKMARKS),
+        "zimi_bm_folders": json.dumps(FOLDERS),
+    }
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = _device(br, served, 390, seed)
+        assert pg.evaluate("() => Saved.all().length") == 5
+        _sign_in(pg)
+        assert (
+            pg.evaluate("() => Saved.all().length") == 0
+        ), "an account took the shared browser's bookmarks by itself"
+        assert users.load_user_data("alice")["saved"]["items"] == {}
+        pg.evaluate("() => toggleLibraryPanel('bookmarks')")
+        assert "earlier version" in pg.locator(".bm-note").inner_text()
+        pg.locator(".bm-note button", has_text="No, thanks").click()
+        pg.wait_for_timeout(200)
+        assert pg.locator(".bm-note").count() == 0
+        assert pg.evaluate("() => Saved.all().length") == 0
+        pg.evaluate(
+            "() => { Saved.save({ zim: 'wiki', path: 'A/Sol', title: 'Sun' }); Saved.highlight({ zim: 'wiki', path: 'A/Sol', exact: 'the star', note: 'a private note' }); }"
+        )
+        with pg.expect_navigation():
+            pg.evaluate("() => userLogout()")
+        _ready(pg)
+        kept = pg.evaluate(
+            "() => { var o = {}; for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); o[k] = localStorage.getItem(k); } return o; }"
+        )
+        assert not [k for k in kept if k.endswith(":alice")], list(kept)
+        assert "a private note" not in json.dumps(kept)
+        saved = users.load_user_data("alice")["saved"]
+        assert "wiki\nA/Sol" in saved["items"]
+        assert [h["note"] for h in saved["highlights"].values()] == ["a private note"]
+        # Signed in again: the account's copy comes back, and nobody is asked twice.
+        _sign_in(pg)
+        assert pg.evaluate("() => Saved.has('wiki\\nA/Sol')")
+        assert not pg.evaluate("() => Saved.legacyOffered()")
+        br.close()
+
+
+def test_overwrite_from_a_file_holds_for_a_signed_in_account(served):
+    """Overwrite takes the file whole on the account too: what it replaced
+    does not come back with the next sync. A file from before 1.12 (its
+    bookmarks, no store) overwrites as well."""
+    from playwright.sync_api import sync_playwright
+
+    users.sync_user_data(
+        "alice",
+        {
+            "saved": {
+                "items": {
+                    "wiki\nA/A": _item("A/A", "A"),
+                    "wiki\nA/B": _item("A/B", "B"),
+                }
+            }
+        },
+    )
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = _device(br, served, 1280)
+        _sign_in(pg)
+        assert pg.evaluate("() => Saved.has('wiki\\nA/A') && Saved.has('wiki\\nA/B')")
+        file = {
+            "schema": "zimi-backup",
+            "schema_version": 3,
+            "scope": "my-data",
+            "saved": {"items": {"wiki\nA/C": _item("A/C", "C")}},
+        }
+        take = "(t) => { if (!document.getElementById('ms-mydata-overwrite')) document.body.insertAdjacentHTML('beforeend', '<input type=checkbox id=ms-mydata-overwrite checked hidden>'); _applyMyDataFile(t); }"
+        pg.evaluate(take, json.dumps(file))
+        _flushed(pg)
+        assert list(users.load_user_data("alice")["saved"]["items"]) == ["wiki\nA/C"]
+        pg.evaluate("() => _savedPull()")
+        pg.wait_for_timeout(600)
+        assert pg.evaluate("() => Saved.all().map(i => i.key)") == ["wiki\nA/C"]
+        old = {
+            "schema": "zimi-backup",
+            "schema_version": 2,
+            "scope": "my-data",
+            "bookmarks": [
+                {"zim": "wiki", "path": "A/Old", "title": "Old", "timestamp": 5}
+            ],
+        }
+        pg.evaluate(take, json.dumps(old))
+        _flushed(pg)
+        assert list(users.load_user_data("alice")["saved"]["items"]) == ["wiki\nA/Old"]
+        br.close()
+
+
+def test_sync_paused_when_the_store_is_too_large_says_so(served, monkeypatch):
+    """The account refuses a store past its budget: the device says sync is
+    paused and what to do, and picks up once something is let go."""
+    from playwright.sync_api import sync_playwright
+
+    monkeypatch.setattr(users, "_SAVED_MAX_BYTES", 6000)
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = _device(br, served, 1280)
+        _sign_in(pg)
+        pg.evaluate(
+            "() => { for (var i = 0; i < 20; i++) Saved.save({ zim: 'wiki', path: 'A/n' + i, title: 'A long title '.repeat(30) }); }"
+        )
+        pg.evaluate("() => _savedFlush()")
+        pg.wait_for_function("() => _savedPaused", timeout=10000)
+        pg.evaluate("() => toggleLibraryPanel('bookmarks')")
+        note = pg.locator(".bm-note.bm-warn").inner_text()
+        assert "Sync paused" in note and "Remove" in note, note
+        assert users.load_user_data("alice")["saved"]["items"] == {}
+        pg.evaluate(
+            "() => { for (var i = 2; i < 20; i++) Saved.remove('wiki\\nA/n' + i); }"
+        )
+        _flushed(pg)
+        assert not pg.evaluate("() => _savedPaused")
+        assert pg.locator(".bm-note.bm-warn").count() == 0
+        assert sorted(users.load_user_data("alice")["saved"]["items"]) == [
+            "wiki\nA/n0",
+            "wiki\nA/n1",
+        ]
+        br.close()
+
+
+def test_leaving_the_tab_sends_what_is_waiting_in_a_request_that_outlives_it(served):
+    """Hidden, then closed: what the account has not had goes in a keepalive
+    request, which carries 64 KB at most. It is only the changes since the
+    account last answered, so a store far larger still goes."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = _device(br, served, 390)
+        _sign_in(pg)
+        pg.evaluate(
+            "() => { for (var i = 0; i < 300; i++) Saved.save({ zim: 'wiki', path: 'A/n' + i, title: 'x'.repeat(400) }); }"
+        )
+        _flushed(pg)
+        assert pg.evaluate("() => JSON.stringify(Saved.data()).length") > 100000
+        pg.evaluate(
+            "() => { window.__sent = []; var f = window.fetch; window.fetch = function (u, o) { if (u === '/userdata' && o && o.method === 'POST') __sent.push({ keepalive: !!o.keepalive, size: o.body.length, body: o.body }); return f.apply(this, arguments); }; }"
+        )
+        pg.evaluate(
+            "() => Saved.save({ zim: 'wiki', path: 'A/Last', title: 'Saved as the tab closes' })"
+        )
+        pg.evaluate(
+            "() => { Object.defineProperty(document, 'hidden', { configurable: true, get: function () { return true; } }); document.dispatchEvent(new Event('visibilitychange')); window.dispatchEvent(new Event('pagehide')); }"
+        )
+        sent = pg.evaluate("() => __sent")
+        assert any(
+            s["keepalive"] and "A/Last" in s["body"] and s["size"] < 60000 for s in sent
+        ), [(s["keepalive"], s["size"]) for s in sent]
+        pg.wait_for_timeout(800)
+        assert "wiki\nA/Last" in users.load_user_data("alice")["saved"]["items"]
         br.close()

@@ -1,5 +1,5 @@
 {
-  "_about": "Merge cases for the saved store, run by both twins: app.js's Saved._merge (tests/test_saved_store.cjs) and users.py's _merge_saved (tests/test_userdata.py). Each: two stores a and b, now in ms, the store expected.",
+  "_about": "Merge cases for the saved store, run by both twins: app.js's Saved._merge (tests/test_saved_store.cjs) and users.py's _merge_saved (tests/test_userdata.py). Each: two stores a and b, now in ms, the byte budget when it is not the default, the store expected.",
   "cases": [
     {
       "name": "a delete on one device survives the other device's copy",
@@ -186,6 +186,22 @@
       "a": {},
       "b": {"highlights": {"no spaces": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "yellow", "added": 1000, "ts": 1000}, "h_noquote": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "yellow", "added": 1000, "ts": 1000}, "h_nots": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "yellow", "added": 1000}, "h_ok": {"zim": "w", "path": "A/X", "kind": "spaceship", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 7, "color": "plaid", "added": 1000, "ts": 1000, "app": "nope", "note": 5, "end": "tail only", "extra": "dropped"}, "h_long": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "yellow", "added": 1000, "ts": 1000, "end": "and the end", "n": 812.4}}, "gone": {"h:h_old": 2500, "q:bad": 5}},
       "expect": {"highlights": {"h_ok": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 1, "color": "yellow", "added": 1000, "ts": 1000}, "h_long": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "yellow", "added": 1000, "ts": 1000, "end": "and the end", "n": 812}}, "gone": {"h:h_old": 2500}}
+    },
+    {
+      "name": "past the byte budget (UTF-8, as the file holds it) the oldest tombstones go first, then the oldest places; what was saved stays",
+      "now": 2000,
+      "budget": 493,
+      "a": {"items": {"w\nA/Kept": {"kind": "article", "zim": "w", "path": "A/Kept", "title": "Сохранено навсегда", "added": 1000, "ts": 1000}}, "highlights": {"h_1": {"zim": "w", "path": "A/Kept", "kind": "article", "title": "", "exact": "漢字の引用", "prefix": "", "suffix": "", "pos": 0.5, "color": "yellow", "added": 1100, "ts": 1100}}, "positions": {"g\nB.1": {"kind": "book", "zim": "g", "path": "B.1", "title": "Old", "app": "books", "ts": 500, "where": {"f": 0.1, "c": 10}}}, "gone": {"i:w\nA/Old1": 100}},
+      "b": {"positions": {"g\nB.2": {"kind": "book", "zim": "g", "path": "B.2", "title": "New", "app": "books", "ts": 900, "where": {"f": 0.2, "c": 20}}}, "gone": {"i:w\nA/Old2": 200, "l:gone_list": 300}},
+      "expect": {"items": {"w\nA/Kept": {"kind": "article", "zim": "w", "path": "A/Kept", "title": "Сохранено навсегда", "added": 1000, "ts": 1000}}, "highlights": {"h_1": {"zim": "w", "path": "A/Kept", "kind": "article", "title": "", "exact": "漢字の引用", "prefix": "", "suffix": "", "pos": 0.5, "color": "yellow", "added": 1100, "ts": 1100}}, "positions": {"g\nB.2": {"kind": "book", "zim": "g", "path": "B.2", "title": "New", "app": "books", "ts": 900, "where": {"f": 0.2, "c": 20}}}}
+    },
+    {
+      "name": "a byte under it, the last place goes too, and still never an item or a highlight",
+      "now": 2000,
+      "budget": 492,
+      "a": {"items": {"w\nA/Kept": {"kind": "article", "zim": "w", "path": "A/Kept", "title": "Сохранено навсегда", "added": 1000, "ts": 1000}}, "highlights": {"h_1": {"zim": "w", "path": "A/Kept", "kind": "article", "title": "", "exact": "漢字の引用", "prefix": "", "suffix": "", "pos": 0.5, "color": "yellow", "added": 1100, "ts": 1100}}, "positions": {"g\nB.1": {"kind": "book", "zim": "g", "path": "B.1", "title": "Old", "app": "books", "ts": 500, "where": {"f": 0.1, "c": 10}}}, "gone": {"i:w\nA/Old1": 100}},
+      "b": {"positions": {"g\nB.2": {"kind": "book", "zim": "g", "path": "B.2", "title": "New", "app": "books", "ts": 900, "where": {"f": 0.2, "c": 20}}}, "gone": {"i:w\nA/Old2": 200, "l:gone_list": 300}},
+      "expect": {"items": {"w\nA/Kept": {"kind": "article", "zim": "w", "path": "A/Kept", "title": "Сохранено навсегда", "added": 1000, "ts": 1000}}, "highlights": {"h_1": {"zim": "w", "path": "A/Kept", "kind": "article", "title": "", "exact": "漢字の引用", "prefix": "", "suffix": "", "pos": 0.5, "color": "yellow", "added": 1100, "ts": 1100}}}
     }
   ]
 }
