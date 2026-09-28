@@ -366,6 +366,80 @@ def test_one_topic_every_wiki_a_strip_after_the_lead(served):
             br.close()
 
 
+def test_diving_in_a_card_for_a_link_a_trail_and_read_next(served):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        ctx = br.new_context(**pw.devices["iPhone 13"])
+        pg = ctx.new_page()
+        fr = pg.frame_locator("#reader-frame")
+        try:
+            _boot(pg, served)
+            _from_zimipedia(pg, "wikipedia", "Albert_Einstein")
+            # A link asks first: its first sentence, and the way on.
+            fr.locator('p a[href="./Physics"]').click()
+            pg.wait_for_function(
+                "() => { var c = document.getElementById('reader-frame').contentDocument.querySelector('.zw-card .zw-prev-s'); return c && c.textContent.trim(); }",
+                timeout=10000,
+            )
+            s = _q(
+                pg,
+                "{ title: d.querySelector('.zw-prev-t').textContent, text: d.querySelector('.zw-prev-s').textContent, path: w.location.pathname }",
+            )
+            assert (
+                s["title"] == "Physics"
+                and s["text"]
+                == "Physics is the science of matter, energy, space and time."
+            ), s
+            assert s["path"].endswith(
+                "/Albert_Einstein"
+            ), "the page stays until you choose"
+            fr.locator(".zw-prev-go").click()
+            pg.wait_for_function(
+                "() => { var d = document.getElementById('reader-frame').contentDocument; return /\\/Physics$/.test(d.location.pathname) && d.querySelector('.zw-bar'); }",
+                timeout=15000,
+            )
+            pg.wait_for_timeout(300)
+            assert _q(
+                pg,
+                "Array.prototype.map.call(d.querySelectorAll('.zw-trail button, .zw-trail b'), function(x) { return x.textContent; })",
+            ) == ["Albert Einstein", "Physics"]
+            kept = pg.evaluate(
+                "() => JSON.parse(localStorage.getItem('zimi_wiki_trails'))"
+            )
+            assert [s["path"] for s in kept[0]["items"]] == [
+                "Albert_Einstein",
+                "Physics",
+            ]
+            # A second tap on a link follows it; back along the trail cuts it there.
+            link = fr.locator('p a[href="./Albert_Einstein"]')
+            link.click()
+            pg.wait_for_timeout(300)
+            link.click()
+            pg.wait_for_function(
+                "() => { var d = document.getElementById('reader-frame').contentDocument; return /\\/Albert_Einstein$/.test(d.location.pathname) && d.querySelector('.zw-bar'); }",
+                timeout=15000,
+            )
+            pg.wait_for_timeout(300)
+            assert (
+                _q(pg, "d.querySelector('.zw-trail')") is None
+            ), "Einstein again: the trail is back to its start"
+            # Read next: the lead's links, after the article, their lines when near.
+            _q(pg, "d.querySelector('.zw-next').scrollIntoView()")
+            pg.wait_for_function(
+                "() => { var e = document.getElementById('reader-frame').contentDocument.querySelector('.zw-next em'); return e && e.textContent; }",
+                timeout=10000,
+            )
+            nxt = _q(
+                pg,
+                "Array.prototype.map.call(d.querySelectorAll('.zw-next b'), function(b) { return b.textContent; })",
+            )
+            assert nxt == ["Physics", "Energy"], nxt
+        finally:
+            br.close()
+
+
 def test_a_right_to_left_article_and_a_mini(served):
     from playwright.sync_api import sync_playwright
 

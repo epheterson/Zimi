@@ -38,6 +38,16 @@ var _WIKI_SVG_MAP = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0
 // level: the section you were in ({k: its place among the article's
 // sections, n: how many, text: its heading}). Read once, by that article.
 var _wikiLand = null;
+// Diving in. The article a link was followed from ({zim, path}), read once
+// by the next article: it goes on the trail one step further.
+var _wikiVia = null;
+var _WIKI_TRAIL_MAX = 12;       // the steps a trail keeps
+var _WIKI_TRAILS_KEPT = 8;      // recent trails, for Zimipedia's front door
+var _WIKI_NEXT = 4;             // "read next": the lead's first links
+var _WIKI_SENTENCE_MAX = 240;   // a preview's first sentence, at most
+var _WIKI_SNIPPETS_KEPT = 200;
+var _WIKI_TRAIL_KEY = 'zimi_wiki_trail';    // this tab's trail (session)
+var _WIKI_TRAILS_KEY = 'zimi_wiki_trails';  // the recent trails (this browser)
 var _WIKI_UI_FONT = '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';
 var _WIKI_CSS = [
   // ── the page: the reader's own type, and room for the bar ──
@@ -156,7 +166,31 @@ var _WIKI_CSS = [
   '.zw-pane-head{display:flex;align-items:center;gap:8px;margin:0 0 6px;font:600 12.5px/1.3 ' + _WIKI_UI_FONT + ';color:var(--rv-muted);text-transform:uppercase;letter-spacing:.05em}',
   '.zw-pane-head span{flex:1}',
   '.zw-pane-head button{border:0;background:none;color:inherit;font-size:20px;line-height:1;width:32px;height:32px;border-radius:16px;cursor:pointer}',
-  '@media print{.zw-rail,.zw-card,.zw-hero,.zw-pane{display:none!important}.zw-facts > summary{display:none}}'
+  // ── diving in: a link's card, the trail, read next ──
+  '.zw-card.zw-link{padding:0;overflow:hidden!important}',
+  '.zw-prev{display:grid;grid-template-columns:1fr auto;gap:4px 12px;padding:12px 14px 12px 16px;align-items:start}',
+  '.zw-prev img{grid-row:1 / span 3;grid-column:2;width:84px;height:84px;object-fit:cover;border-radius:10px;margin:0!important;background:var(--rv-code)}',
+  '.zw-prev > div,.zw-prev > button{grid-column:1}',
+  '.zw-prev-t{font:600 17px/1.25 var(--rv-font);color:var(--rv-head);unicode-bidi:plaintext}',
+  '.zw-prev-s{color:var(--rv-fg);font-size:14px;line-height:1.45;unicode-bidi:plaintext}',
+  '.zw-prev-s:empty::before{content:"";display:block;height:2.6em;border-radius:6px;background:linear-gradient(90deg,var(--rv-code),transparent)}',
+  '.zw-prev-go{justify-self:start;margin-top:4px;border:0;border-radius:18px;padding:7px 16px;background:var(--rv-link);color:var(--rv-bg);font:600 13.5px/1 ' + _WIKI_UI_FONT + ';cursor:pointer}',
+  '.zw-trail{display:flex;flex-wrap:wrap;align-items:center;gap:2px 4px;margin:0 0 .6em;font:13px/1.4 ' + _WIKI_UI_FONT + ';color:var(--rv-muted)}',
+  '.zw-trail button{border:0;background:none;color:var(--rv-link);font:inherit;padding:2px 4px;border-radius:6px;cursor:pointer;unicode-bidi:plaintext;max-width:14em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+  '.zw-trail b{font-weight:600;color:var(--rv-fg);padding:2px 4px;unicode-bidi:plaintext}',
+  '.zw-trail i{font-style:normal;opacity:.6}',
+  '.zw-trail i:dir(ltr)::before{content:"›"}.zw-trail i:dir(rtl)::before{content:"‹"}',
+  '.zw-next{margin:2.4em 0 0;padding-top:1em;border-top:1px solid var(--rv-border)}',
+  'html.zw .zimi-reader .zw-next h2{border:0;margin:0 0 .6em;font:600 13px/1.3 ' + _WIKI_UI_FONT + ';text-transform:uppercase;letter-spacing:.06em;color:var(--rv-muted)}',
+  '.zw-next ul{list-style:none;margin:0!important;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(15em,1fr));gap:10px}',
+  '.zw-next li{margin:0!important}',
+  '.zw-next a{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border:1px solid var(--rv-border);border-radius:12px;color:var(--rv-fg)!important;text-decoration:none!important;height:100%;box-sizing:border-box}',
+  '@media (hover:hover){.zw-next a:hover{border-color:var(--rv-link)}}',
+  '.zw-next img{width:56px;height:56px;object-fit:cover;border-radius:8px;margin:0!important;flex:none}',
+  '.zw-next span{display:flex;flex-direction:column;gap:2px;min-width:0}',
+  '.zw-next b{font:600 15px/1.3 var(--rv-font);color:var(--rv-head);unicode-bidi:plaintext}',
+  '.zw-next em{font-style:normal;font-size:13px;line-height:1.4;color:var(--rv-muted);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;unicode-bidi:plaintext}',
+  '@media print{.zw-rail,.zw-card,.zw-hero,.zw-pane,.zw-trail,.zw-next{display:none!important}.zw-facts > summary{display:none}}'
 ].join('');
 
 // How articles are read in this browser: the size, spacing and margins of
@@ -210,6 +244,50 @@ function _wikiLandOn(heads, land) {
   for (var i = 0; i < h2.length; i++) if (land.text && norm(_wikiText(h2[i])) === norm(land.text)) return h2[i];
   return h2[Math.min(h2.length - 1, Math.round(land.k / Math.max(1, land.n - 1) * (h2.length - 1)))];
 }
+// An article's first sentence, from the start of its text.
+function _wikiSentence(text) {
+  text = String(text || '').replace(/\s+/g, ' ').trim();
+  var m = /[.!?։۔।](?=\s|$)|[。！？]/.exec(text.slice(20));
+  var s = m ? text.slice(0, 20 + m.index + 1) : text;
+  return s.length > _WIKI_SENTENCE_MAX ? s.slice(0, _WIKI_SENTENCE_MAX).replace(/\s+\S*$/, '') + '…' : s;
+}
+// A page's first lines and picture (the server's /snippet), asked once.
+var _wikiSnippets = {}, _wikiSnippetOrder = [];
+function _wikiSnippet(zim, path) {
+  var k = zim + '\n' + path;
+  if (!_wikiSnippets[k]) {
+    _wikiSnippets[k] = fetch('/snippet?zim=' + encodeURIComponent(zim) + '&path=' + encodeURIComponent(path))
+      .then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; })
+      .then(function(d) { if (!d) delete _wikiSnippets[k]; return d || {}; });
+    _wikiSnippetOrder.push(k);
+    if (_wikiSnippetOrder.length > _WIKI_SNIPPETS_KEPT) delete _wikiSnippets[_wikiSnippetOrder.shift()];
+  }
+  return _wikiSnippets[k];
+}
+// The trail: the articles you came through, this tab's, one link at a time.
+// An article already on it (Back, or a tap on it) cuts it back there; one
+// followed from its last article goes on the end; any other starts afresh.
+// Trails of two or more are kept, the latest first, for the front door.
+function _wikiSame(a, b) { return !!(a && b && a.zim === b.zim && a.path === b.path); }
+function _wikiTrailStep(item, via) {
+  var tr = _getStorageJSON(_WIKI_TRAIL_KEY, [], true) || [];
+  var at = -1;
+  for (var i = 0; i < tr.length; i++) if (_wikiSame(tr[i], item)) at = i;
+  if (at >= 0) tr = tr.slice(0, at + 1);
+  else if (via && tr.length && _wikiSame(tr[tr.length - 1], via)) tr.push(item);
+  else tr = [item];
+  tr = tr.slice(-_WIKI_TRAIL_MAX);
+  try { sessionStorage.setItem(_WIKI_TRAIL_KEY, JSON.stringify(tr)); } catch (e) {}
+  if (tr.length >= 2) {
+    var kept = _getStorageJSON(_WIKI_TRAILS_KEY, []) || [];
+    // The same trail grown (or cut back) replaces itself: one that starts
+    // where it starts and was the latest.
+    if (kept.length && _wikiSame(kept[0].items[0], tr[0])) kept.shift();
+    kept.unshift({ ts: Date.now(), items: tr });
+    _setStorageJSON(_WIKI_TRAILS_KEY, kept.slice(0, _WIKI_TRAILS_KEPT));
+  }
+  return tr;
+}
 function _wikiText(el) { return (el && el.textContent || '').replace(/\s+/g, ' ').trim(); }
 // A mini build: Kiwix's _mini_ in the file name.
 function _wikiIsMini(zim) { var z = _zimInfo(zim); return !!(z && /_mini(?:_|\.zim$)/i.test(z.file || '')); }
@@ -230,7 +308,7 @@ function _wikiLay(frame) {
 function _wikiUndo(doc) {
   try {
     doc.documentElement.classList.remove('zw', 'zw-rtl', 'zw-split', 'zb-away', 'zb-sheet-open');
-    Array.prototype.forEach.call(doc.querySelectorAll('#zw-style,.zw-bar,.zw-rail,.zw-card,.zw-sheet,.zw-scrim,.zw-hero,.zw-sub,.zw-note,.zw-pane,.zw-strip'), function(n) { n.remove(); });
+    Array.prototype.forEach.call(doc.querySelectorAll('#zw-style,.zw-bar,.zw-rail,.zw-card,.zw-sheet,.zw-scrim,.zw-hero,.zw-sub,.zw-note,.zw-pane,.zw-strip,.zw-trail,.zw-next'), function(n) { n.remove(); });
     Array.prototype.forEach.call(doc.querySelectorAll('details.zw-facts'), function(d) { while (d.lastChild && d.lastChild.nodeName !== 'SUMMARY') d.parentNode.insertBefore(d.lastChild, d.nextSibling); d.remove(); });
   } catch (e) {}
   doc.__zimiWikiLaid = false;
@@ -522,6 +600,104 @@ function _wikiLayout(frame) {
     if (e.key !== 'Escape') return;
     if (!card.hidden) { hideCard(); e.preventDefault(); } else if (sheetOpen()) { closeSheets(); e.preventDefault(); }
   });
+
+  // ── diving in ──
+  var here = { zim: zim, path: _splitPathFragment(path).base, title: title };
+  var trail = _wikiTrailStep(here, _wikiVia);
+  _wikiVia = null;
+  var follow = function(to) { _wikiVia = here; hideCard(); closeSheets(); openArticle(to.zim, to.path); };
+  if (trail.length > 1 && titleEl) {
+    // Where you came through: a step back along it is a tap.
+    var tn = ui(el('nav', 'zw-trail'));
+    tn.setAttribute('aria-label', t('wiki_trail'));
+    tn.innerHTML = trail.map(function(s, i) {
+      return i === trail.length - 1 ? '<b>' + esc(s.title) + '</b>' : '<button type="button" data-i="' + i + '">' + esc(s.title) + '</button><i aria-hidden="true"></i>';
+    }).join('');
+    tn.onclick = function(e) {
+      var b = e.target.closest && e.target.closest('button[data-i]');
+      if (b) { var s = trail[Number(b.getAttribute('data-i'))]; hideCard(); openArticle(s.zim, s.path); }
+    };
+    titleEl.parentNode.insertBefore(tn, titleEl);
+  }
+  // A link to an article of the library: {zim, path}, or null (a place in
+  // this page, a file, a site outside, this page).
+  var linkTo = function(a) {
+    var href = a.getAttribute('href') || '';
+    if (!href || href.charAt(0) === '#' || _isImageFileLink(a)) return null;
+    var u; try { u = new URL(a.href, win.location.href); } catch (e) { return null; }
+    var m = u.origin === location.origin && /^\/w\/([^\/]+)\/(.+)$/.exec(u.pathname);
+    if (!m) return null;
+    var to = { zim: decodeURIComponent(m[1]), path: decodeURIComponent(m[2]) };
+    if (_wikiSame(to, here) || /\.(?:png|jpe?g|gif|svg|webp|pdf|epub|mp[34]|webm|og[gv])$/i.test(to.path)) return null;
+    return to;
+  };
+  // A link's card: its first sentence and picture, and the way on.
+  var preview = function(a, to) {
+    var box = el('div', 'zw-prev');
+    box.innerHTML = '<img alt="" hidden><div class="zw-prev-t" dir="auto"></div><div class="zw-prev-s" dir="auto"></div>' +
+      '<button type="button" class="zw-prev-go">' + tH('wiki_read') + '</button>';
+    var z = _zimInfo(to.zim) || {};
+    var lg = String(z.language || '').split(',')[0];
+    if (lg) { box.children[1].setAttribute('lang', lg); box.children[2].setAttribute('lang', lg); }
+    box.children[1].textContent = a.getAttribute('title') || _wikiText(a) || _titleFromPath(to.path);
+    ui(box.lastChild).onclick = function() { follow(to); };
+    showCard(a, '', box, 'zw-link');
+    _wikiSnippet(to.zim, to.path).then(function(d) {
+      if (card.__zwFor !== a || card.hidden) return;
+      box.children[2].textContent = _wikiSentence(d.snippet) || ' ';
+      if (d.thumbnail) { box.firstChild.src = d.thumbnail; box.firstChild.hidden = false; }
+      placeCard(a);
+    });
+  };
+  // Before the reader's own link handling (on the window, so it is first).
+  win.addEventListener('click', function(e) {
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    var a = e.target.closest && e.target.closest('a[href]');
+    if (!a || a.closest('.zw-card,.zw-rail,.zw-sheet,.zw-bar,.zw-trail')) return;
+    var to = linkTo(a);
+    if (!to) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    // A chip of the strip or a card of Read next is already a choice; a
+    // link in the text asks first, and a second tap on it follows.
+    if (a.closest('.zw-strip,.zw-next') || (card.__zwFor === a && !card.hidden)) follow(to);
+    else preview(a, to);
+  }, true);
+
+  // Read next: the articles the lead links to, first to last, each once,
+  // after the article; their lines come when you are near.
+  var nexts = [];
+  var leadEl = article.querySelector('section[data-mw-section-id="0"]') || article;
+  Array.prototype.some.call(leadEl.querySelectorAll('p a[href]'), function(a) {
+    var to = linkTo(a);
+    if (to && !nexts.some(function(n) { return _wikiSame(n, to); }) && !trail.some(function(s) { return _wikiSame(s, to); })) {
+      to.title = a.getAttribute('title') || _wikiText(a);
+      nexts.push(to);
+    }
+    return nexts.length >= _WIKI_NEXT;
+  });
+  if (nexts.length) {
+    var nx = el('section', 'zw-next');
+    nx.innerHTML = '<h2 dir="' + (uiRtl ? 'rtl' : 'ltr') + '" lang="' + escAttr(_currentLang || 'en') + '">' + tH('wiki_read_next') + '</h2><ul>' +
+      nexts.map(function(n) {
+        return '<li><a href="' + escAttr(_articleUrl(n.zim, n.path)) + '"><img alt="" hidden><span><b dir="auto">' + esc(n.title) + '</b><em dir="auto"></em></span></a></li>';
+      }).join('') + '</ul>';
+    article.appendChild(nx);
+    var fillNext = function() {
+      nexts.forEach(function(n, i) {
+        _wikiSnippet(n.zim, n.path).then(function(d) {
+          var li = nx.querySelectorAll('li')[i];
+          if (!li) return;
+          li.querySelector('em').textContent = _wikiSentence(d.snippet);
+          if (d.thumbnail) { var im = li.querySelector('img'); im.src = d.thumbnail; im.hidden = false; }
+        });
+      });
+    };
+    if (win.IntersectionObserver) {
+      var io = new win.IntersectionObserver(function(es) { if (es.some(function(x) { return x.isIntersecting; })) { io.disconnect(); fillNext(); } }, { rootMargin: '600px' });
+      io.observe(nx);
+    } else fillNext();
+  }
 
   // ── languages: the ones that have this article, landing on the same section ──
   var info = null;
