@@ -1696,7 +1696,7 @@ def unlink_other_sites(page, page_url):
         val = _html.unescape(hm.group("val") or "").strip()
         head = val.split("/", 1)[0]
         if ":" in head and not val.lower().startswith(("http:", "https:")):
-            return tag  # mailto:, tel:, javascript: — not another site
+            return tag  # mailto:, tel:, javascript: are not another site
         target = urllib.parse.urljoin(page_url, val)
         if not target.lower().startswith(("http:", "https:")) or _site_host(target) == site:
             return tag

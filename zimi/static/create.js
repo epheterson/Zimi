@@ -119,14 +119,14 @@ var CREATE_MODE_DEFS = [
   {
     id: 'page', network: true, multiline: true,
     label: 'create_label_page_url', placeholder: 'create_ph_url',
-    flags: ['engine'], advanced: ['block_ads', 'capture_variants', 'language']
+    flags: ['engine'], advanced: ['block_ads', 'capture_variants', 'strip_links', 'language']
   },
   {
     id: 'site', network: true,
     label: 'create_label_site_url', placeholder: 'create_ph_site_url',
     flags: ['engine', 'max_pages'],
     advanced: ['max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
-      'language', 'ignore_robots'],
+      'strip_links', 'language', 'ignore_robots'],
     pick: { max_bytes: '4G' }
   },
   {
@@ -356,6 +356,14 @@ var CREATE_FIELDS = {
     id: 'create-capture-variants', control: 'check', label: 'create_capture_variants',
     kind: 'bool', on: true, needsEngine: ['alive'],
     note: 'create_capture_variants_note'
+  },
+  // "Remove links to other sites" (#99): links that leave the site become
+  // plain text in the written ZIM, for the readers that are not Zimi. Off until
+  // ticked. Drawn for the engines whose pages Zimi writes itself (fast and
+  // rendered); an alive capture's links are rewritten when it is replayed.
+  strip_links: {
+    id: 'create-strip-links', control: 'check', label: 'create_strip_links',
+    kind: 'bool', needsEngine: ['', 'rendered'], note: 'create_strip_links_note'
   },
   // Auto first, and the probe fills it in: the page you are capturing already
   // declares its language, so making someone recall an ISO 639-3 code was the

@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The Almanac zooms from the solar system to a 3D Earth: lit by the real Sun, with the Moon, eclipses as they fall, the ISS and the GPS satellites (tap one: its clock gains 38 microseconds a day).
 - ZimiTube plays the videos and audiobooks in Kiwix's document libraries (Maître Lucas, YouScribe's audiobooks, Zaya and more): an audiobook is one card, its tracks listed and played in turn.
 - A folder of videos or audio made with Create a ZIM plays in ZimiTube.
+- Links that leave your library get a small arrow in every reader, and hovering or tapping one says where it goes ("Opens example.com on the web", or that it needs the internet when Zimi is offline); Settings can hide them as plain text instead. ([#99](https://github.com/epheterson/Zimi/issues/99))
+- Create a ZIM can remove links to other sites (web page and site captures, fast and rendered engines), so the ZIM never sends a reader to the web in Kiwix either. ([#99](https://github.com/epheterson/Zimi/issues/99))
 
 ### Changed
 
