@@ -368,23 +368,31 @@ var _ARTICLE_DARKEN_CSS = [
 // A page "declares its own dark scheme" (so we must NOT invert it, or we'd flip it
 // back to blinding white) when it opts into dark via <meta name="color-scheme">
 // or its body already paints a dark background.
+// The page's own background decides. With none (body and root both
+// transparent) the browser paints the canvas, which follows the color-scheme
+// _askArticleFor just set, and draws default text to match: then the text
+// colour is the honest answer. Inverting such a page turned its white text
+// black on a canvas the filter cannot reach (black on black).
+var _DARK_BG_MAX_LUM = 0.4, _LIGHT_TEXT_MIN_LUM = 0.6, _OPAQUE_MIN_ALPHA = 0.5;
+function _cssColorLum(css) {
+  var m = css && css.match(/rgba?\(([^)]+)\)/);
+  if (!m) return null;
+  var p = m[1].split(',').map(parseFloat);
+  return { lum: (0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]) / 255, alpha: p.length > 3 ? p[3] : 1 };
+}
 function _articleDeclaresDark(doc) {
   try {
     var meta = doc.querySelector('meta[name="color-scheme"]');
     if (meta && /dark/i.test(meta.getAttribute('content') || '')) return true;
   } catch (e) {}
   try {
-    var bg = doc.defaultView.getComputedStyle(doc.body).backgroundColor;
-    var m = bg && bg.match(/rgba?\(([^)]+)\)/);
-    if (m) {
-      var p = m[1].split(',').map(parseFloat);
-      var a = p.length > 3 ? p[3] : 1;
-      // Only trust an opaque background; a transparent body defaults to white.
-      if (a >= 0.5) {
-        var lum = (0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]) / 255;
-        if (lum < 0.4) return true;
-      }
-    }
+    var win = doc.defaultView;
+    var bodyBg = _cssColorLum(win.getComputedStyle(doc.body).backgroundColor);
+    if (bodyBg && bodyBg.alpha >= _OPAQUE_MIN_ALPHA) return bodyBg.lum < _DARK_BG_MAX_LUM;
+    var rootBg = _cssColorLum(win.getComputedStyle(doc.documentElement).backgroundColor);
+    if (rootBg && rootBg.alpha >= _OPAQUE_MIN_ALPHA) return rootBg.lum < _DARK_BG_MAX_LUM;
+    var text = _cssColorLum(win.getComputedStyle(doc.body).color);
+    if (text) return text.lum > _LIGHT_TEXT_MIN_LUM;
   } catch (e) {}
   return false;
 }
