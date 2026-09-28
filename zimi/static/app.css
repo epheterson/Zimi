@@ -329,16 +329,18 @@
 
   .topbar-search { flex: 1; position: relative; margin-left: 4px; }
   .topbar-search input {
-    width: 100%; padding: 9px 14px 9px 36px;
+    width: 100%; padding-block: 9px; padding-inline: 36px 14px;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
     color: var(--text); font-size: 16px; outline: none;
     transition: border-color 0.2s, box-shadow 0.2s;
   }
   .topbar-search input:focus { border-color: var(--amber-border); box-shadow: 0 0 0 3px var(--amber-glow), 0 0 20px var(--amber-glow); }
   .topbar-search input::placeholder { color: var(--text2); }
-  .topbar-search .search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text2); pointer-events: none; }
+  /* The box is written in logical sides: in a right-to-left UI the glass
+     sits at the right, where the text starts, and ×, ? and / at the left. */
+  .topbar-search .search-icon { position: absolute; inset-inline-start: 11px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text2); pointer-events: none; }
   .topbar-search .kbd {
-    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    position: absolute; inset-inline-end: 10px; top: 50%; transform: translateY(-50%);
     font-size: 11px; color: var(--text2); background: var(--surface2);
     border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px;
     font-family: inherit; pointer-events: none; opacity: 0.7; transition: opacity 0.15s;
@@ -348,7 +350,7 @@
      kbd hint gives way to it so they never overlap. Pure CSS — the value drives
      :placeholder-shown, including programmatic changes. */
   .topbar-search .search-clear {
-    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    position: absolute; inset-inline-end: 8px; top: 50%; transform: translateY(-50%);
     display: none; align-items: center; justify-content: center;
     width: 22px; height: 22px; padding: 0; border: none; border-radius: 5px;
     background: transparent; color: var(--text2); cursor: pointer;
@@ -1059,10 +1061,6 @@
 
   /* ── RTL support ── */
   [dir="rtl"] .topbar { direction: rtl; }
-  [dir="rtl"] .topbar-search input { text-align: right; padding: 9px 14px 9px 36px; }
-  [dir="rtl"] .search-icon { left: 12px; right: auto; }
-  [dir="rtl"] .kbd { right: auto; left: 8px; }
-  [dir="rtl"] .topbar-search .search-clear { right: auto; left: 8px; }
   [dir="rtl"] .back-btn { transform: scaleX(-1); }
   /* Article/ZIM titles can be RTL (Arabic, Hebrew, Farsi) inside LTR
      chrome (and vice versa) — isolate so neighboring punctuation and
@@ -2439,10 +2437,38 @@
   .ci-pin { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; color: var(--amber); }
   .ci-pin svg { width: 24px; height: 24px; }
   .browse-drilldown-count { font-size: 12px; color: var(--text2); margin-inline-start: auto; }
-  /* The search grammar, one quiet line: under the catalog's results header
-     and in an empty library search. */
-  .search-syntax { font-size: 12px; color: var(--text2); margin: 0 0 12px; overflow-wrap: anywhere; }
-  .empty .search-syntax { margin: 8px auto 0; max-width: 34em; }
+  /* ── Search operators: chips and the "?" ──
+     A chip says what one operator did ("without ted", "French"); its ×
+     searches again without it. The same chip, minus the ×, explains each
+     example behind the "?". Logical properties, so right-to-left mirrors. */
+  .search-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+  .search-chip {
+    display: inline-flex; align-items: center; gap: 2px; box-sizing: border-box; max-width: 100%;
+    min-height: 28px; padding-block: 2px; padding-inline: 12px 2px;
+    font-size: 12px; line-height: 1.25; color: var(--text);
+    background: var(--amber-glow); border: 1px solid var(--amber-border); border-radius: 20px;
+  }
+  .search-chip.search-chip-static { padding-inline-end: 12px; }
+  .search-chip-label { min-width: 0; overflow-wrap: anywhere; }
+  .search-chip-x {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    width: 24px; height: 24px; padding: 0; border: none; border-radius: 50%;
+    background: transparent; color: var(--text2); cursor: pointer; transition: color 0.12s, background 0.12s;
+  }
+  .search-chip-x:hover, .search-chip-x:focus-visible { color: var(--amber); background: var(--amber-glow); }
+  .topbar-search .search-help {
+    display: none; position: absolute; inset-inline-end: 34px; top: 50%; transform: translateY(-50%);
+    align-items: center; justify-content: center; box-sizing: border-box;
+    width: 22px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 50%;
+    background: transparent; color: var(--text2); font: 600 12px/1 inherit; cursor: pointer;
+    transition: color 0.12s, background 0.12s, border-color 0.12s;
+  }
+  .topbar-search.has-help .search-help { display: flex; }
+  .topbar-search .search-help:hover, .topbar-search .search-help[aria-expanded="true"] { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .topbar-search.has-help input { padding-inline-end: 62px; }
+  .search-tips-head { padding: 8px 14px 4px; font-size: 12px; font-weight: 600; color: var(--text2); }
+  .search-example { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+  .search-example-q { color: var(--text); font-weight: 500; }
 
   /* ── Mobile ── */
   /* ── Results summary ── */
@@ -2466,6 +2492,13 @@
     .browse-grid { grid-template-columns: 1fr; }
     .container { padding: 20px 12px; }
     .topbar-search .kbd { display: none; }
+    /* A phone's box is narrow, so the "?" costs it nothing: it takes the ×'s
+       place while the box is empty, sits beside the × while you type, and
+       steps aside while a search is shown, whose chips say what it did. */
+    .topbar-search.has-help input:placeholder-shown,
+    .topbar-search.has-help input:not(:focus) { padding-inline-end: 36px; }
+    .topbar-search input:placeholder-shown ~ .search-help { inset-inline-end: 8px; }
+    .topbar-search input:not(:placeholder-shown):not(:focus) ~ .search-help { display: none; }
     .kbd-hints { display: none; }
     .manage-card { padding: 16px 12px; }
     .manage-settings { flex-direction: column; min-height: auto; }

@@ -1870,6 +1870,7 @@ function updateTopbar() {
   } else {
     q.placeholder = t('search_placeholder');
   }
+  _syncSearchHelp();
 
   // Footer
   updateFooter();
@@ -6518,6 +6519,7 @@ q.addEventListener('blur', function() {
 });
 
 q.addEventListener('input', () => {
+  _searchHelpExpanded(false); // what is typed replaces the examples
   clearTimeout(searchTimer);
   const val = q.value.trim();
   // Suggest (200ms debounce) — include history items when typing
@@ -6971,8 +6973,10 @@ function renderSearchResults(data, scope) {
       '</div>';
   }
 
+  // What the query's operators did, each a tap away from undone.
+  const chipsHtml = searchChipsHtml(data._query, zimsCache);
   if (!items.length) {
-    output.innerHTML = '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH('try_different') + '</p>' + _searchSyntaxHint() + '</div>';
+    output.innerHTML = chipsHtml + '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH('try_different') + '</p></div>';
     return;
   }
 
@@ -7009,7 +7013,7 @@ function renderSearchResults(data, scope) {
   // the shards had nothing, not a second row under every hit.
   const placesHtml = _mapPlaceRowsHtml(data.places || []);
   const mapFindHtml = (!scope && !placesHtml) ? _mapFindRowsHtml(data._query || '') : '';
-  let html = dymHtml + zimMatchHtml + '<div class="results">' + placesHtml + mapFindHtml + visible.map((r, i) => {
+  let html = chipsHtml + dymHtml + zimMatchHtml + '<div class="results">' + placesHtml + mapFindHtml + visible.map((r, i) => {
     const sourceRow = !scope
       ? '<div class="result-source">' + _sourceIconHtml(r.zim, 20) +
         '<span class="rs-name">' + esc(_zimTitle(r.zim)) + '</span></div>'
@@ -7338,6 +7342,7 @@ function showSuggest() {
 function hideSuggest() {
   suggestDropdown.style.display = 'none';
   suggestIndex = -1;
+  _searchHelpExpanded(false);
   if (suggestController) { suggestController.abort(); suggestController = null; }
 }
 
@@ -7351,6 +7356,7 @@ function selectSuggest(i) {
   const s = suggestItems[i];
   if (!s) return;
   hideSuggest();
+  if (s._example) { _searchAgain(s.query); return; }
   // History search item: re-execute the search
   if (s._histSearch) {
     _runRecentSearch(s.query, s.zim);
@@ -8680,6 +8686,9 @@ function renderBrowseGallery() {
   if (!_catalogCache) results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading_catalog') + '</div>';
 
   loadFullCatalog().then(items => {
+    // A search or a category opened while the catalog loaded is what the
+    // page shows now; painting the gallery over it lost what was typed.
+    if (_browseView !== 'gallery') return;
     // Count unique ZIMs per category (group variants by name)
     const catNames = {};    // cat -> Set of names
     const catInstalled = {};
@@ -8953,8 +8962,11 @@ const SEARCH_QUOTES = '"“”„';
 // Scripts written without spaces (Thai, Lao, Myanmar, Khmer, kana, CJK): a
 // term there matches anywhere, since a word boundary means nothing.
 const _SEARCH_UNSPACED = /[฀-໿က-႟ក-៿぀-ヿ㐀-䶿一-鿿豈-﫿]/;
-const CATALOG_FILTERS = { in: 'source', source: 'source', lang: 'lang' };
+// The keys both searches know (query.LIBRARY_FILTERS on the server).
+const SEARCH_FILTERS = { in: 'source', source: 'source', lang: 'lang' };
 
+// Each token is [text, phrase, negated, start, end]: where it sits in what
+// was typed is what lets a chip take one operator back out (searchQueryChips).
 function _searchTokens(q) {
   const out = [], n = q.length, isQ = c => SEARCH_QUOTES.includes(c), isS = c => /\s/.test(c);
   let i = 0;
@@ -8968,7 +8980,7 @@ function _searchTokens(q) {
       for (let j = i + 1; j < n; j++) if (isQ(q[j])) { end = j; break; }
       if (end >= 0) {
         const text = q.slice(i + 1, end).split(/\s+/).filter(Boolean).join(' ');
-        if (text) out.push([text, true, neg]);
+        if (text) out.push([text, true, neg, start, end + 1]);
         i = end + 1;
         continue;
       }
@@ -8979,19 +8991,23 @@ function _searchTokens(q) {
     }
     let j = start;
     while (j < n && !isS(q[j])) j++;
-    out.push([q.slice(start, j), false, false]);
+    out.push([q.slice(start, j), false, false, start, j]);
     i = j;
   }
   return out;
 }
 
+// Beyond what query.py returns, each term and filter carries `at`, its token
+// in `tokens`, and `joins` lists per group the OR tokens that joined it.
 function parseSearchQuery(q, filters) {
-  filters = filters || CATALOG_FILTERS;
-  const groups = [], exclude = [], found = [];
-  let joinNext = false;
-  for (let [text, phrase, neg] of _searchTokens(q || '')) {
+  filters = filters || SEARCH_FILTERS;
+  const groups = [], joins = [], exclude = [], found = [];
+  const tokens = _searchTokens(q || '');
+  let joinNext = false, orAt = -1;
+  for (let at = 0; at < tokens.length; at++) {
+    let [text, phrase, neg] = tokens[at];
     if (!phrase) {
-      if (text === 'OR') { joinNext = groups.length > 0; continue; }
+      if (text === 'OR') { joinNext = groups.length > 0; orAt = at; continue; }
       if (text.startsWith('-')) {
         text = text.replace(/^-+/, ''); neg = true;
         if (!text) { joinNext = false; continue; }
@@ -8999,7 +9015,7 @@ function parseSearchQuery(q, filters) {
       const c = text.indexOf(':');
       const key = c > 0 ? text.slice(0, c).toLowerCase() : '';
       if (c > 0 && c < text.length - 1 && Object.prototype.hasOwnProperty.call(filters, key)) {
-        found.push({ key: filters[key], value: text.slice(c + 1).toLowerCase(), negate: neg });
+        found.push({ key: filters[key], value: text.slice(c + 1).toLowerCase(), negate: neg, at: at });
         joinNext = false;
         continue;
       }
@@ -9008,22 +9024,25 @@ function parseSearchQuery(q, filters) {
         if (!text) continue;
       }
     }
-    const term = { text: text.toLowerCase(), phrase: phrase };
+    const term = { text: text.toLowerCase(), phrase: phrase, at: at };
     if (neg) { exclude.push(term); joinNext = false; continue; }
-    if (joinNext) groups[groups.length - 1].push(term); else groups.push([term]);
+    if (joinNext) { groups[groups.length - 1].push(term); joins[joins.length - 1].push(orAt); }
+    else { groups.push([term]); joins.push([]); }
     joinNext = false;
   }
   const typed = (q || '').toLowerCase().split(/\s+/).filter(Boolean);
   const plain = !exclude.length && !found.length &&
     groups.every(g => g.length === 1 && !g[0].phrase) &&
     groups.length === typed.length && groups.every((g, k) => g[0].text === typed[k]);
-  return { groups: groups, exclude: exclude, filters: found, plain: plain };
+  return { groups: groups, exclude: exclude, filters: found, plain: plain, tokens: tokens, joins: joins };
 }
+
+const _reEscape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // A phrase or an exclusion matches from the start of a word ("-ted" drops
 // TED and TEDx, not United), or anywhere in a script without spaces.
 function _searchTermRe(text) {
-  const body = text.split(/\s+/).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
+  const body = text.split(/\s+/).map(_reEscape).join('\\s+');
   return new RegExp((_SEARCH_UNSPACED.test(text[0]) ? '' : '(?<![\\p{L}\\p{N}_])') + body, 'u');
 }
 
@@ -9053,10 +9072,170 @@ function catalogItemMatches(parsed, item) {
     parsed.filters.every(f => _CATALOG_FILTER_TESTS[f.key](f.value, item) !== f.negate);
 }
 
-// The syntax, where a search is typed: the catalog's results and an empty
-// library search.
-function _searchSyntaxHint() {
-  return '<p class="hint search-syntax">' + tH('search_syntax_hint') + '</p>';
+// ── What the operators did, as chips ──
+// Eric, 2026-09-27, of a sentence of syntax under the results: "didn't read
+// well probably wouldn't translate well". So each operator in a query shows
+// as a chip in plain words ("without ted", "exact: solar panel", "French",
+// "Wikipedia"), the same in the library search and the catalog, and its ×
+// searches again without that operator. `query` on a chip is that search.
+const _isOrToken = tok => !!tok && !tok[1] && tok[0] === 'OR';
+
+// What was typed, with some tokens dropped and some replaced, and no OR left
+// hanging at either end or doubled.
+function _searchRebuild(q, tokens, drop, replace) {
+  const out = [];
+  tokens.forEach((tok, k) => {
+    if (drop.has(k)) return;
+    const s = replace && replace.has(k) ? replace.get(k) : q.slice(tok[3], tok[4]);
+    if (s === 'OR' && _isOrToken(tok) && (!out.length || out[out.length - 1] === 'OR')) return;
+    out.push(s);
+  });
+  while (out.length && out[out.length - 1] === 'OR') out.pop();
+  return out.join(' ');
+}
+
+// A token's words as typed: no leading "-", no quotes, case kept.
+function _searchTokenWords(tok) {
+  return tok[1] ? tok[0] : [...tok[0].replace(/^-+/, '')].filter(ch => !SEARCH_QUOTES.includes(ch)).join('');
+}
+
+function searchQueryChips(q) {
+  q = q || '';
+  const p = parseSearchQuery(q), toks = p.tokens, chips = [];
+  // An OR just before an exclusion or a filter joined nothing; taken out
+  // alone it would join the terms either side, so it goes with it.
+  const without = at => _searchRebuild(q, toks, new Set(_isOrToken(toks[at - 1]) ? [at, at - 1] : [at]));
+  for (const t of p.exclude) {
+    chips.push({ kind: 'without', at: t.at, words: [_searchTokenWords(toks[t.at])], query: without(t.at) });
+  }
+  for (const f of p.filters) {
+    chips.push({ kind: f.key, at: f.at, value: f.value, negate: f.negate, query: without(f.at) });
+  }
+  p.groups.forEach((g, i) => {
+    for (const t of g) {
+      if (!t.phrase) continue;
+      // The words stay, as words: it is the exactness the × takes away.
+      const words = _searchTokenWords(toks[t.at]);
+      chips.push({ kind: 'exact', at: t.at, words: [words], query: _searchRebuild(q, toks, new Set(), new Map([[t.at, words]])) });
+    }
+    if (g.length > 1) {
+      chips.push({ kind: 'or', at: g[0].at, words: g.map(t => t.phrase ? '"' + _searchTokenWords(toks[t.at]) + '"' : _searchTokenWords(toks[t.at])),
+        query: _searchRebuild(q, toks, new Set(p.joins[i])) });
+    }
+  });
+  return chips.sort((a, b) => a.at - b.at);
+}
+
+// The source an in: names, as its title: the one source it matches, or the
+// word as those sources' titles write it ("wikipedia" → "Wikipedia", "ted" →
+// "TED"), or what was typed.
+function _searchSourceTitle(value, pool) {
+  const hit = s => (s || '').toLowerCase().includes(value);
+  const titles = [...new Set((pool || []).filter(z => hit(z.name) || hit(z.title)).map(z => z.title || z.name))];
+  if (titles.length === 1) return titles[0];
+  const word = new RegExp('(?<![\\p{L}\\p{N}])' + _reEscape(value) + '(?![\\p{L}\\p{N}])', 'iu');
+  for (const title of titles) { const m = title.match(word); if (m) return m[0]; }
+  return value;
+}
+
+// A chip's words, as HTML (user words isolated, so a Latin word keeps its
+// place in a Hebrew label) or as plain text for its button's label.
+function _searchChipLabel(chip, pool, html) {
+  const w = html ? (s => '<bdi>' + esc(s) + '</bdi>') : (s => s);
+  const tpl = (key, vars) => {
+    if (!html) return t(key, vars);
+    let s = tH(key);
+    for (const k in vars) s = s.split('{' + k + '}').join(vars[k]);
+    return s;
+  };
+  if (chip.kind === 'without') return tpl('search_chip_without', { word: w(chip.words[0]) });
+  if (chip.kind === 'exact') return tpl('search_chip_exact', { words: w(chip.words[0]) });
+  if (chip.kind === 'or') {
+    try {
+      return new Intl.ListFormat(_currentLang, { type: 'disjunction' }).formatToParts(chip.words)
+        .map(part => part.type === 'element' ? w(part.value) : (html ? esc(part.value) : part.value)).join('');
+    } catch (e) { return chip.words.map(w).join(' OR '); }
+  }
+  const lang = chip.kind === 'lang';
+  const name = lang ? _langDisplayName(chip.value) : _searchSourceTitle(chip.value, pool);
+  if (chip.negate) return tpl('search_chip_without', { word: w(name) });
+  // On its own a language is a label, so it starts with a capital ("Français").
+  return w(lang ? name.charAt(0).toLocaleUpperCase(_currentLang) + name.slice(1) : name);
+}
+
+const _CHIP_X_SVG = '<svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+
+function _searchChipHtml(chip, pool, removable) {
+  const label = '<span class="search-chip-label">' + _searchChipLabel(chip, pool, true) + '</span>';
+  if (!removable) return '<span class="search-chip search-chip-static">' + label + '</span>';
+  const remove = t('remove') + ': ' + _searchChipLabel(chip, pool, false);
+  return '<span class="search-chip">' + label +
+    '<button type="button" class="search-chip-x" data-q="' + escAttr(chip.query) + '" onclick="_searchAgain(this.dataset.q)" aria-label="' +
+    escAttr(remove) + '" title="' + escAttr(remove) + '">' + _CHIP_X_SVG + '</button></span>';
+}
+
+// The chips for a query, or nothing when it has no operators. `pool` is what
+// an in: is looked up in: the installed sources, or the catalog.
+function searchChipsHtml(query, pool) {
+  const chips = searchQueryChips(query);
+  return chips.length ? '<div class="search-chips">' + chips.map(c => _searchChipHtml(c, pool, true)).join('') + '</div>' : '';
+}
+
+// A chip's ×, or an example from the "?": search for this instead, where the
+// box is searching now (the catalog in Manage, the library everywhere else).
+function _searchAgain(query) {
+  q.value = query || '';
+  hideSuggest();
+  if (!query) { clearSearch(); return; }
+  if (mode === 'manage') browseCatalogFilter(query);
+  else doSearch(query);
+}
+
+// The "?" beside the box: examples written for each language, one operator
+// each, shown with the chip it makes. The library's are about articles, the
+// catalog's about finding ZIMs.
+const SEARCH_EXAMPLES = ['search_example_exact', 'search_example_without', 'search_example_or', 'search_example_lang', 'search_example_source'];
+const CATALOG_EXAMPLES = ['catalog_example_or', 'catalog_example_without', 'catalog_example_lang'];
+
+// Where the grammar applies: the library's own search and the catalog. Not
+// in an article, an app, a map, the Almanac or Create, which search their own way.
+function _searchHelpApplies() {
+  if (mode === 'manage') return manageTab === 'browse';
+  return !readerOpen && !_almanacOpen && !_createOpen;
+}
+function _searchTipsOpen() {
+  return suggestDropdown.style.display !== 'none' && !!suggestDropdown.querySelector('.search-tips');
+}
+function _syncSearchHelp() {
+  const on = _searchHelpApplies();
+  q.parentElement.classList.toggle('has-help', on);
+  if (!on && _searchTipsOpen()) hideSuggest();
+}
+
+function _searchHelpExpanded(on) {
+  const btn = document.getElementById('search-help');
+  if (btn) btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+}
+
+function toggleSearchTips(e) {
+  if (_searchTipsOpen()) { hideSuggest(); return; }
+  // From the keyboard, into the box, where the arrows and Enter pick one; a
+  // tap leaves the box alone, so a phone's keyboard does not cover the list.
+  if (e && e.detail === 0) q.focus();
+  const catalog = mode === 'manage';
+  const pool = catalog ? _catalogCache : zimsCache;
+  const examples = (catalog ? CATALOG_EXAMPLES : SEARCH_EXAMPLES).map(k => t(k));
+  suggestItems = examples.map(ex => ({ _example: true, query: ex }));
+  suggestIndex = -1;
+  suggestDropdown.innerHTML = '<div class="search-tips">' +
+    '<div class="search-tips-head">' + tH('search_tips') + '</div>' +
+    examples.map((ex, i) =>
+      '<div class="suggest-item search-example" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
+        '<bdi class="search-example-q" dir="auto">' + esc(ex) + '</bdi>' +
+        searchQueryChips(ex).map(c => _searchChipHtml(c, pool, false)).join('') +
+      '</div>').join('') + '</div>';
+  suggestDropdown.style.display = 'block';
+  _searchHelpExpanded(true);
 }
 
 function browseCatalogFilter(query) {
@@ -9071,7 +9250,7 @@ function browseCatalogFilter(query) {
     results.innerHTML = _loadingHtml('loading_catalog');
   }
   loadFullCatalog().then(items => {
-    const parsed = parseSearchQuery(query, CATALOG_FILTERS);
+    const parsed = parseSearchQuery(query);
     const knownKeys = new Set(BROWSE_CATEGORIES.map(c => c.key));
     // Filter within current category if drilled down, otherwise all
     let pool = items;
@@ -9092,10 +9271,15 @@ function browseCatalogFilter(query) {
       if (aDemoted !== bDemoted) return aDemoted ? 1 : -1;
       return (a.title || a.name || '').localeCompare(b.title || b.name || '');
     });
+    // Back to the category it searched in, or to the catalog. The query is
+    // in the box; under the count, what its operators did.
+    const back = manageCategoryFilter
+      ? (_RTL_LANGS.has(_currentLang) ? tH('back') + ' \u2192' : '\u2190 ' + tH('back'))
+      : tH('back_to_catalog');
     let h = '<div class="browse-drilldown-header">' +
-      '<button class="browse-back" onclick="' + (manageCategoryFilter ? "drillCategory('" + escAttr(manageCategoryFilter) + "')" : 'renderBrowseGallery()') + '">\u2190 Back</button>' +
-      '<span class="browse-drilldown-count">' + t('n_results', {n: filtered.length}) + ' \u2014 \u201C' + esc(query) + '\u201D</span>' +
-    '</div>' + _searchSyntaxHint();
+      '<button class="browse-back" onclick="' + (manageCategoryFilter ? "drillCategory('" + escAttr(manageCategoryFilter) + "')" : 'renderBrowseGallery()') + '">' + back + '</button>' +
+      '<span class="browse-drilldown-count">' + tH('n_results', {n: filtered.length}) + '</span>' +
+    '</div>' + searchChipsHtml(query, items);
     if (grouped.length) {
       h += _renderCatalogGrid(grouped);
     } else {
@@ -9520,6 +9704,7 @@ function switchManageTab(tab) {
     if (!_getPrefLanguages().length && _currentLang) manageLangFilter = _currentLang;
     renderBrowseGallery();
   }
+  _syncSearchHelp();
   _renderSelectionBar();
 }
 

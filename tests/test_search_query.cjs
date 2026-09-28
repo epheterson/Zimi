@@ -31,7 +31,7 @@ function grab(name, kind) {
 
 const sandbox = { console, tH: (k) => k };
 vm.createContext(sandbox);
-for (const c of ['SEARCH_QUOTES', '_SEARCH_UNSPACED', 'CATALOG_FILTERS', '_LANG3TO2', '_catalogLang', '_CATALOG_FILTER_TESTS']) {
+for (const c of ['SEARCH_QUOTES', '_SEARCH_UNSPACED', 'SEARCH_FILTERS', '_reEscape', '_LANG3TO2', '_catalogLang', '_CATALOG_FILTER_TESTS']) {
   vm.runInContext(grab(c, 'const').replace(/^const /, 'var '), sandbox);
 }
 for (const f of ['_searchTokens', 'parseSearchQuery', '_searchTermRe', 'searchQueryMatches', 'catalogItemMatches']) {
@@ -45,7 +45,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const cases = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'search_query_cases.json'), 'utf8'));
 for (const c of cases.parse) {
-  const got = sandbox.parseSearchQuery(c.q, sandbox.CATALOG_FILTERS);
+  const got = sandbox.parseSearchQuery(c.q, sandbox.SEARCH_FILTERS);
   const view = {
     groups: got.groups.map(g => g.map(show)),
     exclude: got.exclude.map(show),
@@ -68,7 +68,7 @@ const catalog = [
   { name: 'wikipedia_fr_all', title: 'Wikipédia', summary: 'Encyclopédie', language: 'fra', category: 'wikipedia' },
   { name: 'khanacademy_en_science', title: 'Khan Academy', summary: 'Science lessons', language: 'eng,spa', category: 'other' },
 ];
-const find = (q) => catalog.filter(item => sandbox.catalogItemMatches(sandbox.parseSearchQuery(q, sandbox.CATALOG_FILTERS), item)).map(i => i.name);
+const find = (q) => catalog.filter(item => sandbox.catalogItemMatches(sandbox.parseSearchQuery(q, sandbox.SEARCH_FILTERS), item)).map(i => i.name);
 check(same(find('science'), ['ted_en_science', 'khanacademy_en_science']), 'catalog: a word finds both');
 check(same(find('science -ted'), ['khanacademy_en_science']), 'catalog: -ted removes the TED ZIMs');
 check(same(find('history -ted'), ['wikipedia_en_history']), 'catalog: -ted keeps "United States"');
