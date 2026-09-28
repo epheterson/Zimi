@@ -515,3 +515,747 @@ function _aeEclipseNow(scene) {
   if (lun.penumbralMag > 0) return { solar: false, total: lun.umbralMag >= 1, partial: lun.umbralMag > 0, umbralMag: lun.umbralMag };
   return null;
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// The view
+// ═══════════════════════════════════════════════════════════════════════
+
+// Assets. Static files are served immutable for a year, so each name carries
+// its version: replacing one means a new name here, never new bytes under
+// the old one.
+var AE_THREE_URL = '/static/earth/three-r186.min.js';
+var AE_SGP4_URL = '/static/earth/satellite-7.1.0.min.js';
+var AE_TEX_DAY = '/static/earth/earth-day-v1.webp';
+var AE_TEX_NIGHT = '/static/earth/earth-night-v1.webp';
+var AE_TEX_MOON = '/static/earth/moon-v1.webp';
+var AE_SATS_URL = '/almanac-satellites';
+
+// Camera.
+var AE_FOV_DEG = 35;
+var AE_NEAR_FRACTION = 0.05;          // near plane, as a share of the distance to the nearest surface
+var AE_NEAR_MIN = 1e-4;
+var AE_FAR = 6000;                    // Earth radii: past the Moon at the widest zoom
+var AE_STAR_RADIUS = 5000;            // the star sphere, carried with the camera
+var AE_MIN_DIST_EARTH = 1.12;         // closest approach, from the Earth's centre (~770 km up)
+var AE_MIN_DIST_MOON = AE_MOON_RADIUS_RE * 1.25;
+var AE_MAX_DIST = 420;                // wide enough to hold the Moon's whole orbit
+var AE_MAX_ELEVATION = _aeRad(85);    // north stays up; never flip over a pole
+var AE_START_MAX_LAT = _aeRad(50);    // the opening view leans no further toward a pole
+var AE_DRAG_RAD_PER_PX = 0.006;
+var AE_DRAG_MIN_SCALE = 0.15;         // up close a drag turns the globe more gently
+var AE_WHEEL_ZOOM = 0.0015;           // log-distance per wheel unit
+var AE_KEY_TURN = _aeRad(5);
+var AE_KEY_ZOOM = 1.15;
+var AE_FLY_MS = 900;
+var AE_FLY_START_DIST = 40;           // the zoom in from the orrery starts this far out
+var AE_TAP_SLOP_PX = 6;               // a pointer that moved less than this was a tap
+var AE_TAP_RADIUS_PX = 22;            // how near a tap must land to pick something
+var AE_LABEL_DX = 8;                  // labels sit this far right of their point (CSS px)
+// Presets: the radius (Earth radii) each view must hold, and how full.
+var AE_FIT_EARTH = 1.12;              // the Earth and the ISS's orbit
+var AE_FIT_SATS = 4.35;               // the GPS shell (AE_GPS_SHELL_RE) and a margin
+var AE_FIT_MOON = AE_MOON_RADIUS_RE * 1.35;
+var AE_FIT_FILL = 0.92;
+
+// Rendering.
+var AE_MAX_DPR = 2;                   // a 3x phone fills 2.25x the pixels for little gain
+var AE_EARTH_SEGMENTS = [128, 64];
+var AE_ATMO_SEGMENTS = [96, 48];
+var AE_MOON_SEGMENTS = [64, 32];
+var AE_ATMOSPHERE_SCALE = 1.018;      // the glow's shell, ~115 km above the surface
+var AE_ANISOTROPY = 8;
+var AE_IDLE_RENDER_MS = 250;          // at real-time speed nothing moves faster than this shows
+var AE_TEXT_TICK_MS = 100;            // readouts and the GPS counter
+var AE_STATS_WINDOW = 120;            // frames kept for the frame-rate readout
+var AE_SAT_CAPACITY = 80;
+var AE_GPS_RING_POINTS = 72;
+var AE_ISS_RING_POINTS = 96;
+var AE_RING_REFRESH_MS = 6 * 3600 * 1000;   // GPS orbits barely turn in six hours
+var AE_ISS_RING_REFRESH_MS = 60 * 1000;
+var AE_MOON_PATH_HALF_DAYS = 13.66;   // half a sidereal month either side
+var AE_MOON_PATH_STEP_HOURS = 6;
+var AE_MOON_PATH_REFRESH_MS = MS_PER_DAY;
+var AE_SAT_POINT_PX = 4;
+var AE_SAT_SELECTED_PX = 9;
+var AE_ISS_POINT_PX = 6;
+var AE_ISS_FADED_ALPHA = 0.45;
+var AE_SUN_POINT_PX = 30;
+var AE_HINT_MS = 4500;
+var AE_SPEEDS = [1, 60, 3600];        // real time, a minute a second, an hour a second
+var AE_SPEED_KEYS = ['alm_earth_rate_real', 'alm_earth_rate_min', 'alm_earth_rate_hour'];
+var AE_GPS_COLOR = [0.55, 0.85, 1.0];
+var AE_ISS_COLOR = [1.0, 0.82, 0.35];
+var AE_SELECTED_COLOR = [1.0, 0.62, 0.04];
+var AE_SUN_COLOR = [1.0, 0.93, 0.78];
+var AE_GPS_RING_COLOR = 0x6fb8ff, AE_GPS_RING_ALPHA = 0.2;
+var AE_GPS_SHELL_RE = 4.16;           // GPS orbit radius, 26,560 km, in Earth radii
+// Orbits fade in between the view holding half of one and nearly all of it.
+var AE_ORBIT_FADE_FROM = 0.5, AE_ORBIT_FADE_TO = 0.85;
+var AE_ISS_RING_COLOR = 0xffc861, AE_ISS_RING_ALPHA = 0.5, AE_ISS_RING_FADED = 0.25;
+var AE_MOON_PATH_COLOR = 0xffffff, AE_MOON_PATH_ALPHA = 0.16;
+// Star dots from magnitude (brighter = bigger, more opaque) and colour index.
+var AE_STAR_SIZE0 = 3.4, AE_STAR_SIZE_PER_MAG = 0.55, AE_STAR_SIZE_MIN = 1.2;
+var AE_STAR_ALPHA0 = 1.05, AE_STAR_ALPHA_PER_MAG = 0.16, AE_STAR_ALPHA_MIN = 0.3;
+var AE_HOURS_TO_RAD = Math.PI / 12;
+
+var _ae = null;          // view state, built on first open
+var _aeIsOpen = false;
+
+function _aeLang() { return (typeof _currentLang !== 'undefined' && _currentLang) ? _currentLang : undefined; }
+function _aeT(key, vars) { return (typeof t === 'function') ? t(key, vars) : key; }
+function _aeEsc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function _aeReduceMotion() { return (typeof _almReduceMotion === 'function') ? _almReduceMotion() : false; }
+function _aeLink(key, html) { return window.AlmanacLinks ? window.AlmanacLinks.wrap(key, html) : html; }
+function _aeLinked(key) { return !!(window.AlmanacLinks && window.AlmanacLinks.linkFor(key)); }
+function _aeClamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+function _aeEaseOut(p) { return 1 - Math.pow(1 - p, 3); }
+function _aeFmtLatLon(p) {
+  var ns = p.lat >= 0 ? 'N' : 'S', ew = p.lon >= 0 ? 'E' : 'W';
+  return _aeNum(Math.abs(p.lat), 1) + '° ' + ns + ', ' + _aeNum(Math.abs(p.lon), 1) + '° ' + ew;
+}
+// Intl formatters are built once per language and shape: the readouts run
+// ten times a second, and building one costs about a millisecond on a phone.
+var _aeFmtCache = {};
+function _aeFormatter(kind, opts, ctor) {
+  var key = kind + '|' + (_aeLang() || '');
+  if (!_aeFmtCache[key]) {
+    try { _aeFmtCache[key] = new ctor(_aeLang(), opts); }
+    catch (e) { _aeFmtCache[key] = new ctor(undefined, opts); }
+  }
+  return _aeFmtCache[key];
+}
+function _aeNum(n, digits) {
+  return _aeFormatter('n' + digits, { minimumFractionDigits: digits, maximumFractionDigits: digits }, Intl.NumberFormat).format(n);
+}
+var AE_DATE_OPTS = { day: 'numeric', month: 'short', year: 'numeric' };
+var AE_WHEN_OPTS = { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' };
+function _aeFmtDate(ms) { return _aeFormatter('d', AE_DATE_OPTS, Intl.DateTimeFormat).format(new Date(ms)); }
+function _aeFmtWhen(ms) {
+  var d = new Date(ms);
+  // A year before 1 needs the era spelled out (almanac.js _almEraOpts).
+  if (d.getFullYear() <= 0 && typeof _almEraOpts === 'function') {
+    return _aeFormatter('we', _almEraOpts(d, AE_WHEN_OPTS), Intl.DateTimeFormat).format(d);
+  }
+  return _aeFormatter('w', AE_WHEN_OPTS, Intl.DateTimeFormat).format(d);
+}
+function _aeById(id) { return document.getElementById(id); }
+
+// The styles live with the view (injected on first open), so a device that
+// never opens it never parses them.
+var AE_CSS = [
+  '.ae-view{position:absolute;inset:0;z-index:40;background:#000;display:none;overflow:hidden;color:var(--text);touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}',
+  '.ae-view.open{display:block}',
+  '.ae-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;outline:none}',
+  '.ae-canvas.ae-dragging{cursor:grabbing}',
+  '.ae-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:12px 16px 28px;background:linear-gradient(rgba(0,0,0,.6),transparent);pointer-events:none}',
+  '.ae-top>*{pointer-events:auto}',
+  '.ae-btn{font:inherit;font-size:13px;line-height:1;padding:8px 12px;min-height:34px;border-radius:999px;border:1px solid var(--border);background:rgba(18,18,20,.82);color:var(--text2);cursor:pointer;white-space:nowrap}',
+  '.ae-btn:hover,.ae-btn:focus-visible{color:var(--amber);border-color:var(--amber-border);background:var(--amber-glow);outline:none}',
+  '.ae-btn[aria-pressed="true"]{color:var(--amber);border-color:var(--amber-border);background:rgba(245,158,11,.14)}',
+  '.ae-btn[hidden]{display:none}',
+  '.ae-back{color:var(--text);flex:0 0 auto}',
+  '[dir="rtl"] .ae-chev{display:inline-block;transform:scaleX(-1)}',
+  '.ae-when{text-align:end;font-size:11px;color:var(--text2);font-variant-numeric:tabular-nums;line-height:1.35;min-width:0}',
+  '.ae-when b{display:block;font-size:13px;color:var(--text);font-weight:600}',
+  '.ae-live{color:#6ec56e}',
+  '.ae-status{position:absolute;left:16px;right:16px;top:66px;text-align:center;font-size:13px;line-height:1.4;color:#f5c16c;pointer-events:none;text-shadow:0 1px 3px #000}',
+  '.ae-bottom{position:absolute;left:0;right:0;bottom:0;padding:28px 16px calc(12px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;align-items:center;background:linear-gradient(transparent,rgba(0,0,0,.72));pointer-events:none}',
+  '.ae-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;pointer-events:auto}',
+  '.ae-note{font-size:10.5px;line-height:1.4;color:var(--text3);text-align:center;pointer-events:auto;max-width:560px}',
+  '.ae-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}',
+  '.ae-label{position:absolute;left:0;top:0;font-size:11px;color:#dfe6f0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000}',
+  '.ae-label[hidden]{display:none}',
+  '.ae-label.ae-faded{opacity:.62}',
+  '.ae-label-sub{display:block;font-size:10px;color:var(--text2)}',
+  '.ae-label-you{color:#f5c16c}',
+  '.ae-label-shadow{color:#ffb4a0}',
+  '.ae-card{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(118px + env(safe-area-inset-bottom));width:min(420px,calc(100% - 32px));box-sizing:border-box;background:rgba(14,14,16,.94);border:1px solid var(--border);border-radius:12px;padding:12px 40px 12px 14px;font-size:13px;line-height:1.5;color:var(--text2)}',
+  '.ae-card[hidden]{display:none}',
+  '.ae-card h3{margin:0 0 4px;font-size:14px;font-weight:600;color:var(--text)}',
+  '.ae-card p{margin:0}',
+  '.ae-card p+p{margin-top:6px}',
+  '.ae-counter{color:var(--amber);font-variant-numeric:tabular-nums}',
+  '.ae-card-x{position:absolute;top:4px;right:4px;width:36px;height:36px;border:0;background:none;color:var(--text3);font-size:20px;line-height:1;cursor:pointer;border-radius:8px}',
+  '.ae-card-x:hover,.ae-card-x:focus-visible{color:var(--amber);outline:none}',
+  '[dir="rtl"] .ae-card{padding:12px 14px 12px 40px}',
+  '[dir="rtl"] .ae-card-x{right:auto;left:4px}',
+  '.ae-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--text2);font-size:14px;pointer-events:none}',
+  '.ae-msg[hidden]{display:none}',
+  '.ae-hint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:8px 14px;border-radius:999px;background:rgba(0,0,0,.6);color:var(--text2);font-size:12px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .6s}',
+  '.ae-hint.ae-show{opacity:1}',
+  '@media (prefers-reduced-motion: reduce){.ae-hint{transition:none}}',
+  '@media (max-width:420px){.ae-btn{font-size:12px;padding:7px 10px;min-height:32px}.ae-status{top:60px;font-size:12px}}'
+].join('\n');
+
+function _aeEnsureStyles() {
+  if (_aeById('ae-style')) return;
+  var st = document.createElement('style');
+  st.id = 'ae-style';
+  st.textContent = AE_CSS;
+  document.head.appendChild(st);
+}
+
+function _aeBuildDom() {
+  var host = _aeById('almanac-view');
+  if (!host) return null;
+  var el = document.createElement('div');
+  el.className = 'ae-view';
+  el.id = 'ae-view';
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-modal', 'true');
+  el.setAttribute('aria-label', _tp('Earth'));
+  var speeds = AE_SPEEDS.map(function (s, i) {
+    return '<button type="button" class="ae-btn" data-ae-speed="' + s + '" aria-pressed="' + (i === 0) + '">' +
+      _aeEsc(_aeT(AE_SPEED_KEYS[i])) + '</button>';
+  }).join('');
+  el.innerHTML =
+    '<canvas class="ae-canvas" id="ae-canvas" tabindex="0" role="img"></canvas>' +
+    '<div class="ae-labels" id="ae-labels">' +
+      '<span class="ae-label" id="ae-lbl-moon" hidden>' + _aeEsc(_aeT('alm_moon')) + '</span>' +
+      '<span class="ae-label" id="ae-lbl-iss" hidden></span>' +
+      '<span class="ae-label ae-label-you" id="ae-lbl-you" hidden>● ' + _aeEsc(_aeT('alm_earth_you')) + '</span>' +
+      '<span class="ae-label ae-label-shadow" id="ae-lbl-shadow" hidden>◉ ' + _aeEsc(_aeT('alm_earth_shadow')) + '</span>' +
+    '</div>' +
+    '<div class="ae-msg" id="ae-msg"></div>' +
+    '<div class="ae-hint" id="ae-hint">' + _aeEsc(_aeT('alm_earth_hint')) + '</div>' +
+    '<div class="ae-top">' +
+      '<button type="button" class="ae-btn ae-back" id="ae-back"><span class="ae-chev" aria-hidden="true">‹</span> ' + _aeEsc(_aeT('alm_solar_system')) + '</button>' +
+      '<div class="ae-when" id="ae-when"></div>' +
+    '</div>' +
+    '<div class="ae-status" id="ae-status" aria-live="polite"></div>' +
+    '<div class="ae-card" id="ae-card" hidden></div>' +
+    '<div class="ae-bottom">' +
+      '<div class="ae-row" role="group" id="ae-views">' +
+        '<button type="button" class="ae-btn" data-ae-view="earth" aria-pressed="true">' + _aeEsc(_tp('Earth')) + '</button>' +
+        '<button type="button" class="ae-btn" data-ae-view="sats" aria-pressed="false">' + _aeEsc(_aeT('alm_earth_view_sats')) + '</button>' +
+        '<button type="button" class="ae-btn" data-ae-view="moon" aria-pressed="false">' + _aeEsc(_aeT('alm_moon')) + '</button>' +
+      '</div>' +
+      '<div class="ae-row" role="group" id="ae-time">' + speeds +
+        '<button type="button" class="ae-btn" id="ae-eclipse">' + _aeEsc(_aeT('alm_earth_next_eclipse')) + '</button>' +
+        '<button type="button" class="ae-btn" id="ae-now" hidden>' + _aeEsc(_aeT('alm_now')) + '</button>' +
+      '</div>' +
+      '<div class="ae-note" id="ae-note"></div>' +
+    '</div>';
+  host.appendChild(el);
+  return el;
+}
+
+// ── Loading: three.js as a module, the propagator as a classic script ──
+var _aeThreePromise = null;
+function _aeLoadThree() {
+  if (!_aeThreePromise) {
+    _aeThreePromise = import(AE_THREE_URL);
+    _aeThreePromise.catch(function () { _aeThreePromise = null; });
+  }
+  return _aeThreePromise;
+}
+var _aeSgp4Promise = null;
+function _aeLoadSgp4() {
+  if (window.SatelliteJS) return Promise.resolve(window.SatelliteJS);
+  if (!_aeSgp4Promise) {
+    _aeSgp4Promise = new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = AE_SGP4_URL;
+      s.onload = function () { if (window.SatelliteJS) resolve(window.SatelliteJS); else reject(new Error('sgp4')); };
+      s.onerror = function () { _aeSgp4Promise = null; reject(new Error('sgp4')); };
+      document.head.appendChild(s);
+    });
+  }
+  return _aeSgp4Promise;
+}
+function _aeLoadTexture(THREE, url) {
+  return new Promise(function (resolve, reject) {
+    new THREE.TextureLoader().load(url, resolve, undefined, reject);
+  });
+}
+
+// ── Shaders ──
+// The disc-overlap formula: the GLSL twin of _aeDiscOverlap / _aeSunlightAt.
+var AE_GLSL_OVERLAP = [
+  'float aeOverlap(float r1, float r2, float d) {',
+  '  if (d >= r1 + r2) return 0.0;',
+  '  if (d <= abs(r1 - r2)) return r2 >= r1 ? 1.0 : (r2 * r2) / (r1 * r1);',
+  '  float a1 = r1 * r1 * acos(clamp((d * d + r1 * r1 - r2 * r2) / (2.0 * d * r1), -1.0, 1.0));',
+  '  float a2 = r2 * r2 * acos(clamp((d * d + r2 * r2 - r1 * r1) / (2.0 * d * r2), -1.0, 1.0));',
+  '  float tri = 0.5 * sqrt(max(0.0, (-d + r1 + r2) * (d + r1 - r2) * (d - r1 + r2) * (d + r1 + r2)));',
+  '  return (a1 + a2 - tri) / (3.14159265 * r1 * r1);',
+  '}',
+  'float aeSunlight(vec3 p, vec3 sunPos, float sunR, vec3 occ, float occR) {',
+  '  vec3 toSun = sunPos - p; vec3 toOcc = occ - p;',
+  '  if (dot(toSun, toOcc) <= 0.0) return 1.0;',
+  '  float dS = length(toSun), dO = length(toOcc);',
+  '  vec3 s = toSun / dS, o = toOcc / dO;',
+  '  float rs = asin(min(1.0, sunR / dS));',
+  '  float ro = asin(min(1.0, occR / dO));',
+  '  float d = atan(length(cross(s, o)), dot(s, o));',
+  '  return 1.0 - aeOverlap(rs, ro, d);',
+  '}'
+].join('\n');
+
+var AE_SPHERE_VERT = [
+  'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
+  'void main() {',
+  '  vUv = uv;',
+  '  vec4 w = modelMatrix * vec4(position, 1.0);',
+  '  vWorld = w.xyz;',
+  '  vNormal = normalize(mat3(modelMatrix) * normal);',
+  '  gl_Position = projectionMatrix * viewMatrix * w;',
+  '}'
+].join('\n');
+
+// The Earth: the day map where the Sun is up, city lights where it is down,
+// a soft twilight band between, sun glint on the oceans, and the Moon's
+// shadow wherever the Moon covers some of the Sun.
+var AE_EARTH_FRAG = [
+  'precision highp float;',
+  'uniform sampler2D dayMap; uniform sampler2D nightMap;',
+  'uniform vec3 sunPos; uniform float sunR; uniform vec3 moonPos; uniform float moonR;',
+  'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
+  AE_GLSL_OVERLAP,
+  'void main() {',
+  '  vec3 N = normalize(vNormal);',
+  '  vec3 L = normalize(sunPos - vWorld);',
+  '  vec3 V = normalize(cameraPosition - vWorld);',
+  '  float mu = dot(N, L);',
+  '  float light = aeSunlight(vWorld, sunPos, sunR, moonPos, moonR);',
+  '  vec3 day = texture2D(dayMap, vUv).rgb;',
+  '  float lights = texture2D(nightMap, vUv).r;',
+  // Lambert shading, softened (the air scatters light round the limb), over
+  // a twilight band ~7 degrees wide, times what the Moon leaves of the Sun.
+  '  float sun = smoothstep(-0.05, 0.12, mu) * (0.4 + 0.6 * max(mu, 0.0)) * light;',
+  '  float night = 1.0 - smoothstep(-0.18, 0.02, mu);',
+  '  float ocean = step(day.r * 1.25 + 0.02, day.b) * step(day.g, day.b) * (1.0 - smoothstep(0.12, 0.3, day.b));',
+  '  vec3 H = normalize(L + V);',
+  '  float glint = pow(max(dot(N, H), 0.0), 80.0) * 0.35 * ocean;',
+  // The air's own blue glow (sunlight scattered toward us) lies over the
+  // day side; it is what makes the Moon's shadow show over dark ocean too.
+  '  vec3 haze = vec3(0.05, 0.09, 0.16);',
+  '  vec3 col = day * (0.035 + 1.05 * sun) + haze * sun + vec3(1.0, 0.92, 0.8) * glint * sun;',
+  '  col += vec3(1.0, 0.78, 0.45) * pow(lights, 1.6) * 1.25 * night;',
+  '  float rim = pow(1.0 - max(dot(N, V), 0.0), 3.0);',
+  '  col += vec3(0.30, 0.55, 1.0) * rim * 0.55 * smoothstep(-0.25, 0.4, mu) * max(light, 0.35);',
+  '  gl_FragColor = vec4(col, 1.0);',
+  '}'
+].join('\n');
+
+// The atmosphere's glow past the limb, on the sunlit side.
+var AE_ATMO_FRAG = [
+  'precision highp float;',
+  'uniform vec3 sunPos;',
+  'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
+  'void main() {',
+  '  vec3 N = normalize(vNormal);',
+  '  vec3 V = normalize(cameraPosition - vWorld);',
+  '  float edge = pow(clamp(1.0 + dot(N, V) * 1.6, 0.0, 1.0), 2.2);',
+  '  float lit = smoothstep(-0.3, 0.5, dot(N, normalize(sunPos - vWorld)));',
+  '  gl_FragColor = vec4(vec3(0.32, 0.58, 1.0) * edge * lit * 0.8, 1.0);',
+  '}'
+].join('\n');
+
+// The Moon: sunlight, the Earth's shadow (with the dim copper light the
+// Earth's atmosphere bends into it), and a little earthshine.
+var AE_MOON_FRAG = [
+  'precision highp float;',
+  'uniform sampler2D moonMap;',
+  'uniform vec3 sunPos; uniform float sunR; uniform float earthR;',
+  'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
+  AE_GLSL_OVERLAP,
+  'void main() {',
+  '  vec3 N = normalize(vNormal);',
+  '  vec3 L = normalize(sunPos - vWorld);',
+  '  float mu = max(dot(N, L), 0.0);',
+  '  float light = aeSunlight(vWorld, sunPos, sunR, vec3(0.0), earthR);',
+  '  float albedo = texture2D(moonMap, vUv).r;',
+  '  vec3 sunlit = vec3(albedo) * 1.15 * mu * light;',
+  '  vec3 umbral = vec3(albedo) * vec3(0.62, 0.24, 0.10) * 0.75 * mu * (1.0 - light);',
+  '  float earthshine = 0.025 * (1.0 - mu);',
+  '  gl_FragColor = vec4(sunlit + umbral + vec3(albedo) * earthshine, 1.0);',
+  '}'
+].join('\n');
+
+// Points with their own colour, alpha and size: satellites, stars, the Sun.
+var AE_POINTS_VERT = [
+  'attribute vec3 aColor; attribute float aAlpha; attribute float aSize;',
+  'uniform float dpr;',
+  'varying vec3 vColor; varying float vAlpha;',
+  'void main() {',
+  '  vColor = aColor; vAlpha = aAlpha;',
+  '  gl_PointSize = aSize * dpr;',
+  '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+  '}'
+].join('\n');
+var AE_POINTS_FRAG = [
+  'precision mediump float;',
+  'uniform float glow;',
+  'varying vec3 vColor; varying float vAlpha;',
+  'void main() {',
+  '  vec2 c = gl_PointCoord - 0.5; float r = length(c) * 2.0;',
+  '  if (r > 1.0) discard;',
+  '  float a = glow > 0.5 ? pow(1.0 - r, 2.2) : 1.0 - smoothstep(0.65, 1.0, r);',
+  '  gl_FragColor = vec4(vColor, vAlpha * a);',
+  '}'
+].join('\n');
+
+// A point cloud of `capacity` points on the points shader.
+function _aePointCloud(THREE, capacity, dpr, glow, opts) {
+  var g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(capacity * 3), 3));
+  g.setAttribute('aColor', new THREE.BufferAttribute(new Float32Array(capacity * 3), 3));
+  g.setAttribute('aAlpha', new THREE.BufferAttribute(new Float32Array(capacity), 1));
+  g.setAttribute('aSize', new THREE.BufferAttribute(new Float32Array(capacity), 1));
+  g.setDrawRange(0, 0);
+  var m = new THREE.ShaderMaterial({
+    uniforms: { dpr: { value: dpr }, glow: { value: glow ? 1 : 0 } },
+    vertexShader: AE_POINTS_VERT, fragmentShader: AE_POINTS_FRAG,
+    transparent: true, depthWrite: false, depthTest: opts.depthTest !== false
+  });
+  var p = new THREE.Points(g, m);
+  p.frustumCulled = false;
+  return p;
+}
+function _aeSetPoint(cloud, i, pos, color, alpha, size) {
+  var a = cloud.geometry.attributes;
+  a.position.array[i * 3] = pos[0]; a.position.array[i * 3 + 1] = pos[1]; a.position.array[i * 3 + 2] = pos[2];
+  a.aColor.array[i * 3] = color[0]; a.aColor.array[i * 3 + 1] = color[1]; a.aColor.array[i * 3 + 2] = color[2];
+  a.aAlpha.array[i] = alpha;
+  a.aSize.array[i] = size;
+}
+function _aeCommitPoints(cloud, count) {
+  var a = cloud.geometry.attributes;
+  a.position.needsUpdate = a.aColor.needsUpdate = a.aAlpha.needsUpdate = a.aSize.needsUpdate = true;
+  cloud.geometry.setDrawRange(0, count);
+}
+// A line of `count` vertices whose positions are rewritten in place.
+function _aeLine(THREE, Kind, count, color, alpha) {
+  var g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 3), 3));
+  g.setDrawRange(0, 0);
+  var line = new Kind(g, new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: alpha, depthWrite: false }));
+  line.frustumCulled = false;
+  return line;
+}
+
+// The background: the Almanac's bright-star catalogue (almanac-sky.js,
+// J2000; the 0.4 degrees of precession since are below what this view
+// shows), carried with the camera so the stars sit at infinity.
+function _aeStarField(THREE, dpr) {
+  var named = (typeof _STARS !== 'undefined') ? _STARS : [];
+  var field = (typeof _SKY_FIELD_STARS !== 'undefined') ? _SKY_FIELD_STARS : [];
+  var all = named.concat(field);
+  var cloud = _aePointCloud(THREE, all.length, dpr, false, { depthTest: true });
+  for (var i = 0; i < all.length; i++) {
+    var s = all[i];
+    var v = _aeEqVec(s[0] * AE_HOURS_TO_RAD, _aeRad(s[1]), AE_STAR_RADIUS);
+    var mag = s[2], ci = s.length > 3 ? s[3] : 0.6;
+    var warm = _aeClamp((ci + 0.3) / 1.9, 0, 1);   // colour index -0.3 (blue) .. 1.6 (orange)
+    var col = [0.78 + 0.22 * warm, 0.84 + 0.06 * warm, 1.0 - 0.3 * warm];
+    _aeSetPoint(cloud, i, v, col,
+      _aeClamp(AE_STAR_ALPHA0 - AE_STAR_ALPHA_PER_MAG * mag, AE_STAR_ALPHA_MIN, 1),
+      Math.max(AE_STAR_SIZE_MIN, AE_STAR_SIZE0 - AE_STAR_SIZE_PER_MAG * mag));
+  }
+  _aeCommitPoints(cloud, all.length);
+  return cloud;
+}
+
+// Build the three.js scene. Returns null when WebGL is not available.
+function _aeBuildGl(THREE, canvas) {
+  var renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: 'high-performance' });
+  } catch (e) {
+    return null;
+  }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, AE_MAX_DPR));
+  renderer.setClearColor(0x000000, 1);
+  var dpr = renderer.getPixelRatio();
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(AE_FOV_DEG, 1, 0.01, AE_FAR);
+  camera.up.set(0, 0, 1);
+
+  var shared = {
+    sunPos: { value: new THREE.Vector3() },
+    sunR: { value: AE_SUN_RADIUS_RE }
+  };
+  // three's sphere has its poles on y; this scene's are on z. Turned so,
+  // texture u = 0.5 lands on +x: longitude 0 on the Earth, the near side's
+  // centre on the Moon.
+  var earthGeo = new THREE.SphereGeometry(1, AE_EARTH_SEGMENTS[0], AE_EARTH_SEGMENTS[1]);
+  earthGeo.rotateX(Math.PI / 2);
+  var earthUni = {
+    dayMap: { value: null }, nightMap: { value: null },
+    sunPos: shared.sunPos, sunR: shared.sunR,
+    moonPos: { value: new THREE.Vector3() }, moonR: { value: AE_MOON_RADIUS_RE }
+  };
+  var earth = new THREE.Mesh(earthGeo, new THREE.ShaderMaterial({
+    uniforms: earthUni, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_EARTH_FRAG
+  }));
+  earth.scale.set(1, 1, 1 - AE_EARTH_FLATTENING);
+  scene.add(earth);
+
+  var atmo = new THREE.Mesh(
+    new THREE.SphereGeometry(AE_ATMOSPHERE_SCALE, AE_ATMO_SEGMENTS[0], AE_ATMO_SEGMENTS[1]),
+    new THREE.ShaderMaterial({
+      uniforms: { sunPos: shared.sunPos }, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_ATMO_FRAG,
+      side: THREE.BackSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
+    }));
+  scene.add(atmo);
+
+  var moonGeo = new THREE.SphereGeometry(AE_MOON_RADIUS_RE, AE_MOON_SEGMENTS[0], AE_MOON_SEGMENTS[1]);
+  moonGeo.rotateX(Math.PI / 2);
+  var moonUni = { moonMap: { value: null }, sunPos: shared.sunPos, sunR: shared.sunR, earthR: { value: AE_SHADOW_ENLARGE } };
+  var moon = new THREE.Mesh(moonGeo, new THREE.ShaderMaterial({
+    uniforms: moonUni, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_MOON_FRAG
+  }));
+  moon.matrixAutoUpdate = false;
+  scene.add(moon);
+
+  var sky = new THREE.Group();
+  sky.add(_aeStarField(THREE, dpr));
+  var sunDot = _aePointCloud(THREE, 1, dpr, true, { depthTest: true });
+  sky.add(sunDot);
+  scene.add(sky);
+
+  var moonPathCount = Math.round(2 * AE_MOON_PATH_HALF_DAYS * 24 / AE_MOON_PATH_STEP_HOURS) + 1;
+  var moonPath = _aeLine(THREE, THREE.Line, moonPathCount, AE_MOON_PATH_COLOR, AE_MOON_PATH_ALPHA);
+  scene.add(moonPath);
+  var gpsRings = _aeLine(THREE, THREE.LineSegments, AE_SAT_CAPACITY * AE_GPS_RING_POINTS * 2, AE_GPS_RING_COLOR, AE_GPS_RING_ALPHA);
+  scene.add(gpsRings);
+  var issRing = _aeLine(THREE, THREE.LineLoop, AE_ISS_RING_POINTS, AE_ISS_RING_COLOR, AE_ISS_RING_ALPHA);
+  scene.add(issRing);
+  var sats = _aePointCloud(THREE, AE_SAT_CAPACITY, dpr, false, { depthTest: true });
+  scene.add(sats);
+
+  return {
+    THREE: THREE, renderer: renderer, scene: scene, camera: camera, dpr: dpr,
+    earth: earth, earthUni: earthUni, moon: moon, moonUni: moonUni, shared: shared,
+    sky: sky, sunDot: sunDot, moonPath: moonPath, moonPathCount: moonPathCount,
+    gpsRings: gpsRings, issRing: issRing, sats: sats,
+    basis: new THREE.Matrix4(), vx: new THREE.Vector3(), vy: new THREE.Vector3(), vz: new THREE.Vector3()
+  };
+}
+
+// ── State ──
+function _aeNewState(el) {
+  return {
+    el: el, gl: null, loading: false, failed: false,
+    speed: 1, offset: 0,                  // this view's own clock on top of the Almanac's
+    target: 'earth', az: 0, el_: 0, dist: AE_FLY_START_DIST,
+    fly: null,                            // { start, from:{target pos, dist}, to }
+    pointers: {}, pinch: null, drag: null,
+    sats: null, satsFailed: false, satsFetchedAt: null,
+    selected: null,                       // { kind: 'gps'|'iss', idx, tapMs }
+    ringsAt: null, issRingAt: null, moonPathAt: null,
+    positions: [],                        // projected satellites for tapping
+    lastTs: 0, lastRender: 0, lastText: 0, dirty: true,
+    raf: 0, idleTimer: 0, stats: [], renderMs: [],
+    scene: null
+  };
+}
+
+// The instant on display: the Almanac's (live now, or wherever its time
+// machine stands) plus whatever this view's own speed has run up.
+function _aeDisplayMs() {
+  var base = (typeof _almFocusInstant === 'function') ? _almFocusInstant().getTime() : Date.now();
+  return base + (_ae ? _ae.offset : 0);
+}
+function _aeIsLive() {
+  return !(typeof _almFocus !== 'undefined' && _almFocus) && _ae && _ae.offset === 0 && _ae.speed === 1;
+}
+
+// ── Camera ──
+function _aeFitDist(radius) {
+  var S = _ae.gl, cam = S.camera;
+  var half = Math.tan(_aeRad(AE_FOV_DEG) / 2) * Math.min(1, cam.aspect);
+  return radius / (half * AE_FIT_FILL);
+}
+function _aeMinDist() { return _ae.target === 'moon' ? AE_MIN_DIST_MOON : AE_MIN_DIST_EARTH; }
+function _aeTargetPos() {
+  return (_ae.target === 'moon' && _ae.scene) ? _ae.scene.moon : [0, 0, 0];
+}
+function _aeCameraOffset(az, el, dist) {
+  return [dist * Math.cos(el) * Math.cos(az), dist * Math.cos(el) * Math.sin(az), dist * Math.sin(el)];
+}
+// Direction (az, el) from which the camera looks down on a scene vector.
+function _aeAzElOf(v) {
+  var n = _aeNorm(v);
+  return { az: Math.atan2(n[1], n[0]), el: _aeClamp(Math.asin(n[2]), -AE_MAX_ELEVATION, AE_MAX_ELEVATION) };
+}
+
+function _aeFlyTo(target, dist, azel) {
+  var from = { pos: _aeTargetPos(), dist: _ae.dist, az: _ae.az, el: _ae.el_ };
+  _ae.target = target;
+  if (azel) { _ae.az = azel.az; _ae.el_ = azel.el; }
+  var to = { dist: _aeClamp(dist, _aeMinDist(), AE_MAX_DIST) };
+  if (_aeReduceMotion()) { _ae.dist = to.dist; _ae.fly = null; }
+  else {
+    // Turn the short way round.
+    var daz = ((_ae.az - from.az + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
+    _ae.fly = { start: performance.now(), from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_ };
+    _ae.az = from.az; _ae.el_ = from.el;
+  }
+  _aeMarkViews();
+  _aeKick();
+}
+function _aeStepFly(now) {
+  var f = _ae.fly;
+  if (!f) return false;
+  var p = _aeClamp((now - f.start) / AE_FLY_MS, 0, 1), e = _aeEaseOut(p);
+  _ae.dist = Math.exp(Math.log(f.from.dist) + (Math.log(f.toDist) - Math.log(f.from.dist)) * e);
+  _ae.az = f.from.az + (f.toAz - f.from.az) * e;
+  _ae.el_ = f.from.el + (f.toEl - f.from.el) * e;
+  if (p >= 1) _ae.fly = null;
+  return true;
+}
+function _aeFlyTargetPos() {
+  var f = _ae.fly, to = _aeTargetPos();
+  if (!f) return to;
+  var e = _aeEaseOut(_aeClamp((performance.now() - f.start) / AE_FLY_MS, 0, 1));
+  return [f.from.pos[0] + (to[0] - f.from.pos[0]) * e, f.from.pos[1] + (to[1] - f.from.pos[1]) * e, f.from.pos[2] + (to[2] - f.from.pos[2]) * e];
+}
+
+function _aePlaceCamera() {
+  var S = _ae.gl, cam = S.camera;
+  var tp = _aeFlyTargetPos();
+  var off = _aeCameraOffset(_ae.az, _ae.el_, _ae.dist);
+  var pos = [tp[0] + off[0], tp[1] + off[1], tp[2] + off[2]];
+  cam.position.set(pos[0], pos[1], pos[2]);
+  cam.lookAt(tp[0], tp[1], tp[2]);
+  // Near plane from the nearest surface, so the Earth's limb never clips
+  // and depth precision stays where the eye is.
+  var toEarth = _aeLen(pos) - 1;
+  var toMoon = _ae.scene ? _aeLen(_aeSub(pos, _ae.scene.moon)) - AE_MOON_RADIUS_RE : Infinity;
+  cam.near = Math.max(AE_NEAR_MIN, Math.min(toEarth, toMoon) * AE_NEAR_FRACTION);
+  cam.updateProjectionMatrix();
+  S.sky.position.copy(cam.position);
+  // An orbit much wider than the screen shows only as arcs through it, a web
+  // of straight lines, not a ring: the GPS orbits and the Moon's path fade in
+  // as the view widens to hold them.
+  var halfView = _aeLen(pos) * Math.tan(_aeRad(AE_FOV_DEG) / 2) * Math.min(1, cam.aspect);
+  _aeFadeLine(S.gpsRings, AE_GPS_RING_ALPHA, halfView / AE_GPS_SHELL_RE);
+  _aeFadeLine(S.moonPath, AE_MOON_PATH_ALPHA, halfView / _aeLen(_ae.scene ? _ae.scene.moon : [AE_MOON_MEAN_DIST_KM / AE_EARTH_RADIUS_KM, 0, 0]));
+}
+// Opacity from how much of an orbit the view holds (half-view over radius).
+function _aeFadeLine(line, alpha, held) {
+  var out = _aeClamp((held - AE_ORBIT_FADE_FROM) / (AE_ORBIT_FADE_TO - AE_ORBIT_FADE_FROM), 0, 1);
+  line.material.opacity = alpha * out;
+  line.visible = out > 0;
+}
+
+function _aePreset(name) {
+  if (!_ae.gl) return;
+  if (name === 'moon') {
+    // From the Earth's side: the phase (and any eclipse) as seen from home.
+    var azel = _ae.scene ? _aeAzElOf(_aeScale(_ae.scene.moon, -1)) : null;
+    _aeFlyTo('moon', _aeFitDist(AE_FIT_MOON), azel);
+  } else {
+    _aeFlyTo('earth', _aeFitDist(name === 'sats' ? AE_FIT_SATS : AE_FIT_EARTH), null);
+  }
+  _ae.preset = name;
+  _aeMarkViews();
+}
+function _aeMarkViews() {
+  var btns = document.querySelectorAll('#ae-views [data-ae-view]');
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].setAttribute('aria-pressed', String(btns[i].getAttribute('data-ae-view') === _ae.preset));
+  }
+}
+
+// ── Satellites ──
+function _aeLoadSats() {
+  Promise.all([_aeLoadSgp4(), fetch(AE_SATS_URL).then(function (r) {
+    if (!r.ok) throw new Error('status ' + r.status);
+    return r.json();
+  })]).then(function (res) {
+    var lib = res[0], data = res[1];
+    var list = [];
+    (data.gps || []).forEach(function (omm) {
+      try { var rec = lib.json2satrec(omm); if (!rec.error) list.push({ omm: omm, rec: rec, iss: false }); } catch (e) {}
+    });
+    if (data.iss) {
+      try { var r2 = lib.json2satrec(data.iss); if (!r2.error) list.push({ omm: data.iss, rec: r2, iss: true }); } catch (e) {}
+    }
+    list = list.slice(0, AE_SAT_CAPACITY);
+    list.forEach(function (s) { s.epochMs = _aeSatEpochMs(s.rec); });
+    _ae.sats = { lib: lib, list: list, source: data.source || '' };
+    _ae.ringsAt = _ae.issRingAt = null;
+    _ae.dirty = true;
+    _aeKick();
+  }).catch(function () {
+    _ae.satsFailed = true;
+    _ae.dirty = true;
+  });
+}
+
+// Position (scene) and velocity (km/s) of a satellite at a JS time, or null.
+function _aeSatAt(s, ms, eqeq) {
+  var pv = _ae.sats.lib.sgp4(s.rec, (ms - s.epochMs) / AE_MS_PER_MINUTE);
+  if (!pv || !pv.position || typeof pv.position.x !== 'number' || isNaN(pv.position.x)) return null;
+  return { pos: _aeTemeToScene(pv.position, eqeq), posKm: pv.position, velKmS: pv.velocity };
+}
+
+// One orbit of a satellite as scene points, starting now.
+function _aeOrbitPoints(s, ms, eqeq, n) {
+  var periodMs = AE_MINUTES_PER_DAY / s.omm.MEAN_MOTION * AE_MS_PER_MINUTE;
+  var pts = [];
+  for (var i = 0; i < n; i++) {
+    var st = _aeSatAt(s, ms + periodMs * i / n, eqeq);
+    if (!st) return null;
+    pts.push(st.pos);
+  }
+  return pts;
+}
+
+function _aeUpdateSats(ms, sc) {
+  var S = _ae.gl, sats = _ae.sats;
+  _ae.positions = [];
+  if (!sats) { _aeCommitPoints(S.sats, 0); S.gpsRings.geometry.setDrawRange(0, 0); S.issRing.geometry.setDrawRange(0, 0); return; }
+  var eqeq = _aeEqEq(sc);
+  var count = 0;
+  var refreshRings = _ae.ringsAt === null || Math.abs(ms - _ae.ringsAt) > AE_RING_REFRESH_MS;
+  var ringArr = S.gpsRings.geometry.attributes.position.array, ringN = 0;
+  var issShown = false;
+  for (var i = 0; i < sats.list.length; i++) {
+    var s = sats.list[i];
+    var standing = _aeSatStanding((ms - s.epochMs) / MS_PER_DAY, s.iss);
+    s.standing = standing;
+    if (standing === 'none') continue;
+    var st = _aeSatAt(s, ms, eqeq);
+    if (!st) continue;
+    var sel = _ae.selected && _ae.selected.idx === i;
+    var color = sel ? AE_SELECTED_COLOR : (s.iss ? AE_ISS_COLOR : AE_GPS_COLOR);
+    var alpha = (s.iss && standing === 'approximate') ? AE_ISS_FADED_ALPHA : 1;
+    var size = sel ? AE_SAT_SELECTED_PX : (s.iss ? AE_ISS_POINT_PX : AE_SAT_POINT_PX);
+    _aeSetPoint(S.sats, count++, st.pos, color, alpha, size);
+    _ae.positions.push({ idx: i, pos: st.pos, st: st });
+    if (s.iss) {
+      issShown = true;
+      if (_ae.issRingAt === null || Math.abs(ms - _ae.issRingAt) > AE_ISS_RING_REFRESH_MS) {
+        var ring = _aeOrbitPoints(s, ms, eqeq, AE_ISS_RING_POINTS);
+        if (ring) {
+          var ia = S.issRing.geometry.attributes.position.array;
+          for (var k = 0; k < ring.length; k++) { ia[k * 3] = ring[k][0]; ia[k * 3 + 1] = ring[k][1]; ia[k * 3 + 2] = ring[k][2]; }
+          S.issRing.geometry.attributes.position.needsUpdate = true;
+          S.issRing.geometry.setDrawRange(0, ring.length);
+          _ae.issRingAt = ms;
+        }
+      }
+      S.issRing.material.opacity = standing === 'approximate' ? AE_ISS_RING_FADED : AE_ISS_RING_ALPHA;
+    } else if (refreshRings) {
+      var pts = _aeOrbitPoints(s, ms, eqeq, AE_GPS_RING_POINTS);
+      if (pts) {
+        for (var j = 0; j < pts.length; j++) {
+          var a = pts[j], b = pts[(j + 1) % pts.length];
+          ringArr.set(a, ringN * 3); ringArr.set(b, ringN * 3 + 3);
+          ringN += 2;
+        }
+      }
+    }
+  }
+  _aeCommitPoints(S.sats, count);
+  if (refreshRings) {
+    S.gpsRings.geometry.attributes.position.needsUpdate = true;
+    S.gpsRings.geometry.setDrawRange(0, ringN);
+    _ae.ringsAt = ms;
+  }
+  if (!issShown) { S.issRing.geometry.setDrawRange(0, 0); _ae.issRingAt = null; }
+}
