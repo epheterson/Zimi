@@ -9127,11 +9127,9 @@ function parseSearchQuery(q, filters) {
     else { groups.push([term]); joins.push([]); }
     joinNext = false;
   }
-  const typed = (q || '').toLowerCase().split(/\s+/).filter(Boolean);
-  const plain = !exclude.length && !found.length &&
-    groups.every(g => g.length === 1 && !g[0].phrase) &&
-    groups.length === typed.length && groups.every((g, k) => g[0].text === typed[k]);
-  return { groups: groups, exclude: exclude, filters: found, plain: plain, tokens: tokens, joins: joins };
+  // No `plain` (query.py's): only the library's index needs to know a query
+  // had no syntax, and the library parses on the server.
+  return { groups: groups, exclude: exclude, filters: found, tokens: tokens, joins: joins };
 }
 
 const _reEscape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

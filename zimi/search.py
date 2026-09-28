@@ -1416,11 +1416,11 @@ STOP_WORDS = _interlang_stopwords.get("en", set()) | {
 
 
 def _clean_query(q):
-    """Strip stop words for better Xapian matching. Keep quoted phrases intact."""
-    phrases = re.findall(r'"[^"]*"', q)
-    rest = re.sub(r'"[^"]*"', "", q)
-    words = [w for w in rest.split() if w.lower() not in STOP_WORDS]
-    return " ".join(phrases + words).strip() or q
+    """Strip stop words for better Xapian matching; the query as it was when
+    every word is one. Quotes never reach here: a query with a phrase is an
+    operator query, and the index is given its words (query.term_words)."""
+    words = [w for w in q.split() if w.lower() not in STOP_WORDS]
+    return " ".join(words) or q
 
 
 # ZIM-name → SearXNG category. Heuristic prefix match, lowercase.

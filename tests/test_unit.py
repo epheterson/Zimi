@@ -35,10 +35,7 @@ class TestCleanQuery(unittest.TestCase):
     def test_removes_stop_words(self):
         self.assertEqual(self.clean("how to fix a memory leak"), "fix memory leak")
 
-    def test_preserves_quoted_phrases(self):
-        result = self.clean('"python asyncio" is great')
-        self.assertIn('"python asyncio"', result)
-        self.assertNotIn("is", result.replace('"python asyncio"', ""))
+
 
     def test_all_stop_words_returns_original(self):
         self.assertEqual(self.clean("what is the"), "what is the")

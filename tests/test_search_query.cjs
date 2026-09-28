@@ -50,9 +50,9 @@ for (const c of cases.parse) {
     groups: got.groups.map(g => g.map(show)),
     exclude: got.exclude.map(show),
     filters: got.filters.map(f => [f.key, f.value, f.negate]),
-    plain: got.plain,
   };
-  const want = { groups: c.groups, exclude: c.exclude, filters: c.filters, plain: c.plain };
+  // plain is the server's alone (query.py): the client never asks it.
+  const want = { groups: c.groups, exclude: c.exclude, filters: c.filters };
   check(same(view, want), 'parse ' + JSON.stringify(c.q) + (same(view, want) ? '' : ' got ' + JSON.stringify(view)));
 }
 for (const c of cases.match) {

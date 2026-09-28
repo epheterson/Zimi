@@ -1,5 +1,5 @@
 {
-  "_about": "The search grammar's cases, read by both parsers: zimi/query.py (tests/test_search_query.py) and parseSearchQuery in zimi/static/app.js (tests/test_search_query.cjs). A term written \"like this\" is a phrase. groups: every group must match, any one term inside a group does. lang: a lang:value filter against a source's language field, the same in the library (search._filter_sources) and the catalog (_CATALOG_FILTER_TESTS), over the one table in zimi/assets/lang-codes.json.",
+  "_about": "The search grammar's cases, read by both parsers: zimi/query.py (tests/test_search_query.py) and parseSearchQuery in zimi/static/app.js (tests/test_search_query.cjs). A term written \"like this\" is a phrase. groups: every group must match, any one term inside a group does. plain (nothing in the query was syntax) is the server's only. lang: a lang:value filter against a source's language field, the same in the library (search._filter_sources) and the catalog (_CATALOG_FILTER_TESTS), over the one table in zimi/assets/lang-codes.json.",
   "parse": [
     {"q": "water filter", "groups": [["water"], ["filter"]], "exclude": [], "filters": [], "plain": true},
     {"q": "Water  Filter ", "groups": [["water"], ["filter"]], "exclude": [], "filters": [], "plain": true},
