@@ -1947,6 +1947,7 @@
   "alm_earth_approx": "approximatif : données orbitales du {date}",
   "alm_earth_data_from": "Données orbitales du {date}",
   "alm_earth_no_sat_data": "Aucun satellite dessiné : les données orbitales disponibles (du {date}) sont trop éloignées de cette date",
+  "alm_earth_iss_orbit_only": "ISS : orbite seule, car les données du {date} sont trop anciennes pour y situer la station",
   "alm_earth_sats_unavailable": "Données satellites indisponibles",
   "alm_earth_no_orbital_data": "Aucune donnée orbitale ici, donc aucun satellite n’est dessiné",
   "alm_earth_credit": "Images : NASA",

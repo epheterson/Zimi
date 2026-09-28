@@ -1947,6 +1947,7 @@
   "alm_earth_approx": "approximate: orbital data from {date}",
   "alm_earth_data_from": "Orbital data from {date}",
   "alm_earth_no_sat_data": "No satellites drawn: the orbital data here (from {date}) is too far from this date",
+  "alm_earth_iss_orbit_only": "ISS: orbit only, as its data from {date} is too old to say where on it the station is",
   "alm_earth_sats_unavailable": "Satellite data unavailable",
   "alm_earth_no_orbital_data": "No orbital data here, so no satellites are drawn",
   "alm_earth_credit": "Images: NASA",

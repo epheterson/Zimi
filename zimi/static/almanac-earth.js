@@ -14,7 +14,8 @@
 //     a snapshot ships with each release, the server refreshes it when online
 //     (/almanac-satellites; ZIMI_OFFLINE turns that off), and SGP4/SDP4
 //     (satellite.js, MIT) propagates them. The ISS's place along its orbit
-//     drifts once its data is a few days old, so its dot fades and says so.
+//     drifts once its data is a few days old, so its dot fades and says so,
+//     and past two weeks only its orbit is drawn.
 //     Nothing is drawn that the data does not support.
 //
 // Loaded with the other almanac modules (they share one global scope); the
@@ -442,11 +443,14 @@ function _aeKmPerDay(rate) { return rate * SECONDS_PER_DAY * SPEED_OF_LIGHT_KM_S
 
 // ── Satellites: what the data supports ──
 // Elements are drawn only near the instant they describe. GPS orbits hold
-// their shape for months at this scale; the ISS's orbit (height, tilt, lap)
-// does too, but drag and reboosts move its place along the orbit within
-// days, so past AE_ISS_EXACT_DAYS its dot fades and is labelled approximate.
+// their shape for months at this scale. The ISS's orbit does too (SGP4 keeps
+// its plane well), but drag and reboosts move its place along the orbit:
+// past AE_ISS_EXACT_DAYS its dot fades and is labelled approximate, and past
+// AE_ISS_DOT_DAYS, when that place could be anywhere round the orbit (2-3
+// weeks of unmodelled reboosts), only the orbit is drawn, with a dated note.
 var AE_SAT_WINDOW_DAYS = 180;
 var AE_ISS_EXACT_DAYS = 3;
+var AE_ISS_DOT_DAYS = 14;
 var AE_MINUTES_PER_DAY = 1440;
 var AE_MS_PER_MINUTE = 60000;
 var AE_ISS_NORAD_ID = 25544;
@@ -454,13 +458,14 @@ var AE_ISS_NORAD_ID = 25544;
 // JS time of an element set's epoch, from satellite.js's Julian date.
 function _aeSatEpochMs(satrec) { return (satrec.jdsatepoch - JD_UNIX_EPOCH) * MS_PER_DAY; }
 
-// 'exact', 'approximate' or 'none' for an element set this many days from
-// the displayed instant (either direction).
+// How an element set this many days from the displayed instant (either
+// direction) is drawn: 'exact', 'approximate' (a faded dot), 'orbit' (the
+// ISS's ring alone) or 'none'.
 function _aeSatStanding(ageDays, isIss) {
   var a = Math.abs(ageDays);
   if (a > AE_SAT_WINDOW_DAYS) return 'none';
-  if (isIss && a > AE_ISS_EXACT_DAYS) return 'approximate';
-  return 'exact';
+  if (!isIss || a <= AE_ISS_EXACT_DAYS) return 'exact';
+  return a <= AE_ISS_DOT_DAYS ? 'approximate' : 'orbit';
 }
 
 // SGP4 answers in TEME (true equator, mean equinox); the scene is on the
@@ -1232,20 +1237,12 @@ function _aeUpdateSats(ms, sc) {
   var count = 0;
   var refreshRings = _ae.ringsAt === null || Math.abs(ms - _ae.ringsAt) > AE_RING_REFRESH_MS;
   var ringArr = S.gpsRings.geometry.attributes.position.array, ringN = 0;
-  var issShown = false;
+  var issShown = false, selShown = false;
   for (var i = 0; i < sats.list.length; i++) {
     var s = sats.list[i];
     var standing = _aeSatStanding((ms - s.epochMs) / MS_PER_DAY, s.iss);
     s.standing = standing;
     if (standing === 'none') continue;
-    var st = _aeSatAt(s, ms, eqeq);
-    if (!st) continue;
-    var sel = !!_ae.selected && _ae.selected.norad === s.omm.NORAD_CAT_ID;
-    var color = sel ? AE_SELECTED_COLOR : (s.iss ? AE_ISS_COLOR : AE_GPS_COLOR);
-    var alpha = (s.iss && standing === 'approximate') ? AE_ISS_FADED_ALPHA : 1;
-    var size = sel ? AE_SAT_SELECTED_PX : (s.iss ? AE_ISS_POINT_PX : AE_SAT_POINT_PX);
-    _aeSetPoint(S.sats, count++, st.pos, color, alpha, size);
-    _ae.positions.push({ idx: i, pos: st.pos, st: st });
     if (s.iss) {
       issShown = true;
       if (_ae.issRingAt === null || Math.abs(ms - _ae.issRingAt) > AE_ISS_RING_REFRESH_MS) {
@@ -1258,7 +1255,7 @@ function _aeUpdateSats(ms, sc) {
           _ae.issRingAt = ms;
         }
       }
-      S.issRing.material.opacity = standing === 'approximate' ? AE_ISS_RING_FADED : AE_ISS_RING_ALPHA;
+      S.issRing.material.opacity = standing === 'exact' ? AE_ISS_RING_ALPHA : AE_ISS_RING_FADED;
     } else if (refreshRings) {
       var pts = _aeOrbitPoints(s, ms, eqeq, AE_GPS_RING_POINTS);
       if (pts) {
@@ -1269,6 +1266,16 @@ function _aeUpdateSats(ms, sc) {
         }
       }
     }
+    if (standing === 'orbit') continue;
+    var st = _aeSatAt(s, ms, eqeq);
+    if (!st) continue;
+    var sel = !!_ae.selected && _ae.selected.norad === s.omm.NORAD_CAT_ID;
+    selShown = selShown || sel;
+    var color = sel ? AE_SELECTED_COLOR : (s.iss ? AE_ISS_COLOR : AE_GPS_COLOR);
+    var alpha = standing === 'approximate' ? AE_ISS_FADED_ALPHA : 1;
+    var size = sel ? AE_SAT_SELECTED_PX : (s.iss ? AE_ISS_POINT_PX : AE_SAT_POINT_PX);
+    _aeSetPoint(S.sats, count++, st.pos, color, alpha, size);
+    _ae.positions.push({ idx: i, pos: st.pos, st: st });
   }
   _aeCommitPoints(S.sats, count);
   if (refreshRings) {
@@ -1277,6 +1284,9 @@ function _aeUpdateSats(ms, sc) {
     _ae.ringsAt = ms;
   }
   if (!issShown) { S.issRing.geometry.setDrawRange(0, 0); _ae.issRingAt = null; }
+  // A card belongs to a dot: when the tapped satellite's dot goes (its data
+  // too far from the shown instant), its card goes with it.
+  if (_ae.selected && !selShown) { _ae.selected = null; _aeRenderCard(); }
 }
 
 // ── Per-frame scene update ──
@@ -1506,12 +1516,14 @@ function _aeUpdateCard(ms) {
 function _aeNoteText() {
   var parts = [], sats = _ae.sats;
   if (sats && sats.list.length) {
-    var newest = 0, anyShown = false;
+    var newest = 0, anyShown = false, issOrbit = null;
     sats.list.forEach(function (s) {
       newest = Math.max(newest, s.epochMs);
       if (s.standing && s.standing !== 'none') anyShown = true;
+      if (s.iss && s.standing === 'orbit') issOrbit = s;
     });
     parts.push(_aeT(anyShown ? 'alm_earth_data_from' : 'alm_earth_no_sat_data', { date: _aeFmtDate(newest) }));
+    if (issOrbit) parts.push(_aeT('alm_earth_iss_orbit_only', { date: _aeFmtDate(issOrbit.epochMs) }));
   } else if (sats) {
     parts.push(_aeT('alm_earth_no_orbital_data'));
   } else if (_ae.satsFailed) {

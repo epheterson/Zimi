@@ -1947,6 +1947,7 @@
   "alm_earth_approx": "近似位置：轨道数据来自 {date}",
   "alm_earth_data_from": "轨道数据来自 {date}",
   "alm_earth_no_sat_data": "未显示卫星：这里的轨道数据（来自 {date}）离此日期太远",
+  "alm_earth_iss_orbit_only": "国际空间站：只显示轨道，{date} 的数据太旧，无法确定空间站在轨道上的位置",
   "alm_earth_sats_unavailable": "卫星数据不可用",
   "alm_earth_no_orbital_data": "这里没有轨道数据，因此不显示卫星",
   "alm_earth_credit": "图像：NASA",

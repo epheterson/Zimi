@@ -1947,6 +1947,7 @@
   "alm_earth_approx": "تقريبي: بيانات المدار من {date}",
   "alm_earth_data_from": "بيانات المدار من {date}",
   "alm_earth_no_sat_data": "لم تُرسم أقمار: بيانات المدار هنا (من {date}) بعيدة جدًا عن هذا التاريخ",
+  "alm_earth_iss_orbit_only": "محطة الفضاء: المدار فقط، فبيانات {date} أقدم من أن تحدد موضع المحطة عليه",
   "alm_earth_sats_unavailable": "بيانات الأقمار الصناعية غير متاحة",
   "alm_earth_no_orbital_data": "لا توجد بيانات مدار هنا، لذلك لا تُرسم أقمار",
   "alm_earth_credit": "الصور: NASA",

@@ -1947,6 +1947,7 @@
   "alm_earth_approx": "משוער: נתוני מסלול מ-{date}",
   "alm_earth_data_from": "נתוני מסלול מ-{date}",
   "alm_earth_no_sat_data": "לא נציירו לווינים: נתוני המסלול כאן (מ-{date}) רחוקים מדי מהתאריך הזה",
+  "alm_earth_iss_orbit_only": "תחנת החלל: המסלול בלבד, כי הנתונים מ-{date} ישנים מכדי למקם עליו את התחנה",
   "alm_earth_sats_unavailable": "נתוני הלווינים אינם זמינים",
   "alm_earth_no_orbital_data": "אין כאן נתוני מסלול, ולכן לא מצוירים לוויינים",
   "alm_earth_credit": "תמונות: NASA",

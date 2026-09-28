@@ -1947,6 +1947,7 @@
   "alm_earth_approx": "लगभग: {date} का कक्षीय डेटा",
   "alm_earth_data_from": "{date} का कक्षीय डेटा",
   "alm_earth_no_sat_data": "कोई उपग्रह नहीं दिखाया: यहाँ का कक्षीय डेटा ({date} का) इस तारीख़ से बहुत दूर है",
+  "alm_earth_iss_orbit_only": "ISS: केवल कक्षा, क्योंकि {date} का डेटा इतना पुराना है कि कक्षा पर स्टेशन की जगह नहीं बताई जा सकती",
   "alm_earth_sats_unavailable": "उपग्रह डेटा उपलब्ध नहीं",
   "alm_earth_no_orbital_data": "यहाँ कोई कक्षीय डेटा नहीं है, इसलिए कोई उपग्रह नहीं दिखाया गया",
   "alm_earth_credit": "चित्र: NASA",

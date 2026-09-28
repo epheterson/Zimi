@@ -13,6 +13,8 @@
 //   2. The orbital data: told the server is refreshing, the open view asks
 //      once more and gets the fresh elements; a failed load says so and is
 //      asked for again at the next open; no data at all is said plainly.
+//   3. The ISS: a dot while its place along the orbit is known, faded while
+//      it is roughly known, and past two weeks the orbit alone, dated.
 //
 // Run: node tests/test_almanac_earth_view.cjs   (exit 0 = pass)
 
@@ -211,6 +213,29 @@ const run = (code) => vm.runInContext(code, S);
     const n = note();
     check(n.includes('alm_earth_no_orbital_data') && !n.includes('alm_earth_data_from'),
       'with no orbital data the note says there is none (' + n + ')');
+  }
+
+  // ── 3. The ISS ────────────────────────────────────────────────────────
+  {
+    fetches.push(answer({}));
+    await reopen();
+    const issEpoch = Date.parse(snap.iss.EPOCH);
+    // The ISS's dot, as drawn: its alpha, or null when it has none.
+    const issDot = () => run('(function () { for (var i = 0; i < _ae.positions.length; i++) {' +
+      ' if (_ae.sats.list[_ae.positions[i].idx].iss) return _ae.gl.sats.geometry.attributes.aAlpha.array[i]; } return null; })()');
+    const ringCount = () => run('_ae.gl.issRing.geometry.drawRange.count');
+    run('_aeUpdate(' + (issEpoch + DAY) + ')');
+    check(issDot() === 1 && ringCount() === S.AE_ISS_RING_POINTS, 'a day from its data the ISS has its dot and its orbit');
+    run('_ae.selected = { norad: ' + snap.iss.NORAD_CAT_ID + ', tapMs: ' + (issEpoch + DAY) + ' }; _aeRenderCard();');
+    run('_aeUpdate(' + (issEpoch + 10 * DAY) + ')');
+    check(issDot() !== null && issDot() < 1, 'ten days on the ISS dot is faded');
+    run('_aeUpdate(' + (issEpoch + 20 * DAY) + ')');
+    check(issDot() === null, 'twenty days on no ISS dot is drawn');
+    check(ringCount() === S.AE_ISS_RING_POINTS, 'but its orbit is');
+    const n = note();
+    check(n.includes('alm_earth_iss_orbit_only'), 'and the note says why, with the data\'s date (' + n + ')');
+    check(run('_ae.selected') === null && document.getElementById('ae-card').hidden === true,
+      'a card open on the ISS closes with its dot');
   }
 
   if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
