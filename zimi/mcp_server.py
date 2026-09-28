@@ -96,7 +96,10 @@ def search(
     Returns ranked results with titles and snippets.
 
     Args:
-        query: Search query (e.g. "water purification", "Python asyncio")
+        query: Search query (e.g. "water purification", "Python asyncio").
+            Operators: -word leaves out, "exact words" in order, a OR b,
+            in:<source> / lang:<code> (negate with -). Exclusions and
+            phrases are checked against result titles.
         zim: Optional — scope to specific source(s), comma-separated (e.g. "wikipedia,stackoverflow")
         collection: Optional — search within a named collection (overrides zim)
         language: Optional — filter results by language code (e.g. "en", "fr", "de")
