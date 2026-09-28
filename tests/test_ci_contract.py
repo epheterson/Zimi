@@ -389,3 +389,18 @@ def test_a_release_without_its_snap_still_ships_the_rest(tmp_path):
 def test_a_release_missing_a_build_stops(tmp_path):
     done = _run_release_naming(tmp_path, _BUILDS[1:])
     assert done.returncode != 0
+
+
+def test_the_changelog_has_a_section_for_this_version():
+    """Auto Release copies the ``## [<version>]`` section into the draft's
+    notes, and falls back to a bare "Release v<version>" when there is none.
+    1.11.0 was tagged with its notes still under ``[Unreleased]`` and its
+    draft went out empty; bumping the version means naming its section."""
+    from zimi import server
+
+    head = "## [%s]" % server.ZIMI_VERSION
+    with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    assert any(line.startswith(head) for line in lines), (
+        "CHANGELOG.md has no %s section; rename [Unreleased] when bumping the version" % head
+    )
