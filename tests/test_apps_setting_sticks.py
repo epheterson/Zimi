@@ -58,6 +58,27 @@ class TestAppsSettingSticks(TestNonLatinRedirect):
         finally:
             self._set_apps(every if saved is None or saved is True else saved)
 
+    def test_whoami_carries_the_apps_the_shell_does(self):
+        """Chrome's Back shows a shell it kept, stamped before the setting
+        changed; every boot asks /whoami before it draws and takes the apps
+        from there (#98)."""
+        from zimi import server as srv
+        from zimi import manage
+
+        saved = manage._read_app_update_prefs().get("apps")
+        every = [n for n in srv.APP_NAMES if n in srv.APPS_DEFAULT]
+        try:
+            self._set_apps(["books"])
+            _, _, shell = self._get("/")
+            self.assertIn('data-zimi-apps="books"', shell)
+            self.assertEqual(json.loads(self._get("/whoami")[2])["apps"], "books")
+            self._set_apps([])
+            self.assertEqual(json.loads(self._get("/whoami")[2])["apps"], "0")
+            self._set_apps(every)
+            self.assertIsNone(json.loads(self._get("/whoami")[2])["apps"])
+        finally:
+            self._set_apps(every if saved is None or saved is True else saved)
+
     test_an_arabic_redirect_names_its_target = None
     test_a_cyrillic_redirect_names_its_target = None
     test_a_section_of_a_non_latin_page_is_a_redirect_too = None

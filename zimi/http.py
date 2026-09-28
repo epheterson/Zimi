@@ -4397,13 +4397,18 @@ class ZimHandler(BaseHTTPRequestHandler):
         of this — it keys off the cookie/token, not the client's belief."""
         from zimi import manage as _manage
 
+        # The apps this server offers, as the shell stamps them. A browser can
+        # show a shell it kept from before the setting changed (Chrome's Back
+        # reuses it without asking), and every boot asks here before it draws,
+        # so the client corrects its stamp from this (#98).
+        apps = _srv.apps_stamp(_srv.apps_shown())
         name = _users.resolve_request_user(self)
         if name:
             # A SECONDARY admin keeps the admin chrome on reload (their session
             # token is restored from storage as the manage Bearer token).
             if _users.is_admin_user(name):
                 return self._json(
-                    200, {"role": "admin", "name": name, "secondary": True}
+                    200, {"role": "admin", "name": name, "secondary": True, "apps": apps}
                 )
             rec = _users.get_user(name)
             allowlist = rec.get("allowlist") if rec else None
@@ -4416,6 +4421,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                     # Per-user create permission — the client's + button and
                     # Create page consult this (the server gates regardless).
                     "can_create": _users.user_can_create(name),
+                    "apps": apps,
                 },
             )
 
@@ -4427,6 +4433,7 @@ class ZimHandler(BaseHTTPRequestHandler):
             resp: dict[str, object] = {
                 "role": "admin",
                 "name": _manage._get_manage_user() or "admin",
+                "apps": apps,
             }
             # Ensure the header-less transports (reader iframe, plain-fetch data
             # endpoints) carry admin identity. If this admin was recognised by the
@@ -4443,7 +4450,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         # Anonymous. Expose a first-login hint ONLY when the default username
         # applies — no custom username AND no named users configured. This is
         # not an info leak: "the default username is admin" is in the docs.
-        resp = {"role": "anonymous"}
+        resp = {"role": "anonymous", "apps": apps}
         if not _manage._get_manage_user() and not _users.list_users():
             resp["default_username"] = "admin"
         # Tell the SPA how the public-access policy shapes its view: ``private``

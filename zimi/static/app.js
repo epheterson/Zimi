@@ -1333,6 +1333,10 @@ async function _bootAuthGate() {
     // the same way and the offline state (not a fake empty library) paints.
     return false;
   }
+  // The apps the server offers now: the shell's stamp can be older than the
+  // setting (Chrome's Back shows a kept shell without asking), and nothing
+  // has drawn yet (#98).
+  if (j && 'apps' in j) _setAppsStamp(j.apps);
   // First-login hint: the server only sends this when the default username
   // ("admin") applies (no custom username, no named users). The login modal
   // reads it to show "Default username: admin".
@@ -12230,10 +12234,7 @@ function _postServerApps(shown) {
       if (d && d.error) { _showToast(t('env_controlled', { v: 'ZIMI_APPS' })); }
       // The shell's stamp is read at render; refresh it here so the home
       // page follows without a reload.
-      if (document.body && document.body.dataset && d && Array.isArray(d.shown)) {
-        if (d.shown.join(',') === APPS_DEFAULT.join(',')) delete document.body.dataset.zimiApps;
-        else document.body.dataset.zimiApps = d.shown.join(',') || '0';
-      }
+      if (d && Array.isArray(d.shown)) _setAppsStamp(d.shown.join(',') === APPS_DEFAULT.join(',') ? null : d.shown.join(',') || '0');
       _renderAppsSection();
       // And the home page behind, if that is what is showing: the Apps row
       // stayed until something else redrew it (#88).
@@ -18368,6 +18369,13 @@ function _appsAllowedByServer(app) {
   if (stamp === undefined || stamp === '') return !app || !_appOptIn(app);
   if (stamp === '0') return false;
   return app ? stamp.split(',').indexOf(app) >= 0 : true;
+}
+// The stamp as the server gives it (/whoami, or a saved switch): null for
+// the default apps.
+function _setAppsStamp(stamp) {
+  if (!document.body || !document.body.dataset) return;
+  if (stamp == null) delete document.body.dataset.zimiApps;
+  else document.body.dataset.zimiApps = stamp;
 }
 function _appShown(app) {
   if (!_appsAllowedByServer(app)) return false;
