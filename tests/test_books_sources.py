@@ -1432,6 +1432,39 @@ def test_a_header_with_a_line_break_is_never_sent():
     assert h._headers_buffer == [b"Content-Type: image/png\r\n"]
 
 
+def test_text_goes_gzipped_and_pictures_as_they_are(serve_one_zim):
+    """The four ways out that gzip (a ZIM's entry, a file in an EPUB, the
+    app's own files, every JSON answer) share one rule."""
+    import gzip
+    import urllib.request
+
+    base, zim = serve_one_zim(
+        dict(
+            _index(),
+            **{
+                "page.html": ("text/html", "<html><body>" + "words " * 200 + "</body></html>", "Page"),
+                "pic.png": ("image/png", fx.PNG * 40, ""),
+                "book.epub": ("application/epub+zip", fx.gutenberg_epub(), ""),
+            },
+        )
+    )
+
+    def get(path):
+        req = urllib.request.Request(
+            base + path, headers={"Accept-Encoding": "gzip", "Sec-Fetch-Dest": "iframe"}
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.headers.get("Content-Encoding"), r.read()
+
+    for path in (f"/w/{zim}/page.html", f"/w/{zim}/book.epub/", "/static/app.css", "/list"):
+        enc, body = get(path)
+        assert enc == "gzip" and gzip.decompress(body), path
+    enc, body = get(f"/w/{zim}/pic.png")
+    assert enc is None and body == fx.PNG * 40
+    enc, body = get(f"/w/{zim}/book.epub/" + fx.GUTENBERG_EPUB_COVER)
+    assert enc is None and body == fx.PNG
+
+
 def test_a_route_that_would_send_a_broken_header_answers_500(
     serve_one_zim, monkeypatch
 ):
