@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The Almanac zooms from the solar system to a 3D Earth: lit by the real Sun, with the Moon, eclipses as they fall, the ISS and the GPS satellites (tap one: its clock gains 38 microseconds a day).
 - ZimiTube plays the videos and audiobooks in Kiwix's document libraries (Maître Lucas, YouScribe's audiobooks, Zaya and more): an audiobook is one card, its tracks listed and played in turn.
 - A folder of videos or audio made with Create a ZIM plays in ZimiTube.
+- ZimiTube has Like, Watch later and Lists under a video, and its home starts with Continue watching (a video at its time, an audiobook at its track), Watch later, Liked and your lists.
+- ZimiExchange and Reddot have Like, Save and Lists under a question or post, a Saved tab of what you kept, and a long thread you saved opens where you were.
+- Maps keeps places: Save this place under the pin names the view from your search or the nearest town, and your places are listed there, a tap flying back.
+- Every app, Bookshelf included, puts a thing in a list with the same picker the Saved panel uses.
 
 ### Changed
 
