@@ -114,7 +114,7 @@ var SK = {
   // bookmarks, and left in place for one release.
   BOOK_PLACES: 'zimi_book_places',
   // How books are read in this browser: {mode: 'scroll'|'pages', size (px),
-  // lh and margin (indexes into _BOOK_LEADINGS / _BOOK_MARGINS)}.
+  // lh and margin (indexes into _READING_LEADINGS / _READING_MARGINS)}.
   BOOK_PREFS: 'zimi_book_prefs',
   // Whole-app theme: 'auto' (follow prefers-color-scheme, dark fallback) |
   // 'dark' | 'light'. Default auto. Read/written via _appTheme/_setAppTheme;
@@ -17146,6 +17146,148 @@ function openBooks(replaceState) {
 }
 function _booksSearch(val) { _appFrameCall('booksSearch', val); }
 
+// ── Reading settings: the book reader's and Zimipedia's ──
+// One sheet (theme, font, text size, line spacing, margins, and for a book
+// the layout), one set of scales, and one stylesheet for the bars and sheets
+// both readers draw in the page. The theme and the font are Reader View's,
+// so every article follows them; size, spacing and margins are each
+// reader's own, kept per browser (a book reads larger and airier than an
+// encyclopedia).
+var _READING_BAR_H = 48;             // px: a reader's bar, under the top inset
+var _READING_SIZES = [14, 16, 17, 19, 21, 23, 26, 30, 34];  // px
+var _READING_LEADINGS = [1.35, 1.5, 1.65, 1.8, 2];
+var _READING_MARGINS = [8, 16, 24, 40];      // px at either side on a phone
+var _READING_MEASURES = [42, 36, 33, 29];    // em: the longest line, by the same setting
+var _READING_CSS = [
+  // ── the bars ──
+  '.zb-bar{position:fixed;left:0;right:0;z-index:2147482000;display:flex;align-items:center;gap:2px;box-sizing:border-box;',
+    'background:var(--rv-bg);color:var(--rv-fg);font:14px/1.25 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;',
+    'transition:transform .25s ease,opacity .25s ease;-webkit-user-select:none;user-select:none}',
+  '@supports (background:color-mix(in srgb,red 50%,transparent)){.zb-bar{background:color-mix(in srgb,var(--rv-bg) 90%,transparent);',
+    '-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%)}}',
+  '.zb-head{top:0;height:calc(' + _READING_BAR_H + 'px + var(--zb-sat));padding:var(--zb-sat) calc(6px + var(--zb-sar)) 0 calc(6px + var(--zb-sal));border-bottom:1px solid var(--rv-border)}',
+  '.zb-foot{bottom:0;flex-direction:column;align-items:stretch;gap:4px;padding:6px calc(10px + var(--zb-sar)) calc(6px + var(--zb-sab)) calc(10px + var(--zb-sal));border-top:1px solid var(--rv-border)}',
+  'html.zb-away .zb-head{transform:translateY(-100%);opacity:0;pointer-events:none}',
+  'html.zb-away .zb-foot{transform:translateY(100%);opacity:0;pointer-events:none}',
+  '.zb-bar button{border:0;background:none;color:inherit;font:inherit;min-width:44px;height:44px;border-radius:22px;cursor:pointer;flex:none;',
+    'display:inline-flex;align-items:center;justify-content:center;padding:0 6px;-webkit-tap-highlight-color:transparent}',
+  '@media (hover:hover){.zb-bar button:hover:not(:disabled),.zb-sheet button:hover:not(:disabled){background:var(--rv-code)}}',
+  '.zb-bar button:focus-visible,.zb-sheet button:focus-visible,.zb-sheet input:focus-visible{outline:2px solid var(--rv-link);outline-offset:1px}',
+  '.zb-bar button:disabled{opacity:.3;cursor:default}',
+  '.zb-aa{font:600 17px/1 Georgia,serif!important;letter-spacing:.02em}',
+  '.zb-title{flex:1;min-width:0;text-align:center;line-height:1.2}',
+  '.zb-title b,.zb-title span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;unicode-bidi:plaintext}',
+  '.zb-title b{font-weight:600;font-size:14.5px}.zb-title span{font-size:12px;color:var(--rv-muted)}',
+  // ── the sheets: contents and reading settings ──
+  '.zb-scrim{position:fixed;inset:0;z-index:2147482100;background:rgba(0,0,0,.28);opacity:0;pointer-events:none;transition:opacity .2s}',
+  'html.zb-sheet-open .zb-scrim{opacity:1;pointer-events:auto}',
+  '.zb-sheet{position:fixed;left:0;right:0;bottom:0;z-index:2147482200;max-height:min(82vh,680px);overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;',
+    'box-sizing:border-box;padding:6px calc(16px + var(--zb-sar)) calc(18px + var(--zb-sab)) calc(16px + var(--zb-sal));border-radius:16px 16px 0 0;',
+    'background:var(--rv-bg);color:var(--rv-fg);border:1px solid var(--rv-border);box-shadow:0 -8px 30px rgba(0,0,0,.25);',
+    'font:15px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;transform:translateY(105%);visibility:hidden;',
+    'transition:transform .25s ease,visibility 0s linear .25s}',
+  '.zb-sheet.zb-open{transform:none;visibility:visible;transition:transform .25s ease}',
+  '@media (min-width:700px){.zb-sheet{left:auto;right:calc(16px + var(--zb-sar));bottom:auto;top:calc(' + (_READING_BAR_H + 8) + 'px + var(--zb-sat));width:380px;',
+    'max-height:calc(100vh - ' + (_READING_BAR_H + 32) + 'px);border-radius:14px;transform:translateY(-8px);opacity:0;transition:transform .2s,opacity .2s,visibility 0s linear .2s}',
+    '.zb-sheet.zb-open{transform:none;opacity:1;transition:transform .2s,opacity .2s}}',
+  '.zb-sheet-head{display:flex;align-items:center;justify-content:space-between;position:sticky;top:-6px;background:var(--rv-bg);padding:6px 0;z-index:1}',
+  '.zb-sheet-head b{font-size:16px}',
+  '.zb-sheet button{border:0;background:none;color:inherit;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}',
+  '.zb-x{width:40px;height:40px;border-radius:20px;font-size:22px!important;line-height:1}',
+  '.zb-toc-list{list-style:none;margin:0;padding:0}',
+  '.zb-toc-list button{display:block;width:100%;text-align:start;padding:11px 10px;border-radius:10px;unicode-bidi:plaintext}',
+  '.zb-toc-list .zb-sub button{padding-inline-start:28px;color:var(--rv-muted)}',
+  '.zb-toc-list [aria-current="true"] button{background:var(--rv-code);color:var(--rv-link);font-weight:600}',
+  '.zb-set{padding:7px 0;border-top:1px solid var(--rv-border)}.zb-set:first-of-type{border-top:0}',
+  '.zb-set-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--rv-muted);margin:0 0 6px}',
+  '.zb-seg{display:flex;gap:6px}',
+  '.zb-seg button{flex:1;min-height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;padding:0 8px}',
+  '.zb-seg button[aria-pressed="true"],.zb-seg button[aria-checked="true"]{border-color:var(--rv-link)!important;color:var(--rv-link);box-shadow:inset 0 0 0 1px var(--rv-link)}',
+  '.zb-themes button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;padding:6px 2px;min-height:0}',
+  '.zb-dot{width:22px;height:22px;border-radius:50%;border:1px solid rgba(128,128,128,.45);box-sizing:border-box}',
+  '.zb-dot-auto{background:linear-gradient(135deg,#fbfbf9 50%,#0a0a0b 50%)}.zb-dot-light{background:#fbfbf9}.zb-dot-sepia{background:#f4ecd8}.zb-dot-dark{background:#0a0a0b}',
+  '.zb-step{display:flex;align-items:center;gap:8px}',
+  '.zb-step button{width:52px;height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;font-family:Georgia,serif}',
+  '.zb-step output{flex:1;text-align:center;font-variant-numeric:tabular-nums;color:var(--rv-muted)}',
+  '.zb-range{width:100%;accent-color:var(--rv-link);height:26px;margin:0}',
+  '@media print{.zb-bar,.zb-sheet,.zb-scrim{display:none!important}}',
+  '@media (prefers-reduced-motion:reduce){.zb-bar,.zb-sheet,.zb-scrim{transition:none!important}}'
+].join('');
+// How one reader is read in this browser: {size (px), lh and margin (indexes
+// into the scales)} and, where the reader has one, its mode.
+function _readingPrefs(key, defaults) {
+  var p = _getStorageJSON(key, {}) || {};
+  var idx = function(v, list, d) { return typeof v === 'number' && v >= 0 && v < list.length ? v : d; };
+  return {
+    size: _READING_SIZES.indexOf(p.size) >= 0 ? p.size : defaults.size,
+    lh: idx(p.lh, _READING_LEADINGS, defaults.lh),
+    margin: idx(p.margin, _READING_MARGINS, defaults.margin),
+    mode: p.mode
+  };
+}
+// The settings sheet's rows; `layouts` ([[value, label]]) adds the layout
+// row (a book's Scroll and Pages).
+function _readingSettingsHtml(prefs, layouts) {
+  var seg = function(attr, items, curVal, label) {
+    return '<div class="zb-seg" role="group" aria-label="' + label + '">' + items.map(function(it) {
+      return '<button type="button" data-' + attr + '="' + it[0] + '" aria-pressed="' + (String(it[0]) === String(curVal)) + '"' + (it[2] ? ' style="' + it[2] + '"' : '') + '>' + it[1] + '</button>';
+    }).join('') + '</div>';
+  };
+  var row = function(label, body) { return '<div class="zb-set"><div class="zb-set-label">' + label + '</div>' + body + '</div>'; };
+  var mode = _readerThemeMode(), fam = _readerFamily(), si = _READING_SIZES.indexOf(prefs.size);
+  var themes = ['auto', 'light', 'sepia', 'dark'].map(function(k) {
+    var lbl = tH(k === 'auto' ? 'theme_auto' : 'reader_theme_' + k);
+    return [k, '<span class="zb-dot zb-dot-' + k + '"></span>' + lbl];
+  });
+  return '<div class="zb-sheet-head"><b>' + tH('books_settings') + '</b><button type="button" class="zb-x" aria-label="' + tH('close') + '">×</button></div>' +
+    row(tH('reader_theme'), seg('theme', themes, mode, tH('reader_theme')).replace('zb-seg', 'zb-seg zb-themes')) +
+    row(tH('reader_font_family'), seg('fam', [['serif', tH('reader_font_serif'), 'font-family:Georgia,serif'], ['sans', tH('reader_font_sans'), 'font-family:-apple-system,sans-serif']], fam, tH('reader_font_family'))) +
+    row(tH('reader_text_size'), '<div class="zb-step"><button type="button" data-size="-1" aria-label="' + tH('reader_size_smaller') + '"' + (si <= 0 ? ' disabled' : '') + ' style="font-size:14px">A</button>' +
+      '<output>' + prefs.size + ' px</output><button type="button" data-size="1" aria-label="' + tH('reader_size_larger') + '"' + (si >= _READING_SIZES.length - 1 ? ' disabled' : '') + ' style="font-size:21px">A</button></div>') +
+    row('<label for="zb-lh">' + tH('books_line_spacing') + '</label>', '<input id="zb-lh" class="zb-range" type="range" min="0" max="' + (_READING_LEADINGS.length - 1) + '" step="1" value="' + prefs.lh + '" data-pref="lh">') +
+    row('<label for="zb-mg">' + tH('books_margins') + '</label>', '<input id="zb-mg" class="zb-range" type="range" min="0" max="' + (_READING_MARGINS.length - 1) + '" step="1" value="' + prefs.margin + '" data-pref="margin">') +
+    (layouts ? row(tH('books_layout'), seg('mode', layouts, prefs.mode, tH('books_layout'))) : '');
+}
+// What a control of the sheet asks for: {theme}, {fam} or {prefs: a change
+// to the reader's own}; null for anything else (the close button).
+function _readingSettingsPick(el, prefs) {
+  if (!el || el.disabled) return null;
+  if (el.hasAttribute('data-theme')) return { theme: el.getAttribute('data-theme') };
+  if (el.hasAttribute('data-fam')) return { fam: el.getAttribute('data-fam') };
+  if (el.hasAttribute('data-mode')) return { prefs: { mode: el.getAttribute('data-mode') } };
+  if (el.hasAttribute('data-size')) {
+    var i = _READING_SIZES.indexOf(prefs.size) + Number(el.getAttribute('data-size'));
+    return { prefs: { size: _READING_SIZES[Math.max(0, Math.min(_READING_SIZES.length - 1, i))] } };
+  }
+  var p = el.getAttribute('data-pref');
+  if (!p) return null;
+  var o = {}; o[p] = Number(el.value);
+  return { prefs: o };
+}
+// A reader's settings sheet, live: a tap or a slide sets the theme and the
+// font at once (Reader View's own setters); a change to the reader's own
+// (size, spacing, margins, layout) goes to apply(change, fam) with fam true
+// when the font changed; the sheet is drawn again with the same control
+// focused. render() draws it.
+function _readingSettingsBind(sheet, getPrefs, apply, close) {
+  var act = function(el) {
+    if (el.classList.contains('zb-x')) { close(); return; }
+    var pick = _readingSettingsPick(el, getPrefs());
+    if (!pick) return;
+    if (pick.theme) _setReaderTheme(pick.theme);
+    else if (pick.fam) { _setReaderFamily(pick.fam); apply(null, true); }
+    else apply(pick.prefs, false);
+    render();
+    var attr = ['theme', 'fam', 'size', 'mode', 'pref'].filter(function(a) { return el.hasAttribute('data-' + a); })[0];
+    var again = attr && sheet.querySelector('[data-' + attr + '="' + el.getAttribute('data-' + attr) + '"]');
+    if (again && !again.disabled) again.focus({ preventScroll: true });
+  };
+  var render = function() { sheet.innerHTML = _readingSettingsHtml(getPrefs(), sheet.__zbLayouts); };
+  sheet.addEventListener('click', function(e) { var b = e.target.closest && e.target.closest('button'); if (b && !b.disabled) act(b); });
+  sheet.addEventListener('change', function(e) { if (e.target.getAttribute && e.target.getAttribute('data-pref')) act(e.target); });
+  return render;
+}
+
 // ── Reading a book ──
 // Eric, 2026-09-25: "For the book reader it needs to be awesome on mobile:
 // fixed footer and header that hide while scrolling or on tap, support
@@ -17178,19 +17320,14 @@ var _BOOK_EDGE = 0.3;             // share of the width at either side where a t
 var _BOOK_SPREAD_MIN = 1000;      // px wide (and _BOOK_SPREAD_MIN_H tall) from which pages come two at a time
 var _BOOK_SPREAD_MIN_H = 480;
 var _BOOK_WHEEL_GAP = 350;        // ms between page turns by the wheel or trackpad
-var _BOOK_HEAD_H = 48;            // px: the header's height, under the top inset
 var _BOOK_PAGE_TOP = 44;          // px above and below the text of a page
 var _BOOK_PAGE_BOTTOM = 40;
-var _BOOK_SIZES = [14, 16, 17, 19, 21, 23, 26, 30, 34];  // px
-var _BOOK_LEADINGS = [1.35, 1.5, 1.65, 1.8, 2];
-var _BOOK_MARGINS = [8, 16, 24, 40];      // px at either side on a phone
-var _BOOK_MEASURES = [42, 36, 33, 29];    // em: the longest line, by the same setting
 var _BOOK_PREFS_DEFAULT = { size: 19, lh: 2, margin: 1 };
 var _BOOK_RTL_LANGS = /^(ar|arc|ckb|dv|fa|he|ku|ps|sd|ug|ur|yi)(-|$)/i;
 var _BOOK_CSS = [
   // ── the page ──
   'html.zb-book .zimi-reader{text-align:start;font-size:var(--zb-size);line-height:var(--zb-lh);',
-    'padding:calc(' + (_BOOK_HEAD_H + 12) + 'px + var(--zb-sat)) calc(var(--zb-m) + var(--zb-sar)) calc(96px + var(--zb-sab)) calc(var(--zb-m) + var(--zb-sal));',
+    'padding:calc(' + (_READING_BAR_H + 12) + 'px + var(--zb-sat)) calc(var(--zb-m) + var(--zb-sar)) calc(96px + var(--zb-sab)) calc(var(--zb-m) + var(--zb-sal));',
     '-webkit-hyphens:auto;hyphens:auto}',
   'html.zb-book .zimi-reader-body{max-width:var(--zb-measure)}',
   // Gutenberg's own paragraphs (an indent, no gap) are a book's; its screen
@@ -17211,25 +17348,6 @@ var _BOOK_CSS = [
   'html.zb-paged .zb-sec > :first-child{margin-top:0}',
   'html.zb-paged .zimi-reader img{max-height:var(--zb-colh)!important;width:auto;object-fit:contain;break-inside:avoid}',
   'html.zb-paged .zimi-reader h1,html.zb-paged .zimi-reader h2,html.zb-paged .zimi-reader h3{break-after:avoid}',
-  // ── the bars ──
-  '.zb-bar{position:fixed;left:0;right:0;z-index:2147482000;display:flex;align-items:center;gap:2px;box-sizing:border-box;',
-    'background:var(--rv-bg);color:var(--rv-fg);font:14px/1.25 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;',
-    'transition:transform .25s ease,opacity .25s ease;-webkit-user-select:none;user-select:none}',
-  '@supports (background:color-mix(in srgb,red 50%,transparent)){.zb-bar{background:color-mix(in srgb,var(--rv-bg) 90%,transparent);',
-    '-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%)}}',
-  '.zb-head{top:0;height:calc(' + _BOOK_HEAD_H + 'px + var(--zb-sat));padding:var(--zb-sat) calc(6px + var(--zb-sar)) 0 calc(6px + var(--zb-sal));border-bottom:1px solid var(--rv-border)}',
-  '.zb-foot{bottom:0;flex-direction:column;align-items:stretch;gap:4px;padding:6px calc(10px + var(--zb-sar)) calc(6px + var(--zb-sab)) calc(10px + var(--zb-sal));border-top:1px solid var(--rv-border)}',
-  'html.zb-away .zb-head{transform:translateY(-100%);opacity:0;pointer-events:none}',
-  'html.zb-away .zb-foot{transform:translateY(100%);opacity:0;pointer-events:none}',
-  '.zb-bar button{border:0;background:none;color:inherit;font:inherit;min-width:44px;height:44px;border-radius:22px;cursor:pointer;flex:none;',
-    'display:inline-flex;align-items:center;justify-content:center;padding:0 6px;-webkit-tap-highlight-color:transparent}',
-  '@media (hover:hover){.zb-bar button:hover:not(:disabled),.zb-sheet button:hover:not(:disabled){background:var(--rv-code)}}',
-  '.zb-bar button:focus-visible,.zb-sheet button:focus-visible,.zb-sheet input:focus-visible{outline:2px solid var(--rv-link);outline-offset:1px}',
-  '.zb-bar button:disabled{opacity:.3;cursor:default}',
-  '.zb-aa{font:600 17px/1 Georgia,serif!important;letter-spacing:.02em}',
-  '.zb-title{flex:1;min-width:0;text-align:center;line-height:1.2}',
-  '.zb-title b,.zb-title span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;unicode-bidi:plaintext}',
-  '.zb-title b{font-weight:600;font-size:14.5px}.zb-title span{font-size:12px;color:var(--rv-muted)}',
   '.zb-row{display:flex;align-items:center;gap:2px}',
   '.zb-info{flex:1;min-width:0;text-align:center;line-height:1.3}',
   '.zb-info .zb-ch{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;unicode-bidi:plaintext}',
@@ -17239,44 +17357,12 @@ var _BOOK_CSS = [
   '.zb-mini{position:fixed;left:0;right:0;bottom:calc(10px + var(--zb-sab));text-align:center;font:11.5px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;',
     'color:var(--rv-muted);pointer-events:none;opacity:0;transition:opacity .25s;font-variant-numeric:tabular-nums;z-index:1}',
   'html.zb-paged.zb-away .zb-mini{opacity:1}',
-  // ── the sheets: contents and reading settings ──
-  '.zb-scrim{position:fixed;inset:0;z-index:2147482100;background:rgba(0,0,0,.28);opacity:0;pointer-events:none;transition:opacity .2s}',
-  'html.zb-sheet-open .zb-scrim{opacity:1;pointer-events:auto}',
-  '.zb-sheet{position:fixed;left:0;right:0;bottom:0;z-index:2147482200;max-height:min(82vh,680px);overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;',
-    'box-sizing:border-box;padding:6px calc(16px + var(--zb-sar)) calc(18px + var(--zb-sab)) calc(16px + var(--zb-sal));border-radius:16px 16px 0 0;',
-    'background:var(--rv-bg);color:var(--rv-fg);border:1px solid var(--rv-border);box-shadow:0 -8px 30px rgba(0,0,0,.25);',
-    'font:15px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;transform:translateY(105%);visibility:hidden;',
-    'transition:transform .25s ease,visibility 0s linear .25s}',
-  '.zb-sheet.zb-open{transform:none;visibility:visible;transition:transform .25s ease}',
-  '@media (min-width:700px){.zb-sheet{left:auto;right:calc(16px + var(--zb-sar));bottom:auto;top:calc(' + (_BOOK_HEAD_H + 8) + 'px + var(--zb-sat));width:380px;',
-    'max-height:calc(100vh - ' + (_BOOK_HEAD_H + 32) + 'px);border-radius:14px;transform:translateY(-8px);opacity:0;transition:transform .2s,opacity .2s,visibility 0s linear .2s}',
-    '.zb-sheet.zb-open{transform:none;opacity:1;transition:transform .2s,opacity .2s}}',
-  '.zb-sheet-head{display:flex;align-items:center;justify-content:space-between;position:sticky;top:-6px;background:var(--rv-bg);padding:6px 0;z-index:1}',
-  '.zb-sheet-head b{font-size:16px}',
-  '.zb-sheet button{border:0;background:none;color:inherit;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}',
-  '.zb-x{width:40px;height:40px;border-radius:20px;font-size:22px!important;line-height:1}',
-  '.zb-toc-list{list-style:none;margin:0;padding:0}',
-  '.zb-toc-list button{display:block;width:100%;text-align:start;padding:11px 10px;border-radius:10px;unicode-bidi:plaintext}',
-  '.zb-toc-list .zb-sub button{padding-inline-start:28px;color:var(--rv-muted)}',
-  '.zb-toc-list [aria-current="true"] button{background:var(--rv-code);color:var(--rv-link);font-weight:600}',
-  '.zb-set{padding:7px 0;border-top:1px solid var(--rv-border)}.zb-set:first-of-type{border-top:0}',
-  '.zb-set-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--rv-muted);margin:0 0 6px}',
-  '.zb-seg{display:flex;gap:6px}',
-  '.zb-seg button{flex:1;min-height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;padding:0 8px}',
-  '.zb-seg button[aria-pressed="true"],.zb-seg button[aria-checked="true"]{border-color:var(--rv-link)!important;color:var(--rv-link);box-shadow:inset 0 0 0 1px var(--rv-link)}',
-  '.zb-themes button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;padding:6px 2px;min-height:0}',
-  '.zb-dot{width:22px;height:22px;border-radius:50%;border:1px solid rgba(128,128,128,.45);box-sizing:border-box}',
-  '.zb-dot-auto{background:linear-gradient(135deg,#fbfbf9 50%,#0a0a0b 50%)}.zb-dot-light{background:#fbfbf9}.zb-dot-sepia{background:#f4ecd8}.zb-dot-dark{background:#0a0a0b}',
-  '.zb-step{display:flex;align-items:center;gap:8px}',
-  '.zb-step button{width:52px;height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;font-family:Georgia,serif}',
-  '.zb-step output{flex:1;text-align:center;font-variant-numeric:tabular-nums;color:var(--rv-muted)}',
-  '.zb-range{width:100%;accent-color:var(--rv-link);height:26px;margin:0}',
-  '@media print{.zb-bar,.zb-sheet,.zb-scrim,.zb-mini{display:none!important}',
+  '@media print{.zb-mini{display:none!important}',
     'html.zb-paged,html.zb-paged body{overflow:visible!important;height:auto}',
     'html.zb-paged .zimi-reader{position:static!important;height:auto!important;overflow:visible!important;padding:0!important}',
     'html.zb-paged .zimi-reader-body{height:auto!important;width:auto!important;margin:0!important;column-count:auto!important;transform:none!important}',
     'html.zb-paged .zb-sec{display:block!important}}',
-  '@media (prefers-reduced-motion:reduce){.zb-bar,.zb-sheet,.zb-scrim,.zb-mini{transition:none!important}}'
+  '@media (prefers-reduced-motion:reduce){.zb-mini{transition:none!important}}'
 ].join('');
 var _BOOK_SVG_BACK = '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
 var _BOOK_SVG_TOC = '<svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".6" fill="currentColor"/><circle cx="4.5" cy="12" r=".6" fill="currentColor"/><circle cx="4.5" cy="18" r=".6" fill="currentColor"/></svg>';
@@ -17302,15 +17388,10 @@ function _bookAuthorName(creator) {
 // How you like to read, per browser. Turning pages is the default where
 // fingers are; scrolling where a wheel is.
 function _bookPrefs() {
-  var p = _getStorageJSON(SK.BOOK_PREFS, {}) || {}, coarse = false;
+  var p = _readingPrefs(SK.BOOK_PREFS, _BOOK_PREFS_DEFAULT), coarse = false;
   try { coarse = window.matchMedia('(pointer: coarse)').matches; } catch (e) {}
-  var idx = function(v, list, d) { return typeof v === 'number' && v >= 0 && v < list.length ? v : d; };
-  return {
-    mode: p.mode === 'pages' || p.mode === 'scroll' ? p.mode : (coarse ? 'pages' : 'scroll'),
-    size: _BOOK_SIZES.indexOf(p.size) >= 0 ? p.size : _BOOK_PREFS_DEFAULT.size,
-    lh: idx(p.lh, _BOOK_LEADINGS, _BOOK_PREFS_DEFAULT.lh),
-    margin: idx(p.margin, _BOOK_MARGINS, _BOOK_PREFS_DEFAULT.margin)
-  };
+  if (p.mode !== 'pages' && p.mode !== 'scroll') p.mode = coarse ? 'pages' : 'scroll';
+  return p;
 }
 // Is this reader address a book? Known before it loads (the ZIM is a
 // Gutenberg one and the page is a book's, <title>.<number>), so Zimi's
@@ -17495,7 +17576,7 @@ function _bookLay(frame) {
   var html = doc.documentElement, uiRtl = document.documentElement.getAttribute('dir') === 'rtl';
   var st = doc.createElement('style');
   st.id = 'zb-style';
-  st.textContent = _BOOK_CSS;
+  st.textContent = _READING_CSS + _BOOK_CSS;
   doc.head.appendChild(st);
   html.classList.add('zb-book');
   // Gutenberg's own page-top links (the book's page, its EPUB, a jump up)
@@ -17577,9 +17658,9 @@ function _bookLay(frame) {
   var applyVars = function() {
     var s = html.style;
     s.setProperty('--zb-size', prefs.size + 'px');
-    s.setProperty('--zb-lh', String(_BOOK_LEADINGS[prefs.lh]));
-    s.setProperty('--zb-m', _BOOK_MARGINS[prefs.margin] + 'px');
-    s.setProperty('--zb-measure', _BOOK_MEASURES[prefs.margin] + 'em');
+    s.setProperty('--zb-lh', String(_READING_LEADINGS[prefs.lh]));
+    s.setProperty('--zb-m', _READING_MARGINS[prefs.margin] + 'px');
+    s.setProperty('--zb-measure', _READING_MEASURES[prefs.margin] + 'em');
     s.setProperty('--zb-sat', insets.t + 'px'); s.setProperty('--zb-sar', insets.r + 'px');
     s.setProperty('--zb-sab', insets.b + 'px'); s.setProperty('--zb-sal', insets.l + 'px');
   };
@@ -17592,8 +17673,8 @@ function _bookLay(frame) {
   var layoutPages = function() {
     W = win.innerWidth; H = win.innerHeight;
     var cols = W >= _BOOK_SPREAD_MIN && H >= _BOOK_SPREAD_MIN_H ? 2 : 1;
-    var m = _BOOK_MARGINS[prefs.margin] + Math.max(insets.l, insets.r);
-    var colW = Math.floor(Math.min(W / cols - 2 * m, _BOOK_MEASURES[prefs.margin] * prefs.size));
+    var m = _READING_MARGINS[prefs.margin] + Math.max(insets.l, insets.r);
+    var colW = Math.floor(Math.min(W / cols - 2 * m, _READING_MEASURES[prefs.margin] * prefs.size));
     var gap = (W - cols * colW) / cols;
     var top = _BOOK_PAGE_TOP + insets.t, bottom = _BOOK_PAGE_BOTTOM + insets.b;
     var colh = Math.max(80, H - top - bottom);
@@ -17634,7 +17715,7 @@ function _bookLay(frame) {
     return Math.max(0, Math.min(pages - 1, Math.floor((pos + 1) / W)));
   };
   var barsShown = function() { return !html.classList.contains('zb-away'); };
-  var topGap = function() { return barsShown() ? _BOOK_HEAD_H + insets.t + 8 : 8; };
+  var topGap = function() { return barsShown() ? _READING_BAR_H + insets.t + 8 : 8; };
   // Go to a character of the book.
   var goTo = function(a) {
     if (!secs.length) return;
@@ -17835,58 +17916,18 @@ function _bookLay(frame) {
   };
 
   // ── reading settings: theme and font are Reader View's; the rest the book's ──
-  var seg = function(attr, items, curVal, label) {
-    return '<div class="zb-seg" role="group" aria-label="' + label + '">' + items.map(function(it) {
-      return '<button type="button" data-' + attr + '="' + it[0] + '" aria-pressed="' + (String(it[0]) === String(curVal)) + '"' + (it[2] ? ' style="' + it[2] + '"' : '') + '>' + it[1] + '</button>';
-    }).join('') + '</div>';
-  };
-  var row = function(label, body) { return '<div class="zb-set"><div class="zb-set-label">' + label + '</div>' + body + '</div>'; };
-  var renderSettings = function() {
-    var mode = _readerThemeMode(), fam = _readerFamily(), si = _BOOK_SIZES.indexOf(prefs.size);
-    var themes = ['auto', 'light', 'sepia', 'dark'].map(function(k) {
-      var lbl = tH(k === 'auto' ? 'theme_auto' : 'reader_theme_' + k);
-      return [k, '<span class="zb-dot zb-dot-' + k + '"></span>' + lbl];
-    });
-    setSheet.innerHTML = '<div class="zb-sheet-head"><b>' + tH('books_settings') + '</b><button type="button" class="zb-x" aria-label="' + tH('close') + '">×</button></div>' +
-      row(tH('reader_theme'), seg('theme', themes, mode, tH('reader_theme')).replace('zb-seg', 'zb-seg zb-themes')) +
-      row(tH('reader_font_family'), seg('fam', [['serif', tH('reader_font_serif'), 'font-family:Georgia,serif'], ['sans', tH('reader_font_sans'), 'font-family:-apple-system,sans-serif']], fam, tH('reader_font_family'))) +
-      row(tH('reader_text_size'), '<div class="zb-step"><button type="button" data-size="-1" aria-label="' + tH('reader_size_smaller') + '"' + (si <= 0 ? ' disabled' : '') + ' style="font-size:14px">A</button>' +
-        '<output>' + prefs.size + ' px</output><button type="button" data-size="1" aria-label="' + tH('reader_size_larger') + '"' + (si >= _BOOK_SIZES.length - 1 ? ' disabled' : '') + ' style="font-size:21px">A</button></div>') +
-      row('<label for="zb-lh">' + tH('books_line_spacing') + '</label>', '<input id="zb-lh" class="zb-range" type="range" min="0" max="' + (_BOOK_LEADINGS.length - 1) + '" step="1" value="' + prefs.lh + '" data-pref="lh">') +
-      row('<label for="zb-mg">' + tH('books_margins') + '</label>', '<input id="zb-mg" class="zb-range" type="range" min="0" max="' + (_BOOK_MARGINS.length - 1) + '" step="1" value="' + prefs.margin + '" data-pref="margin">') +
-      row(tH('books_layout'), seg('mode', [['scroll', tH('books_mode_scroll')], ['pages', tH('books_mode_pages')]], prefs.mode, tH('books_layout')));
-  };
   // A change of type or layout keeps the passage you were reading on screen.
   var setPrefs = function(change) {
     var keep = anchor;
-    for (var k in change) prefs[k] = change[k];
-    _setStorageJSON(SK.BOOK_PREFS, prefs);
-    paged = prefs.mode === 'pages';
+    if (change) {
+      for (var k in change) prefs[k] = change[k];
+      _setStorageJSON(SK.BOOK_PREFS, prefs);
+      paged = prefs.mode === 'pages';
+    }
     relayout(keep);
-    renderSettings();
   };
-  setSheet.addEventListener('click', function(e) {
-    var b = e.target.closest('button');
-    if (!b || b.disabled) return;
-    if (b.classList.contains('zb-x')) { closeSheets(); return; }
-    var key = ['theme', 'fam', 'size', 'mode'].filter(function(a) { return b.hasAttribute('data-' + a); })[0];
-    if (!key) return;
-    var val = b.getAttribute('data-' + key), keep = anchor;
-    if (key === 'theme') { _setReaderTheme(val); renderSettings(); }
-    else if (key === 'fam') { _setReaderFamily(val); relayout(keep); renderSettings(); }
-    else if (key === 'size') setPrefs({ size: _BOOK_SIZES[Math.max(0, Math.min(_BOOK_SIZES.length - 1, _BOOK_SIZES.indexOf(prefs.size) + Number(val)))] });
-    else setPrefs({ mode: val });
-    var again = setSheet.querySelector('[data-' + key + '="' + val + '"]');
-    if (again && !again.disabled) again.focus({ preventScroll: true });
-  });
-  setSheet.addEventListener('change', function(e) {
-    var p = e.target.getAttribute && e.target.getAttribute('data-pref');
-    if (!p) return;
-    var o = {}; o[p] = Number(e.target.value);
-    setPrefs(o);
-    var again = setSheet.querySelector('[data-pref="' + p + '"]');
-    if (again) again.focus({ preventScroll: true });
-  });
+  setSheet.__zbLayouts = [['scroll', tH('books_mode_scroll')], ['pages', tH('books_mode_pages')]];
+  var renderSettings = _readingSettingsBind(setSheet, function() { return prefs; }, setPrefs, closeSheets);
   head.querySelector('.zb-aa').onclick = function() {
     renderSettings();
     openSheet(setSheet);
