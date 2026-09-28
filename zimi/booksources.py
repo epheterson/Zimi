@@ -43,6 +43,7 @@ from collections import Counter
 
 from zimi import epub as _epub
 from zimi import nautilus
+from zimi import server as _srv
 
 log = logging.getLogger("zimi")
 
@@ -67,8 +68,10 @@ _WS_FIELD_RE = re.compile(
     r'(?:class|id)="ws-(type|title|author|translator|year|publisher)"[^>]*>(.*?)</span>',
     re.S,
 )
-# The header's record sits at the end of the page; this much of it is read.
+# The header's record sits at the end of the page; this much of it is read,
+# of a page this big at most.
 _WS_BLOCK = 6000
+_WS_MAX_PAGE_BYTES = 32 * 1024 * 1024
 # Wikisource types that are not a work of their own: an article of a
 # periodical ("ws-title" is then the periodical's).
 _WS_SKIP_TYPES = frozenset(("journal",))
@@ -77,33 +80,10 @@ WIKIBOOKS_MIN_PAGES = 3
 
 
 # ── reading a ZIM ──────────────────────────────────────────────────────────
-
-
-def _item(archive, path):
-    try:
-        entry = archive.get_entry_by_path(path)
-        if entry.is_redirect:
-            entry = entry.get_redirect_entry()
-        return entry.get_item()
-    except Exception:
-        return None
-
-
-def _bytes(archive, path, limit):
-    item = _item(archive, path)
-    if item is None or item.size > limit:
-        return None
-    try:
-        return bytes(item.content)
-    except Exception:
-        return None
-
-
-def _exists(archive, path):
-    try:
-        return archive.has_entry_by_path(path)
-    except Exception:
-        return False
+#
+# An entry that is not there is not there; one that will not read raises
+# (server.entry_item), and the background read that met it leaves no file,
+# so the next start reads the ZIM again (details.DetailsBuilder.build_one).
 
 
 def _clean(fragment):
@@ -126,18 +106,12 @@ def _walk(archive):
     {root: pages under it})``. Redirects are not pages; neither is anything
     but HTML at the top."""
     tops, subs = [], Counter()
-    for i in range(archive.entry_count):
-        try:
-            e = archive._get_entry_by_id(i)
-            if e.is_redirect:
-                continue
-            p = e.path
-            if "/" in p:
-                subs[p.split("/", 1)[0]] += 1
-            elif e.get_item().mimetype.startswith("text/html"):
-                tops.append((p, e.title))
-        except Exception:
-            continue
+    for e, item in _srv.walk_entries(archive, bounded=False):
+        p = e.path
+        if "/" in p:
+            subs[p.split("/", 1)[0]] += 1
+        elif item.mimetype.startswith("text/html"):
+            tops.append((p, e.title))
     return tops, subs
 
 
@@ -145,7 +119,7 @@ def _walk(archive):
 
 
 def _epub_facts(archive, path):
-    data = _bytes(archive, path, _epub.MAX_BOOK_BYTES)
+    data = _srv.entry_bytes(archive, path, _epub.MAX_BOOK_BYTES)
     if data is None:
         return {}
     try:
@@ -163,7 +137,7 @@ def _documents(archive, items, base):
             continue
         files = nautilus.files_of(item, base)
         doc = next((p for p in files if nautilus.ext_kind(p) == "document"), "")
-        if not doc or not _exists(archive, doc):
+        if not doc or not archive.has_entry_by_path(doc):
             continue
         ext = posixpath.splitext(doc)[1].lower()
         titled = bool(str(item.get("ti") or "").strip())
@@ -172,7 +146,7 @@ def _documents(archive, items, base):
             "title": str(item.get("ti") or "").strip() or nautilus.title_from_name(doc),
             "author": _author(item.get("aut")),
             "path": doc,
-            "format": "html" if ext in (".html", ".htm") else ext[1:],
+            "format": "html" if ext in nautilus.PAGE_EXTS else ext[1:],
         }
         if str(item.get("dsc") or "").strip():
             book["description"] = str(item["dsc"]).strip()
@@ -207,19 +181,14 @@ def nautilus_books(archive):
 
 def _document_entries(archive):
     """Listing items for a folder ZIM packed before it had a listing: its
-    PDFs and EPUBs, named by their files."""
-    got = []
-    for i in range(archive.entry_count):
-        try:
-            e = archive._get_entry_by_id(i)
-            if e.is_redirect:
-                continue
-            mime = e.get_item().mimetype
-        except Exception:
-            continue
-        if mime in ("application/pdf", _epub.EPUB_MIMETYPE):
-            got.append({"_id": e.path, "fp": [e.path]})
-    return got
+    PDFs and EPUBs, named by their files and found by their extensions, as
+    the listing Zimi writes now finds them (a Python before 3.14 stored an
+    EPUB as application/octet-stream)."""
+    return [
+        {"_id": e.path, "fp": [e.path]}
+        for e, _item in _srv.walk_entries(archive)
+        if posixpath.splitext(e.path)[1].lower() in nautilus.BOOK_EXTS
+    ]
 
 
 def folder_books(archive):
@@ -233,7 +202,7 @@ def folder_books(archive):
 
 
 def libretexts_books(archive):
-    raw = _bytes(archive, "content/shared.json", MAX_JSON_BYTES)
+    raw = _srv.entry_bytes(archive, "content/shared.json", MAX_JSON_BYTES)
     try:
         data = json.loads(raw.decode("utf-8", "replace")) if raw else {}
     except ValueError:
@@ -256,7 +225,7 @@ def libretexts_books(archive):
             continue
         n = chapters.get(p["path"], 0)
         page = f"index/page_{p['id']}"
-        if not n or not _exists(archive, page):
+        if not n or not archive.has_entry_by_path(page):
             continue
         title = str(p.get("title") or "").strip() or parts[-1].replace("_", " ")
         m = _LT_AUTHOR_RE.search(title)
@@ -282,7 +251,7 @@ def libretexts_books(archive):
 
 def _ws_record(archive, path):
     """The fields of a page's ``#ws-data``, {} when it has none."""
-    data = _bytes(archive, path, _epub.MAX_MEMBER_BYTES)
+    data = _srv.entry_bytes(archive, path, _WS_MAX_PAGE_BYTES)
     k = data.rfind(b'id="ws-data"') if data else -1
     if k < 0:
         return {}

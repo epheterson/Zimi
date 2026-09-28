@@ -752,6 +752,19 @@ COMPRESSIBLE_TYPES = {
     "application/xml",
     "image/svg+xml",
 }
+# Below this a body goes as it is: gzip's own header and trailer take back
+# most of what it would save.
+GZIP_MIN_BYTES = 256
+# zlib's level 4: most of level 9's saving on text, at a fraction of its time.
+GZIP_LEVEL = 4
+
+
+def _compressible(content_type):
+    """Whether a body of this type is worth gzip: text, never a picture or
+    a PDF, which are compressed already."""
+    base = content_type.split(";", 1)[0].strip()
+    return any(base.startswith(t) for t in COMPRESSIBLE_TYPES)
+
 
 _TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 try:
@@ -1644,9 +1657,25 @@ def _prefs_reply(prefs):
     return {"apps": bool(shown), "shown": [n for n in _srv.APP_NAMES if n in shown]}
 
 
+# A line break inside a header ends it; two end the headers, and what
+# follows is the body. BaseHTTPRequestHandler writes a header as it is given.
+_HEADER_BREAK_RE = re.compile(r"[\r\n]")
+
+
 class ZimHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     timeout = 30  # seconds — prevents slow-client DoS on POST bodies
+
+    def send_header(self, keyword, value):
+        """Every header Zimi sends, refused when its name or value carries a
+        line break: an EPUB's manifest type once put ``\\r\\n\\r\\n<script>`` in
+        a Content-Type, which ended the headers early, pushed the policy
+        into the body and ran the script on Zimi's origin. The answer begun
+        is dropped with it, so the caller's error reply starts clean."""
+        if _HEADER_BREAK_RE.search(str(keyword)) or _HEADER_BREAK_RE.search(str(value)):
+            self._headers_buffer = []
+            raise ValueError(f"a line break in the {str(keyword)[:40]!r} header")
+        super().send_header(keyword, value)
 
     def handle_one_request(self):
         """Backstop for disconnects escaping ANY write path (rate-limit
@@ -3339,13 +3368,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         # reader drives the page from the shell.
         self.send_header("Content-Security-Policy", _epub.CSP)
         self.send_header("X-Content-Type-Options", "nosniff")
-        if (
-            any(mimetype.startswith(t) for t in COMPRESSIBLE_TYPES)
-            and self._accepts_gzip()
-            and len(content) > 256
-        ):
-            content = gzip.compress(content, compresslevel=4)
-            self.send_header("Content-Encoding", "gzip")
+        content = self._maybe_gzip(content, mimetype)
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
@@ -3705,18 +3728,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                 "frame-ancestors 'self'",
             )
 
-        # Gzip text-based content only (images/PDFs are already compressed)
-        compressible = any(
-            mimetype.startswith(t) or mimetype == t for t in COMPRESSIBLE_TYPES
-        )
-        if (
-            compressible
-            and not stream_whole
-            and self._accepts_gzip()
-            and len(content) > 256
-        ):
-            content = gzip.compress(content, compresslevel=4)
-            self.send_header("Content-Encoding", "gzip")
+        if not stream_whole:
+            content = self._maybe_gzip(content, mimetype)
 
         if stream_whole:
             self.send_header("Content-Length", str(total_size))
@@ -3977,6 +3990,20 @@ class ZimHandler(BaseHTTPRequestHandler):
     def _accepts_gzip(self):
         return "gzip" in self.headers.get("Accept-Encoding", "")
 
+    def _maybe_gzip(self, body, content_type=None):
+        """``body`` gzipped, its Content-Encoding header sent, when the
+        client takes gzip, it is over GZIP_MIN_BYTES and (given a
+        ``content_type``) of a type that compresses; else as it is. Called
+        after send_response, before the Content-Length of what it returns."""
+        if (
+            len(body) > GZIP_MIN_BYTES
+            and self._accepts_gzip()
+            and (content_type is None or _compressible(content_type))
+        ):
+            self.send_header("Content-Encoding", "gzip")
+            return gzip.compress(body, compresslevel=GZIP_LEVEL)
+        return body
+
     @staticmethod
     def _parse_range(header, total_size):
         """Parse HTTP Range header. Returns (start, end) or (None, None)."""
@@ -4016,9 +4043,7 @@ class ZimHandler(BaseHTTPRequestHandler):
             self.send_header("ETag", etag)
         if vary:
             self.send_header("Vary", vary)
-        if self._accepts_gzip() and len(body_bytes) > 256:
-            body_bytes = gzip.compress(body_bytes, compresslevel=4)
-            self.send_header("Content-Encoding", "gzip")
+        body_bytes = self._maybe_gzip(body_bytes)
         self.send_header("Content-Length", str(len(body_bytes)))
         self.end_headers()
         self.wfile.write(body_bytes)
@@ -4120,18 +4145,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                         stored_mtime,
                     )
 
-        # Compress text-based static files (viewer.mjs, viewer.css, etc.)
-        ct_base = content_type.split(";")[0]
-        compressible = any(
-            ct_base.startswith(t) or ct_base == t for t in COMPRESSIBLE_TYPES
-        )
-        if self._accepts_gzip() and compressible and len(body) > 256:
-            body = gzip.compress(body, compresslevel=4)
-            is_gzipped = True
-        else:
-            is_gzipped = False
         self.send_response(200)
         self.send_header("Content-Type", content_type)
+        # Text-based static files (viewer.mjs, viewer.css, etc.) go gzipped.
+        body = self._maybe_gzip(body, content_type)
         self.send_header("Content-Length", str(len(body)))
         # Service worker needs scope override; i18n files change between versions
         if rel_path == "sw.js":
@@ -4148,8 +4165,6 @@ class ZimHandler(BaseHTTPRequestHandler):
         else:
             self.send_header("Cache-Control", "public, max-age=31536000, immutable")
         self.send_header("Access-Control-Allow-Origin", "*")
-        if is_gzipped:
-            self.send_header("Content-Encoding", "gzip")
         self.end_headers()
         self.wfile.write(body)
 

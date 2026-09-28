@@ -73,47 +73,28 @@ _base = {}  # archive filename -> (name, rows from the lists alone)
 
 
 def _read(archive, path, max_bytes=_MAX_INDEX_BYTES):
-    try:
-        item = archive.get_entry_by_path(path).get_item()
-        if item.size > max_bytes:
-            return None
-        return bytes(item.content).decode("utf-8", "replace")
-    except Exception:
-        return None
-
-
-def _has(archive, path):
-    try:
-        archive.get_entry_by_path(path)
-        return True
-    except Exception:
-        return False
-
-
-def _present(archive, path):
-    """A media file that is really there: the entry exists and holds bytes.
-    ted_en_technology_2023-09 carries a zero-byte video.mp4 for the climate
-    talk (the scrape wrote the entry and never the file), which is as absent
-    as no entry at all."""
-    try:
-        entry = archive.get_entry_by_path(path)
-        if entry.is_redirect:
-            entry = entry.get_redirect_entry()
-        return entry.get_item().size > 0
-    except Exception:
-        return False
+    """The text at ``path`` (server.entry_bytes), or None."""
+    data = _srv.entry_bytes(archive, path, max_bytes)
+    return data.decode("utf-8", "replace") if data is not None else None
 
 
 def _present_path(archive, path):
-    """The path a file really has in the archive (``I/files/…`` in an old
-    ZIM) when it is there and holds bytes, else ""."""
+    """The path a media file really has in the archive (``I/files/…`` in an
+    old ZIM) when it is there and holds bytes, else "".
+    ted_en_technology_2023-09 carries a zero-byte video.mp4 for the climate
+    talk (the scrape wrote the entry and never the file), which is as absent
+    as no entry at all; so is one that will not read, for a player."""
     try:
-        entry = archive.get_entry_by_path(path)
-        if entry.is_redirect:
-            entry = entry.get_redirect_entry()
-        return entry.path if entry.get_item().size > 0 else ""
-    except Exception:
+        item = _srv.entry_item(archive, path)
+    except Exception as e:
+        log.debug("tube: %s unreadable: %s", path, e)
         return ""
+    return item.path if item is not None and item.size > 0 else ""
+
+
+def _present(archive, path):
+    """A media file that is really there (_present_path)."""
+    return bool(_present_path(archive, path))
 
 
 def _read_json(archive, path):
@@ -408,12 +389,6 @@ def _zimi(archive):
     return out or None
 
 
-def _file_title(path):
-    """A file's name as a title: ``Le_chat_botte.ogg`` → ``Le chat botte``."""
-    stem = posixpath.splitext(posixpath.basename(path))[0]
-    return " ".join(stem.replace("_", " ").split()) or stem
-
-
 _TRACK_NUMBER_RE = re.compile(r"^\d+[\s._-]+")
 
 
@@ -422,7 +397,7 @@ def track_titles(paths):
     shared start dropped (``Doyle Le chien des Baskerville 01 a 03`` and
     ``... 04 et 05`` read ``01 a 03`` and ``04 et 05``), and the leading
     number youscribe gives every file (``2909454_``)."""
-    words = [_TRACK_NUMBER_RE.sub("", _file_title(p)).split() for p in paths]
+    words = [_TRACK_NUMBER_RE.sub("", nautilus.title_from_name(p)).split() for p in paths]
     common = 0
     if len(words) > 1:
         for column in zip(*words):
@@ -450,7 +425,7 @@ def media_file_row(path, mimetype, thumb=""):
     would, so ``s1/intro.mp4`` and ``s2/intro.mp4`` stay two cards."""
     return {
         "id": path,
-        "title": _file_title(path),
+        "title": nautilus.title_from_name(path),
         "description": "",
         "speaker": posixpath.basename(posixpath.dirname(path)),
         "thumb": thumb,
@@ -484,7 +459,7 @@ def _nautilus(archive):
         author = _clean(item.get("aut"))
         row = {
             "id": str(item.get("_id") or files[0]),
-            "title": _clean(item.get("ti")) or _file_title(files[0]),
+            "title": _clean(item.get("ti")) or nautilus.title_from_name(files[0]),
             "description": str(item.get("dsc") or "").strip()[:_MAX_DESCRIPTION_CHARS],
             # prunelle writes "-" for no author.
             "speaker": "" if author == "-" else author,
@@ -502,31 +477,16 @@ def _nautilus(archive):
     return out
 
 
-# A walk for a folder ZIM from before videos.json stops here: enough for
-# any folder, bounded under the archive's lock (health.py's full-scan bound).
-_MAX_WALK_ENTRIES = 120_000
-_MEDIA_MIME_PREFIXES = ("video/", "audio/")
-
-
 def _folder_walk(archive):
     """The video and audio files of a folder ZIM that has no listing, found
-    by mimetype (a dirent read each, never a file's bytes)."""
-    try:
-        n = min(int(archive.all_entry_count), _MAX_WALK_ENTRIES)
-    except Exception:
-        return None
-    found = []
-    for i in range(n):
-        try:
-            entry = archive._get_entry_by_id(i)
-            if entry.is_redirect:
-                continue
-            mime = entry.get_item().mimetype or ""
-        except Exception:
-            continue
-        if mime.startswith(_MEDIA_MIME_PREFIXES):
-            found.append((entry.path, mime))
-    return [media_file_row(p, m, thumb_beside(p, lambda q: _has(archive, q))) for p, m in found]
+    by mimetype (a dirent read each, never a file's bytes; server.walk_entries,
+    bounded as it is under the archive's lock)."""
+    found = [
+        (entry.path, item.mimetype or "")
+        for entry, item in _srv.walk_entries(archive)
+        if (item.mimetype or "").startswith(_srv._MEDIA_MIME_PREFIXES)
+    ]
+    return [media_file_row(p, m, thumb_beside(p, archive.has_entry_by_path)) for p, m in found]
 
 
 def _folder(archive):
@@ -974,7 +934,7 @@ def playback(name, page):
             page = entry.path
             item = entry.get_item()
             mime = item.mimetype or ""
-            is_media = mime.startswith(_MEDIA_MIME_PREFIXES)
+            is_media = mime.startswith(_srv._MEDIA_MIME_PREFIXES)
             # A media file is never read whole to look for a <video> in it.
             html_text = "" if is_media else bytes(item.content).decode("utf-8", "replace")
         except Exception:
@@ -996,7 +956,7 @@ def playback(name, page):
         # here", which blames the browser for a file that is not there.
         media = mend_media(archive, media)
         missing = not any(_present(archive, m["path"]) for m in media)
-        ogv = next((b for b in _OGV_BASES if _has(archive, b + "/ogv.js")), "")
+        ogv = next((b for b in _OGV_BASES if archive.has_entry_by_path(b + "/ogv.js")), "")
     out = {
         "media": media,
         "missing": missing,

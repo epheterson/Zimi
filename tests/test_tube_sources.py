@@ -308,6 +308,32 @@ def test_a_folder_of_videos_writes_the_list_zimitube_reads(tmp_path, monkeypatch
     assert tube.playback(name, "talks/intro.mp4")["poster"] == "talks/intro.jpg"
 
 
+def test_a_folder_of_ogg_and_m4a_alone_plays_whatever_the_python(tmp_path, monkeypatch):
+    """Python 3.10 to 3.13 know neither .ogg nor .m4a: a folder of them was
+    stored as application/octet-stream, wrote no videos.json and never
+    reached ZimiTube (Docker and CI run 3.11)."""
+    from test_books_sources import python311_mime_db
+
+    from zimi.creator import create_folder_zim
+
+    python311_mime_db(monkeypatch)
+    folder = tmp_path / "Radio plays"
+    folder.mkdir()
+    (folder / "Le_Chat_Botte.ogg").write_bytes(F.OGG)
+    (folder / "La_Belle_au_bois.m4a").write_bytes(F.MP4)
+    zdir = tmp_path / "zims"
+    zdir.mkdir()
+    create_folder_zim(str(folder), out_dir=str(zdir))
+    _serve(tmp_path, monkeypatch, zdir)
+    name = next(z["name"] for z in srv._zim_list_cache)
+    assert _entry(name)["feeds"] == {"tube": "folder"}
+    cards = {v["title"]: v for v in _cards()}
+    assert set(cards) == {"Le Chat Botte", "La Belle au bois"}
+    assert all(c["audio"] is True for c in cards.values())
+    got = tube.playback(name, cards["Le Chat Botte"]["page"])
+    assert got["media"] == [{"path": "Le_Chat_Botte.ogg", "type": "audio/ogg"}]
+
+
 def test_a_folder_with_a_videos_json_of_its_own_keeps_it(tmp_path):
     from libzim.reader import Archive
 

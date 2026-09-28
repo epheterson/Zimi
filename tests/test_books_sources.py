@@ -305,6 +305,30 @@ def test_what_a_zim_feeds_rides_the_list_and_the_cache(tmp_path, monkeypatch):
     assert len(calls) == 2, "the backfill was not written down"
 
 
+def test_what_a_zim_feeds_is_decided_again_under_a_newer_rule(tmp_path, monkeypatch):
+    """Stamped with the version of the rules that decided it, as a ZIM's
+    kind is: a rule _zim_feeds learns later reaches the ZIMs already in the
+    cache, once. Before, a record with any feeds at all was never read
+    again."""
+    _library(tmp_path, monkeypatch, [_water()])
+    with open(srv._cache_file_path(), encoding="utf-8") as f:
+        rec = json.load(f)["files"]["zimgit-water_en_2024-08.zim"]
+    assert rec["feeds"] == {"books": "nautilus"}
+    assert rec["feeds_v"] == srv.FEEDS_VERSION
+    calls = []
+    real = srv._read_zim_feeds
+    monkeypatch.setattr(
+        srv, "_read_zim_feeds", lambda *a: calls.append(a[0]) or real(*a)
+    )
+    srv.load_cache(force=False)
+    assert calls == []
+    monkeypatch.setattr(srv, "FEEDS_VERSION", srv.FEEDS_VERSION + 1)
+    srv.load_cache(force=False)
+    assert len(calls) == 1
+    srv.load_cache(force=False)
+    assert len(calls) == 1, "the newer version was not written down"
+
+
 # ── Zimi's own folder ZIMs ─────────────────────────────────────────────────
 
 
@@ -963,6 +987,31 @@ def test_a_folder_zim_from_before_the_listing_shows_its_files(shelf_lib):
     assert one["epub"] == "books/aleutian.epub"
 
 
+def test_an_epub_stored_as_octet_stream_is_on_the_shelf_by_its_name(shelf_lib):
+    """1.11 on Python 3.11 (Docker) stored a folder's EPUBs as
+    application/octet-stream: its files are found by their extensions, as
+    the listing Zimi writes now finds them."""
+    from zimi import books
+
+    old = (
+        "reading-room_en_2026-09.zim",
+        {
+            "Scraper": "Zimi 1.11.0",
+            "Name": "reading-room_en",
+            "X-Zimi-History": json.dumps([{"op": "created", "mode": "folder", "ts": 1}]),
+        },
+        {
+            "index": ("text/html", "<html><body>Reading room</body></html>", "Reading room"),
+            "field_guide-1956.pdf": ("application/pdf", fx.PDF, ""),
+            "books/aleutian.epub": ("application/octet-stream", fx.gutenberg_epub(), ""),
+        },
+        "index",
+    )
+    shelf_lib([old])
+    got = {b["path"] for b in books.listing(limit=50)["books"]}
+    assert got == {"field_guide-1956.pdf", "books/aleutian.epub/"}
+
+
 def test_a_folder_zim_made_now_is_on_the_shelf_from_its_listing(
     shelf_lib, tmp_path, monkeypatch
 ):
@@ -1260,7 +1309,7 @@ def test_a_chapter_that_gets_past_the_strip_still_runs_nothing(served_bypass, mo
 
     if not renderer.browser_available():
         pytest.skip("playwright + chromium are not usable here")
-    monkeypatch.setattr(epub, "_chapter_body", lambda text: epub._BODY_RE.search(text).group(1))
+    monkeypatch.setattr(epub, "_chapter_body", epub._body_of)
     monkeypatch.setattr(epub, "_rewrite_urls", lambda body, base_dir, index: body)
     base, zim = served_bypass
     got = _open_in_the_reader(base, zim, "bypass.epub/")
@@ -1276,3 +1325,498 @@ def test_a_hostile_chapter_runs_nothing_in_the_reader(served_bypass):
     base, zim = served_bypass
     got = _open_in_the_reader(base, zim, "bypass.epub/")
     assert got["text"] and got["pwned"] is None and got["handlers"] == 0, got
+
+
+# ── what the book says about its own files ────────────────────────────────
+
+# A manifest type whose character references ElementTree keeps as a real CR
+# LF: sent as the Content-Type, it ended the answer's headers there, the
+# policy landed in the body and the script ran on Zimi's origin.
+INJECTED_TYPE = (
+    "image/png&#13;&#10;&#13;&#10;&lt;script&gt;window.parent.__pwned=1&lt;/script&gt;"
+)
+
+
+def _epub_with_member(media_type, member="evil.png", data=None):
+    """The fixture EPUB with one more manifest item, ``OEBPS/<member>``,
+    declared as ``media_type`` (written into the package as it is)."""
+    import io
+    import zipfile
+
+    opf = fx.GUTENBERG_EPUB["OEBPS/content.opf"].replace(
+        "</manifest>",
+        f'<item href="{member}" id="extra" media-type="{media_type}"/></manifest>',
+    )
+    src = zipfile.ZipFile(
+        io.BytesIO(fx.gutenberg_epub({f"OEBPS/{member}": data or fx.PNG}))
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for info in src.infolist():
+            z.writestr(
+                info.filename,
+                opf if info.filename == "OEBPS/content.opf" else src.read(info),
+            )
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize(
+    "declared, served",
+    [
+        (INJECTED_TYPE, "image/png"),
+        ("image/png&#10;", "image/png"),
+        ("image/png&#13;&#10;X-Evil: 1", "image/png"),
+        ("image/webp", "image/webp"),
+        ("Image/PNG", "image/png"),
+    ],
+)
+def test_a_manifest_type_is_a_type_or_nothing(declared, served):
+    """A media-type is taken only as ``type/subtype``; anything else is
+    no type, and the member's extension names it."""
+    from zimi import epub
+
+    book = epub.Book(_epub_with_member(declared))
+    assert book.types["OEBPS/evil.png"] in ("", served)
+    for t in book.types.values():
+        assert "\r" not in t and "\n" not in t and "<" not in t
+
+
+@pytest.fixture
+def serve_one_zim(tmp_path, monkeypatch):
+    """``serve(entries)``: one ZIM of ``entries`` in the library, served;
+    returns ``(base URL, the ZIM's name)``."""
+    from http.server import ThreadingHTTPServer
+    import threading
+
+    from zimi import epub
+    from zimi.http import ZimHandler
+
+    servers = []
+
+    def serve(entries):
+        epub._reset_for_tests()
+        _library(
+            tmp_path,
+            monkeypatch,
+            [("shelf_en_2026-09.zim", {"Name": "shelf_en"}, entries, "index")],
+        )
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        servers.append(httpd)
+        return (
+            "http://127.0.0.1:%d" % httpd.server_address[1],
+            srv.list_zims()[0]["name"],
+        )
+
+    yield serve
+    for httpd in servers:
+        httpd.shutdown()
+    epub._reset_for_tests()
+    srv.release_zim_handles(list(srv.get_zim_files()))
+
+
+def _raw_get(base, path):
+    """``(status line and headers, body)`` as the bytes came off the socket:
+    a client library would take a header block ended early at its word."""
+    import socket
+    from urllib.parse import urlsplit
+
+    u = urlsplit(base)
+    with socket.create_connection((u.hostname, u.port), timeout=10) as s:
+        s.sendall(
+            f"GET {path} HTTP/1.1\r\nHost: {u.netloc}\r\nConnection: close\r\n\r\n".encode()
+        )
+        data = b""
+        while True:
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+    head, _sep, body = data.partition(b"\r\n\r\n")
+    return head.decode("latin-1"), body
+
+
+def _index():
+    return {"index": ("text/html", "<html><body>Books</body></html>", "Books")}
+
+
+def test_a_manifest_type_cannot_end_the_answers_headers(serve_one_zim):
+    base, zim = serve_one_zim(
+        dict(
+            _index(),
+            **{
+                "evil.epub": (
+                    "application/epub+zip",
+                    _epub_with_member(INJECTED_TYPE),
+                    "",
+                )
+            },
+        )
+    )
+    head, body = _raw_get(base, f"/w/{zim}/evil.epub/OEBPS/evil.png")
+    assert head.startswith("HTTP/1.1 200"), head
+    assert "Content-Type: image/png\r\n" in head + "\r\n", head
+    assert "script-src 'none'" in head, "the policy was pushed into the body"
+    assert body == fx.PNG
+
+
+def test_a_header_with_a_line_break_is_never_sent():
+    """The one place Zimi sends a header refuses a name or value with a
+    line break, and drops the answer begun, so the error reply starts clean."""
+    from zimi.http import ZimHandler
+
+    h = ZimHandler.__new__(ZimHandler)
+    h.request_version = "HTTP/1.1"
+    for name, value in (
+        ("Content-Type", "image/png\r\n\r\n<script>alert(1)</script>"),
+        ("Content-Type", "text/html\nX-Evil: 1"),
+        ("Location", "/a\rb"),
+        ("X-Evil\r\nSet-Cookie", "1"),
+    ):
+        h._headers_buffer = [b"HTTP/1.1 200 OK\r\n"]
+        with pytest.raises(ValueError):
+            h.send_header(name, value)
+        assert h._headers_buffer == []
+    h.send_header("Content-Type", "image/png")
+    assert h._headers_buffer == [b"Content-Type: image/png\r\n"]
+
+
+def test_text_goes_gzipped_and_pictures_as_they_are(serve_one_zim):
+    """The four ways out that gzip (a ZIM's entry, a file in an EPUB, the
+    app's own files, every JSON answer) share one rule."""
+    import gzip
+    import urllib.request
+
+    base, zim = serve_one_zim(
+        dict(
+            _index(),
+            **{
+                "page.html": ("text/html", "<html><body>" + "words " * 200 + "</body></html>", "Page"),
+                "pic.png": ("image/png", fx.PNG * 40, ""),
+                "book.epub": ("application/epub+zip", fx.gutenberg_epub(), ""),
+            },
+        )
+    )
+
+    def get(path):
+        req = urllib.request.Request(
+            base + path, headers={"Accept-Encoding": "gzip", "Sec-Fetch-Dest": "iframe"}
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.headers.get("Content-Encoding"), r.read()
+
+    for path in (f"/w/{zim}/page.html", f"/w/{zim}/book.epub/", "/static/app.css", "/list"):
+        enc, body = get(path)
+        assert enc == "gzip" and gzip.decompress(body), path
+    enc, body = get(f"/w/{zim}/pic.png")
+    assert enc is None and body == fx.PNG * 40
+    enc, body = get(f"/w/{zim}/book.epub/" + fx.GUTENBERG_EPUB_COVER)
+    assert enc is None and body == fx.PNG
+
+
+def test_a_route_that_would_send_a_broken_header_answers_500(
+    serve_one_zim, monkeypatch
+):
+    from zimi import epub
+
+    base, zim = serve_one_zim(_index())
+    monkeypatch.setattr(
+        epub,
+        "respond",
+        lambda z, p: ("image/png\r\n\r\n<script>alert(1)</script>", fx.PNG),
+    )
+    head, body = _raw_get(base, f"/w/{zim}/any.epub/x.png")
+    assert head.startswith("HTTP/1.1 500"), head
+    assert b"<script" not in body and "<script" not in head
+
+
+# ── a folder of EPUBs alone, whatever the Python ───────────────────────────
+
+# What Python 3.10 to 3.13's own table lacks (Docker and CI run 3.11, the
+# desktop app 3.12); 3.14 has them all.
+PY311_LACKS = (".epub", ".ogg", ".m4a", ".mkv", ".flac", ".ogv", ".m4v", ".webp")
+
+
+def python311_mime_db(monkeypatch):
+    """zimwriter's table as a Python without ``PY311_LACKS`` builds it,
+    whatever Python runs the test; put in place for the ZIMs it writes."""
+    import mimetypes
+
+    from zimi import zimwriter
+
+    stripped = {
+        k: v for k, v in mimetypes._types_map_default.items() if k not in PY311_LACKS
+    }
+    monkeypatch.setattr(mimetypes, "_types_map_default", stripped)
+    assert mimetypes.MimeTypes().guess_type("a.epub")[0] is None
+    db = zimwriter._mime_db()
+    monkeypatch.setattr(zimwriter, "_MIME_DB", db)
+    return db
+
+
+def test_the_types_zimi_writes_do_not_depend_on_the_python(monkeypatch):
+    from zimi import zimwriter
+
+    python311_mime_db(monkeypatch)
+    for ext, want in (
+        (".epub", "application/epub+zip"),
+        (".ogg", "audio/ogg"),
+        (".oga", "audio/ogg"),
+        (".m4a", "audio/mp4"),
+        (".flac", "audio/flac"),
+        (".wav", "audio/wav"),
+        (".mkv", "video/x-matroska"),
+        (".ogv", "video/ogg"),
+        (".m4v", "video/mp4"),
+        (".webp", "image/webp"),
+    ):
+        assert zimwriter.guess_mime("x" + ext) == want, ext
+    # Every file a document library or ZimiTube reads by its extension has
+    # a type of its own.
+    for ext in nautilus.DOC_EXTS | nautilus.VIDEO_EXTS | nautilus.AUDIO_EXTS:
+        assert zimwriter.guess_mime("x" + ext) != "application/octet-stream", ext
+
+
+def test_a_folder_of_epubs_alone_is_on_the_shelf(shelf_lib, tmp_path, monkeypatch):
+    """The folder the review found: EPUBs and nothing else, stored as
+    application/octet-stream on Python 3.11, never reached the shelf."""
+    from zimi import books, creator
+
+    python311_mime_db(monkeypatch)
+    src = tmp_path / "Ebooks"
+    src.mkdir()
+    (src / "aleutian.epub").write_bytes(fx.gutenberg_epub())
+    out = tmp_path / "zims"
+    out.mkdir()
+    creator.create_folder_zim(str(src), out_dir=str(out))
+    shelf_lib([])
+    assert [z.get("feeds") for z in srv.list_zims()] == [{"books": "folder"}]
+    got = books.listing(limit=50)["books"]
+    assert [b["path"] for b in got] == ["aleutian.epub/"] and got[0][
+        "source"
+    ] == "folder"
+
+
+# ── the sanitizer is linear ────────────────────────────────────────────────
+
+_MB = 1024 * 1024
+# Each is a shape that made one of the sanitizer's patterns scan to the end
+# of the chapter again at every step: 4,000 unclosed <script> took 1.8 s.
+HOSTILE_SHAPES = {
+    "unclosed script": "<script>x",
+    "a tag that never ends": "<script",
+    "a body never closed": "<body>x",
+    "a bracket that never closes": "<",
+    "spaces in an anchor": None,
+    "a quote that never closes": None,
+}
+
+
+def _hostile_chapter(shape, size):
+    if shape == "spaces in an anchor":
+        return "<html><body><a" + " " * size + "x"
+    if shape == "a quote that never closes":
+        return '<html><body><img src="' + "x" * size
+    unit = HOSTILE_SHAPES[shape]
+    return "<html><body>" + unit * (size // len(unit))
+
+
+def _sanitize(text):
+    from zimi import epub
+
+    body = epub._chapter_body(text)
+    body = epub._rewrite_urls(body, "OEBPS", {})
+    epub._TEXT_RE.sub("", body)
+
+
+def _cpu_seconds(shape, size):
+    """The process's own time, not the clock's: the bound holds on a
+    machine busy with other work."""
+    import time
+
+    text = _hostile_chapter(shape, size)
+    t0 = time.process_time()
+    _sanitize(text)
+    return time.process_time() - t0
+
+
+@pytest.mark.parametrize("shape", list(HOSTILE_SHAPES))
+def test_a_hostile_chapter_is_sanitized_in_linear_time(shape):
+    """32 KB first, so a quadratic sanitizer fails in seconds rather than
+    running for an hour on the megabyte (the old one took 1.5 s on 20 KB of
+    unclosed <script>). A megabyte whose every character is a place a tag
+    could start costs a pass per pattern; the review's own case, unclosed
+    <script>, is well under 100 ms."""
+    small = _cpu_seconds(shape, 32 * 1024)
+    assert small < 0.05, f"{shape}: 32 KB took {small:.2f}s"
+    big = _cpu_seconds(shape, _MB)
+    assert big < (0.1 if shape == "unclosed script" else 0.5), f"{shape}: 1 MB took {big:.2f}s"
+
+
+def test_an_xhtml_self_closed_script_keeps_the_rest_of_the_chapter():
+    """An unclosed <script> goes to the end of the chapter, as a browser
+    would read it; one closed XHTML's way is only itself."""
+    from zimi import epub
+
+    body = epub._chapter_body(
+        '<html><body><script src="a.js"/><p>One</p><iframe src="x"/><p>Two</p>'
+        "<script>alert(1)</script><p>Three</p><object data='x'/><p>Four</p>"
+        "<script>never closed<p>Gone</p></body></html>"
+    )
+    assert "<p>One</p>" in body and "<p>Two</p>" in body and "<p>Three</p>" in body
+    assert "<p>Four</p>" in body
+    low = body.lower()
+    assert "<script" not in low and "<iframe" not in low and "<object" not in low
+    assert "alert" not in body and "Gone" not in body
+
+
+# ── a read that fails is not "nothing there" ───────────────────────────────
+
+
+class _Damaged:
+    """An archive whose every read fails as a damaged cluster does."""
+
+    entry_count = 3
+
+    def get_entry_by_path(self, path):
+        raise RuntimeError("damaged cluster")
+
+    def has_entry_by_path(self, path):
+        raise RuntimeError("damaged cluster")
+
+    def _get_entry_by_id(self, i):
+        raise RuntimeError("damaged cluster")
+
+
+class _Empty(_Damaged):
+    """An archive with no such entry."""
+
+    def get_entry_by_path(self, path):
+        raise KeyError(path)
+
+    def has_entry_by_path(self, path):
+        return False
+
+
+def test_a_listing_that_will_not_read_is_not_taken_for_none():
+    from zimi import booksources
+
+    assert nautilus.items(_Empty()) == []
+    assert booksources.libretexts_books(_Empty()) == []
+    with pytest.raises(RuntimeError):
+        nautilus.items(_Damaged())
+    for reader in ("nautilus", "folder", "libretexts", "wikisource", "wikibooks"):
+        with pytest.raises(RuntimeError):
+            booksources.books_in(_Damaged(), reader)
+
+
+def test_a_failed_read_is_read_again_at_the_next_start(tmp_path, monkeypatch):
+    """A background read that fails leaves no file, so the next start reads
+    the ZIM again; before, the failure was written down as "no books"."""
+    from zimi import books
+
+    _library(tmp_path, monkeypatch, [_water()])
+    books._reset_for_tests()
+    real_open = srv.open_archive
+
+    class _Flaky:
+        def __init__(self, archive):
+            self._a = archive
+
+        def __getattr__(self, name):
+            return getattr(self._a, name)
+
+        def get_entry_by_path(self, path):
+            if path == nautilus.DATABASE_PATH:
+                raise RuntimeError("damaged cluster")
+            return self._a.get_entry_by_path(path)
+
+    monkeypatch.setattr(srv, "open_archive", lambda path: _Flaky(real_open(path)))
+    books.build_all_details()
+    books._sources.wait()
+    assert books.listing(limit=50)["total"] == 0
+    name = srv.list_zims()[0]["name"]
+    assert not os.path.exists(books._sources.path(name))
+
+    # The next start, with the ZIM reading again.
+    monkeypatch.setattr(srv, "open_archive", real_open)
+    books._reset_for_tests()
+    books.build_all_details()
+    books._sources.wait()
+    assert books.listing(limit=50)["total"] == 7
+
+
+# ── a walk of a folder is bounded ──────────────────────────────────────────
+
+
+def test_a_folder_walk_stops_at_its_bound(monkeypatch):
+    """A folder ZIM from before its listing was walked to its last entry,
+    under the archive's lock."""
+    from zimi import booksources, tube
+
+    class _Entry:
+        is_redirect = False
+        title = ""
+
+        def __init__(self, i):
+            self.path = f"doc{i}.pdf"
+
+        def get_item(self):
+            return type("I", (), {"mimetype": "application/pdf", "size": 1})()
+
+    class _Many:
+        entry_count = 10_000
+        seen = 0
+
+        def _get_entry_by_id(self, i):
+            _Many.seen += 1
+            return _Entry(i)
+
+    monkeypatch.setattr(srv, "MAX_WALK_ENTRIES", 50, raising=False)
+    assert len(booksources._document_entries(_Many())) == 50
+    assert _Many.seen == 50
+    _Many.seen = 0
+    tube._folder_walk(_Many())
+    assert _Many.seen == 50
+
+
+# ── a path under a file that is not an EPUB ────────────────────────────────
+
+
+def test_a_path_under_a_file_that_is_not_an_epub_is_read_once(
+    serve_one_zim, monkeypatch
+):
+    """``notes.epub`` that is no zip was read and parsed again (up to
+    50 MB) on every request for a path under it; and a folder named
+    ``site.epub/`` is still served by the ordinary lookup."""
+    from urllib.parse import quote
+
+    from zimi import epub
+
+    base, zim = serve_one_zim(
+        dict(
+            _index(),
+            **{
+                "notes.epub": ("application/epub+zip", b"not a zip at all", ""),
+                "site.epub/ch1.html": (
+                    "text/html",
+                    "<html><body>Chapter one</body></html>",
+                    "One",
+                ),
+            },
+        )
+    )
+    opened = []
+    real = epub.Book
+
+    def book(data):
+        opened.append(len(data))
+        return real(data)
+
+    monkeypatch.setattr(epub, "Book", book)
+    for _ in range(3):
+        # Answered by the ordinary lookup (the page for a missing entry).
+        _fetch(f"{base}/w/{zim}/notes.epub/OEBPS/a.png")
+    assert len(opened) == 1, "the entry was read and parsed again"
+    status, _ctype, body, _h = _fetch(f"{base}/w/{zim}/{quote('site.epub/ch1.html')}")
+    assert status == 200 and b"Chapter one" in body

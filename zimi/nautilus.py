@@ -28,6 +28,8 @@ import logging
 import posixpath
 import re
 
+from zimi import server as _srv
+
 log = logging.getLogger("zimi")
 
 DATABASE_PATH = "database.js"
@@ -38,8 +40,12 @@ ZIMI_DATABASE_PATH = "zimi-database.js"
 # The largest listing read. youscribe's 530 audiobook tracks are ~100 KB.
 MAX_DATABASE_BYTES = 16 * 1024 * 1024
 
-# What opens in Zimi's reader: PDF.js, the EPUB reader, a page.
-DOC_EXTS = frozenset((".pdf", ".epub", ".html", ".htm"))
+# What opens in Zimi's reader: PDF.js and the EPUB reader (a book's own
+# file, what a folder's listing holds), and a page. Every list of document
+# extensions is made of these.
+BOOK_EXTS = frozenset((".pdf", ".epub"))
+PAGE_EXTS = frozenset((".html", ".htm"))
+DOC_EXTS = BOOK_EXTS | PAGE_EXTS
 VIDEO_EXTS = frozenset((".mp4", ".webm", ".ogv", ".m4v", ".mkv", ".mov"))
 AUDIO_EXTS = frozenset(
     (".mp3", ".ogg", ".oga", ".opus", ".m4a", ".aac", ".wav", ".flac")
@@ -67,19 +73,11 @@ def parse(text):
 
 def items(archive, path=DATABASE_PATH):
     """Every item of the listing at ``path`` in ``archive``, as written
-    (``_id``, ``ti``, ``dsc``, ``aut``, ``fp``), or [] when there is none."""
-    try:
-        entry = archive.get_entry_by_path(path)
-        if entry.is_redirect:
-            entry = entry.get_redirect_entry()
-        item = entry.get_item()
-        if item.size > MAX_DATABASE_BYTES:
-            log.warning("document listing %s is %d bytes: not read", path, item.size)
-            return []
-        text = bytes(item.content).decode("utf-8", "replace")
-    except Exception:
-        return []
-    return parse(text)
+    (``_id``, ``ti``, ``dsc``, ``aut``, ``fp``), or [] when there is none.
+    A listing that is there and will not read raises (server.entry_item):
+    [] would be kept as "no documents" for good."""
+    data = _srv.entry_bytes(archive, path, MAX_DATABASE_BYTES)
+    return parse(data.decode("utf-8", "replace")) if data is not None else []
 
 
 def files_of(item, base=FILES_PREFIX):

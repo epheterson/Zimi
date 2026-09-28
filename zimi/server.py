@@ -1926,6 +1926,9 @@ WHOLE_BOOK_NAMES = frozenset(
 # Bumped when _zim_kind learns a new kind, so a cache record decided under an
 # older rule ("" for a TED ZIM) is read once more.
 KIND_VERSION = 6
+# The same for _zim_feeds: bumped when it learns a rule, so what a cached
+# ZIM feeds is decided again, once. A record from before the stamp is 1.
+FEEDS_VERSION = 1
 
 
 def _wiki_project(meta_name, name=""):
@@ -2873,6 +2876,56 @@ def open_archive(path):
     return Archive(path)
 
 
+def entry_item(archive, path):
+    """The item at ``path`` in ``archive``, a redirect followed; None when
+    the archive has no such entry. Only an absent entry is None: any other
+    failure (a damaged cluster, a file cut short) raises, so what a caller
+    keeps (a shelf, a feed, a details file) never takes a read that failed
+    for "nothing there". Caller holds the archive's lock, or owns it."""
+    try:
+        entry = archive.get_entry_by_path(path)
+    except KeyError:
+        return None
+    if entry.is_redirect:
+        entry = entry.get_redirect_entry()
+    return entry.get_item()
+
+
+def entry_bytes(archive, path, limit, *, head=False):
+    """The bytes at ``path`` by entry_item's rules: None when there is no
+    such entry, or it is over ``limit`` bytes (checked before it is read).
+    ``head``: the first ``limit`` bytes, whatever the entry's size."""
+    item = entry_item(archive, path)
+    if item is None:
+        return None
+    if head:
+        return bytes(item.content[:limit])
+    if item.size > limit:
+        return None
+    return bytes(item.content)
+
+
+# A bounded walk of every entry stops here: enough for a folder of files,
+# under the archive's lock (health.py's full-scan bound). A wiki's page
+# tree is walked whole, in the background.
+MAX_WALK_ENTRIES = 120_000
+
+
+def walk_entries(archive, bounded=True):
+    """``(entry, item)`` for each entry of ``archive`` that is not a
+    redirect, in the order they are stored: a dirent and its item's header,
+    never its bytes. The first MAX_WALK_ENTRIES are looked at, or every one
+    when not ``bounded``. An entry that will not read raises, as
+    entry_item's failures do: a walk that skipped it would pass for whole."""
+    n = archive.entry_count
+    if bounded:
+        n = min(n, MAX_WALK_ENTRIES)
+    for i in range(n):
+        entry = archive._get_entry_by_id(i)
+        if not entry.is_redirect:
+            yield entry, entry.get_item()
+
+
 from zimi.previews import (  # noqa: E402
     strip_html,
     _extract_preview,
@@ -3445,13 +3498,15 @@ def load_cache(force=False):
                 if project is not None:
                     cached["project"] = project
                     kind_backfilled = True
-            if "feeds" not in cached:
-                # A record from before a ZIM could feed two apps.
+            if "feeds" not in cached or int(cached.get("feeds_v") or 1) < FEEDS_VERSION:
+                # A record from before a ZIM could feed two apps, or from
+                # before _zim_feeds's latest rule.
                 feeds = _read_zim_feeds(
                     path, cached.get("kind") or "", cached.get("project") or ""
                 )
                 if feeds is not None:
                     cached["feeds"] = feeds
+                    cached["feeds_v"] = FEEDS_VERSION
                     kind_backfilled = True
             entry = {
                 "name": name,
@@ -3576,6 +3631,7 @@ def load_cache(force=False):
                 new_cached["project"] = entry["project"]
             # Always, {} included: a ZIM that feeds no other app is decided.
             new_cached["feeds"] = entry.get("feeds") or {}
+            new_cached["feeds_v"] = FEEDS_VERSION
             if entry.get("map_search"):
                 new_cached["map_search"] = True
             # A map's ground and publisher, null included: a map whose config
