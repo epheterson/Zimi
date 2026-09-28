@@ -71,6 +71,8 @@ _LANG_NATIVE_NAMES = {
     "ta": "தமிழ்",
     "te": "తెలుగు",
     "ur": "اردو",
+    # Browsers do not know how to name Yiddish in itself.
+    "yi": "ייִדיש",
     "mul": "Multiple",
 }
 

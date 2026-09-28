@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Highlights in every reader (articles, Reader View, books in pages or scrolling, EPUBs, Zimipedia): select text to highlight it in one of four colors with a note, find it again from the Saved panel, and keep it through a new font, another page and a newer build of the ZIM; one that is gone is marked, never dropped.
 - Signed in, what you save and where you are in each book follow your account to every device, and a delete on one stays deleted on the others.
 - Bookshelf has My shelf, and Continue reading picks up on any device where you left off.
+- Zimipedia's reader: an article opened from Zimipedia (or any wiki's article in Reader View) reads as an encyclopedia, with its lead image, contents that follow you, the infobox beside the text (folded on a phone), citations shown in place, and Bookshelf's reading settings.
+- Zimipedia's languages by Wikidata ID: only the installed languages that have the article, opening on the same section, two side by side on a wide screen, and Simple English as a reading level. A mini without an ID borrows it from a fuller build of its language, points to the full article, and the switch hides when it cannot work.
+- One topic, every wiki: under an article's lead, what else the library holds on it (the Wiktionary entry, the Wikivoyage guide, Wikiquote, Wikibooks, Wikisource) and a map of the place when one is installed.
+- Diving in, in Zimipedia: a link shows a card first (the article's first sentence and picture) and a second tap follows it; a trail over the title shows where you came through, a step back along it is a tap; Read next closes an article with the articles its lead links to.
+- Zimipedia's reading lists: the reader's bookmark saves an article (at the section you are in) and puts it in Liked or any list, or a new one.
 - The Almanac zooms from the solar system to a 3D Earth: lit by the real Sun, with the Moon, eclipses as they fall, the ISS and the GPS satellites (tap one: its clock gains 38 microseconds a day).
 - ZimiTube plays the videos and audiobooks in Kiwix's document libraries (Maître Lucas, YouScribe's audiobooks, Zaya and more): an audiobook is one card, its tracks listed and played in turn.
 - A folder of videos or audio made with Create a ZIM plays in ZimiTube.
@@ -26,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The home page's order and view controls sit above the Apps, which follow the order too (an app holding a just-updated ZIM comes first under Recently updated), and the Apps title opens an Apps page with the ZIMs inside each app. ([#100](https://github.com/epheterson/Zimi/issues/100))
 
 ### Changed
+
+- Zimipedia is on by default, like the other apps (it was a preview, on only when `ZIMI_APPS` named `wiki`).
+- Zimipedia's Today is a front door: the day's article (from a full build before a mini), the articles you are part way through, and your recent trails, per language. On this day, the facts, the picture and the front pages are gone from it (the API still answers them).
 
 - The Bookmarks panel is now Saved: folders are lists (a nested folder is "Parent / Child"), and over an app it opens on that app's own.
 - The bookmark button saves an article at the section you are reading, and a map at the place on screen.

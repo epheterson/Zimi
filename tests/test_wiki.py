@@ -300,7 +300,7 @@ def _serve(tmp_path, monkeypatch, apps):
 
     from zimi.http import ZimHandler
 
-    # Zimipedia is a preview, offered only when ZIMI_APPS names it.
+    # Zimipedia is offered unless ZIMI_APPS leaves it out.
     if apps is None:
         monkeypatch.delenv("ZIMI_APPS", raising=False)
     else:
@@ -320,10 +320,20 @@ def served(tmp_path, monkeypatch):
     httpd.shutdown()
 
 
-@pytest.mark.parametrize("apps", [None, "1", "all", "maps,tube,exchange,reddot,books"])
-def test_the_routes_are_not_there_unless_wiki_is_named(tmp_path, monkeypatch, apps):
-    """Off unless named: the default, "1" and "all" leave Zimipedia off, and
-    its endpoints answer 404 as if they did not exist."""
+@pytest.mark.parametrize("apps", [None, "1", "all"])
+def test_the_routes_are_there_by_default(tmp_path, monkeypatch, apps):
+    """On by default (1.12): the default, "1" and "all" offer Zimipedia."""
+    httpd, url = _serve(tmp_path, monkeypatch, apps)
+    try:
+        assert _get(url + "/wiki/home")[0] == 200
+    finally:
+        httpd.shutdown()
+
+
+@pytest.mark.parametrize("apps", ["0", "maps,tube,exchange,reddot,books"])
+def test_the_routes_are_not_there_when_the_server_leaves_it_out(tmp_path, monkeypatch, apps):
+    """A server that does not offer Zimipedia answers its endpoints 404, as
+    if they did not exist."""
     httpd, url = _serve(tmp_path, monkeypatch, apps)
     try:
         assert _get(url + "/wiki/home")[0] == 404

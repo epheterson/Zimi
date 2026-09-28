@@ -121,8 +121,11 @@ var SK = {
   // bookmarks, and left in place for one release.
   BOOK_PLACES: 'zimi_book_places',
   // How books are read in this browser: {mode: 'scroll'|'pages', size (px),
-  // lh and margin (indexes into _BOOK_LEADINGS / _BOOK_MARGINS)}.
+  // lh and margin (indexes into _READING_LEADINGS / _READING_MARGINS)}.
   BOOK_PREFS: 'zimi_book_prefs',
+  // How Zimipedia's reader reads articles in this browser: {size (px), lh and
+  // margin (indexes into _READING_LEADINGS / _READING_MARGINS)}.
+  WIKI_PREFS: 'zimi_wiki_prefs',
   // Whole-app theme: 'auto' (follow prefers-color-scheme, dark fallback) |
   // 'dark' | 'light'. Default auto. Read/written via _appTheme/_setAppTheme;
   // the head bootstrap in index.html stamps the resolved value pre-paint.
@@ -15466,7 +15469,7 @@ function _applyReaderFont(doc) {
     var body = doc.body || doc.documentElement;
     // A book sets its own type size (the book's reading settings); a zoom
     // would scale its pages and its header too.
-    if (_isBookDoc(doc)) { body.style.removeProperty('zoom'); return; }
+    if (_isBookDoc(doc) || doc.__zimiWikiLaid) { body.style.removeProperty('zoom'); return; }
     if (level === READER_FONT_DEFAULT) {
       // Default (100%): REMOVE the override rather than pin zoom:1. Also strip any
       // leftover root font-size an older (pre-zoom) session may have pinned, so a
@@ -15670,10 +15673,11 @@ var _READER_LIGHTBOX_OVERLAY_CSS = [
 ].join('');
 // Chrome that Reader View drops. Wikipedia/MediaWiki-heavy; harmless no-ops on
 // other ZIM DOMs (stackexchange/devdocs) whose main element is already clean.
+// The infobox goes too, except in Zimipedia's reader (_readerViewClean).
 var _READER_VIEW_STRIP = [
   'script', 'style', 'link', 'noscript',
   '.mw-editsection', '.navbox', '.vertical-navbox', '.navbox-inner',
-  '.noprint', '.mw-jump-link', '.infobox', '.metadata', '.ambox', '.mbox-small',
+  '.noprint', '.mw-jump-link', '.metadata', '.ambox', '.mbox-small',
   '.sistersitebox', '.sidebar', '.side-box', '.hatnote', '.shortdescription',
   '.printfooter', '.catlinks', '.mw-hidden-catlinks', '#toc', '.toc',
   '.mw-empty-elt', '.mw-editsection-like'
@@ -15747,6 +15751,9 @@ function _applyReaderTheme(doc) {
 function _readerTextLen(doc, main) {
   return (main === doc.body ? main.textContent : (main.innerText || main.textContent || '')).trim().length;
 }
+// A wiki's article in Zimipedia's reader is an article however short (a
+// stub is still one): the floor is for pages that may not be articles.
+function _readerMinChars(doc) { return doc.__zimiWiki ? 1 : READER_VIEW_MIN_CHARS; }
 function _readerViewAvailable() {
   if (!readerOpen || _almanacOpen) return false;
   var frame = document.getElementById('reader-frame');
@@ -15759,7 +15766,7 @@ function _readerViewAvailable() {
   if (doc[_READER_VIEW_STASH]) return true;
   var main = _readerMainContent(doc);
   if (!_readerViewReadable(doc, main)) return false;
-  return _readerTextLen(doc, main) >= READER_VIEW_MIN_CHARS;
+  return _readerTextLen(doc, main) >= _readerMinChars(doc);
 }
 
 // An element's text as shown. In a book, as it stands: innerText lays the
@@ -15780,7 +15787,7 @@ function _readerViewTitle(doc) {
 // the live document is untouched until the caller swaps it in.
 function _readerViewClean(root, doc) {
   try {
-    var junk = root.querySelectorAll(_isBookDoc(doc) ? 'script,style,link,noscript' : _READER_VIEW_STRIP);
+    var junk = root.querySelectorAll(_isBookDoc(doc) ? 'script,style,link,noscript' : _READER_VIEW_STRIP + (doc.__zimiWiki ? ',.sisterproject' : ',.infobox'));
     for (var i = 0; i < junk.length; i++) {
       if (junk[i].parentNode) junk[i].parentNode.removeChild(junk[i]);
     }
@@ -16333,7 +16340,7 @@ function _readerViewApply(doc) {
   if (doc[_READER_VIEW_STASH]) return true; // already applied to this document
   var main = _readerMainContent(doc);
   if (!_readerViewReadable(doc, main)) return false;
-  if (_readerTextLen(doc, main) < READER_VIEW_MIN_CHARS) return false;
+  if (_readerTextLen(doc, main) < _readerMinChars(doc)) return false;
 
   var clone;
   if (main === doc.body) {
@@ -16390,6 +16397,7 @@ function _readerViewApply(doc) {
 
 function _readerViewRestore(doc) {
   if (!doc || !doc[_READER_VIEW_STASH]) return;
+  if (doc.__zimiWikiLaid && typeof _wikiUndo === 'function') _wikiUndo(doc);
   var shell = doc.querySelector('.zimi-reader');
   if (shell && shell.parentNode) shell.parentNode.removeChild(shell);
   var stash = doc[_READER_VIEW_STASH];
@@ -16420,6 +16428,7 @@ function _readerViewToggle() {
       return;
     }
     _readerViewOn = true;
+    if (doc.__zimiWiki) _wikiReaderAttach(document.getElementById('reader-frame'));
   }
   // The text was swapped for its other form: its highlights found again in it.
   if (_hlReader) _hlReader.refresh();
@@ -16549,7 +16558,7 @@ function _toggleReaderAuto() {
 function _tintReaderChrome() {
   var frame = document.getElementById('reader-frame');
   var loading = document.getElementById('reader-loading');
-  var bg = (_readerViewOn || _readerAuto() || _bookReading) ? _readerThemeBg() : '';
+  var bg = (_readerViewOn || _readerAuto() || _bookReading || _wikiFromApp) ? _readerThemeBg() : '';
   if (frame) frame.style.background = bg || '#fff';
   if (loading) loading.style.background = bg || '';
 }
@@ -17124,16 +17133,14 @@ function _wikiStrings() {
   // in the shell's language, on hover.
   var langs = {};
   _installedWikiZims().forEach(function(z) { var c = String(z.language || '').split(',')[0]; if (c) langs[c] = _langDisplayName(c) || c; });
-  return _appStrings('wiki', ['wiki_all', 'wiki_today', 'wiki_on_this_day', 'wiki_featured', 'wiki_word', 'wiki_quote', 'wiki_place', 'wiki_none', 'wiki_empty',
-    'wiki_cards', 'wiki_list', 'wiki_searching', 'wiki_did_you_mean', 'wiki_search_heading', 'wiki_article', 'wiki_book', 'wiki_text', 'wiki_course',
-    'wiki_news', 'wiki_species', 'wiki_otd_unavailable', 'wiki_load_failed', 'wiki_search_failed', 'wiki_retry', 'wiki_languages', 'wiki_did_you_know',
-    'wiki_picture', 'wiki_rabbit_hole', 'wiki_rabbit_hint', 'wiki_front', 'wiki_front_as_of', 'wiki_read_more', 'wiki_search_all_languages',
-    'wiki_search_one_language'].concat(
+  return _appStrings('wiki', ['wiki_all', 'wiki_today', 'wiki_none', 'wiki_empty', 'wiki_cards', 'wiki_list', 'wiki_searching', 'wiki_did_you_mean',
+    'wiki_search_heading', 'wiki_article', 'wiki_load_failed', 'wiki_search_failed', 'wiki_retry', 'wiki_languages', 'wiki_read_more',
+    'wiki_search_all_languages', 'wiki_search_one_language', 'wiki_continue', 'wiki_trails'].concat(
     // Every plural form the language has; the page picks one by Intl.PluralRules.
     ['zero', 'one', 'two', 'few', 'many', 'other'].map(function(c) { return 'wiki_results_' + c; })), { langs: langs });
 }
 function openWiki(replaceState) {
-  // Not offered here (off unless the server names it): home, and an
+  // Not offered here (the server's ZIMI_APPS leaves it out): home, and an
   // address that says so, not a page whose every call is a 404.
   if (!_appsAllowedByServer('wiki')) {
     if (mode !== 'home') enterHome(false);
@@ -17141,8 +17148,72 @@ function openWiki(replaceState) {
     return;
   }
   _openHashApp('wiki', replaceState, function() { _wikiOpen = true; return _WIKI_PAGE + '#' + _wikiStrings(); });
+  _wikiReaderLoad();
 }
 function _wikiSearch(val) { _appFrameCall('wikiSearch', val); }
+
+// ── Zimipedia's reader ──
+// A wiki's article read in Zimipedia's reader: Reader View laid out as an
+// encyclopedia (/static/wiki-reader.js, _wikiLay). Its code comes in the
+// background (with Zimipedia's page, or alongside a wiki's article), never
+// on the way to an article: one shown before it lands reads in Reader View
+// and gains the rest when it does.
+var _wikiFromApp = false;    // the article on its way was opened from Zimipedia
+var _wikiReaderState = 0;    // 0 not asked, 1 on its way, 2 here
+var _wikiReaderWaiting = [];
+function _wikiReaderLoad(then) {
+  if (then) _wikiReaderWaiting.push(then);
+  if (_wikiReaderState === 2) { _wikiReaderFlush(); return; }
+  if (_wikiReaderState === 1) return;
+  _wikiReaderState = 1;
+  var s = document.createElement('script');
+  s.src = '/static/wiki-reader.js?v=1';
+  s.onload = function() { _wikiReaderState = 2; _wikiReaderFlush(); };
+  // Offline with a cold cache: the article stays in Reader View.
+  s.onerror = function() { _wikiReaderState = 0; _wikiReaderWaiting = []; };
+  document.head.appendChild(s);
+}
+function _wikiReaderFlush() {
+  var w = _wikiReaderWaiting; _wikiReaderWaiting = [];
+  w.forEach(function(f) { try { f(); } catch (e) { console.warn('Zimipedia reader:', e); } });
+}
+// A reader address that is a wiki's article, known before it loads.
+function _wikiUrl(url) {
+  var m = /^\/w\/([^\/?#]+)\//.exec(url || '');
+  if (!m || !_appShown('wiki')) return false;
+  var z = null; try { z = _zimInfo(decodeURIComponent(m[1])); } catch (e) { return false; }
+  return !!(z && z.kind === 'wiki');
+}
+// The frame holds a wiki's article (not its front page), and Zimipedia is offered.
+function _wikiArticleDoc(frame) {
+  var m = null; try { m = /^\/w\/([^\/]+)\/(.+)$/.exec(frame.contentWindow.location.pathname); } catch (e) { return false; }
+  if (!m || !_wikiUrl(m[0])) return false;
+  var z = _zimInfo(decodeURIComponent(m[1]));
+  if (decodeURIComponent(m[2]) === z.main_path) return false;
+  try { return !!frame.contentDocument.querySelector('#mw-content-text,.mw-parser-output'); } catch (e) { return false; }
+}
+// What Zimipedia's reader shows beside a wiki's article (wiki.article on the
+// server: its languages by Q-ID, Simple English, a mini's fuller build, the
+// other wikis on it), asked once the article is on screen and kept for the
+// session, so Back and Forward ask nothing. A failed ask is asked again.
+var _wikiInfoKept = {}, _wikiInfoOrder = [];
+var _WIKI_INFO_KEPT = 64;
+function _wikiInfo(zim, path) {
+  var k = zim + '\n' + path;
+  if (_wikiInfoKept[k]) return _wikiInfoKept[k];
+  var p = _wikiInfoKept[k] = fetch('/wiki/article?zim=' + encodeURIComponent(zim) + '&path=' + encodeURIComponent(path))
+    .then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; })
+    .then(function(d) { if (!d) delete _wikiInfoKept[k]; return d; });
+  _wikiInfoOrder.push(k);
+  if (_wikiInfoOrder.length > _WIKI_INFO_KEPT) delete _wikiInfoKept[_wikiInfoOrder.shift()];
+  return p;
+}
+function _wikiReaderAttach(frame) {
+  _wikiReaderLoad(function() {
+    var d = null; try { d = frame.contentDocument; } catch (e) {}
+    if (d && d.__zimiWiki && d[_READER_VIEW_STASH] && !d.__zimiWikiLaid) _wikiLay(frame);
+  });
+}
 
 // Zimipedia and Bookshelf open alike: a page Zimi owns at /#<app>, with no
 // item of its own (what it opens, an article or a book, opens in the reader
@@ -17226,6 +17297,148 @@ function openBooks(replaceState) {
 }
 function _booksSearch(val) { _appFrameCall('booksSearch', val); }
 
+// ── Reading settings: the book reader's and Zimipedia's ──
+// One sheet (theme, font, text size, line spacing, margins, and for a book
+// the layout), one set of scales, and one stylesheet for the bars and sheets
+// both readers draw in the page. The theme and the font are Reader View's,
+// so every article follows them; size, spacing and margins are each
+// reader's own, kept per browser (a book reads larger and airier than an
+// encyclopedia).
+var _READING_BAR_H = 48;             // px: a reader's bar, under the top inset
+var _READING_SIZES = [14, 16, 17, 19, 21, 23, 26, 30, 34];  // px
+var _READING_LEADINGS = [1.35, 1.5, 1.65, 1.8, 2];
+var _READING_MARGINS = [8, 16, 24, 40];      // px at either side on a phone
+var _READING_MEASURES = [42, 36, 33, 29];    // em: the longest line, by the same setting
+var _READING_CSS = [
+  // ── the bars ──
+  '.zb-bar{position:fixed;left:0;right:0;z-index:2147482000;display:flex;align-items:center;gap:2px;box-sizing:border-box;',
+    'background:var(--rv-bg);color:var(--rv-fg);font:14px/1.25 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;',
+    'transition:transform .25s ease,opacity .25s ease;-webkit-user-select:none;user-select:none}',
+  '@supports (background:color-mix(in srgb,red 50%,transparent)){.zb-bar{background:color-mix(in srgb,var(--rv-bg) 90%,transparent);',
+    '-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%)}}',
+  '.zb-head{top:0;height:calc(' + _READING_BAR_H + 'px + var(--zb-sat));padding:var(--zb-sat) calc(6px + var(--zb-sar)) 0 calc(6px + var(--zb-sal));border-bottom:1px solid var(--rv-border)}',
+  '.zb-foot{bottom:0;flex-direction:column;align-items:stretch;gap:4px;padding:6px calc(10px + var(--zb-sar)) calc(6px + var(--zb-sab)) calc(10px + var(--zb-sal));border-top:1px solid var(--rv-border)}',
+  'html.zb-away .zb-head{transform:translateY(-100%);opacity:0;pointer-events:none}',
+  'html.zb-away .zb-foot{transform:translateY(100%);opacity:0;pointer-events:none}',
+  '.zb-bar button{border:0;background:none;color:inherit;font:inherit;min-width:44px;height:44px;border-radius:22px;cursor:pointer;flex:none;',
+    'display:inline-flex;align-items:center;justify-content:center;padding:0 6px;-webkit-tap-highlight-color:transparent}',
+  '@media (hover:hover){.zb-bar button:hover:not(:disabled),.zb-sheet button:hover:not(:disabled){background:var(--rv-code)}}',
+  '.zb-bar button:focus-visible,.zb-sheet button:focus-visible,.zb-sheet input:focus-visible{outline:2px solid var(--rv-link);outline-offset:1px}',
+  '.zb-bar button:disabled{opacity:.3;cursor:default}',
+  '.zb-aa{font:600 17px/1 Georgia,serif!important;letter-spacing:.02em}',
+  '.zb-title{flex:1;min-width:0;text-align:center;line-height:1.2}',
+  '.zb-title b,.zb-title span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;unicode-bidi:plaintext}',
+  '.zb-title b{font-weight:600;font-size:14.5px}.zb-title span{font-size:12px;color:var(--rv-muted)}',
+  // ── the sheets: contents and reading settings ──
+  '.zb-scrim{position:fixed;inset:0;z-index:2147482100;background:rgba(0,0,0,.28);opacity:0;pointer-events:none;transition:opacity .2s}',
+  'html.zb-sheet-open .zb-scrim{opacity:1;pointer-events:auto}',
+  '.zb-sheet{position:fixed;left:0;right:0;bottom:0;z-index:2147482200;max-height:min(82vh,680px);overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;',
+    'box-sizing:border-box;padding:6px calc(16px + var(--zb-sar)) calc(18px + var(--zb-sab)) calc(16px + var(--zb-sal));border-radius:16px 16px 0 0;',
+    'background:var(--rv-bg);color:var(--rv-fg);border:1px solid var(--rv-border);box-shadow:0 -8px 30px rgba(0,0,0,.25);',
+    'font:15px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;transform:translateY(105%);visibility:hidden;',
+    'transition:transform .25s ease,visibility 0s linear .25s}',
+  '.zb-sheet.zb-open{transform:none;visibility:visible;transition:transform .25s ease}',
+  '@media (min-width:700px){.zb-sheet{left:auto;right:calc(16px + var(--zb-sar));bottom:auto;top:calc(' + (_READING_BAR_H + 8) + 'px + var(--zb-sat));width:380px;',
+    'max-height:calc(100vh - ' + (_READING_BAR_H + 32) + 'px);border-radius:14px;transform:translateY(-8px);opacity:0;transition:transform .2s,opacity .2s,visibility 0s linear .2s}',
+    '.zb-sheet.zb-open{transform:none;opacity:1;transition:transform .2s,opacity .2s}}',
+  '.zb-sheet-head{display:flex;align-items:center;justify-content:space-between;position:sticky;top:-6px;background:var(--rv-bg);padding:6px 0;z-index:1}',
+  '.zb-sheet-head b{font-size:16px}',
+  '.zb-sheet button{border:0;background:none;color:inherit;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}',
+  '.zb-x{width:40px;height:40px;border-radius:20px;font-size:22px!important;line-height:1}',
+  '.zb-toc-list{list-style:none;margin:0;padding:0}',
+  '.zb-toc-list button{display:block;width:100%;text-align:start;padding:11px 10px;border-radius:10px;unicode-bidi:plaintext}',
+  '.zb-toc-list .zb-sub button{padding-inline-start:28px;color:var(--rv-muted)}',
+  '.zb-toc-list [aria-current="true"] button{background:var(--rv-code);color:var(--rv-link);font-weight:600}',
+  '.zb-set{padding:7px 0;border-top:1px solid var(--rv-border)}.zb-set:first-of-type{border-top:0}',
+  '.zb-set-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--rv-muted);margin:0 0 6px}',
+  '.zb-seg{display:flex;gap:6px}',
+  '.zb-seg button{flex:1;min-height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;padding:0 8px}',
+  '.zb-seg button[aria-pressed="true"],.zb-seg button[aria-checked="true"]{border-color:var(--rv-link)!important;color:var(--rv-link);box-shadow:inset 0 0 0 1px var(--rv-link)}',
+  '.zb-themes button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;padding:6px 2px;min-height:0}',
+  '.zb-dot{width:22px;height:22px;border-radius:50%;border:1px solid rgba(128,128,128,.45);box-sizing:border-box}',
+  '.zb-dot-auto{background:linear-gradient(135deg,#fbfbf9 50%,#0a0a0b 50%)}.zb-dot-light{background:#fbfbf9}.zb-dot-sepia{background:#f4ecd8}.zb-dot-dark{background:#0a0a0b}',
+  '.zb-step{display:flex;align-items:center;gap:8px}',
+  '.zb-step button{width:52px;height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;font-family:Georgia,serif}',
+  '.zb-step output{flex:1;text-align:center;font-variant-numeric:tabular-nums;color:var(--rv-muted)}',
+  '.zb-range{width:100%;accent-color:var(--rv-link);height:26px;margin:0}',
+  '@media print{.zb-bar,.zb-sheet,.zb-scrim{display:none!important}}',
+  '@media (prefers-reduced-motion:reduce){.zb-bar,.zb-sheet,.zb-scrim{transition:none!important}}'
+].join('');
+// How one reader is read in this browser: {size (px), lh and margin (indexes
+// into the scales)} and, where the reader has one, its mode.
+function _readingPrefs(key, defaults) {
+  var p = _getStorageJSON(key, {}) || {};
+  var idx = function(v, list, d) { return typeof v === 'number' && v >= 0 && v < list.length ? v : d; };
+  return {
+    size: _READING_SIZES.indexOf(p.size) >= 0 ? p.size : defaults.size,
+    lh: idx(p.lh, _READING_LEADINGS, defaults.lh),
+    margin: idx(p.margin, _READING_MARGINS, defaults.margin),
+    mode: p.mode
+  };
+}
+// The settings sheet's rows; `layouts` ([[value, label]]) adds the layout
+// row (a book's Scroll and Pages).
+function _readingSettingsHtml(prefs, layouts) {
+  var seg = function(attr, items, curVal, label) {
+    return '<div class="zb-seg" role="group" aria-label="' + label + '">' + items.map(function(it) {
+      return '<button type="button" data-' + attr + '="' + it[0] + '" aria-pressed="' + (String(it[0]) === String(curVal)) + '"' + (it[2] ? ' style="' + it[2] + '"' : '') + '>' + it[1] + '</button>';
+    }).join('') + '</div>';
+  };
+  var row = function(label, body) { return '<div class="zb-set"><div class="zb-set-label">' + label + '</div>' + body + '</div>'; };
+  var mode = _readerThemeMode(), fam = _readerFamily(), si = _READING_SIZES.indexOf(prefs.size);
+  var themes = ['auto', 'light', 'sepia', 'dark'].map(function(k) {
+    var lbl = tH(k === 'auto' ? 'theme_auto' : 'reader_theme_' + k);
+    return [k, '<span class="zb-dot zb-dot-' + k + '"></span>' + lbl];
+  });
+  return '<div class="zb-sheet-head"><b>' + tH('books_settings') + '</b><button type="button" class="zb-x" aria-label="' + tH('close') + '">×</button></div>' +
+    row(tH('reader_theme'), seg('theme', themes, mode, tH('reader_theme')).replace('zb-seg', 'zb-seg zb-themes')) +
+    row(tH('reader_font_family'), seg('fam', [['serif', tH('reader_font_serif'), 'font-family:Georgia,serif'], ['sans', tH('reader_font_sans'), 'font-family:-apple-system,sans-serif']], fam, tH('reader_font_family'))) +
+    row(tH('reader_text_size'), '<div class="zb-step"><button type="button" data-size="-1" aria-label="' + tH('reader_size_smaller') + '"' + (si <= 0 ? ' disabled' : '') + ' style="font-size:14px">A</button>' +
+      '<output><bdi>' + prefs.size + ' px</bdi></output><button type="button" data-size="1" aria-label="' + tH('reader_size_larger') + '"' + (si >= _READING_SIZES.length - 1 ? ' disabled' : '') + ' style="font-size:21px">A</button></div>') +
+    row('<label for="zb-lh">' + tH('books_line_spacing') + '</label>', '<input id="zb-lh" class="zb-range" type="range" min="0" max="' + (_READING_LEADINGS.length - 1) + '" step="1" value="' + prefs.lh + '" data-pref="lh">') +
+    row('<label for="zb-mg">' + tH('books_margins') + '</label>', '<input id="zb-mg" class="zb-range" type="range" min="0" max="' + (_READING_MARGINS.length - 1) + '" step="1" value="' + prefs.margin + '" data-pref="margin">') +
+    (layouts ? row(tH('books_layout'), seg('mode', layouts, prefs.mode, tH('books_layout'))) : '');
+}
+// What a control of the sheet asks for: {theme}, {fam} or {prefs: a change
+// to the reader's own}; null for anything else (the close button).
+function _readingSettingsPick(el, prefs) {
+  if (!el || el.disabled) return null;
+  if (el.hasAttribute('data-theme')) return { theme: el.getAttribute('data-theme') };
+  if (el.hasAttribute('data-fam')) return { fam: el.getAttribute('data-fam') };
+  if (el.hasAttribute('data-mode')) return { prefs: { mode: el.getAttribute('data-mode') } };
+  if (el.hasAttribute('data-size')) {
+    var i = _READING_SIZES.indexOf(prefs.size) + Number(el.getAttribute('data-size'));
+    return { prefs: { size: _READING_SIZES[Math.max(0, Math.min(_READING_SIZES.length - 1, i))] } };
+  }
+  var p = el.getAttribute('data-pref');
+  if (!p) return null;
+  var o = {}; o[p] = Number(el.value);
+  return { prefs: o };
+}
+// A reader's settings sheet, live: a tap or a slide sets the theme and the
+// font at once (Reader View's own setters); a change to the reader's own
+// (size, spacing, margins, layout) goes to apply(change, fam) with fam true
+// when the font changed; the sheet is drawn again with the same control
+// focused. render() draws it.
+function _readingSettingsBind(sheet, getPrefs, apply, close) {
+  var act = function(el) {
+    if (el.classList.contains('zb-x')) { close(); return; }
+    var pick = _readingSettingsPick(el, getPrefs());
+    if (!pick) return;
+    if (pick.theme) _setReaderTheme(pick.theme);
+    else if (pick.fam) { _setReaderFamily(pick.fam); apply(null, true); }
+    else apply(pick.prefs, false);
+    render();
+    var attr = ['theme', 'fam', 'size', 'mode', 'pref'].filter(function(a) { return el.hasAttribute('data-' + a); })[0];
+    var again = attr && sheet.querySelector('[data-' + attr + '="' + el.getAttribute('data-' + attr) + '"]');
+    if (again && !again.disabled) again.focus({ preventScroll: true });
+  };
+  var render = function() { sheet.innerHTML = _readingSettingsHtml(getPrefs(), sheet.__zbLayouts); };
+  sheet.addEventListener('click', function(e) { var b = e.target.closest && e.target.closest('button'); if (b && !b.disabled) act(b); });
+  sheet.addEventListener('change', function(e) { if (e.target.getAttribute && e.target.getAttribute('data-pref')) act(e.target); });
+  return render;
+}
+
 // ── Reading a book ──
 // Eric, 2026-09-25: "For the book reader it needs to be awesome on mobile:
 // fixed footer and header that hide while scrolling or on tap, support
@@ -17258,19 +17471,14 @@ var _BOOK_EDGE = 0.3;             // share of the width at either side where a t
 var _BOOK_SPREAD_MIN = 1000;      // px wide (and _BOOK_SPREAD_MIN_H tall) from which pages come two at a time
 var _BOOK_SPREAD_MIN_H = 480;
 var _BOOK_WHEEL_GAP = 350;        // ms between page turns by the wheel or trackpad
-var _BOOK_HEAD_H = 48;            // px: the header's height, under the top inset
 var _BOOK_PAGE_TOP = 44;          // px above and below the text of a page
 var _BOOK_PAGE_BOTTOM = 40;
-var _BOOK_SIZES = [14, 16, 17, 19, 21, 23, 26, 30, 34];  // px
-var _BOOK_LEADINGS = [1.35, 1.5, 1.65, 1.8, 2];
-var _BOOK_MARGINS = [8, 16, 24, 40];      // px at either side on a phone
-var _BOOK_MEASURES = [42, 36, 33, 29];    // em: the longest line, by the same setting
 var _BOOK_PREFS_DEFAULT = { size: 19, lh: 2, margin: 1 };
 var _BOOK_RTL_LANGS = /^(ar|arc|ckb|dv|fa|he|ku|ps|sd|ug|ur|yi)(-|$)/i;
 var _BOOK_CSS = [
   // ── the page ──
   'html.zb-book .zimi-reader{text-align:start;font-size:var(--zb-size);line-height:var(--zb-lh);',
-    'padding:calc(' + (_BOOK_HEAD_H + 12) + 'px + var(--zb-sat)) calc(var(--zb-m) + var(--zb-sar)) calc(96px + var(--zb-sab)) calc(var(--zb-m) + var(--zb-sal));',
+    'padding:calc(' + (_READING_BAR_H + 12) + 'px + var(--zb-sat)) calc(var(--zb-m) + var(--zb-sar)) calc(96px + var(--zb-sab)) calc(var(--zb-m) + var(--zb-sal));',
     '-webkit-hyphens:auto;hyphens:auto}',
   'html.zb-book .zimi-reader-body{max-width:var(--zb-measure)}',
   // Gutenberg's own paragraphs (an indent, no gap) are a book's; its screen
@@ -17291,25 +17499,6 @@ var _BOOK_CSS = [
   'html.zb-paged .zb-sec > :first-child{margin-top:0}',
   'html.zb-paged .zimi-reader img{max-height:var(--zb-colh)!important;width:auto;object-fit:contain;break-inside:avoid}',
   'html.zb-paged .zimi-reader h1,html.zb-paged .zimi-reader h2,html.zb-paged .zimi-reader h3{break-after:avoid}',
-  // ── the bars ──
-  '.zb-bar{position:fixed;left:0;right:0;z-index:2147482000;display:flex;align-items:center;gap:2px;box-sizing:border-box;',
-    'background:var(--rv-bg);color:var(--rv-fg);font:14px/1.25 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;',
-    'transition:transform .25s ease,opacity .25s ease;-webkit-user-select:none;user-select:none}',
-  '@supports (background:color-mix(in srgb,red 50%,transparent)){.zb-bar{background:color-mix(in srgb,var(--rv-bg) 90%,transparent);',
-    '-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%)}}',
-  '.zb-head{top:0;height:calc(' + _BOOK_HEAD_H + 'px + var(--zb-sat));padding:var(--zb-sat) calc(6px + var(--zb-sar)) 0 calc(6px + var(--zb-sal));border-bottom:1px solid var(--rv-border)}',
-  '.zb-foot{bottom:0;flex-direction:column;align-items:stretch;gap:4px;padding:6px calc(10px + var(--zb-sar)) calc(6px + var(--zb-sab)) calc(10px + var(--zb-sal));border-top:1px solid var(--rv-border)}',
-  'html.zb-away .zb-head{transform:translateY(-100%);opacity:0;pointer-events:none}',
-  'html.zb-away .zb-foot{transform:translateY(100%);opacity:0;pointer-events:none}',
-  '.zb-bar button{border:0;background:none;color:inherit;font:inherit;min-width:44px;height:44px;border-radius:22px;cursor:pointer;flex:none;',
-    'display:inline-flex;align-items:center;justify-content:center;padding:0 6px;-webkit-tap-highlight-color:transparent}',
-  '@media (hover:hover){.zb-bar button:hover:not(:disabled),.zb-sheet button:hover:not(:disabled){background:var(--rv-code)}}',
-  '.zb-bar button:focus-visible,.zb-sheet button:focus-visible,.zb-sheet input:focus-visible{outline:2px solid var(--rv-link);outline-offset:1px}',
-  '.zb-bar button:disabled{opacity:.3;cursor:default}',
-  '.zb-aa{font:600 17px/1 Georgia,serif!important;letter-spacing:.02em}',
-  '.zb-title{flex:1;min-width:0;text-align:center;line-height:1.2}',
-  '.zb-title b,.zb-title span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;unicode-bidi:plaintext}',
-  '.zb-title b{font-weight:600;font-size:14.5px}.zb-title span{font-size:12px;color:var(--rv-muted)}',
   '.zb-row{display:flex;align-items:center;gap:2px}',
   '.zb-info{flex:1;min-width:0;text-align:center;line-height:1.3}',
   '.zb-info .zb-ch{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;unicode-bidi:plaintext}',
@@ -17319,44 +17508,12 @@ var _BOOK_CSS = [
   '.zb-mini{position:fixed;left:0;right:0;bottom:calc(10px + var(--zb-sab));text-align:center;font:11.5px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;',
     'color:var(--rv-muted);pointer-events:none;opacity:0;transition:opacity .25s;font-variant-numeric:tabular-nums;z-index:1}',
   'html.zb-paged.zb-away .zb-mini{opacity:1}',
-  // ── the sheets: contents and reading settings ──
-  '.zb-scrim{position:fixed;inset:0;z-index:2147482100;background:rgba(0,0,0,.28);opacity:0;pointer-events:none;transition:opacity .2s}',
-  'html.zb-sheet-open .zb-scrim{opacity:1;pointer-events:auto}',
-  '.zb-sheet{position:fixed;left:0;right:0;bottom:0;z-index:2147482200;max-height:min(82vh,680px);overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;',
-    'box-sizing:border-box;padding:6px calc(16px + var(--zb-sar)) calc(18px + var(--zb-sab)) calc(16px + var(--zb-sal));border-radius:16px 16px 0 0;',
-    'background:var(--rv-bg);color:var(--rv-fg);border:1px solid var(--rv-border);box-shadow:0 -8px 30px rgba(0,0,0,.25);',
-    'font:15px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;transform:translateY(105%);visibility:hidden;',
-    'transition:transform .25s ease,visibility 0s linear .25s}',
-  '.zb-sheet.zb-open{transform:none;visibility:visible;transition:transform .25s ease}',
-  '@media (min-width:700px){.zb-sheet{left:auto;right:calc(16px + var(--zb-sar));bottom:auto;top:calc(' + (_BOOK_HEAD_H + 8) + 'px + var(--zb-sat));width:380px;',
-    'max-height:calc(100vh - ' + (_BOOK_HEAD_H + 32) + 'px);border-radius:14px;transform:translateY(-8px);opacity:0;transition:transform .2s,opacity .2s,visibility 0s linear .2s}',
-    '.zb-sheet.zb-open{transform:none;opacity:1;transition:transform .2s,opacity .2s}}',
-  '.zb-sheet-head{display:flex;align-items:center;justify-content:space-between;position:sticky;top:-6px;background:var(--rv-bg);padding:6px 0;z-index:1}',
-  '.zb-sheet-head b{font-size:16px}',
-  '.zb-sheet button{border:0;background:none;color:inherit;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}',
-  '.zb-x{width:40px;height:40px;border-radius:20px;font-size:22px!important;line-height:1}',
-  '.zb-toc-list{list-style:none;margin:0;padding:0}',
-  '.zb-toc-list button{display:block;width:100%;text-align:start;padding:11px 10px;border-radius:10px;unicode-bidi:plaintext}',
-  '.zb-toc-list .zb-sub button{padding-inline-start:28px;color:var(--rv-muted)}',
-  '.zb-toc-list [aria-current="true"] button{background:var(--rv-code);color:var(--rv-link);font-weight:600}',
-  '.zb-set{padding:7px 0;border-top:1px solid var(--rv-border)}.zb-set:first-of-type{border-top:0}',
-  '.zb-set-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--rv-muted);margin:0 0 6px}',
-  '.zb-seg{display:flex;gap:6px}',
-  '.zb-seg button{flex:1;min-height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;padding:0 8px}',
-  '.zb-seg button[aria-pressed="true"],.zb-seg button[aria-checked="true"]{border-color:var(--rv-link)!important;color:var(--rv-link);box-shadow:inset 0 0 0 1px var(--rv-link)}',
-  '.zb-themes button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;padding:6px 2px;min-height:0}',
-  '.zb-dot{width:22px;height:22px;border-radius:50%;border:1px solid rgba(128,128,128,.45);box-sizing:border-box}',
-  '.zb-dot-auto{background:linear-gradient(135deg,#fbfbf9 50%,#0a0a0b 50%)}.zb-dot-light{background:#fbfbf9}.zb-dot-sepia{background:#f4ecd8}.zb-dot-dark{background:#0a0a0b}',
-  '.zb-step{display:flex;align-items:center;gap:8px}',
-  '.zb-step button{width:52px;height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;font-family:Georgia,serif}',
-  '.zb-step output{flex:1;text-align:center;font-variant-numeric:tabular-nums;color:var(--rv-muted)}',
-  '.zb-range{width:100%;accent-color:var(--rv-link);height:26px;margin:0}',
-  '@media print{.zb-bar,.zb-sheet,.zb-scrim,.zb-mini{display:none!important}',
+  '@media print{.zb-mini{display:none!important}',
     'html.zb-paged,html.zb-paged body{overflow:visible!important;height:auto}',
     'html.zb-paged .zimi-reader{position:static!important;height:auto!important;overflow:visible!important;padding:0!important}',
     'html.zb-paged .zimi-reader-body{height:auto!important;width:auto!important;margin:0!important;column-count:auto!important;transform:none!important}',
     'html.zb-paged .zb-sec{display:block!important}}',
-  '@media (prefers-reduced-motion:reduce){.zb-bar,.zb-sheet,.zb-scrim,.zb-mini{transition:none!important}}'
+  '@media (prefers-reduced-motion:reduce){.zb-mini{transition:none!important}}'
 ].join('');
 var _BOOK_SVG_BACK = '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
 var _BOOK_SVG_TOC = '<svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".6" fill="currentColor"/><circle cx="4.5" cy="12" r=".6" fill="currentColor"/><circle cx="4.5" cy="18" r=".6" fill="currentColor"/></svg>';
@@ -17382,15 +17539,10 @@ function _bookAuthorName(creator) {
 // How you like to read, per browser. Turning pages is the default where
 // fingers are; scrolling where a wheel is.
 function _bookPrefs() {
-  var p = _getStorageJSON(SK.BOOK_PREFS, {}) || {}, coarse = false;
+  var p = _readingPrefs(SK.BOOK_PREFS, _BOOK_PREFS_DEFAULT), coarse = false;
   try { coarse = window.matchMedia('(pointer: coarse)').matches; } catch (e) {}
-  var idx = function(v, list, d) { return typeof v === 'number' && v >= 0 && v < list.length ? v : d; };
-  return {
-    mode: p.mode === 'pages' || p.mode === 'scroll' ? p.mode : (coarse ? 'pages' : 'scroll'),
-    size: _BOOK_SIZES.indexOf(p.size) >= 0 ? p.size : _BOOK_PREFS_DEFAULT.size,
-    lh: idx(p.lh, _BOOK_LEADINGS, _BOOK_PREFS_DEFAULT.lh),
-    margin: idx(p.margin, _BOOK_MARGINS, _BOOK_PREFS_DEFAULT.margin)
-  };
+  if (p.mode !== 'pages' && p.mode !== 'scroll') p.mode = coarse ? 'pages' : 'scroll';
+  return p;
 }
 // Is this reader address a book? Known before it loads (the ZIM is a
 // Gutenberg one and the page is a book's, <title>.<number>; or it is an
@@ -17577,7 +17729,7 @@ function _bookLay(frame) {
   var html = doc.documentElement, uiRtl = document.documentElement.getAttribute('dir') === 'rtl';
   var st = doc.createElement('style');
   st.id = 'zb-style';
-  st.textContent = _BOOK_CSS;
+  st.textContent = _READING_CSS + _BOOK_CSS;
   doc.head.appendChild(st);
   html.classList.add('zb-book');
   // Gutenberg's own page-top links (the book's page, its EPUB, a jump up)
@@ -17659,9 +17811,9 @@ function _bookLay(frame) {
   var applyVars = function() {
     var s = html.style;
     s.setProperty('--zb-size', prefs.size + 'px');
-    s.setProperty('--zb-lh', String(_BOOK_LEADINGS[prefs.lh]));
-    s.setProperty('--zb-m', _BOOK_MARGINS[prefs.margin] + 'px');
-    s.setProperty('--zb-measure', _BOOK_MEASURES[prefs.margin] + 'em');
+    s.setProperty('--zb-lh', String(_READING_LEADINGS[prefs.lh]));
+    s.setProperty('--zb-m', _READING_MARGINS[prefs.margin] + 'px');
+    s.setProperty('--zb-measure', _READING_MEASURES[prefs.margin] + 'em');
     s.setProperty('--zb-sat', insets.t + 'px'); s.setProperty('--zb-sar', insets.r + 'px');
     s.setProperty('--zb-sab', insets.b + 'px'); s.setProperty('--zb-sal', insets.l + 'px');
   };
@@ -17674,8 +17826,8 @@ function _bookLay(frame) {
   var layoutPages = function() {
     W = win.innerWidth; H = win.innerHeight;
     var cols = W >= _BOOK_SPREAD_MIN && H >= _BOOK_SPREAD_MIN_H ? 2 : 1;
-    var m = _BOOK_MARGINS[prefs.margin] + Math.max(insets.l, insets.r);
-    var colW = Math.floor(Math.min(W / cols - 2 * m, _BOOK_MEASURES[prefs.margin] * prefs.size));
+    var m = _READING_MARGINS[prefs.margin] + Math.max(insets.l, insets.r);
+    var colW = Math.floor(Math.min(W / cols - 2 * m, _READING_MEASURES[prefs.margin] * prefs.size));
     var gap = (W - cols * colW) / cols;
     var top = _BOOK_PAGE_TOP + insets.t, bottom = _BOOK_PAGE_BOTTOM + insets.b;
     var colh = Math.max(80, H - top - bottom);
@@ -17716,7 +17868,7 @@ function _bookLay(frame) {
     return Math.max(0, Math.min(pages - 1, Math.floor((pos + 1) / W)));
   };
   var barsShown = function() { return !html.classList.contains('zb-away'); };
-  var topGap = function() { return barsShown() ? _BOOK_HEAD_H + insets.t + 8 : 8; };
+  var topGap = function() { return barsShown() ? _READING_BAR_H + insets.t + 8 : 8; };
   // Go to a character of the book.
   var goTo = function(a) {
     if (!secs.length) return;
@@ -17917,58 +18069,18 @@ function _bookLay(frame) {
   };
 
   // ── reading settings: theme and font are Reader View's; the rest the book's ──
-  var seg = function(attr, items, curVal, label) {
-    return '<div class="zb-seg" role="group" aria-label="' + label + '">' + items.map(function(it) {
-      return '<button type="button" data-' + attr + '="' + it[0] + '" aria-pressed="' + (String(it[0]) === String(curVal)) + '"' + (it[2] ? ' style="' + it[2] + '"' : '') + '>' + it[1] + '</button>';
-    }).join('') + '</div>';
-  };
-  var row = function(label, body) { return '<div class="zb-set"><div class="zb-set-label">' + label + '</div>' + body + '</div>'; };
-  var renderSettings = function() {
-    var mode = _readerThemeMode(), fam = _readerFamily(), si = _BOOK_SIZES.indexOf(prefs.size);
-    var themes = ['auto', 'light', 'sepia', 'dark'].map(function(k) {
-      var lbl = tH(k === 'auto' ? 'theme_auto' : 'reader_theme_' + k);
-      return [k, '<span class="zb-dot zb-dot-' + k + '"></span>' + lbl];
-    });
-    setSheet.innerHTML = '<div class="zb-sheet-head"><b>' + tH('books_settings') + '</b><button type="button" class="zb-x" aria-label="' + tH('close') + '">×</button></div>' +
-      row(tH('reader_theme'), seg('theme', themes, mode, tH('reader_theme')).replace('zb-seg', 'zb-seg zb-themes')) +
-      row(tH('reader_font_family'), seg('fam', [['serif', tH('reader_font_serif'), 'font-family:Georgia,serif'], ['sans', tH('reader_font_sans'), 'font-family:-apple-system,sans-serif']], fam, tH('reader_font_family'))) +
-      row(tH('reader_text_size'), '<div class="zb-step"><button type="button" data-size="-1" aria-label="' + tH('reader_size_smaller') + '"' + (si <= 0 ? ' disabled' : '') + ' style="font-size:14px">A</button>' +
-        '<output>' + prefs.size + ' px</output><button type="button" data-size="1" aria-label="' + tH('reader_size_larger') + '"' + (si >= _BOOK_SIZES.length - 1 ? ' disabled' : '') + ' style="font-size:21px">A</button></div>') +
-      row('<label for="zb-lh">' + tH('books_line_spacing') + '</label>', '<input id="zb-lh" class="zb-range" type="range" min="0" max="' + (_BOOK_LEADINGS.length - 1) + '" step="1" value="' + prefs.lh + '" data-pref="lh">') +
-      row('<label for="zb-mg">' + tH('books_margins') + '</label>', '<input id="zb-mg" class="zb-range" type="range" min="0" max="' + (_BOOK_MARGINS.length - 1) + '" step="1" value="' + prefs.margin + '" data-pref="margin">') +
-      row(tH('books_layout'), seg('mode', [['scroll', tH('books_mode_scroll')], ['pages', tH('books_mode_pages')]], prefs.mode, tH('books_layout')));
-  };
   // A change of type or layout keeps the passage you were reading on screen.
   var setPrefs = function(change) {
     var keep = anchor;
-    for (var k in change) prefs[k] = change[k];
-    _setStorageJSON(SK.BOOK_PREFS, prefs);
-    paged = prefs.mode === 'pages';
+    if (change) {
+      for (var k in change) prefs[k] = change[k];
+      _setStorageJSON(SK.BOOK_PREFS, prefs);
+      paged = prefs.mode === 'pages';
+    }
     relayout(keep);
-    renderSettings();
   };
-  setSheet.addEventListener('click', function(e) {
-    var b = e.target.closest('button');
-    if (!b || b.disabled) return;
-    if (b.classList.contains('zb-x')) { closeSheets(); return; }
-    var key = ['theme', 'fam', 'size', 'mode'].filter(function(a) { return b.hasAttribute('data-' + a); })[0];
-    if (!key) return;
-    var val = b.getAttribute('data-' + key), keep = anchor;
-    if (key === 'theme') { _setReaderTheme(val); renderSettings(); }
-    else if (key === 'fam') { _setReaderFamily(val); relayout(keep); renderSettings(); }
-    else if (key === 'size') setPrefs({ size: _BOOK_SIZES[Math.max(0, Math.min(_BOOK_SIZES.length - 1, _BOOK_SIZES.indexOf(prefs.size) + Number(val)))] });
-    else setPrefs({ mode: val });
-    var again = setSheet.querySelector('[data-' + key + '="' + val + '"]');
-    if (again && !again.disabled) again.focus({ preventScroll: true });
-  });
-  setSheet.addEventListener('change', function(e) {
-    var p = e.target.getAttribute && e.target.getAttribute('data-pref');
-    if (!p) return;
-    var o = {}; o[p] = Number(e.target.value);
-    setPrefs(o);
-    var again = setSheet.querySelector('[data-pref="' + p + '"]');
-    if (again) again.focus({ preventScroll: true });
-  });
+  setSheet.__zbLayouts = [['scroll', tH('books_mode_scroll')], ['pages', tH('books_mode_pages')]];
+  var renderSettings = _readingSettingsBind(setSheet, function() { return prefs; }, setPrefs, closeSheets);
   head.querySelector('.zb-aa').onclick = function() {
     renderSettings();
     openSheet(setSheet);
@@ -18301,6 +18413,7 @@ window.addEventListener('message', function(e) {
     // step behind it, so the header's arrow returns to the video, the
     // question or the post (the browser's Back does the same).
     var fromApp = _isAppPage();
+    if (_isWikiPage()) _wikiFromApp = true;
     openArticle(d.zim, d.path);
     if (fromApp) { articleHistory.push({ app: true }); updateTopbar(); }
   } else if (d.zimi === 'top') {
@@ -18436,9 +18549,9 @@ var _REDDIT_ADDRESS_START = 'https://www.reddit.com/r/Kiwix';
 // this signed-in person turned it off for their account. Never per
 // browser (Eric: "Not per browser only per user or server").
 var APP_NAMES = ['maps', 'tube', 'exchange', 'reddot', 'wiki', 'books'];
-// Offered only when the server names them (ZIMI_APPS=...,wiki or a saved
-// list): Zimipedia is a preview being redesigned. Mirrors server.APPS_OPT_IN.
-var APPS_OPT_IN = ['wiki'];
+// Offered only when the server names them (a preview, while it is built):
+// none now, Zimipedia was one until its reader. Mirrors server.APPS_OPT_IN.
+var APPS_OPT_IN = [];
 function _appOptIn(app) { return APPS_OPT_IN.indexOf(app) >= 0; }
 var APPS_DEFAULT = APP_NAMES.filter(function(a) { return !_appOptIn(a); });
 var _userPrefs = { apps: true, shown: null };
@@ -19120,7 +19233,10 @@ function openReader(url) {
   // it can't be trusted to fully mask the raw white ZIM paint — hiding the frame
   // outright guarantees the first painted frame is the reader, never the original.
   // (visibility:hidden preserves layout + load, so extraction still works.)
-  var _maskFrame = _readerViewOn || _readerAuto() || _bookLoading;
+  var _maskFrame = _readerViewOn || _readerAuto() || _bookLoading || _wikiFromApp;
+  // A wiki's article: the reader's code comes alongside the page (it is
+  // usually here already), never before it.
+  if (_wikiUrl(url)) _wikiReaderLoad();
   frame.style.visibility = _maskFrame ? 'hidden' : 'visible';
 
   // Punch-out button: for pdf.js viewer URLs, link to the raw PDF for download
@@ -19163,9 +19279,16 @@ function openReader(url) {
     // unbroken"). Non-eligible docs (PDF viewer, thin pages) fall through silently.
     var _bookDoc = false; try { _bookDoc = _isBookDoc(frame.contentDocument); } catch (e) {}
     var _wantReader = _readerViewOn || _readerAuto() || _bookDoc;
+    // A wiki's article opened from Zimipedia reads in Zimipedia's reader
+    // (Reader View laid out as an encyclopedia); one opened anywhere else does
+    // when Reader View is on, so it stays as you follow links.
+    var _wikiDoc = !_bookDoc && _wikiArticleDoc(frame);
+    if (_wikiDoc && _wikiFromApp) _wantReader = true;
+    _wikiFromApp = false;
     _readerViewOn = false; // the new document has no shell yet
     if (_wantReader) {
       var _rdoc = null; try { _rdoc = frame.contentDocument; } catch(e) { _rdoc = null; }
+      if (_rdoc && _wikiDoc) _rdoc.__zimiWiki = true;
       if (_rdoc && _readerViewAvailable()) {
         var _rok = false; try { _rok = _readerViewApply(_rdoc); } catch(e) { _rok = false; }
         if (_rok) _readerViewOn = true;
@@ -19178,6 +19301,8 @@ function openReader(url) {
       try { _bookOn = _bookAttach(frame); } catch (e) { console.warn('Book reader:', e); _showToast(t('books_view_unavailable')); }
     }
     _bookChrome(_bookOn);
+    var _wikiOn = _wikiDoc && _readerViewOn;
+    if (_wikiOn) _wikiReaderAttach(frame);
     _tintReaderChrome(); // reset frame bg to #fff if reader ended up off
     _syncReaderViewBtn();
     // Auto-darken a raw (non-Reader-View) ZIM page when the app is dark, so the
@@ -19242,8 +19367,8 @@ function openReader(url) {
     // Inject responsive CSS + scroll-to-top button for mobile. Not into
     // Zimi's own pages (the apps, the PDF viewer): they lay themselves out,
     // and the button sat on a video's dock and over a thread's last lines.
-    // Nor into a book: the book reader has its own footer and way through.
-    if (!_frameIsOurOwnPage(frame) && !_bookDoc) try {
+    // Nor into a book, nor Zimipedia's reader: each has its own bar and way through.
+    if (!_frameIsOurOwnPage(frame) && !_bookDoc && !_wikiOn) try {
       // Web-mirror pages (alive engine, zimit) ship a browser's-eye recording of
       // a real site: their own viewport meta, their own responsive CSS, their own
       // replay shim (wombat). The mwoffliner first-aid below actively BREAKS them
@@ -19552,7 +19677,7 @@ function openReader(url) {
     // Check language banner for view-in-lang options + prefetch article languages
     if (currentArticle) {
       _checkReaderLangBanner();
-      _prefetchArticleLangs();
+      _prefetchArticleLangs(true);
     }
     // Reader View: reapply the session preference to the freshly-loaded article
     // (same pattern as _applyReaderFont), then sync the toggle's availability.
@@ -21826,7 +21951,11 @@ function _savedRefOnScreen() {
     var p = Saved.position({ zim: zim, path: path }), m = path.match(/\.(\d+)$/);
     return { kind: 'book', app: 'books', zim: zim, path: path, title: (p && p.title) || title, meta: p ? p.meta : { id: m ? Number(m[1]) : 0 } };
   }
-  return { kind: 'article', zim: zim, path: path, title: title };
+  var ref = { kind: 'article', zim: zim, path: path, title: title };
+  // An article in Zimipedia's reader is Zimipedia's: its reading lists.
+  var fd = _readerFrameDoc();
+  if (fd && fd.__zimiWikiLaid) ref.app = 'wiki';
+  return ref;
 }
 // The section being read: the last heading with an id above the top third of
 // the page, or none near the top. Opening the saved article lands there.
@@ -22080,12 +22209,29 @@ function closeReader() {
 var _articleLangData = null; // {languages: [{lang, zim, path}], available: [{lang, catalog_name}]}
 var _articleLangKey = '';    // "zim:path" key to invalidate cache on article change
 
-function _prefetchArticleLangs() {
-  // Skip if language chooser is hidden (no dropdown to show interlang in)
-  if (_getStorageFlag(SK.HIDE_LANG_CHOOSER)) return;
+// `loaded`: the article is on screen (or asked for by a tap). A wiki's
+// article is asked about only then, through Zimipedia's lookup, which
+// carries its languages and what its reader shows beside it: nothing on the
+// way to the article.
+function _prefetchArticleLangs(loaded) {
   if (!currentArticle) { _articleLangData = null; _articleLangKey = ''; return; }
   var key = currentArticle.zim + ':' + currentArticle.path;
   if (key === _articleLangKey) return; // already cached
+  var base = _splitPathFragment(currentArticle.path).base;
+  if (_wikiUrl(_articleUrl(currentArticle.zim, base))) {
+    if (!loaded) return;
+    _articleLangKey = key;
+    _articleLangData = null;
+    _wikiInfo(currentArticle.zim, base).then(function(d) {
+      if (_articleLangKey !== key) return;
+      _articleLangData = { languages: (d && d.languages) || [] };
+      var _dd = document.getElementById('lang-dropdown');
+      if (_dd && _dd.classList.contains('visible')) _renderLangDropdown();
+    });
+    return;
+  }
+  // Skip if language chooser is hidden (no dropdown to show interlang in)
+  if (_getStorageFlag(SK.HIDE_LANG_CHOOSER)) return;
   _articleLangKey = key;
   _articleLangData = null;
   fetch('/article-languages?zim=' + encodeURIComponent(currentArticle.zim) + '&path=' + encodeURIComponent(currentArticle.path))
@@ -22223,7 +22369,7 @@ function toggleLangDropdown(event) {
   if (readerOpen && currentArticle && !_articleLangData) {
     _articleLangKey = ''; // Reset key to force refetch
   }
-  _prefetchArticleLangs();
+  _prefetchArticleLangs(true);
   var dd = document.getElementById('lang-dropdown');
   if (dd.classList.contains('visible')) {
     _closeLangDropdown();

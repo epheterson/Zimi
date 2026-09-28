@@ -7,19 +7,22 @@ a ZIM is was already decided when the library was read (its ``kind`` is
 ``wiki``, its ``project`` read from its metadata Name). Nothing here opens
 an archive to find the wikis: the list is a view of the library cache.
 
-Today is one language at a time, and reads like a wiki's front page:
-the day's article from that language's Wikipedia, with its picture; On this
-day, read from the Wikipedia's own date page; a few "did you know" facts
-from the leads of the day's articles; a picture of the day; a rabbit hole
-of links followed from the day's article; one thing from each other wiki in
-the language (a word, a quote, a place, a book, a species); and what each
-wiki's own front page featured when the copy was made (zimi.frontpage).
-Everything is chosen by the day, so it holds until midnight, and worked
-out once per wiki per day and kept here, by a background pass soon after
-the server starts and after each of its midnights, so the first page open
-of a day finds it ready. A browser on another day (its time zone is not
-the server's) starts that day's pass with its first ask, and asks for the
-rest a few wikis at a time.
+Today is one language at a time, a front door: the day's article from that
+language's Wikipedia, with its picture (the page adds where you were and
+the trails you took, which the browser keeps). Each wiki's pick is chosen by
+the day, so it holds until midnight, and worked out once per wiki per day
+and kept here, by a background pass soon after the server starts and after
+each of its midnights, so the first page open of a day finds it ready. A
+browser on another day (its time zone is not the server's) starts that
+day's pass with its first ask.
+
+The API (/wiki/today, /wiki/onthisday) still answers the rest of a wiki's
+day on request, worked out then and kept the same way: On this day from the
+Wikipedia's own date page, "did you know" facts, a picture of the day, a
+rabbit hole of links from the day's article, and what each wiki's own front
+page featured (zimi.frontpage). Nothing works those out ahead.
+
+Zimipedia's reader asks about one article at a time (article(), below).
 
 Only today, yesterday and tomorrow (the server's, covering every time zone
 a browser may be in) can be asked for: a caller cannot make the server read
@@ -41,6 +44,7 @@ import logging
 import random
 import re
 import threading
+from urllib.parse import unquote
 
 from zimi import datepages, frontpage
 from zimi import server as _srv
@@ -154,6 +158,7 @@ def wikis():
                 "entries": z.get("entries") or 0,
                 "description": z.get("description") or "",
                 "date": z.get("date") or "",
+                "flavour": _flavour(z),
             }
         )
     out.sort(key=_order)
@@ -769,11 +774,11 @@ def front(name):
 
 
 def _warm(day, names):
-    """Work out every wiki's day, in the background, so the ones a page has
-    not asked for yet are ready."""
+    """Work out every wiki's pick of the day, in the background, so the ones a
+    page has not asked for yet are ready."""
     try:
         for name in names:
-            _day_of(name, day)
+            _day_of(name, day, PAGE_PARTS)
     finally:
         with _lock:
             _warming.discard(day)
@@ -852,30 +857,38 @@ def choose_language(ws, wanted):
     return langs[0]["code"] if langs else ""
 
 
-# The parts of a wiki's day, as each answer names them.
+# The parts of a wiki's day, as each answer names them; the ones Zimipedia's
+# front door shows, and so the only ones worked out ahead.
 _PARTS = ("picks", "otd", "extras", "front")
+PAGE_PARTS = ("picks",)
 
 
-def _day_of(name, day):
-    """Every part of a wiki's day, worked out where it is not known yet:
-    ``{part: answer}``, None for a part that could not be read."""
-    got = {"picks": pick(name, day), "front": front(name)}
-    if project_of_name(name) == "wikipedia":
-        got["otd"] = on_this_day(name, day[4:])
-        got["extras"] = extras(name, day)
-    return got
-
-
-def _known_day(w, day):
-    """The parts of a wiki's day already known, and how many it has."""
-    name = w["name"]
-    got = {
-        "picks": _peek(_pick_cache, _key(name, day)),
-        "front": _peek(_front_cache, _key(name, "front")),
+def _day_of(name, day, parts=_PARTS):
+    """The parts of a wiki's day asked for, worked out where they are not
+    known yet: ``{part: answer}``, None for a part that could not be read.
+    On this day and the extras are a Wikipedia's only."""
+    wp = project_of_name(name) == "wikipedia"
+    work = {
+        "picks": lambda: pick(name, day),
+        "front": lambda: front(name),
+        "otd": lambda: on_this_day(name, day[4:]),
+        "extras": lambda: extras(name, day),
     }
-    if w["project"] == "wikipedia":
-        got["otd"] = _peek(_otd_cache, _key(name, day[4:]))
-        got["extras"] = _peek(_extra_cache, _key(name, day))
+    return {k: work[k]() for k in parts if wp or k in ("picks", "front")}
+
+
+def _known_day(w, day, parts=_PARTS):
+    """The parts of a wiki's day already known (of those asked about), and
+    how many it has."""
+    name = w["name"]
+    peek = {
+        "picks": lambda: _peek(_pick_cache, _key(name, day)),
+        "front": lambda: _peek(_front_cache, _key(name, "front")),
+        "otd": lambda: _peek(_otd_cache, _key(name, day[4:])),
+        "extras": lambda: _peek(_extra_cache, _key(name, day)),
+    }
+    wp = w["project"] == "wikipedia"
+    got = {k: peek[k]() for k in parts if wp or k in ("picks", "front")}
     return {k: v for k, v in got.items() if v is not None}, len(got)
 
 
@@ -885,7 +898,7 @@ def home(day=None, lang=None):
     can be asked for, what is already known of that language's wikis
     (``picks``, ``otd``, ``extras``, ``front``: {name: answer}): kept
     answers only, never a read. The first ask of a day starts the background
-    pass that works out the rest, the language shown first."""
+    pass that works out the picks still missing, the language shown first."""
     ws = wikis()
     chosen = choose_language(ws, lang)
     out = {"wikis": ws, "languages": languages(ws), "lang": chosen}
@@ -896,10 +909,10 @@ def home(day=None, lang=None):
     for w in ws:
         if w["language"] != chosen:
             continue
-        got, n = _known_day(w, day)
+        got, _n = _known_day(w, day)
         for k, v in got.items():
             parts[k][w["name"]] = v
-        if len(got) < n:
+        if _known_day(w, day, PAGE_PARTS)[0].keys() != {"picks"}:
             missing.append(w["name"])
     out.update(day=day, **parts)
     if missing:
@@ -914,24 +927,272 @@ def home(day=None, lang=None):
 TODAY_BATCH_MAX = 8
 
 
-def today(day, names):
+def today(day, names, parts=None):
     """The day of each wiki named that this request may read, worked out now
     where it is not known yet: ``{picks, otd, extras, front: {name:
-    answer}, failed: [name]}``. A wiki not readable here is left out; one
-    with a part that failed to read is named in ``failed`` and asked again
-    next time."""
+    answer}, failed: [name]}``, only the ``parts`` asked for (all of them
+    when none are named). A wiki not readable here is left out; one with a
+    part that failed to read is named in ``failed`` and asked again next
+    time."""
+    parts = tuple(p for p in _PARTS if p in (parts or _PARTS)) or _PARTS
     mine = {w["name"] for w in wikis()}
-    out = {k: {} for k in _PARTS}
+    out = {k: {} for k in parts}
     out["failed"] = []
     for name in dict.fromkeys(names):
         if name not in mine:
             continue
-        for k, v in _day_of(name, day).items():
+        for k, v in _day_of(name, day, parts).items():
             if v is not None:
                 out[k][name] = v
             elif name not in out["failed"]:
                 out["failed"].append(name)
     return out
+
+
+# ── one article: what Zimipedia's reader shows beside it ──────────────────
+#
+# Asked once an article is on screen, never before: the languages it is in
+# (by its Wikidata Q-ID), Simple English as a reading level, the fuller
+# build of a mini, and what the other wikis of its language hold on the same
+# topic. The shell asks this in place of /article-languages for a wiki's
+# article, so opening one costs no more requests than before.
+
+# The sister projects the topic strip looks in, in the order it shows them.
+TOPIC_PROJECTS = ("wiktionary", "wikivoyage", "wikiquote", "wikibooks", "wikisource")
+# A Simple English wiki is named so by Kiwix (wikipedia_en_simple_all).
+_SIMPLE_RE = re.compile(r"(?:^|_)simple(?:_|$)")
+# A sister link in an article (the "Wikiquote has quotations related to" box,
+# a Wikisource author page): its project and the page it names.
+_SISTER_RE = re.compile(
+    r'href="https?://[a-z-]+\.(%s)\.org/wiki/([^"#?]+)"' % "|".join(TOPIC_PROJECTS)
+)
+
+
+def _flavour(z):
+    """A build's flavour, from its file name (Kiwix's _maxi, _nopic, _mini)."""
+    m = _srv._FLAVOR_TOKEN_RE.search((z.get("file") or "").lower())
+    return m.group(1) if m else ""
+
+
+def is_simple(name):
+    return bool(_SIMPLE_RE.search(name or ""))
+
+
+def _norm_title(t):
+    """A page name as a title compares: spaces and underscores alike, the
+    first letter in either case (MediaWiki capitalises it)."""
+    t = unquote(t or "").replace(" ", "_").strip("_")
+    return t[:1].lower() + t[1:]
+
+
+def _html_page(archive, path):
+    """The HTML page a path names, its redirect followed: ``(path, title)``,
+    or None. Reads no content. Call with the library lock held."""
+    try:
+        entry = archive.get_entry_by_path(path)
+        if entry.is_redirect:
+            entry = entry.get_redirect_entry()
+        if not (entry.get_item().mimetype or "").startswith("text/html"):
+            return None
+    except Exception:
+        return None
+    return entry.path, (entry.title or entry.path).replace("_", " ")
+
+
+def _page_qid(name, archive, path):
+    """A page's Q-ID from the index or cache, else read from its HTML (and
+    cached); None when it carries none. Call with the library lock held."""
+    from zimi import interlang as il
+
+    qid = il._qid_lookup(name, path)
+    if qid is None:
+        qid = il._qid_extract_from_html(archive, path)
+        if qid is not None:
+            il._qid_cache_store(name, path, qid)
+    return qid
+
+
+def _twin(w, paths, qid):
+    """The same article in the wiki ``w``: by its Q-ID where that wiki's index
+    or cache knows it, else the first of ``paths`` it holds, taken only when
+    the page there does not carry a different Q-ID. ``{zim, path, title}``
+    or None. Takes the library lock per read."""
+    from zimi import interlang as il
+
+    name = w["name"]
+    try:
+        archive = _archive(name)
+    except LookupError:
+        return None
+    if qid is not None:
+        hit = il._qid_find_in_zim(name, qid)
+        if hit:
+            with _srv._zim_lock:
+                got = _html_page(archive, hit)
+            if got:
+                return {"zim": name, "path": got[0], "title": got[1]}
+    for cand in dict.fromkeys(paths):
+        with _srv._zim_lock:
+            got = _html_page(archive, cand)
+            if not got:
+                continue
+            # Words are not Wikidata items: a dictionary page is taken by name.
+            other = (
+                None
+                if w["project"] == "wiktionary" or qid is None
+                else _page_qid(name, archive, got[0])
+            )
+        if other is not None and other != qid:
+            continue
+        return {"zim": name, "path": got[0], "title": got[1]}
+    return None
+
+
+def _by_richness(ws):
+    """Wikis, the fullest build first (maxi, then nopic, then mini), then the biggest."""
+    rank = {"maxi": 0, "": 1, "nopic": 2, "mini": 3}
+    return sorted(ws, key=lambda w: (rank.get(w["flavour"], 1), -(w["entries"] or 0)))
+
+
+def article(zim, path):
+    """What the reader shows beside a wiki's article, for this request:
+    ``{qid, flavour, languages, level, full, topic}``.
+
+    - ``qid``: its Wikidata Q-ID ("Q937"), "" when unknown. A copy that
+      does not carry it (an older English mini) borrows it from a fuller
+      build of the same language holding the same page (kept for that
+      page, as if it carried it), so the language switch still works.
+    - ``languages``: the installed languages that have it ([{lang, name,
+      zim, path}], verified by Q-ID: see interlang.get_article_languages).
+    - ``level``: Simple English as a reading level: from an English article,
+      the Simple one; from a Simple one, the full English. ``{zim, path,
+      title, simple}`` or None.
+    - ``full``: for a mini, the same article in a fuller build of its
+      language, or None.
+    - ``topic``: what the other wikis of its language hold on it: the
+      Wiktionary entry, the Wikivoyage guide, Wikiquote, Wikibooks,
+      Wikisource ([{project, zim, path, title}]), by the article's own sister
+      links and its name, checked by Q-ID where both pages carry one.
+
+    None when the ZIM is not a wiki this request may read, or the page is
+    not in it."""
+    from zimi import interlang as il
+    from zimi.search import unglue_zim_path
+
+    ws = wikis()
+    me = next((w for w in ws if w["name"] == zim), None)
+    if me is None:
+        return None
+    try:
+        archive = _archive(zim)
+    except LookupError:
+        return None
+    path = _srv.split_entry_fragment(path)[0]
+    with _srv._zim_lock:
+        path = unglue_zim_path(archive, zim, path)
+        page = _html_page(archive, path)
+        if not page:
+            return None
+        path = page[0]
+        qid = _page_qid(zim, archive, path)
+        try:
+            html = bytes(archive.get_entry_by_path(path).get_item().content).decode(
+                "utf-8", "replace"
+            )
+        except Exception:
+            html = ""
+    lang, project, simple = me["language"], me["project"], is_simple(zim)
+    same = [
+        w
+        for w in ws
+        if w["name"] != zim and w["language"] == lang and w["project"] == project
+    ]
+    if qid is None and project == "wikipedia":
+        for w in _by_richness([w for w in same if w["flavour"] != "mini"]):
+            try:
+                other = _archive(w["name"])
+            except LookupError:
+                continue
+            with _srv._zim_lock:
+                got = _html_page(other, path)
+                q = _page_qid(w["name"], other, got[0]) if got else None
+            if q is not None:
+                qid = q
+                # The same page of the same wiki: its Q-ID is this one's, so
+                # the language lookup (which reads the cache) finds it too.
+                il._qid_cache_store(zim, path, q)
+                break
+    with _srv._zim_lock:
+        languages = il.get_article_languages(zim, path).get("languages", [])
+    # A language is its full encyclopedia: Simple English is a reading level
+    # (below), not the English a Hebrew reader is sent to.
+    for i, lg in enumerate(languages):
+        if not is_simple(lg["zim"]):
+            continue
+        full = [w for w in ws if w["language"] == lg["lang"] and w["project"] == project and not is_simple(w["name"])]
+        for w in _by_richness(full):
+            got = _twin(w, [lg["path"]], qid)
+            if got:
+                languages[i] = dict(lg, zim=got["zim"], path=got["path"])
+                break
+    level = None
+    if project == "wikipedia":
+        # Up from Simple English goes to the full article, never to a mini's
+        # introduction: that is less to read than the Simple article, not more.
+        cands = [
+            w
+            for w in same
+            if is_simple(w["name"]) != simple and (not simple or w["flavour"] != "mini")
+        ]
+        for w in _by_richness(cands):
+            got = _twin(w, [path], qid)
+            if got:
+                level = dict(got, simple=not simple)
+                break
+    full = None
+    if me["flavour"] == "mini":
+        for w in _by_richness(
+            [
+                w
+                for w in same
+                if w["flavour"] != "mini" and is_simple(w["name"]) == simple
+            ]
+        ):
+            got = _twin(w, [path], qid)
+            if got:
+                full = got
+                break
+    title = _norm_title(path)
+    sister = {}
+    for proj, target in _SISTER_RE.findall(html):
+        # Its own sister links, not a word linked in the text: a link whose
+        # page is this article's name ("Author:Albert Einstein" included).
+        if _norm_title(target.rsplit(":", 1)[-1]) == title:
+            sister.setdefault(proj, [])
+            if target not in sister[proj]:
+                sister[proj].append(target.replace(" ", "_"))
+    topic = []
+    for proj in TOPIC_PROJECTS:
+        cands = [w for w in ws if w["project"] == proj and w["language"] == lang]
+        # A Simple English article's words are in Simple English Wiktionary first.
+        cands.sort(key=lambda w: (is_simple(w["name"]) != simple, -(w["entries"] or 0)))
+        paths = [unquote(t) for t in sister.get(proj, [])] + [path]
+        if proj == "wiktionary":
+            # A dictionary files a word in lower case: "water", not "Water".
+            paths.insert(0, path[:1].lower() + path[1:])
+        for w in cands:
+            got = _twin(w, paths, qid)
+            if got:
+                topic.append(dict(got, project=proj))
+                break
+    return {
+        "qid": "Q%d" % qid if qid is not None else "",
+        "flavour": me["flavour"],
+        "languages": languages,
+        "level": level,
+        "full": full,
+        "topic": topic,
+    }
 
 
 def _reset_for_tests():

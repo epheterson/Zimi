@@ -849,6 +849,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("exchange.html")
             + _static_hash("reddot.html")
             + _static_hash("wiki.html")
+            + _static_hash("wiki-reader.js")
             + _static_hash("books.html")
             + _static_hash("apps.css")
             + _static_hash("apps.js")
@@ -2390,8 +2391,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # Zimipedia: every wiki in the library, as one.
                 from zimi import wiki as _wiki
 
-                # A preview, off unless ZIMI_APPS (or a saved list) names it:
-                # not offered, it is not here at all.
+                # Not offered (ZIMI_APPS or a saved list leaves it out): it is
+                # not here at all.
                 if "wiki" not in _srv.apps_shown():
                     return self._json(404, {"error": "not found"})
                 sub = parsed.path[len("/wiki"):].strip("/")
@@ -2406,7 +2407,13 @@ class ZimHandler(BaseHTTPRequestHandler):
                     names = [n for n in (param("zim") or "").split(",") if n]
                     if not names or len(names) > _wiki.TODAY_BATCH_MAX:
                         return self._json(400, {"error": "zim"})
-                    return self._json(200, _wiki.today(day, names))
+                    parts = [x for x in (param("parts") or "").split(",") if x]
+                    return self._json(200, _wiki.today(day, names, parts))
+                if sub == "article":
+                    # What the reader shows beside an article, asked once it is
+                    # on screen (in place of /article-languages).
+                    got = _wiki.article(param("zim") or "", param("path") or "")
+                    return self._json(200, got) if got else self._json(404, {"error": "not found"})
                 if sub != "onthisday":
                     return self._json(404, {"error": "not found"})
                 zim = param("zim")

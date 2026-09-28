@@ -2185,11 +2185,11 @@ def _read_map_facts(path):
 
 APPS_ENV = "ZIMI_APPS"
 APP_NAMES = ("maps", "tube", "exchange", "reddot", "wiki", "books")
-# Apps offered only when named: a comma list in ZIMI_APPS (or a saved list)
-# that says "wiki" turns Zimipedia on; "1", "all", the default and a saved
-# True leave it off. Zimipedia is a preview being redesigned, so nobody meets
-# it without asking for it.
-APPS_OPT_IN = frozenset({"wiki"})
+# Apps offered only when named (a preview, while it is built): a comma list
+# in ZIMI_APPS (or a saved list) that names one turns it on; "1", "all", the
+# default and a saved True leave it off. None now: Zimipedia was one until
+# its reader (1.12).
+APPS_OPT_IN = frozenset()
 APPS_ALL = frozenset(APP_NAMES)
 APPS_DEFAULT = APPS_ALL - APPS_OPT_IN
 _APPS_OFF = ("0", "false", "no", "off", "none")
@@ -2263,7 +2263,7 @@ def apps_shown():
     """The apps (Maps, ZimiTube, ZimiExchange, Reddot, Zimipedia, Bookshelf) offered on this server:
     ``ZIMI_APPS`` when set (``0``, ``1`` or a comma list of names), else the
     setting saved from Server settings, else all of them but the opt-in ones
-    (``APPS_OPT_IN``: Zimipedia, only when a list names it). A signed-in user
+    (``APPS_OPT_IN``, none now). A signed-in user
     can also hide any of them for themselves (their account's preferences).
     Never per browser (Eric: "Not per browser only per user or server")."""
     verdict = _apps_env()
