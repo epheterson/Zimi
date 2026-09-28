@@ -40,8 +40,12 @@ ZIMI_DATABASE_PATH = "zimi-database.js"
 # The largest listing read. youscribe's 530 audiobook tracks are ~100 KB.
 MAX_DATABASE_BYTES = 16 * 1024 * 1024
 
-# What opens in Zimi's reader: PDF.js, the EPUB reader, a page.
-DOC_EXTS = frozenset((".pdf", ".epub", ".html", ".htm"))
+# What opens in Zimi's reader: PDF.js and the EPUB reader (a book's own
+# file, what a folder's listing holds), and a page. Every list of document
+# extensions is made of these.
+BOOK_EXTS = frozenset((".pdf", ".epub"))
+PAGE_EXTS = frozenset((".html", ".htm"))
+DOC_EXTS = BOOK_EXTS | PAGE_EXTS
 VIDEO_EXTS = frozenset((".mp4", ".webm", ".ogv", ".m4v", ".mkv", ".mov"))
 AUDIO_EXTS = frozenset(
     (".mp3", ".ogg", ".oga", ".opus", ".m4a", ".aac", ".wav", ".flac")

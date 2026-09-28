@@ -68,8 +68,10 @@ _WS_FIELD_RE = re.compile(
     r'(?:class|id)="ws-(type|title|author|translator|year|publisher)"[^>]*>(.*?)</span>',
     re.S,
 )
-# The header's record sits at the end of the page; this much of it is read.
+# The header's record sits at the end of the page; this much of it is read,
+# of a page this big at most.
 _WS_BLOCK = 6000
+_WS_MAX_PAGE_BYTES = 32 * 1024 * 1024
 # Wikisource types that are not a work of their own: an article of a
 # periodical ("ws-title" is then the periodical's).
 _WS_SKIP_TYPES = frozenset(("journal",))
@@ -144,7 +146,7 @@ def _documents(archive, items, base):
             "title": str(item.get("ti") or "").strip() or nautilus.title_from_name(doc),
             "author": _author(item.get("aut")),
             "path": doc,
-            "format": "html" if ext in (".html", ".htm") else ext[1:],
+            "format": "html" if ext in nautilus.PAGE_EXTS else ext[1:],
         }
         if str(item.get("dsc") or "").strip():
             book["description"] = str(item["dsc"]).strip()
@@ -179,11 +181,13 @@ def nautilus_books(archive):
 
 def _document_entries(archive):
     """Listing items for a folder ZIM packed before it had a listing: its
-    PDFs and EPUBs, named by their files."""
+    PDFs and EPUBs, named by their files and found by their extensions, as
+    the listing Zimi writes now finds them (a Python before 3.14 stored an
+    EPUB as application/octet-stream)."""
     return [
         {"_id": e.path, "fp": [e.path]}
-        for e, item in _srv.walk_entries(archive)
-        if item.mimetype in _srv._DOC_MIMETYPES
+        for e, _item in _srv.walk_entries(archive)
+        if posixpath.splitext(e.path)[1].lower() in nautilus.BOOK_EXTS
     ]
 
 
@@ -247,7 +251,7 @@ def libretexts_books(archive):
 
 def _ws_record(archive, path):
     """The fields of a page's ``#ws-data``, {} when it has none."""
-    data = _srv.entry_bytes(archive, path, _epub.MAX_MEMBER_BYTES)
+    data = _srv.entry_bytes(archive, path, _WS_MAX_PAGE_BYTES)
     k = data.rfind(b'id="ws-data"') if data else -1
     if k < 0:
         return {}

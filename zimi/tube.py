@@ -389,12 +389,6 @@ def _zimi(archive):
     return out or None
 
 
-def _file_title(path):
-    """A file's name as a title: ``Le_chat_botte.ogg`` → ``Le chat botte``."""
-    stem = posixpath.splitext(posixpath.basename(path))[0]
-    return " ".join(stem.replace("_", " ").split()) or stem
-
-
 _TRACK_NUMBER_RE = re.compile(r"^\d+[\s._-]+")
 
 
@@ -403,7 +397,7 @@ def track_titles(paths):
     shared start dropped (``Doyle Le chien des Baskerville 01 a 03`` and
     ``... 04 et 05`` read ``01 a 03`` and ``04 et 05``), and the leading
     number youscribe gives every file (``2909454_``)."""
-    words = [_TRACK_NUMBER_RE.sub("", _file_title(p)).split() for p in paths]
+    words = [_TRACK_NUMBER_RE.sub("", nautilus.title_from_name(p)).split() for p in paths]
     common = 0
     if len(words) > 1:
         for column in zip(*words):
@@ -431,7 +425,7 @@ def media_file_row(path, mimetype, thumb=""):
     would, so ``s1/intro.mp4`` and ``s2/intro.mp4`` stay two cards."""
     return {
         "id": path,
-        "title": _file_title(path),
+        "title": nautilus.title_from_name(path),
         "description": "",
         "speaker": posixpath.basename(posixpath.dirname(path)),
         "thumb": thumb,
@@ -465,7 +459,7 @@ def _nautilus(archive):
         author = _clean(item.get("aut"))
         row = {
             "id": str(item.get("_id") or files[0]),
-            "title": _clean(item.get("ti")) or _file_title(files[0]),
+            "title": _clean(item.get("ti")) or nautilus.title_from_name(files[0]),
             "description": str(item.get("dsc") or "").strip()[:_MAX_DESCRIPTION_CHARS],
             # prunelle writes "-" for no author.
             "speaker": "" if author == "-" else author,
@@ -483,9 +477,6 @@ def _nautilus(archive):
     return out
 
 
-_MEDIA_MIME_PREFIXES = ("video/", "audio/")
-
-
 def _folder_walk(archive):
     """The video and audio files of a folder ZIM that has no listing, found
     by mimetype (a dirent read each, never a file's bytes; server.walk_entries,
@@ -493,7 +484,7 @@ def _folder_walk(archive):
     found = [
         (entry.path, item.mimetype or "")
         for entry, item in _srv.walk_entries(archive)
-        if (item.mimetype or "").startswith(_MEDIA_MIME_PREFIXES)
+        if (item.mimetype or "").startswith(_srv._MEDIA_MIME_PREFIXES)
     ]
     return [media_file_row(p, m, thumb_beside(p, archive.has_entry_by_path)) for p, m in found]
 
@@ -943,7 +934,7 @@ def playback(name, page):
             page = entry.path
             item = entry.get_item()
             mime = item.mimetype or ""
-            is_media = mime.startswith(_MEDIA_MIME_PREFIXES)
+            is_media = mime.startswith(_srv._MEDIA_MIME_PREFIXES)
             # A media file is never read whole to look for a <video> in it.
             html_text = "" if is_media else bytes(item.content).decode("utf-8", "replace")
         except Exception:

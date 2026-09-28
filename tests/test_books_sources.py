@@ -987,6 +987,31 @@ def test_a_folder_zim_from_before_the_listing_shows_its_files(shelf_lib):
     assert one["epub"] == "books/aleutian.epub"
 
 
+def test_an_epub_stored_as_octet_stream_is_on_the_shelf_by_its_name(shelf_lib):
+    """1.11 on Python 3.11 (Docker) stored a folder's EPUBs as
+    application/octet-stream: its files are found by their extensions, as
+    the listing Zimi writes now finds them."""
+    from zimi import books
+
+    old = (
+        "reading-room_en_2026-09.zim",
+        {
+            "Scraper": "Zimi 1.11.0",
+            "Name": "reading-room_en",
+            "X-Zimi-History": json.dumps([{"op": "created", "mode": "folder", "ts": 1}]),
+        },
+        {
+            "index": ("text/html", "<html><body>Reading room</body></html>", "Reading room"),
+            "field_guide-1956.pdf": ("application/pdf", fx.PDF, ""),
+            "books/aleutian.epub": ("application/octet-stream", fx.gutenberg_epub(), ""),
+        },
+        "index",
+    )
+    shelf_lib([old])
+    got = {b["path"] for b in books.listing(limit=50)["books"]}
+    assert got == {"field_guide-1956.pdf", "books/aleutian.epub/"}
+
+
 def test_a_folder_zim_made_now_is_on_the_shelf_from_its_listing(
     shelf_lib, tmp_path, monkeypatch
 ):

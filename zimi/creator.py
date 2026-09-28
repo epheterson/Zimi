@@ -148,7 +148,7 @@ DEFAULT_LANGUAGE = "eng"
 MAX_PAGE_URLS = 20
 
 _MD_EXTS = {".md", ".markdown"}
-_HTML_EXTS = {".html", ".htm"}
+_HTML_EXTS = _nautilus.PAGE_EXTS
 _JUNK_NAMES = {"thumbs.db", "desktop.ini", "__pycache__"}
 # A BARE mimetype, deliberately: libzim aggregates entry mimetypes verbatim
 # into the Counter metadata, whose spec regex admits no ";" or "=" — a
@@ -843,9 +843,6 @@ def _index_tree_html(title, pages, assets):
     ).encode("utf-8")
 
 
-# A folder's documents, listed for the Bookshelf: what opens in the reader
-# (PDF.js, and EPUBs chapter by chapter).
-_FOLDER_DOC_EXTS = (".pdf", ".epub")
 # A PDF's Info date: "D:20190304..." (PDF 1.7, 7.9.4).
 _PDF_DATE_RE = re.compile(r"^D:(\d{4})(\d{2})?(\d{2})?")
 
@@ -883,8 +880,9 @@ def _folder_documents(files):
 
     rows = []
     for fs_path, zim_path in files:
+        # What opens in the reader: PDF.js, and EPUBs chapter by chapter.
         ext = posixpath.splitext(zim_path)[1].lower()
-        if ext not in _FOLDER_DOC_EXTS:
+        if ext not in _nautilus.BOOK_EXTS:
             continue
         facts = (_epub.facts_of_file(fs_path) if ext == ".epub" else _pdf_facts(fs_path)) or {}
         row = {
@@ -3057,7 +3055,7 @@ def _probe_icon_data_uri(final_url, timeout, page):
 # keeps a preview of a 200,000-file volume from being a disk-thrashing scan.
 PROBE_FOLDER_DEPTH = 2
 PROBE_FOLDER_MAX_ENTRIES = 4000
-_DOC_EXTS = {".pdf", ".epub", ".txt", ".rst"}
+_DOC_EXTS = _nautilus.BOOK_EXTS | {".txt", ".rst"}
 _MEDIA_EXTS = {
     ".png",
     ".jpg",
@@ -3067,16 +3065,7 @@ _MEDIA_EXTS = {
     ".svg",
     ".bmp",
     ".ico",
-    ".mp4",
-    ".webm",
-    ".mkv",
-    ".mov",
-    ".mp3",
-    ".m4a",
-    ".ogg",
-    ".opus",
-    ".wav",
-}
+} | _nautilus.VIDEO_EXTS | _nautilus.AUDIO_EXTS
 
 
 def _file_kind(name):
