@@ -75,4 +75,6 @@ Nothing to set. What is kept is stored under `zimi_saved` in the browser (`zimi_
 
 - **Saved things did not follow me to another device**: both must be signed in with the same named account; an admin without a named account keeps them in that browser only. See [Access](access.md). They arrive when the page is idle or when you come back to the tab after a minute.
 - **Something I deleted came back**: a device that had not synced for more than 90 days can bring back what was deleted meanwhile. Delete it again.
+- **A highlight says "Not found in this version"**: the page opened on this device no longer has its words (a newer build of the ZIM changed or dropped them). It is kept, on every device; if the passage comes back, or you open it where the older build is, it shows again. Remove it from its menu if it is gone for good.
+- **Selecting text shows no Highlight bar**: highlights are offered in a reader (an article, a book, an EPUB, Zimipedia), not on a map, in the PDF viewer or in an app's own lists.
 - **A saved item says "Source no longer installed"**: its ZIM is not in the library (removed, or not allowed for this account). It opens again when the ZIM is back.
