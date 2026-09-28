@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Bookshelf reads more than Gutenberg: Kiwix's document libraries (zimgit and the other nautilus ZIMs), LibreTexts textbooks, Wikisource works and Wikibooks books (still in Zimipedia too), and ZIMs that are one book, like the Algorithms and Stacks textbooks.
 - A folder of PDFs and EPUBs packed with Create a ZIM lands on the Bookshelf, each document with its title, author, date and cover.
 - EPUBs open in Zimi's book reader, chapter by chapter, instead of downloading; Gutenberg's EPUB-only books open too.
-- Search operators, in the library search, the catalog and the API: `-word` leaves out, `"exact words"` keeps words together, `cats OR dogs` takes either, and `in:wikipedia`, `lang:fr` (and `-in:ted`, `-lang:en`) choose the sources. `science -ted` in the catalog now hides the hundreds of TED ZIMs. A hyphenated word like `e-mail` is still one word. In the library, exclusions and phrases apply to a result's title. Each operator shows as a chip saying what it did ("without ted", "French", "Wikipedia"), and its × takes it back out; a ? beside the search box has examples in your language. ([#94](https://github.com/epheterson/Zimi/issues/94))
+- Search operators, in the library search, the catalog and the API: `-word` leaves out, `"exact words"` keeps words together, `cats OR dogs` takes either, and `in:wikipedia`, `lang:fr` (and `-in:ted`, `-lang:en`) choose the sources. `science -ted` in the catalog now hides the hundreds of TED ZIMs. A hyphenated word like `e-mail` is still one word. In the library, exclusions and phrases apply to a result's title, every word of an OR is searched (a very long one says which it left out), and "Did you mean" keeps the operators. Each operator shows as a chip saying what it did ("without ted", "French", "Wikipedia"), and its × takes it back out; a ? beside the search box has examples in your language. ([#94](https://github.com/epheterson/Zimi/issues/94))
 - The Almanac's orrery: hover or tap a planet for its distance and radio delay, ride the rocket there as the delay home grows, and try the twin paradox at up to 0.99c.
 - Saving: bookmarks, lists and Liked in one place, an item in as many lists as you like, each list exportable as a ZIM.
 - Highlights in every reader (articles, Reader View, books in pages or scrolling, EPUBs, Zimipedia): select text to highlight it in one of four colors with a note, find it again from the Saved panel, and keep it through a new font, another page and a newer build of the ZIM; one that is gone is marked, never dropped.
@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - The Bookmarks panel is now Saved: folders are lists (a nested folder is "Parent / Child"), and over an app it opens on that app's own.
 - The bookmark button saves an article at the section you are reading, and a map at the place on screen.
+- Recently updated counts a ZIM added since as a change, for the sources as for the apps, so the Apps page agrees with them.
+- Every language with a two-letter code is known by it (Breton, Esperanto, Latin and dozens more), so its ZIMs are labelled with it and `lang:` finds them.
 
 ### Fixed
 
@@ -52,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - An app turned on or off in Settings no longer flips back when you leave Zimi and come back with Back. ([#98](https://github.com/epheterson/Zimi/issues/98))
 - The reader's bookmark button empties when the bookmark is removed in the Saved panel, in another tab or on another device. ([#96](https://github.com/epheterson/Zimi/issues/96))
 - On the Bookshelf, a book without a cover picture is the same size as the others instead of spilling over its neighbours, with a title you can read on a phone. ([#101](https://github.com/epheterson/Zimi/issues/101))
+- Copy link and Copy title on a link's menu, and Copy on a new API token, work over plain http on a LAN and in an iOS home-screen app, and say so; where the browser cannot copy at all, the text is shown to copy by hand.
 
 ## [1.11.0] - 2026-09-27
 
