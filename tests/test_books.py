@@ -238,8 +238,8 @@ def test_a_marc_subtitle_is_a_subtitle():
 
 def test_the_listings_alone_make_the_shelf(tmp_path, monkeypatch):
     """Before any book is read the shelf is there, most read first, each
-    book in its language and on its LCC shelf; an EPUB-only book opens on
-    its cover page."""
+    book in its language and on its LCC shelf; an EPUB-only book opens in
+    its EPUB's chapters (zimi/epub.py)."""
     _library(tmp_path, monkeypatch, details=False)
     home = books.home()
     assert home["total"] == 7 and home["details"] is False and home["eras"] == []
@@ -249,7 +249,8 @@ def test_the_listings_alone_make_the_shelf(tmp_path, monkeypatch):
     ]
     by = {b["id"]: b for b in books.listing(limit=50)["books"]}
     assert by[5139]["lang"] == "he" and by[23294]["lang"] == "la"
-    assert by[19635]["html"] is False and by[19635]["path"].endswith("_cover.19635")
+    assert by[19635]["html"] is False
+    assert by[19635]["path"] == "Biblia Sacra Vulgata - Psalmi XXII.19635.epub/"
     assert by[5139]["path"] == "Tales - Fables.5139"
     assert {s["code"] for s in home["shelves"]} == {"PA", "B", "G", "PT"}
 

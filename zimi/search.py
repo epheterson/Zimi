@@ -997,7 +997,8 @@ def _build_index_isolated(
 ):
     """build_fn(zim_name, zim_path), in a child process when the ZIM is big.
 
-    `kind` names the build for the child ("titles", "qids", "tube" or "books");
+    `kind` names the build for the child ("titles", "qids", "tube", "books"
+    or "shelf");
     close_fn evicts this process's pooled connection to the index the child
     replaced. `min_entries` is where "big" starts, _ISOLATE_BUILD_MIN_ENTRIES
     unless the build says otherwise: a build that reads every entry pays per
@@ -3751,6 +3752,10 @@ def _build_index_child_main(kind, data_dir, zim_name, zim_path):
         from zimi import books
 
         books.build_details(zim_name, zim_path)
+    elif kind == "shelf":
+        from zimi import books
+
+        books.build_sources(zim_name, zim_path)
     else:
         raise SystemExit(f"unknown index kind {kind!r}")
 

@@ -439,7 +439,10 @@ def test_nothing_inside_an_epub_is_trusted():
     assert epub.member_name("OEBPS", "../../etc/passwd") is None
     assert epub.member_name("", "/etc/passwd") is None
     assert epub.member_name("OEBPS", "https://x.org/a.png") is None
-    assert epub.member_name("OEBPS/Text", "../Images/a%20b.png#x") == "OEBPS/Images/a b.png"
+    assert (
+        epub.member_name("OEBPS/Text", "../Images/a%20b.png#x")
+        == "OEBPS/Images/a b.png"
+    )
     page = epub.Book(_hostile_epub()).page().decode()
     body = page.split('id="zb-c3"', 1)[1]
     assert "<script" not in body and "onclick" not in body and "alert(3)" not in body
@@ -485,7 +488,11 @@ GUTENBERG_EPUB_ONLY = {
         'var json_data = [["Aleutian Indian and English Dictionary", "Charles A. Lee", "010", 10040, "PM"]];',
         "",
     ),
-    "languages.js": ("text/javascript", 'var languages_json_data = [["English", "en", 1]];', ""),
+    "languages.js": (
+        "text/javascript",
+        'var languages_json_data = [["English", "en", 1]];',
+        "",
+    ),
     "Aleutian Indian and English Dictionary_cover.10040": (
         "text/html",
         "<html><body>cover</body></html>",
@@ -513,9 +520,16 @@ def served_epub(tmp_path, monkeypatch):
         tmp_path,
         monkeypatch,
         [
-            ("gutenberg_ale_all_2025-09.zim",
-             {"Scraper": "gutenberg2zim-2.2.0", "Name": "gutenberg_ale_all", "Language": "ale"},
-             GUTENBERG_EPUB_ONLY, "Home.html"),
+            (
+                "gutenberg_ale_all_2025-09.zim",
+                {
+                    "Scraper": "gutenberg2zim-2.2.0",
+                    "Name": "gutenberg_ale_all",
+                    "Language": "ale",
+                },
+                GUTENBERG_EPUB_ONLY,
+                "Home.html",
+            ),
         ],
     )
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
@@ -544,7 +558,13 @@ def test_an_epub_in_a_zim_opens_as_a_book(served_epub):
     from urllib.parse import quote
 
     zim = srv.list_zims()[0]["name"]
-    book = served_epub + "/w/" + zim + "/" + quote("Aleutian Indian and English Dictionary.10040.epub")
+    book = (
+        served_epub
+        + "/w/"
+        + zim
+        + "/"
+        + quote("Aleutian Indian and English Dictionary.10040.epub")
+    )
     status, ctype, body, _h = _fetch(book + "/")
     assert status == 200 and ctype.startswith("text/html")
     assert b'<meta name="zimi-book" content="epub">' in body and b"PREFACE" in body
@@ -555,3 +575,442 @@ def test_an_epub_in_a_zim_opens_as_a_book(served_epub):
     # The file itself still downloads.
     status, ctype, _b, headers = _fetch(book)
     assert status == 200 and "attachment" in (headers.get("Content-Disposition") or "")
+
+
+# ── the shelf beyond Gutenberg ─────────────────────────────────────────────
+
+
+def _mime(path):
+    if path.endswith(".js"):
+        return "text/javascript"
+    if path.endswith(".jpg"):
+        return "image/jpeg"
+    return "text/html"
+
+
+def _gutenberg():
+    import test_books
+
+    entries = {p: (_mime(p), data, "") for p, data in test_books.LATIN.items()}
+    entries["Home.html"] = ("text/html", "<html><body>Home</body></html>", "Home")
+    return (
+        "gutenberg_la_all_2026-01.zim",
+        {
+            "Scraper": "gutenberg2zim-3.0.1",
+            "Name": "gutenberg_la_all",
+            "Language": "lat",
+        },
+        entries,
+        "Home.html",
+    )
+
+
+def _water():
+    return (
+        "zimgit-water_en_2024-08.zim",
+        {
+            "Scraper": NAUTILUS,
+            "Name": "zimgit-water_en",
+            "Title": "Water Treatment Library",
+        },
+        _water_entries(),
+        "home",
+    )
+
+
+def _lessons():
+    """python-class-vc: a PDF lesson, a lesson as a page; and a video item,
+    maitre_lucas's shape, which is ZimiTube's."""
+    listing = fx.PYTHON_CLASS_DATABASE.replace(
+        "];",
+        "{'_id': '00002', 'ti': 'Vidéo', 'dsc': '', 'aut': 'Maître Lucas', 'fp': ['cours.mp4']},\n];",
+    )
+    return (
+        "python-class-vc_zh_all_2026-02.zim",
+        {"Scraper": NAUTILUS, "Name": "python-class-vc_zh_all", "Language": "zho"},
+        {
+            "home": ("text/html", "<html><body>Python</body></html>", "Home"),
+            "database.js": ("text/javascript", listing, ""),
+            "files/class 1_python introduction.pdf": ("application/pdf", fx.PDF, ""),
+            "files/class 2_variable_type.html": (
+                "text/html",
+                "<html><body>變數</body></html>",
+                "",
+            ),
+            "files/cours.mp4": ("video/mp4", b"\x00\x00\x00\x18ftypmp42", ""),
+        },
+        "home",
+    )
+
+
+def _wikisource():
+    entries = {
+        p: ("text/html", html, title)
+        for p, (html, title) in fx.WIKISOURCE_PAGES.items()
+    }
+    for p in fx.WIKISOURCE_SCANS:
+        entries[p] = ("text/html", "<html><body>scan</body></html>", p)
+    return (
+        "wikisource_eo_all_nopic_2026-07.zim",
+        {"Scraper": MWOFFLINER, "Name": "wikisource_eo_all", "Language": "epo"},
+        entries,
+        "Vikifontaro:Ĉefpaĝo",
+    )
+
+
+def _wikibooks():
+    entries = {
+        p: ("text/html", "<html><body><h1>%s</h1></body></html>" % t, t)
+        for p, t in fx.WIKIBOOKS_PAGES.items()
+    }
+    return (
+        "wikibooks_sv_all_nopic_2026-07.zim",
+        {"Scraper": MWOFFLINER, "Name": "wikibooks_sv_all", "Language": "swe"},
+        entries,
+        "Wikibooks:Huvudsida",
+    )
+
+
+def _libretexts():
+    shared = json.loads(fx.LIBRETEXTS_SHARED)
+    entries = {
+        "index.html": (
+            "text/html",
+            "<html><body><div id=app></div></body></html>",
+            "Statistics",
+        ),
+        "content/shared.json": ("application/json", fx.LIBRETEXTS_SHARED, ""),
+    }
+    for p in shared["pages"]:
+        # Every page has its address, a redirect into the ZIM's own app.
+        entries[f"index/page_{p['id']}"] = (
+            "text/html",
+            fx.LIBRETEXTS_REDIRECT.replace(
+                "Bookshelves/Probability_Theory/Probability_Mathematical_Statistics_and_Stochastic_Processes_(Siegrist)",
+                p["path"],
+            ),
+            p["title"],
+        )
+    return (
+        "libretexts.org_en_stats_2026-01.zim",
+        {
+            "Scraper": "mindtouch2zim v0.1.1",
+            "Name": "libretexts.org_en_stats",
+            "Title": "Statistics LibreTexts",
+        },
+        entries,
+        "index.html",
+    )
+
+
+def _htdp():
+    return (
+        "htdp.org_en_all_2026-08.zim",
+        {
+            "Scraper": "warc2zim 2.3.1,Browsertrix-Crawler 1.14.1 (with warcio.js 2.4.11),zimit 3.1.3",
+            "Name": "htdp.org_en_all",
+            "Title": "How to Design Programs",
+            "Description": "Introductory book focused on the program design process",
+            "Creator": "-",
+        },
+        {
+            "htdp.org/2020-8-1/Book/index.html": (
+                "text/html",
+                "<html><body><h1>How to Design Programs</h1></body></html>",
+                "HtDP",
+            )
+        },
+        "htdp.org/2020-8-1/Book/index.html",
+    )
+
+
+@pytest.fixture
+def shelf_lib(tmp_path, monkeypatch):
+    """A library of every family, read as the startup worker reads it."""
+    from zimi import books, epub
+
+    books._reset_for_tests()
+    epub._reset_for_tests()
+
+    def build(zims, details=True):
+        _library(tmp_path, monkeypatch, zims)
+        books._reset_for_tests()
+        if details:
+            books.build_all_details()
+            books._builder.wait()
+            books._sources.wait()
+        return {z["file"][:-4]: z["name"] for z in srv.list_zims()}
+
+    yield build
+    books._reset_for_tests()
+
+
+def _titles(**kw):
+    from zimi import books
+
+    return [b["title"] for b in books.listing(limit=200, **kw)["books"]]
+
+
+def test_kiwix_document_libraries_are_on_the_shelf(shelf_lib):
+    from zimi import books
+
+    names = shelf_lib([_gutenberg(), _water(), _lessons()])
+    water, lessons = (
+        names["zimgit-water_en_2024-08"],
+        names["python-class-vc_zh_all_2026-02"],
+    )
+    home = books.home()
+    assert home["details"] is True
+    assert {s["reader"] for s in home["sources"]} == {"gutenberg", "nautilus"}
+    got = books.listing(zim=water, limit=50)
+    assert got["total"] == 7
+    first = got["books"][0]
+    assert first["title"] == "Distillation For Home Water Treatment"
+    assert first["author"] == "Michigan State University" and first["lang"] == "en"
+    assert first["path"] == "files/Water (1).pdf" and first["format"] == "pdf"
+    assert first["id"] == water + "/00000" and first["source"] == "nautilus"
+    one = books.book(water, first["id"])
+    assert one["description"] == "For people with a water quality problem"
+    # A lesson as a page opens as one; the video is ZimiTube's, not a book.
+    assert {b["title"]: b["path"] for b in books.listing(zim=lessons)["books"]} == {
+        "1. Python 程式設計的第一步": "files/class 1_python introduction.pdf",
+        "2. 從變數到型態": "files/class 2_variable_type.html",
+    }
+    # Gutenberg's books are still the most read; the others follow.
+    assert _titles()[0] == "Aeneidos" and books.home()["total"] == 6 + 7 + 2
+    # Found by a word, by author.
+    assert _titles(q="giardia") == ["Giardia: Drinking Water Factsheet"]
+    assert _titles(author="Michigan State University") == [
+        "Distillation For Home Water Treatment"
+    ]
+
+
+def test_opening_the_shelf_reads_no_zim_of_the_other_families(shelf_lib, monkeypatch):
+    """The other families are read in the background; the shelf opens on
+    what is read, and says the rest is coming."""
+    from zimi import books, booksources
+
+    asked = []
+    request, books_in = books.request_sources, booksources.books_in
+    monkeypatch.setattr(books, "request_sources", asked.append)
+    monkeypatch.setattr(booksources, "books_in", lambda *a: pytest.fail("read on open"))
+    names = shelf_lib([_gutenberg(), _water()], details=False)
+    books._builder.keep(
+        names["gutenberg_la_all_2026-01"],
+        srv.get_zim_files()[names["gutenberg_la_all_2026-01"]],
+        {},
+    )
+    home = books.home()
+    assert home["total"] == 6 and home["details"] is False
+    assert asked == [names["zimgit-water_en_2024-08"]]
+    monkeypatch.setattr(books, "request_sources", request)
+    monkeypatch.setattr(booksources, "books_in", books_in)
+    books._sources.build_one(names["zimgit-water_en_2024-08"])
+    home = books.home()
+    assert home["total"] == 13 and home["details"] is True
+
+
+def test_libretexts_textbooks_from_the_page_tree(shelf_lib):
+    from zimi import books
+
+    names = shelf_lib([_libretexts()])
+    got = books.listing(sort="popular", limit=50)["books"]
+    # The library's shelves first; the Workbench, and a page with no chapters, are not books.
+    assert [b["title"] for b in got] == [
+        "Probability, Mathematical Statistics, and Stochastic Processes (Siegrist)",
+        "Graduate-Level Statistics in Psychology",
+    ]
+    siegrist = books.book("", got[0]["id"])
+    assert (
+        siegrist["author"] == "Siegrist" and siegrist["subject"] == "Probability Theory"
+    )
+    assert siegrist["chapters"] == 20 and siegrist["path"] == "index/page_10114"
+    assert "author" not in books.book("", got[1]["id"])
+    assert srv.list_zims()[0]["name"] == names["libretexts.org_en_stats_2026-01"]
+
+
+def test_wikisource_works_are_on_the_shelf_and_stay_in_zimipedia(shelf_lib):
+    from zimi import books, wiki
+
+    names = shelf_lib([_wikisource()])
+    name = names["wikisource_eo_all_nopic_2026-07"]
+    entry = srv.list_zims()[0]
+    assert entry["kind"] == "wiki" and entry["project"] == "wikisource"
+    assert wiki.is_wiki(name)
+    got = {b["title"]: b for b in books.listing(limit=50)["books"]}
+    # Scans, the index of a scan, the project's page and a periodical's article are not works.
+    assert set(got) == {
+        "Adjuvilo",
+        'Adresaro de la personoj kiuj ellernis la lingvon "Esperanto"',
+        "Adiaŭa letero de Stefan Zweig",
+        "Aforismoj (Lanti, 1946)",
+    }
+    adj = books.book(name, got["Adjuvilo"]["id"])
+    assert adj["author"] == "Claudius Colas" and adj["translator"] == "Roy McCoy"
+    assert adj["year"] == 1910 and adj["era"] == 1900 and adj["chapters"] == 3
+    assert adj["path"] == "Adjuvilo" and adj["lang"] == "eo"
+    # The older header (ids, not classes) is read too.
+    assert (
+        got['Adresaro de la personoj kiuj ellernis la lingvon "Esperanto"']["year"]
+        == 1889
+    )
+    # Longest first.
+    assert _titles()[0] == "Adjuvilo"
+
+
+def test_wikibooks_are_books_by_their_pages(shelf_lib):
+    from zimi import books
+
+    shelf_lib([_wikibooks()])
+    got = books.listing(limit=50)["books"]
+    # Two pages under it are not a book; nor pages with no contents page,
+    # nor the project's own.
+    assert [b["title"] for b in got] == [
+        "Berimbau - en handbok för nya capoerister",
+        "Poker",
+    ]
+    assert got[1]["path"] == "Poker" and got[1]["lang"] == "sv"
+    assert "author" not in got[1]
+
+
+def test_a_zim_that_is_one_book(shelf_lib, tmp_path):
+    from zimi import books
+
+    names = shelf_lib([_htdp(), _water()])
+    htdp, water = names["htdp.org_en_all_2026-08"], names["zimgit-water_en_2024-08"]
+    got = books.listing(zim=htdp)["books"]
+    assert [(b["title"], b["path"]) for b in got] == [
+        ("How to Design Programs", "htdp.org/2020-8-1/Book/index.html")
+    ]
+    assert books.book(htdp, got[0]["id"])["description"].startswith("Introductory book")
+    # By hand: off the shelf, and a ZIM of another family on it as one book.
+    assert books.set_whole(htdp, False) == ""
+    assert books.listing(zim=htdp)["total"] == 0
+    assert books.set_whole(water, None) == "nautilus"
+    # Kept across a restart.
+    books._whole.update(loaded=False, names={})
+    books._shelf["key"] = None
+    assert books.listing(zim=htdp)["total"] == 0
+    books.set_whole(htdp, None)
+    assert books.listing(zim=htdp)["total"] == 1
+
+
+def test_a_zim_can_be_put_on_the_shelf_by_hand(shelf_lib):
+    from zimi import books
+
+    other = (
+        "survival-guide_en_all_2026-01.zim",
+        {
+            "Scraper": "zimit 3.1.3",
+            "Name": "survival-guide_en_all",
+            "Title": "Survival Guide",
+        },
+        {"index.html": ("text/html", "<html><body>Guide</body></html>", "Guide")},
+        "index.html",
+    )
+    names = shelf_lib([other])
+    name = names["survival-guide_en_all_2026-01"]
+    assert books.home()["total"] == 0
+    assert books.set_whole(name, True) == "whole"
+    assert _titles() == ["Survival Guide"]
+
+
+def test_a_folder_zim_from_before_the_listing_shows_its_files(shelf_lib):
+    """A folder of documents packed by 1.11 has no listing: its PDFs and
+    EPUBs are there by their files, an EPUB titled from its own package."""
+    from zimi import books
+
+    old = (
+        "reading-room_en_2026-09.zim",
+        {
+            "Scraper": "Zimi 1.11.0",
+            "Name": "reading-room_en",
+            "X-Zimi-History": json.dumps(
+                [{"op": "created", "mode": "folder", "ts": 1}]
+            ),
+        },
+        {
+            "index": (
+                "text/html",
+                "<html><body>Reading room</body></html>",
+                "Reading room",
+            ),
+            "field_guide-1956.pdf": ("application/pdf", fx.PDF, "field_guide-1956.pdf"),
+            "books/aleutian.epub": (
+                "application/epub+zip",
+                fx.gutenberg_epub(),
+                "aleutian.epub",
+            ),
+        },
+        "index",
+    )
+    names = shelf_lib([old])
+    got = {b["title"]: b for b in books.listing(limit=50)["books"]}
+    assert set(got) == {
+        "field guide-1956",
+        "Aleutian Indian and English Dictionary / Common Words in the Dialects of the Aleutian Indian Language as Spoken by the Oogashik, Egashik, Anangashuk and Misremie Tribes Around Sulima River and Neighboring Parts of the Alaska Peninsula",
+    }
+    ebook = [b for t, b in got.items() if t.startswith("Aleutian")][0]
+    assert (
+        ebook["path"] == "books/aleutian.epub/" and ebook["author"] == "Charles A. Lee"
+    )
+    assert ebook["cover"] == "books/aleutian.epub/" + fx.GUTENBERG_EPUB_COVER
+    assert ebook["year"] == 2003 and ebook["format"] == "epub"
+    one = books.book(names["reading-room_en_2026-09"], ebook["id"])
+    assert one["epub"] == "books/aleutian.epub"
+
+
+def test_a_folder_zim_made_now_is_on_the_shelf_from_its_listing(
+    shelf_lib, tmp_path, monkeypatch
+):
+    from zimi import books, creator
+
+    monkeypatch.setattr(srv, "HAS_PYMUPDF", False)
+    out = tmp_path / "zims"
+    out.mkdir()
+    creator.create_folder_zim(str(_documents_folder(tmp_path)), out_dir=str(out))
+    shelf_lib([])
+    got = {b["title"]: b for b in books.listing(limit=50)["books"]}
+    assert "the long-walk" in got
+    ebook = [b for t, b in got.items() if t.startswith("Aleutian")][0]
+    assert ebook["source"] == "folder" and ebook["path"] == "books/aleutian.epub/"
+
+
+def test_a_restricted_account_sees_only_the_shelves_it_may_read(shelf_lib, monkeypatch):
+    from zimi import books
+
+    names = shelf_lib([_gutenberg(), _water()])
+    water = names["zimgit-water_en_2024-08"]
+    monkeypatch.setattr(srv, "zim_allowed", lambda name: name == water)
+    books._shelf["key"] = None
+    assert books.home()["total"] == 7
+    assert books.book("", water + "/00000")["zim"] == water
+    monkeypatch.setattr(srv, "zim_allowed", lambda name: name != water)
+    books._shelf["key"] = None
+    assert books.book(water, water + "/00000") is None
+
+
+def test_a_book_of_another_family_through_http(shelf_lib):
+    from http.server import ThreadingHTTPServer
+    import threading
+    import urllib.parse
+    import urllib.request
+
+    from zimi.http import ZimHandler
+
+    names = shelf_lib([_water()])
+    water = names["zimgit-water_en_2024-08"]
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = "http://127.0.0.1:%d" % httpd.server_address[1]
+    try:
+        url = base + "/books/book?zim=%s&id=%s" % (
+            water,
+            urllib.parse.quote(water + "/00003"),
+        )
+        with urllib.request.urlopen(url, timeout=10) as r:
+            got = json.loads(r.read())
+        assert got["title"] == "Plants as Indicator of Ground Water"
+        assert got["author"] == "Oscar Edward MEinzer" and got["format"] == "pdf"
+    finally:
+        httpd.shutdown()
