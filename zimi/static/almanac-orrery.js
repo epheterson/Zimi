@@ -1558,7 +1558,7 @@ function _orreryLaunchRocket(targetName) {
     arrivalGlow: 0,
     pathFade: 1.0,
     trail: [],
-    _launchRealTime: _orrerySimTime(),
+    _launchRealTime: simNow,
     departSpeed: departSpeed,
     cruiseSpeed: cruiseSpeed,
     // The ride's physics (AU): from Earth's distance from the Sun at launch to
