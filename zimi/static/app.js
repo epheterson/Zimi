@@ -17373,7 +17373,7 @@ function _readingSettingsHtml(prefs, layouts) {
     row(tH('reader_theme'), seg('theme', themes, mode, tH('reader_theme')).replace('zb-seg', 'zb-seg zb-themes')) +
     row(tH('reader_font_family'), seg('fam', [['serif', tH('reader_font_serif'), 'font-family:Georgia,serif'], ['sans', tH('reader_font_sans'), 'font-family:-apple-system,sans-serif']], fam, tH('reader_font_family'))) +
     row(tH('reader_text_size'), '<div class="zb-step"><button type="button" data-size="-1" aria-label="' + tH('reader_size_smaller') + '"' + (si <= 0 ? ' disabled' : '') + ' style="font-size:14px">A</button>' +
-      '<output>' + prefs.size + ' px</output><button type="button" data-size="1" aria-label="' + tH('reader_size_larger') + '"' + (si >= _READING_SIZES.length - 1 ? ' disabled' : '') + ' style="font-size:21px">A</button></div>') +
+      '<output><bdi>' + prefs.size + ' px</bdi></output><button type="button" data-size="1" aria-label="' + tH('reader_size_larger') + '"' + (si >= _READING_SIZES.length - 1 ? ' disabled' : '') + ' style="font-size:21px">A</button></div>') +
     row('<label for="zb-lh">' + tH('books_line_spacing') + '</label>', '<input id="zb-lh" class="zb-range" type="range" min="0" max="' + (_READING_LEADINGS.length - 1) + '" step="1" value="' + prefs.lh + '" data-pref="lh">') +
     row('<label for="zb-mg">' + tH('books_margins') + '</label>', '<input id="zb-mg" class="zb-range" type="range" min="0" max="' + (_READING_MARGINS.length - 1) + '" step="1" value="' + prefs.margin + '" data-pref="margin">') +
     (layouts ? row(tH('books_layout'), seg('mode', layouts, prefs.mode, tH('books_layout'))) : '');
