@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - A catalog search typed while the catalog was still loading is no longer replaced by the category gallery.
 - My data's export and import carry your history, and Restore from server no longer restores an old copy.
 - An app turned on or off in Settings no longer flips back when you leave Zimi and come back with Back. ([#98](https://github.com/epheterson/Zimi/issues/98))
+- The reader's bookmark button empties when the bookmark is removed in the Saved panel, in another tab or on another device. ([#96](https://github.com/epheterson/Zimi/issues/96))
 
 ## [1.11.0] - 2026-09-27
 
