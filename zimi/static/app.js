@@ -69,10 +69,14 @@ var SK = {
   // was the old default and rewards big files rather than the one you want.
   LIBRARY_SORT: 'zimi_library_sort',
   BROWSE_HISTORY: 'zimi_browse_history',
+  // Everything kept (1.12): items, lists, memberships, positions and their
+  // tombstones, one JSON value (see Saved). Signed out it is this key; an
+  // account's own copy is this key + ':' + its name.
+  SAVED: 'zimi_saved',
+  // Before 1.12: bookmarks, and their folders ({id,name,parent,order}).
+  // Read once into SAVED when a store is first used, and left in place for
+  // one release so an older Zimi still finds them.
   BOOKMARKS: 'zimi_bookmarks',
-  // Bookmark folders (v2) — array of {id,name,parent,order}. Root is implicit
-  // (a bookmark/folder with parent null|"" is top-level). Rides in the same
-  // /userdata + My-data backup blob as BOOKMARKS.
   BM_FOLDERS: 'zimi_bm_folders',
   // Per-device UI state: ids of collapsed folders in the bookmarks tree.
   BM_COLLAPSED: 'zimi_bm_collapsed',
@@ -20048,6 +20052,565 @@ function _pushArticleHistory(zim, path) {
   articleHistory.push({ zim: zim, path: path, title: title, timestamp: Date.now() });
   if (articleHistory.length > 50) articleHistory.shift();
 }
+
+// ── Saved: one store for everything kept ────────────────────────────────────
+// Bookmarks, lists, likes and where you were, for the reader and every app
+// (1.12, docs/features/saving.md). An item is one thing kept: what it is
+// (kind), its ZIM and path, a title, the app it belongs to, where you were in
+// it, when it was added, and the lists it is in (as many as you like). Liked
+// is a list every store has. Where you are in a book (a video, later) is a
+// position, kept whether or not the thing is saved; Continue reading is drawn
+// from positions, it is not a list.
+//
+// The API, the shell's and every app page's (as window.parent.Saved):
+//   Saved.key(ref)                     an item's id: zim + '\n' + path, and for a
+//                                      place + '\n' + where.pos (one map, many places)
+//   Saved.save(item) -> key            add, or update what is given; a renamed
+//                                      title, the lists and the added time stay
+//   Saved.remove(ref)                  removed from every list and every device
+//   Saved.get(ref) / Saved.has(ref)    one item, with key and lists / is it kept
+//   Saved.all()                        every item, the latest added first
+//   Saved.rename(ref, title)           '' goes back to the page's own title
+//   Saved.itemsFor({app, kind, list})  a list's items in its order (list: '' is
+//                                      the items in no list), else the latest first
+//   Saved.lists({app, kind})           [{id, name, builtin, count}], Liked first;
+//                                      filtered, count counts only what matches
+//   Saved.createList(name) -> id       Saved.renameList(id, name)
+//   Saved.deleteList(id)               its items stay saved
+//   Saved.moveList(id, beforeId)       before another list; null is the end
+//   Saved.inList(ref, listId)          Saved.removeFromList(ref, listId)
+//   Saved.addToList(ref, listId, beforeRef)  saves an item given whole first;
+//                                      moves one already in the list
+//   Saved.position(ref)                {key, kind, zim, path, app, title, meta,
+//                                      where, ts} or null
+//   Saved.setPosition(ref, where)      ref is item-shaped; where null notes the
+//                                      visit and keeps the place
+//   Saved.clearPosition(ref)           Saved.continued({app, kind}): positions,
+//                                      the latest first
+//   Saved.LIKED                        the Liked list's id
+// A ref is a key or anything item-shaped ({zim, path, kind, where}). where is
+// {s} a section, {f, c} a book (share read, character), {t, d} a video,
+// {pos} a map view; meta is a few short fields an app shows (author, cover).
+//
+// Sync: every record carries ts, the newest wins, and a deletion leaves a
+// tombstone in `gone` (i:item, l:list, m:membership, p:position) that beats
+// anything as old or older, so a delete on one device survives a merge from
+// another. Tombstones are forgotten after GONE_MS. users.py holds the same
+// rules for the account's copy (_clean_saved, _merge_saved).
+var Saved = (function () {
+  var LIKED = 'liked';
+  var KINDS = ['article', 'book', 'video', 'question', 'post', 'place'];
+  var APPS = ['books', 'tube', 'exchange', 'reddot', 'maps', 'wiki'];
+  // The app a kind belongs to when the one saving it did not say.
+  var KIND_APP = { book: 'books', video: 'tube', question: 'exchange', post: 'reddot', place: 'maps' };
+  var COLLS = [['items', 'i:'], ['lists', 'l:'], ['members', 'm:'], ['positions', 'p:']];
+  // Caps (users.py _SAVED_MAX holds the same): past one, the newest are kept.
+  var MAX = { items: 5000, lists: 500, members: 20000, positions: 1000, gone: 10000 };
+  // How long a deletion is remembered. A device away for longer can bring
+  // back what was deleted while it was gone.
+  var GONE_MS = 90 * 86400000;
+  var TITLE_MAX = 500, NAME_MAX = 120, ZIM_MAX = 200, PATH_MAX = 2000;
+  var SMALL_KEYS = 16, SMALL_KEY_MAX = 32, SMALL_VAL_MAX = 1000;
+  var ORDER_GAP_MIN = 1e-9;  // two neighbours closer than this: the list is numbered again
+  var ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+  var _ns = '', _s = null, _idx = null;
+
+  function now() { return Date.now(); }
+  function empty() { return { v: 1, items: {}, lists: {}, members: {}, positions: {}, gone: {}, legacy: false }; }
+  function storeKey() { return SK.SAVED + (_ns ? ':' + _ns : ''); }
+  function key(ref) {
+    if (typeof ref === 'string') return ref;
+    if (!ref || !ref.zim || !ref.path) return '';
+    var id = ref.zim + '\n' + ref.path;
+    var pos = ref.kind === 'place' && ref.where && ref.where.pos;
+    return pos && typeof pos === 'string' ? id + '\n' + pos : id;
+  }
+  function has(o, f) { return Object.prototype.hasOwnProperty.call(o, f); }
+  function cmp(a, b) { return a < b ? -1 : a > b ? 1 : 0; }
+
+  // ── shape: what is accepted from anywhere (a file, the account, old keys) ──
+  function num(v) { return typeof v === 'number' && isFinite(v) ? v : null; }
+  function small(o) {
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+    var out = {}, n = 0;
+    Object.keys(o).forEach(function (f) {
+      var v = o[f];
+      if (n >= SMALL_KEYS || !f || f.length > SMALL_KEY_MAX) return;
+      if (typeof v === 'string') v = v.slice(0, SMALL_VAL_MAX);
+      else if (typeof v !== 'boolean' && num(v) === null) return;
+      out[f] = v; n++;
+    });
+    return n ? out : null;
+  }
+  // An item or a position: what it is, where it is kept, when.
+  function thing(r, id) {
+    if (!r || typeof r !== 'object') return null;
+    var ts = num(r.ts);
+    if (typeof r.zim !== 'string' || !r.zim || r.zim.length > ZIM_MAX) return null;
+    if (typeof r.path !== 'string' || !r.path || r.path.length > PATH_MAX || ts === null) return null;
+    var out = { kind: KINDS.indexOf(r.kind) >= 0 ? r.kind : 'article', zim: r.zim, path: r.path,
+      title: typeof r.title === 'string' ? r.title.slice(0, TITLE_MAX) : '', ts: Math.round(ts) };
+    if (typeof r.origTitle === 'string' && r.origTitle) out.origTitle = r.origTitle.slice(0, TITLE_MAX);
+    if (APPS.indexOf(r.app) >= 0) out.app = r.app;
+    var where = small(r.where), meta = small(r.meta);
+    if (where) out.where = where;
+    if (meta) out.meta = meta;
+    return key(out) === id ? out : null;
+  }
+  function order(r) {
+    var o = r && num(r.order), ts = r && num(r.ts);
+    return o === null || ts === null ? null : { order: o, ts: Math.round(ts) };
+  }
+  function clean(x) {
+    var s = empty();
+    if (!x || typeof x !== 'object') return s;
+    var each = function (src, fn) {
+      if (src && typeof src === 'object' && !Array.isArray(src)) Object.keys(src).forEach(function (id) { fn(id, src[id]); });
+    };
+    each(x.items, function (id, r) {
+      var it = thing(r, id), added = r && num(r.added);
+      if (it) { it.added = Math.round(added === null ? it.ts : added); s.items[id] = it; }
+    });
+    each(x.lists, function (id, r) {
+      var o = order(r);
+      if (!o || !ID_RE.test(id) || id === LIKED || typeof r.name !== 'string' || !r.name.trim()) return;
+      s.lists[id] = { name: r.name.trim().slice(0, NAME_MAX), order: o.order, ts: o.ts };
+    });
+    each(x.members, function (mk, r) {
+      var i = mk.indexOf('\t'), o = order(r);
+      if (i < 1 || !o || !ID_RE.test(mk.slice(0, i)) || mk.length - i - 1 > ZIM_MAX + PATH_MAX + 64) return;
+      s.members[mk] = o;
+    });
+    each(x.positions, function (id, r) { var p = thing(r, id); if (p) s.positions[id] = p; });
+    each(x.gone, function (g, ts) {
+      if (num(ts) !== null && /^[ilmp]:./.test(g) && g.length < ZIM_MAX + PATH_MAX + 128) s.gone[g] = Math.round(ts);
+    });
+    s.legacy = x.legacy === true;
+    return s;
+  }
+
+  // ── merge: two copies of a store become one ──
+  function newestFirst(map, getTs) {
+    return function (a, b) { return getTs(map[b]) - getTs(map[a]) || cmp(a, b); };
+  }
+  function cap(map, n, getTs) {
+    var ids = Object.keys(map);
+    if (ids.length <= n) return;
+    ids.sort(newestFirst(map, getTs)).slice(n).forEach(function (id) { delete map[id]; });
+  }
+  function recTs(r) { return r.ts; }
+  function goneTs(v) { return v; }
+  // A membership needs its item and its list; tombstones age out; caps hold.
+  function normalize(s, t) {
+    cap(s.items, MAX.items, recTs);
+    cap(s.lists, MAX.lists, recTs);
+    cap(s.positions, MAX.positions, recTs);
+    Object.keys(s.members).forEach(function (mk) {
+      var i = mk.indexOf('\t'), lid = mk.slice(0, i);
+      if (!has(s.items, mk.slice(i + 1)) || (lid !== LIKED && !has(s.lists, lid))) delete s.members[mk];
+    });
+    cap(s.members, MAX.members, recTs);
+    Object.keys(s.gone).forEach(function (g) { if (s.gone[g] < t - GONE_MS) delete s.gone[g]; });
+    cap(s.gone, MAX.gone, goneTs);
+    return s;
+  }
+  // Every record: the newer copy wins (a tie keeps a's). A tombstone as new
+  // as the record or newer removes it; a record newer than its tombstone
+  // (saved again after the delete) outlives it.
+  function mergeStores(a, b, t) {
+    var out = empty(), gone = {};
+    out.legacy = !!(a.legacy || b.legacy);
+    [a.gone, b.gone].forEach(function (src) {
+      Object.keys(src).forEach(function (g) { if (!(has(gone, g) && gone[g] >= src[g])) gone[g] = src[g]; });
+    });
+    COLLS.forEach(function (c) {
+      var name = c[0], pre = c[1], A = a[name], B = b[name];
+      Object.keys(A).concat(Object.keys(B)).forEach(function (id) {
+        if (has(out[name], id)) return;
+        var x = has(A, id) ? A[id] : null, y = has(B, id) ? B[id] : null;
+        var r = !x ? y : !y ? x : (y.ts > x.ts ? y : x);
+        if (has(gone, pre + id)) {
+          if (gone[pre + id] >= r.ts) return;
+          delete gone[pre + id];
+        }
+        out[name][id] = r;
+      });
+    });
+    out.gone = gone;
+    return normalize(out, t);
+  }
+
+  // ── what the browser kept before 1.12 ──
+  // Bookmarks v2 (items with a folder and an order, folders nested by parent)
+  // and Bookshelf's places. Each folder becomes a list named by its path
+  // ("Travel / Portugal"), in the tree's order; a bookmark keeps its order in
+  // its folder; one at the top level is saved in no list; a map's place stays
+  // a place. Deterministic, so running it twice changes nothing, and dated by
+  // the bookmark itself, so a later delete or rename always wins over it.
+  function fromLegacy(old, kindOfZim) {
+    var out = { items: {}, lists: {}, members: {}, positions: {} };
+    var bms = Array.isArray(old.bookmarks) ? old.bookmarks : [];
+    var fols = (Array.isArray(old.folders) ? old.folders : []).filter(function (f) { return f && f.id != null; });
+    var byId = {};
+    fols.forEach(function (f) { byId[String(f.id)] = f; });
+    var parentOf = function (f) { var p = f.parent == null ? '' : String(f.parent); return byId[p] && p !== String(f.id) ? p : ''; };
+    var kids = function (pid) {
+      return fols.filter(function (f) { return parentOf(f) === pid; }).sort(function (a, b) {
+        return ((a.order || 0) - (b.order || 0)) || cmp(String(a.name || '').toLowerCase(), String(b.name || '').toLowerCase());
+      });
+    };
+    var n = 0, listOf = {}, seen = {};
+    var walk = function (pid, prefix) {
+      kids(pid).forEach(function (f) {
+        var fid = String(f.id);
+        if (seen[fid]) return;
+        seen[fid] = 1;
+        var name = prefix + (String(f.name || '').trim() || '?');
+        var lid = ID_RE.test(fid) && fid !== LIKED ? fid : 'f_' + (n + 1);
+        listOf[fid] = lid;
+        out.lists[lid] = { name: name, order: n++, ts: 1 };
+        walk(fid, name + ' / ');
+      });
+    };
+    walk('', '');
+    var inFolder = {};
+    bms.forEach(function (b) {
+      if (!b || typeof b.zim !== 'string' || typeof b.path !== 'string' || !b.zim || !b.path) return;
+      var ts = num(b.timestamp) || 1;
+      var kind = b.app === 'tube' ? 'video' : b.app === 'exchange' ? 'question' : b.app === 'reddot' ? 'post'
+        : b.pos ? 'place' : (kindOfZim && kindOfZim(b.zim) === 'books' ? 'book' : 'article');
+      var it = { kind: kind, zim: b.zim, path: b.path, title: typeof b.title === 'string' ? b.title : '', added: ts, ts: ts };
+      if (b.origTitle) it.origTitle = b.origTitle;
+      var app = APPS.indexOf(b.app) >= 0 ? b.app : KIND_APP[kind];
+      if (app) it.app = app;
+      if (b.pos) it.where = { pos: String(b.pos) };
+      var id = key(it);
+      if (out.items[id] && out.items[id].ts >= ts) return;
+      out.items[id] = it;
+      var fid = b.folder == null ? '' : String(b.folder);
+      if (listOf[fid]) (inFolder[fid] = inFolder[fid] || []).push({ id: id, b: b });
+    });
+    Object.keys(inFolder).forEach(function (fid) {
+      // The v2 tree's own order: by order, then the newest first.
+      inFolder[fid].sort(function (x, y) {
+        var xo = x.b.order == null ? Infinity : x.b.order, yo = y.b.order == null ? Infinity : y.b.order;
+        return xo !== yo ? xo - yo : (num(y.b.timestamp) || 0) - (num(x.b.timestamp) || 0);
+      }).forEach(function (e, i) {
+        out.members[listOf[fid] + '\t' + e.id] = { order: i, ts: out.items[e.id].ts };
+      });
+    });
+    var places = old.places && typeof old.places === 'object' ? old.places : {};
+    Object.keys(places).forEach(function (pk) {
+      var p = places[pk] || {}, i = pk.indexOf('\n');
+      if (i < 1 || num(p.ts) === null) return;
+      var rec = { kind: 'book', app: 'books', zim: pk.slice(0, i), path: pk.slice(i + 1), title: p.title || '', ts: p.ts,
+        where: { f: num(p.f) || 0, c: num(p.c) || 0 }, meta: { id: num(p.id) || 0, author: p.author || '', cover: p.cover || '' } };
+      out.positions[key(rec)] = rec;
+    });
+    return clean(out);
+  }
+  function readLegacy() {
+    var get = function (k, fallback) {
+      try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? fallback : v; } catch (e) { return fallback; }
+    };
+    return { bookmarks: get(SK.BOOKMARKS, []), folders: get(SK.BM_FOLDERS, []), places: get(SK.BOOK_PLACES, {}) };
+  }
+  function zimKind(zim) {
+    try { var z = typeof _zimInfo === 'function' ? _zimInfo(zim) : null; return z ? z.kind : ''; } catch (e) { return ''; }
+  }
+
+  // ── the store ──
+  function load() {
+    if (_s) return _s;
+    var raw = null, parsed = null;
+    try { raw = localStorage.getItem(storeKey()); } catch (e) {}
+    if (raw) { try { parsed = JSON.parse(raw); } catch (e) {} }
+    if (parsed && typeof parsed === 'object' && parsed.items) {
+      _s = parsed;
+      ['items', 'lists', 'members', 'positions', 'gone'].forEach(function (c) { if (!_s[c] || typeof _s[c] !== 'object') _s[c] = {}; });
+      return _s;
+    }
+    // This store's first use: what the browser kept before comes in (the
+    // old keys stay where they are, readable by an older Zimi).
+    _s = mergeStores(empty(), fromLegacy(readLegacy(), zimKind), now());
+    write();
+    return _s;
+  }
+  function write() {
+    try { localStorage.setItem(storeKey(), JSON.stringify(_s)); } catch (e) {}
+  }
+  function commit(fromSync) {
+    _idx = null;
+    write();
+    if (typeof _savedChanged === 'function') _savedChanged(!!fromSync);
+  }
+  // Which lists hold what, in order; rebuilt after a change.
+  function idx() {
+    if (_idx) return _idx;
+    var s = load(), byList = {}, listsOf = {};
+    Object.keys(s.members).forEach(function (mk) {
+      var i = mk.indexOf('\t'), lid = mk.slice(0, i), id = mk.slice(i + 1);
+      (byList[lid] = byList[lid] || []).push(id);
+      (listsOf[id] = listsOf[id] || []).push(lid);
+    });
+    Object.keys(byList).forEach(function (lid) {
+      byList[lid].sort(function (a, b) { return (s.members[lid + '\t' + a].order - s.members[lid + '\t' + b].order) || cmp(a, b); });
+    });
+    var rank = {};
+    listIds(s).forEach(function (lid, i) { rank[lid] = i + 1; });
+    rank[LIKED] = 0;
+    Object.keys(listsOf).forEach(function (id) { listsOf[id].sort(function (a, b) { return rank[a] - rank[b]; }); });
+    _idx = { byList: byList, listsOf: listsOf };
+    return _idx;
+  }
+  function listIds(s) {
+    return Object.keys(s.lists).sort(function (a, b) {
+      var x = s.lists[a], y = s.lists[b];
+      return (x.order - y.order) || cmp(x.name.toLowerCase(), y.name.toLowerCase()) || cmp(a, b);
+    });
+  }
+  function copy(o) { return o ? JSON.parse(JSON.stringify(o)) : o; }
+  function pub(id, r) {
+    var o = { key: id, kind: r.kind, zim: r.zim, path: r.path, title: r.title, app: r.app || '', added: r.added, ts: r.ts,
+      lists: (idx().listsOf[id] || []).slice() };
+    if (r.origTitle) o.origTitle = r.origTitle;
+    if (r.where) o.where = copy(r.where);
+    if (r.meta) o.meta = copy(r.meta);
+    return o;
+  }
+  function matches(q, r) { return (!q.app || r.app === q.app) && (!q.kind || r.kind === q.kind); }
+  function newestAdded(s) { return function (a, b) { return (s.items[b].added - s.items[a].added) || cmp(a, b); }; }
+
+  // An order value for a new entry at index `at` of `seq` (records with an
+  // order, in order); when two neighbours have grown too close, `renumber`
+  // writes the sequence out again first.
+  function slot(seq, at, renumber) {
+    if (!seq.length) return 0;
+    if (at <= 0) return seq[0].order - 1;
+    if (at >= seq.length) return seq[seq.length - 1].order + 1;
+    var lo = seq[at - 1].order, hi = seq[at].order;
+    if (hi - lo < ORDER_GAP_MIN) { renumber(); return at - 0.5; }
+    return (lo + hi) / 2;
+  }
+  function addMember(s, id, lid, before, t) {
+    if (!has(s.items, id) || (lid !== LIKED && !has(s.lists, lid))) return false;
+    var mk = lid + '\t' + id;
+    if (has(s.members, mk) && before == null) return false;
+    var seq = (idx().byList[lid] || []).filter(function (x) { return x !== id; });
+    var at = seq.length;
+    if (before != null) { var p = seq.indexOf(key(before)); if (p >= 0) at = p; }
+    var recs = seq.map(function (x) { return s.members[lid + '\t' + x]; });
+    s.members[mk] = { order: slot(recs, at, function () { recs.forEach(function (r, i) { r.order = i; r.ts = t; }); }), ts: t };
+    delete s.gone['m:' + mk];
+    _idx = null;
+    return true;
+  }
+  function dropMember(s, mk, t) {
+    delete s.members[mk];
+    s.gone['m:' + mk] = t;
+  }
+
+  function save(item) {
+    var id = key(item);
+    if (!id || typeof item !== 'object') return '';
+    var s = load(), t = now(), cur = has(s.items, id) ? s.items[id] : null;
+    var kind = KINDS.indexOf(item.kind) >= 0 ? item.kind : (cur ? cur.kind : 'article');
+    var rec = { kind: kind, zim: String(item.zim), path: String(item.path), title: '', added: cur ? cur.added : t, ts: t };
+    // A title given here is the page's; a name the person chose stays.
+    if (cur && cur.origTitle) { rec.title = cur.title; rec.origTitle = cur.origTitle; }
+    else rec.title = String(item.title || (cur && cur.title) || '').slice(0, TITLE_MAX);
+    var app = APPS.indexOf(item.app) >= 0 ? item.app : (cur && cur.app) || KIND_APP[kind];
+    if (app) rec.app = app;
+    var where = small(item.where !== undefined ? item.where : cur && cur.where);
+    var meta = small(item.meta !== undefined ? item.meta : cur && cur.meta);
+    if (where) rec.where = where;
+    if (meta) rec.meta = meta;
+    s.items[id] = rec;
+    delete s.gone['i:' + id];
+    _idx = null;
+    (item.lists || []).forEach(function (lid) { addMember(s, id, lid, null, t); });
+    commit();
+    return id;
+  }
+  function remove(ref) {
+    var s = load(), id = key(ref), t = now();
+    if (!has(s.items, id)) return;
+    delete s.items[id];
+    s.gone['i:' + id] = t;
+    (idx().listsOf[id] || []).forEach(function (lid) { dropMember(s, lid + '\t' + id, t); });
+    commit();
+  }
+  // The custom name is the title (every view reads that); the page's own
+  // parks in origTitle so an empty rename, or the original typed back, reverts.
+  function rename(ref, name) {
+    var s = load(), id = key(ref);
+    if (!has(s.items, id)) return;
+    var r = s.items[id];
+    var orig = r.origTitle ? r.origTitle : r.title;
+    name = String(name || '').trim().slice(0, TITLE_MAX);
+    if (name && name !== orig) { r.origTitle = orig; r.title = name; }
+    else { delete r.origTitle; r.title = orig; }
+    r.ts = now();
+    commit();
+  }
+  function get(ref) {
+    var s = load(), id = key(ref);
+    return has(s.items, id) ? pub(id, s.items[id]) : null;
+  }
+  function itemsFor(q) {
+    q = q || {};
+    var s = load(), ix = idx(), ids;
+    if (q.list === '') ids = Object.keys(s.items).filter(function (id) { return !(ix.listsOf[id] || []).length; }).sort(newestAdded(s));
+    else if (q.list != null) ids = (ix.byList[q.list] || []).slice();
+    else ids = Object.keys(s.items).sort(newestAdded(s));
+    return ids.filter(function (id) { return has(s.items, id) && matches(q, s.items[id]); })
+      .map(function (id) { return pub(id, s.items[id]); });
+  }
+  function lists(q) {
+    q = q || {};
+    var s = load(), ix = idx();
+    var count = function (lid) {
+      return (ix.byList[lid] || []).filter(function (id) { return has(s.items, id) && matches(q, s.items[id]); }).length;
+    };
+    return [{ id: LIKED, name: '', builtin: true, count: count(LIKED) }].concat(listIds(s).map(function (lid) {
+      return { id: lid, name: s.lists[lid].name, builtin: false, count: count(lid) };
+    }));
+  }
+  function createList(name) {
+    name = String(name || '').trim().slice(0, NAME_MAX);
+    if (!name) return '';
+    var s = load(), t = now(), ids = listIds(s);
+    var id = 'l_' + t.toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+    s.lists[id] = { name: name, order: ids.length ? s.lists[ids[ids.length - 1]].order + 1 : 0, ts: t };
+    commit();
+    return id;
+  }
+  function renameList(id, name) {
+    var s = load();
+    name = String(name || '').trim().slice(0, NAME_MAX);
+    if (!has(s.lists, id) || !name) return;
+    s.lists[id].name = name;
+    s.lists[id].ts = now();
+    commit();
+  }
+  function deleteList(id) {
+    var s = load(), t = now();
+    if (!has(s.lists, id)) return;
+    (idx().byList[id] || []).forEach(function (x) { dropMember(s, id + '\t' + x, t); });
+    delete s.lists[id];
+    s.gone['l:' + id] = t;
+    commit();
+  }
+  function moveList(id, beforeId) {
+    var s = load(), t = now();
+    if (!has(s.lists, id)) return;
+    var seq = listIds(s).filter(function (x) { return x !== id; });
+    var at = beforeId != null && seq.indexOf(beforeId) >= 0 ? seq.indexOf(beforeId) : seq.length;
+    var recs = seq.map(function (x) { return s.lists[x]; });
+    s.lists[id].order = slot(recs, at, function () { recs.forEach(function (r, i) { r.order = i; r.ts = t; }); });
+    s.lists[id].ts = t;
+    commit();
+  }
+  function inList(ref, lid) { return has(load().members, lid + '\t' + key(ref)); }
+  function addToList(ref, lid, before) {
+    var s = load(), id = key(ref);
+    if (!has(s.items, id) && ref && typeof ref === 'object') save(ref);
+    if (addMember(s, id, lid, before == null ? null : before, now())) commit();
+  }
+  function removeFromList(ref, lid) {
+    var s = load(), mk = lid + '\t' + key(ref);
+    if (!has(s.members, mk)) return;
+    dropMember(s, mk, now());
+    commit();
+  }
+  function pubPos(id, r) {
+    var o = { key: id, kind: r.kind, zim: r.zim, path: r.path, app: r.app || '', title: r.title || '', ts: r.ts };
+    o.where = copy(r.where) || {};
+    o.meta = copy(r.meta) || {};
+    return o;
+  }
+  function position(ref) {
+    var s = load(), id = key(ref);
+    return has(s.positions, id) ? pubPos(id, s.positions[id]) : null;
+  }
+  function setPosition(ref, where) {
+    var id = key(ref);
+    if (!id || !ref || typeof ref !== 'object') return;
+    var s = load(), t = now(), cur = has(s.positions, id) ? s.positions[id] : null;
+    var kind = KINDS.indexOf(ref.kind) >= 0 ? ref.kind : (cur ? cur.kind : 'article');
+    var rec = { kind: kind, zim: String(ref.zim), path: String(ref.path), title: String(ref.title || (cur && cur.title) || '').slice(0, TITLE_MAX), ts: t };
+    var app = APPS.indexOf(ref.app) >= 0 ? ref.app : (cur && cur.app) || KIND_APP[kind];
+    if (app) rec.app = app;
+    var meta = {};
+    [cur && cur.meta, ref.meta].forEach(function (m) {
+      if (m) Object.keys(m).forEach(function (f) { if (m[f] !== '' && m[f] != null) meta[f] = m[f]; });
+    });
+    var w = small(where != null ? where : cur && cur.where), m2 = small(meta);
+    if (w) rec.where = w;
+    if (m2) rec.meta = m2;
+    s.positions[id] = rec;
+    delete s.gone['p:' + id];
+    cap(s.positions, MAX.positions, recTs);
+    commit();
+  }
+  function clearPosition(ref) {
+    var s = load(), id = key(ref);
+    if (!has(s.positions, id)) return;
+    delete s.positions[id];
+    s.gone['p:' + id] = now();
+    commit();
+  }
+  function continued(q) {
+    q = q || {};
+    var s = load();
+    return Object.keys(s.positions).filter(function (id) { return matches(q, s.positions[id]); })
+      .sort(newestFirst(s.positions, recTs)).map(function (id) { return pubPos(id, s.positions[id]); });
+  }
+
+  // ── sync: the account's copy, a file, another device ──
+  // Merge a store in (overwrite: take it whole). Returns what came in:
+  // {added, dupes, changed}. fromSync: the change is the account's, not
+  // something to send back to it.
+  function merge(incoming, opts) {
+    opts = opts || {};
+    var s = load(), inc = clean(incoming), t = now();
+    var res = { added: 0, dupes: 0, changed: false };
+    Object.keys(inc.items).forEach(function (id) { if (has(s.items, id)) res.dupes++; });
+    var next = opts.overwrite ? normalize(inc, t) : mergeStores(s, inc, t);
+    if (opts.legacy) next.legacy = true;
+    Object.keys(next.items).forEach(function (id) { if (!has(s.items, id)) res.added++; });
+    res.changed = JSON.stringify(next) !== JSON.stringify(s);
+    if (res.changed) { _s = next; commit(opts.fromSync); }
+    return res;
+  }
+  // Bookmarks and folders in the pre-1.12 shape (a My data file, an
+  // account's copy written by an older Zimi) come in the same way.
+  function mergeLegacy(old, opts) {
+    return merge(fromLegacy(old || {}, zimKind), opts);
+  }
+  // Whose store: '' signed out, the account's name signed in. Each account
+  // keeps its own in the browser, so signing out never leaves one person's
+  // saved things on a shared screen for the next.
+  function use(name) {
+    var ns = name ? String(name).toLowerCase() : '';
+    if (ns === _ns) return false;
+    _ns = ns; _s = null; _idx = null;
+    return true;
+  }
+
+  return {
+    LIKED: LIKED, KINDS: KINDS.slice(),
+    key: key, save: save, remove: remove, get: get, has: function (ref) { return has(load().items, key(ref)); },
+    all: function () { return itemsFor({}); }, rename: rename, itemsFor: itemsFor,
+    lists: lists, createList: createList, renameList: renameList, deleteList: deleteList, moveList: moveList,
+    inList: inList, addToList: addToList, removeFromList: removeFromList,
+    position: position, setPosition: setPosition, clearPosition: clearPosition, continued: continued,
+    data: function () { return copy(load()); }, merge: merge, mergeLegacy: mergeLegacy, use: use,
+    account: function () { return _ns; },
+    // For the tests: the pure parts.
+    _merge: mergeStores, _clean: clean, _fromLegacy: fromLegacy, _normalize: normalize,
+  };
+})();
 
 // ── Bookmarks (localStorage) ──
 var _bookmarks = null;
