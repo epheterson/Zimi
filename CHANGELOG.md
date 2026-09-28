@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Saving: bookmarks, lists and Liked in one place, an item in as many lists as you like, each list exportable as a ZIM.
 - Signed in, what you save and where you are in each book follow your account to every device, and a delete on one stays deleted on the others.
 - Bookshelf has My shelf, and Continue reading picks up on any device where you left off.
+- Zimipedia's reader: an article opened from Zimipedia (or any wiki's article in Reader View) reads as an encyclopedia, with its lead image, contents that follow you, the infobox beside the text (folded on a phone), citations shown in place, and Bookshelf's reading settings.
 - The Almanac zooms from the solar system to a 3D Earth: lit by the real Sun, with the Moon, eclipses as they fall, the ISS and the GPS satellites (tap one: its clock gains 38 microseconds a day).
 
 ### Changed

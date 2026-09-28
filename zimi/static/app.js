@@ -116,6 +116,9 @@ var SK = {
   // How books are read in this browser: {mode: 'scroll'|'pages', size (px),
   // lh and margin (indexes into _READING_LEADINGS / _READING_MARGINS)}.
   BOOK_PREFS: 'zimi_book_prefs',
+  // How Zimipedia's reader reads articles in this browser: {size (px), lh and
+  // margin (indexes into _READING_LEADINGS / _READING_MARGINS)}.
+  WIKI_PREFS: 'zimi_wiki_prefs',
   // Whole-app theme: 'auto' (follow prefers-color-scheme, dark fallback) |
   // 'dark' | 'light'. Default auto. Read/written via _appTheme/_setAppTheme;
   // the head bootstrap in index.html stamps the resolved value pre-paint.
@@ -15392,7 +15395,7 @@ function _applyReaderFont(doc) {
     var body = doc.body || doc.documentElement;
     // A book sets its own type size (the book's reading settings); a zoom
     // would scale its pages and its header too.
-    if (_isBookDoc(doc)) { body.style.removeProperty('zoom'); return; }
+    if (_isBookDoc(doc) || doc.__zimiWikiLaid) { body.style.removeProperty('zoom'); return; }
     if (level === READER_FONT_DEFAULT) {
       // Default (100%): REMOVE the override rather than pin zoom:1. Also strip any
       // leftover root font-size an older (pre-zoom) session may have pinned, so a
@@ -15595,10 +15598,11 @@ var _READER_LIGHTBOX_OVERLAY_CSS = [
 ].join('');
 // Chrome that Reader View drops. Wikipedia/MediaWiki-heavy; harmless no-ops on
 // other ZIM DOMs (stackexchange/devdocs) whose main element is already clean.
+// The infobox goes too, except in Zimipedia's reader (_readerViewClean).
 var _READER_VIEW_STRIP = [
   'script', 'style', 'link', 'noscript',
   '.mw-editsection', '.navbox', '.vertical-navbox', '.navbox-inner',
-  '.noprint', '.mw-jump-link', '.infobox', '.metadata', '.ambox', '.mbox-small',
+  '.noprint', '.mw-jump-link', '.metadata', '.ambox', '.mbox-small',
   '.sistersitebox', '.sidebar', '.side-box', '.hatnote', '.shortdescription',
   '.printfooter', '.catlinks', '.mw-hidden-catlinks', '#toc', '.toc',
   '.mw-empty-elt', '.mw-editsection-like'
@@ -15705,7 +15709,7 @@ function _readerViewTitle(doc) {
 // the live document is untouched until the caller swaps it in.
 function _readerViewClean(root, doc) {
   try {
-    var junk = root.querySelectorAll(_isBookDoc(doc) ? 'script,style,link,noscript' : _READER_VIEW_STRIP);
+    var junk = root.querySelectorAll(_isBookDoc(doc) ? 'script,style,link,noscript' : _READER_VIEW_STRIP + (doc.__zimiWiki ? ',.sisterproject' : ',.infobox'));
     for (var i = 0; i < junk.length; i++) {
       if (junk[i].parentNode) junk[i].parentNode.removeChild(junk[i]);
     }
@@ -16315,6 +16319,7 @@ function _readerViewApply(doc) {
 
 function _readerViewRestore(doc) {
   if (!doc || !doc[_READER_VIEW_STASH]) return;
+  if (doc.__zimiWikiLaid && typeof _wikiUndo === 'function') _wikiUndo(doc);
   var shell = doc.querySelector('.zimi-reader');
   if (shell && shell.parentNode) shell.parentNode.removeChild(shell);
   var stash = doc[_READER_VIEW_STASH];
@@ -16344,6 +16349,7 @@ function _readerViewToggle() {
       return;
     }
     _readerViewOn = true;
+    if (doc.__zimiWiki) _wikiReaderAttach(document.getElementById('reader-frame'));
   }
   _tintReaderChrome(); // paint (on) or clear (off) the iframe/loading tint
   // Reader View owns its own themes: strip the raw-article dark filter when it
@@ -16471,7 +16477,7 @@ function _toggleReaderAuto() {
 function _tintReaderChrome() {
   var frame = document.getElementById('reader-frame');
   var loading = document.getElementById('reader-loading');
-  var bg = (_readerViewOn || _readerAuto() || _bookReading) ? _readerThemeBg() : '';
+  var bg = (_readerViewOn || _readerAuto() || _bookReading || _wikiFromApp) ? _readerThemeBg() : '';
   if (frame) frame.style.background = bg || '#fff';
   if (loading) loading.style.background = bg || '';
 }
@@ -17063,8 +17069,56 @@ function openWiki(replaceState) {
     return;
   }
   _openHashApp('wiki', replaceState, function() { _wikiOpen = true; return _WIKI_PAGE + '#' + _wikiStrings(); });
+  _wikiReaderLoad();
 }
 function _wikiSearch(val) { _appFrameCall('wikiSearch', val); }
+
+// ── Zimipedia's reader ──
+// A wiki's article read in Zimipedia's reader: Reader View laid out as an
+// encyclopedia (/static/wiki-reader.js, _wikiLay). Its code comes in the
+// background (with Zimipedia's page, or alongside a wiki's article), never
+// on the way to an article: one shown before it lands reads in Reader View
+// and gains the rest when it does.
+var _wikiFromApp = false;    // the article on its way was opened from Zimipedia
+var _wikiReaderState = 0;    // 0 not asked, 1 on its way, 2 here
+var _wikiReaderWaiting = [];
+function _wikiReaderLoad(then) {
+  if (then) _wikiReaderWaiting.push(then);
+  if (_wikiReaderState === 2) { _wikiReaderFlush(); return; }
+  if (_wikiReaderState === 1) return;
+  _wikiReaderState = 1;
+  var s = document.createElement('script');
+  s.src = '/static/wiki-reader.js?v=1';
+  s.onload = function() { _wikiReaderState = 2; _wikiReaderFlush(); };
+  // Offline with a cold cache: the article stays in Reader View.
+  s.onerror = function() { _wikiReaderState = 0; _wikiReaderWaiting = []; };
+  document.head.appendChild(s);
+}
+function _wikiReaderFlush() {
+  var w = _wikiReaderWaiting; _wikiReaderWaiting = [];
+  w.forEach(function(f) { try { f(); } catch (e) { console.warn('Zimipedia reader:', e); } });
+}
+// A reader address that is a wiki's article, known before it loads.
+function _wikiUrl(url) {
+  var m = /^\/w\/([^\/?#]+)\//.exec(url || '');
+  if (!m || !_appShown('wiki')) return false;
+  var z = null; try { z = _zimInfo(decodeURIComponent(m[1])); } catch (e) { return false; }
+  return !!(z && z.kind === 'wiki');
+}
+// The frame holds a wiki's article (not its front page), and Zimipedia is offered.
+function _wikiArticleDoc(frame) {
+  var m = null; try { m = /^\/w\/([^\/]+)\/(.+)$/.exec(frame.contentWindow.location.pathname); } catch (e) { return false; }
+  if (!m || !_wikiUrl(m[0])) return false;
+  var z = _zimInfo(decodeURIComponent(m[1]));
+  if (decodeURIComponent(m[2]) === z.main_path) return false;
+  try { return !!frame.contentDocument.querySelector('#mw-content-text,.mw-parser-output'); } catch (e) { return false; }
+}
+function _wikiReaderAttach(frame) {
+  _wikiReaderLoad(function() {
+    var d = null; try { d = frame.contentDocument; } catch (e) {}
+    if (d && d.__zimiWiki && d[_READER_VIEW_STASH] && !d.__zimiWikiLaid) _wikiLay(frame);
+  });
+}
 
 // Zimipedia and Bookshelf open alike: a page Zimi owns at /#<app>, with no
 // item of its own (what it opens, an article or a book, opens in the reader
@@ -18245,6 +18299,7 @@ window.addEventListener('message', function(e) {
     // step behind it, so the header's arrow returns to the video, the
     // question or the post (the browser's Back does the same).
     var fromApp = _isAppPage();
+    if (_isWikiPage()) _wikiFromApp = true;
     openArticle(d.zim, d.path);
     if (fromApp) { articleHistory.push({ app: true }); updateTopbar(); }
   } else if (d.zimi === 'top') {
@@ -18978,7 +19033,10 @@ function openReader(url) {
   // it can't be trusted to fully mask the raw white ZIM paint — hiding the frame
   // outright guarantees the first painted frame is the reader, never the original.
   // (visibility:hidden preserves layout + load, so extraction still works.)
-  var _maskFrame = _readerViewOn || _readerAuto() || _bookLoading;
+  var _maskFrame = _readerViewOn || _readerAuto() || _bookLoading || _wikiFromApp;
+  // A wiki's article: the reader's code comes alongside the page (it is
+  // usually here already), never before it.
+  if (_wikiUrl(url)) _wikiReaderLoad();
   frame.style.visibility = _maskFrame ? 'hidden' : 'visible';
 
   // Punch-out button: for pdf.js viewer URLs, link to the raw PDF for download
@@ -19017,10 +19075,17 @@ function openReader(url) {
     // unbroken"). Non-eligible docs (PDF viewer, thin pages) fall through silently.
     var _bookDoc = false; try { _bookDoc = _isBookDoc(frame.contentDocument); } catch (e) {}
     var _wantReader = _readerViewOn || _readerAuto() || _bookDoc;
+    // A wiki's article opened from Zimipedia reads in Zimipedia's reader
+    // (Reader View laid out as an encyclopedia); one opened anywhere else does
+    // when Reader View is on, so it stays as you follow links.
+    var _wikiDoc = !_bookDoc && _wikiArticleDoc(frame);
+    if (_wikiDoc && _wikiFromApp) _wantReader = true;
+    _wikiFromApp = false;
     _readerViewOn = false; // the new document has no shell yet
     if (_wantReader) {
       var _rdoc = null; try { _rdoc = frame.contentDocument; } catch(e) { _rdoc = null; }
       if (_rdoc && _readerViewAvailable()) {
+        if (_wikiDoc) _rdoc.__zimiWiki = true;
         var _rok = false; try { _rok = _readerViewApply(_rdoc); } catch(e) { _rok = false; }
         if (_rok) _readerViewOn = true;
       }
@@ -19032,6 +19097,8 @@ function openReader(url) {
       try { _bookOn = _bookAttach(frame); } catch (e) { console.warn('Book reader:', e); _showToast(t('books_view_unavailable')); }
     }
     _bookChrome(_bookOn);
+    var _wikiOn = _wikiDoc && _readerViewOn;
+    if (_wikiOn) _wikiReaderAttach(frame);
     _tintReaderChrome(); // reset frame bg to #fff if reader ended up off
     _syncReaderViewBtn();
     // Auto-darken a raw (non-Reader-View) ZIM page when the app is dark, so the
@@ -19094,8 +19161,8 @@ function openReader(url) {
     // Inject responsive CSS + scroll-to-top button for mobile. Not into
     // Zimi's own pages (the apps, the PDF viewer): they lay themselves out,
     // and the button sat on a video's dock and over a thread's last lines.
-    // Nor into a book: the book reader has its own footer and way through.
-    if (!_frameIsOurOwnPage(frame) && !_bookDoc) try {
+    // Nor into a book, nor Zimipedia's reader: each has its own bar and way through.
+    if (!_frameIsOurOwnPage(frame) && !_bookDoc && !_wikiOn) try {
       // Web-mirror pages (alive engine, zimit) ship a browser's-eye recording of
       // a real site: their own viewport meta, their own responsive CSS, their own
       // replay shim (wombat). The mwoffliner first-aid below actively BREAKS them

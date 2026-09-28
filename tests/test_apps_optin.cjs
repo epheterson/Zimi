@@ -30,6 +30,7 @@ const ctx = {
   mode: 'reader',
   enterHome: () => { calls.push(['home']); ctx.mode = 'home'; },
   _openHashApp: (app) => calls.push(['open', app]),
+  _wikiReaderLoad: () => {},
   _userSession: null,
 };
 vm.createContext(ctx);

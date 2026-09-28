@@ -848,6 +848,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("exchange.html")
             + _static_hash("reddot.html")
             + _static_hash("wiki.html")
+            + _static_hash("wiki-reader.js")
             + _static_hash("books.html")
             + _static_hash("apps.css")
             + _static_hash("apps.js")
