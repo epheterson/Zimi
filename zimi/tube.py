@@ -11,8 +11,10 @@ model is involved. Three shapes are known:
   language, ``assets/data_<lang>.js``, the languages named in the home
   page's picker. A talk page is ``<slug>``; its thumbnail is
   ``videos/<id>/thumbnail.webp``.
-- youtube2zim (Kiwix's YouTube channels, Khan Academy): ``videos.json``
-  when present; older builds keep ``assets/data.js`` in ted2zim's style.
+- youtube2zim (Kiwix's YouTube channels): ``videos.json`` when present;
+  older builds keep ``assets/data.js`` in ted2zim's style. (Khan Academy's
+  catalog builds are Kolibri's, with no Scraper and a topic tree of hashed
+  pages, not youtube2zim; ZimiTube does not read them yet.)
   youtube2zim 3.x (CrashCourse, Blender Studio) is a one-page app with no
   page per video: ``playlists.json`` names the playlists,
   ``playlists/<slug>.json`` lists each one's videos, ``videos/<slug>.json``
