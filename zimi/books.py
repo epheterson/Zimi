@@ -281,10 +281,25 @@ def _source_zim(z):
     return reader_of(z) in booksources.READERS
 
 
+def _zim_key(name):
+    """What a ZIM's rows and records are kept under: the file the library
+    has registered for ``name`` (a new build is another file, read afresh),
+    or the name when there is none."""
+    return _srv.get_zim_files().get(name) or name
+
+
+def _let_go(name, keep=None):
+    """Free the listed books of every build of ``name`` but ``keep``'s.
+    Caller holds _lock."""
+    for key in [k for k, (n, _rows) in _base.items() if n == name and k != keep]:
+        del _base[key]
+
+
 def _books_for(name):
     """The listed books of the installed ZIM ``name``, cached per file."""
     from zimi.search import _get_fts_archive
 
+    key = _zim_key(name)
     try:
         archive, lock = _get_fts_archive(name)
     except Exception as e:
@@ -293,11 +308,8 @@ def _books_for(name):
     if archive is None or lock is None:
         # Nothing to read, so nothing to wait for: the shelf is ready without
         # it. Not kept in _base, so the next look tries the file again.
-        _builder.keep(name, name, {})
+        _builder.keep(name, key, {})
         return None, []
-    # Keyed by the file the library has registered under the name, so a new
-    # build of the ZIM is read afresh.
-    key = _srv.get_zim_files().get(name) or getattr(archive, "filename", None) or name
     with _lock:
         if key in _base:
             return key, _base[key][1]
@@ -309,6 +321,8 @@ def _books_for(name):
         log.warning("Bookshelf: the listings of %s could not be read: %s", name, e)
         rows = []
     with _lock:
+        # Last month's build, read before this one, is let go.
+        _let_go(name, keep=key)
         _base[key] = (name, rows)
     if not rows:
         # No books, so no records to read: the shelf stops waiting for them.
@@ -358,7 +372,7 @@ def _source_parts(z):
     background read listed, or None while it is still to be read (asked for
     here, in the background, never waited for)."""
     reader = reader_of(z)
-    key = _srv.get_zim_files().get(z["name"]) or z["name"]
+    key = _zim_key(z["name"])
     if reader == "whole":
         return reader, key, [_whole_book(z)] if z.get("main_path") else []
     got = _sources.kept(z["name"], key)
@@ -672,22 +686,16 @@ def home():
 
 
 def _details_ready(z):
-    """Whether what the background reads of ``z`` has been read."""
+    """Whether what the background reads of ``z`` has been read, from the
+    build of it the library has now."""
     reader = reader_of(z)
     if reader == "gutenberg":
-        return _builder.kept(z["name"], _base_key(z["name"])) is not None
-    if reader in booksources.READERS:
-        key = _srv.get_zim_files().get(z["name"]) or z["name"]
-        return _sources.kept(z["name"], key) is not None
-    return True
-
-
-def _base_key(name):
-    with _lock:
-        for key, (n, _rows) in _base.items():
-            if n == name:
-                return key
-    return name
+        builder = _builder
+    elif reader in booksources.READERS:
+        builder = _sources
+    else:
+        return True
+    return builder.kept(z["name"], _zim_key(z["name"])) is not None
 
 
 def book(zim, book_id):
@@ -796,7 +804,9 @@ def _gone(name):
     """A ZIM taken out of the library before its records were read: nothing
     left to wait for."""
     log.warning("Bookshelf: %s is no longer in the library", name)
-    _builder.keep(name, _base_key(name), {})
+    with _lock:
+        _let_go(name)
+    _builder.keep(name, _zim_key(name), {})
 
 
 _builder = DetailsBuilder(

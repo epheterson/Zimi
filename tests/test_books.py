@@ -445,6 +445,34 @@ def test_a_zim_gone_before_its_records_are_read_does_not_hold_them_back(
     assert books.home()["details"] is True
 
 
+def test_an_updated_zim_is_read_again_and_its_old_rows_let_go(tmp_path, monkeypatch):
+    """The auto-updater puts this month's build beside last month's under
+    one name and removes the old file. The shelf was keyed by whichever
+    build it read first, never let go: it waited for records of a file no
+    longer there and "reading the catalog" never ended."""
+    from conftest_zim import build_fixture_zim
+
+    _library(tmp_path, monkeypatch, LIBRARY[:1])
+    assert books.home()["details"] is True
+    zdir = tmp_path / "zims"
+    old = str(zdir / "gutenberg_la_all_2026-01.zim")
+    new = str(zdir / "gutenberg_la_all_2026-05.zim")
+    # This month's build lists three of the six.
+    rows = books._js_array(LATIN["full_by_popularity.js"].decode())
+    files = dict(LATIN, **{"full_by_popularity.js": _js("json_data", rows[:3])})
+    build_fixture_zim(new, dict(LIBRARY[0][1], Date="2026-05-02"), files=files)
+    os.remove(old)
+    srv.release_zim_handles(list(srv.get_zim_files()))
+    srv.load_cache(force=True)
+    assert srv.get_zim_files()["gutenberg_la"] == new
+
+    books.home()  # reads the new build's listings and asks for its records
+    books._builder.wait()
+    home = books.home()
+    assert home["details"] is True and home["total"] == 3
+    assert [k for k, (n, _rows) in books._base.items() if n == "gutenberg_la"] == [new]
+
+
 def test_a_book_is_not_shown_by_way_of_a_zim_the_account_may_not_read(
     tmp_path, monkeypatch
 ):
