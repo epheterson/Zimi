@@ -1276,3 +1276,173 @@ def test_a_hostile_chapter_runs_nothing_in_the_reader(served_bypass):
     base, zim = served_bypass
     got = _open_in_the_reader(base, zim, "bypass.epub/")
     assert got["text"] and got["pwned"] is None and got["handlers"] == 0, got
+
+
+# ── what the book says about its own files ────────────────────────────────
+
+# A manifest type whose character references ElementTree keeps as a real CR
+# LF: sent as the Content-Type, it ended the answer's headers there, the
+# policy landed in the body and the script ran on Zimi's origin.
+INJECTED_TYPE = (
+    "image/png&#13;&#10;&#13;&#10;&lt;script&gt;window.parent.__pwned=1&lt;/script&gt;"
+)
+
+
+def _epub_with_member(media_type, member="evil.png", data=None):
+    """The fixture EPUB with one more manifest item, ``OEBPS/<member>``,
+    declared as ``media_type`` (written into the package as it is)."""
+    import io
+    import zipfile
+
+    opf = fx.GUTENBERG_EPUB["OEBPS/content.opf"].replace(
+        "</manifest>",
+        f'<item href="{member}" id="extra" media-type="{media_type}"/></manifest>',
+    )
+    src = zipfile.ZipFile(
+        io.BytesIO(fx.gutenberg_epub({f"OEBPS/{member}": data or fx.PNG}))
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for info in src.infolist():
+            z.writestr(
+                info.filename,
+                opf if info.filename == "OEBPS/content.opf" else src.read(info),
+            )
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize(
+    "declared, served",
+    [
+        (INJECTED_TYPE, "image/png"),
+        ("image/png&#10;", "image/png"),
+        ("image/png&#13;&#10;X-Evil: 1", "image/png"),
+        ("image/webp", "image/webp"),
+        ("Image/PNG", "image/png"),
+    ],
+)
+def test_a_manifest_type_is_a_type_or_nothing(declared, served):
+    """A media-type is taken only as ``type/subtype``; anything else is
+    no type, and the member's extension names it."""
+    from zimi import epub
+
+    book = epub.Book(_epub_with_member(declared))
+    assert book.types["OEBPS/evil.png"] in ("", served)
+    for t in book.types.values():
+        assert "\r" not in t and "\n" not in t and "<" not in t
+
+
+@pytest.fixture
+def serve_one_zim(tmp_path, monkeypatch):
+    """``serve(entries)``: one ZIM of ``entries`` in the library, served;
+    returns ``(base URL, the ZIM's name)``."""
+    from http.server import ThreadingHTTPServer
+    import threading
+
+    from zimi import epub
+    from zimi.http import ZimHandler
+
+    servers = []
+
+    def serve(entries):
+        epub._reset_for_tests()
+        _library(
+            tmp_path,
+            monkeypatch,
+            [("shelf_en_2026-09.zim", {"Name": "shelf_en"}, entries, "index")],
+        )
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        servers.append(httpd)
+        return (
+            "http://127.0.0.1:%d" % httpd.server_address[1],
+            srv.list_zims()[0]["name"],
+        )
+
+    yield serve
+    for httpd in servers:
+        httpd.shutdown()
+    epub._reset_for_tests()
+    srv.release_zim_handles(list(srv.get_zim_files()))
+
+
+def _raw_get(base, path):
+    """``(status line and headers, body)`` as the bytes came off the socket:
+    a client library would take a header block ended early at its word."""
+    import socket
+    from urllib.parse import urlsplit
+
+    u = urlsplit(base)
+    with socket.create_connection((u.hostname, u.port), timeout=10) as s:
+        s.sendall(
+            f"GET {path} HTTP/1.1\r\nHost: {u.netloc}\r\nConnection: close\r\n\r\n".encode()
+        )
+        data = b""
+        while True:
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+    head, _sep, body = data.partition(b"\r\n\r\n")
+    return head.decode("latin-1"), body
+
+
+def _index():
+    return {"index": ("text/html", "<html><body>Books</body></html>", "Books")}
+
+
+def test_a_manifest_type_cannot_end_the_answers_headers(serve_one_zim):
+    base, zim = serve_one_zim(
+        dict(
+            _index(),
+            **{
+                "evil.epub": (
+                    "application/epub+zip",
+                    _epub_with_member(INJECTED_TYPE),
+                    "",
+                )
+            },
+        )
+    )
+    head, body = _raw_get(base, f"/w/{zim}/evil.epub/OEBPS/evil.png")
+    assert head.startswith("HTTP/1.1 200"), head
+    assert "Content-Type: image/png\r\n" in head + "\r\n", head
+    assert "script-src 'none'" in head, "the policy was pushed into the body"
+    assert body == fx.PNG
+
+
+def test_a_header_with_a_line_break_is_never_sent():
+    """The one place Zimi sends a header refuses a name or value with a
+    line break, and drops the answer begun, so the error reply starts clean."""
+    from zimi.http import ZimHandler
+
+    h = ZimHandler.__new__(ZimHandler)
+    h.request_version = "HTTP/1.1"
+    for name, value in (
+        ("Content-Type", "image/png\r\n\r\n<script>alert(1)</script>"),
+        ("Content-Type", "text/html\nX-Evil: 1"),
+        ("Location", "/a\rb"),
+        ("X-Evil\r\nSet-Cookie", "1"),
+    ):
+        h._headers_buffer = [b"HTTP/1.1 200 OK\r\n"]
+        with pytest.raises(ValueError):
+            h.send_header(name, value)
+        assert h._headers_buffer == []
+    h.send_header("Content-Type", "image/png")
+    assert h._headers_buffer == [b"Content-Type: image/png\r\n"]
+
+
+def test_a_route_that_would_send_a_broken_header_answers_500(
+    serve_one_zim, monkeypatch
+):
+    from zimi import epub
+
+    base, zim = serve_one_zim(_index())
+    monkeypatch.setattr(
+        epub,
+        "respond",
+        lambda z, p: ("image/png\r\n\r\n<script>alert(1)</script>", fx.PNG),
+    )
+    head, body = _raw_get(base, f"/w/{zim}/any.epub/x.png")
+    assert head.startswith("HTTP/1.1 500"), head
+    assert b"<script" not in body and "<script" not in head

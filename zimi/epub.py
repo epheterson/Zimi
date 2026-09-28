@@ -49,6 +49,11 @@ CACHE_BOOKS = 6
 CACHE_BYTES = 96 * 1024 * 1024
 
 _XHTML_TYPES = ("application/xhtml+xml", "text/html", "application/xml")
+# A manifest's media-type is taken in this shape only, a type and a subtype.
+# Anything else is no type, and the member's extension names it: the value
+# is sent as a Content-Type, and ElementTree keeps a character reference
+# (&#13;&#10;) as the line break it names.
+_MEDIA_TYPE_RE = re.compile(r"[\w.+-]+/[\w.+-]+", re.ASCII)
 # Elements HTML has no empty form of: <a id="x"/> in XHTML is an anchor that
 # ends at once, in HTML an anchor that swallows the rest of the chapter.
 _NOT_VOID = "a|abbr|b|big|blockquote|cite|code|dd|div|dl|dt|em|h[1-6]|i|li|ol|p|pre|q|s|small|span|strong|sub|sup|table|tbody|td|th|thead|tr|tt|u|ul|section|article|aside|header|footer|figure|figcaption|title|iframe|script|style|textarea|video|audio|canvas|object"
@@ -227,7 +232,9 @@ class Book:
             member = member_name(self._base, el.get("href") or "")
             if not member:
                 continue
-            media = (el.get("media-type") or "").lower()
+            media = (el.get("media-type") or "").strip().lower()
+            if not _MEDIA_TYPE_RE.fullmatch(media):
+                media = ""
             items[el.get("id") or ""] = (member, media)
             props = (el.get("properties") or "").split()
             if "cover-image" in props and media.startswith("image/"):

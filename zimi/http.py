@@ -1644,9 +1644,25 @@ def _prefs_reply(prefs):
     return {"apps": bool(shown), "shown": [n for n in _srv.APP_NAMES if n in shown]}
 
 
+# A line break inside a header ends it; two end the headers, and what
+# follows is the body. BaseHTTPRequestHandler writes a header as it is given.
+_HEADER_BREAK_RE = re.compile(r"[\r\n]")
+
+
 class ZimHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     timeout = 30  # seconds — prevents slow-client DoS on POST bodies
+
+    def send_header(self, keyword, value):
+        """Every header Zimi sends, refused when its name or value carries a
+        line break: an EPUB's manifest type once put ``\\r\\n\\r\\n<script>`` in
+        a Content-Type, which ended the headers early, pushed the policy
+        into the body and ran the script on Zimi's origin. The answer begun
+        is dropped with it, so the caller's error reply starts clean."""
+        if _HEADER_BREAK_RE.search(str(keyword)) or _HEADER_BREAK_RE.search(str(value)):
+            self._headers_buffer = []
+            raise ValueError(f"a line break in the {str(keyword)[:40]!r} header")
+        super().send_header(keyword, value)
 
     def handle_one_request(self):
         """Backstop for disconnects escaping ANY write path (rate-limit
