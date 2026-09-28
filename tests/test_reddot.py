@@ -195,24 +195,24 @@ def test_the_launcher_lays_zimi_metadata_over_arcticzims(tmp_path, monkeypatch):
 
     fake = tmp_path / "site"
     (fake / "arcticzim" / "zimbuild").mkdir(parents=True)
-    (fake / "arcticzim" / "__init__.py").write_text("")
-    (fake / "arcticzim" / "zimbuild" / "__init__.py").write_text("")
+    (fake / "arcticzim" / "__init__.py").write_text("", encoding="utf-8")
+    (fake / "arcticzim" / "zimbuild" / "__init__.py").write_text("", encoding="utf-8")
     (fake / "arcticzim" / "zimbuild" / "builder.py").write_text(
         "def config_process(name, nice=0, ionice=0):\n    pass\n\n"
         "class BuildOptions:\n"
         "    def get_metadata_dict(self):\n"
         "        return {'Name': 'reddit', 'Creator': 'arcticzim', 'Tags': '_category:reddit', 'Scraper': 'arcticzim'}\n"
-    )
+    , encoding="utf-8")
     (fake / "arcticzim" / "cli.py").write_text(
         "import json, sys\n"
         "from arcticzim.zimbuild.builder import BuildOptions\n"
         "def main():\n"
         "    print(json.dumps({'argv': sys.argv[1:], 'metadata': BuildOptions().get_metadata_dict()}))\n"
         "    return 0\n"
-    )
+    , encoding="utf-8")
     monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(tmp_path / "data"))
     meta = tmp_path / "meta.json"
-    meta.write_text(_json.dumps(reddot._provenance("kiwix", {"posts": 3})))
+    meta.write_text(_json.dumps(reddot._provenance("kiwix", {"posts": 3})), encoding="utf-8")
     launcher = reddot._cmd("-v", "build", "sqlite:///db", "out.zim.part", metadata=str(meta))[1]
     env = dict(os.environ, PYTHONPATH=str(fake))
     run = lambda *args: _json.loads(subprocess.run([sys.executable, launcher, *args], env=env, capture_output=True, text=True, check=True).stdout)

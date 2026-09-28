@@ -623,7 +623,11 @@ class TestZimgitCatalogParse(unittest.TestCase):
 
         archive = MagicMock()
         entry = MagicMock()
-        entry.get_item.return_value.content = bytearray(content.encode("utf-8"))
+        # A real entry, as libzim answers: not a redirect, with a size.
+        entry.is_redirect = False
+        data = bytearray(content.encode("utf-8"))
+        entry.get_item.return_value.content = data
+        entry.get_item.return_value.size = len(data)
         archive.get_entry_by_path.return_value = entry
         return archive
 

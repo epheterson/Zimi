@@ -313,7 +313,7 @@ def _documents_folder(tmp_path):
     (src / "books").mkdir(parents=True)
     (src / "books" / "aleutian.epub").write_bytes(fx.gutenberg_epub())
     (src / "the_long-walk.pdf").write_bytes(fx.PDF)
-    (src / "notes.md").write_text("# Notes\n\nWhat to read next.\n")
+    (src / "notes.md").write_text("# Notes\n\nWhat to read next.\n", encoding="utf-8")
     return src
 
 
@@ -378,7 +378,7 @@ def test_a_folder_without_documents_writes_no_listing(tmp_path):
 
     src = tmp_path / "notes"
     src.mkdir()
-    (src / "a.md").write_text("# A\n")
+    (src / "a.md").write_text("# A\n", encoding="utf-8")
     info = creator.create_folder_zim(str(src), out_dir=str(tmp_path / "out"))
     assert not Archive(info["path"]).has_entry_by_path(nautilus.ZIMI_DATABASE_PATH)
 
