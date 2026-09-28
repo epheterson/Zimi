@@ -362,3 +362,70 @@ def test_a_delete_on_one_device_survives_the_others_sync(served):
             timeout=5000,
         )
         br.close()
+
+
+def test_bookshelf_continue_reading_and_my_shelf_follow_the_account(served):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        phone = _device(br, served, 390)
+        _sign_in(phone)
+        phone.evaluate("() => openBooks()")
+        frame = phone.frame_locator("#reader-frame")
+        frame.locator(".bk").first.wait_for()
+        frame.locator(".bk[data-book='1']").first.click()
+        frame.locator(".actions .keep").click()  # Add to my shelf
+        phone.wait_for_function(
+            "() => Saved.has('gutenberg_mul\\nLiber.1')", timeout=5000
+        )
+        frame.locator(".actions .read").click()
+        phone.wait_for_function(READER, timeout=30000)
+        phone.wait_for_timeout(600)
+        for _ in range(3):
+            phone.keyboard.press("ArrowRight")
+            phone.wait_for_timeout(500)
+        phone.wait_for_timeout(1200)
+        where = phone.evaluate(
+            "() => Saved.position({ zim: 'gutenberg_mul', path: 'Liber.1' }).where"
+        )
+        assert where["c"] > 0 and where["f"] > 0
+        phone.evaluate("() => _savedFlush()")
+        phone.wait_for_timeout(800)
+        assert (
+            "gutenberg_mul\nLiber.1"
+            in users.load_user_data("alice")["saved"]["positions"]
+        )
+
+        tablet = _device(br, served, 1280)
+        _sign_in(tablet)
+        tablet.evaluate("() => openBooks()")
+        tframe = tablet.frame_locator("#reader-frame")
+        tframe.locator(".shelf").first.wait_for()
+        shelves = tablet.evaluate(
+            "() => Array.from(document.getElementById('reader-frame').contentDocument.querySelectorAll('.shelf')).map(s => s.querySelector('h2').textContent + ':' + Array.from(s.querySelectorAll('.bk .t')).map(t => t.textContent).join(','))"
+        )
+        assert (
+            "Continue reading:Liber" in shelves and "My shelf:Liber" in shelves
+        ), shelves
+        # The Saved panel, opened over Bookshelf, is on Bookshelf's own.
+        tablet.click("#bm-panel-btn")
+        tablet.wait_for_selector("#bm-tree .bm-row")
+        assert tablet.evaluate("() => _bmScope") == "books"
+        assert _rows(tablet) == [
+            "# Continue",
+            "Liber",
+            "# Not in a list",
+            "Liber",
+        ], _rows(tablet)
+        tablet.evaluate("() => _closeLibraryPanel()")
+        # And the book opens where the phone left it.
+        tframe.locator(".bk[data-book='1']").first.click()
+        tframe.locator(".actions .read").click()
+        tablet.wait_for_function(READER, timeout=30000)
+        tablet.wait_for_timeout(1500)
+        back = tablet.evaluate(
+            "() => Saved.position({ zim: 'gutenberg_mul', path: 'Liber.1' }).where"
+        )
+        assert abs(back["f"] - where["f"]) < 0.05, (back, where)
+        br.close()

@@ -109,11 +109,9 @@ var SK = {
   // Video resume ledger: {"<zim>\n<path>#<i>": {t, d, ts}} — playback position
   // per video, restored on reopen and dropped once watched to completion.
   VIDEO_RESUME: 'zimi_video_resume',
-  // Where you are in each book: {"<zim>\n<path>": {f, c, ts, id, title,
-  // author, cover}}, f the fraction of the book read and c the character it
-  // is at. The reader keeps them; Bookshelf shows the books under Continue
-  // reading, through apps.js's BOOK_PLACES_KEY (the same key: the shell does
-  // not load apps.js, and tests/test_books_page.cjs holds the two together).
+  // Before 1.12, where you were in each book: {"<zim>\n<path>": {f, c, ts,
+  // id, title, author, cover}}. Read once into SAVED's positions, like the
+  // bookmarks, and left in place for one release.
   BOOK_PLACES: 'zimi_book_places',
   // How books are read in this browser: {mode: 'scroll'|'pages', size (px),
   // lh and margin (indexes into _BOOK_LEADINGS / _BOOK_MARGINS)}.
@@ -16839,7 +16837,7 @@ function _booksStrings() {
   var lcc = {};
   _BOOKS_LCC.forEach(function(c) { lcc[c] = t('books_lcc_' + c); });
   return _appStrings('books', ['books_shelf', 'books_authors', 'books_subjects', 'books_eras', 'books_languages', 'books_popular', 'books_recent',
-    'books_continue', 'books_all_books', 'books_see_all', 'books_sort_popular', 'books_sort_title', 'books_sort_author', 'books_sort_recent',
+    'books_continue', 'books_my_shelf', 'books_add_shelf', 'books_on_shelf', 'books_all_books', 'books_see_all', 'books_sort_popular', 'books_sort_title', 'books_sort_author', 'books_sort_recent',
     'books_sort_name', 'books_sort_books', 'books_read', 'books_resume', 'books_epub', 'books_more_by', 'books_added', 'books_language',
     'books_subject', 'books_era', 'books_author', 'books_more', 'books_none', 'books_empty', 'books_book', 'books_books', 'books_bce', 'books_bce_ce',
     'books_pending', 'books_epub_only', 'books_load_failed', 'books_load_part'], { lcc: lcc, retry: t('retry') });
@@ -16867,7 +16865,6 @@ function _booksSearch(val) { _appFrameCall('booksSearch', val); }
 // on it. A place in the book is
 // a character offset into its text, which holds across scrolling and pages,
 // a turn of the phone, a change of type, and reopening.
-var _BOOK_PLACES_MAX = 200;       // books remembered (oldest dropped first)
 var _BOOK_PLACE_THROTTLE = 800;   // ms between writes while reading
 var _BOOK_PLACE_SCALE = 1e5;      // the share read is kept to five decimal places
 var _BOOK_CHAPTERS_MIN = 2;       // fewer headings than this is not a book of chapters
@@ -16985,24 +16982,18 @@ var _BOOK_CSS = [
 var _BOOK_SVG_BACK = '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
 var _BOOK_SVG_TOC = '<svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".6" fill="currentColor"/><circle cx="4.5" cy="12" r=".6" fill="currentColor"/><circle cx="4.5" cy="18" r=".6" fill="currentColor"/></svg>';
 
-function _bookPlaceKey(zim, path) { return zim + '\n' + path; }
-function _bookPlaces() { return _getStorageJSON(SK.BOOK_PLACES, {}) || {}; }
-// Keep a book's place: f the share of it read (Bookshelf shows it), c the
-// character it is at. With what Bookshelf needs to show it (its number,
-// title and author from the page's own record) when it was opened elsewhere.
+// Keep a book's place, as a position in Saved (Bookshelf's Continue reading,
+// and the account's when signed in): f the share of it read, c the character
+// it is at. With what Bookshelf needs to show it (its number, title and
+// author from the page's own record) when it was opened elsewhere.
 function _bookSavePlace(doc, zim, path, f, c) {
-  var all = _bookPlaces(), key = _bookPlaceKey(zim, path), cur = all[key] || {};
+  var cur = Saved.position({ zim: zim, path: path }) || { meta: {} };
   var m = path.match(/\.(\d+)$/);
   var meta = function(n) { var el = doc.querySelector('meta[name="' + n + '"]'); return el ? el.getAttribute('content') || '' : ''; };
-  all[key] = { f: Math.round(f * _BOOK_PLACE_SCALE) / _BOOK_PLACE_SCALE, c: c, ts: Date.now(), id: cur.id || (m ? Number(m[1]) : 0),
-    title: cur.title || meta('dc.title'), author: cur.author || _bookAuthorName(meta('dc.creator')),
-    cover: cur.cover || (m ? 'covers/' + m[1] + '_cover_image.jpg' : '') };
-  var keys = Object.keys(all);
-  if (keys.length > _BOOK_PLACES_MAX) {
-    keys.sort(function(a, b) { return (all[a].ts || 0) - (all[b].ts || 0); });
-    keys.slice(0, keys.length - _BOOK_PLACES_MAX).forEach(function(k) { delete all[k]; });
-  }
-  _setStorageJSON(SK.BOOK_PLACES, all);
+  Saved.setPosition({ kind: 'book', app: 'books', zim: zim, path: path, title: cur.title || meta('dc.title'),
+    meta: { id: cur.meta.id || (m ? Number(m[1]) : 0), author: cur.meta.author || _bookAuthorName(meta('dc.creator')),
+      cover: cur.meta.cover || (m ? 'covers/' + m[1] + '_cover_image.jpg' : '') } },
+    { f: Math.round(f * _BOOK_PLACE_SCALE) / _BOOK_PLACE_SCALE, c: c });
 }
 // "Ewald, Carl, 1856-1908" as a cover prints it: "Carl Ewald".
 function _bookAuthorName(creator) {
@@ -17737,7 +17728,7 @@ function _bookLay(frame) {
   paged = prefs.mode === 'pages';
   applyVars();
   html.classList.toggle('zb-paged', paged);
-  var place = _bookPlaces()[_bookPlaceKey(zim, path)];
+  var place = (Saved.position({ zim: zim, path: path }) || {}).where;
   var hash = (win.location.hash || '').slice(1), tgt = null;
   if (hash) { try { hash = decodeURIComponent(hash); } catch (e) {} tgt = doc.getElementById(hash); }
   var tgtSec = tgt && tgt.closest('.zb-sec');
@@ -21059,7 +21050,13 @@ function _savedRefOnScreen() {
     return { kind: 'place', app: 'maps', zim: zim, path: path, title: title, where: pos ? { pos: _normMapPos(pos) } : undefined };
   }
   var z = _zimInfo(zim);
-  return { kind: z && z.kind === 'books' ? 'book' : 'article', zim: zim, path: path, title: title };
+  if (z && z.kind === 'books') {
+    // A book: Bookshelf's card for it (number, author, cover), from its
+    // position when it has been read here, else its number from the page.
+    var p = Saved.position({ zim: zim, path: path }), m = path.match(/\.(\d+)$/);
+    return { kind: 'book', app: 'books', zim: zim, path: path, title: (p && p.title) || title, meta: p ? p.meta : { id: m ? Number(m[1]) : 0 } };
+  }
+  return { kind: 'article', zim: zim, path: path, title: title };
 }
 // The section being read: the last heading with an id above the top third of
 // the page, or none near the top. Opening the saved article lands there.
