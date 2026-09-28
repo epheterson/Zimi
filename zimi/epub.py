@@ -35,7 +35,6 @@ from collections import OrderedDict
 
 log = logging.getLogger("zimi")
 
-EPUB_MIMETYPE = "application/epub+zip"
 # Where a book's own address ends and a member's begins.
 BOOK_SUFFIX = ".epub/"
 CONTAINER = "META-INF/container.xml"
@@ -442,29 +441,14 @@ def _identity(zim):
 
 def _load(zim, epub_path):
     """The EPUB entry's bytes, read under the library lock; None when the
-    ZIM has no such EPUB (or one too big to serve)."""
+    ZIM has no such entry (or one too big to serve)."""
     from zimi import server as _srv
 
     with _srv._zim_lock:
         archive = _srv.get_archive(zim)
         if archive is None:
             return None
-        try:
-            entry = archive.get_entry_by_path(epub_path)
-            if entry.is_redirect:
-                entry = entry.get_redirect_entry()
-            item = entry.get_item()
-        except Exception:
-            return None
-        mime = (item.mimetype or "").lower()
-        if mime not in (
-            EPUB_MIMETYPE,
-            "application/epub",
-        ) and not epub_path.lower().endswith(".epub"):
-            return None
-        if item.size > _srv.MAX_SERVE_BYTES:
-            return None
-        return bytes(item.content)
+        return _srv.entry_bytes(archive, epub_path, _srv.MAX_SERVE_BYTES)
 
 
 def book_in_zim(zim, epub_path):

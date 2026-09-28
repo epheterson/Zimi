@@ -451,16 +451,10 @@ def _quote_attrs(text):
 
 
 def _read(archive, path):
-    try:
-        entry = archive.get_entry_by_path(path)
-        if entry.is_redirect:
-            entry = entry.get_redirect_entry()
-        item = entry.get_item()
-        if item.size > _MAX_PAGE_BYTES:
-            return None
-        return _quote_attrs(bytes(item.content).decode("utf-8", "replace"))
-    except Exception:
-        return None
+    """A page's text, its attributes quoted (server.entry_bytes), or None.
+    A page that will not read raises, and is not cached as missing."""
+    data = _srv.entry_bytes(archive, path, _MAX_PAGE_BYTES)
+    return _quote_attrs(data.decode("utf-8", "replace")) if data is not None else None
 
 
 def _text(s):

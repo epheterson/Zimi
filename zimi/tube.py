@@ -73,47 +73,28 @@ _base = {}  # archive filename -> (name, rows from the lists alone)
 
 
 def _read(archive, path, max_bytes=_MAX_INDEX_BYTES):
-    try:
-        item = archive.get_entry_by_path(path).get_item()
-        if item.size > max_bytes:
-            return None
-        return bytes(item.content).decode("utf-8", "replace")
-    except Exception:
-        return None
-
-
-def _has(archive, path):
-    try:
-        archive.get_entry_by_path(path)
-        return True
-    except Exception:
-        return False
-
-
-def _present(archive, path):
-    """A media file that is really there: the entry exists and holds bytes.
-    ted_en_technology_2023-09 carries a zero-byte video.mp4 for the climate
-    talk (the scrape wrote the entry and never the file), which is as absent
-    as no entry at all."""
-    try:
-        entry = archive.get_entry_by_path(path)
-        if entry.is_redirect:
-            entry = entry.get_redirect_entry()
-        return entry.get_item().size > 0
-    except Exception:
-        return False
+    """The text at ``path`` (server.entry_bytes), or None."""
+    data = _srv.entry_bytes(archive, path, max_bytes)
+    return data.decode("utf-8", "replace") if data is not None else None
 
 
 def _present_path(archive, path):
-    """The path a file really has in the archive (``I/files/…`` in an old
-    ZIM) when it is there and holds bytes, else ""."""
+    """The path a media file really has in the archive (``I/files/…`` in an
+    old ZIM) when it is there and holds bytes, else "".
+    ted_en_technology_2023-09 carries a zero-byte video.mp4 for the climate
+    talk (the scrape wrote the entry and never the file), which is as absent
+    as no entry at all; so is one that will not read, for a player."""
     try:
-        entry = archive.get_entry_by_path(path)
-        if entry.is_redirect:
-            entry = entry.get_redirect_entry()
-        return entry.path if entry.get_item().size > 0 else ""
-    except Exception:
+        item = _srv.entry_item(archive, path)
+    except Exception as e:
+        log.debug("tube: %s unreadable: %s", path, e)
         return ""
+    return item.path if item is not None and item.size > 0 else ""
+
+
+def _present(archive, path):
+    """A media file that is really there (_present_path)."""
+    return bool(_present_path(archive, path))
 
 
 def _read_json(archive, path):
@@ -502,31 +483,19 @@ def _nautilus(archive):
     return out
 
 
-# A walk for a folder ZIM from before videos.json stops here: enough for
-# any folder, bounded under the archive's lock (health.py's full-scan bound).
-_MAX_WALK_ENTRIES = 120_000
 _MEDIA_MIME_PREFIXES = ("video/", "audio/")
 
 
 def _folder_walk(archive):
     """The video and audio files of a folder ZIM that has no listing, found
-    by mimetype (a dirent read each, never a file's bytes)."""
-    try:
-        n = min(int(archive.all_entry_count), _MAX_WALK_ENTRIES)
-    except Exception:
-        return None
-    found = []
-    for i in range(n):
-        try:
-            entry = archive._get_entry_by_id(i)
-            if entry.is_redirect:
-                continue
-            mime = entry.get_item().mimetype or ""
-        except Exception:
-            continue
-        if mime.startswith(_MEDIA_MIME_PREFIXES):
-            found.append((entry.path, mime))
-    return [media_file_row(p, m, thumb_beside(p, lambda q: _has(archive, q))) for p, m in found]
+    by mimetype (a dirent read each, never a file's bytes; server.walk_entries,
+    bounded as it is under the archive's lock)."""
+    found = [
+        (entry.path, item.mimetype or "")
+        for entry, item in _srv.walk_entries(archive)
+        if (item.mimetype or "").startswith(_MEDIA_MIME_PREFIXES)
+    ]
+    return [media_file_row(p, m, thumb_beside(p, archive.has_entry_by_path)) for p, m in found]
 
 
 def _folder(archive):
@@ -996,7 +965,7 @@ def playback(name, page):
         # here", which blames the browser for a file that is not there.
         media = mend_media(archive, media)
         missing = not any(_present(archive, m["path"]) for m in media)
-        ogv = next((b for b in _OGV_BASES if _has(archive, b + "/ogv.js")), "")
+        ogv = next((b for b in _OGV_BASES if archive.has_entry_by_path(b + "/ogv.js")), "")
     out = {
         "media": media,
         "missing": missing,

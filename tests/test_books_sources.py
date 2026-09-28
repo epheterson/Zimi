@@ -1586,3 +1586,113 @@ def test_an_xhtml_self_closed_script_keeps_the_rest_of_the_chapter():
     low = body.lower()
     assert "<script" not in low and "<iframe" not in low and "<object" not in low
     assert "alert" not in body and "Gone" not in body
+
+
+# ── a read that fails is not "nothing there" ───────────────────────────────
+
+
+class _Damaged:
+    """An archive whose every read fails as a damaged cluster does."""
+
+    entry_count = 3
+
+    def get_entry_by_path(self, path):
+        raise RuntimeError("damaged cluster")
+
+    def has_entry_by_path(self, path):
+        raise RuntimeError("damaged cluster")
+
+    def _get_entry_by_id(self, i):
+        raise RuntimeError("damaged cluster")
+
+
+class _Empty(_Damaged):
+    """An archive with no such entry."""
+
+    def get_entry_by_path(self, path):
+        raise KeyError(path)
+
+    def has_entry_by_path(self, path):
+        return False
+
+
+def test_a_listing_that_will_not_read_is_not_taken_for_none():
+    from zimi import booksources
+
+    assert nautilus.items(_Empty()) == []
+    assert booksources.libretexts_books(_Empty()) == []
+    with pytest.raises(RuntimeError):
+        nautilus.items(_Damaged())
+    for reader in ("nautilus", "folder", "libretexts", "wikisource", "wikibooks"):
+        with pytest.raises(RuntimeError):
+            booksources.books_in(_Damaged(), reader)
+
+
+def test_a_failed_read_is_read_again_at_the_next_start(tmp_path, monkeypatch):
+    """A background read that fails leaves no file, so the next start reads
+    the ZIM again; before, the failure was written down as "no books"."""
+    from zimi import books
+
+    _library(tmp_path, monkeypatch, [_water()])
+    books._reset_for_tests()
+    real_open = srv.open_archive
+
+    class _Flaky:
+        def __init__(self, archive):
+            self._a = archive
+
+        def __getattr__(self, name):
+            return getattr(self._a, name)
+
+        def get_entry_by_path(self, path):
+            if path == nautilus.DATABASE_PATH:
+                raise RuntimeError("damaged cluster")
+            return self._a.get_entry_by_path(path)
+
+    monkeypatch.setattr(srv, "open_archive", lambda path: _Flaky(real_open(path)))
+    books.build_all_details()
+    books._sources.wait()
+    assert books.listing(limit=50)["total"] == 0
+    name = srv.list_zims()[0]["name"]
+    assert not os.path.exists(books._sources.path(name))
+
+    # The next start, with the ZIM reading again.
+    monkeypatch.setattr(srv, "open_archive", real_open)
+    books._reset_for_tests()
+    books.build_all_details()
+    books._sources.wait()
+    assert books.listing(limit=50)["total"] == 7
+
+
+# ── a walk of a folder is bounded ──────────────────────────────────────────
+
+
+def test_a_folder_walk_stops_at_its_bound(monkeypatch):
+    """A folder ZIM from before its listing was walked to its last entry,
+    under the archive's lock."""
+    from zimi import booksources, tube
+
+    class _Entry:
+        is_redirect = False
+        title = ""
+
+        def __init__(self, i):
+            self.path = f"doc{i}.pdf"
+
+        def get_item(self):
+            return type("I", (), {"mimetype": "application/pdf", "size": 1})()
+
+    class _Many:
+        entry_count = 10_000
+        seen = 0
+
+        def _get_entry_by_id(self, i):
+            _Many.seen += 1
+            return _Entry(i)
+
+    monkeypatch.setattr(srv, "MAX_WALK_ENTRIES", 50, raising=False)
+    assert len(booksources._document_entries(_Many())) == 50
+    assert _Many.seen == 50
+    _Many.seen = 0
+    tube._folder_walk(_Many())
+    assert _Many.seen == 50

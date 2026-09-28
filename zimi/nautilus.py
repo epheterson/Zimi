@@ -28,6 +28,8 @@ import logging
 import posixpath
 import re
 
+from zimi import server as _srv
+
 log = logging.getLogger("zimi")
 
 DATABASE_PATH = "database.js"
@@ -67,19 +69,11 @@ def parse(text):
 
 def items(archive, path=DATABASE_PATH):
     """Every item of the listing at ``path`` in ``archive``, as written
-    (``_id``, ``ti``, ``dsc``, ``aut``, ``fp``), or [] when there is none."""
-    try:
-        entry = archive.get_entry_by_path(path)
-        if entry.is_redirect:
-            entry = entry.get_redirect_entry()
-        item = entry.get_item()
-        if item.size > MAX_DATABASE_BYTES:
-            log.warning("document listing %s is %d bytes: not read", path, item.size)
-            return []
-        text = bytes(item.content).decode("utf-8", "replace")
-    except Exception:
-        return []
-    return parse(text)
+    (``_id``, ``ti``, ``dsc``, ``aut``, ``fp``), or [] when there is none.
+    A listing that is there and will not read raises (server.entry_item):
+    [] would be kept as "no documents" for good."""
+    data = _srv.entry_bytes(archive, path, MAX_DATABASE_BYTES)
+    return parse(data.decode("utf-8", "replace")) if data is not None else []
 
 
 def files_of(item, base=FILES_PREFIX):

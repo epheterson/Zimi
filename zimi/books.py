@@ -83,20 +83,10 @@ _shelf = {
 # ── reading a ZIM ──────────────────────────────────────────────────────────
 
 
-def _read(archive, path, max_bytes=_MAX_LISTING_BYTES, head=None):
-    try:
-        entry = archive.get_entry_by_path(path)
-        if entry.is_redirect:
-            entry = entry.get_redirect_entry()
-        item = entry.get_item()
-        if item.size > max_bytes and head is None:
-            return None
-        data = bytes(item.content)
-        if head is not None:
-            data = data[:head]
-        return data.decode("utf-8", "replace")
-    except Exception:
-        return None
+def _read(archive, path, limit=_MAX_LISTING_BYTES, head=False):
+    """The text at ``path`` (server.entry_bytes), or None."""
+    data = _srv.entry_bytes(archive, path, limit, head=head)
+    return data.decode("utf-8", "replace") if data is not None else None
 
 
 def _js_array(text):
@@ -745,13 +735,6 @@ def is_books(name):
 # ── the details build ──────────────────────────────────────────────────────
 
 
-def _exists(archive, path):
-    try:
-        return archive.has_entry_by_path(path)
-    except Exception:
-        return False
-
-
 def build_details(zim_name, zim_path):
     """Read each book's head once, into the details file: its writers and
     their years, its subjects, the day it came to Gutenberg, whether it has
@@ -762,11 +745,11 @@ def build_details(zim_name, zim_path):
     rows = []
     for b in books_of(archive):
         path = b["path"]
-        if not _exists(archive, path):
+        if not archive.has_entry_by_path(path):
             cover_page = book_path(b["title"], b["id"], cover=True)
-            path = cover_page if _exists(archive, cover_page) else ""
+            path = cover_page if archive.has_entry_by_path(cover_page) else ""
         facts = (
-            head_facts(_read(archive, path, head=_HEAD_BYTES) or "")
+            head_facts(_read(archive, path, _HEAD_BYTES, head=True) or "")
             if path and b["html"] and path == b["path"]
             else {}
         )
@@ -776,7 +759,7 @@ def build_details(zim_name, zim_path):
                 json.dumps(facts.get("creators") or []),
                 json.dumps(facts.get("subjects") or []),
                 facts.get("created") or "",
-                1 if _exists(archive, cover_image(b["id"])) else 0,
+                1 if archive.has_entry_by_path(cover_image(b["id"])) else 0,
                 "" if path == b["path"] else path,
             )
         )
