@@ -194,7 +194,10 @@ HE_EINSTEIN = page(
         1, 2, "חייו", "חייו", "<p>%s</p>" % ("איינשטיין נולד באולם שבגרמניה. " * 30)
     )
     + section(
-        2,
+        2, 2, "מורשת", "מורשת", "<p>%s</p>" % ("תורת היחסות שינתה את הפיזיקה. " * 240)
+    )
+    + section(
+        3,
         2,
         "הערות_שוליים",
         "הערות שוליים",
@@ -334,9 +337,19 @@ def build_library(zdir):
 
 
 def index_wikipedias():
-    """Build the Wikipedias' Q-ID indexes, as the server does at start."""
+    """Build the Wikipedias' Q-ID indexes, as the server does at start. The
+    Q-ID connections are process-wide: a test's library starts with none."""
     import zimi.server as srv
     from zimi import interlang
+
+    with interlang._qid_db_pool_lock:
+        for c in interlang._qid_db_pool.values():
+            c.close()
+        interlang._qid_db_pool.clear()
+    with interlang._qid_cache_lock:
+        if interlang._qid_cache_conn is not None:
+            interlang._qid_cache_conn.close()
+        interlang._qid_cache_conn = None
 
     for name, path in srv.get_zim_files().items():
         if interlang._zim_project_name(name) == "wikipedia":

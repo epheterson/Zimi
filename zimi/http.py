@@ -2403,6 +2403,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                     if not names or len(names) > _wiki.TODAY_BATCH_MAX:
                         return self._json(400, {"error": "zim"})
                     return self._json(200, _wiki.today(day, names))
+                if sub == "article":
+                    # What the reader shows beside an article, asked once it is
+                    # on screen (in place of /article-languages).
+                    got = _wiki.article(param("zim") or "", param("path") or "")
+                    return self._json(200, got) if got else self._json(404, {"error": "not found"})
                 if sub != "onthisday":
                     return self._json(404, {"error": "not found"})
                 zim = param("zim")

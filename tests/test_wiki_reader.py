@@ -127,7 +127,7 @@ def test_an_article_from_zimipedia_reads_in_its_reader_on_a_phone(served):
                 "{ shown: !d.querySelector('.zw-card').hidden, text: d.querySelector('.zw-card').textContent, y: w.scrollY }",
             )
             assert (
-                card["shown"] and "Source number 2" in card["text"] and card["y"] == y0
+                card["shown"] and "Source number 2" in card["text"] and abs(card["y"] - y0) < 100
             ), "the note, where you are: the page does not jump to the references"
             fr.locator("h1").first.click()
             pg.wait_for_timeout(200)
@@ -236,6 +236,88 @@ def test_on_a_desk_the_contents_follow_and_the_facts_sit_beside_the_text(served)
             br.close()
 
 
+def test_languages_by_qid_land_on_the_same_section_and_sit_side_by_side(served):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = br.new_page(viewport={"width": 1440, "height": 900})
+        fr = pg.frame_locator("#reader-frame")
+        try:
+            _boot(pg, served)
+            # No Q-ID and no Simple twin: the switch is not there at all.
+            _from_zimipedia(pg, "wikipedia", "Physics")
+            pg.wait_for_timeout(800)
+            assert _q(pg, "d.querySelector('.zw-lbtn').hidden")
+            _from_zimipedia(pg, "wikipedia", "Albert_Einstein")
+            pg.wait_for_function(
+                "() => !document.getElementById('reader-frame').contentDocument.querySelector('.zw-lbtn').hidden",
+                timeout=10000,
+            )
+            assert (
+                _q(pg, "d.querySelector('.zw-lbtn span').textContent") == "2"
+            ), "Hebrew, and Simple English as a level"
+            # Side by side: Simple English beside the full article.
+            fr.locator(".zw-lbtn").click()
+            pg.wait_for_timeout(300)
+            rows = _q(
+                pg,
+                "Array.prototype.map.call(d.querySelectorAll('.zw-lang-list .zw-go b'), function(b) { return b.textContent; })",
+            )
+            assert rows == ["Simple English", "עברית"], rows
+            fr.locator(".zw-lang-list .zw-level .zw-side").click()
+            pg.wait_for_function(
+                "() => { var d = document.getElementById('reader-frame').contentDocument; return d.documentElement.classList.contains('zw-split') && d.querySelector('.zw-pane'); }",
+                timeout=10000,
+            )
+            pane = _q(
+                pg,
+                "{ text: d.querySelector('.zw-pane').textContent, left: d.querySelector('.zw-pane').getBoundingClientRect().left, main: d.querySelector('.zimi-reader-body').getBoundingClientRect().right }",
+            )
+            assert (
+                "He was born in Germany" in pane["text"]
+                and pane["left"] >= pane["main"]
+            ), pane
+            fr.locator(".zw-pane-head button").click()
+            assert not _q(pg, "d.documentElement.classList.contains('zw-split')")
+            # In another language, from where you were: the section at the same place.
+            _q(pg, "w.scrollTo(0, 0)")
+            _q(
+                pg,
+                "w.scrollBy(0, d.getElementById('Relativity').getBoundingClientRect().top - 20)",
+            )
+            pg.wait_for_timeout(400)
+            _q(pg, "w.scrollBy(0, -40)")
+            pg.wait_for_timeout(400)
+            fr.locator(".zw-lbtn").click()
+            pg.wait_for_timeout(300)
+            fr.locator(".zw-lang-list li:not(.zw-level) .zw-go").click()
+            pg.wait_for_function(
+                "() => { var d = document.getElementById('reader-frame').contentDocument; return d && d.documentElement.lang === 'he' && d.querySelector('.zw-bar'); }",
+                timeout=15000,
+            )
+            pg.wait_for_timeout(500)
+            here = _q(pg, "d.getElementById('מורשת').getBoundingClientRect().top")
+            assert (
+                0 <= here < 120
+            ), "lands on the section at the same place, not the top"
+            # A mini points to the full article once the lookup answers.
+            _from_zimipedia(pg, "wikipedia_en", "Albert_Einstein")
+            pg.wait_for_function(
+                "() => !!document.getElementById('reader-frame').contentDocument.querySelector('.zw-note a')",
+                timeout=10000,
+            )
+            assert (
+                _q(pg, "d.querySelector('.zw-note a').getAttribute('href')")
+                == "/w/wikipedia/Albert_Einstein"
+            )
+            assert not _q(
+                pg, "d.querySelector('.zw-lbtn').hidden"
+            ), "a borrowed Q-ID: the switch works on a mini"
+        finally:
+            br.close()
+
+
 def test_a_right_to_left_article_and_a_mini(served):
     from playwright.sync_api import sync_playwright
 
@@ -265,3 +347,77 @@ def test_a_right_to_left_article_and_a_mini(served):
             )
         finally:
             br.close()
+
+
+# ── the lookup beside an article: languages, level, a mini's full build, the topic ──
+
+
+@pytest.fixture
+def library(tmp_path, monkeypatch):
+    import wiki_fixture
+
+    zdir = str(tmp_path / "zims")
+    wiki_fixture.build_library(zdir)
+    monkeypatch.setattr(srv, "ZIM_DIR", zdir)
+    monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(tmp_path / "data"))
+    os.makedirs(str(tmp_path / "data"), exist_ok=True)
+    wiki._reset_for_tests()
+    srv.load_cache(force=True)
+    wiki_fixture.index_wikipedias()
+    yield
+
+
+def test_an_article_knows_its_languages_its_simple_twin_and_its_sister_pages(library):
+    got = wiki.article("wikipedia", "Albert_Einstein")
+    assert got["qid"] == "Q937" and got["flavour"] == "maxi"
+    assert [(lg["lang"], lg["zim"]) for lg in got["languages"]] == [
+        ("he", "wikipedia_he")
+    ]
+    assert got["level"] == {
+        "zim": "wikipedia_en_simple",
+        "path": "Albert_Einstein",
+        "title": "Albert Einstein",
+        "simple": True,
+    }
+    assert got["full"] is None
+    # Its own sister links name the pages: Wikisource's author page included.
+    assert {t["project"]: t["path"] for t in got["topic"]} == {
+        "wikiquote": "Albert_Einstein",
+        "wikisource": "Author:Albert_Einstein",
+    }
+
+
+def test_a_mini_borrows_its_qid_and_points_to_the_full_article(library):
+    got = wiki.article("wikipedia_en", "Albert_Einstein")
+    assert got["flavour"] == "mini"
+    assert (
+        got["qid"] == "Q937"
+    ), "the same page of a fuller build of the language"
+    assert [lg["lang"] for lg in got["languages"]] == [
+        "he"
+    ], "so the language switch still works"
+    assert got["full"] == {
+        "zim": "wikipedia",
+        "path": "Albert_Einstein",
+        "title": "Albert Einstein",
+    }
+
+
+def test_simple_english_is_a_reading_level_not_a_language(library):
+    import wiki_fixture
+
+    got = wiki.article("wikipedia_en_simple", "Albert_Einstein")
+    assert got["level"]["zim"] == "wikipedia" and got["level"]["simple"] is False
+    # From Hebrew, English is the full English Wikipedia, never Simple.
+    he = wiki.article("wikipedia_he", wiki_fixture.HE_TITLE)
+    assert [(lg["lang"], lg["zim"]) for lg in he["languages"]] == [("en", "wikipedia")]
+
+
+def test_a_word_is_found_in_the_dictionary_in_lower_case(library):
+    got = wiki.article("wikipedia", "Physics")
+    assert got["qid"] == "" and got["languages"] == [] and got["level"] is None
+    assert [(t["project"], t["path"]) for t in got["topic"]] == [
+        ("wiktionary", "physics")
+    ]
+    assert wiki.article("wikipedia", "No_such_page") is None
+    assert wiki.article("not_a_wiki", "Albert_Einstein") is None

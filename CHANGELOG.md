@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Signed in, what you save and where you are in each book follow your account to every device, and a delete on one stays deleted on the others.
 - Bookshelf has My shelf, and Continue reading picks up on any device where you left off.
 - Zimipedia's reader: an article opened from Zimipedia (or any wiki's article in Reader View) reads as an encyclopedia, with its lead image, contents that follow you, the infobox beside the text (folded on a phone), citations shown in place, and Bookshelf's reading settings.
+- Zimipedia's languages by Wikidata ID: only the installed languages that have the article, opening on the same section, two side by side on a wide screen, and Simple English as a reading level. A mini without an ID borrows it from a fuller build of its language, points to the full article, and the switch hides when it cannot work.
 - The Almanac zooms from the solar system to a 3D Earth: lit by the real Sun, with the Moon, eclipses as they fall, the ISS and the GPS satellites (tap one: its clock gains 38 microseconds a day).
 
 ### Changed

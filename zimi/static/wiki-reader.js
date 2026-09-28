@@ -25,9 +25,17 @@ var _WIKI_BARS_HIDE = 24;       // px scrolled down (or up) before the bar leave
 var _WIKI_PLACE_MS = 2000;      // ms between writes of the place while reading
 var _WIKI_PLACE_START = 0.08;   // share of the article read before it counts as started
 var _WIKI_PLACE_DONE = 0.9;     // share read from which it counts as finished
-var _WIKI_HEAD_SLACK = 40;      // px below the bar a heading may sit and still be the one you are in
+var _WIKI_HEAD_SLACK = 40;
+var _WIKI_CARD_SCROLL = 80;     // px scrolled away from a card before it is put away      // px below the bar a heading may sit and still be the one you are in
 var _WIKI_SVG_TOC = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".6" fill="currentColor"/><circle cx="4.5" cy="12" r=".6" fill="currentColor"/><circle cx="4.5" cy="18" r=".6" fill="currentColor"/></svg>';
 
+var _WIKI_SVG_LANG = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h9M8.5 3v2M6 5c.6 3 2.6 5.6 5.5 7M11 5c-.7 3.4-3.1 6.4-6.5 8"/><path d="M12.5 21l4-10 4 10M14 17.5h5"/></svg>';
+var _WIKI_SVG_SIDE = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>';
+var _WIKI_SPLIT_MIN = 1100;     // px wide: two languages side by side
+// Where the next article lands, when it is this one in another language or
+// level: the section you were in ({k: its place among the article's
+// sections, n: how many, text: its heading}). Read once, by that article.
+var _wikiLand = null;
 var _WIKI_UI_FONT = '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';
 var _WIKI_CSS = [
   // ── the page: the reader's own type, and room for the bar ──
@@ -36,6 +44,8 @@ var _WIKI_CSS = [
   'html.zw .zimi-reader-body{max-width:var(--zw-measure);position:relative}',
   'html.zw .zimi-reader h1.zimi-reader-title{border:0;margin:.15em 0 .2em;padding:0;font-size:2.05em;line-height:1.15}',
   'html.zw .zimi-reader h2{margin-top:1.5em}',
+  // A formula is a picture of black type: in the dark, it is turned light.
+  'body.rv-theme-dark.zimi-reader-active img[class*="mwe-math"]{filter:invert(.88)}',
   '.zw-sub{margin:0 0 1.1em;color:var(--rv-muted);font:15px/1.4 ' + _WIKI_UI_FONT + '}',
   'html.zw .zimi-reader :target{scroll-margin-top:calc(var(--zw-top) + 12px)}',
   // A section anchor lands below the bar, not under it.
@@ -105,7 +115,34 @@ var _WIKI_CSS = [
   // ── a mini build says what it is ──
   '.zw-note{margin:1.4em 0;padding:12px 14px;border-radius:12px;background:var(--rv-code);color:var(--rv-muted);font:14px/1.5 ' + _WIKI_UI_FONT + '}',
   '.zw-note a{font-weight:600}',
-  '@media print{.zw-rail,.zw-card,.zw-hero{display:none!important}.zw-facts > summary{display:none}}'
+  // ── languages: a sheet of the ones that have this article ──
+  '.zb-bar .zw-lbtn{gap:3px;font:600 13px/1 ' + _WIKI_UI_FONT + ';padding:0 8px}',
+  '.zw-lang-list{list-style:none;margin:0;padding:0}',
+  '.zw-lang-list li{display:flex;align-items:center;gap:6px;border-top:1px solid var(--rv-border)}',
+  '.zw-lang-list li:first-child{border-top:0}',
+  '.zw-lang-list .zw-go{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;text-align:start;padding:11px 10px;border-radius:10px}',
+  '.zw-lang-list .zw-go b{font-weight:600;unicode-bidi:plaintext}',
+  '.zw-lang-list .zw-go span{font-size:12.5px;color:var(--rv-muted)}',
+  '.zw-lang-list .zw-side{display:none;flex:none;width:40px;height:40px;border-radius:10px;align-items:center;justify-content:center;color:var(--rv-muted)}',
+  '@media (min-width:' + _WIKI_SPLIT_MIN + 'px){.zw-lang-list .zw-side{display:inline-flex}}',
+  // ── two languages side by side: the other in a pane of its own ──
+  '.zw-pane{display:none}',
+  '@media (min-width:' + _WIKI_SPLIT_MIN + 'px){',
+    // On the side the article ends (right of a left-to-right one), whichever
+    // way the other one reads.
+    'html.zw-split .zw-pane{display:block;position:fixed;top:0;bottom:0;right:0;width:46vw;min-height:0;overflow-y:auto!important;overscroll-behavior:contain;',
+      'box-sizing:border-box;padding:calc(var(--zw-top) + 14px) 32px 72px;border-left:1px solid var(--rv-border);font-size:var(--zw-size);line-height:var(--zw-lh);z-index:1}',
+    'html.zw-split .zimi-reader:not(.zw-pane){padding-left:32px;padding-right:calc(46vw + 32px)}',
+    'html.zw-split.zw-rtl .zw-pane{right:auto;left:0;border-left:0;border-right:1px solid var(--rv-border)}',
+    'html.zw-split.zw-rtl .zimi-reader:not(.zw-pane){padding-right:32px;padding-left:calc(46vw + 32px)}',
+    'html.zw-split .zw-rail{display:none}',
+    'html.zw-split .zb-bar .zw-cbtn{display:flex!important}',
+    'html.zw-split .zw-facts{position:static;float:inline-end;width:min(17em,46%);margin:.3em 0 1em;margin-inline:1.2em 0}',
+    'html.zw-split .zw-facts > summary{display:flex}}',
+  '.zw-pane-head{display:flex;align-items:center;gap:8px;margin:0 0 6px;font:600 12.5px/1.3 ' + _WIKI_UI_FONT + ';color:var(--rv-muted);text-transform:uppercase;letter-spacing:.05em}',
+  '.zw-pane-head span{flex:1}',
+  '.zw-pane-head button{border:0;background:none;color:inherit;font-size:20px;line-height:1;width:32px;height:32px;border-radius:16px;cursor:pointer}',
+  '@media print{.zw-rail,.zw-card,.zw-hero,.zw-pane{display:none!important}.zw-facts > summary{display:none}}'
 ].join('');
 
 // How articles are read in this browser: the size, spacing and margins of
@@ -148,6 +185,17 @@ function _wikiCurrent(heads, line) {
   }
   return k;
 }
+// Where an article in another language (or level) lands: the section with
+// the same heading where the words agree (Simple and full English share
+// them), else the section at the same place in the article. null: the top.
+function _wikiLandOn(heads, land) {
+  if (!land || land.k < 0) return null;
+  var h2 = heads.filter(function(h) { return h.tagName === 'H2'; });
+  if (!h2.length) return null;
+  var norm = function(s) { return String(s || '').toLowerCase().replace(/\s+/g, ' ').trim(); };
+  for (var i = 0; i < h2.length; i++) if (land.text && norm(_wikiText(h2[i])) === norm(land.text)) return h2[i];
+  return h2[Math.min(h2.length - 1, Math.round(land.k / Math.max(1, land.n - 1) * (h2.length - 1)))];
+}
 function _wikiText(el) { return (el && el.textContent || '').replace(/\s+/g, ' ').trim(); }
 // A mini build: Kiwix's _mini_ in the file name.
 function _wikiIsMini(zim) { var z = _zimInfo(zim); return !!(z && /_mini(?:_|\.zim$)/i.test(z.file || '')); }
@@ -167,8 +215,8 @@ function _wikiLay(frame) {
 }
 function _wikiUndo(doc) {
   try {
-    doc.documentElement.classList.remove('zw', 'zb-away', 'zb-sheet-open');
-    Array.prototype.forEach.call(doc.querySelectorAll('#zw-style,.zw-bar,.zw-rail,.zw-card,.zw-sheet,.zw-scrim,.zw-hero,.zw-sub,.zw-note'), function(n) { n.remove(); });
+    doc.documentElement.classList.remove('zw', 'zw-rtl', 'zw-split', 'zb-away', 'zb-sheet-open');
+    Array.prototype.forEach.call(doc.querySelectorAll('#zw-style,.zw-bar,.zw-rail,.zw-card,.zw-sheet,.zw-scrim,.zw-hero,.zw-sub,.zw-note,.zw-pane'), function(n) { n.remove(); });
     Array.prototype.forEach.call(doc.querySelectorAll('details.zw-facts'), function(d) { while (d.lastChild && d.lastChild.nodeName !== 'SUMMARY') d.parentNode.insertBefore(d.lastChild, d.nextSibling); d.remove(); });
   } catch (e) {}
   doc.__zimiWikiLaid = false;
@@ -193,6 +241,7 @@ function _wikiLayout(frame) {
   var lang = (content && content.getAttribute('lang')) || html.getAttribute('lang') || '';
   var rtl = ((content && content.getAttribute('dir')) || html.getAttribute('dir') || '') === 'rtl';
   shell.setAttribute('dir', rtl ? 'rtl' : 'ltr');
+  html.classList.toggle('zw-rtl', rtl);
   if (lang) shell.setAttribute('lang', lang);
   var el = function(tag, cls, inner) { var e = doc.createElement(tag); if (cls) e.className = cls; if (inner) e.innerHTML = inner; return e; };
   var ui = function(e) { e.setAttribute('dir', uiRtl ? 'rtl' : 'ltr'); e.setAttribute('lang', _currentLang || 'en'); return e; };
@@ -255,18 +304,22 @@ function _wikiLayout(frame) {
   // ── the bar, the sheets ──
   var bar = ui(el('div', 'zb-bar zb-head zw-bar'));
   bar.innerHTML = (heads.length ? '<button type="button" class="zw-cbtn" aria-haspopup="dialog" title="' + tH('books_contents') + '">' + _WIKI_SVG_TOC + '<span></span></button>' : '') +
+    // The languages: shown once the lookup says there is somewhere to go.
+    '<button type="button" class="zw-lbtn" hidden aria-haspopup="dialog" aria-label="' + tH('wiki_languages') + '" title="' + tH('wiki_languages') + '">' + _WIKI_SVG_LANG + '<span></span></button>' +
     '<button type="button" class="zb-aa" aria-label="' + tH('books_settings') + '" title="' + tH('books_settings') + '" aria-haspopup="dialog">Aa</button>';
   var scrim = el('div', 'zb-scrim zw-scrim');
   var tocSheet = ui(el('div', 'zb-sheet zw-sheet zw-toc-sheet'));
   var setSheet = ui(el('div', 'zb-sheet zw-sheet zw-set-sheet'));
-  [tocSheet, setSheet].forEach(function(s) { s.setAttribute('role', 'dialog'); });
+  var langSheet = ui(el('div', 'zb-sheet zw-sheet zw-lang-sheet'));
+  [tocSheet, setSheet, langSheet].forEach(function(s) { s.setAttribute('role', 'dialog'); });
+  langSheet.setAttribute('aria-label', t('wiki_languages'));
   tocSheet.setAttribute('aria-label', t('books_contents'));
   setSheet.setAttribute('aria-label', t('books_settings'));
   var card = ui(el('div', 'zw-card'));
   card.hidden = true;
   card.setAttribute('role', 'dialog');
-  [bar, scrim, tocSheet, setSheet, card].forEach(function(n) { doc.body.appendChild(n); });
-  var sheets = [tocSheet, setSheet];
+  [bar, scrim, tocSheet, setSheet, langSheet, card].forEach(function(n) { doc.body.appendChild(n); });
+  var sheets = [tocSheet, setSheet, langSheet];
   var sheetOpen = function() { return html.classList.contains('zb-sheet-open'); };
   var closeSheets = function() { sheets.forEach(function(s) { s.classList.remove('zb-open'); }); html.classList.remove('zb-sheet-open'); };
   var openSheet = function(s) { closeSheets(); hideCard(); s.classList.add('zb-open'); html.classList.add('zb-sheet-open'); showBars(true); };
@@ -389,7 +442,8 @@ function _wikiLayout(frame) {
       else if (dy > 0) { down += dy; up = 0; if (down > _WIKI_BARS_HIDE && !sheetOpen()) showBars(false); }
       else if (dy < 0) { up -= dy; down = 0; if (up > _WIKI_BARS_HIDE) showBars(true); }
       try { _chromeScroll(y); } catch (e) {}
-      if (!card.hidden && !card.__zwPinned) hideCard();
+      // A card stays through a nudge; reading on puts it away.
+      if (!card.hidden && Math.abs(y - card.__zwY) > _WIKI_CARD_SCROLL) hideCard();
       markCurrent();
       placeSoon();
     });
@@ -414,12 +468,15 @@ function _wikiLayout(frame) {
     card.appendChild(body);
     card.hidden = false;
     card.__zwFor = anchor;
+    card.__zwY = win.scrollY || 0;
     card.scrollTop = 0;
     placeCard(anchor);
   };
   var citation = function(a) {
     var id = decodeURIComponent((a.getAttribute('href') || '').slice(1));
-    var note = id && doc.getElementById(id);
+    // A note of the article beside this one is looked up in its own pane.
+    var scope = a.closest('.zw-pane') || article;
+    var note = id && scope.querySelector('[id="' + _cssEsc(id) + '"]');
     var n = _wikiText(a).replace(/[\[\]]/g, '');
     var head = '<span class="zw-card-k" dir="auto">' + esc(t('wiki_note', { n: n })) + '</span>';
     var body = el('div');
@@ -452,9 +509,148 @@ function _wikiLayout(frame) {
     if (!card.hidden) { hideCard(); e.preventDefault(); } else if (sheetOpen()) { closeSheets(); e.preventDefault(); }
   });
 
-  // ── open where the address says ──
+  // ── languages: the ones that have this article, landing on the same section ──
+  var info = null;
+  var lbtn = bar.querySelector('.zw-lbtn');
+  // The section you are in, as the next article reads it (_wikiLand).
+  var hereLand = function() {
+    var h2 = heads.filter(function(h) { return h.tagName === 'H2'; });
+    var at = current < 0 ? null : heads[current];
+    while (at && at.tagName !== 'H2') { var i = heads.indexOf(at); at = i > 0 ? heads[i - 1] : null; }
+    return { k: at ? h2.indexOf(at) : -1, n: h2.length, text: at ? _wikiText(at) : '' };
+  };
+  var goOther = function(z, p) {
+    _wikiLand = hereLand();
+    closeSheets();
+    openArticle(z, p);
+  };
+  // A language named in itself (עברית, Deutsch), which is how a reader
+  // finds their own; the interface's name for it under it.
+  var langName = function(l) {
+    var own = l.name && l.name !== l.lang ? l.name : '';
+    try { own = own || new Intl.DisplayNames([l.lang], { type: 'language' }).of(l.lang); } catch (e) {}
+    own = own || l.lang;
+    try { return own.charAt(0).toLocaleUpperCase(l.lang) + own.slice(1); } catch (e) { return own; }
+  };
+  var otherRow = function(cls, go, name, sub, lng) {
+    return '<li class="' + cls + '"><button type="button" class="zw-go" data-go="' + escAttr(go) + '"><b' + (lng ? ' lang="' + escAttr(lng) + '"' : '') + '>' + esc(name) + '</b>' +
+      (sub ? '<span>' + esc(sub) + '</span>' : '') + '</button>' +
+      '<button type="button" class="zw-side" data-side="' + escAttr(go) + '" aria-label="' + tH('wiki_side_by_side') + '" title="' + tH('wiki_side_by_side') + '">' + _WIKI_SVG_SIDE + '</button></li>';
+  };
+  var renderLangs = function() {
+    var h = '<div class="zb-sheet-head"><b>' + tH('wiki_languages') + '</b><button type="button" class="zb-x" aria-label="' + tH('close') + '">×</button></div><ul class="zw-lang-list">';
+    if (info.level) h += otherRow('zw-level', info.level.zim + '\n' + info.level.path, t(info.level.simple ? 'wiki_level_simple' : 'wiki_level_full'), t(info.level.simple ? 'wiki_level_simple_hint' : 'wiki_level_full_hint'), '');
+    (info.languages || []).forEach(function(l) {
+      var name = langName(l), mine = _langDisplayName(l.lang) || '';
+      h += otherRow('', l.zim + '\n' + l.path, name, mine.toLowerCase() !== name.toLowerCase() ? mine : '', l.lang);
+    });
+    langSheet.innerHTML = h + '</ul>';
+  };
+  langSheet.addEventListener('click', function(e) {
+    var b = e.target.closest && e.target.closest('button');
+    if (!b) return;
+    if (b.classList.contains('zb-x')) { closeSheets(); return; }
+    var go = b.getAttribute('data-go'), side = b.getAttribute('data-side');
+    var zp = (go || side || '').split('\n');
+    if (go) goOther(zp[0], zp[1]);
+    else if (side) { closeSheets(); openSide(zp[0], zp[1]); }
+  });
+  lbtn.onclick = function() {
+    if (!info) return;
+    renderLangs();
+    openSheet(langSheet);
+    var first = langSheet.querySelector('.zw-go');
+    if (first) first.focus({ preventScroll: true });
+  };
+
+  // ── side by side: the article in another language, in a pane of its own ──
+  var pane = null;
+  var closeSide = function() {
+    if (pane) pane.remove();
+    pane = null;
+    html.classList.remove('zw-split');
+  };
+  var openSide = function(z, p) {
+    var url = _articleUrl(z, p), land = hereLand();
+    fetch(url).then(function(r) { return r.ok ? r.text() : ''; }).catch(function() { return ''; }).then(function(text) {
+      if (!text || frame.contentDocument !== doc) return;
+      var other = new DOMParser().parseFromString(text, 'text/html');
+      var main = other.querySelector('#mw-content-text') || other.body;
+      var base = location.origin + url;
+      var body = doc.importNode(main, true);
+      _readerViewClean(body, doc);
+      // Its addresses are its own page's, not this one's.
+      Array.prototype.forEach.call(body.querySelectorAll('[src],[href]'), function(n) {
+        ['src', 'href'].forEach(function(a) {
+          var v = n.getAttribute(a);
+          if (v && v.charAt(0) !== '#' && !/^[a-z]+:/i.test(v)) { try { n.setAttribute(a, new URL(v, base).pathname); } catch (e) {} }
+        });
+        n.removeAttribute('srcset');
+      });
+      var box = _wikiInfobox(body);
+      if (box) {
+        var f = el('details', 'zw-facts'), sm = ui(el('summary'));
+        sm.textContent = t('wiki_facts');
+        f.appendChild(sm);
+        var hold = box.parentNode && box.parentNode.classList.contains('zimi-table-wrap') ? box.parentNode : box;
+        hold.parentNode.insertBefore(f, hold);
+        f.appendChild(hold);
+      }
+      closeSide();
+      var olang = main.getAttribute('lang') || other.documentElement.getAttribute('lang') || '';
+      var odir = main.getAttribute('dir') || other.documentElement.getAttribute('dir') || 'ltr';
+      pane = el('div', 'zimi-reader zw-pane');
+      pane.setAttribute('lang', olang);
+      pane.setAttribute('dir', odir);
+      var head = ui(el('div', 'zw-pane-head'));
+      head.innerHTML = '<span></span><button type="button" aria-label="' + tH('close') + '" title="' + tH('close') + '">×</button>';
+      head.firstChild.textContent = (_langDisplayName(olang) || olang) + (olang === lang ? ' · ' + _zimTitle(z) : '');
+      head.lastChild.onclick = closeSide;
+      var art = el('article', 'zimi-reader-body');
+      var h1 = el('h1', 'zimi-reader-title');
+      h1.textContent = _wikiText(other.querySelector('#firstHeading,h1')) || other.title || '';
+      art.appendChild(h1);
+      art.appendChild(body);
+      pane.appendChild(head);
+      pane.appendChild(art);
+      doc.body.appendChild(pane);
+      html.classList.add('zw-split');
+      // The links out of the library are marked as the shell marks the page's.
+      try { if (typeof zimiMarkLinks === 'function') zimiMarkLinks(pane); } catch (e) {}
+      var to = _wikiLandOn(_wikiHeadings(art), land);
+      if (to) pane.scrollTop = to.getBoundingClientRect().top - pane.getBoundingClientRect().top - 12;
+      markCurrent();
+    });
+  };
+
+  var renderInfo = function() {
+    var n = (info.languages || []).length + (info.level ? 1 : 0);
+    // A switch that cannot work is not shown: no Q-ID, or nowhere to go.
+    lbtn.hidden = !n;
+    lbtn.querySelector('span').textContent = n ? String(n) : '';
+    if (note && info.full) {
+      var a = ui(el('a'));
+      a.href = _articleUrl(info.full.zim, info.full.path);
+      a.textContent = t('wiki_mini_full');
+      note.appendChild(doc.createTextNode(' '));
+      note.appendChild(a);
+    }
+  };
+  _wikiInfo(zim, _splitPathFragment(path).base).then(function(d) {
+    if (!d || frame.contentDocument !== doc) return;
+    info = d;
+    renderInfo();
+  });
+
+  // ── open where the address says, or on the section you came from ──
   markCurrent();
+  var land = _wikiLand;
+  _wikiLand = null;
   var hash = (win.location.hash || '').slice(1);
+  if (!hash && land) {
+    var at = _wikiLandOn(heads, land);
+    if (at) goHead(heads.indexOf(at));
+  }
   if (hash) {
     try { hash = decodeURIComponent(hash); } catch (e) {}
     var tgt = doc.getElementById(hash);

@@ -41,6 +41,7 @@ import logging
 import random
 import re
 import threading
+from urllib.parse import unquote
 
 from zimi import datepages, frontpage
 from zimi import server as _srv
@@ -932,6 +933,251 @@ def today(day, names):
             elif name not in out["failed"]:
                 out["failed"].append(name)
     return out
+
+
+# ── one article: what Zimipedia's reader shows beside it ──────────────────
+#
+# Asked once an article is on screen, never before: the languages it is in
+# (by its Wikidata Q-ID), Simple English as a reading level, the fuller
+# build of a mini, and what the other wikis of its language hold on the same
+# topic. The shell asks this in place of /article-languages for a wiki's
+# article, so opening one costs no more requests than before.
+
+# The sister projects the topic strip looks in, in the order it shows them.
+TOPIC_PROJECTS = ("wiktionary", "wikivoyage", "wikiquote", "wikibooks", "wikisource")
+# A Simple English wiki is named so by Kiwix (wikipedia_en_simple_all).
+_SIMPLE_RE = re.compile(r"(?:^|_)simple(?:_|$)")
+# A sister link in an article (the "Wikiquote has quotations related to" box,
+# a Wikisource author page): its project and the page it names.
+_SISTER_RE = re.compile(
+    r'href="https?://[a-z-]+\.(%s)\.org/wiki/([^"#?]+)"' % "|".join(TOPIC_PROJECTS)
+)
+
+
+def _flavour(z):
+    """A build's flavour, from its file name (Kiwix's _maxi, _nopic, _mini)."""
+    m = _srv._FLAVOR_TOKEN_RE.search((z.get("file") or "").lower())
+    return m.group(1) if m else ""
+
+
+def is_simple(name):
+    return bool(_SIMPLE_RE.search(name or ""))
+
+
+def _norm_title(t):
+    """A page name as a title compares: spaces and underscores alike, the
+    first letter in either case (MediaWiki capitalises it)."""
+    t = unquote(t or "").replace(" ", "_").strip("_")
+    return t[:1].lower() + t[1:]
+
+
+def _html_page(archive, path):
+    """The HTML page a path names, its redirect followed: ``(path, title)``,
+    or None. Reads no content. Call with the library lock held."""
+    try:
+        entry = archive.get_entry_by_path(path)
+        if entry.is_redirect:
+            entry = entry.get_redirect_entry()
+        if not (entry.get_item().mimetype or "").startswith("text/html"):
+            return None
+    except Exception:
+        return None
+    return entry.path, (entry.title or entry.path).replace("_", " ")
+
+
+def _page_qid(name, archive, path):
+    """A page's Q-ID from the index or cache, else read from its HTML (and
+    cached); None when it carries none. Call with the library lock held."""
+    from zimi import interlang as il
+
+    qid = il._qid_lookup(name, path)
+    if qid is None:
+        qid = il._qid_extract_from_html(archive, path)
+        if qid is not None:
+            il._qid_cache_store(name, path, qid)
+    return qid
+
+
+def _twin(w, paths, qid):
+    """The same article in the wiki ``w``: by its Q-ID where that wiki's index
+    or cache knows it, else the first of ``paths`` it holds, taken only when
+    the page there does not carry a different Q-ID. ``{zim, path, title}``
+    or None. Takes the library lock per read."""
+    from zimi import interlang as il
+
+    name = w["name"]
+    try:
+        archive = _archive(name)
+    except LookupError:
+        return None
+    if qid is not None:
+        hit = il._qid_find_in_zim(name, qid)
+        if hit:
+            with _srv._zim_lock:
+                got = _html_page(archive, hit)
+            if got:
+                return {"zim": name, "path": got[0], "title": got[1]}
+    for cand in dict.fromkeys(paths):
+        with _srv._zim_lock:
+            got = _html_page(archive, cand)
+            if not got:
+                continue
+            # Words are not Wikidata items: a dictionary page is taken by name.
+            other = (
+                None
+                if w["project"] == "wiktionary" or qid is None
+                else _page_qid(name, archive, got[0])
+            )
+        if other is not None and other != qid:
+            continue
+        return {"zim": name, "path": got[0], "title": got[1]}
+    return None
+
+
+def _by_richness(ws):
+    """Wikis, the fullest build first (maxi, then nopic, then mini), then the biggest."""
+    rank = {"maxi": 0, "": 1, "nopic": 2, "mini": 3}
+    return sorted(ws, key=lambda w: (rank.get(w["flavour"], 1), -(w["entries"] or 0)))
+
+
+def article(zim, path):
+    """What the reader shows beside a wiki's article, for this request:
+    ``{qid, flavour, languages, level, full, topic}``.
+
+    - ``qid``: its Wikidata Q-ID ("Q937"), "" when unknown. A copy that
+      does not carry it (an older English mini) borrows it from a fuller
+      build of the same language holding the same page (kept for that
+      page, as if it carried it), so the language switch still works.
+    - ``languages``: the installed languages that have it ([{lang, name,
+      zim, path}], verified by Q-ID: see interlang.get_article_languages).
+    - ``level``: Simple English as a reading level: from an English article,
+      the Simple one; from a Simple one, the full English. ``{zim, path,
+      title, simple}`` or None.
+    - ``full``: for a mini, the same article in a fuller build of its
+      language, or None.
+    - ``topic``: what the other wikis of its language hold on it: the
+      Wiktionary entry, the Wikivoyage guide, Wikiquote, Wikibooks,
+      Wikisource ([{project, zim, path, title}]), by the article's own sister
+      links and its name, checked by Q-ID where both pages carry one.
+
+    None when the ZIM is not a wiki this request may read, or the page is
+    not in it."""
+    from zimi import interlang as il
+    from zimi.search import unglue_zim_path
+
+    ws = wikis()
+    me = next((w for w in ws if w["name"] == zim), None)
+    if me is None:
+        return None
+    for w in ws:
+        w["flavour"] = _flavour(_record(w["name"]))
+    try:
+        archive = _archive(zim)
+    except LookupError:
+        return None
+    path = _srv.split_entry_fragment(path)[0]
+    with _srv._zim_lock:
+        path = unglue_zim_path(archive, zim, path)
+        page = _html_page(archive, path)
+        if not page:
+            return None
+        path = page[0]
+        qid = _page_qid(zim, archive, path)
+        try:
+            html = bytes(archive.get_entry_by_path(path).get_item().content).decode(
+                "utf-8", "replace"
+            )
+        except Exception:
+            html = ""
+    lang, project, simple = me["language"], me["project"], is_simple(zim)
+    same = [
+        w
+        for w in ws
+        if w["name"] != zim and w["language"] == lang and w["project"] == project
+    ]
+    if qid is None and project == "wikipedia":
+        for w in _by_richness([w for w in same if w["flavour"] != "mini"]):
+            try:
+                other = _archive(w["name"])
+            except LookupError:
+                continue
+            with _srv._zim_lock:
+                got = _html_page(other, path)
+                q = _page_qid(w["name"], other, got[0]) if got else None
+            if q is not None:
+                qid = q
+                # The same page of the same wiki: its Q-ID is this one's, so
+                # the language lookup (which reads the cache) finds it too.
+                il._qid_cache_store(zim, path, q)
+                break
+    with _srv._zim_lock:
+        languages = il.get_article_languages(zim, path).get("languages", [])
+    # A language is its full encyclopedia: Simple English is a reading level
+    # (below), not the English a Hebrew reader is sent to.
+    for i, lg in enumerate(languages):
+        if not is_simple(lg["zim"]):
+            continue
+        full = [w for w in ws if w["language"] == lg["lang"] and w["project"] == project and not is_simple(w["name"])]
+        for w in _by_richness(full):
+            got = _twin(w, [lg["path"]], qid)
+            if got:
+                languages[i] = dict(lg, zim=got["zim"], path=got["path"])
+                break
+    level = None
+    if project == "wikipedia":
+        cands = [
+            w for w in same if is_simple(w["name"]) != simple and w["flavour"] != "mini"
+        ]
+        cands = cands or [w for w in same if is_simple(w["name"]) != simple]
+        for w in _by_richness(cands):
+            got = _twin(w, [path], qid)
+            if got:
+                level = dict(got, simple=not simple)
+                break
+    full = None
+    if me["flavour"] == "mini":
+        for w in _by_richness(
+            [
+                w
+                for w in same
+                if w["flavour"] != "mini" and is_simple(w["name"]) == simple
+            ]
+        ):
+            got = _twin(w, [path], qid)
+            if got:
+                full = got
+                break
+    title = _norm_title(path)
+    sister = {}
+    for proj, target in _SISTER_RE.findall(html):
+        # Its own sister links, not a word linked in the text: a link whose
+        # page is this article's name ("Author:Albert Einstein" included).
+        if _norm_title(target.rsplit(":", 1)[-1]) == title:
+            sister.setdefault(proj, [])
+            if target not in sister[proj]:
+                sister[proj].append(target.replace(" ", "_"))
+    topic = []
+    for proj in TOPIC_PROJECTS:
+        cands = [w for w in ws if w["project"] == proj and w["language"] == lang]
+        # A Simple English article's words are in Simple English Wiktionary first.
+        cands.sort(key=lambda w: (is_simple(w["name"]) != simple, -(w["entries"] or 0)))
+        paths = [unquote(t) for t in sister.get(proj, [])] + [path]
+        if proj == "wiktionary":
+            # A dictionary files a word in lower case: "water", not "Water".
+            paths.insert(0, path[:1].lower() + path[1:])
+        for w in cands:
+            got = _twin(w, paths, qid)
+            if got:
+                topic.append(dict(got, project=proj))
+                break
+    return {
+        "qid": "Q%d" % qid if qid is not None else "",
+        "flavour": me["flavour"],
+        "languages": languages,
+        "level": level,
+        "full": full,
+        "topic": topic,
+    }
 
 
 def _reset_for_tests():

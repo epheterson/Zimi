@@ -15676,6 +15676,9 @@ function _applyReaderTheme(doc) {
 function _readerTextLen(doc, main) {
   return (main === doc.body ? main.textContent : (main.innerText || main.textContent || '')).trim().length;
 }
+// A wiki's article in Zimipedia's reader is an article however short (a
+// stub is still one): the floor is for pages that may not be articles.
+function _readerMinChars(doc) { return doc.__zimiWiki ? 1 : READER_VIEW_MIN_CHARS; }
 function _readerViewAvailable() {
   if (!readerOpen || _almanacOpen) return false;
   var frame = document.getElementById('reader-frame');
@@ -15688,7 +15691,7 @@ function _readerViewAvailable() {
   if (doc[_READER_VIEW_STASH]) return true;
   var main = _readerMainContent(doc);
   if (!_readerViewReadable(doc, main)) return false;
-  return _readerTextLen(doc, main) >= READER_VIEW_MIN_CHARS;
+  return _readerTextLen(doc, main) >= _readerMinChars(doc);
 }
 
 // An element's text as shown. In a book, as it stands: innerText lays the
@@ -16262,7 +16265,7 @@ function _readerViewApply(doc) {
   if (doc[_READER_VIEW_STASH]) return true; // already applied to this document
   var main = _readerMainContent(doc);
   if (!_readerViewReadable(doc, main)) return false;
-  if (_readerTextLen(doc, main) < READER_VIEW_MIN_CHARS) return false;
+  if (_readerTextLen(doc, main) < _readerMinChars(doc)) return false;
 
   var clone;
   if (main === doc.body) {
@@ -17112,6 +17115,22 @@ function _wikiArticleDoc(frame) {
   var z = _zimInfo(decodeURIComponent(m[1]));
   if (decodeURIComponent(m[2]) === z.main_path) return false;
   try { return !!frame.contentDocument.querySelector('#mw-content-text,.mw-parser-output'); } catch (e) { return false; }
+}
+// What Zimipedia's reader shows beside a wiki's article (wiki.article on the
+// server: its languages by Q-ID, Simple English, a mini's fuller build, the
+// other wikis on it), asked once the article is on screen and kept for the
+// session, so Back and Forward ask nothing. A failed ask is asked again.
+var _wikiInfoKept = {}, _wikiInfoOrder = [];
+var _WIKI_INFO_KEPT = 64;
+function _wikiInfo(zim, path) {
+  var k = zim + '\n' + path;
+  if (_wikiInfoKept[k]) return _wikiInfoKept[k];
+  var p = _wikiInfoKept[k] = fetch('/wiki/article?zim=' + encodeURIComponent(zim) + '&path=' + encodeURIComponent(path))
+    .then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; })
+    .then(function(d) { if (!d) delete _wikiInfoKept[k]; return d; });
+  _wikiInfoOrder.push(k);
+  if (_wikiInfoOrder.length > _WIKI_INFO_KEPT) delete _wikiInfoKept[_wikiInfoOrder.shift()];
+  return p;
 }
 function _wikiReaderAttach(frame) {
   _wikiReaderLoad(function() {
@@ -19084,8 +19103,8 @@ function openReader(url) {
     _readerViewOn = false; // the new document has no shell yet
     if (_wantReader) {
       var _rdoc = null; try { _rdoc = frame.contentDocument; } catch(e) { _rdoc = null; }
+      if (_rdoc && _wikiDoc) _rdoc.__zimiWiki = true;
       if (_rdoc && _readerViewAvailable()) {
-        if (_wikiDoc) _rdoc.__zimiWiki = true;
         var _rok = false; try { _rok = _readerViewApply(_rdoc); } catch(e) { _rok = false; }
         if (_rok) _readerViewOn = true;
       }
@@ -19511,7 +19530,7 @@ function openReader(url) {
     // Check language banner for view-in-lang options + prefetch article languages
     if (currentArticle) {
       _checkReaderLangBanner();
-      _prefetchArticleLangs();
+      _prefetchArticleLangs(true);
     }
     // Reader View: reapply the session preference to the freshly-loaded article
     // (same pattern as _applyReaderFont), then sync the toggle's availability.
@@ -21733,12 +21752,29 @@ function closeReader() {
 var _articleLangData = null; // {languages: [{lang, zim, path}], available: [{lang, catalog_name}]}
 var _articleLangKey = '';    // "zim:path" key to invalidate cache on article change
 
-function _prefetchArticleLangs() {
-  // Skip if language chooser is hidden (no dropdown to show interlang in)
-  if (_getStorageFlag(SK.HIDE_LANG_CHOOSER)) return;
+// `loaded`: the article is on screen (or asked for by a tap). A wiki's
+// article is asked about only then, through Zimipedia's lookup, which
+// carries its languages and what its reader shows beside it: nothing on the
+// way to the article.
+function _prefetchArticleLangs(loaded) {
   if (!currentArticle) { _articleLangData = null; _articleLangKey = ''; return; }
   var key = currentArticle.zim + ':' + currentArticle.path;
   if (key === _articleLangKey) return; // already cached
+  var base = _splitPathFragment(currentArticle.path).base;
+  if (_wikiUrl(_articleUrl(currentArticle.zim, base))) {
+    if (!loaded) return;
+    _articleLangKey = key;
+    _articleLangData = null;
+    _wikiInfo(currentArticle.zim, base).then(function(d) {
+      if (_articleLangKey !== key) return;
+      _articleLangData = { languages: (d && d.languages) || [] };
+      var _dd = document.getElementById('lang-dropdown');
+      if (_dd && _dd.classList.contains('visible')) _renderLangDropdown();
+    });
+    return;
+  }
+  // Skip if language chooser is hidden (no dropdown to show interlang in)
+  if (_getStorageFlag(SK.HIDE_LANG_CHOOSER)) return;
   _articleLangKey = key;
   _articleLangData = null;
   fetch('/article-languages?zim=' + encodeURIComponent(currentArticle.zim) + '&path=' + encodeURIComponent(currentArticle.path))
@@ -21876,7 +21912,7 @@ function toggleLangDropdown(event) {
   if (readerOpen && currentArticle && !_articleLangData) {
     _articleLangKey = ''; // Reset key to force refetch
   }
-  _prefetchArticleLangs();
+  _prefetchArticleLangs(true);
   var dd = document.getElementById('lang-dropdown');
   if (dd.classList.contains('visible')) {
     _closeLangDropdown();
