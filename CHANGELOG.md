@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Search operators, in the library search, the catalog and the API: `-word` leaves out, `"exact words"` keeps words together, `cats OR dogs` takes either, and `in:wikipedia`, `lang:fr` (and `-in:ted`, `-lang:en`) choose the sources. `science -ted` in the catalog now hides the hundreds of TED ZIMs. A hyphenated word like `e-mail` is still one word. In the library, exclusions and phrases apply to a result's title. Each operator shows as a chip saying what it did ("without ted", "French", "Wikipedia"), and its × takes it back out; a ? beside the search box has examples in your language. ([#94](https://github.com/epheterson/Zimi/issues/94))
+- ZimiTube plays the videos and audiobooks in Kiwix's document libraries (Maître Lucas, YouScribe's audiobooks, Zaya and more): an audiobook is one card, its tracks listed and played in turn.
+- A folder of videos or audio made with Create a ZIM plays in ZimiTube.
 
 ### Fixed
 

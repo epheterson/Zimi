@@ -731,6 +731,8 @@
   "tube_sort_longest": "Longest",
   "tube_no_media": "This video cannot be played here.",
   "tube_missing": "This video isn't in this ZIM.",
+  "tube_track": "track",
+  "tube_tracks": "tracks",
   "app_empty_maps": "Add a map from the catalog",
   "app_empty_tube": "Add videos from the catalog",
   "app_empty_exchange": "Add a Q&A site from the catalog",

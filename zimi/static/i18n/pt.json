@@ -731,6 +731,8 @@
   "tube_sort_longest": "Mais longas",
   "tube_no_media": "Este vídeo não pode ser reproduzido aqui.",
   "tube_missing": "Este vídeo não está neste ZIM.",
+  "tube_track": "faixa",
+  "tube_tracks": "faixas",
   "app_empty_maps": "Adicione um mapa do catálogo",
   "app_empty_tube": "Adicione vídeos do catálogo",
   "app_empty_exchange": "Adicione um site de perguntas do catálogo",
