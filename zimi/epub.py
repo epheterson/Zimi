@@ -54,11 +54,24 @@ _XHTML_TYPES = ("application/xhtml+xml", "text/html", "application/xml")
 # is sent as a Content-Type, and ElementTree keeps a character reference
 # (&#13;&#10;) as the line break it names.
 _MEDIA_TYPE_RE = re.compile(r"[\w.+-]+/[\w.+-]+", re.ASCII)
+# The sanitizer's patterns never scan past what they can match: a chapter is
+# the book's to write, and a pattern that goes to the end of it again for
+# every unclosed tag (4,000 unclosed <script> took 1.8 s, and twice that
+# many four times as long) freezes the request that asked for it. Each
+# pattern is also tried only where it can start (a letter after the "<"),
+# so a chapter of nothing but "<" costs one look at each.
+#
 # Elements HTML has no empty form of: <a id="x"/> in XHTML is an anchor that
 # ends at once, in HTML an anchor that swallows the rest of the chapter.
-_NOT_VOID = "a|abbr|b|big|blockquote|cite|code|dd|div|dl|dt|em|h[1-6]|i|li|ol|p|pre|q|s|small|span|strong|sub|sup|table|tbody|td|th|thead|tr|tt|u|ul|section|article|aside|header|footer|figure|figcaption|title|iframe|script|style|textarea|video|audio|canvas|object"
-_SELF_CLOSED_RE = re.compile(r"<(" + _NOT_VOID + r")(\s[^<>]*?)?\s*/>", re.I)
-_BODY_RE = re.compile(r"<body\b[^>]*>(.*)</body\s*>", re.I | re.S)
+_NOT_VOID = frozenset(
+    "a abbr b big blockquote cite code dd div dl dt em h1 h2 h3 h4 h5 h6 i li "
+    "ol p pre q s small span strong sub sup table tbody td th thead tr tt u ul "
+    "section article aside header footer figure figcaption title iframe script "
+    "style textarea video audio canvas object".split()
+)
+_SELF_CLOSED_RE = re.compile(r"<([a-z][a-z0-9]*)(\s[^<>]*)?/>", re.I)
+_BODY_OPEN_RE = re.compile(r"<body\b[^<>]*>", re.I)
+_BODY_CLOSE_RE = re.compile(r"</body\s*>", re.I)
 # What every answer from inside an EPUB is allowed: its own pictures, fonts
 # and styles (and the reader's, set from the shell), nothing that runs.
 CSP = (
@@ -66,25 +79,34 @@ CSP = (
     "frame-src 'none'; child-src 'none'; worker-src 'none'; base-uri 'none'; "
     "form-action 'none'; style-src 'self' 'unsafe-inline'; frame-ancestors 'self'"
 )
+# What the chapters lose. These go with what they hold, to their end tag
+# or, never closed, to the end of the chapter (a browser shows nothing after
+# an unclosed <script> either); the rest are the tag alone, as is any of
+# them closed XHTML's way (<script src="a.js"/>).
+_DROP_HELD = "script|style|iframe|frameset|object|applet"
+_DROP_TAGS = _DROP_HELD + "|frame|embed|base|meta|link"
 _DROP_RE = re.compile(
-    r"<(script|style|iframe|frame|frameset|object|embed|applet|base|meta|link)\b[^>]*>.*?</\1\s*>"
-    r"|<(script|iframe|frame|frameset|object|embed|applet|base|meta|link)\b[^>]*>",
+    r"<(?=[a-z])(?:"
+    r"(?:" + _DROP_TAGS + r")\b[^>]*/>"
+    r"|(" + _DROP_HELD + r")\b[^>]*>.*?(?:</\1\s*>|\Z)"
+    r"|(?:" + _DROP_TAGS + r")\b[^>]*(?:>|\Z))",
     re.I | re.S,
 )
 # An event handler after a space, a slash or a quote (<img/onerror=...>,
 # <img src="x"onerror=...>), and srcdoc, which is a document of its own.
 _EVENT_ATTR_RE = re.compile(
-    r"""(?<=[\s/"'])(?:on[a-z]+|srcdoc)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)""", re.I
+    r"""(?=[os])(?<=[\s/"'])(?:on[a-z]+|srcdoc)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)""",
+    re.I,
 )
 _URL_ATTR_RE = re.compile(
-    r"""(\s(?:src|href|xlink:href|poster|action|formaction)\s*=\s*)(["'])(.*?)\2""",
-    re.I | re.S,
+    r"""(\s(?=[shxpaf])(?:src|href|xlink:href|poster|action|formaction)\s*=\s*)("[^"]*"|'[^']*')""",
+    re.I,
 )
 # Browsers drop tabs, newlines and controls from a URL before reading its
 # scheme ("jav&#x09;ascript:" is javascript:).
 _URL_NOISE_RE = re.compile(r"[\x00-\x20\x7f]+")
 _UNSAFE_SCHEMES = ("javascript:", "vbscript:", "data:text/html", "data:image/svg")
-_TEXT_RE = re.compile(r"<[^>]+>")
+_TEXT_RE = re.compile(r"<[^<>]+>")
 
 
 class EpubError(Exception):
@@ -318,14 +340,31 @@ class Book:
         }
 
 
+def _body_of(text):
+    """A chapter's body: from its <body> to the last </body>, or to the end
+    when it is not closed; the whole text when there is no <body>."""
+    m = _BODY_OPEN_RE.search(text)
+    if not m:
+        return text
+    end = len(text)
+    for close in _BODY_CLOSE_RE.finditer(text, m.end()):
+        end = close.start()
+    return text[m.end() : end]
+
+
+def _opened(m):
+    """``<a id="x"/>`` as HTML reads it, ``<a id="x"></a>``; a void
+    element (``<br/>``) as it is."""
+    name = m.group(1)
+    if name.lower() not in _NOT_VOID:
+        return m.group(0)
+    return f"<{name}{(m.group(2) or '').rstrip()}></{name}>"
+
+
 def _chapter_body(text):
-    m = _BODY_RE.search(text)
-    body = m.group(1) if m else text
-    body = _DROP_RE.sub("", body)
+    body = _DROP_RE.sub("", _body_of(text))
     body = _EVENT_ATTR_RE.sub("", body)
-    return _SELF_CLOSED_RE.sub(
-        lambda m: f"<{m.group(1)}{m.group(2) or ''}></{m.group(1)}>", body
-    )
+    return _SELF_CLOSED_RE.sub(_opened, body)
 
 
 def _rewrite_urls(body, base_dir, index):
@@ -335,7 +374,8 @@ def _rewrite_urls(body, base_dir, index):
     the book is kept, and ``javascript:`` is dropped."""
 
     def one(m):
-        lead, quote, value = m.group(1), m.group(2), _html.unescape(m.group(3))
+        lead, quoted = m.group(1), m.group(2)
+        quote, value = quoted[0], _html.unescape(quoted[1:-1])
         v = value.strip()
         if _URL_NOISE_RE.sub("", v).lower().startswith(_UNSAFE_SCHEMES):
             return f"{lead}{quote}#{quote}"

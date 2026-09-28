@@ -1260,7 +1260,7 @@ def test_a_chapter_that_gets_past_the_strip_still_runs_nothing(served_bypass, mo
 
     if not renderer.browser_available():
         pytest.skip("playwright + chromium are not usable here")
-    monkeypatch.setattr(epub, "_chapter_body", lambda text: epub._BODY_RE.search(text).group(1))
+    monkeypatch.setattr(epub, "_chapter_body", epub._body_of)
     monkeypatch.setattr(epub, "_rewrite_urls", lambda body, base_dir, index: body)
     base, zim = served_bypass
     got = _open_in_the_reader(base, zim, "bypass.epub/")
@@ -1513,3 +1513,76 @@ def test_a_folder_of_epubs_alone_is_on_the_shelf(shelf_lib, tmp_path, monkeypatc
     assert [b["path"] for b in got] == ["aleutian.epub/"] and got[0][
         "source"
     ] == "folder"
+
+
+# ── the sanitizer is linear ────────────────────────────────────────────────
+
+_MB = 1024 * 1024
+# Each is a shape that made one of the sanitizer's patterns scan to the end
+# of the chapter again at every step: 4,000 unclosed <script> took 1.8 s.
+HOSTILE_SHAPES = {
+    "unclosed script": "<script>x",
+    "a tag that never ends": "<script",
+    "a body never closed": "<body>x",
+    "a bracket that never closes": "<",
+    "spaces in an anchor": None,
+    "a quote that never closes": None,
+}
+
+
+def _hostile_chapter(shape, size):
+    if shape == "spaces in an anchor":
+        return "<html><body><a" + " " * size + "x"
+    if shape == "a quote that never closes":
+        return '<html><body><img src="' + "x" * size
+    unit = HOSTILE_SHAPES[shape]
+    return "<html><body>" + unit * (size // len(unit))
+
+
+def _sanitize(text):
+    from zimi import epub
+
+    body = epub._chapter_body(text)
+    body = epub._rewrite_urls(body, "OEBPS", {})
+    epub._TEXT_RE.sub("", body)
+
+
+def _cpu_seconds(shape, size):
+    """The process's own time, not the clock's: the bound holds on a
+    machine busy with other work."""
+    import time
+
+    text = _hostile_chapter(shape, size)
+    t0 = time.process_time()
+    _sanitize(text)
+    return time.process_time() - t0
+
+
+@pytest.mark.parametrize("shape", list(HOSTILE_SHAPES))
+def test_a_hostile_chapter_is_sanitized_in_linear_time(shape):
+    """32 KB first, so a quadratic sanitizer fails in seconds rather than
+    running for an hour on the megabyte (the old one took 1.5 s on 20 KB of
+    unclosed <script>). A megabyte whose every character is a place a tag
+    could start costs a pass per pattern; the review's own case, unclosed
+    <script>, is well under 100 ms."""
+    small = _cpu_seconds(shape, 32 * 1024)
+    assert small < 0.05, f"{shape}: 32 KB took {small:.2f}s"
+    big = _cpu_seconds(shape, _MB)
+    assert big < (0.1 if shape == "unclosed script" else 0.5), f"{shape}: 1 MB took {big:.2f}s"
+
+
+def test_an_xhtml_self_closed_script_keeps_the_rest_of_the_chapter():
+    """An unclosed <script> goes to the end of the chapter, as a browser
+    would read it; one closed XHTML's way is only itself."""
+    from zimi import epub
+
+    body = epub._chapter_body(
+        '<html><body><script src="a.js"/><p>One</p><iframe src="x"/><p>Two</p>'
+        "<script>alert(1)</script><p>Three</p><object data='x'/><p>Four</p>"
+        "<script>never closed<p>Gone</p></body></html>"
+    )
+    assert "<p>One</p>" in body and "<p>Two</p>" in body and "<p>Three</p>" in body
+    assert "<p>Four</p>" in body
+    low = body.lower()
+    assert "<script" not in low and "<iframe" not in low and "<object" not in low
+    assert "alert" not in body and "Gone" not in body
