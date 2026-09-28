@@ -245,7 +245,7 @@ OTHER_FACE_PATH = "A/index~other"
 FACES_METADATA_KEY = "X-Zimi-Faces"
 
 
-def _store_other_face(creator, static_cls, capture, title, final_url, note):
+def _store_other_face(creator, static_cls, capture, title, final_url, note, unlink=None):
     """Keep the site's other face when it has one, as a second entry.
 
     A site with a dark mode serves a different page depending on the reader's
@@ -268,6 +268,8 @@ def _store_other_face(creator, static_cls, capture, title, final_url, note):
     rendered = capture.render_other(html, final_url, resources)
     if not rendered:
         return ""
+    if unlink is not None:
+        rendered = unlink(rendered, final_url)
     creator.add_item(
         static_cls(OTHER_FACE_PATH, f"{title} ({scheme})", rendered.encode("utf-8"))
     )
@@ -1652,6 +1654,87 @@ def _externalize_links(page, base_url, resolve=None):
     return _A_TAG_RE.sub(fix, page)
 
 
+# ── "Remove links to other sites" (#99) ─────────────────────────────────────
+#
+# tripplehelix: "It can be confusing as to which links take you to the web."
+# Zimi's reader marks those links on every ZIM, but a ZIM travels to readers
+# that are not Zimi, so a capture can also leave them out: a link to another
+# site becomes its own text, a <span> where the <a> was. Links within the site
+# stay, captured or not, and so do mailto:, tel: and in-page anchors: none of
+# them sends the reader somewhere else on the web.
+#
+# The opening tag and its closing tag are both rewritten, so the pair is
+# walked in order over the masked markup (a script's "<a href=" is a string).
+# Anchors do not nest in HTML, which is what makes "the next </a>" the close.
+_A_OPEN_CLOSE_RE = re.compile(r"<a\b[^>]*>|</a\s*>", re.IGNORECASE)
+_LINK_ONLY_ATTR_RE = attr_re("href", "target", "rel", "ping", "hreflang", "referrerpolicy")
+
+
+def _site_host(url):
+    """A URL's host as a site: lowercased, without a leading www."""
+    host = (urllib.parse.urlsplit(url).hostname or "").lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+def unlink_other_sites(page, page_url):
+    """``(page, removed)``: ``page`` with every link to a site other than
+    ``page_url``'s turned into plain text, and how many were."""
+    site = _site_host(page_url)
+    state = {"open": False, "removed": 0}
+
+    def fix(m):
+        tag = m.group(0)
+        if tag[1] == "/":
+            if state["open"]:
+                state["open"] = False
+                return "</span>"
+            return tag
+        state["open"] = False
+        hm = _HREF_RE.search(tag)
+        if not hm:
+            return tag
+        val = _html.unescape(hm.group("val") or "").strip()
+        head = val.split("/", 1)[0]
+        if ":" in head and not val.lower().startswith(("http:", "https:")):
+            return tag  # mailto:, tel:, javascript: are not another site
+        target = urllib.parse.urljoin(page_url, val)
+        if not target.lower().startswith(("http:", "https:")) or _site_host(target) == site:
+            return tag
+        state["open"] = True
+        state["removed"] += 1
+        return "<span" + _LINK_ONLY_ATTR_RE.sub("", tag[2:])
+
+    page = sub_markup(_A_OPEN_CLOSE_RE, fix, page)
+    return page, state["removed"]
+
+
+class OtherSiteLinks:
+    """The capture option and its tally: call it on each page written, then
+    ``phrase()`` and ``count()`` for the creation record. Off, it passes every
+    page through and records nothing."""
+
+    def __init__(self, remove):
+        self.remove = bool(remove)
+        self.removed = 0
+
+    def __call__(self, page, page_url):
+        if not self.remove:
+            return page
+        page, n = unlink_other_sites(page, page_url)
+        self.removed += n
+        return page
+
+    def count(self):
+        """What the record keeps: the number removed, or None when the option
+        was off (a 0 says it was on and there was nothing to remove)."""
+        return self.removed if self.remove else None
+
+    def phrase(self):
+        if not self.remove:
+            return ""
+        return f", {_plural(self.removed, 'link')} to other sites removed"
+
+
 def _strip_scripts(page):
     """No JavaScript ships: scripts can't run against the live origin from
     inside a ZIM, and a dead <script src> is just a broken request. <base>
@@ -2363,6 +2446,7 @@ def create_page_zim(
     engine=DEFAULT_ENGINE,
     block_ads=None,
     capture_variants=None,
+    strip_links=False,
     register=False,
     progress=None,
 ):
@@ -2375,7 +2459,11 @@ def create_page_zim(
     ``progress`` is called at each phase boundary. It is not decoration: the
     web job's sink RAISES out of it to cancel, so a capture with no callback
     is a capture whose cancel button cannot work. The phases are the two that
-    can actually take time — the fetch, and carrying the page's assets."""
+    can actually take time — the fetch, and carrying the page's assets.
+
+    ``strip_links`` turns links to other sites into plain text (see
+    ``unlink_other_sites``). The alive and zimit engines write their own ZIM
+    and never see it: their pages are rewritten at replay, not here."""
     from zimi.p2p import is_offline
 
     note = progress or (lambda _message: None)
@@ -2441,6 +2529,7 @@ def create_page_zim(
         capture_variants=capture_variants,
     )
     blocked = {}
+    unlink = OtherSiteLinks(strip_links)
     try:
         note(f"fetching {url}")
         final_url, page, _n, clang = capture.fetch(url)
@@ -2474,12 +2563,12 @@ def create_page_zim(
             # the wrong heading (Eric: "growing on the package step not fetch
             # step? Fetch is all download steps"). The packaging line moves to
             # where the writing actually starts.
-            page = capture.render(creator_target(creator), page, final_url)
+            page = unlink(capture.render(creator_target(creator), page, final_url), final_url)
             note(f"packaging {final_url}")
             creator.add_item(static_cls("A/index", zim_title, page.encode("utf-8")))
             creator.set_mainpath("A/index")
             faces = _store_other_face(
-                creator, static_cls, capture, zim_title, final_url, note
+                creator, static_cls, capture, zim_title, final_url, note, unlink
             )
             pictures = _store_pictures(creator, capture, page, final_url, note)
             add_standard_metadata(
@@ -2499,10 +2588,12 @@ def create_page_zim(
                     "created",
                     "page",
                     f"captured one page from {final_url}"
-                    + blocked_phrase(blocked.get("blocked")),
+                    + blocked_phrase(blocked.get("blocked"))
+                    + unlink.phrase(),
                     tools=capture_tools(capture),
                     counts={"pages": 1, "assets": capture.count},
                     blocked=blocked.get("blocked"),
+                    links_removed=unlink.count(),
                 ),
             )
     finally:
@@ -2611,6 +2702,7 @@ def create_pages_zim(
     engine=DEFAULT_ENGINE,
     block_ads=None,
     capture_variants=None,
+    strip_links=False,
     register=False,
     progress=None,
 ):
@@ -2671,6 +2763,7 @@ def create_pages_zim(
             engine=engine,
             block_ads=block_ads,
             capture_variants=capture_variants,
+            strip_links=strip_links,
             register=register,
             progress=progress,
         )
@@ -2705,6 +2798,7 @@ def create_pages_zim(
     )
     entries, skipped, taken, detected = [], [], {"index"}, []
     blocked = {}
+    unlink = OtherSiteLinks(strip_links)
     try:
         for url in wanted:
             note(f"fetching {url}")
@@ -2788,6 +2882,9 @@ def create_pages_zim(
                     entry["final_url"],
                     resolve_link=resolve,
                 )
+                # After resolving: a link to another listed page is internal
+                # by now, whichever site it is on.
+                html = unlink(html, entry["final_url"])
                 creator.add_item(
                     static_cls(
                         "A/" + entry["name"], entry["title"], html.encode("utf-8")
@@ -2819,10 +2916,12 @@ def create_pages_zim(
                     "pages",
                     f"captured {_plural(len(entries), 'page')} from the web"
                     + (f", skipping {len(skipped)}" if skipped else "")
-                    + blocked_phrase(blocked.get("blocked")),
+                    + blocked_phrase(blocked.get("blocked"))
+                    + unlink.phrase(),
                     tools=capture_tools(capture),
                     counts={"pages": len(entries), "assets": asset_count},
                     blocked=blocked.get("blocked"),
+                    links_removed=unlink.count(),
                 ),
             )
     finally:

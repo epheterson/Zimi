@@ -686,6 +686,7 @@ def build_openapi():
                                 "asset_version": {"type": "string"},
                                 "zim_count": {"type": "integer"},
                                 "pdf_support": {"type": "boolean"},
+                                "offline": {"type": "boolean"},
                             },
                             "required": ["status", "version", "zim_count"],
                         },

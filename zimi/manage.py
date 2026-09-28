@@ -2107,6 +2107,9 @@ CREATE_BLOCK_ADS = True
 # would be offering a switch over nothing. Mirrors the gate in
 # renderer.RenderedSession._record_variants, pinned by a test.
 CREATE_VARIANT_ENGINES = ("alive",)
+# The engines whose pages Zimi writes, so "Remove links to other sites" can
+# reach them. alive and zimit hand back an archive another program packaged.
+CREATE_UNLINK_ENGINES = ("builtin", "rendered", "singlefile")
 # What the variant sweep does when the form says nothing. Mirrors
 # renderer.VARIANT_SWEEP_DEFAULT — checked by default, so silence means the
 # field never rendered rather than "the admin unticked it".
@@ -2946,6 +2949,11 @@ def _create_validate(data):
                 data.get("capture_variants"),
                 _create_default("capture_variants", CREATE_CAPTURE_VARIANTS),
             )
+        # "Remove links to other sites" (#99), off unless ticked. Only where
+        # Zimi writes the pages itself: an alive or zimit capture's links are
+        # rewritten at replay, so the box would promise what it cannot do.
+        if _create_unlink_engine(opts["engine"]):
+            opts["strip_links"] = _create_bool(data.get("strip_links"), False)
     if mode == "site":
         # Any number, and 0 for none: the byte budget bounds the capture. A
         # negative is a typo, not "no limit", so it falls back to the default.
@@ -3117,6 +3125,12 @@ def _create_variant_engine(engine):
     return str(engine or "").strip().lower() in CREATE_VARIANT_ENGINES
 
 
+def _create_unlink_engine(engine):
+    """Whether the chosen engine writes the pages itself, so links to other
+    sites can be left out of them. ``None`` is the fast engine, which does."""
+    return (str(engine or "").strip().lower() or "builtin") in CREATE_UNLINK_ENGINES
+
+
 def _create_bool(value, default):
     """A checkbox that is CHECKED by default, read as a real bool.
 
@@ -3180,7 +3194,7 @@ def _create_run(job, opts):
             register=True,
             progress=job.note,
             **_create_kwargs(
-                opts, "language", "engine", "block_ads", "capture_variants"
+                opts, "language", "engine", "block_ads", "capture_variants", "strip_links"
             ),
         )
     if job.mode == "site":
@@ -3211,6 +3225,7 @@ def _create_run(job, opts):
                 "engine",
                 "block_ads",
                 "capture_variants",
+                "strip_links",
             ),
         )
     if job.mode == "video":

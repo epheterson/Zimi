@@ -56,6 +56,8 @@ var SK = {
   // _createCanShow for why optimism here is safe in one direction only.
   CAN_CREATE: 'zimi_can_create',
   HIDE_XZIM_LINKS: 'zimi_hide_cross_zim_links',
+  // Links that leave the library (#99): absent = mark them, 'hide' = plain text.
+  EXT_LINKS: 'zimi_external_links',
   // When set, ZIM article HTML is run through the server-side a11y
   // rewriter (alt="" on images, h1 promotion, html lang). Off by
   // default to keep ZIM content byte-identical for purist users.
@@ -298,15 +300,24 @@ var _APP_THEME_ICONS = {
   dark: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
   light: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>'
 };
-function _appThemeSegInner() {
-  var cur = _appTheme();
-  return APP_THEMES.map(function(m) {
+// A segmented control's buttons: one per value, the current one on. `setter`
+// is the global each button calls with its value; `keyPrefix` + value is its
+// label. Every such control in Settings is this one shape.
+function _segButtonsHtml(values, cur, icons, setter, keyPrefix) {
+  return values.map(function(m) {
     var on = m === cur;
     return '<button type="button" class="app-theme-btn' + (on ? ' active' : '') +
       '" role="radio" aria-checked="' + (on ? 'true' : 'false') +
-      '" onclick="_setAppTheme(\'' + m + '\')">' + _APP_THEME_ICONS[m] +
-      '<span>' + tH('theme_' + m) + '</span></button>';
+      '" onclick="' + setter + '(\'' + m + '\')">' + icons[m] +
+      '<span>' + tH(keyPrefix + m) + '</span></button>';
   }).join('');
+}
+function _segHtml(id, labelKey, inner) {
+  return '<div class="app-theme-seg" id="' + id + '" role="radiogroup" aria-label="' +
+    escAttr(t(labelKey)) + '">' + inner + '</div>';
+}
+function _appThemeSegInner() {
+  return _segButtonsHtml(APP_THEMES, _appTheme(), _APP_THEME_ICONS, '_setAppTheme', 'theme_');
 }
 // Article theme reuses the app-theme control's icons and chrome — same shape,
 // same language, one row below it — with `match` in the slot where the app
@@ -317,22 +328,13 @@ var _ARTICLE_THEME_ICONS = {
   light: _APP_THEME_ICONS.light
 };
 function _articleThemeSegInner() {
-  var cur = _articleTheme();
-  return ARTICLE_THEMES.map(function(m) {
-    var on = m === cur;
-    return '<button type="button" class="app-theme-btn' + (on ? ' active' : '') +
-      '" role="radio" aria-checked="' + (on ? 'true' : 'false') +
-      '" onclick="_setArticleTheme(\'' + m + '\')">' + _ARTICLE_THEME_ICONS[m] +
-      '<span>' + tH('article_theme_' + m) + '</span></button>';
-  }).join('');
+  return _segButtonsHtml(ARTICLE_THEMES, _articleTheme(), _ARTICLE_THEME_ICONS, '_setArticleTheme', 'article_theme_');
 }
 function _articleThemeSegHtml() {
-  return '<div class="app-theme-seg" id="article-theme-seg" role="radiogroup" aria-label="' +
-    escAttr(t('article_theme')) + '">' + _articleThemeSegInner() + '</div>';
+  return _segHtml('article-theme-seg', 'article_theme', _articleThemeSegInner());
 }
 function _appThemeSegHtml() {
-  return '<div class="app-theme-seg" id="app-theme-seg" role="radiogroup" aria-label="' +
-    escAttr(t('app_theme')) + '">' + _appThemeSegInner() + '</div>';
+  return _segHtml('app-theme-seg', 'app_theme', _appThemeSegInner());
 }
 
 // ── Article dark adaptation (raw / non-Reader-View pages) ──
@@ -2311,11 +2313,13 @@ async function _initSecondary() {
       if (hres.ok) {
         const hdata = await hres.json();
         if (hdata.version) document.getElementById('footer-version').textContent = hdata.version + ' ';
+        _extServerOffline = !!hdata.offline;
       }
     }).catch(function(){}),
-    // Domain→ZIM map for cross-ZIM links
+    // Domain→ZIM map for cross-ZIM links. A page read before it arrived
+    // marked a link to an installed site as the web; now it knows better.
     fetch('/resolve?domains=1').then(async dres => {
-      if (dres.ok) _domainZimMap = await dres.json();
+      if (dres.ok) { _domainZimMap = await dres.json(); _extRemarkOpen(); }
     }).catch(function(){})
   ]);
   // Always update topbar after secondary data (manage status determines gear visibility)
@@ -2557,21 +2561,43 @@ function _currentPageUrl() {
 // ── Open in browser (escape the app shell into a real browser tab) ──
 function _openInBrowser() {
   var url = _currentPageUrl();
-  // Desktop app: hand off to the system browser via the pywebview bridge.
+  // iOS PWA can't window.open to Safari — copy the URL to the clipboard.
+  if (_isStandalonePWA() && !IS_DESKTOP) { _copyText(url); return; }
+  _openOnWeb(url);
+}
+
+// A new browser tab, or in the desktop app the system's browser (the
+// pywebview bridge): where Zimi sends anything that leaves it.
+function _openOnWeb(url) {
   if (IS_DESKTOP && window.pywebview && window.pywebview.api && window.pywebview.api.open_external) {
     window.pywebview.api.open_external(url).catch(function() {});
     return;
   }
-  if (_isStandalonePWA()) {
-    // iOS PWA can't window.open to Safari — copy the URL to the clipboard.
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url).then(function() { _showToast(t('link_copied')); });
-    } else {
-      prompt(t('copy_link'), url);
-    }
-    return;
-  }
   window.open(url, '_blank', 'noopener');
+}
+
+// Onto the clipboard, and say so. Over plain http on a LAN there is no
+// navigator.clipboard (it needs a secure context), so the old way; and failing
+// that, the address in a box to copy by hand.
+function _copyText(text) {
+  var done = function() { _showToast(t('link_copied')); };
+  var fallback = function() {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    ta.remove();
+    if (ok) done(); else prompt(t('copy_link'), text);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(done, fallback);
+  } else {
+    fallback();
+  }
 }
 
 // ── Navigation ──
@@ -11895,6 +11921,10 @@ function _msPreferencesHtml() {
     '<label class="ms-check" style="margin-top:12px"><input type="checkbox" id="ms-darken-articles"' + (darkenOn ? ' checked' : '') +
       ' onchange="_setDarkenArticles(this.checked)"> ' + tH('darken_articles') + '</label>' +
     '<div class="ms-hint" id="ms-darken-hint">' + tH('darken_articles_hint') + '</div>' +
+    // Links that leave the library for the web (#99): marked, or plain text.
+    '<div class="ms-theme-label" style="margin-top:16px">' + tH('ext_links') + '</div>' +
+    _segHtml('ext-links-seg', 'ext_links', _extLinksSegInner()) +
+    '<div class="ms-hint">' + tH('ext_links_hint') + '</div>' +
     '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
     '<label class="ms-check"><input type="checkbox"' + (showDiscover ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> ' + tH('show_discover') + '</label>' +
@@ -13245,6 +13275,7 @@ var _PREF_KEYS = [
   SK.UI_LANG, SK.HIDE_DISCOVER, SK.HIDE_LANG_CHOOSER, SK.HIDE_XZIM_LINKS,
   SK.A11Y_REWRITE, SK.LIBRARY_VIEW, SK.PREF_LANGUAGES, SK.PREF_FLAVOR,
   SK.READER_FONT, SK.READER_FAMILY, SK.READER_THEME, SK.READER_AUTO,
+  SK.EXT_LINKS,
 ];
 
 function _collectPreferences() {
@@ -16352,6 +16383,7 @@ function _readerViewRestore(doc) {
 function _readerViewToggle() {
   var doc = _readerFrameDoc();
   if (!doc) return;
+  _extHide(); // the link it was showing is about to be swapped out
   if (_readerViewOn) {
     _readerViewOn = false;
     try { _readerViewRestore(doc); } catch(e) {}
@@ -19020,6 +19052,10 @@ function openReader(url) {
     clearTimeout(_readerTimeout);
     if (!readerOpen) { loading.classList.add('hidden'); return; } // reader was closed — don't update title
     _ttsStop(); // stop any in-progress speech when the article changes
+    // Links out of the library, marked (or made plain text) before anything
+    // is shown or copied: Reader View and the book reader clone the marks.
+    _extHide();
+    if (!_frameIsOurOwnPage(frame)) try { _extMark(frame.contentDocument); } catch (e) {}
     // AUTO / sticky Reader View: transform the freshly loaded document BEFORE we
     // reveal it. The reader was on for the previous article (sticky, Safari-like)
     // or AUTO is armed → re-apply to this doc. The tinted loading overlay stays up
@@ -19261,50 +19297,10 @@ function openReader(url) {
           openArticle(linkZim, linkPath);
           return;
         }
-        // External links: try cross-ZIM resolution, fall back to new tab
-        // Check both raw href (https://...) and protocol-relative (//domain/...)
-        if ((/^https?:\/\//.test(href) || /^\/\//.test(href)) && !fullUrl.startsWith(location.origin)) {
-          e.preventDefault();
-          // Quick client-side check: skip /resolve if domain isn't in any installed ZIM
-          try {
-            var linkHost = new URL(fullUrl).hostname;
-            var linkBare = linkHost.replace(/^www\./, '');
-            if (!_domainZimMap[linkHost] && !_domainZimMap[linkBare]) {
-              window.open(fullUrl, '_blank');
-              return;
-            }
-          } catch(ex) {}
-          // Check cached resolve results first (populated by batch resolve on load)
-          var _cached = _resolveCache && _resolveCache[fullUrl];
-          if (_cached && _cached.found) {
-            openArticle(_cached.zim, _cached.path);
-            return;
-          }
-          var fromZim = readerSource || (currentArticle && currentArticle.zim) || '';
-          // When resolve says "not captured" but the domain BELONGS to an
-          // installed ZIM, stay in the archive: navigate to the mirrored
-          // path so the reader serves the page if it exists and the
-          // not-captured interstitial (with its explicit live-web link) if
-          // it does not. Leaving the archive is always a stated choice, so
-          // window.open(live) is reserved for domains no ZIM claims.
-          var _mapped = _domainZimMap[linkHost] || _domainZimMap[linkBare] || '';
-          function _stayInArchive() {
-            try {
-              var u = new URL(fullUrl);
-              openArticle(_mapped, u.hostname + u.pathname + (u.search || ''));
-              return true;
-            } catch (ex) { return false; }
-          }
-          fetch('/resolve?url=' + encodeURIComponent(fullUrl) + (fromZim ? '&from=' + encodeURIComponent(fromZim) : ''))
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-              if (data.found) openArticle(data.zim, data.path);
-              else if (_mapped && _stayInArchive()) return;
-              else window.open(fullUrl, '_blank');
-            })
-            .catch(function() {
-              if (!(_mapped && _stayInArchive())) window.open(fullUrl, '_blank');
-            });
+        // Off this server: into the library when an installed ZIM holds the
+        // site, else out to the web, saying where before it goes.
+        if (!fullUrl.startsWith(location.origin)) {
+          _extFollow(e, a, fullUrl, readerSource || (currentArticle && currentArticle.zim) || '');
         }
       };
       // capture: true so we run before wombat's own click interceptor.
@@ -22480,6 +22476,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     // Topmost popovers first — otherwise Escape falls through to goBack()/close
     // and dumps a keyboard user out of the reader instead of shutting the popover.
+    if (_extCur) { _extHide(); return; }
     if (_definePopover && _definePopover.classList.contains('open')) { _defineHide(); return; }
     var _rp = document.getElementById(_READER_PALETTE_ID);
     if (_rp && _rp.classList.contains('visible')) { _closeReaderPalette(); return; }
@@ -22739,6 +22736,410 @@ document.addEventListener('auxclick', function(e) {
   var url = '/w/' + encodeURIComponent(zim) + '/' + path.split('/').map(encodeURIComponent).join('/') + '?view=1';
   window.open(url, '_blank');
 });
+
+// ── Links that leave the library (#99) ──
+// tripplehelix: "It can be confusing as to which links take you to the web."
+// Every reader (the article, Reader View, a book, an app page showing a ZIM's
+// HTML) puts a small arrow after a link to the web, and says where it goes
+// before it goes: a mouse resting on it, or a finger tapping it, brings up
+// "Opens example.com on the web" with Open and Copy link. Offline, the same
+// sheet says the page needs the internet instead of opening a dead tab. A link
+// an installed ZIM can answer (a Wikipedia link, that Wikipedia installed) is
+// not a way out: it opens in the library.
+//
+// Settings > Reading, per person and kept with the account: mark them (the
+// default), or hide them, which leaves their words as plain text.
+//
+// Shared with the app pages, which are this origin: window.parent.zimiLinkKind
+// is the one classifier, window.parent.zimiMarkLinks the one marker.
+var EXT_LINK_MODES = ['mark', 'hide'];
+var EXT_CLASS = 'zimi-ext';        // a link to the web, marked
+var EXT_BARE = 'zimi-ext-bare';    // ...with no words to put an arrow after
+var EXT_OFF = 'zimi-ext-off';      // ...hidden: its href moved aside
+var EXT_OWN = 'zimi-ext-own';      // <html>: the page draws its own mark (MediaWiki)
+var EXT_HREF_ATTR = 'data-zimi-href';
+var EXT_STYLE_ID = 'zimi-ext-style';
+var EXT_HOVER_MS = 350;  // a mouse resting on a link, not crossing it
+var EXT_LEAVE_MS = 250;  // time to move from the link onto the sheet
+var EXT_GAP = 6;         // px between a link and its sheet
+var EXT_EDGE = 8;        // px the sheet keeps from the window's edges
+// The mark: a box with an arrow leaving it, as Wikipedia draws it. One path,
+// used as a mask in the pages (so it takes the link's colour) and inline here.
+var EXT_ICON_PATH = 'M9.5 7v3H2V2.5h3M7 1.5h3.5V5M10.5 1.5 5.5 6.5';
+var EXT_ICON = '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + EXT_ICON_PATH + '"/></svg>';
+var _EXT_SCHEME_RE = /^([a-z][a-z0-9+.-]*):/i;
+var _EXT_AUTHORITY_RE = /^(?:https?:)?[\/\\]{2}([^\/\\?#]*)/i;
+var _EXT_PLAIN_HOST_RE = /^[a-z0-9.-]+$/i;
+// Schemes another program on the device answers. Not the web: never marked.
+var _EXT_APP_SCHEMES = ['mailto', 'tel', 'sms', 'geo', 'callto', 'facetime', 'xmpp', 'magnet'];
+var _extServerOffline = false;  // ZIMI_OFFLINE, from /health
+var _extSheet = null, _extCur = null, _extShowTimer = null, _extHideTimer = null;
+
+function _extLinkMode() {
+  var v = null;
+  try { v = localStorage.getItem(SK.EXT_LINKS); } catch (e) {}
+  return v === 'hide' ? 'hide' : 'mark';
+}
+function _setExtLinkMode(mode) {
+  if (EXT_LINK_MODES.indexOf(mode) < 0) mode = 'mark';
+  try {
+    if (mode === 'mark') localStorage.removeItem(SK.EXT_LINKS);
+    else localStorage.setItem(SK.EXT_LINKS, mode);
+  } catch (e) {}
+  var seg = document.getElementById('ext-links-seg');
+  if (seg) seg.innerHTML = _extLinksSegInner();
+  _extRemarkOpen();
+}
+var _EXT_LINK_ICONS = {
+  mark: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="' + EXT_ICON_PATH + '"/></svg>',
+  hide: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>'
+};
+function _extLinksSegInner() {
+  return _segButtonsHtml(EXT_LINK_MODES, _extLinkMode(), _EXT_LINK_ICONS, '_setExtLinkMode', 'ext_links_');
+}
+
+// The ZIM that answers for a host, or '' (the map /resolve?domains=1 serves).
+function _extHostZim(host) {
+  host = String(host || '').toLowerCase();
+  return _domainZimMap[host] || _domainZimMap[host.replace(/^www\./, '')] || '';
+}
+
+// Where a link goes, in one word. `base` is what a relative href is relative
+// to (the page it is on; this page when left out).
+//   'library'  stays in Zimi: this server, or a site an installed ZIM holds
+//   'web'      leaves the library for the open web
+//   'app'      another program's: mailto:, tel:, sms: and the like
+//   'none'     nowhere Zimi follows: javascript:, data:, empty, an #anchor
+function zimiLinkKind(href, base) {
+  // What a browser does to an address before reading it: control characters
+  // and spaces off the ends, tabs and newlines out ("java\tscript:" runs).
+  var h = String(href == null ? '' : href).replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '').replace(/[\t\n\r]/g, '');
+  if (!h || h.charAt(0) === '#') return 'none';
+  var m = _EXT_SCHEME_RE.exec(h);
+  if (m) {
+    var s = m[1].toLowerCase();
+    if (s !== 'http' && s !== 'https') return _EXT_APP_SCHEMES.indexOf(s) >= 0 ? 'app' : 'none';
+  } else if (!/^[\/\\]{2}/.test(h) && (!base || base.charAt(0) === '/' || base.indexOf(location.origin + '/') === 0)) {
+    return 'library'; // relative, on a page this server serves: the common case, no parse
+  }
+  // An absolute link with a plain host (no user, port, brackets, escapes or
+  // letters outside ASCII) that is not this server's: read it as written.
+  // A big article has thousands of these, and a URL parse each is most of
+  // what marking one used to cost. Anything less plain is parsed.
+  var am = _EXT_AUTHORITY_RE.exec(h);
+  if (am && _EXT_PLAIN_HOST_RE.test(am[1]) && am[1].toLowerCase() !== location.hostname.toLowerCase()) {
+    return _extHostZim(am[1]) ? 'library' : 'web';
+  }
+  var u;
+  try { u = new URL(h, base || location.href); } catch (e) { return 'none'; }
+  if (u.origin === location.origin) return 'library';
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return 'none';
+  return _extHostZim(u.hostname) ? 'library' : 'web';
+}
+
+// A link's real address. A replayed capture's (wombat) href shows the address
+// it had on the web; asked with _no_rewrite it gives the one in the archive.
+function _extWombat(doc) {
+  try { return !!(doc.defaultView && doc.defaultView._wb_wombat); } catch (e) { return false; }
+}
+function _extRealUrl(a, wombat) {
+  if (wombat) {
+    try {
+      var prev = a._no_rewrite;
+      a._no_rewrite = true;
+      var h = a.href;
+      a._no_rewrite = prev;
+      return h;
+    } catch (e) {}
+  }
+  return a.href;
+}
+
+// The marks' CSS, once per document. The arrow is a mask over currentColor, so
+// it is the link's own colour in any theme (and inverts with a darkened page);
+// its alt text is what a screen reader says after the link.
+function _extStyle(doc) {
+  if (doc.getElementById(EXT_STYLE_ID)) return;
+  var svg = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' " +
+    "stroke='%23000' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='" +
+    EXT_ICON_PATH + "'/%3E%3C/svg%3E\")";
+  var alt = t('ext_link_sr').replace(/[\\"]/g, '\\$&').replace(/[\r\n]+/g, ' ');
+  var st = doc.createElement('style');
+  st.id = EXT_STYLE_ID;
+  st.textContent =
+    'a.' + EXT_CLASS + ':not(.' + EXT_BARE + ')::after{content:"";content:""/"' + alt + '";display:inline-block;' +
+      'width:.68em;height:.68em;margin-inline-start:.22em;background-color:currentColor;opacity:.65;' +
+      '-webkit-mask:' + svg + ' center/contain no-repeat;mask:' + svg + ' center/contain no-repeat}' +
+    'a.' + EXT_CLASS + ':dir(rtl)::after{transform:scaleX(-1)}' +
+    '.' + EXT_OWN + ' a.external.' + EXT_CLASS + '::after{display:none}' +
+    '.' + EXT_OFF + '{color:inherit!important;text-decoration:none!important;cursor:auto!important;border-bottom:0!important}' +
+    'a.external.' + EXT_OFF + '{background-image:none!important;padding-left:0!important;padding-right:0!important}';
+  (doc.head || doc.documentElement).appendChild(st);
+}
+
+// Whether the page marks its own external links. MediaWiki draws an icon on
+// a.external, and two arrows after one link is one too many.
+function _extPageMarksOwn(doc) {
+  var a = doc.querySelector('a.external');
+  if (!a) return false;
+  try {
+    var bg = doc.defaultView.getComputedStyle(a).backgroundImage;
+    return !!bg && bg !== 'none';
+  } catch (e) { return false; }
+}
+
+// Mark, or hide, every link to the web under `root` (a document or an
+// element), and take back any mark a link no longer earns (the domain map
+// arrived, the setting changed). Once per page; returns the web links found.
+// The common link is relative and costs a regex, never a URL parse.
+function _extMark(root) {
+  var doc = root && (root.nodeType === 9 ? root : root.ownerDocument);
+  if (!doc || !doc.documentElement || !root.querySelectorAll) return 0;
+  // Asked before our stylesheet goes in: the page's styles are computed
+  // already, and inserting ours first would make this one question a
+  // restyle of the whole page.
+  if (doc.__zimiExtOwn === undefined) {
+    doc.__zimiExtOwn = _extPageMarksOwn(doc);
+    if (doc.__zimiExtOwn) doc.documentElement.classList.add(EXT_OWN);
+  }
+  _extStyle(doc);
+  _extBindDoc(doc);
+  var hide = _extLinkMode() === 'hide', wombat = _extWombat(doc), base = doc.baseURI || '';
+  // Only a document marked before can have a mark to take back: the first
+  // pass (every page load) skips looking, which is most of a big page's links.
+  var again = !!doc.__zimiExtMarked;
+  doc.__zimiExtMarked = true;
+  var links = root.querySelectorAll(again ? 'a[href],a[' + EXT_HREF_ATTR + ']' : 'a[href]');
+  var n = 0;
+  for (var i = 0; i < links.length; i++) {
+    var a = links[i], hidden = again ? a.getAttribute(EXT_HREF_ATTR) : null;
+    var href = hidden !== null ? hidden : wombat ? _extRealUrl(a, true) : a.getAttribute('href');
+    var web = zimiLinkKind(href, base) === 'web';
+    if (web) n++;
+    if (hidden !== null && !(web && hide)) {
+      a.setAttribute('href', hidden);   // hidden before, a link again
+      a.removeAttribute(EXT_HREF_ATTR);
+      a.classList.remove(EXT_OFF);
+    }
+    if (!web) {
+      if (again && a.classList.contains(EXT_CLASS)) a.classList.remove(EXT_CLASS, EXT_BARE);
+      continue;
+    }
+    if (hide) {
+      if (hidden === null) {
+        a.setAttribute(EXT_HREF_ATTR, href);
+        a.removeAttribute('href');
+      }
+      a.classList.remove(EXT_CLASS, EXT_BARE);
+      a.classList.add(EXT_OFF);
+    } else {
+      a.classList.add(EXT_CLASS);
+      // A picture that is a link gets no arrow beside it; it still says where.
+      if (!(a.textContent || '').trim()) a.classList.add(EXT_BARE);
+    }
+  }
+  return n;
+}
+
+// The page in the reader again, after something that changes what a mark means.
+function _extRemarkOpen() {
+  var doc = _readerFrameDoc();
+  if (doc && doc.getElementById && doc.getElementById(EXT_STYLE_ID)) {
+    try { _extMark(doc); } catch (e) {}
+  }
+}
+
+// For the app pages (window.parent.zimiMarkLinks): mark the ZIM HTML under
+// `root`, and send its clicks through here. The click listener waits for the
+// bubble to reach the window, so the page's own handlers speak first; what
+// they left alone and leaves this server, this handles.
+function zimiMarkLinks(root) {
+  var n = _extMark(root);
+  var doc = root && (root.nodeType === 9 ? root : root.ownerDocument);
+  var win = doc && doc.defaultView;
+  if (win && !win.__zimiExtClicks) {
+    win.__zimiExtClicks = true;
+    var onClick = function(e) {
+      if (e.defaultPrevented || e.button > 1) return;
+      var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+      if (!a) return;
+      var url = a.href;
+      if (url.indexOf(location.origin) !== 0) _extFollow(e, a, url, '');
+    };
+    win.addEventListener('click', onClick);
+    win.addEventListener('auxclick', function(e) { if (e.button === 1) onClick(e); });
+  }
+  return n;
+}
+
+// A click on a link off this server: the library, or the web. On the web,
+// a mouse opens it (the sheet has already said where, on the way in) and a
+// finger asks first; offline, everyone gets the sheet instead of a dead tab.
+// Returns whether it took the click.
+function _extFollow(e, a, url, fromZim) {
+  var kind = zimiLinkKind(url);
+  if (kind === 'library') {
+    e.preventDefault();
+    _openLibraryUrl(url, fromZim);
+    return true;
+  }
+  if (kind !== 'web') return false;
+  e.preventDefault();
+  var asked = e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1;
+  if (_extOffline() || (_extTouch(e) && !asked)) {
+    _extShow(a, url, true, e.clientY);
+    return true;
+  }
+  _extHide();
+  _openOnWeb(url);
+  return true;
+}
+function _extTouch(e) {
+  if (e.pointerType) return e.pointerType !== 'mouse';
+  try { return window.matchMedia('(hover: none)').matches; } catch (err) { return false; }
+}
+function _extOffline() {
+  return _extServerOffline || navigator.onLine === false;
+}
+
+// A link to a site an installed ZIM holds, opened in the library: the article
+// when /resolve finds it, otherwise the archive's own page for that address,
+// whose not-captured page says so and offers the live web as a stated choice.
+function _openLibraryUrl(url, fromZim) {
+  var cached = _resolveCache && _resolveCache[url];
+  if (cached && cached.found) { openArticle(cached.zim, cached.path); return; }
+  var u;
+  try { u = new URL(url); } catch (e) { return; }
+  var mapped = _extHostZim(u.hostname);
+  var stay = function() {
+    if (!mapped) return false;
+    openArticle(mapped, u.hostname + u.pathname + (u.search || ''));
+    return true;
+  };
+  fetch('/resolve?url=' + encodeURIComponent(url) + (fromZim ? '&from=' + encodeURIComponent(fromZim) : ''))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.found) openArticle(data.zim, data.path);
+      else if (!stay()) _openOnWeb(url);
+    })
+    .catch(function() { if (!stay()) _openOnWeb(url); });
+}
+
+// A document's hover, focus and dismissal, once. The sheet lives in this
+// document and is placed over the frame the link is in.
+function _extBindDoc(doc) {
+  if (doc.__zimiExtBound) return;
+  doc.__zimiExtBound = true;
+  var at = function(node) { return node && node.closest ? node.closest('a.' + EXT_CLASS) : null; };
+  doc.addEventListener('pointerover', function(e) {
+    if (e.pointerType !== 'mouse') return;
+    var a = at(e.target);
+    if (!a) return;
+    clearTimeout(_extHideTimer);
+    if (_extCur && _extCur.a === a) return;
+    clearTimeout(_extShowTimer);
+    _extShowTimer = setTimeout(function() { _extShow(a, _extRealUrl(a, _extWombat(doc)), false); }, EXT_HOVER_MS);
+  }, true);
+  doc.addEventListener('pointerout', function(e) {
+    if (e.pointerType !== 'mouse') return;
+    var a = at(e.target);
+    if (a && !(e.relatedTarget && a.contains(e.relatedTarget))) _extLeave();
+  }, true);
+  doc.addEventListener('focusin', function(e) {
+    var a = at(e.target);
+    var keyboard = false;
+    try { keyboard = !!(a && a.matches(':focus-visible')); } catch (err) {}
+    if (keyboard) _extShow(a, _extRealUrl(a, _extWombat(doc)), false);
+  });
+  doc.addEventListener('focusout', function(e) { if (at(e.target)) _extLeave(); });
+  doc.addEventListener('pointerdown', function(e) { if (_extCur && !at(e.target)) _extHide(); }, true);
+  doc.addEventListener('keydown', function(e) { if (e.key === 'Escape' && _extCur) _extHide(); });
+  try { doc.defaultView.addEventListener('scroll', function() { if (_extCur) _extHide(); }, { passive: true }); } catch (e) {}
+}
+function _extLeave() {
+  clearTimeout(_extShowTimer);
+  if (!_extCur || _extCur.pinned) return;
+  clearTimeout(_extHideTimer);
+  _extHideTimer = setTimeout(_extHide, EXT_LEAVE_MS);
+}
+
+function _extSheetEl() {
+  if (_extSheet) return _extSheet;
+  var el = document.createElement('div');
+  el.id = 'ext-sheet';
+  el.className = 'ext-sheet';
+  el.setAttribute('role', 'dialog');
+  el.addEventListener('pointerenter', function() { clearTimeout(_extHideTimer); });
+  el.addEventListener('pointerleave', function(e) { if (e.pointerType === 'mouse') _extLeave(); });
+  el.addEventListener('click', function(e) {
+    var b = e.target.closest && e.target.closest('[data-ext]');
+    if (!b || !_extCur) return;
+    var url = _extCur.url, act = b.getAttribute('data-ext');
+    _extHide();
+    if (act === 'open') _openOnWeb(url);
+    else _copyText(url);
+  });
+  document.addEventListener('pointerdown', function(e) { if (_extCur && !el.contains(e.target)) _extHide(); }, true);
+  window.addEventListener('resize', function() { if (_extCur) _extHide(); });
+  document.body.appendChild(el);
+  _extSheet = el;
+  return el;
+}
+
+// "Opens example.com on the web", with Open and Copy link (just Copy link,
+// and why, when offline), beside the link. `y`: where a finger landed, so a
+// link wrapped over two lines gets its sheet by the line that was tapped.
+function _extShow(a, url, pinned, y) {
+  clearTimeout(_extShowTimer);
+  clearTimeout(_extHideTimer);
+  if (!a || !a.isConnected) return;
+  var el = _extSheetEl();
+  var host = url;
+  try { host = new URL(url).hostname.replace(/^www\./, ''); } catch (e) {}
+  var off = _extOffline();
+  var parts = t('ext_link_opens', { host: '\u0001' }).split('\u0001');
+  el.innerHTML = '<div class="ext-sheet-where">' + EXT_ICON + '<span>' + esc(parts[0]) +
+      '<bdi>' + esc(host) + '</bdi>' + esc(parts[1] || '') + '</span></div>' +
+    (off ? '<div class="ext-sheet-note">' + tH('ext_link_offline') + '</div>' : '') +
+    '<div class="ext-sheet-actions">' +
+      (off ? '' : '<button type="button" class="pill active" data-ext="open">' + tH('ext_link_open') + '</button>') +
+      '<button type="button" class="pill" data-ext="copy">' + tH('copy_link') + '</button></div>';
+  el.setAttribute('aria-label', host);
+  _extCur = { a: a, url: url, pinned: !!pinned };
+  el.classList.add('open');
+  _extPlace(el, a, y);
+}
+function _extHide() {
+  clearTimeout(_extShowTimer);
+  clearTimeout(_extHideTimer);
+  _extCur = null;
+  if (_extSheet) _extSheet.classList.remove('open');
+}
+// Below the link (above it when there is no room), starting where the link's
+// text starts, kept inside the window. The link's rects are its frame's, so
+// the frame's own place is added.
+function _extPlace(el, a, y) {
+  var off = { left: 0, top: 0 };
+  var win = a.ownerDocument.defaultView;
+  try { if (win.frameElement) off = win.frameElement.getBoundingClientRect(); } catch (e) {}
+  var rects = a.getClientRects();
+  var r = rects.length ? rects[rects.length - 1] : a.getBoundingClientRect();
+  if (typeof y === 'number') {
+    for (var i = 0; i < rects.length; i++) {
+      if (y >= rects[i].top && y <= rects[i].bottom) { r = rects[i]; break; }
+    }
+  }
+  var rtl = false;
+  try { rtl = win.getComputedStyle(a).direction === 'rtl'; } catch (e) {}
+  var w = el.offsetWidth, h = el.offsetHeight;
+  var left = off.left + (rtl ? r.right - w : r.left);
+  left = Math.max(EXT_EDGE, Math.min(left, window.innerWidth - w - EXT_EDGE));
+  var top = off.top + r.bottom + EXT_GAP;
+  if (top + h > window.innerHeight - EXT_EDGE) top = Math.max(EXT_EDGE, off.top + r.top - h - EXT_GAP);
+  el.style.left = left + 'px';
+  el.style.top = top + 'px';
+}
 
 // ── Link Context Menu ──
 var _linkCtxMenu = document.getElementById('link-ctx-menu');
