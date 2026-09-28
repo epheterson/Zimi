@@ -799,9 +799,10 @@ def _folder_videos_json(assets):
     have = set(assets)
     rows = []
     for path in assets:
-        mime = _guess_mime(path)
-        if mime.startswith(("video/", "audio/")):
-            rows.append(media_file_row(path, mime, thumb_beside(path, have.__contains__)))
+        # By extension, as a document library's files are (zimi.nautilus):
+        # what ZimiTube plays, not whatever else calls itself video.
+        if _nautilus.ext_kind(path) in ("video", "audio"):
+            rows.append(media_file_row(path, _guess_mime(path), thumb_beside(path, have.__contains__)))
     return json.dumps(rows, ensure_ascii=False).encode("utf-8") if rows else None
 
 

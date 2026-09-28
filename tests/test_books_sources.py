@@ -1446,3 +1446,70 @@ def test_a_route_that_would_send_a_broken_header_answers_500(
     head, body = _raw_get(base, f"/w/{zim}/any.epub/x.png")
     assert head.startswith("HTTP/1.1 500"), head
     assert b"<script" not in body and "<script" not in head
+
+
+# ── a folder of EPUBs alone, whatever the Python ───────────────────────────
+
+# What Python 3.10 to 3.13's own table lacks (Docker and CI run 3.11, the
+# desktop app 3.12); 3.14 has them all.
+PY311_LACKS = (".epub", ".ogg", ".m4a", ".mkv", ".flac", ".ogv", ".m4v", ".webp")
+
+
+def python311_mime_db(monkeypatch):
+    """zimwriter's table as a Python without ``PY311_LACKS`` builds it,
+    whatever Python runs the test; put in place for the ZIMs it writes."""
+    import mimetypes
+
+    from zimi import zimwriter
+
+    stripped = {
+        k: v for k, v in mimetypes._types_map_default.items() if k not in PY311_LACKS
+    }
+    monkeypatch.setattr(mimetypes, "_types_map_default", stripped)
+    assert mimetypes.MimeTypes().guess_type("a.epub")[0] is None
+    db = zimwriter._mime_db()
+    monkeypatch.setattr(zimwriter, "_MIME_DB", db)
+    return db
+
+
+def test_the_types_zimi_writes_do_not_depend_on_the_python(monkeypatch):
+    from zimi import zimwriter
+
+    python311_mime_db(monkeypatch)
+    for ext, want in (
+        (".epub", "application/epub+zip"),
+        (".ogg", "audio/ogg"),
+        (".oga", "audio/ogg"),
+        (".m4a", "audio/mp4"),
+        (".flac", "audio/flac"),
+        (".wav", "audio/wav"),
+        (".mkv", "video/x-matroska"),
+        (".ogv", "video/ogg"),
+        (".m4v", "video/mp4"),
+        (".webp", "image/webp"),
+    ):
+        assert zimwriter.guess_mime("x" + ext) == want, ext
+    # Every file a document library or ZimiTube reads by its extension has
+    # a type of its own.
+    for ext in nautilus.DOC_EXTS | nautilus.VIDEO_EXTS | nautilus.AUDIO_EXTS:
+        assert zimwriter.guess_mime("x" + ext) != "application/octet-stream", ext
+
+
+def test_a_folder_of_epubs_alone_is_on_the_shelf(shelf_lib, tmp_path, monkeypatch):
+    """The folder the review found: EPUBs and nothing else, stored as
+    application/octet-stream on Python 3.11, never reached the shelf."""
+    from zimi import books, creator
+
+    python311_mime_db(monkeypatch)
+    src = tmp_path / "Ebooks"
+    src.mkdir()
+    (src / "aleutian.epub").write_bytes(fx.gutenberg_epub())
+    out = tmp_path / "zims"
+    out.mkdir()
+    creator.create_folder_zim(str(src), out_dir=str(out))
+    shelf_lib([])
+    assert [z.get("feeds") for z in srv.list_zims()] == [{"books": "folder"}]
+    got = books.listing(limit=50)["books"]
+    assert [b["path"] for b in got] == ["aleutian.epub/"] and got[0][
+        "source"
+    ] == "folder"
