@@ -216,7 +216,10 @@ def test_merge_cases_shared_with_the_browser():
         cases = json.load(f)["cases"]
     for case in cases:
         got = users._merge_saved(
-            users._clean_saved(case["a"]), users._clean_saved(case["b"]), case["now"]
+            users._clean_saved(case["a"]),
+            users._clean_saved(case["b"]),
+            case["now"],
+            case.get("budget"),
         )
         assert got == _store(**case["expect"]), case["name"]
 
@@ -317,12 +320,119 @@ def test_the_clients_shape_is_never_trusted(monkeypatch, tmp_path):
     assert ok  # nothing merged in, nothing lost
 
 
-def test_the_store_is_held_to_its_caps(monkeypatch, tmp_path):
+def test_nothing_saved_is_dropped_to_make_room(monkeypatch, tmp_path):
+    """Past the byte budget the oldest tombstones go, then the oldest places;
+    a store still over it is refused whole and what was kept stays."""
     _setup(monkeypatch, tmp_path)
-    monkeypatch.setitem(users._SAVED_MAX, "items", 3)
-    items = {"w\nA/%d" % i: _item("A/%d" % i, ts=1000 + i) for i in range(5)}
-    _, _, doc = users.sync_user_data("alice", {"saved": _store(items=items)})
-    assert sorted(doc["saved"]["items"]) == ["w\nA/2", "w\nA/3", "w\nA/4"]
+    items = {"w\nA/%d" % i: _item("A/%d" % i, ts=1000 + i) for i in range(40)}
+    gone = {"i:w\nA/old%d" % i: 500 + i for i in range(40)}
+    ok, _, doc = users.sync_user_data(
+        "alice", {"saved": _store(items=items, gone=gone)}, now_ms=2000
+    )
+    assert ok and len(doc["saved"]["items"]) == 40
+    size = users._saved_bytes(doc["saved"])
+    # Room for the items and half the tombstones: the oldest half go.
+    half = dict(doc["saved"], gone=dict(sorted(gone.items(), key=lambda g: g[1])[20:]))
+    assert users._saved_bytes(half) < size
+    monkeypatch.setattr(users, "_SAVED_MAX_BYTES", users._saved_bytes(half))
+    ok, _, doc = users.sync_user_data("alice", {"saved": _store()}, now_ms=2000)
+    assert ok and len(doc["saved"]["items"]) == 40
+    assert sorted(doc["saved"]["gone"].values()) == list(range(520, 540))
+    assert users._saved_bytes(doc["saved"]) <= users._SAVED_MAX_BYTES
+    # No room for what was saved: refused, never trimmed, the file as it was.
+    monkeypatch.setattr(users, "_SAVED_MAX_BYTES", 1000)
+    more = {"w\nA/new": _item("A/new", ts=3000)}
+    ok, err, doc = users.sync_user_data(
+        "alice", {"saved": _store(items=more)}, now_ms=3000
+    )
+    assert not ok and err == "saved too large" and doc is None
+    kept = users.load_user_data("alice")["saved"]
+    assert len(kept["items"]) == 40 and "w\nA/new" not in kept["items"]
+
+
+def test_the_size_is_the_files_own(monkeypatch, tmp_path):
+    """Titles in Chinese take three bytes a character in the file, not the
+    six of an ASCII escape, and 1.11's bookmarks kept beside the store do not
+    count against it."""
+    _setup(monkeypatch, tmp_path)
+    title = "漢" * 500
+    items = {"w\nA/%d" % i: _item("A/%d" % i, title=title) for i in range(1500)}
+    ok, err, _ = users.sync_user_data("alice", {"saved": _store(items=items)})
+    assert ok, err
+    path = users._userdata_path("alice")
+    assert os.path.getsize(path) < users._SAVED_MAX_BYTES + 4096
+    old = [{"zim": "w", "path": "A/%d" % i, "title": "x" * 900} for i in range(3500)]
+    ok, err = users.save_user_data(
+        "bob", {"bookmarks": old, "saved": _store(items=items)}
+    )
+    assert ok, err
+
+
+def test_places_are_kept_per_app(monkeypatch, tmp_path):
+    """Zimipedia keeps a place per article read: its places never push
+    Bookshelf's books out of Continue."""
+    _setup(monkeypatch, tmp_path)
+    books = {
+        "g\nB.%d" % i: _item("B.%d" % i, ts=1000 + i, app="books", kind="book")
+        for i in range(3)
+    }
+    for k, r in books.items():
+        r["zim"], r["path"] = k.split("\n")
+    wiki = {
+        "w\nA/%d" % i: _item("A/%d" % i, ts=5000 + i, app="wiki")
+        for i in range(users._SAVED_POS_PER_APP + 20)
+    }
+    for r in list(books.values()) + list(wiki.values()):
+        del r["added"]
+    _, _, doc = users.sync_user_data(
+        "alice", {"saved": _store(positions=dict(books, **wiki))}
+    )
+    kept = doc["saved"]["positions"]
+    assert all(k in kept for k in books)
+    assert (
+        sum(1 for r in kept.values() if r["app"] == "wiki") == users._SAVED_POS_PER_APP
+    )
+    assert "w\nA/0" not in kept and "w\nA/%d" % (users._SAVED_POS_PER_APP + 19) in kept
+
+
+def test_a_clock_that_runs_ahead_is_held_to_the_servers(monkeypatch, tmp_path):
+    """A device a day fast saves X; a delete ten minutes later on a device
+    with the right time still holds."""
+    _setup(monkeypatch, tmp_path)
+    now = 1790000000000
+    fast = _store(items={"w\nA/X": _item("A/X", ts=now + DAY_MS)})
+    _, _, doc = users.sync_user_data("alice", {"saved": fast}, now_ms=now)
+    rec = doc["saved"]["items"]["w\nA/X"]
+    assert rec["ts"] == rec["added"] == now + users._SAVED_FUTURE_MS
+    later = now + 10 * 60 * 1000
+    _, _, doc = users.sync_user_data(
+        "alice", {"saved": _store(gone={"i:w\nA/X": later})}, now_ms=later
+    )
+    assert doc["saved"]["items"] == {}
+
+
+def test_a_write_that_does_not_land_is_a_failure(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    users.sync_user_data("alice", {"saved": _store(items={"w\nA/A": _item("A/A")})})
+    d = users._userdata_dir()
+    os.chmod(d, 0o500)
+    try:
+        ok, err, doc = users.sync_user_data(
+            "alice", {"saved": _store(items={"w\nA/B": _item("A/B")})}
+        )
+    finally:
+        os.chmod(d, 0o700)
+    assert not ok and err == "write failed" and doc is None
+    assert list(users.load_user_data("alice")["saved"]["items"]) == ["w\nA/A"]
+
+
+def test_userdata_post_too_large_is_413(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(users, "resolve_request_user", lambda h: "alice")
+    monkeypatch.setattr(users, "_SAVED_MAX_BYTES", 100)
+    h = _Handler()
+    h._handle_userdata_post({"saved": _store(items={"w\nA/B": _item("A/B")})})
+    assert h.status == 413 and h.body == {"error": "saved too large"}
 
 
 def test_old_tombstones_are_forgotten(monkeypatch, tmp_path):
