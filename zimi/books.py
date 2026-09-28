@@ -634,8 +634,15 @@ def home():
         if zims
         else False
     )
+    # Newest to Project Gutenberg: its books only, the others have no such day.
     recent = (
-        sorted(books, key=_SORTS["recent"], reverse=True)[:SHELF_SIZE] if ready else []
+        [
+            b
+            for b in sorted(books, key=_SORTS["recent"], reverse=True)[:SHELF_SIZE]
+            if b.get("created")
+        ]
+        if ready
+        else []
     )
     return {
         "total": len(books),

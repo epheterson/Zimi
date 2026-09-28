@@ -230,6 +230,10 @@ class Book:
 
     # ── the book as one page ───────────────────────────────────────────────
 
+    def kept_bytes(self):
+        """What keeping the book costs: the zip, and its page once built."""
+        return self.size + len(self._page or b"")
+
     def page(self):
         """The whole book as one HTML page (bytes), built once."""
         if self._page is None:
@@ -398,7 +402,13 @@ def _load(zim, epub_path):
 
 def book_in_zim(zim, epub_path):
     """The parsed EPUB at ``epub_path`` in ``zim``, kept for the next
-    request; None when there is none, or it will not open."""
+    request; None when there is none, or it will not open, or the account
+    asking may not read the ZIM (a kept book answers before the archive
+    would say so)."""
+    from zimi import server as _srv
+
+    if not _srv.zim_allowed(zim):
+        return None
     key = (zim, epub_path, _identity(zim))
     with _cache_lock:
         got = _cache.get(key)
@@ -416,7 +426,8 @@ def book_in_zim(zim, epub_path):
     with _cache_lock:
         _cache[key] = book
         while len(_cache) > CACHE_BOOKS or (
-            len(_cache) > 1 and sum(b.size for b in _cache.values()) > CACHE_BYTES
+            len(_cache) > 1
+            and sum(b.kept_bytes() for b in _cache.values()) > CACHE_BYTES
         ):
             _cache.popitem(last=False)
     return book

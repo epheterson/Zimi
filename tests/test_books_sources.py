@@ -538,6 +538,8 @@ def served_epub(tmp_path, monkeypatch):
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     yield "http://127.0.0.1:%d" % httpd.server_address[1]
     httpd.shutdown()
+    # The pools are keyed by name, and this ZIM's ("gutenberg") is another test's too.
+    srv.release_zim_handles(list(srv.get_zim_files()))
 
 
 def _fetch(url):
@@ -743,6 +745,7 @@ def shelf_lib(tmp_path, monkeypatch):
 
     yield build
     books._reset_for_tests()
+    srv.release_zim_handles(list(srv.get_zim_files()))
 
 
 def _titles(**kw):
@@ -1108,3 +1111,24 @@ def test_an_epub_reads_in_the_e_reader_on_a_phone(served_epub):
             assert list(places) == [card["zim"] + "\n" + card["path"]]
         finally:
             br.close()
+
+
+def test_a_kept_epub_is_not_served_to_an_account_that_may_not_read_it(
+    served_epub, monkeypatch
+):
+    from zimi import epub
+
+    zim = srv.list_zims()[0]["name"]
+    path = "Aleutian Indian and English Dictionary.10040.epub/"
+    assert epub.respond(zim, path)[1]  # read, and kept
+    monkeypatch.setattr(srv, "zim_allowed", lambda name: False)
+    assert epub.respond(zim, path) is None
+
+
+def test_newest_to_gutenberg_holds_only_gutenberg_books(shelf_lib):
+    from zimi import books
+
+    shelf_lib([_water(), _wikibooks()])
+    home = books.home()
+    assert home["details"] is True and home["total"] == 9
+    assert home["recent"] == []
