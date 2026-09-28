@@ -23,7 +23,7 @@
 //      in the shipped snapshot, at 0, 1, 30 and 90 days
 //      (tests/fixtures/satellites-reference.json, written with the snapshot
 //      by scripts/build_satellite_snapshot.py); the frame the view places
-//      them in; and the ISS's fade when its data is old.
+//      them in; and the ISS's fade, then its orbit alone, as its data ages.
 //   5. The GPS clock: +45.7 us/day from gravity, -7.2 from speed, net ~38.5,
 //      about 11.5 km a day of ranging error if ignored.
 //
@@ -58,9 +58,11 @@ vm.createContext(S);
 vm.runInContext(
   'var JD_UNIX_EPOCH = 2440587.5; var JD_J2000 = 2451545.0; var MS_PER_DAY = 86400000;' +
   'var JULIAN_CENTURY = 36525; var DEG_TO_RAD = Math.PI / 180;' +
-  'function t(k) { return k; }' +
-  'function _dateToJD(ms) { return ms / MS_PER_DAY + JD_UNIX_EPOCH; }', S);
-for (const fn of ['_jdnToGregorian', '_cnDeltaTdays', '_computeEclipses']) vm.runInContext(extractFn(almSrc, fn), S);
+  'function t(k) { return k; }', S);
+for (const fn of ['_dateToJD', '_jdnToGregorian', '_cnDeltaTdays', '_computeEclipses']) vm.runInContext(extractFn(almSrc, fn), S);
+// The orrery owns the constants the Earth view shares (the AU, the speed of
+// light, the day in seconds) and the formatter cache; it loads first in the app.
+vm.runInContext(fs.readFileSync(path.join(STATIC, 'almanac-orrery.js'), 'utf8'), S);
 vm.runInContext(fs.readFileSync(path.join(STATIC, 'almanac-earth.js'), 'utf8'), S);
 vm.runInContext(fs.readFileSync(path.join(STATIC, 'earth', 'satellite-7.1.0.min.js'), 'utf8'), S);
 
@@ -212,10 +214,15 @@ const utc = (iso) => Date.parse(iso);
   const iPos = S._aeTemeToScene(lib.sgp4(iss, 0).position, eqeq);
   const alt = S._aeLen(iPos) * 6378.137 - 6378.137;
   check(alt > 350 && alt < 480, 'the ISS flies ' + alt.toFixed(0) + ' km up');
-  // Standing: exact, then approximate (the ISS only), then not drawn.
+  // Standing: exact, then approximate, then the orbit alone (the ISS only),
+  // then not drawn. Drag and reboosts make the ISS's place along its orbit
+  // a guess within weeks; the orbit's plane SGP4 keeps for months.
   check(S._aeSatStanding(1, true) === 'exact' && S._aeSatStanding(-2.9, true) === 'exact', 'fresh ISS data is exact');
-  check(S._aeSatStanding(3.5, true) === 'approximate' && S._aeSatStanding(-20, true) === 'approximate', 'days-old ISS data is approximate');
-  check(S._aeSatStanding(90, false) === 'exact', 'GPS holds for months at this scale');
+  check(S._aeSatStanding(3.5, true) === 'approximate' && S._aeSatStanding(-10, true) === 'approximate', 'days-old ISS data is approximate');
+  check(S._aeSatStanding(14, true) === 'approximate', 'two weeks on, the ISS still has its (approximate) dot');
+  check(S._aeSatStanding(20, true) === 'orbit' && S._aeSatStanding(-20, true) === 'orbit' && S._aeSatStanding(179, true) === 'orbit',
+    'past two weeks only the ISS\'s orbit is drawn, not a dot at an arbitrary place');
+  check(S._aeSatStanding(20, false) === 'exact' && S._aeSatStanding(90, false) === 'exact', 'GPS holds for months at this scale');
   check(S._aeSatStanding(181, false) === 'none' && S._aeSatStanding(-400, true) === 'none', 'far from its data, nothing is drawn');
 }
 

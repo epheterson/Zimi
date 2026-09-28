@@ -7,18 +7,24 @@ hands it. The rules under test:
     cache) and never waits on the network;
   - a stale answer starts one background refresh, never more at a time, and
     a failed one backs off and leaves the old elements in place;
+  - the answer says when a refresh is under way, so an open view asks again
+    once it can have landed;
+  - a fetch outlives a data directory that cannot be written;
   - ZIMI_OFFLINE means no refresh at all;
   - the upstream request carries Zimi's user agent and nothing else;
   - a bad or partial answer from upstream is refused, field by field;
   - the route is rate limited like the other API reads, and the service
     worker asks the network first but keeps a copy for offline;
-  - the shipped snapshot is recent enough for the view to draw it.
+  - the shipped snapshot is recent enough for an offline install to draw
+    satellites for months.
 
 Run: pytest tests/test_almanac_satellites.py -v
 """
 
 import json
+import math
 import os
+import re
 import sys
 import threading
 import time
@@ -33,9 +39,24 @@ from zimi import satellites  # noqa: E402
 from zimi import server as srv  # noqa: E402
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-# The view stops drawing elements older than this (almanac-earth.js
-# AE_SAT_WINDOW_DAYS); a release must not ship older ones.
-SNAPSHOT_MAX_AGE_DAYS = 180
+_EARTH_JS = os.path.join(_HERE, "..", "zimi", "static", "almanac-earth.js")
+# The view draws elements up to AE_SAT_WINDOW_DAYS (almanac-earth.js) from
+# their epoch. A machine that never goes online draws satellites only from
+# the snapshot its release shipped, for whatever of that window the snapshot
+# had left on the day the release was cut. So a release ships a snapshot at
+# most SNAPSHOT_MAX_AGE_DAYS old, and the two together must leave an offline
+# install OFFLINE_RUNWAY_DAYS of satellites: the time to the next release,
+# and the months a USB copy can sit in a drawer before it is first used.
+SNAPSHOT_MAX_AGE_DAYS = 30
+OFFLINE_RUNWAY_DAYS = 150
+
+
+def _earth_js_number(name):
+    """A constant of almanac-earth.js written as a product of integers."""
+    with open(_EARTH_JS, encoding="utf-8") as f:
+        m = re.search(r"^var " + name + r" = ([\d *]+);", f.read(), re.M)
+    assert m, f"{name} not found in almanac-earth.js"
+    return math.prod(int(x) for x in m.group(1).split("*"))
 
 
 def _omm(
@@ -131,9 +152,15 @@ def test_a_newer_snapshot_outranks_an_old_cache(data_dir, monkeypatch):
 
 
 def test_nothing_here_is_an_honest_empty_answer(data_dir, monkeypatch):
-    monkeypatch.setattr(satellites, "_kick_refresh", lambda: None)
+    monkeypatch.setattr(satellites, "_kick_refresh", lambda: False)
     got = satellites.get()
-    assert got == {"source": "none", "fetched": None, "gps": [], "iss": None}
+    assert got == {
+        "source": "none",
+        "fetched": None,
+        "gps": [],
+        "iss": None,
+        "refreshing": False,
+    }
 
 
 # ── Refreshing ──────────────────────────────────────────────────────────────
@@ -159,6 +186,9 @@ def test_a_stale_answer_is_served_at_once_and_refreshed_behind_it(
     got = satellites.get()
     assert time.time() - t0 < 0.5, "the answer waited on the network"
     assert got["gps"][0]["OBJECT_ID"] == "old"
+    # The answer says fresher elements are on their way, so a view that is
+    # open asks again instead of drawing the stale ones all session.
+    assert got["refreshing"] is True
     assert started.wait(2), "no background refresh started"
     # A second request while that refresh is running starts no other.
     calls = []
@@ -167,7 +197,7 @@ def test_a_stale_answer_is_served_at_once_and_refreshed_behind_it(
         "fetch_live",
         lambda: calls.append(1) or _payload(time.time(), "dup"),
     )
-    satellites.get()
+    assert satellites.get()["refreshing"] is True, "the running refresh is news too"
     time.sleep(0.2)
     assert calls == []
     release.set()
@@ -175,14 +205,25 @@ def test_a_stale_answer_is_served_at_once_and_refreshed_behind_it(
         if satellites.read_cache():
             break
         time.sleep(0.05)
-    assert satellites.get()["gps"][0]["OBJECT_ID"] == "live"
+    got = satellites.get()
+    assert got["gps"][0]["OBJECT_ID"] == "live"
+    assert got["refreshing"] is False
+
+
+def test_an_open_view_asks_again_only_once_a_refresh_can_have_landed():
+    """Told a refresh is running, the Earth view asks once more after
+    AE_SATS_REFETCH_MS: long enough for both CelesTrak requests to time out."""
+    wait_s = _earth_js_number("AE_SATS_REFETCH_MS") / 1000
+    assert wait_s > 2 * satellites.FETCH_TIMEOUT_S
 
 
 def test_a_fresh_answer_asks_nothing(data_dir, monkeypatch):
     satellites.write_snapshot(satellites.SNAPSHOT_PATH, _payload(time.time(), "fresh"))
     monkeypatch.setattr(satellites, "fetch_live", _no_network)
     monkeypatch.setattr(satellites, "_kick_refresh", _no_network)
-    assert satellites.get()["gps"][0]["OBJECT_ID"] == "fresh"
+    got = satellites.get()
+    assert got["gps"][0]["OBJECT_ID"] == "fresh"
+    assert got["refreshing"] is False
 
 
 def test_offline_never_reaches_out(data_dir, monkeypatch):
@@ -194,6 +235,7 @@ def test_offline_never_reaches_out(data_dir, monkeypatch):
     monkeypatch.setattr(threading, "Thread", _no_network)
     got = satellites.get()
     assert got["gps"][0]["OBJECT_ID"] == "old"
+    assert got["refreshing"] is False, "offline, nothing fresher is coming"
 
 
 def test_zimi_offline_is_the_switch(data_dir, monkeypatch):
@@ -229,6 +271,31 @@ def test_a_refresh_replaces_the_cache(data_dir, monkeypatch):
     monkeypatch.setattr(satellites, "fetch_live", lambda: _payload(time.time(), "new"))
     assert satellites.refresh()["gps"][0]["OBJECT_ID"] == "new"
     assert satellites.read_cache()["gps"][0]["OBJECT_ID"] == "new"
+
+
+def test_a_data_dir_that_cannot_be_written_keeps_the_fetch_in_memory(
+    data_dir, monkeypatch
+):
+    """A data directory that cannot be written used to lose every fetch (the
+    write fails with a log line), serve the stale elements, and fetch again
+    on the next request, forever."""
+    satellites.write_snapshot(
+        satellites.SNAPSHOT_PATH,
+        _payload(time.time() - satellites.CACHE_TTL_S - 60, "stale"),
+    )
+    # A data directory that is a file: no write can land, on any platform.
+    blocked = data_dir / "not-a-directory"
+    blocked.write_text("")
+    monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(blocked))
+    monkeypatch.setattr(satellites, "fetch_live", lambda: _payload(time.time(), "live"))
+    assert satellites.refresh()["gps"][0]["OBJECT_ID"] == "live"
+    assert satellites.read_cache() is None
+    # Served from memory, fresh, so nothing more is asked of CelesTrak.
+    monkeypatch.setattr(satellites, "fetch_live", _no_network)
+    monkeypatch.setattr(threading, "Thread", _no_network)
+    got = satellites.get()
+    assert got["gps"][0]["OBJECT_ID"] == "live"
+    assert got["source"] == "cache" and got["refreshing"] is False
 
 
 def test_the_upstream_request_carries_nothing_about_the_viewer(data_dir, monkeypatch):
@@ -374,4 +441,14 @@ def test_the_shipped_snapshot_is_whole_and_recent():
     assert age_days < SNAPSHOT_MAX_AGE_DAYS, (
         f"the satellite snapshot is {age_days:.0f} days old: "
         "run python3 scripts/build_satellite_snapshot.py before the release"
+    )
+
+
+def test_the_release_gate_leaves_an_offline_install_months_of_satellites():
+    """Gating at the drawing window itself let a release ship a snapshot the
+    view would stop drawing the next day: every GPS satellite gone, offline."""
+    window = _earth_js_number("AE_SAT_WINDOW_DAYS")
+    assert window - SNAPSHOT_MAX_AGE_DAYS >= OFFLINE_RUNWAY_DAYS, (
+        f"a {SNAPSHOT_MAX_AGE_DAYS}-day-old snapshot leaves only "
+        f"{window - SNAPSHOT_MAX_AGE_DAYS} of the view's {window} days"
     )
