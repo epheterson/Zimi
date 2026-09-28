@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - A folder of videos or audio made with Create a ZIM plays in ZimiTube.
 - Links that leave your library get a small arrow in every reader, and hovering or tapping one says where it goes ("Opens example.com on the web", or that it needs the internet when Zimi is offline); Settings can hide them as plain text instead. ([#99](https://github.com/epheterson/Zimi/issues/99))
 - Create a ZIM can remove links to other sites (web page and site captures, fast and rendered engines), so the ZIM never sends a reader to the web in Kiwix either. ([#99](https://github.com/epheterson/Zimi/issues/99))
+- The home page's order and view controls sit above the Apps, which follow the order too (an app holding a just-updated ZIM comes first under Recently updated), and the Apps title opens an Apps page with the ZIMs inside each app. ([#100](https://github.com/epheterson/Zimi/issues/100))
 
 ### Changed
 
