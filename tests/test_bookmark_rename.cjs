@@ -1,4 +1,4 @@
-// DOM-light regression tests for bookmark/folder inline rename (bookmarks v2).
+// DOM-light regression tests for inline rename in the Saved panel (lists and items).
 //
 // Two bugs/behaviors this guards:
 //
@@ -10,7 +10,7 @@
 //    and _bmBindEditInput stops propagation of every key so nothing upstream
 //    (tree handler, document-level Escape) ever sees keys typed into an edit.
 //
-// 2. Bookmark rename semantics (_bkRename): custom name lives in `title` (the
+// 2. Rename semantics (Saved.rename): a custom name lives in `title` (the
 //    one display field every consumer reads), original title parks in
 //    `origTitle`; empty rename — or typing the original back — reverts.
 //
@@ -35,55 +35,44 @@ function ok(label, cond, detail) {
   if (!cond) failures++;
 }
 
-// ── _bkRename ───────────────────────────────────────────────────────────────
+// ── Saved.rename ────────────────────────────────────────────────────────────
 {
-  const sandbox = { saves: 0 };
-  vm.createContext(sandbox);
-  sandbox._titleFromPath = p => 'From:' + p;
-  sandbox._bkSave = function () { sandbox.saves++; };
-  sandbox.setBooks = function (list) { sandbox._books = list; };
-  sandbox._bkLoad = function () { return sandbox._books; };
-  sandbox._bkFind = function (zim, p) {
-    return sandbox._books.findIndex(b => b.zim === zim && b.path === p);
+  const store = {};
+  const sandbox = {
+    localStorage: { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } },
+    SK: { SAVED: 'zimi_saved', BOOKMARKS: 'zimi_bookmarks', BM_FOLDERS: 'zimi_bm_folders', BOOK_PLACES: 'zimi_book_places' },
+    Math, JSON, Object, Array, String, Number, isFinite, Date,
+    saves: 0,
   };
-  vm.runInContext(
-    extract(/function _bkRename\(zim, path, name\)\s*\{[\s\S]*?\n\}/, '_bkRename'),
-    sandbox);
-  const books = [{ zim: 'w', path: 'A/B', title: 'Original', timestamp: 1 }];
-  sandbox.setBooks(books);
-  const b = books[0];
+  sandbox._savedChanged = function () { sandbox.saves++; };
+  vm.createContext(sandbox);
+  vm.runInContext(extract(/var Saved = \(function \(\) \{[\s\S]*?\n\}\)\(\);/, 'Saved'), sandbox);
+  const S = sandbox.Saved;
+  const key = S.save({ zim: 'w', path: 'A/B', title: 'Original' });
+  const b = () => S.get(key);
 
-  vm.runInContext("_bkRename('w','A/B','My Name')", sandbox);
-  ok('rename sets title', b.title === 'My Name', 'got ' + b.title);
-  ok('rename parks original in origTitle', b.origTitle === 'Original', 'got ' + b.origTitle);
-  ok('rename persists (save called)', sandbox.saves === 1);
+  const before = sandbox.saves;
+  S.rename(key, 'My Name');
+  ok('rename sets title', b().title === 'My Name', 'got ' + b().title);
+  ok('rename parks original in origTitle', b().origTitle === 'Original', 'got ' + b().origTitle);
+  ok('rename persists (a change is announced)', sandbox.saves === before + 1 && store.zimi_saved.indexOf('My Name') >= 0);
 
-  vm.runInContext("_bkRename('w','A/B','Other Name')", sandbox);
-  ok('second rename keeps the ORIGINAL origTitle', b.origTitle === 'Original', 'got ' + b.origTitle);
-  ok('second rename sets new title', b.title === 'Other Name');
+  S.rename(key, 'Other Name');
+  ok('second rename keeps the ORIGINAL origTitle', b().origTitle === 'Original', 'got ' + b().origTitle);
+  ok('second rename sets new title', b().title === 'Other Name');
 
-  vm.runInContext("_bkRename('w','A/B','')", sandbox);
-  ok('empty rename reverts title', b.title === 'Original', 'got ' + b.title);
-  ok('empty rename clears origTitle', !('origTitle' in b));
+  S.rename(key, '');
+  ok('empty rename reverts title', b().title === 'Original', 'got ' + b().title);
+  ok('empty rename clears origTitle', !('origTitle' in b()));
 
-  vm.runInContext("_bkRename('w','A/B','Custom')", sandbox);
-  vm.runInContext("_bkRename('w','A/B','Original')", sandbox);
+  S.rename(key, 'Custom');
+  S.rename(key, 'Original');
   ok('typing the original back = revert, not a custom name',
-    b.title === 'Original' && !('origTitle' in b));
-
-  // No title on the record → original derives from the path.
-  const books2 = [{ zim: 'w', path: 'A/C', timestamp: 2 }];
-  sandbox.setBooks(books2);
-  vm.runInContext("_bkRename('w','A/C','Nice')", sandbox);
-  ok('untitled record derives original from path',
-    books2[0].title === 'Nice' && books2[0].origTitle === 'From:A/C',
-    JSON.stringify(books2[0]));
-  vm.runInContext("_bkRename('w','A/C','')", sandbox);
-  ok('untitled record reverts to path-derived title', books2[0].title === 'From:A/C');
+    b().title === 'Original' && !('origTitle' in b()));
 
   const savesBefore = sandbox.saves;
-  vm.runInContext("_bkRename('w','NOPE','x')", sandbox);
-  ok('unknown bookmark is a no-op', sandbox.saves === savesBefore);
+  S.rename('w\nNOPE', 'x');
+  ok('unknown item is a no-op', sandbox.saves === savesBefore);
 }
 
 // ── _bmBindEditInput: every key stays in the input ──────────────────────────
@@ -134,8 +123,8 @@ function ok(label, cond, detail) {
   sandbox._bmRowKey = () => 'k';
   sandbox._bmRowByKey = () => null;
   sandbox._bmParentRow = () => null;
-  sandbox._folIsCollapsed = () => false;
-  sandbox._folToggleCollapse = () => {};
+  sandbox._bmIsCollapsed = () => false;
+  sandbox._bmToggleCollapse = () => {};
   sandbox._bmRerender = () => {};
   sandbox._bmOpenRowMenu = () => {};
   vm.runInContext(

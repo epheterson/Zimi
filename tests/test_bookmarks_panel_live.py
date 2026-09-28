@@ -58,14 +58,14 @@ def test_a_bookmark_added_with_the_list_open_appears_in_it(served):
 
         pg.click("#library-btn")  # the reader's bookmark button
         pg.wait_for_timeout(300)
-        assert pg.evaluate("_bkLoad().length") == 1
+        assert pg.evaluate("Saved.all().length") == 1
         assert (
             "Mercury" in panel.inner_text()
         ), "the open list did not show the new bookmark"
 
         pg.click("#library-btn")  # and taking it away again
         pg.wait_for_timeout(300)
-        assert pg.evaluate("_bkLoad().length") == 0
+        assert pg.evaluate("Saved.all().length") == 0
         assert (
             "Mercury" not in panel.inner_text()
         ), "the open list kept a removed bookmark"

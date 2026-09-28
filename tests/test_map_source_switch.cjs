@@ -112,7 +112,7 @@ ok('the current map is not reopened', opened === null);
 // its position through the same helper (one way to ask where the map is).
 ok('the topbar shows the button on a map page with company only',
   /_readingArticle && currentArticle && _isMapZim\(currentArticle\.zim\) && _installedMaps\(\)\.length > 1/.test(src));
-ok('bookmarking a map reads the position the same way', /_bkAdd\(zim, path, title, _currentMapPositionHash\(\)\)/.test(src));
+ok('bookmarking a map reads the position the same way', /var pos = _currentMapPositionHash\(\);\n\s*return \{ kind: 'place', app: 'maps', zim: zim, path: path, title: title, where: pos \? \{ pos: _normMapPos\(pos\) \}/.test(src));
 ok('the language dropdown and this one hang from the same helper', (src.match(/_placeDropdownUnder\(dd, btn\);/g) || []).length === 2);
 
 // A shared link: the place in the hash survives the boot rewrite of the URL.

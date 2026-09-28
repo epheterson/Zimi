@@ -36,6 +36,9 @@ IDENTITY_ENDPOINTS = [
     "/suggest",
     "/random",
     "/collections",
+    # An account's own saved things (1.12's sync): stale, a second device
+    # never saw what the first had saved.
+    "/userdata",
 ]
 
 # Query strings must not change the classification (the SW keys off pathname).

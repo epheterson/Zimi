@@ -2019,12 +2019,12 @@ function _renderCreatePanel() {
   _renderCreatePreview();
 }
 
-// The bookmarks panel: a count and a handoff. There is already a folder-picking
-// export selector in the bookmarks panel, and it is the right one — rebuilding a
+// The bookmarks panel: a count and a handoff. There is already a list-picking
+// export selector in the Saved panel, and it is the right one — rebuilding a
 // second, thinner version of it here would mean two places to fix the day the
 // export grammar changes.
 function _createBookmarksBodyHtml() {
-  var n = (typeof _bkLoad === 'function') ? _bkLoad().length : 0;
+  var n = (typeof Saved !== 'undefined') ? Saved.all().length : 0;
   return '<div class="create-pv-row"><span class="create-pv-k">' + tH('create_pv_bookmarks') + '</span>' +
       '<span class="create-pv-v">' + esc(String(n)) + '</span></div>' +
     '<div class="create-caption">' + tH('create_bookmarks_note') + '</div>' +
