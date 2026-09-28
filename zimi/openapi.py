@@ -467,11 +467,33 @@ def build_openapi():
                 "parameters": [
                     _param("day", {"type": "string", "pattern": "^[0-9]{8}$"}, required=True, description="YYYYMMDD, yesterday to tomorrow"),
                     _param("zim", {"type": "string"}, required=True, description="Up to 8 wiki names, comma-separated"),
+                    _param("parts", {"type": "string"}, description="picks, otd, extras, front, comma-separated: only those (all when left out)"),
                 ],
                 "responses": {
                     **_json_response("200", {"type": "object", "properties": {"picks": _WIKI_PICKS, "otd": _WIKI_OTD,
                         "failed": {"type": "array", "items": {"type": "string"}}}, "required": ["picks", "otd", "failed"]}),
                     **_json_response("400", error),
+                    **_json_response("404", error),
+                },
+            }
+        },
+        "/wiki/article": {
+            "get": {
+                "summary": "What Zimipedia's reader shows beside a wiki's article: the installed languages that have it (by Wikidata Q-ID), Simple English as a reading level, a mini's fuller build, and the other wikis' pages on its topic",
+                "operationId": "wikiArticle",
+                "description": _WIKI_PREVIEW,
+                "parameters": [
+                    _param("zim", {"type": "string"}, required=True),
+                    _param("path", {"type": "string"}, required=True),
+                ],
+                "responses": {
+                    **_json_response("200", {"type": "object", "properties": {
+                        "qid": {"type": "string"}, "flavour": {"type": "string"},
+                        "languages": {"type": "array", "items": {"type": "object", "properties": {"lang": {"type": "string"}, "name": {"type": "string"}, "zim": {"type": "string"}, "path": {"type": "string"}}}},
+                        "level": {"type": ["object", "null"], "properties": {"zim": {"type": "string"}, "path": {"type": "string"}, "title": {"type": "string"}, "simple": {"type": "boolean"}}},
+                        "full": {"type": ["object", "null"], "properties": {"zim": {"type": "string"}, "path": {"type": "string"}, "title": {"type": "string"}}},
+                        "topic": {"type": "array", "items": {"type": "object", "properties": {"project": {"type": "string"}, "zim": {"type": "string"}, "path": {"type": "string"}, "title": {"type": "string"}}}},
+                    }, "required": ["qid", "languages", "level", "full", "topic"]}),
                     **_json_response("404", error),
                 },
             }

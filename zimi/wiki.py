@@ -7,19 +7,22 @@ a ZIM is was already decided when the library was read (its ``kind`` is
 ``wiki``, its ``project`` read from its metadata Name). Nothing here opens
 an archive to find the wikis: the list is a view of the library cache.
 
-Today is one language at a time, and reads like a wiki's front page:
-the day's article from that language's Wikipedia, with its picture; On this
-day, read from the Wikipedia's own date page; a few "did you know" facts
-from the leads of the day's articles; a picture of the day; a rabbit hole
-of links followed from the day's article; one thing from each other wiki in
-the language (a word, a quote, a place, a book, a species); and what each
-wiki's own front page featured when the copy was made (zimi.frontpage).
-Everything is chosen by the day, so it holds until midnight, and worked
-out once per wiki per day and kept here, by a background pass soon after
-the server starts and after each of its midnights, so the first page open
-of a day finds it ready. A browser on another day (its time zone is not
-the server's) starts that day's pass with its first ask, and asks for the
-rest a few wikis at a time.
+Today is one language at a time, a front door: the day's article from that
+language's Wikipedia, with its picture (the page adds where you were and
+the trails you took, which the browser keeps). Each wiki's pick is chosen by
+the day, so it holds until midnight, and worked out once per wiki per day
+and kept here, by a background pass soon after the server starts and after
+each of its midnights, so the first page open of a day finds it ready. A
+browser on another day (its time zone is not the server's) starts that
+day's pass with its first ask.
+
+The API (/wiki/today, /wiki/onthisday) still answers the rest of a wiki's
+day on request, worked out then and kept the same way: On this day from the
+Wikipedia's own date page, "did you know" facts, a picture of the day, a
+rabbit hole of links from the day's article, and what each wiki's own front
+page featured (zimi.frontpage). Nothing works those out ahead.
+
+Zimipedia's reader asks about one article at a time (article(), below).
 
 Only today, yesterday and tomorrow (the server's, covering every time zone
 a browser may be in) can be asked for: a caller cannot make the server read
@@ -155,6 +158,7 @@ def wikis():
                 "entries": z.get("entries") or 0,
                 "description": z.get("description") or "",
                 "date": z.get("date") or "",
+                "flavour": _flavour(z),
             }
         )
     out.sort(key=_order)
@@ -770,11 +774,11 @@ def front(name):
 
 
 def _warm(day, names):
-    """Work out every wiki's day, in the background, so the ones a page has
-    not asked for yet are ready."""
+    """Work out every wiki's pick of the day, in the background, so the ones a
+    page has not asked for yet are ready."""
     try:
         for name in names:
-            _day_of(name, day)
+            _day_of(name, day, PAGE_PARTS)
     finally:
         with _lock:
             _warming.discard(day)
@@ -853,30 +857,38 @@ def choose_language(ws, wanted):
     return langs[0]["code"] if langs else ""
 
 
-# The parts of a wiki's day, as each answer names them.
+# The parts of a wiki's day, as each answer names them; the ones Zimipedia's
+# front door shows, and so the only ones worked out ahead.
 _PARTS = ("picks", "otd", "extras", "front")
+PAGE_PARTS = ("picks",)
 
 
-def _day_of(name, day):
-    """Every part of a wiki's day, worked out where it is not known yet:
-    ``{part: answer}``, None for a part that could not be read."""
-    got = {"picks": pick(name, day), "front": front(name)}
-    if project_of_name(name) == "wikipedia":
-        got["otd"] = on_this_day(name, day[4:])
-        got["extras"] = extras(name, day)
-    return got
-
-
-def _known_day(w, day):
-    """The parts of a wiki's day already known, and how many it has."""
-    name = w["name"]
-    got = {
-        "picks": _peek(_pick_cache, _key(name, day)),
-        "front": _peek(_front_cache, _key(name, "front")),
+def _day_of(name, day, parts=_PARTS):
+    """The parts of a wiki's day asked for, worked out where they are not
+    known yet: ``{part: answer}``, None for a part that could not be read.
+    On this day and the extras are a Wikipedia's only."""
+    wp = project_of_name(name) == "wikipedia"
+    work = {
+        "picks": lambda: pick(name, day),
+        "front": lambda: front(name),
+        "otd": lambda: on_this_day(name, day[4:]),
+        "extras": lambda: extras(name, day),
     }
-    if w["project"] == "wikipedia":
-        got["otd"] = _peek(_otd_cache, _key(name, day[4:]))
-        got["extras"] = _peek(_extra_cache, _key(name, day))
+    return {k: work[k]() for k in parts if wp or k in ("picks", "front")}
+
+
+def _known_day(w, day, parts=_PARTS):
+    """The parts of a wiki's day already known (of those asked about), and
+    how many it has."""
+    name = w["name"]
+    peek = {
+        "picks": lambda: _peek(_pick_cache, _key(name, day)),
+        "front": lambda: _peek(_front_cache, _key(name, "front")),
+        "otd": lambda: _peek(_otd_cache, _key(name, day[4:])),
+        "extras": lambda: _peek(_extra_cache, _key(name, day)),
+    }
+    wp = w["project"] == "wikipedia"
+    got = {k: peek[k]() for k in parts if wp or k in ("picks", "front")}
     return {k: v for k, v in got.items() if v is not None}, len(got)
 
 
@@ -886,7 +898,7 @@ def home(day=None, lang=None):
     can be asked for, what is already known of that language's wikis
     (``picks``, ``otd``, ``extras``, ``front``: {name: answer}): kept
     answers only, never a read. The first ask of a day starts the background
-    pass that works out the rest, the language shown first."""
+    pass that works out the picks still missing, the language shown first."""
     ws = wikis()
     chosen = choose_language(ws, lang)
     out = {"wikis": ws, "languages": languages(ws), "lang": chosen}
@@ -897,10 +909,10 @@ def home(day=None, lang=None):
     for w in ws:
         if w["language"] != chosen:
             continue
-        got, n = _known_day(w, day)
+        got, _n = _known_day(w, day)
         for k, v in got.items():
             parts[k][w["name"]] = v
-        if len(got) < n:
+        if _known_day(w, day, PAGE_PARTS)[0].keys() != {"picks"}:
             missing.append(w["name"])
     out.update(day=day, **parts)
     if missing:
@@ -915,19 +927,21 @@ def home(day=None, lang=None):
 TODAY_BATCH_MAX = 8
 
 
-def today(day, names):
+def today(day, names, parts=None):
     """The day of each wiki named that this request may read, worked out now
     where it is not known yet: ``{picks, otd, extras, front: {name:
-    answer}, failed: [name]}``. A wiki not readable here is left out; one
-    with a part that failed to read is named in ``failed`` and asked again
-    next time."""
+    answer}, failed: [name]}``, only the ``parts`` asked for (all of them
+    when none are named). A wiki not readable here is left out; one with a
+    part that failed to read is named in ``failed`` and asked again next
+    time."""
+    parts = tuple(p for p in _PARTS if p in (parts or _PARTS)) or _PARTS
     mine = {w["name"] for w in wikis()}
-    out = {k: {} for k in _PARTS}
+    out = {k: {} for k in parts}
     out["failed"] = []
     for name in dict.fromkeys(names):
         if name not in mine:
             continue
-        for k, v in _day_of(name, day).items():
+        for k, v in _day_of(name, day, parts).items():
             if v is not None:
                 out[k][name] = v
             elif name not in out["failed"]:
@@ -1069,8 +1083,6 @@ def article(zim, path):
     me = next((w for w in ws if w["name"] == zim), None)
     if me is None:
         return None
-    for w in ws:
-        w["flavour"] = _flavour(_record(w["name"]))
     try:
         archive = _archive(zim)
     except LookupError:

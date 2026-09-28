@@ -2407,7 +2407,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                     names = [n for n in (param("zim") or "").split(",") if n]
                     if not names or len(names) > _wiki.TODAY_BATCH_MAX:
                         return self._json(400, {"error": "zim"})
-                    return self._json(200, _wiki.today(day, names))
+                    parts = [x for x in (param("parts") or "").split(",") if x]
+                    return self._json(200, _wiki.today(day, names, parts))
                 if sub == "article":
                     # What the reader shows beside an article, asked once it is
                     # on screen (in place of /article-languages).

@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Zimipedia's Today is a front door: the day's article (from a full build before a mini), the articles you are part way through, and your recent trails, per language. On this day, the facts, the picture and the front pages are gone from it (the API still answers them).
+
 - The Bookmarks panel is now Saved: folders are lists (a nested folder is "Parent / Child"), and over an app it opens on that app's own.
 - The bookmark button saves an article at the section you are reading, and a map at the place on screen.
 

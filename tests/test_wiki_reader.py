@@ -498,6 +498,92 @@ def test_saving_to_reading_lists(served):
             br.close()
 
 
+def test_today_is_a_front_door(served):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        ctx = br.new_context(**pw.devices["iPhone 13"])
+        pg = ctx.new_page()
+        fr = pg.frame_locator("#reader-frame")
+        page = lambda js: pg.evaluate(
+            "() => { var d = document.getElementById('reader-frame').contentDocument; return ("
+            + js
+            + "); }"
+        )  # noqa: E731
+        try:
+            _boot(pg, served)
+            _from_zimipedia(pg, "wikipedia", "Albert_Einstein")
+            # Part way through, then one link further.
+            _q(
+                pg,
+                "w.scrollTo(0, (d.documentElement.scrollHeight - w.innerHeight) * 0.4)",
+            )
+            pg.wait_for_timeout(500)
+            _q(pg, "w.dispatchEvent(new Event('pagehide'))")
+            _q(pg, "w.scrollTo(0, 0)")
+            fr.locator('p a[href="./Physics"]').click()
+            pg.wait_for_timeout(300)
+            fr.locator(".zw-prev-go").click()
+            pg.wait_for_function(
+                "() => /\\/Physics$/.test(document.getElementById('reader-frame').contentDocument.location.pathname)",
+                timeout=15000,
+            )
+            pg.wait_for_timeout(300)
+            # Zimipedia's front door: the day's article, where you were, the trail.
+            pg.evaluate("() => openWiki()")
+            pg.wait_for_function(
+                "() => { var d = document.getElementById('reader-frame').contentDocument; return d && d.querySelector('#s-continue') && d.querySelector('#s-trails') && d.querySelector('.hero'); }",
+                timeout=20000,
+            )
+            s = page(
+                """{ cont: Array.prototype.map.call(d.querySelectorAll('#s-continue .t'), function(t) { return t.textContent; }),
+              prog: d.querySelector('#s-continue .prog i').style.width, href: d.querySelector('#s-continue a').getAttribute('data-path'),
+              trail: Array.prototype.map.call(d.querySelectorAll('#s-trails a'), function(a) { return a.textContent; }),
+              old: !!d.querySelector('#s-otd,#s-dyk,#s-potd,#s-trail,#s-front,#s-wk') }"""
+            )
+            assert s["cont"] == ["Albert Einstein"] and s["prog"] not in ("", "0%"), s
+            assert s["href"].startswith(
+                "Albert_Einstein#"
+            ), "back in at the section you were in"
+            assert s["trail"] == ["Albert Einstein", "Physics"], s
+            assert not s["old"], "1.11's front page is gone"
+            # A trail's step goes back in, with the trail as it was.
+            pg.frame_locator("#reader-frame").locator("#s-trails a").nth(1).click()
+            pg.wait_for_function(READY, timeout=15000)
+            pg.wait_for_timeout(300)
+            assert _q(
+                pg,
+                "Array.prototype.map.call(d.querySelectorAll('.zw-trail button, .zw-trail b'), function(x) { return x.textContent; })",
+            ) == ["Albert Einstein", "Physics"]
+        finally:
+            br.close()
+
+
+def test_the_day_works_out_only_what_the_front_door_shows(library):
+    import datetime
+
+    day = datetime.date.today().strftime("%Y%m%d")
+    names = [w["name"] for w in wiki.wikis()]
+    wiki._warm(day, names)
+    assert (
+        wiki._pick_cache
+        and not wiki._otd_cache
+        and not wiki._extra_cache
+        and not wiki._front_cache
+    )
+    got = wiki.today(day, ["wikipedia"], ["picks"])
+    assert set(got) == {"picks", "failed"} and got["picks"]["wikipedia"]["path"]
+    # The API still answers the rest when asked.
+    assert set(wiki.today(day, ["wikipedia"])) == {
+        "picks",
+        "otd",
+        "extras",
+        "front",
+        "failed",
+    }
+
+
 def test_a_right_to_left_article_and_a_mini(served):
     from playwright.sync_api import sync_playwright
 
