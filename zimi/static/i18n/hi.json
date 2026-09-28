@@ -1633,6 +1633,7 @@
   "search_placeholder": "सब कुछ खोजें…",
   "search_chip_without": "{word} के बिना",
   "search_chip_exact": "सटीक: {words}",
+  "search_chip_not_searched": "खोज में शामिल नहीं: {words}",
   "search_tips": "खोज के सुझाव",
   "search_example_exact": "\"सौर पैनल\"",
   "search_example_without": "जगुआर -कार",

@@ -130,7 +130,18 @@ def build_openapi():
                                     "description": (
                                         "Spelling suggestion, present only when "
                                         "results are sparse and a correction was "
-                                        "found. Optional."
+                                        "found. The query's operators (-word, "
+                                        "quotes, OR, filters) are kept. Optional."
+                                    ),
+                                },
+                                "unsearched": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": (
+                                        "The OR alternatives not searched: a query "
+                                        "makes at most 8 searches (each alternative "
+                                        "is one), and the rest are named here. "
+                                        "Optional."
                                     ),
                                 },
                             },

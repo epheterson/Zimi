@@ -2303,14 +2303,23 @@ def _did_you_mean(query_str, vocab, deadline):
 
     Returns the whole query with corrections swapped in, or None if nothing
     was corrected (or the differences are only case). Bails silently if the
-    time budget is exceeded mid-correction."""
+    time budget is exceeded mid-correction.
+
+    Only the words searched for are corrected: OR, an exclusion (-word) and
+    a filter (lang:fr) stay as typed, and so do the quotes of a phrase, so
+    the suggestion is the same search with its spelling mended."""
     if not vocab or not query_str:
         return None
+    searched = set()
+    for start, end in _query.word_spans(query_str):
+        searched.update(range(start, end))
     parts = _query_token_re.split(query_str)
     corrected_any = False
     out = []
+    at = 0
     for i, part in enumerate(parts):
-        if i % 2 == 0:  # separator/gap — keep verbatim
+        here, at = at, at + len(part)
+        if i % 2 == 0 or here not in searched:  # a gap, or an operator's word
             out.append(part)
             continue
         if not part.isascii():
@@ -2524,8 +2533,11 @@ def find_places(query_str, limit=_PLACES_PER_MAP):
     return groups
 
 
-def _search_places(query_str, target_names):
-    """One group per searched map with a place index, best places first."""
+def _search_places(queries, target_names, parsed=None):
+    """One group per searched map with a place index, best places first:
+    each of ``queries`` (an operator query's alternatives, or the one query)
+    asked, their places merged, each once, and none an exclusion in
+    ``parsed`` names."""
     from zimi import mapsearch
 
     groups = []
@@ -2537,10 +2549,18 @@ def _search_places(query_str, target_names):
             archive, lock = _get_fts_archive(name)
             if archive is None or lock is None:
                 continue
-            with lock:
-                found = mapsearch.search_places(
-                    archive, query_str, limit=_PLACES_PER_MAP
-                )
+            found, seen = [], set()
+            for q in queries:
+                with lock:
+                    got = mapsearch.search_places(archive, q, limit=_PLACES_PER_MAP)
+                for p in got:
+                    key = (p.get("name"), p.get("lat"), p.get("lng"))
+                    if key in seen or (parsed and _query.excluded(parsed, p.get("name"))):
+                        continue
+                    seen.add(key)
+                    found.append(p)
+            found.sort(key=lambda p: -(p.get("score") or 0))
+            found = found[:_PLACES_PER_MAP]
         except Exception as e:
             log.debug("place search failed on %s: %s", name, e)
             continue
@@ -2667,10 +2687,10 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
     # The grammar (#94). A plain query takes the path it always took.
     parsed = _query.parse_query(query_str)
     plan = None if parsed["plain"] else _query.alternatives(parsed)
-    base_query = _query.term_words(plan[0]) if plan else query_str
-
     # Detect query language for scoring boost
-    detected_lang = _srv._detect_query_language(base_query)
+    detected_lang = _srv._detect_query_language(
+        _query.term_words(plan[0]) if plan else query_str
+    )
 
     # Normalize filter_zim to None or list
     if isinstance(filter_zim, str):
@@ -2924,9 +2944,15 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
     # shown as its own group with the map to open and where to fly. Full path
     # only; the fast path is the keystroke path and reads no shards.
     if not fast:
-        places = _search_places(base_query, target_names)
+        queries = [_query.term_words(a) for a in plan] if plan else [query_str]
+        places = _search_places(queries, target_names, parsed if plan else None)
         if places:
             result["places"] = places
+    # An OR too long for the searches' budget: the alternatives left out, for
+    # the query's chip to say so rather than list them as searched.
+    skipped = _query.unsearched(parsed, plan) if plan else []
+    if skipped:
+        result["unsearched"] = [t["text"] for t in skipped]
     # "Did you mean" — only on the full path (the fast path is a partial,
     # progressive pass), and only when results are sparse. Additive field.
     # Suppressed for restricted (allowlisted) sessions: the vocab is built
@@ -2935,7 +2961,7 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False):
     # small but real cross-allowlist leak. Admin/anonymous/all-access
     # (current_allow() is None) keep the feature.
     if not fast and len(deduped) < _DYM_MIN_RESULTS and _srv.current_allow() is None:
-        suggestion = _maybe_did_you_mean(base_query)
+        suggestion = _maybe_did_you_mean(query_str)
         if suggestion:
             result["did_you_mean"] = suggestion
     return result

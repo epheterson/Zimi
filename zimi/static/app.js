@@ -6885,6 +6885,7 @@ function mergeSearchResults(phase1, phase2) {
     elapsed: phase2.elapsed,
     partial: false,
     did_you_mean: phase2.did_you_mean || phase1.did_you_mean,
+    unsearched: phase2.unsearched || phase1.unsearched,
     _clientElapsed: phase2._clientElapsed,
     _query: phase2._query,
     // Places come only from the full phase; the keystroke phase reads no
@@ -7059,7 +7060,7 @@ function renderSearchResults(data, scope) {
   }
 
   // What the query's operators did, each a tap away from undone.
-  const chipsHtml = searchChipsHtml(data._query, zimsCache);
+  const chipsHtml = searchChipsHtml(data._query, zimsCache, data.unsearched);
   if (!items.length) {
     output.innerHTML = chipsHtml + '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH('try_different') + '</p></div>';
     return;
@@ -9214,7 +9215,7 @@ function searchQueryChips(q) {
     }
     if (g.length > 1) {
       chips.push({ kind: 'or', at: g[0].at, words: g.map(t => t.phrase ? '"' + _searchTokenWords(toks[t.at]) + '"' : _searchTokenWords(toks[t.at])),
-        query: _searchRebuild(q, toks, new Set(p.joins[i])) });
+        terms: g.map(t => t.text), query: _searchRebuild(q, toks, new Set(p.joins[i])) });
     }
   });
   return chips.sort((a, b) => a.at - b.at);
@@ -9245,10 +9246,15 @@ function _searchChipLabel(chip, pool, html) {
   if (chip.kind === 'without') return tpl('search_chip_without', { word: w(chip.words[0]) });
   if (chip.kind === 'exact') return tpl('search_chip_exact', { words: w(chip.words[0]) });
   if (chip.kind === 'or') {
-    try {
-      return new Intl.ListFormat(_currentLang, { type: 'disjunction' }).formatToParts(chip.words)
-        .map(part => part.type === 'element' ? w(part.value) : (html ? esc(part.value) : part.value)).join('');
-    } catch (e) { return chip.words.map(w).join(' OR '); }
+    const list = (words, type) => {
+      try {
+        return new Intl.ListFormat(_currentLang, { type: type }).formatToParts(words)
+          .map(part => part.type === 'element' ? w(part.value) : (html ? esc(part.value) : part.value)).join('');
+      } catch (e) { return words.map(w).join(type === 'disjunction' ? ' OR ' : ', '); }
+    };
+    // An OR past the search's budget (query.MAX_SEARCHES): what was not searched is said.
+    const left = chip.skipped && chip.skipped.length ? ' ' + tpl('search_chip_not_searched', { words: list(chip.skipped, 'conjunction') }) : '';
+    return list(chip.words, 'disjunction') + left;
   }
   const lang = chip.kind === 'lang';
   const name = lang ? _langDisplayName(chip.value) : _searchSourceTitle(chip.value, pool);
@@ -9269,9 +9275,12 @@ function _searchChipHtml(chip, pool, removable) {
 }
 
 // The chips for a query, or nothing when it has no operators. `pool` is what
-// an in: is looked up in: the installed sources, or the catalog.
-function searchChipsHtml(query, pool) {
+// an in: is looked up in: the installed sources, or the catalog. `unsearched`:
+// the OR alternatives the library search left out (its answer's unsearched).
+function searchChipsHtml(query, pool, unsearched) {
   const chips = searchQueryChips(query);
+  const left = new Set(unsearched || []);
+  chips.forEach(c => { if (c.kind === 'or') c.skipped = c.words.filter((x, k) => left.has(c.terms[k])); });
   return chips.length ? '<div class="search-chips">' + chips.map(c => _searchChipHtml(c, pool, true)).join('') + '</div>' : '';
 }
 
