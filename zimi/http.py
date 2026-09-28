@@ -2830,8 +2830,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if "apps" in data:
                     # True, False, or the names of the apps to keep.
                     prefs["apps"] = _srv._apps_setting(_srv._apps_value(data.get("apps"), _srv.APPS_ALL) or frozenset(), _srv.APPS_ALL)
-                blob["preferences"] = prefs
-                ok, err = _users.save_user_data(name, blob)
+                # Only the preferences go back: the rest of the blob (the saved
+                # store another device may be syncing this moment) stays as kept.
+                ok, err, _ = _users.sync_user_data(name, {"preferences": prefs})
                 if not ok:
                     return self._json(400, {"error": err})
                 return self._json(200, _prefs_reply(prefs))
@@ -4416,16 +4417,21 @@ class ZimHandler(BaseHTTPRequestHandler):
         return self._json(200, _users.load_user_data(name))
 
     def _handle_userdata_post(self, data):
-        """POST /userdata — save the signed-in user's own My-data blob. A user
+        """POST /userdata — the signed-in user's own My-data blob. A user
         can only ever touch their OWN data: the target is the session identity,
-        never a name from the body, so there is no cross-user write path."""
+        never a name from the body, so there is no cross-user write path.
+
+        Each plain field sent replaces the kept one and a field not sent is
+        left alone; ``saved`` (1.12) is merged with the kept store
+        (users.sync_user_data), and the merged store comes back, so a device
+        takes in what the others wrote in the same trip."""
         name = _users.resolve_request_user(self)
         if not name:
             return self._json(401, {"error": "sign in required"})
-        ok, err = _users.save_user_data(name, data if isinstance(data, dict) else {})
+        ok, err, doc = _users.sync_user_data(name, data if isinstance(data, dict) else {})
         if not ok:
             return self._json(400, {"error": err})
-        return self._json(200, {"status": "ok"})
+        return self._json(200, {"status": "ok", "saved": doc["saved"]})
 
     def log_message(self, format, *args):
         # Light logging: errors + slow requests. Suppress 200/304 noise.

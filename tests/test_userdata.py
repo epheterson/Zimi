@@ -178,3 +178,167 @@ def test_userdata_get_returns_own_blob(monkeypatch, tmp_path):
     h._handle_userdata_get()
     assert h.status == 200
     assert h.body["bookmarks"] == [{"zim": "a", "path": "b"}]
+
+
+# ── Saved (1.12): the account's copy of the store, merged, never replaced ──
+
+CASES = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "saved_merge_cases.json"
+)
+DAY_MS = 86400 * 1000
+
+
+def _store(**parts):
+    s = users._saved_empty()
+    s.update(parts)
+    return s
+
+
+def _item(path, title="T", ts=1000, **extra):
+    rec = {
+        "kind": "article",
+        "zim": "w",
+        "path": path,
+        "title": title,
+        "added": ts,
+        "ts": ts,
+    }
+    rec.update(extra)
+    return rec
+
+
+def test_merge_cases_shared_with_the_browser():
+    """The same cases app.js's Saved._merge passes (tests/test_saved_store.cjs):
+    the two twins agree record for record."""
+    import json
+
+    with open(CASES, encoding="utf-8") as f:
+        cases = json.load(f)["cases"]
+    for case in cases:
+        got = users._merge_saved(
+            users._clean_saved(case["a"]), users._clean_saved(case["b"]), case["now"]
+        )
+        assert got == _store(**case["expect"]), case["name"]
+
+
+def test_the_version_is_two_and_the_empty_blob_has_a_store(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    assert users._USERDATA_VERSION == 2
+    assert users.load_user_data("nobody")["saved"] == users._saved_empty()
+    users.save_user_data("alice", {"history": []})
+    assert users.load_user_data("alice")["version"] == 2
+
+
+def test_a_delete_on_one_device_survives_a_sync_from_another(monkeypatch, tmp_path):
+    """Two phones on one account. Both have X; phone A deletes it and syncs;
+    phone B, which still has X, syncs after. X stays deleted, on the server
+    and in what phone B is handed back."""
+    _setup(monkeypatch, tmp_path)
+    x = _item("A/X")
+    both = _store(
+        items={"w\nA/X": x}, members={"liked\tw\nA/X": {"order": 0, "ts": 1000}}
+    )
+    ok, _, _ = users.sync_user_data("alice", {"saved": both}, now_ms=1500)
+    assert ok
+    phone_a = _store(gone={"i:w\nA/X": 2000, "m:liked\tw\nA/X": 2000})
+    users.sync_user_data("alice", {"saved": phone_a}, now_ms=2100)
+    ok, _, doc = users.sync_user_data("alice", {"saved": both}, now_ms=2200)
+    assert ok
+    assert doc["saved"]["items"] == {} and doc["saved"]["members"] == {}
+    assert users.load_user_data("alice")["saved"]["items"] == {}
+    # Saved again later on phone B, it is back.
+    again = _store(items={"w\nA/X": _item("A/X", ts=3000)})
+    _, _, doc = users.sync_user_data("alice", {"saved": again}, now_ms=3100)
+    assert list(doc["saved"]["items"]) == ["w\nA/X"]
+
+
+def test_two_devices_writing_in_turn_lose_nothing(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    users.sync_user_data("alice", {"saved": _store(items={"w\nA/A": _item("A/A")})})
+    _, _, doc = users.sync_user_data(
+        "alice", {"saved": _store(items={"w\nA/B": _item("A/B", ts=1100)})}
+    )
+    assert set(doc["saved"]["items"]) == {"w\nA/A", "w\nA/B"}
+
+
+def test_a_sync_leaves_the_fields_it_does_not_send(monkeypatch, tmp_path):
+    """The shell sends only the store as it syncs; the history, preferences
+    and 1.11's bookmarks kept on the server stay as they were (the old keys
+    stay readable for one release)."""
+    _setup(monkeypatch, tmp_path)
+    users.save_user_data(
+        "alice",
+        {
+            "bookmarks": [{"zim": "w", "path": "A/Old"}],
+            "folders": [{"id": "f1", "name": "F"}],
+            "history": [{"zim": "w", "path": "A/H"}],
+            "preferences": {"apps": True},
+        },
+    )
+    users.sync_user_data("alice", {"saved": _store(items={"w\nA/X": _item("A/X")})})
+    blob = users.load_user_data("alice")
+    assert blob["bookmarks"] == [{"zim": "w", "path": "A/Old"}]
+    assert blob["folders"] == [{"id": "f1", "name": "F"}]
+    assert blob["history"] == [{"zim": "w", "path": "A/H"}]
+    assert blob["preferences"] == {"apps": True}
+    assert list(blob["saved"]["items"]) == ["w\nA/X"]
+    # A preferences write keeps the store.
+    users.sync_user_data("alice", {"preferences": {"apps": False}})
+    assert list(users.load_user_data("alice")["saved"]["items"]) == ["w\nA/X"]
+
+
+def test_the_clients_shape_is_never_trusted(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    ok, _, doc = users.sync_user_data(
+        "alice",
+        {
+            "saved": {
+                "items": {
+                    "w\nA/X": _item("A/X", title="t" * 900),
+                    "evil": _item("A/Y"),
+                    "w\nA/Z": "not a record",
+                },
+                "lists": ["not", "a", "map"],
+                "positions": {
+                    "w\nA/P": _item("A/P", where={"f": float("inf"), "c": 3})
+                },
+                "legacy": "yes",
+            }
+        },
+    )
+    assert ok
+    saved = doc["saved"]
+    assert list(saved["items"]) == ["w\nA/X"]
+    assert len(saved["items"]["w\nA/X"]["title"]) == users._SAVED_TITLE_MAX
+    assert saved["lists"] == {}
+    assert saved["positions"]["w\nA/P"]["where"] == {"c": 3}
+    assert saved["legacy"] is False
+    ok, _, _ = users.sync_user_data("alice", {"saved": "garbage"})
+    assert ok  # nothing merged in, nothing lost
+
+
+def test_the_store_is_held_to_its_caps(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    monkeypatch.setitem(users._SAVED_MAX, "items", 3)
+    items = {"w\nA/%d" % i: _item("A/%d" % i, ts=1000 + i) for i in range(5)}
+    _, _, doc = users.sync_user_data("alice", {"saved": _store(items=items)})
+    assert sorted(doc["saved"]["items"]) == ["w\nA/2", "w\nA/3", "w\nA/4"]
+
+
+def test_old_tombstones_are_forgotten(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    gone = {"i:w\nA/Old": 1000, "i:w\nA/New": 91 * DAY_MS}
+    _, _, doc = users.sync_user_data(
+        "alice", {"saved": _store(gone=gone)}, now_ms=91 * DAY_MS + 1000
+    )
+    assert doc["saved"]["gone"] == {"i:w\nA/New": 91 * DAY_MS}
+
+
+def test_userdata_post_merges_and_hands_back_the_store(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(users, "resolve_request_user", lambda h: "alice")
+    users.sync_user_data("alice", {"saved": _store(items={"w\nA/A": _item("A/A")})})
+    h = _Handler()
+    h._handle_userdata_post({"saved": _store(items={"w\nA/B": _item("A/B")})})
+    assert h.status == 200
+    assert set(h.body["saved"]["items"]) == {"w\nA/A", "w\nA/B"}
