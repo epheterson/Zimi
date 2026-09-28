@@ -2045,7 +2045,10 @@ def scraper_string(tool=None, version=None):
     return f"{base} + {tool} {version}" if version else f"{base} + {tool}"
 
 
-def history_record(op, mode, detail, *, tools=None, counts=None, blocked=None, stopped=None, ts=None):
+def history_record(
+    op, mode, detail, *, tools=None, counts=None, blocked=None, stopped=None,
+    links_removed=None, ts=None,
+):
     """One provenance record. ``op`` is what happened ("created"), ``mode`` how
     ("folder", "page", "site", "video", "import", "bookmarks"), ``detail`` one
     human sentence. ``tools`` names the outside engine and version when one ran;
@@ -2079,6 +2082,10 @@ def history_record(op, mode, detail, *, tools=None, counts=None, blocked=None, s
     # so and which limit, in the reader's language (Eric, 2026-09-25).
     if stopped:
         record["stopped"] = str(stopped)
+    # "Remove links to other sites" was on: how many links became plain text.
+    # Zero is kept (the option ran and found none); None means it was off.
+    if links_removed is not None:
+        record["links_removed"] = int(links_removed)
     return record
 
 
