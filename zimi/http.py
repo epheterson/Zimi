@@ -2391,8 +2391,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # Zimipedia: every wiki in the library, as one.
                 from zimi import wiki as _wiki
 
-                # A preview, off unless ZIMI_APPS (or a saved list) names it:
-                # not offered, it is not here at all.
+                # Not offered (ZIMI_APPS or a saved list leaves it out): it is
+                # not here at all.
                 if "wiki" not in _srv.apps_shown():
                     return self._json(404, {"error": "not found"})
                 sub = parsed.path[len("/wiki"):].strip("/")

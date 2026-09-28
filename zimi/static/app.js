@@ -17119,7 +17119,7 @@ function _wikiStrings() {
     ['zero', 'one', 'two', 'few', 'many', 'other'].map(function(c) { return 'wiki_results_' + c; })), { langs: langs });
 }
 function openWiki(replaceState) {
-  // Not offered here (off unless the server names it): home, and an
+  // Not offered here (the server's ZIMI_APPS leaves it out): home, and an
   // address that says so, not a page whose every call is a 404.
   if (!_appsAllowedByServer('wiki')) {
     if (mode !== 'home') enterHome(false);
@@ -18528,9 +18528,9 @@ var _REDDIT_ADDRESS_START = 'https://www.reddit.com/r/Kiwix';
 // this signed-in person turned it off for their account. Never per
 // browser (Eric: "Not per browser only per user or server").
 var APP_NAMES = ['maps', 'tube', 'exchange', 'reddot', 'wiki', 'books'];
-// Offered only when the server names them (ZIMI_APPS=...,wiki or a saved
-// list): Zimipedia is a preview being redesigned. Mirrors server.APPS_OPT_IN.
-var APPS_OPT_IN = ['wiki'];
+// Offered only when the server names them (a preview, while it is built):
+// none now, Zimipedia was one until its reader. Mirrors server.APPS_OPT_IN.
+var APPS_OPT_IN = [];
 function _appOptIn(app) { return APPS_OPT_IN.indexOf(app) >= 0; }
 var APPS_DEFAULT = APP_NAMES.filter(function(a) { return !_appOptIn(a); });
 var _userPrefs = { apps: true, shown: null };

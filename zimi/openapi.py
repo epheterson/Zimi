@@ -39,7 +39,7 @@ def _json_response(description, schema):
 
 
 # Zimipedia is a preview, off unless ZIMI_APPS names it.
-_WIKI_PREVIEW = "Zimipedia (preview): answers 404 unless ZIMI_APPS names wiki."
+_WIKI_PREVIEW = "Zimipedia: answers 404 when the server does not offer it (ZIMI_APPS without wiki)."
 
 # Zimipedia's day: one pick per wiki, and each Wikipedia's dated events.
 _WIKI_EVENT = {"type": "object", "properties": {"event_year": {"type": "string"}, "event_text": {"type": "string"}, "path": {"type": "string"}, "title": {"type": "string"}}}

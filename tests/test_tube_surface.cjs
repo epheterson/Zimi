@@ -78,7 +78,7 @@ ok('the ZimiTube tile names the video ZIMs', /<span class="zt">ZimiTube<\/span>/
 ctx.zimsCache = ctx.zimsCache.filter(z => z.kind !== 'video');
 ok('no video ZIM: the tile stays, empty, and opens the Video category', /app-empty tube-tile/.test(ctx._appsRowHtml()) && /No videos yet/.test(ctx._appsRowHtml()) && /_openCategory\(_APP_CATEGORY\.tube\)/.test(ctx._appsRowHtml()));
 ctx.zimsCache = [];
-ok('a fresh install still has the apps row, every tile a door (Zimipedia, a preview, only when the server names it)', (ctx._appsRowHtml().match(/app-empty/g) || []).length === 5 && !/wiki-tile/.test(ctx._appsRowHtml()));
+ok('a fresh install still has the apps row, every tile a door, Zimipedia too', (ctx._appsRowHtml().match(/app-empty/g) || []).length === 6 && /wiki-tile/.test(ctx._appsRowHtml()));
 ctx.document.body.dataset.zimiApps = 'maps,tube,exchange,reddot,wiki,books';
 ok('a server that names wiki offers its tile', (ctx._appsRowHtml().match(/app-empty/g) || []).length === 6 && /wiki-tile/.test(ctx._appsRowHtml()));
 delete ctx.document.body.dataset.zimiApps;
