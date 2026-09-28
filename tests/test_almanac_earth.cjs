@@ -58,9 +58,11 @@ vm.createContext(S);
 vm.runInContext(
   'var JD_UNIX_EPOCH = 2440587.5; var JD_J2000 = 2451545.0; var MS_PER_DAY = 86400000;' +
   'var JULIAN_CENTURY = 36525; var DEG_TO_RAD = Math.PI / 180;' +
-  'function t(k) { return k; }' +
-  'function _dateToJD(ms) { return ms / MS_PER_DAY + JD_UNIX_EPOCH; }', S);
-for (const fn of ['_jdnToGregorian', '_cnDeltaTdays', '_computeEclipses']) vm.runInContext(extractFn(almSrc, fn), S);
+  'function t(k) { return k; }', S);
+for (const fn of ['_dateToJD', '_jdnToGregorian', '_cnDeltaTdays', '_computeEclipses']) vm.runInContext(extractFn(almSrc, fn), S);
+// The orrery owns the constants the Earth view shares (the AU, the speed of
+// light, the day in seconds) and the formatter cache; it loads first in the app.
+vm.runInContext(fs.readFileSync(path.join(STATIC, 'almanac-orrery.js'), 'utf8'), S);
 vm.runInContext(fs.readFileSync(path.join(STATIC, 'almanac-earth.js'), 'utf8'), S);
 vm.runInContext(fs.readFileSync(path.join(STATIC, 'earth', 'satellite-7.1.0.min.js'), 'utf8'), S);
 

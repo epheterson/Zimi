@@ -29,18 +29,18 @@
 // (tests/test_almanac_earth.cjs) can check them against published values.
 
 // ── Physical constants ──
+// The AU, the speed of light and the day in seconds are the orrery's
+// (almanac-orrery.js AU_KM, SPEED_OF_LIGHT_KM_S, SECONDS_PER_DAY); the
+// Julian Day is almanac.js's _dateToJD. They share this global scope.
 var AE_EARTH_RADIUS_KM = 6378.137;            // WGS84 equatorial radius
 var AE_EARTH_FLATTENING = 1 / 298.257223563;  // WGS84
 var AE_EARTH_E2 = AE_EARTH_FLATTENING * (2 - AE_EARTH_FLATTENING); // first eccentricity squared
 var AE_MOON_RADIUS_KM = 1737.4;               // IAU mean radius
 var AE_SUN_RADIUS_KM = 695700;                // IAU 2015 nominal solar radius
-var AE_AU_KM = 149597870.7;                   // IAU 2012 astronomical unit
-var AE_C_KM_S = 299792.458;                   // speed of light
 var AE_GM_EARTH = 398600.4418;                // km^3/s^2, WGS84 / IERS
 // L_G: the rate by which a clock on the geoid (Earth's rotation included)
 // runs slow against one far from the Earth, W0/c^2 (IAU 2000 Resolution B1.9).
 var AE_L_G = 6.969290134e-10;
-var AE_SECONDS_PER_DAY = 86400;
 var AE_MICRO = 1e6;
 var AE_NANO = 1e9;
 var AE_ARCSEC_TO_DEG = 1 / 3600;
@@ -57,9 +57,6 @@ var AE_MOON_MEAN_DIST_KM = 385000.56;
 function _aeDeg(x) { return x * 180 / Math.PI; }
 function _aeRad(x) { return x * Math.PI / 180; }
 function _aeNormDeg(x) { return ((x % 360) + 360) % 360; }
-
-// Julian Day (UT) of a JS time in ms.
-function _aeJulianDayUT(ms) { return JD_UNIX_EPOCH + ms / MS_PER_DAY; }
 
 // TT - UT in days for a UT Julian Day. The Almanac's own Espenak-Meeus fit
 // (almanac.js _cnDeltaTdays) when it is loaded, which it always is in the app.
@@ -145,7 +142,7 @@ function _aeSun(jde) {
   var nut = _aeNutation(T);
   lon += nut.dpsi - AE_SUN_ABERRATION_ARCSEC / R * AE_ARCSEC_TO_DEG;
   var eq = _aeEclipticToEquatorial(lon, lat, nut.eps);
-  return { ra: eq.ra, dec: eq.dec, distKm: R * AE_AU_KM, lon: _aeNormDeg(lon), nut: nut };
+  return { ra: eq.ra, dec: eq.dec, distKm: R * AU_KM, lon: _aeNormDeg(lon), nut: nut };
 }
 
 // ── The Moon (Meeus ch. 47, the full tables 47.A and 47.B) ──
@@ -251,7 +248,7 @@ function _aeEqVec(ra, dec, r) {
 // Everything the view draws for one instant, in scene units (Earth radii).
 // ms is a JS time (UTC).
 function _aeSceneAt(ms) {
-  var jd = _aeJulianDayUT(ms);
+  var jd = _dateToJD(ms);
   var jde = jd + _aeDeltaTDays(jd);
   var sun = _aeSun(jde), moon = _aeMoon(jde);
   return {
@@ -433,15 +430,15 @@ function _aeGreatestEclipse(ms, solar) {
 // rates: gravity is weaker up there, so it runs fast by (W0 - GM/r)/c^2; it
 // moves, so it runs slow by v^2/(2 c^2). r in km, v in km/s (inertial).
 function _aeGpsClockRates(rKm, vKmS) {
-  var c2 = AE_C_KM_S * AE_C_KM_S;
+  var c2 = SPEED_OF_LIGHT_KM_S * SPEED_OF_LIGHT_KM_S;
   var grav = AE_L_G - AE_GM_EARTH / (rKm * c2);
   var speed = -(vKmS * vKmS) / (2 * c2);
   return { grav: grav, speed: speed, net: grav + speed };
 }
 // Microseconds a day for a fractional rate, and the ranging error it becomes
 // in a day if ignored (the clock error times the speed of light), km.
-function _aeMicrosPerDay(rate) { return rate * AE_SECONDS_PER_DAY * AE_MICRO; }
-function _aeKmPerDay(rate) { return rate * AE_SECONDS_PER_DAY * AE_C_KM_S; }
+function _aeMicrosPerDay(rate) { return rate * SECONDS_PER_DAY * AE_MICRO; }
+function _aeKmPerDay(rate) { return rate * SECONDS_PER_DAY * SPEED_OF_LIGHT_KM_S; }
 
 // ── Satellites: what the data supports ──
 // Elements are drawn only near the instant they describe. GPS orbits hold
@@ -566,7 +563,6 @@ var AE_ATMOSPHERE_SCALE = 1.018;      // the glow's shell, ~115 km above the sur
 var AE_ANISOTROPY = 8;
 var AE_IDLE_RENDER_MS = 250;          // at real-time speed nothing moves faster than this shows
 var AE_TEXT_TICK_MS = 100;            // readouts and the GPS counter
-var AE_STATS_WINDOW = 120;            // frames kept for the frame-rate readout
 var AE_SAT_CAPACITY = 80;
 var AE_GPS_RING_POINTS = 72;
 var AE_ISS_RING_POINTS = 96;
@@ -601,9 +597,7 @@ var AE_HOURS_TO_RAD = Math.PI / 12;
 var _ae = null;          // view state, built on first open
 var _aeIsOpen = false;
 
-function _aeLang() { return (typeof _currentLang !== 'undefined' && _currentLang) ? _currentLang : undefined; }
 function _aeT(key, vars) { return (typeof t === 'function') ? t(key, vars) : key; }
-function _aeEsc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function _aeReduceMotion() { return (typeof _almReduceMotion === 'function') ? _almReduceMotion() : false; }
 function _aeLink(key, html) { return window.AlmanacLinks ? window.AlmanacLinks.wrap(key, html) : html; }
 function _aeLinked(key) { return !!(window.AlmanacLinks && window.AlmanacLinks.linkFor(key)); }
@@ -611,32 +605,24 @@ function _aeClamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
 function _aeEaseOut(p) { return 1 - Math.pow(1 - p, 3); }
 function _aeFmtLatLon(p) {
   var ns = p.lat >= 0 ? 'N' : 'S', ew = p.lon >= 0 ? 'E' : 'W';
-  return _aeNum(Math.abs(p.lat), 1) + '° ' + ns + ', ' + _aeNum(Math.abs(p.lon), 1) + '° ' + ew;
+  return _orrNum(Math.abs(p.lat), null, 1) + '° ' + ns + ', ' + _orrNum(Math.abs(p.lon), null, 1) + '° ' + ew;
 }
-// Intl formatters are built once per language and shape: the readouts run
-// ten times a second, and building one costs about a millisecond on a phone.
-var _aeFmtCache = {};
-function _aeFormatter(kind, opts, ctor) {
-  var key = kind + '|' + (_aeLang() || '');
-  if (!_aeFmtCache[key]) {
-    try { _aeFmtCache[key] = new ctor(_aeLang(), opts); }
-    catch (e) { _aeFmtCache[key] = new ctor(undefined, opts); }
-  }
-  return _aeFmtCache[key];
-}
-function _aeNum(n, digits) {
-  return _aeFormatter('n' + digits, { minimumFractionDigits: digits, maximumFractionDigits: digits }, Intl.NumberFormat).format(n);
-}
+// Numbers and dates through the orrery's formatter cache (almanac-orrery.js
+// _orrNum, _orrFormatter): the readouts run ten times a second, and building
+// a formatter costs about a millisecond on a phone.
 var AE_DATE_OPTS = { day: 'numeric', month: 'short', year: 'numeric' };
 var AE_WHEN_OPTS = { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' };
-function _aeFmtDate(ms) { return _aeFormatter('d', AE_DATE_OPTS, Intl.DateTimeFormat).format(new Date(ms)); }
+function _aeDateFormatter(shape, opts) {
+  return _orrFormatter(shape, function (lang) { return new Intl.DateTimeFormat(lang, opts); });
+}
+function _aeFmtDate(ms) { return _aeDateFormatter('ae-date', AE_DATE_OPTS).format(new Date(ms)); }
 function _aeFmtWhen(ms) {
   var d = new Date(ms);
   // A year before 1 needs the era spelled out (almanac.js _almEraOpts).
   if (d.getFullYear() <= 0 && typeof _almEraOpts === 'function') {
-    return _aeFormatter('we', _almEraOpts(d, AE_WHEN_OPTS), Intl.DateTimeFormat).format(d);
+    return _aeDateFormatter('ae-when-era', _almEraOpts(d, AE_WHEN_OPTS)).format(d);
   }
-  return _aeFormatter('w', AE_WHEN_OPTS, Intl.DateTimeFormat).format(d);
+  return _aeDateFormatter('ae-when', AE_WHEN_OPTS).format(d);
 }
 function _aeById(id) { return document.getElementById(id); }
 
@@ -706,33 +692,33 @@ function _aeBuildDom() {
   el.setAttribute('aria-label', _tp('Earth'));
   var speeds = AE_SPEEDS.map(function (s, i) {
     return '<button type="button" class="ae-btn" data-ae-speed="' + s + '" aria-pressed="' + (i === 0) + '">' +
-      _aeEsc(_aeT(AE_SPEED_KEYS[i])) + '</button>';
+      _almEsc(_aeT(AE_SPEED_KEYS[i])) + '</button>';
   }).join('');
   el.innerHTML =
     '<canvas class="ae-canvas" id="ae-canvas" tabindex="0" role="img"></canvas>' +
     '<div class="ae-labels" id="ae-labels">' +
-      '<span class="ae-label" id="ae-lbl-moon" hidden>' + _aeEsc(_aeT('alm_moon')) + '</span>' +
+      '<span class="ae-label" id="ae-lbl-moon" hidden>' + _almEsc(_aeT('alm_moon')) + '</span>' +
       '<span class="ae-label" id="ae-lbl-iss" hidden></span>' +
-      '<span class="ae-label ae-label-you" id="ae-lbl-you" hidden>● ' + _aeEsc(_aeT('alm_earth_you')) + '</span>' +
-      '<span class="ae-label ae-label-shadow" id="ae-lbl-shadow" hidden>◉ ' + _aeEsc(_aeT('alm_earth_shadow')) + '</span>' +
+      '<span class="ae-label ae-label-you" id="ae-lbl-you" hidden>● ' + _almEsc(_aeT('alm_earth_you')) + '</span>' +
+      '<span class="ae-label ae-label-shadow" id="ae-lbl-shadow" hidden>◉ ' + _almEsc(_aeT('alm_earth_shadow')) + '</span>' +
     '</div>' +
     '<div class="ae-msg" id="ae-msg"></div>' +
-    '<div class="ae-hint" id="ae-hint">' + _aeEsc(_aeT('alm_earth_hint')) + '</div>' +
+    '<div class="ae-hint" id="ae-hint">' + _almEsc(_aeT('alm_earth_hint')) + '</div>' +
     '<div class="ae-top">' +
-      '<button type="button" class="ae-btn ae-back" id="ae-back"><span class="ae-chev" aria-hidden="true">‹</span> ' + _aeEsc(_aeT('alm_solar_system')) + '</button>' +
+      '<button type="button" class="ae-btn ae-back" id="ae-back"><span class="ae-chev" aria-hidden="true">‹</span> ' + _almEsc(_aeT('alm_solar_system')) + '</button>' +
       '<div class="ae-when" id="ae-when"></div>' +
     '</div>' +
     '<div class="ae-status" id="ae-status" aria-live="polite"></div>' +
     '<div class="ae-card" id="ae-card" hidden></div>' +
     '<div class="ae-bottom">' +
       '<div class="ae-row" role="group" id="ae-views">' +
-        '<button type="button" class="ae-btn" data-ae-view="earth" aria-pressed="true">' + _aeEsc(_tp('Earth')) + '</button>' +
-        '<button type="button" class="ae-btn" data-ae-view="sats" aria-pressed="false">' + _aeEsc(_aeT('alm_earth_view_sats')) + '</button>' +
-        '<button type="button" class="ae-btn" data-ae-view="moon" aria-pressed="false">' + _aeEsc(_aeT('alm_moon')) + '</button>' +
+        '<button type="button" class="ae-btn" data-ae-view="earth" aria-pressed="true">' + _almEsc(_tp('Earth')) + '</button>' +
+        '<button type="button" class="ae-btn" data-ae-view="sats" aria-pressed="false">' + _almEsc(_aeT('alm_earth_view_sats')) + '</button>' +
+        '<button type="button" class="ae-btn" data-ae-view="moon" aria-pressed="false">' + _almEsc(_aeT('alm_moon')) + '</button>' +
       '</div>' +
       '<div class="ae-row" role="group" id="ae-time">' + speeds +
-        '<button type="button" class="ae-btn" id="ae-eclipse">' + _aeEsc(_aeT('alm_earth_next_eclipse')) + '</button>' +
-        '<button type="button" class="ae-btn" id="ae-now" hidden>' + _aeEsc(_aeT('alm_now')) + '</button>' +
+        '<button type="button" class="ae-btn" id="ae-eclipse">' + _almEsc(_aeT('alm_earth_next_eclipse')) + '</button>' +
+        '<button type="button" class="ae-btn" id="ae-now" hidden>' + _almEsc(_aeT('alm_now')) + '</button>' +
       '</div>' +
       '<div class="ae-note" id="ae-note"></div>' +
     '</div>';
@@ -1047,7 +1033,7 @@ function _aeNewState(el) {
     ringsAt: null, issRingAt: null, moonPathAt: null,
     positions: [],                        // projected satellites for tapping
     lastTs: 0, lastRender: 0, lastText: 0, dirty: true,
-    raf: 0, idleTimer: 0, stats: [], renderMs: [],
+    raf: 0, idleTimer: 0,
     scene: null
   };
 }
@@ -1377,8 +1363,8 @@ function _aeUpdateLabels() {
   var issEl = _aeById('ae-lbl-iss');
   if (iss) {
     var approx = iss.s.standing === 'approximate';
-    var html = _aeEsc(_aeT('alm_earth_iss_short')) +
-      (approx ? '<span class="ae-label-sub">' + _aeEsc(_aeT('alm_earth_approx', { date: _aeFmtDate(iss.s.epochMs) })) + '</span>' : '');
+    var html = _almEsc(_aeT('alm_earth_iss_short')) +
+      (approx ? '<span class="ae-label-sub">' + _almEsc(_aeT('alm_earth_approx', { date: _aeFmtDate(iss.s.epochMs) })) + '</span>' : '');
     if (issEl._aeHtml !== html) { issEl.innerHTML = html; issEl._aeHtml = html; }
     issEl.classList.toggle('ae-faded', approx);
   }
@@ -1431,14 +1417,14 @@ function _aeRenderCard() {
   if (!card) return;
   if (!_ae.selected || !_ae.sats) { card.hidden = true; card.innerHTML = ''; return; }
   var s = _ae.sats.list[_ae.selected.idx];
-  var html = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _aeEsc(_aeT('alm_tm_close')) + '">×</button>';
+  var html = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>';
   if (s.iss) {
-    html += '<h3>' + _aeLink('term:iss', _aeEsc(_aeT('alm_earth_iss_name'))) + '</h3>' +
+    html += '<h3>' + _aeLink('term:iss', _almEsc(_aeT('alm_earth_iss_name'))) + '</h3>' +
       '<p id="ae-card-body"></p>' + '<p id="ae-card-age"></p>';
   } else {
-    html += '<h3>' + _aeLink('term:gps', _aeEsc(_aeSatShortName(s))) + '</h3>' +
+    html += '<h3>' + _aeLink('term:gps', _almEsc(_aeSatShortName(s))) + '</h3>' +
       '<p id="ae-card-body"></p>' + '<p class="ae-counter" id="ae-card-count"></p>' +
-      (_aeLinked('term:time_dilation') ? '<p>' + _aeLink('term:time_dilation', _aeEsc(_aeT('alm_earth_time_dilation'))) + '</p>' : '');
+      (_aeLinked('term:time_dilation') ? '<p>' + _aeLink('term:time_dilation', _almEsc(_aeT('alm_earth_time_dilation'))) + '</p>' : '');
   }
   card.innerHTML = html;
   card.hidden = false;
@@ -1459,7 +1445,7 @@ function _aeUpdateCard(ms) {
   if (s.iss) {
     var alt = rKm - AE_EARTH_RADIUS_KM;
     var lap = AE_MINUTES_PER_DAY / s.omm.MEAN_MOTION;
-    body.textContent = _aeT('alm_earth_iss_line', { alt: _aeNum(alt, 0), v: _aeNum(v, 2), min: _aeNum(lap, 0) });
+    body.textContent = _aeT('alm_earth_iss_line', { alt: _orrNum(alt, null, 0), v: _orrNum(v, null, 2), min: _orrNum(lap, null, 0) });
     var age = _aeById('ae-card-age');
     if (age) age.textContent = s.standing === 'approximate'
       ? _aeT('alm_earth_approx', { date: _aeFmtDate(s.epochMs) })
@@ -1468,18 +1454,18 @@ function _aeUpdateCard(ms) {
   }
   var rates = _aeGpsClockRates(rKm, v);
   body.textContent = _aeT('alm_earth_gps_sentence', {
-    net: _aeNum(_aeMicrosPerDay(rates.net), 1),
-    grav: _aeNum(_aeMicrosPerDay(rates.grav), 1),
-    speed: _aeNum(-_aeMicrosPerDay(rates.speed), 1),
-    v: _aeNum(v, 2),
-    km: _aeNum(_aeKmPerDay(rates.net), 0)
+    net: _orrNum(_aeMicrosPerDay(rates.net), null, 1),
+    grav: _orrNum(_aeMicrosPerDay(rates.grav), null, 1),
+    speed: _orrNum(-_aeMicrosPerDay(rates.speed), null, 1),
+    v: _orrNum(v, null, 2),
+    km: _orrNum(_aeKmPerDay(rates.net), null, 0)
   });
   // The satellite's clock pulls ahead by the net rate for as long as the
   // shown time runs; the counter starts at the tap.
   if (ms < _ae.selected.tapMs) _ae.selected.tapMs = ms;
   var gainedNs = (ms - _ae.selected.tapMs) / 1000 * rates.net * AE_NANO;
   var count = _aeById('ae-card-count');
-  if (count) count.textContent = _aeT('alm_earth_since_tap', { ns: _aeNum(gainedNs, gainedNs < 100 ? 2 : 0) });
+  if (count) count.textContent = _aeT('alm_earth_since_tap', { ns: _orrNum(gainedNs, null, gainedNs < 100 ? 2 : 0) });
 }
 
 // ── Text: the clock, the eclipse line, the data note ──
@@ -1487,8 +1473,8 @@ function _aeUpdateText(ms) {
   var when = _aeById('ae-when');
   var whenText = _aeFmtWhen(ms);
   if (when) {
-    var whenHtml = '<b>' + _aeEsc(whenText) + '</b>' +
-      (_aeIsLive() ? '<span class="ae-live">● ' + _aeEsc(_aeT('alm_earth_live')) + '</span>' : '');
+    var whenHtml = '<b>' + _almEsc(whenText) + '</b>' +
+      (_aeIsLive() ? '<span class="ae-live">● ' + _almEsc(_aeT('alm_earth_live')) + '</span>' : '');
     if (whenHtml !== _ae.whenHtml) { when.innerHTML = whenHtml; _ae.whenHtml = whenHtml; }
   }
   var nowBtn = _aeById('ae-now');
@@ -1557,14 +1543,9 @@ function _aeFrame() {
   var ms = _aeDisplayMs();
   var busy = _aeStepFly(now) || _aeBusy();
   if (_ae.gl && (_ae.dirty || busy || now - _ae.lastRender >= AE_IDLE_RENDER_MS)) {
-    var t0 = performance.now();
     _aeUpdate(ms);
     _ae.gl.renderer.render(_ae.gl.scene, _ae.gl.camera);
     _aeUpdateLabels();
-    _ae.renderMs.push(performance.now() - t0);
-    if (_ae.renderMs.length > AE_STATS_WINDOW) _ae.renderMs.shift();
-    _ae.stats.push(now);
-    if (_ae.stats.length > AE_STATS_WINDOW) _ae.stats.shift();
     _ae.lastRender = now;
     _ae.dirty = false;
   }
@@ -1839,15 +1820,4 @@ function _aeClose() {
   if (orr && orr.focus) orr.focus({ preventScroll: true });
 }
 
-// Frame-rate readout for measuring on a device: frames per second over the
-// last frames rendered back to back, and the mean CPU time per frame.
-function _aeStats() {
-  if (!_ae || _ae.stats.length < 2) return null;
-  var s = _ae.stats, span = s[s.length - 1] - s[0];
-  var cpu = _ae.renderMs.reduce(function (a, b) { return a + b; }, 0) / _ae.renderMs.length;
-  return { fps: (s.length - 1) / span * 1000, cpuMs: cpu, frames: s.length };
-}
-
 window.openAlmanacEarth = openAlmanacEarth;
-window.closeAlmanacEarth = _aeClose;
-window.openAlmanacEarth.stats = _aeStats;

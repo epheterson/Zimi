@@ -42,6 +42,7 @@ function _planetPosition(name, T) {
 // Both defining constants are exact (the metre since 1983; the AU by IAU 2012 B2).
 // Literals, not MS_PER_DAY: this file is evaluated before almanac.js defines it.
 var SPEED_OF_LIGHT_M_S = 299792458;
+var SPEED_OF_LIGHT_KM_S = SPEED_OF_LIGHT_M_S / 1000;
 var AU_M = 149597870700;
 var AU_KM = AU_M / 1000;
 var LIGHT_SECONDS_PER_AU = AU_M / SPEED_OF_LIGHT_M_S; // ~499.005 s, sunlight's trip at 1 AU
@@ -89,21 +90,24 @@ function _orreryDistanceFromEarthAU(name, simMs) {
 // ── Localized readouts ──
 // Units come from Intl in the reader's language ("12 min 40 sec", "12 мин 40 с",
 // "12分钟40秒"), so no unit strings to translate. Formatters are cached: the
-// ride rewrites its readout every frame, and each Intl.NumberFormat is costly.
+// ride rewrites its readout every frame, the Earth view (almanac-earth.js)
+// its readouts ten times a second, and each Intl formatter is costly.
 var _orrFmtCache = {};
 function _orrLang() { return (typeof _currentLang !== 'undefined' && _currentLang) ? _currentLang : 'en'; }
+// The formatter for a shape in the reader's language, built by build(lang)
+// the first time it is asked for.
+function _orrFormatter(shape, build) {
+  var key = _orrLang() + '|' + shape;
+  return _orrFmtCache[key] || (_orrFmtCache[key] = build(_orrLang()));
+}
 function _orrNum(n, unit, fracDigits) {
   var d = fracDigits || 0;
-  var key = _orrLang() + '|' + (unit || '') + '|' + d;
-  var f = _orrFmtCache[key];
-  if (!f) {
+  return _orrFormatter('n|' + (unit || '') + '|' + d, function (lang) {
     var opts = { minimumFractionDigits: d, maximumFractionDigits: d };
     if (unit) { opts.style = 'unit'; opts.unit = unit; opts.unitDisplay = 'short'; }
-    try { f = new Intl.NumberFormat(_orrLang(), opts); }
-    catch (e) { f = { format: function (x) { return x.toFixed(d) + (unit ? ' ' + unit : ''); } }; }
-    _orrFmtCache[key] = f;
-  }
-  return f.format(n);
+    try { return new Intl.NumberFormat(lang, opts); }
+    catch (e) { return { format: function (x) { return x.toFixed(d) + (unit ? ' ' + unit : ''); } }; }
+  }).format(n);
 }
 
 // Two whole units, the larger first ("12 min 40 sec", "3 hr 5 min"); the
