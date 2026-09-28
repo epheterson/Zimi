@@ -17,7 +17,7 @@ function ok(label, cond, detail) {
   if (!cond) failures++;
 }
 
-ok('the tile is one line in the apps row, fourth', /_appShown\('exchange'\) \? _exchangeTileHtml\(\) : ''\) \+ \(_appShown\('reddot'\) \? _reddotTileHtml\(\) : ''/.test(src));
+ok('the tile is one line in the apps row, fourth in the row\'s own order', /_APP_TILES = \{[^}\n]*exchange: _exchangeTileHtml, reddot: _reddotTileHtml,/.test(src) && /var APP_NAMES = \['maps', 'tube', 'exchange', 'reddot',/.test(src));
 ok('its empty state is the Create page with a subreddit address started, not the catalog', /var door = _APP_CATEGORY\[app\]/.test(src) && /_createRememberSource = _REDDIT_ADDRESS_START; openCreate\(\);/.test(src) && !/_APP_CATEGORY = \{[^}]*reddot/.test(src));
 ok('it is the page Zimi owns, in the reader, with its own history entry', /openReader\(_REDDOT_PAGE \+ '#' \+ _reddotStrings\(p\)\)/.test(src) && /history\.pushState\(st, '', _reddotUrl\(p\)\)/.test(src));
 ok('/#reddot opens it cold, with a post when the address names one', /location\.hash === '#reddot' \|\| location\.hash\.indexOf\('#reddot\?'\) === 0/.test(src) && /rdQ\.get\('p'\)/.test(src));

@@ -806,7 +806,7 @@ async function _fetchList() {
   _declaredSections = Array.isArray(data.sections) ? data.sections : [];
   return Array.isArray(data.zims) ? data.zims : [];
 }
-let homeScope = null; // {type:'favorites'|'category'|'collection', label, zimNames:[]}
+let homeScope = null; // {type:'favorites'|'category'|'collection'|'apps', label, zimNames:[]}
 // #34 library recency filter: null | 'added' | 'updated'. Transient view state —
 // deliberately NOT persisted, so a reload always lands on the full library. An
 // active pill narrows the existing home sections in place (like a language pill),
@@ -2842,6 +2842,7 @@ function _resolveScopeZims(type, label) {
     const coll = Object.values(collectionsCache.collections).find(c => c.label === label);
     return coll ? (coll.zims || []) : [];
   }
+  if (type === 'apps') return _appsZimNames();
   return [];
 }
 
@@ -3351,6 +3352,9 @@ function renderHome(filter) {
   // Determine base ZIM set (scoped or all)
   let baseZims = zimsCache;
   if (homeScope) {
+    // The Apps page holds what is inside the apps now, so a ZIM that lands
+    // while it is open joins its app there.
+    if (homeScope.type === 'apps') homeScope.zimNames = _appsZimNames();
     const scopeSet = new Set(homeScope.zimNames);
     baseZims = zimsCache.filter(z => scopeSet.has(z.name));
   }
@@ -3599,6 +3603,8 @@ function renderHome(filter) {
 
   if (filter && zims.length === 0) {
     h += '<div class="empty"><p>' + tH('no_sources_matching', {query: filter}) + '</p></div>';
+  } else if (homeScope && homeScope.type === 'apps') {
+    h += _appsPageHtml(_homeShown);
   } else if (homeScope) {
     // Scoped view: plain category headings, no reordering or collections.
     cats.forEach(cat => {
@@ -3868,6 +3874,9 @@ var LIBRARY_REFLOW_MS = 320;
 // then does the honest thing and rebuilds.
 function _reorderLibraryInPlace() {
   if (!output || !zimsCache || !zimsCache.length) return false;
+  // The Apps page's sections are the apps themselves, and they move with
+  // the order too: that is a rebuild, not a shuffle within each grid.
+  if (homeScope && homeScope.type === 'apps') return false;
   var grids = output.querySelectorAll('.stats-grid');
   if (!grids.length) return false;
   var compare = _LIBRARY_SORTERS[_librarySort()] || _LIBRARY_SORTERS.alpha;
@@ -3881,14 +3890,11 @@ function _reorderLibraryInPlace() {
     var grid = grids[g];
     var cards = Array.prototype.slice.call(grid.querySelectorAll('.stat-card[data-zim]'));
     if (cards.length < 2) continue;
-    var known = cards.map(function(card) {
-      return { card: card, zim: _zimInfo(card.dataset.zim) };
-    });
+    var sorted = _cardsInOrder(cards, compare);
     // A card whose ZIM we cannot look up means the page and the library have
     // drifted apart; a rebuild is the only honest answer.
-    if (known.some(function(k) { return !k.zim; })) return false;
-    var sorted = known.slice().sort(function(a, b) { return compare(a.zim, b.zim); });
-    var same = sorted.every(function(k, i) { return k.card === known[i].card; });
+    if (!sorted) return false;
+    var same = sorted.every(function(card, i) { return card === cards[i]; });
     if (same) continue;
     moves.push({ grid: grid, sorted: sorted, cards: cards });
   }
@@ -3900,7 +3906,7 @@ function _reorderLibraryInPlace() {
 
   moves.forEach(function(m) {
     var before = still ? null : m.cards.map(function(c) { return c.getBoundingClientRect(); });
-    m.sorted.forEach(function(k) { m.grid.appendChild(k.card); });
+    m.sorted.forEach(function(card) { m.grid.appendChild(card); });
     if (still) return;
     // First/Last/Invert/Play: put every card back where the eye last saw it,
     // then let it travel to where it now is.
@@ -3938,6 +3944,20 @@ function _reorderLibraryInPlace() {
     });
   });
   return true;
+}
+
+// One grid's cards in the library's order: the apps' tiles by _sortApps,
+// every other card by its ZIM. Null when a card names a ZIM the library no
+// longer has.
+function _cardsInOrder(cards, compare) {
+  if (cards.every(function(c) { return c.dataset.app; })) {
+    var byApp = {};
+    cards.forEach(function(c) { byApp[c.dataset.app] = c; });
+    return _sortApps(Object.keys(byApp)).map(function(app) { return byApp[app]; });
+  }
+  var known = cards.map(function(card) { return { card: card, zim: _zimInfo(card.dataset.zim) }; });
+  if (known.some(function(k) { return !k.zim; })) return null;
+  return known.sort(function(a, b) { return compare(a.zim, b.zim); }).map(function(k) { return k.card; });
 }
 
 // The age on each card, after the thing being sorted by has changed. Rewrites
@@ -4013,9 +4033,10 @@ function _libSortHtml() {
     ' onclick="event.stopPropagation()">' + opts + '</select>';
 }
 
-// Place the segmented view toggle on the first section header (Favorites, or the
-// first category/collection) — a global control that reuses the first header's
-// line rather than a bar of its own. No-op when there is no header to host it.
+// Place the segmented view toggle on the first section header (the Apps, which
+// the order governs too (#100), else Favorites or the first category or
+// collection) — a global control that reuses the first header's line rather
+// than a bar of its own. No-op when there is no header to host it.
 function _placeViewToggle() {
   if (!zimsCache || !zimsCache.length) return;
   var heading = output.querySelector('.cat-heading');
@@ -18479,14 +18500,21 @@ function _setUserApp(app, on) {
 function _appIcon(app) {
   return app === 'maps' ? _MAPS_SVG : app === 'tube' ? _TUBE_PLAY_SVG : app === 'exchange' ? _EXCHANGE_SVG : app === 'wiki' ? _WIKI_SVG : app === 'books' ? _BOOKS_SVG : _REDDOT_SVG;
 }
+// The ZIMs inside each app: the ones its tile names and its page reads.
+function _appZims(app) {
+  return app === 'maps' ? _installedMaps()
+    : app === 'tube' ? _installedVideoZims()
+    : app === 'exchange' ? _installedQaZims()
+    : app === 'wiki' ? _installedWikiZims()
+    : app === 'books' ? _installedBookZims()
+    : _installedRedditZims();
+}
 // What the library holds for each app, in a line under its name.
 function _appCountLine(app) {
-  var n = app === 'maps' ? _installedMaps().length
-    : app === 'tube' ? _installedVideoZims().length
-    : app === 'exchange' ? _installedQaZims().length
-    : app === 'wiki' ? _installedWikiZims().length
-    : app === 'books' ? _installedBookZims().length
-    : _installedRedditZims().reduce(function(s, z) { return s + (z.subreddits && z.subreddits.length ? z.subreddits.length : 1); }, 0);
+  var zims = _appZims(app);
+  var n = app === 'reddot'
+    ? zims.reduce(function(s, z) { return s + (z.subreddits && z.subreddits.length ? z.subreddits.length : 1); }, 0)
+    : zims.length;
   return tPlural('apps_count_' + app, n);
 }
 function _appPicksHtml(apps, checked, onchange, disabled) {
@@ -18497,23 +18525,95 @@ function _appPicksHtml(apps, checked, onchange, disabled) {
   }).join('') + '</div>';
 }
 
+// Each app's tile and its door, by name, so the row and the Apps page can
+// take the apps in any order.
+var _APP_TILES = { maps: _mapsTileHtml, tube: _tubeTileHtml, exchange: _exchangeTileHtml, reddot: _reddotTileHtml, wiki: _wikiTileHtml, books: _booksTileHtml };
+var _APP_OPEN = { maps: openMaps, tube: openTube, exchange: openExchange, reddot: openReddot, wiki: openWiki, books: openBooks };
+
+// The apps follow the library's order, as the sources do (#100). Eric: "sort
+// the apps by recently updated (i.e. contains zims that were recently
+// updated, added, etc.)". So an app is as recent as the newest ZIM inside it
+// (Recently added: its newest arrival; Recently updated: its newest arrival
+// or update), as big as its ZIMs together (Most articles), and otherwise
+// goes by its name. All of it from the library list already in hand, so
+// nothing is read to sort them. Under the dates and sizes an app with
+// nothing inside comes last; ties keep the row's own order.
+var _APP_SORT_DATE = {
+  added: function(z) { return z.first_seen || 0; },
+  updated: function(z) { return Math.max(z.updated_at || 0, z.first_seen || 0); },
+};
+function _appSortValue(app, mode) {
+  var zims = _appZims(app);
+  if (mode === 'entries') {
+    return zims.reduce(function(s, z) { return s + (typeof z.entries === 'number' ? z.entries : 0); }, 0);
+  }
+  var date = _APP_SORT_DATE[mode];
+  return zims.reduce(function(m, z) { return Math.max(m, date(z)); }, 0);
+}
+function _sortApps(apps) {
+  var mode = _librarySort();
+  if (!_APP_SORT_DATE[mode] && mode !== 'entries') {
+    return apps.slice().sort(function(a, b) {
+      return _LIBRARY_SORTERS.alpha({ title: _appTitle(a) }, { title: _appTitle(b) });
+    });
+  }
+  var value = {};
+  apps.forEach(function(app) { value[app] = _appSortValue(app, mode); });
+  return apps.slice().sort(function(a, b) { return value[b] - value[a]; });
+}
+function _shownApps() { return _sortApps(APP_NAMES.filter(_appShown)); }
+
+// Every ZIM inside an app that is offered, once: the Apps page's library.
+function _appsZimNames() {
+  var names = {};
+  _shownApps().forEach(function(app) { _appZims(app).forEach(function(z) { names[z.name] = 1; }); });
+  return Object.keys(names);
+}
+function openAppsPage() {
+  enterScope('apps', t('apps_section'), _appsZimNames(), true);
+}
+
+// App tiles in a grid, laid out as the library is (list or tiles).
+function _appsGridHtml(tiles) {
+  return '<div class="' + (_getLibraryView() === 'tiles' ? 'stats-grid tiles' : 'stats-grid') + ' apps-grid">' + tiles + '</div>';
+}
+
 function _appsRowHtml() {
   if (!_appsEnabled()) return '';
-  var tiles = (_appShown('maps') ? _mapsTileHtml() : '') + (_appShown('tube') ? _tubeTileHtml() : '') +
-    (_appShown('exchange') ? _exchangeTileHtml() : '') + (_appShown('reddot') ? _reddotTileHtml() : '') +
-    (_appShown('wiki') ? _wikiTileHtml() : '') + (_appShown('books') ? _booksTileHtml() : '');
+  var tiles = _shownApps().map(function(app) { return _APP_TILES[app](); }).join('');
   if (!tiles) return '';
-  var isTiles = _getLibraryView() === 'tiles';
   // Labelled like every section around it (Discover above, the categories
-  // below): a row without a name between rows with names reads as lost.
-  return '<div class="ci-section-label">' + tH('apps_section') + '</div>' +
-    '<div class="' + (isTiles ? 'stats-grid tiles' : 'stats-grid') + ' apps-grid">' + tiles + '</div>';
+  // below): a row without a name between rows with names reads as lost. And
+  // like theirs, its name opens its page (#100): the Apps page. An empty
+  // library has nothing to show there, so its name is only a name.
+  var open = zimsCache && zimsCache.length;
+  return '<div class="cat-heading' + (open ? ' clickable" onclick="openAppsPage()"' : '"') + '>' + tH('apps_section') + '</div>' +
+    _appsGridHtml(tiles);
+}
+
+// The Apps page (#100): each app, in the library's order, with the ZIMs
+// inside it, also in the library's order, so you can see what an app is
+// made of and open any of them. An app's name opens the app, a card its ZIM.
+// An app with nothing inside shows its tile, the door to what it needs,
+// unless a filter is narrowing the page.
+function _appsPageHtml(shown) {
+  var narrowed = !!(homeRecentFilter || homeLangFilter.size);
+  return _shownApps().map(function(app) {
+    var inside = _appZims(app);
+    if (!inside.length) {
+      return narrowed ? '' : '<div class="cat-heading">' + esc(_appTitle(app)) + '</div>' + _appsGridHtml(_APP_TILES[app]());
+    }
+    var zims = _sortLibrary(inside.filter(function(z) { return shown.has(z.name); }));
+    if (!zims.length) return '';
+    return '<div class="cat-heading clickable" onclick="_APP_OPEN.' + app + '()">' + esc(_appTitle(app)) + '</div>' +
+      renderCardGrid(zims, true);
+  }).join('');
 }
 
 function _appTileHtml(app, title, icon, names, openFn) {
   names = names.filter(function(n, i) { return names.indexOf(n) === i; });
   if (names.length) {
-    return '<a class="stat-card app-tile ' + app + '-tile" href="#' + app + '" data-zim="" onclick="return _spaNav(event, ' + openFn + ')">' +
+    return '<a class="stat-card app-tile ' + app + '-tile" href="#' + app + '" data-zim="" data-app="' + app + '" onclick="return _spaNav(event, ' + openFn + ')">' +
       '<div class="card-icon">' + icon + '</div>' +
       '<div class="card-info"><div class="name"><span class="zt">' + esc(title) + '</span></div>' +
       '<div class="detail">' + esc(names.join(' \u00b7 ')) + '</div></div></a>';
@@ -18521,7 +18621,7 @@ function _appTileHtml(app, title, icon, names, openFn) {
   var door = _APP_CATEGORY[app]
     ? 'href="/?manage" onclick="return _spaNav(event, function() { _openCategory(_APP_CATEGORY.' + app + '); })"'
     : 'href="/#create" onclick="return _spaNav(event, function() { _createRememberMode = \'page\'; _createRememberSource = _REDDIT_ADDRESS_START; openCreate(); })"';
-  return '<a class="stat-card app-tile app-empty ' + app + '-tile" ' + door + ' data-zim="">' +
+  return '<a class="stat-card app-tile app-empty ' + app + '-tile" ' + door + ' data-zim="" data-app="' + app + '">' +
     '<div class="card-icon">' + icon + '</div>' +
     '<div class="card-info"><div class="name"><span class="zt">' + esc(title) + '</span></div>' +
     '<div class="detail">' + esc(t('app_empty_' + app)) + '</div></div></a>';

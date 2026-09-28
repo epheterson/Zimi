@@ -164,7 +164,7 @@ ok('places are capped, the oldest dropped first', /var MAX = \{ items: \d+, list
 }
 
 // ── the shell ───────────────────────────────────────────────────────────
-ok('the tile is one line in the apps row, like the others', /function _booksTileHtml\(\) \{\n\s*return _appTileHtml\('books', t\('books'\), _BOOKS_SVG, _installedBookZims\(\)/.test(src) && /_appShown\('books'\) \? _booksTileHtml\(\) : ''/.test(src));
+ok('the tile is one line in the apps row, like the others', /function _booksTileHtml\(\) \{\n\s*return _appTileHtml\('books', t\('books'\), _BOOKS_SVG, _installedBookZims\(\)/.test(src) && /_APP_TILES = \{[^}\n]*\bbooks: _booksTileHtml \}/.test(src));
 ok('an app like the others: switched per server and per account by its name', /var APP_NAMES = \[[^\]]*'books'\];/.test(src));
 ok('it is the page Zimi owns, in the reader, at /#books', /_openHashApp\('books', replaceState, function\(\) \{ _booksOpen = true; return _BOOKS_PAGE \+ '#' \+ _booksStrings\(\); \}\)/.test(src) && /if \(location\.hash === '#books'\) \{ enterHome\(false\); openBooks\(true\); return; \}/.test(src));
 ok('the shell hands the page its strings and the shelves\' names', /_appStrings\('books', \['books_shelf'/.test(src) && /lcc\[c\] = t\('books_lcc_' \+ c\);/.test(src));

@@ -138,7 +138,7 @@ ok('the dice land on an article of a chosen wiki', /window\.__random = function\
 ok('the empty page is a door to the Wikipedia category', /category: 'wikipedia'/.test(page));
 
 // ── the shell ───────────────────────────────────────────────────────────
-ok('the tile is one line in the apps row, like the others', /function _wikiTileHtml\(\) \{\n\s*return _appTileHtml\('wiki', t\('wiki'\), _WIKI_SVG, _installedWikiZims\(\)/.test(src) && /_appShown\('wiki'\) \? _wikiTileHtml\(\) : ''/.test(src));
+ok('the tile is one line in the apps row, like the others', /function _wikiTileHtml\(\) \{\n\s*return _appTileHtml\('wiki', t\('wiki'\), _WIKI_SVG, _installedWikiZims\(\)/.test(src) && /_APP_TILES = \{[^}\n]*\bwiki: _wikiTileHtml,/.test(src));
 ok('an app like the others: switched per server and per account by its name', /var APP_NAMES = \['maps', 'tube', 'exchange', 'reddot', 'wiki', 'books'\];/.test(src));
 ok('it is the page Zimi owns, in the reader, at /#wiki', /_openHashApp\('wiki', replaceState, function\(\) \{ _wikiOpen = true; return _WIKI_PAGE \+ '#' \+ _wikiStrings\(\); \}\)/.test(src) && /history\.pushState\(st, '', '\/#' \+ app\)/.test(src) && /if \(location\.hash === '#wiki'\) \{ enterHome\(false\); openWiki\(true\); return; \}/.test(src));
 ok('the shell hands the page its strings and the names of its languages', /_appStrings\('wiki', \['wiki_all'/.test(src) && /langs\[c\] = _langDisplayName\(c\) \|\| c;/.test(src));

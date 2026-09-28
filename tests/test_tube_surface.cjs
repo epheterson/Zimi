@@ -70,6 +70,7 @@ vm.runInContext([
   extract(/function _booksTileHtml\(\) \{[\s\S]*?\n\}/, '_booksTileHtml'),
   extract(/function _appsRowHtml\(\) \{[\s\S]*?\n\}/, '_appsRowHtml'),
 ].join('\n'), ctx);
+require('./apps_order_parts.cjs')(src, ctx);
 
 // ── the apps row ─────────────────────────────────────────────────────────
 const row = ctx._appsRowHtml();

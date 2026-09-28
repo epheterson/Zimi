@@ -15,7 +15,7 @@ function ok(label, cond, detail) {
   if (!cond) failures++;
 }
 
-ok('the tile is one line in the apps row, like the others', /_exchangeTileHtml\(\) \{\n\s*return _appTileHtml\('exchange', t\('exchange'\), _EXCHANGE_SVG, _installedQaZims\(\)/.test(src) && /_appShown\('exchange'\) \? _exchangeTileHtml\(\) : ''/.test(src));
+ok('the tile is one line in the apps row, like the others', /_exchangeTileHtml\(\) \{\n\s*return _appTileHtml\('exchange', t\('exchange'\), _EXCHANGE_SVG, _installedQaZims\(\)/.test(src) && /_APP_TILES = \{[^}\n]*\bexchange: _exchangeTileHtml,/.test(src));
 ok('it is the page Zimi owns, in the reader, with its own history entry', /openReader\(_EXCHANGE_PAGE \+ '#' \+ _exchangeStrings\(q\)\)/.test(src) && /history\.pushState\(st, '', _exchangeUrl\(q\)\)/.test(src));
 ok('/#exchange opens it cold, with a question when the address names one', /location\.hash === '#exchange' \|\| location\.hash\.indexOf\('#exchange\?'\) === 0/.test(src) && /exQ\.get\('q'\)/.test(src));
 ok('Back and Forward steer the open page, and reload it only when it is gone', /s\.mode === 'reader' && s\.exchange\) \{\n\s*if \(!_appFrameRoute\(_exchangeOpen, s\.q\)\) openExchange\(true, s\.q \|\| ''\);/.test(src) && /window\.__route = function\(id\)/.test(page));
