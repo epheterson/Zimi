@@ -38,16 +38,14 @@ def _json_response(description, schema):
     }
 
 
-# Zimipedia is a preview, off unless ZIMI_APPS names it.
+# Zimipedia is offered unless ZIMI_APPS (or the saved apps) leave it out.
 _WIKI_PREVIEW = "Zimipedia: answers 404 when the server does not offer it (ZIMI_APPS without wiki)."
 
-# Zimipedia's day: one pick per wiki, and each Wikipedia's dated events.
-_WIKI_EVENT = {"type": "object", "properties": {"event_year": {"type": "string"}, "event_text": {"type": "string"}, "path": {"type": "string"}, "title": {"type": "string"}}}
+# Zimipedia's day: one pick per wiki.
 _WIKI_PICKS = {"type": "object", "additionalProperties": {"type": "object", "properties": {
     "zim": {"type": "string"}, "role": {"type": "string", "enum": ["article", "word", "quote", "place", "book", "text", "course", "news", "species"]},
     "path": {"type": "string"}, "title": {"type": "string"}, "lang": {"type": "string"}, "blurb": {"type": "string"},
     "thumbnail": {"type": "string"}, "kick": {"type": "string", "description": "A word's part of speech, a quote's author"}}}}
-_WIKI_OTD = {"type": "object", "additionalProperties": {"type": "array", "items": _WIKI_EVENT}}
 # One book as Bookshelf's endpoints return it.
 _BOOK = {"type": "object", "properties": {
     "zim": {"type": "string"}, "id": {"type": "integer"}, "title": {"type": "string"}, "subtitle": {"type": "string"},
@@ -461,28 +459,29 @@ def build_openapi():
                 "operationId": "wikiHome",
                 "description": _WIKI_PREVIEW,
                 "parameters": [
-                    _param("day", {"type": "string", "pattern": "^[0-9]{8}$"}, description="YYYYMMDD, yesterday to tomorrow: adds what is already known of that day (picks, otd)"),
+                    _param("day", {"type": "string", "pattern": "^[0-9]{8}$"}, description="YYYYMMDD, yesterday to tomorrow: adds the picks already known of that day"),
+                    _param("lang", {"type": "string"}, description="The language Today shows, when a wiki is in it (else English, else the language with the most wikis)"),
                 ],
                 "responses": {**_json_response("200", {"type": "object", "properties": {"wikis": {"type": "array", "items": {"type": "object", "properties": {
                     "name": {"type": "string"}, "title": {"type": "string"}, "project": {"type": "string"}, "project_title": {"type": "string"},
                     "role": {"type": "string"}, "language": {"type": "string"}, "icon": {"type": "boolean"}, "main_path": {"type": "string"}, "entries": {"type": "integer"},
-                }}}, "day": {"type": "string"}, "picks": _WIKI_PICKS, "otd": _WIKI_OTD}, "required": ["wikis"]}),
+                }}}, "languages": {"type": "array", "items": {"type": "object"}}, "lang": {"type": "string"},
+                    "day": {"type": "string"}, "picks": _WIKI_PICKS}, "required": ["wikis"]}),
                     **_json_response("404", error)},
             }
         },
         "/wiki/today": {
             "get": {
-                "summary": "The day's pick from each wiki named (an article, a word, a quote, a place, a book...) and each Wikipedia's On this day, worked out once a day and kept",
+                "summary": "The day's pick from each wiki named (an article, a word, a quote, a place, a book...), worked out once a day and kept",
                 "operationId": "wikiToday",
                 "description": _WIKI_PREVIEW,
                 "parameters": [
                     _param("day", {"type": "string", "pattern": "^[0-9]{8}$"}, required=True, description="YYYYMMDD, yesterday to tomorrow"),
                     _param("zim", {"type": "string"}, required=True, description="Up to 8 wiki names, comma-separated"),
-                    _param("parts", {"type": "string"}, description="picks, otd, extras, front, comma-separated: only those (all when left out)"),
                 ],
                 "responses": {
-                    **_json_response("200", {"type": "object", "properties": {"picks": _WIKI_PICKS, "otd": _WIKI_OTD,
-                        "failed": {"type": "array", "items": {"type": "string"}}}, "required": ["picks", "otd", "failed"]}),
+                    **_json_response("200", {"type": "object", "properties": {"picks": _WIKI_PICKS,
+                        "failed": {"type": "array", "items": {"type": "string"}}}, "required": ["picks", "failed"]}),
                     **_json_response("400", error),
                     **_json_response("404", error),
                 },
@@ -496,6 +495,7 @@ def build_openapi():
                 "parameters": [
                     _param("zim", {"type": "string"}, required=True),
                     _param("path", {"type": "string"}, required=True),
+                    _param("only", {"type": "string", "enum": ["languages"]}, description="languages: only qid, flavour and languages (what a language menu needs), without reading the article"),
                 ],
                 "responses": {
                     **_json_response("200", {"type": "object", "properties": {
@@ -504,27 +504,8 @@ def build_openapi():
                         "level": {"type": ["object", "null"], "properties": {"zim": {"type": "string"}, "path": {"type": "string"}, "title": {"type": "string"}, "simple": {"type": "boolean"}}},
                         "full": {"type": ["object", "null"], "properties": {"zim": {"type": "string"}, "path": {"type": "string"}, "title": {"type": "string"}}},
                         "topic": {"type": "array", "items": {"type": "object", "properties": {"project": {"type": "string"}, "zim": {"type": "string"}, "path": {"type": "string"}, "title": {"type": "string"}}}},
-                    }, "required": ["qid", "languages", "level", "full", "topic"]}),
+                    }, "required": ["qid", "languages"]}),
                     **_json_response("404", error),
-                },
-            }
-        },
-        "/wiki/onthisday": {
-            "get": {
-                "summary": "The day's dated events from a Wikipedia's own date page, each naming an article the ZIM holds",
-                "operationId": "wikiOnThisDay",
-                "description": _WIKI_PREVIEW,
-                "parameters": [
-                    _param("zim", {"type": "string"}, required=True),
-                    _param("date", {"type": "string", "pattern": "^[0-9]{4}$"}, required=True, description="MMDD, yesterday to tomorrow"),
-                ],
-                "responses": {
-                    **_json_response("200", {"type": "object", "properties": {"events": {"type": "array", "items": {"type": "object", "properties": {
-                        "event_year": {"type": "string"}, "event_text": {"type": "string"}, "path": {"type": "string"}, "title": {"type": "string"},
-                    }}}}, "required": ["events"]}),
-                    **_json_response("400", error),
-                    **_json_response("404", error),
-                    **_json_response("503", error),
                 },
             }
         },

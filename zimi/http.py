@@ -2422,7 +2422,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if sub in ("", "home"):
                     return self._json(200, _wiki.home(param("day"), param("lang")))
                 # Only the days a browser can be on: a caller cannot make
-                # the server read a year of date pages.
+                # the server work out a year of picks.
                 if sub == "today":
                     day = param("day")
                     if not _wiki.day_open(day):
@@ -2430,8 +2430,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                     names = [n for n in (param("zim") or "").split(",") if n]
                     if not names or len(names) > _wiki.TODAY_BATCH_MAX:
                         return self._json(400, {"error": "zim"})
-                    parts = [x for x in (param("parts") or "").split(",") if x]
-                    return self._json(200, _wiki.today(day, names, parts))
+                    return self._json(200, _wiki.today(day, names))
                 if sub == "article":
                     # What the reader shows beside an article, asked once it is
                     # on screen (in place of /article-languages); only=languages
@@ -2442,18 +2441,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                         languages_only=param("only") == "languages",
                     )
                     return self._json(200, got) if got else self._json(404, {"error": "not found"})
-                if sub != "onthisday":
-                    return self._json(404, {"error": "not found"})
-                zim = param("zim")
-                if not zim or not _wiki.is_wiki(zim):
-                    return self._json(404, {"error": "not found"})
-                date = param("date")
-                if not _wiki.mmdd_open(date):
-                    return self._json(400, {"error": "date not open"})
-                events = _wiki.on_this_day(zim, date)
-                if events is None:
-                    return self._json(503, {"error": "unavailable"})
-                return self._json(200, {"events": events})
+                return self._json(404, {"error": "not found"})
             elif parsed.path == "/books" or parsed.path.startswith("/books/"):
                 # Bookshelf: every Project Gutenberg ZIM in the library, as one shelf.
                 from zimi import books as _books

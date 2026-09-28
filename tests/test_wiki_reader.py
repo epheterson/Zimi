@@ -566,22 +566,12 @@ def test_the_day_works_out_only_what_the_front_door_shows(library):
     day = datetime.date.today().strftime("%Y%m%d")
     names = [w["name"] for w in wiki.wikis()]
     wiki._warm(day, names)
-    assert (
-        wiki._pick_cache
-        and not wiki._otd_cache
-        and not wiki._extra_cache
-        and not wiki._front_cache
-    )
-    got = wiki.today(day, ["wikipedia"], ["picks"])
+    assert {k[0] for k in wiki._pick_cache} == set(names)
+    got = wiki.today(day, ["wikipedia"])
     assert set(got) == {"picks", "failed"} and got["picks"]["wikipedia"]["path"]
-    # The API still answers the rest when asked.
-    assert set(wiki.today(day, ["wikipedia"])) == {
-        "picks",
-        "otd",
-        "extras",
-        "front",
-        "failed",
-    }
+    # 1.11's On this day, facts and front pages are gone, from the API too.
+    for gone in ("on_this_day", "extras", "front", "_otd_cache", "_extra_cache"):
+        assert not hasattr(wiki, gone), gone
 
 
 def test_a_right_to_left_article_and_a_mini(served):

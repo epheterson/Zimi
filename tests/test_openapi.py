@@ -33,7 +33,6 @@ EXPECTED_PATHS = {
     "/reddot/random",
     "/exchange/random",
     "/wiki/home",
-    "/wiki/onthisday",
     "/wiki/article",
     "/wiki/today",
     "/books/home",
@@ -63,10 +62,10 @@ class TestOpenAPISpec(unittest.TestCase):
 
     def test_documents_every_stable_path(self):
         # The eight article paths, the apps' eight (2026-09-20), and the
-        # dice's two plus a map's home view (2026-09-21), Zimipedia's four
-        # (its reader's article lookup, 1.12), Bookshelf's four.
+        # dice's two plus a map's home view (2026-09-21), Zimipedia's three
+        # (its reader's article lookup, 1.12; On this day gone), Bookshelf's four.
         self.assertEqual(set(self.spec["paths"].keys()), EXPECTED_PATHS)
-        self.assertEqual(len(self.spec["paths"]), 27)
+        self.assertEqual(len(self.spec["paths"]), len(EXPECTED_PATHS))
 
     def test_version_mirrors_server(self):
         self.assertEqual(self.spec["info"]["version"], server.ZIMI_VERSION)
@@ -140,7 +139,7 @@ class TestOpenAPIRoute(unittest.TestCase):
         with urllib.request.urlopen(f"{self._base}/openapi.json", timeout=10) as r:
             data = json.loads(r.read())
             self.assertEqual(r.status, 200)
-        self.assertEqual(len(data["paths"]), 27)
+        self.assertEqual(len(data["paths"]), len(EXPECTED_PATHS))
         self.assertEqual(data["info"]["version"], server.ZIMI_VERSION)
 
 
