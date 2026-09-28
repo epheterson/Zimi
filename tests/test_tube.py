@@ -719,8 +719,8 @@ def _wait_built(name, timeout=30):
 
     end = time.time() + timeout
     while time.time() < end:
-        with tube._queue_lock:
-            if name not in tube._queued:
+        with tube._builder._queue_lock:
+            if name not in tube._builder._queued:
                 return
         time.sleep(0.02)
     raise AssertionError(f"details build for {name} still running after {timeout}s")
@@ -826,10 +826,10 @@ def test_a_details_file_from_another_build_of_the_zim_is_read_again(tmp_path, mo
     conn.commit()
     conn.close()
     path = srv.get_zim_files()[name]
-    assert not tube.details_current(name, path)
+    assert not tube._builder.current(name, path)
     tube._reset_for_tests()
     tube.build_all_details()
-    assert tube.details_current(name, path)
+    assert tube._builder.current(name, path)
     rows = {r["id"]: r for r in tube.videos_for(name)}
     assert rows["eRsGyueVLvQ"]["description"] == "About Sintel."
     assert tube.feed("stale")["total"] == 0
@@ -842,7 +842,7 @@ def test_a_big_zims_details_are_read_in_a_process_of_its_own(tmp_path, monkeypat
     from zimi import search
 
     name = _ted3_library(tmp_path, monkeypatch, "ted_mul_child")
-    monkeypatch.setattr(tube, "_DETAILS_ISOLATE_MIN_ENTRIES", 0)
+    monkeypatch.setattr("zimi.details.ISOLATE_MIN_ENTRIES", 0)
     started = []
     real_popen = __import__("zimi.subproc", fromlist=["popen"]).popen
 

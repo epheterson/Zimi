@@ -39,11 +39,10 @@ import json
 import logging
 import os
 import re
-import sqlite3
 import threading
-import time
 
 from zimi import server as _srv
+from zimi.details import DetailsBuilder
 
 log = logging.getLogger("zimi")
 
@@ -55,19 +54,6 @@ _FEED_DESCRIPTION_CHARS = 400
 _lock = threading.Lock()
 _cache = {}  # archive filename -> the rows the feed serves
 _base = {}  # archive filename -> (name, rows from the lists alone)
-_details = {}  # name -> (real path of the ZIM they were read from, {id: (description, speaker, date)})
-
-# The details file: one row per video whose facts live in a file of its own.
-_DETAILS_VERSION = "1"
-# Past this many entries the details build runs in a process of its own (see
-# search._build_index_isolated). It reads one file per video, not every
-# entry, so it starts far lower than the title index's threshold.
-_DETAILS_ISOLATE_MIN_ENTRIES = 5_000
-# One details build at a time, as _build_all_title_lock serializes the title
-# index; _queued keeps a ZIM from being asked for twice while it waits.
-_build_lock = threading.Lock()
-_queue_lock = threading.Lock()
-_queued = set()
 
 
 def _read(archive, path, max_bytes=_MAX_INDEX_BYTES):
@@ -438,16 +424,6 @@ def _served(rows, details):
     return out
 
 
-def _details_for(name, key):
-    """The details read for ``name`` when they were read from the file the
-    feed has open (``key``); None when they are not read yet, or were read
-    from an earlier build of the ZIM."""
-    got = _details.get(name)
-    if got and got[0] == os.path.realpath(key):
-        return got[1]
-    return None
-
-
 def videos_for(name):
     """The videos in the installed ZIM ``name``, or [] when it is not a video
     ZIM Zimi can read. Cached per archive file. Answers from the ZIM's lists
@@ -488,7 +464,7 @@ def videos_for(name):
         v.pop("media", None)
         needs = bool(v.pop("_detail", None)) or needs
     with _lock:
-        details = _details_for(name, key)
+        details = _builder.kept(name, key)
         _base[key] = (name, rows)
         _cache[key] = served = _served(rows, details)
     if needs and details is None:
@@ -508,23 +484,6 @@ def full_description(name, page):
 # ── the details build ──────────────────────────────────────────────────────
 
 
-def _details_dir():
-    """A function, not a constant: ZIMI_DATA_DIR can be repointed after import."""
-    return os.path.join(_srv.ZIMI_DATA_DIR, "tube")
-
-
-def _details_path(name):
-    return os.path.join(_details_dir(), f"{name}.db")
-
-
-def details_current(name, zim_path):
-    """Whether ``<data dir>/tube/<name>.db`` was built from this ZIM: its
-    mtime, else its uuid, checked as the title index is."""
-    from zimi.search import _index_is_current
-
-    return _index_is_current(_details_path(name), zim_path, _DETAILS_VERSION)
-
-
 def _detail_of(obj):
     """(description, speaker, date) from a video's own file: ted2zim 3.x's
     ``{description: [{lang, text}], speaker}`` or youtube2zim 3.x's
@@ -542,140 +501,46 @@ def build_details(zim_name, zim_path):
     child process for a big ZIM (search._build_index_isolated). A ZIM whose
     index carries everything gets a file with no rows, so it is not read
     again."""
-    from zimi.search import _write_index_meta
-
-    os.makedirs(_details_dir(), exist_ok=True)
-    db_path = _details_path(zim_name)
-    tmp_path = db_path + ".tmp"
-    if os.path.exists(tmp_path):
-        os.remove(tmp_path)  # builds are serialized by _build_lock: an orphan
     archive = _srv.open_archive(zim_path)
     rows = []
     for r in _rows_of(archive):
         obj = _json_object(_read(archive, r["_detail"])) if r.get("_detail") else None
         if obj:
             rows.append((str(r["id"]),) + _detail_of(obj))
-    conn = sqlite3.connect(tmp_path)
-    try:
-        conn.execute(
-            "CREATE TABLE videos (id TEXT PRIMARY KEY, description TEXT, speaker TEXT, date TEXT)"
-        )
-        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
-        conn.executemany("INSERT OR REPLACE INTO videos VALUES (?, ?, ?, ?)", rows)
-        _write_index_meta(conn, archive, zim_path, _DETAILS_VERSION, len(rows))
-        conn.commit()
-    except Exception:
-        conn.close()
-        os.remove(tmp_path)
-        raise
-    conn.close()
-    os.replace(tmp_path, db_path)
-    return len(rows)
+    return _builder.write(zim_name, zim_path, archive, rows)
 
 
-def _load_details(name):
-    conn = sqlite3.connect(_details_path(name), timeout=5)
-    try:
-        return {
-            r[0]: tuple(r[1:])
-            for r in conn.execute("SELECT id, description, speaker, date FROM videos")
-        }
-    finally:
-        conn.close()
-
-
-def _install(name, zim_path, details):
-    """Keep ``details`` for ``name`` and serve them: the feed's cached rows
-    for that ZIM are merged again, so the next /tube has them."""
+def _serve_details(name, zim_path, details):
+    """Merge ``details`` into the feed's cached rows for that file, so the
+    next /tube has them (under _lock, as the builder keeps them)."""
     real = os.path.realpath(zim_path)
-    with _lock:
-        _details[name] = (real, details)
-        for key, (n, rows) in list(_base.items()):
-            if n == name and os.path.realpath(key) == real:
-                _cache[key] = _served(rows, details)
+    for key, (n, rows) in list(_base.items()):
+        if n == name and os.path.realpath(key) == real:
+            _cache[key] = _served(rows, details)
 
 
-def _build_one(name):
-    """Bring ``name``'s details file up to date and serve it."""
-    from zimi.search import (
-        _background_end,
-        _background_fail,
-        _background_ok,
-        _background_start,
-        _background_step,
-        _build_index_isolated,
-    )
-
-    with _build_lock:
-        path = _srv.get_zim_files().get(name)
-        if not path:
-            return
-        try:
-            if not details_current(name, path):
-                t0 = time.time()
-                _background_start("tube")
-                _background_step("tube", name)
-                try:
-                    _build_index_isolated(
-                        "tube",
-                        name,
-                        path,
-                        build_details,
-                        lambda _name: None,
-                        min_entries=_DETAILS_ISOLATE_MIN_ENTRIES,
-                    )
-                finally:
-                    _background_end("tube")
-                log.info(
-                    "ZimiTube: read the video details of %s (%.1fs)",
-                    name,
-                    time.time() - t0,
-                )
-            details = _load_details(name)
-            _background_ok("tube", name)
-        except Exception as e:
-            _background_fail("tube", name)
-            # Kept empty until the next start rather than rebuilt on every
-            # request: a ZIM that cannot be read now will not be in a second.
-            log.warning("ZimiTube: video details of %s failed: %s", name, e)
-            details = {}
-        _install(name, path, details)
+# The details file: one row per video whose facts live in a file of its own.
+_builder = DetailsBuilder(
+    "tube",
+    zims="video",
+    label="ZimiTube",
+    what="video details",
+    version="1",
+    table="videos",
+    columns=("id TEXT PRIMARY KEY", "description TEXT", "speaker TEXT", "date TEXT"),
+    # Looked up when it runs, as the child process looks it up.
+    build=lambda name, path: build_details(name, path),
+    load=lambda rows: {r[0]: tuple(r[1:]) for r in rows},
+    lock=_lock,
+    on_keep=_serve_details,
+)
+# Every video ZIM's details, one after another: the startup worker runs this
+# after the title indexes, so descriptions are usually there before anyone
+# opens ZimiTube. And one ZIM's, in the background.
+build_all_details = _builder.build_all
+request_details = _builder.request
 
 
-def _claim(name):
-    """True for the one caller that gets to build ``name`` now."""
-    with _queue_lock:
-        if name in _queued:
-            return False
-        _queued.add(name)
-        return True
-
-
-def _build_claimed(name):
-    try:
-        _build_one(name)
-    finally:
-        with _queue_lock:
-            _queued.discard(name)
-
-
-def request_details(name):
-    """Start ``name``'s details build in the background, unless it is
-    already waiting or running. Returns at once."""
-    if _claim(name):
-        threading.Thread(
-            target=_build_claimed, args=(name,), name="tube-details", daemon=True
-        ).start()
-
-
-def build_all_details():
-    """Every video ZIM's details, one after another. The startup worker runs
-    this after the title indexes, so descriptions are usually there before
-    anyone opens ZimiTube."""
-    for z in list(_srv._zim_list_cache or []):
-        name = z.get("name")
-        if z.get("kind") == "video" and name and _claim(name):
-            _build_claimed(name)
 _SRC_TAG_RE = re.compile(r"<(?:source|video|audio)\b[^>]*>", re.I | re.S)
 _TRACK_RE = re.compile(r"<track\b[^>]*>", re.I | re.S)
 _ATTR_RE = re.compile(r"\b([a-z-]+)=['\"]([^'\"]*)['\"]", re.I)
@@ -997,13 +862,8 @@ def feed(query="", limit=60, offset=0):
 
 def _reset_for_tests(timeout=30):
     """Forget what was read, once any build a test started has finished."""
-    end = time.time() + timeout
-    while time.time() < end:
-        with _queue_lock:
-            if not _queued:
-                break
-        time.sleep(0.02)
+    _builder.wait(timeout)
+    _builder.forget()
     with _lock:
         _cache.clear()
         _base.clear()
-        _details.clear()

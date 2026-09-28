@@ -32,14 +32,12 @@ is), and the shelf gains eras and subjects when it is there.
 
 import json
 import logging
-import os
 import re
-import sqlite3
 import threading
-import time
 import unicodedata
 
 from zimi import server as _srv
+from zimi.details import DetailsBuilder
 
 log = logging.getLogger("zimi")
 
@@ -57,20 +55,11 @@ AUTHOR_BOOKS = 24
 
 _lock = threading.Lock()
 _base = {}  # archive filename -> (name, [book]) from the listings alone
-_details = {}  # name -> (real path of the ZIM, {id: detail})
 _shelf = {
     "key": None,
     "books": [],
     "by_id": {},
 }  # the merged shelf, rebuilt when a source changes
-
-_DETAILS_VERSION = "1"
-# Past this many entries the details build runs in a process of its own
-# (search._build_index_isolated); it reads one entry per book.
-_DETAILS_ISOLATE_MIN_ENTRIES = 5_000
-_build_lock = threading.Lock()
-_queue_lock = threading.Lock()
-_queued = set()
 
 
 # ── reading a ZIM ──────────────────────────────────────────────────────────
@@ -261,7 +250,7 @@ def _books_for(name):
     if archive is None or lock is None:
         # Nothing to read, so nothing to wait for: the shelf is ready without
         # it. Not kept in _base, so the next look tries the file again.
-        _store_details(name, name, {})
+        _builder.keep(name, name, {})
         return None, []
     # Keyed by the file the library has registered under the name, so a new
     # build of the ZIM is read afresh.
@@ -279,25 +268,11 @@ def _books_for(name):
     with _lock:
         _base[key] = (name, rows)
     if not rows:
-        _store_details(name, key, {})
-    elif _details_for(name, key) is None:
+        # No books, so no records to read: the shelf stops waiting for them.
+        _builder.keep(name, key, {})
+    elif _builder.kept(name, key) is None:
         request_details(name)
     return key, rows
-
-
-def _store_details(name, key, details):
-    """``name``'s book records, for the file ``key``; {} when there are none
-    to read, so the shelf stops waiting for them."""
-    with _lock:
-        _details[name] = (os.path.realpath(key), details)
-        _shelf["key"] = None
-
-
-def _details_for(name, key):
-    got = _details.get(name)
-    if got and got[0] == os.path.realpath(key):
-        return got[1]
-    return None
 
 
 def _merge(book, zim, detail):
@@ -330,7 +305,7 @@ def shelf():
         key, rows = _books_for(z["name"])
         if key is None:
             continue
-        parts.append((z["name"], key, rows, _details_for(z["name"], key)))
+        parts.append((z["name"], key, rows, _builder.kept(z["name"], key)))
     stamp = tuple((n, k, len(r), d is not None) for n, k, r, d in parts)
     with _lock:
         if _shelf["key"] == stamp:
@@ -532,7 +507,7 @@ def home():
     )
     eras = _counts(books, lambda b: b.get("era"))
     ready = (
-        all(_details_for(z["name"], _base_key(z["name"])) is not None for z in zims)
+        all(_builder.kept(z["name"], _base_key(z["name"])) is not None for z in zims)
         if zims
         else False
     )
@@ -608,21 +583,6 @@ def is_books(name):
 # ── the details build ──────────────────────────────────────────────────────
 
 
-def _details_dir():
-    """A function, not a constant: ZIMI_DATA_DIR can be repointed after import."""
-    return os.path.join(_srv.ZIMI_DATA_DIR, "books")
-
-
-def _details_path(name):
-    return os.path.join(_details_dir(), f"{name}.db")
-
-
-def details_current(name, zim_path):
-    from zimi.search import _index_is_current
-
-    return _index_is_current(_details_path(name), zim_path, _DETAILS_VERSION)
-
-
 def _exists(archive, path):
     try:
         return archive.has_entry_by_path(path)
@@ -636,13 +596,6 @@ def build_details(zim_name, zim_path):
     a picture, and its page when the listing's title does not lead to it.
     Opens an archive of its own, never the pool's; runs in a child process
     for a big ZIM."""
-    from zimi.search import _write_index_meta
-
-    os.makedirs(_details_dir(), exist_ok=True)
-    db_path = _details_path(zim_name)
-    tmp_path = db_path + ".tmp"
-    if os.path.exists(tmp_path):
-        os.remove(tmp_path)
     archive = _srv.open_archive(zim_path)
     rows = []
     for b in books_of(archive):
@@ -665,138 +618,64 @@ def build_details(zim_name, zim_path):
                 "" if path == b["path"] else path,
             )
         )
-    conn = sqlite3.connect(tmp_path)
-    try:
-        conn.execute(
-            "CREATE TABLE books (id INTEGER PRIMARY KEY, creators TEXT, subjects TEXT, created TEXT, cover INTEGER, path TEXT)"
-        )
-        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
-        conn.executemany("INSERT OR REPLACE INTO books VALUES (?, ?, ?, ?, ?, ?)", rows)
-        _write_index_meta(conn, archive, zim_path, _DETAILS_VERSION, len(rows))
-        conn.commit()
-    except Exception:
-        conn.close()
-        os.remove(tmp_path)
-        raise
-    conn.close()
-    os.replace(tmp_path, db_path)
-    return len(rows)
+    return _builder.write(zim_name, zim_path, archive, rows)
 
 
-def _load_details(name):
-    conn = sqlite3.connect(_details_path(name), timeout=5)
-    try:
-        out = {}
-        for i, creators, subjects, created, cover, path in conn.execute(
-            "SELECT id, creators, subjects, created, cover, path FROM books"
-        ):
-            out[i] = {
-                "creators": [tuple(c) for c in json.loads(creators or "[]")],
-                "subjects": json.loads(subjects or "[]"),
-                "created": created,
-                "cover": bool(cover),
-                "path": path,
-            }
-        return out
-    finally:
-        conn.close()
+def _records_of(rows):
+    return {
+        i: {
+            "creators": [tuple(c) for c in json.loads(creators or "[]")],
+            "subjects": json.loads(subjects or "[]"),
+            "created": created,
+            "cover": bool(cover),
+            "path": path,
+        }
+        for i, creators, subjects, created, cover, path in rows
+    }
 
 
-def _build_one(name):
-    from zimi.search import (
-        _background_end,
-        _background_fail,
-        _background_ok,
-        _background_start,
-        _background_step,
-        _build_index_isolated,
-    )
-
-    with _build_lock:
-        path = _srv.get_zim_files().get(name)
-        if not path:
-            log.warning("Bookshelf: %s is no longer in the library", name)
-            _store_details(name, _base_key(name), {})
-            return
-        try:
-            if not details_current(name, path):
-                t0 = time.time()
-                _background_start("books")
-                _background_step("books", name)
-                try:
-                    _build_index_isolated(
-                        "books",
-                        name,
-                        path,
-                        build_details,
-                        lambda _name: None,
-                        min_entries=_DETAILS_ISOLATE_MIN_ENTRIES,
-                    )
-                finally:
-                    _background_end("books")
-                log.info(
-                    "Bookshelf: read the book records of %s (%.1fs)",
-                    name,
-                    time.time() - t0,
-                )
-            details = _load_details(name)
-            _background_ok("books", name)
-        except Exception as e:
-            _background_fail("books", name)
-            log.warning("Bookshelf: book records of %s failed: %s", name, e)
-            details = {}
-        _store_details(name, path, details)
+def _shelf_changed(_name, _key, _records):
+    _shelf["key"] = None
 
 
-def _claim(name):
-    with _queue_lock:
-        if name in _queued:
-            return False
-        _queued.add(name)
-        return True
+def _gone(name):
+    """A ZIM taken out of the library before its records were read: nothing
+    left to wait for."""
+    log.warning("Bookshelf: %s is no longer in the library", name)
+    _builder.keep(name, _base_key(name), {})
 
 
-def _build_claimed(name):
-    try:
-        _build_one(name)
-    finally:
-        with _queue_lock:
-            _queued.discard(name)
-
-
-def request_details(name):
-    """Start ``name``'s details build in the background, unless it is
-    already waiting or running. Returns at once."""
-    if _claim(name):
-        threading.Thread(
-            target=_build_claimed, args=(name,), name="books-details", daemon=True
-        ).start()
-
-
-def build_all_details():
-    """Every Gutenberg ZIM's book records, one after another (the startup
-    worker's phase after ZimiTube's)."""
-    for z in list(_srv._zim_list_cache or []):
-        name = z.get("name")
-        if z.get("kind") == "books" and name and _claim(name):
-            _build_claimed(name)
-
-
-def wait_for_builds(timeout=30):
-    """Until no details build waits or runs (for tests, and for a caller
-    that needs the records now)."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        with _queue_lock:
-            if not _queued:
-                return True
-        time.sleep(0.05)
-    return False
+_builder = DetailsBuilder(
+    "books",
+    zims="books",
+    label="Bookshelf",
+    what="book records",
+    version="1",
+    table="books",
+    columns=(
+        "id INTEGER PRIMARY KEY",
+        "creators TEXT",
+        "subjects TEXT",
+        "created TEXT",
+        "cover INTEGER",
+        "path TEXT",
+    ),
+    # Looked up when it runs, as the child process looks it up.
+    build=lambda name, path: build_details(name, path),
+    load=_records_of,
+    lock=_lock,
+    on_keep=_shelf_changed,
+    gone=_gone,
+)
+# Every Gutenberg ZIM's book records, one after another (the startup worker's
+# phase after ZimiTube's); and one ZIM's, in the background.
+build_all_details = _builder.build_all
+request_details = _builder.request
 
 
 def _reset_for_tests(timeout=30):
-    wait_for_builds(timeout)
+    _builder.wait(timeout)
+    _builder.forget()
     with _lock:
         _base.clear()
-        _details.clear()
         _shelf.update(key=None, books=[], by_id={})

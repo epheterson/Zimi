@@ -175,7 +175,7 @@ def _library(tmp_path, monkeypatch, zims=LIBRARY, details=True):
     if details:
         # The startup worker may have claimed a ZIM already: wait for it.
         books.build_all_details()
-        books.wait_for_builds()
+        books._builder.wait()
 
 
 # ── reading a ZIM ──────────────────────────────────────────────────────────
@@ -440,7 +440,7 @@ def test_a_zim_gone_before_its_records_are_read_does_not_hold_them_back(
     books.home()
     monkeypatch.setattr(srv, "get_zim_files", lambda: {})
     for z in books._book_zims():
-        books._build_one(z["name"])
+        books._builder.build_one(z["name"])
     assert books.home()["details"] is True
 
 
