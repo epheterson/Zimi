@@ -264,9 +264,16 @@ _PRIVATE_LOGIN_SURFACE_EXACT = frozenset(
 _PRIVATE_LOGIN_SURFACE_PREFIX = ("/static/", "/manage/")
 
 
+# Asked by the shell once for every wiki article opened (its language menu,
+# and Zimipedia's reader beside it): the traffic of reading, like /snippet,
+# so it rides the content bucket. On the API budget, a 429 left the language
+# menu silently empty.
+_CONTENT_PATHS = frozenset(("/snippet", "/wiki/article"))
+
+
 def _rate_class(path):
     """(is_rate_limited, uses_content_bucket) for a GET path."""
-    is_content = path.startswith("/w/") or path == "/snippet" or path in _POLL_PATHS
+    is_content = path.startswith("/w/") or path in _CONTENT_PATHS or path in _POLL_PATHS
     limited = (
         is_content
         or path in _RATE_LIMITED_API_PATHS
@@ -2411,8 +2418,13 @@ class ZimHandler(BaseHTTPRequestHandler):
                     return self._json(200, _wiki.today(day, names, parts))
                 if sub == "article":
                     # What the reader shows beside an article, asked once it is
-                    # on screen (in place of /article-languages).
-                    got = _wiki.article(param("zim") or "", param("path") or "")
+                    # on screen (in place of /article-languages); only=languages
+                    # is the shell's language menu, which needs nothing else.
+                    got = _wiki.article(
+                        param("zim") or "",
+                        param("path") or "",
+                        languages_only=param("only") == "languages",
+                    )
                     return self._json(200, got) if got else self._json(404, {"error": "not found"})
                 if sub != "onthisday":
                     return self._json(404, {"error": "not found"})

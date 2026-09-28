@@ -17200,12 +17200,17 @@ function _wikiArticleDoc(frame) {
 // server: its languages by Q-ID, Simple English, a mini's fuller build, the
 // other wikis on it), asked once the article is on screen and kept for the
 // session, so Back and Forward ask nothing. A failed ask is asked again.
+// `langsOnly`: the language menu's ask, which needs only the languages: the
+// whole answer when one is kept (or on its way), else only=languages, which
+// reads no more of the article than its ID.
 var _wikiInfoKept = {}, _wikiInfoOrder = [];
 var _WIKI_INFO_KEPT = 64;
-function _wikiInfo(zim, path) {
+function _wikiInfo(zim, path, langsOnly) {
   var k = zim + '\n' + path;
   if (_wikiInfoKept[k]) return _wikiInfoKept[k];
-  var p = _wikiInfoKept[k] = fetch('/wiki/article?zim=' + encodeURIComponent(zim) + '&path=' + encodeURIComponent(path))
+  if (langsOnly) k += '\nlanguages';
+  if (_wikiInfoKept[k]) return _wikiInfoKept[k];
+  var p = _wikiInfoKept[k] = fetch('/wiki/article?zim=' + encodeURIComponent(zim) + '&path=' + encodeURIComponent(path) + (langsOnly ? '&only=languages' : ''))
     .then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; })
     .then(function(d) { if (!d) delete _wikiInfoKept[k]; return d; });
   _wikiInfoOrder.push(k);
@@ -22344,19 +22349,24 @@ var _articleLangData = null; // {languages: [{lang, zim, path}], available: [{la
 var _articleLangKey = '';    // "zim:path" key to invalidate cache on article change
 
 // `loaded`: the article is on screen (or asked for by a tap). A wiki's
-// article is asked about only then, through Zimipedia's lookup, which
-// carries its languages and what its reader shows beside it: nothing on the
-// way to the article.
+// article is asked about only then, through Zimipedia's lookup (its
+// languages only, unless Zimipedia's reader lays the article out and asks
+// for the whole answer anyway): nothing on the way to the article.
 function _prefetchArticleLangs(loaded) {
   if (!currentArticle) { _articleLangData = null; _articleLangKey = ''; return; }
   var key = currentArticle.zim + ':' + currentArticle.path;
   if (key === _articleLangKey) return; // already cached
+  // No language chooser, no menu to fill: nothing to ask.
+  if (_getStorageFlag(SK.HIDE_LANG_CHOOSER)) return;
   var base = _splitPathFragment(currentArticle.path).base;
   if (_wikiUrl(_articleUrl(currentArticle.zim, base))) {
     if (!loaded) return;
     _articleLangKey = key;
     _articleLangData = null;
-    _wikiInfo(currentArticle.zim, base).then(function(d) {
+    var doc = null;
+    try { doc = document.getElementById('reader-frame').contentDocument; } catch (e) {}
+    var laidOut = !!(doc && doc.__zimiWiki && _readerViewOn);
+    _wikiInfo(currentArticle.zim, base, !laidOut).then(function(d) {
       if (_articleLangKey !== key) return;
       _articleLangData = { languages: (d && d.languages) || [] };
       var _dd = document.getElementById('lang-dropdown');
@@ -22364,8 +22374,6 @@ function _prefetchArticleLangs(loaded) {
     });
     return;
   }
-  // Skip if language chooser is hidden (no dropdown to show interlang in)
-  if (_getStorageFlag(SK.HIDE_LANG_CHOOSER)) return;
   _articleLangKey = key;
   _articleLangData = null;
   fetch('/article-languages?zim=' + encodeURIComponent(currentArticle.zim) + '&path=' + encodeURIComponent(currentArticle.path))

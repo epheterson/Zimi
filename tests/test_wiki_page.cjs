@@ -150,6 +150,44 @@ ok('Back from an article returns to Zimipedia', /s\.mode === 'reader' && s\.wiki
 ok('the icon in the breadcrumb goes to its front page', /_wikiOpen \? \['wiki', 'q', '\/#wiki'\]/.test(src));
 ok('the catalog door is allowed', /_APP_CATEGORY_KEYS = \[[^\]]*'wikipedia'[^\]]*\]/.test(src) && /wiki: 'wikipedia'[,}]/.test(src));
 
+// ── the shell's language menu on a wiki's article ─────────────────────────
+// It needs the languages only: not the topic strip, the Simple level and the
+// mini's full build that Zimipedia's reader shows (the whole wiki.article,
+// under the library lock), and nothing at all when the chooser is hidden.
+{
+  const asked = [];
+  const sh = {
+    fetch: url => { asked.push(url); return Promise.resolve({ ok: true, json: () => ({ languages: [{ lang: 'he' }] }) }); },
+    SK: { HIDE_LANG_CHOOSER: 'zimi_hide_lang_chooser' }, flags: {},
+    _getStorageFlag: k => !!sh.flags[k],
+    _splitPathFragment: p => ({ base: p.split('#')[0] }),
+    _wikiUrl: () => true, _articleUrl: (z, p) => '/w/' + z + '/' + p,
+    frameDoc: {}, _readerViewOn: false, _renderLangDropdown: () => {},
+    currentArticle: { zim: 'wikipedia', path: 'Water' }, _articleLangKey: '', _articleLangData: null,
+  };
+  sh.document = { getElementById: id => (id === 'reader-frame' ? { contentDocument: sh.frameDoc } : null) };
+  vm.createContext(sh);
+  vm.runInContext([
+    extract(src, /var _wikiInfoKept = [^\n]*\n/, '_wikiInfoKept'),
+    extract(src, /var _WIKI_INFO_KEPT = [^\n]*\n/, '_WIKI_INFO_KEPT'),
+    extract(src, /function _wikiInfo\(zim, path, langsOnly\) \{[\s\S]*?\n\}/, '_wikiInfo'),
+    extract(src, /function _prefetchArticleLangs\(loaded\) \{[\s\S]*?\n\}/, '_prefetchArticleLangs'),
+  ].join('\n'), sh);
+  sh.flags[sh.SK.HIDE_LANG_CHOOSER] = true;
+  vm.runInContext('_prefetchArticleLangs(true)', sh);
+  ok('a hidden language chooser asks nothing about a wiki\'s article', asked.length === 0, asked.join());
+  delete sh.flags[sh.SK.HIDE_LANG_CHOOSER];
+  vm.runInContext('_prefetchArticleLangs(true)', sh);
+  ok('the plain reader asks for the languages only', asked.length === 1 && /\/wiki\/article\?zim=wikipedia&path=Water&only=languages$/.test(asked[0]), asked.join());
+  // Laid out by Zimipedia's reader, which asks for the whole answer: one ask, shared.
+  asked.length = 0;
+  vm.runInContext("currentArticle = { zim: 'wikipedia', path: 'Ice' }; frameDoc.__zimiWiki = true; _readerViewOn = true; _prefetchArticleLangs(true); _wikiInfo('wikipedia', 'Ice')", sh);
+  ok('an article in Zimipedia\'s reader is asked about once, whole', asked.length === 1 && !/only=/.test(asked[0]), asked.join());
+  vm.runInContext("_wikiInfo('wikipedia', 'Ice', true)", sh);
+  ok('the whole answer, once kept, serves the language menu too', asked.length === 1, asked.join());
+  ok('the route rides the content bucket, like /snippet', /_CONTENT_PATHS = frozenset\(\("\/snippet", "\/wiki\/article"\)\)/.test(fs.readFileSync(path.join(root, '..', 'http.py'), 'utf8')));
+}
+
 for (const lang of fs.readdirSync(path.join(root, 'i18n'))) {
   const d = JSON.parse(fs.readFileSync(path.join(root, 'i18n', lang), 'utf8'));
   if (d.wiki !== 'Zimipedia') ok('it is called Zimipedia in ' + lang, false);

@@ -1049,19 +1049,47 @@ def _twin(w, paths, qid):
 
 
 def _by_richness(ws):
-    """Wikis, the fullest build first (maxi, then nopic, then mini), then the biggest."""
-    rank = {"maxi": 0, "": 1, "nopic": 2, "mini": 3}
-    return sorted(ws, key=lambda w: (rank.get(w["flavour"], 1), -(w["entries"] or 0)))
+    """Wikis, the fullest build first (the library's own ranking of builds,
+    server._FLAVOR_RANKS: maxi, an untagged build, nopic, mini), then the
+    biggest."""
+    return sorted(
+        ws,
+        key=lambda w: (-_srv._FLAVOR_RANKS[w["flavour"] or None], -(w["entries"] or 0)),
+    )
 
 
-def article(zim, path):
+def _borrowed_qid(same, path, simple):
+    """The Q-ID of this page in a fuller build of its wiki, for a copy that
+    does not carry one (an older English mini): the page at the same path
+    there, itself and not a redirect (which may land on another topic), and
+    at the same reading level (Simple English's page of a name may be another
+    article than English's). None when no build has it. Takes the library
+    lock per read."""
+    for w in _by_richness(
+        [w for w in same if w["flavour"] != "mini" and is_simple(w["name"]) == simple]
+    ):
+        try:
+            other = _archive(w["name"])
+        except LookupError:
+            continue
+        with _srv._zim_lock:
+            got = _html_page(other, path)
+            q = _page_qid(w["name"], other, path) if got and got[0] == path else None
+        if q is not None:
+            return q
+    return None
+
+
+def article(zim, path, languages_only=False):
     """What the reader shows beside a wiki's article, for this request:
-    ``{qid, flavour, languages, level, full, topic}``.
+    ``{qid, flavour, languages, level, full, topic}``; with
+    ``languages_only`` (the shell's ask for its language menu, on any wiki's
+    article) ``{qid, flavour, languages}``, without reading the article.
 
     - ``qid``: its Wikidata Q-ID ("Q937"), "" when unknown. A copy that
       does not carry it (an older English mini) borrows it from a fuller
-      build of the same language holding the same page (kept for that
-      page, as if it carried it), so the language switch still works.
+      build of the same wiki holding the same page (see _borrowed_qid), for
+      this answer only: it is never kept as this copy's own.
     - ``languages``: the installed languages that have it ([{lang, name,
       zim, path}], verified by Q-ID: see interlang.get_article_languages).
     - ``level``: Simple English as a reading level: from an English article,
@@ -1095,12 +1123,6 @@ def article(zim, path):
             return None
         path = page[0]
         qid = _page_qid(zim, archive, path)
-        try:
-            html = bytes(archive.get_entry_by_path(path).get_item().content).decode(
-                "utf-8", "replace"
-            )
-        except Exception:
-            html = ""
     lang, project, simple = me["language"], me["project"], is_simple(zim)
     same = [
         w
@@ -1108,22 +1130,9 @@ def article(zim, path):
         if w["name"] != zim and w["language"] == lang and w["project"] == project
     ]
     if qid is None and project == "wikipedia":
-        for w in _by_richness([w for w in same if w["flavour"] != "mini"]):
-            try:
-                other = _archive(w["name"])
-            except LookupError:
-                continue
-            with _srv._zim_lock:
-                got = _html_page(other, path)
-                q = _page_qid(w["name"], other, got[0]) if got else None
-            if q is not None:
-                qid = q
-                # The same page of the same wiki: its Q-ID is this one's, so
-                # the language lookup (which reads the cache) finds it too.
-                il._qid_cache_store(zim, path, q)
-                break
+        qid = _borrowed_qid(same, path, simple)
     with _srv._zim_lock:
-        languages = il.get_article_languages(zim, path).get("languages", [])
+        languages = il.get_article_languages(zim, path, qid=qid).get("languages", [])
     # A language is its full encyclopedia: Simple English is a reading level
     # (below), not the English a Hebrew reader is sent to.
     for i, lg in enumerate(languages):
@@ -1135,6 +1144,13 @@ def article(zim, path):
             if got:
                 languages[i] = dict(lg, zim=got["zim"], path=got["path"])
                 break
+    out = {
+        "qid": "Q%d" % qid if qid is not None else "",
+        "flavour": me["flavour"],
+        "languages": languages,
+    }
+    if languages_only:
+        return out
     level = None
     if project == "wikipedia":
         # Up from Simple English goes to the full article, never to a mini's
@@ -1162,6 +1178,13 @@ def article(zim, path):
             if got:
                 full = got
                 break
+    with _srv._zim_lock:
+        try:
+            html = bytes(archive.get_entry_by_path(path).get_item().content).decode(
+                "utf-8", "replace"
+            )
+        except Exception:
+            html = ""
     title = _norm_title(path)
     sister = {}
     for proj, target in _SISTER_RE.findall(html):
@@ -1185,14 +1208,7 @@ def article(zim, path):
             if got:
                 topic.append(dict(got, project=proj))
                 break
-    return {
-        "qid": "Q%d" % qid if qid is not None else "",
-        "flavour": me["flavour"],
-        "languages": languages,
-        "level": level,
-        "full": full,
-        "topic": topic,
-    }
+    return dict(out, level=level, full=full, topic=topic)
 
 
 def _reset_for_tests():

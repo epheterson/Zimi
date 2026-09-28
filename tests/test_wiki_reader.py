@@ -654,6 +654,8 @@ def test_an_article_knows_its_languages_its_simple_twin_and_its_sister_pages(lib
 
 
 def test_a_mini_borrows_its_qid_and_points_to_the_full_article(library):
+    from zimi import interlang
+
     got = wiki.article("wikipedia_en", "Albert_Einstein")
     assert got["flavour"] == "mini"
     assert got["qid"] == "Q937", "the same page of a fuller build of the language"
@@ -665,6 +667,134 @@ def test_a_mini_borrows_its_qid_and_points_to_the_full_article(library):
         "path": "Albert_Einstein",
         "title": "Albert Einstein",
     }
+    # Borrowed for the answer, never kept as the mini's own on disk.
+    assert interlang._qid_lookup("wikipedia_en", "Albert_Einstein") is None
+
+
+@pytest.fixture
+def lenders(tmp_path, monkeypatch):
+    """A mini whose pages the fuller builds of English cannot vouch for: in
+    the maxi "Mercury" is a redirect to the planet, and only Simple English
+    has "Venus". Hebrew has both planets, so a wrong ID shows as a language."""
+    import wiki_fixture as wf
+    from libzim.writer import Creator
+
+    def planet(title, qid, lang="en"):
+        # Long enough to be read for its ID (interlang reads 2 kB and more).
+        body = "<p><b>%s</b> is a planet.</p>" % title + ("<p>%s</p>" % wf.FILLER) * 3
+        auth = (
+            '<div class="navbox authority-control"><a href="https://www.wikidata.org/wiki/%s#identifiers">Wikidata</a></div>'
+            % qid
+        )
+        return wf.page(title, body + auth, lang=lang)
+
+    def mini(title):
+        return wf.page(title, "<p><b>%s</b> is a name. %s</p>" % (title, wf.FILLER))
+
+    H = "text/html"
+    zdir = str(tmp_path / "zims")
+    os.makedirs(zdir)
+    maxi = os.path.join(zdir, "wikipedia_en_all_maxi_2026-08.zim")
+    with Creator(maxi).config_indexing(True, "eng") as cr:
+        cr.set_mainpath("Main_Page")
+        cr.add_item(wf._Page("Main_Page", "Main Page", wf.MAIN))
+        cr.add_item(wf._Page("Mercury_(planet)", "Mercury (planet)", planet("Mercury", "Q308")))
+        cr.add_redirection("Mercury", "Mercury", "Mercury_(planet)", {})
+        for k, v in {"Scraper": wf.MW, "Name": "wikipedia_en_all", "Language": "eng", "Title": "Wikipedia"}.items():
+            cr.add_metadata(k, v)
+    wf._zim(
+        os.path.join(zdir, "wikipedia_en_top_mini_2026-09.zim"),
+        "wikipedia_en_top", "eng", "Best of Wikipedia",
+        [("Main_Page", "Main Page", wf.MAIN, H), ("Mercury", "Mercury", mini("Mercury"), H), ("Venus", "Venus", mini("Venus"), H)],
+        "Main_Page",
+    )
+    wf._zim(
+        os.path.join(zdir, "wikipedia_en_simple_all_nopic_2026-05.zim"),
+        "wikipedia_en_simple_all", "eng", "Simple English Wikipedia",
+        [("Main_Page", "Main Page", wf.MAIN, H), ("Venus", "Venus", planet("Venus", "Q313"), H)],
+        "Main_Page",
+    )
+    wf._zim(
+        os.path.join(zdir, "wikipedia_he_all_nopic_2026-04.zim"),
+        "wikipedia_he_all", "heb", "ויקיפדיה",
+        [
+            ("Main_Page", "Main Page", wf.MAIN, H),
+            ("כוכב_חמה", "כוכב חמה", planet("כוכב חמה", "Q308", "he"), H),
+            ("נוגה", "נוגה", planet("נוגה", "Q313", "he"), H),
+        ],
+        "Main_Page",
+    )
+    monkeypatch.setattr(srv, "ZIM_DIR", zdir)
+    monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(tmp_path / "data"))
+    os.makedirs(str(tmp_path / "data"), exist_ok=True)
+    wiki._reset_for_tests()
+    srv.load_cache(force=True)
+    wf.index_wikipedias()
+    yield
+
+
+def test_a_mini_borrows_no_qid_from_a_redirect_or_from_simple_english(lenders):
+    from zimi import interlang
+
+    # The maxi's "Mercury" is a redirect: its page is the planet, which the
+    # mini's "Mercury" (a name) is not.
+    got = wiki.article("wikipedia_en", "Mercury")
+    assert got["qid"] == "" and got["languages"] == [], got
+    # Simple English holds "Venus", English does not: another wiki's page.
+    got = wiki.article("wikipedia_en", "Venus")
+    assert got["qid"] == "" and got["languages"] == [], got
+    for path in ("Mercury", "Venus"):
+        assert interlang._qid_lookup("wikipedia_en", path) is None, path
+
+
+def test_the_shell_asks_for_the_languages_only(library):
+    got = wiki.article("wikipedia", "Albert_Einstein", languages_only=True)
+    assert got == {
+        "qid": "Q937",
+        "flavour": "maxi",
+        "languages": wiki.article("wikipedia", "Albert_Einstein")["languages"],
+    }
+    assert [lg["lang"] for lg in got["languages"]] == ["he"]
+    mini = wiki.article("wikipedia_en", "Albert_Einstein", languages_only=True)
+    assert mini["qid"] == "Q937" and [lg["lang"] for lg in mini["languages"]] == ["he"]
+
+
+def test_the_languages_only_ask_reads_no_article_and_holds_the_lock_per_read(
+    library, monkeypatch
+):
+    # Nothing for level, full build or topic strip: no sister wiki is opened,
+    # and the article's HTML is never read for its sister links.
+    opened, holds = [], []
+    real = wiki._archive
+    monkeypatch.setattr(wiki, "_archive", lambda n: opened.append(n) or real(n))
+    got = wiki.article("wikipedia", "Albert_Einstein", languages_only=True)
+    assert got["languages"] and opened == ["wikipedia"], opened
+
+    class Counted:
+        def __init__(self, inner):
+            self.inner = inner
+
+        def __enter__(self):
+            self.inner.acquire()
+            holds.append(1)
+
+        def __exit__(self, *a):
+            self.inner.release()
+
+    monkeypatch.setattr(srv, "_zim_lock", Counted(srv._zim_lock))
+    wiki.article("wikipedia", "Albert_Einstein", languages_only=True)
+    few = len(holds)
+    holds.clear()
+    wiki.article("wikipedia", "Albert_Einstein")
+    assert few < len(holds), (few, len(holds))
+
+
+def test_the_article_route_rides_the_content_bucket_and_answers_languages_only():
+    from zimi import http
+
+    assert http._rate_class("/wiki/article") == (True, True)
+    assert http._rate_class("/snippet") == (True, True)
+    assert http._rate_class("/wiki/home") == (True, False)
 
 
 def test_simple_english_is_a_reading_level_not_a_language(library):
