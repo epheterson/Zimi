@@ -20431,12 +20431,19 @@ function _pushArticleHistory(zim, path) {
 //   Saved.clearPosition(ref)           Saved.continued({app, kind}): positions,
 //                                      the latest first
 //   Saved.LIKED                        the Liked list's id
+//   Saved.highlight(h) -> id           add a highlight, or change one (h.id:
+//                                      its note, its colour); see highlights.js
+//   Saved.highlights(q)                a page's ({zim, path}), in the order of
+//                                      its text; else ({app, kind}) the latest first
+//   Saved.getHighlight(id)             Saved.removeHighlight(id)
 // A ref is a key or anything item-shaped ({zim, path, kind, where}). where is
 // {s} a section, {f, c} a book (share read, character), {t, d} a video,
 // {pos} a map view; meta is a few short fields an app shows (author, cover).
+// A highlight is kept apart from its page's item: highlighting saves the page
+// (the engine does), removing the page from Saved keeps its highlights.
 //
 // Sync: every record carries ts, the newest wins, and a deletion leaves a
-// tombstone in `gone` (i:item, l:list, m:membership, p:position) that beats
+// tombstone in `gone` (i:item, l:list, m:membership, p:position, h:highlight) that beats
 // anything as old or older, so a delete on one device survives a merge from
 // another. Tombstones are forgotten after GONE_MS. users.py holds the same
 // rules for the account's copy (_clean_saved, _merge_saved).
@@ -20446,9 +20453,13 @@ var Saved = (function () {
   var APPS = ['books', 'tube', 'exchange', 'reddot', 'maps', 'wiki'];
   // The app a kind belongs to when the one saving it did not say.
   var KIND_APP = { book: 'books', video: 'tube', question: 'exchange', post: 'reddot', place: 'maps' };
-  var COLLS = [['items', 'i:'], ['lists', 'l:'], ['members', 'm:'], ['positions', 'p:']];
+  var COLLS = [['items', 'i:'], ['lists', 'l:'], ['members', 'm:'], ['positions', 'p:'], ['highlights', 'h:']];
   // Caps (users.py _SAVED_MAX holds the same): past one, the newest are kept.
-  var MAX = { items: 5000, lists: 500, members: 20000, positions: 1000, gone: 10000 };
+  var MAX = { items: 5000, lists: 500, members: 20000, positions: 1000, highlights: 2000, gone: 10000 };
+  // A highlight's colours, the first the default; its quote (the engine keeps
+  // the start and the end of a longer passage), its context, its note.
+  var HL_COLORS = ['yellow', 'green', 'blue', 'pink'];
+  var HL_QUOTE_MAX = 600, HL_CONTEXT_MAX = 64, HL_NOTE_MAX = 2000;
   // How long a deletion is remembered. A device away for longer can bring
   // back what was deleted while it was gone.
   var GONE_MS = 90 * 86400000;
@@ -20456,10 +20467,10 @@ var Saved = (function () {
   var SMALL_KEYS = 16, SMALL_KEY_MAX = 32, SMALL_VAL_MAX = 1000;
   var ORDER_GAP_MIN = 1e-9;  // two neighbours closer than this: the list is numbered again
   var ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
-  var _ns = '', _s = null, _idx = null;
+  var _ns = '', _s = null, _idx = null, _hidx = null;
 
   function now() { return Date.now(); }
-  function empty() { return { v: 1, items: {}, lists: {}, members: {}, positions: {}, gone: {}, legacy: false }; }
+  function empty() { return { v: 1, items: {}, lists: {}, members: {}, positions: {}, highlights: {}, gone: {}, legacy: false }; }
   function storeKey() { return SK.SAVED + (_ns ? ':' + _ns : ''); }
   function key(ref) {
     if (typeof ref === 'string') return ref;
@@ -20500,6 +20511,24 @@ var Saved = (function () {
     if (meta) out.meta = meta;
     return key(out) === id ? out : null;
   }
+  // A highlight: the page, what it says and what is around it, where it
+  // starts (a share of the page's text), its colour and note.
+  function highlightRec(r, id) {
+    if (!r || typeof r !== 'object' || !ID_RE.test(id)) return null;
+    var ts = num(r.ts), pos = num(r.pos), n = num(r.n), added = num(r.added);
+    var str = function (v, max) { return typeof v === 'string' ? v.slice(0, max) : ''; };
+    if (typeof r.zim !== 'string' || !r.zim || r.zim.length > ZIM_MAX) return null;
+    if (typeof r.path !== 'string' || !r.path || r.path.length > PATH_MAX || ts === null) return null;
+    if (typeof r.exact !== 'string' || !r.exact) return null;
+    var out = { zim: r.zim, path: r.path, kind: KINDS.indexOf(r.kind) >= 0 ? r.kind : 'article', title: str(r.title, TITLE_MAX),
+      exact: str(r.exact, HL_QUOTE_MAX), prefix: str(r.prefix, HL_CONTEXT_MAX), suffix: str(r.suffix, HL_CONTEXT_MAX),
+      pos: pos === null ? 0 : Math.max(0, Math.min(1, pos)), color: HL_COLORS.indexOf(r.color) >= 0 ? r.color : HL_COLORS[0],
+      added: Math.round(added === null ? ts : added), ts: Math.round(ts) };
+    if (APPS.indexOf(r.app) >= 0) out.app = r.app;
+    if (typeof r.end === 'string' && r.end && n !== null && n > 0) { out.end = str(r.end, HL_QUOTE_MAX); out.n = Math.round(n); }
+    if (typeof r.note === 'string' && r.note) out.note = str(r.note, HL_NOTE_MAX);
+    return out;
+  }
   function order(r) {
     if (!r || typeof r !== 'object') return null;
     var o = num(r.order), ts = num(r.ts);
@@ -20526,8 +20555,9 @@ var Saved = (function () {
       s.members[mk] = o;
     });
     each(x.positions, function (id, r) { var p = thing(r, id); if (p) s.positions[id] = p; });
+    each(x.highlights, function (id, r) { var h = highlightRec(r, id); if (h) s.highlights[id] = h; });
     each(x.gone, function (g, ts) {
-      if (num(ts) !== null && /^[ilmp]:./.test(g) && g.length < ZIM_MAX + PATH_MAX + 128) s.gone[g] = Math.round(ts);
+      if (num(ts) !== null && /^[ilmph]:./.test(g) && g.length < ZIM_MAX + PATH_MAX + 128) s.gone[g] = Math.round(ts);
     });
     s.legacy = x.legacy === true;
     return s;
@@ -20549,6 +20579,7 @@ var Saved = (function () {
     cap(s.items, MAX.items, recTs);
     cap(s.lists, MAX.lists, recTs);
     cap(s.positions, MAX.positions, recTs);
+    cap(s.highlights, MAX.highlights, recTs);
     Object.keys(s.members).forEach(function (mk) {
       var i = mk.indexOf('\t'), lid = mk.slice(0, i);
       if (!has(s.items, mk.slice(i + 1)) || (lid !== LIKED && !has(s.lists, lid))) delete s.members[mk];
@@ -20672,7 +20703,7 @@ var Saved = (function () {
     if (raw) { try { parsed = JSON.parse(raw); } catch (e) {} }
     if (parsed && typeof parsed === 'object' && parsed.items) {
       _s = parsed;
-      ['items', 'lists', 'members', 'positions', 'gone'].forEach(function (c) { if (!_s[c] || typeof _s[c] !== 'object') _s[c] = {}; });
+      ['items', 'lists', 'members', 'positions', 'highlights', 'gone'].forEach(function (c) { if (!_s[c] || typeof _s[c] !== 'object') _s[c] = {}; });
       return _s;
     }
     // This store's first use: what the browser kept before comes in (the
@@ -20687,7 +20718,7 @@ var Saved = (function () {
   // fromSync: the change came from the account or another tab (nothing to
   // send). often: a place moving while something is read (sent less eagerly).
   function commit(fromSync, often) {
-    _idx = null;
+    _idx = null; _hidx = null;
     write();
     if (typeof _savedChanged === 'function') _savedChanged(!!fromSync, !!often);
   }
@@ -20924,6 +20955,65 @@ var Saved = (function () {
       .sort(newestFirst(s.positions, recTs)).map(function (id) { return pubPos(id, s.positions[id]); });
   }
 
+  // ── highlights ──
+  // A page's highlights by its key (zim + '\n' + path), built when first asked:
+  // a page opened with none costs one lookup.
+  function hidx() {
+    if (_hidx) return _hidx;
+    var s = load(), out = {};
+    Object.keys(s.highlights).forEach(function (id) {
+      var r = s.highlights[id], k = r.zim + '\n' + r.path;
+      (out[k] = out[k] || []).push(id);
+    });
+    _hidx = out;
+    return out;
+  }
+  function pubHl(id, r) { var o = copy(r); o.id = id; return o; }
+  // q: a page ({zim, path} or its key), in the order of its text; otherwise
+  // every highlight matching {app, kind}, the latest first.
+  function highlights(q) {
+    q = q || {};
+    var s = load(), ids, page = typeof q === 'string' ? q.split('\n').slice(0, 2).join('\n') : q.zim && q.path ? q.zim + '\n' + q.path : '';
+    if (page) {
+      ids = (hidx()[page] || []).slice().sort(function (a, b) { return (s.highlights[a].pos - s.highlights[b].pos) || cmp(a, b); });
+    } else {
+      ids = Object.keys(s.highlights).filter(function (id) { return matches(q, s.highlights[id]); })
+        .sort(function (a, b) { return (s.highlights[b].added - s.highlights[a].added) || cmp(a, b); });
+    }
+    return ids.map(function (id) { return pubHl(id, s.highlights[id]); });
+  }
+  function getHighlight(id) {
+    var s = load();
+    return has(s.highlights, id) ? pubHl(id, s.highlights[id]) : null;
+  }
+  // A new highlight (no id, or one not kept), or a change to one: the fields
+  // given replace its own (a note of '' takes the note away).
+  function highlight(h) {
+    if (!h || typeof h !== 'object') return '';
+    var s = load(), t = now(), id = typeof h.id === 'string' && has(s.highlights, h.id) ? h.id : '';
+    var rec = id ? copy(s.highlights[id]) : { added: t };
+    ['zim', 'path', 'kind', 'app', 'title', 'exact', 'end', 'n', 'prefix', 'suffix', 'pos', 'color', 'note'].forEach(function (f) {
+      if (h[f] !== undefined) rec[f] = h[f];
+    });
+    if (typeof rec.note === 'string') rec.note = rec.note.trim();
+    if (!id) id = typeof h.id === 'string' && ID_RE.test(h.id) ? h.id : 'h_' + t.toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+    rec.ts = t;
+    var r = highlightRec(rec, id);
+    if (!r) return '';
+    s.highlights[id] = r;
+    delete s.gone['h:' + id];
+    cap(s.highlights, MAX.highlights, recTs);
+    commit();
+    return id;
+  }
+  function removeHighlight(id) {
+    var s = load();
+    if (!has(s.highlights, id)) return;
+    delete s.highlights[id];
+    s.gone['h:' + id] = now();
+    commit();
+  }
+
   // ── sync: the account's copy, a file, another device ──
   // A store's fingerprint: every record by id and time, every tombstone.
   // Equal fingerprints hold the same records (a tie keeps one copy either way).
@@ -20962,7 +21052,7 @@ var Saved = (function () {
   function use(name) {
     var ns = name ? String(name).toLowerCase() : '';
     if (ns === _ns) return false;
-    _ns = ns; _s = null; _idx = null;
+    _ns = ns; _s = null; _idx = null; _hidx = null;
     return true;
   }
 
@@ -20973,6 +21063,7 @@ var Saved = (function () {
     lists: lists, createList: createList, renameList: renameList, deleteList: deleteList, moveList: moveList,
     inList: inList, addToList: addToList, moveInList: moveInList, removeFromList: removeFromList,
     position: position, setPosition: setPosition, clearPosition: clearPosition, continued: continued,
+    HL_COLORS: HL_COLORS.slice(), highlight: highlight, highlights: highlights, getHighlight: getHighlight, removeHighlight: removeHighlight,
     data: function () { return copy(load()); }, merge: merge, mergeLegacy: mergeLegacy, use: use,
     account: function () { return _ns; }, storageKey: storeKey,
     // For the tests: the pure parts.
