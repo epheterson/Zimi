@@ -5132,6 +5132,11 @@ function openAlmanac(replaceState) {
       if (i >= almanacModules.length) {
         _almanacLoaded = true;
         _openAlmanacInner(replaceState);
+        // The 3D Earth's module follows the open instead of delaying it; the
+        // orrery draws the Earth's glow (the way in) once it has landed.
+        var earth = document.createElement('script');
+        earth.src = '/static/almanac-earth.js?v=45';
+        document.head.appendChild(earth);
         return;
       }
       var s = document.createElement('script');

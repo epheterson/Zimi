@@ -100,7 +100,9 @@ const NETWORK_ONLY_PREFIXES = ['/whoami', '/login', '/logout', '/list', '/search
 
 // Non-identity API/data (article reads, health, manage, language lists). These
 // do not expose the library index and tolerate a cached fallback when offline.
-const NETWORK_FIRST_PREFIXES = ['/read', '/health', '/manage', '/article-languages', '/languages'];
+// /almanac-satellites too: the freshest orbital elements when the server
+// answers, the last ones seen when it does not.
+const NETWORK_FIRST_PREFIXES = ['/read', '/health', '/manage', '/article-languages', '/languages', '/almanac-satellites'];
 
 function _hasPrefix(path, prefixes) {
   for (let i = 0; i < prefixes.length; i++) {

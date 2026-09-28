@@ -484,7 +484,11 @@
     // Structure & timekeeping
     'term:solar_system': { q: 'Q544',   en: 'Solar System' },
     'term:zodiac':       { q: 'Q40540', en: 'Zodiac' },
-    'term:leap_year':    { q: 'Q19828', en: 'Leap year' }
+    'term:leap_year':    { q: 'Q19828', en: 'Leap year' },
+    // The Earth view (almanac-earth.js): a tapped satellite's card
+    'term:gps':            { q: 'Q18822',  en: 'Global Positioning System' },
+    'term:iss':            { q: 'Q25271',  en: 'International Space Station' },
+    'term:time_dilation':  { q: 'Q185918', en: 'Time dilation' }
   };
 
   // The four seasons — displayed as the current-season name in the astro panel.
