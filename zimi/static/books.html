@@ -311,7 +311,7 @@ function subjectTiles(list) {
 function erasHtml(list) {
   var max = Math.max.apply(null, list.map(function(e) { return e.n; }).concat([1]));
   return '<div class="eras">' + list.map(function(e) {
-    return '<button type="button" class="era" onclick="go({v:\'list\',era:' + e.from + '})"><span class="y">' + esc(eraLabel(e.from)) + '</span>' +
+    return '<button type="button" class="era" onclick="go({v:\'list\',era:' + J(e.from) + '})"><span class="y">' + esc(eraLabel(e.from)) + '</span>' +
       '<span class="bar"><i style="width:' + Math.max(2, Math.round(e.n / max * 100)) + '%"></i></span><span class="c">' + e.n + '</span></button>';
   }).join('') + '</div>';
 }
@@ -426,7 +426,7 @@ function bookPage(b, full) {
   var fact = function(k, v) { if (v) facts += '<dt>' + esc(k) + '</dt><dd>' + v + '</dd>'; };
   fact(STR.language, b.lang ? '<a onclick="go({v:\'list\',lang:' + J(b.lang) + '})">' + esc(langName(b.lang)) + '</a>' : '');
   fact(STR.subject, b.shelf ? '<a onclick="go({v:\'list\',shelf:' + J(b.shelf.slice(0, b.shelf.charAt(0) === "P" ? 2 : 1)) + '})">' + esc(shelfName(b.shelf)) + '</a>' : '');
-  fact(STR.era, b.era != null ? '<a onclick="go({v:\'list\',era:' + b.era + '})">' + esc(eraLabel(b.era)) + '</a>' : '');
+  fact(STR.era, b.era != null ? '<a onclick="go({v:\'list\',era:' + J(b.era) + '})">' + esc(eraLabel(b.era)) + '</a>' : '');
   fact(STR.added, b.created ? esc(new Date(b.created + 'T12:00:00').toLocaleDateString(STR.lang || undefined, { year: 'numeric', month: 'long', day: 'numeric' })) : '');
   var yrs = yearsLabel(b.born, b.died);
   var readLabel = place ? STR.resume + ' · ' + Math.round(place.f * 100) + '%' : STR.read;

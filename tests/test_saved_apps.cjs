@@ -135,6 +135,28 @@ function page(extra) {
     /All <span class="n">2<\/span>/.test(chips) && /class="chip tag on" aria-pressed="true" onclick="openSaved\(&quot;liked&quot;\)">Liked <span class="n">1<\/span>/.test(chips) && !/Trip/.test(chips), chips);
 }
 
+// ── a value in an onclick is data, never script ───────────────────────────
+// A saved path or title comes from anywhere (a My data file, another
+// device): put in an onclick, the HTML parser decodes its entities before
+// the script reads it, so a path that says &quot; must not close the string.
+{
+  const p = page();
+  const attr = (s) => s.replace(/&(#x[0-9a-f]+|#\d+|quot|amp|lt|gt|apos);/gi, (m, e) => {
+    const n = e.toLowerCase();
+    if (n[0] === '#') return String.fromCodePoint(n[1] === 'x' ? parseInt(n.slice(2), 16) : parseInt(n.slice(1), 10));
+    return { quot: '"', amp: '&', lt: '<', gt: '>', apos: "'" }[n];
+  });
+  const hostile = ['a&quot;);alert(1)//', "b');alert(1)//", 'c"onmouseover="alert(1)', '</button><img src=x onerror=alert(1)>', '&#34;);alert(1)//', 'd e', 42];
+  const bad = hostile.filter((v) => {
+    const out = p.J(v);
+    let back;
+    try { back = JSON.parse(attr(out)); } catch (e) { return true; }
+    return back !== v || /["<>]/.test(out);
+  });
+  ok('a value in an onclick comes back as the same value, whatever it says', !bad.length, JSON.stringify(bad.map((v) => p.J(v))));
+  ok('Bookshelf\'s eras go through it too', /era:' \+ J\(e\.from\) \+ '/.test(books) && /era:' \+ J\(b\.era\) \+ '/.test(books));
+}
+
 // ── ZimiTube's rows ───────────────────────────────────────────────────────
 {
   const p = page({ _byKey: {} });

@@ -118,8 +118,10 @@ function savedListChips(app, on, fn) {
   if (!lists.length) return '';
   return chip('', w.all, S.itemsFor({ app: app }).length) + lists.map(function(l) { return chip(l.id, l.builtin ? w.liked : l.name, l.count); }).join('');
 }
-// A value into an onclick attribute.
-function J(v) { return JSON.stringify(v).replace(/"/g, '&quot;'); }
+// A value into an onclick attribute: its JSON, escaped as attribute text, so
+// no value (a saved path that says &quot;, a title from a file) can end the
+// string or the attribute.
+function J(v) { return esc(JSON.stringify(v)); }
 // A word to the shell (the app's address, its title, a door to the catalog).
 // Silent while the shell itself is steering (Back and Forward), or every
 // step would write the address the shell just restored.

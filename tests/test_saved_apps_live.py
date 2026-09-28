@@ -243,7 +243,6 @@ def test_zimitube_watch_later_like_lists_and_continue_watching(phone):
     assert _rows(pg) == ["Continue watching: " + title], _rows(pg)
 
 
-
 def test_zimitube_a_long_row_shows_a_dozen_and_all_opens_it_whole(phone):
     """A row is a strip of its first dozen; All opens the row whole in the
     feed's place, and the header's arrow brings the home back."""
@@ -255,20 +254,39 @@ def test_zimitube_a_long_row_shows_a_dozen_and_all_opens_it_whole(phone):
     )
     frame = pg.frame_locator("#reader-frame")
     frame.locator("#mine .shelf[data-row=later] .card").first.wait_for()
-    assert _in_frame(pg, "(w) => w.document.querySelectorAll('#mine .shelf[data-row=later] .card').length") == 12
+    assert (
+        _in_frame(
+            pg,
+            "(w) => w.document.querySelectorAll('#mine .shelf[data-row=later] .card').length",
+        )
+        == 12
+    )
     frame.locator("#mine .shelf[data-row=later] .all").click()
     pg.wait_for_timeout(200)
-    whole = _in_frame(pg, "(w) => [w.document.querySelectorAll('#mine .grid .card').length, getComputedStyle(w.document.getElementById('list')).display, w.__top()]")
+    whole = _in_frame(
+        pg,
+        "(w) => [w.document.querySelectorAll('#mine .grid .card').length, getComputedStyle(w.document.getElementById('list')).display, w.__top()]",
+    )
     assert whole == [14, "none", False], whole
     frame.locator("#mine .grid .card", has_text="Talk 0").click()
     frame.locator("#w-title").wait_for()
-    assert _in_frame(pg, "(w) => w.document.getElementById('w-title').textContent") == "Talk 0"
+    assert (
+        _in_frame(pg, "(w) => w.document.getElementById('w-title').textContent")
+        == "Talk 0"
+    )
     _in_frame(pg, "(w) => w.__back()")
     pg.wait_for_timeout(200)
-    assert _in_frame(pg, "(w) => w.document.querySelectorAll('#mine .grid .card').length") == 14, "Back from a video returns to the row it was in"
+    assert (
+        _in_frame(pg, "(w) => w.document.querySelectorAll('#mine .grid .card').length")
+        == 14
+    ), "Back from a video returns to the row it was in"
     _in_frame(pg, "(w) => w.__back()")
     pg.wait_for_timeout(200)
-    assert _in_frame(pg, "(w) => [w.document.querySelectorAll('#mine .strip .card').length > 0, getComputedStyle(w.document.getElementById('list')).display !== 'none', w.__top()]") == [True, True, True]
+    assert _in_frame(
+        pg,
+        "(w) => [w.document.querySelectorAll('#mine .strip .card').length > 0, getComputedStyle(w.document.getElementById('list')).display !== 'none', w.__top()]",
+    ) == [True, True, True]
+
 
 def test_an_audiobook_continues_at_its_track(phone):
     pg, names = phone
@@ -362,6 +380,47 @@ def test_a_thread_saved_liked_listed_and_reopened_where_you_were(phone, app):
         pg,
         "(w) => Array.from(w.document.querySelectorAll('#chips .chip')).some(c => /Saved/.test(c.textContent))",
     )
+
+
+@pytest.mark.parametrize("app", ["exchange", "reddot"])
+def test_a_saved_thing_from_a_file_is_text_not_script(phone, app):
+    """A My data file is anyone's: a saved path that says &quot; stays a
+    path in the app's Saved view, and opening it runs nothing of its own."""
+    import json
+
+    pg, names = phone
+    path = "x&quot;);window.__pwned=1;//"
+    key = names[app] + "\n" + path
+    item = {
+        "kind": "question" if app == "exchange" else "post",
+        "app": app,
+        "zim": names[app],
+        "path": path,
+        "title": "<img src=x onerror=window.__pwned=2>",
+        "ts": 1,
+        "added": 1,
+    }
+    bundle = {
+        "schema": "zimi-backup",
+        "schema_version": 3,
+        "scope": "my-data",
+        "saved": {"items": {key: item}},
+    }
+    pg.evaluate("(t) => _applyMyDataFile(t)", json.dumps(bundle))
+    assert pg.evaluate("(k) => Saved.has(k)", key)
+    pg.evaluate("() => " + ("openExchange()" if app == "exchange" else "openReddot()"))
+    frame = pg.frame_locator("#reader-frame")
+    frame.locator("#chips .chip", has_text="Saved").click()
+    frame.locator("#l-rows .row").first.wait_for()
+    assert (
+        _in_frame(pg, "(w) => w.document.querySelector('#l-rows .row .t').textContent")
+        == item["title"]
+    )
+    frame.locator("#l-rows .row").first.click()
+    pg.wait_for_timeout(600)
+    assert _in_frame(pg, "(w) => w.__pwned === undefined"), "the saved path ran"
+    view = "#qview" if app == "exchange" else "#pview"
+    assert _in_frame(pg, "(w, v) => !w.document.querySelector(v).hidden", view)
 
 
 def test_maps_save_a_place_by_its_name_list_it_and_fly_back(phone):
@@ -470,8 +529,14 @@ def test_right_to_left_and_dark(served):
         )
         # From the control's right edge, or held inside the screen's.
         assert abs(edge[0] - edge[1]) <= 1 or edge[2] == 8, edge
-        order = _in_frame(pg, "(w) => Array.from(w.document.querySelectorAll('#qview .svb')).map(b => Math.round(b.getBoundingClientRect().right))")
-        assert order == sorted(order, reverse=True), ("Like, Save, Lists read from the right", order)
+        order = _in_frame(
+            pg,
+            "(w) => Array.from(w.document.querySelectorAll('#qview .svb')).map(b => Math.round(b.getBoundingClientRect().right))",
+        )
+        assert order == sorted(order, reverse=True), (
+            "Like, Save, Lists read from the right",
+            order,
+        )
         _shot(pg, "exchange_rtl_dark_picker.png")
         pg.evaluate("() => _closeMenu()")
         _in_frame(pg, "(w) => w.__back()")
