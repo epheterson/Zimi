@@ -79,10 +79,23 @@ def _exe():
 # launcher keeps the worker's name and skips the priorities where they
 # would fail; on Linux it changes nothing. Guarded for multiprocessing,
 # which imports the main module again in every worker.
+#
+# It also carries what Zimi knows about the build into the ZIM. ArcticZim
+# writes the metadata itself (Scraper "arcticzim", no X-Zimi-History) and
+# takes no more, so a subreddit Zimi made read as somebody else's: no "made
+# by Zimi" badge, not in Manage's list of what was made here. The build is
+# given ``--zimi-metadata <file>``; the launcher takes the flag off the
+# command line and lays the file's keys over ArcticZim's own, in the main
+# process, where the ZIM's metadata is written.
 _LAUNCHER_NAME = "zimi_arcticzim.py"
+METADATA_FLAG = "--zimi-metadata"
 _LAUNCHER_SRC = """\
-# Written by Zimi. ArcticZim's entry point, with one patch for macOS.
+# Written by Zimi. ArcticZim's entry point, with a patch for macOS and the
+# metadata Zimi adds to the ZIM.
+import json
 import sys
+
+METADATA_FLAG = %r
 
 if sys.platform != "linux":
     import arcticzim.zimbuild.builder as _builder
@@ -97,11 +110,37 @@ if sys.platform != "linux":
 
     _builder.config_process = _config_process
 
+
+def _zimi_metadata(argv):
+    # The keys in the file after METADATA_FLAG, the flag and the file taken
+    # out of argv so ArcticZim never sees them; None without the flag.
+    if METADATA_FLAG not in argv:
+        return None
+    i = argv.index(METADATA_FLAG)
+    path = argv[i + 1]
+    del argv[i : i + 2]
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
 if __name__ == "__main__":
+    extra = _zimi_metadata(sys.argv)
+    if extra:
+        import arcticzim.zimbuild.builder as _zb
+
+        _plain = _zb.BuildOptions.get_metadata_dict
+
+        def _with_zimi(self):
+            metadata = _plain(self)
+            metadata.update(extra)
+            return metadata
+
+        _zb.BuildOptions.get_metadata_dict = _with_zimi
+
     from arcticzim.cli import main
 
     sys.exit(main())
-"""
+""" % METADATA_FLAG
 
 
 def _launcher():
@@ -120,9 +159,26 @@ def _launcher():
     return path
 
 
-def _cmd(*args):
-    """An ArcticZim command line, through the launcher."""
-    return [_venv_bin(sidecar_dir(), "python"), _launcher(), *args]
+def _cmd(*args, metadata=None):
+    """An ArcticZim command line, through the launcher; ``metadata``, the
+    path of a JSON file of keys the launcher adds to the ZIM (the build)."""
+    extra = [METADATA_FLAG, metadata] if metadata else []
+    return [_venv_bin(sidecar_dir(), "python"), _launcher(), *args, *extra]
+
+
+def _provenance(sub, counts):
+    """What Zimi adds to a subreddit's ZIM: its name on the Scraper after
+    ArcticZim's (``arcticzim 8281389 + Zimi 1.12.0``, the shape the warc2zim
+    engines leave, ``arcticzim`` still first so the ZIM stays a Reddit one),
+    and the creation record every ZIM Zimi makes carries."""
+    from zimi.zimwriter import HISTORY_METADATA_KEY, SCRAPER_METADATA_KEY, history_record
+
+    tool = ARCTICZIM_COMMIT[:7]
+    record = history_record("created", "reddit", f"r/{sub} from Arctic Shift", tools={"arcticzim": tool}, counts=counts)
+    return {
+        SCRAPER_METADATA_KEY: f"arcticzim {tool} + Zimi {_srv.ZIMI_VERSION}",
+        HISTORY_METADATA_KEY: json.dumps([record], ensure_ascii=False),
+    }
 
 
 def _marker_spec(venv):
@@ -326,23 +382,29 @@ def create_reddit_zim(subreddit, *, title=None, out_dir=None, out_path=None, reg
     out = _finish_output(out_dir or _srv.ZIM_DIR, out_path, zim_name)
     work = os.path.join(_srv.ZIMI_DATA_DIR, "staging", f"reddot-{sub.lower()}-{int(time.time())}")
     os.makedirs(work, exist_ok=True)
-    posts, comments, db = (os.path.join(work, n) for n in ("posts.jsonl", "comments.jsonl", "db.sqlite"))
+    posts, comments, db, meta = (os.path.join(work, n) for n in ("posts.jsonl", "comments.jsonl", "db.sqlite", "zimi-metadata.json"))
     steps = [
         ("fetching posts of r/%s from Arctic Shift" % sub, _cmd("retrieve", "--subreddit", sub, "--sleep", "0.2", "posts", posts), posts, _stall_watch()),
         ("fetching comments", _cmd("retrieve", "--subreddit", sub, "--sleep", "0.2", "comments", comments), comments, _stall_watch()),
         ("importing", _cmd("import", "--posts-file", posts, "--comments-file", comments, "sqlite:///" + db), None, None),
-        ("building the ZIM", _cmd("-v", "build", "sqlite:///" + db, out + ".part"), None, _worker_death_watch),
+        ("building the ZIM", _cmd("-v", "build", "sqlite:///" + db, out + ".part", metadata=meta), None, _worker_death_watch),
     ]
+    counts = {}
     try:
         for label, cmd, fetched, watch in steps:
             if stop is not None and getattr(stop, "hit", False):
                 raise CreateError("stopped")
+            if METADATA_FLAG in cmd:
+                with open(meta, "w", encoding="utf-8") as f:
+                    json.dump(_provenance(sub, counts), f, ensure_ascii=False)
             say(label)
             rc = _run_stream(cmd, _throttled(say), watch=watch)
             if rc != 0:
                 raise CreateError(f"ArcticZim failed while {label} (the job log has its output)")
             if fetched:
-                say(f"{_dedupe_jsonl(fetched):,} {os.path.basename(fetched).split('.')[0]}")
+                what = os.path.basename(fetched).split(".")[0]
+                counts[what] = _dedupe_jsonl(fetched)
+                say(f"{counts[what]:,} {what}")
         if not os.path.exists(out + ".part"):
             raise CreateError("ArcticZim finished without writing a ZIM")
         os.replace(out + ".part", out)

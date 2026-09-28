@@ -4004,6 +4004,8 @@ var _PROV_MODE_KEYS = {
   video: 'zi_kind_video',
   bookmarks: 'zi_kind_bookmarks',
   import: 'zi_kind_import',
+  // A subreddit Zimi built with ArcticZim, named as the Create page names it.
+  reddit: 'create_mode_reddit',
 };
 // The engine outranks the mode where the two differ: a replay ZIM opens into a
 // replay shell and behaves unlike an article ZIM, whatever it captured.
@@ -11296,7 +11298,7 @@ function _creatorLoadInventory() {
 var _CREATOR_TYPE_KEYS = {
   page: 'zi_kind_page', site: 'zi_kind_site', video: 'zi_kind_video',
   import: 'zi_kind_import', folder: 'zi_kind_folder',
-  export: 'zi_kind_export', edit: 'zi_kind_edit'
+  export: 'zi_kind_export', edit: 'zi_kind_edit', reddit: 'create_mode_reddit'
 };
 var _creatorSort = { key: 'created_ts', dir: -1 };  // newest first by default
 

@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A subreddit made with Create a ZIM now says it was made by Zimi: the Subreddit badge on its card, and a place in Manage's list of ZIMs made here.
 - In Arabic and Hebrew the search box's clear button no longer sits on its magnifier, and a catalog search inside a category says Back in your language.
 - A catalog search typed while the catalog was still loading is no longer replaced by the category gallery.
 
