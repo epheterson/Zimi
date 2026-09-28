@@ -79,7 +79,12 @@ ok('a missing picture becomes a cover set in type', /onerror="noCover\(this\)"/.
 ok('Read opens the book in Zimi\'s reader, noted first for Continue reading', /noteOpened\(b\);\n\s*tell\(\{ zimi: 'open', zim: b\.zim, path: b\.path \}\);/.test(page));
 ok('the page and the reader keep places under one key', /var BOOK_PLACES_KEY = 'zimi_book_places';/.test(apps) && /BOOK_PLACES: 'zimi_book_places'/.test(src) && !/'zimi_book_places'/.test(page));
 ok('the empty page is a door to the Books category', /category: 'gutenberg'/.test(page));
-ok('eras and subjects arrive without a reload once the records are read', /if \(_home\.total && !_home\.details\) setTimeout\(refreshHome, /.test(page));
+ok('eras and subjects arrive without a reload once the records are read', /if \(!_home\.details && \(_home\.total \|\| \(_home\.sources \|\| \[\]\)\.length\)\) setTimeout\(refreshHome, /.test(page));
+// A shelf of Wikisource or a document library alone is empty until its books
+// are read: it says they are coming, and fills when the first arrive.
+ok('an empty shelf still being read says the books are coming', /if \(!_home\.details && \(_home\.sources \|\| \[\]\)\.length\) \{ \$\('view'\)\.innerHTML = '<div class="empty">' \+ esc\(STR\.reading\)/.test(page) &&
+  /\(d\.total && !was\.total\)\) && cur\(\)\.v === 'home'\) show\(\);/.test(page) && /'books_load_part', 'books_reading'\]/.test(src));
+ok('a book of another family is opened by its "<zim>/<id>"', /onclick="readBook\(' \+ J\(b\.id\) \+ '\)"/.test(page) && /id: \/\^\\d\+\$\/\.test\(id\) \? Number\(id\) : id/.test(page));
 
 // ── the reader: a book opens in Reader View, keeps its place, steps by chapter
 const rctx = { document: { documentElement: { getAttribute: () => 'ltr' } } };

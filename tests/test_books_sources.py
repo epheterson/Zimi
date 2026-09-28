@@ -1014,3 +1014,97 @@ def test_a_book_of_another_family_through_http(shelf_lib):
         assert got["author"] == "Oscar Edward MEinzer" and got["format"] == "pdf"
     finally:
         httpd.shutdown()
+
+
+def test_manage_puts_a_zim_on_the_shelf_as_one_book(shelf_lib):
+    from http.server import ThreadingHTTPServer
+    import threading
+    import urllib.error
+    import urllib.request
+
+    from zimi import books
+    from zimi.http import ZimHandler
+
+    other = (
+        "survival-guide_en_all_2026-01.zim",
+        {"Scraper": "zimit 3.1.3", "Name": "survival-guide_en_all", "Title": "Survival Guide"},
+        {"index.html": ("text/html", "<html><body>Guide</body></html>", "Guide")},
+        "index.html",
+    )
+    name = shelf_lib([other])["survival-guide_en_all_2026-01"]
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = "http://127.0.0.1:%d" % httpd.server_address[1]
+
+    def post(body):
+        req = urllib.request.Request(
+            base + "/manage/books/whole",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            return e.code, {}
+
+    try:
+        assert post({"zim": name, "whole": True}) == (
+            200,
+            {"zim": name, "whole": True, "reader": "whole"},
+        )
+        assert _titles() == ["Survival Guide"]
+        with urllib.request.urlopen(base + "/manage/books/whole", timeout=10) as r:
+            assert json.loads(r.read()) == {"zims": {name: True}}
+        assert post({"zim": "nope", "whole": True})[0] == 404
+        assert post({"zim": name, "whole": "yes"})[0] == 400
+        assert post({"zim": name, "whole": None})[1]["reader"] == ""
+        assert books.home()["total"] == 0
+    finally:
+        httpd.shutdown()
+
+
+def test_an_epub_reads_in_the_e_reader_on_a_phone(served_epub):
+    """Gutenberg's EPUB-only book, from the shelf's own path for it, in a
+    real browser at 390px: Zimi's header away, the book's own chrome, its
+    title and author from the package, pages to turn, the place kept."""
+    import zimi.renderer as renderer
+    from zimi import books
+
+    if not renderer.browser_available():
+        pytest.skip("playwright + chromium are not usable here")
+    from playwright.sync_api import sync_playwright
+
+    card = books.listing()["books"][0]
+    assert card["path"] == "Aleutian Indian and English Dictionary.10040.epub/"
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = br.new_context(**pw.devices["iPhone 13"]).new_page()
+        try:
+            pg.goto(served_epub + "/")
+            pg.wait_for_function(
+                "() => typeof zimsCache !== 'undefined' && (zimsCache || []).length > 0",
+                timeout=30000,
+            )
+            pg.evaluate("(b) => openArticle(b.zim, b.path)", card)
+            pg.wait_for_function(
+                "() => { var f = document.getElementById('reader-frame'); return f && f.contentDocument && f.contentDocument.querySelector('.zb-foot'); }",
+                timeout=30000,
+            )
+            pg.wait_for_timeout(500)
+            got = pg.evaluate(
+                """() => { var f = document.getElementById('reader-frame'), d = f.contentDocument;
+                  return { title: d.querySelector('.zb-title b').textContent, author: d.querySelector('.zb-title span').textContent,
+                    paged: d.documentElement.classList.contains('zb-paged'), held: document.body.classList.contains('chrome-held'),
+                    text: d.body.textContent.indexOf('PREFACE') >= 0 }; }"""
+            )
+            assert got["title"].startswith("Aleutian Indian and English Dictionary")
+            assert got["author"] == "Charles A. Lee" and got["text"]
+            assert got["paged"] and got["held"]
+            pg.touchscreen.tap(365, 420)
+            pg.wait_for_timeout(1200)
+            places = pg.evaluate("() => JSON.parse(localStorage.getItem('zimi_book_places') || '{}')")
+            assert list(places) == [card["zim"] + "\n" + card["path"]]
+        finally:
+            br.close()

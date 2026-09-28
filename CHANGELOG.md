@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Bookshelf reads more than Gutenberg: Kiwix's document libraries (zimgit and the other nautilus ZIMs), LibreTexts textbooks, Wikisource works and Wikibooks books (still in Zimipedia too), and ZIMs that are one book, like the Algorithms and Stacks textbooks.
+- A folder of PDFs and EPUBs packed with Create a ZIM lands on the Bookshelf, each document with its title, author, date and cover.
+- EPUBs open in Zimi's book reader, chapter by chapter, instead of downloading; Gutenberg's EPUB-only books open too.
 - Search operators, in the library search, the catalog and the API: `-word` leaves out, `"exact words"` keeps words together, `cats OR dogs` takes either, and `in:wikipedia`, `lang:fr` (and `-in:ted`, `-lang:en`) choose the sources. `science -ted` in the catalog now hides the hundreds of TED ZIMs. A hyphenated word like `e-mail` is still one word. In the library, exclusions and phrases apply to a result's title. Each operator shows as a chip saying what it did ("without ted", "French", "Wikipedia"), and its × takes it back out; a ? beside the search box has examples in your language. ([#94](https://github.com/epheterson/Zimi/issues/94))
 
 ### Fixed
