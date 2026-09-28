@@ -566,12 +566,15 @@ def warm_daily():
 
 
 def languages(ws):
-    """The languages the wikis are in, most wikis first: ``[{code, wikis}]``."""
+    """The languages the wikis are in, most wikis first: ``[{code, wikis,
+    name}]``, ``name`` the language's name in itself where the server knows
+    it (interlang's table, with the ones a browser cannot name: Yiddish),
+    else "" for the browser to say."""
     n = {}
     for w in ws:
         n[w["language"]] = n.get(w["language"], 0) + 1
     return [
-        {"code": c, "wikis": k}
+        {"code": c, "wikis": k, "name": _srv._LANG_NATIVE_NAMES.get(c, "")}
         for c, k in sorted(n.items(), key=lambda x: (-x[1], x[0]))
     ]
 

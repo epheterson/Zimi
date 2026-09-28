@@ -16,6 +16,7 @@ const vm = require('vm');
 const root = path.join(__dirname, '..', 'zimi', 'static');
 const page = fs.readFileSync(path.join(root, 'wiki.html'), 'utf8').replace(/\r\n/g, '\n');
 const src = fs.readFileSync(path.join(root, 'app.js'), 'utf8').replace(/\r\n/g, '\n');
+const reader = fs.readFileSync(path.join(root, 'wiki-reader.js'), 'utf8').replace(/\r\n/g, '\n');
 let failures = 0;
 function ok(label, cond, detail) {
   console.log((cond ? 'PASS  ' : 'FAIL  ') + label + (detail ? '  ' + detail : ''));
@@ -34,11 +35,10 @@ vm.runInContext([
   "var STR = { lang: 'en', results_one: '{n} result', results_other: '{n} results', search_heading: '“{q}”' };",
   extract(page, /function dayStamp\(d\) \{[^\n]*\n/, 'dayStamp'),
   extract(page, /function pillLabels\(wikis\) \{[\s\S]*?\n\}/, 'pillLabels'),
-  extract(page, /var ENDONYMS = [^\n]*\n/, 'ENDONYMS'),
   extract(page, /var RTL_LANGS = [^\n]*\n/, 'RTL_LANGS'),
   extract(page, /function dirOf\(code\) \{[^\n]*\n/, 'dirOf'),
-  extract(page, /function capitalised\(name, code\) \{[^\n]*\n/, 'capitalised'),
-  extract(page, /function endonym\(code, fallback\) \{[\s\S]*?\n\}/, 'endonym'),
+  // One way to name a language in itself: the shell's, which the page asks for.
+  extract(src, /function _langEndonym\(code, own, fallback\) \{[\s\S]*?\n\}/, '_langEndonym'),
   extract(page, /function inLanguage\(wikis, lang\) \{[^\n]*\n/, 'inLanguage'),
   extract(page, /function heroOf\(wikis\) \{[\s\S]*?\n\}/, 'heroOf'),
   extract(page, /function continuedIn\(places, lang, by\) \{[\s\S]*?\n\}/, 'continuedIn'),
@@ -92,9 +92,18 @@ const kept = [
 ];
 ok('recent trails: those that started in the language shown, of two steps or more', ctx.trailsIn(kept, 'en', by).length === 1 && ctx.trailsIn(kept, 'ar', by)[0].ts === 2);
 ok('how long ago, in the interface\'s words', ctx.ago(0, 2 * 3600 * 1000 + 5) === '2 hr. ago' && ctx.ago(0, 3 * 86400 * 1000) === '3 days ago');
-ok('a language is named in itself', ctx.endonym('fr', 'French') === 'Français' && ctx.endonym('he', 'Hebrew') === 'עברית');
-ok('a language the browser cannot name in itself takes the interface\'s name, capitalised', ctx.endonym('zz', 'zed') === 'Zed');
-ok('Yiddish is named in itself even where the browser cannot', ctx.endonym('yi', 'yiddish') === 'ייִדיש');
+ok('a language is named in itself', ctx._langEndonym('fr', '', 'French') === 'Français' && ctx._langEndonym('he', undefined, 'Hebrew') === 'עברית');
+ok('a language the browser cannot name in itself takes the interface\'s name, capitalised', ctx._langEndonym('zz', '', 'zed') === 'Zed');
+ok('the server\'s name comes first: Yiddish is named in itself even where the browser cannot', ctx._langEndonym('yi', 'ייִדיש', 'yiddish') === 'ייִדיש');
+{
+  // A browser that cannot name Yiddish in itself answers in English.
+  const en = { Intl: { DisplayNames: function() { this.of = c => ({ yi: 'Yiddish' })[c] || c; } } };
+  vm.createContext(en);
+  vm.runInContext(extract(src, /function _langEndonym\(code, own, fallback\) \{[\s\S]*?\n\}/, '_langEndonym'), en);
+  ok('a browser answering in English is not taken for the language\'s own name', en._langEndonym('yi', '', 'x') === 'X' && en._langEndonym('yi', 'ייִדיש') === 'ייִדיש');
+}
+ok('the page names languages with the shell\'s, given the server\'s name (/wiki/home)', /function endonym\(code, fallback\) \{\n\s*var own = \(_langs\.filter\(function\(l\) \{ return l\.code === code; \}\)\[0\] \|\| \{\}\)\.name;\n\s*try \{ return window\.parent\._langEndonym\(code, own, fallback\); \}/.test(page) && !/ENDONYMS|DisplayNames/.test(page));
+ok('and so does Zimipedia\'s reader', /_langEndonym\(l\.lang, l\.name\)/.test(reader) && !/DisplayNames/.test(reader));
 ok('the page is laid out in the direction of the language it shows', ctx.dirOf('he') === 'rtl' && ctx.dirOf('yi') === 'rtl' && ctx.dirOf('ar') === 'rtl' && ctx.dirOf('fr-CA') === 'ltr' && ctx.dirOf('en') === 'ltr');
 ok('a count in the interface\'s plural forms', ctx.plural(1) === '1 result' && ctx.plural(3) === '3 results');
 vm.runInContext("STR = { lang: 'ru', results_one: '{n} результат', results_few: '{n} результата', results_many: '{n} результатов', results_other: '{n} результата' };", ctx);
@@ -120,7 +129,10 @@ ok('a day\'s picks are kept for the day, so a return is instant and no pick chan
 ok('Today is a front door: the day\'s article, where you were, the trails; nothing of 1.11\'s front page',
   /var PARTS = \['picks'\];/.test(page) && /'&parts=picks&zim='/.test(page) && !/otdHtml|dykHtml|potdHtml|frontItems|rabbit/.test(page));
 ok('where you were is Saved\'s, Zimipedia\'s own, and a change anywhere redraws it', /S\.continued\(\{ app: 'wiki' \}\)/.test(page) && /window\.__saved = function\(\) \{ if \(!_q\) drawYours\(\); \};/.test(page));
-ok('a recent trail goes back in with the trail as it was', /sessionStorage\.setItem\(TRAIL_KEY, JSON\.stringify\(_trailsShown\[\+k\]\.items\)\)/.test(page) && /var TRAIL_KEY = 'zimi_wiki_trail';/.test(page));
+ok('a recent trail goes back in with the trail as it was', /window\.parent\._wikiTrailResume\(_trailsShown\[\+k\]\.items\)/.test(page) && /function keptTrails\(\) \{ try \{ return window\.parent\._wikiTrailsKept\(\) \|\| \[\]; \}/.test(page));
+ok('the trails\' keys are the shell\'s (SK), written nowhere else', /WIKI_TRAIL: 'zimi_wiki_trail',\n\s*WIKI_TRAILS: 'zimi_wiki_trails',/.test(src) && src.split("'zimi_wiki_trail").length === 3 &&
+  !/zimi_wiki_trail/.test(page) && !/zimi_wiki_trail/.test(reader) && /_getSessionJSON\(SK\.WIKI_TRAIL, \[\]\)/.test(reader));
+ok('a mini is the server\'s word for it (its flavour), not the file name read again', /mini = info\.flavour === 'mini';/.test(reader) && !/_wikiIsMini|_mini\(\?:/.test(reader));
 ok('only answers with something in them are kept in this browser', /if \(!keep\) return;/.test(page) && /if \(hasContent\(_got\[p\]\[n\]\)\) store\[p\]\[n\]/.test(page));
 ok('a failed ask is asked again on the next view', /if \(hero && \(_failed\[hero\] \|\| _got\.picks\[hero\] === undefined\)\)/.test(page));
 ok('the language is remembered in this browser, and the whole page follows it', /var LANG_KEY = 'zimi_wiki_lang';/.test(page) && /try \{ localStorage\.setItem\(LANG_KEY, code\); \} catch \(e\) \{\}/.test(page) && /_lang = code; _sel = \[\];/.test(page));

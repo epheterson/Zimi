@@ -548,7 +548,10 @@ def test_today_answers_for_the_wikis_named_and_home_carries_what_is_known(
 def test_today_shows_one_language_chosen_by_the_reader_then_english_then_the_most():
     W = lambda lang: {"language": lang}  # noqa: E731
     ws = [W("he"), W("he"), W("fr"), W("en")]
-    assert wiki.languages(ws)[0] == {"code": "he", "wikis": 2}
+    assert wiki.languages(ws)[0] == {"code": "he", "wikis": 2, "name": "עברית"}
+    # Named in itself by the server where a browser cannot (the page's pills).
+    assert wiki.languages([W("yi")])[0]["name"] == "ייִדיש"
+    assert wiki.languages([W("xx")])[0]["name"] == ""
     assert wiki.choose_language(ws, "fr") == "fr"
     assert wiki.choose_language(ws, "fr-CA") == "fr"  # a region is its language
     assert wiki.choose_language(ws, "de") == "en"  # no German wiki: English

@@ -126,6 +126,11 @@ var SK = {
   // How Zimipedia's reader reads articles in this browser: {size (px), lh and
   // margin (indexes into _READING_LEADINGS / _READING_MARGINS)}.
   WIKI_PREFS: 'zimi_wiki_prefs',
+  // Zimipedia's trails: this tab's (SESSION-scoped: the articles you came
+  // through, one link at a time) and the recent ones in this browser, which
+  // its front door lists (_wikiTrailsKept, _wikiTrailResume).
+  WIKI_TRAIL: 'zimi_wiki_trail',
+  WIKI_TRAILS: 'zimi_wiki_trails',
   // Whole-app theme: 'auto' (follow prefers-color-scheme, dark fallback) |
   // 'dark' | 'light'. Default auto. Read/written via _appTheme/_setAppTheme;
   // the head bootstrap in index.html stamps the resolved value pre-paint.
@@ -7817,6 +7822,26 @@ var _LANG3_NAMES = {
   sgs:'Samogitian',alt:'Southern Altai',mhr:'Eastern Mari',frp:'Arpitan',
   udm:'Udmurt',crh:'Crimean Tatar',nqo:"N'Ko",ang:'Old English'
 };
+// A language named in itself (עברית, Français, ייִדיש), which is how a
+// reader finds their own: `own`, the server's name for it (interlang's
+// _LANG_NATIVE_NAMES, which knows the ones a browser cannot name in
+// themselves), else the browser's; else `fallback` (the interface's name),
+// else the code. Capitalised as the language writes it. Zimipedia's reader
+// and its front door (wiki.html, through window.parent) both name languages
+// with it.
+function _langEndonym(code, own, fallback) {
+  var name = own && own !== code ? own : '';
+  if (!name) {
+    try {
+      var self = new Intl.DisplayNames([code], { type: 'language' }).of(code) || '';
+      var english = new Intl.DisplayNames(['en'], { type: 'language' }).of(code) || '';
+      // A browser that does not speak the language answers in English.
+      if (self && self !== code && (code === 'en' || self !== english)) name = self;
+    } catch (e) {}
+  }
+  name = name || fallback || code;
+  try { return name.charAt(0).toLocaleUpperCase(code) + name.slice(1); } catch (e) { return name; }
+}
 function _langDisplayName(code) {
   if (!code) return '';
   var uiLang = _currentLang || 'en';
@@ -17171,6 +17196,11 @@ function openWiki(replaceState) {
   _wikiReaderLoad();
 }
 function _wikiSearch(val) { _appFrameCall('wikiSearch', val); }
+// Zimipedia's trails, for its front door (wiki.html asks through
+// window.parent): the recent ones, and taking one up again as this tab's,
+// so the reader goes on from there. Its reader (wiki-reader.js) walks them.
+function _wikiTrailsKept() { return _getStorageJSON(SK.WIKI_TRAILS, []) || []; }
+function _wikiTrailResume(items) { try { sessionStorage.setItem(SK.WIKI_TRAIL, JSON.stringify(items || [])); } catch (e) {} }
 
 // ── Zimipedia's reader ──
 // A wiki's article read in Zimipedia's reader: Reader View laid out as an
