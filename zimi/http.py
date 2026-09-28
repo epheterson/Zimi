@@ -2314,6 +2314,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # that answers 0 about a library of 73 is worse than no health
                 # check at all.
                 zim_count = _srv.server_zim_count()
+                from zimi.p2p import is_offline as _is_offline
                 return self._json(
                     200,
                     {
@@ -2322,6 +2323,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                         "asset_version": _asset_version(),
                         "zim_count": zim_count,
                         "pdf_support": _srv.HAS_PYMUPDF,
+                        # ZIMI_OFFLINE: the reader says a link to the web
+                        # needs the internet rather than opening a dead tab.
+                        "offline": _is_offline(),
                     },
                 )
 

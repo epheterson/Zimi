@@ -214,6 +214,7 @@ function openP(zim, page) {
     var n = countComments(d.comments);
     document.getElementById('p-ch').textContent = count(n, STR.comment, STR.comments);
     document.getElementById('p-comments').innerHTML = (d.comments || []).map(commentHtml).join('');
+    markLinks(v);
   }).catch(function() { document.getElementById('p-title').textContent = STR.none; });
 }
 function closeP(silent) {

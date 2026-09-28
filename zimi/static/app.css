@@ -1370,6 +1370,22 @@
   .zimi-ctx-item { padding: 8px 14px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
   .zimi-ctx-item:hover { background: var(--hover); }
   .zimi-ctx-item .ctx-key { margin-inline-start: auto; font-size: 11px; color: var(--text2); }
+  /* ── Where a link to the web goes (#99): beside the link, over the frame ── */
+  .ext-sheet {
+    position: fixed; z-index: 10002; display: none;
+    max-width: min(320px, calc(100vw - 16px)); padding: 10px 12px;
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: var(--shadow-popup);
+    color: var(--text); font-size: 13px; line-height: 1.4;
+  }
+  .ext-sheet.open { display: block; }
+  .ext-sheet-where { display: flex; align-items: flex-start; gap: 8px; }
+  .ext-sheet-where svg { flex: none; width: 13px; height: 13px; margin-top: 3px; color: var(--text2); }
+  [dir="rtl"] .ext-sheet-where svg { transform: scaleX(-1); }
+  .ext-sheet-where bdi { font-weight: 600; overflow-wrap: anywhere; }
+  .ext-sheet-note { color: var(--text2); margin: 4px 0 0; padding-inline-start: 21px; }
+  .ext-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding-inline-start: 21px; }
+  @media (pointer: coarse) { .ext-sheet { font-size: 14px; } }
   /* ── Word lookup (Define) popover ── */
   .define-popover {
     position: fixed; z-index: 10001; display: none;
