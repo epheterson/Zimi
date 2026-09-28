@@ -305,6 +305,30 @@ def test_what_a_zim_feeds_rides_the_list_and_the_cache(tmp_path, monkeypatch):
     assert len(calls) == 2, "the backfill was not written down"
 
 
+def test_what_a_zim_feeds_is_decided_again_under_a_newer_rule(tmp_path, monkeypatch):
+    """Stamped with the version of the rules that decided it, as a ZIM's
+    kind is: a rule _zim_feeds learns later reaches the ZIMs already in the
+    cache, once. Before, a record with any feeds at all was never read
+    again."""
+    _library(tmp_path, monkeypatch, [_water()])
+    with open(srv._cache_file_path(), encoding="utf-8") as f:
+        rec = json.load(f)["files"]["zimgit-water_en_2024-08.zim"]
+    assert rec["feeds"] == {"books": "nautilus"}
+    assert rec["feeds_v"] == srv.FEEDS_VERSION
+    calls = []
+    real = srv._read_zim_feeds
+    monkeypatch.setattr(
+        srv, "_read_zim_feeds", lambda *a: calls.append(a[0]) or real(*a)
+    )
+    srv.load_cache(force=False)
+    assert calls == []
+    monkeypatch.setattr(srv, "FEEDS_VERSION", srv.FEEDS_VERSION + 1)
+    srv.load_cache(force=False)
+    assert len(calls) == 1
+    srv.load_cache(force=False)
+    assert len(calls) == 1, "the newer version was not written down"
+
+
 # ── Zimi's own folder ZIMs ─────────────────────────────────────────────────
 
 

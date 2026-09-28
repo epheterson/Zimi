@@ -1926,6 +1926,9 @@ WHOLE_BOOK_NAMES = frozenset(
 # Bumped when _zim_kind learns a new kind, so a cache record decided under an
 # older rule ("" for a TED ZIM) is read once more.
 KIND_VERSION = 6
+# The same for _zim_feeds: bumped when it learns a rule, so what a cached
+# ZIM feeds is decided again, once. A record from before the stamp is 1.
+FEEDS_VERSION = 1
 
 
 def _wiki_project(meta_name, name=""):
@@ -3495,13 +3498,15 @@ def load_cache(force=False):
                 if project is not None:
                     cached["project"] = project
                     kind_backfilled = True
-            if "feeds" not in cached:
-                # A record from before a ZIM could feed two apps.
+            if "feeds" not in cached or int(cached.get("feeds_v") or 1) < FEEDS_VERSION:
+                # A record from before a ZIM could feed two apps, or from
+                # before _zim_feeds's latest rule.
                 feeds = _read_zim_feeds(
                     path, cached.get("kind") or "", cached.get("project") or ""
                 )
                 if feeds is not None:
                     cached["feeds"] = feeds
+                    cached["feeds_v"] = FEEDS_VERSION
                     kind_backfilled = True
             entry = {
                 "name": name,
@@ -3626,6 +3631,7 @@ def load_cache(force=False):
                 new_cached["project"] = entry["project"]
             # Always, {} included: a ZIM that feeds no other app is decided.
             new_cached["feeds"] = entry.get("feeds") or {}
+            new_cached["feeds_v"] = FEEDS_VERSION
             if entry.get("map_search"):
                 new_cached["map_search"] = True
             # A map's ground and publisher, null included: a map whose config
