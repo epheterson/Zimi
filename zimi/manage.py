@@ -2107,6 +2107,9 @@ CREATE_BLOCK_ADS = True
 # would be offering a switch over nothing. Mirrors the gate in
 # renderer.RenderedSession._record_variants, pinned by a test.
 CREATE_VARIANT_ENGINES = ("alive",)
+# The engines whose pages Zimi writes, so "Remove links to other sites" can
+# reach them. alive and zimit hand back an archive another program packaged.
+CREATE_UNLINK_ENGINES = ("builtin", "rendered", "singlefile")
 # What the variant sweep does when the form says nothing. Mirrors
 # renderer.VARIANT_SWEEP_DEFAULT — checked by default, so silence means the
 # field never rendered rather than "the admin unticked it".
@@ -2946,6 +2949,11 @@ def _create_validate(data):
                 data.get("capture_variants"),
                 _create_default("capture_variants", CREATE_CAPTURE_VARIANTS),
             )
+        # "Remove links to other sites" (#99), off unless ticked. Only where
+        # Zimi writes the pages itself: an alive or zimit capture's links are
+        # rewritten at replay, so the box would promise what it cannot do.
+        if _create_unlink_engine(opts["engine"]):
+            opts["strip_links"] = _create_bool(data.get("strip_links"), False)
     if mode == "site":
         # Any number, and 0 for none: the byte budget bounds the capture. A
         # negative is a typo, not "no limit", so it falls back to the default.
@@ -3117,6 +3125,12 @@ def _create_variant_engine(engine):
     return str(engine or "").strip().lower() in CREATE_VARIANT_ENGINES
 
 
+def _create_unlink_engine(engine):
+    """Whether the chosen engine writes the pages itself, so links to other
+    sites can be left out of them. ``None`` is the fast engine, which does."""
+    return (str(engine or "").strip().lower() or "builtin") in CREATE_UNLINK_ENGINES
+
+
 def _create_bool(value, default):
     """A checkbox that is CHECKED by default, read as a real bool.
 
@@ -3180,7 +3194,7 @@ def _create_run(job, opts):
             register=True,
             progress=job.note,
             **_create_kwargs(
-                opts, "language", "engine", "block_ads", "capture_variants"
+                opts, "language", "engine", "block_ads", "capture_variants", "strip_links"
             ),
         )
     if job.mode == "site":
@@ -3211,6 +3225,7 @@ def _create_run(job, opts):
                 "engine",
                 "block_ads",
                 "capture_variants",
+                "strip_links",
             ),
         )
     if job.mode == "video":
@@ -5299,6 +5314,12 @@ def handle_manage_get(handler, parsed, params):
             {"enabled": bool(shown), "shown": [n for n in _srv.APP_NAMES if n in shown], "env_locked": _srv._apps_env() is not None},
         )
 
+    elif parsed.path == "/manage/books/whole":
+        # The ZIMs put on the Bookshelf as one book, or taken off it, by hand.
+        from zimi import books as _books
+
+        return handler._json(200, {"zims": _books._whole_overrides()})
+
     elif parsed.path == "/manage/catalog-streetzim":
         # StreetZim's regions, from the Internet Archive, for the toggle in
         # the Maps category. Cached and served stale while a refresh runs.
@@ -6246,6 +6267,22 @@ def handle_manage_post(handler, parsed, data):
         shown = _srv.apps_shown()
         log.info("Apps offered: %s", ", ".join(n for n in _srv.APP_NAMES if n in shown) or "none")
         return handler._json(200, {"enabled": enabled, "shown": [n for n in _srv.APP_NAMES if n in shown], "env_locked": False})
+
+    elif parsed.path == "/manage/books/whole":
+        # A ZIM that is one book (a textbook captured whole) onto the
+        # Bookshelf: {"zim": name, "whole": true}; false takes a ZIM off
+        # the shelf, null leaves it to what it is.
+        from zimi import books as _books
+
+        name = data.get("zim")
+        whole = data.get("whole")
+        if not isinstance(name, str) or name not in _srv.get_zim_files():
+            return handler._json(404, {"error": "No such ZIM"})
+        if whole not in (True, False, None):
+            return handler._json(400, {"error": "whole is true, false or null"})
+        reader = _books.set_whole(name, whole)
+        log.info("Bookshelf: %s set by hand to %s", name, whole)
+        return handler._json(200, {"zim": name, "whole": whole, "reader": reader})
 
     elif parsed.path == "/manage/app-update-channel":
         # Latest vs beta for the APP release check. Same env-lock contract

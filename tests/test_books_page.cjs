@@ -103,7 +103,12 @@ ok('Read opens the book in Zimi\'s reader, noted first for Continue reading', /n
 ok('the page keeps nothing of its own: places and the shelf are the shell\'s Saved', /function saved\(\) \{ try \{ return \(window\.parent !== window && window\.parent\.Saved\) \|\| null; \}/.test(apps) && !/localStorage/.test(page) && !/zimi_book_places/.test(page));
 ok('a change to what is kept redraws the page where it is', /e\.data\.zimi === 'saved'[\s\S]{0,200}window\.__saved\(\)/.test(apps) && /window\.__saved = function\(\) \{/.test(page) && /postMessage\(\{ zimi: 'saved' \}, location\.origin\)/.test(src));
 ok('the empty page is a door to the Books category', /category: 'gutenberg'/.test(page));
-ok('eras and subjects arrive without a reload once the records are read', /if \(_home\.total && !_home\.details\) setTimeout\(refreshHome, /.test(page));
+ok('eras and subjects arrive without a reload once the records are read', /if \(!_home\.details && \(_home\.total \|\| \(_home\.sources \|\| \[\]\)\.length\)\) setTimeout\(refreshHome, /.test(page));
+// A shelf of Wikisource or a document library alone is empty until its books
+// are read: it says they are coming, and fills when the first arrive.
+ok('an empty shelf still being read says the books are coming', /if \(!_home\.details && \(_home\.sources \|\| \[\]\)\.length\) \{ \$\('view'\)\.innerHTML = '<div class="empty">' \+ esc\(STR\.reading\)/.test(page) &&
+  /\(d\.total && !was\.total\)\) && cur\(\)\.v === 'home'\) show\(\);/.test(page) && /'books_load_part', 'books_reading'\]/.test(src));
+ok('a book of another family is opened by its "<zim>/<id>"', /onclick="readBook\(' \+ J\(b\.id\) \+ '\)"/.test(page) && /id: \/\^\\d\+\$\/\.test\(id\) \? Number\(id\) : id/.test(page));
 
 // ── the reader: a book opens in Reader View, keeps its place, steps by chapter
 const rctx = { document: { documentElement: { getAttribute: () => 'ltr' } } };
@@ -112,7 +117,8 @@ vm.runInContext([
   extract(src, /function _bookAuthorName\(creator\) \{[\s\S]*?\n\}/, '_bookAuthorName'),
 ].join('\n'), rctx);
 ok('a record\'s "Surname, Given, years" prints as a cover does', rctx._bookAuthorName('Ewald, Carl, 1856-1908') === 'Carl Ewald' && rctx._bookAuthorName('Virgil, 71 BCE-20 BCE') === 'Virgil' && rctx._bookAuthorName('') === '');
-ok('a Gutenberg page is known by its own record', /function _isBookDoc\(doc\) \{\n\s*try \{ return !!doc\.querySelector\('link\[rel="dcterms\.isFormatOf"\]\[href\*="gutenberg\.org"\]'\);/.test(src));
+ok('a Gutenberg page is known by its own record, an EPUB\'s chapters by theirs', /function _isBookDoc\(doc\) \{\n\s*try \{ return !!doc\.querySelector\('link\[rel="dcterms\.isFormatOf"\]\[href\*="gutenberg\.org"\],meta\[name="zimi-book"\]'\);/.test(src));
+ok('an EPUB\'s address is a book\'s before it loads', /if \(m && \/\\\.epub\\\/\$\/i\.test\(m\[2\]\)\) return true;/.test(src));
 ok('a book has no <main>: Reader View reads its body', /if \(!main && _isBookDoc\(doc\)\) main = doc\.body;/.test(src) && /return !!main && \(main !== doc\.body \|\| _isBookDoc\(doc\)\);/.test(src));
 ok('a book keeps its contents list in Reader View', /_isBookDoc\(doc\) \? 'script,style,link,noscript' : _READER_VIEW_STRIP/.test(src));
 ok('a book opens in Reader View, and the e-reader is set up before anything measures it', /var _wantReader = _readerViewOn \|\| _readerAuto\(\) \|\| _bookDoc;/.test(src) && /if \(_bookDoc && _readerViewOn\) \{\n\s*try \{ _bookOn = _bookAttach\(frame\);/.test(src));
@@ -131,7 +137,7 @@ ok('a link to a place in the book wins over the remembered place', /if \(tgtSec\
 ok('a right-to-left book turns the other way', /if \(rel < _BOOK_EDGE\) \{ turn\(bookRtl \? 1 : -1\); return; \}/.test(src));
 ok('chapters: the heading level with the most different headings', /hs\._n = Object\.keys\(distinct\)\.length;/.test(src));
 ok('the chapter arrows point the way the interface reads', /\(uiRtl \? pv : nx\)\.firstChild\.style\.transform = 'scaleX\(-1\)';/.test(src));
-ok('places are capped, the oldest dropped first', /var MAX = \{ items: \d+, lists: \d+, members: \d+, positions: \d+, gone: \d+ \};/.test(src) && /cap\(s\.positions, MAX\.positions, recTs\);/.test(src));
+ok('places are capped, the oldest dropped first', /var MAX = \{ items: \d+, lists: \d+, members: \d+, positions: \d+, highlights: \d+, gone: \d+ \};/.test(src) && /cap\(s\.positions, MAX\.positions, recTs\);/.test(src));
 
 // A layout that throws is taken back off the page, and the document is not
 // marked done, so the next load of it tries again.

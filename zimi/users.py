@@ -592,7 +592,7 @@ def touch_federated_user(name, identity):
 # never reach here — their bookmarks stay in the browser (see http.py's gate).
 
 #: 2 (1.12): the blob carries ``saved``, the one store for everything kept
-#: (items, lists, memberships, positions and their tombstones), merged on every
+#: (items, lists, memberships, positions, highlights and their tombstones), merged on every
 #: write rather than replaced. bookmarks/folders stay readable for one release.
 _USERDATA_VERSION = 2
 #: Hard ceiling per blob so one account can't fill the disk (server-side twin of
@@ -602,7 +602,7 @@ _USERDATA_MAX_BYTES = 4 * 1024 * 1024
 # ── Saved: the account's copy of the store (app.js's Saved is the twin) ──
 # Every record carries ts (ms); the newer copy of a record wins, a tie keeps
 # the kept one. A deletion leaves a tombstone in ``gone`` (i:item, l:list,
-# m:membership, p:position) that removes any copy as old or older, so a delete
+# m:membership, p:position, h:highlight) that removes any copy as old or older, so a delete
 # on one device survives the next sync from another. Tombstones are forgotten
 # after _SAVED_GONE_MS. Nothing from the client is trusted: every record is
 # rebuilt from the fields it may have, and an item's key must be the one its
@@ -615,12 +615,14 @@ _SAVED_COLLS = (
     ("lists", "l:"),
     ("members", "m:"),
     ("positions", "p:"),
+    ("highlights", "h:"),
 )
 _SAVED_MAX = {
     "items": 5000,
     "lists": 500,
     "members": 20000,
     "positions": 1000,
+    "highlights": 2000,
     "gone": 10000,
 }
 _SAVED_GONE_MS = 90 * 86400 * 1000
@@ -632,7 +634,12 @@ _SAVED_SMALL_KEYS = 16
 _SAVED_SMALL_KEY_MAX = 32
 _SAVED_SMALL_VAL_MAX = 1000
 _SAVED_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
-_SAVED_GONE_RE = re.compile(r"^[ilmp]:.", re.S)
+_SAVED_GONE_RE = re.compile(r"^[ilmph]:.", re.S)
+# A highlight's colours (the first the default), its quote, context and note.
+_SAVED_HL_COLORS = ("yellow", "green", "blue", "pink")
+_SAVED_HL_QUOTE_MAX = 600
+_SAVED_HL_CONTEXT_MAX = 64
+_SAVED_HL_NOTE_MAX = 2000
 
 
 def _saved_empty():
@@ -642,6 +649,7 @@ def _saved_empty():
         "lists": {},
         "members": {},
         "positions": {},
+        "highlights": {},
         "gone": {},
         "legacy": False,
     }
@@ -729,6 +737,63 @@ def _saved_thing(r, id_):
     return out if _saved_key(out) == id_ else None
 
 
+def _saved_highlight(r, id_):
+    """A highlight rebuilt from what it may carry (the page, the quote and
+    its context, where it starts, its colour and note); None if it is not
+    one."""
+    if (
+        not isinstance(r, dict)
+        or not isinstance(id_, str)
+        or not _SAVED_ID_RE.match(id_)
+    ):
+        return None
+    ts, pos, n, added = (_saved_num(r.get(f)) for f in ("ts", "pos", "n", "added"))
+    zim, path, exact = r.get("zim"), r.get("path"), r.get("exact")
+    if not isinstance(zim, str) or not zim or len(zim) > _SAVED_ZIM_MAX:
+        return None
+    if (
+        not isinstance(path, str)
+        or not path
+        or len(path) > _SAVED_PATH_MAX
+        or ts is None
+    ):
+        return None
+    if not isinstance(exact, str) or not exact:
+        return None
+
+    def text(f, most):
+        v = r.get(f)
+        return v[:most] if isinstance(v, str) else ""
+
+    out = {
+        "zim": zim,
+        "path": path,
+        "kind": r.get("kind") if r.get("kind") in _SAVED_KINDS else "article",
+        "title": text("title", _SAVED_TITLE_MAX),
+        "exact": exact[:_SAVED_HL_QUOTE_MAX],
+        "prefix": text("prefix", _SAVED_HL_CONTEXT_MAX),
+        "suffix": text("suffix", _SAVED_HL_CONTEXT_MAX),
+        "pos": 0 if pos is None else max(0, min(1, pos)),
+        "color": (
+            r.get("color")
+            if r.get("color") in _SAVED_HL_COLORS
+            else _SAVED_HL_COLORS[0]
+        ),
+        "added": _saved_round(ts if added is None else added),
+        "ts": _saved_round(ts),
+    }
+    if r.get("app") in _SAVED_APPS:
+        out["app"] = r["app"]
+    end = r.get("end")
+    if isinstance(end, str) and end and n is not None and n > 0:
+        out["end"] = end[:_SAVED_HL_QUOTE_MAX]
+        out["n"] = _saved_round(n)
+    note = r.get("note")
+    if isinstance(note, str) and note:
+        out["note"] = note[:_SAVED_HL_NOTE_MAX]
+    return out
+
+
 def _saved_order(r):
     if not isinstance(r, dict):
         return None
@@ -783,6 +848,10 @@ def _clean_saved(x):
         p = _saved_thing(r, id_) if isinstance(id_, str) else None
         if p:
             s["positions"][id_] = p
+    for id_, r in each(x.get("highlights")):
+        h = _saved_highlight(r, id_)
+        if h:
+            s["highlights"][id_] = h
     for g, ts in each(x.get("gone")):
         if (
             _saved_num(ts) is not None
@@ -812,6 +881,7 @@ def _saved_normalize(s, now_ms):
     _saved_cap(s["items"], _SAVED_MAX["items"], _saved_rec_ts)
     _saved_cap(s["lists"], _SAVED_MAX["lists"], _saved_rec_ts)
     _saved_cap(s["positions"], _SAVED_MAX["positions"], _saved_rec_ts)
+    _saved_cap(s["highlights"], _SAVED_MAX["highlights"], _saved_rec_ts)
     for mk in list(s["members"]):
         i = mk.find("\t")
         lid = mk[:i]

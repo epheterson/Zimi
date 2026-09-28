@@ -168,6 +168,7 @@ function openQ(zim, page) {
     }).join('');
     // A link to another question stays here.
     v.querySelectorAll('a[data-q]').forEach(function(a) { a.addEventListener('click', function(e) { e.preventDefault(); openQ(zim, a.getAttribute('data-q')); }); });
+    markLinks(v);
   }).catch(function() { document.getElementById('q-title').textContent = STR.none; });
 }
 function closeQ(silent) {

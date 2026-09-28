@@ -1370,6 +1370,22 @@
   .zimi-ctx-item { padding: 8px 14px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
   .zimi-ctx-item:hover { background: var(--hover); }
   .zimi-ctx-item .ctx-key { margin-inline-start: auto; font-size: 11px; color: var(--text2); }
+  /* ── Where a link to the web goes (#99): beside the link, over the frame ── */
+  .ext-sheet {
+    position: fixed; z-index: 10002; display: none;
+    max-width: min(320px, calc(100vw - 16px)); padding: 10px 12px;
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: var(--shadow-popup);
+    color: var(--text); font-size: 13px; line-height: 1.4;
+  }
+  .ext-sheet.open { display: block; }
+  .ext-sheet-where { display: flex; align-items: flex-start; gap: 8px; }
+  .ext-sheet-where svg { flex: none; width: 13px; height: 13px; margin-top: 3px; color: var(--text2); }
+  [dir="rtl"] .ext-sheet-where svg { transform: scaleX(-1); }
+  .ext-sheet-where bdi { font-weight: 600; overflow-wrap: anywhere; }
+  .ext-sheet-note { color: var(--text2); margin: 4px 0 0; padding-inline-start: 21px; }
+  .ext-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding-inline-start: 21px; }
+  @media (pointer: coarse) { .ext-sheet { font-size: 14px; } }
   /* ── Word lookup (Define) popover ── */
   .define-popover {
     position: fixed; z-index: 10001; display: none;
@@ -1404,6 +1420,52 @@
     color: var(--amber); cursor: pointer; text-decoration: none;
   }
   .define-card .define-open:hover { text-decoration: underline; }
+  /* ── Highlights: the selection bar and the note card (highlights.js) ──
+     The four colours are the page's own highlight colours at full strength. */
+  .hl-c-yellow { background: #ffcc00; } .hl-c-green { background: #34c759; }
+  .hl-c-blue { background: #409cff; } .hl-c-pink { background: #ff4081; }
+  .hl-bar {
+    position: fixed; z-index: 10001; display: none; align-items: center; gap: 2px; padding: 4px;
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--shadow-popup); color: var(--text); font-size: 13px;
+    max-width: calc(100vw - 16px); -webkit-user-select: none; user-select: none;
+  }
+  .hl-bar.open { display: flex; }
+  .hl-bar button {
+    display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; min-width: 38px;
+    padding: 0 10px; border: 0; border-radius: 8px; background: none; color: inherit;
+    font: inherit; font-weight: 500; cursor: pointer; white-space: nowrap; -webkit-tap-highlight-color: transparent;
+  }
+  .hl-bar button.hl-icon, .hl-bar button.hl-swatch { padding: 0; width: 38px; }
+  .hl-bar button:hover, .hl-bar button:focus-visible { color: var(--amber); background: var(--amber-glow); outline: none; }
+  .hl-bar svg { width: 17px; height: 17px; flex-shrink: 0; }
+  .hl-swatches { display: flex; }
+  .hl-swatch span { width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.18); }
+  .hl-swatch[aria-pressed="true"] span { box-shadow: 0 0 0 2px var(--card-bg), 0 0 0 4px var(--text); }
+  .hl-sep { width: 1px; align-self: stretch; margin: 6px 3px; background: var(--border); }
+  /* The note card sits near the top: on a phone the keyboard takes the bottom. */
+  .hl-note {
+    position: fixed; z-index: 10002; display: none; flex-direction: column; gap: 10px;
+    top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
+    width: min(440px, calc(100vw - 24px)); padding: 14px;
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px;
+    box-shadow: var(--shadow-popup); color: var(--text);
+  }
+  .hl-note.open { display: flex; }
+  .hl-note-quote {
+    padding-inline-start: 10px; border-inline-start: 3px solid var(--hl-c, #ffcc00); color: var(--text2);
+    font-size: 13px; line-height: 1.45; overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  }
+  .hl-b-yellow { --hl-c: #ffcc00; } .hl-b-green { --hl-c: #34c759; } .hl-b-blue { --hl-c: #409cff; } .hl-b-pink { --hl-c: #ff4081; }
+  /* 16px: iOS does not zoom the page into a field this size. */
+  .hl-note-text {
+    min-height: 96px; resize: vertical; padding: 10px; font: inherit; font-size: 16px; line-height: 1.4;
+    color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 10px;
+  }
+  .hl-note-text:focus { outline: 2px solid var(--amber-border); border-color: var(--amber); }
+  .hl-note-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .hl-note-actions .pill { min-height: 36px; padding: 0 16px; }
   /* ── Library health report ── */
   .library-health:empty { display: none; }
   .library-health { margin-top: 12px; }
@@ -2907,6 +2969,11 @@
   .bm-missing .bm-bicon { opacity: 0.4; }
   .bm-missing .bm-name { color: var(--text2); font-style: italic; }
   .bm-missing .bm-sub { color: var(--error); }
+  /* A highlight: its colour as a bar, its passage over two lines. */
+  .bm-hl-bar { flex-shrink: 0; width: 3px; align-self: stretch; border-radius: 2px; margin: 2px 2px 2px 0; }
+  .bm-hl .bm-name { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.35; }
+  .bm-hl-lost .bm-name { color: var(--text2); }
+  .bm-hl-lost .bm-sub { color: var(--amber); }
   .bm-count {
     flex-shrink: 0; font-size: 11px; color: var(--text2); background: var(--surface2);
     border-radius: 10px; padding: 1px 7px; min-width: 20px; text-align: center;

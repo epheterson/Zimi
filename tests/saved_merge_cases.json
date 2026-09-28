@@ -144,6 +144,48 @@
         "items": {"w\nA/Ok": {"kind": "article", "zim": "w", "path": "A/Ok", "title": "Ok", "where": {"s": "History"}, "added": 1000, "ts": 1000}},
         "lists": {"ok1": {"name": "Fine", "order": 2, "ts": 5}}
       }
+    },
+    {
+      "name": "a highlight deleted on one device stays deleted after the other device's sync",
+      "now": 3000,
+      "a": {"gone": {"h:h_1": 2000}},
+      "b": {"highlights": {"h_1": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "yellow", "added": 1000, "ts": 1000}}},
+      "expect": {"gone": {"h:h_1": 2000}}
+    },
+    {
+      "name": "and the other way round, beside a highlight the deleting device never had",
+      "now": 3000,
+      "a": {"highlights": {"h_1": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "yellow", "added": 1000, "ts": 1000}, "h_2": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "lazy dog", "prefix": "once", "suffix": "jumped", "pos": 0.5, "color": "yellow", "added": 1000, "ts": 1000}}},
+      "b": {"gone": {"h:h_1": 2000}},
+      "expect": {"highlights": {"h_2": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "lazy dog", "prefix": "once", "suffix": "jumped", "pos": 0.5, "color": "yellow", "added": 1000, "ts": 1000}}, "gone": {"h:h_1": 2000}}
+    },
+    {
+      "name": "a note written later wins over the older copy of the highlight",
+      "now": 3000,
+      "a": {"highlights": {"h_1": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "yellow", "added": 1000, "ts": 1000}}},
+      "b": {"highlights": {"h_1": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "green", "added": 1000, "ts": 1500, "note": "why it matters"}}},
+      "expect": {"highlights": {"h_1": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "green", "added": 1000, "ts": 1500, "note": "why it matters"}}}
+    },
+    {
+      "name": "a highlight changed after its delete on another device outlives the tombstone",
+      "now": 3000,
+      "a": {"gone": {"h:h_1": 1500}},
+      "b": {"highlights": {"h_1": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "pink", "added": 1000, "ts": 2000}}},
+      "expect": {"highlights": {"h_1": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "pink", "added": 1000, "ts": 2000}}}
+    },
+    {
+      "name": "removing a page from Saved keeps its highlights",
+      "now": 3000,
+      "a": {"gone": {"i:w\nA/X": 2000}},
+      "b": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}}, "highlights": {"h_1": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "yellow", "added": 1000, "ts": 1000}}},
+      "expect": {"highlights": {"h_1": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "yellow", "added": 1000, "ts": 1000}}, "gone": {"i:w\nA/X": 2000}}
+    },
+    {
+      "name": "a highlight's shape is never trusted: an id that is not one, no quote, no time, an unknown colour, a place past the page",
+      "now": 3000,
+      "a": {},
+      "b": {"highlights": {"no spaces": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "yellow", "added": 1000, "ts": 1000}, "h_noquote": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "yellow", "added": 1000, "ts": 1000}, "h_nots": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "yellow", "added": 1000}, "h_ok": {"zim": "w", "path": "A/X", "kind": "spaceship", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 7, "color": "plaid", "added": 1000, "ts": 1000, "app": "nope", "note": 5, "end": "tail only", "extra": "dropped"}, "h_long": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "yellow", "added": 1000, "ts": 1000, "end": "and the end", "n": 812.4}}, "gone": {"h:h_old": 2500, "q:bad": 5}},
+      "expect": {"highlights": {"h_ok": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 1, "color": "yellow", "added": 1000, "ts": 1000}, "h_long": {"zim": "w", "path": "A/X", "kind": "article", "title": "X", "exact": "the quick brown fox", "prefix": "once", "suffix": "jumped", "pos": 0.25, "color": "yellow", "added": 1000, "ts": 1000, "end": "and the end", "n": 812}}, "gone": {"h:h_old": 2500}}
     }
   ]
 }

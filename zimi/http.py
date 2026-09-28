@@ -844,6 +844,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("almanac-orrery.js")
             + _static_hash("almanac-sky.js")
             + _static_hash("almanac-earth.js")
+            + _static_hash("highlights.js")
             + _static_hash("tube.html")
             + _static_hash("exchange.html")
             + _static_hash("reddot.html")
@@ -2315,6 +2316,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # that answers 0 about a library of 73 is worse than no health
                 # check at all.
                 zim_count = _srv.server_zim_count()
+                from zimi.p2p import is_offline as _is_offline
                 return self._json(
                     200,
                     {
@@ -2323,6 +2325,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                         "asset_version": _asset_version(),
                         "zim_count": zim_count,
                         "pdf_support": _srv.HAS_PYMUPDF,
+                        # ZIMI_OFFLINE: the reader says a link to the web
+                        # needs the internet rather than opening a dead tab.
+                        "offline": _is_offline(),
                     },
                 )
 
@@ -3310,6 +3315,41 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(msg)
 
+    def _serve_epub_part(self, zim_name, entry_path):
+        """``/w/<zim>/<book>.epub/`` (the book's chapters as one page, which
+        the reader opens like any book) and ``/w/<zim>/<book>.epub/<file>``
+        (a picture or a stylesheet inside it), from zimi.epub. False when the
+        path is not inside an EPUB of this ZIM, for the ordinary lookup."""
+        from zimi import epub as _epub
+
+        got = _epub.respond(zim_name, entry_path)
+        if got is None:
+            return False
+        mimetype, content = got
+        if content is None:
+            self._json(404, {"error": "not in this book"})
+            return True
+        self.send_response(200)
+        self.send_header("Content-Type", mimetype)
+        self.send_header("Cache-Control", f"private, max-age={ZIM_CONTENT_MAX_AGE}")
+        self.send_header("Vary", "Sec-Fetch-Dest")
+        # On every answer, not only the page: an SVG inside the book, opened
+        # on its own, is a document too. No script of the book runs; the
+        # reader drives the page from the shell.
+        self.send_header("Content-Security-Policy", _epub.CSP)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        if (
+            any(mimetype.startswith(t) for t in COMPRESSIBLE_TYPES)
+            and self._accepts_gzip()
+            and len(content) > 256
+        ):
+            content = gzip.compress(content, compresslevel=4)
+            self.send_header("Content-Encoding", "gzip")
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+        return True
+
     def _serve_zim_content(self, zim_name, entry_path, *, a11y=False):
         """Serve raw ZIM content with correct MIME type for the /w/ endpoint.
 
@@ -3330,6 +3370,12 @@ class ZimHandler(BaseHTTPRequestHandler):
             etag = self._picture_etag(zim_name, entry_path)
             if etag and self.headers.get("If-None-Match") == etag:
                 return self._picture_not_modified(etag)
+
+        # Inside an EPUB: the book as one page to read, or a file of it.
+        if ".epub/" in entry_path.lower() and self._serve_epub_part(
+            zim_name, entry_path
+        ):
+            return
 
         # Phase 1: Read from ZIM under lock
         with _srv._zim_lock:
@@ -4362,13 +4408,18 @@ class ZimHandler(BaseHTTPRequestHandler):
         of this — it keys off the cookie/token, not the client's belief."""
         from zimi import manage as _manage
 
+        # The apps this server offers, as the shell stamps them. A browser can
+        # show a shell it kept from before the setting changed (Chrome's Back
+        # reuses it without asking), and every boot asks here before it draws,
+        # so the client corrects its stamp from this (#98).
+        apps = _srv.apps_stamp(_srv.apps_shown())
         name = _users.resolve_request_user(self)
         if name:
             # A SECONDARY admin keeps the admin chrome on reload (their session
             # token is restored from storage as the manage Bearer token).
             if _users.is_admin_user(name):
                 return self._json(
-                    200, {"role": "admin", "name": name, "secondary": True}
+                    200, {"role": "admin", "name": name, "secondary": True, "apps": apps}
                 )
             rec = _users.get_user(name)
             allowlist = rec.get("allowlist") if rec else None
@@ -4381,6 +4432,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                     # Per-user create permission — the client's + button and
                     # Create page consult this (the server gates regardless).
                     "can_create": _users.user_can_create(name),
+                    "apps": apps,
                 },
             )
 
@@ -4392,6 +4444,7 @@ class ZimHandler(BaseHTTPRequestHandler):
             resp: dict[str, object] = {
                 "role": "admin",
                 "name": _manage._get_manage_user() or "admin",
+                "apps": apps,
             }
             # Ensure the header-less transports (reader iframe, plain-fetch data
             # endpoints) carry admin identity. If this admin was recognised by the
@@ -4408,7 +4461,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         # Anonymous. Expose a first-login hint ONLY when the default username
         # applies — no custom username AND no named users configured. This is
         # not an info leak: "the default username is admin" is in the docs.
-        resp = {"role": "anonymous"}
+        resp = {"role": "anonymous", "apps": apps}
         if not _manage._get_manage_user() and not _users.list_users():
             resp["default_username"] = "admin"
         # Tell the SPA how the public-access policy shapes its view: ``private``

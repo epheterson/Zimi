@@ -47,6 +47,7 @@ import urllib.request
 from typing import Any
 
 import zimi.server as _srv
+from zimi import nautilus as _nautilus
 from zimi.blocklist import blocked_phrase
 from zimi.zimwriter import (
     SHOT_DIMS_METADATA_KEY,
@@ -244,7 +245,7 @@ OTHER_FACE_PATH = "A/index~other"
 FACES_METADATA_KEY = "X-Zimi-Faces"
 
 
-def _store_other_face(creator, static_cls, capture, title, final_url, note):
+def _store_other_face(creator, static_cls, capture, title, final_url, note, unlink=None):
     """Keep the site's other face when it has one, as a second entry.
 
     A site with a dark mode serves a different page depending on the reader's
@@ -267,6 +268,8 @@ def _store_other_face(creator, static_cls, capture, title, final_url, note):
     rendered = capture.render_other(html, final_url, resources)
     if not rendered:
         return ""
+    if unlink is not None:
+        rendered = unlink(rendered, final_url)
     creator.add_item(
         static_cls(OTHER_FACE_PATH, f"{title} ({scheme})", rendered.encode("utf-8"))
     )
@@ -783,6 +786,25 @@ def folder_language(requested, files):
     return max(set(codes), key=lambda c: (codes.count(c), -codes.index(c))), "html-lang"
 
 
+def _folder_videos_json(assets):
+    """The ``videos.json`` ZimiTube reads for a folder's video and audio
+    files (the shape of ``zimi create <video URL>``'s, a row each by
+    tube.media_file_row, a picture of the same name beside a file as its
+    poster); None when there are none, or the folder has a videos.json of
+    its own, which is kept as it is."""
+    from zimi.tube import VIDEOS_JSON, media_file_row, thumb_beside
+
+    if VIDEOS_JSON in assets:
+        return None
+    have = set(assets)
+    rows = []
+    for path in assets:
+        mime = _guess_mime(path)
+        if mime.startswith(("video/", "audio/")):
+            rows.append(media_file_row(path, mime, thumb_beside(path, have.__contains__)))
+    return json.dumps(rows, ensure_ascii=False).encode("utf-8") if rows else None
+
+
 def _index_tree_html(title, pages, assets):
     """The generated main page: the content tree as nested lists, pages
     first (with their real titles), assets after."""
@@ -818,6 +840,66 @@ def _index_tree_html(title, pages, assets):
     return (
         _page_head(_html.escape(title)) + "<body>" + "".join(body) + "</body></html>"
     ).encode("utf-8")
+
+
+# A folder's documents, listed for the Bookshelf: what opens in the reader
+# (PDF.js, and EPUBs chapter by chapter).
+_FOLDER_DOC_EXTS = (".pdf", ".epub")
+# A PDF's Info date: "D:20190304..." (PDF 1.7, 7.9.4).
+_PDF_DATE_RE = re.compile(r"^D:(\d{4})(\d{2})?(\d{2})?")
+
+
+def _pdf_facts(fs_path):
+    """A PDF's own title, author and date, from its Info, when PyMuPDF is
+    installed; {} otherwise, or for a PDF it cannot open."""
+    if not _srv.HAS_PYMUPDF:
+        return {}
+    try:
+        with _srv.fitz.open(fs_path) as doc:
+            info = doc.metadata or {}
+    except Exception as e:
+        log.debug("PDF %s unreadable: %s", fs_path, e)
+        return {}
+    m = _PDF_DATE_RE.match(info.get("creationDate") or "")
+    date = "-".join(g for g in m.groups() if g) if m else ""
+    author = (info.get("author") or "").strip()
+    return {
+        "title": (info.get("title") or "").strip(),
+        "creators": [author] if author else [],
+        "date": date,
+    }
+
+
+def _folder_documents(files):
+    """The folder's PDFs and EPUBs as a listing in nautilus's database.js
+    shape (zimi.nautilus), which the Bookshelf reads as it reads Kiwix's
+    document libraries: ``ti`` the title, ``aut`` the author, ``dsc`` a
+    description, ``fp`` the file (from the ZIM's root, as the folder's
+    files keep their paths), and two keys of Zimi's own, ``dt`` a date and
+    ``cv`` a cover picture. An EPUB says all of it in its package; a PDF its
+    Info when PyMuPDF is there; else the file's name is the title."""
+    from zimi import epub as _epub
+
+    rows = []
+    for fs_path, zim_path in files:
+        ext = posixpath.splitext(zim_path)[1].lower()
+        if ext not in _FOLDER_DOC_EXTS:
+            continue
+        facts = (_epub.facts_of_file(fs_path) if ext == ".epub" else _pdf_facts(fs_path)) or {}
+        row = {
+            "_id": "%05d" % len(rows),
+            "ti": facts.get("title") or _nautilus.title_from_name(zim_path),
+            "dsc": facts.get("description") or "",
+            "aut": " & ".join(facts.get("creators") or []),
+            "fp": [zim_path],
+        }
+        if facts.get("date"):
+            row["dt"] = facts["date"]
+        if facts.get("cover"):
+            # Inside the EPUB: served from the book's own address.
+            row["cv"] = _epub.book_path(zim_path) + facts["cover"]
+        rows.append(row)
+    return rows
 
 
 def create_folder_zim(
@@ -911,6 +993,20 @@ def create_folder_zim(
                 assets.append(zim_path)
                 mimetypes.add(mime)
 
+        # The documents, listed for the Bookshelf, unless the folder has a
+        # file of that name itself.
+        documents = _folder_documents(files)
+        if documents and _nautilus.ZIMI_DATABASE_PATH not in {p for _f, p in files}:
+            creator.add_item(
+                static_cls(
+                    _nautilus.ZIMI_DATABASE_PATH,
+                    "",
+                    _nautilus.listing_text(documents).encode("utf-8"),
+                    mimetype="text/javascript",
+                    front=False,
+                )
+            )
+
         if main_path is None:
             taken = {p for _f, p in files}
             main_path = "index" if "index" not in taken else "zimi-index"
@@ -920,6 +1016,10 @@ def create_folder_zim(
                 )
             )
         creator.set_mainpath(main_path)
+        # A folder of videos or audio plays in ZimiTube, from this list.
+        videos = _folder_videos_json(assets)
+        if videos:
+            creator.add_item(static_cls("videos.json", zim_title, videos, "application/json", front=False))
         add_standard_metadata(
             creator,
             title=zim_title,
@@ -1552,6 +1652,87 @@ def _externalize_links(page, base_url, resolve=None):
         return _HREF_RE.sub(fix_href, tag, count=1)
 
     return _A_TAG_RE.sub(fix, page)
+
+
+# ── "Remove links to other sites" (#99) ─────────────────────────────────────
+#
+# tripplehelix: "It can be confusing as to which links take you to the web."
+# Zimi's reader marks those links on every ZIM, but a ZIM travels to readers
+# that are not Zimi, so a capture can also leave them out: a link to another
+# site becomes its own text, a <span> where the <a> was. Links within the site
+# stay, captured or not, and so do mailto:, tel: and in-page anchors: none of
+# them sends the reader somewhere else on the web.
+#
+# The opening tag and its closing tag are both rewritten, so the pair is
+# walked in order over the masked markup (a script's "<a href=" is a string).
+# Anchors do not nest in HTML, which is what makes "the next </a>" the close.
+_A_OPEN_CLOSE_RE = re.compile(r"<a\b[^>]*>|</a\s*>", re.IGNORECASE)
+_LINK_ONLY_ATTR_RE = attr_re("href", "target", "rel", "ping", "hreflang", "referrerpolicy")
+
+
+def _site_host(url):
+    """A URL's host as a site: lowercased, without a leading www."""
+    host = (urllib.parse.urlsplit(url).hostname or "").lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+def unlink_other_sites(page, page_url):
+    """``(page, removed)``: ``page`` with every link to a site other than
+    ``page_url``'s turned into plain text, and how many were."""
+    site = _site_host(page_url)
+    state = {"open": False, "removed": 0}
+
+    def fix(m):
+        tag = m.group(0)
+        if tag[1] == "/":
+            if state["open"]:
+                state["open"] = False
+                return "</span>"
+            return tag
+        state["open"] = False
+        hm = _HREF_RE.search(tag)
+        if not hm:
+            return tag
+        val = _html.unescape(hm.group("val") or "").strip()
+        head = val.split("/", 1)[0]
+        if ":" in head and not val.lower().startswith(("http:", "https:")):
+            return tag  # mailto:, tel:, javascript: are not another site
+        target = urllib.parse.urljoin(page_url, val)
+        if not target.lower().startswith(("http:", "https:")) or _site_host(target) == site:
+            return tag
+        state["open"] = True
+        state["removed"] += 1
+        return "<span" + _LINK_ONLY_ATTR_RE.sub("", tag[2:])
+
+    page = sub_markup(_A_OPEN_CLOSE_RE, fix, page)
+    return page, state["removed"]
+
+
+class OtherSiteLinks:
+    """The capture option and its tally: call it on each page written, then
+    ``phrase()`` and ``count()`` for the creation record. Off, it passes every
+    page through and records nothing."""
+
+    def __init__(self, remove):
+        self.remove = bool(remove)
+        self.removed = 0
+
+    def __call__(self, page, page_url):
+        if not self.remove:
+            return page
+        page, n = unlink_other_sites(page, page_url)
+        self.removed += n
+        return page
+
+    def count(self):
+        """What the record keeps: the number removed, or None when the option
+        was off (a 0 says it was on and there was nothing to remove)."""
+        return self.removed if self.remove else None
+
+    def phrase(self):
+        if not self.remove:
+            return ""
+        return f", {_plural(self.removed, 'link')} to other sites removed"
 
 
 def _strip_scripts(page):
@@ -2265,6 +2446,7 @@ def create_page_zim(
     engine=DEFAULT_ENGINE,
     block_ads=None,
     capture_variants=None,
+    strip_links=False,
     register=False,
     progress=None,
 ):
@@ -2277,7 +2459,11 @@ def create_page_zim(
     ``progress`` is called at each phase boundary. It is not decoration: the
     web job's sink RAISES out of it to cancel, so a capture with no callback
     is a capture whose cancel button cannot work. The phases are the two that
-    can actually take time — the fetch, and carrying the page's assets."""
+    can actually take time — the fetch, and carrying the page's assets.
+
+    ``strip_links`` turns links to other sites into plain text (see
+    ``unlink_other_sites``). The alive and zimit engines write their own ZIM
+    and never see it: their pages are rewritten at replay, not here."""
     from zimi.p2p import is_offline
 
     note = progress or (lambda _message: None)
@@ -2343,6 +2529,7 @@ def create_page_zim(
         capture_variants=capture_variants,
     )
     blocked = {}
+    unlink = OtherSiteLinks(strip_links)
     try:
         note(f"fetching {url}")
         final_url, page, _n, clang = capture.fetch(url)
@@ -2376,12 +2563,12 @@ def create_page_zim(
             # the wrong heading (Eric: "growing on the package step not fetch
             # step? Fetch is all download steps"). The packaging line moves to
             # where the writing actually starts.
-            page = capture.render(creator_target(creator), page, final_url)
+            page = unlink(capture.render(creator_target(creator), page, final_url), final_url)
             note(f"packaging {final_url}")
             creator.add_item(static_cls("A/index", zim_title, page.encode("utf-8")))
             creator.set_mainpath("A/index")
             faces = _store_other_face(
-                creator, static_cls, capture, zim_title, final_url, note
+                creator, static_cls, capture, zim_title, final_url, note, unlink
             )
             pictures = _store_pictures(creator, capture, page, final_url, note)
             add_standard_metadata(
@@ -2401,10 +2588,12 @@ def create_page_zim(
                     "created",
                     "page",
                     f"captured one page from {final_url}"
-                    + blocked_phrase(blocked.get("blocked")),
+                    + blocked_phrase(blocked.get("blocked"))
+                    + unlink.phrase(),
                     tools=capture_tools(capture),
                     counts={"pages": 1, "assets": capture.count},
                     blocked=blocked.get("blocked"),
+                    links_removed=unlink.count(),
                 ),
             )
     finally:
@@ -2513,6 +2702,7 @@ def create_pages_zim(
     engine=DEFAULT_ENGINE,
     block_ads=None,
     capture_variants=None,
+    strip_links=False,
     register=False,
     progress=None,
 ):
@@ -2573,6 +2763,7 @@ def create_pages_zim(
             engine=engine,
             block_ads=block_ads,
             capture_variants=capture_variants,
+            strip_links=strip_links,
             register=register,
             progress=progress,
         )
@@ -2607,6 +2798,7 @@ def create_pages_zim(
     )
     entries, skipped, taken, detected = [], [], {"index"}, []
     blocked = {}
+    unlink = OtherSiteLinks(strip_links)
     try:
         for url in wanted:
             note(f"fetching {url}")
@@ -2690,6 +2882,9 @@ def create_pages_zim(
                     entry["final_url"],
                     resolve_link=resolve,
                 )
+                # After resolving: a link to another listed page is internal
+                # by now, whichever site it is on.
+                html = unlink(html, entry["final_url"])
                 creator.add_item(
                     static_cls(
                         "A/" + entry["name"], entry["title"], html.encode("utf-8")
@@ -2721,10 +2916,12 @@ def create_pages_zim(
                     "pages",
                     f"captured {_plural(len(entries), 'page')} from the web"
                     + (f", skipping {len(skipped)}" if skipped else "")
-                    + blocked_phrase(blocked.get("blocked")),
+                    + blocked_phrase(blocked.get("blocked"))
+                    + unlink.phrase(),
                     tools=capture_tools(capture),
                     counts={"pages": len(entries), "assets": asset_count},
                     blocked=blocked.get("blocked"),
+                    links_removed=unlink.count(),
                 ),
             )
     finally:

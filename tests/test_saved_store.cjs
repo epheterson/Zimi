@@ -4,7 +4,7 @@
 // Runs app.js's Saved itself (extracted, in a sandbox with its own
 // localStorage per "device"): the merge cases users.py passes too
 // (tests/saved_merge_cases.json), bookmarks v2 migrated (folders, app items,
-// a map's place, Bookshelf's places), the API an app page calls, and two
+// a map's place, Bookshelf's places), the API an app page calls (highlights too), and two
 // devices deleting and merging.
 //
 // Run: node tests/test_saved_store.cjs   (exit 0 = pass)
@@ -52,7 +52,7 @@ function device(seed, opts) {
 }
 const J = (x) => JSON.stringify(x);
 function full(part) {
-  return Object.assign({ v: 1, items: {}, lists: {}, members: {}, positions: {}, gone: {}, legacy: false }, part);
+  return Object.assign({ v: 1, items: {}, lists: {}, members: {}, positions: {}, highlights: {}, gone: {}, legacy: false }, part);
 }
 // Deep equality regardless of key order.
 function same(a, b) {
@@ -266,6 +266,45 @@ const LEGACY = {
   ok('both end the same', J(phone.Saved.merge(tablet.Saved.data()) && phone.Saved.all().map((i) => i.key)) === J(tablet.Saved.all().map((i) => i.key)));
   const ow = tablet.Saved.merge({ items: {} }, { overwrite: true });
   ok('overwrite takes the incoming store whole', ow.changed && tablet.Saved.all().length === 0);
+}
+
+// ── highlights: kept beside the items, merged and deleted the same way ──────
+{
+  const d = device({}, { clock: 5000 }), S = d.Saved;
+  const page = { zim: 'w', path: 'A/Fox' };
+  const a = S.highlight(Object.assign({ kind: 'article', title: 'Fox', exact: 'the lazy dog', prefix: 'overthe', suffix: 'andthen', pos: 0.6, color: 'green' }, page));
+  d.clock += 1;
+  const b = S.highlight(Object.assign({ kind: 'article', title: 'Fox', exact: 'The quick brown fox', prefix: '', suffix: 'jumps', pos: 0.1 }, page));
+  d.clock += 1;
+  S.highlight({ zim: 'b', path: 'Book.1', kind: 'book', app: 'books', title: 'Book', exact: 'Call me Ishmael.', pos: 0 });
+  ok('a highlight gets an id; the default colour is the first', /^h_/.test(a) && S.getHighlight(b).color === 'yellow' && S.getHighlight(a).color === 'green');
+  ok('a page\'s highlights, in the order of its text', J(S.highlights(page).map((h) => h.id)) === J([b, a]) && J(S.highlights('w\nA/Fox').map((h) => h.id)) === J([b, a]));
+  ok('an app\'s, and everything, the latest first', S.highlights({ app: 'books' }).length === 1 && S.highlights().length === 3 && S.highlights()[0].app === 'books');
+  ok('a highlight is not a saved item: the page is saved only when asked', !S.has(page) && S.all().length === 0);
+  S.highlight({ id: a, note: '  a dog that is lazy  ' });
+  ok('a note is set on its own, trimmed; the rest stays', S.getHighlight(a).note === 'a dog that is lazy' && S.getHighlight(a).exact === 'the lazy dog' && S.getHighlight(a).color === 'green');
+  S.highlight({ id: a, note: '' });
+  ok('an empty note takes the note away', !('note' in S.getHighlight(a)));
+  ok('nothing to quote is no highlight', S.highlight({ zim: 'w', path: 'A/Fox', exact: '' }) === '' && S.highlight(null) === '');
+  S.removeHighlight(b);
+  ok('removeHighlight leaves a tombstone', S.getHighlight(b) === null && S.data().gone['h:' + b] === d.clock && S.highlights(page).length === 1);
+}
+{
+  const phone = device({}, { clock: 1000 }), tablet = device({}, { clock: 1000 });
+  const P = { zim: 'w', path: 'A/Fox', kind: 'article', title: 'Fox' };
+  const h1 = phone.Saved.highlight(Object.assign({ exact: 'quick brown fox', pos: 0.1 }, P));
+  const h2 = phone.Saved.highlight(Object.assign({ exact: 'lazy dog', pos: 0.6 }, P));
+  tablet.Saved.merge(phone.Saved.data(), { fromSync: true });
+  ok('the tablet has the phone\'s highlights', tablet.Saved.highlights(P).length === 2);
+  phone.clock = 2000;
+  phone.Saved.removeHighlight(h1);
+  tablet.clock = 2100;
+  tablet.Saved.highlight({ id: h2, note: 'written on the tablet' });
+  phone.Saved.merge(tablet.Saved.data());
+  ok('a highlight deleted on the phone stays deleted after the tablet\'s copy comes in', phone.Saved.getHighlight(h1) === null);
+  ok('and the note written on the tablet arrives', phone.Saved.getHighlight(h2).note === 'written on the tablet');
+  tablet.Saved.merge(phone.Saved.data());
+  ok('both end the same', J(tablet.Saved.highlights(P)) === J(phone.Saved.highlights(P)) && tablet.Saved.highlights(P).length === 1);
 }
 
 // ── whose store: signed out, or an account's own ────────────────────────────

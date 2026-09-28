@@ -109,7 +109,7 @@ var STR = strings({ title: 'Bookshelf', shelf: 'Shelf', authors: 'Authors', subj
   subject: 'Subject', era: 'Era', author: 'Author', more: 'More', none: 'No books match.', empty: 'No books installed yet.', book: 'book', books: 'books',
   bce: '{from} to {to} BCE', bce_ce: '{from} BCE to {to} CE', pending: 'Eras and subjects appear once the books have been read, a few minutes for a big library.',
   epub_only: 'This ZIM has this book as an EPUB only.', catalog: 'Browse the catalog', load_failed: 'Couldn\'t load the shelf.',
-  load_part: 'Couldn\'t load this.', retry: 'Retry', lcc: {} });
+  load_part: 'Couldn\'t load this.', reading: 'Reading the books in your library. They appear here in a few minutes.', retry: 'Retry', lcc: {} });
 
 // ── pure parts (tests/test_books_page.cjs runs these) ─────────────────────
 var PAGE = 60;
@@ -263,6 +263,9 @@ function show() {
   if (v.v === 'book') return renderBook(v);
 }
 function showEmpty() {
+  // Books still being read in the background (a Wikisource, a document
+  // library): they are coming, not missing.
+  if (!_home.details && (_home.sources || []).length) { $('view').innerHTML = '<div class="empty">' + esc(STR.reading) + '</div>'; return; }
   $('view').innerHTML = '<div class="empty">' + esc(STR.empty) + '<br><a class="door" href="/?manage" onclick="return goCatalog()">' + esc(STR.catalog) + CHEV + '</a></div>';
 }
 function goCatalog() { tell({ zimi: 'catalog', category: 'gutenberg' }); return false; }
@@ -422,8 +425,8 @@ function bookPage(b, full) {
     '<h1>' + esc(b.title) + '</h1>' + (b.subtitle ? '<p class="st">' + esc(b.subtitle) + '</p>' : '') +
     (b.author ? '<p class="by"><a onclick="go({v:\'list\',author:' + J(b.author) + '})">' + esc(b.author) + '</a>' + (yrs ? ' <span class="yrs">' + esc(yrs) + '</span>' : '') + '</p>' : '') +
     (facts ? '<dl class="facts">' + facts + '</dl>' : '') +
-    '<div class="actions"><button type="button" class="read" onclick="readBook(' + b.id + ')">' + esc(readLabel) + '</button>' + keepHtml(b) +
-    (full ? '<a href="' + esc(zpath(b.zim, full.epub)) + '" download>' + esc(STR.epub) + '</a>' : '') + '</div>' +
+    '<div class="actions"><button type="button" class="read" onclick="readBook(' + J(b.id) + ')">' + esc(readLabel) + '</button>' + keepHtml(b) +
+    (full && full.epub ? '<a href="' + esc(zpath(b.zim, full.epub)) + '" download>' + esc(STR.epub) + '</a>' : '') + '</div>' +
     (b.html === false ? '<p class="note">' + esc(STR.epub_only) + '</p>' : '') +
     (full && full.subjects && full.subjects.length ? '<div class="subjects">' + full.subjects.map(function(s) { return '<span>' + esc(s) + '</span>'; }).join('') + '</div>' : '') +
     '</div></div>';
@@ -435,7 +438,7 @@ var KEEP_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 2
 function keepHtml(b) {
   if (!saved()) return '';
   var on = onShelf(b);
-  return '<button type="button" class="keep' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="toggleShelf(' + b.id + ')">' +
+  return '<button type="button" class="keep' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="toggleShelf(' + J(b.id) + ')">' +
     KEEP_SVG + esc(on ? STR.on_shelf : STR.add_shelf) + '</button>';
 }
 function readBook(id) {
@@ -463,7 +466,9 @@ document.addEventListener('click', function(e) {
   var a = e.target.closest && e.target.closest('a[data-book]');
   if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
   e.preventDefault();
-  go({ v: 'book', id: Number(a.getAttribute('data-book')), zim: a.getAttribute('data-zim') });
+  // Gutenberg's books by number, the others by "<zim>/<id>".
+  var id = a.getAttribute('data-book');
+  go({ v: 'book', id: /^\d+$/.test(id) ? Number(id) : id, zim: a.getAttribute('data-zim') });
 });
 
 function load() {
@@ -475,7 +480,7 @@ function load() {
     show();
     // The records are read in the background the first time: look again
     // until they are there, so eras and subjects arrive without a reload.
-    if (_home.total && !_home.details) setTimeout(refreshHome, HOME_POLL_MS);
+    if (!_home.details && (_home.total || (_home.sources || []).length)) setTimeout(refreshHome, HOME_POLL_MS);
   });
 }
 var _pollMs = HOME_POLL_MS;
@@ -491,7 +496,8 @@ function refreshHome() {
     var was = _home;
     _home = d;
     remember(d.popular); remember(d.recent);
-    if (d.details && !was.details && cur().v === 'home') show(); else renderTabs();
+    // The first books to arrive fill an empty shelf; the rest come with the records.
+    if (((d.details && !was.details) || (d.total && !was.total)) && cur().v === 'home') show(); else renderTabs();
     if (!d.details) setTimeout(refreshHome, _pollMs);
   });
 }

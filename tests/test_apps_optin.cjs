@@ -42,6 +42,7 @@ vm.runInContext([
   extract(/var _userPrefs = [^\n]*\n/, '_userPrefs'),
   extract(/function _appsAllowedByServer\(app\) \{[\s\S]*?\n\}/, '_appsAllowedByServer'),
   extract(/function _appShown\(app\) \{[\s\S]*?\n\}/, '_appShown'),
+  extract(/function _setAppsStamp\(stamp\) \{[\s\S]*?\n\}/, '_setAppsStamp'),
   extract(/function _serverOfferable\(shown\) \{[\s\S]*?\n\}/, '_serverOfferable'),
   extract(/function openWiki\(replaceState\) \{[\s\S]*?\n\}/, 'openWiki'),
 ].join('\n'), ctx);
@@ -61,7 +62,13 @@ ok('the Server settings picker and its All button draw from that list, not every
   /el\.innerHTML = _appPicksHtml\(_serverOfferable\(shown\),/.test(src) &&
   /function _setAppsForServerAll\(on\) \{ _postServerApps\(on \? _serverOfferable\(_serverApps\) : \[\]\); \}/.test(src));
 ok('the shell drops its stamp when the server is back to the default apps, not to every app',
-  /if \(d\.shown\.join\(','\) === APPS_DEFAULT\.join\(','\)\) delete document\.body\.dataset\.zimiApps;/.test(src));
+  /_setAppsStamp\(d\.shown\.join\(','\) === APPS_DEFAULT\.join\(','\) \? null : d\.shown\.join\(','\) \|\| '0'\)/.test(src));
+ctx._setAppsStamp('books');
+ok('a stamp from the server is the shell\'s', ctx._appsAllowedByServer('books') && !ctx._appsAllowedByServer('maps'));
+ctx._setAppsStamp(null);
+ok('and none is the default apps', !('zimiApps' in ctx.document.body.dataset) && ctx._appsAllowedByServer('maps'));
+ok('every boot takes the stamp from /whoami, so a shell kept by Back is corrected (#98)',
+  /if \(j && 'apps' in j\) _setAppsStamp\(j\.apps\);/.test(src));
 ok('an account\'s own picker lists only what the server offers',
   /_appPicksHtml\(APP_NAMES\.filter\(_appsAllowedByServer\), _appShown, '_setUserApp'\)/.test(src));
 ctx._userSession = { name: 'eric' };

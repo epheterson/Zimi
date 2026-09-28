@@ -252,3 +252,53 @@ def test_a_dark_block_nested_under_layer_is_still_found(os_scheme):
             assert (_luminance(page) < 0.2) == (os_scheme == "dark")
         finally:
             b.close()
+
+
+# No background and no colours of its own: the browser paints this page, so
+# once Zimi asks for dark the canvas is dark and the text white already.
+UNSTYLED_PAGE = """<!doctype html><html><head><meta charset="utf-8"></head><body><p>hello</p></body></html>"""
+# No background, but black text of its own: asked for dark it would be black
+# on a dark canvas, which is what the simulated dark mode is for.
+DARK_TEXT_PAGE = """<!doctype html><html><head><meta charset="utf-8"><style>body{color:#000}</style></head><body><p>hello</p></body></html>"""
+
+DECLARES = "\n".join(
+    [_statement(n) for n in ("_DARK_BG_MAX_LUM",)]
+    + [_function(n) for n in ("_cssColorLum", "_articleDeclaresDark")]
+)
+
+
+def _declares(page):
+    return page.evaluate("() => _articleDeclaresDark(document.getElementById('f').contentDocument)")
+
+
+@browser
+def test_an_unstyled_page_asked_for_dark_is_not_inverted_to_black_on_black():
+    """An entry that is just <p>hello</p>, Zimi dark, simulated dark mode on:
+    the browser already paints it dark with white text, and inverting it made
+    the text black on the canvas the filter cannot reach."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        b, page = _harness(pw, "light", UNSTYLED_PAGE)
+        try:
+            page.add_script_tag(content=DECLARES)
+            _ask(page, "dark")
+            assert _declares(page) is True, "an unstyled page asked for dark already paints dark"
+            _ask(page, "light")
+            assert _declares(page) is False, "asked for light it paints light"
+        finally:
+            b.close()
+
+
+@browser
+def test_a_page_with_its_own_dark_text_still_gets_the_simulated_dark():
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        b, page = _harness(pw, "light", DARK_TEXT_PAGE)
+        try:
+            page.add_script_tag(content=DECLARES)
+            _ask(page, "dark")
+            assert _declares(page) is False, "black text of its own: it needs the simulated dark"
+        finally:
+            b.close()

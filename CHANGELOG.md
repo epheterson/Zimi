@@ -9,9 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Bookshelf reads more than Gutenberg: Kiwix's document libraries (zimgit and the other nautilus ZIMs), LibreTexts textbooks, Wikisource works and Wikibooks books (still in Zimipedia too), and ZIMs that are one book, like the Algorithms and Stacks textbooks.
+- A folder of PDFs and EPUBs packed with Create a ZIM lands on the Bookshelf, each document with its title, author, date and cover.
+- EPUBs open in Zimi's book reader, chapter by chapter, instead of downloading; Gutenberg's EPUB-only books open too.
 - Search operators, in the library search, the catalog and the API: `-word` leaves out, `"exact words"` keeps words together, `cats OR dogs` takes either, and `in:wikipedia`, `lang:fr` (and `-in:ted`, `-lang:en`) choose the sources. `science -ted` in the catalog now hides the hundreds of TED ZIMs. A hyphenated word like `e-mail` is still one word. In the library, exclusions and phrases apply to a result's title. Each operator shows as a chip saying what it did ("without ted", "French", "Wikipedia"), and its × takes it back out; a ? beside the search box has examples in your language. ([#94](https://github.com/epheterson/Zimi/issues/94))
 - The Almanac's orrery: hover or tap a planet for its distance and radio delay, ride the rocket there as the delay home grows, and try the twin paradox at up to 0.99c.
 - Saving: bookmarks, lists and Liked in one place, an item in as many lists as you like, each list exportable as a ZIM.
+- Highlights in every reader (articles, Reader View, books in pages or scrolling, EPUBs, Zimipedia): select text to highlight it in one of four colors with a note, find it again from the Saved panel, and keep it through a new font, another page and a newer build of the ZIM; one that is gone is marked, never dropped.
 - Signed in, what you save and where you are in each book follow your account to every device, and a delete on one stays deleted on the others.
 - Bookshelf has My shelf, and Continue reading picks up on any device where you left off.
 - Zimipedia's reader: an article opened from Zimipedia (or any wiki's article in Reader View) reads as an encyclopedia, with its lead image, contents that follow you, the infobox beside the text (folded on a phone), citations shown in place, and Bookshelf's reading settings.
@@ -20,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Diving in, in Zimipedia: a link shows a card first (the article's first sentence and picture) and a second tap follows it; a trail over the title shows where you came through, a step back along it is a tap; Read next closes an article with the articles its lead links to.
 - Zimipedia's reading lists: the reader's bookmark saves an article (at the section you are in) and puts it in Liked or any list, or a new one.
 - The Almanac zooms from the solar system to a 3D Earth: lit by the real Sun, with the Moon, eclipses as they fall, the ISS and the GPS satellites (tap one: its clock gains 38 microseconds a day).
+- ZimiTube plays the videos and audiobooks in Kiwix's document libraries (Maître Lucas, YouScribe's audiobooks, Zaya and more): an audiobook is one card, its tracks listed and played in turn.
+- A folder of videos or audio made with Create a ZIM plays in ZimiTube.
+- Links that leave your library get a small arrow in every reader, and hovering or tapping one says where it goes ("Opens example.com on the web", or that it needs the internet when Zimi is offline); Settings can hide them as plain text instead. ([#99](https://github.com/epheterson/Zimi/issues/99))
+- Create a ZIM can remove links to other sites (web page and site captures, fast and rendered engines), so the ZIM never sends a reader to the web in Kiwix either. ([#99](https://github.com/epheterson/Zimi/issues/99))
 
 ### Changed
 
@@ -28,9 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- In dark mode, a ZIM page with no colours of its own no longer shows black text on black.
+- A subreddit made with Create a ZIM now says it was made by Zimi: the Subreddit badge on its card, and a place in Manage's list of ZIMs made here.
 - In Arabic and Hebrew the search box's clear button no longer sits on its magnifier, and a catalog search inside a category says Back in your language.
 - A catalog search typed while the catalog was still loading is no longer replaced by the category gallery.
 - My data's export and import carry your history, and Restore from server no longer restores an old copy.
+- An app turned on or off in Settings no longer flips back when you leave Zimi and come back with Back. ([#98](https://github.com/epheterson/Zimi/issues/98))
+- The reader's bookmark button empties when the bookmark is removed in the Saved panel, in another tab or on another device. ([#96](https://github.com/epheterson/Zimi/issues/96))
 
 ## [1.11.0] - 2026-09-27
 

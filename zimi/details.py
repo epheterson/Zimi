@@ -33,7 +33,8 @@ class DetailsBuilder:
 
     ``kind`` names the folder in the data dir, the background job Manage
     shows, and the build search._build_index_child_main runs in a child;
-    ``zims`` is the kind of ZIM (server._zim_kind) build_all covers.
+    ``zims`` is the kind of ZIM (server._zim_kind) build_all covers, or a
+    test of a library entry (a ZIM that feeds the app beside its kind).
     ``build(name, path)`` reads a ZIM into its file through write();
     ``load(rows)`` turns the file's rows into what the app keeps.
     ``lock`` is the app's own: what was read is kept under it, and
@@ -235,9 +236,10 @@ class DetailsBuilder:
     def build_all(self):
         """Every ZIM of this kind, one after another, on the caller's thread
         (the startup worker's)."""
+        ours = self.zims if callable(self.zims) else lambda z: z.get("kind") == self.zims
         for z in list(_srv._zim_list_cache or []):
             name = z.get("name")
-            if z.get("kind") == self.zims and name and self._claim(name):
+            if ours(z) and name and self._claim(name):
                 self._build_claimed(name)
 
     def wait(self, timeout=30):
