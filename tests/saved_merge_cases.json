@@ -112,6 +112,21 @@
       "expect": {"gone": {"i:w\nA/Recent": 7776002000}, "legacy": true}
     },
     {
+      "name": "a membership that is not a record (false, 0, a string) is dropped, on both sides",
+      "now": 3000,
+      "a": {},
+      "b": {
+        "items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}},
+        "lists": {"l1": {"name": "One", "order": 0, "ts": 1000}},
+        "members": {"liked\tw\nA/X": false, "l1\tw\nA/X": 0},
+        "positions": {"w\nA/X": ""}
+      },
+      "expect": {
+        "items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}},
+        "lists": {"l1": {"name": "One", "order": 0, "ts": 1000}}
+      }
+    },
+    {
       "name": "what is not a record is dropped: a key not its own, a list called liked, a list id that is not an id",
       "now": 3000,
       "a": {},

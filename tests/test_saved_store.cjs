@@ -141,6 +141,18 @@ const LEGACY = {
   const back = S.mergeLegacy({ bookmarks: BOOKMARKS, folders: FOLDERS });
   ok('a delete made after the migration is not undone by it', !S.has('wikipedia\nA/Heart') && back.added === 0);
   ok('nor a rename', S.lists().filter((l) => l.id === 'f_med')[0].name === 'Health');
+  // The same page bookmarked twice, into two folders (a merge of two
+  // devices' v2 data can leave that): one item, in both lists, whichever
+  // record comes first.
+  const twice = [
+    { zim: 'w', path: 'A/Twice', title: 'Newer', timestamp: 200, folder: 'f_med' },
+    { zim: 'w', path: 'A/Twice', title: 'Older', timestamp: 100, folder: 'f_travel' },
+  ];
+  [twice, twice.slice().reverse()].forEach((bms, n) => {
+    const t2 = device().Saved._fromLegacy({ bookmarks: bms, folders: FOLDERS });
+    const lists = Object.keys(t2.members).filter((m) => m.endsWith('\tw\nA/Twice')).map((m) => m.split('\t')[0]).sort();
+    ok('one page in two folders is one item in both lists (order ' + n + ')', JSON.stringify(lists) === JSON.stringify(['f_med', 'f_travel']) && t2.items['w\nA/Twice'].title === 'Newer', JSON.stringify(lists));
+  });
   // A fresh load reads the store, not the old keys again.
   const d2 = device(Object.assign({}, d.localStorage._all));
   ok('a second visit reads the store', !d2.Saved.has('wikipedia\nA/Heart') && d2.Saved.all().length === 9);

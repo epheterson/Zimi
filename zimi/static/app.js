@@ -20202,7 +20202,8 @@ var Saved = (function () {
     return key(out) === id ? out : null;
   }
   function order(r) {
-    var o = r && num(r.order), ts = r && num(r.ts);
+    if (!r || typeof r !== 'object') return null;
+    var o = num(r.order), ts = num(r.ts);
     return o === null || ts === null ? null : { order: o, ts: Math.round(ts) };
   }
   function clean(x) {
@@ -20329,10 +20330,11 @@ var Saved = (function () {
       if (app) it.app = app;
       if (b.pos) it.where = { pos: String(b.pos) };
       var id = key(it);
-      if (out.items[id] && out.items[id].ts >= ts) return;
-      out.items[id] = it;
+      // The same page twice (two folders, or a merge that kept both): the
+      // newer record is the item, and each keeps its own folder.
+      if (!out.items[id] || out.items[id].ts < ts) out.items[id] = it;
       var fid = b.folder == null ? '' : String(b.folder);
-      if (listOf[fid]) (inFolder[fid] = inFolder[fid] || []).push({ id: id, b: b });
+      if (listOf[fid]) (inFolder[fid] = inFolder[fid] || []).push({ id: id, b: b, ts: ts });
     });
     Object.keys(inFolder).forEach(function (fid) {
       // The v2 tree's own order: by order, then the newest first.
@@ -20340,7 +20342,7 @@ var Saved = (function () {
         var xo = x.b.order == null ? Infinity : x.b.order, yo = y.b.order == null ? Infinity : y.b.order;
         return xo !== yo ? xo - yo : (num(y.b.timestamp) || 0) - (num(x.b.timestamp) || 0);
       }).forEach(function (e, i) {
-        out.members[listOf[fid] + '\t' + e.id] = { order: i, ts: out.items[e.id].ts };
+        out.members[listOf[fid] + '\t' + e.id] = { order: i, ts: e.ts };
       });
     });
     var places = old.places && typeof old.places === 'object' ? old.places : {};
