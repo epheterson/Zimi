@@ -303,3 +303,81 @@ def test_what_a_zim_feeds_rides_the_list_and_the_cache(tmp_path, monkeypatch):
     assert by["wikisource_eo_all_nopic_2026-07"]["feeds"] == {"books": "wikisource"}
     srv.load_cache(force=False)
     assert len(calls) == 2, "the backfill was not written down"
+
+
+# ── Zimi's own folder ZIMs ─────────────────────────────────────────────────
+
+
+def _documents_folder(tmp_path):
+    src = tmp_path / "Reading room"
+    (src / "books").mkdir(parents=True)
+    (src / "books" / "aleutian.epub").write_bytes(fx.gutenberg_epub())
+    (src / "the_long-walk.pdf").write_bytes(fx.PDF)
+    (src / "notes.md").write_text("# Notes\n\nWhat to read next.\n")
+    return src
+
+
+def test_a_folder_of_documents_lists_them_as_a_document_library(tmp_path, monkeypatch):
+    """At create time, in nautilus's shape: title, author, date and cover
+    from the EPUB's package; a PDF by its Info (PyMuPDF) or its name."""
+    from libzim.reader import Archive
+
+    from zimi import creator
+
+    monkeypatch.setattr(srv, "HAS_PYMUPDF", False)
+    info = creator.create_folder_zim(
+        str(_documents_folder(tmp_path)), out_dir=str(tmp_path / "out")
+    )
+    archive = Archive(info["path"])
+    rows = nautilus.items(archive, nautilus.ZIMI_DATABASE_PATH)
+    by = {r["fp"][0]: r for r in rows}
+    assert set(by) == {"books/aleutian.epub", "the_long-walk.pdf"}
+    book = by["books/aleutian.epub"]
+    assert book["ti"].startswith("Aleutian Indian and English Dictionary")
+    assert book["aut"] == "Charles A. Lee" and book["dt"] == "2003-11-01"
+    assert book["cv"] == "books/aleutian.epub/" + fx.GUTENBERG_EPUB_COVER
+    assert by["the_long-walk.pdf"]["ti"] == "the long-walk"
+    assert by["the_long-walk.pdf"]["aut"] == ""
+    # The files themselves, and nothing else listed.
+    assert nautilus.files_of(book, "") == ["books/aleutian.epub"]
+    assert archive.has_entry_by_path("books/aleutian.epub")
+    # On the shelf by what the load reads anyway: the creation record's
+    # mode and the Counter of mimetypes.
+    monkeypatch.setattr(srv, "ZIM_DIR", str(tmp_path / "out"))
+    monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(tmp_path / "data"))
+    os.makedirs(str(tmp_path / "data"), exist_ok=True)
+    srv.load_cache(force=True)
+    assert [z.get("feeds") for z in srv.list_zims()] == [{"books": "folder"}]
+
+
+def test_a_pdfs_own_info_names_it_when_pymupdf_is_there(tmp_path):
+    from zimi import creator
+
+    if not srv.HAS_PYMUPDF:
+        pytest.skip("PyMuPDF is not installed")
+    doc = srv.fitz.open()
+    doc.new_page()
+    doc.set_metadata(
+        {
+            "title": "The Long Walk",
+            "author": "Slavomir Rawicz",
+            "creationDate": "D:19560301",
+        }
+    )
+    path = tmp_path / "walk.pdf"
+    doc.save(str(path))
+    got = creator._folder_documents([(str(path), "walk.pdf")])
+    assert got[0]["ti"] == "The Long Walk" and got[0]["aut"] == "Slavomir Rawicz"
+    assert got[0]["dt"] == "1956-03-01"
+
+
+def test_a_folder_without_documents_writes_no_listing(tmp_path):
+    from libzim.reader import Archive
+
+    from zimi import creator
+
+    src = tmp_path / "notes"
+    src.mkdir()
+    (src / "a.md").write_text("# A\n")
+    info = creator.create_folder_zim(str(src), out_dir=str(tmp_path / "out"))
+    assert not Archive(info["path"]).has_entry_by_path(nautilus.ZIMI_DATABASE_PATH)

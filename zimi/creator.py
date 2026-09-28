@@ -47,6 +47,7 @@ import urllib.request
 from typing import Any
 
 import zimi.server as _srv
+from zimi import nautilus as _nautilus
 from zimi.blocklist import blocked_phrase
 from zimi.zimwriter import (
     SHOT_DIMS_METADATA_KEY,
@@ -820,6 +821,73 @@ def _index_tree_html(title, pages, assets):
     ).encode("utf-8")
 
 
+# A folder's documents, listed for the Bookshelf: what opens in the reader
+# (PDF.js, and EPUBs chapter by chapter).
+_FOLDER_DOC_EXTS = (".pdf", ".epub")
+# A PDF's Info date: "D:20190304..." (PDF 1.7, 7.9.4).
+_PDF_DATE_RE = re.compile(r"^D:(\d{4})(\d{2})?(\d{2})?")
+
+
+def _pdf_facts(fs_path):
+    """A PDF's own title, author and date, from its Info, when PyMuPDF is
+    installed; {} otherwise, or for a PDF it cannot open."""
+    if not _srv.HAS_PYMUPDF:
+        return {}
+    try:
+        with _srv.fitz.open(fs_path) as doc:
+            info = doc.metadata or {}
+    except Exception as e:
+        log.debug("PDF %s unreadable: %s", fs_path, e)
+        return {}
+    m = _PDF_DATE_RE.match(info.get("creationDate") or "")
+    date = "-".join(g for g in m.groups() if g) if m else ""
+    author = (info.get("author") or "").strip()
+    return {
+        "title": (info.get("title") or "").strip(),
+        "creators": [author] if author else [],
+        "date": date,
+    }
+
+
+def _title_from_name(zim_path):
+    """A document's title from its file name: "the_long-walk.pdf" is
+    "the long-walk"."""
+    stem = posixpath.splitext(posixpath.basename(zim_path))[0]
+    return re.sub(r"[_\s]+", " ", stem).strip() or stem
+
+
+def _folder_documents(files):
+    """The folder's PDFs and EPUBs as a listing in nautilus's database.js
+    shape (zimi.nautilus), which the Bookshelf reads as it reads Kiwix's
+    document libraries: ``ti`` the title, ``aut`` the author, ``dsc`` a
+    description, ``fp`` the file (from the ZIM's root, as the folder's
+    files keep their paths), and two keys of Zimi's own, ``dt`` a date and
+    ``cv`` a cover picture. An EPUB says all of it in its package; a PDF its
+    Info when PyMuPDF is there; else the file's name is the title."""
+    from zimi import epub as _epub
+
+    rows = []
+    for fs_path, zim_path in files:
+        ext = posixpath.splitext(zim_path)[1].lower()
+        if ext not in _FOLDER_DOC_EXTS:
+            continue
+        facts = (_epub.facts_of_file(fs_path) if ext == ".epub" else _pdf_facts(fs_path)) or {}
+        row = {
+            "_id": "%05d" % len(rows),
+            "ti": facts.get("title") or _title_from_name(zim_path),
+            "dsc": facts.get("description") or "",
+            "aut": " & ".join(facts.get("creators") or []),
+            "fp": [zim_path],
+        }
+        if facts.get("date"):
+            row["dt"] = facts["date"]
+        if facts.get("cover"):
+            # Inside the EPUB: served from the book's own address.
+            row["cv"] = _epub.book_path(zim_path) + facts["cover"]
+        rows.append(row)
+    return rows
+
+
 def create_folder_zim(
     folder,
     *,
@@ -910,6 +978,20 @@ def create_folder_zim(
                 creator.add_item(file_cls(zim_path, stem, fs_path, mime))
                 assets.append(zim_path)
                 mimetypes.add(mime)
+
+        # The documents, listed for the Bookshelf, unless the folder has a
+        # file of that name itself.
+        documents = _folder_documents(files)
+        if documents and _nautilus.ZIMI_DATABASE_PATH not in {p for _f, p in files}:
+            creator.add_item(
+                static_cls(
+                    _nautilus.ZIMI_DATABASE_PATH,
+                    "",
+                    _nautilus.listing_text(documents).encode("utf-8"),
+                    mimetype="text/javascript",
+                    front=False,
+                )
+            )
 
         if main_path is None:
             taken = {p for _f, p in files}
