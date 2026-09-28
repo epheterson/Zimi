@@ -15,6 +15,10 @@
 //      asked for again at the next open; no data at all is said plainly.
 //   3. The ISS: a dot while its place along the orbit is known, faded while
 //      it is roughly known, and past two weeks the orbit alone, dated.
+//   4. Memory: closing the view shrinks its drawing buffer to a pixel;
+//      closing the Almanac (its real teardown) disposes every geometry,
+//      material and map, loses the context and swaps in a fresh canvas,
+//      and the next open builds it all again; no multisampling at 2x+.
 //
 // Run: node tests/test_almanac_earth_view.cjs   (exit 0 = pass)
 
@@ -137,8 +141,9 @@ vm.runInContext(
   'var JD_UNIX_EPOCH = 2440587.5, JD_J2000 = 2451545.0, MS_PER_DAY = 86400000, JULIAN_CENTURY = 36525;' +
   'var DEG_TO_RAD = Math.PI / 180; var _almanacOpen = true; var _almFocus = null; var _currentLang = "en";' +
   'function t(k, vars) { return vars ? k + JSON.stringify(vars) : k; }' +
-  'function _tp(n) { return n; }', S);
-for (const fn of ['_dateToJD', '_almEsc', '_jdnToGregorian', '_cnDeltaTdays', '_speedToSlider', '_formatSpeed']) vm.runInContext(extractFn(almSrc, fn), S);
+  'function _tp(n) { return n; } function _cancelAllRAF() {} function _setWindowTitle() {}', S);
+for (const fn of ['_dateToJD', '_almEsc', '_jdnToGregorian', '_cnDeltaTdays', '_speedToSlider', '_formatSpeed',
+                  '_almanacTeardown']) vm.runInContext(extractFn(almSrc, fn), S);
 vm.runInContext(read('almanac-orrery.js'), S);
 vm.runInContext(read('almanac-earth.js'), S);
 vm.runInContext(read('earth/satellite-7.1.0.min.js'), S);
@@ -236,6 +241,51 @@ const run = (code) => vm.runInContext(code, S);
     check(n.includes('alm_earth_iss_orbit_only'), 'and the note says why, with the data\'s date (' + n + ')');
     check(run('_ae.selected') === null && document.getElementById('ae-card').hidden === true,
       'a card open on the ISS closes with its dot');
+  }
+
+  // ── 4. Memory ─────────────────────────────────────────────────────────
+  {
+    const r1 = run('_ae.gl.renderer');
+    check(r1.opts.antialias === false, 'at a 3x screen (drawn at 2x) there is no multisampling');
+    run('_aeClose()');
+    check(JSON.stringify(r1.lastSize()) === '[1,1,false]', 'closing the view shrinks its drawing buffer to one pixel');
+    fetches.push(answer({}));
+    run('openAlmanacEarth()');
+    await flush();
+    check(JSON.stringify(r1.lastSize()) === '[390,844,false]', 'opening it again sizes it to the view');
+
+    // Everything the scene holds on the GPU, to be counted back.
+    const held = new Set();
+    run('_ae.gl.scene').traverse((o) => {
+      if (o.geometry) held.add(o.geometry);
+      if (o.material) held.add(o.material);
+    });
+    let disposed = 0;
+    held.forEach((x) => x.addEventListener('dispose', () => { disposed++; }));
+    const maps = textures.filter((x) => !x.disposed);
+    const oldCanvas = document.getElementById('ae-canvas');
+    S._almanacOpen = true;
+    run('_almanacTeardown()');   // closing the Almanac, as its close button does
+    check(run('_aeIsOpen') === false, 'closing the Almanac closes the view');
+    check(run('_ae.gl') === null, 'and lets the scene go');
+    check(held.size > 10 && disposed === held.size, 'every geometry and material is disposed (' + disposed + ' of ' + held.size + ')');
+    check(maps.length === 3 && maps.every((x) => x.disposed), 'every map is disposed');
+    check(r1.did('dispose') && r1.did('forceContextLoss'), 'the renderer is disposed and its context given back');
+    const fresh = document.getElementById('ae-canvas');
+    check(fresh !== oldCanvas && oldCanvas.parentNode === null, 'a fresh canvas replaces the one whose context is lost');
+    check(!!(fresh.listeners.pointerdown && fresh.listeners.wheel), 'and takes the pointer and the wheel');
+
+    S._almanacOpen = true;
+    S.window.devicePixelRatio = 1;
+    const built = renderers.length;
+    fetches.push(answer({}));
+    run('openAlmanacEarth()');
+    await flush();
+    const r2 = run('_ae.gl && _ae.gl.renderer');
+    check(renderers.length === built + 1 && r2 && r2.opts.canvas === fresh, 'the next open builds the view again on the fresh canvas');
+    check(r2 && r2.opts.antialias === true, 'at 1x it multisamples');
+    check(mapAsks.filter((u) => u === S.AE_TEX_DAY).length >= 2, 'and loads its maps again');
+    S.window.devicePixelRatio = 3;
   }
 
   if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }

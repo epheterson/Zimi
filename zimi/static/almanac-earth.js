@@ -565,6 +565,10 @@ var AE_FIT_FILL = 0.92;
 
 // Rendering.
 var AE_MAX_DPR = 2;                   // a 3x phone fills 2.25x the pixels for little gain
+// Multisampling smooths edges only below this pixel ratio: at 2x a pixel is
+// too small for the jaggies to show, and it would hold four more colour
+// samples a pixel (~16 MB more on a phone screen).
+var AE_MSAA_BELOW_DPR = 2;
 var AE_EARTH_SEGMENTS = [128, 64];
 var AE_ATMO_SEGMENTS = [96, 48];
 var AE_MOON_SEGMENTS = [64, 32];
@@ -954,15 +958,14 @@ function _aeStarField(THREE, dpr) {
 
 // Build the three.js scene. Returns null when WebGL is not available.
 function _aeBuildGl(THREE, canvas) {
-  var renderer;
+  var renderer, dpr = Math.min(window.devicePixelRatio || 1, AE_MAX_DPR);
   try {
-    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: 'high-performance' });
+    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: dpr < AE_MSAA_BELOW_DPR, powerPreference: 'high-performance' });
   } catch (e) {
     return null;
   }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, AE_MAX_DPR));
+  renderer.setPixelRatio(dpr);
   renderer.setClearColor(0x000000, 1);
-  var dpr = renderer.getPixelRatio();
   var scene = new THREE.Scene();
   var camera = new THREE.PerspectiveCamera(AE_FOV_DEG, 1, 0.01, AE_FAR);
   camera.up.set(0, 0, 1);
@@ -1629,7 +1632,9 @@ function _aeDragScale() {
   var surface = _ae.target === 'moon' ? AE_MOON_RADIUS_RE : 1;
   return _aeClamp((_ae.dist - surface) / _ae.dist, AE_DRAG_MIN_SCALE, 1);
 }
-function _aeBindInput(canvas) {
+// The canvas's own listeners: bound again to the fresh canvas that replaces
+// one whose context was given back (_aeDisposeGl).
+function _aeBindCanvas(canvas) {
   canvas.addEventListener('pointerdown', function (e) {
     canvas.setPointerCapture(e.pointerId);
     _ae.pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
@@ -1681,10 +1686,12 @@ function _aeBindInput(canvas) {
     e.preventDefault();
     _aeZoomBy(Math.exp(e.deltaY * AE_WHEEL_ZOOM));
   }, { passive: false });
+}
+function _aeBindKeys() {
   _ae.el.addEventListener('keydown', function (e) {
     // Escape leaves this view only; the Almanac underneath stays open.
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); _aeClose(); return; }
-    if (e.target !== canvas) return;
+    if (e.target !== _aeById('ae-canvas')) return;
     var handled = true;
     if (e.key === 'ArrowLeft') _aeTurnBy(AE_KEY_TURN, 0);
     else if (e.key === 'ArrowRight') _aeTurnBy(-AE_KEY_TURN, 0);
@@ -1798,6 +1805,7 @@ function _aeStartView(THREE) {
   _aeLoadTexture(THREE, AE_TEX_MOON).then(function (tx) { apply(tx, S.moonUni.moonMap); }).catch(function () {});
   return _aeLoadTexture(THREE, AE_TEX_DAY).then(function (tx) {
     apply(tx, S.earthUni.dayMap);
+    if (_ae.gl !== S) return;   // the Almanac closed while it loaded
     _aeMessage('');
     _aeResize();
     _aeEnter();
@@ -1832,7 +1840,8 @@ function openAlmanacEarth() {
     if (!el) return;
     _ae = _aeNewState(el);
     _aeBindControls();
-    _aeBindInput(_aeById('ae-canvas'));
+    _aeBindKeys();
+    _aeBindCanvas(_aeById('ae-canvas'));
   }
   _aeIsOpen = true;
   _ae.el.classList.add('open');
@@ -1867,10 +1876,50 @@ function _aeClose() {
   if (_ae.idleTimer) { clearTimeout(_ae.idleTimer); _ae.idleTimer = 0; }
   _ae.el.classList.remove('open');
   _ae.pointers = {}; _ae.drag = _ae.pinch = null;
+  // The drawing buffer is the most the view holds (a screen of pixels, tens
+  // of MB on a phone, where iOS ends tabs that hold too much). Closed, it
+  // shrinks to a pixel; the scene and its maps stay, so coming back from the
+  // orrery is instant, and _aeResize gives the buffer its size again.
+  if (_ae.gl) _ae.gl.renderer.setSize(1, 1, false);
   _aeCoverAlmanac(false);
   if (typeof _almanacOpen === 'undefined' || _almanacOpen) _aeResumeAlmanac();
   var orr = _aeById('almanac-orrery');
   if (orr && orr.focus) orr.focus({ preventScroll: true });
+}
+
+// Give the GPU back: every geometry, material and map, then the context
+// itself (a live context counts against the tab even when nothing draws).
+// A lost context cannot be had again from the same canvas, so a fresh one
+// takes its place; the next open builds the scene afresh on it.
+function _aeDisposeGl() {
+  var S = _ae && _ae.gl;
+  if (!S) return;
+  _ae.gl = null;
+  _ae.scene = null;
+  _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
+  S.scene.traverse(function (o) {
+    if (o.geometry) o.geometry.dispose();
+    if (!o.material) return;
+    var u = o.material.uniforms || {};
+    for (var k in u) if (u[k].value && u[k].value.isTexture) u[k].value.dispose();
+    o.material.dispose();
+  });
+  S.renderer.dispose();
+  S.renderer.forceContextLoss();
+  var old = _aeById('ae-canvas');
+  if (old && old.parentNode) {
+    var fresh = old.cloneNode(false);
+    old.parentNode.replaceChild(fresh, old);
+    _aeBindCanvas(fresh);
+  }
+}
+
+// Leaving the Almanac (almanac.js _almanacTeardown): the view closes and
+// gives the GPU back.
+function _aeRelease() {
+  if (!_ae) return;
+  _aeClose();
+  _aeDisposeGl();
 }
 
 window.openAlmanacEarth = openAlmanacEarth;

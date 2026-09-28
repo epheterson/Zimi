@@ -219,6 +219,9 @@ function _almanacTeardown() {
   if (typeof _chromeReset === 'function') _chromeReset();
   document.body.classList.remove('almanac-mode');
   if (typeof _almTravelUnfreeze === 'function') _almTravelUnfreeze();
+  // The 3D Earth (almanac-earth.js, loaded after this file) gives its GPU
+  // memory back: a phone keeps a tab that holds less.
+  if (typeof _aeRelease === 'function') _aeRelease();
   _cancelAllRAF();
   _activeSkyLoop = null;
   _almSelectedTz = null;
