@@ -240,7 +240,8 @@ Single sign-on through Cloudflare Access is available for tunnel deployments (ex
 Each guide is structured as How it works / Configure / Troubleshoot. Start at the [feature guide index](docs/features/README.md).
 
 - [Reading](docs/features/reading.md), search and ranking, the reader and Reader View, bookmarks and history, word lookup, cross-language articles, PDFs, offline/PWA, accessibility, the almanac.
-- [Apps](docs/features/apps.md), Maps, ZimiTube, ZimiExchange, Reddot and Bookshelf: Zimi's own views over the map, video, Q&A, subreddit and book ZIMs in the library; one thing once across builds; the apps switch.
+- [Apps](docs/features/apps.md), Maps, ZimiTube, ZimiExchange, Reddot, Bookshelf and Zimipedia: Zimi's own views over the map, video, Q&A, subreddit, book and wiki ZIMs in the library; one thing once across builds; the apps switch.
+- [Saving](docs/features/saving.md), lists, Liked, highlights and where you were, in every app and reader; kept on the account when signed in, synced across devices.
 - [Making ZIMs](docs/features/making-zims.md), `zimi create` for a folder, page, `--site` crawl, video or subreddit; the engines and what each trades; bookmarks as a standalone ZIM; import for WARC/WACZ.
 - [Getting & sharing](docs/features/getting-and-sharing.md), catalog and downloads, folders as categories, same-flavor auto-update, BitTorrent seeding, Nearby (mDNS LAN), the `/dl/` peer transport.
 - [Access](docs/features/access.md), public-access modes, named accounts, per-ZIM allowlists, the creator role, the first-run bootstrap, Cloudflare Access SSO.
