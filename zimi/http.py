@@ -767,6 +767,22 @@ try:
 except FileNotFoundError:
     SEARCH_UI_HTML = "<html><body><h1>Zimi</h1><p>UI template not found. API endpoints are still available.</p></body></html>"
 
+# Where app.js takes the language-code table (server._ISO639_3_TO_1, from
+# assets/lang-codes.json): one table for both sides, put in as app.js is
+# served, so the file itself carries none of its own.
+_LANG_CODES_MARK = "/*@lang-codes.json@*/{}"
+
+
+def _inline_lang_codes(js):
+    if _LANG_CODES_MARK not in js:
+        log.warning("app.js has no %s: its language table is empty", _LANG_CODES_MARK)
+        return js
+    return js.replace(
+        _LANG_CODES_MARK,
+        json.dumps(_srv._ISO639_3_TO_1, separators=(",", ":"), sort_keys=True),
+    )
+
+
 # Auto-version static assets: replace ?v=N with content-hash so deploys bust caches.
 # This eliminates manual version bumping — any file change gets a new URL automatically.
 _STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -793,8 +809,8 @@ if os.path.isdir(_STATIC_DIR):
     if os.path.exists(_app_js_path):
         with open(_app_js_path, "r", encoding="utf-8") as _f:
             _app_js_src = _f.read()
-        _rewritten = re.sub(
-            r"/static/([\w./-]+)\?v=\d+", _replace_static_ver, _app_js_src
+        _rewritten = _inline_lang_codes(
+            re.sub(r"/static/([\w./-]+)\?v=\d+", _replace_static_ver, _app_js_src)
         )
         if _rewritten != _app_js_src:
             APP_JS_REWRITTEN = _rewritten

@@ -64,6 +64,51 @@ class TestParser(unittest.TestCase):
         self.assertEqual(Q.alternatives(Q.parse_query("-ted")), [])
 
 
+class TestLangFilter(unittest.TestCase):
+    """lang: in the library means what it means in the catalog: the same
+    cases (the fixture's "lang", which test_search_query.cjs runs through
+    the catalog's filter) over the one language table."""
+
+    def test_lang_cases(self):
+        from zimi import search as Sr
+        from zimi import server as S
+
+        with open(CASES, encoding="utf-8") as f:
+            cases = json.load(f)["lang"]
+        for case in cases:
+            zims = [{"name": "z", "language": case["language"]}]
+            for neg in (False, True):
+                with self.subTest(case=case, negate=neg), patch.object(
+                    S, "_zim_list_cache", zims
+                ):
+                    parsed = {
+                        "filters": [
+                            {"key": "lang", "value": case["value"], "negate": neg}
+                        ]
+                    }
+                    kept = Sr._filter_sources(parsed, ["z"]) == ["z"]
+                    self.assertEqual(kept, case["match"] != neg)
+
+    def test_one_table_for_both_sides(self):
+        from zimi import http as H
+        from zimi import server as S
+
+        with open(S.LANG_CODES_PATH, encoding="utf-8") as f:
+            table = json.load(f)
+        self.assertEqual(S._ISO639_3_TO_1, table)
+        self.assertGreater(len(table), 150, "every language with a two-letter code")
+        # The client's is the same table, put in as app.js is served; the
+        # file itself carries none of its own.
+        served = json.dumps(table, separators=(",", ":"), sort_keys=True)
+        self.assertIn("const _LANG3TO2 = %s;" % served, H.APP_JS_REWRITTEN)
+        with open(os.path.join(os.path.dirname(H.__file__), "static", "app.js"), encoding="utf-8") as f:
+            src = f.read()
+        self.assertIn("const _LANG3TO2 = " + H._LANG_CODES_MARK + ";", src)
+        self.assertNotIn("bul:'bg'", src)
+        # Two letters back to three (a new ZIM's metadata) is one answer each.
+        self.assertEqual(len(set(table.values())), len(table))
+
+
 _ARTICLES = [
     (
         "A/Common_law",

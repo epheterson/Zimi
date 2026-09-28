@@ -14,7 +14,7 @@ const path = require('path');
 const vm = require('vm');
 
 const root = path.join(__dirname, '..', 'zimi');
-const src = fs.readFileSync(path.join(root, 'static', 'app.js'), 'utf8');
+const src = require('./app_source.cjs')();
 const I18N_DIR = path.join(root, 'static', 'i18n');
 const LANGS = fs.readdirSync(I18N_DIR).filter(f => f.endsWith('.json')).map(f => f.slice(0, -5)).sort();
 const i18n = Object.fromEntries(LANGS.map(l => [l, JSON.parse(fs.readFileSync(path.join(I18N_DIR, l + '.json'), 'utf8'))]));

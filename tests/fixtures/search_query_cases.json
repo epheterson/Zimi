@@ -1,5 +1,5 @@
 {
-  "_about": "The search grammar's cases, read by both parsers: zimi/query.py (tests/test_search_query.py) and parseSearchQuery in zimi/static/app.js (tests/test_search_query.cjs). A term written \"like this\" is a phrase. groups: every group must match, any one term inside a group does.",
+  "_about": "The search grammar's cases, read by both parsers: zimi/query.py (tests/test_search_query.py) and parseSearchQuery in zimi/static/app.js (tests/test_search_query.cjs). A term written \"like this\" is a phrase. groups: every group must match, any one term inside a group does. lang: a lang:value filter against a source's language field, the same in the library (search._filter_sources) and the catalog (_CATALOG_FILTER_TESTS), over the one table in zimi/assets/lang-codes.json.",
   "parse": [
     {"q": "water filter", "groups": [["water"], ["filter"]], "exclude": [], "filters": [], "plain": true},
     {"q": "Water  Filter ", "groups": [["water"], ["filter"]], "exclude": [], "filters": [], "plain": true},
@@ -54,5 +54,16 @@
     {"q": "東京 -大阪", "text": "東京の歴史", "match": true},
     {"q": "Москва -Петербург", "text": "Москва и Петербург", "match": false},
     {"q": "-", "text": "anything", "match": true}
+  ],
+  "lang": [
+    {"value": "en", "language": "en,fr", "match": true},
+    {"value": "fr", "language": "eng,fra", "match": true},
+    {"value": "de", "language": "en,fr", "match": false},
+    {"value": "bg", "language": "bul", "match": true},
+    {"value": "bul", "language": "bg", "match": true},
+    {"value": "eo", "language": "epo", "match": true},
+    {"value": "yi", "language": "yid", "match": true},
+    {"value": "fa", "language": "fas", "match": true},
+    {"value": "en", "language": "", "match": false}
   ]
 }

@@ -2512,45 +2512,15 @@ def _save_library_layout(data):
     _atomic_write_json(_library_layout_file_path(), data, indent=2)
 
 
-_ISO639_3_TO_1 = {
-    "eng": "en",
-    "fra": "fr",
-    "deu": "de",
-    "spa": "es",
-    "por": "pt",
-    "rus": "ru",
-    "zho": "zh",
-    "jpn": "ja",
-    "kor": "ko",
-    "ara": "ar",
-    "hin": "hi",
-    "ita": "it",
-    "nld": "nl",
-    "pol": "pl",
-    "tur": "tr",
-    "vie": "vi",
-    "tha": "th",
-    "swe": "sv",
-    "nor": "no",
-    "dan": "da",
-    "fin": "fi",
-    "ces": "cs",
-    "ron": "ro",
-    "hun": "hu",
-    "ell": "el",
-    "heb": "he",
-    "yid": "yi",
-    "ukr": "uk",
-    "cat": "ca",
-    "ind": "id",
-    "msa": "ms",
-    "fas": "fa",
-    "ben": "bn",
-    "tam": "ta",
-    "tel": "te",
-    "urd": "ur",
-    "mul": "mul",  # multiple languages (keep as-is)
-}
+# ISO 639-3 (what ZIM metadata carries) to ISO 639-1, where a language has
+# one. The one table the server and the web client read: the client gets it
+# put into app.js as it is served (http._inline_lang_codes), so the
+# library's lang: and the catalog's agree on every language.
+LANG_CODES_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "assets", "lang-codes.json"
+)
+with open(LANG_CODES_PATH, encoding="utf-8") as _f:
+    _ISO639_3_TO_1 = json.load(_f)
 
 # ============================================================================
 # ZIM Loading & Title Index

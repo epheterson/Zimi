@@ -2561,10 +2561,18 @@ def _search_places(query_str, target_names):
 _OPERATOR_OVERFETCH = 2
 
 
+def _lang_code(code):
+    """A language code as the table writes it: two letters where it has them."""
+    code = code.strip().lower()
+    return _srv._ISO639_3_TO_1.get(code, code)
+
+
 def _filter_sources(parsed, names):
     """``names`` narrowed by the query's filters: source:/in: keeps the ZIMs
     whose name or title contains the value, lang: those in that language
-    (two- or three-letter code); either one negated drops them instead."""
+    (two- or three-letter code; a ZIM in several, "en,fr", is in each);
+    either one negated drops them instead. The catalog's lang: is the same
+    (_CATALOG_FILTER_TESTS in app.js), over the same table."""
     if not parsed["filters"]:
         return names
     meta = {z["name"]: z for z in (_srv._zim_list_cache or [])}
@@ -2572,10 +2580,9 @@ def _filter_sources(parsed, names):
     def holds(name, f):
         z = meta.get(name, {})
         if f["key"] == "lang":
-            lang = z.get("language", "")
-            return bool(lang) and lang in (
-                f["value"],
-                _srv._ISO639_3_TO_1.get(f["value"]),
+            want = _lang_code(f["value"])
+            return any(
+                _lang_code(c) == want for c in (z.get("language") or "").split(",") if c.strip()
             )
         return (
             f["value"] in name.lower() or f["value"] in (z.get("title") or "").lower()

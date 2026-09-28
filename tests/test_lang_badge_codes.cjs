@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const src = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.js'), 'utf8');
+const src = require('./app_source.cjs')();
 function extractFn(name) {
   const start = src.indexOf('function ' + name + '(');
   if (start < 0) throw new Error(name + ' not found');
