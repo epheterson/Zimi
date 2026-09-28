@@ -8570,7 +8570,13 @@ function _newestPer(list, key) {
 
 // The installed ZIMs of one kind, by title; with a key, one per identity.
 function _installedOfKind(kind, key) {
-  var all = (zimsCache || []).filter(function(z) { return z.kind === kind && z.main_path; })
+  return _installedFor(kind, '', key);
+}
+// The ZIMs an app reads: its own kind, and those that feed it beside
+// another (server._zim_feeds: Wikisource on the Bookshelf, a document
+// library's videos in ZimiTube).
+function _installedFor(kind, app, key) {
+  var all = (zimsCache || []).filter(function(z) { return z.main_path && (z.kind === kind || !!(app && z.feeds && z.feeds[app])); })
     .sort(function(a, b) { return (a.title || a.name).localeCompare(b.title || b.name); });
   return key ? _newestPer(all, key) : all;
 }

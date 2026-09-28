@@ -1217,20 +1217,11 @@ def extract_pdf_text(pdf_bytes, max_length=None):
 
 
 def parse_catalog(archive):
-    """Parse database.js from zimgit-style ZIMs to get PDF metadata catalog."""
-    import ast
+    """The document listing of a nautilus library (zimgit-* and the rest),
+    or None when it has none. One parser for every reader: zimi.nautilus."""
+    from zimi import nautilus
 
-    try:
-        entry = archive.get_entry_by_path("database.js")
-        content = bytes(entry.get_item().content).decode("UTF-8", errors="replace")
-        # database.js uses Python-style dicts with single quotes
-        content = content.replace("var DATABASE = ", "").strip().rstrip(";")
-        # ast.literal_eval handles Python-style single-quoted dicts safely
-        items = ast.literal_eval(content)
-        return items
-    except Exception as e:
-        log.debug("Failed to parse zimgit catalog (database.js): %s", e)
-        return None
+    return nautilus.items(archive) or None
 
 
 def _get_pooled_archive(name, pool, pool_lock, zim_locks, pool_label):
