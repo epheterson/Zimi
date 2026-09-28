@@ -1107,8 +1107,10 @@ def test_an_epub_reads_in_the_e_reader_on_a_phone(served_epub):
             assert got["paged"] and got["held"]
             pg.touchscreen.tap(365, 420)
             pg.wait_for_timeout(1200)
-            places = pg.evaluate("() => JSON.parse(localStorage.getItem('zimi_book_places') || '{}')")
-            assert list(places) == [card["zim"] + "\n" + card["path"]]
+            # Reading positions live in the Saved store (1.12), keyed by the
+            # ZIM's short name and the book's path.
+            where = pg.evaluate("(k) => { var p = Saved.position(k); return p && p.where; }", card["zim"] + "\n" + card["path"])
+            assert where, "turning a page keeps the place in this EPUB"
         finally:
             br.close()
 
