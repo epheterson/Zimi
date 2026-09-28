@@ -17339,6 +17339,10 @@ var _READING_CSS = [
   '@media (hover:hover){.zb-bar button:hover:not(:disabled),.zb-sheet button:hover:not(:disabled){background:var(--rv-code)}}',
   '.zb-bar button:focus-visible,.zb-sheet button:focus-visible,.zb-sheet input:focus-visible{outline:2px solid var(--rv-link);outline-offset:1px}',
   '.zb-bar button:disabled{opacity:.3;cursor:default}',
+  '.zb-bar button[hidden]{display:none}',
+  // Another device's newer place in this book, offered above the scrubber.
+  '.zb-foot .zb-remote{align-self:center;height:auto;min-height:34px;max-width:100%;padding:6px 14px;border:1px solid var(--rv-border);',
+    'border-radius:17px;font-size:13px;color:var(--rv-link);text-align:center;white-space:normal}',
   '.zb-aa{font:600 17px/1 Georgia,serif!important;letter-spacing:.02em}',
   '.zb-title{flex:1;min-width:0;text-align:center;line-height:1.2}',
   '.zb-title b,.zb-title span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;unicode-bidi:plaintext}',
@@ -17473,6 +17477,7 @@ function _readingSettingsBind(sheet, getPrefs, apply, close) {
 // a turn of the phone, a change of type, and reopening.
 var _BOOK_PLACE_THROTTLE = 800;   // ms between writes while reading
 var _BOOK_PLACE_SCALE = 1e5;      // the share read is kept to five decimal places
+var _BOOK_REMOTE_NEAR = 400;      // chars: another device's place this near where you are is where you are
 var _BOOK_CHAPTERS_MIN = 2;       // fewer headings than this is not a book of chapters
 var _BOOK_FRONT_MIN = 200;        // chars: a first "chapter" with less than this before it is the title page's
 var _BOOK_SECTION_CHARS = 150000; // chars: the longest run laid out as pages at once
@@ -17802,7 +17807,8 @@ function _bookLay(frame) {
   if (!author) head.querySelector('.zb-title span').style.display = 'none';
   var foot = el('div', 'zb-bar zb-foot');
   foot.setAttribute('dir', uiRtl ? 'rtl' : 'ltr');
-  foot.innerHTML = '<input type="range" class="zb-scrub" min="0" max="1000" step="1" value="0" aria-label="' + tH('books_position') + '">' +
+  foot.innerHTML = '<button type="button" class="zb-remote" hidden></button>' +
+    '<input type="range" class="zb-scrub" min="0" max="1000" step="1" value="0" aria-label="' + tH('books_position') + '">' +
     '<div class="zb-row"><button type="button" class="zb-pv" aria-label="' + tH('books_prev_chapter') + '" title="' + tH('books_prev_chapter') + '"></button>' +
     '<div class="zb-info"><span class="zb-ch"></span><span class="zb-left"></span></div>' +
     '<button type="button" class="zb-nx" aria-label="' + tH('books_next_chapter') + '" title="' + tH('books_next_chapter') + '"></button></div>';
@@ -17970,11 +17976,41 @@ function _bookLay(frame) {
     pv.disabled = paged ? (cur === 0 && page === 0) : (win.scrollY || 0) <= 2;
     nx.disabled = !chapters.length || k >= chapters.length - 1;
   };
-  var last = 0, saveTimer = null;
+  // The place last known here (the one it opened at, or last wrote, or went
+  // to) and the time of the record: only a move from it is written, so a
+  // book left open never writes its older place over one read since on
+  // another device; a newer one from there is offered instead.
+  var last = 0, saveTimer = null, known = { c: -1, ts: 0 };
+  var remote = foot.querySelector('.zb-remote');
+  var offerOff = function() { remote.hidden = true; remote.__c = -1; };
   var save = function() {
     last = Date.now();
     var c = charOf(anchor);
+    if (c === known.c) return;
+    known.c = c;
+    offerOff();
     _bookSavePlace(doc, zim, path, c / total, c);
+    known.ts = (Saved.position({ zim: zim, path: path }) || known).ts;
+  };
+  doc.__zbRemotePlace = function() {
+    var p = Saved.position({ zim: zim, path: path }), w = p && p.where;
+    if (!w || p.ts <= known.ts) return;
+    known.ts = p.ts;
+    var c = w.c > 0 ? Math.min(total, w.c) : Math.round((w.f || 0) * total);
+    if (Math.abs(c - charOf(anchor)) < _BOOK_REMOTE_NEAR) return;
+    remote.textContent = t('books_remote_place', { where: pct(c / total) });
+    remote.__c = c;
+    remote.hidden = false;
+    showBars(true);
+  };
+  remote.onclick = function() {
+    var c = remote.__c;
+    offerOff();
+    if (c < 0) return;
+    held = false;
+    goToChar(c);
+    known.c = charOf(anchor);
+    paint();
   };
   var settleTimer = null;
   // After a scroll or a turn has come to rest: read where you are, show it, keep it.
@@ -18254,7 +18290,7 @@ function _bookLay(frame) {
   paged = prefs.mode === 'pages';
   applyVars();
   html.classList.toggle('zb-paged', paged);
-  var place = (Saved.position({ zim: zim, path: path }) || {}).where;
+  var placed = Saved.position({ zim: zim, path: path }), place = (placed || {}).where;
   var hash = (win.location.hash || '').slice(1), tgt = null;
   if (hash) { try { hash = decodeURIComponent(hash); } catch (e) {} tgt = doc.getElementById(hash); }
   var tgtSec = tgt && tgt.closest('.zb-sec');
@@ -18268,6 +18304,7 @@ function _bookLay(frame) {
     goTo({ s: 0, o: 0 });
     if (!paged) win.scrollTo(0, 0);
   }
+  known = { c: charOf(anchor), ts: placed ? placed.ts : 0 };
   lastY = win.scrollY || 0;
   held = true;
   paint();

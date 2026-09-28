@@ -621,3 +621,52 @@ def test_leaving_the_tab_sends_what_is_waiting_in_a_request_that_outlives_it(ser
         pg.wait_for_timeout(800)
         assert "wiki\nA/Last" in users.load_user_data("alice")["saved"]["items"]
         br.close()
+
+
+def test_a_newer_place_from_another_device_is_offered_not_overwritten(served):
+    """A book left open does not write its older place over one read since
+    on another device; the reader offers to go there instead."""
+    from playwright.sync_api import sync_playwright
+
+    key = "gutenberg_mul\nLiber.1"
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = _device(br, served, 390)
+        pg.evaluate("() => openBooks()")
+        frame = pg.frame_locator("#reader-frame")
+        frame.locator(".bk[data-book='1']").first.click()
+        frame.locator(".actions .read").click()
+        pg.wait_for_function(READER, timeout=30000)
+        pg.wait_for_timeout(600)
+        for _ in range(2):
+            pg.keyboard.press("ArrowRight")
+            pg.wait_for_timeout(500)
+        pg.wait_for_timeout(1200)
+        mine = pg.evaluate("(k) => Saved.position(k)", key)
+        assert mine and mine["where"]["c"] > 0
+        theirs = dict(mine, where={"f": 0.8, "c": 0}, ts=mine["ts"] + 60000)
+        del theirs["key"]
+        pg.evaluate(
+            "([k, p]) => { var s = { positions: {} }; s.positions[k] = p; Saved.merge(s, { fromSync: true }); }",
+            [key, theirs],
+        )
+        pg.wait_for_timeout(300)
+        offer = pg.evaluate(
+            "() => { var b = document.getElementById('reader-frame').contentDocument.querySelector('.zb-remote'); return b && { shown: !b.hidden && b.getBoundingClientRect().height > 0, text: b.textContent }; }"
+        )
+        assert offer and offer["shown"] and "another device" in offer["text"], offer
+        # Still here, not moving: nothing written over it, as the page hides or lays out again.
+        pg.evaluate(
+            "() => { var w = document.getElementById('reader-frame').contentWindow; w.dispatchEvent(new Event('resize')); w.dispatchEvent(new Event('pagehide')); }"
+        )
+        pg.wait_for_timeout(1500)
+        assert pg.evaluate("(k) => Saved.position(k).where.f", key) == 0.8
+        frame.locator(".zb-remote").click()
+        pg.wait_for_timeout(800)
+        assert pg.evaluate(
+            "() => document.getElementById('reader-frame').contentDocument.querySelector('.zb-remote').hidden"
+        )
+        pg.keyboard.press("ArrowRight")
+        pg.wait_for_timeout(1500)
+        assert pg.evaluate("(k) => Saved.position(k).where.f", key) > 0.7
+        br.close()
