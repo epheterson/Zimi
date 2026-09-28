@@ -43,7 +43,9 @@ const ctx = {
     { name: 'wikipedia_en_all', title: 'Wikipedia', main_path: 'A/Main', first_seen: NOW - 5 * DAY, entries: 6000000 },
   ],
   esc, t: k => NAMES[k] || k, tH: k => esc(NAMES[k] || k), tPlural: (k, n) => k + ':' + n,
-  _getLibraryView: () => 'list', _userSession: null, document: { body: { dataset: {} } },
+  // The server offers these five (named, so the orders below don't shift when
+  // an app's default changes: Zimipedia is on by default from 1.12).
+  _getLibraryView: () => 'list', _userSession: null, document: { body: { dataset: { zimiApps: 'maps,tube,exchange,reddot,books' } } },
   homeRecentFilter: null, homeLangFilter: new Set(),
   // A card grid, as its ZIMs' names in the order it was handed them.
   renderCardGrid: zims => '<grid ' + zims.map(z => z.name).join(',') + '>',
