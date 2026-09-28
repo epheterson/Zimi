@@ -11,11 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Search operators, in the library search, the catalog and the API: `-word` leaves out, `"exact words"` keeps words together, `cats OR dogs` takes either, and `in:wikipedia`, `lang:fr` (and `-in:ted`, `-lang:en`) choose the sources. `science -ted` in the catalog now hides the hundreds of TED ZIMs. A hyphenated word like `e-mail` is still one word. In the library, exclusions and phrases apply to a result's title. Each operator shows as a chip saying what it did ("without ted", "French", "Wikipedia"), and its × takes it back out; a ? beside the search box has examples in your language. ([#94](https://github.com/epheterson/Zimi/issues/94))
 - The Almanac's orrery: hover or tap a planet for its distance and radio delay, ride the rocket there as the delay home grows, and try the twin paradox at up to 0.99c.
+- Saving: bookmarks, lists and Liked in one place, an item in as many lists as you like, each list exportable as a ZIM.
+- Signed in, what you save and where you are in each book follow your account to every device, and a delete on one stays deleted on the others.
+- Bookshelf has My shelf, and Continue reading picks up on any device where you left off.
+
+### Changed
+
+- The Bookmarks panel is now Saved: folders are lists (a nested folder is "Parent / Child"), and over an app it opens on that app's own.
+- The bookmark button saves an article at the section you are reading, and a map at the place on screen.
 
 ### Fixed
 
 - In Arabic and Hebrew the search box's clear button no longer sits on its magnifier, and a catalog search inside a category says Back in your language.
 - A catalog search typed while the catalog was still loading is no longer replaced by the category gallery.
+- My data's export and import carry your history, and Restore from server no longer restores an old copy.
 
 ## [1.11.0] - 2026-09-27
 

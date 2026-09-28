@@ -70,8 +70,14 @@
   .facts dt { color: var(--text2); }
   .facts dd { margin: 0; min-width: 0; }
   .facts dd a { cursor: pointer; }
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
   .actions .read { display: inline-flex; align-items: center; gap: 8px; padding: 10px 22px; border-radius: 22px; background: var(--amber); color: #fff; font-weight: 600; font-size: 14.5px; border: 0; cursor: pointer; }
   .actions .read:hover { filter: brightness(1.08); }
+  /* On my shelf: the bookmark, filled once the book is kept. */
+  .actions .keep { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 22px; border: 1px solid var(--border); background: var(--surface); font-weight: 600; font-size: 14px; cursor: pointer; }
+  .actions .keep:hover { border-color: var(--amber); color: var(--amber); }
+  .actions .keep.on { border-color: var(--amber); color: var(--amber); background: var(--amber-glow); }
+  .actions .keep.on svg { fill: currentColor; }
   .subjects { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 0; }
   .subjects span { font-size: 12px; padding: 3px 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text2); unicode-bidi: plaintext; }
   .note { color: var(--text2); font-size: 12.5px; margin: 10px 0 0; }
@@ -96,7 +102,8 @@
 // Reader View, keeps your place, and steps chapter by chapter. Zimi's top
 // bar drives booksSearch(q).
 var STR = strings({ title: 'Bookshelf', shelf: 'Shelf', authors: 'Authors', subjects: 'Subjects', eras: 'Eras', languages: 'Languages',
-  popular: 'Most read', recent: 'Newest to Project Gutenberg', continue: 'Continue reading', all_books: 'All books', see_all: 'See all',
+  popular: 'Most read', recent: 'Newest to Project Gutenberg', continue: 'Continue reading', my_shelf: 'My shelf', add_shelf: 'Add to my shelf',
+  on_shelf: 'On my shelf', all_books: 'All books', see_all: 'See all',
   sort_popular: 'Most read', sort_title: 'Title', sort_author: 'Author', sort_recent: 'Newest', sort_name: 'A to Z', sort_books: 'Most books',
   read: 'Read', resume: 'Continue', epub: 'Download EPUB', more_by: 'More by {name}', added: 'Added to Project Gutenberg', language: 'Language',
   subject: 'Subject', era: 'Era', author: 'Author', more: 'More', none: 'No books match.', empty: 'No books installed yet.', book: 'book', books: 'books',
@@ -145,14 +152,26 @@ function shelfName(code) {
 function langName(code) {
   try { return new Intl.DisplayNames([STR.lang || 'en'], { type: 'language' }).of(code) || code; } catch (e) { return code; }
 }
-// Where you are in each book, kept by Zimi's reader: {"<zim>\n<path>":
-// {f, ts, id, title, author, cover}}, the most recently read first.
+// What you keep lives in the shell's Saved (apps.js saved()): this
+// browser's, or the account's when signed in, so a place in a book follows
+// you to the next device. A book there is its ZIM and page, its title, and
+// what a card needs (its number, author, cover) as meta.
+function bookRef(b) {
+  return { kind: 'book', app: 'books', zim: b.zim, path: b.path, title: b.title, meta: { id: b.id, author: b.author || '', cover: b.cover || '' } };
+}
+// A card from what Saved kept: its number from the meta, else from the page
+// (Gutenberg's pages end in the book's number).
+function card(x) {
+  var m = x.meta || {};
+  return { zim: x.zim, path: x.path, id: m.id || Number((String(x.path).match(/\.(\d+)$/) || [])[1]) || 0,
+    title: x.title || x.path, author: m.author || '', cover: m.cover || '' };
+}
+// Where you are in each book, kept by Zimi's reader, the most recently read
+// first: the card, with f the share read.
 function places() {
-  var all = {};
-  try { all = JSON.parse(localStorage.getItem(BOOK_PLACES_KEY) || '{}') || {}; } catch (e) {}
-  return Object.keys(all).map(function(k) { var v = all[k] || {}; var i = k.indexOf('\n'); v.zim = k.slice(0, i); v.path = k.slice(i + 1); return v; })
-    .filter(function(v) { return v.zim && v.path && v.f > 0.005; })
-    .sort(function(a, b) { return (b.ts || 0) - (a.ts || 0); });
+  var S = saved();
+  return (S ? S.continued({ app: 'books' }) : []).filter(function(p) { return p.where.f > 0.005; })
+    .map(function(p) { var b = card(p); b.f = p.where.f; b.ts = p.ts; return b; });
 }
 function placeOf(b) {
   var p = places();
@@ -162,12 +181,20 @@ function placeOf(b) {
 // Remember a book as it is opened, so the shelf can show it under Continue
 // reading; the reader adds the place.
 function noteOpened(b) {
-  try {
-    var all = JSON.parse(localStorage.getItem(BOOK_PLACES_KEY) || '{}') || {};
-    var k = b.zim + '\n' + b.path, cur = all[k] || {};
-    all[k] = { f: cur.f || 0, ts: Date.now(), id: b.id, title: b.title, author: b.author || '', cover: b.cover || '' };
-    localStorage.setItem(BOOK_PLACES_KEY, JSON.stringify(all));
-  } catch (e) {}
+  var S = saved();
+  if (S) S.setPosition(bookRef(b), null);
+}
+// My shelf: the books you keep, the latest first.
+function shelf() {
+  var S = saved();
+  return (S ? S.itemsFor({ app: 'books' }) : []).map(card);
+}
+function onShelf(b) { var S = saved(); return !!(S && S.has(bookRef(b))); }
+function toggleShelf(id) {
+  var b = _known[id], S = saved();
+  if (!b || !S) return;
+  if (S.has(bookRef(b))) S.remove(bookRef(b));
+  else S.save(bookRef(b));
 }
 
 // ── views ────────────────────────────────────────────────────────────────
@@ -216,7 +243,7 @@ function renderTabs() {
     var on = v === t[0];
     return '<button type="button" role="tab" class="chip' + (on ? ' on' : '') + '" aria-selected="' + on + '" onclick="tab(' + J(t[0]) + ')">' + esc(t[1]) + '</button>';
   }).join('');
-  $('tabs').hidden = !h.total || v === 'book' || v === 'list';
+  $('tabs').hidden = !h.total || v === 'book' || v === 'list' || v === 'mine';
 }
 function tab(v) { _q = ''; _stack = [{ v: 'home' }]; if (v !== 'home') _stack.push({ v: v }); show(); }
 function go(view) { _stack.push(view); show(); }
@@ -232,6 +259,7 @@ function show() {
   if (v.v === 'subjects') return renderSubjects();
   if (v.v === 'eras') return renderEras();
   if (v.v === 'langs') return renderLangs();
+  if (v.v === 'mine') return renderMine();
   if (v.v === 'book') return renderBook(v);
 }
 function showEmpty() {
@@ -239,18 +267,21 @@ function showEmpty() {
 }
 function goCatalog() { tell({ zimi: 'catalog', category: 'gutenberg' }); return false; }
 
-// The front: where you were, the most read, the newest, and the ways in.
+// The front: where you were, what you keep, the most read, the newest, and
+// the ways in.
 function renderHome() {
   var h = _home;
   var cont = places().slice(0, CONTINUE_SHOWN);
   var html = '';
   if (cont.length) {
     html += '<section class="shelf"><div class="shelf-h"><h2>' + esc(STR.continue) + '</h2></div><div class="strip">' + cont.map(function(p) {
-      var b = _known[p.id] || { zim: p.zim, path: p.path, id: p.id, title: p.title || p.path, author: p.author, cover: p.cover };
+      var b = _known[p.id] || p;
       _known[b.id] = _known[b.id] || b;
       return bookHtml(b, p);
     }).join('') + '</div></section>';
   }
+  var mine = shelf();
+  html += shelfHtml(STR.my_shelf, mine.slice(0, STRIP), mine.length > STRIP ? "go({v:'mine'})" : '');
   html += shelfHtml(STR.popular, h.popular || [], "go({v:'list',sort:'popular'})");
   html += shelfHtml(STR.recent, h.recent || [], "go({v:'list',sort:'recent'})");
   html += '<section class="shelf"><div class="shelf-h"><h2>' + esc(STR.subjects) + '</h2></div>' + subjectTiles(h.shelves.slice().sort(function(a, b) { return b.n - a.n; }).slice(0, 8)) + '</section>';
@@ -271,6 +302,11 @@ function erasHtml(list) {
     return '<button type="button" class="era" onclick="go({v:\'list\',era:' + e.from + '})"><span class="y">' + esc(eraLabel(e.from)) + '</span>' +
       '<span class="bar"><i style="width:' + Math.max(2, Math.round(e.n / max * 100)) + '%"></i></span><span class="c">' + e.n + '</span></button>';
   }).join('') + '</div>';
+}
+function renderMine() {
+  var mine = shelf();
+  $('view').innerHTML = '<div class="head"><h2>' + esc(STR.my_shelf) + ' <span class="n">' + esc(count(mine.length, STR.book, STR.books)) + '</span></h2></div>' +
+    (mine.length ? booksHtml(mine) : '<div class="empty">' + esc(STR.none) + '</div>');
 }
 function renderSubjects() {
   $('view').innerHTML = '<div class="head"><h2>' + esc(STR.subjects) + '</h2></div>' + subjectTiles(_home.shelves);
@@ -386,13 +422,21 @@ function bookPage(b, full) {
     '<h1>' + esc(b.title) + '</h1>' + (b.subtitle ? '<p class="st">' + esc(b.subtitle) + '</p>' : '') +
     (b.author ? '<p class="by"><a onclick="go({v:\'list\',author:' + J(b.author) + '})">' + esc(b.author) + '</a>' + (yrs ? ' <span class="yrs">' + esc(yrs) + '</span>' : '') + '</p>' : '') +
     (facts ? '<dl class="facts">' + facts + '</dl>' : '') +
-    '<div class="actions"><button type="button" class="read" onclick="readBook(' + b.id + ')">' + esc(readLabel) + '</button>' +
+    '<div class="actions"><button type="button" class="read" onclick="readBook(' + b.id + ')">' + esc(readLabel) + '</button>' + keepHtml(b) +
     (full ? '<a href="' + esc(zpath(b.zim, full.epub)) + '" download>' + esc(STR.epub) + '</a>' : '') + '</div>' +
     (b.html === false ? '<p class="note">' + esc(STR.epub_only) + '</p>' : '') +
     (full && full.subjects && full.subjects.length ? '<div class="subjects">' + full.subjects.map(function(s) { return '<span>' + esc(s) + '</span>'; }).join('') + '</div>' : '') +
     '</div></div>';
   if (full && full.more && full.more.length) html += shelfHtml(STR.more_by.replace('{name}', b.author), full.more, full.more.length >= 24 ? "go({v:'list',author:" + J(b.author) + "})" : '');
   return html;
+}
+// On my shelf, or not: the shell's bookmark, as the shelf says it.
+var KEEP_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+function keepHtml(b) {
+  if (!saved()) return '';
+  var on = onShelf(b);
+  return '<button type="button" class="keep' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="toggleShelf(' + b.id + ')">' +
+    KEEP_SVG + esc(on ? STR.on_shelf : STR.add_shelf) + '</button>';
 }
 function readBook(id) {
   var b = _known[id];
@@ -453,6 +497,19 @@ function refreshHome() {
 }
 
 window.booksSearch = booksSearch; window.go = go; window.tab = tab; window.resort = resort; window.readBook = readBook; window.noCover = noCover;
+window.toggleShelf = toggleShelf;
+// What you keep changed (here, in the Saved panel, on another device): the
+// parts that show it are drawn again, where they are, without a scroll.
+window.__saved = function() {
+  var v = cur();
+  if (!_home || !_home.total) return;
+  if (v.v === 'home') renderHome();
+  else if (v.v === 'mine') renderMine();
+  else if (v.v === 'book') {
+    var k = document.querySelector('.actions .keep'), b = _known[v.id];
+    if (k && b) k.outerHTML = keepHtml(b);
+  }
+};
 window.__top = function() { return _stack.length <= 1; };
 window.__back = back;
 window.__home = function() { tab('home'); };

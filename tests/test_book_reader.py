@@ -99,14 +99,14 @@ CHAR = r"""(c) => { var f = document.getElementById('reader-frame'), d = f.conte
 STATE = r"""() => { var f = document.getElementById('reader-frame'), d = f.contentDocument, w = f.contentWindow, h = d.documentElement;
   var art = d.querySelector('.zimi-reader-body');
   var secs = Array.prototype.slice.call(d.querySelectorAll('.zb-sec'));
-  var places = JSON.parse(localStorage.getItem('zimi_book_places') || '{}'), key = Object.keys(places)[0];
+  var place = Saved.continued({ app: 'books' })[0];
   return { paged: h.classList.contains('zb-paged'), away: h.classList.contains('zb-away'),
     sec: secs.findIndex(function(s) { return s.classList.contains('zb-cur'); }),
     page: Math.round(Math.abs(parseFloat((art.style.transform || '').replace(/[^-0-9.]/g, '')) || 0) / w.innerWidth),
     held: document.body.classList.contains('chrome-held'), frameTop: f.getBoundingClientRect().top,
     jumpTop: !!d.getElementById('zimi-top') || !!d.querySelector('.zim_up'),
     blankFront: Array.prototype.filter.call(d.querySelectorAll('.zb-front p'), function(p) { return !p.textContent.trim(); }).length,
-    foot: d.querySelector('.zb-left').textContent, c: key ? places[key].c : null }; }"""
+    foot: d.querySelector('.zb-left').textContent, c: place ? place.where.c : null }; }"""
 
 
 @pytest.fixture

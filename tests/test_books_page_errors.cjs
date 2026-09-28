@@ -111,7 +111,7 @@ const HOME = { total: 2, details: false, languages: [], shelves: [{ code: 'PA', 
     view().includes('Aeneidos') && view().includes(ctx.esc(ctx.STR.load_part)) && view().includes('onclick="show()"'), view());
 
   ok('the poll interval is named, not repeated', !/setTimeout\(refreshHome, \d/.test(page));
-  ok('the places key is the apps\' shared one, not a literal of the page', !/zimi_book_places/.test(page) && /BOOK_PLACES_KEY/.test(page));
+  ok('places come from the shell\'s Saved, not a storage key of the page', !/zimi_book_places/.test(page) && /S\.continued\(\{ app: 'books' \}\)/.test(page));
 
   console.log(failures ? '\n' + failures + ' FAILED' : '\nall books-page error checks passed');
   process.exit(failures ? 1 : 0);

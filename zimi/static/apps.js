@@ -15,10 +15,13 @@ function openLink(a, zim, page, label) {
     e.preventDefault(); tell({ zimi: 'open', zim: zim, path: page });
   };
 }
-// Where you are in each book, kept by Zimi's reader and shown by Bookshelf.
-// The shell does not load this file: app.js's SK.BOOK_PLACES is the same key,
-// and tests/test_books_page.cjs holds the two together.
-var BOOK_PLACES_KEY = 'zimi_book_places';
+// What is kept (bookmarks, lists, Liked, where you were): the shell's Saved,
+// this browser's or, signed in, the account's. Same origin, so a page calls it
+// directly, saved().itemsFor({ app: 'books' }), saved().save(item) and the
+// rest (docs/features/saving.md); null when the page is open on its own,
+// outside the shell. Any change, from the page, the panel or another device,
+// reaches the page as window.__saved().
+function saved() { try { return (window.parent !== window && window.parent.Saved) || null; } catch (e) { return null; } }
 // A value into an onclick attribute.
 function J(v) { return JSON.stringify(v).replace(/"/g, '&quot;'); }
 // A word to the shell (the app's address, its title, a door to the catalog).
@@ -39,6 +42,9 @@ window.addEventListener('message', function(e) {
   } else if (e.data.zimi === 'random') {
     // The dice, inside the app: a video, a question, a post by chance.
     try { if (typeof window.__random === 'function') window.__random(); } catch (err) {}
+  } else if (e.data.zimi === 'saved') {
+    // What is kept changed: the page draws its own part of it again.
+    try { if (typeof window.__saved === 'function') window.__saved(); } catch (err) {}
   } else if (e.data.zimi === 'back-request') {
     // The header's arrow: a step back inside the page (a list to the home),
     // or, at the home already, the word that lets the shell leave.

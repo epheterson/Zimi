@@ -1,0 +1,149 @@
+{
+  "_about": "Merge cases for the saved store, run by both twins: app.js's Saved._merge (tests/test_saved_store.cjs) and users.py's _merge_saved (tests/test_userdata.py). Each: two stores a and b, now in ms, the store expected.",
+  "cases": [
+    {
+      "name": "a delete on one device survives the other device's copy",
+      "now": 3000,
+      "a": {"gone": {"i:w\nA/X": 2000, "m:liked\tw\nA/X": 2000}},
+      "b": {
+        "items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}},
+        "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}}
+      },
+      "expect": {"gone": {"i:w\nA/X": 2000, "m:liked\tw\nA/X": 2000}}
+    },
+    {
+      "name": "and the other way round",
+      "now": 3000,
+      "a": {
+        "items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}},
+        "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}}
+      },
+      "b": {"gone": {"i:w\nA/X": 2000, "m:liked\tw\nA/X": 2000}},
+      "expect": {"gone": {"i:w\nA/X": 2000, "m:liked\tw\nA/X": 2000}}
+    },
+    {
+      "name": "saved again after the delete, it outlives the tombstone",
+      "now": 3000,
+      "a": {"gone": {"i:w\nA/X": 2000}},
+      "b": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 2500, "ts": 2500}}},
+      "expect": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 2500, "ts": 2500}}}
+    },
+    {
+      "name": "the newer edit wins, a tie keeps the first",
+      "now": 3000,
+      "a": {
+        "items": {
+          "w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "Old", "added": 1000, "ts": 1000},
+          "w\nA/Y": {"kind": "article", "zim": "w", "path": "A/Y", "title": "Mine", "added": 1000, "ts": 1200}
+        }
+      },
+      "b": {
+        "items": {
+          "w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "New", "origTitle": "Old", "added": 1000, "ts": 1500},
+          "w\nA/Y": {"kind": "article", "zim": "w", "path": "A/Y", "title": "Theirs", "added": 1000, "ts": 1200}
+        }
+      },
+      "expect": {
+        "items": {
+          "w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "New", "origTitle": "Old", "added": 1000, "ts": 1500},
+          "w\nA/Y": {"kind": "article", "zim": "w", "path": "A/Y", "title": "Mine", "added": 1000, "ts": 1200}
+        }
+      }
+    },
+    {
+      "name": "a deleted list takes its memberships, never its items",
+      "now": 3000,
+      "a": {"gone": {"l:trip": 2000}},
+      "b": {
+        "items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}},
+        "lists": {"trip": {"name": "Portugal trip", "order": 0, "ts": 1000}},
+        "members": {"trip\tw\nA/X": {"order": 0, "ts": 1000}}
+      },
+      "expect": {
+        "items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}},
+        "gone": {"l:trip": 2000}
+      }
+    },
+    {
+      "name": "taken out of a list stays out; added to two lists on two devices, it is in both",
+      "now": 3000,
+      "a": {
+        "items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}},
+        "lists": {"a1": {"name": "One", "order": 0, "ts": 1000}, "a2": {"name": "Two", "order": 1, "ts": 1000}},
+        "members": {"a1\tw\nA/X": {"order": 0, "ts": 1100}},
+        "gone": {"m:liked\tw\nA/X": 2000}
+      },
+      "b": {
+        "items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}},
+        "lists": {"a1": {"name": "One", "order": 0, "ts": 1000}, "a2": {"name": "Two", "order": 1, "ts": 1000}},
+        "members": {"a2\tw\nA/X": {"order": 3.5, "ts": 1200}, "liked\tw\nA/X": {"order": 0, "ts": 1500}}
+      },
+      "expect": {
+        "items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}},
+        "lists": {"a1": {"name": "One", "order": 0, "ts": 1000}, "a2": {"name": "Two", "order": 1, "ts": 1000}},
+        "members": {"a1\tw\nA/X": {"order": 0, "ts": 1100}, "a2\tw\nA/X": {"order": 3.5, "ts": 1200}},
+        "gone": {"m:liked\tw\nA/X": 2000}
+      }
+    },
+    {
+      "name": "a place on a map is one of many on the same page; positions merge newest first",
+      "now": 3000,
+      "a": {
+        "items": {"osm\nindex.html\nmap=12.00/38.72000/-9.14000": {"kind": "place", "zim": "osm", "path": "index.html", "title": "Lisbon", "app": "maps", "where": {"pos": "map=12.00/38.72000/-9.14000"}, "added": 1000, "ts": 1000}},
+        "positions": {"g\nLiber.1": {"kind": "book", "zim": "g", "path": "Liber.1", "title": "Liber", "app": "books", "where": {"f": 0.2, "c": 900}, "meta": {"id": 1}, "ts": 1000}}
+      },
+      "b": {
+        "items": {"osm\nindex.html\nmap=12.00/41.15000/-8.61000": {"kind": "place", "zim": "osm", "path": "index.html", "title": "Porto", "app": "maps", "where": {"pos": "map=12.00/41.15000/-8.61000"}, "added": 1100, "ts": 1100}},
+        "positions": {"g\nLiber.1": {"kind": "book", "zim": "g", "path": "Liber.1", "title": "Liber", "app": "books", "where": {"f": 0.5, "c": 2200}, "meta": {"id": 1}, "ts": 1400}}
+      },
+      "expect": {
+        "items": {
+          "osm\nindex.html\nmap=12.00/38.72000/-9.14000": {"kind": "place", "zim": "osm", "path": "index.html", "title": "Lisbon", "app": "maps", "where": {"pos": "map=12.00/38.72000/-9.14000"}, "added": 1000, "ts": 1000},
+          "osm\nindex.html\nmap=12.00/41.15000/-8.61000": {"kind": "place", "zim": "osm", "path": "index.html", "title": "Porto", "app": "maps", "where": {"pos": "map=12.00/41.15000/-8.61000"}, "added": 1100, "ts": 1100}
+        },
+        "positions": {"g\nLiber.1": {"kind": "book", "zim": "g", "path": "Liber.1", "title": "Liber", "app": "books", "where": {"f": 0.5, "c": 2200}, "meta": {"id": 1}, "ts": 1400}}
+      }
+    },
+    {
+      "name": "a tombstone older than ninety days is forgotten; legacy once set stays set",
+      "now": 7776003000,
+      "a": {"gone": {"i:w\nA/Old": 1000, "i:w\nA/Recent": 7776002000}, "legacy": true},
+      "b": {},
+      "expect": {"gone": {"i:w\nA/Recent": 7776002000}, "legacy": true}
+    },
+    {
+      "name": "a membership that is not a record (false, 0, a string) is dropped, on both sides",
+      "now": 3000,
+      "a": {},
+      "b": {
+        "items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}},
+        "lists": {"l1": {"name": "One", "order": 0, "ts": 1000}},
+        "members": {"liked\tw\nA/X": false, "l1\tw\nA/X": 0},
+        "positions": {"w\nA/X": ""}
+      },
+      "expect": {
+        "items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}},
+        "lists": {"l1": {"name": "One", "order": 0, "ts": 1000}}
+      }
+    },
+    {
+      "name": "what is not a record is dropped: a key not its own, a list called liked, a list id that is not an id",
+      "now": 3000,
+      "a": {},
+      "b": {
+        "items": {
+          "w\nA/Wrong": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000},
+          "w\nA/NoTs": {"kind": "article", "zim": "w", "path": "A/NoTs", "title": "X"},
+          "w\nA/Ok": {"kind": "spaceship", "zim": "w", "path": "A/Ok", "title": "Ok", "app": "nope", "where": {"s": "History", "bad": {"x": 1}}, "extra": "dropped", "ts": 1000}
+        },
+        "lists": {"liked": {"name": "Liked", "order": 0, "ts": 1}, "__proto__": {"name": "P", "order": 0, "ts": 1}, "no spaces": {"name": "S", "order": 0, "ts": 1}, "ok1": {"name": "  Fine  ", "order": 2, "ts": 5}},
+        "members": {"ok1\tw\nA/Ok": {"order": "first", "ts": 1}, "ok1\tw\nA/Gone": {"order": 1, "ts": 1}},
+        "gone": {"x:bad": 5, "i:w\nA/Q": "soon"}
+      },
+      "expect": {
+        "items": {"w\nA/Ok": {"kind": "article", "zim": "w", "path": "A/Ok", "title": "Ok", "where": {"s": "History"}, "added": 1000, "ts": 1000}},
+        "lists": {"ok1": {"name": "Fine", "order": 2, "ts": 5}}
+      }
+    }
+  ]
+}

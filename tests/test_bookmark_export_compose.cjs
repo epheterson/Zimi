@@ -1,13 +1,13 @@
-// Bookmark export composition + localized pluralization (bookmarks/export QA).
+// Export to ZIM, per list, + localized pluralization (bookmarks/export QA).
 //
 // Guards three behaviors:
 //
-// 1. _bmComposeExportJob builds ONE job per export: selected top-level folders
-//    become sections ("Parent / Child" when nested), a single selected folder
-//    keeps the old shape (own bookmarks unsectioned, subfolders as sections),
-//    and — the Eric bug — an EMPTY selected folder is preserved in `sections`
-//    instead of being silently dropped. An all-empty selection yields zero
-//    bookmarks (the UI disables Export on that).
+// 1. _bmComposeExportJob builds ONE job per export: each ticked list becomes
+//    a section (Liked by its name in the UI's language), a single ticked list
+//    keeps the plain shape (its items unsectioned), an item in two ticked
+//    lists goes in once, and (the Eric bug) an EMPTY ticked list is kept in
+//    `sections` instead of being silently dropped. An all-empty selection
+//    yields zero items (the UI disables Export on that).
 //
 // 2. _bmSanitizeZimName mirrors the server's _safe_name (manage.py) so the
 //    prefill the user sees matches the filename the server writes.
@@ -37,31 +37,37 @@ function ok(label, cond, detail) {
   if (!cond) failures++;
 }
 
-// ── Compose: folder fixtures ────────────────────────────────────────────────
-// med (2 bookmarks: 1 own + 1 in card) > card; res (EMPTY); loose at root.
+// ── Compose: list fixtures ──────────────────────────────────────────────────
+// Medical (Aspirin, Heart), Liked (Heart again), Research (EMPTY), and one
+// item in no list.
 function mkComposeSandbox() {
-  const FOLDERS = {
-    med: { id: 'med', name: 'Medical', parent: '' },
-    card: { id: 'card', name: 'Cardiology', parent: 'med' },
-    res: { id: 'res', name: 'Research', parent: '' },
-  };
-  const BOOKMARKS = [
-    { zim: 'w', path: 'A/Aspirin', title: 'Aspirin', folder: 'med' },
-    { zim: 'w', path: 'A/Heart', title: 'Heart', folder: 'card' },
-    { zim: 'w', path: 'A/Loose', title: 'Loose', folder: '' },
+  const LISTS = [
+    { id: 'liked', name: '', builtin: true },
+    { id: 'med', name: 'Medical', builtin: false },
+    { id: 'res', name: 'Research', builtin: false },
   ];
+  const IN = {
+    liked: [{ key: 'w\nA/Heart', zim: 'w', path: 'A/Heart', title: 'Heart' }],
+    med: [
+      { key: 'w\nA/Aspirin', zim: 'w', path: 'A/Aspirin', title: 'Aspirin' },
+      { key: 'w\nA/Heart', zim: 'w', path: 'A/Heart', title: 'Heart' },
+    ],
+    res: [],
+    '': [{ key: 'w\nA/Loose', zim: 'w', path: 'A/Loose', title: 'Loose' }],
+  };
   const sandbox = {
     _BM_ROOT: '',
-    _folNorm: (id) => (id == null ? '' : String(id)),
-    _folById: (id) => FOLDERS[id] || null,
-    _folChildren: (pid) =>
-      Object.values(FOLDERS).filter((f) => f.parent === pid),
-    _bkInFolder: (fid) => BOOKMARKS.filter((b) => (b.folder || '') === fid),
+    Saved: {
+      lists: () => LISTS.map((l) => Object.assign({ count: IN[l.id].length }, l)),
+      itemsFor: (q) => IN[q.list].slice(),
+    },
+    t: (k) => ({ saved_liked: 'Liked' }[k] || k),
   };
   vm.createContext(sandbox);
   vm.runInContext(
+    extract(/function _savedListName\(l\)\s*\{[^\n]*\}/, '_savedListName') + '\n' +
     extract(/function _bmSanitizeZimName\(s\)\s*\{[\s\S]*?\n\}/, '_bmSanitizeZimName') +
-    extract(/function _bmHasSelectedAncestor\(fid, selSet\)\s*\{[\s\S]*?\n\}/, '_bmHasSelectedAncestor') +
+    extract(/function _bmListNameById\(id\)\s*\{[\s\S]*?\n\}/, '_bmListNameById') +
     extract(/function _bmComposeExportJob\(ids, unfiled, nameRaw\)\s*\{[\s\S]*?\n\}/, '_bmComposeExportJob'),
     sandbox);
   return sandbox;
@@ -70,45 +76,31 @@ function mkComposeSandbox() {
 {
   const sb = mkComposeSandbox();
 
-  // Multi-selection: med (+card), EMPTY res, and unfiled → ONE job.
+  // Several lists, an EMPTY one among them, and the items in no list: ONE job.
   const job = vm.runInContext(
-    "_bmComposeExportJob(['med','card','res'], true, ' My Export! ')", sb);
-  ok('one job carries all bookmarks', job.bookmarks.length === 3);
+    "_bmComposeExportJob(['liked','med','res'], true, ' My Export! ')", sb);
+  ok('one job carries every item once, even one in two lists', job.bookmarks.length === 3,
+    JSON.stringify(job.bookmarks.map((b) => b.path)));
+  ok('an item in two ticked lists goes under the first', job.bookmarks.filter((b) => b.path === 'A/Heart').length === 1 &&
+    job.bookmarks.some((b) => b.path === 'A/Heart' && b.section === 'Liked'));
   ok('title is the trimmed user text', job.title === 'My Export!');
   ok('name is the sanitized filename base', job.name === 'My_Export', 'got ' + job.name);
-  ok('top-level folders become sections',
-    job.sections.includes('Medical') && job.sections.includes('Research'),
-    JSON.stringify(job.sections));
-  ok('nested selected subfolder keeps its place',
-    job.sections.includes('Medical / Cardiology'), JSON.stringify(job.sections));
-  ok('EMPTY selected folder is NOT dropped (Eric bug)',
-    job.sections.includes('Research'));
-  ok('unfiled bookmarks ride unsectioned',
+  ok('each list is a section, Liked by its name in the UI\'s language',
+    JSON.stringify(job.sections) === JSON.stringify(['Liked', 'Medical', 'Research']), JSON.stringify(job.sections));
+  ok('an EMPTY ticked list is NOT dropped (Eric bug)', job.sections.includes('Research'));
+  ok('items in no list ride unsectioned',
     job.bookmarks.some((b) => b.path === 'A/Loose' && b.section === ''));
-  ok('nested bookmark tagged with its combined section',
-    job.bookmarks.some((b) => b.path === 'A/Heart' && b.section === 'Medical / Cardiology'));
 
-  // Single-folder selection keeps the old shape: own bookmarks unsectioned,
-  // subfolders as plain sections; empty name falls back to null (server default).
-  const single = vm.runInContext("_bmComposeExportJob(['med','card'], false, '')", sb);
-  ok('single-root: own bookmarks unsectioned',
-    single.bookmarks.some((b) => b.path === 'A/Aspirin' && b.section === ''));
-  ok('single-root: subfolder is a plain section',
-    single.bookmarks.some((b) => b.path === 'A/Heart' && b.section === 'Cardiology'));
+  // One list: the plain shape, its items unsectioned; an empty name → null.
+  const single = vm.runInContext("_bmComposeExportJob(['med'], false, '')", sb);
+  ok('one list: its items unsectioned, in its order',
+    JSON.stringify(single.bookmarks.map((b) => b.path + '|' + b.section)) === JSON.stringify(['A/Aspirin|', 'A/Heart|']));
+  ok('one list: no sections', JSON.stringify(single.sections) === '[]');
   ok('empty name → null (server picks default)', single.name === null && single.title === null);
 
-  // Selecting ONLY the empty folder → zero bookmarks, section still present.
+  // Only the empty list → zero items.
   const empty = vm.runInContext("_bmComposeExportJob(['res'], false, 'Research')", sb);
-  ok('only-empty selection yields zero bookmarks', empty.bookmarks.length === 0);
-  ok('only-empty selection: single-root shape keeps no phantom sections',
-    JSON.stringify(empty.sections) === '[]', JSON.stringify(empty.sections));
-
-  // Empty folder alongside a sibling in multi mode → its section survives.
-  const mixed = vm.runInContext("_bmComposeExportJob(['med','res'], false, 'Mix')", sb);
-  // (card is NOT selected here, so Heart stays behind — only Aspirin rides.)
-  ok('empty sibling folder keeps its section in multi mode',
-    mixed.sections.includes('Research') && mixed.bookmarks.length === 1,
-    JSON.stringify(mixed.sections) + ' bms=' + mixed.bookmarks.length);
+  ok('only-empty selection yields zero items', empty.bookmarks.length === 0);
 
   // Sanitizer parity with manage.py _safe_name:
   //   re.sub(r"[^a-zA-Z0-9._-]+", "_", s).strip("_.")[:60]
