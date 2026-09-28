@@ -26,6 +26,16 @@
         "text": "heart",
         "expect_visible": "heart"
       }
+    },
+    {
+      "mode": "site",
+      "engine": "builtin",
+      "issue": 93,
+      "url": "https://www.gov.uk/foreign-travel-advice",
+      "max_pages": 30,
+      "min_pages": 20,
+      "expect_under": "/foreign-travel-advice/",
+      "why": "a section of a big site: its pages without the rest of gov.uk (GitHub discussion #93)"
     }
   ]
 }

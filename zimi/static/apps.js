@@ -15,6 +15,10 @@ function openLink(a, zim, page, label) {
     e.preventDefault(); tell({ zimi: 'open', zim: zim, path: page });
   };
 }
+// Where you are in each book, kept by Zimi's reader and shown by Bookshelf.
+// The shell does not load this file: app.js's SK.BOOK_PLACES is the same key,
+// and tests/test_books_page.cjs holds the two together.
+var BOOK_PLACES_KEY = 'zimi_book_places';
 // A value into an onclick attribute.
 function J(v) { return JSON.stringify(v).replace(/"/g, '&quot;'); }
 // A word to the shell (the app's address, its title, a door to the catalog).
@@ -72,3 +76,25 @@ function count(n, one, many) { return n + ' ' + (Number(n) === 1 ? one : many); 
 var CHEV = ' <span class="chev"></span>';
 // A ZIM's own icon.
 function zimIcon(zim, cls) { return '<img' + (cls ? ' class="' + cls + '"' : '') + ' src="' + esc(zpath(zim, '-/icon')) + '" alt="" loading="lazy">'; }
+// Zimi's header steps aside while you read. The page tells the shell where
+// it is scrolled to; the shell decides (down into the content hides the
+// header, up or back near the top brings it back) and does the hiding, on
+// a phone-sized screen only. appChrome.immersive(true) keeps it hidden
+// until immersive(false): a video playing on a phone turned sideways. Any
+// page the reader shows can say the same two things to the shell:
+// {zimi: 'scroll', y} and {zimi: 'immersive', on}.
+var appChrome = (function() {
+  var ticking = false;
+  window.addEventListener('scroll', function() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function() { ticking = false; tell({ zimi: 'scroll', y: Math.max(0, window.scrollY || 0) }); });
+  }, { passive: true });
+  return { immersive: function(on) { tell({ zimi: 'immersive', on: !!on }); } };
+})();
+// Back from a thing to its list lands where you were in the list, not at
+// its top: keepPlace() as the thing opens from the list, returnToPlace()
+// as it closes.
+var _place = 0;
+function keepPlace() { _place = window.scrollY || 0; }
+function returnToPlace() { window.scrollTo(0, _place); _place = 0; }

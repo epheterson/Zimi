@@ -42,7 +42,9 @@ class TestAppsSettingSticks(TestNonLatinRedirect):
 
         saved = manage._read_app_update_prefs().get("apps")
         try:
-            self._set_apps(list(srv.APP_NAMES))
+            # Every app a server offers by default (Zimipedia only when named).
+            every = [n for n in srv.APP_NAMES if n in srv.APPS_DEFAULT]
+            self._set_apps(every)
             status, headers, body = self._get("/")
             every_app = headers["ETag"]
             self.assertNotIn("data-zimi-apps", body)
@@ -54,7 +56,7 @@ class TestAppsSettingSticks(TestNonLatinRedirect):
             status, _, _ = self._get("/", {"If-None-Match": headers["ETag"]})
             self.assertEqual(status, 304)
         finally:
-            self._set_apps(list(srv.APP_NAMES) if saved is None or saved is True else saved)
+            self._set_apps(every if saved is None or saved is True else saved)
 
     test_an_arabic_redirect_names_its_target = None
     test_a_cyrillic_redirect_names_its_target = None

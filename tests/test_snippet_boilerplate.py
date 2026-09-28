@@ -144,3 +144,12 @@ def test_a_tag_cut_off_at_the_end_of_the_read_is_not_left_as_text():
     """The handler reads the start of a page; a read can end inside a tag."""
     snip = extract_snippet('<html><body><main>Born 14 March 1879 in <a rel="mw:WikiLink" href="Ulm" t', "x")
     assert "<" not in snip and "href" not in snip, snip
+
+
+def test_a_script_cut_off_at_the_end_of_the_read_is_not_the_snippet():
+    """mwoffliner's Wikivoyage pages open with a config script longer than
+    the handler's read (Paris: past 64 KB), and its code came back as the
+    snippet in Zimipedia's search."""
+    page = '<html><head><title>Paris</title><script id="mwoffliner-jsConfigVars">\n  document.documentElement.classList.replace("client-nojs", "client-js")\n  RLCONF = {"wgBreakFrames":false'
+    snip = extract_snippet(page, "wikivoyage_en_europe")
+    assert "document." not in snip and "RLCONF" not in snip, snip

@@ -38,7 +38,6 @@ def test_a_map_is_recognised_from_its_metadata(scraper, tags, meta_name):
 @pytest.mark.parametrize(
     "scraper,tags,meta_name",
     [
-        ("mwoffliner 1.13", "wikipedia;_category:wikipedia", "wikipedia_en_all"),
         ("", "sitemaps;seo", "sitemaps_en"),  # a tag merely containing "maps"
         ("", "", "openstreetmap-wiki_en_all"),  # the wiki about OSM, not a map
         ("", "", ""),
@@ -46,6 +45,10 @@ def test_a_map_is_recognised_from_its_metadata(scraper, tags, meta_name):
 )
 def test_everything_else_is_not(scraper, tags, meta_name):
     assert srv._zim_kind(scraper, tags, meta_name) is None
+
+
+def test_a_wikipedia_is_a_wiki_not_a_map():
+    assert srv._zim_kind("mwoffliner 1.13", "wikipedia;_category:wikipedia", "wikipedia_en_all") == "wiki"
 
 
 def test_kind_beats_the_filename_but_not_the_folder(monkeypatch):
@@ -147,6 +150,30 @@ def test_a_non_map_is_decided_once_not_reread_every_boot(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "_read_zim_kind", lambda path: calls.append(path) or ("", False))
     srv.load_cache(force=False)
     assert calls == [], "a decided record was read again"
+
+
+def test_an_old_kind_is_reread_once_not_every_boot(tmp_path, monkeypatch):
+    """A record from an older KIND_VERSION is reread on a cache hit. The
+    reread never stamped the new version, so every boot found it old again:
+    every ZIM reopened and the cache rewritten, forever."""
+    import json
+
+    _library_with(tmp_path, monkeypatch, "survival_en_2026-06.zim")
+    srv.load_cache(force=True)
+    cache_path = srv._cache_file_path()
+    with open(cache_path, encoding="utf-8") as f:
+        payload = json.load(f)
+    payload["files"]["survival_en_2026-06.zim"]["kind_v"] = 1
+    with open(cache_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f)
+
+    calls = []
+    real = srv._read_zim_kind
+    monkeypatch.setattr(srv, "_read_zim_kind", lambda path: calls.append(path) or real(path))
+    srv.load_cache(force=False)
+    assert len(calls) == 1, "the old record was not reread"
+    srv.load_cache(force=False)
+    assert len(calls) == 1, "the reread was not written down, so it happened again"
 
 
 @pytest.mark.parametrize(

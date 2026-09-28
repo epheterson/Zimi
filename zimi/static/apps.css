@@ -33,8 +33,9 @@ button { font: inherit; color: inherit; }
 .chips::-webkit-scrollbar { display: none; }
 .chip { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); font-size: 13px; line-height: 1.2; cursor: pointer; white-space: nowrap; }
 .chip img { width: 16px; height: 16px; border-radius: 4px; }
-.chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
 .chip.tag { font-size: 12px; padding: 4px 10px; background: var(--surface2); }
+/* After .tag: a chosen small chip is chosen, not grey on grey. */
+.chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
 .chip .n { opacity: .6; font-variant-numeric: tabular-nums; }
 
 /* A shelf: a heading with its icon and its way to everything, then rows. */
@@ -85,6 +86,11 @@ button { font: inherit; color: inherit; }
 /* Content keeps its own direction inside a right-to-left shell: an English
    post under Hebrew chrome still reads left to right. */
 .prose, .item h1, .row .t, .row .ex { unicode-bidi: plaintext; }
+/* ...and each block inside a body too, since plaintext is not inherited:
+   an English answer's paragraphs sat to the right with their full stops
+   at the wrong end. Code is left to right whatever the chrome. */
+.prose :is(p, li, dd, dt, blockquote, h1, h2, h3, h4, h5, h6, td, th, figcaption) { unicode-bidi: plaintext; }
+.prose pre { direction: ltr; text-align: left; }
 .prose { min-width: 0; overflow-wrap: anywhere; }
 .prose img, .prose video { max-width: 100%; height: auto; border-radius: var(--radius-s); }
 .prose pre { background: var(--surface2); padding: 10px 12px; border-radius: var(--radius-s); overflow-x: auto; font-size: 13px; }
@@ -97,3 +103,15 @@ button { font: inherit; color: inherit; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0 0; }
 .actions a, .actions button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: 12.5px; }
 .actions .on { background: var(--amber-glow); border-color: var(--amber); color: var(--amber); }
+
+/* A finger, not a pointer: the small parts grow to where a thumb lands on
+   them the first time. A part inside a heading's line takes the extra back
+   with a negative margin, so the heading keeps its rhythm. */
+@media (pointer: coarse) {
+  .chip { min-height: 36px; }
+  .chip.tag { min-height: 32px; }
+  .tg { padding: 5px 10px; }
+  .shelf-h .all { padding: 13px 4px; margin-block: -9px; }
+  .actions a, .actions button { min-height: 44px; padding-inline: 16px; }
+  .more { min-height: 44px; }
+}

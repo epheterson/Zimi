@@ -2045,7 +2045,7 @@ def scraper_string(tool=None, version=None):
     return f"{base} + {tool} {version}" if version else f"{base} + {tool}"
 
 
-def history_record(op, mode, detail, *, tools=None, counts=None, blocked=None, ts=None):
+def history_record(op, mode, detail, *, tools=None, counts=None, blocked=None, stopped=None, ts=None):
     """One provenance record. ``op`` is what happened ("created"), ``mode`` how
     ("folder", "page", "site", "video", "import", "bookmarks"), ``detail`` one
     human sentence. ``tools`` names the outside engine and version when one ran;
@@ -2074,6 +2074,11 @@ def history_record(op, mode, detail, *, tools=None, counts=None, blocked=None, t
         record["counts"] = known_counts
     if blocked:
         record["blocked"] = dict(blocked)
+    # The bound that ended a capture short ("page cap (10000)", "byte budget
+    # (4.0 GB)", "interrupted"): the ZIM is incomplete, and the info panel says
+    # so and which limit, in the reader's language (Eric, 2026-09-25).
+    if stopped:
+        record["stopped"] = str(stopped)
     return record
 
 

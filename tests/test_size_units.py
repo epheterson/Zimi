@@ -41,6 +41,17 @@ class TestPythonFormatsSizes(unittest.TestCase):
         self.assertEqual(server._BYTES_PER_MB, 1000**2)
         self.assertEqual(server._BYTES_PER_GB, 1000**3)
 
+    def test_the_engines_speak_the_same_units(self):
+        """The capture engines had a formatter of their own that divided by
+        1024, so a 4 GB default budget stopped a crawl "at its 3.7 GB size
+        budget" beside a form that said 4 GB."""
+        from zimi import creator, crawler
+
+        for n, want in _cases():
+            with self.subTest(bytes=n):
+                self.assertEqual(creator._fmt_bytes(n), want)
+        self.assertEqual(creator._fmt_bytes(crawler.DEFAULT_MAX_BYTES), "4.0 GB")
+
     def test_nothing_negative_or_absent_crashes(self):
         for bad in (None, -1, "", 0.4):
             self.assertTrue(server.format_bytes(bad).endswith("B"))

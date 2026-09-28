@@ -82,6 +82,8 @@ function makeSandbox(kinds) {
     extract(/function _ziTagsHtml\(tags\)\s*\{[\s\S]*?\n\}/, '_ziTagsHtml') +
     extract(/function _ziCountsText\(counts\)\s*\{[\s\S]*?\n\}/, '_ziCountsText') +
     extract(/function _ziBlockedHtml\(blocked\)\s*\{[\s\S]*?\n\}/, '_ziBlockedHtml') +
+    extract(/\/\/ ── why a capture stopped ──[\s\S]*?\/\/ ── end why a capture stopped ──/, 'captureStopText') + '\n' +
+    extract(/function _ziStoppedHtml\(stopped\)\s*\{[\s\S]*?\n\}/, '_ziStoppedHtml') +
     extract(/function _ziToolsText\(record\)\s*\{[\s\S]*?\n\}/, '_ziToolsText') +
     extract(/function _ziRecordHtml\(record\)\s*\{[\s\S]*?\n\}/, '_ziRecordHtml') +
     extract(/function _ziOtherHtml\(other\)\s*\{[\s\S]*?\n\}/, '_ziOtherHtml'),
@@ -181,6 +183,18 @@ const truncated = s._ziRecordHtml({
 });
 has('the truncation marker is legible', truncated, 'Earlier records collapsed');
 lacks('the truncation marker gets no mode chip', truncated, 'zi-ev-mode');
+
+// A capture that ended short says so on its record, and which bound, in the
+// reader's words; a complete one says nothing about it.
+const stoppedAt = (why) => s._ziRecordHtml({ op: 'created', mode: 'site', detail: 'x', stopped: why });
+has('a page cap reads as incomplete', stoppedAt('page cap (10000)'),
+  'zi-ev-stopped">Incomplete: this capture stopped at its 10,000-page limit.<');
+has('a size budget names the budget', stoppedAt('byte budget (4.0 GB)'), 'at its 4.0 GB size budget');
+has('a depth limit names the depth', stoppedAt('depth limit (3)'), 'at its depth limit, 3 links from the first page');
+has('a path with nothing under it names the path', stoppedAt('nothing under /about/'),
+  'nothing else on this site is under /about/');
+has('a Stop is a stop', stoppedAt('interrupted'), 'Stopped early');
+lacks('a complete capture has no stopped line', created, 'zi-ev-stopped');
 
 // An op invented after this build shipped renders as itself rather than
 // vanishing — the same forward-compatibility the record schema promises.

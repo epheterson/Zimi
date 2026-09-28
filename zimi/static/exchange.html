@@ -13,6 +13,8 @@
   .post .score { text-align: center; font-weight: 600; font-size: 15px; color: var(--text); font-variant-numeric: tabular-nums; }
   .post .score .ok { display: block; color: var(--green); font-size: 18px; margin-top: 4px; }
   .by { color: var(--text2); font-size: 12px; margin-top: 8px; }
+  /* A phone: the score column gives its spare width to the answer. */
+  @media (max-width: 480px) { .post { grid-template-columns: 34px 1fr; gap: 10px; } }
 </style>
 </head>
 <body>
@@ -143,6 +145,7 @@ function exchangeSearch(q) {
 
 function openQ(zim, page) {
   var s = siteOf(zim);
+  if (!document.getElementById('home').hidden) keepPlace();
   document.getElementById('home').hidden = true;
   var v = document.getElementById('qview'); v.hidden = false;
   document.getElementById('q-title').textContent = '…';
@@ -171,7 +174,7 @@ function closeQ(silent) {
   var v = document.getElementById('qview'); if (v.hidden) return;
   v.hidden = true; document.getElementById('home').hidden = false;
   tell({ zimi: 'exchange-home' });
-  if (!silent) window.scrollTo(0, 0);
+  if (!silent) returnToPlace();
 }
 window.exchangeSearch = exchangeSearch; window.openQ = openQ; window.closeQ = closeQ; window.openSite = openSite; window.openTag = openTag; window.more = more;
 window.__top = function() { return document.getElementById('qview').hidden && document.getElementById('list').hidden; };

@@ -11,6 +11,13 @@
   .c .cm b { color: var(--text); font-weight: 600; }
   .c .prose { font-size: 13.5px; }
   .c .c { margin-inline-start: 4px; }
+  .c .cm { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .c.folded > :not(.cm) { display: none; }
+  .c.folded > .cm { opacity: .7; }
+  .c.folded > .cm::after { content: attr(data-more); }
+  /* A phone: a deep thread keeps its width, one thin step a level. */
+  @media (max-width: 480px) { .c { padding-inline-start: 9px; } .c .c { margin-inline-start: 0; } }
+  @media (pointer: coarse) { .c .cm { padding: 8px 0 4px; margin-bottom: 0; } button.follow { padding: 8px 12px; margin-block: -5px; } }
   /* Following a subreddit: a star on its shelf and on its list. */
   /* Beside the name it belongs to; the sorts keep the far end. */
   #l-follow { margin-inline-end: auto; }
@@ -176,12 +183,21 @@ function reddotSearch(q) {
     _pages = 0; _page = 1; renderList('“' + _q + '”', rows, false);
   }).catch(function() {});
 }
+// A comment's line folds it away with its replies, as a long thread on a
+// phone needs; folded, the line says how many went with it.
 function commentHtml(c) {
-  return '<div class="c"><div class="cm"><b>' + esc(c.author) + '</b> · ' + esc(count(c.score, STR.point, STR.points)) + (c.date ? ' · ' + esc(c.date) : '') + '</div>' +
+  var n = countComments(c.children);
+  return '<div class="c"><div class="cm" role="button" tabindex="0" aria-expanded="true" onclick="fold(this)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();fold(this)}"' +
+    (n ? ' data-more="' + esc(' · ' + count(n, STR.comment, STR.comments)) + '"' : '') + '><b>' + esc(c.author) + '</b> · ' + esc(count(c.score, STR.point, STR.points)) + (c.date ? ' · ' + esc(c.date) : '') + '</div>' +
     '<div class="prose">' + c.body + '</div>' + (c.children || []).map(commentHtml).join('') + '</div>';
+}
+function fold(line) {
+  var folded = line.parentNode.classList.toggle('folded');
+  line.setAttribute('aria-expanded', String(!folded));
 }
 function countComments(list) { return (list || []).reduce(function(n, c) { return n + 1 + countComments(c.children); }, 0); }
 function openP(zim, page) {
+  if (!document.getElementById('home').hidden) keepPlace();
   document.getElementById('home').hidden = true;
   var v = document.getElementById('pview'); v.hidden = false;
   document.getElementById('p-title').textContent = '…';
@@ -204,10 +220,10 @@ function closeP(silent) {
   var v = document.getElementById('pview'); if (v.hidden) return;
   v.hidden = true; document.getElementById('home').hidden = false;
   tell({ zimi: 'reddot-home' });
-  if (!silent) window.scrollTo(0, 0);
+  if (!silent) returnToPlace();
 }
 window.reddotSearch = reddotSearch; window.openP = openP; window.closeP = closeP; window.openSub = openSub; window.openHome = openHome; window.setSort = setSort; window.more = more;
-window.toggleFollow = toggleFollow; window.renderHomeFeed = renderHomeFeed;
+window.toggleFollow = toggleFollow; window.fold = fold; window.renderHomeFeed = renderHomeFeed;
 window.__top = function() { return document.getElementById('pview').hidden && (document.getElementById('list').hidden || (!!_single && !_q && !_home)); };
 window.__random = function() {
   fetch('/reddot/random').then(function(r) { return r.ok ? r.json() : null; }).then(function(d) { if (d && d.zim && d.page) openP(d.zim, d.page); }).catch(function() {});

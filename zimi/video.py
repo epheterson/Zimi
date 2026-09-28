@@ -63,7 +63,7 @@ from zimi.zimwriter import (
 
 log = logging.getLogger("zimi.video")
 
-DEFAULT_MAX_ZIM_BYTES = 4 * 1024**3  # total budget: keep video ZIMs shareable
+DEFAULT_MAX_ZIM_BYTES = 16 * 1000**3  # total budget; was 4 GiB, which cut most channels short
 # Progressive-first ~720p: no merge step, so ffmpeg is never required.
 # H.264 (avc1) before anything else at the same cap: YouTube's "best" MP4 is
 # AV1 now, which Safari cannot decode on any iPhone before the 15 Pro, so a
@@ -805,6 +805,7 @@ def create_video_zim(
             )
         if not videos:
             raise CreateError("nothing fit under the size budget — raise --max-bytes")
+        stopped = f"byte budget ({_fmt_bytes(max_bytes)})" if budget_hit else None
 
         language, language_source = _video_language(language, videos)
         if language_source != "requested":
@@ -961,6 +962,7 @@ def create_video_zim(
                     + (" (audio only)" if audio_only else ""),
                     tools={"yt-dlp": tool_version},
                     counts={"videos": len(rows), "bytes": used},
+                    stopped=stopped,
                 ),
             )
     finally:
@@ -975,6 +977,9 @@ def create_video_zim(
         "main": "index",
         "registered": registered,
         "url": url,
+        # The card's warning and the info panel's Incomplete read the same
+        # bound: this key and the history record's are one value.
+        "stopped": stopped,
         "language": language,
         "language_source": language_source,
     }

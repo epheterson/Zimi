@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zimipedia</title>
+<!--@apps.css@-->
+<style>
+  /* The languages, each in its own name; then the wikis of the one chosen. */
+  .langs { margin-bottom: 8px; }
+  .langs .chip { font-weight: 600; }
+  .chip .n { font-weight: 400; }
+  .chips .sep { flex: none; width: 1px; align-self: stretch; margin: 4px 2px; background: var(--border); }
+  /* The head: what is shown, and (for a search) the two ways to show it. */
+  .head .views { display: inline-flex; gap: 2px; margin-inline-start: auto; border: 1px solid var(--border); border-radius: 10px; padding: 2px; background: var(--surface); }
+  .head .views button { border: 0; background: none; padding: 4px 7px; border-radius: 8px; cursor: pointer; color: var(--text2); display: inline-flex; line-height: 0; }
+  .head .views button.on { background: var(--surface2); color: var(--text); }
+  .head .views svg { width: 16px; height: 16px; }
+  .head .n .spin { display: inline-block; width: 10px; height: 10px; border: 2px solid var(--border); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -1px; margin-inline-end: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .serif { font-family: Georgia, "Times New Roman", "Noto Serif", "Noto Serif Hebrew", serif; }
+
+  /* Today, a front page: each part under a heading of its own. */
+  .sec { margin: 0 0 28px; min-width: 0; }
+  .sec-h { display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .sec-h h2 { margin: 0; font-size: 19px; font-weight: 600; line-height: 1.25; color: var(--text); }
+  .sec-h .sub { font-size: 12px; color: var(--text2); margin-inline-start: auto; text-align: end; }
+  .sec-note { font-size: 12.5px; color: var(--text2); margin: -4px 0 10px; }
+  /* Two parts side by side on a wide screen: the wider first. */
+  @media (min-width: 820px) {
+    .duo { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 0 28px; }
+    .duo.even { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .duo > .sec:only-child { grid-column: 1 / -1; }
+  }
+  .src { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text2); min-width: 0; }
+  .src img { width: 14px; height: 14px; border-radius: 4px; flex: none; }
+  .src span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .src .lg { font-size: 9.5px; font-weight: 700; padding: 0 4px; border-radius: 3px; background: var(--surface2); text-transform: uppercase; flex: none; }
+
+  /* The day's article: the page's lead, its picture beside it. */
+  .hero { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; color: inherit; margin: 0 0 28px; }
+  .hero:hover, .hero:focus-visible { border-color: var(--amber); outline: none; }
+  .hero .pic { aspect-ratio: 16 / 9; background: var(--surface2); overflow: hidden; }
+  .hero .pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hero .bd { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .kick { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+  .hero .t { font-size: 27px; line-height: 1.15; font-weight: 600; color: var(--text); }
+  .hero .ex { font-size: 15px; line-height: 1.55; color: var(--text); display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+  .hero .more-l { font-size: 13px; font-weight: 600; color: var(--amber); margin-top: 4px; }
+  @media (min-width: 760px) {
+    .hero.has-pic { flex-direction: row; }
+    .hero.has-pic .pic { flex: 0 0 46%; aspect-ratio: auto; min-height: 300px; }
+    .hero .bd { justify-content: center; padding: 24px 28px; }
+    .hero .t { font-size: 34px; }
+  }
+
+  /* On this day: the year leads each line, a picture at its end. */
+  .otd-list, .dyk, .trail { list-style: none; margin: 0; padding: 0; }
+  .otd-list li + li { border-top: 1px solid var(--border); }
+  .otd-list a { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; color: inherit; }
+  .otd-list .yr { flex: 0 0 52px; font-size: 18px; font-weight: 700; color: var(--amber); font-variant-numeric: tabular-nums; line-height: 1.3; }
+  .otd-list .tx { flex: 1; min-width: 0; font-size: 14px; line-height: 1.5; }
+  .otd-list .tx b { font-weight: 600; }
+  .otd-list img { flex: none; width: 60px; height: 60px; object-fit: cover; border-radius: var(--radius-s); }
+  .otd-list a:hover .tx b { color: var(--amber); }
+  /* Did you know: a fact per line, each a door to its article. */
+  .dyk li { position: relative; padding-inline-start: 16px; margin: 0 0 12px; font-size: 14px; line-height: 1.5; }
+  .dyk li::before { content: ""; position: absolute; inset-inline-start: 2px; top: .62em; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); }
+  .dyk a { color: inherit; }
+  .dyk a b { font-weight: 600; }
+  .dyk a:hover b { color: var(--amber); }
+  /* A rabbit hole: the day's article, then each page one link further in. */
+  .trail li { position: relative; padding-inline-start: 30px; padding-bottom: 14px; }
+  .trail li::before { content: attr(data-n); position: absolute; inset-inline-start: 0; top: 1px; width: 20px; height: 20px; border-radius: 50%; background: var(--surface2); border: 1px solid var(--border); font-size: 11px; font-weight: 700; text-align: center; line-height: 20px; color: var(--text2); }
+  .trail li:not(:last-child)::after { content: ""; position: absolute; inset-inline-start: 10px; top: 23px; bottom: 2px; width: 1px; background: var(--border); }
+  .trail li:last-child::before { background: var(--amber); border-color: var(--amber); color: var(--bg); }
+  .trail a { color: inherit; display: block; }
+  .trail .t { font-weight: 600; font-size: 14.5px; }
+  .trail a:hover .t { color: var(--amber); }
+  .trail .ex { color: var(--text2); font-size: 13px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  /* The picture of the day, as large as the column. */
+  .potd { display: block; color: inherit; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); background: var(--surface); }
+  .potd img { display: block; width: 100%; max-height: 420px; object-fit: cover; background: var(--surface2); }
+  .potd .cap { padding: 10px 14px 12px; font-size: 13px; line-height: 1.5; color: var(--text2); }
+  .potd .cap b { color: var(--text); font-weight: 600; }
+
+  /* Cards: a picture when the page has one, its wiki, what it is, its title, its first lines. */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+  @media (max-width: 480px) { .grid { grid-template-columns: 1fr; gap: 10px; } }
+  .card { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; color: inherit; min-width: 0; }
+  .card:hover, .card:focus-visible { border-color: var(--amber); outline: none; }
+  .card .pic { aspect-ratio: 16 / 10; background: var(--surface2); display: block; overflow: hidden; }
+  .card .pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .card .bd { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+  .card .kick { font-size: 10.5px; }
+  .card .t { font-weight: 600; font-size: 15px; line-height: 1.3; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card .ex { color: var(--text2); font-size: 13px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  /* A word reads as a dictionary entry: the word, what kind of word, its sense. */
+  .card.word .t { font-size: 24px; line-height: 1.2; }
+  .card.word .pos { font-size: 12px; font-style: italic; color: var(--text2); }
+  .card.word .ex { color: var(--text); -webkit-line-clamp: 5; }
+  /* A quote reads as a quote, in the marks of its own language (<q lang>). */
+  .card.quote .ex { color: var(--text); font-size: 16px; line-height: 1.45; -webkit-line-clamp: 7; }
+  .card.quote .by { font-size: 12.5px; color: var(--text2); }
+  /* What a front page featured: its own heading, in its own words. */
+  .card.fp .ex { color: var(--text); -webkit-line-clamp: 5; }
+  .note { color: var(--text2); font-size: 13px; margin: 0; }
+  .note button, .empty button { border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 16px; padding: 4px 12px; cursor: pointer; margin-inline-start: 8px; }
+  /* The list: the apps' rows, a small picture where the number goes. */
+  .row { color: inherit; }
+  .row .stat img { width: 52px; height: 52px; object-fit: cover; border-radius: var(--radius-s); display: block; }
+  .row .stat .ic { width: 28px; height: 28px; margin: 2px auto 0; border-radius: 7px; display: block; }
+  .row .t + .ex { margin-top: 2px; }
+  /* Waiting for a part. */
+  .sk { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-height: 150px; }
+  .sk.row-sk { min-height: 64px; border-radius: var(--radius-s); }
+  .sk.hero-sk { min-height: 260px; margin: 0 0 28px; }
+  .dym, .alllang { margin: 0 0 10px; color: var(--text2); font-size: 13px; }
+  .dym button, .alllang button { border: 0; background: none; color: var(--amber); font: inherit; font-weight: 600; cursor: pointer; padding: 0; }
+  /* The interface's words sit on the side the page is laid out from, and
+     read in their own direction. */
+  html[dir="rtl"] :is(.kick, .more-l, .sec-note, .note, .alllang, .dym) { text-align: right; }
+  html:not([dir="rtl"]) :is(.kick, .more-l, .sec-note, .note, .alllang, .dym) { text-align: left; }
+  /* The way onward points the way its own words run, whatever the page's. */
+  .chev:dir(ltr)::before { content: '\203A'; }
+  .chev:dir(rtl)::before { content: '\2039'; }
+  /* A page's words keep their own direction under the shell's. */
+  .card .bd > *, .hero .bd > *, .row .t, .row .ex, .otd-list .tx, .dyk li, .trail .t, .trail .ex, .potd .cap { unicode-bidi: plaintext; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="chips langs" id="langs" role="group"></div>
+  <div class="chips" id="pills" role="group"></div>
+  <div class="head">
+    <h2 id="h"></h2><span class="n" id="n"></span>
+    <span class="views" id="views" role="group" hidden></span>
+  </div>
+  <div id="today"></div>
+  <div id="results" hidden></div>
+  <div class="empty" id="empty" hidden></div>
+</div>
+<!--@apps.js@-->
+<script>
+// Zimipedia. Every wiki in the library, one language at a time: a chip per
+// language the wikis are in (each named in itself), a pill per wiki of the
+// language chosen, and Today, a front page made of that language's wikis:
+// the day's article from its Wikipedia with its picture; On this day from
+// the Wikipedia's own date page; did-you-know facts from the leads of the
+// day's articles; a picture of the day; a rabbit hole of links followed from
+// the day's article; a word, a quote, a place, a book from the other wikis
+// of the language; and what each wiki's own front page featured when the
+// copy was made, dated so. The server works each wiki's day out once and
+// keeps it (zimi/wiki.py); the page asks for what /wiki/home did not
+// already carry, a few wikis at a time, and shows each part as it lands.
+// Search is the language's wikis (or the pills chosen), and can reach every
+// language when asked. Zimi's top bar drives wikiSearch(q).
+var STR = strings({ title: 'Zimipedia', all: 'All', today: 'Today', on_this_day: 'On this day', featured: 'From the wikis', word: 'Word of the day',
+  quote: 'Quote of the day', place: 'A place to go', article: 'Article of the day', book: 'Book of the day', text: 'Text of the day',
+  course: 'Lesson of the day', news: 'From the news', species: 'Species of the day', none: 'Nothing matches.', empty: 'No wiki installed yet.',
+  catalog: 'Browse the catalog', cards: 'Cards', list: 'List', searching: 'Searching the full text', did_you_mean: 'Did you mean',
+  search_heading: '“{q}”', results_one: '{n} result', results_other: '{n} results', otd_unavailable: 'On this day is not available for the wikis chosen.',
+  load_failed: 'Zimipedia could not load its wikis.', search_failed: 'The search did not go through.', retry: 'Try again', langs: {},
+  languages: 'Languages', did_you_know: 'Did you know…', picture: 'Picture of the day', rabbit_hole: 'Down the rabbit hole',
+  rabbit_hint: 'From today\'s article, one link at a time.', front: 'From the front page', front_as_of: 'As featured on {date}, when this copy was made',
+  read_more: 'Read the article', search_all_languages: 'Search all languages', search_one_language: 'Only {lang}' });
+
+// ── pure parts (tests/test_wiki_page.cjs runs these) ──────────────────────
+var OTD_SHOWN = 6;
+var SEARCH_LIMIT = 30;
+var SNIPPETS_FETCHED = 12;
+var FRONT_SHOWN = 6;
+// Wikis asked for in one /wiki/today request: small, so each answer lands
+// on its own and the first parts show while the rest are read.
+var TODAY_BATCH = 4;
+
+// The browser's own date, as the day the picks belong to.
+function dayStamp(d) { return d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2); }
+
+// A pill's words: the project for a Wikimedia wiki, the ZIM's title for any
+// other, and the title too when two wikis of one project share a language
+// (all of English Wikipedia beside its top-100 subset).
+function pillLabels(wikis) {
+  var seen = {};
+  wikis.forEach(function(w) { var k = (w.project_title || w.title) + '|' + w.language; seen[k] = (seen[k] || 0) + 1; });
+  var out = {};
+  wikis.forEach(function(w) {
+    var base = w.project_title || w.title;
+    out[w.name] = seen[base + '|' + w.language] > 1 ? w.title : base;
+  });
+  return out;
+}
+
+// A language named in itself (עברית, Français, ייִדיש), which is how a
+// reader finds their own; the interface's name for it when the browser
+// cannot say, the code when neither can.
+// The languages a browser may not know how to name in themselves.
+var ENDONYMS = { yi: 'ייִדיש' };
+// The languages written right to left: the page takes the direction of
+// the language it shows.
+var RTL_LANGS = /^(ar|arc|arz|azb|ckb|dv|fa|glk|he|ks|lrc|mzn|nqo|pnb|ps|sd|skr|ug|ur|yi)$/;
+function dirOf(code) { return RTL_LANGS.test(String(code || '').split('-')[0]) ? 'rtl' : 'ltr'; }
+// The interface's own words (a heading, a kicker, a date) keep the
+// interface's language and direction on a page laid out in the content's,
+// so an English "Did you know…" over Hebrew reads left to right with its
+// ellipsis at its end.
+function ui() { var l = STR.lang || 'en'; return ' lang="' + esc(l) + '" dir="' + dirOf(l) + '"'; }
+function uiEl(el) { var l = STR.lang || 'en'; el.setAttribute('lang', l); el.setAttribute('dir', dirOf(l)); return el; }
+function capitalised(name, code) { try { return name.charAt(0).toLocaleUpperCase(code) + name.slice(1); } catch (e) { return name; } }
+function endonym(code, fallback) {
+  var name = '', english = '';
+  try { name = new Intl.DisplayNames([code], { type: 'language' }).of(code) || ''; english = new Intl.DisplayNames(['en'], { type: 'language' }).of(code) || ''; } catch (e) {}
+  // A browser that does not speak the language answers in English.
+  if (!name || name === code || (code !== 'en' && name === english)) name = ENDONYMS[code] || fallback || code;
+  return capitalised(name, code);
+}
+
+// The wikis of one language.
+function inLanguage(wikis, lang) { return wikis.filter(function(w) { return w.language === lang; }); }
+
+// What Today shows from the wikis of one language: the biggest Wikipedia
+// leads (its article, its facts, its picture, its rabbit hole; any wiki when
+// there is no Wikipedia); every Wikipedia gives its On this day; every
+// other wiki gives a card; every wiki's front page is read.
+function todayPlan(wikis) {
+  var wps = wikis.filter(function(w) { return w.project === 'wikipedia'; });
+  var lead = wps.slice().sort(function(a, b) { return (b.entries || 0) - (a.entries || 0); })[0] || wikis[0] || null;
+  return {
+    hero: lead ? lead.name : null,
+    otd: wps.map(function(w) { return w.name; }),
+    cards: wikis.filter(function(w) { return !lead || w.name !== lead.name; }).map(function(w) { return w.name; }),
+    front: wikis.map(function(w) { return w.name; })
+  };
+}
+// A list in pieces of n.
+function batches(list, n) { var out = []; for (var i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; }
+
+// A year as a number to sort by: "1066", "1066年", "44 BC" (before zero).
+function yearNum(y) {
+  var m = String(y || '').match(/\d+/);
+  if (!m) return 0;
+  var n = parseInt(m[0], 10);
+  return /BC|av\. J|v\. Chr|a\. ?C\.|до н|п\. ?н|לפנה/.test(y) ? -n : n;
+}
+// On this day from several Wikipedias of one language (all of it beside a
+// subset): in turn from each, each article once, then in the order of the
+// years. One Wikipedia keeps its own page's order. lists: [{zim, events}].
+function mergeOtd(lists, max) {
+  lists = lists.filter(function(l) { return l.events && l.events.length; });
+  if (lists.length === 1) return lists[0].events.slice(0, max).map(function(e) { return { zim: lists[0].zim, e: e }; });
+  var out = [], seen = {}, i = 0, more = true;
+  while (out.length < max && more) {
+    more = false;
+    lists.forEach(function(l) {
+      var e = l.events[i];
+      if (!e || out.length >= max) return;
+      more = true;
+      var k = e.title || (l.zim + '/' + e.path);
+      if (!seen[k]) { seen[k] = 1; out.push({ zim: l.zim, e: e }); }
+    });
+    i++;
+  }
+  return out.map(function(x, j) { return [yearNum(x.e.event_year), j, x]; })
+    .sort(function(a, b) { return a[0] - b[0] || a[1] - b[1]; }).map(function(x) { return x[2]; });
+}
+
+// "3 results" in the interface's language, whatever its plural forms
+// (Arabic has six, Russian three).
+function plural(n) {
+  var cat = 'other';
+  try { cat = new Intl.PluralRules(STR.lang || 'en').select(n); } catch (e) {}
+  return String(STR['results_' + cat] || STR.results_other).replace('{n}', n);
+}
+// A search's heading, in the quotation marks of the interface's language.
+// The words searched for keep their own direction inside the marks: HTML.
+function heading(q) { return esc(String(STR.search_heading || '“{q}”')).replace('{q}', '<bdi>' + esc(q) + '</bdi>'); }
+// "As featured on 6 July 2026": a copy's date (YYYY-MM-DD) in the
+// interface's words.
+function asOf(date, lang) {
+  var m = String(date || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return '';
+  var d = new Date(+m[1], +m[2] - 1, +m[3]);
+  var text = m[0];
+  try { text = d.toLocaleDateString(lang || undefined, { year: 'numeric', month: 'long', day: 'numeric' }); } catch (e) {}
+  return String(STR.front_as_of).replace('{date}', text);
+}
+
+// A sentence with its article's name in bold: where the sentence names it
+// ("Water is..."), in place; where it does not ("It was merged in 2016"),
+// before it. Escaped.
+function boldTitle(title, text, sep) {
+  var i = title ? text.toLowerCase().indexOf(title.toLowerCase()) : -1;
+  if (i < 0) return (title ? '<bdi><b>' + esc(title) + '</b></bdi>' + esc(sep) : '') + esc(text);
+  return esc(text.slice(0, i)) + '<b>' + esc(text.slice(i, i + title.length)) + '</b>' + esc(text.slice(i + title.length));
+}
+
+// Quick title matches first, then the full text's, each article once.
+function mergeResults(first, second) {
+  var seen = {}, out = [];
+  (first || []).concat(second || []).forEach(function(r) {
+    var k = r.zim + '/' + r.path;
+    if (!seen[k]) { seen[k] = 1; out.push(r); }
+  });
+  return out;
+}
+
+function stripTags(s) { return String(s || '').replace(/<[^>]+>/g, ''); }
+// A lead's first lines as a card reads them: no footnote marks ([1],
+// [ note 1 ], [ b ]), no space inside brackets or before punctuation, and a
+// quote in one pair of quotation marks.
+function cleanBlurb(s) {
+  return stripTags(s).replace(/\[\s*[^\]\s][^\]]{0,14}\]/g, '').replace(/([(\[])\s+/g, '$1').replace(/\s+([)\],.;:!?])/g, '$1')
+    .replace(/^“\s*["“]\s*/, '“').replace(/\s*["”]\s*”$/, '”').replace(/\s{2,}/g, ' ').trim();
+}
+
+// ── state ────────────────────────────────────────────────────────────────
+var VIEW_KEY = 'zimi_wiki_view';
+var TODAY_KEY = 'zimi_wiki_today';
+var LANG_KEY = 'zimi_wiki_lang';
+var PARTS = ['picks', 'otd', 'extras', 'front'];
+var _wikis = [], _by = {}, _labels = {}, _langs = [], _lang = '', _sel = [], _q = '', _hits = [], _searchSeq = 0, _view = 'cards';
+var _everyLanguage = false;  // this search reaches every language
+var _day = dayStamp(new Date());
+// Today's answers, per part and wiki. Kept for the day in this browser, only
+// when there is something in them: an empty answer or a failure is asked
+// again next time.
+var _got = {};
+var _failed = {};  // wikis whose last ask failed: asked again on the next view
+try { _view = localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'cards'; } catch (e) {}
+function storedLang() { try { return localStorage.getItem(LANG_KEY) || ''; } catch (e) { return ''; } }
+function emptyGot() { var g = {}; PARTS.forEach(function(p) { g[p] = {}; }); return g; }
+function readKept() {
+  _got = emptyGot();
+  try {
+    var kept = JSON.parse(localStorage.getItem(TODAY_KEY) || 'null');
+    if (kept && kept.day === _day) PARTS.forEach(function(p) { _got[p] = kept[p] || {}; });
+  } catch (e) {}
+}
+readKept();
+// Something worth keeping: a pick with a page, events, facts, a front page.
+function hasContent(v) { return v && (Array.isArray(v) ? v.length > 0 : Object.keys(v).length > 0); }
+function absorb(d) {
+  var keep = false;
+  PARTS.forEach(function(p) {
+    var part = (d && d[p]) || {};
+    for (var n in part) { _got[p][n] = part[n] || (p === 'otd' ? [] : {}); if (hasContent(part[n])) keep = true; }
+  });
+  if (!keep) return;
+  var store = { day: _day };
+  PARTS.forEach(function(p) { store[p] = {}; for (var n in _got[p]) if (hasContent(_got[p][n])) store[p][n] = _got[p][n]; });
+  try { localStorage.setItem(TODAY_KEY, JSON.stringify(store)); } catch (e) {}
+}
+
+// The page is laid out in the direction of the language it shows.
+function applyDir() {
+  var code = _lang || STR.lang || 'en';
+  document.documentElement.lang = code;
+  document.documentElement.dir = dirOf(code);
+}
+function langWikis() { return inLanguage(_wikis, _lang); }
+function scoped() { return _sel.length ? langWikis().filter(function(w) { return _sel.indexOf(w.name) >= 0; }) : langWikis(); }
+function langName(code) { return (STR.langs && STR.langs[code]) || code; }
+function srcLine(zim) {
+  var w = _by[zim] || { name: zim, title: zim };
+  return '<span class="src">' + (w.icon ? zimIcon(w.name) : '') + '<span>' + esc(_labels[zim] || w.title) + '</span>' +
+    (_everyLanguage && w.language ? '<span class="lg">' + esc(w.language) + '</span>' : '') + '</span>';
+}
+// A wiki's words carry its language, so a Hebrew quote under an English
+// shell is read, hyphenated and quoted as Hebrew.
+function langAttr(zim) { var w = _by[zim]; return w && w.language ? ' lang="' + esc(w.language) + '" dir="auto"' : ''; }
+function linkAttrs(zim, path) { return ' href="' + esc(zpath(zim, path)) + '" data-zim="' + esc(zim) + '" data-path="' + esc(path) + '"'; }
+
+// ── views (a search's results: cards or a list) ──────────────────────────
+var ICON_CARDS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>';
+var ICON_LIST = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>';
+function renderViews() {
+  var host = document.getElementById('views');
+  host.hidden = !_q;
+  host.innerHTML = [['cards', ICON_CARDS, STR.cards], ['list', ICON_LIST, STR.list]].map(function(v) {
+    return '<button type="button" class="' + (_view === v[0] ? 'on' : '') + '" aria-pressed="' + (_view === v[0]) + '" title="' + esc(v[2]) + '" aria-label="' + esc(v[2]) + '" onclick="setView(\'' + v[0] + '\')">' + v[1] + '</button>';
+  }).join('');
+}
+function setView(v) {
+  _view = v;
+  try { localStorage.setItem(VIEW_KEY, v); } catch (e) {}
+  renderViews();
+  if (_q) renderResults();
+}
+
+// One page, as a card or (in a search's list) a row. it: {zim, path, title,
+// blurb, thumb, kick, role, by, cls}. A quote leads with its words and names
+// who said it after them; a word leads with itself.
+function itemHtml(it, asRow) {
+  var la = langAttr(it.zim);
+  var cls = it.cls || '';
+  var data = linkAttrs(it.zim, it.path);
+  if (asRow) {
+    var w = _by[it.zim] || {};
+    var stat = it.thumb ? '<img src="' + esc(it.thumb) + '" alt="" loading="lazy">' : (w.icon ? zimIcon(w.name, 'ic') : '');
+    return '<a class="row"' + data + '><div class="stat">' + stat + '</div><div>' +
+      '<div class="t"' + la + '>' + esc(it.title) + '</div>' + (it.blurb ? '<div class="ex"' + la + '>' + esc(it.blurb) + '</div>' : '') +
+      '<div class="m">' + srcLine(it.zim) + '</div></div></a>';
+  }
+  var pic = it.thumb ? '<span class="pic"><img src="' + esc(it.thumb) + '" alt="" loading="lazy"></span>' : '';
+  var title = '<span class="t serif"' + la + '>' + esc(it.title) + '</span>';
+  var body;
+  if (cls === 'quote') {
+    body = '<span class="ex serif"><q' + la + '>' + esc(it.blurb) + '</q></span><span class="by"' + la + '>' + esc(it.by || it.title) + '</span>';
+  } else if (cls === 'word') {
+    body = title + (it.kick ? '<span class="pos"' + la + '>' + esc(it.kick) + '</span>' : '') + (it.blurb ? '<span class="ex"' + la + '>' + esc(it.blurb) + '</span>' : '');
+  } else {
+    body = (it.title ? title : '') + (it.blurb ? '<span class="ex"' + la + '>' + esc(it.blurb) + '</span>' : '');
+  }
+  return '<a class="card ' + cls + '"' + data + '>' + pic +
+    '<span class="bd">' + (it.role ? '<span class="kick"' + (it.roleLang ? la : ui()) + '>' + esc(it.role) + '</span>' : '') + body + srcLine(it.zim) + '</span></a>';
+}
+function itemsHtml(items, pending) {
+  var asRow = !!_q && _view === 'list';
+  var wait = new Array((pending || 0) + 1).join(asRow ? '<div class="sk row-sk"></div>' : '<div class="sk"></div>');
+  var inner = items.map(function(it) { return itemHtml(it, asRow); }).join('') + wait;
+  return asRow ? '<div class="rows">' + inner + '</div>' : '<div class="grid">' + inner + '</div>';
+}
+function skeletons(n) {
+  var asRow = !!_q && _view === 'list';
+  var one = asRow ? '<div class="sk row-sk"></div>' : '<div class="sk"></div>';
+  return asRow ? new Array(n + 1).join(one) : '<div class="grid">' + new Array(n + 1).join(one) + '</div>';
+}
+// A part of Today: a heading, a line under it, and what it holds.
+function section(id, title, inner, sub) {
+  return '<section class="sec" id="s-' + id + '"><div class="sec-h"><h2 class="serif"' + ui() + '>' + esc(title) + '</h2>' + (sub ? '<span class="sub"' + ui() + '>' + esc(sub) + '</span>' : '') +
+    '</div><div class="sb">' + inner + '</div></section>';
+}
+function fill(id, html) {
+  var s = document.getElementById('s-' + id);
+  if (s) s.querySelector('.sb').innerHTML = html;
+}
+function drop(id) { var s = document.getElementById('s-' + id); if (s) s.remove(); }
+function note(text) { return '<p class="note"' + ui() + '>' + esc(text) + '</p>'; }
+
+// ── Today ────────────────────────────────────────────────────────────────
+var _todaySeq = 0;
+// A wiki's pick as a card: its role says what it is, in the interface's words.
+function fromPick(p) {
+  var role = p.role || 'article';
+  var it = { zim: p.zim, path: p.path, title: p.title || p.path, blurb: cleanBlurb(p.blurb || ''), thumb: p.thumbnail || '', role: STR[role] || '', cls: role };
+  if (role === 'word') it.kick = p.kick || '';
+  if (role === 'quote') it.by = p.kick || p.title || '';
+  return it;
+}
+function heroHtml(p) {
+  var la = langAttr(p.zim);
+  return '<a class="hero' + (p.thumbnail ? ' has-pic' : '') + '"' + linkAttrs(p.zim, p.path) + '>' +
+    (p.thumbnail ? '<span class="pic"><img src="' + esc(p.thumbnail) + '" alt=""></span>' : '') +
+    '<span class="bd"><span class="kick"' + ui() + '>' + esc(STR[p.role || 'article'] || STR.article) + '</span>' +
+    '<span class="t serif"' + la + '>' + esc(p.title || p.path) + '</span>' +
+    (p.blurb ? '<span class="ex"' + la + '>' + esc(cleanBlurb(p.blurb)) + '</span>' : '') +
+    '<span class="more-l"' + ui() + '>' + esc(STR.read_more) + CHEV + '</span>' + srcLine(p.zim) + '</span></a>';
+}
+function otdHtml(evs) {
+  return '<ol class="otd-list">' + evs.map(function(x) {
+    var la = langAttr(x.zim);
+    return '<li><a' + linkAttrs(x.zim, x.e.path) + '><span class="yr">' + esc(x.e.event_year) + '</span><span class="tx"' + la + '>' +
+      esc(cleanBlurb(x.e.event_text)) + '</span>' + (x.e.thumbnail ? '<img src="' + esc(x.e.thumbnail) + '" alt="" loading="lazy">' : '') + '</a></li>';
+  }).join('') + '</ol>';
+}
+function dykHtml(zim, facts) {
+  var la = langAttr(zim);
+  return '<ul class="dyk">' + facts.map(function(f) {
+    return '<li' + la + '><a' + linkAttrs(zim, f.path) + '>' + boldTitle(f.title, cleanBlurb(f.text), ': ') + '</a></li>';
+  }).join('') + '</ul>';
+}
+function trailHtml(zim, start, trail) {
+  var la = langAttr(zim);
+  var steps = [{ path: start.path, title: start.title, blurb: '' }].concat(trail);
+  return '<p class="sec-note"' + ui() + '>' + esc(STR.rabbit_hint) + '</p><ol class="trail">' + steps.map(function(s, i) {
+    return '<li data-n="' + (i + 1) + '"><a' + linkAttrs(zim, s.path) + '><span class="t"' + la + '>' + esc(s.title) + '</span>' +
+      (s.blurb ? '<span class="ex"' + la + '>' + esc(cleanBlurb(s.blurb)) + '</span>' : '') + '</a></li>';
+  }).join('') + '</ol>';
+}
+function potdHtml(zim, p) {
+  var la = langAttr(zim);
+  return '<a class="potd"' + linkAttrs(zim, p.path) + '><img src="' + esc(p.thumbnail) + '" alt="" loading="lazy"><div class="cap"' + la + '>' +
+    boldTitle(p.title, cleanBlurb(p.blurb || ''), ' ') + '</div></a>';
+}
+// What the front pages featured, from every wiki of the plan, in turn.
+function frontItems(names) {
+  var lists = names.map(function(z) { var f = _got.front[z]; return (f && f.items || []).map(function(it) { return { zim: z, it: it, as_of: f.as_of }; }); });
+  var out = [];
+  for (var i = 0; out.length < FRONT_SHOWN; i++) {
+    var more = false;
+    lists.forEach(function(l) { if (l[i] && out.length < FRONT_SHOWN) { out.push(l[i]); more = true; } });
+    if (!more) break;
+  }
+  return out;
+}
+
+function renderToday() {
+  var seq = ++_todaySeq;
+  var wikis = scoped();
+  var plan = todayPlan(wikis);
+  var dateText = new Date().toLocaleDateString(STR.lang || undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  uiEl(document.getElementById('h')).textContent = STR.today;
+  uiEl(document.getElementById('n')).textContent = dateText;
+  renderViews();
+  var host = document.getElementById('today');
+  var heroWp = plan.hero && _by[plan.hero] && _by[plan.hero].project === 'wikipedia';
+  host.innerHTML = (plan.hero ? '<div id="s-hero"><div class="sb"><div class="sk hero-sk"></div></div></div>' : '') +
+    '<div class="duo">' + (plan.otd.length ? section('otd', STR.on_this_day, skeletons(1)) : '') + (heroWp ? section('dyk', STR.did_you_know, skeletons(1)) : '') + '</div>' +
+    (plan.cards.length ? section('wk', STR.featured, skeletons(Math.min(plan.cards.length, 3))) : '') +
+    '<div class="duo even">' + (heroWp ? section('potd', STR.picture, '<div class="sk"></div>') + section('trail', STR.rabbit_hole, skeletons(1)) : '') + '</div>' +
+    section('front', STR.front, skeletons(Math.min(plan.front.length, 3)));
+  var stale = function() { return seq !== _todaySeq || !!_q; };
+  var known = function(part, z) { return _got[part][z] !== undefined; };
+
+  var draw = function() {
+    if (stale()) return;
+    var hp = plan.hero && _got.picks[plan.hero];
+    if (plan.hero && known('picks', plan.hero)) {
+      var hs = document.getElementById('s-hero');
+      if (hs) hs.innerHTML = hp && hp.path ? heroHtml(hp) : '';
+    }
+    if (plan.otd.length && plan.otd.every(function(z) { return known('otd', z); })) {
+      var evs = mergeOtd(plan.otd.map(function(z) { return { zim: z, events: _got.otd[z] }; }), OTD_SHOWN);
+      // A Wikipedia without date pages (a selection, a mini build) has no
+      // On this day, and the page leaves the part out.
+      if (evs.length) fill('otd', otdHtml(evs)); else drop('otd');
+    }
+    if (heroWp && known('extras', plan.hero)) {
+      var ex = _got.extras[plan.hero] || {};
+      if (hp && hp.path && ex.trail && ex.trail.length) fill('trail', trailHtml(plan.hero, hp, ex.trail)); else drop('trail');
+    }
+    // The facts and the picture: the leading Wikipedia's, else those of
+    // another Wikipedia of the language (a subset with pictures beside a
+    // big build without them).
+    if (heroWp) {
+      var wps = [plan.hero].concat(plan.otd.filter(function(z) { return z !== plan.hero; }));
+      var from = function(has) {
+        for (var i = 0; i < wps.length; i++) {
+          if (!known('extras', wps[i])) return undefined;
+          if (has(_got.extras[wps[i]] || {})) return wps[i];
+        }
+        return null;
+      };
+      var fz = from(function(e) { return e.facts && e.facts.length; });
+      if (fz) fill('dyk', dykHtml(fz, _got.extras[fz].facts)); else if (fz === null) drop('dyk');
+      var pz = from(function(e) { return e.picture && e.picture.thumbnail; });
+      if (pz) fill('potd', potdHtml(pz, _got.extras[pz].picture)); else if (pz === null) drop('potd');
+    }
+    var items = plan.cards.filter(function(z) { return _got.picks[z] && _got.picks[z].path; }).map(function(z) { return fromPick(_got.picks[z]); });
+    var waiting = plan.cards.filter(function(z) { return !known('picks', z); }).length;
+    if (items.length || !waiting) {
+      if (!items.length) drop('wk'); else fill('wk', itemsHtml(items, waiting));
+    }
+    var fwait = plan.front.filter(function(z) { return !known('front', z); }).length;
+    var fitems = frontItems(plan.front);
+    if (fitems.length || !fwait) {
+      if (!fitems.length) drop('front');
+      else {
+        fill('front', itemsHtml(fitems.map(function(x) {
+          return { zim: x.zim, path: x.it.path, title: x.it.title && x.it.text.indexOf(x.it.title) < 0 ? x.it.title : '', blurb: x.it.text, thumb: x.it.thumbnail || '', role: x.it.label, roleLang: true, cls: 'fp' };
+        }), fwait));
+        var dates = fitems.map(function(x) { return x.as_of; }).filter(Boolean);
+        var s = document.querySelector('#s-front .sec-h');
+        if (s && dates.length && !s.querySelector('.sub')) s.insertAdjacentHTML('beforeend', '<span class="sub"' + ui() + '>' + esc(asOf(dates.sort()[0], STR.lang)) + '</span>');
+      }
+    }
+  };
+  draw();
+  // What /wiki/home did not carry and this browser does not keep, a few
+  // wikis at a time; each answer draws what it brought.
+  var need = wikis.filter(function(w) {
+    var z = w.name, wp = w.project === 'wikipedia';
+    return _failed[z] || !known('picks', z) || !known('front', z) || (wp && (!known('otd', z) || !known('extras', z)));
+  }).map(function(w) { return w.name; });
+  batches(need, TODAY_BATCH).forEach(function(names) {
+    fetch('/wiki/today?day=' + _day + '&zim=' + encodeURIComponent(names.join(','))).then(function(r) { return r.ok ? r.json() : null; })
+      .catch(function() { return null; }).then(function(d) {
+        if (d) absorb(d);
+        // A wiki that could not be read shows nothing now rather than a
+        // part that never fills, and is asked again on the next view.
+        var failed = d ? (d.failed || []) : names;
+        names.forEach(function(z) {
+          if (failed.indexOf(z) >= 0) _failed[z] = 1; else delete _failed[z];
+          PARTS.forEach(function(p) { if (_got[p][z] === undefined) _got[p][z] = p === 'otd' ? [] : {}; });
+        });
+        draw();
+      });
+  });
+  showEmpty();
+}
+
+// ── search ───────────────────────────────────────────────────────────────
+function wikiSearch(q) {
+  _q = (q || '').trim();
+  var seq = ++_searchSeq;
+  if (!_q) { showToday(); return; }
+  renderViews();
+  document.getElementById('today').hidden = true;
+  document.getElementById('results').hidden = false;
+  var zims = (_everyLanguage ? _wikis : scoped()).map(function(w) { return w.name; }).join(',');
+  if (!zims) return;
+  _hits = []; _dym = '';
+  uiEl(document.getElementById('h')).innerHTML = heading(_q);
+  setCount(true);
+  document.getElementById('results').innerHTML = skeletons(_view === 'list' ? 4 : 6);
+  var base = '/search?q=' + encodeURIComponent(_q) + '&zim=' + encodeURIComponent(zims) + '&limit=' + SEARCH_LIMIT;
+  // A failed ask (rate limited, signed out, the server down) is not "nothing
+  // matches": it says so, with a way to ask again.
+  var get = function(url) { return fetch(url).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }); };
+  get(base + '&fast=1').then(function(d1) {
+    if (seq !== _searchSeq) return;
+    if (!d1) { searchFailed(); return; }
+    _hits = mergeResults(d1.results, []);
+    _dym = d1.did_you_mean || '';
+    renderResults(!!d1.partial);
+    snippets(seq);
+    if (!d1.partial) return;
+    get(base).then(function(d2) {
+      if (seq !== _searchSeq) return;
+      if (d2) { _hits = mergeResults(_hits, d2.results); _dym = _dym || d2.did_you_mean || ''; }
+      renderResults(false);
+      snippets(seq);
+    });
+  });
+}
+function searchFailed() {
+  document.getElementById('n').textContent = '';
+  document.getElementById('results').innerHTML = '<div class="empty">' + esc(STR.search_failed) + '<button type="button" onclick="wikiSearch(' + J(_q) + ')">' + esc(STR.retry) + '</button></div>';
+}
+var _dym = '';
+function setCount(busy) {
+  var n = _hits.length;
+  document.getElementById('n').innerHTML = (busy ? '<span class="spin"></span>' + esc(STR.searching) : '') +
+    (!busy || n ? (busy ? ' · ' : '') + esc(plural(n)) : '');
+}
+// A search reaches the language chosen; one tap reaches every language, and
+// one more comes back.
+function everyLanguage(on) { _everyLanguage = !!on; if (_q) wikiSearch(_q); }
+function allLangLine() {
+  if (_langs.length < 2) return '';
+  var label = _everyLanguage ? String(STR.search_one_language).replace('{lang}', endonym(_lang, langName(_lang))) : STR.search_all_languages;
+  return '<div class="alllang"' + ui() + '><button type="button" onclick="everyLanguage(' + !_everyLanguage + ')">' + esc(label) + '</button></div>';
+}
+function renderResults(busy) {
+  var host = document.getElementById('results');
+  setCount(!!busy);
+  var dym = _dym && _dym.toLowerCase() !== _q.toLowerCase() ? '<div class="dym"' + ui() + '>' + esc(STR.did_you_mean) + ' <button type="button" onclick="wikiSearch(' + J(_dym) + ')">' + esc(_dym) + '</button></div>' : '';
+  var head = dym + allLangLine();
+  if (!_hits.length) { host.innerHTML = head + (busy ? skeletons(3) : '<div class="empty">' + esc(STR.none) + '</div>'); return; }
+  host.innerHTML = head + itemsHtml(_hits.map(function(r) {
+    return { zim: r.zim, path: r.path, title: r.title || r.path, blurb: cleanBlurb(r._blurb || r.snippet || ''), thumb: r._thumb || '' };
+  }));
+}
+// The first lines and a picture for the top results, as the main search
+// does: /snippet reads the start of each page once.
+function snippets(seq) {
+  _hits.slice(0, SNIPPETS_FETCHED).forEach(function(r) {
+    if (r._asked) return;
+    r._asked = true;
+    fetch('/snippet?zim=' + encodeURIComponent(r.zim) + '&path=' + encodeURIComponent(r.path)).then(function(x) { return x.ok ? x.json() : null; }).then(function(d) {
+      if (!d || seq !== _searchSeq) return;
+      r._blurb = d.snippet || r.snippet || '';
+      r._thumb = d.thumbnail || '';
+      renderResults(false);
+    }).catch(function() {});
+  });
+}
+function showToday() {
+  _q = ''; _searchSeq++; _everyLanguage = false;
+  document.getElementById('results').hidden = true;
+  document.getElementById('results').innerHTML = '';
+  document.getElementById('today').hidden = false;
+  renderToday();
+}
+
+// ── languages and pills ──────────────────────────────────────────────────
+function renderLangs() {
+  var host = document.getElementById('langs');
+  host.setAttribute('aria-label', STR.languages);
+  host.innerHTML = _langs.map(function(l) {
+    var on = l.code === _lang;
+    return '<button type="button" class="chip' + (on ? ' on' : '') + '" aria-pressed="' + on + '" lang="' + esc(l.code) + '" title="' + esc(langName(l.code)) +
+      '" onclick="setLang(' + J(l.code) + ')">' + esc(endonym(l.code, langName(l.code))) + ' <span class="n">' + l.wikis + '</span></button>';
+  }).join('');
+  host.hidden = _langs.length < 2;
+}
+function renderPills() {
+  var host = document.getElementById('pills');
+  var ws = langWikis();
+  var h = '<button type="button" class="chip' + (!_sel.length ? ' on' : '') + '" aria-pressed="' + !_sel.length + '" onclick="pillAll()"' + ui() + '>' + esc(STR.all) + '</button>';
+  var group = null;
+  ws.forEach(function(w) {
+    if (group !== null && w.project !== group) h += '<span class="sep" aria-hidden="true"></span>';
+    group = w.project;
+    var on = _sel.indexOf(w.name) >= 0;
+    h += '<button type="button" class="chip' + (on ? ' on' : '') + '" aria-pressed="' + on + '" title="' + esc(w.title) + '" onclick="pill(' + J(w.name) + ')">' +
+      (w.icon ? zimIcon(w.name) : '') + esc(_labels[w.name]) + '</button>';
+  });
+  host.innerHTML = h;
+  host.hidden = ws.length < 2;
+}
+// All on until one is tapped: the first tap narrows to that wiki, the next
+// ones add or take away, and the last one taken away is all again.
+function pill(name) {
+  var i = _sel.indexOf(name);
+  if (i >= 0) _sel.splice(i, 1); else _sel.push(name);
+  scopeChanged();
+}
+function pillAll() { _sel = []; scopeChanged(); }
+function scopeChanged() {
+  renderPills();
+  if (_q) wikiSearch(_q); else renderToday();
+}
+// Another language: the whole page follows, and this browser remembers it.
+// What the server already knows of the language comes in one ask.
+function setLang(code) {
+  if (code === _lang) return;
+  _lang = code; _sel = [];
+  applyDir();
+  try { localStorage.setItem(LANG_KEY, code); } catch (e) {}
+  renderLangs(); renderPills();
+  if (_q) wikiSearch(_q); else renderToday();
+  fetch('/wiki/home?day=' + _day + '&lang=' + encodeURIComponent(code)).then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
+    if (d && d.day === _day && d.lang === _lang) { absorb(d); if (!_q) renderToday(); }
+  }).catch(function() {});
+}
+
+function showEmpty() {
+  var empty = uiEl(document.getElementById('empty'));
+  empty.hidden = _wikis.length > 0;
+  empty.innerHTML = esc(STR.empty) + '<br><a class="door" href="/?manage" onclick="return goCatalog()">' + esc(STR.catalog) + CHEV + '</a>';
+  document.querySelector('.head').hidden = !_wikis.length;
+}
+// The list of wikis could not be read (the server rate limited this
+// browser, a login lapsed, the server erred): not "no wiki installed".
+function showLoadFailed() {
+  var empty = uiEl(document.getElementById('empty'));
+  empty.hidden = false;
+  empty.innerHTML = esc(STR.load_failed) + '<br><button type="button" onclick="load()">' + esc(STR.retry) + '</button>';
+  document.querySelector('.head').hidden = true;
+  document.getElementById('today').innerHTML = '';
+}
+function goCatalog() { tell({ zimi: 'catalog', category: 'wikipedia' }); return false; }
+
+// An article opens in Zimi's reader, with Zimipedia as the step behind it.
+// A modified click keeps the link's own address for a new tab.
+document.addEventListener('click', function(e) {
+  var a = e.target.closest && e.target.closest('a[data-zim][data-path]');
+  if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+  e.preventDefault();
+  tell({ zimi: 'open', zim: a.getAttribute('data-zim'), path: a.getAttribute('data-path') });
+});
+
+// The language asked for: this browser's last choice, else the interface's;
+// the server settles it (English, else the language with the most wikis,
+// when no wiki is in it).
+function load() {
+  fetch('/wiki/home?day=' + _day + '&lang=' + encodeURIComponent(storedLang() || STR.lang || 'en')).then(function(r) {
+    if (!r.ok) throw new Error(r.status);
+    return r.json();
+  }).then(function(d) {
+    _wikis = d.wikis || [];
+    _by = {}; _wikis.forEach(function(w) { _by[w.name] = w; });
+    _labels = pillLabels(_wikis);
+    _langs = d.languages || [];
+    _lang = d.lang || '';
+    applyDir();
+    if (d.day === _day) absorb(d);
+    renderLangs(); renderPills();
+    if (_q) wikiSearch(_q); else renderToday();
+  }).catch(function() { showLoadFailed(); });
+}
+// A page left open past midnight moves to the new day when it is looked at
+// again: the picks are the day's.
+function checkDay() {
+  var d = dayStamp(new Date());
+  if (d === _day) return;
+  _day = d;
+  readKept();
+  if (_wikis.length && !_q) renderToday();
+}
+document.addEventListener('visibilitychange', function() { if (!document.hidden) checkDay(); });
+window.addEventListener('focus', checkDay);
+
+window.wikiSearch = wikiSearch; window.pill = pill; window.pillAll = pillAll; window.setView = setView; window.load = load;
+window.setLang = setLang; window.everyLanguage = everyLanguage;
+window.__top = function() { return !_q; };
+window.__back = function() { if (_q) { showToday(); return true; } return false; };
+window.__home = function() { showToday(); window.scrollTo(0, 0); };
+window.__route = function() { showToday(); };
+// The dice: an article from one of the wikis chosen, in the language shown.
+window.__random = function() {
+  var ws = scoped();
+  if (!ws.length) return;
+  var w = ws[Math.floor(Math.random() * ws.length)];
+  fetch('/random?zim=' + encodeURIComponent(w.name)).then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
+    if (d && d.path) tell({ zimi: 'open', zim: w.name, path: d.path });
+  }).catch(function() {});
+};
+load();
+</script>
+</body>
+</html>

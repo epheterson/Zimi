@@ -2185,7 +2185,7 @@ CREATE_MAX_TITLE = 200
 # outgrew that five days later; on the desktop app the form IS the CLI. Any
 # number is taken, and 0 is none. With both at 0 only the depth and the disk
 # bound a crawl, and the job log says so.
-CREATE_MAX_DEPTH_CEILING = 10
+CREATE_MAX_DEPTH_CEILING = 50
 CREATE_MAX_DELAY = 60.0  # seconds between page requests
 # Video jobs: a playlist cap, same reasoning.
 CREATE_VIDEO_LIMIT_CEILING = 500
@@ -2419,7 +2419,10 @@ class _CreateJob:
 # address space and lets a server-supplied parent win, so if the crawler ever
 # does report link provenance nothing downstream has to change.
 
-_CREATE_RE_STEP = re.compile(r"^\[(\d+)/(\d+)\]\s+(.+)$")
+# "[12/200] <url>", or "[12/no limit] <url>" for a crawl with no page limit:
+# 1.10.3 made 0 mean none, and this read no lines of such a crawl, so its
+# counter and page list stood still for the whole run.
+_CREATE_RE_STEP = re.compile(r"^\[(\d+)/(\d+|no limit)\]\s+(.+)$")
 _CREATE_RE_CRAWL_TAIL = re.compile(r"\s*\((\d+) queued(?:, (.+?) fetched)?\)$")
 _CREATE_RE_PACKAGED = re.compile(r"^packaged (\d+)/(\d+)\s+(.+)$")
 _CREATE_RE_PACKAGING_MANY = re.compile(r"^packaging (\d+) pages?\b")
@@ -2593,7 +2596,8 @@ def _create_derive_line(job, text):
 
     match = _CREATE_RE_STEP.match(line)
     if match:
-        done, total, rest = int(match.group(1)), int(match.group(2)), match.group(3)
+        done, rest = int(match.group(1)), match.group(3)
+        total = int(match.group(2)) if match.group(2).isdigit() else None
         enter("fetch")
         settle()
         tail = _CREATE_RE_CRAWL_TAIL.search(rest)
@@ -3482,6 +3486,29 @@ def _create_start_next():
     _create_launch(job, opts)
 
 
+def _create_limits(mode, opts):
+    """The bounds a capture runs with: what was typed, else the engine's own
+    default, so the page can show "1,234 of 10,000 pages" and name the limit
+    that stopped it. 0 is no limit. Only the bounds a mode has."""
+    from zimi import crawler, video
+
+    def bound(key, default):
+        value = opts.get(key)
+        return default if value is None else value
+
+    if mode == "site" and opts.get("engine") == "zimit":
+        # zimit enforces a page limit (browsertrix's --limit) and nothing else
+        # Zimi hands it; a size counter out of 4 GB would be a promise nobody
+        # keeps.
+        return {"pages": bound("max_pages", crawler.DEFAULT_MAX_PAGES)}
+    if mode == "site":
+        return {"pages": bound("max_pages", crawler.DEFAULT_MAX_PAGES),
+                "bytes": bound("max_bytes", crawler.DEFAULT_MAX_BYTES)}
+    if mode == "video":
+        return {"bytes": bound("max_bytes", video.DEFAULT_MAX_ZIM_BYTES)}
+    return {}
+
+
 def _create_start(data, actor=None):
     """Validate, then either claim the single job slot or take a place in the
     queue behind whatever holds it. Returns ``(payload, status)`` ready to
@@ -3496,6 +3523,12 @@ def _create_start(data, actor=None):
         return {"error": str(e)}, 400
     global _create_job
     job = _CreateJob(mode, source, title)
+    job.limits = _create_limits(mode, opts)
+    # What to send again for "capture again with no limits": the request as it
+    # was SUBMITTED, so a rerun is this job with its bounds lifted. Not the
+    # validated opts: those are the engine's spelling (``fmt`` for the form's
+    # ``format``), and a rerun of them lost the chosen video quality.
+    job.request = dict(data)
     if actor:
         job.actor = actor
     position = 0
@@ -3647,6 +3680,8 @@ def _create_status(cursor, probe=False, events_cursor=0, history=False):
                 "cancelling": job.cancel_requested and not job.done,
                 "error": job.error,
                 "result": job.result,
+                "limits": getattr(job, "limits", {}),
+                "request": getattr(job, "request", None),
                 # See CREATE_CANCELLABLE_MODES: a cancel button on a job with
                 # no progress callback to interrupt would be a lie.
                 "cancellable": job.mode in CREATE_CANCELLABLE_MODES,

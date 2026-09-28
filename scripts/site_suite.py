@@ -26,6 +26,7 @@ import argparse
 import contextlib
 import json
 import os
+import re
 import pathlib
 import socket
 import subprocess
@@ -269,6 +270,39 @@ def check_site(site, base, zim_path, out_dir):
     }
 
 
+# A whole-site entry ("mode": "site") is checked by where the crawl went: it
+# passes when at least min_pages pages were captured and every one came from
+# under expect_under (#93: a gov.uk section without the rest of gov.uk). The
+# crawl logs each page as "[n/max] <address>".
+_PAGE_LINE = re.compile(r"^\s*\[\d+/[^\]]+\]\s+(\S+)")
+
+
+def capture_site(site, out_dir, data_dir):
+    """A --site capture; returns the addresses of the pages it captured."""
+    stem = urllib.parse.urlsplit(site["url"]).netloc.replace(".", "-")
+    out = out_dir / f"{stem}-site.zim"
+    env = dict(os.environ, ZIM_DIR=str(out_dir), ZIMI_DATA_DIR=str(data_dir))
+    cmd = [sys.executable, "-m", "zimi", "create", site["url"], "--site",
+           "--engine", site.get("engine", "builtin"), "--max-pages", str(site.get("max_pages", 30)),
+           "--delay", "0.5", "--out", str(out)]
+    done = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True, timeout=1800)
+    if done.returncode != 0 or not out.exists():
+        tail = (done.stdout + done.stderr).strip().splitlines()[-6:]
+        raise RuntimeError("capture failed:\n  " + "\n  ".join(tail))
+    lines = (done.stdout + done.stderr).replace("\r", "\n").splitlines()
+    return [m.group(1) for m in map(_PAGE_LINE.match, lines) if m]
+
+
+def check_scope(site, urls):
+    prefix = site["expect_under"]
+    outside = [u for u in urls if not (urllib.parse.urlsplit(u).path.startswith(prefix)
+                                       or urllib.parse.urlsplit(u).path == prefix.rstrip("/"))]
+    ok = len(urls) >= site.get("min_pages", 2) and not outside
+    return {"url": site["url"], "issue": site.get("issue"), "pass": ok,
+            "pages": len(urls), "outside": outside[:10],
+            "interaction": {"detail": f"{len(urls)} pages, {len(outside)} outside {prefix}"}}
+
+
 def run(sites, out_dir):
     out_dir.mkdir(parents=True, exist_ok=True)
     work = pathlib.Path(tempfile.mkdtemp(prefix="zimi-sites-"))
@@ -277,9 +311,12 @@ def run(sites, out_dir):
     for site in sites:
         print(f"== {site['url']} ({site.get('engine', 'rendered')})", flush=True)
         try:
-            zim = capture(site, work, data_dir)
-            with served(work, data_dir) as base:
-                rec = check_site(site, base, zim, out_dir)
+            if site.get("mode") == "site":
+                rec = check_scope(site, capture_site(site, work, data_dir))
+            else:
+                zim = capture(site, work, data_dir)
+                with served(work, data_dir) as base:
+                    rec = check_site(site, base, zim, out_dir)
         except Exception as e:
             rec = {
                 "url": site["url"],
