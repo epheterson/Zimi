@@ -88,7 +88,8 @@ vm.runInContext([
   extract(src, /function _bookAuthorName\(creator\) \{[\s\S]*?\n\}/, '_bookAuthorName'),
 ].join('\n'), rctx);
 ok('a record\'s "Surname, Given, years" prints as a cover does', rctx._bookAuthorName('Ewald, Carl, 1856-1908') === 'Carl Ewald' && rctx._bookAuthorName('Virgil, 71 BCE-20 BCE') === 'Virgil' && rctx._bookAuthorName('') === '');
-ok('a Gutenberg page is known by its own record', /function _isBookDoc\(doc\) \{\n\s*try \{ return !!doc\.querySelector\('link\[rel="dcterms\.isFormatOf"\]\[href\*="gutenberg\.org"\]'\);/.test(src));
+ok('a Gutenberg page is known by its own record, an EPUB\'s chapters by theirs', /function _isBookDoc\(doc\) \{\n\s*try \{ return !!doc\.querySelector\('link\[rel="dcterms\.isFormatOf"\]\[href\*="gutenberg\.org"\],meta\[name="zimi-book"\]'\);/.test(src));
+ok('an EPUB\'s address is a book\'s before it loads', /if \(m && \/\\\.epub\\\/\$\/i\.test\(m\[2\]\)\) return true;/.test(src));
 ok('a book has no <main>: Reader View reads its body', /if \(!main && _isBookDoc\(doc\)\) main = doc\.body;/.test(src) && /return !!main && \(main !== doc\.body \|\| _isBookDoc\(doc\)\);/.test(src));
 ok('a book keeps its contents list in Reader View', /_isBookDoc\(doc\) \? 'script,style,link,noscript' : _READER_VIEW_STRIP/.test(src));
 ok('a book opens in Reader View, and the e-reader is set up before anything measures it', /var _wantReader = _readerViewOn \|\| _readerAuto\(\) \|\| _bookDoc;/.test(src) && /if \(_bookDoc && _readerViewOn\) \{\n\s*try \{ _bookOn = _bookAttach\(frame\);/.test(src));

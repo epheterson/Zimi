@@ -381,3 +381,177 @@ def test_a_folder_without_documents_writes_no_listing(tmp_path):
     (src / "a.md").write_text("# A\n")
     info = creator.create_folder_zim(str(src), out_dir=str(tmp_path / "out"))
     assert not Archive(info["path"]).has_entry_by_path(nautilus.ZIMI_DATABASE_PATH)
+
+
+# ── EPUBs read in the browser ──────────────────────────────────────────────
+
+# A chapter a hostile EPUB could carry, added to the real book's spine.
+HOSTILE = (
+    '<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml">'
+    "<head><title>x</title><script>alert(1)</script></head><body>"
+    '<h2 onclick="alert(2)">Chapter Two</h2><a id="k"/>After the anchor.'
+    '<script src="evil.js"></script><img src="images/../2284091321212351877_10040-cover.png"/>'
+    '<a href="7315379960072063660_10040-0-0.txt.xhtml#id00010">the preface</a>'
+    '<a href="../../../../etc/passwd">out</a><a href="javascript:alert(3)">js</a>'
+    '<a href="https://www.gutenberg.org">site</a></body></html>'
+)
+
+
+def _hostile_epub():
+    opf = fx.GUTENBERG_EPUB["OEBPS/content.opf"]
+    opf = opf.replace(
+        "</manifest>",
+        '<item href="hostile.xhtml" id="hostile" media-type="application/xhtml+xml"/></manifest>',
+    ).replace("</spine>", '<itemref idref="hostile"/></spine>')
+    data = fx.gutenberg_epub({"OEBPS/hostile.xhtml": HOSTILE})
+    import io
+    import zipfile
+
+    src = zipfile.ZipFile(io.BytesIO(data))
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for info in src.infolist():
+            body = opf if info.filename == "OEBPS/content.opf" else src.read(info)
+            z.writestr(info.filename, body)
+    return buf.getvalue()
+
+
+def test_an_epub_is_one_page_of_its_chapters():
+    from zimi import epub
+
+    book = epub.Book(fx.gutenberg_epub())
+    page = book.page().decode()
+    assert book.title.startswith("Aleutian Indian and English Dictionary")
+    assert book.creators == ["Charles A. Lee"] and book.language == "en"
+    assert book.cover == fx.GUTENBERG_EPUB_COVER
+    # What the reader reads: Dublin Core in the head, as a Gutenberg page has.
+    assert '<meta name="dc.creator" content="Charles A. Lee">' in page
+    assert '<meta name="zimi-book" content="epub">' in page and 'lang="en"' in page
+    # The chapters in spine order; the cover's wrapper, with nothing to read, is not one.
+    assert page.index('id="zb-c1"') < page.index('id="zb-c2"')
+    assert 'id="zb-c0"' not in page and "<svg" not in page
+    assert "PREFACE" in page and "END OF THE PROJECT GUTENBERG EBOOK" in page
+
+
+def test_nothing_inside_an_epub_is_trusted():
+    from zimi import epub
+
+    assert epub.member_name("OEBPS", "../../etc/passwd") is None
+    assert epub.member_name("", "/etc/passwd") is None
+    assert epub.member_name("OEBPS", "https://x.org/a.png") is None
+    assert epub.member_name("OEBPS/Text", "../Images/a%20b.png#x") == "OEBPS/Images/a b.png"
+    page = epub.Book(_hostile_epub()).page().decode()
+    body = page.split('id="zb-c3"', 1)[1]
+    assert "<script" not in body and "onclick" not in body and "alert(3)" not in body
+    # <a id="k"/> in XHTML is an empty anchor, not one around the rest of the chapter.
+    assert '<a id="k"></a>After the anchor.' in body
+    # A picture resolves inside the book; a link to a chapter lands in the page.
+    assert 'src="OEBPS/2284091321212351877_10040-cover.png"' in body
+    assert 'href="#id00010"' in body
+    assert 'href="https://www.gutenberg.org"' in body
+    # An entity-laden package (billion laughs, XXE) is refused, not expanded.
+    bomb = fx.GUTENBERG_EPUB["OEBPS/content.opf"].replace(
+        "<package", '<!DOCTYPE package [<!ENTITY a "aaaaaaaaaa">]><package', 1
+    )
+    with pytest.raises(epub.EpubError):
+        epub.Book(_swap(fx.gutenberg_epub(), "OEBPS/content.opf", bomb))
+
+
+def _swap(data, name, text):
+    import io
+    import zipfile
+
+    src = zipfile.ZipFile(io.BytesIO(data))
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for info in src.infolist():
+            z.writestr(info.filename, text if info.filename == name else src.read(info))
+    return buf.getvalue()
+
+
+def test_an_epub_member_over_its_bound_is_not_read(monkeypatch):
+    from zimi import epub
+
+    book = epub.Book(fx.gutenberg_epub())
+    monkeypatch.setattr(epub, "MAX_MEMBER_BYTES", 16)
+    assert book.read(fx.GUTENBERG_EPUB_COVER, epub.MAX_MEMBER_BYTES) is None
+    assert book.read("OEBPS/../../x") is None
+
+
+GUTENBERG_EPUB_ONLY = {
+    "Home.html": ("text/html", "<html><body>Home</body></html>", "Home"),
+    "full_by_popularity.js": (
+        "text/javascript",
+        'var json_data = [["Aleutian Indian and English Dictionary", "Charles A. Lee", "010", 10040, "PM"]];',
+        "",
+    ),
+    "languages.js": ("text/javascript", 'var languages_json_data = [["English", "en", 1]];', ""),
+    "Aleutian Indian and English Dictionary_cover.10040": (
+        "text/html",
+        "<html><body>cover</body></html>",
+        "",
+    ),
+    "Aleutian Indian and English Dictionary.10040.epub": (
+        "application/epub+zip",
+        fx.gutenberg_epub(),
+        "",
+    ),
+}
+
+
+@pytest.fixture
+def served_epub(tmp_path, monkeypatch):
+    from http.server import ThreadingHTTPServer
+
+    from zimi import books, epub
+    from zimi.http import ZimHandler
+
+    monkeypatch.setattr(books, "request_details", lambda name: None)
+    books._reset_for_tests()
+    epub._reset_for_tests()
+    _library(
+        tmp_path,
+        monkeypatch,
+        [
+            ("gutenberg_ale_all_2025-09.zim",
+             {"Scraper": "gutenberg2zim-2.2.0", "Name": "gutenberg_ale_all", "Language": "ale"},
+             GUTENBERG_EPUB_ONLY, "Home.html"),
+        ],
+    )
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
+    import threading
+
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield "http://127.0.0.1:%d" % httpd.server_address[1]
+    httpd.shutdown()
+
+
+def _fetch(url):
+    import urllib.error
+    import urllib.request
+
+    req = urllib.request.Request(url, headers={"Sec-Fetch-Dest": "iframe"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, r.headers.get("Content-Type", ""), r.read(), r.headers
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers.get("Content-Type", ""), e.read(), e.headers
+
+
+def test_an_epub_in_a_zim_opens_as_a_book(served_epub):
+    """Before 1.12 an EPUB could only be downloaded: a browser cannot show
+    one, and Gutenberg's EPUB-only books had nothing to open."""
+    from urllib.parse import quote
+
+    zim = srv.list_zims()[0]["name"]
+    book = served_epub + "/w/" + zim + "/" + quote("Aleutian Indian and English Dictionary.10040.epub")
+    status, ctype, body, _h = _fetch(book + "/")
+    assert status == 200 and ctype.startswith("text/html")
+    assert b'<meta name="zimi-book" content="epub">' in body and b"PREFACE" in body
+    status, ctype, body, _h = _fetch(book + "/" + quote(fx.GUTENBERG_EPUB_COVER))
+    assert status == 200 and ctype == "image/png" and body == fx.PNG
+    assert _fetch(book + "/OEBPS/missing.png")[0] == 404
+    assert _fetch(book + "/" + quote("../../META-INF/container.xml"))[0] == 404
+    # The file itself still downloads.
+    status, ctype, _b, headers = _fetch(book)
+    assert status == 200 and "attachment" in (headers.get("Content-Disposition") or "")

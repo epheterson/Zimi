@@ -15491,9 +15491,10 @@ function _readerMainContent(doc) {
 }
 // A Project Gutenberg book page, from its own head: Gutenberg's Dublin Core
 // record names the book it is a format of. Its body is the book (no <main>),
-// and it is read in Reader View.
+// and it is read in Reader View. An EPUB's chapters served as one page
+// (zimi/epub.py) say so in their head.
 function _isBookDoc(doc) {
-  try { return !!doc.querySelector('link[rel="dcterms.isFormatOf"][href*="gutenberg.org"]'); } catch (e) { return false; }
+  try { return !!doc.querySelector('link[rel="dcterms.isFormatOf"][href*="gutenberg.org"],meta[name="zimi-book"]'); } catch (e) { return false; }
 }
 // Reader View reads the article element; a book's is its body.
 function _readerViewReadable(doc, main) {
@@ -17322,11 +17323,13 @@ function _bookPrefs() {
   };
 }
 // Is this reader address a book? Known before it loads (the ZIM is a
-// Gutenberg one and the page is a book's, <title>.<number>), so Zimi's
-// header can step aside before the book is laid out, not after (a change
-// of the frame's size then would lay the book out twice).
+// Gutenberg one and the page is a book's, <title>.<number>; or it is an
+// EPUB's chapters, <book>.epub/), so Zimi's header can step aside before
+// the book is laid out, not after (a change of the frame's size then would
+// lay the book out twice).
 function _bookUrl(url) {
   var m = /^\/w\/([^\/?#]+)\/([^?#]+)/.exec(url || '');
+  if (m && /\.epub\/$/i.test(m[2])) return true;
   if (!m || !/\.\d+$/.test(m[2]) || /_cover\.\d+$/.test(m[2])) return false;
   var zim = ''; try { zim = decodeURIComponent(m[1]); } catch (e) { return false; }
   return (zimsCache || []).some(function(z) { return z.name === zim && z.kind === 'books'; });
