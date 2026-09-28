@@ -6,13 +6,15 @@ newest wins:
 
     snapshot   zimi/assets/satellites-snapshot.json, fetched when the release
                was cut (``python3 scripts/build_satellite_snapshot.py``)
-    cache      the last live fetch, in the data directory
+    cache      the last live fetch, in the data directory (and in memory, so
+               a data directory that cannot be written still keeps it)
     live       CelesTrak's GP data, fetched in the background when the cache is
                older than CACHE_TTL_S and the machine may reach out
 
 A request is answered at once from what is here; a stale answer starts one
 background refresh (single flight, with a cooldown after a failure), the same
-stale-while-revalidate rule the Kiwix catalog follows. ZIMI_OFFLINE turns the
+stale-while-revalidate rule the Kiwix catalog follows, and says so
+(``refreshing``) so an open view knows to ask again. ZIMI_OFFLINE turns the
 refresh off. The upstream request carries Zimi's user agent and nothing about
 whoever opened the view.
 
@@ -82,6 +84,10 @@ _EPOCH_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d+)?Z?$")
 _lock = threading.Lock()
 _refreshing = False
 _last_fail = 0.0
+# The last good live fetch. The disk cache is its durable copy; this one
+# outlives a data directory that cannot be written, which would otherwise
+# lose every fetch and ask CelesTrak again each FAIL_COOLDOWN_S, forever.
+_memory = None
 
 
 def _cache_path():
@@ -218,16 +224,13 @@ def write_snapshot(path, payload):
 def refresh():
     """Fetch live and replace the cache. Returns the payload, or None when
     the fetch failed or another refresh is running (the cache stays)."""
-    global _refreshing, _last_fail
+    global _refreshing, _last_fail, _memory
     with _lock:
         if _refreshing:
             return None
         _refreshing = True
     try:
         payload = fetch_live()
-        _srv._atomic_write_json(_cache_path(), payload)
-        log.info("Satellite elements refreshed: %d GPS + ISS", len(payload["gps"]))
-        return payload
     except Exception as e:
         _last_fail = time.time()
         log.info("Satellite elements not refreshed: %s", e)
@@ -235,40 +238,61 @@ def refresh():
     finally:
         with _lock:
             _refreshing = False
+    _memory = payload
+    # A failed write logs itself and leaves the disk cache as it was.
+    _srv._atomic_write_json(_cache_path(), payload)
+    log.info("Satellite elements refreshed: %d GPS + ISS", len(payload["gps"]))
+    return payload
 
 
 def _kick_refresh():
+    """Start a background refresh unless offline, cooling down after a
+    failure, or one is already running. True when a refresh is under way."""
     if _offline() or time.time() - _last_fail < FAIL_COOLDOWN_S:
-        return
+        return False
     with _lock:
         if _refreshing:
-            return
+            return True
     threading.Thread(target=refresh, name="satellite-elements", daemon=True).start()
+    return True
+
+
+def _newest(*payloads):
+    have = [p for p in payloads if p]
+    return max(have, key=lambda p: p["fetched_at"]) if have else None
 
 
 def get(allow_refresh=True):
-    """The newest element set here, at once: ``{source, fetched, gps, iss}``.
-    A stale one starts a background refresh when allowed."""
-    cache, snap = read_cache(), read_snapshot()
+    """The newest element set here, at once: ``{source, fetched, gps, iss,
+    refreshing}``. A stale one starts a background refresh when allowed, and
+    ``refreshing`` says one is under way, so fresher elements are coming."""
+    live, snap = _newest(read_cache(), _memory), read_snapshot()
     best, source = None, "none"
-    if cache and (not snap or cache["fetched_at"] >= snap["fetched_at"]):
-        best, source = cache, "cache"
+    if live and (not snap or live["fetched_at"] >= snap["fetched_at"]):
+        best, source = live, "cache"
     elif snap:
         best, source = snap, "snapshot"
     age = time.time() - best["fetched_at"] if best else float("inf")
-    if allow_refresh and age > CACHE_TTL_S:
-        _kick_refresh()
+    refreshing = bool(allow_refresh and age > CACHE_TTL_S and _kick_refresh())
     if not best:
-        return {"source": "none", "fetched": None, "gps": [], "iss": None}
+        return {
+            "source": "none",
+            "fetched": None,
+            "gps": [],
+            "iss": None,
+            "refreshing": refreshing,
+        }
     return {
         "source": source,
         "fetched": best.get("fetched"),
         "gps": best["gps"],
         "iss": best["iss"],
+        "refreshing": refreshing,
     }
 
 
 def _reset_for_tests():
-    global _refreshing, _last_fail
+    global _refreshing, _last_fail, _memory
     _refreshing = False
     _last_fail = 0.0
+    _memory = None

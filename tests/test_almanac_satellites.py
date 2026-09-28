@@ -146,9 +146,15 @@ def test_a_newer_snapshot_outranks_an_old_cache(data_dir, monkeypatch):
 
 
 def test_nothing_here_is_an_honest_empty_answer(data_dir, monkeypatch):
-    monkeypatch.setattr(satellites, "_kick_refresh", lambda: None)
+    monkeypatch.setattr(satellites, "_kick_refresh", lambda: False)
     got = satellites.get()
-    assert got == {"source": "none", "fetched": None, "gps": [], "iss": None}
+    assert got == {
+        "source": "none",
+        "fetched": None,
+        "gps": [],
+        "iss": None,
+        "refreshing": False,
+    }
 
 
 # ── Refreshing ──────────────────────────────────────────────────────────────
@@ -174,6 +180,9 @@ def test_a_stale_answer_is_served_at_once_and_refreshed_behind_it(
     got = satellites.get()
     assert time.time() - t0 < 0.5, "the answer waited on the network"
     assert got["gps"][0]["OBJECT_ID"] == "old"
+    # The answer says fresher elements are on their way, so a view that is
+    # open asks again instead of drawing the stale ones all session.
+    assert got["refreshing"] is True
     assert started.wait(2), "no background refresh started"
     # A second request while that refresh is running starts no other.
     calls = []
@@ -182,7 +191,7 @@ def test_a_stale_answer_is_served_at_once_and_refreshed_behind_it(
         "fetch_live",
         lambda: calls.append(1) or _payload(time.time(), "dup"),
     )
-    satellites.get()
+    assert satellites.get()["refreshing"] is True, "the running refresh is news too"
     time.sleep(0.2)
     assert calls == []
     release.set()
@@ -190,14 +199,18 @@ def test_a_stale_answer_is_served_at_once_and_refreshed_behind_it(
         if satellites.read_cache():
             break
         time.sleep(0.05)
-    assert satellites.get()["gps"][0]["OBJECT_ID"] == "live"
+    got = satellites.get()
+    assert got["gps"][0]["OBJECT_ID"] == "live"
+    assert got["refreshing"] is False
 
 
 def test_a_fresh_answer_asks_nothing(data_dir, monkeypatch):
     satellites.write_snapshot(satellites.SNAPSHOT_PATH, _payload(time.time(), "fresh"))
     monkeypatch.setattr(satellites, "fetch_live", _no_network)
     monkeypatch.setattr(satellites, "_kick_refresh", _no_network)
-    assert satellites.get()["gps"][0]["OBJECT_ID"] == "fresh"
+    got = satellites.get()
+    assert got["gps"][0]["OBJECT_ID"] == "fresh"
+    assert got["refreshing"] is False
 
 
 def test_offline_never_reaches_out(data_dir, monkeypatch):
@@ -209,6 +222,7 @@ def test_offline_never_reaches_out(data_dir, monkeypatch):
     monkeypatch.setattr(threading, "Thread", _no_network)
     got = satellites.get()
     assert got["gps"][0]["OBJECT_ID"] == "old"
+    assert got["refreshing"] is False, "offline, nothing fresher is coming"
 
 
 def test_zimi_offline_is_the_switch(data_dir, monkeypatch):
@@ -244,6 +258,31 @@ def test_a_refresh_replaces_the_cache(data_dir, monkeypatch):
     monkeypatch.setattr(satellites, "fetch_live", lambda: _payload(time.time(), "new"))
     assert satellites.refresh()["gps"][0]["OBJECT_ID"] == "new"
     assert satellites.read_cache()["gps"][0]["OBJECT_ID"] == "new"
+
+
+def test_a_data_dir_that_cannot_be_written_keeps_the_fetch_in_memory(
+    data_dir, monkeypatch
+):
+    """A data directory that cannot be written used to lose every fetch (the
+    write fails with a log line), serve the stale elements, and fetch again
+    on the next request, forever."""
+    satellites.write_snapshot(
+        satellites.SNAPSHOT_PATH,
+        _payload(time.time() - satellites.CACHE_TTL_S - 60, "stale"),
+    )
+    # A data directory that is a file: no write can land, on any platform.
+    blocked = data_dir / "not-a-directory"
+    blocked.write_text("")
+    monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(blocked))
+    monkeypatch.setattr(satellites, "fetch_live", lambda: _payload(time.time(), "live"))
+    assert satellites.refresh()["gps"][0]["OBJECT_ID"] == "live"
+    assert satellites.read_cache() is None
+    # Served from memory, fresh, so nothing more is asked of CelesTrak.
+    monkeypatch.setattr(satellites, "fetch_live", _no_network)
+    monkeypatch.setattr(threading, "Thread", _no_network)
+    got = satellites.get()
+    assert got["gps"][0]["OBJECT_ID"] == "live"
+    assert got["source"] == "cache" and got["refreshing"] is False
 
 
 def test_the_upstream_request_carries_nothing_about_the_viewer(data_dir, monkeypatch):
