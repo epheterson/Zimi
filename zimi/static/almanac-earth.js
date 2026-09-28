@@ -852,10 +852,13 @@ var AE_ATMO_FRAG = [
 ].join('\n');
 
 // The Moon: sunlight, the Earth's shadow (with the dim copper light the
-// Earth's atmosphere bends into it), and a little earthshine.
+// Earth's atmosphere bends into it), and a little earthshine. Until its map
+// is in (or if it never comes) the Moon is a plain grey of about the map's
+// mean brightness, so it still shows its phase instead of black on black.
+var AE_MOON_PLAIN_ALBEDO = 0.5;
 var AE_MOON_FRAG = [
   'precision highp float;',
-  'uniform sampler2D moonMap;',
+  'uniform sampler2D moonMap; uniform float moonMapped;',
   'uniform vec3 sunPos; uniform float sunR; uniform float earthR;',
   'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
   AE_GLSL_OVERLAP,
@@ -864,7 +867,7 @@ var AE_MOON_FRAG = [
   '  vec3 L = normalize(sunPos - vWorld);',
   '  float mu = max(dot(N, L), 0.0);',
   '  float light = aeSunlight(vWorld, sunPos, sunR, vec3(0.0), earthR);',
-  '  float albedo = texture2D(moonMap, vUv).r;',
+  '  float albedo = mix(' + AE_MOON_PLAIN_ALBEDO.toFixed(2) + ', texture2D(moonMap, vUv).r, moonMapped);',
   '  vec3 sunlit = vec3(albedo) * 1.15 * mu * light;',
   '  vec3 umbral = vec3(albedo) * vec3(0.62, 0.24, 0.10) * 0.75 * mu * (1.0 - light);',
   '  float earthshine = 0.025 * (1.0 - mu);',
@@ -1000,7 +1003,10 @@ function _aeBuildGl(THREE, canvas) {
 
   var moonGeo = new THREE.SphereGeometry(AE_MOON_RADIUS_RE, AE_MOON_SEGMENTS[0], AE_MOON_SEGMENTS[1]);
   moonGeo.rotateX(Math.PI / 2);
-  var moonUni = { moonMap: { value: null }, sunPos: shared.sunPos, sunR: shared.sunR, earthR: { value: AE_SHADOW_ENLARGE } };
+  var moonUni = {
+    moonMap: { value: null }, moonMapped: { value: 0 },
+    sunPos: shared.sunPos, sunR: shared.sunR, earthR: { value: AE_SHADOW_ENLARGE }
+  };
   var moon = new THREE.Mesh(moonGeo, new THREE.ShaderMaterial({
     uniforms: moonUni, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_MOON_FRAG
   }));
@@ -1028,8 +1034,41 @@ function _aeBuildGl(THREE, canvas) {
     earth: earth, earthUni: earthUni, moon: moon, moonUni: moonUni, shared: shared,
     sky: sky, sunDot: sunDot, moonPath: moonPath, moonPathCount: moonPathCount,
     gpsRings: gpsRings, issRing: issRing, sats: sats,
-    basis: new THREE.Matrix4(), vx: new THREE.Vector3(), vy: new THREE.Vector3(), vz: new THREE.Vector3()
+    basis: new THREE.Matrix4(), vx: new THREE.Vector3(), vy: new THREE.Vector3(), vz: new THREE.Vector3(),
+    aniso: Math.min(AE_ANISOTROPY, renderer.capabilities.getMaxAnisotropy()),
+    maps: {}, mapFailed: {}               // by URL: the load under way or done, and what failed
   };
+}
+
+// ── The maps ──
+// The day map is the view: without it the lit side is black, so the view
+// waits for it, and when it fails gives the GPU back and says so (the next
+// open starts over). The city lights and the Moon's face are drawn without
+// when they fail (no lights; the Moon plain grey), the note says so, and the
+// next open asks for them again.
+function _aeLoadMap(S, uni, url) {
+  if (!S.maps[url]) {
+    S.maps[url] = _aeLoadTexture(S.THREE, url).then(function (tx) {
+      tx.anisotropy = S.aniso;
+      uni.value = tx;
+      return true;
+    }, function () {
+      delete S.maps[url];
+      return false;
+    }).then(function (ok) {
+      S.mapFailed[url] = !ok;
+      _ae.dirty = true;
+      _aeKick();
+      return ok;
+    });
+  }
+  return S.maps[url];
+}
+// Loads whatever maps are not in yet; resolves with whether the day map is.
+function _aeLoadMaps(S) {
+  _aeLoadMap(S, S.earthUni.nightMap, AE_TEX_NIGHT);
+  _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON).then(function (ok) { if (ok) S.moonUni.moonMapped.value = 1; });
+  return _aeLoadMap(S, S.earthUni.dayMap, AE_TEX_DAY);
 }
 
 // ── State ──
@@ -1532,6 +1571,8 @@ function _aeNoteText() {
   } else if (_ae.satsFailed) {
     parts.push(_aeT('alm_earth_sats_unavailable'));
   }
+  var S = _ae.gl;
+  if (S && (S.mapFailed[AE_TEX_NIGHT] || S.mapFailed[AE_TEX_MOON])) parts.push(_aeT('alm_earth_maps_failed'));
   parts.push(_aeT('alm_earth_credit'));
   return parts.join(' · ');
 }
@@ -1799,13 +1840,9 @@ function _aeStartView(THREE) {
   var S = _aeBuildGl(THREE, _aeById('ae-canvas'));
   if (!S) { _ae.failed = true; _aeMessage(_aeT('alm_earth_nogl')); return; }
   _ae.gl = S;
-  var aniso = Math.min(AE_ANISOTROPY, S.renderer.capabilities.getMaxAnisotropy());
-  function apply(tex, uni) { tex.anisotropy = aniso; uni.value = tex; _ae.dirty = true; _aeKick(); }
-  _aeLoadTexture(THREE, AE_TEX_NIGHT).then(function (tx) { apply(tx, S.earthUni.nightMap); }).catch(function () {});
-  _aeLoadTexture(THREE, AE_TEX_MOON).then(function (tx) { apply(tx, S.moonUni.moonMap); }).catch(function () {});
-  return _aeLoadTexture(THREE, AE_TEX_DAY).then(function (tx) {
-    apply(tx, S.earthUni.dayMap);
+  return _aeLoadMaps(S).then(function (dayMapIn) {
     if (_ae.gl !== S) return;   // the Almanac closed while it loaded
+    if (!dayMapIn) { _aeDisposeGl(); _aeMessage(_aeT('alm_earth_unavailable')); return; }
     _aeMessage('');
     _aeResize();
     _aeEnter();
@@ -1854,7 +1891,7 @@ function openAlmanacEarth() {
   var back = _aeById('ae-back');
   if (back) back.focus({ preventScroll: true });
   _aeLoadSats();
-  if (_ae.gl) { _aeResize(); _aeEnter(); _aeKick(); return; }
+  if (_ae.gl) { _aeLoadMaps(_ae.gl); _aeResize(); _aeEnter(); _aeKick(); return; }
   if (_ae.failed) { _aeMessage(_aeT('alm_earth_nogl')); return; }
   if (_ae.loading) return;
   _ae.loading = true;
@@ -1906,6 +1943,11 @@ function _aeDisposeGl() {
   });
   S.renderer.dispose();
   S.renderer.forceContextLoss();
+  // The labels were pinned to that scene; the next one's frames pin them again.
+  ['ae-lbl-moon', 'ae-lbl-iss', 'ae-lbl-you', 'ae-lbl-shadow'].forEach(function (id) {
+    var label = _aeById(id);
+    if (label) label.hidden = true;
+  });
   var old = _aeById('ae-canvas');
   if (old && old.parentNode) {
     var fresh = old.cloneNode(false);

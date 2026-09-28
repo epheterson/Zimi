@@ -1949,6 +1949,7 @@
   "alm_earth_no_sat_data": "Keine Satelliten gezeichnet: Die Bahndaten hier (vom {date}) liegen zu weit von diesem Datum entfernt",
   "alm_earth_iss_orbit_only": "ISS: nur die Bahn, denn die Daten vom {date} sind zu alt, um die Station darauf zu verorten",
   "alm_earth_sats_unavailable": "Satellitendaten nicht verfügbar",
+  "alm_earth_maps_failed": "Eine Karte wurde nicht geladen. Ansicht schließen und erneut öffnen, um es noch einmal zu versuchen",
   "alm_earth_no_orbital_data": "Hier liegen keine Bahndaten vor, daher werden keine Satelliten gezeichnet",
   "alm_earth_credit": "Bilder: NASA",
   "alm_earth_gps_sentence": "Diese Uhr geht gegenüber Uhren am Boden {net} µs am Tag vor (+{grav} durch die schwächere Schwerkraft hier oben, −{speed} durch ihre {v} km/s), ohne Korrektur läge GPS also jeden Tag etwa {km} km daneben.",

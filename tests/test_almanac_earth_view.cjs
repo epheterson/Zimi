@@ -19,6 +19,10 @@
 //      closing the Almanac (its real teardown) disposes every geometry,
 //      material and map, loses the context and swaps in a fresh canvas,
 //      and the next open builds it all again; no multisampling at 2x+.
+//   5. Maps that fail: the Moon's face draws a plain grey Moon (never black
+//      on black) and the city lights none, the note says so, and the next
+//      open asks again; the day map (the view itself) gives the GPU back and
+//      says the view is unavailable, and the next open starts over.
 //
 // Run: node tests/test_almanac_earth_view.cjs   (exit 0 = pass)
 
@@ -286,6 +290,42 @@ const run = (code) => vm.runInContext(code, S);
     check(r2 && r2.opts.antialias === true, 'at 1x it multisamples');
     check(mapAsks.filter((u) => u === S.AE_TEX_DAY).length >= 2, 'and loads its maps again');
     S.window.devicePixelRatio = 3;
+  }
+
+  // ── 5. Maps that fail ─────────────────────────────────────────────────
+  {
+    const openFresh = async () => {
+      run('_aeRelease()');
+      fetches.push(answer({}));
+      run('openAlmanacEarth()');
+      await flush();
+    };
+    const msg = () => document.getElementById('ae-msg');
+    mapPlan[S.AE_TEX_MOON] = 'fail';
+    await openFresh();
+    check(run('_ae.gl.moonUni.moonMapped && _ae.gl.moonUni.moonMapped.value') === 0,
+      'without its map the Moon is drawn plain grey, not black on black');
+    check(note().includes('alm_earth_maps_failed'), 'and the note says a map did not load');
+    delete mapPlan[S.AE_TEX_MOON];
+    const moonAsks = mapAsks.filter((u) => u === S.AE_TEX_MOON).length;
+    await reopen();
+    check(mapAsks.filter((u) => u === S.AE_TEX_MOON).length === moonAsks + 1, 'the next open asks for it again');
+    check(run('_ae.gl.moonUni.moonMapped ? _ae.gl.moonUni.moonMapped.value : null') === 1 && !note().includes('alm_earth_maps_failed'),
+      'and with it the Moon has its face and the note clears');
+
+    mapPlan[S.AE_TEX_DAY] = 'fail';
+    document.getElementById('ae-lbl-iss').hidden = false;   // placed by the last frame drawn
+    await openFresh();
+    const r = renderers[renderers.length - 1];
+    check(run('_ae.gl') === null && r.did('dispose') && r.did('forceContextLoss'),
+      'without the day map the view gives its GPU back');
+    check(msg().textContent === 'alm_earth_unavailable' && !msg().hidden, 'and says it is unavailable');
+    check(document.getElementById('ae-lbl-iss').hidden === true, 'with no label left over from the last scene');
+    delete mapPlan[S.AE_TEX_DAY];
+    const built = renderers.length;
+    await reopen();
+    check(renderers.length === built + 1 && run('!!(_ae.gl && _ae.gl.earthUni.dayMap.value)'), 'the next open starts over and gets it');
+    check(msg().hidden === true, 'and the message goes');
   }
 
   if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }

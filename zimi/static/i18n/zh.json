@@ -1949,6 +1949,7 @@
   "alm_earth_no_sat_data": "未显示卫星：这里的轨道数据（来自 {date}）离此日期太远",
   "alm_earth_iss_orbit_only": "国际空间站：只显示轨道，{date} 的数据太旧，无法确定空间站在轨道上的位置",
   "alm_earth_sats_unavailable": "卫星数据不可用",
+  "alm_earth_maps_failed": "有一张贴图没有加载；关闭并重新打开此视图即可重试",
   "alm_earth_no_orbital_data": "这里没有轨道数据，因此不显示卫星",
   "alm_earth_credit": "图像：NASA",
   "alm_earth_gps_sentence": "这台时钟每天比地面时钟快 {net} 微秒（高空引力较弱 +{grav}，其 {v} 公里/秒的速度 −{speed}），若不校正，GPS 每天会偏差约 {km} 公里。",

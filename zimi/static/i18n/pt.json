@@ -1949,6 +1949,7 @@
   "alm_earth_no_sat_data": "Nenhum satélite desenhado: os dados orbitais aqui (de {date}) estão longe demais desta data",
   "alm_earth_iss_orbit_only": "EEI: só a órbita, pois os dados de {date} são antigos demais para situar a estação nela",
   "alm_earth_sats_unavailable": "Dados de satélites indisponíveis",
+  "alm_earth_maps_failed": "Um mapa não carregou; feche e abra esta vista de novo para tentar outra vez",
   "alm_earth_no_orbital_data": "Não há dados orbitais aqui, então nenhum satélite é desenhado",
   "alm_earth_credit": "Imagens: NASA",
   "alm_earth_gps_sentence": "Este relógio ganha {net} µs por dia em relação aos relógios no solo (+{grav} pela gravidade mais fraca aqui em cima, −{speed} pelos seus {v} km/s), então sem correção o GPS erraria cerca de {km} km por dia.",
