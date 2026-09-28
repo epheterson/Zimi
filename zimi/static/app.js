@@ -2566,7 +2566,7 @@ function _currentPageUrl() {
 function _openInBrowser() {
   var url = _currentPageUrl();
   // iOS PWA can't window.open to Safari — copy the URL to the clipboard.
-  if (_isStandalonePWA() && !IS_DESKTOP) { _copyText(url); return; }
+  if (_isStandalonePWA() && !IS_DESKTOP) { _copyText(url, true); return; }
   _openOnWeb(url);
 }
 
@@ -2580,22 +2580,24 @@ function _openOnWeb(url) {
   window.open(url, '_blank', 'noopener');
 }
 
-// Onto the clipboard, and say so. Over plain http on a LAN there is no
-// navigator.clipboard (it needs a secure context), so the old way; and failing
-// that, the address in a box to copy by hand.
-function _copyText(text) {
-  var done = function() { _showToast(t('link_copied')); };
+// Onto the clipboard, and say so ("Link copied" for a link, "Copied" for
+// words). Over plain http on a LAN, or in an iOS home-screen app, there is no
+// navigator.clipboard (it needs a secure context), so the old way, inside the
+// tap that asked; and failing that, the text in a box to copy by hand.
+function _copyText(text, isLink) {
+  var done = function() { _showToast(t(isLink ? 'link_copied' : 'copied')); };
   var fallback = function() {
     var ta = document.createElement('textarea');
     ta.value = text;
     ta.setAttribute('readonly', '');
-    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
     document.body.appendChild(ta);
     ta.select();
+    try { ta.setSelectionRange(0, text.length); } catch (e) {}  // iOS selects nothing without it
     var ok = false;
     try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
     ta.remove();
-    if (ok) done(); else prompt(t('copy_link'), text);
+    if (ok) done(); else prompt(t(isLink ? 'copy_link' : 'copy'), text);
   };
   if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
     navigator.clipboard.writeText(text).then(done, fallback);
@@ -14139,7 +14141,7 @@ async function _generateToken() {
       '<div style="color:var(--text2);font-size:11px;margin-bottom:4px">' + tH('copy_token_now') + '</div>' +
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
       '<span>' + esc(data.token) + '</span>' +
-      '<button class="pill" onclick="navigator.clipboard.writeText(\'' + escAttr(data.token) + '\');this.textContent=t(\'copied\')">' + tH('copy') + '</button>' +
+      '<button class="pill" data-token="' + escAttr(data.token) + '" onclick="_copyText(this.dataset.token)">' + tH('copy') + '</button>' +
       '</div></div>' +
       '<button class="pill" style="margin-top:8px" onclick="switchMs(\'server\')">' + tH('done') + '</button>';
   }
@@ -20162,28 +20164,6 @@ function _bmHlMenu(row, x, y) {
     else if (action === 'remove') Saved.removeHighlight(h.id);
   });
 }
-// Text to the clipboard, and a word that it is there. Where the page is not a
-// secure context (Zimi on a LAN address over http) the clipboard API is not
-// there; the old way still works inside the tap that asked.
-function _copyText(text) {
-  var told = function () { _showToast(t('copied')); };
-  var legacy = function () {
-    var ta = document.createElement('textarea');
-    ta.value = text;
-    ta.setAttribute('readonly', '');
-    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
-    document.body.appendChild(ta);
-    ta.select();
-    try { ta.setSelectionRange(0, text.length); } catch (e) {}
-    var ok = false;
-    try { ok = document.execCommand('copy'); } catch (e) {}
-    ta.remove();
-    if (ok) told();
-  };
-  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(told, legacy);
-  else legacy();
-}
-
 // "All" and the app on screen, when one is: the panel opens on the app's own.
 function _bmScopeHtml() {
   var app = _savedCurrentApp();
@@ -23478,7 +23458,7 @@ function _extSheetEl() {
     var url = _extCur.url, act = b.getAttribute('data-ext');
     _extHide();
     if (act === 'open') _openOnWeb(url);
-    else _copyText(url);
+    else _copyText(url, true);
   });
   document.addEventListener('pointerdown', function(e) { if (_extCur && !el.contains(e.target)) _extHide(); }, true);
   window.addEventListener('resize', function() { if (_extCur) _extHide(); });
@@ -23587,14 +23567,14 @@ function _ctxCopyLink() {
   _hideLinkCtxMenu();
   if (!data) return;
   var url = data.url || (location.origin + '/w/' + encodeURIComponent(data.zim) + '/' + data.path.split('/').map(encodeURIComponent).join('/'));
-  navigator.clipboard.writeText(url).catch(function() {});
+  _copyText(url, true);
 }
 
 function _ctxCopyTitle() {
   var data = _linkCtxData;
   _hideLinkCtxMenu();
   if (!data) return;
-  navigator.clipboard.writeText(data.title).catch(function() {});
+  _copyText(data.title);
 }
 
 // ── Word lookup (Define) ──
