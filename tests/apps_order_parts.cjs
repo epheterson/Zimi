@@ -9,6 +9,7 @@
 const vm = require('vm');
 
 const PARTS = [
+  /function _zimChangedAt\(z\) \{[^\n]*\n/,
   /function _byFirstSeenDesc\(a, b\) \{[^\n]*\n/,
   /function _byUpdatedDesc\(a, b\) \{[^\n]*\n/,
   /var LIBRARY_SORTS = [^\n]*\n/,

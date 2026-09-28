@@ -3792,8 +3792,12 @@ function _zimRecentUpdated(z) {
   if (!ua || ua <= (z.first_seen || 0)) return false;
   return (Date.now() / 1000 - ua) < _ZIM_RECENT_WINDOW_DAYS * 86400;
 }
+// When a ZIM last changed in the library: its update, or its arrival when it
+// has not been updated since. Recently updated orders the cards and the apps
+// (_APP_SORT_DATE) by it alike, so the Apps page agrees with the sources.
+function _zimChangedAt(z) { return Math.max(z.updated_at || 0, z.first_seen || 0); }
 function _byFirstSeenDesc(a, b) { return (b.first_seen || 0) - (a.first_seen || 0); }
-function _byUpdatedDesc(a, b) { return (b.updated_at || 0) - (a.updated_at || 0); }
+function _byUpdatedDesc(a, b) { return _zimChangedAt(b) - _zimChangedAt(a); }
 
 // One recency filter pill. kind=null is the "All" reset; aria-pressed reflects
 // state so the row is usable from the keyboard (each pill is a real <button>).
@@ -18674,7 +18678,7 @@ var _APP_OPEN = { maps: openMaps, tube: openTube, exchange: openExchange, reddot
 // nothing inside comes last; ties keep the row's own order.
 var _APP_SORT_DATE = {
   added: function(z) { return z.first_seen || 0; },
-  updated: function(z) { return Math.max(z.updated_at || 0, z.first_seen || 0); },
+  updated: _zimChangedAt,
 };
 function _appSortValue(app, mode) {
   var zims = _appZims(app);
