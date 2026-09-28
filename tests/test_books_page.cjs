@@ -131,7 +131,7 @@ ok('a link to a place in the book wins over the remembered place', /if \(tgtSec\
 ok('a right-to-left book turns the other way', /if \(rel < _BOOK_EDGE\) \{ turn\(bookRtl \? 1 : -1\); return; \}/.test(src));
 ok('chapters: the heading level with the most different headings', /hs\._n = Object\.keys\(distinct\)\.length;/.test(src));
 ok('the chapter arrows point the way the interface reads', /\(uiRtl \? pv : nx\)\.firstChild\.style\.transform = 'scaleX\(-1\)';/.test(src));
-ok('places are capped, the oldest dropped first', /var MAX = \{ items: \d+, lists: \d+, members: \d+, positions: \d+, gone: \d+ \};/.test(src) && /cap\(s\.positions, MAX\.positions, recTs\);/.test(src));
+ok('places are capped, the oldest dropped first', /var MAX = \{ items: \d+, lists: \d+, members: \d+, positions: \d+, highlights: \d+, gone: \d+ \};/.test(src) && /cap\(s\.positions, MAX\.positions, recTs\);/.test(src));
 
 // A layout that throws is taken back off the page, and the document is not
 // marked done, so the next load of it tries again.

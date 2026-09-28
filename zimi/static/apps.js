@@ -22,6 +22,10 @@ function openLink(a, zim, page, label) {
 // outside the shell. Any change, from the page, the panel or another device,
 // reaches the page as window.__saved().
 function saved() { try { return (window.parent !== window && window.parent.Saved) || null; } catch (e) { return null; } }
+// Highlights in text the page draws itself: the shell's Highlights, whose
+// attach(document, ref, {root}) returns a handle (refresh, goTo, missing,
+// detach); null outside the shell. docs/features/saving.md.
+function highlights() { try { return (window.parent !== window && window.parent.Highlights) || null; } catch (e) { return null; } }
 // A value into an onclick attribute.
 function J(v) { return JSON.stringify(v).replace(/"/g, '&quot;'); }
 // A word to the shell (the app's address, its title, a door to the catalog).

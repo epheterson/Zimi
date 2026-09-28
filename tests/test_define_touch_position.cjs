@@ -10,6 +10,8 @@
 //   3. Desktop (non-touch) positioning is completely unaffected: no near-top
 //      flip, margin stays at the original 4px.
 //
+// (The placing itself is _popoverPlace, shared with the highlight bar.)
+//
 // Pure-helper approach, same pattern as test_reader_font.cjs: extract the
 // constants + functions straight from app.js by source markers, eval them in
 // a sandboxed vm context with a controllable matchMedia + a fake popover
@@ -36,6 +38,7 @@ const cNearTop = extract(/var _DEFINE_NEAR_TOP_PX = \d+;.*$/m, '_DEFINE_NEAR_TOP
 const fIsTouch = extract(/function _defineIsTouch\(\)\s*\{[\s\S]*?\n\}/, '_defineIsTouch');
 const fRangeRect = extract(/function _defineRangeRect\(frame, range\)\s*\{[\s\S]*?\n\}/, '_defineRangeRect');
 const fPosition = extract(/function _definePosition\(rect\)\s*\{[\s\S]*?\n\}/, '_definePosition');
+const fPlace = extract(/function _popoverPlace\(el, rect\)\s*\{[\s\S]*?\n\}/, '_popoverPlace');
 
 // Controllable "is this a touch/coarse-pointer device" flag, flipped per test.
 let touchMode = false;
@@ -63,7 +66,7 @@ const sandbox = {
   },
 };
 vm.createContext(sandbox);
-vm.runInContext([cDelay, cMargin, cNearTop, fIsTouch, fRangeRect, fPosition].join('\n'), sandbox);
+vm.runInContext([cDelay, cMargin, cNearTop, fIsTouch, fRangeRect, fPosition, fPlace].join('\n'), sandbox);
 
 let failures = 0;
 function check(name, cond) {
