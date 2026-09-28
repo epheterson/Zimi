@@ -1125,10 +1125,13 @@ def article(zim, path):
                 break
     level = None
     if project == "wikipedia":
+        # Up from Simple English goes to the full article, never to a mini's
+        # introduction: that is less to read than the Simple article, not more.
         cands = [
-            w for w in same if is_simple(w["name"]) != simple and w["flavour"] != "mini"
+            w
+            for w in same
+            if is_simple(w["name"]) != simple and (not simple or w["flavour"] != "mini")
         ]
-        cands = cands or [w for w in same if is_simple(w["name"]) != simple]
         for w in _by_richness(cands):
             got = _twin(w, [path], qid)
             if got:

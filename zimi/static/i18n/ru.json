@@ -823,6 +823,8 @@
   "wiki_level_full": "Полная статья",
   "wiki_level_full_hint": "Статья целиком, на английском",
   "wiki_mini_full": "Читать полную статью",
+  "wiki_in_library": "В библиотеке",
+  "wiki_map": "Карта",
   "app_empty_wiki": "Добавьте Википедию или другую вики из каталога",
   "books": "Bookshelf",
   "books_search_placeholder": "Искать книги и авторов",

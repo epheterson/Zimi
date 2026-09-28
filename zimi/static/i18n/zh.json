@@ -823,6 +823,8 @@
   "wiki_level_full": "完整文章",
   "wiki_level_full_hint": "完整的英文文章",
   "wiki_mini_full": "阅读完整文章",
+  "wiki_in_library": "库中还有",
+  "wiki_map": "地图",
   "app_empty_wiki": "从目录添加维基百科或其他维基",
   "books": "Bookshelf",
   "books_search_placeholder": "搜索书名和作者",

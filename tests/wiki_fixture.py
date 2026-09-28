@@ -166,6 +166,14 @@ PHYSICS = page(
     '<section data-mw-section-id="0"><p><b>Physics</b> is the science of matter, energy, space and time. '
     'It studies how the <a href="./Albert_Einstein">universe</a> behaves.</p></section>',
 )
+# A place: its coordinates as MediaWiki's {{coord}} writes them.
+PARIS = page(
+    "Paris",
+    '<section data-mw-section-id="0"><table class="infobox"><tbody><tr><th>Coordinates</th><td>'
+    '<span class="geo-inline"><span class="geo-dec">48.8567°N 2.3508°E</span>'
+    '<span style="display:none"><span class="geo">48.8567; 2.3508</span></span></span></td></tr></tbody></table>'
+    "<p><b>Paris</b> is the capital and largest city of France, on the river Seine.</p></section>",
+)
 ENERGY = page(
     "Energy",
     '<section data-mw-section-id="0"><p><b>Energy</b> is the ability to do work.</p></section>',
@@ -243,6 +251,7 @@ def build_library(zdir):
             ("Albert_Einstein", "Albert Einstein", EINSTEIN, H),
             ("Physics", "Physics", PHYSICS, H),
             ("Energy", "Energy", ENERGY, H),
+            ("Paris", "Paris", PARIS, H),
             ("I/Einstein_1921.png", "", img, "image/png"),
         ],
         "Main_Page",

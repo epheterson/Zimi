@@ -823,6 +823,8 @@
   "wiki_level_full": "Full article",
   "wiki_level_full_hint": "The article in full, in English",
   "wiki_mini_full": "Read the full article",
+  "wiki_in_library": "In the library",
+  "wiki_map": "Map",
   "app_empty_wiki": "Add Wikipedia or another wiki from the catalog",
   "books": "Bookshelf",
   "books_search_placeholder": "Search books and authors",

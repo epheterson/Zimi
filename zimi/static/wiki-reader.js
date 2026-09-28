@@ -32,6 +32,8 @@ var _WIKI_SVG_TOC = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0
 var _WIKI_SVG_LANG = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h9M8.5 3v2M6 5c.6 3 2.6 5.6 5.5 7M11 5c-.7 3.4-3.1 6.4-6.5 8"/><path d="M12.5 21l4-10 4 10M14 17.5h5"/></svg>';
 var _WIKI_SVG_SIDE = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>';
 var _WIKI_SPLIT_MIN = 1100;     // px wide: two languages side by side
+var _WIKI_MAP_ZOOM = 12;        // a map opened on an article's coordinates: a town and around it
+var _WIKI_SVG_MAP = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>';
 // Where the next article lands, when it is this one in another language or
 // level: the section you were in ({k: its place among the article's
 // sections, n: how many, text: its heading}). Read once, by that article.
@@ -115,6 +117,18 @@ var _WIKI_CSS = [
   // ── a mini build says what it is ──
   '.zw-note{margin:1.4em 0;padding:12px 14px;border-radius:12px;background:var(--rv-code);color:var(--rv-muted);font:14px/1.5 ' + _WIKI_UI_FONT + '}',
   '.zw-note a{font-weight:600}',
+  // ── one topic, every wiki: a strip of what else the library holds on it ──
+  '.zw-strip{margin:1.2em 0 1.6em;font:14px/1.3 ' + _WIKI_UI_FONT + '}',
+  '.zw-strip > b{display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--rv-muted);margin:0 0 8px}',
+  '.zw-strip ul{list-style:none;margin:0!important;padding:0;display:flex;flex-wrap:wrap;gap:8px}',
+  '.zw-strip li{margin:0!important}',
+  '.zw-strip a{display:flex;align-items:center;gap:9px;padding:8px 12px 8px 9px;border:1px solid var(--rv-border);border-radius:12px;color:var(--rv-fg)!important;text-decoration:none!important;max-width:15em}',
+  '@media (hover:hover){.zw-strip a:hover{border-color:var(--rv-link)}}',
+  '.zw-strip img,.zw-strip svg{width:22px;height:22px;flex:none;margin:0!important;border-radius:5px}',
+  '.zw-strip span{display:flex;flex-direction:column;min-width:0}',
+  '.zw-strip i{font-style:normal;font-weight:600;font-size:12px;color:var(--rv-muted)}',
+  '.zw-strip em{font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;unicode-bidi:plaintext}',
+  '@media (max-width:' + _WIKI_BAR_FOOT_MAX + 'px){.zw-strip ul{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 calc(-1 * var(--zw-m))!important;padding:0 var(--zw-m)}.zw-strip ul::-webkit-scrollbar{display:none}.zw-strip a{max-width:12em}}',
   // ── languages: a sheet of the ones that have this article ──
   '.zb-bar .zw-lbtn{gap:3px;font:600 13px/1 ' + _WIKI_UI_FONT + ';padding:0 8px}',
   '.zw-lang-list{list-style:none;margin:0;padding:0}',
@@ -216,7 +230,7 @@ function _wikiLay(frame) {
 function _wikiUndo(doc) {
   try {
     doc.documentElement.classList.remove('zw', 'zw-rtl', 'zw-split', 'zb-away', 'zb-sheet-open');
-    Array.prototype.forEach.call(doc.querySelectorAll('#zw-style,.zw-bar,.zw-rail,.zw-card,.zw-sheet,.zw-scrim,.zw-hero,.zw-sub,.zw-note,.zw-pane'), function(n) { n.remove(); });
+    Array.prototype.forEach.call(doc.querySelectorAll('#zw-style,.zw-bar,.zw-rail,.zw-card,.zw-sheet,.zw-scrim,.zw-hero,.zw-sub,.zw-note,.zw-pane,.zw-strip'), function(n) { n.remove(); });
     Array.prototype.forEach.call(doc.querySelectorAll('details.zw-facts'), function(d) { while (d.lastChild && d.lastChild.nodeName !== 'SUMMARY') d.parentNode.insertBefore(d.lastChild, d.nextSibling); d.remove(); });
   } catch (e) {}
   doc.__zimiWikiLaid = false;
@@ -623,7 +637,45 @@ function _wikiLayout(frame) {
     });
   };
 
+  // The strip: the other wikis' pages on the topic, and a map where the
+  // article has coordinates and a map of there is installed. After the
+  // lead; if you have read past it by the time it comes, the page is held
+  // where you are.
+  var place = null;
+  var geo = (article.querySelector('.geo') || {}).textContent || '';
+  var gm = /(-?\d+(?:\.\d+)?)\s*[;,]\s*(-?\d+(?:\.\d+)?)/.exec(geo);
+  if (gm) {
+    var pt = { lat: parseFloat(gm[1]), lng: parseFloat(gm[2]) };
+    var maps = (zimsCache || []).filter(function(z) { return z.kind === 'map' && _mapCovers(z, pt) !== false; });
+    // A map known to cover the place, then the smallest (the most detailed).
+    var area = function(z) { var b = z.map_bounds; return b && b.length === 4 ? Math.abs((b[2] - b[0]) * (b[3] - b[1])) : 1e9; };
+    maps.sort(function(a, b) { return (_mapCovers(b, pt) === true) - (_mapCovers(a, pt) === true) || area(a) - area(b); });
+    if (maps.length) place = { zim: maps[0].name, path: maps[0].main_path, pos: mapPositionHash(_WIKI_MAP_ZOOM, pt.lat, pt.lng) };
+  }
+  var renderStrip = function() {
+    var items = (info.topic || []).map(function(tp) {
+      return '<li><a href="' + escAttr(_articleUrl(tp.zim, tp.path)) + '" data-zim="' + escAttr(tp.zim) + '" data-path="' + escAttr(tp.path) + '">' +
+        '<img src="/w/' + encodeURIComponent(tp.zim) + '/-/icon" alt="" loading="lazy"><span><i>' + esc(tp.project.charAt(0).toUpperCase() + tp.project.slice(1)) + '</i>' +
+        '<em' + (lang ? ' lang="' + escAttr(lang) + '"' : '') + '>' + esc(tp.title) + '</em></span></a></li>';
+    });
+    if (place) items.push('<li><a href="#" class="zw-map">' + _WIKI_SVG_MAP + '<span><i>' + tH('wiki_map') + '</i><em>' + esc(_zimTitle(place.zim)) + '</em></span></a></li>');
+    if (!items.length) return;
+    var strip = ui(el('nav', 'zw-strip'));
+    strip.setAttribute('aria-label', t('wiki_in_library'));
+    strip.innerHTML = '<b>' + tH('wiki_in_library') + '</b><ul>' + items.join('') + '</ul>';
+    var lead = article.querySelector('section[data-mw-section-id="0"]');
+    var after = lead || (heads[0] && heads[0].closest('.mw-heading') || heads[0]);
+    var y = win.scrollY || 0;
+    if (lead) lead.parentNode.insertBefore(strip, lead.nextSibling);
+    else if (after) after.parentNode.insertBefore(strip, after);
+    else article.appendChild(strip);
+    var r = strip.getBoundingClientRect();
+    if (r.bottom < 0) win.scrollTo(0, y + r.height + parseFloat(win.getComputedStyle(strip).marginTop) + parseFloat(win.getComputedStyle(strip).marginBottom));
+    var mapA = strip.querySelector('.zw-map');
+    if (mapA) mapA.onclick = function(e) { e.preventDefault(); openArticle(place.zim, place.path, title, { pos: place.pos }); };
+  };
   var renderInfo = function() {
+    renderStrip();
     var n = (info.languages || []).length + (info.level ? 1 : 0);
     // A switch that cannot work is not shown: no Q-ID, or nowhere to go.
     lbtn.hidden = !n;

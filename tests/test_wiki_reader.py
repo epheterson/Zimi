@@ -127,7 +127,9 @@ def test_an_article_from_zimipedia_reads_in_its_reader_on_a_phone(served):
                 "{ shown: !d.querySelector('.zw-card').hidden, text: d.querySelector('.zw-card').textContent, y: w.scrollY }",
             )
             assert (
-                card["shown"] and "Source number 2" in card["text"] and abs(card["y"] - y0) < 100
+                card["shown"]
+                and "Source number 2" in card["text"]
+                and abs(card["y"] - y0) < 100
             ), "the note, where you are: the page does not jump to the references"
             fr.locator("h1").first.click()
             pg.wait_for_timeout(200)
@@ -318,6 +320,52 @@ def test_languages_by_qid_land_on_the_same_section_and_sit_side_by_side(served):
             br.close()
 
 
+def test_one_topic_every_wiki_a_strip_after_the_lead(served):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = br.new_page(viewport={"width": 1440, "height": 900})
+        fr = pg.frame_locator("#reader-frame")
+        try:
+            _boot(pg, served)
+            _from_zimipedia(pg, "wikipedia", "Albert_Einstein")
+            pg.wait_for_function(
+                "() => !!document.getElementById('reader-frame').contentDocument.querySelector('.zw-strip')",
+                timeout=10000,
+            )
+            s = _q(
+                pg,
+                """{ items: Array.prototype.map.call(d.querySelectorAll('.zw-strip a'), function(a) { return a.querySelector('i').textContent + ':' + a.getAttribute('data-path'); }),
+              afterLead: d.querySelector('.zw-strip').previousElementSibling.getAttribute('data-mw-section-id') }""",
+            )
+            assert s["items"] == [
+                "Wikiquote:Albert_Einstein",
+                "Wikisource:Author:Albert_Einstein",
+            ], s
+            assert s["afterLead"] == "0", "after the lead, not over the text"
+            fr.locator(".zw-strip a").first.click()
+            pg.wait_for_function(
+                "() => { var d = document.getElementById('reader-frame').contentDocument; return /\\/w\\/wikiquote\\/Albert_Einstein/.test(d.location.pathname) && d.querySelector('.zw-bar'); }",
+                timeout=15000,
+            )
+            # A place, with a map of there installed: a way onto the map at it.
+            pg.evaluate(
+                "() => { zimsCache.push({ name: 'osm-test', title: 'Test map', kind: 'map', map_bounds: [-5, 40, 10, 55], main_path: 'index.html' }); }"
+            )
+            _from_zimipedia(pg, "wikipedia", "Paris")
+            pg.wait_for_function(
+                "() => !!document.getElementById('reader-frame').contentDocument.querySelector('.zw-strip .zw-map')",
+                timeout=10000,
+            )
+            fr.locator(".zw-strip .zw-map").click()
+            pg.wait_for_timeout(300)
+            assert pg.evaluate("() => currentArticle.zim") == "osm-test"
+            assert "map=12.00/48.85670/2.35080" in pg.evaluate("() => location.hash")
+        finally:
+            br.close()
+
+
 def test_a_right_to_left_article_and_a_mini(served):
     from playwright.sync_api import sync_playwright
 
@@ -390,9 +438,7 @@ def test_an_article_knows_its_languages_its_simple_twin_and_its_sister_pages(lib
 def test_a_mini_borrows_its_qid_and_points_to_the_full_article(library):
     got = wiki.article("wikipedia_en", "Albert_Einstein")
     assert got["flavour"] == "mini"
-    assert (
-        got["qid"] == "Q937"
-    ), "the same page of a fuller build of the language"
+    assert got["qid"] == "Q937", "the same page of a fuller build of the language"
     assert [lg["lang"] for lg in got["languages"]] == [
         "he"
     ], "so the language switch still works"
