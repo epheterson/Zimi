@@ -46,6 +46,10 @@ MAX_SPINE = 3000
 # Parsed books kept for the next request: this many, or this many bytes.
 CACHE_BOOKS = 6
 CACHE_BYTES = 96 * 1024 * 1024
+# Files under whose name a path was asked for and that are no EPUB this
+# reader opens (``notes.epub`` that is no zip): remembered, so each request
+# under it is not another read of up to 50 MB and another parse.
+CACHE_MISSES = 256
 
 _XHTML_TYPES = ("application/xhtml+xml", "text/html", "application/xml")
 # A manifest's media-type is taken in this shape only, a type and a subtype.
@@ -410,6 +414,7 @@ def facts_of_file(path):
 # ── books in a ZIM ─────────────────────────────────────────────────────────
 
 _cache = OrderedDict()  # (zim, path, file identity) -> Book
+_misses = OrderedDict()  # (zim, path, file identity): no EPUB there
 _cache_lock = threading.Lock()
 
 
@@ -466,15 +471,21 @@ def book_in_zim(zim, epub_path):
         if got is not None:
             _cache.move_to_end(key)
             return got
+        if key in _misses:
+            return None
     data = _load(zim, epub_path)
-    if data is None:
-        return None
-    try:
-        book = Book(data)
-    except EpubError as e:
-        log.info("EPUB %s in %s will not open: %s", epub_path, zim, e)
-        return None
+    book = None
+    if data is not None:
+        try:
+            book = Book(data)
+        except EpubError as e:
+            log.info("EPUB %s in %s will not open: %s", epub_path, zim, e)
     with _cache_lock:
+        if book is None:
+            _misses[key] = True
+            while len(_misses) > CACHE_MISSES:
+                _misses.popitem(last=False)
+            return None
         _cache[key] = book
         while len(_cache) > CACHE_BOOKS or (
             len(_cache) > 1
@@ -523,3 +534,4 @@ def respond(zim, entry_path):
 def _reset_for_tests():
     with _cache_lock:
         _cache.clear()
+        _misses.clear()

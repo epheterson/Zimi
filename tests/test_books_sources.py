@@ -1696,3 +1696,45 @@ def test_a_folder_walk_stops_at_its_bound(monkeypatch):
     _Many.seen = 0
     tube._folder_walk(_Many())
     assert _Many.seen == 50
+
+
+# ── a path under a file that is not an EPUB ────────────────────────────────
+
+
+def test_a_path_under_a_file_that_is_not_an_epub_is_read_once(
+    serve_one_zim, monkeypatch
+):
+    """``notes.epub`` that is no zip was read and parsed again (up to
+    50 MB) on every request for a path under it; and a folder named
+    ``site.epub/`` is still served by the ordinary lookup."""
+    from urllib.parse import quote
+
+    from zimi import epub
+
+    base, zim = serve_one_zim(
+        dict(
+            _index(),
+            **{
+                "notes.epub": ("application/epub+zip", b"not a zip at all", ""),
+                "site.epub/ch1.html": (
+                    "text/html",
+                    "<html><body>Chapter one</body></html>",
+                    "One",
+                ),
+            },
+        )
+    )
+    opened = []
+    real = epub.Book
+
+    def book(data):
+        opened.append(len(data))
+        return real(data)
+
+    monkeypatch.setattr(epub, "Book", book)
+    for _ in range(3):
+        # Answered by the ordinary lookup (the page for a missing entry).
+        _fetch(f"{base}/w/{zim}/notes.epub/OEBPS/a.png")
+    assert len(opened) == 1, "the entry was read and parsed again"
+    status, _ctype, body, _h = _fetch(f"{base}/w/{zim}/{quote('site.epub/ch1.html')}")
+    assert status == 200 and b"Chapter one" in body
