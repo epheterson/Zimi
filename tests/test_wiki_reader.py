@@ -440,6 +440,64 @@ def test_diving_in_a_card_for_a_link_a_trail_and_read_next(served):
             br.close()
 
 
+def test_saving_to_reading_lists(served):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        ctx = br.new_context(**pw.devices["iPhone 13"])
+        pg = ctx.new_page()
+        fr = pg.frame_locator("#reader-frame")
+        try:
+            _boot(pg, served)
+            _from_zimipedia(pg, "wikipedia", "Albert_Einstein")
+            assert (
+                pg.evaluate("() => _savedRefOnScreen().app") == "wiki"
+            ), "the header's button files it under Zimipedia too"
+            fr.locator(".zw-sbtn").click()
+            pg.wait_for_timeout(300)
+            fr.locator(".zw-save-row").click()
+            item = pg.evaluate(
+                "() => Saved.get({ zim: 'wikipedia', path: 'Albert_Einstein' })"
+            )
+            assert (
+                item
+                and item["app"] == "wiki"
+                and item["kind"] == "article"
+                and item["title"] == "Albert Einstein"
+            ), item
+            assert _q(pg, "d.querySelector('.zw-sbtn').classList.contains('on')")
+            # A new reading list, the article in it; and Liked.
+            fr.locator(".zw-new input").fill("Physicists")
+            fr.locator(".zw-new button").click()
+            pg.wait_for_timeout(200)
+            fr.locator('.zw-lists button[data-list="liked"]').click()
+            lists = pg.evaluate(
+                "() => Saved.get({ zim: 'wikipedia', path: 'Albert_Einstein' }).lists"
+            )
+            names = pg.evaluate(
+                "(ids) => ids.map(function(id) { var l = Saved.lists().filter(function(x) { return x.id === id; })[0]; return l.builtin ? 'Liked' : l.name; })",
+                lists,
+            )
+            assert sorted(names) == ["Liked", "Physicists"], names
+            assert (
+                pg.evaluate(
+                    "() => Saved.lists({ app: 'wiki' }).filter(function(l) { return l.name === 'Physicists'; })[0].count"
+                )
+                == 1
+            )
+            # Taken back out.
+            fr.locator(".zw-save-row").click()
+            assert (
+                pg.evaluate(
+                    "() => Saved.has({ zim: 'wikipedia', path: 'Albert_Einstein' })"
+                )
+                is False
+            )
+        finally:
+            br.close()
+
+
 def test_a_right_to_left_article_and_a_mini(served):
     from playwright.sync_api import sync_playwright
 

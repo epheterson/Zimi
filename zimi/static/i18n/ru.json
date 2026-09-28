@@ -828,6 +828,8 @@
   "wiki_read": "Читать",
   "wiki_read_next": "Читать дальше",
   "wiki_trail": "Ваш путь",
+  "wiki_save": "Сохранить",
+  "wiki_unsave": "Убрать из сохранённого",
   "app_empty_wiki": "Добавьте Википедию или другую вики из каталога",
   "books": "Bookshelf",
   "books_search_placeholder": "Искать книги и авторов",

@@ -828,6 +828,8 @@
   "wiki_read": "Lire",
   "wiki_read_next": "À lire ensuite",
   "wiki_trail": "Votre parcours",
+  "wiki_save": "Enregistrer",
+  "wiki_unsave": "Retirer des enregistrements",
   "app_empty_wiki": "Ajoutez Wikipédia ou un autre wiki depuis le catalogue",
   "books": "Bookshelf",
   "books_search_placeholder": "Chercher des livres et des auteurs",

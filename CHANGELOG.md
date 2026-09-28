@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Zimipedia's languages by Wikidata ID: only the installed languages that have the article, opening on the same section, two side by side on a wide screen, and Simple English as a reading level. A mini without an ID borrows it from a fuller build of its language, points to the full article, and the switch hides when it cannot work.
 - One topic, every wiki: under an article's lead, what else the library holds on it (the Wiktionary entry, the Wikivoyage guide, Wikiquote, Wikibooks, Wikisource) and a map of the place when one is installed.
 - Diving in, in Zimipedia: a link shows a card first (the article's first sentence and picture) and a second tap follows it; a trail over the title shows where you came through, a step back along it is a tap; Read next closes an article with the articles its lead links to.
+- Zimipedia's reading lists: the reader's bookmark saves an article (at the section you are in) and puts it in Liked or any list, or a new one.
 - The Almanac zooms from the solar system to a 3D Earth: lit by the real Sun, with the Moon, eclipses as they fall, the ISS and the GPS satellites (tap one: its clock gains 38 microseconds a day).
 
 ### Changed

@@ -48,6 +48,7 @@ var _WIKI_SENTENCE_MAX = 240;   // a preview's first sentence, at most
 var _WIKI_SNIPPETS_KEPT = 200;
 var _WIKI_TRAIL_KEY = 'zimi_wiki_trail';    // this tab's trail (session)
 var _WIKI_TRAILS_KEY = 'zimi_wiki_trails';  // the recent trails (this browser)
+var _WIKI_SVG_SAVE = '<svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
 var _WIKI_UI_FONT = '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';
 var _WIKI_CSS = [
   // ── the page: the reader's own type, and room for the bar ──
@@ -166,6 +167,18 @@ var _WIKI_CSS = [
   '.zw-pane-head{display:flex;align-items:center;gap:8px;margin:0 0 6px;font:600 12.5px/1.3 ' + _WIKI_UI_FONT + ';color:var(--rv-muted);text-transform:uppercase;letter-spacing:.05em}',
   '.zw-pane-head span{flex:1}',
   '.zw-pane-head button{border:0;background:none;color:inherit;font-size:20px;line-height:1;width:32px;height:32px;border-radius:16px;cursor:pointer}',
+  // ── saving: a bookmark in the bar, and the lists it is in ──
+  '.zb-bar .zw-sbtn.on{color:var(--rv-link)}.zb-bar .zw-sbtn.on svg{fill:currentColor}',
+  '.zw-save-row{display:flex;align-items:center;gap:10px;width:100%;padding:12px 10px;border-radius:10px;font-weight:600;text-align:start}',
+  '.zw-save-row[aria-pressed="true"]{color:var(--rv-link)}.zw-save-row[aria-pressed="true"] svg{fill:currentColor}',
+  '.zw-lists{list-style:none;margin:0 0 8px;padding:0}',
+  '.zw-lists button{display:flex;align-items:center;width:100%;gap:10px;padding:10px;border-radius:10px;text-align:start}',
+  '.zw-lists button span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;unicode-bidi:plaintext}',
+  '.zw-lists button::after{content:"";width:18px;height:18px;flex:none;border-radius:5px;border:1.5px solid var(--rv-border);box-sizing:border-box}',
+  '.zw-lists button[aria-pressed="true"]::after{background:var(--rv-link);border-color:var(--rv-link);box-shadow:inset 0 0 0 3px var(--rv-bg)}',
+  '.zw-new{display:flex;gap:8px;padding:6px 0 0}',
+  '.zw-new input{flex:1;min-width:0;height:38px;border-radius:10px;border:1px solid var(--rv-border);background:none;color:inherit;padding:0 12px;font:inherit}',
+  '.zw-new button{flex:none;height:38px;border-radius:10px!important;border:1px solid var(--rv-border)!important;padding:0 12px!important;font-weight:600!important}',
   // ── diving in: a link's card, the trail, read next ──
   '.zw-card.zw-link{padding:0;overflow:hidden!important}',
   '.zw-prev{display:grid;grid-template-columns:1fr auto;gap:4px 12px;padding:12px 14px 12px 16px;align-items:start}',
@@ -398,20 +411,23 @@ function _wikiLayout(frame) {
   bar.innerHTML = (heads.length ? '<button type="button" class="zw-cbtn" aria-haspopup="dialog" title="' + tH('books_contents') + '">' + _WIKI_SVG_TOC + '<span></span></button>' : '') +
     // The languages: shown once the lookup says there is somewhere to go.
     '<button type="button" class="zw-lbtn" hidden aria-haspopup="dialog" aria-label="' + tH('wiki_languages') + '" title="' + tH('wiki_languages') + '">' + _WIKI_SVG_LANG + '<span></span></button>' +
-    '<button type="button" class="zb-aa" aria-label="' + tH('books_settings') + '" title="' + tH('books_settings') + '" aria-haspopup="dialog">Aa</button>';
+    '<button type="button" class="zb-aa" aria-label="' + tH('books_settings') + '" title="' + tH('books_settings') + '" aria-haspopup="dialog">Aa</button>' +
+    '<button type="button" class="zw-sbtn" aria-haspopup="dialog" aria-label="' + tH('wiki_save') + '" title="' + tH('wiki_save') + '">' + _WIKI_SVG_SAVE + '</button>';
   var scrim = el('div', 'zb-scrim zw-scrim');
   var tocSheet = ui(el('div', 'zb-sheet zw-sheet zw-toc-sheet'));
   var setSheet = ui(el('div', 'zb-sheet zw-sheet zw-set-sheet'));
   var langSheet = ui(el('div', 'zb-sheet zw-sheet zw-lang-sheet'));
-  [tocSheet, setSheet, langSheet].forEach(function(s) { s.setAttribute('role', 'dialog'); });
+  var saveSheet = ui(el('div', 'zb-sheet zw-sheet zw-save-sheet'));
+  [tocSheet, setSheet, langSheet, saveSheet].forEach(function(s) { s.setAttribute('role', 'dialog'); });
+  saveSheet.setAttribute('aria-label', t('saved_tab'));
   langSheet.setAttribute('aria-label', t('wiki_languages'));
   tocSheet.setAttribute('aria-label', t('books_contents'));
   setSheet.setAttribute('aria-label', t('books_settings'));
   var card = ui(el('div', 'zw-card'));
   card.hidden = true;
   card.setAttribute('role', 'dialog');
-  [bar, scrim, tocSheet, setSheet, langSheet, card].forEach(function(n) { doc.body.appendChild(n); });
-  var sheets = [tocSheet, setSheet, langSheet];
+  [bar, scrim, tocSheet, setSheet, langSheet, saveSheet, card].forEach(function(n) { doc.body.appendChild(n); });
+  var sheets = [tocSheet, setSheet, langSheet, saveSheet];
   var sheetOpen = function() { return html.classList.contains('zb-sheet-open'); };
   var closeSheets = function() { sheets.forEach(function(s) { s.classList.remove('zb-open'); }); html.classList.remove('zb-sheet-open'); };
   var openSheet = function(s) { closeSheets(); hideCard(); s.classList.add('zb-open'); html.classList.add('zb-sheet-open'); showBars(true); };
@@ -520,7 +536,7 @@ function _wikiLayout(frame) {
 
   // ── the bar comes and goes, with Zimi's header ──
   var barsShown = function() { return !html.classList.contains('zb-away'); };
-  var showBars = function(on) { html.classList.toggle('zb-away', !on); };
+  var showBars = function(on) { if (on && sbtn) paintSave(); html.classList.toggle('zb-away', !on); };
   var lastY = win.scrollY || 0, down = 0, up = 0, ticking = false;
   doc.addEventListener('scroll', function() {
     if (ticking) return;
@@ -698,6 +714,65 @@ function _wikiLayout(frame) {
       io.observe(nx);
     } else fillNext();
   }
+
+  // ── saving: this article, to Saved (Zimipedia's, app wiki) and its lists ──
+  // The shell's Saved: this browser's, or the account's when signed in. The
+  // section you are in goes with it, so opening it again lands there.
+  var sbtn = bar.querySelector('.zw-sbtn');
+  var saveRef = function() {
+    var r = { kind: 'article', app: 'wiki', zim: zim, path: here.path, title: title, meta: meta };
+    var sec = _readerSectionAnchor();
+    if (sec) r.where = { s: sec };
+    return r;
+  };
+  var paintSave = function() {
+    var on = Saved.has(saveRef());
+    sbtn.classList.toggle('on', on);
+    sbtn.setAttribute('aria-pressed', String(on));
+  };
+  var renderSave = function() {
+    var ref = saveRef(), on = Saved.has(ref);
+    saveSheet.innerHTML = '<div class="zb-sheet-head"><b>' + tH('saved_tab') + '</b><button type="button" class="zb-x" aria-label="' + tH('close') + '">×</button></div>' +
+      '<button type="button" class="zw-save-row" data-act="save" aria-pressed="' + on + '">' + _WIKI_SVG_SAVE + '<span>' + tH(on ? 'wiki_unsave' : 'wiki_save') + '</span></button>' +
+      '<div class="zb-set-label">' + tH('saved_lists') + '</div><ul class="zw-lists">' + Saved.lists().map(function(l) {
+        return '<li><button type="button" data-list="' + escAttr(l.id) + '" aria-pressed="' + Saved.inList(ref, l.id) + '"><span>' + esc(l.builtin ? t('saved_liked') : l.name) + '</span></button></li>';
+      }).join('') + '</ul>' +
+      // Not a form: the reader's frame is sandboxed without forms.
+      '<div class="zw-new"><input type="text" maxlength="120" placeholder="' + tH('saved_list_name') + '" aria-label="' + tH('saved_list_name') + '"><button type="button" data-act="new">' + tH('saved_new_list') + '</button></div>';
+  };
+  saveSheet.addEventListener('click', function(e) {
+    var b = e.target.closest && e.target.closest('button');
+    if (!b) return;
+    if (b.classList.contains('zb-x')) { closeSheets(); return; }
+    var ref = saveRef(), id = b.getAttribute('data-list'), act = b.getAttribute('data-act');
+    if (act === 'new') { newList(); return; }
+    if (act === 'save') { if (Saved.has(ref)) Saved.remove(ref); else Saved.save(ref); }
+    else if (id) { if (Saved.inList(ref, id)) Saved.removeFromList(ref, id); else Saved.addToList(ref, id); }
+    renderSave();
+    paintSave();
+  });
+  // A new list, with this article in it.
+  var newList = function() {
+    var input = saveSheet.querySelector('.zw-new input'), name = (input.value || '').trim();
+    if (!name) { input.focus(); return; }
+    var id = Saved.createList(name);
+    if (id) Saved.addToList(saveRef(), id);
+    renderSave();
+    paintSave();
+  };
+  saveSheet.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && e.target.closest && e.target.closest('.zw-new input')) { e.preventDefault(); newList(); }
+  });
+  sbtn.onclick = function() {
+    renderSave();
+    openSheet(saveSheet);
+    var first = saveSheet.querySelector('.zw-save-row');
+    if (first) first.focus({ preventScroll: true });
+  };
+  paintSave();
+  // Saved elsewhere (the header's button, the panel, another device): the
+  // bar says so the next time it shows.
+  doc.addEventListener('visibilitychange', paintSave);
 
   // ── languages: the ones that have this article, landing on the same section ──
   var info = null;

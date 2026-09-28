@@ -828,6 +828,8 @@
   "wiki_read": "पढ़ें",
   "wiki_read_next": "आगे पढ़ें",
   "wiki_trail": "आपका रास्ता",
+  "wiki_save": "सहेजें",
+  "wiki_unsave": "सहेजे गए से हटाएँ",
   "app_empty_wiki": "कैटलॉग से विकिपीडिया या कोई अन्य विकि जोड़ें",
   "books": "Bookshelf",
   "books_search_placeholder": "किताबें और लेखक खोजें",

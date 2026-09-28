@@ -828,6 +828,8 @@
   "wiki_read": "اقرأ",
   "wiki_read_next": "اقرأ بعد ذلك",
   "wiki_trail": "مسارك",
+  "wiki_save": "حفظ",
+  "wiki_unsave": "إزالة من المحفوظات",
   "app_empty_wiki": "أضف ويكيبيديا أو ويكي آخر من الفهرس",
   "books": "Bookshelf",
   "books_search_placeholder": "ابحث عن كتب ومؤلفين",

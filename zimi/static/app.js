@@ -21498,7 +21498,11 @@ function _savedRefOnScreen() {
     var p = Saved.position({ zim: zim, path: path }), m = path.match(/\.(\d+)$/);
     return { kind: 'book', app: 'books', zim: zim, path: path, title: (p && p.title) || title, meta: p ? p.meta : { id: m ? Number(m[1]) : 0 } };
   }
-  return { kind: 'article', zim: zim, path: path, title: title };
+  var ref = { kind: 'article', zim: zim, path: path, title: title };
+  // An article in Zimipedia's reader is Zimipedia's: its reading lists.
+  var fd = _readerFrameDoc();
+  if (fd && fd.__zimiWikiLaid) ref.app = 'wiki';
+  return ref;
 }
 // The section being read: the last heading with an id above the top third of
 // the page, or none near the top. Opening the saved article lands there.

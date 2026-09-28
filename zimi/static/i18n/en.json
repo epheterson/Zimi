@@ -828,6 +828,8 @@
   "wiki_read": "Read",
   "wiki_read_next": "Read next",
   "wiki_trail": "Your trail",
+  "wiki_save": "Save",
+  "wiki_unsave": "Remove from Saved",
   "app_empty_wiki": "Add Wikipedia or another wiki from the catalog",
   "books": "Bookshelf",
   "books_search_placeholder": "Search books and authors",
