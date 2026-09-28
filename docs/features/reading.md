@@ -10,7 +10,7 @@ Search across every ZIM at once, open an article, and read it — the part of Zi
 
 **Reader View** re-renders an article as plain, readable prose — one column, your font and size, your theme (dark / light / sepia). It is per-article, and `zimi_reader_auto` opens every article straight into it.
 
-**Bookmarks and history.** Bookmarks group into folders and survive restarts. History records what you opened. Both are stored per user server-side when you are signed in as a named account; an admin without a named user keeps them in the browser, which means they are per-browser and a private window starts empty. See [Users & access](access.md).
+**Saved and history.** The bookmark button saves the article at the section you are reading; saved things go in lists (as many as you like), and the Saved panel holds them all. See [Saving](saving.md). History records what you opened. Signed in as a named account, what you save follows the account to every device; an admin without a named user keeps it in the browser, which means it is per-browser and a private window starts empty. See [Users & access](access.md).
 
 **Word lookup (Define).** Select a word — or double-tap it on a phone — and Zimi looks it up in an installed Wiktionary. It is dormant with no Wiktionary installed. There is no tooltip advertising it; it is found the way every other text gesture is found.
 
@@ -48,7 +48,7 @@ A page captured by **alive** keeps its scripts and does not need this; see [Crea
 
 ## Troubleshoot
 
-- **Bookmarks vanished / a private window shows none** — you are signed in as an admin without a named user, so they live in that browser only. Create a named account and they follow you. See [Users & access](access.md).
+- **Saved things vanished / a private window shows none**: you are signed in as an admin without a named user, so they live in that browser only. Create a named account and they follow you. See [Users & access](access.md).
 - **Selecting a word does nothing** — no Wiktionary is installed. Add one from the catalog and the gesture starts working; nothing else needs enabling.
 - **An old version of the interface keeps loading** — a hard reload clears it. The service worker takes over on the next load after a deploy; a page left open from before will still be on the old bundle.
 - **A captured page still shows a gap or a stranded header** — the settling rules run in Zimi's reader. Opening the same `.zim` in another reader will show the page as captured, gap and all.

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Saving: bookmarks, lists and Liked in one place, an item in as many lists as you like, each list exportable as a ZIM.
+- Signed in, what you save and where you are in each book follow your account to every device, and a delete on one stays deleted on the others.
+- Bookshelf has My shelf, and Continue reading picks up on any device where you left off.
+
+### Changed
+
+- The Bookmarks panel is now Saved: folders are lists (a nested folder is "Parent / Child"), and over an app it opens on that app's own.
+- The bookmark button saves an article at the section you are reading, and a map at the place on screen.
+
+### Fixed
+
+- My data's export and import carry your history, and Restore from server no longer restores an old copy.
+
 ## [1.11.0] - 2026-09-27
 
 ### Added
