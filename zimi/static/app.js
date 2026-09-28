@@ -79,6 +79,11 @@ var SK = {
   BM_FOLDERS: 'zimi_bm_folders',
   // Per-device UI state: ids of collapsed folders in the bookmarks tree.
   BM_COLLAPSED: 'zimi_bm_collapsed',
+  // Highlights, per device: the colour last chosen, and the highlights a
+  // page opened here did not have ({id: 1}), for the panel to say so. Never
+  // synced: another device may hold another build of the ZIM.
+  HL_COLOR: 'zimi_hl_color',
+  HL_MISSING: 'zimi_hl_missing',
   // The admin's session token. Never the password: that used to be kept here
   // in plain text under the key zimi_manage_pw, which _purgeStoredPassword
   // removes wherever an older version left it.
@@ -16363,6 +16368,8 @@ function _readerViewToggle() {
     }
     _readerViewOn = true;
   }
+  // The text was swapped for its other form: its highlights found again in it.
+  if (_hlReader) _hlReader.refresh();
   _tintReaderChrome(); // paint (on) or clear (off) the iframe/loading tint
   // Reader View owns its own themes: strip the raw-article dark filter when it
   // turns on (it would invert the reader shell), restore it when it turns off.
@@ -18044,6 +18051,18 @@ function _bookLay(frame) {
   // Leaving: the place as last read (the frame may already be hidden, with
   // nothing on screen to read it from).
   win.addEventListener('pagehide', function() { clearTimeout(settleTimer); save(); });
+  // A passage brought into view from outside (a highlight opened from the
+  // Saved panel): its page turned to, or scrolled to under the header.
+  doc.__zbShowRange = function(r) {
+    var n = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentNode;
+    var s = n && n.closest && n.closest('.zb-sec');
+    if (!s) return;
+    held = false;
+    goTo({ s: s.__zbI, o: _bookOffsetIn(doc, s, r.startContainer, r.startOffset) });
+    showBars(false);
+    paint();
+    settleSoon();
+  };
 
   // ── open where you left it (or where the link points) ──
   paged = prefs.mode === 'pages';
@@ -19039,6 +19058,8 @@ function openReader(url) {
     // wiktionary ZIM is installed). Works in the normal reader AND Reader View
     // (same document, listeners attached once per load survive the transform).
     try { _defineAttachToDoc(frame); } catch(e) {}
+    // Highlights: painted when the page has some, offered when text is selected.
+    try { _hlReaderAttach(frame); } catch(e) { console.warn('Highlights:', e); }
     try { _sayMissingVideos(frame); } catch(e) {}
     // A consent wall the ARCHIVE rebuilds every time it is opened, and a
     // captured page's JS-driven chrome put back in its place. Both edit the
@@ -19693,6 +19714,7 @@ var _bmBound = false;       // delegated listeners attached once to the panel
 var _BM_ROOT = '';          // the top level: items in no list
 var _BM_CONTINUE = '__continue';
 var _BM_CONTINUE_SHOWN = 8; // books (later videos) listed under Continue
+var _BM_HIGHLIGHTS = '__highlights'; // every highlight, the latest first
 // What opens inside an app page rather than the reader.
 var _SAVED_APP_KINDS = { video: 'tube', question: 'exchange', post: 'reddot' };
 // The app the panel shows, '' for everything. Chosen as the panel opens: the
@@ -19750,7 +19772,8 @@ function _renderBookmarksContent() {
   var lists = Saved.lists(q).filter(function (l) { return !_bmScope || l.count; });
   var loose = Saved.itemsFor({ list: _BM_ROOT, app: q.app });
   var cont = Saved.continued(q).filter(function (p) { return p.kind === 'book' || p.kind === 'video'; }).slice(0, _BM_CONTINUE_SHOWN);
-  var any = loose.length || cont.length || lists.some(function (l) { return l.count || !l.builtin; });
+  var hls = Saved.highlights(q);
+  var any = loose.length || cont.length || hls.length || lists.some(function (l) { return l.count || !l.builtin; });
   var html = _bmScopeHtml() + '<div class="hp-actions bm-actions">' +
     '<button class="hp-action-btn" onclick="_bmNewListPrompt()">' + tH('saved_new_list') + '</button>' +
     (Saved.all().length ? '<button id="export-bookmarks-btn" class="hp-action-btn" onclick="_bmOpenExport()">' + tH('save_to_zim') + '</button>' : '') +
@@ -19764,14 +19787,89 @@ function _renderBookmarksContent() {
   }
   lists.forEach(function (l) {
     html += _bmGroupRowHtml(l.id, _savedListName(l), l.builtin ? _BM_HEART_SVG : _BM_LIST_SVG, l.count, true);
-    if (!_bmIsCollapsed(l.id)) Saved.itemsFor({ list: l.id, app: q.app }).forEach(function (it) { html += _bmItemRowHtml(it, l.id, 1); });
+    if (!_bmIsCollapsed(l.id)) Saved.itemsFor({ list: l.id, app: q.app }).forEach(function (it) { html += _bmItemWithHlHtml(it, l.id, 1); });
   });
   // The items in no list, under a name of their own once anything is above
   // them: bare, they read as the last list's.
   var grouped = loose.length && (lists.length || cont.length);
   if (grouped) html += _bmGroupRowHtml(_BM_ROOT, t('saved_unlisted'), _BM_PAGE_SVG, loose.length, false);
-  if (!grouped || !_bmIsCollapsed(_BM_ROOT)) loose.forEach(function (it) { html += _bmItemRowHtml(it, _BM_ROOT, grouped ? 1 : 0); });
+  if (!grouped || !_bmIsCollapsed(_BM_ROOT)) loose.forEach(function (it) { html += _bmItemWithHlHtml(it, _BM_ROOT, grouped ? 1 : 0); });
+  // Every highlight on its own, the latest first, each with its page.
+  if (hls.length) {
+    html += _bmGroupRowHtml(_BM_HIGHLIGHTS, t('saved_highlights'), _HL_SVG.replace('<svg ', '<svg width="17" height="17" '), hls.length, false);
+    if (!_bmIsCollapsed(_BM_HIGHLIGHTS)) {
+      var lost = _hlMissingSet();
+      hls.forEach(function (h) { html += _bmHlRowHtml(h, _BM_HIGHLIGHTS, 1, h.zim + '\n' + h.path, lost, true); });
+    }
+  }
   return html + '</div>';
+}
+
+// ── Highlights in the panel: under their page, and on their own ──
+// A highlight's passage as kept: a long one is its start and its end.
+function _hlQuote(h) { return h.exact + (h.end ? ' \u2026 ' + h.end : ''); }
+// Which highlights a page opened on this device did not have (highlights.js
+// keeps the list; per device, as another may hold another build).
+function _hlMissingSet() {
+  try { return JSON.parse(localStorage.getItem(SK.HL_MISSING)) || {}; } catch (e) { return {}; }
+}
+// An item's row, and its page's highlights under it in the order of the text.
+function _bmItemWithHlHtml(it, fid, depth) {
+  var html = _bmItemRowHtml(it, fid, depth), hls = Saved.highlights(it);
+  if (hls.length) {
+    var lost = _hlMissingSet();
+    hls.forEach(function (h) { html += _bmHlRowHtml(h, fid, depth + 1, it.key, lost, false); });
+  }
+  return html;
+}
+// A highlight's row: its passage, its colour, its note; with its page when
+// it stands on its own. data-key is the item it is under (or its page), so a
+// drag over it lands beside that item.
+function _bmHlRowHtml(h, fid, depth, key, lost, withPage) {
+  var missing = _bkSourceMissing(h), gone = !missing && !!lost[h.id];
+  var sub = missing ? t('bm_source_missing') : gone ? t('hl_not_found')
+    : [h.note || '', withPage ? (h.title || _titleFromPath(h.path)) : ''].filter(Boolean).join(' \u00b7 ');
+  return '<div class="bm-row bm-hl' + (missing ? ' bm-missing' : '') + (gone ? ' bm-hl-lost' : '') + '"' +
+    ' data-hid="' + escAttr(h.id) + '" data-key="' + escAttr(key) + '" data-fid="' + escAttr(fid) + '" data-depth="' + depth + '"' +
+    ' style="padding-left:' + (6 + depth * _BM_INDENT) + 'px" role="treeitem" aria-level="' + (depth + 1) + '" tabindex="-1">' +
+    '<span class="bm-twist bm-twist-gap"></span>' +
+    '<span class="bm-hl-bar hl-c-' + escAttr(h.color) + '" aria-hidden="true"></span>' +
+    '<span class="bm-detail"><span class="bm-name" dir="auto">' + esc(_hlQuote(h)) + '</span>' +
+    (sub ? '<span class="bm-sub" dir="auto">' + esc(sub) + '</span>' : '') + '</span>' +
+    '<button class="bm-gear" data-role="menu" title="' + escAttr(t('more_actions')) + '" aria-label="' + escAttr(t('more_actions')) + '">⋯</button>' +
+    '</div>';
+}
+function _bmHlMenu(row, x, y) {
+  var h = Saved.getHighlight(row.dataset.hid);
+  if (!h) return;
+  var open = row.classList.contains('bm-missing') ? '<div class="ctx-note">' + tH('bm_source_missing') + '</div>' : '<div class="ctx-item" data-action="open">' + tH('open') + '</div>';
+  window._openMenuAt(open + '<div class="ctx-item" data-action="copy">' + tH('copy') + '</div>' +
+    '<div class="ctx-sep"></div><div class="ctx-item danger" data-action="remove">' + tH('hl_remove') + '</div>', x, y, function (action) {
+    if (action === 'open') Highlights.open(h);
+    else if (action === 'copy') _copyText(_hlQuote(h));
+    else if (action === 'remove') Saved.removeHighlight(h.id);
+  });
+}
+// Text to the clipboard, and a word that it is there. Where the page is not a
+// secure context (Zimi on a LAN address over http) the clipboard API is not
+// there; the old way still works inside the tap that asked.
+function _copyText(text) {
+  var told = function () { _showToast(t('copied')); };
+  var legacy = function () {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+    document.body.appendChild(ta);
+    ta.select();
+    try { ta.setSelectionRange(0, text.length); } catch (e) {}
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+    if (ok) told();
+  };
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(told, legacy);
+  else legacy();
 }
 
 // "All" and the app on screen, when one is: the panel opens on the app's own.
@@ -19872,6 +19970,7 @@ var _bmFocusKey = null;
 
 function _bmRowKey(row) {
   if (!row) return null;
+  if (row.classList.contains('bm-hl')) return 'h:' + row.dataset.fid + '\t' + row.dataset.hid;
   return row.classList.contains('bm-folder') ? 'f:' + row.dataset.fid : 'b:' + row.dataset.fid + '\t' + row.dataset.key;
 }
 function _bmRowByKey(key) {
@@ -19880,6 +19979,7 @@ function _bmRowByKey(key) {
   if (!host) return null;
   if (key.slice(0, 2) === 'f:') return host.querySelector('.bm-folder[data-fid="' + _cssEsc(key.slice(2)) + '"]');
   var tab = key.indexOf('\t');
+  if (key.slice(0, 2) === 'h:') return host.querySelector('.bm-hl[data-fid="' + _cssEsc(key.slice(2, tab)) + '"][data-hid="' + _cssEsc(key.slice(tab + 1)) + '"]');
   return host.querySelector('.bm-bk[data-fid="' + _cssEsc(key.slice(2, tab)) + '"][data-key="' + _cssEsc(key.slice(tab + 1)) + '"]');
 }
 function _bmRows() {
@@ -20065,7 +20165,7 @@ function _bmListsSubmenuHtml(key) {
 
 function _bmListMenu(lid, x, y) {
   var builtin = lid === Saved.LIKED;
-  if (lid === _BM_CONTINUE || lid === _BM_ROOT) return;  // not lists: nothing to do to them
+  if (lid === _BM_CONTINUE || lid === _BM_ROOT || lid === _BM_HIGHLIGHTS) return;  // not lists: nothing to do to them
   var html = (builtin ? '' : '<div class="ctx-item" data-action="rename">' + tH('rename') + '</div>') +
     '<div class="ctx-item" data-action="export">' + tH('saved_export_list') + '</div>' +
     (builtin ? '' : '<div class="ctx-sep"></div><div class="ctx-item danger" data-action="delete">' + tH('saved_delete_list') + '</div>');
@@ -20147,8 +20247,11 @@ function _bmEnsureBound() {
       // Twist or anywhere on the group row toggles collapse.
       _bmToggleCollapse(row.dataset.fid);
       _bmRerender();
+    } else if (row.classList.contains('bm-missing')) {
+      _showToast(t('bm_source_missing'));
+    } else if (row.classList.contains('bm-hl')) {
+      Highlights.open(Saved.getHighlight(row.dataset.hid));
     } else if (row.classList.contains('bm-bk')) {
-      if (row.classList.contains('bm-missing')) { _showToast(t('bm_source_missing')); return; }
       var it = _bmRowThing(row);
       if (it) _savedOpen(it);
     }
@@ -20178,6 +20281,7 @@ function _bmEnsureBound() {
 
 function _bmOpenRowMenu(row, x, y) {
   if (row.classList.contains('bm-folder')) _bmListMenu(row.dataset.fid, x, y);
+  else if (row.classList.contains('bm-hl')) _bmHlMenu(row, x, y);
   else if (row.classList.contains('bm-bk')) _bmItemMenu(row, x, y);
 }
 
@@ -20186,8 +20290,8 @@ function _bmOpenRowMenu(row, x, y) {
 // list or out of it, or along its list; a list along the lists.
 function _bmDraggable(row) {
   var fid = row.dataset.fid;
-  if (row.classList.contains('bm-folder')) return fid !== _BM_CONTINUE && fid !== Saved.LIKED && fid !== _BM_ROOT;
-  return fid !== _BM_CONTINUE;
+  if (row.classList.contains('bm-folder')) return fid !== _BM_CONTINUE && fid !== Saved.LIKED && fid !== _BM_ROOT && fid !== _BM_HIGHLIGHTS;
+  return fid !== _BM_CONTINUE && !row.classList.contains('bm-hl');
 }
 
 function _bmPointerDown(e) {
@@ -20295,7 +20399,7 @@ function _bmUpdateDropTarget(x, y) {
   var rect = row.getBoundingClientRect();
   var rel = (y - rect.top) / rect.height;
   var lid = row.dataset.fid;  // the list under the pointer, or the one its item row is in
-  if (lid === _BM_CONTINUE) return;  // nothing goes into Continue
+  if (lid === _BM_CONTINUE || lid === _BM_HIGHLIGHTS) return;  // nothing goes into Continue or Highlights
   if (_bmDrag.kind === 'folder') {
     // A list moves along the lists, before the one under the pointer (Liked
     // stays first); over the items in no list, to the end.
@@ -20463,12 +20567,19 @@ function _pushArticleHistory(zim, path) {
 //   Saved.clearPosition(ref)           Saved.continued({app, kind}): positions,
 //                                      the latest first
 //   Saved.LIKED                        the Liked list's id
+//   Saved.highlight(h) -> id           add a highlight, or change one (h.id:
+//                                      its note, its colour); see highlights.js
+//   Saved.highlights(q)                a page's ({zim, path}), in the order of
+//                                      its text; else ({app, kind}) the latest first
+//   Saved.getHighlight(id)             Saved.removeHighlight(id)
 // A ref is a key or anything item-shaped ({zim, path, kind, where}). where is
 // {s} a section, {f, c} a book (share read, character), {t, d} a video,
 // {pos} a map view; meta is a few short fields an app shows (author, cover).
+// A highlight is kept apart from its page's item: highlighting saves the page
+// (the engine does), removing the page from Saved keeps its highlights.
 //
 // Sync: every record carries ts, the newest wins, and a deletion leaves a
-// tombstone in `gone` (i:item, l:list, m:membership, p:position) that beats
+// tombstone in `gone` (i:item, l:list, m:membership, p:position, h:highlight) that beats
 // anything as old or older, so a delete on one device survives a merge from
 // another. Tombstones are forgotten after GONE_MS. users.py holds the same
 // rules for the account's copy (_clean_saved, _merge_saved).
@@ -20478,9 +20589,13 @@ var Saved = (function () {
   var APPS = ['books', 'tube', 'exchange', 'reddot', 'maps', 'wiki'];
   // The app a kind belongs to when the one saving it did not say.
   var KIND_APP = { book: 'books', video: 'tube', question: 'exchange', post: 'reddot', place: 'maps' };
-  var COLLS = [['items', 'i:'], ['lists', 'l:'], ['members', 'm:'], ['positions', 'p:']];
+  var COLLS = [['items', 'i:'], ['lists', 'l:'], ['members', 'm:'], ['positions', 'p:'], ['highlights', 'h:']];
   // Caps (users.py _SAVED_MAX holds the same): past one, the newest are kept.
-  var MAX = { items: 5000, lists: 500, members: 20000, positions: 1000, gone: 10000 };
+  var MAX = { items: 5000, lists: 500, members: 20000, positions: 1000, highlights: 2000, gone: 10000 };
+  // A highlight's colours, the first the default; its quote (the engine keeps
+  // the start and the end of a longer passage), its context, its note.
+  var HL_COLORS = ['yellow', 'green', 'blue', 'pink'];
+  var HL_QUOTE_MAX = 600, HL_CONTEXT_MAX = 64, HL_NOTE_MAX = 2000;
   // How long a deletion is remembered. A device away for longer can bring
   // back what was deleted while it was gone.
   var GONE_MS = 90 * 86400000;
@@ -20488,10 +20603,10 @@ var Saved = (function () {
   var SMALL_KEYS = 16, SMALL_KEY_MAX = 32, SMALL_VAL_MAX = 1000;
   var ORDER_GAP_MIN = 1e-9;  // two neighbours closer than this: the list is numbered again
   var ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
-  var _ns = '', _s = null, _idx = null;
+  var _ns = '', _s = null, _idx = null, _hidx = null;
 
   function now() { return Date.now(); }
-  function empty() { return { v: 1, items: {}, lists: {}, members: {}, positions: {}, gone: {}, legacy: false }; }
+  function empty() { return { v: 1, items: {}, lists: {}, members: {}, positions: {}, highlights: {}, gone: {}, legacy: false }; }
   function storeKey() { return SK.SAVED + (_ns ? ':' + _ns : ''); }
   function key(ref) {
     if (typeof ref === 'string') return ref;
@@ -20532,6 +20647,24 @@ var Saved = (function () {
     if (meta) out.meta = meta;
     return key(out) === id ? out : null;
   }
+  // A highlight: the page, what it says and what is around it, where it
+  // starts (a share of the page's text), its colour and note.
+  function highlightRec(r, id) {
+    if (!r || typeof r !== 'object' || !ID_RE.test(id)) return null;
+    var ts = num(r.ts), pos = num(r.pos), n = num(r.n), added = num(r.added);
+    var str = function (v, max) { return typeof v === 'string' ? v.slice(0, max) : ''; };
+    if (typeof r.zim !== 'string' || !r.zim || r.zim.length > ZIM_MAX) return null;
+    if (typeof r.path !== 'string' || !r.path || r.path.length > PATH_MAX || ts === null) return null;
+    if (typeof r.exact !== 'string' || !r.exact) return null;
+    var out = { zim: r.zim, path: r.path, kind: KINDS.indexOf(r.kind) >= 0 ? r.kind : 'article', title: str(r.title, TITLE_MAX),
+      exact: str(r.exact, HL_QUOTE_MAX), prefix: str(r.prefix, HL_CONTEXT_MAX), suffix: str(r.suffix, HL_CONTEXT_MAX),
+      pos: pos === null ? 0 : Math.max(0, Math.min(1, pos)), color: HL_COLORS.indexOf(r.color) >= 0 ? r.color : HL_COLORS[0],
+      added: Math.round(added === null ? ts : added), ts: Math.round(ts) };
+    if (APPS.indexOf(r.app) >= 0) out.app = r.app;
+    if (typeof r.end === 'string' && r.end && n !== null && n > 0) { out.end = str(r.end, HL_QUOTE_MAX); out.n = Math.round(n); }
+    if (typeof r.note === 'string' && r.note) out.note = str(r.note, HL_NOTE_MAX);
+    return out;
+  }
   function order(r) {
     if (!r || typeof r !== 'object') return null;
     var o = num(r.order), ts = num(r.ts);
@@ -20558,8 +20691,9 @@ var Saved = (function () {
       s.members[mk] = o;
     });
     each(x.positions, function (id, r) { var p = thing(r, id); if (p) s.positions[id] = p; });
+    each(x.highlights, function (id, r) { var h = highlightRec(r, id); if (h) s.highlights[id] = h; });
     each(x.gone, function (g, ts) {
-      if (num(ts) !== null && /^[ilmp]:./.test(g) && g.length < ZIM_MAX + PATH_MAX + 128) s.gone[g] = Math.round(ts);
+      if (num(ts) !== null && /^[ilmph]:./.test(g) && g.length < ZIM_MAX + PATH_MAX + 128) s.gone[g] = Math.round(ts);
     });
     s.legacy = x.legacy === true;
     return s;
@@ -20581,6 +20715,7 @@ var Saved = (function () {
     cap(s.items, MAX.items, recTs);
     cap(s.lists, MAX.lists, recTs);
     cap(s.positions, MAX.positions, recTs);
+    cap(s.highlights, MAX.highlights, recTs);
     Object.keys(s.members).forEach(function (mk) {
       var i = mk.indexOf('\t'), lid = mk.slice(0, i);
       if (!has(s.items, mk.slice(i + 1)) || (lid !== LIKED && !has(s.lists, lid))) delete s.members[mk];
@@ -20704,7 +20839,7 @@ var Saved = (function () {
     if (raw) { try { parsed = JSON.parse(raw); } catch (e) {} }
     if (parsed && typeof parsed === 'object' && parsed.items) {
       _s = parsed;
-      ['items', 'lists', 'members', 'positions', 'gone'].forEach(function (c) { if (!_s[c] || typeof _s[c] !== 'object') _s[c] = {}; });
+      ['items', 'lists', 'members', 'positions', 'highlights', 'gone'].forEach(function (c) { if (!_s[c] || typeof _s[c] !== 'object') _s[c] = {}; });
       return _s;
     }
     // This store's first use: what the browser kept before comes in (the
@@ -20720,6 +20855,7 @@ var Saved = (function () {
   // send). often: a place moving while something is read (sent less eagerly).
   function commit(fromSync, often) {
     _idx = null;
+    if (!often) _hidx = null;  // a place moving while reading leaves highlights as they were
     write();
     if (typeof _savedChanged === 'function') _savedChanged(!!fromSync, !!often);
   }
@@ -20956,6 +21092,65 @@ var Saved = (function () {
       .sort(newestFirst(s.positions, recTs)).map(function (id) { return pubPos(id, s.positions[id]); });
   }
 
+  // ── highlights ──
+  // A page's highlights by its key (zim + '\n' + path), built when first asked:
+  // a page opened with none costs one lookup.
+  function hidx() {
+    if (_hidx) return _hidx;
+    var s = load(), out = {};
+    Object.keys(s.highlights).forEach(function (id) {
+      var r = s.highlights[id], k = r.zim + '\n' + r.path;
+      (out[k] = out[k] || []).push(id);
+    });
+    _hidx = out;
+    return out;
+  }
+  function pubHl(id, r) { var o = copy(r); o.id = id; return o; }
+  // q: a page ({zim, path} or its key), in the order of its text; otherwise
+  // every highlight matching {app, kind}, the latest first.
+  function highlights(q) {
+    q = q || {};
+    var s = load(), ids, page = typeof q === 'string' ? q.split('\n').slice(0, 2).join('\n') : q.zim && q.path ? q.zim + '\n' + q.path : '';
+    if (page) {
+      ids = (hidx()[page] || []).slice().sort(function (a, b) { return (s.highlights[a].pos - s.highlights[b].pos) || cmp(a, b); });
+    } else {
+      ids = Object.keys(s.highlights).filter(function (id) { return matches(q, s.highlights[id]); })
+        .sort(function (a, b) { return (s.highlights[b].added - s.highlights[a].added) || cmp(a, b); });
+    }
+    return ids.map(function (id) { return pubHl(id, s.highlights[id]); });
+  }
+  function getHighlight(id) {
+    var s = load();
+    return has(s.highlights, id) ? pubHl(id, s.highlights[id]) : null;
+  }
+  // A new highlight (no id, or one not kept), or a change to one: the fields
+  // given replace its own (a note of '' takes the note away).
+  function highlight(h) {
+    if (!h || typeof h !== 'object') return '';
+    var s = load(), t = now(), id = typeof h.id === 'string' && has(s.highlights, h.id) ? h.id : '';
+    var rec = id ? copy(s.highlights[id]) : { added: t };
+    ['zim', 'path', 'kind', 'app', 'title', 'exact', 'end', 'n', 'prefix', 'suffix', 'pos', 'color', 'note'].forEach(function (f) {
+      if (h[f] !== undefined) rec[f] = h[f];
+    });
+    if (typeof rec.note === 'string') rec.note = rec.note.trim();
+    if (!id) id = typeof h.id === 'string' && ID_RE.test(h.id) ? h.id : 'h_' + t.toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+    rec.ts = t;
+    var r = highlightRec(rec, id);
+    if (!r) return '';
+    s.highlights[id] = r;
+    delete s.gone['h:' + id];
+    cap(s.highlights, MAX.highlights, recTs);
+    commit();
+    return id;
+  }
+  function removeHighlight(id) {
+    var s = load();
+    if (!has(s.highlights, id)) return;
+    delete s.highlights[id];
+    s.gone['h:' + id] = now();
+    commit();
+  }
+
   // ── sync: the account's copy, a file, another device ──
   // A store's fingerprint: every record by id and time, every tombstone.
   // Equal fingerprints hold the same records (a tie keeps one copy either way).
@@ -20994,7 +21189,7 @@ var Saved = (function () {
   function use(name) {
     var ns = name ? String(name).toLowerCase() : '';
     if (ns === _ns) return false;
-    _ns = ns; _s = null; _idx = null;
+    _ns = ns; _s = null; _idx = null; _hidx = null;
     return true;
   }
 
@@ -21005,6 +21200,7 @@ var Saved = (function () {
     lists: lists, createList: createList, renameList: renameList, deleteList: deleteList, moveList: moveList,
     inList: inList, addToList: addToList, moveInList: moveInList, removeFromList: removeFromList,
     position: position, setPosition: setPosition, clearPosition: clearPosition, continued: continued,
+    HL_COLORS: HL_COLORS.slice(), highlight: highlight, highlights: highlights, getHighlight: getHighlight, removeHighlight: removeHighlight,
     data: function () { return copy(load()); }, merge: merge, mergeLegacy: mergeLegacy, use: use,
     account: function () { return _ns; }, storageKey: storeKey,
     // For the tests: the pure parts.
@@ -21026,6 +21222,7 @@ function _savedChanged(fromSync, often) {
     _updateLibraryBtnIcon();
     _savedRefreshPanel();
     _savedTellApp();
+    if (typeof Highlights !== 'undefined') Highlights.changed();
   });
 }
 // The panel draws what is saved when it opens; a change while it is open
@@ -21141,6 +21338,136 @@ function _savedStart() {
   if (!_savedSignedIn()) return;
   if (window.requestIdleCallback) requestIdleCallback(_savedPull, { timeout: 2000 });
   else setTimeout(_savedPull, 500);
+}
+
+// ── Highlights: the shell's side ───────────────────────────────────────────
+// One engine for every reader (/static/highlights.js, docs/features/saving.md).
+// Highlights.attach(doc, ref, opts) is called once per document shown: by the
+// reader for an article, a book or an EPUB's chapters, by Zimipedia's layer
+// for its article. It hands back a handle at once and costs nothing more: the
+// engine loads only when the page has highlights, when text is selected in it,
+// or when one of them is to be shown. One handle per document
+// (doc.__zimiHighlights): a second attach adopts the later ref and options.
+var _HL_SVG = '<svg ' + _BM_SVG_ATTRS + '><path d="M9 11l-6 6v3h9l3-3"/><path d="M22 12l-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg>';
+var Highlights = (function () {
+  var engine = null, loading = null, live = [], pending = null;
+  function load() {
+    if (engine) return Promise.resolve(engine);
+    if (!loading) {
+      loading = new Promise(function (resolve, reject) {
+        var el = document.createElement('script');
+        el.src = '/static/highlights.js?v=1';
+        el.onload = function () { engine = window.ZimiHighlightsEngine || null; if (engine) resolve(engine); else reject(); };
+        el.onerror = function () { loading = null; reject(); };
+        document.head.appendChild(el);
+      });
+    }
+    return loading;
+  }
+  function pageOf(r) { return r && r.zim && r.path ? r.zim + '\n' + r.path : ''; }
+  function has(h) { return Saved.highlights(h.ref).length > 0; }
+  function boot(h) {
+    if (h.dead) return Promise.resolve(null);
+    if (h.eng) return Promise.resolve(h.eng);
+    return load().then(function (E) {
+      if (h.dead) return null;
+      if (!h.eng) h.eng = E.attach(h);
+      return h.eng;
+    }, function () { return null; });
+  }
+  function alive(h) {
+    try { return !h.dead && !!h.doc.defaultView; } catch (e) { return false; }
+  }
+  function prune() {
+    live = live.filter(function (h) { if (!alive(h)) h.detach(); return !h.dead; });
+  }
+  function handleFor(doc) {
+    var h = null;
+    try { h = doc && doc.__zimiHighlights; } catch (e) {}
+    return h && !h.dead ? h : null;
+  }
+  function attach(doc, ref, opts) {
+    if (!doc || !pageOf(ref)) return null;
+    prune();
+    var h = handleFor(doc);
+    if (h) {
+      h.ref = ref;
+      for (var k in (opts || {})) h.opts[k] = opts[k];
+      if (h.eng) h.eng.refresh(true);
+      else if (has(h)) boot(h);
+      return h;
+    }
+    h = { doc: doc, ref: ref, opts: {}, eng: null, dead: false };
+    for (var o in (opts || {})) h.opts[o] = opts[o];
+    // A selection before the engine is here: it is fetched, then offers its bar.
+    var onSel = function () {
+      if (h.eng || h.booting) return;
+      var sel = doc.getSelection && doc.getSelection();
+      if (!sel || sel.isCollapsed || !String(sel).trim()) return;
+      h.booting = true;
+      boot(h).then(function (e) { h.booting = false; if (e) e.offer(); });
+    };
+    h.refresh = function () { if (h.eng) h.eng.refresh(true); else if (has(h)) boot(h); };
+    h.goTo = function (id) { boot(h).then(function (e) { if (e) e.goTo(id); }); };
+    h.missing = function () { return h.eng ? h.eng.missing() : []; };
+    h.detach = function () {
+      if (h.dead) return;
+      h.dead = true;
+      try { doc.removeEventListener('selectionchange', onSel); } catch (e) {}
+      if (h.eng) h.eng.detach();
+      try { if (doc.__zimiHighlights === h) doc.__zimiHighlights = null; } catch (e) {}
+    };
+    doc.addEventListener('selectionchange', onSel);
+    doc.__zimiHighlights = h;
+    live.push(h);
+    // A highlight opened from the panel lands here once its page is shown;
+    // any other page shown first means that open was left behind.
+    var go = pending && pending.page === pageOf(ref) ? pending.id : '';
+    pending = null;
+    if (go) h.goTo(go);
+    else if (has(h)) boot(h);
+    return h;
+  }
+  // What is kept changed: each page on screen paints its own again, and one
+  // not yet painted that has highlights now (from another device) starts.
+  function changed() {
+    prune();
+    live.forEach(function (h) { if (h.eng) h.eng.changed(); else if (has(h)) boot(h); });
+  }
+  // Open a highlight at its place: the page on screen scrolls (or turns) to
+  // it; another page opens as its saved item would, then goes there.
+  function open(hl) {
+    if (!hl || !pageOf(hl)) return;
+    prune();
+    var frame = document.getElementById('reader-frame');
+    for (var i = 0; i < live.length; i++) {
+      var shown = false;
+      try { shown = readerOpen && live[i].doc.defaultView.frameElement === frame; } catch (e) {}
+      if (shown && pageOf(live[i].ref) === pageOf(hl)) { _closeLibraryPanel(); live[i].goTo(hl.id); return; }
+    }
+    pending = { page: pageOf(hl), id: hl.id };
+    var it = Saved.get(hl) || hl;
+    _savedOpen({ kind: it.kind, app: it.app, zim: hl.zim, path: hl.path, title: it.title });
+  }
+  return { attach: attach, handleFor: handleFor, open: open, changed: changed, load: load };
+})();
+// The reader's document and its highlights: an article (raw or in Reader
+// View), a book, an EPUB's chapters; not a map, the PDF viewer or an app's
+// own page (Zimipedia attaches its article itself).
+var _hlReader = null;
+function _hlReaderAttach(frame) {
+  var doc = null;
+  try { doc = frame.contentDocument; } catch (e) {}
+  if (_hlReader && _hlReader.doc !== doc) _hlReader.detach();
+  _hlReader = null;
+  var ref = currentArticle && !_frameIsOurOwnPage(frame) ? _savedRefOnScreen() : null;
+  if (!doc || !doc.body || !ref || ref.kind === 'place') return;
+  // Read in the book reader (an EPUB's chapters too): a book, in Bookshelf.
+  if (_bookReading && ref.kind !== 'book') { ref.kind = 'book'; ref.app = 'books'; }
+  var dc = doc.querySelector('meta[name="dc.title"]');
+  var title = ((dc && dc.getAttribute('content')) || doc.title || '').trim();
+  if (title) ref.title = title;
+  _hlReader = Highlights.attach(doc, ref);
 }
 
 // ── Export to ZIM, per list ────────────────────────────────────────────────
@@ -22544,8 +22871,14 @@ function _defineSelRect(frame, sel) {
 function _definePosition(rect) {
   if (!rect) return;
   _definePopover.classList.add('open');
-  var w = _definePopover.offsetWidth || 200;
-  var h = _definePopover.offsetHeight || 60;
+  _popoverPlace(_definePopover, rect);
+}
+// Put a floating card (Define's, the highlight bar) by a selection whose place
+// in the shell is rect ({x, y: just below it, top}), clear of the phone's own
+// selection menu and inside the screen.
+function _popoverPlace(el, rect) {
+  var w = el.offsetWidth || 200;
+  var h = el.offsetHeight || 60;
   var vw = window.innerWidth, vh = window.innerHeight, M = 8;
   var x = rect.x, y = rect.y;
   // On touch, the OS callout normally renders ABOVE the selection (our chip
@@ -22561,8 +22894,8 @@ function _definePosition(rect) {
   // a card that grew taller/wider than the chip) must never spill off-screen.
   x = Math.max(M, Math.min(x, vw - w - M));
   y = Math.max(M, Math.min(y, vh - h - M));
-  _definePopover.style.left = x + 'px';
-  _definePopover.style.top = y + 'px';
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
 }
 
 // Re-run positioning against the anchor rect stored at trigger time. Called after
@@ -22697,6 +23030,19 @@ function _defineRenderResult(st, hit, html) {
   _defineReposition(); // final card size known — re-clamp so it can't spill off-screen
 }
 
+// Define from the highlight bar: can the selection be looked up, and look it up
+// where the bar was (rect as _defineRangeRect gives it).
+function _defineCanDefine(word, doc) {
+  return _defineIsWord(word) && !!_defineFindWiktionary(_ttsLang(doc));
+}
+function _defineWordAt(word, doc, rect) {
+  var wikt = _defineFindWiktionary(_ttsLang(doc));
+  if (!wikt || !rect || !_defineIsWord(word)) return;
+  _defineState = { word: word.trim(), zim: wikt.name, path: null, rect: rect };
+  _definePopover.classList.add('open');
+  _defineRun();
+}
+
 function _defineOpenFull() {
   var st = _defineState;
   _defineHide();
@@ -22711,6 +23057,8 @@ function _defineConsider(frame) {
   var doc, sel;
   try { doc = frame.contentDocument; sel = frame.contentWindow.getSelection(); }
   catch (e) { return; } // cross-origin ZIM — feature can't reach the selection
+  // A reader with highlights: its selection bar carries Define.
+  if (doc && doc.__zimiHighlights) return;
   if (!sel || sel.isCollapsed) { _defineHide(); return; }
   var word = sel.toString().trim();
   if (!_defineIsWord(word)) { _defineHide(); return; }
