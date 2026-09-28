@@ -1633,6 +1633,7 @@
   "search_placeholder": "Искать везде…",
   "search_chip_without": "исключено: {word}",
   "search_chip_exact": "точная фраза: {words}",
+  "search_chip_not_searched": "вне поиска: {words}",
   "search_tips": "Советы по поиску",
   "search_example_exact": "\"солнечная батарея\"",
   "search_example_without": "ягуар -автомобиль",

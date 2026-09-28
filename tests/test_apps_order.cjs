@@ -104,6 +104,11 @@ ok('an update does not make an app newly added', order('added') === 'exchange bo
 // A ZIM added today counts as a change for Recently updated too (Eric: "updated, added, etc.").
 ctx.zimsCache.push({ name: 'nautilus_books', title: 'Water', kind: 'books', main_path: 'i', first_seen: NOW, entries: 7 });
 ok('recently updated: an app with a ZIM added today is the newest change', order('updated').startsWith('books tube'), order('updated'));
+// The cards count it the same way, so the Apps page (each app's ZIMs in the
+// library's order) agrees with the apps: the ZIM added today leads them too.
+const cardsUpdated = vm.runInContext('_sortLibrary(zimsCache)', ctx).map(z => z.name);
+ok('recently updated: the ZIM added today leads the cards, as its app leads the apps', cardsUpdated.slice(0, 2).join() === 'nautilus_books,ted_en_all', cardsUpdated.join());
+ok('and inside its app it comes before the app\'s older ZIM', /<grid nautilus_books,gutenberg_en_all>/.test(vm.runInContext('_appsPageHtml', ctx)(new Set(ctx.zimsCache.map(z => z.name)))));
 ok('recently added puts it first too', order('added').startsWith('books '), order('added'));
 ok('ties and empty apps keep the row\'s own order', order('added').endsWith('reddot') && vm.runInContext("_sortApps(['wiki', 'reddot'])", ctx).join(' ') === 'wiki reddot');
 ok('an unknown order is alphabetical', order('nonsense') === 'books maps reddot exchange tube');

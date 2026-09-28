@@ -126,6 +126,11 @@ var SK = {
   // How Zimipedia's reader reads articles in this browser: {size (px), lh and
   // margin (indexes into _READING_LEADINGS / _READING_MARGINS)}.
   WIKI_PREFS: 'zimi_wiki_prefs',
+  // Zimipedia's trails: this tab's (SESSION-scoped: the articles you came
+  // through, one link at a time) and the recent ones in this browser, which
+  // its front door lists (_wikiTrailsKept, _wikiTrailResume).
+  WIKI_TRAIL: 'zimi_wiki_trail',
+  WIKI_TRAILS: 'zimi_wiki_trails',
   // Whole-app theme: 'auto' (follow prefers-color-scheme, dark fallback) |
   // 'dark' | 'light'. Default auto. Read/written via _appTheme/_setAppTheme;
   // the head bootstrap in index.html stamps the resolved value pre-paint.
@@ -2566,7 +2571,7 @@ function _currentPageUrl() {
 function _openInBrowser() {
   var url = _currentPageUrl();
   // iOS PWA can't window.open to Safari — copy the URL to the clipboard.
-  if (_isStandalonePWA() && !IS_DESKTOP) { _copyText(url); return; }
+  if (_isStandalonePWA() && !IS_DESKTOP) { _copyText(url, true); return; }
   _openOnWeb(url);
 }
 
@@ -2580,22 +2585,24 @@ function _openOnWeb(url) {
   window.open(url, '_blank', 'noopener');
 }
 
-// Onto the clipboard, and say so. Over plain http on a LAN there is no
-// navigator.clipboard (it needs a secure context), so the old way; and failing
-// that, the address in a box to copy by hand.
-function _copyText(text) {
-  var done = function() { _showToast(t('link_copied')); };
+// Onto the clipboard, and say so ("Link copied" for a link, "Copied" for
+// words). Over plain http on a LAN, or in an iOS home-screen app, there is no
+// navigator.clipboard (it needs a secure context), so the old way, inside the
+// tap that asked; and failing that, the text in a box to copy by hand.
+function _copyText(text, isLink) {
+  var done = function() { _showToast(t(isLink ? 'link_copied' : 'copied')); };
   var fallback = function() {
     var ta = document.createElement('textarea');
     ta.value = text;
     ta.setAttribute('readonly', '');
-    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
     document.body.appendChild(ta);
     ta.select();
+    try { ta.setSelectionRange(0, text.length); } catch (e) {}  // iOS selects nothing without it
     var ok = false;
     try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
     ta.remove();
-    if (ok) done(); else prompt(t('copy_link'), text);
+    if (ok) done(); else prompt(t(isLink ? 'copy_link' : 'copy'), text);
   };
   if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
     navigator.clipboard.writeText(text).then(done, fallback);
@@ -3790,8 +3797,12 @@ function _zimRecentUpdated(z) {
   if (!ua || ua <= (z.first_seen || 0)) return false;
   return (Date.now() / 1000 - ua) < _ZIM_RECENT_WINDOW_DAYS * 86400;
 }
+// When a ZIM last changed in the library: its update, or its arrival when it
+// has not been updated since. Recently updated orders the cards and the apps
+// (_APP_SORT_DATE) by it alike, so the Apps page agrees with the sources.
+function _zimChangedAt(z) { return Math.max(z.updated_at || 0, z.first_seen || 0); }
 function _byFirstSeenDesc(a, b) { return (b.first_seen || 0) - (a.first_seen || 0); }
-function _byUpdatedDesc(a, b) { return (b.updated_at || 0) - (a.updated_at || 0); }
+function _byUpdatedDesc(a, b) { return _zimChangedAt(b) - _zimChangedAt(a); }
 
 // One recency filter pill. kind=null is the "All" reset; aria-pressed reflects
 // state so the row is usable from the keyboard (each pill is a real <button>).
@@ -6885,6 +6896,7 @@ function mergeSearchResults(phase1, phase2) {
     elapsed: phase2.elapsed,
     partial: false,
     did_you_mean: phase2.did_you_mean || phase1.did_you_mean,
+    unsearched: phase2.unsearched || phase1.unsearched,
     _clientElapsed: phase2._clientElapsed,
     _query: phase2._query,
     // Places come only from the full phase; the keystroke phase reads no
@@ -7059,7 +7071,7 @@ function renderSearchResults(data, scope) {
   }
 
   // What the query's operators did, each a tap away from undone.
-  const chipsHtml = searchChipsHtml(data._query, zimsCache);
+  const chipsHtml = searchChipsHtml(data._query, zimsCache, data.unsearched);
   if (!items.length) {
     output.innerHTML = chipsHtml + '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH('try_different') + '</p></div>';
     return;
@@ -7810,6 +7822,26 @@ var _LANG3_NAMES = {
   sgs:'Samogitian',alt:'Southern Altai',mhr:'Eastern Mari',frp:'Arpitan',
   udm:'Udmurt',crh:'Crimean Tatar',nqo:"N'Ko",ang:'Old English'
 };
+// A language named in itself (עברית, Français, ייִדיש), which is how a
+// reader finds their own: `own`, the server's name for it (interlang's
+// _LANG_NATIVE_NAMES, which knows the ones a browser cannot name in
+// themselves), else the browser's; else `fallback` (the interface's name),
+// else the code. Capitalised as the language writes it. Zimipedia's reader
+// and its front door (wiki.html, through window.parent) both name languages
+// with it.
+function _langEndonym(code, own, fallback) {
+  var name = own && own !== code ? own : '';
+  if (!name) {
+    try {
+      var self = new Intl.DisplayNames([code], { type: 'language' }).of(code) || '';
+      var english = new Intl.DisplayNames(['en'], { type: 'language' }).of(code) || '';
+      // A browser that does not speak the language answers in English.
+      if (self && self !== code && (code === 'en' || self !== english)) name = self;
+    } catch (e) {}
+  }
+  name = name || fallback || code;
+  try { return name.charAt(0).toLocaleUpperCase(code) + name.slice(1); } catch (e) { return name; }
+}
 function _langDisplayName(code) {
   if (!code) return '';
   var uiLang = _currentLang || 'en';
@@ -7869,8 +7901,11 @@ function formatLanguage(langStr) {
   return t('multilingual', {n: codes.length});
 }
 
-// 3-letter → 2-letter language code for tags
-const _LANG3TO2 = {eng:'en',fra:'fr',deu:'de',spa:'es',por:'pt',ita:'it',rus:'ru',ara:'ar',zho:'zh',jpn:'ja',kor:'ko',hin:'hi',tur:'tr',pol:'pl',nld:'nl',swe:'sv',vie:'vi',tha:'th',heb:'he',ell:'el',ron:'ro',hun:'hu',fas:'fa',far:'fa',ind:'id',ukr:'uk',ces:'cs',dan:'da',fin:'fi',nor:'no',cat:'ca',mul:'mul',msa:'ms',ben:'bn',tam:'ta',tel:'te',urd:'ur',srp:'sr',hrv:'hr',bos:'bs',slk:'sk',slv:'sl',bul:'bg',lit:'lt',lav:'lv',est:'et',swa:'sw',amh:'am',hau:'ha',yor:'yo',zul:'zu',afr:'af',gle:'ga',cym:'cy',eus:'eu',glg:'gl',kat:'ka',hye:'hy',mkd:'mk',sqi:'sq',bel:'be',kaz:'kk',uzb:'uz',tgl:'tl',mal:'ml',kan:'kn',guj:'gu',mar:'mr',mya:'my',khm:'km',lao:'lo',sin:'si',nep:'ne',mlt:'mt',tsn:'tn',pan:'pa',aze:'az',mon:'mn',tgk:'tg',kir:'ky',isl:'is',fao:'fo',kur:'ku',ori:'or',jav:'jv',sun:'su',asm:'as',snd:'sd',kas:'ks',kik:'ki',sme:'se',lim:'li',pam:'pam',tir:'ti',lin:'ln',wol:'wo',som:'so',run:'rn',bis:'bi',nav:'nv',dzo:'dz',vol:'vo',ina:'ia',tat:'tt',bak:'ba',chv:'cv',oss:'os',tuk:'tk',sah:'sah'};
+// ISO 639-3 (ZIM metadata, the catalog) → 639-1: the server's own table
+// (zimi/assets/lang-codes.json), put in here as app.js is served
+// (http._inline_lang_codes), so lang: means the same in the library and the
+// catalog. Read from the file itself (a test), it is empty.
+const _LANG3TO2 = /*@lang-codes.json@*/{};
 // Extract actual language from ZIM name when catalog says "mul" or comma-separated
 // e.g. "ted_fr_design" → "fr", "wikipedia_de_all" → "de"
 function _langFromName(name) {
@@ -9121,11 +9156,9 @@ function parseSearchQuery(q, filters) {
     else { groups.push([term]); joins.push([]); }
     joinNext = false;
   }
-  const typed = (q || '').toLowerCase().split(/\s+/).filter(Boolean);
-  const plain = !exclude.length && !found.length &&
-    groups.every(g => g.length === 1 && !g[0].phrase) &&
-    groups.length === typed.length && groups.every((g, k) => g[0].text === typed[k]);
-  return { groups: groups, exclude: exclude, filters: found, plain: plain, tokens: tokens, joins: joins };
+  // No `plain` (query.py's): only the library's index needs to know a query
+  // had no syntax, and the library parses on the server.
+  return { groups: groups, exclude: exclude, filters: found, tokens: tokens, joins: joins };
 }
 
 const _reEscape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -9211,7 +9244,7 @@ function searchQueryChips(q) {
     }
     if (g.length > 1) {
       chips.push({ kind: 'or', at: g[0].at, words: g.map(t => t.phrase ? '"' + _searchTokenWords(toks[t.at]) + '"' : _searchTokenWords(toks[t.at])),
-        query: _searchRebuild(q, toks, new Set(p.joins[i])) });
+        terms: g.map(t => t.text), query: _searchRebuild(q, toks, new Set(p.joins[i])) });
     }
   });
   return chips.sort((a, b) => a.at - b.at);
@@ -9242,10 +9275,15 @@ function _searchChipLabel(chip, pool, html) {
   if (chip.kind === 'without') return tpl('search_chip_without', { word: w(chip.words[0]) });
   if (chip.kind === 'exact') return tpl('search_chip_exact', { words: w(chip.words[0]) });
   if (chip.kind === 'or') {
-    try {
-      return new Intl.ListFormat(_currentLang, { type: 'disjunction' }).formatToParts(chip.words)
-        .map(part => part.type === 'element' ? w(part.value) : (html ? esc(part.value) : part.value)).join('');
-    } catch (e) { return chip.words.map(w).join(' OR '); }
+    const list = (words, type) => {
+      try {
+        return new Intl.ListFormat(_currentLang, { type: type }).formatToParts(words)
+          .map(part => part.type === 'element' ? w(part.value) : (html ? esc(part.value) : part.value)).join('');
+      } catch (e) { return words.map(w).join(type === 'disjunction' ? ' OR ' : ', '); }
+    };
+    // An OR past the search's budget (query.MAX_SEARCHES): what was not searched is said.
+    const left = chip.skipped && chip.skipped.length ? ' ' + tpl('search_chip_not_searched', { words: list(chip.skipped, 'conjunction') }) : '';
+    return list(chip.words, 'disjunction') + left;
   }
   const lang = chip.kind === 'lang';
   const name = lang ? _langDisplayName(chip.value) : _searchSourceTitle(chip.value, pool);
@@ -9266,9 +9304,12 @@ function _searchChipHtml(chip, pool, removable) {
 }
 
 // The chips for a query, or nothing when it has no operators. `pool` is what
-// an in: is looked up in: the installed sources, or the catalog.
-function searchChipsHtml(query, pool) {
+// an in: is looked up in: the installed sources, or the catalog. `unsearched`:
+// the OR alternatives the library search left out (its answer's unsearched).
+function searchChipsHtml(query, pool, unsearched) {
   const chips = searchQueryChips(query);
+  const left = new Set(unsearched || []);
+  chips.forEach(c => { if (c.kind === 'or') c.skipped = c.words.filter((x, k) => left.has(c.terms[k])); });
   return chips.length ? '<div class="search-chips">' + chips.map(c => _searchChipHtml(c, pool, true)).join('') + '</div>' : '';
 }
 
@@ -14127,7 +14168,7 @@ async function _generateToken() {
       '<div style="color:var(--text2);font-size:11px;margin-bottom:4px">' + tH('copy_token_now') + '</div>' +
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
       '<span>' + esc(data.token) + '</span>' +
-      '<button class="pill" onclick="navigator.clipboard.writeText(\'' + escAttr(data.token) + '\');this.textContent=t(\'copied\')">' + tH('copy') + '</button>' +
+      '<button class="pill" data-token="' + escAttr(data.token) + '" onclick="_copyText(this.dataset.token)">' + tH('copy') + '</button>' +
       '</div></div>' +
       '<button class="pill" style="margin-top:8px" onclick="switchMs(\'server\')">' + tH('done') + '</button>';
   }
@@ -17155,6 +17196,11 @@ function openWiki(replaceState) {
   _wikiReaderLoad();
 }
 function _wikiSearch(val) { _appFrameCall('wikiSearch', val); }
+// Zimipedia's trails, for its front door (wiki.html asks through
+// window.parent): the recent ones, and taking one up again as this tab's,
+// so the reader goes on from there. Its reader (wiki-reader.js) walks them.
+function _wikiTrailsKept() { return _getStorageJSON(SK.WIKI_TRAILS, []) || []; }
+function _wikiTrailResume(items) { try { sessionStorage.setItem(SK.WIKI_TRAIL, JSON.stringify(items || [])); } catch (e) {} }
 
 // ── Zimipedia's reader ──
 // A wiki's article read in Zimipedia's reader: Reader View laid out as an
@@ -17200,12 +17246,17 @@ function _wikiArticleDoc(frame) {
 // server: its languages by Q-ID, Simple English, a mini's fuller build, the
 // other wikis on it), asked once the article is on screen and kept for the
 // session, so Back and Forward ask nothing. A failed ask is asked again.
+// `langsOnly`: the language menu's ask, which needs only the languages: the
+// whole answer when one is kept (or on its way), else only=languages, which
+// reads no more of the article than its ID.
 var _wikiInfoKept = {}, _wikiInfoOrder = [];
 var _WIKI_INFO_KEPT = 64;
-function _wikiInfo(zim, path) {
+function _wikiInfo(zim, path, langsOnly) {
   var k = zim + '\n' + path;
   if (_wikiInfoKept[k]) return _wikiInfoKept[k];
-  var p = _wikiInfoKept[k] = fetch('/wiki/article?zim=' + encodeURIComponent(zim) + '&path=' + encodeURIComponent(path))
+  if (langsOnly) k += '\nlanguages';
+  if (_wikiInfoKept[k]) return _wikiInfoKept[k];
+  var p = _wikiInfoKept[k] = fetch('/wiki/article?zim=' + encodeURIComponent(zim) + '&path=' + encodeURIComponent(path) + (langsOnly ? '&only=languages' : ''))
     .then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; })
     .then(function(d) { if (!d) delete _wikiInfoKept[k]; return d; });
   _wikiInfoOrder.push(k);
@@ -18657,7 +18708,7 @@ var _APP_OPEN = { maps: openMaps, tube: openTube, exchange: openExchange, reddot
 // nothing inside comes last; ties keep the row's own order.
 var _APP_SORT_DATE = {
   added: function(z) { return z.first_seen || 0; },
-  updated: function(z) { return Math.max(z.updated_at || 0, z.first_seen || 0); },
+  updated: _zimChangedAt,
 };
 function _appSortValue(app, mode) {
   var zims = _appZims(app);
@@ -19619,35 +19670,17 @@ function openReader(url) {
     // Only highlight links that actually resolve to a different installed ZIM
     // Feature flag: enabled by default, user can hide via Settings checkbox
     var _currentZim = readerSource || (currentArticle && currentArticle.zim) || '';
-    if (!_getStorageFlag(SK.HIDE_XZIM_LINKS) && Object.keys(_domainZimMap).length > 0 && !_frameLoc.startsWith('/static/')) try {
-      var styleEl = frame.contentDocument.createElement('style');
-      styleEl.textContent = '.zimi-xzim{text-decoration-style:dotted;text-decoration-color:var(--amber,#f59e0b)}';
-      frame.contentDocument.head.appendChild(styleEl);
-      // Collect external URLs that might resolve to installed ZIMs
-      var urlMap = {}; // url → [anchor elements]
-      var links = frame.contentDocument.querySelectorAll('a[href]');
-      var frameLoc2 = frame.contentWindow.location;
-      links.forEach(function(a) {
-        var h2 = a.getAttribute('href') || '';
-        var full2;
-        try { full2 = new URL(h2, frameLoc2.href).href; } catch(ex) { return; }
-        if (full2.startsWith(location.origin)) return;
-        if (!/^https?:\/\//.test(full2)) return;
-        try {
-          var host2 = new URL(full2).hostname;
-          var bare2 = host2.replace(/^www\./, '');
-          if (_domainZimMap[host2] || _domainZimMap[bare2]) {
-            // This domain has a matching ZIM — collect for batch resolve
-            if (!urlMap[full2]) urlMap[full2] = [];
-            urlMap[full2].push(a);
-          }
-          // Unresolved external links: no special styling (leave as normal links)
-        } catch(ex) {}
-      });
+    if (!_getStorageFlag(SK.HIDE_XZIM_LINKS) && !_frameLoc.startsWith('/static/')) try {
+      // The links to sites an installed ZIM holds, from the one pass over the
+      // page's links that marked it (_extMark, above): url → [anchor elements].
+      var urlMap = frame.contentDocument.__zimiSiteLinks || {};
       // Batch resolve collected URLs — chunked to stay under body limits
       _resolveCache = {}; // Reset per page load
       var extUrls = Object.keys(urlMap).slice(0, 300); // Cap to prevent pathological load on large articles
       if (extUrls.length > 0) {
+        var styleEl = frame.contentDocument.createElement('style');
+        styleEl.textContent = '.zimi-xzim{text-decoration-style:dotted;text-decoration-color:var(--amber,#f59e0b)}';
+        frame.contentDocument.head.appendChild(styleEl);
         var CHUNK_SIZE = 30;
         var chunks = [];
         for (var ci2 = 0; ci2 < extUrls.length; ci2 += CHUNK_SIZE) {
@@ -20145,28 +20178,6 @@ function _bmHlMenu(row, x, y) {
     else if (action === 'remove') Saved.removeHighlight(h.id);
   });
 }
-// Text to the clipboard, and a word that it is there. Where the page is not a
-// secure context (Zimi on a LAN address over http) the clipboard API is not
-// there; the old way still works inside the tap that asked.
-function _copyText(text) {
-  var told = function () { _showToast(t('copied')); };
-  var legacy = function () {
-    var ta = document.createElement('textarea');
-    ta.value = text;
-    ta.setAttribute('readonly', '');
-    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
-    document.body.appendChild(ta);
-    ta.select();
-    try { ta.setSelectionRange(0, text.length); } catch (e) {}
-    var ok = false;
-    try { ok = document.execCommand('copy'); } catch (e) {}
-    ta.remove();
-    if (ok) told();
-  };
-  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(told, legacy);
-  else legacy();
-}
-
 // "All" and the app on screen, when one is: the panel opens on the app's own.
 function _bmScopeHtml() {
   var app = _savedCurrentApp();
@@ -22344,19 +22355,24 @@ var _articleLangData = null; // {languages: [{lang, zim, path}], available: [{la
 var _articleLangKey = '';    // "zim:path" key to invalidate cache on article change
 
 // `loaded`: the article is on screen (or asked for by a tap). A wiki's
-// article is asked about only then, through Zimipedia's lookup, which
-// carries its languages and what its reader shows beside it: nothing on the
-// way to the article.
+// article is asked about only then, through Zimipedia's lookup (its
+// languages only, unless Zimipedia's reader lays the article out and asks
+// for the whole answer anyway): nothing on the way to the article.
 function _prefetchArticleLangs(loaded) {
   if (!currentArticle) { _articleLangData = null; _articleLangKey = ''; return; }
   var key = currentArticle.zim + ':' + currentArticle.path;
   if (key === _articleLangKey) return; // already cached
+  // No language chooser, no menu to fill: nothing to ask.
+  if (_getStorageFlag(SK.HIDE_LANG_CHOOSER)) return;
   var base = _splitPathFragment(currentArticle.path).base;
   if (_wikiUrl(_articleUrl(currentArticle.zim, base))) {
     if (!loaded) return;
     _articleLangKey = key;
     _articleLangData = null;
-    _wikiInfo(currentArticle.zim, base).then(function(d) {
+    var doc = null;
+    try { doc = document.getElementById('reader-frame').contentDocument; } catch (e) {}
+    var laidOut = !!(doc && doc.__zimiWiki && _readerViewOn);
+    _wikiInfo(currentArticle.zim, base, !laidOut).then(function(d) {
       if (_articleLangKey !== key) return;
       _articleLangData = { languages: (d && d.languages) || [] };
       var _dd = document.getElementById('lang-dropdown');
@@ -22364,8 +22380,6 @@ function _prefetchArticleLangs(loaded) {
     });
     return;
   }
-  // Skip if language chooser is hidden (no dropdown to show interlang in)
-  if (_getStorageFlag(SK.HIDE_LANG_CHOOSER)) return;
   _articleLangKey = key;
   _articleLangData = null;
   fetch('/article-languages?zim=' + encodeURIComponent(currentArticle.zim) + '&path=' + encodeURIComponent(currentArticle.path))
@@ -23192,6 +23206,12 @@ function _extHostZim(host) {
 //   'app'      another program's: mailto:, tel:, sms: and the like
 //   'none'     nowhere Zimi follows: javascript:, data:, empty, an #anchor
 function zimiLinkKind(href, base) {
+  var k = _extKind(href, base);
+  return k === 'site' ? 'library' : k;
+}
+// zimiLinkKind, with 'site' for a link to a site an installed ZIM holds
+// (the library, by way of /resolve) apart from this server's own.
+function _extKind(href, base) {
   // What a browser does to an address before reading it: control characters
   // and spaces off the ends, tabs and newlines out ("java\tscript:" runs).
   var h = String(href == null ? '' : href).replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '').replace(/[\t\n\r]/g, '');
@@ -23209,13 +23229,13 @@ function zimiLinkKind(href, base) {
   // what marking one used to cost. Anything less plain is parsed.
   var am = _EXT_AUTHORITY_RE.exec(h);
   if (am && _EXT_PLAIN_HOST_RE.test(am[1]) && am[1].toLowerCase() !== location.hostname.toLowerCase()) {
-    return _extHostZim(am[1]) ? 'library' : 'web';
+    return _extHostZim(am[1]) ? 'site' : 'web';
   }
   var u;
   try { u = new URL(h, base || location.href); } catch (e) { return 'none'; }
   if (u.origin === location.origin) return 'library';
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return 'none';
-  return _extHostZim(u.hostname) ? 'library' : 'web';
+  return _extHostZim(u.hostname) ? 'site' : 'web';
 }
 
 // A link's real address. A replayed capture's (wombat) href shows the address
@@ -23272,7 +23292,10 @@ function _extPageMarksOwn(doc) {
 // Mark, or hide, every link to the web under `root` (a document or an
 // element), and take back any mark a link no longer earns (the domain map
 // arrived, the setting changed). Once per page; returns the web links found.
-// The common link is relative and costs a regex, never a URL parse.
+// The common link is relative and costs a regex, never a URL parse. A
+// document's links to sites an installed ZIM holds are kept on it as
+// doc.__zimiSiteLinks ({url: [a]}): the reader's cross-ZIM underline asks
+// /resolve about those, with no second pass over the page's links.
 function _extMark(root) {
   var doc = root && (root.nodeType === 9 ? root : root.ownerDocument);
   if (!doc || !doc.documentElement || !root.querySelectorAll) return 0;
@@ -23291,11 +23314,15 @@ function _extMark(root) {
   var again = !!doc.__zimiExtMarked;
   doc.__zimiExtMarked = true;
   var links = root.querySelectorAll(again ? 'a[href],a[' + EXT_HREF_ATTR + ']' : 'a[href]');
-  var n = 0;
+  var n = 0, sites = {};
   for (var i = 0; i < links.length; i++) {
     var a = links[i], hidden = again ? a.getAttribute(EXT_HREF_ATTR) : null;
     var href = hidden !== null ? hidden : wombat ? _extRealUrl(a, true) : a.getAttribute('href');
-    var web = zimiLinkKind(href, base) === 'web';
+    var kind = _extKind(href, base), web = kind === 'web';
+    if (kind === 'site') {
+      var url = wombat ? href : a.href;
+      (sites[url] = sites[url] || []).push(a);
+    }
     if (web) n++;
     if (hidden !== null && !(web && hide)) {
       a.setAttribute('href', hidden);   // hidden before, a link again
@@ -23319,6 +23346,7 @@ function _extMark(root) {
       if (!(a.textContent || '').trim()) a.classList.add(EXT_BARE);
     }
   }
+  if (root === doc) doc.__zimiSiteLinks = sites;
   return n;
 }
 
@@ -23458,7 +23486,7 @@ function _extSheetEl() {
     var url = _extCur.url, act = b.getAttribute('data-ext');
     _extHide();
     if (act === 'open') _openOnWeb(url);
-    else _copyText(url);
+    else _copyText(url, true);
   });
   document.addEventListener('pointerdown', function(e) { if (_extCur && !el.contains(e.target)) _extHide(); }, true);
   window.addEventListener('resize', function() { if (_extCur) _extHide(); });
@@ -23567,14 +23595,14 @@ function _ctxCopyLink() {
   _hideLinkCtxMenu();
   if (!data) return;
   var url = data.url || (location.origin + '/w/' + encodeURIComponent(data.zim) + '/' + data.path.split('/').map(encodeURIComponent).join('/'));
-  navigator.clipboard.writeText(url).catch(function() {});
+  _copyText(url, true);
 }
 
 function _ctxCopyTitle() {
   var data = _linkCtxData;
   _hideLinkCtxMenu();
   if (!data) return;
-  navigator.clipboard.writeText(data.title).catch(function() {});
+  _copyText(data.title);
 }
 
 // ── Word lookup (Define) ──

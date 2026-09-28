@@ -21,6 +21,7 @@ the caller's table, and the parser needs no change. The parser only reports
 them; each caller decides what a filter means for what it searches.
 """
 
+import itertools
 import re
 
 # Straight and typographic quotes: a phone keyboard types the latter.
@@ -28,8 +29,9 @@ _QUOTES = '"“”„'
 # Scripts written without spaces between words. Inside them a word boundary
 # means nothing, so an exclusion there matches anywhere in the text.
 _UNSPACED = re.compile("[฀-໿က-႟ក-៿぀-ヿ㐀-䶿一-鿿豈-﫿]")
-# Operators OR-ed together per group before the searches stop multiplying.
-MAX_ALTERNATIVES = 4
+# The most searches one query makes (see alternatives). Past it an OR's
+# later alternatives are not searched, and the search says which.
+MAX_SEARCHES = 8
 
 # The filters the library search understands. A key maps to its canonical
 # name; aliases share one.
@@ -37,8 +39,9 @@ LIBRARY_FILTERS = {"in": "source", "source": "source", "lang": "lang"}
 
 
 def _tokens(q):
-    """(text, is_phrase, negated) tuples, in order. OR comes through as
-    ("OR", False, False)."""
+    """(text, is_phrase, negated, start, end) tuples, in order, where
+    q[start:end] is the token as typed. OR comes through as ("OR", False,
+    False, ...)."""
     out = []
     i, n = 0, len(q)
     while i < n:
@@ -55,7 +58,7 @@ def _tokens(q):
             if end >= 0:
                 text = " ".join(q[i + 1 : end].split())
                 if text:
-                    out.append((text, True, neg))
+                    out.append((text, True, neg, start, end + 1))
                 i = end + 1
                 continue
             # Unbalanced: the quote goes, its words stay.
@@ -68,8 +71,29 @@ def _tokens(q):
         j = start
         while j < n and not q[j].isspace():
             j += 1
-        out.append((q[start:j], False, False))
+        out.append((q[start:j], False, False, start, j))
         i = j
+    return out
+
+
+def _filter_key(text, filters):
+    """The filter a term names (key:value, the key one the caller knows), or None."""
+    key, sep, value = text.partition(":")
+    return filters[key.lower()] if sep and value and key.lower() in filters else None
+
+
+def word_spans(q, filters=LIBRARY_FILTERS):
+    """Where in ``q`` the words to search are, as (start, end): each word and
+    phrase, not OR, an exclusion or a filter. What a spelling suggestion may
+    correct, leaving every operator as it was typed."""
+    out = []
+    for text, phrase, neg, start, end in _tokens(q or ""):
+        if neg or (
+            not phrase
+            and (text == "OR" or text.startswith("-") or _filter_key(text, filters))
+        ):
+            continue
+        out.append((start, end))
     return out
 
 
@@ -85,7 +109,7 @@ def parse_query(q, filters=LIBRARY_FILTERS):
     """
     groups, exclude, found = [], [], []
     join_next = False
-    for text, phrase, neg in _tokens(q or ""):
+    for text, phrase, neg, _start, _end in _tokens(q or ""):
         if not phrase:
             if text == "OR":
                 join_next = bool(groups)
@@ -95,10 +119,10 @@ def parse_query(q, filters=LIBRARY_FILTERS):
                 if not text:
                     join_next = False
                     continue
-            key, sep, value = text.partition(":")
-            if sep and value and key.lower() in filters:
+            key = _filter_key(text, filters)
+            if key:
                 found.append(
-                    {"key": filters[key.lower()], "value": value.lower(), "negate": neg}
+                    {"key": key, "value": text.partition(":")[2].lower(), "negate": neg}
                 )
                 join_next = False
                 continue
@@ -128,13 +152,31 @@ def parse_query(q, filters=LIBRARY_FILTERS):
     return {"groups": groups, "exclude": exclude, "filters": found, "plain": plain}
 
 
-def alternatives(parsed, cap=MAX_ALTERNATIVES):
-    """Each way the groups can be satisfied: a list of term lists, at most
-    ``cap`` of them (the first alternatives of each group win the budget)."""
-    alts = [[]]
-    for group in parsed["groups"]:
-        alts = [a + [t] for a in alts for t in group][:cap]
-    return alts if parsed["groups"] else []
+def alternatives(parsed, cap=MAX_SEARCHES):
+    """The searches a query makes, each a list of terms, at most ``cap``.
+    First each alternative of each OR, the other groups at their first: the
+    searches add up group by group rather than multiply, so every word typed
+    is searched ("a OR b OR c OR d OR e" is five). Then the other
+    combinations ("dogs toys" of "cats OR dogs food OR toys"), while the
+    budget lasts."""
+    groups = parsed["groups"]
+    if not groups:
+        return []
+    first = [g[0] for g in groups]
+    alts = [first]
+    for i, group in enumerate(groups):
+        alts += [first[:i] + [t] + first[i + 1 :] for t in group[1:]]
+    for combo in itertools.product(*groups):
+        if len(alts) >= cap:
+            break
+        if list(combo) not in alts:
+            alts.append(list(combo))
+    return alts[:cap]
+
+
+def unsearched(parsed, alts):
+    """The OR alternatives none of ``alts`` searches: what the cap left out."""
+    return [t for g in parsed["groups"] for t in g if not any(t in a for a in alts)]
 
 
 def term_words(terms):
@@ -163,15 +205,4 @@ def phrases_in(terms, text):
     return all(_pattern(t["text"]).search(low) for t in terms if t["phrase"])
 
 
-def matches(parsed, text):
-    """The whole query against one text, the way the catalog applies it:
-    a word matches anywhere (as the old filter did, so "wiki" still finds
-    Wikipedia), a phrase and an exclusion from the start of a word."""
-    low = (text or "").lower()
-    for group in parsed["groups"]:
-        if not any(
-            (_pattern(t["text"]).search(low) if t["phrase"] else t["text"] in low)
-            for t in group
-        ):
-            return False
-    return not excluded(parsed, low)
+

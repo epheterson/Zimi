@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const src = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.js'), 'utf8');
+const src = require('./app_source.cjs')();
 function grab(name, kind) {
   const needle = kind === 'const' ? `const ${name} = ` : `function ${name}(`;
   const i = src.indexOf(needle);
@@ -50,14 +50,19 @@ for (const c of cases.parse) {
     groups: got.groups.map(g => g.map(show)),
     exclude: got.exclude.map(show),
     filters: got.filters.map(f => [f.key, f.value, f.negate]),
-    plain: got.plain,
   };
-  const want = { groups: c.groups, exclude: c.exclude, filters: c.filters, plain: c.plain };
+  // plain is the server's alone (query.py): the client never asks it.
+  const want = { groups: c.groups, exclude: c.exclude, filters: c.filters };
   check(same(view, want), 'parse ' + JSON.stringify(c.q) + (same(view, want) ? '' : ' got ' + JSON.stringify(view)));
 }
 for (const c of cases.match) {
   const got = sandbox.searchQueryMatches(sandbox.parseSearchQuery(c.q), c.text);
   check(got === c.match, 'match ' + JSON.stringify(c.q) + ' vs ' + JSON.stringify(c.text));
+}
+// lang: as the library means it (search._filter_sources, the same cases).
+for (const c of cases.lang) {
+  const got = sandbox._CATALOG_FILTER_TESTS.lang(c.value, { language: c.language });
+  check(got === c.match, 'lang:' + c.value + ' vs ' + JSON.stringify(c.language));
 }
 
 // The catalog, as the issue asked.

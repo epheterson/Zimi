@@ -1633,6 +1633,7 @@
   "search_placeholder": "Rechercher partout…",
   "search_chip_without": "sans {word}",
   "search_chip_exact": "exactement : {words}",
+  "search_chip_not_searched": "hors recherche : {words}",
   "search_tips": "Astuces de recherche",
   "search_example_exact": "\"panneau solaire\"",
   "search_example_without": "jaguar -voiture",

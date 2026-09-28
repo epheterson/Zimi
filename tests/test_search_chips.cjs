@@ -14,7 +14,7 @@ const path = require('path');
 const vm = require('vm');
 
 const root = path.join(__dirname, '..', 'zimi');
-const src = fs.readFileSync(path.join(root, 'static', 'app.js'), 'utf8');
+const src = require('./app_source.cjs')();
 const I18N_DIR = path.join(root, 'static', 'i18n');
 const LANGS = fs.readdirSync(I18N_DIR).filter(f => f.endsWith('.json')).map(f => f.slice(0, -5)).sort();
 const i18n = Object.fromEntries(LANGS.map(l => [l, JSON.parse(fs.readFileSync(path.join(I18N_DIR, l + '.json'), 'utf8'))]));
@@ -159,6 +159,17 @@ check((row.match(/class="search-chip"/g) || []).length === 2 && (row.match(/clas
 check(row.includes('data-q="solar lang:fr"') && row.includes('data-q="solar -ted"'), 'each × carries the query without its operator');
 check(row.includes('aria-label="Remove: without ted"') && row.includes('aria-label="Remove: French"'), 'each × says what it removes');
 check(S.searchChipsHtml('x -"a&quot;b"', []).includes('data-q="x"'), 'a query with quotes in it survives the attribute');
+// An OR longer than the library search's budget: the chip lists every
+// alternative and says which were not searched (the answer's unsearched).
+const capped = S.searchChipsHtml('A OR b OR "c d"', [], ['b', 'c d']);
+check(capped.includes('<bdi>A</bdi>, <bdi>b</bdi>, or <bdi>&quot;c d&quot;</bdi> not searched: <bdi>b</bdi> and <bdi>&quot;c d&quot;</bdi>'), 'an OR past the budget says what was not searched', capped);
+check(!S.searchChipsHtml('A OR b', [], []).includes('not searched') && !S.searchChipsHtml('A OR b', []).includes('not searched'), 'an OR searched whole says nothing more');
+for (const lang of LANGS) {
+  ui(lang);
+  const l = S.searchChipsHtml('a OR b', [], ['b']);
+  check(/\{|\}/.test(l) === false && l.includes(i18n[lang].search_chip_not_searched.split('{words}')[0].replace(/[<>&"']/g, '')), lang + ': "not searched" in ' + lang);
+}
+ui('en');
 
 // ── the "?" examples, written per language ───────────────────────────────
 const KIND = { exact: 'exact', without: 'without', or: 'or', lang: 'lang', source: 'source' };

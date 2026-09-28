@@ -264,9 +264,16 @@ _PRIVATE_LOGIN_SURFACE_EXACT = frozenset(
 _PRIVATE_LOGIN_SURFACE_PREFIX = ("/static/", "/manage/")
 
 
+# Asked by the shell once for every wiki article opened (its language menu,
+# and Zimipedia's reader beside it): the traffic of reading, like /snippet,
+# so it rides the content bucket. On the API budget, a 429 left the language
+# menu silently empty.
+_CONTENT_PATHS = frozenset(("/snippet", "/wiki/article"))
+
+
 def _rate_class(path):
     """(is_rate_limited, uses_content_bucket) for a GET path."""
-    is_content = path.startswith("/w/") or path == "/snippet" or path in _POLL_PATHS
+    is_content = path.startswith("/w/") or path in _CONTENT_PATHS or path in _POLL_PATHS
     limited = (
         is_content
         or path in _RATE_LIMITED_API_PATHS
@@ -773,6 +780,22 @@ try:
 except FileNotFoundError:
     SEARCH_UI_HTML = "<html><body><h1>Zimi</h1><p>UI template not found. API endpoints are still available.</p></body></html>"
 
+# Where app.js takes the language-code table (server._ISO639_3_TO_1, from
+# assets/lang-codes.json): one table for both sides, put in as app.js is
+# served, so the file itself carries none of its own.
+_LANG_CODES_MARK = "/*@lang-codes.json@*/{}"
+
+
+def _inline_lang_codes(js):
+    if _LANG_CODES_MARK not in js:
+        log.warning("app.js has no %s: its language table is empty", _LANG_CODES_MARK)
+        return js
+    return js.replace(
+        _LANG_CODES_MARK,
+        json.dumps(_srv._ISO639_3_TO_1, separators=(",", ":"), sort_keys=True),
+    )
+
+
 # Auto-version static assets: replace ?v=N with content-hash so deploys bust caches.
 # This eliminates manual version bumping — any file change gets a new URL automatically.
 _STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -799,8 +822,8 @@ if os.path.isdir(_STATIC_DIR):
     if os.path.exists(_app_js_path):
         with open(_app_js_path, "r", encoding="utf-8") as _f:
             _app_js_src = _f.read()
-        _rewritten = re.sub(
-            r"/static/([\w./-]+)\?v=\d+", _replace_static_ver, _app_js_src
+        _rewritten = _inline_lang_codes(
+            re.sub(r"/static/([\w./-]+)\?v=\d+", _replace_static_ver, _app_js_src)
         )
         if _rewritten != _app_js_src:
             APP_JS_REWRITTEN = _rewritten
@@ -2428,7 +2451,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if sub in ("", "home"):
                     return self._json(200, _wiki.home(param("day"), param("lang")))
                 # Only the days a browser can be on: a caller cannot make
-                # the server read a year of date pages.
+                # the server work out a year of picks.
                 if sub == "today":
                     day = param("day")
                     if not _wiki.day_open(day):
@@ -2436,25 +2459,18 @@ class ZimHandler(BaseHTTPRequestHandler):
                     names = [n for n in (param("zim") or "").split(",") if n]
                     if not names or len(names) > _wiki.TODAY_BATCH_MAX:
                         return self._json(400, {"error": "zim"})
-                    parts = [x for x in (param("parts") or "").split(",") if x]
-                    return self._json(200, _wiki.today(day, names, parts))
+                    return self._json(200, _wiki.today(day, names))
                 if sub == "article":
                     # What the reader shows beside an article, asked once it is
-                    # on screen (in place of /article-languages).
-                    got = _wiki.article(param("zim") or "", param("path") or "")
+                    # on screen (in place of /article-languages); only=languages
+                    # is the shell's language menu, which needs nothing else.
+                    got = _wiki.article(
+                        param("zim") or "",
+                        param("path") or "",
+                        languages_only=param("only") == "languages",
+                    )
                     return self._json(200, got) if got else self._json(404, {"error": "not found"})
-                if sub != "onthisday":
-                    return self._json(404, {"error": "not found"})
-                zim = param("zim")
-                if not zim or not _wiki.is_wiki(zim):
-                    return self._json(404, {"error": "not found"})
-                date = param("date")
-                if not _wiki.mmdd_open(date):
-                    return self._json(400, {"error": "date not open"})
-                events = _wiki.on_this_day(zim, date)
-                if events is None:
-                    return self._json(503, {"error": "unavailable"})
-                return self._json(200, {"events": events})
+                return self._json(404, {"error": "not found"})
             elif parsed.path == "/books" or parsed.path.startswith("/books/"):
                 # Bookshelf: every Project Gutenberg ZIM in the library, as one shelf.
                 from zimi import books as _books

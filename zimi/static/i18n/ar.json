@@ -1633,6 +1633,7 @@
   "search_placeholder": "ابحث في كل شيء…",
   "search_chip_without": "بدون {word}",
   "search_chip_exact": "مطابقة تامة: {words}",
+  "search_chip_not_searched": "خارج البحث: {words}",
   "search_tips": "نصائح البحث",
   "search_example_exact": "\"لوح شمسي\"",
   "search_example_without": "جاكوار -سيارة",

@@ -244,30 +244,6 @@ def test_a_restricted_account_sees_only_the_wikis_it_may_read(tmp_path, monkeypa
     assert [w["name"] for w in wiki.wikis()] == [en]
 
 
-def test_on_this_day_lists_the_events_whose_article_the_zim_holds(
-    tmp_path, monkeypatch
-):
-    _library(tmp_path, monkeypatch, LIBRARY)
-    en = next(
-        w["name"]
-        for w in wiki.wikis()
-        if w["project"] == "wikipedia" and w["language"] == "en"
-    )
-    events = wiki.on_this_day(en, "0925")
-    assert [(e["event_year"], e["path"]) for e in events] == [
-        ("1666", "A/Fire"),
-        ("1854", "A/Water"),
-    ]
-    assert events[0]["title"] == "Fire" and "Great Fire" in events[0]["event_text"]
-    # Read once per day: a second ask is the kept answer.
-    assert wiki.on_this_day(en, "0925") is events
-    # A day with no page, a malformed date, and a wiki that is not a Wikipedia.
-    assert wiki.on_this_day(en, "0101") == []
-    assert wiki.on_this_day(en, "25-9") == []
-    wikt = next(w["name"] for w in wiki.wikis() if w["project"] == "wiktionary")
-    assert wiki.on_this_day(wikt, "0925") == []
-
-
 def test_the_dated_pick_still_carries_its_event(tmp_path, monkeypatch):
     """The Discover card's On this day reads the same date page through the
     shared helpers."""
@@ -337,7 +313,6 @@ def test_the_routes_are_not_there_when_the_server_leaves_it_out(tmp_path, monkey
     httpd, url = _serve(tmp_path, monkeypatch, apps)
     try:
         assert _get(url + "/wiki/home")[0] == 404
-        assert _get(url + "/wiki/onthisday?zim=x&date=0925")[0] == 404
         assert _get(url + "/wiki/today?day=%s&zim=x" % DAY.strftime("%Y%m%d"))[0] == 404
     finally:
         httpd.shutdown()
@@ -355,12 +330,8 @@ def test_the_routes(served):
     status, home = _get(served + "/wiki/home")
     assert status == 200 and len(home["wikis"]) == 4
     en = home["wikis"][0]["name"]
-    status, otd = _get(served + "/wiki/onthisday?zim=%s&date=0925" % en)
-    assert status == 200 and [e["event_year"] for e in otd["events"]] == [
-        "1666",
-        "1854",
-    ]
-    assert _get(served + "/wiki/onthisday?zim=nope&date=0925")[0] == 404
+    # 1.11's On this day, facts and front pages are gone from the API too.
+    assert _get(served + "/wiki/onthisday?zim=%s&date=0925" % en)[0] == 404
     assert _get(served + "/wiki/nothing")[0] == 404
 
 
@@ -390,127 +361,42 @@ def test_the_page_is_served_with_the_shared_parts_inlined(served):
     assert "function zpath(" in body and ".chips {" in body
 
 
-# ── On this day: what can be asked, and what a failure does ───────────────
+# ── what can be asked, and what a failure does ───────────────────────────
 
 
 def test_only_today_yesterday_and_tomorrow_can_be_asked_for(monkeypatch):
     monkeypatch.setattr(wiki, "_today", lambda: datetime.date(2026, 1, 1))
     assert wiki.open_days() == {"20251231", "20260101", "20260102"}
-    assert wiki.mmdd_open("1231") and wiki.mmdd_open("0102")
-    assert not wiki.mmdd_open("0925")
-    # Month 00 is not December, and September has no 31st.
-    assert not wiki.mmdd_open("0015") and not wiki.mmdd_open("0931")
+    assert wiki.day_open("20260102") and not wiki.day_open("20260925")
+    assert not wiki.day_open(None) and not wiki.day_open("x")
 
 
-def test_the_date_is_checked_before_anything_is_read(served):
+def test_the_day_is_checked_before_anything_is_read(served):
     en = _get(served + "/wiki/home")[1]["wikis"][0]["name"]
-    for bad in ("0015", "1301", "0931", "1225", "x"):
-        assert _get(served + "/wiki/onthisday?zim=%s&date=%s" % (en, bad))[0] == 400
-    assert _get(served + "/wiki/onthisday?zim=%s&date=0926" % en)[0] == 200  # tomorrow
+    for bad in ("20260015", "2026-09-25", "20250925", "x", ""):
+        assert _get(served + "/wiki/today?day=%s&zim=%s" % (bad, en))[0] == 400
+    assert _get(served + "/wiki/today?day=20260926&zim=%s" % en)[0] == 200  # tomorrow
 
 
 def _broken(*a, **k):
     raise RuntimeError("disk gone")
 
 
-def test_a_failed_read_is_logged_not_kept(tmp_path, monkeypatch, caplog):
-    _library(tmp_path, monkeypatch, LIBRARY)
-    en = next(
-        w["name"]
-        for w in wiki.wikis()
-        if w["language"] == "en" and w["project"] == "wikipedia"
-    )
-    real = datepages.read_page
-    monkeypatch.setattr(datepages, "read_page", _broken)
-    with caplog.at_level(logging.WARNING, logger="zimi"):
-        assert wiki.on_this_day(en, "0925") is None
-    assert any(
-        "disk gone" in r.getMessage()
-        for r in caplog.records
-        if r.levelno == logging.WARNING
-    )
-    # Not kept: once the page reads again, the events are there.
-    monkeypatch.setattr(datepages, "read_page", real)
-    assert [e["event_year"] for e in wiki.on_this_day(en, "0925")] == ["1666", "1854"]
-
-
-def test_a_failure_answers_503_not_an_empty_day(served, monkeypatch):
+def test_a_pick_that_fails_is_logged_named_and_not_kept(served, monkeypatch, caplog):
     en = _get(served + "/wiki/home")[1]["wikis"][0]["name"]
-    monkeypatch.setattr(datepages, "read_page", _broken)
-    assert _get(served + "/wiki/onthisday?zim=%s&date=0925" % en)[0] == 503
+    real = wiki._work_pick
+    monkeypatch.setattr(wiki, "_work_pick", _broken)
+    with caplog.at_level(logging.WARNING, logger="zimi"):
+        status, got = _get(served + "/wiki/today?day=20260925&zim=%s" % en)
+    assert status == 200 and got == {"picks": {}, "failed": [en]}
+    assert any("disk gone" in r.getMessage() for r in caplog.records)
+    # Not kept: once the wiki reads again, its pick is there.
+    monkeypatch.setattr(wiki, "_work_pick", real)
+    assert en in _get(served + "/wiki/today?day=20260925&zim=%s" % en)[1]["picks"]
 
 
-class _CountingLock:
-    def __init__(self, lock):
-        self.lock, self.n = lock, 0
-
-    def __enter__(self):
-        self.n += 1
-        return self.lock.__enter__()
-
-    def __exit__(self, *a):
-        return self.lock.__exit__(*a)
-
-
-def test_the_library_lock_is_held_per_read_not_for_the_whole_day(tmp_path, monkeypatch):
-    """Every other request needs the library lock: On this day takes it for
-    the date page, again for each line's article, and again for each kept
-    event's picture, never across them."""
-    _library(tmp_path, monkeypatch, LIBRARY)
-    en = next(
-        w["name"]
-        for w in wiki.wikis()
-        if w["language"] == "en" and w["project"] == "wikipedia"
-    )
-    counting = _CountingLock(srv._zim_lock)
-    monkeypatch.setattr(srv, "_zim_lock", counting)
-    wiki.on_this_day(en, "0925")
-    # The archive, the page, each of the three lines, and the pictures of
-    # the two events kept: seven times.
-    assert counting.n == 7
-
-
-def test_every_wikipedia_language_reads_its_own_date_page(tmp_path, monkeypatch):
-    """A German Wikipedia's page for the day is 25._September, a Hebrew
-    one's 25_בספטמבר, each under its own heading for the events."""
-    de_page = (
-        '<h2>Ereignisse</h2><ul><li><a href="./1666">1666</a>: Der '
-        '<a href="./Fire">Große Brand</a> von London beginnt.</li></ul>'
-        '<h2>Geboren</h2><ul><li>1854: <a href="./Water">Wasser</a></li></ul>'
-    ).encode()
-    he_page = (
-        '<h2>אירועים היסטוריים ביום זה</h2><ul><li><a href="./1854">1854</a> – '
-        '<a href="./Water">מים</a> נושאים כולרה</li></ul>'
-    ).encode()
-    _library(
-        tmp_path,
-        monkeypatch,
-        [
-            (
-                "wikipedia_de_all_2026-08.zim",
-                {
-                    "Scraper": MW,
-                    "Name": "wikipedia_de_all",
-                    "Language": "deu",
-                    "Title": "Wikipedia",
-                },
-                {"25._September": de_page},
-            ),
-            (
-                "wikipedia_he_all_2026-08.zim",
-                {
-                    "Scraper": MW,
-                    "Name": "wikipedia_he_all",
-                    "Language": "heb",
-                    "Title": "ויקיפדיה",
-                },
-                {"25_בספטמבר": he_page},
-            ),
-        ],
-    )
-    got = {w["language"]: wiki.on_this_day(w["name"], "0925") for w in wiki.wikis()}
-    assert [(e["event_year"], e["path"]) for e in got["de"]] == [("1666", "A/Fire")]
-    assert [(e["event_year"], e["path"]) for e in got["he"]] == [("1854", "A/Water")]
+def _broken(*a, **k):
+    raise RuntimeError("disk gone")
 
 
 # ── Today: one thing from every wiki ──────────────────────────────────────
@@ -648,19 +534,24 @@ def test_today_answers_for_the_wikis_named_and_home_carries_what_is_known(
     home = wiki.home("20260925", "he")
     assert home["day"] == "20260925" and home["picks"] == {}
     got = wiki.today("20260925", names + ["not_a_wiki"])
+    assert set(got) == {"picks", "failed"}
     assert set(got["picks"]) == set(names) and not got["failed"]
-    assert set(got["front"]) == set(names)  # {} for a front page with nothing
     # Home carries the language shown, and only its wikis.
     home = wiki.home("20260925", "he")
     assert home["lang"] == "he" and set(home["picks"]) == {today_lib["wiktionary"]}
     assert set(wiki.home("20260925", "fr")["picks"]) == {today_lib["wikiquote"]}
     assert "picks" not in wiki.home("20270101")  # a day that cannot be asked for
+    # The picks only: 1.11's On this day, facts and front pages are gone.
+    assert not {"otd", "extras", "front"} & set(wiki.home("20260925", "fr"))
 
 
 def test_today_shows_one_language_chosen_by_the_reader_then_english_then_the_most():
     W = lambda lang: {"language": lang}  # noqa: E731
     ws = [W("he"), W("he"), W("fr"), W("en")]
-    assert wiki.languages(ws)[0] == {"code": "he", "wikis": 2}
+    assert wiki.languages(ws)[0] == {"code": "he", "wikis": 2, "name": "עברית"}
+    # Named in itself by the server where a browser cannot (the page's pills).
+    assert wiki.languages([W("yi")])[0]["name"] == "ייִדיש"
+    assert wiki.languages([W("xx")])[0]["name"] == ""
     assert wiki.choose_language(ws, "fr") == "fr"
     assert wiki.choose_language(ws, "fr-CA") == "fr"  # a region is its language
     assert wiki.choose_language(ws, "de") == "en"  # no German wiki: English
@@ -668,119 +559,11 @@ def test_today_shows_one_language_chosen_by_the_reader_then_english_then_the_mos
     assert wiki.choose_language([], "en") == ""
 
 
-# ── the front page, Did you know, the rabbit hole ─────────────────────────
-
-
-FRONT = _page(
-    # The welcome talks about the wiki, and is passed over.
-    "<h2>Welcome to Wikipedia</h2><p>Wikipedia is the free encyclopedia that anyone can edit, with many articles.</p>"
-    # A box titled by an <h2>: its bold words name the article.
-    # Its picture's caption is not what it featured.
-    "<h2>From today's featured article</h2><figure><figcaption>A glass of it, on a table by a window</figcaption></figure>"
-    '<p><b><a href="Water">Water</a></b> is an inorganic compound '
-    "with the chemical formula H2O, and it is transparent.</p>"
-    # A box of links (portals) gives nothing.
-    '<h2>Portals</h2><p><a href="A">Arts</a> - <a href="B">Biography</a> - <a href="G">Geography</a> - <a href="H">History</a></p>'
-    # Nor does navigation left as text (Hebrew Wikipedia: FAQ, how to
-    # register, guidelines), help that leads into the wiki's own pages,
-    # a door to a page named like the box, or a note about the wiki's
-    # guides that names nothing (Hebrew Wikivoyage).
-    "<h2>Questions</h2><p>Frequently asked questions • How to register • Guidelines</p>"
-    '<h2>Get involved</h2><p>Read the <a href="Help:FAQ">questions</a> and the <a href="Help:Contents">help</a> '
-    'before you write your first <a href="Article">article</a> here.</p>'
-    '<h2>Destinations</h2><div>Choose a destination by clicking a continent below, or see the <a href="Destinations">map</a></div>'
-    "<h2>Featured content</h2><p>Recommended guides - the most complete guides, reviewed by other travellers.</p>"
-    # A box titled by a class, not a heading (French Wikiquote): a quote
-    # with its author on the line after it.
-    '<div><span class="boite-coloree-titre">Citation du 27 août 2026</span></div>'
-    "<blockquote><p>Il y a des éraflures écarlates sur la main verte<br> De ma rêverie églantine.</p><p>»</p></blockquote>"
-    '<p>— <a href="Joyce_Mansour">Joyce Mansour</a></p>'
-    # The front page's own On this day was the scrape's day: passed over.
-    '<h2>On this day</h2><ul><li>1066 – <a href="Fire">A fire</a> in a town that burned for three days.</li></ul>'
-)
-
-
-def test_a_front_page_is_read_into_what_it_featured_in_any_layout():
-    from zimi import frontpage
-
-    got = frontpage.highlights(FRONT)
-    assert [g["label"] for g in got] == [
-        "From today's featured article",
-        "Citation du 27 août 2026",
-    ]
-    assert got[0]["link"] == "Water" and got[0]["text"].startswith("Water is")
-    assert (
-        got[1]["text"]
-        == "Il y a des éraflures écarlates sur la main verte De ma rêverie églantine."
-    )
-
-
-def test_a_fact_is_a_later_sentence_with_a_number_when_there_is_one():
-    lead = (
-        "Moncton is a city in New Brunswick, Canada, on the Petitcodiac River. "
-        "It is the largest city in the province, with 79,470 people in 2021. It is nice."
-    )
-    assert (
-        wiki._fact(lead)
-        == "It is the largest city in the province, with 79,470 people in 2021."
-    )
-    assert wiki._fact("A short one.") == ""
-    assert wiki._fact(
-        "Water is an inorganic compound with the formula H two O, and clear."
-    ) == ("Water is an inorganic compound with the formula H two O, and clear.")
-
-
-def _lead_page(text, links=()):
-    return _page(
-        "<p>%s %s</p>" % (text, " ".join('<a href="%s">%s</a>' % (x, x) for x in links))
-    )
-
-
-def test_a_wikipedia_s_day_has_facts_and_a_rabbit_hole(tmp_path, monkeypatch):
-    long = "is a thing that people have written about for 200 years, in many books."
-    pages = {
-        "Water": ("Water", _lead_page("Water " + long, ["Fire"])),
-        "Fire": ("Fire", _lead_page("Fire " + long, ["Earth"])),
-        "Earth": ("Earth", _lead_page("Earth " + long, ["Air"])),
-        "Air": ("Air", _lead_page("Air " + long, ["Water"])),
-    }
-    zdir = tmp_path / "zims"
-    zdir.mkdir()
-    _wiki_zim(
-        str(zdir / "wikipedia_en_all_2026-08.zim"),
-        "wikipedia_en_all",
-        "eng",
-        "Wikipedia",
-        pages,
-    )
-    monkeypatch.setattr(srv, "ZIM_DIR", str(zdir))
-    monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(tmp_path / "data"))
-    os.makedirs(str(tmp_path / "data"), exist_ok=True)
-    wiki._reset_for_tests()
-    srv.load_cache(force=True)
-    name = wiki.wikis()[0]["name"]
-    ex = wiki.extras(name, "20260925")
-    start = wiki.pick(name, "20260925")["path"]
-    # Every fact names an article of the ZIM and is a sentence of its lead.
-    assert ex["facts"] and all(long in f["text"] for f in ex["facts"])
-    # The rabbit hole follows the links from the day's article, never back.
-    trail = [start] + [t["path"] for t in ex["trail"]]
-    assert len(trail) == len(set(trail)) and len(trail) > 1
-    for a, b in zip(trail, trail[1:]):
-        assert pages[b][0] in pages[a][1]
-    assert ex["picture"] is None  # no page here has a picture
-    # Read once per day.
-    assert wiki.extras(name, "20260925") is ex
-    # A front page with only its welcome features nothing.
-    assert wiki.front(name) == {}
-
-
 def test_today_route_bounds_what_a_caller_can_ask(served):
     wikis = _get(served + "/wiki/home")[1]["wikis"]
     names = ",".join(w["name"] for w in wikis)
     status, got = _get(served + "/wiki/today?day=20260925&zim=" + names)
     assert status == 200 and set(got["picks"]) == {w["name"] for w in wikis}
-    assert [e["event_year"] for e in got["otd"][wikis[0]["name"]]] == ["1666", "1854"]
     assert _get(served + "/wiki/today?day=20260101&zim=" + names)[0] == 400
     assert (
         _get(served + "/wiki/today?day=20260925&zim=" + ",".join(["x"] * 9))[0] == 400

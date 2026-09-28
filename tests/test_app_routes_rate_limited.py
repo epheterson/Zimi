@@ -17,7 +17,7 @@ from zimi import http  # noqa: E402
 
 @pytest.mark.parametrize(
     "path",
-    ["/exchange", "/exchange/question", "/exchange/tags", "/reddot", "/reddot/post", "/reddot/list", "/tube", "/tube/play", "/wiki", "/wiki/home", "/wiki/onthisday", "/books", "/books/home", "/books/list", "/books/book"],
+    ["/exchange", "/exchange/question", "/exchange/tags", "/reddot", "/reddot/post", "/reddot/list", "/tube", "/tube/play", "/wiki", "/wiki/home", "/wiki/today", "/books", "/books/home", "/books/list", "/books/book"],
 )
 def test_an_app_route_is_limited_as_an_api_path(path):
     limited, content = http._rate_class(path)
@@ -26,3 +26,9 @@ def test_an_app_route_is_limited_as_an_api_path(path):
 
 def test_a_lookalike_path_is_not_swept_in():
     assert http._rate_class("/exchangerate")[0] is False
+
+
+def test_the_wiki_article_lookup_rides_the_content_bucket():
+    # Asked for every wiki article opened, like /snippet: on the 60/min API
+    # budget a 429 left the language menu empty.
+    assert http._rate_class("/wiki/article") == (True, True)

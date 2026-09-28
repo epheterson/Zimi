@@ -1633,6 +1633,7 @@
   "search_placeholder": "搜索所有内容…",
   "search_chip_without": "排除：{word}",
   "search_chip_exact": "精确匹配：{words}",
+  "search_chip_not_searched": "未搜索：{words}",
   "search_tips": "搜索技巧",
   "search_example_exact": "\"太阳能电池板\"",
   "search_example_without": "苹果 -公司",

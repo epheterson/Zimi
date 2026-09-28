@@ -16,6 +16,7 @@ const vm = require('vm');
 const root = path.join(__dirname, '..', 'zimi', 'static');
 const page = fs.readFileSync(path.join(root, 'wiki.html'), 'utf8').replace(/\r\n/g, '\n');
 const src = fs.readFileSync(path.join(root, 'app.js'), 'utf8').replace(/\r\n/g, '\n');
+const reader = fs.readFileSync(path.join(root, 'wiki-reader.js'), 'utf8').replace(/\r\n/g, '\n');
 let failures = 0;
 function ok(label, cond, detail) {
   console.log((cond ? 'PASS  ' : 'FAIL  ') + label + (detail ? '  ' + detail : ''));
@@ -34,11 +35,10 @@ vm.runInContext([
   "var STR = { lang: 'en', results_one: '{n} result', results_other: '{n} results', search_heading: '“{q}”' };",
   extract(page, /function dayStamp\(d\) \{[^\n]*\n/, 'dayStamp'),
   extract(page, /function pillLabels\(wikis\) \{[\s\S]*?\n\}/, 'pillLabels'),
-  extract(page, /var ENDONYMS = [^\n]*\n/, 'ENDONYMS'),
   extract(page, /var RTL_LANGS = [^\n]*\n/, 'RTL_LANGS'),
   extract(page, /function dirOf\(code\) \{[^\n]*\n/, 'dirOf'),
-  extract(page, /function capitalised\(name, code\) \{[^\n]*\n/, 'capitalised'),
-  extract(page, /function endonym\(code, fallback\) \{[\s\S]*?\n\}/, 'endonym'),
+  // One way to name a language in itself: the shell's, which the page asks for.
+  extract(src, /function _langEndonym\(code, own, fallback\) \{[\s\S]*?\n\}/, '_langEndonym'),
   extract(page, /function inLanguage\(wikis, lang\) \{[^\n]*\n/, 'inLanguage'),
   extract(page, /function heroOf\(wikis\) \{[\s\S]*?\n\}/, 'heroOf'),
   extract(page, /function continuedIn\(places, lang, by\) \{[\s\S]*?\n\}/, 'continuedIn'),
@@ -92,9 +92,18 @@ const kept = [
 ];
 ok('recent trails: those that started in the language shown, of two steps or more', ctx.trailsIn(kept, 'en', by).length === 1 && ctx.trailsIn(kept, 'ar', by)[0].ts === 2);
 ok('how long ago, in the interface\'s words', ctx.ago(0, 2 * 3600 * 1000 + 5) === '2 hr. ago' && ctx.ago(0, 3 * 86400 * 1000) === '3 days ago');
-ok('a language is named in itself', ctx.endonym('fr', 'French') === 'Français' && ctx.endonym('he', 'Hebrew') === 'עברית');
-ok('a language the browser cannot name in itself takes the interface\'s name, capitalised', ctx.endonym('zz', 'zed') === 'Zed');
-ok('Yiddish is named in itself even where the browser cannot', ctx.endonym('yi', 'yiddish') === 'ייִדיש');
+ok('a language is named in itself', ctx._langEndonym('fr', '', 'French') === 'Français' && ctx._langEndonym('he', undefined, 'Hebrew') === 'עברית');
+ok('a language the browser cannot name in itself takes the interface\'s name, capitalised', ctx._langEndonym('zz', '', 'zed') === 'Zed');
+ok('the server\'s name comes first: Yiddish is named in itself even where the browser cannot', ctx._langEndonym('yi', 'ייִדיש', 'yiddish') === 'ייִדיש');
+{
+  // A browser that cannot name Yiddish in itself answers in English.
+  const en = { Intl: { DisplayNames: function() { this.of = c => ({ yi: 'Yiddish' })[c] || c; } } };
+  vm.createContext(en);
+  vm.runInContext(extract(src, /function _langEndonym\(code, own, fallback\) \{[\s\S]*?\n\}/, '_langEndonym'), en);
+  ok('a browser answering in English is not taken for the language\'s own name', en._langEndonym('yi', '', 'x') === 'X' && en._langEndonym('yi', 'ייִדיש') === 'ייִדיש');
+}
+ok('the page names languages with the shell\'s, given the server\'s name (/wiki/home)', /function endonym\(code, fallback\) \{\n\s*var own = \(_langs\.filter\(function\(l\) \{ return l\.code === code; \}\)\[0\] \|\| \{\}\)\.name;\n\s*try \{ return window\.parent\._langEndonym\(code, own, fallback\); \}/.test(page) && !/ENDONYMS|DisplayNames/.test(page));
+ok('and so does Zimipedia\'s reader', /_langEndonym\(l\.lang, l\.name\)/.test(reader) && !/DisplayNames/.test(reader));
 ok('the page is laid out in the direction of the language it shows', ctx.dirOf('he') === 'rtl' && ctx.dirOf('yi') === 'rtl' && ctx.dirOf('ar') === 'rtl' && ctx.dirOf('fr-CA') === 'ltr' && ctx.dirOf('en') === 'ltr');
 ok('a count in the interface\'s plural forms', ctx.plural(1) === '1 result' && ctx.plural(3) === '3 results');
 vm.runInContext("STR = { lang: 'ru', results_one: '{n} результат', results_few: '{n} результата', results_many: '{n} результатов', results_other: '{n} результата' };", ctx);
@@ -120,7 +129,10 @@ ok('a day\'s picks are kept for the day, so a return is instant and no pick chan
 ok('Today is a front door: the day\'s article, where you were, the trails; nothing of 1.11\'s front page',
   /var PARTS = \['picks'\];/.test(page) && /'&parts=picks&zim='/.test(page) && !/otdHtml|dykHtml|potdHtml|frontItems|rabbit/.test(page));
 ok('where you were is Saved\'s, Zimipedia\'s own, and a change anywhere redraws it', /S\.continued\(\{ app: 'wiki' \}\)/.test(page) && /window\.__saved = function\(\) \{ if \(!_q\) drawYours\(\); \};/.test(page));
-ok('a recent trail goes back in with the trail as it was', /sessionStorage\.setItem\(TRAIL_KEY, JSON\.stringify\(_trailsShown\[\+k\]\.items\)\)/.test(page) && /var TRAIL_KEY = 'zimi_wiki_trail';/.test(page));
+ok('a recent trail goes back in with the trail as it was', /window\.parent\._wikiTrailResume\(_trailsShown\[\+k\]\.items\)/.test(page) && /function keptTrails\(\) \{ try \{ return window\.parent\._wikiTrailsKept\(\) \|\| \[\]; \}/.test(page));
+ok('the trails\' keys are the shell\'s (SK), written nowhere else', /WIKI_TRAIL: 'zimi_wiki_trail',\n\s*WIKI_TRAILS: 'zimi_wiki_trails',/.test(src) && src.split("'zimi_wiki_trail").length === 3 &&
+  !/zimi_wiki_trail/.test(page) && !/zimi_wiki_trail/.test(reader) && /_getSessionJSON\(SK\.WIKI_TRAIL, \[\]\)/.test(reader));
+ok('a mini is the server\'s word for it (its flavour), not the file name read again', /mini = info\.flavour === 'mini';/.test(reader) && !/_wikiIsMini|_mini\(\?:/.test(reader));
 ok('only answers with something in them are kept in this browser', /if \(!keep\) return;/.test(page) && /if \(hasContent\(_got\[p\]\[n\]\)\) store\[p\]\[n\]/.test(page));
 ok('a failed ask is asked again on the next view', /if \(hero && \(_failed\[hero\] \|\| _got\.picks\[hero\] === undefined\)\)/.test(page));
 ok('the language is remembered in this browser, and the whole page follows it', /var LANG_KEY = 'zimi_wiki_lang';/.test(page) && /try \{ localStorage\.setItem\(LANG_KEY, code\); \} catch \(e\) \{\}/.test(page) && /_lang = code; _sel = \[\];/.test(page));
@@ -149,6 +161,44 @@ ok('an app page: no reading controls, and the arrow asks the page first', /funct
 ok('Back from an article returns to Zimipedia', /s\.mode === 'reader' && s\.wiki\) \{\n\s*if \(!_appFrameRoute\(_wikiOpen, ''\)\) openWiki\(true\);/.test(src) && /\|\| app\.wiki \|\| app\.books\);/.test(src));
 ok('the icon in the breadcrumb goes to its front page', /_wikiOpen \? \['wiki', 'q', '\/#wiki'\]/.test(src));
 ok('the catalog door is allowed', /_APP_CATEGORY_KEYS = \[[^\]]*'wikipedia'[^\]]*\]/.test(src) && /wiki: 'wikipedia'[,}]/.test(src));
+
+// ── the shell's language menu on a wiki's article ─────────────────────────
+// It needs the languages only: not the topic strip, the Simple level and the
+// mini's full build that Zimipedia's reader shows (the whole wiki.article,
+// under the library lock), and nothing at all when the chooser is hidden.
+{
+  const asked = [];
+  const sh = {
+    fetch: url => { asked.push(url); return Promise.resolve({ ok: true, json: () => ({ languages: [{ lang: 'he' }] }) }); },
+    SK: { HIDE_LANG_CHOOSER: 'zimi_hide_lang_chooser' }, flags: {},
+    _getStorageFlag: k => !!sh.flags[k],
+    _splitPathFragment: p => ({ base: p.split('#')[0] }),
+    _wikiUrl: () => true, _articleUrl: (z, p) => '/w/' + z + '/' + p,
+    frameDoc: {}, _readerViewOn: false, _renderLangDropdown: () => {},
+    currentArticle: { zim: 'wikipedia', path: 'Water' }, _articleLangKey: '', _articleLangData: null,
+  };
+  sh.document = { getElementById: id => (id === 'reader-frame' ? { contentDocument: sh.frameDoc } : null) };
+  vm.createContext(sh);
+  vm.runInContext([
+    extract(src, /var _wikiInfoKept = [^\n]*\n/, '_wikiInfoKept'),
+    extract(src, /var _WIKI_INFO_KEPT = [^\n]*\n/, '_WIKI_INFO_KEPT'),
+    extract(src, /function _wikiInfo\(zim, path, langsOnly\) \{[\s\S]*?\n\}/, '_wikiInfo'),
+    extract(src, /function _prefetchArticleLangs\(loaded\) \{[\s\S]*?\n\}/, '_prefetchArticleLangs'),
+  ].join('\n'), sh);
+  sh.flags[sh.SK.HIDE_LANG_CHOOSER] = true;
+  vm.runInContext('_prefetchArticleLangs(true)', sh);
+  ok('a hidden language chooser asks nothing about a wiki\'s article', asked.length === 0, asked.join());
+  delete sh.flags[sh.SK.HIDE_LANG_CHOOSER];
+  vm.runInContext('_prefetchArticleLangs(true)', sh);
+  ok('the plain reader asks for the languages only', asked.length === 1 && /\/wiki\/article\?zim=wikipedia&path=Water&only=languages$/.test(asked[0]), asked.join());
+  // Laid out by Zimipedia's reader, which asks for the whole answer: one ask, shared.
+  asked.length = 0;
+  vm.runInContext("currentArticle = { zim: 'wikipedia', path: 'Ice' }; frameDoc.__zimiWiki = true; _readerViewOn = true; _prefetchArticleLangs(true); _wikiInfo('wikipedia', 'Ice')", sh);
+  ok('an article in Zimipedia\'s reader is asked about once, whole', asked.length === 1 && !/only=/.test(asked[0]), asked.join());
+  vm.runInContext("_wikiInfo('wikipedia', 'Ice', true)", sh);
+  ok('the whole answer, once kept, serves the language menu too', asked.length === 1, asked.join());
+  ok('the route rides the content bucket, like /snippet', /_CONTENT_PATHS = frozenset\(\("\/snippet", "\/wiki\/article"\)\)/.test(fs.readFileSync(path.join(root, '..', 'http.py'), 'utf8')));
+}
 
 for (const lang of fs.readdirSync(path.join(root, 'i18n'))) {
   const d = JSON.parse(fs.readFileSync(path.join(root, 'i18n', lang), 'utf8'));

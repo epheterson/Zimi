@@ -1287,8 +1287,17 @@ def _resolve_url_to_zim(url_str):
 # ============================================================================
 
 
-def get_article_languages(zim_name, article_path):
+# get_article_languages's qid when the caller did not say: look it up.
+_QID_UNKNOWN = object()
+
+
+def get_article_languages(zim_name, article_path, qid=_QID_UNKNOWN):
     """Find available translations for an article across all installed ZIMs.
+
+    ``qid``: the article's Q-ID (an int, or None for none) when the caller
+    already knows it, as Zimipedia does for a mini that borrowed it from a
+    fuller build of its wiki. It is used for this answer and never stored
+    against this copy's page: a borrowed ID is the donor's, not this ZIM's.
 
     Uses three strategies (in order):
     0. Wikidata Q-ID matching — checks index/cache, extracts on-demand, verifies candidates
@@ -1359,14 +1368,16 @@ def get_article_languages(zim_name, article_path):
 
     # Strategy 0: Wikidata Q-ID matching (authoritative)
     # Step 0a: Get source article's Q-ID (from index, cache, or on-demand extraction)
-    qid = _qid_lookup(zim_name, article_path)
-    if qid is None and article_path != title:
-        qid = _qid_lookup(zim_name, title)
-    if qid is None:
-        # On-demand: extract Q-ID from this article's HTML
-        qid = _qid_extract_from_html(archive, article_path)
-        if qid is not None:
-            _qid_cache_store(zim_name, article_path, qid)
+    given = qid is not _QID_UNKNOWN
+    if not given:
+        qid = _qid_lookup(zim_name, article_path)
+        if qid is None and article_path != title:
+            qid = _qid_lookup(zim_name, title)
+        if qid is None:
+            # On-demand: extract Q-ID from this article's HTML
+            qid = _qid_extract_from_html(archive, article_path)
+            if qid is not None:
+                _qid_cache_store(zim_name, article_path, qid)
 
     log.debug(
         "interlang %s/%s: qid=%s src_project=%s",
@@ -1496,7 +1507,9 @@ def get_article_languages(zim_name, article_path):
     # Only matches something vouched for: a guess cached under the source's
     # Q-ID reads as verified from then on, in every direction.
     if qid is not None and len(installed) > 0:
-        all_paths = [(zim_name, article_path)] + [
+        # Not the source's own page when the caller gave the Q-ID: the
+        # caller vouches for it in this answer only.
+        all_paths = ([] if given else [(zim_name, article_path)]) + [
             (m["zim"], m["path"]) for m in installed if m.get("_verified", True)
         ]
         for z, p in all_paths:

@@ -142,9 +142,6 @@ var SEARCH_LIMIT = 30;
 var SNIPPETS_FETCHED = 12;
 var CONTINUE_SHOWN = 6;
 var TRAILS_SHOWN = 5;
-// The recent trails, kept by Zimipedia's reader in this browser.
-var TRAILS_KEY = 'zimi_wiki_trails';
-var TRAIL_KEY = 'zimi_wiki_trail';
 
 // The browser's own date, as the day the picks belong to.
 function dayStamp(d) { return d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2); }
@@ -163,11 +160,6 @@ function pillLabels(wikis) {
   return out;
 }
 
-// A language named in itself (עברית, Français, ייִדיש), which is how a
-// reader finds their own; the interface's name for it when the browser
-// cannot say, the code when neither can.
-// The languages a browser may not know how to name in themselves.
-var ENDONYMS = { yi: 'ייִדיש' };
 // The languages written right to left: the page takes the direction of
 // the language it shows.
 var RTL_LANGS = /^(ar|arc|arz|azb|ckb|dv|fa|glk|he|ks|lrc|mzn|nqo|pnb|ps|sd|skr|ug|ur|yi)$/;
@@ -178,13 +170,13 @@ function dirOf(code) { return RTL_LANGS.test(String(code || '').split('-')[0]) ?
 // ellipsis at its end.
 function ui() { var l = STR.lang || 'en'; return ' lang="' + esc(l) + '" dir="' + dirOf(l) + '"'; }
 function uiEl(el) { var l = STR.lang || 'en'; el.setAttribute('lang', l); el.setAttribute('dir', dirOf(l)); return el; }
-function capitalised(name, code) { try { return name.charAt(0).toLocaleUpperCase(code) + name.slice(1); } catch (e) { return name; } }
+// A language named in itself (עברית, Français, ייִדיש), which is how a
+// reader finds their own: the shell's _langEndonym, given the server's name
+// for it (/wiki/home's languages: it knows the ones a browser cannot name in
+// themselves) and the interface's name as the last resort.
 function endonym(code, fallback) {
-  var name = '', english = '';
-  try { name = new Intl.DisplayNames([code], { type: 'language' }).of(code) || ''; english = new Intl.DisplayNames(['en'], { type: 'language' }).of(code) || ''; } catch (e) {}
-  // A browser that does not speak the language answers in English.
-  if (!name || name === code || (code !== 'en' && name === english)) name = ENDONYMS[code] || fallback || code;
-  return capitalised(name, code);
+  var own = (_langs.filter(function(l) { return l.code === code; })[0] || {}).name;
+  try { return window.parent._langEndonym(code, own, fallback); } catch (e) { return own || fallback || code; }
 }
 
 // The wikis of one language.
@@ -386,7 +378,9 @@ function trailsHtml(list) {
 function section(id, title, inner) {
   return '<section class="sec" id="s-' + id + '"><div class="sec-h"><h2 class="serif"' + ui() + '>' + esc(title) + '</h2></div><div class="sb">' + inner + '</div></section>';
 }
-function keptTrails() { try { return JSON.parse(localStorage.getItem(TRAILS_KEY) || '[]') || []; } catch (e) { return []; } }
+// The recent trails, which Zimipedia's reader keeps in this browser: the
+// shell's (_wikiTrailsKept), none on a page open outside it.
+function keptTrails() { try { return window.parent._wikiTrailsKept() || []; } catch (e) { return []; } }
 var _trailsShown = [];
 function drawYours() {
   var host = document.getElementById('yours');
@@ -590,9 +584,9 @@ document.addEventListener('click', function(e) {
   if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
   e.preventDefault();
   // A step of a recent trail: the trail is this tab's again, so the reader
-  // goes on from there (sessionStorage is the tab's, shared with the shell).
+  // goes on from there.
   var k = a.getAttribute('data-trail');
-  if (k !== null && _trailsShown[+k]) { try { sessionStorage.setItem(TRAIL_KEY, JSON.stringify(_trailsShown[+k].items)); } catch (err) {} }
+  if (k !== null && _trailsShown[+k]) { try { window.parent._wikiTrailResume(_trailsShown[+k].items); } catch (err) {} }
   tell({ zimi: 'open', zim: a.getAttribute('data-zim'), path: a.getAttribute('data-path') });
 });
 

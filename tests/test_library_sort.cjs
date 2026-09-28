@@ -39,10 +39,9 @@ const sandbox = {
   // rebuilds. Both are recorded so the fallback is a fact rather than a hope.
   renderHome: () => { sandboxCalls.rebuilt++; },
   _reorderLibraryInPlace: () => { sandboxCalls.reordered++; return sandboxCalls.canReorder; },
-  _byFirstSeenDesc: (a, b) => (b.first_seen || 0) - (a.first_seen || 0),
-  _byUpdatedDesc: (a, b) => (b.updated_at || 0) - (a.updated_at || 0),
 };
 vm.createContext(sandbox);
+for (const fn of ['_zimChangedAt', '_byFirstSeenDesc', '_byUpdatedDesc']) vm.runInContext(grab(fn), sandbox);
 vm.runInContext(grab('LIBRARY_SORTS', 'var'), sandbox);
 for (const fn of ['_librarySort', '_setLibrarySort', '_sortLibrary']) {
   vm.runInContext(grab(fn), sandbox);
@@ -72,6 +71,9 @@ check(order(vm.runInContext('_sortLibrary(lib)', sandbox))[0] === 'zeta', 'recen
 
 vm.runInContext("_setLibrarySort('updated')", sandbox);
 check(order(vm.runInContext('_sortLibrary(lib)', sandbox))[0] === 'alpha', 'recently updated puts the freshest first');
+// An arrival is a change too, as the apps count it (_APP_SORT_DATE).
+check(order(vm.runInContext("_sortLibrary(lib.concat([{ name: 'new', title: 'New', first_seen: 50 }]))", sandbox))[0] === 'new',
+      'recently updated counts a ZIM added since as the newest change');
 
 vm.runInContext("_setLibrarySort('nonsense')", sandbox);
 check(vm.runInContext('_librarySort()', sandbox) === 'updated', 'an unknown order is refused, not stored');

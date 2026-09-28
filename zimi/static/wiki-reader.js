@@ -46,8 +46,6 @@ var _WIKI_TRAILS_KEPT = 8;      // recent trails, for Zimipedia's front door
 var _WIKI_NEXT = 4;             // "read next": the lead's first links
 var _WIKI_SENTENCE_MAX = 240;   // a preview's first sentence, at most
 var _WIKI_SNIPPETS_KEPT = 200;
-var _WIKI_TRAIL_KEY = 'zimi_wiki_trail';    // this tab's trail (session)
-var _WIKI_TRAILS_KEY = 'zimi_wiki_trails';  // the recent trails (this browser)
 var _WIKI_SVG_SAVE = '<svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
 var _WIKI_UI_FONT = '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';
 var _WIKI_CSS = [
@@ -283,27 +281,25 @@ function _wikiSnippet(zim, path) {
 // Trails of two or more are kept, the latest first, for the front door.
 function _wikiSame(a, b) { return !!(a && b && a.zim === b.zim && a.path === b.path); }
 function _wikiTrailStep(item, via) {
-  var tr = _getStorageJSON(_WIKI_TRAIL_KEY, [], true) || [];
+  var tr = _getSessionJSON(SK.WIKI_TRAIL, []) || [];
   var at = -1;
   for (var i = 0; i < tr.length; i++) if (_wikiSame(tr[i], item)) at = i;
   if (at >= 0) tr = tr.slice(0, at + 1);
   else if (via && tr.length && _wikiSame(tr[tr.length - 1], via)) tr.push(item);
   else tr = [item];
   tr = tr.slice(-_WIKI_TRAIL_MAX);
-  try { sessionStorage.setItem(_WIKI_TRAIL_KEY, JSON.stringify(tr)); } catch (e) {}
+  _wikiTrailResume(tr);
   if (tr.length >= 2) {
-    var kept = _getStorageJSON(_WIKI_TRAILS_KEY, []) || [];
+    var kept = _wikiTrailsKept();
     // The same trail grown (or cut back) replaces itself: one that starts
     // where it starts and was the latest.
     if (kept.length && _wikiSame(kept[0].items[0], tr[0])) kept.shift();
     kept.unshift({ ts: Date.now(), items: tr });
-    _setStorageJSON(_WIKI_TRAILS_KEY, kept.slice(0, _WIKI_TRAILS_KEPT));
+    _setStorageJSON(SK.WIKI_TRAILS, kept.slice(0, _WIKI_TRAILS_KEPT));
   }
   return tr;
 }
 function _wikiText(el) { return (el && el.textContent || '').replace(/\s+/g, ' ').trim(); }
-// A mini build: Kiwix's _mini_ in the file name.
-function _wikiIsMini(zim) { var z = _zimInfo(zim); return !!(z && /_mini(?:_|\.zim$)/i.test(z.file || '')); }
 // Where you are, as a place Zimipedia's Continue reading can take you back
 // to: the heading's id and the share read.
 function _wikiPlaceRef(zim, path, title, meta) {
@@ -378,15 +374,9 @@ function _wikiLayout(frame) {
     holder.parentNode.insertBefore(facts, holder);
     facts.appendChild(holder);
   }
-  var mini = _wikiIsMini(zim);
-  var note = null;
-  if (mini) {
-    // A mini carries the introduction and the facts only: it says so, rather
-    // than a page that ends early and citations that go nowhere.
-    note = ui(el('aside', 'zw-note'));
-    note.textContent = t('wiki_mini_note');
-    article.appendChild(note);
-  }
+  // A mini build, as the server's lookup says (its flavour): set with the
+  // lookup's answer, below.
+  var mini = false;
 
   // ── the contents ──
   var heads = _wikiHeadings(article);
@@ -789,14 +779,6 @@ function _wikiLayout(frame) {
     closeSheets();
     openArticle(z, p);
   };
-  // A language named in itself (עברית, Deutsch), which is how a reader
-  // finds their own; the interface's name for it under it.
-  var langName = function(l) {
-    var own = l.name && l.name !== l.lang ? l.name : '';
-    try { own = own || new Intl.DisplayNames([l.lang], { type: 'language' }).of(l.lang); } catch (e) {}
-    own = own || l.lang;
-    try { return own.charAt(0).toLocaleUpperCase(l.lang) + own.slice(1); } catch (e) { return own; }
-  };
   var otherRow = function(cls, go, name, sub, lng) {
     return '<li class="' + cls + '"><button type="button" class="zw-go" data-go="' + escAttr(go) + '"><b' + (lng ? ' lang="' + escAttr(lng) + '"' : '') + '>' + esc(name) + '</b>' +
       (sub ? '<span>' + esc(sub) + '</span>' : '') + '</button>' +
@@ -805,8 +787,10 @@ function _wikiLayout(frame) {
   var renderLangs = function() {
     var h = '<div class="zb-sheet-head"><b>' + tH('wiki_languages') + '</b><button type="button" class="zb-x" aria-label="' + tH('close') + '">×</button></div><ul class="zw-lang-list">';
     if (info.level) h += otherRow('zw-level', info.level.zim + '\n' + info.level.path, t(info.level.simple ? 'wiki_level_simple' : 'wiki_level_full'), t(info.level.simple ? 'wiki_level_simple_hint' : 'wiki_level_full_hint'), '');
+    // A language named in itself, which is how a reader finds their own;
+    // the interface's name for it under it.
     (info.languages || []).forEach(function(l) {
-      var name = langName(l), mine = _langDisplayName(l.lang) || '';
+      var name = _langEndonym(l.lang, l.name), mine = _langDisplayName(l.lang) || '';
       h += otherRow('', l.zim + '\n' + l.path, name, mine.toLowerCase() !== name.toLowerCase() ? mine : '', l.lang);
     });
     langSheet.innerHTML = h + '</ul>';
@@ -931,12 +915,21 @@ function _wikiLayout(frame) {
     // A switch that cannot work is not shown: no Q-ID, or nowhere to go.
     lbtn.hidden = !n;
     lbtn.querySelector('span').textContent = n ? String(n) : '';
-    if (note && info.full) {
-      var a = ui(el('a'));
-      a.href = _articleUrl(info.full.zim, info.full.path);
-      a.textContent = t('wiki_mini_full');
-      note.appendChild(doc.createTextNode(' '));
-      note.appendChild(a);
+    mini = info.flavour === 'mini';
+    if (mini) {
+      // A mini carries the introduction and the facts only: it says so,
+      // rather than a page that ends early and citations that go nowhere,
+      // and points to the full article when a fuller build has it.
+      var note = ui(el('aside', 'zw-note'));
+      note.textContent = t('wiki_mini_note');
+      if (info.full) {
+        var a = ui(el('a'));
+        a.href = _articleUrl(info.full.zim, info.full.path);
+        a.textContent = t('wiki_mini_full');
+        note.appendChild(doc.createTextNode(' '));
+        note.appendChild(a);
+      }
+      article.insertBefore(note, article.querySelector(':scope > .zw-next'));
     }
   };
   _wikiInfo(zim, _splitPathFragment(path).base).then(function(d) {
@@ -972,6 +965,6 @@ function _wikiLayout(frame) {
       Highlights.attach(doc, { kind: 'article', app: 'wiki', zim: zim, path: path, title: title }, { root: article }));
     if (hl) { hl.refresh(); doc.__zimiHighlights = hl; }
   } catch (e) {}
-  frame.__zw = { zim: zim, path: path, title: title, note: note, bar: bar, doc: doc };
+  frame.__zw = { zim: zim, path: path, title: title, bar: bar, doc: doc };
   return true;
 }

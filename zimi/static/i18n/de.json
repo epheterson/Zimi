@@ -1633,6 +1633,7 @@
   "search_placeholder": "Alles durchsuchen…",
   "search_chip_without": "ohne {word}",
   "search_chip_exact": "genau: {words}",
+  "search_chip_not_searched": "nicht gesucht: {words}",
   "search_tips": "Suchtipps",
   "search_example_exact": "\"erneuerbare Energie\"",
   "search_example_without": "Jaguar -Auto",
