@@ -19640,35 +19640,17 @@ function openReader(url) {
     // Only highlight links that actually resolve to a different installed ZIM
     // Feature flag: enabled by default, user can hide via Settings checkbox
     var _currentZim = readerSource || (currentArticle && currentArticle.zim) || '';
-    if (!_getStorageFlag(SK.HIDE_XZIM_LINKS) && Object.keys(_domainZimMap).length > 0 && !_frameLoc.startsWith('/static/')) try {
-      var styleEl = frame.contentDocument.createElement('style');
-      styleEl.textContent = '.zimi-xzim{text-decoration-style:dotted;text-decoration-color:var(--amber,#f59e0b)}';
-      frame.contentDocument.head.appendChild(styleEl);
-      // Collect external URLs that might resolve to installed ZIMs
-      var urlMap = {}; // url → [anchor elements]
-      var links = frame.contentDocument.querySelectorAll('a[href]');
-      var frameLoc2 = frame.contentWindow.location;
-      links.forEach(function(a) {
-        var h2 = a.getAttribute('href') || '';
-        var full2;
-        try { full2 = new URL(h2, frameLoc2.href).href; } catch(ex) { return; }
-        if (full2.startsWith(location.origin)) return;
-        if (!/^https?:\/\//.test(full2)) return;
-        try {
-          var host2 = new URL(full2).hostname;
-          var bare2 = host2.replace(/^www\./, '');
-          if (_domainZimMap[host2] || _domainZimMap[bare2]) {
-            // This domain has a matching ZIM — collect for batch resolve
-            if (!urlMap[full2]) urlMap[full2] = [];
-            urlMap[full2].push(a);
-          }
-          // Unresolved external links: no special styling (leave as normal links)
-        } catch(ex) {}
-      });
+    if (!_getStorageFlag(SK.HIDE_XZIM_LINKS) && !_frameLoc.startsWith('/static/')) try {
+      // The links to sites an installed ZIM holds, from the one pass over the
+      // page's links that marked it (_extMark, above): url → [anchor elements].
+      var urlMap = frame.contentDocument.__zimiSiteLinks || {};
       // Batch resolve collected URLs — chunked to stay under body limits
       _resolveCache = {}; // Reset per page load
       var extUrls = Object.keys(urlMap).slice(0, 300); // Cap to prevent pathological load on large articles
       if (extUrls.length > 0) {
+        var styleEl = frame.contentDocument.createElement('style');
+        styleEl.textContent = '.zimi-xzim{text-decoration-style:dotted;text-decoration-color:var(--amber,#f59e0b)}';
+        frame.contentDocument.head.appendChild(styleEl);
         var CHUNK_SIZE = 30;
         var chunks = [];
         for (var ci2 = 0; ci2 < extUrls.length; ci2 += CHUNK_SIZE) {
@@ -23194,6 +23176,12 @@ function _extHostZim(host) {
 //   'app'      another program's: mailto:, tel:, sms: and the like
 //   'none'     nowhere Zimi follows: javascript:, data:, empty, an #anchor
 function zimiLinkKind(href, base) {
+  var k = _extKind(href, base);
+  return k === 'site' ? 'library' : k;
+}
+// zimiLinkKind, with 'site' for a link to a site an installed ZIM holds
+// (the library, by way of /resolve) apart from this server's own.
+function _extKind(href, base) {
   // What a browser does to an address before reading it: control characters
   // and spaces off the ends, tabs and newlines out ("java\tscript:" runs).
   var h = String(href == null ? '' : href).replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '').replace(/[\t\n\r]/g, '');
@@ -23211,13 +23199,13 @@ function zimiLinkKind(href, base) {
   // what marking one used to cost. Anything less plain is parsed.
   var am = _EXT_AUTHORITY_RE.exec(h);
   if (am && _EXT_PLAIN_HOST_RE.test(am[1]) && am[1].toLowerCase() !== location.hostname.toLowerCase()) {
-    return _extHostZim(am[1]) ? 'library' : 'web';
+    return _extHostZim(am[1]) ? 'site' : 'web';
   }
   var u;
   try { u = new URL(h, base || location.href); } catch (e) { return 'none'; }
   if (u.origin === location.origin) return 'library';
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return 'none';
-  return _extHostZim(u.hostname) ? 'library' : 'web';
+  return _extHostZim(u.hostname) ? 'site' : 'web';
 }
 
 // A link's real address. A replayed capture's (wombat) href shows the address
@@ -23274,7 +23262,10 @@ function _extPageMarksOwn(doc) {
 // Mark, or hide, every link to the web under `root` (a document or an
 // element), and take back any mark a link no longer earns (the domain map
 // arrived, the setting changed). Once per page; returns the web links found.
-// The common link is relative and costs a regex, never a URL parse.
+// The common link is relative and costs a regex, never a URL parse. A
+// document's links to sites an installed ZIM holds are kept on it as
+// doc.__zimiSiteLinks ({url: [a]}): the reader's cross-ZIM underline asks
+// /resolve about those, with no second pass over the page's links.
 function _extMark(root) {
   var doc = root && (root.nodeType === 9 ? root : root.ownerDocument);
   if (!doc || !doc.documentElement || !root.querySelectorAll) return 0;
@@ -23293,11 +23284,15 @@ function _extMark(root) {
   var again = !!doc.__zimiExtMarked;
   doc.__zimiExtMarked = true;
   var links = root.querySelectorAll(again ? 'a[href],a[' + EXT_HREF_ATTR + ']' : 'a[href]');
-  var n = 0;
+  var n = 0, sites = {};
   for (var i = 0; i < links.length; i++) {
     var a = links[i], hidden = again ? a.getAttribute(EXT_HREF_ATTR) : null;
     var href = hidden !== null ? hidden : wombat ? _extRealUrl(a, true) : a.getAttribute('href');
-    var web = zimiLinkKind(href, base) === 'web';
+    var kind = _extKind(href, base), web = kind === 'web';
+    if (kind === 'site') {
+      var url = wombat ? href : a.href;
+      (sites[url] = sites[url] || []).push(a);
+    }
     if (web) n++;
     if (hidden !== null && !(web && hide)) {
       a.setAttribute('href', hidden);   // hidden before, a link again
@@ -23321,6 +23316,7 @@ function _extMark(root) {
       if (!(a.textContent || '').trim()) a.classList.add(EXT_BARE);
     }
   }
+  if (root === doc) doc.__zimiSiteLinks = sites;
   return n;
 }
 

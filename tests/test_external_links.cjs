@@ -40,7 +40,7 @@ const sandbox = {
   _domainZimMap: { 'en.wikipedia.org': 'wikipedia_en_all', 'docs.example': 'docs_capture', 'www.docs.example': 'docs_capture' },
 };
 vm.createContext(sandbox);
-vm.runInContext([grabVar('_EXT_SCHEME_RE'), grabVar('_EXT_AUTHORITY_RE'), grabVar('_EXT_PLAIN_HOST_RE'), grabVar('_EXT_APP_SCHEMES'), grab('_extHostZim'), grab('zimiLinkKind')].join('\n'), sandbox);
+vm.runInContext([grabVar('_EXT_SCHEME_RE'), grabVar('_EXT_AUTHORITY_RE'), grabVar('_EXT_PLAIN_HOST_RE'), grabVar('_EXT_APP_SCHEMES'), grab('_extHostZim'), grab('zimiLinkKind'), grab('_extKind')].join('\n'), sandbox);
 const kind = sandbox.zimiLinkKind;
 
 let failures = 0;
@@ -94,5 +94,34 @@ check(kind('#section'), 'none', 'an anchor on this page');
 check(kind(''), 'none', 'empty');
 check(kind(null), 'none', 'missing');
 check(kind('http://[bad'), 'none', 'an address that does not parse');
+
+// ── one pass over a page's links ─────────────────────────────────────────
+// The reader's cross-ZIM underline asks /resolve about the links to sites an
+// installed ZIM holds. It walked every link of the page again for them, a
+// second pass over what _extMark had just classified; it takes _extMark's.
+check(sandbox._extKind('https://en.wikipedia.org/wiki/Tea'), 'site', 'a site an installed ZIM holds is told apart from this server');
+check(sandbox._extKind('Other_page', PAGE), 'library', 'this server is the library');
+const link = (href, abs) => {
+  const cls = new Set();
+  return { href: abs || href, textContent: 'x', getAttribute: n => (n === 'href' ? href : null), setAttribute() {}, removeAttribute() {},
+    classList: { add: (...c) => c.forEach(x => cls.add(x)), remove: (...c) => c.forEach(x => cls.delete(x)), contains: c => cls.has(c) }, cls };
+};
+const links = [
+  link('Other_page', PAGE.replace('Page', 'Other_page')),
+  link('https://en.wikipedia.org/wiki/Tea'),
+  link('//en.wikipedia.org/wiki/Tea', 'https://en.wikipedia.org/wiki/Tea'),
+  link('https://www.docs.example/guide'),
+  link('https://elsewhere.example/x'),
+];
+const doc = { nodeType: 9, baseURI: PAGE, documentElement: { classList: { add() {} } }, querySelectorAll: () => links, __zimiExtOwn: false };
+Object.assign(sandbox, { _extStyle() {}, _extBindDoc() {}, _extLinkMode: () => 'mark', _extWombat: () => false });
+vm.runInContext(['EXT_CLASS', 'EXT_BARE', 'EXT_OFF', 'EXT_OWN', 'EXT_HREF_ATTR'].map(grabVar).join('\n') + grab('_extMark'), sandbox);
+check(sandbox._extMark(doc), 1, 'the web links are counted');
+check(JSON.stringify(Object.fromEntries(Object.entries(doc.__zimiSiteLinks).map(([u, as]) => [u, as.length]))),
+  JSON.stringify({ 'https://en.wikipedia.org/wiki/Tea': 2, 'https://www.docs.example/guide': 1 }),
+  'the same pass keeps the links to installed sites, by address');
+check(links[4].cls.has('zimi-ext') && !links[1].cls.has('zimi-ext'), true, 'and marks only the web');
+const onload = src.slice(src.indexOf('// Classify links: batch-resolve'), src.indexOf('// Launch up to 3 parallel chains'));
+check(/__zimiSiteLinks/.test(onload) && !/querySelectorAll/.test(onload), true, 'the underline takes that batch, and walks no links of its own');
 
 process.exit(failures ? 1 : 0);

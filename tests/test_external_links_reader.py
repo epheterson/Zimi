@@ -35,7 +35,8 @@ INDEX = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <style>body{{font:17px/1.55 Georgia,serif;margin:16px;max-width:40em;color:#202122;background:#fff}}a{{color:#0645ad}}</style></head>
 <body><main><h1 id="top">Where links go</h1>
 <p>Read <a id="rel" href="Other">another page here</a>, the
-<a id="lib" href="https://library.example/Some_page">same page in an installed ZIM</a>, or
+<a id="lib" href="https://library.example/Some_page">same page in an installed ZIM</a>,
+<a id="xzim" href="https://library.example/Water">a page that ZIM holds</a>, or
 <a id="web" href="https://elsewhere.example/a/b">an outside site</a> and
 <a id="proto" href="//cdn.elsewhere.example/x">a protocol-relative one</a>.</p>
 <p>Write to <a id="mail" href="mailto:someone@example.org">someone</a>, call
@@ -215,8 +216,18 @@ def test_desktop_marks_the_web_says_where_on_hover_and_opens_on_click(served):
                 and m["proto"]["ext"]
                 and m["web"]["after"] == "inline-block"
             )
-            for kept in ("rel", "lib", "mail", "tel", "js", "anchor"):
+            for kept in ("rel", "lib", "xzim", "mail", "tel", "js", "anchor"):
                 assert not m[kept]["ext"], kept
+            # A page another installed ZIM holds is underlined as one: /resolve
+            # asked about the links the marking pass found, and only the page
+            # the ZIM has is taken.
+            pg.wait_for_function(
+                "() => document.getElementById('reader-frame').contentDocument.getElementById('xzim').classList.contains('zimi-xzim')",
+                timeout=10000,
+            )
+            assert not pg.evaluate(
+                "() => document.getElementById('reader-frame').contentDocument.getElementById('lib').classList.contains('zimi-xzim')"
+            )
             # A picture that is a link says where it goes but grows no arrow.
             assert m["img"]["ext"] and m["img"]["bare"]
             assert m["img"]["content"] in ("none", "normal")
