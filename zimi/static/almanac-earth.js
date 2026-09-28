@@ -1259,3 +1259,595 @@ function _aeUpdateSats(ms, sc) {
   }
   if (!issShown) { S.issRing.geometry.setDrawRange(0, 0); _ae.issRingAt = null; }
 }
+
+// ── Per-frame scene update ──
+function _aeUpdateMoonPath(ms) {
+  if (_ae.moonPathAt !== null && Math.abs(ms - _ae.moonPathAt) < AE_MOON_PATH_REFRESH_MS) return;
+  var S = _ae.gl, arr = S.moonPath.geometry.attributes.position.array;
+  var step = AE_MOON_PATH_STEP_HOURS * 3600 * 1000, t0 = ms - AE_MOON_PATH_HALF_DAYS * MS_PER_DAY;
+  for (var i = 0; i < S.moonPathCount; i++) {
+    var sc = _aeSceneAt(t0 + i * step);
+    arr[i * 3] = sc.moon[0]; arr[i * 3 + 1] = sc.moon[1]; arr[i * 3 + 2] = sc.moon[2];
+  }
+  S.moonPath.geometry.attributes.position.needsUpdate = true;
+  S.moonPath.geometry.setDrawRange(0, S.moonPathCount);
+  _ae.moonPathAt = ms;
+}
+
+// The Moon keeps one face to the Earth: its map's longitude 0 (local +x)
+// points home, its pole along the ecliptic's (the 1.5 degree tilt and the
+// librations are left out).
+function _aeOrientMoon(sc) {
+  var S = _ae.gl;
+  var eps = _aeRad(sc.sunEq.nut.eps);
+  var z = [0, -Math.sin(eps), Math.cos(eps)];
+  var home = _aeNorm(_aeScale(sc.moon, -1));
+  var x = _aeNorm(_aeSub(home, _aeScale(z, _aeDot(home, z))));
+  var y = _aeCross(z, x);
+  S.vx.set(x[0], x[1], x[2]); S.vy.set(y[0], y[1], y[2]); S.vz.set(z[0], z[1], z[2]);
+  S.basis.makeBasis(S.vx, S.vy, S.vz);
+  S.basis.setPosition(sc.moon[0], sc.moon[1], sc.moon[2]);
+  S.moon.matrix.copy(S.basis);
+  S.moon.matrixWorldNeedsUpdate = true;
+}
+
+function _aeUpdate(ms) {
+  var S = _ae.gl;
+  var sc = _aeSceneAt(ms);
+  _ae.scene = sc;
+  S.earth.rotation.z = sc.gast;
+  S.shared.sunPos.value.set(sc.sun[0], sc.sun[1], sc.sun[2]);
+  S.earthUni.moonPos.value.set(sc.moon[0], sc.moon[1], sc.moon[2]);
+  _aeOrientMoon(sc);
+  var sd = _aeScale(_aeNorm(sc.sun), AE_STAR_RADIUS * 0.98);
+  _aeSetPoint(S.sunDot, 0, sd, AE_SUN_COLOR, 1, AE_SUN_POINT_PX);
+  _aeCommitPoints(S.sunDot, 1);
+  _aeUpdateMoonPath(ms);
+  _aeUpdateSats(ms, sc);
+  _aePlaceCamera();
+}
+
+function _aeResize() {
+  if (!_ae || !_ae.gl) return;
+  var el = _ae.el, S = _ae.gl;
+  var w = el.clientWidth, h = el.clientHeight;
+  if (!w || !h) return;
+  // Kept for the per-frame projections: reading clientWidth there, after the
+  // labels' style writes, forced a layout for every label, every frame.
+  _ae.w = w; _ae.h = h;
+  S.renderer.setSize(w, h, false);
+  S.camera.aspect = w / h;
+  S.camera.updateProjectionMatrix();
+  _ae.dirty = true;
+  _aeKick();
+}
+
+// ── Screen positions (labels, taps) ──
+var _aeProjV = null;
+function _aeProject(v) {
+  var S = _ae.gl;
+  if (!_aeProjV) _aeProjV = new S.THREE.Vector3();
+  _aeProjV.set(v[0], v[1], v[2]).project(S.camera);
+  if (_aeProjV.z > 1 || _aeProjV.z < -1) return null;
+  return { x: (_aeProjV.x + 1) / 2 * _ae.w, y: (1 - _aeProjV.y) / 2 * _ae.h };
+}
+// Is a scene point hidden behind the Earth (a unit sphere, near enough)?
+function _aeBehindEarth(p) {
+  var c = _ae.gl.camera.position, o = [c.x, c.y, c.z];
+  var d = _aeSub(p, o), len = _aeLen(d);
+  d = _aeScale(d, 1 / len);
+  var b = _aeDot(o, d), cc = _aeDot(o, o) - 1, disc = b * b - cc;
+  if (disc < 0) return false;
+  var tHit = -b - Math.sqrt(disc);
+  return tHit > 0 && tHit < len - 1e-3;
+}
+// Is a point on the Earth's surface on the side facing the camera?
+function _aeFacing(p) {
+  var c = _ae.gl.camera.position;
+  return _aeDot(p, [c.x - p[0], c.y - p[1], c.z - p[2]]) > 0;
+}
+// Pin a label beside a scene point, or hide it. The label's own size never
+// needs measuring: the second translate is in percent of itself.
+function _aePlaceLabel(id, p, show) {
+  var el = _aeById(id);
+  if (!el) return;
+  var s = show && p ? _aeProject(p) : null;
+  if (!s || s.x < 0 || s.y < 0 || s.x > _ae.w || s.y > _ae.h) { if (!el.hidden) el.hidden = true; return; }
+  if (el.hidden) el.hidden = false;
+  // The label hangs toward the middle of the screen, so it never runs off
+  // the edge nearest its point.
+  var toLeft = s.x > _ae.w / 2;
+  el.style.textAlign = toLeft ? 'right' : 'left';
+  el.style.transform = 'translate(' + Math.round(s.x) + 'px,' + Math.round(s.y) + 'px) translate(' +
+    (toLeft ? 'calc(-100% - ' + AE_LABEL_DX + 'px)' : AE_LABEL_DX + 'px') + ',-50%)';
+}
+function _aeSetText(el, text) { if (el && el.textContent !== text) el.textContent = text; }
+
+function _aeUpdateLabels() {
+  var sc = _ae.scene;
+  if (!sc) return;
+  _aePlaceLabel('ae-lbl-moon', sc.moon, !_aeBehindEarth(sc.moon) && _ae.target !== 'moon');
+  // The tapped satellite is named by its card and marked by its colour, so
+  // only the ISS carries a label of its own.
+  var iss = null;
+  for (var i = 0; i < _ae.positions.length; i++) {
+    var p = _ae.positions[i], s = _ae.sats.list[p.idx];
+    if (s.iss) iss = { p: p, s: s };
+  }
+  var issEl = _aeById('ae-lbl-iss');
+  if (iss) {
+    var approx = iss.s.standing === 'approximate';
+    var html = _aeEsc(_aeT('alm_earth_iss_short')) +
+      (approx ? '<span class="ae-label-sub">' + _aeEsc(_aeT('alm_earth_approx', { date: _aeFmtDate(iss.s.epochMs) })) + '</span>' : '');
+    if (issEl._aeHtml !== html) { issEl.innerHTML = html; issEl._aeHtml = html; }
+    issEl.classList.toggle('ae-faded', approx);
+  }
+  _aePlaceLabel('ae-lbl-iss', iss && iss.p.pos, !!iss && !_aeBehindEarth(iss.p.pos));
+  // You: only for a place the person chose. The Almanac's stand-in location
+  // (a guess from the time zone) is not somewhere to point at.
+  var loc = (typeof _getLocation === 'function') ? _getLocation() : null;
+  var you = loc && loc.stored ? _aeFixedToScene(_aeGeodeticToFixed(loc.lat, loc.lon), sc.gast) : null;
+  _aePlaceLabel('ae-lbl-you', you, !!you && _aeFacing(you) && _ae.target === 'earth');
+  var ecl = _ae.eclipse;
+  var sh = ecl && ecl.solar && ecl.hit ? _aeFixedToScene(_aeGeodeticToFixed(ecl.hit.lat, ecl.hit.lon), sc.gast) : null;
+  _aePlaceLabel('ae-lbl-shadow', sh, !!sh && _aeFacing(sh) && _ae.target === 'earth');
+}
+
+// "GPS BIII-3  (PRN 23)" -> "PRN 23"; anything else as given.
+function _aeSatShortName(s) {
+  var m = /PRN\s*(\d+)/.exec(s.omm.OBJECT_NAME || '');
+  return m ? 'GPS PRN ' + m[1] : String(s.omm.OBJECT_NAME || '').replace(/\s+/g, ' ');
+}
+
+// ── Taps ──
+function _aeTap(x, y) {
+  var best = null, bestD = AE_TAP_RADIUS_PX;
+  for (var i = 0; i < _ae.positions.length; i++) {
+    var p = _ae.positions[i];
+    if (_aeBehindEarth(p.pos)) continue;
+    var s = _aeProject(p.pos);
+    if (!s) continue;
+    var d = Math.hypot(s.x - x, s.y - y);
+    if (d < bestD) { bestD = d; best = p; }
+  }
+  if (best) {
+    _ae.selected = { idx: best.idx, tapMs: _aeDisplayMs() };
+    _aeRenderCard();
+    _ae.dirty = true;
+    _aeKick();
+    return;
+  }
+  var sc = _ae.scene;
+  if (sc && _ae.target !== 'moon' && !_aeBehindEarth(sc.moon)) {
+    var m = _aeProject(sc.moon);
+    if (m && Math.hypot(m.x - x, m.y - y) < AE_TAP_RADIUS_PX * 1.5) { _aePreset('moon'); return; }
+  }
+  if (_ae.selected) { _ae.selected = null; _aeRenderCard(); _ae.dirty = true; _aeKick(); }
+}
+
+// ── The card for a tapped satellite ──
+function _aeRenderCard() {
+  var card = _aeById('ae-card');
+  if (!card) return;
+  if (!_ae.selected || !_ae.sats) { card.hidden = true; card.innerHTML = ''; return; }
+  var s = _ae.sats.list[_ae.selected.idx];
+  var html = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _aeEsc(_aeT('alm_tm_close')) + '">×</button>';
+  if (s.iss) {
+    html += '<h3>' + _aeLink('term:iss', _aeEsc(_aeT('alm_earth_iss_name'))) + '</h3>' +
+      '<p id="ae-card-body"></p>' + '<p id="ae-card-age"></p>';
+  } else {
+    html += '<h3>' + _aeLink('term:gps', _aeEsc(_aeSatShortName(s))) + '</h3>' +
+      '<p id="ae-card-body"></p>' + '<p class="ae-counter" id="ae-card-count"></p>' +
+      (_aeLinked('term:time_dilation') ? '<p>' + _aeLink('term:time_dilation', _aeEsc(_aeT('alm_earth_time_dilation'))) + '</p>' : '');
+  }
+  card.innerHTML = html;
+  card.hidden = false;
+  _aeById('ae-card-x').onclick = function () { _ae.selected = null; _aeRenderCard(); _ae.dirty = true; _aeKick(); };
+  _aeUpdateCard(_aeDisplayMs());
+}
+
+function _aeUpdateCard(ms) {
+  if (!_ae.selected || !_ae.sats) return;
+  var s = _ae.sats.list[_ae.selected.idx];
+  var body = _aeById('ae-card-body');
+  if (!body) return;
+  var eqeq = _ae.scene ? _aeEqEq(_ae.scene) : 0;
+  var st = _aeSatAt(s, ms, eqeq);
+  if (!st) return;
+  var rKm = Math.sqrt(st.posKm.x * st.posKm.x + st.posKm.y * st.posKm.y + st.posKm.z * st.posKm.z);
+  var v = Math.sqrt(st.velKmS.x * st.velKmS.x + st.velKmS.y * st.velKmS.y + st.velKmS.z * st.velKmS.z);
+  if (s.iss) {
+    var alt = rKm - AE_EARTH_RADIUS_KM;
+    var lap = AE_MINUTES_PER_DAY / s.omm.MEAN_MOTION;
+    body.textContent = _aeT('alm_earth_iss_line', { alt: _aeNum(alt, 0), v: _aeNum(v, 2), min: _aeNum(lap, 0) });
+    var age = _aeById('ae-card-age');
+    if (age) age.textContent = s.standing === 'approximate'
+      ? _aeT('alm_earth_approx', { date: _aeFmtDate(s.epochMs) })
+      : _aeT('alm_earth_data_from', { date: _aeFmtDate(s.epochMs) });
+    return;
+  }
+  var rates = _aeGpsClockRates(rKm, v);
+  body.textContent = _aeT('alm_earth_gps_sentence', {
+    net: _aeNum(_aeMicrosPerDay(rates.net), 1),
+    grav: _aeNum(_aeMicrosPerDay(rates.grav), 1),
+    speed: _aeNum(-_aeMicrosPerDay(rates.speed), 1),
+    v: _aeNum(v, 2),
+    km: _aeNum(_aeKmPerDay(rates.net), 0)
+  });
+  // The satellite's clock pulls ahead by the net rate for as long as the
+  // shown time runs; the counter starts at the tap.
+  if (ms < _ae.selected.tapMs) _ae.selected.tapMs = ms;
+  var gainedNs = (ms - _ae.selected.tapMs) / 1000 * rates.net * AE_NANO;
+  var count = _aeById('ae-card-count');
+  if (count) count.textContent = _aeT('alm_earth_since_tap', { ns: _aeNum(gainedNs, gainedNs < 100 ? 2 : 0) });
+}
+
+// ── Text: the clock, the eclipse line, the data note ──
+function _aeUpdateText(ms) {
+  var when = _aeById('ae-when');
+  var whenText = _aeFmtWhen(ms);
+  if (when) {
+    var whenHtml = '<b>' + _aeEsc(whenText) + '</b>' +
+      (_aeIsLive() ? '<span class="ae-live">● ' + _aeEsc(_aeT('alm_earth_live')) + '</span>' : '');
+    if (whenHtml !== _ae.whenHtml) { when.innerHTML = whenHtml; _ae.whenHtml = whenHtml; }
+  }
+  var nowBtn = _aeById('ae-now');
+  if (nowBtn) nowBtn.hidden = _aeIsLive();
+  var sc = _ae.scene;
+  var status = _aeById('ae-status');
+  if (sc && status) {
+    var e = _aeEclipseNow(sc);
+    _ae.eclipse = e;
+    var txt = '';
+    if (e && e.solar) {
+      if (e.central) txt = _aeT(e.total ? 'alm_earth_ecl_total_solar' : 'alm_earth_ecl_annular_solar', { place: _aeFmtLatLon(e.hit) });
+      else txt = _aeT('alm_earth_ecl_partial_solar');
+    } else if (e) {
+      txt = _aeT(e.total ? 'alm_earth_ecl_total_lunar' : (e.partial ? 'alm_earth_ecl_partial_lunar' : 'alm_earth_ecl_penumbral_lunar'));
+    }
+    if (status.textContent !== txt) status.textContent = txt;
+  }
+  var note = _aeById('ae-note');
+  if (note) {
+    var parts = [];
+    if (_ae.sats) {
+      var newest = 0, anyShown = false;
+      _ae.sats.list.forEach(function (s) {
+        if (!s.iss) newest = Math.max(newest, s.epochMs);
+        if (s.standing && s.standing !== 'none') anyShown = true;
+      });
+      parts.push(anyShown || !newest
+        ? _aeT('alm_earth_data_from', { date: _aeFmtDate(newest || Date.now()) })
+        : _aeT('alm_earth_no_sat_data', { date: _aeFmtDate(newest) }));
+    } else if (_ae.satsFailed) {
+      parts.push(_aeT('alm_earth_sats_unavailable'));
+    }
+    parts.push(_aeT('alm_earth_credit'));
+    var nt = parts.join(' · ');
+    if (note.textContent !== nt) note.textContent = nt;
+  }
+  var canvas = _aeById('ae-canvas');
+  if (canvas && sc) {
+    var aria = _aeT('alm_earth_aria', { when: whenText, place: _aeFmtLatLon(_aeSubsolarPoint(sc)) });
+    if (canvas.getAttribute('aria-label') !== aria) canvas.setAttribute('aria-label', aria);
+  }
+  _aeUpdateCard(ms);
+}
+
+// ── The loop ──
+// Renders every frame while something moves (a drag, a flight, a faster
+// clock), otherwise a few times a second: at real time the fastest thing on
+// screen, the ISS, crosses a pixel in several seconds.
+function _aeKick() {
+  if (!_aeIsOpen) return;
+  if (_ae.idleTimer) { clearTimeout(_ae.idleTimer); _ae.idleTimer = 0; }
+  if (!_ae.raf) _ae.raf = requestAnimationFrame(_aeFrame);
+}
+function _aeBusy() {
+  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.speed > 1);
+}
+function _aeFrame() {
+  _ae.raf = 0;
+  if (!_aeIsOpen || document.hidden) return;
+  if (typeof _almanacOpen !== 'undefined' && !_almanacOpen) { _aeClose(); return; }
+  var now = performance.now();
+  var dt = _ae.lastTs ? Math.min(now - _ae.lastTs, 1000) : 0;
+  _ae.lastTs = now;
+  if (_ae.speed > 1) _ae.offset += dt * (_ae.speed - 1);
+  var ms = _aeDisplayMs();
+  var busy = _aeStepFly(now) || _aeBusy();
+  if (_ae.gl && (_ae.dirty || busy || now - _ae.lastRender >= AE_IDLE_RENDER_MS)) {
+    var t0 = performance.now();
+    _aeUpdate(ms);
+    _ae.gl.renderer.render(_ae.gl.scene, _ae.gl.camera);
+    _aeUpdateLabels();
+    _ae.renderMs.push(performance.now() - t0);
+    if (_ae.renderMs.length > AE_STATS_WINDOW) _ae.renderMs.shift();
+    _ae.stats.push(now);
+    if (_ae.stats.length > AE_STATS_WINDOW) _ae.stats.shift();
+    _ae.lastRender = now;
+    _ae.dirty = false;
+  }
+  if (now - _ae.lastText >= AE_TEXT_TICK_MS) { _aeUpdateText(ms); _ae.lastText = now; }
+  if (busy) _ae.raf = requestAnimationFrame(_aeFrame);
+  else {
+    _ae.lastTs = 0;
+    _ae.idleTimer = setTimeout(function () { _ae.idleTimer = 0; _aeKick(); }, AE_TEXT_TICK_MS);
+  }
+}
+
+// ── Input ──
+function _aeZoomBy(factor) {
+  // Mid-flight, a zoom rescales the flight and lets it finish turning.
+  var f = _ae.fly;
+  if (f) {
+    f.toDist = _aeClamp(f.toDist * factor, _aeMinDist(), AE_MAX_DIST);
+    f.from.dist = _aeClamp(f.from.dist * factor, _aeMinDist(), AE_MAX_DIST);
+  }
+  _ae.dist = _aeClamp(_ae.dist * factor, _aeMinDist(), AE_MAX_DIST);
+  _ae.preset = null;
+  _aeMarkViews();
+  _ae.dirty = true;
+  _aeKick();
+}
+function _aeTurnBy(dAz, dEl) {
+  _ae.fly = null;
+  _ae.az += dAz;
+  _ae.el_ = _aeClamp(_ae.el_ + dEl, -AE_MAX_ELEVATION, AE_MAX_ELEVATION);
+  _ae.dirty = true;
+  _aeKick();
+}
+function _aeDragScale() {
+  var surface = _ae.target === 'moon' ? AE_MOON_RADIUS_RE : 1;
+  return _aeClamp((_ae.dist - surface) / _ae.dist, AE_DRAG_MIN_SCALE, 1);
+}
+function _aeBindInput(canvas) {
+  canvas.addEventListener('pointerdown', function (e) {
+    canvas.setPointerCapture(e.pointerId);
+    _ae.pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+    var ids = Object.keys(_ae.pointers);
+    if (ids.length === 1) _ae.drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, moved: false };
+    else if (ids.length === 2) {
+      var a = _ae.pointers[ids[0]], b = _ae.pointers[ids[1]];
+      _ae.pinch = { span: Math.hypot(a.x - b.x, a.y - b.y) };
+      _ae.drag = null;
+    }
+    canvas.classList.add('ae-dragging');
+    _aeKick();
+  });
+  canvas.addEventListener('pointermove', function (e) {
+    if (!_ae.pointers[e.pointerId]) return;
+    _ae.pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+    var ids = Object.keys(_ae.pointers);
+    if (_ae.pinch && ids.length >= 2) {
+      var a = _ae.pointers[ids[0]], b = _ae.pointers[ids[1]];
+      var span = Math.hypot(a.x - b.x, a.y - b.y);
+      if (span > 0 && _ae.pinch.span > 0) _aeZoomBy(_ae.pinch.span / span);
+      _ae.pinch.span = span;
+    } else if (_ae.drag) {
+      var dx = e.clientX - _ae.drag.x, dy = e.clientY - _ae.drag.y;
+      _ae.drag.x = e.clientX; _ae.drag.y = e.clientY;
+      if (Math.hypot(e.clientX - _ae.drag.x0, e.clientY - _ae.drag.y0) > AE_TAP_SLOP_PX) _ae.drag.moved = true;
+      var k = AE_DRAG_RAD_PER_PX * _aeDragScale();
+      _aeTurnBy(-dx * k, dy * k);
+    }
+  });
+  function end(e) {
+    if (!_ae.pointers[e.pointerId]) return;
+    delete _ae.pointers[e.pointerId];
+    var left = Object.keys(_ae.pointers).length;
+    if (_ae.drag && !_ae.drag.moved && left === 0 && e.type === 'pointerup') {
+      var r = canvas.getBoundingClientRect();
+      _aeTap(e.clientX - r.left, e.clientY - r.top);
+    }
+    if (left < 2) _ae.pinch = null;
+    if (left === 0) { _ae.drag = null; canvas.classList.remove('ae-dragging'); }
+    else if (left === 1) {
+      var p = _ae.pointers[Object.keys(_ae.pointers)[0]];
+      _ae.drag = { x: p.x, y: p.y, x0: p.x, y0: p.y, moved: true };
+    }
+  }
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    _aeZoomBy(Math.exp(e.deltaY * AE_WHEEL_ZOOM));
+  }, { passive: false });
+  _ae.el.addEventListener('keydown', function (e) {
+    // Escape leaves this view only; the Almanac underneath stays open.
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); _aeClose(); return; }
+    if (e.target !== canvas) return;
+    var handled = true;
+    if (e.key === 'ArrowLeft') _aeTurnBy(AE_KEY_TURN, 0);
+    else if (e.key === 'ArrowRight') _aeTurnBy(-AE_KEY_TURN, 0);
+    else if (e.key === 'ArrowUp') _aeTurnBy(0, AE_KEY_TURN);
+    else if (e.key === 'ArrowDown') _aeTurnBy(0, -AE_KEY_TURN);
+    else if (e.key === '+' || e.key === '=') _aeZoomBy(1 / AE_KEY_ZOOM);
+    else if (e.key === '-' || e.key === '_') _aeZoomBy(AE_KEY_ZOOM);
+    else handled = false;
+    if (handled) e.preventDefault();
+  });
+}
+
+function _aeSetSpeed(speed) {
+  _ae.speed = speed;
+  var btns = document.querySelectorAll('#ae-time [data-ae-speed]');
+  for (var i = 0; i < btns.length; i++) btns[i].setAttribute('aria-pressed', String(+btns[i].getAttribute('data-ae-speed') === speed));
+  _ae.dirty = true;
+  _aeKick();
+}
+
+// Hand a new instant to the Almanac itself, so the rest of it (the header,
+// the calendar, the orrery) reads the same moment when the view closes.
+function _aeGoTo(ms) {
+  _ae.offset = 0;
+  _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
+  if (typeof _almScrubSettle === 'function') _almScrubSettle(new Date(ms));
+  _aePauseAlmanac();
+  _aeSetSpeed(1);
+}
+function _aeNow() {
+  _ae.offset = 0;
+  _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
+  if (typeof _almFocus !== 'undefined' && _almFocus && typeof _almBackToToday === 'function') _almBackToToday();
+  _aePauseAlmanac();
+  _aeSetSpeed(1);
+}
+function _aeJumpToNextEclipse() {
+  var next = _aeNextEclipse(_aeDisplayMs());
+  if (!next) return;
+  _aeGoTo(next.ms);
+  var sc = _aeSceneAt(next.ms);
+  _ae.scene = sc;
+  if (next.solar) {
+    // Face the Moon's shadow: look down the shadow's axis onto the Earth.
+    var sh = _aeSolarShadow(sc);
+    var aim = sh.hit ? _aeFixedToScene(_aeGeodeticToFixed(sh.hit.lat, sh.hit.lon), sc.gast) : _aeScale(sc.moon, 1);
+    _ae.preset = 'earth';
+    _aeFlyTo('earth', _aeFitDist(AE_FIT_EARTH), _aeAzElOf(aim));
+  } else {
+    _aePreset('moon');
+  }
+}
+
+function _aeBindControls() {
+  _aeById('ae-back').onclick = _aeClose;
+  var views = document.querySelectorAll('#ae-views [data-ae-view]');
+  for (var i = 0; i < views.length; i++) {
+    views[i].onclick = function () { _aePreset(this.getAttribute('data-ae-view')); };
+  }
+  var speeds = document.querySelectorAll('#ae-time [data-ae-speed]');
+  for (var j = 0; j < speeds.length; j++) {
+    speeds[j].onclick = function () { _aeSetSpeed(+this.getAttribute('data-ae-speed')); };
+  }
+  _aeById('ae-eclipse').onclick = _aeJumpToNextEclipse;
+  _aeById('ae-now').onclick = _aeNow;
+  // Article links in the card need no binding of their own: the view sits
+  // inside #almanac-view, where AlmanacLinks already listens.
+  if (typeof ResizeObserver === 'function') new ResizeObserver(_aeResize).observe(_ae.el);
+  else window.addEventListener('resize', _aeResize);
+  document.addEventListener('visibilitychange', function () {
+    if (!_aeIsOpen || document.hidden) return;
+    // The Almanac resumes its own loops on return; the view covers them.
+    setTimeout(_aePauseAlmanac, 0);
+    _ae.dirty = true;
+    _aeKick();
+  });
+}
+
+// The Almanac's own loops (orrery, sky, clocks) run underneath; covered by
+// this view they would only compete with it for the frame.
+function _aePauseAlmanac() { if (typeof _cancelAllRAF === 'function') _cancelAllRAF(); }
+function _aeResumeAlmanac() { if (typeof _resumeAllRAF === 'function') _resumeAllRAF(); }
+// Covered by the view, the Almanac's page need not be painted at all
+// (visibility keeps its layout, so its scroll position survives).
+function _aeCoverAlmanac(on) {
+  var c = _aeById('almanac-content');
+  if (c) c.style.visibility = on ? 'hidden' : '';
+}
+
+function _aeMessage(text) {
+  var m = _aeById('ae-msg');
+  if (!m) return;
+  m.textContent = text || '';
+  m.hidden = !text;
+}
+
+// ── Open and close ──
+function _aeStartView(THREE) {
+  var S = _aeBuildGl(THREE, _aeById('ae-canvas'));
+  if (!S) { _ae.failed = true; _aeMessage(_aeT('alm_earth_nogl')); return; }
+  _ae.gl = S;
+  var aniso = Math.min(AE_ANISOTROPY, S.renderer.capabilities.getMaxAnisotropy());
+  function apply(tex, uni) { tex.anisotropy = aniso; uni.value = tex; _ae.dirty = true; _aeKick(); }
+  _aeLoadTexture(THREE, AE_TEX_NIGHT).then(function (tx) { apply(tx, S.earthUni.nightMap); }).catch(function () {});
+  _aeLoadTexture(THREE, AE_TEX_MOON).then(function (tx) { apply(tx, S.moonUni.moonMap); }).catch(function () {});
+  return _aeLoadTexture(THREE, AE_TEX_DAY).then(function (tx) {
+    apply(tx, S.earthUni.dayMap);
+    _aeMessage('');
+    _aeResize();
+    _aeEnter();
+  });
+}
+
+// Where the opening flight arrives: over the chosen place (or the Almanac's
+// stand-in for it), so the first thing seen is here, lit as it is now.
+function _aeEnter() {
+  var ms = _aeDisplayMs();
+  _ae.scene = _aeSceneAt(ms);
+  var loc = (typeof _getLocation === 'function') ? _getLocation() : { lat: 0, lon: 0 };
+  var here = _aeFixedToScene(_aeGeodeticToFixed(_aeClamp(loc.lat, -_aeDeg(AE_START_MAX_LAT), _aeDeg(AE_START_MAX_LAT)), loc.lon), _ae.scene.gast);
+  var azel = _aeAzElOf(here);
+  _ae.target = 'earth';
+  _ae.az = azel.az; _ae.el_ = azel.el;
+  _ae.dist = _aeReduceMotion() ? _aeFitDist(AE_FIT_EARTH) : AE_FLY_START_DIST;
+  _aePreset('earth');
+  var hint = _aeById('ae-hint');
+  if (hint && !_ae.hinted) {
+    _ae.hinted = true;
+    hint.classList.add('ae-show');
+    setTimeout(function () { hint.classList.remove('ae-show'); }, AE_HINT_MS);
+  }
+}
+
+function openAlmanacEarth() {
+  if (_aeIsOpen) return;
+  _aeEnsureStyles();
+  if (!_ae) {
+    var el = _aeBuildDom();
+    if (!el) return;
+    _ae = _aeNewState(el);
+    _aeBindControls();
+    _aeBindInput(_aeById('ae-canvas'));
+  }
+  _aeIsOpen = true;
+  _ae.el.classList.add('open');
+  _ae.offset = 0;
+  _ae.selected = null;
+  _aeRenderCard();
+  _aeSetSpeed(1);
+  _aePauseAlmanac();
+  _aeCoverAlmanac(true);
+  var back = _aeById('ae-back');
+  if (back) back.focus({ preventScroll: true });
+  if (!_ae.sats && !_ae.satsLoading) { _ae.satsLoading = true; _aeLoadSats(); }
+  if (_ae.gl) { _aeResize(); _aeEnter(); _aeKick(); return; }
+  if (_ae.failed) { _aeMessage(_aeT('alm_earth_nogl')); return; }
+  if (_ae.loading) return;
+  _ae.loading = true;
+  _aeMessage(_aeT('alm_earth_loading'));
+  _aeLoadThree().then(function (THREE) {
+    _ae.loading = false;
+    if (!_aeIsOpen) return;
+    return _aeStartView(THREE);
+  }).catch(function () {
+    _ae.loading = false;
+    _aeMessage(_aeT('alm_earth_unavailable'));
+  });
+}
+
+function _aeClose() {
+  if (!_aeIsOpen) return;
+  _aeIsOpen = false;
+  if (_ae.raf) { cancelAnimationFrame(_ae.raf); _ae.raf = 0; }
+  if (_ae.idleTimer) { clearTimeout(_ae.idleTimer); _ae.idleTimer = 0; }
+  _ae.el.classList.remove('open');
+  _ae.pointers = {}; _ae.drag = _ae.pinch = null;
+  _aeCoverAlmanac(false);
+  if (typeof _almanacOpen === 'undefined' || _almanacOpen) _aeResumeAlmanac();
+  var orr = _aeById('almanac-orrery');
+  if (orr && orr.focus) orr.focus({ preventScroll: true });
+}
+
+// Frame-rate readout for measuring on a device: frames per second over the
+// last frames rendered back to back, and the mean CPU time per frame.
+function _aeStats() {
+  if (!_ae || _ae.stats.length < 2) return null;
+  var s = _ae.stats, span = s[s.length - 1] - s[0];
+  var cpu = _ae.renderMs.reduce(function (a, b) { return a + b; }, 0) / _ae.renderMs.length;
+  return { fps: (s.length - 1) / span * 1000, cpuMs: cpu, frames: s.length };
+}
+
+window.openAlmanacEarth = openAlmanacEarth;
+window.closeAlmanacEarth = _aeClose;
+window.openAlmanacEarth.stats = _aeStats;

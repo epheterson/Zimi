@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- The Almanac zooms from the solar system to a 3D Earth: lit by the real Sun, with the Moon, eclipses as they fall, the ISS and the GPS satellites (tap one: its clock gains 38 microseconds a day).
+
 ## [1.11.0] - 2026-09-27
 
 ### Added
