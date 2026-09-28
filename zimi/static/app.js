@@ -20744,7 +20744,7 @@ function _savedPush(leaving) {
   var body = JSON.stringify({ saved: Saved.data() });
   _savedPushing = fetch('/userdata', {
     method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: body,
-    keepalive: !!leaving && body.length < _SAVED_KEEPALIVE_MAX,
+    keepalive: !!leaving && new Blob([body]).size < _SAVED_KEEPALIVE_MAX,
   }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
     if (d && d.saved && Saved.account() === account) Saved.merge(d.saved, { fromSync: true });
   }).catch(function () {}).then(function () {
