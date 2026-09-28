@@ -22,9 +22,21 @@ model is involved. Three shapes are known:
 - Zimi's own (``zimi create <video URL>``): ``videos.json`` from 1.10 on;
   before that, the index page's rows.
 
+Two more feed ZimiTube beside their own kind (server._zim_feeds names the
+reader, from metadata the load reads anyway):
+
+- ``nautilus``, Kiwix's document libraries (maitre_lucas, youscribe's
+  audiobooks, zaya, diksha): the video and audio items of ``database.js``
+  (zimi/nautilus.py), one card per item; an audiobook's tracks play in
+  turn. There is no page per item: the page is the item's first file.
+- ``folder``, a folder of videos or audio packaged by Zimi:
+  ``videos.json`` from 1.12 on (one row per file, media_file_row), else
+  the files themselves, found by mimetype.
+
 Each entry: ``{id, title, description, speaker, thumb, page, duration,
-date}`` with ``thumb`` and ``page`` as ZIM paths. Read once per archive
-file and kept for the life of the process.
+date}`` with ``thumb`` and ``page`` as ZIM paths, and ``audio`` when there
+is no picture. Read once per archive file and kept for the life of the
+process.
 
 Two layouts keep a video's description in a file of its own: ted2zim 3.x
 (``assets/data_<lang>_<slug>.js``, 8 to 40 KB, every language's title and
@@ -40,9 +52,11 @@ import html as _html
 import json
 import logging
 import os
+import posixpath
 import re
 import threading
 
+from zimi import nautilus
 from zimi import server as _srv
 from zimi.details import DetailsBuilder
 
@@ -88,6 +102,18 @@ def _present(archive, path):
         return entry.get_item().size > 0
     except Exception:
         return False
+
+
+def _present_path(archive, path):
+    """The path a file really has in the archive (``I/files/…`` in an old
+    ZIM) when it is there and holds bytes, else ""."""
+    try:
+        entry = archive.get_entry_by_path(path)
+        if entry.is_redirect:
+            entry = entry.get_redirect_entry()
+        return entry.path if entry.get_item().size > 0 else ""
+    except Exception:
+        return ""
 
 
 def _read_json(archive, path):
@@ -334,18 +360,31 @@ _ZIMI_ROW_RE = re.compile(
 )
 
 
+VIDEOS_JSON = "videos.json"
+
+
+def _zimi_json(archive):
+    """The rows of Zimi's ``videos.json``, or None when there is none."""
+    rows = _read_json(archive, VIDEOS_JSON)
+    if not isinstance(rows, list):
+        return None
+    rows = [r for r in rows if isinstance(r, dict) and r.get("page")]
+    for r in rows:
+        # The writer stores one path; every reader's media is a list
+        # of where the file may be. A string here was iterated
+        # letter by letter and every video Zimi made dropped out.
+        if isinstance(r.get("media"), str):
+            r["media"] = [r["media"]]
+        if "audio" not in r and r.get("media"):
+            r["audio"] = all(nautilus.ext_kind(m) == "audio" for m in r["media"])
+    return rows
+
+
 def _zimi(archive):
     """Zimi's own video ZIMs: ``videos.json`` when the writer kept one, else
     the index page's rows."""
-    rows = _read_json(archive, "videos.json")
-    if isinstance(rows, list):
-        rows = [r for r in rows if isinstance(r, dict) and r.get("page")]
-        for r in rows:
-            # The writer stores one path; every reader's media is a list
-            # of where the file may be. A string here was iterated
-            # letter by letter and every video Zimi made dropped out.
-            if isinstance(r.get("media"), str):
-                r["media"] = [r["media"]]
+    rows = _zimi_json(archive)
+    if rows is not None:
         return rows
     page_html = _main_text(archive)
     if page_html is None:
@@ -369,6 +408,134 @@ def _zimi(archive):
     return out or None
 
 
+def _file_title(path):
+    """A file's name as a title: ``Le_chat_botte.ogg`` → ``Le chat botte``."""
+    stem = posixpath.splitext(posixpath.basename(path))[0]
+    return " ".join(stem.replace("_", " ").split()) or stem
+
+
+_TRACK_NUMBER_RE = re.compile(r"^\d+[\s._-]+")
+
+
+def track_titles(paths):
+    """What to call each of an item's tracks, from its file names: the
+    shared start dropped (``Doyle Le chien des Baskerville 01 a 03`` and
+    ``... 04 et 05`` read ``01 a 03`` and ``04 et 05``), and the leading
+    number youscribe gives every file (``2909454_``)."""
+    words = [_TRACK_NUMBER_RE.sub("", _file_title(p)).split() for p in paths]
+    common = 0
+    if len(words) > 1:
+        for column in zip(*words):
+            if len({w.lower() for w in column}) > 1:
+                break
+            common += 1
+    return [" ".join(w[common:]) or " ".join(w) for w in words]
+
+
+_THUMB_EXTS = (".jpg", ".jpeg", ".png", ".webp")
+
+
+def thumb_beside(path, has):
+    """The picture beside a media file with its name (``talk.mp4`` and
+    ``talk.jpg``), a poster the way a folder of videos often keeps one; ""
+    when there is none. ``has(path)`` says whether a path is there."""
+    stem = posixpath.splitext(path)[0]
+    return next((stem + e for e in _THUMB_EXTS if has(stem + e)), "")
+
+
+def media_file_row(path, mimetype, thumb=""):
+    """One video or audio file as a feed row: a folder Zimi packaged writes
+    these into ``videos.json``, and a folder from before is read into the
+    same shape. The file is its own page; its folder stands where a channel
+    would, so ``s1/intro.mp4`` and ``s2/intro.mp4`` stay two cards."""
+    return {
+        "id": path,
+        "title": _file_title(path),
+        "description": "",
+        "speaker": posixpath.basename(posixpath.dirname(path)),
+        "thumb": thumb,
+        "page": path,
+        "media": [path],
+        "duration": None,
+        "date": "",
+        "audio": (mimetype or "").startswith("audio/"),
+    }
+
+
+def _nautilus(archive):
+    """Kiwix's document libraries: each video or audio item of
+    ``database.js`` a card (its documents are the Bookshelf's). An item has
+    no page of its own, so its first file stands for one; an audiobook
+    lists its tracks, and the player plays them in turn. A file the listing
+    names and the ZIM lacks is left out, and so is an item with none."""
+    out = []
+    for item in nautilus.items(archive):
+        what = nautilus.media_of(item)
+        if what not in ("video", "audio"):
+            continue
+        listed = [p for p in nautilus.files_of(item) if nautilus.ext_kind(p) == what]
+        # Named from the whole list, so a track is called the same whichever
+        # of the others this build of the ZIM carries.
+        named = dict(zip(listed, track_titles(listed)))
+        tracks = [{"path": q, "title": named[p]} for p in listed for q in [_present_path(archive, p)] if q]
+        files = [t["path"] for t in tracks]
+        if not files:
+            continue
+        author = _clean(item.get("aut"))
+        row = {
+            "id": str(item.get("_id") or files[0]),
+            "title": _clean(item.get("ti")) or _file_title(files[0]),
+            "description": str(item.get("dsc") or "").strip()[:_MAX_DESCRIPTION_CHARS],
+            # prunelle writes "-" for no author.
+            "speaker": "" if author == "-" else author,
+            "thumb": "",
+            "page": files[0],
+            "media": files,
+            "duration": None,
+            "date": "",
+            "audio": what == "audio",
+        }
+        if len(tracks) > 1:
+            row["tracks"] = len(tracks)
+            row["_tracks"] = tracks
+        out.append(row)
+    return out
+
+
+# A walk for a folder ZIM from before videos.json stops here: enough for
+# any folder, bounded under the archive's lock (health.py's full-scan bound).
+_MAX_WALK_ENTRIES = 120_000
+_MEDIA_MIME_PREFIXES = ("video/", "audio/")
+
+
+def _folder_walk(archive):
+    """The video and audio files of a folder ZIM that has no listing, found
+    by mimetype (a dirent read each, never a file's bytes)."""
+    try:
+        n = min(int(archive.all_entry_count), _MAX_WALK_ENTRIES)
+    except Exception:
+        return None
+    found = []
+    for i in range(n):
+        try:
+            entry = archive._get_entry_by_id(i)
+            if entry.is_redirect:
+                continue
+            mime = entry.get_item().mimetype or ""
+        except Exception:
+            continue
+        if mime.startswith(_MEDIA_MIME_PREFIXES):
+            found.append((entry.path, mime))
+    return [media_file_row(p, m, thumb_beside(p, lambda q: _has(archive, q))) for p, m in found]
+
+
+def _folder(archive):
+    """A folder of videos or audio Zimi packaged: its ``videos.json``, else
+    (a folder packaged before 1.12) the files themselves."""
+    rows = _zimi_json(archive)
+    return rows if rows is not None else _folder_walk(archive)
+
+
 def reader_for(scraper):
     s = (scraper or "").lower()
     if s.startswith("ted2zim"):
@@ -380,9 +547,49 @@ def reader_for(scraper):
     return None
 
 
-def _rows_of(archive):
-    """Every video the archive's index lists, by the reader its scraper names.
-    Caller holds the archive's lock, or owns the archive."""
+# The readers for a ZIM that feeds ZimiTube beside its own kind, by the name
+# server._zim_feeds gives them.
+_FEED_READERS = {"nautilus": _nautilus, "folder": _folder}
+
+
+def tube_reader(entry):
+    """The ``feeds`` reader ZimiTube uses for a list entry that is not a
+    video ZIM ("nautilus", "folder"), else ""."""
+    return str(((entry or {}).get("feeds") or {}).get("tube") or "")
+
+
+def is_tube_zim(entry):
+    """Whether ZimiTube reads a list entry: a video ZIM, or one that feeds it."""
+    return (entry or {}).get("kind") == "video" or bool(tube_reader(entry))
+
+
+def _scoped(archive, rows):
+    """Ids made the ZIM's own: a document library numbers its items 00000
+    on, and a folder names its files by path, so two ZIMs would share ids
+    and the feed would take their videos for one. The ZIM's Name keeps two
+    builds of one library the same and two libraries apart."""
+    try:
+        scope = bytes(archive.get_metadata("Name")).decode("utf-8", "replace").strip()
+    except Exception:
+        scope = ""
+    scope = scope or getattr(archive, "filename", "") or ""
+    for r in rows:
+        r["id"] = f"{scope}/{r.get('id') or r.get('page')}"
+    return rows
+
+
+def _rows_of(archive, feed=""):
+    """Every video the archive's index lists, by the reader its scraper names,
+    or for a ZIM that feeds ZimiTube (``feed``), by that reader. Caller holds
+    the archive's lock, or owns the archive."""
+    if feed:
+        read = _FEED_READERS.get(feed)
+        try:
+            rows = read(archive) if read else None
+        except Exception as e:
+            log.debug("tube: %s unreadable as %s: %s", getattr(archive, "filename", ""), feed, e)
+            rows = None
+        return _scoped(archive, rows or [])
     try:
         scraper = bytes(archive.get_metadata("Scraper")).decode("utf-8", "replace")
     except Exception:
@@ -436,7 +643,7 @@ def videos_for(name):
     entry = next(
         (z for z in (_srv._zim_list_cache or []) if z.get("name") == name), None
     )
-    if not entry or entry.get("kind") != "video":
+    if not is_tube_zim(entry):
         return []
     try:
         archive, lock = _get_fts_archive(name)
@@ -449,7 +656,7 @@ def videos_for(name):
         if key in _cache:
             return _cache[key]
     with lock:
-        rows = _rows_of(archive)
+        rows = _rows_of(archive, "" if entry.get("kind") == "video" else tube_reader(entry))
         # A video whose file never made it into the ZIM (a talk the scrape
         # skipped) is not a video the app can offer: left out of the feed
         # (Eric: "If a zim has a video link and the source isn't there then
@@ -474,13 +681,11 @@ def videos_for(name):
     return served
 
 
-def full_description(name, page):
-    """The whole description of the video at ``page`` in ``name``, as far as
-    the feed knows it (the feed sends the first _FEED_DESCRIPTION_CHARS)."""
-    for v in videos_for(name):
-        if v.get("page") == page:
-            return v.get("description") or ""
-    return ""
+def _row(name, page):
+    """The feed's row for the video at ``page`` in ``name``, or {}: its whole
+    description (the feed sends the first _FEED_DESCRIPTION_CHARS), and an
+    audiobook's tracks."""
+    return next((v for v in videos_for(name) if v.get("page") == page), {})
 
 
 # ── the details build ──────────────────────────────────────────────────────
@@ -736,12 +941,21 @@ def _yt3_media(archive, page):
     return [{"path": v["videoPath"], "type": ""}], subs, str(v.get("thumbnailPath") or "")
 
 
+def _is_audio(media):
+    """Whether a media list is sound only, by its types or extensions."""
+    return bool(media) and all(
+        (m.get("type") or "").startswith("audio/") or nautilus.ext_kind(m["path"]) == "audio" for m in media
+    )
+
+
 def playback(name, page):
     """What ZimiTube's own player needs for one video: its media sources,
     subtitle tracks and poster, as ZIM paths. ted2zim, youtube2zim 2.x and
     Zimi's own write a plain <video> with <source> and <track> children on
     the video's page; youtube2zim 3.x has no such page and keeps the same
-    facts in a JSON file per video. None when there is no media."""
+    facts in a JSON file per video. A document library's item and a
+    folder's file have no page: the page is the media file, and an
+    audiobook adds its ``tracks``. None when there is no media."""
     from zimi.search import _get_fts_archive
 
     try:
@@ -750,18 +964,29 @@ def playback(name, page):
         return None
     if archive is None or lock is None:
         return None
+    # Read before the lock is taken: the feed takes it itself.
+    row = _row(name, page)
     with lock:
         try:
             entry = archive.get_entry_by_path(page)
             if entry.is_redirect:
                 entry = entry.get_redirect_entry()
             page = entry.path
-            html_text = bytes(entry.get_item().content).decode("utf-8", "replace")
+            item = entry.get_item()
+            mime = item.mimetype or ""
+            is_media = mime.startswith(_MEDIA_MIME_PREFIXES)
+            # A media file is never read whole to look for a <video> in it.
+            html_text = "" if is_media else bytes(item.content).decode("utf-8", "replace")
         except Exception:
             return None
-        media, subs, poster = _page_media(html_text, page)
-        if not media:
-            media, subs, poster = _yt3_media(archive, page)
+        tracks = []
+        if is_media:
+            tracks = row.get("_tracks") or []
+            media, subs, poster = [{"path": page, "type": mime}], [], row.get("thumb") or ""
+        else:
+            media, subs, poster = _page_media(html_text, page)
+            if not media:
+                media, subs, poster = _yt3_media(archive, page)
         if not media:
             return None
         # The file the page names may be absent while its sibling is there:
@@ -771,8 +996,8 @@ def playback(name, page):
         # here", which blames the browser for a file that is not there.
         media = mend_media(archive, media)
         missing = not any(_present(archive, m["path"]) for m in media)
-        ogv = _OGV_BASE if _has(archive, _OGV_BASE + "/ogv.js") else ""
-    return {
+        ogv = next((b for b in _OGV_BASES if _has(archive, b + "/ogv.js")), "")
+    out = {
         "media": media,
         "missing": missing,
         "subs": subs,
@@ -783,11 +1008,19 @@ def playback(name, page):
         # player uses it where the browser cannot play the file.
         "ogv": ogv,
         # The feed sends a description's first lines; the player shows it whole.
-        "description": full_description(name, page),
+        "description": row.get("description") or "",
     }
+    if _is_audio(media):
+        # Sound only: the player shows the picture, or a still, not a black stage.
+        out["audio"] = True
+    if tracks:
+        out["tracks"] = tracks
+    return out
 
 
-_OGV_BASE = "-/assets/ogvjs"
+# Where a ZIM keeps ogv.js: ted2zim's assets; nautiluszim's vendors (zaya
+# and diksha's WebM), in the new namespace scheme and the old.
+_OGV_BASES = ("-/assets/ogvjs", "vendors/ogvjs", "-/vendors/ogvjs")
 
 
 def _matches(v, q):
@@ -812,7 +1045,7 @@ def feed(query="", limit=60, offset=0):
     per_zim = []
     for z in _srv._zim_list_cache or []:
         name = z.get("name")
-        if z.get("kind") != "video" or not name or not _srv.zim_allowed(name):
+        if not is_tube_zim(z) or not name or not _srv.zim_allowed(name):
             continue
         rows = videos_for(name)
         if q:

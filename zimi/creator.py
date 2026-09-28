@@ -783,6 +783,25 @@ def folder_language(requested, files):
     return max(set(codes), key=lambda c: (codes.count(c), -codes.index(c))), "html-lang"
 
 
+def _folder_videos_json(assets):
+    """The ``videos.json`` ZimiTube reads for a folder's video and audio
+    files (the shape of ``zimi create <video URL>``'s, a row each by
+    tube.media_file_row, a picture of the same name beside a file as its
+    poster); None when there are none, or the folder has a videos.json of
+    its own, which is kept as it is."""
+    from zimi.tube import VIDEOS_JSON, media_file_row, thumb_beside
+
+    if VIDEOS_JSON in assets:
+        return None
+    have = set(assets)
+    rows = []
+    for path in assets:
+        mime = _guess_mime(path)
+        if mime.startswith(("video/", "audio/")):
+            rows.append(media_file_row(path, mime, thumb_beside(path, have.__contains__)))
+    return json.dumps(rows, ensure_ascii=False).encode("utf-8") if rows else None
+
+
 def _index_tree_html(title, pages, assets):
     """The generated main page: the content tree as nested lists, pages
     first (with their real titles), assets after."""
@@ -920,6 +939,10 @@ def create_folder_zim(
                 )
             )
         creator.set_mainpath(main_path)
+        # A folder of videos or audio plays in ZimiTube, from this list.
+        videos = _folder_videos_json(assets)
+        if videos:
+            creator.add_item(static_cls("videos.json", zim_title, videos, "application/json", front=False))
         add_standard_metadata(
             creator,
             title=zim_title,
