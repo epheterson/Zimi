@@ -1038,14 +1038,19 @@ function _aeNewState(el) {
   };
 }
 
-// The instant on display: the Almanac's (live now, or wherever its time
-// machine stands) plus whatever this view's own speed has run up.
+// The instant on display: the orrery's, since this view is a close-up of its
+// Earth (almanac-orrery.js _orrerySimTime: the Almanac's time machine when it
+// is set, else now plus what the orrery's speed and rides have run up), plus
+// whatever this view's own speed has run up.
 function _aeDisplayMs() {
-  var base = (typeof _almFocusInstant === 'function') ? _almFocusInstant().getTime() : Date.now();
+  var base = (typeof _orrerySimTime === 'function') ? _orrerySimTime() : Date.now();
   return base + (_ae ? _ae.offset : 0);
 }
+// Live: nothing has moved the clock off now.
 function _aeIsLive() {
-  return !(typeof _almFocus !== 'undefined' && _almFocus) && _ae && _ae.offset === 0 && _ae.speed === 1;
+  var focus = typeof _almFocus !== 'undefined' && _almFocus;
+  var orrery = typeof _orreryTimeOffset !== 'undefined' && _orreryTimeOffset !== 0;
+  return !focus && !orrery && !!_ae && _ae.offset === 0 && _ae.speed === 1;
 }
 
 // ── Camera ──
@@ -1658,21 +1663,27 @@ function _aeSetSpeed(speed) {
   _aeKick();
 }
 
-// Hand a new instant to the Almanac itself, so the rest of it (the header,
-// the calendar, the orrery) reads the same moment when the view closes.
-function _aeGoTo(ms) {
+// After the clock jumps: this view's own run-up is spent, the cached orbits
+// belong to the old instant, and the Almanac's loops (its repaint restarts
+// them) stay paused under the view.
+function _aeJumped() {
   _ae.offset = 0;
   _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
-  if (typeof _almScrubSettle === 'function') _almScrubSettle(new Date(ms));
   _aePauseAlmanac();
   _aeSetSpeed(1);
 }
+// Hand a new instant to the Almanac itself, so the rest of it (the header,
+// the calendar, the orrery) reads the same moment when the view closes.
+function _aeGoTo(ms) {
+  if (typeof _almScrubSettle === 'function') _almScrubSettle(new Date(ms));
+  _aeJumped();
+}
+// Now for everything the view's clock is made of: the time machine and the
+// orrery (its offset, its rides) go back to now with it.
 function _aeNow() {
-  _ae.offset = 0;
-  _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
   if (typeof _almFocus !== 'undefined' && _almFocus && typeof _almBackToToday === 'function') _almBackToToday();
-  _aePauseAlmanac();
-  _aeSetSpeed(1);
+  if (typeof _orrerySnapToNow === 'function') _orrerySnapToNow();
+  _aeJumped();
 }
 function _aeJumpToNextEclipse() {
   var next = _aeNextEclipse(_aeDisplayMs());
