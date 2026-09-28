@@ -52,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - An app turned on or off in Settings no longer flips back when you leave Zimi and come back with Back. ([#98](https://github.com/epheterson/Zimi/issues/98))
 - The reader's bookmark button empties when the bookmark is removed in the Saved panel, in another tab or on another device. ([#96](https://github.com/epheterson/Zimi/issues/96))
 - On the Bookshelf, a book without a cover picture is the same size as the others instead of spilling over its neighbours, with a title you can read on a phone. ([#101](https://github.com/epheterson/Zimi/issues/101))
+- After a Gutenberg ZIM updates, the Bookshelf's eras and subjects come back: it no longer waits for the records of the build the update replaced.
 
 ## [1.11.0] - 2026-09-27
 
