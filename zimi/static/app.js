@@ -1817,10 +1817,9 @@ function updateTopbar() {
   // saved article should stay one tap from the page you're on.
   var bmPanelBtn = document.getElementById('bm-panel-btn');
   if (bmPanelBtn) bmPanelBtn.style.display = _readingArticle ? 'flex' : 'none';
-  // Other maps of the same place: a map page, and somewhere else to go.
+  // Places and maps: the places kept, and the same place on another map.
   var mapSrcBtn = document.getElementById('map-source-btn');
   if (mapSrcBtn) {
-    var showMapSrc = _readingArticle && currentArticle && _isMapZim(currentArticle.zim) && _installedMaps().length > 1;
     // A map page carries one more button (the picker) than any other page,
     // and on a phone that squeezed the box to a third of its placeholder.
     // The bookmarks button steps aside there: the history button's panel
@@ -1829,6 +1828,8 @@ function updateTopbar() {
     // An app page is not an article: nothing on it to bookmark as one.
     document.body.classList.toggle('app-page', _isAppPage());
   document.body.classList.toggle('app-noitem', _isAppPage() && !_appItem);
+    // Places and maps: on every map page, since it is where a place is saved.
+    var showMapSrc = !!(_readingArticle && currentArticle && _isMapZim(currentArticle.zim));
     mapSrcBtn.style.display = showMapSrc ? 'flex' : 'none';
     if (!showMapSrc) _closeMapSourceDropdown();
   }
@@ -6122,6 +6123,9 @@ function _moveZimTo(zim, category) {
     menu.innerHTML = html;
     posMenu(x, y);
   };
+  // For a menu opened over a page in the reader: a tap there never reaches
+  // this document's outside-click dismissal.
+  window._closeMenu = closeCtx;
 
   // Right-click resolves its ZIM through _lpHit, the same way long-press does.
   // It used to read the name out of the card's `onclick` attribute, which only
@@ -17068,7 +17072,7 @@ function _reddotUrl(p) {
 // considerations with all this."
 function _appStrings(app, keys, extra) {
   var out = { title: t(app), catalog: t('app_browse_catalog'), lang: _currentLang || 'en',
-    dir: document.documentElement.getAttribute('dir') || 'ltr' };
+    dir: document.documentElement.getAttribute('dir') || 'ltr', sv: _savedAppWords(app) };
   keys.forEach(function(k) { out[k.slice(app.length + 1)] = t(k); });
   for (var k in extra) out[k] = extra[k];
   return encodeURIComponent(JSON.stringify(out));
@@ -18363,7 +18367,7 @@ function _tubeStrings(play) {
   _installedVideoZims().forEach(function(z) { if (z.language) langs[z.language] = _langDisplayName(z.language) || z.language; });
   return _appStrings('tube', ['tube_videos', 'tube_video', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay',
     'tube_theater', 'tube_pip', 'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_track', 'tube_tracks',
-    'tube_no_media', 'tube_missing'], { play: play || '', langs: langs });
+    'tube_no_media', 'tube_missing', 'tube_watch_later', 'tube_continue'], { play: play || '', langs: langs });
 }
 
 // A thing inside an app (a video, a question, a post) is a step in history
@@ -19037,7 +19041,66 @@ function _renderMapSourceDropdown(dd) {
   var maps = _installedMaps();
   var cur = currentArticle && (zimsCache || []).filter(function(z) { return z.name === currentArticle.zim; })[0];
   if (cur && !maps.some(function(m) { return m.name === cur.name; })) maps.unshift(cur);
-  dd.innerHTML = _mapSourceRowsHtml(maps, currentArticle ? currentArticle.zim : '', pos, extras);
+  var here = currentArticle ? currentArticle.zim : '';
+  dd.innerHTML = _mapPlacesHtml(here) + _mapSourceRowsHtml(maps, here, pos, extras);
+}
+
+// ── Places: Maps' own part of Saved ──
+// The picker on a map page is Places and maps: first Save this place (the
+// view on screen: its centre and zoom), then the places kept, this map's
+// first, each flying there when tapped, its list button opening the list
+// picker every app shares; then the maps. B saves the place too.
+var _MAP_SAME_SPOT_DEG = 1e-4;  // closer than this, the view is still on the place
+function _mapNear(a, b) {
+  return !!(a && b && Math.abs(a.lat - b.lat) < _MAP_SAME_SPOT_DEG && Math.abs(a.lng - b.lng) < _MAP_SAME_SPOT_DEG);
+}
+function _mapPlacesHtml(here) {
+  var places = Saved.itemsFor({ app: 'maps' });
+  var ref = _savedRefOnScreen(), kept = !!(ref && Saved.has(ref));
+  var at = parseMapHash('#' + (_currentMapPositionHash() || ''));
+  var mine = places.filter(function(p) { return p.zim === here; }), others = places.filter(function(p) { return p.zim !== here; });
+  return '<div class="mp-head" role="separator">' + tH('map_places') + '</div>' +
+    '<div class="mp-row mp-save' + (kept ? ' active' : '') + '" role="menuitemcheckbox" aria-checked="' + kept + '" data-role="save-place">' +
+    '<span class="mp-name">' + (kept ? _libBookmarkFilledSvg : _libBookmarkSvg) + '<span>' + tH(kept ? 'saved_tab' : 'map_place_save') + '</span></span></div>' +
+    mine.concat(others).map(function(p) {
+      var on = p.zim === here && _mapNear(parseMapHash('#' + ((p.where || {}).pos || '')), at);
+      var z = p.zim === here ? null : _zimInfo(p.zim);
+      return '<div class="mp-row mp-place' + (on ? ' active' : '') + '" role="menuitem" data-role="place" data-key="' + escAttr(p.key) + '">' +
+        '<span class="mp-name">' + esc(p.title || _fallbackTitle(p.zim, p.path)) + '</span>' +
+        '<span class="mp-meta">' + (z ? esc(_mapName(z)) : '') +
+        '<button type="button" class="mp-lists" data-role="place-lists" aria-haspopup="menu" title="' + escAttr(t('saved_add_to_list')) +
+        '" aria-label="' + escAttr(t('saved_add_to_list')) + '">' + _BM_LIST_SVG + '</button></span></div>';
+    }).join('') + '<div class="mp-head" role="separator">' + tH('cat_maps') + '</div>';
+}
+// A place is kept under the name you would give it: the place a search flew
+// to while the map is still on it, else the label nearest the middle of the
+// map (a town or a quarter before anything else named), else the map's.
+function _mapPlaceTitle(zim, pos) {
+  var at = parseMapHash('#' + (pos || ''));
+  if (!at) return '';
+  var own = _fallbackTitle(zim, '');
+  var h = _histLoad();
+  for (var i = 0; i < h.length; i++) {
+    var e = h[i];
+    if (e.type === 'article' && e.zim === zim && e.pos && e.title && e.title !== own && _mapNear(parseMapHash('#' + e.pos), at)) return e.title;
+  }
+  return _mapNearestLabel();
+}
+var _MAP_PLACE_LAYER_RE = /^place/;
+function _mapNearestLabel() {
+  var map = _readerMap();
+  if (!map || typeof map.queryRenderedFeatures !== 'function' || typeof map.project !== 'function') return '';
+  try {
+    var mid = map.project(map.getCenter()), lang = _currentLang || 'en', best = null;
+    (map.queryRenderedFeatures() || []).forEach(function(f) {
+      var p = f.properties || {}, g = f.geometry, name = p['name:' + lang] || p.name;
+      if (!name || !g || g.type !== 'Point') return;
+      var xy = map.project(g.coordinates), d = Math.pow(xy.x - mid.x, 2) + Math.pow(xy.y - mid.y, 2);
+      var place = _MAP_PLACE_LAYER_RE.test(f.sourceLayer || (f.layer && f.layer['source-layer']) || '');
+      if (!best || (place && !best.place) || (place === best.place && d < best.d)) best = { d: d, place: place, name: String(name) };
+    });
+    return best ? best.name : '';
+  } catch (e) { return ''; }
 }
 
 var _mapSourceDetach = null;
@@ -19052,6 +19115,17 @@ function toggleMapSourceDropdown(event) {
     var row = e.target.closest('.mp-row');
     if (!row) return;
     var role = row.getAttribute('data-role');
+    if (role === 'save-place') { toggleBookmark(); _renderMapSourceDropdown(dd); return; }
+    if (role === 'place') {
+      var place = Saved.get(row.getAttribute('data-key'));
+      var lists = e.target.closest('[data-role="place-lists"]');
+      var at = lists && lists.getBoundingClientRect();
+      _closeMapSourceDropdown();
+      // After this click has finished, or the menu's own outside-click closes it.
+      if (place && lists) setTimeout(function() { savedPickLists(place, at); }, 0);
+      else if (place) _savedOpen(place);
+      return;
+    }
     if (role === 'fold') {
       var folded = row.nextElementSibling;
       var open = folded && folded.hidden;
@@ -20383,6 +20457,62 @@ function _bmListsSubmenuHtml(key) {
       '<span class="ctx-check">' + (on ? '✓' : '') + '</span>' + esc(_savedListName(l)) + '</div>';
   }).join('') + '<div class="ctx-sep"></div><div class="ctx-item" data-action="new-list"><span class="ctx-check">+</span>' + tH('saved_new_list') + '…</div>';
 }
+// The same lists, as a picker of their own: what an app page's Lists button
+// opens (apps.js pickLists), and a place's row in Maps. ref is the thing,
+// item-shaped (a list takes it saved); rect is the control, in this window.
+// It stays open while lists are ticked, a new list is typed in place, and a
+// tap anywhere else closes it, the app page or the map under it included.
+function savedPickLists(ref, rect) {
+  var key = Saved.key(ref);
+  if (!key || !rect) return;
+  var show = function () {
+    window._openMenuAt(_bmListsSubmenuHtml(key), rect.left, rect.bottom + 4, pick);
+    var menu = document.getElementById('zim-ctx-menu');
+    // Right to left, it hangs from the control's other edge.
+    if (menu && document.documentElement.getAttribute('dir') === 'rtl') menu.style.left = Math.max(8, rect.right - menu.offsetWidth) + 'px';
+  };
+  var pick = function (action, el) {
+    if (action === 'toggle-list') {
+      var lid = el.dataset.lid, on = !Saved.inList(key, lid);
+      if (on) Saved.addToList(ref, lid); else Saved.removeFromList(key, lid);
+      el.setAttribute('aria-checked', String(on));
+      el.querySelector('.ctx-check').textContent = on ? '✓' : '';
+    } else if (action === 'new-list') {
+      _savedPickNewList(el, function (lid) { Saved.addToList(ref, lid); show(); });
+    }
+    return false;
+  };
+  show();
+  // A tap in the page below never reaches this document; this window losing
+  // the focus to it is the tap.
+  window.addEventListener('blur', function () {
+    var menu = document.getElementById('zim-ctx-menu');
+    if (menu && menu.classList.contains('visible') && menu.querySelector('[data-action="toggle-list"]')) window._closeMenu();
+  }, { once: true });
+}
+// "New list" becomes the box its name is typed in: Enter (or leaving it) makes
+// the list, Escape puts the row back.
+function _savedPickNewList(row, then) {
+  var was = row.innerHTML;
+  row.removeAttribute('data-action');
+  row.innerHTML = '<input class="bm-newfolder-input ctx-input" type="text" maxlength="60" placeholder="' + escAttr(t('saved_list_name')) + '">';
+  var input = row.querySelector('input');
+  input.focus();
+  var done = false;
+  _bmBindEditInput(input, function (save) {
+    if (done) return;
+    done = true;
+    var id = save ? Saved.createList(input.value) : '';
+    if (id) { then(id); return; }
+    row.setAttribute('data-action', 'new-list');
+    row.innerHTML = was;
+  });
+}
+// The words an app page shows for what is kept, in the shell's language.
+function _savedAppWords(app) {
+  return { save: t('saved_save'), saved: t('saved_tab'), like: t('saved_like'), liked: t('saved_liked'),
+    lists: t('saved_lists'), add_to_list: t('saved_add_to_list'), all: t('saved_all'), none: t('saved_none_app', { app: _appTitle(app) }) };
+}
 
 function _bmListMenu(lid, x, y) {
   var builtin = lid === Saved.LIKED;
@@ -21556,6 +21686,9 @@ function _savedStart() {
     if (e.key !== Saved.storageKey() || !e.newValue) return;
     try { Saved.merge(JSON.parse(e.newValue), { fromSync: true }); } catch (err) {}
   });
+  // The store is read while the page is idle, so the first app home or
+  // article that asks what is kept does not wait on reading it.
+  (window.requestIdleCallback || setTimeout)(function () { Saved.lists(); });
   if (!_savedSignedIn()) return;
   if (window.requestIdleCallback) requestIdleCallback(_savedPull, { timeout: 2000 });
   else setTimeout(_savedPull, 500);
@@ -21989,6 +22122,7 @@ function toggleBookmark() {
     var sec = _readerSectionAnchor();
     if (sec) ref.where = { s: sec };
   }
+  if (ref.kind === 'place') ref.title = _mapPlaceTitle(ref.zim, ref.where && ref.where.pos) || ref.title;
   Saved.save(ref);
 }
 

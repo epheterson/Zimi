@@ -16,7 +16,13 @@ One place for everything you keep: bookmarks, lists, Liked, and where you were i
 
 **Export to ZIM** turns lists into one ZIM you can keep or share: each ticked list becomes a section of it. A list's own menu opens the export with that list alone ticked.
 
-**In each app.** Bookshelf shows **Continue reading** (how far you are in each book) and **My shelf** (the books you keep: **Add to my shelf** on a book's page). Zimipedia's reader keeps where you are in an article (its Today lists them under **Continue reading**) and its bookmark saves an article to Zimipedia's reading lists. ZimiTube, ZimiExchange, Reddot and Maps save videos, questions, posts and places with the same button; their own views of what you saved come later.
+**In each app.** Each app shows its own part, in place, and every one puts a thing in a list with the same picker the panel's **Lists** uses (a tick beside each list it is in, and **New list** typed in place).
+
+- **Bookshelf** shows **Continue reading** (how far you are in each book) and **My shelf** (the books you keep: **Add to my shelf** on a book's page, with **Lists** beside it).
+- **ZimiTube**: under a video, **Like**, **Watch later** and **Lists**. The home starts with your rows: **Continue watching** (where you stopped, a video at its time, an audiobook at its track; one watched to the end leaves it), **Watch later** (every video you keep), **Liked**, then each of your lists that holds a video.
+- **ZimiExchange** and **Reddot**: under a question's or a post's title, **Like**, **Save** and **Lists**. **Saved** among the chips at the top lists what you kept, the latest first, with your lists as chips to narrow it. A long thread you saved opens again where you were in it, on any screen.
+- **Maps**: the pin in the header is **Places and maps**. **Save this place** keeps the view on screen (its centre and zoom) under the name of the place your search found there, else the nearest town on the map; your places follow, this map's first. Tapping one flies there (on another map, that map opens there); its list button opens the picker. **B** saves the place too.
+- **Zimipedia**: its reader keeps where you are in an article (Today lists them under **Continue reading**), and its bookmark saves an article to Zimipedia's reading lists.
 
 **Where it is kept.** Signed out, in this browser. Signed in with a named account, with the account on the server as well, so what you save on the phone is on the tablet and a book read on one continues on the other. Each device keeps working without the server and catches up when it can: the account's copy is fetched when a page is idle, a change goes up two seconds after it is made (a place in a book at most every twenty seconds), and leaving the tab sends what is waiting. A delete on one device holds when another device syncs later: every deletion is remembered for 90 days, so only a device away for longer than that can bring back something deleted meanwhile. Each account keeps its own copy in the browser, so signing out on a shared screen leaves nothing of yours for the next person.
 
@@ -25,6 +31,8 @@ One place for everything you keep: bookmarks, lists, Liked, and where you were i
 ### For an app page
 
 An app page (the pages under `zimi/static/`, shown in the reader) calls the shell's store directly: same origin, so `saved()` from `apps.js` returns `window.parent.Saved`, or `null` when the page is opened on its own. A change from anywhere (the page, the panel, another device) reaches the page as `window.__saved()`, which the page defines to redraw its part.
+
+`apps.js` also holds the parts every app shares: `savedBar(item, opts)` draws Like, Save and Lists into each `<span class="svbar"></span>` of the page for the thing open (`savedBar(null)` as it closes; `opts.save` names Save in the app's words, `opts.thread` keeps where you are in a long thread), `savedPaint()` draws them again from the store (call it from `window.__saved`), `threadRestore()` scrolls a saved thread back to its place, `pickLists(item, el)` opens the shell's list picker over `el`, and `savedListChips(app, list, fn)` draws an app's lists as chips for its Saved view.
 
 ```js
 var S = saved();

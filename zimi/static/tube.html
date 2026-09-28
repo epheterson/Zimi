@@ -82,6 +82,22 @@
   .next .item-r .thumb { border-radius: var(--radius-s); overflow: hidden; }
   .next .item-r .t { font-weight: 600; font-size: 13px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .next .item-r .m { font-size: 11.5px; color: var(--text2); margin-top: 2px; }
+  /* Your rows (Continue watching, Watch later, Liked, your lists): smaller
+     cards, two to a phone's width, so they lead into the feed rather than
+     bury it. */
+  #mine .strip { grid-auto-columns: 200px; }
+  /* A row seen whole takes the home's place until Back. */
+  #home.row-open > :not(#mine) { display: none; }
+  @media (max-width: 480px) {
+    #mine .strip { grid-auto-columns: 42vw; }
+    #mine .grid { grid-template-columns: 1fr 1fr; }
+    #mine .body { padding: 8px 10px 10px; }
+    #mine .body > img, #mine .body > .letter { display: none; }
+    #mine .title { font-size: 13px; }
+  }
+  /* How far into it you are, along the bottom of its picture (Continue watching). */
+  .thumb .prog { position: absolute; inset-inline: 0; bottom: 0; height: 3px; background: rgba(255,255,255,0.35); }
+  .thumb .prog i { display: block; height: 100%; background: var(--amber); }
   /* Theater: the stage takes the whole width, up next moves below. */
   .player.theater { grid-template-columns: 1fr; }
   .player.theater .stage { aspect-ratio: 16 / 9; max-height: 80vh; }
@@ -105,6 +121,7 @@
 <div class="page">
   <div id="home">
     <div class="chips" id="chips"></div>
+    <div id="mine" hidden></div>
     <div id="shelves"></div>
     <div id="list" hidden>
       <div class="head"><h2 id="l-title"></h2><span class="sorts" id="l-sorts"></span></div>
@@ -125,6 +142,7 @@
           <div class="desc" id="w-desc"></div>
           <div id="w-tracks"></div>
           <div class="actions">
+            <span class="svbar"></span>
             <button id="autoplay" onclick="toggleAutoplay()"></button>
             <a id="w-open" href="#"></a>
           </div>
@@ -152,9 +170,12 @@
 var PAGE = 60;
 var STR = strings({ title: 'ZimiTube', videos: 'videos', video: 'video', langs: {}, more: 'More', none: 'No videos match.', empty: 'No video ZIMs installed yet.',
   up_next: 'Up next', autoplay: 'Autoplay', theater: 'Theater', pip: 'Picture in picture', open_page: 'Open the original page', all: 'All', track: 'track', tracks: 'tracks',
-  sort_top: 'Top', sort_title: 'Title', sort_newest: 'Newest', sort_longest: 'Longest', no_media: 'This video cannot be played here.', missing: 'This video isn\'t in this ZIM.', play_pause: 'Play or pause', seek: 'Seek', sound: 'Sound', full_screen: 'Full screen' });
+  sort_top: 'Top', sort_title: 'Title', sort_newest: 'Newest', sort_longest: 'Longest', no_media: 'This video cannot be played here.', missing: 'This video isn\'t in this ZIM.', play_pause: 'Play or pause', seek: 'Seek', sound: 'Sound', full_screen: 'Full screen',
+  watch_later: 'Watch later', continue: 'Continue watching', sv: {} });
 var SORTS = ['top', 'title', 'newest', 'longest'];
-var _q = '', _zim = '', _sort = 'top', _all = [], _zims = [], _list = [], _shown = 0, _busy = false, _autoplay = true, _theater = false, _now = -1, _video = null;
+// _feed is the home's order (a source, a query, a sort); _list is what is
+// playing through (the feed, or a row of what you keep), Up next its rest.
+var _q = '', _zim = '', _sort = 'top', _all = [], _zims = [], _feed = [], _list = [], _shown = 0, _busy = false, _autoplay = true, _theater = false, _now = -1, _video = null;
 try { _sort = localStorage.getItem('zimitube_sort') || 'top'; if (SORTS.indexOf(_sort) < 0) _sort = 'top'; _autoplay = localStorage.getItem('zimitube_autoplay') !== '0'; _theater = localStorage.getItem('zimitube_theater') === '1'; } catch (e) {}
 
 function iconHtml(v, cls) { return v.zim_icon ? zimIcon(v.zim, cls) : '<span class="letter ' + cls + '">' + esc((v.zim_title || v.zim || '?')[0].toUpperCase()) + '</span>'; }
@@ -176,12 +197,15 @@ function thumbInner(v) {
 }
 // Where a video's length goes: its length, or an audiobook's tracks.
 function badge(v) { return v.tracks > 1 ? count(v.tracks, STR.track, STR.tracks) : fmtDur(v.duration); }
-function card(v, i) {
+// A card plays from the list it is in: the feed ('') or a row of what you
+// keep (its id); f is how far into it you are, for Continue watching.
+function card(v, i, from, f) {
   var who = [v.speaker, v.zim_title].filter(Boolean).join(' · ');
-  return '<a class="card' + (v.audio ? ' audio' : '') + '" href="' + esc(zpath(v.zim, v.page)) + '" data-i="' + i + '" onclick="return play(event, ' + i + ')">' +
+  return '<a class="card' + (v.audio ? ' audio' : '') + '" href="' + esc(zpath(v.zim, v.page)) + '" data-i="' + i + '" onclick="return pick(event, ' + J(from || '') + ', ' + i + ')">' +
     '<span class="thumb">' + thumbInner(v) +
       '<span class="play"><svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>' +
-      (badge(v) ? '<span class="dur">' + esc(badge(v)) + '</span>' : '') + '</span>' +
+      (badge(v) ? '<span class="dur">' + esc(badge(v)) + '</span>' : '') +
+      (f > 0 ? '<span class="prog"><i style="width:' + Math.min(100, Math.round(f * 100)) + '%"></i></span>' : '') + '</span>' +
     '<span class="body">' + iconHtml(v, '') + '<span class="txt"><span class="title">' + esc(v.title) + '</span>' +
       '<span class="meta">' + esc(who) + '</span></span></span></a>';
 }
@@ -197,6 +221,121 @@ function sorted(items) {
   return a;
 }
 
+// ── What you keep (docs/features/saving.md) ──────────────────────────────
+// Your rows first on the home: Continue watching (where you were, the
+// latest first), Watch later (every video you keep), Liked, then each of
+// your lists that holds a video. All of it from the shell's Saved, in this
+// browser: the home asks the server for nothing more.
+var CONTINUE_SHOWN = 12;
+var ROW_SHOWN = 12;        // cards in a row before All
+var POS_MIN_S = 10;        // seconds in before a place is worth keeping
+var POS_END_S = 15;        // this near the end, it has been watched
+var POS_EVERY_MS = 10000;  // while it plays, the place is written this often
+var _byKey = {}, _rows = [], _mineDirty = false, _mineOpen = '';
+// A video as Saved keeps it: what a card needs is in meta, so a row draws
+// without the feed (a source since removed still shows).
+function videoRef(v) {
+  return { kind: 'video', app: 'tube', zim: v.zim, path: v.page, title: v.title,
+    meta: { thumb: v.thumb || '', duration: v.duration || '', speaker: v.speaker || '', zim_title: v.zim_title || '', audio: !!v.audio, tracks: v.tracks || 0, icon: !!v.zim_icon } };
+}
+function fromSaved(x) {
+  var live = _byKey[x.zim + '\n' + x.path];
+  if (live) return live;
+  var m = x.meta || {};
+  return { zim: x.zim, page: x.path, title: x.title || x.path, thumb: m.thumb || '', duration: m.duration || '', speaker: m.speaker || '',
+    zim_title: m.zim_title || x.zim, audio: !!m.audio, tracks: m.tracks || 0, zim_icon: !!m.icon };
+}
+// Where you are in a video (and an audiobook's track, k), or null before its
+// first seconds.
+function resumeOf(v) {
+  var S = saved(), p = S && S.position(videoRef(v)), w = p && p.where;
+  return w && (w.t >= POS_MIN_S || w.k > 0) ? w : null;
+}
+function savedRows() {
+  var S = saved();
+  if (!S) return [];
+  var rows = [], cont = S.continued({ app: 'tube' }).filter(function(p) { return p.where.t >= POS_MIN_S || p.where.k > 0; }).slice(0, CONTINUE_SHOWN);
+  if (cont.length) rows.push({ id: 'continue', title: STR.continue, items: cont.map(fromSaved), f: cont.map(function(p) { return p.where.f || 0; }) });
+  var mine = S.itemsFor({ app: 'tube' });
+  if (mine.length) rows.push({ id: 'later', title: STR.watch_later, items: mine.map(fromSaved) });
+  S.lists({ app: 'tube' }).forEach(function(l) {
+    if (l.count) rows.push({ id: l.id, title: l.builtin ? STR.sv.liked : l.name, items: S.itemsFor({ list: l.id, app: 'tube' }).map(fromSaved), list: !l.builtin });
+  });
+  return rows;
+}
+// Shown at the top of the home only: not over a source's list or a search.
+// A row shows its first dozen, and your lists are one row of their own, a
+// tile each: however much you keep, the home stays a few rows. All, or a
+// list's tile, opens it whole in place of the feed, until Back.
+function renderMine() {
+  var el = document.getElementById('mine');
+  _rows = !_q && !_zim ? savedRows() : [];
+  _mineDirty = false;
+  var open = _rows.filter(function(r) { return r.id === _mineOpen; })[0];
+  if (!open) _mineOpen = '';
+  document.getElementById('home').classList.toggle('row-open', !!open);
+  el.hidden = !_rows.length;
+  var shelf = function(r, body, all) {
+    return '<section class="shelf" data-row="' + esc(r.id) + '"><div class="shelf-h"><h2>' + esc(r.title) + '</h2>' + (all || '') + '</div>' + body + '</section>';
+  };
+  var cards = function(r, list) { return list.map(function(v, j) { return card(v, j, r.id, r.f && r.f[j]); }).join(''); };
+  if (open) { el.innerHTML = shelf(open, '<div class="grid">' + cards(open, open.items) + '</div>'); return; }
+  var lists = _rows.filter(function(r) { return r.list; });
+  el.innerHTML = _rows.filter(function(r) { return !r.list; }).map(function(r) {
+    return shelf(r, '<div class="strip">' + cards(r, r.items.slice(0, ROW_SHOWN)) + '</div>',
+      r.items.length > ROW_SHOWN ? '<button class="all" onclick="openRow(' + J(r.id) + ')">' + esc(STR.all) + ' ' + r.items.length + CHEV + '</button>' : '');
+  }).join('') + (lists.length ? shelf({ id: 'lists', title: STR.sv.lists }, '<div class="strip">' + lists.map(listTile).join('') + '</div>') : '');
+}
+// A list as a tile: its first video's picture, its name, how many.
+function listTile(r) {
+  return '<a class="card" href="#" data-list="' + esc(r.id) + '" onclick="openRow(' + J(r.id) + '); return false;"><span class="thumb">' + thumbInner(r.items[0]) +
+    '<span class="dur">' + esc(count(r.items.length, STR.video, STR.videos)) + '</span></span><span class="body"><span class="txt"><span class="title">' + esc(r.title) + '</span></span></span></a>';
+}
+function openRow(id) {
+  keepPlace();
+  _mineOpen = id;
+  renderMine();
+  window.scrollTo(0, 0);
+  tellTop();
+}
+function closeRow() {
+  _mineOpen = '';
+  renderMine();
+  returnToPlace();
+  tellTop();
+}
+// A card's tap: the list it is in becomes what plays through.
+function pick(e, from, i) {
+  var row = from ? _rows.filter(function(r) { return r.id === from; })[0] : null;
+  if (from && !row) return false;
+  if (!(e && (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1))) _list = row ? row.items : _feed;
+  return play(e, i);
+}
+// The media element takes up where you were, once it knows its length.
+function resumeAt(el, where) {
+  if (!where || !(where.t > 0)) return;
+  var seek = function() { try { el.currentTime = where.t; } catch (e) {} };
+  if (el.readyState >= 1) seek(); else el.addEventListener('loadedmetadata', seek, { once: true });
+}
+// Where you are is kept as it plays (and on a pause), for Continue watching
+// here and in the Saved panel; watched to the end, it is let go. track() is
+// an audiobook's track playing, of tracks.
+function keepTime(v, el, track, tracks) {
+  var S = saved();
+  if (!S) return;
+  var ref = videoRef(v), last = 0;
+  var write = function() {
+    if (el !== _video) return;
+    var t = el.currentTime || 0, d = isFinite(el.duration) ? el.duration : 0, k = track ? track() : 0, n = tracks || 1;
+    if (d && t >= d - POS_END_S && k >= n - 1) { if (S.position(ref)) S.clearPosition(ref); return; }
+    if (t < POS_MIN_S && !k) return;
+    S.setPosition(ref, { t: Math.round(t), d: Math.round(d), k: k, f: Math.round((k + (d ? t / d : 0)) / n * 1000) / 1000 });
+  };
+  el.addEventListener('timeupdate', function() { var now = Date.now(); if (now - last < POS_EVERY_MS) return; last = now; write(); });
+  el.addEventListener('pause', write);
+  el.addEventListener('ended', write);
+}
+
 function renderHome() {
   var chips = document.getElementById('chips'), shelves = document.getElementById('shelves'), list = document.getElementById('list'),
       grid = document.getElementById('grid'), empty = document.getElementById('empty'), more = document.getElementById('more');
@@ -204,7 +343,7 @@ function renderHome() {
     _zims.map(function(z) { return '<button class="chip' + (_zim === z.name ? ' on' : '') + '" onclick="setZim(' + J(z.name) + ')">' +
       (z.icon ? zimIcon(z.name) : '') + esc(z.title) + langOf(z) + ' <span class="n">' + z.count + '</span></button>'; }).join('');
   chips.hidden = _zims.length < 2;
-  _list = sorted(_all.filter(function(v) { return !_zim || v.zim === _zim; }));
+  _feed = _list = sorted(_all.filter(function(v) { return !_zim || v.zim === _zim; }));
   // Browsing is shelves, one per source, its first dozen each, and nothing
   // else. A chip, a query, or a library with one source is a list: every
   // video, in an order of your choosing, a page at a time.
@@ -215,7 +354,7 @@ function renderHome() {
     var mine = _all.filter(function(v) { return v.zim === z.name; }).slice(0, 12);
     return '<section class="shelf"><div class="shelf-h">' + (z.icon ? zimIcon(z.name) : '') +
       '<h2>' + esc(z.title) + langOf(z) + '</h2><button class="all" onclick="setZim(' + J(z.name) + ')">' + esc(STR.all) + ' ' + z.count + CHEV + '</button></div>' +
-      '<div class="strip">' + mine.map(function(v) { return card(v, _list.indexOf(v)); }).join('') + '</div></section>';
+      '<div class="strip">' + mine.map(function(v) { return card(v, _feed.indexOf(v)); }).join('') + '</div></section>';
   }).join('') : '';
   if (!browsing) {
     _shown = Math.min(_list.length, Math.max(_shown, PAGE));
@@ -226,6 +365,7 @@ function renderHome() {
   } else {
     _shown = 0; grid.innerHTML = '';
   }
+  renderMine();
   empty.hidden = _list.length > 0;
   empty.innerHTML = _q ? esc(STR.none) : esc(STR.empty) + (STR.catalog ? '<br><a class="door" href="/?manage" onclick="return goCatalog()">' + esc(STR.catalog) + CHEV + '</a>' : '');
   more.hidden = browsing || _shown >= _list.length;
@@ -236,7 +376,10 @@ function load() {
   if (_busy) return; _busy = true;
   var url = '/tube?limit=5000&offset=0' + (_q ? '&q=' + encodeURIComponent(_q) : '');
   fetch(url).then(function(r) { return r.json(); }).then(function(d) {
-    _all = d.items || []; _zims = d.zims || []; _shown = 0; renderHome();
+    _all = d.items || []; _zims = d.zims || []; _shown = 0;
+    _byKey = {};
+    _all.forEach(function(v) { _byKey[v.zim + '\n' + v.page] = v; });
+    renderHome();
     // Opened at an address: play what it names, once, then it is a page like
     // any other visit here.
     if (STR.play) { var want = STR.play; STR.play = ''; var i = _list.findIndex(function(v) { return v.zim + '/' + v.page === want; }); if (i >= 0) play(null, i); }
@@ -339,6 +482,7 @@ function play(e, i) {
   document.getElementById('w-desc').textContent = v.description || '';
   document.getElementById('w-tracks').innerHTML = '';
   openLink(document.getElementById('w-open'), v.zim, v.page, STR.open_page);
+  savedBar(videoRef(v), { save: [STR.watch_later] });
   paintAutoplay(); paintTheater();
   document.getElementById('dock').hidden = true;
   var stage = document.getElementById('stage'); stage.innerHTML = ''; stage.classList.remove('audio'); _video = null;
@@ -382,6 +526,7 @@ function play(e, i) {
     (m.subs || []).forEach(function(t, k) { var tr = document.createElement('track'); tr.kind = 'subtitles'; tr.src = zpath(v.zim, t.path); tr.srclang = t.lang || ''; tr.label = t.label || t.lang || 'subtitles'; if (k === 0 && /^en/.test(t.lang || '')) tr.default = true; vid.appendChild(tr); });
     vid.addEventListener('ended', function() { if (_autoplay && _now === i && _list[i + 1]) play(null, i + 1); });
     stage.appendChild(vid); _video = vid;
+    resumeAt(vid, resumeOf(v)); keepTime(v, vid);
     sideways(vid);
     stageTools(stage, pipAvailable(vid));
     var p = vid.play(); if (p && p.catch) p.catch(function() {});
@@ -429,7 +574,10 @@ function playAudio(v, m, stage, i, noMedia) {
   });
   aud.addEventListener('error', function() { if (_now === i) noMedia(); });
   stage.appendChild(aud); _video = aud;
-  go(0);
+  var where = resumeOf(v);
+  keepTime(v, aud, function() { return at; }, tracks.length);
+  go(where && where.k < tracks.length ? where.k : 0);
+  resumeAt(aud, where);
   return true;
 }
 function goCatalog() { tell({ zimi: 'catalog', category: 'ted' }); return false; }
@@ -460,6 +608,7 @@ function playWithOgv(v, m, stage, i) {
       p.setAttribute('playsinline', '');
       p.addEventListener('ended', function() { if (_autoplay && _now === i && _list[i + 1]) play(null, i + 1); });
       stage.innerHTML = ''; stage.appendChild(p); _video = p;
+      resumeAt(p, resumeOf(v)); keepTime(v, p);
       sideways(p);
       stageTools(stage, false);
       ogvControls(stage, p);
@@ -493,6 +642,10 @@ function closePlayer(silent) {
   _now = -1;
   document.getElementById('watch').hidden = true;
   document.getElementById('home').hidden = false;
+  savedBar(null);
+  // What you keep changed while you watched (a place, a save): the rows are
+  // drawn again, and the way back to where you were moves with them.
+  if (_mineDirty) { var mine = document.getElementById('mine'), h0 = mine.offsetHeight; renderMine(); _place += mine.offsetHeight - h0; }
   if (!silent) returnToPlace();
 }
 var _docked = -1;
@@ -507,18 +660,18 @@ function undock() {
   document.getElementById('dock').hidden = true;
   document.getElementById('stage').appendChild(v);
   window.scrollTo(0, 0);
-  if (w) tell({ zimi: 'tube-play', play: w.zim + '/' + w.page, title: w.title });
+  if (w) { savedBar(videoRef(w), { save: [STR.watch_later] }); tell({ zimi: 'tube-play', play: w.zim + '/' + w.page, title: w.title }); }
 }
 function stopDock() {
   var v = _video; if (v) { try { v.pause(); } catch (e) {} v.remove(); }
   _video = null; _docked = -1;
   document.getElementById('dock').hidden = true;
 }
-window.tubeSearch = tubeSearch; window.tubeMore = tubeMore; window.play = play; window.closePlayer = closePlayer;
+window.tubeSearch = tubeSearch; window.tubeMore = tubeMore; window.play = play; window.pick = pick; window.openRow = openRow; window.closePlayer = closePlayer;
 window.setSort = setSort; window.setZim = setZim; window.toggleAutoplay = toggleAutoplay;
 window.toggleTheater = toggleTheater; window.enterPip = enterPip; window.undock = undock; window.stopDock = stopDock;
 // At the top: the shelves (or the one-source list with nothing chosen).
-window.__top = function() { return _now < 0 && !_q && !_zim; };
+window.__top = function() { return _now < 0 && !_q && !_zim && !_mineOpen; };
 // The dice: a video from the whole feed, played from the list it belongs to.
 window.__random = function() {
   if (!_all.length) return;
@@ -528,14 +681,25 @@ window.__random = function() {
 };
 window.__back = function() {
   if (_now >= 0) { closePlayer(); return true; }
+  if (_mineOpen) { closeRow(); return true; }
   if (!document.getElementById('list').hidden) { _q = ''; setZim(''); if (!document.getElementById('list').hidden) load(); return true; }
   return false;
 };
-window.__home = function() { if (_now >= 0) closePlayer(true); _q = ''; _zim = ''; _shown = 0; renderHome(); window.scrollTo(0, 0); };
+window.__home = function() { if (_now >= 0) closePlayer(true); _q = ''; _zim = ''; _mineOpen = ''; _shown = 0; renderHome(); window.scrollTo(0, 0); };
 window.__route = function(id) {
   if (!id) { if (_now >= 0) closePlayer(); return; }
-  var i = _list.findIndex(function(v) { return v.zim + '/' + v.page === id; });
+  var at = function(list) { return list.findIndex(function(v) { return v.zim + '/' + v.page === id; }); };
+  var i = at(_list);
+  if (i < 0 && (i = at(_feed)) >= 0) _list = _feed;
   if (i >= 0 && i !== _now) play(null, i);
+};
+// What you keep changed (here, in the Saved panel, on another device): the
+// controls on the video at once; the rows now if the home is on screen, else
+// as it comes back.
+window.__saved = function() {
+  savedPaint();
+  if (document.getElementById('home').hidden) _mineDirty = true;
+  else renderMine();
 };
 load();
 </script>

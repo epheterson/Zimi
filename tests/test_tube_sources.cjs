@@ -29,6 +29,7 @@ vm.runInContext([
   extract(shared, /function zpath\(zim, p\) \{[^\n]*\n/, 'zpath'),
   extract(shared, /function count\(n, one, many\) \{[^\n]*\n/, 'count'),
   extract(shared, /function zimIcon\(zim, cls\) \{[^\n]*\n/, 'zimIcon'),
+  extract(shared, /function J\(v\) \{[^\n]*\n/, 'J'),
   extract(page, /function iconHtml\(v, cls\) \{[^\n]*\n/, 'iconHtml'),
   extract(page, /function secs\(d\) \{[^\n]*\n/, 'secs'),
   extract(page, /function fmtDur\(d\) \{[^\n]*\n/, 'fmtDur'),
@@ -36,7 +37,7 @@ vm.runInContext([
   extract(page, /var _FILM_SVG = [^\n]*\n/, '_FILM_SVG'),
   extract(page, /function thumbInner\(v\) \{[\s\S]*?\n\}/, 'thumbInner'),
   extract(page, /function badge\(v\) \{[^\n]*\n/, 'badge'),
-  extract(page, /function card\(v, i\) \{[\s\S]*?\n\}/, 'card'),
+  extract(page, /function card\(v, i, from, f\) \{[\s\S]*?\n\}/, 'card'),
 ].join('\n'), ctx);
 
 const book = { zim: 'youscribe_fr_audiobooks', zim_title: 'Audiolivres', zim_icon: true, title: 'Le Chien des Baskerville', speaker: 'Arthur Conan Doyle',
@@ -54,7 +55,7 @@ ok('a single track says nothing there', !/class="dur"/.test(ctx.card(Object.assi
 ok('a video with no picture shows a still, not an empty grey box', l.indexOf(ctx._FILM_SVG) > 0 && /class="card"/.test(l) && thumbOf(l).indexOf('<img') < 0);
 ok('a picture sits over the still, so one that fails to load leaves the still', /<span class="still">[\s\S]*<\/span><img src="\/w\/ted\/videos\/1\/thumbnail\.webp"[^>]*onerror="this\.remove\(\)"/.test(t));
 ok('a video keeps its length', /<span class="dur">6:31<\/span>/.test(t));
-ok('the card is still the link to the file and plays in ZimiTube', /href="\/w\/youscribe_fr_audiobooks\/files\/2909454_Doyle___Le_chien_des_Baskerville_01_a_03\.ogg"/.test(b) && /onclick="return play\(event, 0\)"/.test(b));
+ok('the card is still the link to the file and plays in ZimiTube', /href="\/w\/youscribe_fr_audiobooks\/files\/2909454_Doyle___Le_chien_des_Baskerville_01_a_03\.ogg"/.test(b) && /onclick="return pick\(event, &quot;&quot;, 0\)"/.test(b));
 
 // ── the player ─────────────────────────────────────────────────────────────
 const playAudio = extract(page, /function playAudio\(v, m, stage, i, noMedia\) \{[\s\S]*?\n\}/, 'playAudio');
