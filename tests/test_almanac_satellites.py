@@ -19,6 +19,7 @@ Run: pytest tests/test_almanac_satellites.py -v
 
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -33,9 +34,23 @@ from zimi import satellites  # noqa: E402
 from zimi import server as srv  # noqa: E402
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-# The view stops drawing elements older than this (almanac-earth.js
-# AE_SAT_WINDOW_DAYS); a release must not ship older ones.
-SNAPSHOT_MAX_AGE_DAYS = 180
+_EARTH_JS = os.path.join(_HERE, "..", "zimi", "static", "almanac-earth.js")
+# The view draws elements up to AE_SAT_WINDOW_DAYS (almanac-earth.js) from
+# their epoch. A machine that never goes online draws satellites only from
+# the snapshot its release shipped, for whatever of that window the snapshot
+# had left on the day the release was cut. So a release ships a snapshot at
+# most SNAPSHOT_MAX_AGE_DAYS old, and the two together must leave an offline
+# install OFFLINE_RUNWAY_DAYS of satellites: the time to the next release,
+# and the months a USB copy can sit in a drawer before it is first used.
+SNAPSHOT_MAX_AGE_DAYS = 30
+OFFLINE_RUNWAY_DAYS = 150
+
+
+def _earth_js_days(name):
+    with open(_EARTH_JS, encoding="utf-8") as f:
+        m = re.search(r"^var " + name + r" = (\d+);", f.read(), re.M)
+    assert m, f"{name} not found in almanac-earth.js"
+    return int(m.group(1))
 
 
 def _omm(
@@ -374,4 +389,14 @@ def test_the_shipped_snapshot_is_whole_and_recent():
     assert age_days < SNAPSHOT_MAX_AGE_DAYS, (
         f"the satellite snapshot is {age_days:.0f} days old: "
         "run python3 scripts/build_satellite_snapshot.py before the release"
+    )
+
+
+def test_the_release_gate_leaves_an_offline_install_months_of_satellites():
+    """Gating at the drawing window itself let a release ship a snapshot the
+    view would stop drawing the next day: every GPS satellite gone, offline."""
+    window = _earth_js_days("AE_SAT_WINDOW_DAYS")
+    assert window - SNAPSHOT_MAX_AGE_DAYS >= OFFLINE_RUNWAY_DAYS, (
+        f"a {SNAPSHOT_MAX_AGE_DAYS}-day-old snapshot leaves only "
+        f"{window - SNAPSHOT_MAX_AGE_DAYS} of the view's {window} days"
     )
