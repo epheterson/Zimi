@@ -20,7 +20,10 @@
 var _WIKI_PREFS_DEFAULT = { size: 19, lh: 2, margin: 1 };
 var _WIKI_RAIL_MIN = 900;       // px wide: the contents in a rail, the facts floated beside the text
 var _WIKI_SIDE_MIN = 1200;      // px wide: the facts in the margin beside the text
-var _WIKI_BAR_FOOT_MAX = 699;   // px wide: up to here the bar sits at the foot, under the thumb
+// px wide: a phone, where a citation is a card along the foot. The bar is at
+// the top everywhere: at the foot it sat on a curved phone's edge, out of
+// reach (Eric, 2026-09-29).
+var _WIKI_PHONE_MAX = 699;
 var _WIKI_BARS_HIDE = 24;       // px scrolled down (or up) before the bar leaves (or comes back)
 var _WIKI_PLACE_MS = 2000;      // ms between writes of the place while reading
 var _WIKI_PLACE_START = 0.08;   // share of the article read before it counts as started
@@ -125,13 +128,10 @@ var _WIKI_CSS = [
   '.zw-rail .zb-toc-list .zb-sub button{padding-inline-start:22px;font-size:.95em}',
   '@media (hover:hover){.zw-rail .zb-toc-list button:hover{color:var(--rv-fg);background:var(--rv-code)}}',
   '.zw-rail .zb-toc-list [aria-current="true"] button{background:var(--rv-code);color:var(--rv-link);font-weight:600}',
-  // ── the bar: at the top, at the foot on a phone ──
+  // ── the bar: at the top, under Zimi's header, leaving with it as you read ──
   '.zw-bar{justify-content:flex-end;gap:2px}',
   '.zb-bar .zw-cbtn{flex:1 1 auto;min-width:0;justify-content:flex-start;gap:8px;padding:0 10px;font-weight:600}',
   '.zw-cbtn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;unicode-bidi:plaintext}',
-  '@media (max-width:' + _WIKI_BAR_FOOT_MAX + 'px){.zw-bar.zb-head{top:auto;bottom:0;height:calc(' + _READING_BAR_H + 'px + var(--zb-sab));',
-    'padding:0 calc(6px + var(--zb-sar)) var(--zb-sab) calc(6px + var(--zb-sal));border-bottom:0;border-top:1px solid var(--rv-border)}',
-    'html.zb-away .zw-bar.zb-head{transform:translateY(100%)}}',
   // ── a card in place: a citation ──
   '.zw-card{position:fixed;z-index:2147482300;box-sizing:border-box;max-width:min(440px,calc(100vw - 24px));max-height:min(46vh,380px);overflow:auto;',
     'background:var(--rv-bg);color:var(--rv-fg);border:1px solid var(--rv-border);border-radius:14px;box-shadow:0 10px 36px rgba(0,0,0,.28);',
@@ -139,7 +139,7 @@ var _WIKI_CSS = [
   '.zw-card[hidden]{display:none}',
   '.zw-card .zw-card-k{display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--rv-muted);margin:0 0 4px}',
   '.zw-card a{color:var(--rv-link)}',
-  '@media (max-width:' + _WIKI_BAR_FOOT_MAX + 'px){.zw-card{left:10px!important;right:10px;top:auto!important;bottom:calc(10px + var(--zb-sab));max-width:none}}',
+  '@media (max-width:' + _WIKI_PHONE_MAX + 'px){.zw-card{left:10px!important;right:10px;top:auto!important;bottom:calc(10px + var(--zb-sab));max-width:none}}',
   // ── a mini build says what it is ──
   '.zw-note{margin:1.4em 0;padding:12px 14px;border-radius:12px;background:var(--rv-code);color:var(--rv-muted);font:14px/1.5 ' + _WIKI_UI_FONT + '}',
   '.zw-note a{font-weight:600}',
@@ -154,7 +154,7 @@ var _WIKI_CSS = [
   '.zw-strip span{display:flex;flex-direction:column;min-width:0}',
   '.zw-strip i{font-style:normal;font-weight:600;font-size:12px;color:var(--rv-muted)}',
   '.zw-strip em{font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;unicode-bidi:plaintext}',
-  '@media (max-width:' + _WIKI_BAR_FOOT_MAX + 'px){.zw-strip ul{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 calc(-1 * var(--zw-m))!important;padding:0 var(--zw-m)}.zw-strip ul::-webkit-scrollbar{display:none}.zw-strip a{max-width:12em}}',
+  '@media (max-width:' + _WIKI_PHONE_MAX + 'px){.zw-strip ul{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 calc(-1 * var(--zw-m))!important;padding:0 var(--zw-m)}.zw-strip ul::-webkit-scrollbar{display:none}.zw-strip a{max-width:12em}}',
   // ── languages: a sheet of the ones that have this article ──
   '.zb-bar .zw-lbtn{gap:3px;font:600 13px/1 ' + _WIKI_UI_FONT + ';padding:0 8px}',
   '.zw-lang-list{list-style:none;margin:0;padding:0}',
@@ -467,7 +467,7 @@ function _wikiLayout(frame) {
   // ── how you read: the settings, laid onto the page ──
   var prefs = _wikiPrefs();
   var insets = _bookInsets();
-  var barAtFoot = function() { return win.innerWidth <= _WIKI_BAR_FOOT_MAX; };
+  var phone = function() { return win.innerWidth <= _WIKI_PHONE_MAX; };
   var applyVars = function() {
     var s = html.style;
     s.setProperty('--zw-size', prefs.size + 'px');
@@ -476,8 +476,8 @@ function _wikiLayout(frame) {
     s.setProperty('--zw-measure', _READING_MEASURES[prefs.margin] + 'em');
     s.setProperty('--zb-sat', insets.t + 'px'); s.setProperty('--zb-sar', insets.r + 'px');
     s.setProperty('--zb-sab', insets.b + 'px'); s.setProperty('--zb-sal', insets.l + 'px');
-    s.setProperty('--zw-top', (barAtFoot() ? insets.t : _READING_BAR_H + insets.t) + 'px');
-    s.setProperty('--zw-bottom', (barAtFoot() ? _READING_BAR_H + insets.b : insets.b) + 'px');
+    s.setProperty('--zw-top', (_READING_BAR_H + insets.t) + 'px');
+    s.setProperty('--zw-bottom', insets.b + 'px');
   };
   applyVars();
   setSheet.__zbLayouts = null;
@@ -505,7 +505,7 @@ function _wikiLayout(frame) {
   var current = -1;
   // The reading line: where a heading lands when you go to it (under the
   // bar's room, whether the bar is there or not), and a little below.
-  var headTop = function() { return (barAtFoot() ? insets.t : _READING_BAR_H + insets.t) + 12; };
+  var headTop = function() { return _READING_BAR_H + insets.t + 12; };
   var readingLine = function() { return headTop() + _WIKI_HEAD_SLACK; };
   var barLabel = bar.querySelector('.zw-cbtn span');
   var markCurrent = function() {
@@ -514,7 +514,7 @@ function _wikiLayout(frame) {
     // a bar's height: in a phone's frame the last pixels can be out of reach.)
     var sc = doc.scrollingElement || html, y = win.scrollY || 0;
     var atEnd = y > 0 && y >= sc.scrollHeight - sc.clientHeight - _READING_BAR_H;
-    var k = _wikiCurrent(heads, atEnd ? win.innerHeight - (barAtFoot() ? _READING_BAR_H + insets.b : insets.b) : readingLine());
+    var k = _wikiCurrent(heads, atEnd ? win.innerHeight - insets.b : readingLine());
     if (k === current && rail && rail.firstChild) return;
     current = k;
     if (barLabel) barLabel.textContent = k >= 0 ? _wikiText(heads[k]) : t('books_contents');
@@ -607,7 +607,7 @@ function _wikiLayout(frame) {
   // ── a citation, in place ──
   var hideCard = function() { card.hidden = true; card.__zwFor = null; };
   var placeCard = function(anchor) {
-    if (barAtFoot()) return;
+    if (phone()) return;
     var r = anchor.getBoundingClientRect(), w = card.offsetWidth, h = card.offsetHeight;
     var x = Math.max(12, Math.min(win.innerWidth - w - 12, (uiRtl || rtl ? r.right - w : r.left) - 8));
     var y = r.bottom + 8;
