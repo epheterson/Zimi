@@ -54,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Removing something from Saved, or a highlight, can be undone from the message that says so; New list comes first in every list picker; a kept place shows a pin; an audiobook is kept to Listen later; signed in, Saved says when your account is behind because the server is not answering.
 - A book's page on a phone shows its cover, title and Read on the first screen, with its facts two to a row; audio in ZimiTube no longer sits on an empty 16:9 video stage; an app's page has one Save (its own), not a second bookmark in the header; LibreTexts no longer lists a shelf's Back Matter as a book or counts front and back matter as chapters.
 - A search box's prompt that does not fit the box (Bookshelf's on a phone) says Search instead of being cut off mid-word, and a language change keeps the prompt the header gave.
+- The Almanac's 3D Earth opens at now (Live) unless you set a moment with the time machine, the orrery's speed or a ride, and stays there while open; a partial solar eclipse is drawn with its edge and a line at every quarter of the Sun covered.
 
 ### Fixed
 

@@ -1198,6 +1198,11 @@ var _orreryPlaying = true;
 var _orrerySpeed = 100000;
 
 var _orreryTimeOffset = 0;       // milliseconds offset from real time
+// Whether the offset is a moment someone chose (the speed slider, a ride)
+// rather than the orrery's own spin, which runs fast from the start as
+// scenery. The Earth view opens on a chosen moment, and on now otherwise.
+var _orreryClockChosen = false;
+function _orreryAmbientOffset() { return _orreryClockChosen ? 0 : _orreryTimeOffset; }
 
 var _orreryLastFrame = 0;        // last rAF timestamp
 
@@ -1306,6 +1311,7 @@ function _transitEffectiveSpeed(rk) {
 }
 
 function _orrerySliderInput(val) {
+  _orreryClockChosen = true;
   _orreryAutoTransit = false; // Manual control disengages auto-transit
   var intVal = parseInt(val);
   // Manual input always wins — auto-transit was overwriting the slider
@@ -1338,6 +1344,7 @@ function _orrerySetSlider(speed) {
 function _orrerySnapToNow() {
   _orreryAutoTransit = false;
   _orreryTimeOffset = 0;
+  _orreryClockChosen = false;
   _orreryRockets = [];
   _orrerySetSlider(1);
   _orreryPlaying = false;
@@ -1368,6 +1375,7 @@ function _orreryTransitSlider(val) {
   var rk = _orreryGetActiveRocket();
   if (!rk) return;
   var frac = val / 1000;
+  _orreryClockChosen = true;
   rk.elapsed = frac * rk.duration;
   var simLaunchTime = rk._launchRealTime || Date.now();
   _orreryTimeOffset = (simLaunchTime - Date.now()) + rk.elapsed;
@@ -1565,6 +1573,12 @@ function _orreryAnimate() {
   // Live-update Voyager stats card if open
   if (_voyagerCardIdx >= 0) _updateVoyagerCard();
 
+  // One loop, ever: a start while the loop runs (the Almanac opening, a
+  // resume, a ride) takes over the frame already asked for instead of
+  // asking for a second. Two ran: every frame drawn twice, and only one of
+  // them stopped when the Earth view paused the Almanac, so the Earth's
+  // clock ran on at the orrery's speed under a "Real time" label.
+  if (_almanacOrreryRAF) cancelAnimationFrame(_almanacOrreryRAF);
   _almanacOrreryRAF = requestAnimationFrame(_orreryAnimate);
 }
 
@@ -1633,6 +1647,7 @@ function _orreryLaunchRocket(targetName) {
 
   // Enable auto-transit speed profile
   _orreryAutoTransit = true;
+  _orreryClockChosen = true;
   if (!_orreryPlaying) {
     _orrerySpeed = departSpeed;
     _orrerySetSlider(departSpeed);
