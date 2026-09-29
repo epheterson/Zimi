@@ -22,7 +22,7 @@ function extract(text, re, label) {
   return m[0];
 }
 
-const ctx = { STR: { track: 'track', tracks: 'tracks' } };
+const ctx = { STR: { track: 'track', tracks: 'tracks', video: 'video', videos: 'videos', recording: 'recording', recordings: 'recordings' } };
 vm.createContext(ctx);
 vm.runInContext([
   extract(shared, /function esc\(x\) \{[^\n]*\n/, 'esc'),
@@ -37,6 +37,8 @@ vm.runInContext([
   extract(page, /var _FILM_SVG = [^\n]*\n/, '_FILM_SVG'),
   extract(page, /function thumbInner\(v\) \{[\s\S]*?\n\}/, 'thumbInner'),
   extract(page, /function badge\(v\) \{[^\n]*\n/, 'badge'),
+  extract(page, /function isFileOnly\(v, m\) \{[\s\S]*?\n\}/, 'isFileOnly'),
+  extract(page, /function countOf\(list\) \{[\s\S]*?\n\}/, 'countOf'),
   extract(page, /function card\(v, i, from, f\) \{[\s\S]*?\n\}/, 'card'),
 ].join('\n'), ctx);
 
@@ -68,9 +70,26 @@ ok('the stage says it cannot play on the dark stage, not the audio one', /var no
 ok('the ZimiTube tile and its languages count the ZIMs that feed it, not only video ZIMs', /function _installedVideoZims\(\) \{\n  return _installedFor\('video', 'tube'\);\n\}/.test(src));
 ok('the shell hands the page its words for tracks', /'tube_track', 'tube_tracks'/.test(src) && /track: 'track', tracks: 'tracks'/.test(page));
 
+// The 1.12 UX pass: a list of sound says recordings, not videos; a file with
+// no page of its own offers no "original page" (the same file again); an
+// empty ZimiTube is its door alone; a finger reaches a track and the dock's close.
+ok('a list of sound is counted in recordings, a mixed one in videos', ctx.countOf([book, Object.assign({}, book, { title: 'b' })]) === '2 recordings' &&
+  ctx.countOf([book, lesson]) === '2 videos' && ctx.countOf([talk]) === '1 video');
+ok('a document library\'s file is the page itself; a TED talk has a page of its own',
+  ctx.isFileOnly(book, { media: [{ path: book.page, type: 'audio/ogg' }] }) === true && ctx.isFileOnly(talk, { media: [{ path: 'videos/1/video.webm' }] }) === false && ctx.isFileOnly(talk, null) === false);
+ok('the player hides the original page for a file, and shows it again for the next', /document\.getElementById\('w-open'\)\.hidden = false;/.test(page) &&
+  /fileOnly = isFileOnly\(v, m\);\n\s*if \(fileOnly\) document\.getElementById\('w-open'\)\.hidden = true;/.test(page) && /\(missing \|\| fileOnly \? '' :/.test(page));
+ok('nothing installed: no heading and no orders over the empty page; a search that found nothing has no orders', /list\.hidden = browsing \|\| \(!_all\.length && !_q\);/.test(page) && /document\.getElementById\('l-sorts'\)\.hidden = !_list\.length;/.test(page));
+{
+  const coarse = (page.match(/@media \(pointer: coarse\) \{[\s\S]*?\n  \}/) || [''])[0];
+  ok('a finger reaches a track and the dock\'s close in 44px', /\.tracks button \{ min-height: 44px;/.test(coarse) && /\.dock button \{ min-width: 44px; min-height: 44px; \}/.test(coarse));
+}
+ok('the shell hands the page its words for recordings', /'tube_recording', 'tube_recordings'/.test(src));
+
 for (const lang of ['en', 'de', 'es', 'fr', 'pt', 'ru', 'ar', 'he', 'hi', 'zh']) {
   const s = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n', lang + '.json'), 'utf8'));
   ok(lang + ' names a track and tracks', !!(s.tube_track && s.tube_tracks) && !/—/.test(s.tube_track + s.tube_tracks));
+  ok(lang + ' names a recording and recordings', !!(s.tube_recording && s.tube_recordings) && !/—/.test(s.tube_recording + s.tube_recordings));
 }
 
 console.log(failures ? failures + ' failed' : 'all passed');

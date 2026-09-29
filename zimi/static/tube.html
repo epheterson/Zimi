@@ -112,6 +112,11 @@
   .dock button:hover { color: var(--amber); }
   /* A phone turned sideways: the picture fits the screen's height, and while it
      plays it has the screen to itself (see sideways()). */
+  /* A finger: a track and the dock's close reach 44px. */
+  @media (pointer: coarse) {
+    .tracks button { min-height: 44px; align-items: center; }
+    .dock button { min-width: 44px; min-height: 44px; }
+  }
   @media (orientation: landscape) and (max-height: 500px) {
     .player .stage, .player.theater .stage { max-height: 100vh; max-width: calc(100vh * 16 / 9); margin-inline: auto; }
   }
@@ -171,7 +176,7 @@ var PAGE = 60;
 var STR = strings({ title: 'ZimiTube', videos: 'videos', video: 'video', langs: {}, more: 'More', none: 'No videos match.', empty: 'No video ZIMs installed yet.',
   up_next: 'Up next', autoplay: 'Autoplay', theater: 'Theater', pip: 'Picture in picture', open_page: 'Open the original page', all: 'All', track: 'track', tracks: 'tracks',
   sort_top: 'Top', sort_title: 'Title', sort_newest: 'Newest', sort_longest: 'Longest', no_media: 'This video cannot be played here.', missing: 'This video isn\'t in this ZIM.', play_pause: 'Play or pause', seek: 'Seek', sound: 'Sound', full_screen: 'Full screen',
-  watch_later: 'Watch later', continue: 'Continue watching', sv: {} });
+  watch_later: 'Watch later', continue: 'Continue watching', recording: 'recording', recordings: 'recordings', sv: {} });
 var SORTS = ['top', 'title', 'newest', 'longest'];
 // _feed is the home's order (a source, a query, a sort); _list is what is
 // playing through (the feed, or a row of what you keep), Up next its rest.
@@ -197,6 +202,17 @@ function thumbInner(v) {
 }
 // Where a video's length goes: its length, or an audiobook's tracks.
 function badge(v) { return v.tracks > 1 ? count(v.tracks, STR.track, STR.tracks) : fmtDur(v.duration); }
+// Whether what plays is the page itself (a file in a document library or a
+// folder), so "the original page" would only be the same file again.
+function isFileOnly(v, m) {
+  return !!(m && (m.media || []).some(function(src) { return src.path === v.page; }));
+}
+// How many there are: videos, or recordings when all of them are sound
+// (an audiobook library, a folder of songs).
+function countOf(list) {
+  var sound = list.length > 0 && list.every(function(v) { return v.audio; });
+  return count(list.length, sound ? STR.recording : STR.video, sound ? STR.recordings : STR.videos);
+}
 // A card plays from the list it is in: the feed ('') or a row of what you
 // keep (its id); f is how far into it you are, for Continue watching.
 function card(v, i, from, f) {
@@ -289,7 +305,7 @@ function renderMine() {
 // A list as a tile: its first video's picture, its name, how many.
 function listTile(r) {
   return '<a class="card" href="#" data-list="' + esc(r.id) + '" onclick="openRow(' + J(r.id) + '); return false;"><span class="thumb">' + thumbInner(r.items[0]) +
-    '<span class="dur">' + esc(count(r.items.length, STR.video, STR.videos)) + '</span></span><span class="body"><span class="txt"><span class="title">' + esc(r.title) + '</span></span></span></a>';
+    '<span class="dur">' + esc(countOf(r.items)) + '</span></span><span class="body"><span class="txt"><span class="title">' + esc(r.title) + '</span></span></span></a>';
 }
 function openRow(id) {
   keepPlace();
@@ -349,7 +365,8 @@ function renderHome() {
   // video, in an order of your choosing, a page at a time.
   var browsing = !_q && !_zim && _zims.length > 1;
   shelves.hidden = !browsing;
-  list.hidden = browsing;
+  // Nothing installed: the empty page alone, no heading and no orders over nothing.
+  list.hidden = browsing || (!_all.length && !_q);
   shelves.innerHTML = browsing ? _zims.map(function(z) {
     var mine = _all.filter(function(v) { return v.zim === z.name; }).slice(0, 12);
     return '<section class="shelf"><div class="shelf-h">' + (z.icon ? zimIcon(z.name) : '') +
@@ -360,7 +377,9 @@ function renderHome() {
     _shown = Math.min(_list.length, Math.max(_shown, PAGE));
     grid.innerHTML = _list.slice(0, _shown).map(function(v, i) { return card(v, i); }).join('');
     document.getElementById('l-title').innerHTML = esc(_q ? '“' + _q + '”' : (_zim ? zimTitle(_zim) : STR.title)) +
-      (_list.length ? ' <span class="n">' + esc(count(_list.length, STR.video, STR.videos)) + '</span>' : '');
+      (_list.length ? ' <span class="n">' + esc(countOf(_list)) + '</span>' : '');
+    // A search that found nothing has nothing to put in order.
+    document.getElementById('l-sorts').hidden = !_list.length;
     document.getElementById('l-sorts').innerHTML = SORTS.map(function(k) { return '<button class="chip' + (k === _sort ? ' on' : '') + '" onclick="setSort(' + J(k) + ')">' + esc(STR['sort_' + k]) + '</button>'; }).join('');
   } else {
     _shown = 0; grid.innerHTML = '';
@@ -482,6 +501,7 @@ function play(e, i) {
   document.getElementById('w-desc').textContent = v.description || '';
   document.getElementById('w-tracks').innerHTML = '';
   openLink(document.getElementById('w-open'), v.zim, v.page, STR.open_page);
+  document.getElementById('w-open').hidden = false;
   savedBar(videoRef(v), { save: [STR.watch_later] });
   paintAutoplay(); paintTheater();
   document.getElementById('dock').hidden = true;
@@ -493,12 +513,17 @@ function play(e, i) {
   // in a shape a browser plays.
   // Two different truths: the file is not in the ZIM (the page names one
   // the scrape never got), or it is there and this browser cannot decode it.
-  var noMedia = function(missing) { stage.classList.remove('audio'); stage.innerHTML = '<div class="nomedia">' + esc(missing ? STR.missing : STR.no_media) + (missing ? '' : '<br><a href="' + esc(zpath(v.zim, v.page)) + '">' + esc(STR.open_page) + CHEV + '</a>') + '</div>'; };
+  // A document library's or a folder's item has no page of its own: its
+  // "page" is the file itself, so there is no original page to offer.
+  var fileOnly = false;
+  var noMedia = function(missing) { stage.classList.remove('audio'); stage.innerHTML = '<div class="nomedia">' + esc(missing ? STR.missing : STR.no_media) + (missing || fileOnly ? '' : '<br><a href="' + esc(zpath(v.zim, v.page)) + '">' + esc(STR.open_page) + CHEV + '</a>') + '</div>'; };
   var stageEl = stage;
   fetch('/tube/play?zim=' + encodeURIComponent(v.zim) + '&page=' + encodeURIComponent(v.page)).then(function(r) { return r.ok ? r.json() : null; }).then(function(m) {
     if (_now !== i) return;
     // The feed carries a description's first lines; the player's answer has it whole.
     if (m && m.description) document.getElementById('w-desc').textContent = m.description;
+    fileOnly = isFileOnly(v, m);
+    if (fileOnly) document.getElementById('w-open').hidden = true;
     if (!m || !m.media || !m.media.length || m.missing) { noMedia(!!(m && m.missing)); return; }
     if (m.audio && playAudio(v, m, stage, i, noMedia)) return;
     // A file the browser cannot decode (WebM on an iPhone): the ZIM's own

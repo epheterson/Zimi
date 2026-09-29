@@ -139,7 +139,7 @@ ok('the page asks /tube once and pages what it shows', /fetch\(url\)/.test(page)
 ok('a card is a real link to the page, and a click plays in ZimiTube\'s own player', /href="' \+ esc\(zpath\(v\.zim, v\.page\)\) \+ '"/.test(page) && /onclick="return pick\(event, ' \+ J\(from \|\| ''\) \+ ', ' \+ i \+ '\)"/.test(page) && /function pick\(e, from, i\) \{[\s\S]*?return play\(e, i\);/.test(page));
 ok('the player reads the media behind the page and rolls into the next', /fetch\('\/tube\/play\?zim='/.test(page) && /addEventListener\('ended'[\s\S]*play\(null, i \+ 1\)/.test(page) && /STR\.up_next/.test(page));
 ok('shelves per source, chips, sorts, ZIM icons', /class="shelf"/.test(page) && /class="chip/.test(page) && /sort_longest/.test(page) && /zimIcon\(v\.zim, cls\)/.test(page));
-ok('browsing is the shelves alone; the grid is for a chip, a query or another order', /shelves\.hidden = !browsing;/.test(page) && /list\.hidden = browsing;/.test(page) && !/<select/.test(page));
+ok('browsing is the shelves alone; the grid is for a chip, a query or another order', /shelves\.hidden = !browsing;/.test(page) && /list\.hidden = browsing \|\| /.test(page) && !/<select/.test(page));
 ok('the default order is called Top', /_sort = 'top'/.test(page) && /sort_top/.test(page) && !/sort_mixed/.test(page));
 ok('the original page stays one tap away', /STR\.open_page/.test(page));
 ok('the page exposes its search to the top bar', /window\.tubeSearch = tubeSearch/.test(page));
