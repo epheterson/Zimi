@@ -12071,9 +12071,9 @@ function _appUpdateHowHtml(d) {
   }
   if (type === 'snap') return '<div class="ms-hint">' + tH('app_update_how_snap') + '</div>';
   if (type === 'desktop-mac' || type === 'desktop-windows') {
-    // Sparkle/WinSparkle self-updates — unless offline mode disabled the
-    // appcast, in which case the releases page is the only path.
-    return d.offline
+    // Sparkle/WinSparkle self-updates only under Automatically: offline, Ask
+    // first and Never never start it, so the releases page is the path.
+    return (d.offline || (d.check_mode && d.check_mode !== 'auto'))
       ? '<div class="ms-hint">' + tH('app_update_how_releases') + ' ' + _appUpdateReleasesLink(d) + '</div>'
       : '<div class="ms-hint">' + tH('app_update_how_desktop') + '</div>';
   }
@@ -12197,7 +12197,7 @@ function _appUpdateStatusHtml(d, checking) {
     : _appUpdateVerdictHtml(d);
   var action = checking
     ? '<span class="spinner-inline" aria-hidden="true"></span>'
-    : (d.offline ? '' : '<button class="pill" onclick="_appUpdateCheckNow()">' +
+    : (d.offline || d.check_mode === 'never' ? '' : '<button class="pill" onclick="_appUpdateCheckNow()">' +
         tH('app_update_check_now') + '</button>');
   return '<div class="mc-row"><span class="mc-label">' + tH('app_update_version') + '</span>' +
     '<span class="mc-value">' + esc(d.current || '?') + '</span></div>' +
@@ -12212,8 +12212,26 @@ function _appUpdateHowSlot(d) {
 // Offline mode does no checking at all, so these would be controls with
 // nothing behind them.
 function _appUpdateSettingsSlot(d) {
-  return d.offline ? '' : _appUpdateChannelHtml(d) + _appUpdateDelayHtml(d);
+  return d.offline ? '' : _appUpdateCheckHtml(d) + _appUpdateChannelHtml(d) + _appUpdateDelayHtml(d);
 }
+
+// "Check for updates": Ask first / Automatically / Never, the choice the
+// satellite data offers too, with the same labels (alm_earth_sat_<mode>).
+function _appUpdateCheckHtml(d) {
+  var opts = (d.check_modes || ['ask', 'auto', 'never']).map(function(m) {
+    return _appUpdateOption(m, t('alm_earth_sat_' + m), m === d.check_mode);
+  }).join('');
+  return _appUpdateSelectRow({
+    id: _APP_UPDATE_CHECK_ID,
+    labelKey: 'app_update_check',
+    hintKey: 'app_update_check_hint',
+    envVar: d.check_env || 'ZIMI_UPDATE_CHECK',
+    locked: !!d.check_locked,
+    onchange: '_appUpdateSetCheck(this.value)',
+    options: opts
+  });
+}
+var _APP_UPDATE_CHECK_ID = 'app-update-check';
 
 function _appUpdateHtml(d) {
   return '<div id="' + _APP_UPDATE_STATUS_ID + '">' + _appUpdateStatusHtml(d, false) + '</div>' +
@@ -12250,6 +12268,9 @@ function _appUpdateVerdictHtml(d) {
       tH('app_update_held', { v: d.latest, d: tPlural('app_update_delay_days', _appUpdateHeldDays(d)) }) + '</span>';
   } else if (d.offline) {
     status = '<span class="app-update-quiet">' + tH('app_update_offline') + '</span>';
+  } else if (d.check_mode === 'never') {
+    // A months-old "Up to date" would be a claim nobody is checking.
+    status = '<span class="app-update-quiet">' + tH('app_update_checks_off') + '</span>';
   } else if (d.latest && !d.error) {
     // Up to date: one quiet line, no celebration.
     status = '<span class="app-update-quiet">' + tH('app_update_up_to_date') + '</span>';
@@ -12303,7 +12324,7 @@ function _appUpdateCheckNow() { _renderAppUpdate(true); }
 function _appUpdateSaveSetting(path, body, envVar) {
   if (!document.getElementById(_APP_UPDATE_ID)) return;
   _appUpdateShowChecking();
-  manageFetch(path, {
+  return manageFetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -12318,6 +12339,11 @@ function _appUpdateSaveSetting(path, body, envVar) {
 // needs a follow-up fetch.
 function _appUpdateSetChannel(channel) {
   _appUpdateSaveSetting('/manage/app-update-channel', { channel: channel }, 'ZIMI_UPDATE_CHANNEL');
+}
+
+function _appUpdateSetCheck(mode) {
+  var saved = _appUpdateSaveSetting('/manage/app-update-mode', { mode: mode }, 'ZIMI_UPDATE_CHECK');
+  if (saved) saved.then(_renderNetSection);
 }
 
 function _appUpdateSetDelay(days) {
@@ -12373,7 +12399,79 @@ function _setSatUpdates(mode) {
   }).then(function(r) { return r.json(); }).then(function(d) {
     if (d && d.error) { _showToast(t('save_failed')); _renderSatUpdatesSection(); return; }
     _paintSatUpdates(d);
+    _renderNetSection();
   }).catch(function() { _renderSatUpdatesSection(); });
+}
+
+// "What Zimi fetches from the internet" (outbound.py): every destination, one
+// row each, what sets it off and whether it happens on its own. Folded to one
+// line, the count of each, so a phone reads the answer without scrolling past
+// ten rows; open, each row says where it goes and links to its switch.
+var _NET_ID = 'ms-net';
+// A row's switch, as the element this pane draws it in (scrolled to), or the
+// settings section that has it. Rows without one change only by the person's
+// own action (a download, a capture) or by ZIMI_OFFLINE.
+var _NET_CONTROLS = {
+  update_check: _APP_UPDATE_CHECK_ID,
+  satellites: 'ms-sat-mode',
+  sharing: 'ms-mirror-status',
+  auto_update: 'library'
+};
+
+function _netGo(control) {
+  var target = _NET_CONTROLS[control];
+  if (_MS_SECTIONS.indexOf(target) >= 0) { switchMs(target); return false; }
+  var el = document.getElementById(target);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (el.focus) el.focus({ preventScroll: true });
+  }
+  return false;
+}
+
+// Offline, no row has a switch to go to: ZIMI_OFFLINE has taken them all.
+function _netRowHtml(r, offline) {
+  var hosts = (r.hosts || []).map(function(h) { return '<code dir="ltr">' + esc(h) + '</code>'; }).join(' ');
+  var go = !offline && _NET_CONTROLS[r.control]
+    ? '<a href="#" class="net-go" onclick="return _netGo(\'' + escAttr(r.control) + '\')">' + tH('net_change') + '</a>'
+    : '';
+  return '<li class="net-row">' +
+    '<span class="net-name">' + tH('net_' + r.id) + '</span>' +
+    '<span class="net-state net-state-' + escAttr(r.state) + '">' + tH('net_state_' + r.state) + '</span>' +
+    // The link sits at the end of the hosts' line, or of the text when a
+    // row has no host of its own, so it never takes a line to itself.
+    '<span class="net-what">' + tH('net_' + r.id + '_when') + (hosts ? '' : (go ? ' ' + go : '')) + '</span>' +
+    (hosts ? '<span class="net-where">' + hosts + go + '</span>' : '') +
+    '</li>';
+}
+
+function _netSummaryHtml(d) {
+  if (d.offline) return tH('net_offline');
+  var n = { auto: 0, ask: 0, off: 0 };
+  (d.rows || []).forEach(function(r) {
+    if (r.state === 'auto' || r.state === 'ask') n[r.state]++;
+    else if (r.state !== 'lan') n.off++;
+  });
+  return tH('net_summary', { a: n.auto, b: n.ask, c: n.off });
+}
+
+function _netHtml(d) {
+  return '<details class="net-details"><summary>' + _netSummaryHtml(d) + '</summary>' +
+    '<ul class="net-rows">' + (d.rows || []).map(function(r) { return _netRowHtml(r, d.offline); }).join('') + '</ul>' +
+    '<div class="ms-hint">' + tH('net_hint') + '</div></details>';
+}
+
+// The element is looked up after the fetch (see _renderEnvSection for why).
+// The <details> keeps whether it is open across a repaint after a change.
+async function _renderNetSection() {
+  var d = null;
+  try { d = await _msFetch('/manage/outbound'); } catch (e) {}
+  var el = document.getElementById(_NET_ID);
+  if (!el) return;
+  if (!d) { el.innerHTML = '<div class="ms-hint">' + tH('net_unavailable') + '</div>'; return; }
+  var open = !!el.querySelector('details[open]');
+  el.innerHTML = _netHtml(d);
+  if (open) el.querySelector('details').open = true;
 }
 
 // The server-wide apps switch. The element is looked up after the fetch
@@ -12531,12 +12629,18 @@ function _msServerHtml() {
   var envSec = '<div class="ms-section-label">' + tH('env_section') + '</div>' +
     '<div id="ms-env">' + tH('loading') + '</div>';
 
+  // Beside the two settings that decide what this server fetches on its own:
+  // everything it can fetch, and which of it happens without anyone asking.
+  var netSec = '<div class="ms-section-label">' + tH('net_section') + '</div>' +
+    '<div id="' + _NET_ID + '">' + tH('loading') + '</div>';
+
   // Sharing, Downloads, Storage, My Data / Server Backups, then App Updates
   // just before the API Token, and Hot ZIMs + cache last (Eric moved Updates
   // down from the top on the second pass).
-  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec + satSec, tokenSec, hotSec, envSec].join(sep);
+  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec + satSec, netSec, tokenSec, hotSec, envSec].join(sep);
   _renderEnvSection();
   _renderSatUpdatesSection();
+  _renderNetSection();
   // Async fill security
   Promise.all([
     fetch('/manage/has-password').then(function(r) { return r.json(); }).catch(function() { return {}; }),
