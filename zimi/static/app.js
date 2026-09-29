@@ -1899,7 +1899,10 @@ function updateTopbar() {
   var libraryChromeOff = mode === 'manage' || _almanacOpen || _createOpen;
   randomBtn.style.display = libraryChromeOff ? 'none' : 'flex';
 
-  document.getElementById('library-btn').style.display = libraryChromeOff ? 'none' : 'flex';
+  // Zimipedia's reader saves from its own bar: the header's save toggle
+  // would be a second bookmark for the same article. Saved stays one tap
+  // away (bm-panel-btn).
+  document.getElementById('library-btn').style.display = (libraryChromeOff || (readerOpen && _wikiReading)) ? 'none' : 'flex';
   // Create-a-ZIM lives in the ⋯ menu at every width — creation is an
   // occasional, deliberate act, so it stays out of the primary topbar. The ⋯
   // trigger is CSS-hidden on a wide viewport at rest, so reveal it (inline
@@ -16705,7 +16708,7 @@ function _readerViewApply(doc) {
 
 function _readerViewRestore(doc) {
   if (!doc || !doc[_READER_VIEW_STASH]) return;
-  if (doc.__zimiWikiLaid && typeof _wikiUndo === 'function') _wikiUndo(doc);
+  if (doc.__zimiWikiLaid && typeof _wikiUndo === 'function') { _wikiUndo(doc); _wikiChrome(false); }
   var shell = doc.querySelector('.zimi-reader');
   if (shell && shell.parentNode) shell.parentNode.removeChild(shell);
   var stash = doc[_READER_VIEW_STASH];
@@ -16872,7 +16875,11 @@ function _tintReaderChrome() {
 }
 
 var _READER_PALETTE_ID = 'reader-palette';
-var _READER_SIZE_LABELS = { 85: 'S', 100: 'M', 115: 'L', 130: 'XL' };
+// The size says what it is: a share of the page's own size, in the
+// interface's numerals ("M" named nothing a reader could picture).
+function _readerSizeLabel(lvl) {
+  try { return (lvl / 100).toLocaleString(_currentLang || 'en', { style: 'percent' }); } catch (e) { return lvl + '%'; }
+}
 function _readerPaletteHtml() {
   return '<div class="rv-pal-head">' + _READER_VIEW_ICON + '<span>' + tH('reader_view') +
     '</span></div>' + _readerSettingsRowsHtml();
@@ -16913,7 +16920,7 @@ function _rvSizeStepperHtml(lvl) {
   return '<div class="rv-size">' +
     '<button type="button" class="rv-size-btn"' + (minSize ? ' disabled' : '') +
       ' aria-label="' + tH('reader_size_smaller') + '" onclick="event.stopPropagation();_stepReaderFont(-1)">A<span class="rv-minus">&minus;</span></button>' +
-    '<span class="rv-size-val">' + (_READER_SIZE_LABELS[lvl] || lvl + '%') + '</span>' +
+    '<span class="rv-size-val">' + esc(_readerSizeLabel(lvl)) + '</span>' +
     '<button type="button" class="rv-size-btn"' + (maxSize ? ' disabled' : '') +
       ' aria-label="' + tH('reader_size_larger') + '" onclick="event.stopPropagation();_stepReaderFont(1)">A<span class="rv-plus">+</span></button>' +
     '</div>';
@@ -17441,10 +17448,10 @@ function _wikiStrings() {
   var langs = {};
   _installedWikiZims().forEach(function(z) { var c = String(z.language || '').split(',')[0]; if (c) langs[c] = _langDisplayName(c) || c; });
   return _appStrings('wiki', ['wiki_all', 'wiki_today', 'wiki_none', 'wiki_empty', 'wiki_cards', 'wiki_list', 'wiki_searching', 'wiki_did_you_mean',
-    'wiki_search_heading', 'wiki_article', 'wiki_load_failed', 'wiki_search_failed', 'wiki_retry', 'wiki_languages', 'wiki_read_more',
+    'wiki_search_heading', 'wiki_article', 'wiki_load_failed', 'wiki_search_failed', 'wiki_languages', 'wiki_read_more',
     'wiki_search_all_languages', 'wiki_search_one_language', 'wiki_continue', 'wiki_trails'].concat(
     // Every plural form the language has; the page picks one by Intl.PluralRules.
-    ['zero', 'one', 'two', 'few', 'many', 'other'].map(function(c) { return 'wiki_results_' + c; })), { langs: langs });
+    ['zero', 'one', 'two', 'few', 'many', 'other'].map(function(c) { return 'wiki_results_' + c; })), { langs: langs, retry: t('retry') });
 }
 function openWiki(replaceState) {
   // Not offered here (the server's ZIMI_APPS leaves it out): home, and an
@@ -17471,6 +17478,10 @@ function _wikiTrailResume(items) { try { sessionStorage.setItem(SK.WIKI_TRAIL, J
 // on the way to an article: one shown before it lands reads in Reader View
 // and gains the rest when it does.
 var _wikiFromApp = false;    // the article on its way was opened from Zimipedia
+// The frame's article is laid out by Zimipedia's reader. Its bar is the
+// page's: saving, the article's languages and the reading settings are
+// there, so Zimi's header does not offer them a second time.
+var _wikiReading = false;
 var _wikiReaderState = 0;    // 0 not asked, 1 on its way, 2 here
 var _wikiReaderWaiting = [];
 function _wikiReaderLoad(then) {
@@ -17482,7 +17493,7 @@ function _wikiReaderLoad(then) {
   s.src = '/static/wiki-reader.js?v=1';
   s.onload = function() { _wikiReaderState = 2; _wikiReaderFlush(); };
   // Offline with a cold cache: the article stays in Reader View.
-  s.onerror = function() { _wikiReaderState = 0; _wikiReaderWaiting = []; };
+  s.onerror = function() { _wikiReaderState = 0; _wikiReaderWaiting = []; _wikiChrome(false); };
   document.head.appendChild(s);
 }
 function _wikiReaderFlush() {
@@ -17528,8 +17539,14 @@ function _wikiInfo(zim, path, langsOnly) {
 function _wikiReaderAttach(frame) {
   _wikiReaderLoad(function() {
     var d = null; try { d = frame.contentDocument; } catch (e) {}
-    if (d && d.__zimiWiki && d[_READER_VIEW_STASH] && !d.__zimiWikiLaid) _wikiLay(frame);
+    if (d && d.__zimiWiki && d[_READER_VIEW_STASH] && !d.__zimiWikiLaid) _wikiChrome(_wikiLay(frame));
   });
+}
+function _wikiChrome(on) {
+  on = !!on;
+  if (on === _wikiReading) return;
+  _wikiReading = on;
+  updateTopbar();
 }
 
 // Zimipedia and Bookshelf open alike: a page Zimi owns at /#<app>, with no
@@ -19683,7 +19700,8 @@ function openReader(url) {
   var _maskFrame = _readerViewOn || _readerAuto() || _bookLoading || _wikiFromApp;
   // A wiki's article: the reader's code comes alongside the page (it is
   // usually here already), never before it.
-  if (_wikiUrl(url)) _wikiReaderLoad();
+  // Not a wiki's article: Zimi's header offers saving again from the start.
+  if (_wikiUrl(url)) _wikiReaderLoad(); else _wikiChrome(false);
   frame.style.visibility = _maskFrame ? 'hidden' : 'visible';
 
   // Punch-out button: for pdf.js viewer URLs, link to the raw PDF for download
@@ -19749,7 +19767,7 @@ function openReader(url) {
     }
     _bookChrome(_bookOn);
     var _wikiOn = _wikiDoc && _readerViewOn;
-    if (_wikiOn) _wikiReaderAttach(frame);
+    if (_wikiOn) _wikiReaderAttach(frame); else _wikiChrome(false);
     _tintReaderChrome(); // reset frame bg to #fff if reader ended up off
     _syncReaderViewBtn();
     // Auto-darken a raw (non-Reader-View) ZIM page when the app is dark, so the
@@ -22994,7 +23012,10 @@ function _renderLangDropdown() {
   var h = '';
   // Map article-language data to UI language codes for quick lookup
   var switchMap = {}; // {langCode: {zim, path}} — languages where current article exists
-  if (readerOpen && _articleLangData) {
+  // Under Zimipedia's reader the article's languages are its bar's (with the
+  // section you were in kept): this menu is Zimi's language, only.
+  var articleRows = readerOpen && !_wikiReading;
+  if (articleRows && _articleLangData) {
     var langs = _articleLangData.languages || [];
     for (var ai = 0; ai < langs.length; ai++) {
       var al = langs[ai];
@@ -23010,7 +23031,7 @@ function _renderLangDropdown() {
   // When reading article in a different language than UI: show quick switch at top
   var zimInfo = inReader && _zimInfo(currentArticle.zim);
   var articleLang = zimInfo ? zimInfo.language : null;
-  if (inReader && articleLang && articleLang !== _currentLang && switchMap[_currentLang]) {
+  if (articleRows && inReader && articleLang && articleLang !== _currentLang && switchMap[_currentLang]) {
     var sl = _AVAILABLE_LANGS.find(function(ll) { return ll.code === _currentLang; });
     var sName = sl ? sl.name : _currentLang;
     var sw = switchMap[_currentLang];
@@ -23024,7 +23045,7 @@ function _renderLangDropdown() {
   }
 
   // Show loading indicator when interlang data hasn't arrived yet
-  if (inReader && !_articleLangData) {
+  if (articleRows && inReader && !_articleLangData) {
     h += '<div class="lang-dropdown-item" style="color:var(--text2);font-size:12px;justify-content:center"><span class="spinner-inline" style="width:14px;height:14px"></span></div>';
     h += '<div class="ld-divider"></div>';
   }
@@ -23086,7 +23107,7 @@ async function _selectLang(code) {
   _langDropdownLocked = true;
   // Check if we have a direct article match from prefetched data
   var directMatch = null;
-  if (readerOpen && currentArticle && _articleLangData) {
+  if (readerOpen && !_wikiReading && currentArticle && _articleLangData) {
     var langs = _articleLangData.languages || [];
     for (var ai = 0; ai < langs.length; ai++) {
       if (langs[ai].lang === code) { directMatch = langs[ai]; break; }
@@ -23107,10 +23128,10 @@ async function _selectLang(code) {
 function toggleLangDropdown(event) {
   event.stopPropagation();
   // Force a fresh prefetch if we don't have data yet
-  if (readerOpen && currentArticle && !_articleLangData) {
-    _articleLangKey = ''; // Reset key to force refetch
+  if (readerOpen && !_wikiReading) {
+    if (currentArticle && !_articleLangData) _articleLangKey = ''; // Reset key to force refetch
+    _prefetchArticleLangs(true);
   }
-  _prefetchArticleLangs(true);
   var dd = document.getElementById('lang-dropdown');
   if (dd.classList.contains('visible')) {
     _closeLangDropdown();
@@ -23233,8 +23254,10 @@ function _buildTopbarMenuHtml() {
     }
     // 2. Compact settings directly under the toggle when Reader View is on —
     // theme swatches + font/size only, no title labels, no AUTO (settings-only).
+    // Not under Zimipedia's reader: its Aa sheet holds the same settings (and
+    // this size step, a zoom, does nothing to a page that sets its own type).
     if (rvOn) {
-      readerGroup += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
+      if (!_wikiReading) readerGroup += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
       readerGroup += _readerActionRowsHtml();
     }
     // 3. Read aloud.

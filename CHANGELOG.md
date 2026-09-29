@@ -50,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - An idle Zimi asks the internet for nothing when it starts: the BitTorrent engine waits until there is something to download or seed, and the port check (portcheck.transmissionbt.com) runs only when an admin presses recheck.
 - `ZIMI_OFFLINE` also refuses downloads from the internet, Auto-update's included (a download from a Nearby peer still works), and a download waiting to resume keeps its place for later.
 - A question or post in ZimiExchange, Reddot and the other apps can no longer load pictures from the internet, the same rule ZIM articles already follow.
+- Zimipedia's reader keeps saving, reading settings and the article's languages in its own bar only: Zimi's header no longer shows a second bookmark, the ⋯ menu a second set of reading settings, or the language menu the article's languages; Reader View's text size reads as a percentage.
 
 ### Fixed
 
