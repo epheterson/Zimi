@@ -766,6 +766,37 @@ GZIP_MIN_BYTES = 256
 GZIP_LEVEL = 4
 
 
+# Static bodies gzipped once rather than on every request: app.js alone is
+# ~25 ms of zlib per page load here, several times that on a NAS. Keyed by
+# path and holding the very body it was made from, so a file that changes
+# (a new body from the mtime-checked cache) is compressed afresh.
+_gzip_memo_lock = threading.Lock()
+_gzip_memo_kept = {}
+
+
+def _gzip_memo(key, body):
+    with _gzip_memo_lock:
+        kept = _gzip_memo_kept.get(key)
+    if kept is not None and kept[0] is body:
+        return kept[1]
+    gz = gzip.compress(body, compresslevel=GZIP_LEVEL)
+    with _gzip_memo_lock:
+        _gzip_memo_kept[key] = (body, gz)
+    return gz
+
+
+# APP_JS_REWRITTEN as the bytes that go out, encoded once (and again only if
+# it is replaced), so its gzip above is kept too.
+_app_js_encoded = [None, b""]
+
+
+def _app_js_bytes():
+    src = APP_JS_REWRITTEN
+    if _app_js_encoded[0] is not src:
+        _app_js_encoded[:] = [src, src.encode("utf-8")]
+    return _app_js_encoded[1]
+
+
 def _compressible(content_type):
     """Whether a body of this type is worth gzip: text, never a picture or
     a PDF, which are compressed already."""
@@ -4019,18 +4050,22 @@ class ZimHandler(BaseHTTPRequestHandler):
     def _accepts_gzip(self):
         return "gzip" in self.headers.get("Accept-Encoding", "")
 
-    def _maybe_gzip(self, body, content_type=None):
+    def _maybe_gzip(self, body, content_type=None, memo=None):
         """``body`` gzipped, its Content-Encoding header sent, when the
         client takes gzip, it is over GZIP_MIN_BYTES and (given a
         ``content_type``) of a type that compresses; else as it is. Called
-        after send_response, before the Content-Length of what it returns."""
+        after send_response, before the Content-Length of what it returns.
+        ``memo`` names a body served again unchanged (a static file): its
+        compressed bytes are kept for the next request."""
         if (
             len(body) > GZIP_MIN_BYTES
             and self._accepts_gzip()
             and (content_type is None or _compressible(content_type))
         ):
             self.send_header("Content-Encoding", "gzip")
-            return gzip.compress(body, compresslevel=GZIP_LEVEL)
+            if memo is None:
+                return gzip.compress(body, compresslevel=GZIP_LEVEL)
+            return _gzip_memo(memo, body)
         return body
 
     @staticmethod
@@ -4111,7 +4146,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         # app.js gets the in-memory rewrite when present (auto-versioned ?v=
         # references inside the file). Avoids touching the read-only filesystem.
         if rel_path == "app.js" and APP_JS_REWRITTEN is not None:
-            body = APP_JS_REWRITTEN.encode("utf-8")
+            body = _app_js_bytes()
             content_type = "application/javascript"
         else:
             # The cache is validated against the file's mtime: one stat per
@@ -4176,8 +4211,9 @@ class ZimHandler(BaseHTTPRequestHandler):
 
         self.send_response(200)
         self.send_header("Content-Type", content_type)
-        # Text-based static files (viewer.mjs, viewer.css, etc.) go gzipped.
-        body = self._maybe_gzip(body, content_type)
+        # Text-based static files (viewer.mjs, viewer.css, etc.) go gzipped,
+        # compressed once per body rather than once per request.
+        body = self._maybe_gzip(body, content_type, memo=rel_path)
         self.send_header("Content-Length", str(len(body)))
         # Service worker needs scope override; i18n files change between versions
         if rel_path == "sw.js":
