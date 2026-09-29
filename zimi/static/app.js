@@ -5290,16 +5290,23 @@ function openAlmanac(replaceState) {
   }
   if (!_almanacLoaded) {
     // The almanac is split across sibling modules (it outgrew one file). They
-    // share a global scope, so load them in sequence and only open once the
-    // last one lands — opening early would call into functions not yet defined.
+    // share a global scope, so they must run in order, and it opens only once
+    // the last one has run: opening early would call into functions not yet
+    // defined. async=false keeps that order while all four download at once,
+    // one round trip instead of four on a phone away from home.
     var almanacModules = [
       '/static/almanac-links.js?v=45',
       '/static/almanac-orrery.js?v=45',
       '/static/almanac-sky.js?v=45',
       '/static/almanac.js?v=45'
     ];
-    var loadNext = function(i) {
-      if (i >= almanacModules.length) {
+    var failed = false;
+    almanacModules.forEach(function(src, i) {
+      var s = document.createElement('script');
+      s.src = src;
+      s.async = false;
+      if (i === almanacModules.length - 1) s.onload = function() {
+        if (failed) return;
         _almanacLoaded = true;
         _openAlmanacInner(replaceState);
         // The 3D Earth's module follows the open instead of delaying it; the
@@ -5307,25 +5314,22 @@ function openAlmanac(replaceState) {
         var earth = document.createElement('script');
         earth.src = '/static/almanac-earth.js?v=45';
         document.head.appendChild(earth);
-        return;
-      }
-      var s = document.createElement('script');
-      s.src = almanacModules[i];
-      s.onload = function() { loadNext(i + 1); };
+      };
       // Offline with a cold cache: these modules were never fetched, so there is
       // nothing to serve. Say so — a console line and a button that appears to
       // do nothing is the same "silent absence" the connection banner exists to
       // eliminate.
       s.onerror = function() {
-        console.error('Failed to load ' + almanacModules[i]);
+        console.error('Failed to load ' + src);
+        if (failed) return;
+        failed = true;
         // Drop the reload-into-almanac boot gate so the library becomes
         // visible again instead of an empty dark shell.
         document.documentElement.classList.remove('almanac-boot');
         _showToast(t('almanac_unavailable_offline'));
       };
       document.head.appendChild(s);
-    };
-    loadNext(0);
+    });
     return;
   }
   _openAlmanacInner(replaceState);
