@@ -1232,8 +1232,10 @@
   .stats-grid.app-group .app-tile:not(.app-empty) .detail { display: none; }
   .stats-grid.app-group:not(.tiles) .stat-card:not(.app-tile) .card-info { justify-content: center; }
   .stats-grid.app-group:not(.tiles) .stat-card:not(.app-tile) .detail { margin-top: 2px; }
-  /* Reddot's dot keeps its colour in the breadcrumb, where line marks take the text's. */
-  #bc-icon circle { fill: var(--amber); }
+  /* Reddot's dot keeps its colour in the breadcrumb, where line marks take the
+     text's. Only a filled dot: Zimipedia's globe is a line mark too, and
+     filling its circle painted a dark disc on the light header. */
+  #bc-icon circle[fill="currentColor"] { fill: var(--amber); }
   .suggest-item.sg-place .sg-title::before { content: '\25CF'; color: var(--amber); font-size: 8px; margin-right: 8px; vertical-align: middle; }
   .stat-card:hover, .stat-card:focus-visible {
     background: var(--surface2); border-color: var(--amber-border);

@@ -3515,6 +3515,37 @@ def _otd_event_entry(archive, ev):
     return None
 
 
+# The day's events listed: enough for a day, and the lines of a date page
+# tried for an article the ZIM holds (a subset holds few; each try is a lookup).
+OTD_LIMIT = 8
+OTD_TRIES = 40
+
+
+def otd_events(archive, mmdd, lang="", limit=OTD_LIMIT, max_tries=OTD_TRIES):
+    """Up to ``limit`` of the day's dated events whose article this ZIM holds,
+    in the page's own order, each with its year, sentence, path and title. One
+    page read and a bounded number of entry lookups (``max_tries`` lines), so
+    a subset ZIM that holds few of the named articles costs the same. ``lang``
+    is the wiki's language, else the one the ZIM says it is in. Takes
+    _zim_lock for each read, never across the whole walk, so a search waits
+    for one lookup at most: call it without the lock held. A read that fails
+    raises (an error, not a day without events)."""
+    lock = _srv._zim_lock
+    with lock:
+        lang = lang or _wikilang.archive_language(archive) or "en"
+        page = _datepages.read_page(archive, mmdd, lang)
+    if not page:
+        return []
+    out, seen = [], set()
+    for ev in _datepages.extract_events(page, lang)[:max_tries]:
+        with lock:
+            hit = _otd_event_entry(archive, ev)
+        if hit and hit["path"] not in seen:
+            seen.add(hit["path"])
+            out.append(hit)
+            if len(out) >= limit:
+                break
+    return out
 
 
 def _get_dated_entry(archive, zim_name, mmdd, rng=None):

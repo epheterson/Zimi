@@ -57,7 +57,7 @@ const input = extract(/q\.addEventListener\('input', \(\) => \{[\s\S]*?\n\}\);/,
 ok('typing on a map page finds places, not articles or history', /if \(val && val\.length >= 1 && _isMapPage\(\)\) \{[\s\S]*fetchPlaces\(val\)/.test(input) && !/_isMapPage\(\)\) \{[\s\S]*showHistoryDropdown\(val\)[\s\S]*\} else if/.test(input.split('} else if')[0]));
 const fp = extract(/async function fetchPlaces\(query\) \{[\s\S]*?\n\}/, 'fetchPlaces');
 ok('it asks /places and makes suggest rows that carry the place', /fetch\('\/places\?q=' \+ encodeURIComponent\(query\)/.test(fp) && /_place: true, zim: g\.zim, path: g\.main_path, title: p\.name/.test(fp) && /pos: 'map=' \+ \(p\.zoom \|\| 15\) \+ '\/' \+ p\.lat \+ '\/' \+ p\.lng/.test(fp));
-ok('picking a row opens the place where it is', /openArticle\(s\.zim, s\.path, s\.title, s\.pos \? \{pos: s\.pos\} : undefined\)/.test(src));
+ok('picking a row opens the place where it is', /if \(s\.pos\) openArticle\(s\.zim, s\.path, s\.title, \{pos: s\.pos\}\);/.test(src));
 const keys = extract(/q\.addEventListener\('keydown', e => \{[\s\S]*?\n\}\);/, 'keydown');
 ok('Enter on a map takes the first place', /if \(_isMapPage\(\)\) \{\s*\r?\n\s*if \(suggestItems\.length && suggestItems\[0\]\._place\) selectSuggest\(0\);/.test(keys));
 ok('the box says what it is for', /_isMapPage\(\)\) return t\('maps_search_placeholder'\)/.test(src));

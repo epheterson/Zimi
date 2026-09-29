@@ -58,6 +58,8 @@ var SK = {
   HIDE_XZIM_LINKS: 'zimi_hide_cross_zim_links',
   // Links that leave the library (#99): absent = mark them, 'hide' = plain text.
   EXT_LINKS: 'zimi_external_links',
+  // Search results open in their app (absent = yes, '0' = the ZIM's own page).
+  OPEN_IN_APPS: 'zimi_open_in_apps',
   // When set, ZIM article HTML is run through the server-side a11y
   // rewriter (alt="" on images, h1 promotion, html lang). Off by
   // default to keep ZIM content byte-identical for purist users.
@@ -7597,7 +7599,7 @@ function selectSuggest(i) {
   }
   // Regular suggestion or history article; a place carries where it is.
   q.value = s.title;
-  openArticle(s.zim, s.path, s.title, s.pos ? {pos: s.pos} : undefined);
+  if (s.pos) openArticle(s.zim, s.path, s.title, {pos: s.pos}); else _openResult(s.zim, s.path, s.title);
 }
 
 // ── Library Manager ──
@@ -12158,6 +12160,9 @@ function _msPreferencesHtml() {
     '<div class="ms-theme-label" style="margin-top:16px">' + tH('ext_links') + '</div>' +
     _segHtml('ext-links-seg', 'ext_links', _extLinksSegInner()) +
     '<div class="ms-hint">' + tH('ext_links_hint') + '</div>' +
+    '<label class="ms-check" style="margin-top:12px"><input type="checkbox" id="ms-open-in-apps"' + (_openInApps() ? ' checked' : '') +
+      ' onchange="_setOpenInApps(this.checked)"> ' + tH('open_in_apps') + '</label>' +
+    '<div class="ms-hint">' + tH('open_in_apps_hint') + '</div>' +
     '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
     '<label class="ms-check"><input type="checkbox"' + (showDiscover ? ' checked' : '') +
       ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> ' + tH('show_discover') + '</label>' +
@@ -13673,7 +13678,7 @@ var _PREF_KEYS = [
   SK.UI_LANG, SK.HIDE_DISCOVER, SK.HIDE_LANG_CHOOSER, SK.HIDE_XZIM_LINKS,
   SK.A11Y_REWRITE, SK.LIBRARY_VIEW, SK.PREF_LANGUAGES, SK.PREF_FLAVOR,
   SK.READER_FONT, SK.READER_FAMILY, SK.READER_THEME, SK.READER_AUTO,
-  SK.EXT_LINKS,
+  SK.EXT_LINKS, SK.OPEN_IN_APPS,
 ];
 
 function _collectPreferences() {
@@ -17522,7 +17527,9 @@ function _wikiStrings() {
   _installedWikiZims().forEach(function(z) { var c = String(z.language || '').split(',')[0]; if (c) langs[c] = _langDisplayName(c) || c; });
   return _appStrings('wiki', ['wiki_all', 'wiki_today', 'wiki_none', 'wiki_empty', 'wiki_cards', 'wiki_list', 'wiki_searching', 'wiki_did_you_mean',
     'wiki_search_heading', 'wiki_article', 'wiki_load_failed', 'wiki_search_failed', 'wiki_languages', 'wiki_read_more',
-    'wiki_search_all_languages', 'wiki_search_one_language', 'wiki_continue', 'wiki_trails'].concat(
+    'wiki_search_all_languages', 'wiki_search_one_language', 'wiki_continue', 'wiki_trails', 'wiki_on_this_day', 'wiki_featured', 'wiki_word',
+    'wiki_quote', 'wiki_place', 'wiki_book', 'wiki_text', 'wiki_course', 'wiki_news', 'wiki_species', 'wiki_did_you_know', 'wiki_picture',
+    'wiki_front', 'wiki_front_as_of'].concat(
     // Every plural form the language has; the page picks one by Intl.PluralRules.
     ['zero', 'one', 'two', 'few', 'many', 'other'].map(function(c) { return 'wiki_results_' + c; })), { langs: langs, retry: t('retry') });
 }
@@ -18797,6 +18804,35 @@ function _appItemClosed() { _appItem = null; _updateLibraryBtnIcon(); updateTopb
 function _openAppItem(app, zim, path) {
   var id = zim + '/' + path;
   if (app === 'tube') openTube(false, id); else if (app === 'exchange') openExchange(false, id); else openReddot(false, id);
+}
+
+// A search result (or a Discover card) opens in the app made for its kind,
+// by default: a wiki's article in Zimipedia's reader (saving, highlights,
+// languages), a book in Bookshelf's, a video in ZimiTube, a question in
+// ZimiExchange, a post in Reddot. A map already opens in Maps' viewer. The
+// ZIM's own page when Settings > Reading says so, when the app is not shown
+// here, or when the page is not one of the app's things (a ZIM's front page,
+// a tag list, a user page).
+var _RESULT_APP = { wiki: 'wiki', books: 'books', video: 'tube', qa: 'exchange', reddit: 'reddot' };
+var _APP_ITEM_PATH = { exchange: /^(?:A\/)?questions\/\d+\//, reddot: /^(?:A\/)?r\/[^\/]+\/[^\/]+/ };
+function _openInApps() { try { return localStorage.getItem(SK.OPEN_IN_APPS) !== '0'; } catch (e) { return true; } }
+function _setOpenInApps(on) { try { if (on) localStorage.removeItem(SK.OPEN_IN_APPS); else localStorage.setItem(SK.OPEN_IN_APPS, '0'); } catch (e) {} }
+function _resultApp(zim, path) {
+  if (!_openInApps()) return '';
+  var z = _zimInfo(zim), app = z && _RESULT_APP[z.kind];
+  if (!app || !path || path === z.main_path || !_appShown(app)) return '';
+  if (_APP_ITEM_PATH[app] && !_APP_ITEM_PATH[app].test(path)) return '';
+  return app;
+}
+// A Gutenberg book's cover page (<title>_cover.<id>) is the way to the book
+// (<title>.<id>, zimi/books.py): Bookshelf opens the book.
+function _bookOfCover(path) { return String(path).replace(/_cover(\.\d+(?:\.html)?)$/, '$1'); }
+function _openResult(zim, path, title) {
+  var app = _resultApp(zim, path);
+  if (app === 'wiki') { _wikiFromApp = true; openArticle(zim, path, title); }
+  else if (app === 'books') openArticle(zim, _bookOfCover(path), title);
+  else if (app) _openAppItem(app, zim, path);
+  else openArticle(zim, path, title);
 }
 // The apps whose things (a video, a question, a post) open in the app, not
 // the reader; each thing's kind is the one Saved.KIND_APP gives the app.
@@ -23854,7 +23890,7 @@ function _spaNav(e, fn) {
 // zim/path/title triple isn't escaped into the markup a second time.
 function _spaCardClick(e, el) {
   return _spaNav(e, function () {
-    openArticle(el.getAttribute('data-zim'), el.getAttribute('data-path'), el.getAttribute('data-title') || '');
+    _openResult(el.getAttribute('data-zim'), el.getAttribute('data-path'), el.getAttribute('data-title') || '');
   });
 }
 function _spaSourceClick(e, el) {

@@ -32,7 +32,8 @@ function extract(text, re, label) {
 const ctx = {};
 vm.createContext(ctx);
 vm.runInContext([
-  "var STR = { lang: 'en', results_one: '{n} result', results_other: '{n} results', search_heading: '“{q}”' };",
+  "var STR = { lang: 'en', front_as_of: 'As featured on {date}, when this copy was made', results_one: '{n} result', results_other: '{n} results', search_heading: '“{q}”' };",
+  extract(page, /var TODAY_BATCH = [^\n]*\n/, 'TODAY_BATCH'),
   extract(page, /function dayStamp\(d\) \{[^\n]*\n/, 'dayStamp'),
   extract(page, /function pillLabels\(wikis\) \{[\s\S]*?\n\}/, 'pillLabels'),
   extract(page, /var RTL_LANGS = [^\n]*\n/, 'RTL_LANGS'),
@@ -41,6 +42,12 @@ vm.runInContext([
   extract(src, /function _langEndonym\(code, own, fallback\) \{[\s\S]*?\n\}/, '_langEndonym'),
   extract(page, /function inLanguage\(wikis, lang\) \{[^\n]*\n/, 'inLanguage'),
   extract(page, /function heroOf\(wikis\) \{[\s\S]*?\n\}/, 'heroOf'),
+  extract(page, /function todayPlan\(wikis\) \{[\s\S]*?\n\}/, 'todayPlan'),
+  extract(page, /function batches\(list, n\) \{[^\n]*\n/, 'batches'),
+  extract(page, /function yearNum\(y\) \{[\s\S]*?\n\}/, 'yearNum'),
+  extract(page, /function mergeOtd\(lists, max\) \{[\s\S]*?\n\}/, 'mergeOtd'),
+  extract(page, /function asOf\(date, lang\) \{[\s\S]*?\n\}/, 'asOf'),
+  extract(page, /function boldTitle\(title, text, sep\) \{[\s\S]*?\n\}/, 'boldTitle'),
   extract(page, /function continuedIn\(places, lang, by\) \{[\s\S]*?\n\}/, 'continuedIn'),
   extract(page, /function trailsIn\(kept, lang, by\) \{[\s\S]*?\n\}/, 'trailsIn'),
   extract(page, /function ago\(ts, now\) \{[\s\S]*?\n\}/, 'ago'),
@@ -77,6 +84,24 @@ ok('the day\'s article: the biggest Wikipedia of the language', ctx.heroOf(en) =
 ok('with no Wikipedia, another wiki gives it', ctx.heroOf([all[3], all[4]]) === 'wiktionary');
 ok('a full build before a mini, however many more entries the mini has', ctx.heroOf([Object.assign({}, en[0], { flavour: 'mini' }), en[1]]) === 'wikipedia_en_100');
 ok('with no wiki chosen: nothing asked at all', ctx.heroOf([]) === null);
+let plan = ctx.todayPlan(en);
+ok('Today: the day\'s article leads; every other wiki has a card', plan.hero === 'wikipedia' && plan.cards.length === en.length - 1 && !plan.cards.includes('wikipedia'));
+ok('On this day asks every Wikipedia of the language, and every front page is read', plan.otd.join() === 'wikipedia,wikipedia_en_100' && plan.front.length === en.length);
+ok('the same plan all day (no clock inside)', JSON.stringify(ctx.todayPlan(en)) === JSON.stringify(plan));
+plan = ctx.todayPlan([all[3], all[4]]);
+ok('with no Wikipedia: another wiki leads and no On this day is asked', plan.hero === 'wiktionary' && plan.otd.length === 0 && plan.cards.join() === 'wikiquote');
+plan = ctx.todayPlan([]);
+ok('with no wiki chosen: nothing planned', plan.hero === null && plan.otd.length === 0 && plan.cards.length === 0);
+ok('a fact names its article in bold, in place when the sentence names it', ctx.boldTitle('Water', 'Water is wet.', ': ') === '<b>Water</b> is wet.' && ctx.boldTitle('Chênedollé', 'It merged in 2016.', ': ') === '<bdi><b>Chênedollé</b></bdi>: It merged in 2016.' && ctx.boldTitle('Air', 'Clean <air>', ' ') === 'Clean &lt;<b>air</b>>');
+ok('a front page is dated in the interface\'s words', ctx.asOf('2026-07-06', 'en') === 'As featured on July 6, 2026, when this copy was made' && ctx.asOf('', 'en') === '');
+ok('the wikis are asked for a few at a time', JSON.stringify(ctx.batches([1, 2, 3, 4, 5], ctx.TODAY_BATCH)) === '[[1,2,3,4],[5]]');
+ok('years sort as numbers, whatever the language writes after them', ctx.yearNum('1066年') === 1066 && ctx.yearNum('44 BC') === -44 && ctx.yearNum('275') === 275);
+const E = (y, p) => ({ event_year: y, path: p, title: p, event_text: p });
+let merged = ctx.mergeOtd([{ zim: 'en', events: [E('1066', 'a'), E('1900', 'b'), E('2001', 'c')] }], 2);
+ok('one Wikipedia keeps its own page\'s order', merged.map(x => x.e.path).join() === 'a,b');
+merged = ctx.mergeOtd([{ zim: 'en', events: [E('1900', 'a'), E('1950', 'b'), E('1990', 'c')] }, { zim: 'en100', events: [E('1066', 'x'), E('1900', 'a')] }, { zim: 'enx', events: [] }], 4);
+ok('two Wikipedias of a language: each is heard, an article once, then in the order of the years', merged.map(x => x.zim + x.e.path).join() === 'en100x,ena,enb,enc');
+ok('none with events: nothing to show', ctx.mergeOtd([{ zim: 'x', events: [] }], 6).length === 0);
 const by = {}; all.forEach(w => { by[w.name] = w; });
 const places = [
   { zim: 'wikipedia', path: 'A', where: { s: 'x', f: 0.4 } },
@@ -126,15 +151,17 @@ ok('search asks /search scoped to the chosen wikis, quick first, the full text w
 ok('results carry their wiki, and its language when the search reaches every language', /function srcLine\(zim\)/.test(page) && /_everyLanguage && w\.language/.test(page));
 ok('two views, cards and a list, remembered in this browser (and read safely)', /var VIEW_KEY = 'zimi_wiki_view';/.test(page) && /try \{ localStorage\.setItem\(VIEW_KEY, v\); \} catch \(e\) \{\}/.test(page) && /try \{ _view = localStorage\.getItem\(VIEW_KEY\)/.test(page));
 ok('a day\'s picks are kept for the day, so a return is instant and no pick changes', /var TODAY_KEY = 'zimi_wiki_today';/.test(page) && /kept\.day === _day/.test(page));
-ok('Today is a front door: the day\'s article, where you were, the trails; nothing of 1.11\'s front page',
-  /var PARTS = \['picks'\];/.test(page) && /'&parts=picks&zim='/.test(page) && !/otdHtml|dykHtml|potdHtml|frontItems|rabbit/.test(page));
+ok('Today is a front page: the day\'s article, where you were, and the day of every wiki of the language',
+  /var PARTS = \['picks', 'otd', 'extras', 'front'\];/.test(page) && /otdHtml\(evs\)/.test(page) && /dykHtml\(fz,/.test(page) && /potdHtml\(pz,/.test(page) && /fromPick\(_got\.picks\[z\]\)/.test(page) && /frontItems\(plan\.front\)/.test(page) && /section\('continue', STR\.continue/.test(page));
+ok('a part with nothing to show is left out, not left waiting', /if \(evs\.length\) fill\('otd', otdHtml\(evs\)\); else drop\('otd'\);/.test(page) && /else if \(fz === null\) drop\('dyk'\)/.test(page) && /else if \(pz === null\) drop\('potd'\)/.test(page));
+ok('what a front page featured is dated as the copy\'s, never as today\'s', /asOf\(dates\.sort\(\)\[0\], STR\.lang\)/.test(page));
 ok('where you were is Saved\'s, Zimipedia\'s own, and a change anywhere redraws it', /S\.continued\(\{ app: 'wiki' \}\)/.test(page) && /window\.__saved = function\(\) \{ if \(!_q\) drawYours\(\); \};/.test(page));
 ok('a recent trail goes back in with the trail as it was', /window\.parent\._wikiTrailResume\(_trailsShown\[\+k\]\.items\)/.test(page) && /function keptTrails\(\) \{ try \{ return window\.parent\._wikiTrailsKept\(\) \|\| \[\]; \}/.test(page));
 ok('the trails\' keys are the shell\'s (SK), written nowhere else', /WIKI_TRAIL: 'zimi_wiki_trail',\n\s*WIKI_TRAILS: 'zimi_wiki_trails',/.test(src) && src.split("'zimi_wiki_trail").length === 3 &&
   !/zimi_wiki_trail/.test(page) && !/zimi_wiki_trail/.test(reader) && /_getSessionJSON\(SK\.WIKI_TRAIL, \[\]\)/.test(reader));
 ok('a mini is the server\'s word for it (its flavour), not the file name read again', /mini = info\.flavour === 'mini';/.test(reader) && !/_wikiIsMini|_mini\(\?:/.test(reader));
 ok('only answers with something in them are kept in this browser', /if \(!keep\) return;/.test(page) && /if \(hasContent\(_got\[p\]\[n\]\)\) store\[p\]\[n\]/.test(page));
-ok('a failed ask is asked again on the next view', /if \(hero && \(_failed\[hero\] \|\| _got\.picks\[hero\] === undefined\)\)/.test(page));
+ok('a failed ask is asked again on the next view', /return _failed\[z\] \|\| !known\('picks', z\)/.test(page));
 ok('the language is remembered in this browser, and the whole page follows it', /var LANG_KEY = 'zimi_wiki_lang';/.test(page) && /try \{ localStorage\.setItem\(LANG_KEY, code\); \} catch \(e\) \{\}/.test(page) && /_lang = code; _sel = \[\];/.test(page));
 ok('the page asks for the language it wants; the server settles it', /'\/wiki\/home\?day=' \+ _day \+ '&lang=' \+ encodeURIComponent\(storedLang\(\) \|\| STR\.lang \|\| 'en'\)/.test(page) && /_lang = d\.lang \|\| '';/.test(page));
 ok('search reaches the language chosen, and every language when asked', /\(_everyLanguage \? _wikis : scoped\(\)\)/.test(page) && /STR\.search_all_languages/.test(page));
@@ -200,10 +227,12 @@ ok('the catalog door is allowed', /_APP_CATEGORY_KEYS = \[[^\]]*'wikipedia'[^\]]
   ok('the route rides the content bucket, like /snippet', /_CONTENT_PATHS = frozenset\(\("\/snippet", "\/wiki\/article"\)\)/.test(fs.readFileSync(path.join(root, '..', 'http.py'), 'utf8')));
 }
 
+const TODAY_KEYS = ['wiki_on_this_day', 'wiki_featured', 'wiki_word', 'wiki_quote', 'wiki_place', 'wiki_book', 'wiki_text', 'wiki_course', 'wiki_news', 'wiki_species', 'wiki_did_you_know', 'wiki_picture', 'wiki_front', 'wiki_front_as_of'];
+ok('the shell hands the page Today\'s words', TODAY_KEYS.every(k => src.indexOf("'" + k + "'") >= 0));
 for (const lang of fs.readdirSync(path.join(root, 'i18n'))) {
   const d = JSON.parse(fs.readFileSync(path.join(root, 'i18n', lang), 'utf8'));
   if (d.wiki !== 'Zimipedia') ok('it is called Zimipedia in ' + lang, false);
   for (const k of ['wiki_search_placeholder', 'wiki_today', 'wiki_empty', 'app_empty_wiki', 'apps_count_wiki_other', 'wiki_search_heading', 'wiki_article', 'wiki_load_failed', 'wiki_search_failed', 'wiki_results_one', 'wiki_results_other', 'wiki_languages', 'wiki_read_more', 'wiki_search_all_languages', 'wiki_search_one_language', 'wiki_continue', 'wiki_trails']) if (!d[k]) ok(k + ' in ' + lang, false);
-  for (const k of ['wiki_on_this_day', 'wiki_rabbit_hole', 'wiki_front']) if (d[k]) ok('1.11\'s Today is gone: no ' + k + ' in ' + lang, false);
+  for (const k of TODAY_KEYS) if (!d[k]) ok(k + ' in ' + lang, false);
 }
 process.exit(failures ? 1 : 0);
