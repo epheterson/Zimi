@@ -166,6 +166,8 @@ def test_the_dated_pick_comes_from_the_wikis_own_date_page(tmp_path, lang):
     got = search._get_dated_entry(archive, name, "0925", rng=random.Random(1))
     assert got and got["path"] == article, got
     assert got["event_year"] == FIRST_EVENT[lang][0]
+    listed = search.otd_events(archive, "0925")
+    assert [e["path"] for e in listed] == [article]
 
 
 class _Watched:
@@ -213,6 +215,17 @@ def test_a_damaged_event_article_is_passed_over_not_a_lost_card(tmp_path):
         assert got and got["path"] == article, got
 
 
+def test_the_days_events_take_the_lock_for_each_read_not_the_walk(tmp_path):
+    """Wiki's On this day and Discover's share one walk, which holds
+    Zimi's lock for a read at a time so a search is never held behind it."""
+    import zimi.server as srv
+
+    _name, page, article, archive = _otd_archive(tmp_path)
+    watched = _Watched(archive, page, article)
+    listed = search.otd_events(watched, "0925", "de")
+    assert [e["path"] for e in listed] == [article]
+    assert len(watched.locked) > 2 and all(watched.locked)
+    assert not srv._zim_lock.locked()
 
 
 # ── Word of the day ───────────────────────────────────────────────────────
