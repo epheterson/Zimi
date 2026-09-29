@@ -518,6 +518,38 @@ def pick(name, day):
     return _kept(_pick_cache, _key(name, day), lambda: _work_pick(name, day))
 
 
+# How many of a Wikipedia's events Today shows (wiki.html's OTD_SHOWN): the
+# home page's On this day card is one of them.
+OTD_SHOWN = 6
+
+
+def daily_card(name, day):
+    """The home page's card for a wiki on the day YYYYMMDD: what Zimipedia's
+    Today shows, so a word, a quote or a place of the day is one thing
+    wherever it appears. A Wikipedia gives its On this day (the first of the
+    events Today lists that has a picture); any other wiki its pick. In
+    /random's shape (``{zim, path, title, blurb?, thumbnail?,
+    part_of_speech?, attribution?, event_year?, event_text?}``), or None
+    when the ZIM is not a wiki, the day cannot be asked for, or the wiki
+    has nothing (the caller then picks as it always did)."""
+    z = _record(name)
+    if z.get("kind") != "wiki" or not day_open(day):
+        return None
+    if _project(z) == "wikipedia":
+        evs = (on_this_day(name, day[4:]) or [])[:OTD_SHOWN]
+        e = next((x for x in evs if x.get("thumbnail")), evs[0] if evs else None)
+        keys = ("path", "title", "event_year", "event_text", "thumbnail")
+    else:
+        e = pick(name, day)
+        keys = ("path", "title", "blurb", "thumbnail")
+    if not e or not e.get("path"):
+        return None
+    out = {k: e[k] for k in keys if e.get(k)}
+    if e.get("kick"):
+        out["part_of_speech" if e.get("role") == "word" else "attribution"] = e["kick"]
+    return dict(out, zim=name)
+
+
 def _work_otd(name, mmdd):
     from zimi.search import otd_events
 

@@ -331,7 +331,9 @@ def test_the_routes_are_there_by_default(tmp_path, monkeypatch, apps):
 
 
 @pytest.mark.parametrize("apps", ["0", "maps,tube,exchange,reddot,books"])
-def test_the_routes_are_not_there_when_the_server_leaves_it_out(tmp_path, monkeypatch, apps):
+def test_the_routes_are_not_there_when_the_server_leaves_it_out(
+    tmp_path, monkeypatch, apps
+):
     """A server that does not offer Zimipedia answers its endpoints 404, as
     if they did not exist."""
     httpd, url = _serve(tmp_path, monkeypatch, apps)
@@ -633,6 +635,34 @@ def test_a_day_s_pick_holds_all_day_and_is_read_once(today_lib, monkeypatch):
     calls = []
     monkeypatch.setattr(wiki, "_work_pick", lambda *a: calls.append(a) or {})
     assert wiki.pick(name, "20260925") is first and not calls
+
+
+def test_the_home_page_card_is_the_pick_today_shows(today_lib):
+    """Discover's word and quote of the day are Zimipedia's, not a second
+    roll of the dice (Eric, 2026-09-29: different ones in each is weird)."""
+    word = wiki.daily_card(today_lib["wiktionary"], "20260925")
+    pick = wiki.pick(today_lib["wiktionary"], "20260925")
+    assert (word["zim"], word["path"], word["blurb"]) == (
+        pick["zim"],
+        pick["path"],
+        pick["blurb"],
+    )
+    quote = wiki.daily_card(today_lib["wikiquote"], "20260925")
+    assert quote["path"] == "Voltaire" and quote["attribution"] == "Candide"
+    # A day that cannot be asked for, or a ZIM that is not a wiki: the
+    # caller rolls its own dice as before.
+    assert wiki.daily_card(today_lib["wiktionary"], "20270101") is None
+    assert wiki.daily_card("gutenberg_en_all", "20260925") is None
+
+
+def test_random_with_a_day_answers_the_wiki_s_pick(served):
+    """/random?day= on a Wikipedia is On this day as Today lists it; the
+    home page's card and Zimipedia's list start from the same event."""
+    en = _get(served + "/wiki/home")[1]["wikis"][0]["name"]
+    status, card = _get(served + "/random?zim=%s&thumb=1&day=20260925" % en)
+    assert status == 200 and card["event_year"] == "1666"
+    otd = _get(served + "/wiki/onthisday?zim=%s&date=0925" % en)[1]["events"]
+    assert card["path"] == otd[0]["path"]
 
 
 def test_today_answers_for_the_wikis_named_and_home_carries_what_is_known(

@@ -5553,7 +5553,9 @@ function _loadDiscover() {
     _discoverResults.push(null);
     var url = '/random?zim=' + encodeURIComponent(s.name) + '&thumb=1&require_thumb=1';
     if (s.dated) url += '&date=' + mmdd;
-    url += '&seed=' + mmdd;
+    // day: a wiki's card is Zimipedia's pick of the day (wiki.daily_card),
+    // so the word or quote of the day is the same one in both places.
+    url += '&seed=' + mmdd + '&day=' + now.getFullYear() + mmdd;
     return fetch(url)
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(d) {
