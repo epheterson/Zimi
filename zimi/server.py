@@ -2676,8 +2676,11 @@ _ASSET_EXTS = frozenset(
 # ============================================================================
 
 
-def _zim_short_name(filename):
-    """Derive short display name from a ZIM filename.
+def _zim_base_name(filename):
+    """Derive the short name a ZIM filename gets on its own.
+
+    Pure: the filename alone decides. _zim_short_name is the served name,
+    which differs only for a file _scan_zim_files gave a language name.
 
     English ZIMs strip the language code (backward-compatible):
       stackoverflow.com_en_all_2023-11.zim → stackoverflow
@@ -2724,6 +2727,50 @@ def _zim_short_name(filename):
     return name
 
 
+_LANG_SEGMENT_RE = re.compile(r"[a-z]{2,3}")
+
+
+def _zim_lang_key(filename):
+    """The language a ZIM filename declares in Kiwix's language position
+    (project_LANG_selection_flavor_date), as ISO 639-1 where one exists:
+    gutenberg_ale_all -> 'ale', wikipedia_eng_all -> 'en'. A file without a
+    two- or three-letter segment there counts as English, the language
+    _zim_base_name leaves out of a name.
+
+    Only the collision rule reads this. _zim_base_name keeps its own, older
+    reading (it takes 'top' or 'css' after the language for one, and drops a
+    code the table lacks), because changing that would rename ZIMs people
+    have saved things under."""
+    parts = os.path.basename(filename).split(".zim")[0].split("_")
+    code = parts[1] if len(parts) > 1 else ""
+    if not _LANG_SEGMENT_RE.fullmatch(code):
+        return "en"
+    return _ISO639_3_TO_1.get(code, code)
+
+
+def _zim_lang_name(filename):
+    """The name a ZIM takes when another language's build holds its base
+    name: gutenberg_ale_all_2025-09.zim -> gutenberg_ale."""
+    return _zim_base_name(filename) + "_" + _zim_lang_key(filename)
+
+
+def _zim_short_name(filename):
+    """The short name `filename` is served under: its base name, or its
+    language name when the library holds the base name for another
+    language's build (gutenberg_ale beside gutenberg_en). A file the library
+    does not hold gets its base name, so for anything not installed this is
+    _zim_base_name."""
+    filename = os.path.basename(filename)
+    name = _zim_base_name(filename)
+    files = _zim_files_cache
+    held = files.get(name) if files else None
+    if held and os.path.basename(held) != filename:
+        lang_name = _zim_lang_name(filename)
+        if os.path.basename(files.get(lang_name) or "") == filename:
+            return lang_name
+    return name
+
+
 # Subdirectories the one-level scan must never treat as library content.
 # Learned from the first real deployment, not invented: Eric's NAS carries a
 # corrupt-quarantine/ full of ZIMs the kiwix-zim updater script deliberately
@@ -2750,11 +2797,33 @@ _FLAVOR_RANKS = {"maxi": 4, None: 3, "nopic": 2, "mini": 1}
 
 def _zim_build_rank(filename):
     """Rank a build for same-name collisions in the same directory tier:
-    flavor richness first, then the trailing date token (newer wins)."""
+    flavor richness first, then English over another language, then the
+    trailing date token (newer wins).
+
+    The English step only ever separates two languages, since builds of one
+    language all agree on it. It keeps the bare name with English, the
+    language Kiwix names leave out: with dates deciding, gutenberg_ale's next
+    edition would take 'gutenberg' from the English library, and everything
+    saved under that name with it."""
     fname = filename.lower()
     m = _FLAVOR_TOKEN_RE.search(fname)
     d = _DATE_TOKEN_RE.search(fname)
-    return (_FLAVOR_RANKS[m.group(1) if m else None], d.group(1) if d else "")
+    return (
+        _FLAVOR_RANKS[m.group(1) if m else None],
+        _zim_lang_key(fname) == "en",
+        d.group(1) if d else "",
+    )
+
+
+def _zim_pick(cands):
+    """The build that holds a name among same-name candidates, (tier, path)
+    in scan order: the root tier first, then the richest by _zim_build_rank;
+    a tie keeps the earlier file."""
+    top = min(tier for tier, _path in cands)
+    return max(
+        (path for tier, path in cands if tier == top),
+        key=lambda path: _zim_build_rank(os.path.basename(path)),
+    )
 
 
 def _scan_zim_files():
@@ -2778,8 +2847,15 @@ def _scan_zim_files():
     _zim_build_rank — so a maxi is never shadowed by the mini beside it and
     two editions of the same flavor resolve to the newer one. Every
     collision is logged.
+
+    A different language is not a lesser build of the same thing. Kiwix
+    names drop English, and _zim_base_name drops any code the language table
+    lacks, so gutenberg_ale_all and gutenberg_en_all both come out
+    'gutenberg'. The build that wins keeps that name, exactly as before;
+    each other language's best build is served under its language name
+    (gutenberg_ale) instead of vanishing. A language name some file already
+    has as its own is never taken, so no ZIM with a name loses it.
     """
-    zims = {}  # name -> (path, tier)
     root_paths = sorted(glob.glob(os.path.join(ZIM_DIR, "*.zim")))
     sub_paths = []
     for sub in sorted(glob.glob(os.path.join(ZIM_DIR, "*", ""))):
@@ -2790,34 +2866,51 @@ def _scan_zim_files():
             log.info("Skipping %s (has %s marker)", base, _SCAN_IGNORE_MARKER)
             continue
         sub_paths.extend(sorted(glob.glob(os.path.join(sub, "*.zim"))))
+    groups = {}  # base name -> [(tier, path)], in scan order
     for tier, paths in ((0, root_paths), (1, sub_paths)):
         for path in paths:
-            filename = os.path.basename(path)
-            name = _zim_short_name(filename)
-            if name not in zims:
-                zims[name] = (path, tier)
+            name = _zim_base_name(os.path.basename(path))
+            groups.setdefault(name, []).append((tier, path))
+    zims = {name: _zim_pick(cands) for name, cands in groups.items()}
+    for name, cands in groups.items():
+        if len(cands) > 1:
+            _split_languages(name, cands, zims, groups)
+    return zims
+
+
+def _split_languages(name, cands, zims, groups):
+    """One name's collision, resolved and logged: builds in the keeper's
+    language stay shadowed, and each other language's best build takes its
+    language name in `zims` unless a file already has that name as its own
+    (a key of `groups`)."""
+    keeper = zims[name]
+    keeper_lang = _zim_lang_key(os.path.basename(keeper))
+    by_lang = {}
+    for tier, path in cands:
+        if path != keeper:
+            lang = _zim_lang_key(os.path.basename(path))
+            by_lang.setdefault(lang, []).append((tier, path))
+    for lang, lang_cands in by_lang.items():
+        lang_name = f"{name}_{lang}"
+        own = lang != keeper_lang and lang_name not in groups
+        if own:
+            zims[lang_name] = _zim_pick(lang_cands)
+        for _tier, path in lang_cands:
+            if own and zims[lang_name] == path:
+                log.info(
+                    "ZIM name collision '%s': keeping %s, serving %s as '%s'",
+                    name,
+                    os.path.relpath(keeper, ZIM_DIR),
+                    os.path.relpath(path, ZIM_DIR),
+                    lang_name,
+                )
                 continue
-            held_path, held_tier = zims[name]
-            # Root files were inserted first, so a cross-tier collision can
-            # only be a subfolder file arriving second — the root holds.
-            if held_tier == tier and _zim_build_rank(filename) > _zim_build_rank(
-                os.path.basename(held_path)
-            ):
-                log.info(
-                    "ZIM name collision '%s': keeping %s, ignoring %s",
-                    name,
-                    os.path.relpath(path, ZIM_DIR),
-                    os.path.relpath(held_path, ZIM_DIR),
-                )
-                zims[name] = (path, tier)
-            else:
-                log.info(
-                    "ZIM name collision '%s': keeping %s, ignoring %s",
-                    name,
-                    os.path.relpath(held_path, ZIM_DIR),
-                    os.path.relpath(path, ZIM_DIR),
-                )
-    return {name: path for name, (path, _tier) in zims.items()}
+            log.info(
+                "ZIM name collision '%s': keeping %s, ignoring %s",
+                lang_name if own else name,
+                os.path.relpath(zims[lang_name] if own else keeper, ZIM_DIR),
+                os.path.relpath(path, ZIM_DIR),
+            )
 
 
 def get_zim_files():
@@ -3758,6 +3851,34 @@ def _domain_map_entries_for_zim(name, filename, source_meta, main_path=""):
     return {d: name for d in domains}
 
 
+def _zim_live_holder(name, path):
+    """The file serving `name`, when that is a different file still on disk;
+    None when the name is free or its file is gone (the new one takes over)."""
+    held = _zim_files_cache.get(name)
+    if not held or os.path.realpath(held) == os.path.realpath(path):
+        return None
+    try:
+        os.stat(held)
+    except OSError:
+        return None
+    return held
+
+
+def _zim_holder_keeps(held, path):
+    """register_zim_file's mirror of _scan_zim_files' rule: True when `held`,
+    already serving a name, keeps it against the arriving `path`. A root file
+    beats a subfolder one whatever its build; within a tier the richer build
+    (_zim_build_rank) holds, and an equal one yields to the arrival."""
+    root = os.path.realpath(ZIM_DIR)
+    held_in_root = os.path.dirname(os.path.realpath(held)) == root
+    new_in_root = os.path.dirname(os.path.realpath(path)) == root
+    if held_in_root != new_in_root:
+        return held_in_root
+    return _zim_build_rank(os.path.basename(held)) > _zim_build_rank(
+        os.path.basename(path)
+    )
+
+
 def register_zim_file(path, removed_files=()):
     """Incrementally register ONE just-downloaded ZIM into the live library.
 
@@ -3792,7 +3913,7 @@ def register_zim_file(path, removed_files=()):
         load_cache()
         return True
     filename = os.path.basename(path)
-    name = _zim_short_name(filename)
+    name = _zim_base_name(filename)
     try:
         st = os.stat(path)
     except OSError as e:
@@ -3808,38 +3929,47 @@ def register_zim_file(path, removed_files=()):
     # always yields. The routine case — an update replacing an older dated
     # file the caller just deleted — falls through because the old path no
     # longer stats.
-    existing_path = _zim_files_cache.get(name)
-    if existing_path and os.path.realpath(existing_path) != os.path.realpath(path):
-        try:
-            os.stat(existing_path)
-            existing_in_root = os.path.dirname(
-                os.path.realpath(existing_path)
-            ) == os.path.realpath(ZIM_DIR)
-            new_in_root = os.path.dirname(os.path.realpath(path)) == os.path.realpath(
-                ZIM_DIR
+    #
+    # Another language holding the name (gutenberg_ale arriving beside
+    # gutenberg_en) is not a collision to lose: as in the scan, the holder
+    # keeps the bare name and this file takes its language name.
+    existing_path = _zim_live_holder(name, path)
+    if existing_path and _zim_lang_key(
+        os.path.basename(existing_path)
+    ) != _zim_lang_key(filename):
+        if not _zim_holder_keeps(existing_path, path):
+            # The scan would give THIS file the bare name and move the holder
+            # to its language name; renaming a served ZIM is the rescan's job.
+            log.info(
+                "ZIM name collision '%s': %s outranks %s, a different language; "
+                "rescanning",
+                name,
+                filename,
+                os.path.basename(existing_path),
             )
-            if existing_in_root and not new_in_root:
-                log.info(
-                    "ZIM name collision '%s': keeping root %s, new %s stays shadowed",
-                    name,
-                    os.path.basename(existing_path),
-                    filename,
-                )
-                return True  # library correctly unchanged
-            if existing_in_root == new_in_root and _zim_build_rank(
-                os.path.basename(existing_path)
-            ) > _zim_build_rank(filename):
-                # Same tier, poorer build arriving: a freshly downloaded mini
-                # must never displace the maxi already being served.
-                log.info(
-                    "ZIM name collision '%s': keeping richer %s, new %s stays shadowed",
-                    name,
-                    os.path.basename(existing_path),
-                    filename,
-                )
-                return True  # library correctly unchanged
-        except OSError:
-            pass  # existing file is gone — the new one takes over
+            return False
+        name = _zim_lang_name(filename)
+        existing_path = _zim_live_holder(name, path)
+        if existing_path and _zim_base_name(os.path.basename(existing_path)) == name:
+            # That name is another file's own, never a language name to take.
+            log.info(
+                "ZIM name collision '%s': keeping %s, new %s stays shadowed",
+                name,
+                os.path.basename(existing_path),
+                filename,
+            )
+            return True  # library correctly unchanged
+    if existing_path and _zim_holder_keeps(existing_path, path):
+        # A root file against a subfolder one, or a richer build in the same
+        # tier: a freshly downloaded mini must never displace the maxi
+        # already being served.
+        log.info(
+            "ZIM name collision '%s': keeping %s, new %s stays shadowed",
+            name,
+            os.path.basename(existing_path),
+            filename,
+        )
+        return True  # library correctly unchanged
 
     # ---- Phase 1: metadata extraction, deliberately WITHOUT _zim_lock ----
     entry, archive = _extract_zim_metadata(name, path)

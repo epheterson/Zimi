@@ -24,6 +24,9 @@ coverage audit, docs/plans/2026-09-28-app-coverage.md):
   pages under it (``Work/Chapter``). Its header's ``#ws-data`` names the
   title, author, translator and year. The scans (``Page:``, ``Index:``) and
   the project's own pages are not works; nor is an article of a periodical.
+  A Wikisource with no ``#ws-data`` anywhere (Slovak's header is a table,
+  ``Údaje o texte``) has for works the pages whose header carries the same
+  ``ws-`` ids and the pages with pages under them, the main page aside.
 - ``wikibooks``: a book is a page with three or more pages under it, the
   page its contents; written together, so no author.
 
@@ -40,6 +43,7 @@ import logging
 import posixpath
 import re
 from collections import Counter
+from urllib.parse import unquote
 
 from zimi import epub as _epub
 from zimi import nautilus
@@ -49,7 +53,9 @@ log = logging.getLogger("zimi")
 
 MAX_JSON_BYTES = 64 * 1024 * 1024
 # Authors a listing writes when it knows none.
-_NO_AUTHOR = frozenset(("", "-", "?", "unknown", "inconnu", "anonyme", "n/a"))
+_NO_AUTHOR = frozenset(
+    ("", "-", "?", "unknown", "inconnu", "anonyme", "n/a", "neznámy", "neznámý")
+)
 _TAG_RE = re.compile(r"<[^>]+>")
 _YEAR_RE = re.compile(r"(?<!\d)(\d{3,4})(?!\d)")
 
@@ -75,6 +81,19 @@ _WS_MAX_PAGE_BYTES = 32 * 1024 * 1024
 # Wikisource types that are not a work of their own: an article of a
 # periodical ("ws-title" is then the periodical's).
 _WS_SKIP_TYPES = frozenset(("journal",))
+# A Wikisource without #ws-data: a header that puts the ids on its own cells
+# (Slovak's <td id="ws-author">), and the author namespace a work links to,
+# or whose name its author cell keeps when the ZIM left the page out
+# ("Autor:Jozef Tomášik-Dumín").
+_WS_HEADER_RE = re.compile(rb'(?:class|id)="ws-(?:title|author)"')
+_WS_AUTHOR_RE = re.compile(
+    rb'(?:class|id)="ws-author"[^>]*>(.*?)</(?:td|span|div)>', re.S
+)
+_AUTHOR_NAMESPACES = "Author|Autor|Auteur|Autore|Автор"
+_AUTHOR_NS_RE = re.compile(r"^(?:%s):\s*" % _AUTHOR_NAMESPACES)
+_AUTHOR_LINK_RE = re.compile(
+    ('href="[^"]*?(?:%s):([^"#]+)"' % _AUTHOR_NAMESPACES).encode()
+)
 # A Wikibooks book: a page with at least this many pages under it.
 WIKIBOOKS_MIN_PAGES = 3
 
@@ -249,9 +268,8 @@ def libretexts_books(archive):
 # ── Wikisource and Wikibooks ───────────────────────────────────────────────
 
 
-def _ws_record(archive, path):
+def _ws_record(data):
     """The fields of a page's ``#ws-data``, {} when it has none."""
-    data = _srv.entry_bytes(archive, path, _WS_MAX_PAGE_BYTES)
     k = data.rfind(b'id="ws-data"') if data else -1
     if k < 0:
         return {}
@@ -263,31 +281,69 @@ def _ws_record(archive, path):
     return fields
 
 
+def _ws_header(data, chapters):
+    """A work's fields in a Wikisource with no ``#ws-data``: {} unless the
+    page's header carries the ``ws-`` ids or pages sit under it. The author
+    is its ``ws-author`` cell, else a link to an author's page, else
+    unknown; the title is the page's own (Slovak's ``ws-title`` id marks
+    the cell that says "Titulok")."""
+    data = data or b""
+    if not chapters and not _WS_HEADER_RE.search(data):
+        return {}
+    m = _WS_AUTHOR_RE.search(data)
+    author = _clean(m.group(1).decode("utf-8", "replace")) if m else ""
+    if not author:
+        link = _AUTHOR_LINK_RE.search(data)
+        if link:
+            name = unquote(link.group(1).decode("utf-8", "replace"))
+            author = name.replace("_", " ").strip()
+    return {"type": "", "author": _AUTHOR_NS_RE.sub("", author)}
+
+
+def _ws_book(path, title, rec, chapters):
+    own = title or path.replace("_", " ")
+    # A piece of a collection names the collection as its ws-title.
+    book = {
+        "id": path,
+        "title": own if rec["type"] == "collection" else (rec.get("title") or own),
+        "author": _author(rec.get("author")),
+        "path": path,
+        "format": "html",
+        "chapters": chapters,
+    }
+    for key in ("translator", "publisher"):
+        if rec.get(key):
+            book[key] = rec[key]
+    if _year(rec.get("year")):
+        book["year"] = _year(rec.get("year"))
+    return book
+
+
 def wikisource_books(archive):
     tops, subs = _walk(archive)
-    out = []
+    try:
+        main = archive.main_entry.get_item().path
+    except Exception:
+        main = ""
+    out, headed, ws_data = [], [], False
     for path, title in tops:
         if _NAMESPACE_RE.match(path) or _SCAN_RE.search(path):
             continue
-        rec = _ws_record(archive, path)
+        data = _srv.entry_bytes(archive, path, _WS_MAX_PAGE_BYTES)
+        rec = _ws_record(data)
+        if rec:
+            ws_data = True
+        elif not ws_data and path != main:
+            # Kept until a page with #ws-data shows this wiki has it.
+            rec = _ws_header(data, subs.get(path, 0))
+            if rec:
+                headed.append(_ws_book(path, title, rec, subs.get(path, 0)))
+            continue
         if not rec or rec["type"] in _WS_SKIP_TYPES:
             continue
-        own = title or path.replace("_", " ")
-        # A piece of a collection names the collection as its ws-title.
-        book = {
-            "id": path,
-            "title": own if rec["type"] == "collection" else (rec.get("title") or own),
-            "author": _author(rec.get("author")),
-            "path": path,
-            "format": "html",
-            "chapters": subs.get(path, 0),
-        }
-        for key in ("translator", "publisher"):
-            if rec.get(key):
-                book[key] = rec[key]
-        if _year(rec.get("year")):
-            book["year"] = _year(rec.get("year"))
-        out.append(book)
+        out.append(_ws_book(path, title, rec, subs.get(path, 0)))
+    if not ws_data:
+        out = headed
     # The longest works first: a shelf's front without a count of readers.
     out.sort(key=lambda b: (-b["chapters"], b["title"].casefold()))
     return out
