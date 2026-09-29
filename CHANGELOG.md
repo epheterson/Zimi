@@ -5,72 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.12.0] - 2026-09-29
 
 ### Added
 
-- Bookshelf reads more than Gutenberg: Kiwix's document libraries (zimgit and the other nautilus ZIMs), LibreTexts textbooks, Wikisource works and Wikibooks books (still in Zimipedia too), and ZIMs that are one book, like the Algorithms and Stacks textbooks.
-- A folder of PDFs and EPUBs packed with Create a ZIM lands on the Bookshelf, each document with its title, author, date and cover.
-- EPUBs open in Zimi's book reader, chapter by chapter, instead of downloading; Gutenberg's EPUB-only books open too.
-- Search operators, in the library search, the catalog and the API: `-word` leaves out, `"exact words"` keeps words together, `cats OR dogs` takes either, and `in:wikipedia`, `lang:fr` (and `-in:ted`, `-lang:en`) choose the sources. `science -ted` in the catalog now hides the hundreds of TED ZIMs. A hyphenated word like `e-mail` is still one word. In the library, exclusions and phrases apply to a result's title, every word of an OR is searched (a very long one says which it left out), and "Did you mean" keeps the operators. Each operator shows as a chip saying what it did ("without ted", "French", "Wikipedia"), and its × takes it back out; a ? beside the search box has examples in your language. ([#94](https://github.com/epheterson/Zimi/issues/94))
-- The Almanac's orrery: hover or tap a planet for its distance and radio delay, ride the rocket there as the delay home grows, and try the twin paradox at up to 0.99c.
-- Saving: bookmarks, lists and Liked in one place, an item in as many lists as you like, each list exportable as a ZIM.
-- Highlights in every reader (articles, Reader View, books in pages or scrolling, EPUBs, Zimipedia): select text to highlight it in one of four colors with a note, find it again from the Saved panel, and keep it through a new font, another page and a newer build of the ZIM; one that is gone is marked, never dropped.
-- Signed in, what you save and where you are in each book follow your account to every device, and a delete on one stays deleted on the others.
-- Bookshelf has My shelf, and Continue reading picks up on any device where you left off.
-- Zimipedia's reader: an article opened from Zimipedia (or any wiki's article in Reader View) reads as an encyclopedia, with its lead image, contents that follow you, the infobox beside the text (folded on a phone), citations shown in place, and Bookshelf's reading settings.
-- Zimipedia's languages by Wikidata ID: only the installed languages that have the article, opening on the same section, two side by side on a wide screen, and Simple English as a reading level. A mini without an ID borrows it from a fuller build of its language, points to the full article, and the switch hides when it cannot work.
-- One topic, every wiki: under an article's lead, what else the library holds on it (the Wiktionary entry, the Wikivoyage guide, Wikiquote, Wikibooks, Wikisource) and a map of the place when one is installed.
-- Diving in, in Zimipedia: a link shows a card first (the article's first sentence and picture) and a second tap follows it; a trail over the title shows where you came through, a step back along it is a tap; Read next closes an article with the articles its lead links to.
-- Zimipedia's reading lists: the reader's bookmark saves an article (at the section you are in) and puts it in Liked or any list, or a new one.
-- The Almanac zooms from the solar system to a 3D Earth: lit by the real Sun, with the Moon, eclipses as they fall, the ISS and the GPS satellites (tap one: its clock gains 38 microseconds a day).
-- The 3D Earth's satellite data comes from the internet only as you choose: a gear in the view (and Server settings) offers Ask first (the default: an admin's Get fresh data fetches once), Automatically or Never, and `ZIMI_SATELLITE_UPDATES` sets it.
-- ZimiTube plays the videos and audiobooks in Kiwix's document libraries (Maître Lucas, YouScribe's audiobooks, Zaya and more): an audiobook is one card, its tracks listed and played in turn.
-- A folder of videos or audio made with Create a ZIM plays in ZimiTube.
-- Links that leave your library get a small arrow in every reader, and hovering or tapping one says where it goes ("Opens example.com on the web", or that it needs the internet when Zimi is offline); Settings can hide them as plain text instead. ([#99](https://github.com/epheterson/Zimi/issues/99))
-- Create a ZIM can remove links to other sites (web page and site captures, fast and rendered engines), so the ZIM never sends a reader to the web in Kiwix either. ([#99](https://github.com/epheterson/Zimi/issues/99))
-- The home page's order and view controls sit above the Apps, which follow the order too (an app holding a just-updated ZIM comes first under Recently updated), and the Apps title opens an Apps page with the ZIMs inside each app. ([#100](https://github.com/epheterson/Zimi/issues/100))
-- ZimiTube has Like, Watch later and Lists under a video, and its home starts with Continue watching (a video at its time, an audiobook at its track), Watch later, Liked and your lists.
-- ZimiExchange and Reddot have Like, Save and Lists under a question or post, a Saved tab of what you kept, and a long thread you saved opens where you were.
-- Maps keeps places: Save this place under the pin names the view from your search or the nearest town, and your places are listed there, a tap flying back.
-- Every app, Bookshelf included, puts a thing in a list with the same picker the Saved panel uses.
-- Saved never drops what you keep to make room: at a limit a new save is refused with a word, the Saved panel says when sync is paused and what to do, a shared browser's old bookmarks are offered to an account instead of copied into it, and a book read further on another device offers to continue there.
-- Server settings lists what Zimi fetches from the internet: every destination, when it happens, whether it happens on its own right now, and a link to its switch. The Operations docs carry the same table.
-- Check for updates, in Server settings: Ask first, Automatically (the default) or Never, for both the server's check and the desktop app's updater; `ZIMI_UPDATE_CHECK` sets it.
+- Saving: bookmarks, lists and Liked in one place, in every app (ZimiTube's Watch later, ZimiExchange and Reddot's Saved, Maps' Places, Bookshelf's My shelf); an item in many lists; each list exportable as a ZIM; undo on every removal.
+- Highlights with notes in every reader: articles, books and EPUBs.
+- Signed in, what you save and where you are in each book follow you to every device.
+- Zimipedia's reader: citations in place, contents that follow you, languages by Wikidata ID (side by side on a wide screen), everything else the library holds on the topic, and link previews. Zimipedia is on by default again.
+- Bookshelf reads document libraries (zimgit and more), LibreTexts textbooks, Wikisource, Wikibooks, EPUBs and your own folders of PDFs and EPUBs.
+- ZimiTube plays the document libraries' videos and audiobooks, and your own folders of video and audio.
+- Search operators in search, the catalog and the API: `-word`, `"exact words"`, `OR`, `lang:` and `in:`, shown as chips you can remove.
+- The Almanac's orrery shows each planet's radio delay and flies you there, with the twin paradox; a glow on Earth opens a 3D Earth with real daylight, eclipses, the ISS and GPS satellites.
+- Links that leave your library are marked in every reader and say where they go ([#99](https://github.com/epheterson/Zimi/issues/99)); Create a ZIM can remove them.
+- Server settings list everything Zimi fetches from the internet, each with its switch, including new ones for update checks and satellite data.
 
 ### Changed
 
-- Zimipedia is on by default, like the other apps (it was a preview, on only when `ZIMI_APPS` named `wiki`).
-- Zimipedia's Today is a front door: the day's article (from a full build before a mini), the articles you are part way through, and your recent trails, per language. On this day, the facts, the picture and the front pages are gone from it and from the API (`/wiki/onthisday`, and `/wiki/today`'s `otd`, `extras` and `front`).
-
-- The Bookmarks panel is now Saved: folders are lists (a nested folder is "Parent / Child"), and over an app it opens on that app's own.
-- The bookmark button saves an article at the section you are reading, and a map at the place on screen.
-- Recently updated counts a ZIM added since as a change, for the sources as for the apps, so the Apps page agrees with them.
-- Every language with a two-letter code is known by it (Breton, Esperanto, Latin and dozens more), so its ZIMs are labelled with it and `lang:` finds them.
-- An idle Zimi asks the internet for nothing when it starts: the BitTorrent engine waits until there is something to download or seed, and the port check (portcheck.transmissionbt.com) runs only when an admin presses recheck.
-- `ZIMI_OFFLINE` also refuses downloads from the internet, Auto-update's included (a download from a Nearby peer still works), and a download waiting to resume keeps its place for later.
-- A question or post in ZimiExchange, Reddot and the other apps can no longer load pictures from the internet, the same rule ZIM articles already follow.
-- Zimipedia's reader keeps saving, reading settings and the article's languages in its own bar only: Zimi's header no longer shows a second bookmark, the ⋯ menu a second set of reading settings, or the language menu the article's languages; Reader View's text size reads as a percentage.
-- Removing something from Saved, or a highlight, can be undone from the message that says so; New list comes first in every list picker; a kept place shows a pin; an audiobook is kept to Listen later; signed in, Saved says when your account is behind because the server is not answering.
-- A book's page on a phone shows its cover, title and Read on the first screen, with its facts two to a row; audio in ZimiTube no longer sits on an empty 16:9 video stage; an app's page has one Save (its own), not a second bookmark in the header; LibreTexts no longer lists a shelf's Back Matter as a book or counts front and back matter as chapters.
-- A search box's prompt that does not fit the box (Bookshelf's on a phone) says Search instead of being cut off mid-word, and a language change keeps the prompt the header gave.
-- The Almanac's 3D Earth opens at now (Live) unless you set a moment with the time machine, the orrery's speed or a ride, and stays there while open; a partial solar eclipse is drawn with its edge and a line at every quarter of the Sun covered.
+- The home page's sort governs the apps too, and the Apps heading opens a page of each app's ZIMs ([#100](https://github.com/epheterson/Zimi/issues/100)).
+- `ZIMI_OFFLINE` now also refuses internet downloads, and an idle Zimi asks the internet for nothing at startup.
+- The home page ships a third fewer bytes, and search asks for half as many snippets.
 
 ### Fixed
 
-- In dark mode, a ZIM page with no colours of its own no longer shows black text on black.
-- Discover's Book of the Day names the book rather than its cover page's path, and a card without a picture shows its source's letter instead of an empty box; an app's tile on the home page reads its name and contents together.
-- A subreddit made with Create a ZIM now says it was made by Zimi: the Subreddit badge on its card, and a place in Manage's list of ZIMs made here.
-- In Arabic and Hebrew the search box's clear button no longer sits on its magnifier, and a catalog search inside a category says Back in your language.
-- A catalog search typed while the catalog was still loading is no longer replaced by the category gallery.
-- My data's export and import carry your history, and Restore from server no longer restores an old copy.
-- An app turned on or off in Settings no longer flips back when you leave Zimi and come back with Back. ([#98](https://github.com/epheterson/Zimi/issues/98))
-- The reader's bookmark button empties when the bookmark is removed in the Saved panel, in another tab or on another device. ([#96](https://github.com/epheterson/Zimi/issues/96))
-- On the Bookshelf, a book without a cover picture is the same size as the others instead of spilling over its neighbours, with a title you can read on a phone. ([#101](https://github.com/epheterson/Zimi/issues/101))
-- After a Gutenberg ZIM updates, the Bookshelf's eras and subjects come back: it no longer waits for the records of the build the update replaced.
-- Copy link and Copy title on a link's menu, and Copy on a new API token, work over plain http on a LAN and in an iOS home-screen app, and say so; where the browser cannot copy at all, the text is shown to copy by hand.
-- Two ZIMs of one collection in different languages (Aleut and English Gutenberg, say) no longer hide one another: the one listed before keeps its name and the other appears beside it, named with its language (gutenberg_ale).
-- A Wikisource whose pages lack the usual header (Slovak, Limburgish) puts its works on the Bookshelf instead of none: 342 from Slovak Wikisource, each with its author where the page names one.
+- Bookshelf: a book without a cover no longer spills over its neighbours ([#101](https://github.com/epheterson/Zimi/issues/101)); the shelf recovers after a Gutenberg update.
+- An app turned on or off no longer flips back when you return with Back ([#98](https://github.com/epheterson/Zimi/issues/98)).
+- The bookmark button follows removals made in the Saved panel ([#96](https://github.com/epheterson/Zimi/issues/96)).
+- Two ZIMs of one collection in different languages no longer hide one another.
+- Dark mode shows pages with no colours of their own correctly.
+- Copy link works over plain http and in the iOS home-screen app.
 
 ## [1.11.0] - 2026-09-27
 
