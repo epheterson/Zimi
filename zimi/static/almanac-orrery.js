@@ -225,11 +225,21 @@ function _orreryRidePathAU(rk) {
 }
 
 // Where the ride is and how long a message home takes, at its own clock.
+// Its clock runs on past arrival (the orrery keeps turning), and the rocket,
+// now orbiting the planet, goes where the planet goes: "a message home now
+// takes" follows the planet, not the instant of arrival.
 function _orreryRideStatus(rk) {
   var frac = Math.min(1, Math.max(0, rk.elapsed / rk.duration));
-  var simMs = rk._launchRealTime + frac * rk.duration;
-  var au = _auBetween(_orreryRideAU(rk, frac), _orreryBodyAU('Earth', simMs));
+  var simMs = rk._launchRealTime + Math.max(0, rk.elapsed);
+  var at = frac < 1 ? _orreryRideAU(rk, frac) : _orreryBodyAU(rk.target, simMs);
+  var au = _auBetween(at, _orreryBodyAU('Earth', simMs));
   return { frac: frac, au: au, delay: _lightDelaySeconds(au) };
+}
+
+// A transit's progress in whole days, in the reader's language: "122 / 259 days".
+function _orrFmtTransitDays(rk) {
+  var done = Math.min(Math.max(0, rk.elapsed), rk.duration);
+  return _orrNum(Math.round(done / MS_PER_DAY)) + ' / ' + _orrNum(Math.round(rk.duration / MS_PER_DAY), 'day');
 }
 
 // ── The twin paradox, on the ride ──
@@ -301,10 +311,20 @@ function _orreryWorldToScreen(wx, wy) {
            y: (wy - _orreryCam.y * w) * _orreryCam.zoom + w / 2 };
 }
 
+// Reduced motion: the camera stays on the whole system (no follow, no zoom)
+// and the Earth glow holds still. The query is kept, not rebuilt each frame.
+var _orreryReduceMq = null;
+function _orreryReduceMotion() {
+  try {
+    _orreryReduceMq = _orreryReduceMq || window.matchMedia('(prefers-reduced-motion: reduce)');
+    return _orreryReduceMq.matches;
+  } catch (e) { return false; }
+}
+
 // Where the camera wants to be this frame (fractions of the canvas width).
 function _orreryCamTarget(z, T) {
   var rk = _orreryRide();
-  if (!rk || (rk.arrived && !(rk.pathFade > 0))) return _ORRERY_CAM_REST;
+  if (!rk || (rk.arrived && !(rk.pathFade > 0)) || _orreryReduceMotion()) return _ORRERY_CAM_REST;
   var zoom = Math.min(_ORRERY_RIDE_MAX_ZOOM, Math.max(1,
     _ORRERY_RIDE_FIT / Math.max(_orreryPlanetR('Earth', z), _orreryPlanetR(rk.target, z))));
   if (rk.arrived) {   // hold on the planet itself, which keeps moving
@@ -334,7 +354,11 @@ var _EARTH_GLOW_PERIOD_MS = 3200;   // one slow breath
 var _EARTH_GLOW_ALPHA = 0.10;       // resting strength
 var _EARTH_GLOW_PULSE = 0.08;       // how much the breath adds
 
-function _orreryEarthViewAvailable() { return typeof window.openAlmanacEarth === 'function'; }
+// Once a first open finds no WebGL (almanac-earth.js sets .unsupported), the
+// glow and the Earth tip's button go, and Earth opens its article again.
+function _orreryEarthViewAvailable() {
+  return typeof window.openAlmanacEarth === 'function' && !window.openAlmanacEarth.unsupported;
+}
 function _orreryOpenEarthView() { if (_orreryEarthViewAvailable()) window.openAlmanacEarth(); }
 function _orreryEarthGlowAlpha(nowMs) {
   return _EARTH_GLOW_ALPHA + _EARTH_GLOW_PULSE * (0.5 + 0.5 * Math.sin(2 * Math.PI * nowMs / _EARTH_GLOW_PERIOD_MS));
@@ -597,6 +621,7 @@ function _initOrrery() {
     for (var i = 0; i < lines.length; i++) html += '<span class="orrery-tip-line">' + _almEsc(lines[i]) + '</span>';
     tooltip.innerHTML = html + _tipButtonHtml(hit);
     tooltip.style.display = 'block';
+    tooltip._orrKind = hit.type;
     var maxX = wrap.clientWidth, maxY = wrap.clientHeight;
     var tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
     var at = _orreryWorldToScreen(hit.data.x, hit.data.y), r = hit.data.r * _orreryCam.zoom;
@@ -609,14 +634,42 @@ function _initOrrery() {
     tooltip.style.top = ty + 'px';
   }
 
-  // Keep the tip alive while the pointer is on it.
+  // Is the pointer over the tip's box? Only its link and button take the
+  // pointer (CSS), so the rest of the box lets the canvas see through it.
+  function _overTip(p) {
+    if (tooltip.style.display === 'none') return false;
+    var b = tooltip.getBoundingClientRect();
+    return p.clientX >= b.left && p.clientX <= b.right && p.clientY >= b.top && p.clientY <= b.bottom;
+  }
+
+  // The hit-test tolerance for a pointer at canvas (mx, my), or -1 when the
+  // tip's box keeps it. Through the box only a body's own disc is reached (a
+  // planet the tip had covered: Earth's sat on Mars and held the pointer off
+  // it). Near misses and the belts' wide rings under the box are the tip's,
+  // so crossing it toward its button beside another planet never flips it,
+  // and a click or tap on its text never acts on what lies beneath.
+  function _tipTolerance(p, mx, my, tol) {
+    if (!_overTip(p)) return tol;
+    var h = _orreryHitTest(mx, my, 0);
+    return (h && h.type !== 'belt') ? 0 : -1;
+  }
+
+  // Keep the tip alive while the pointer is on its link or button; stepping
+  // off them onto the tip's own text only starts the grace period, which
+  // the canvas cancels below while the pointer stays inside the box.
   tooltip.onmouseenter = _cancelTipHide;
-  tooltip.onmouseleave = _hideTip;
+  tooltip.onmouseleave = _releaseTip;
 
   canvas.onmousemove = function(e) {
     var rect = canvas.getBoundingClientRect();
     var mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    var hit = _orreryHitTest(mx, my, 8);
+    var tol = _tipTolerance(e, mx, my, 8);
+    var hit = tol < 0 ? null : _orreryHitTest(mx, my, tol);
+    // A belt's wide ring does not take the tip from a body's: on the way
+    // from Mars to its Fly button the pointer crosses the asteroid belt,
+    // and the tip flipped to the belt (then to Jupiter) before it arrived.
+    // The body's tip keeps its grace period; the belt's comes after it.
+    if (hit && hit.type === 'belt' && tooltip.style.display !== 'none' && tooltip._orrKind !== 'belt') hit = null;
     if (hit) {
       _showTip(hit);
       // Pointer for anything actionable: a launchable planet, Earth with its
@@ -624,6 +677,10 @@ function _initOrrery() {
       var actionable = _orreryIsDestination(hit) || hit.type === 'voyager' || !!_orreryLinkFor(hit) ||
         (hit.type === 'planet' && _orreryEarthViewAvailable());
       canvas.style.cursor = actionable ? 'pointer' : 'default';
+    } else if (tol < 0) {
+      // Crossing the tip's text toward its button: it stays.
+      _cancelTipHide();
+      canvas.style.cursor = 'default';
     } else {
       // Grace period so the pointer can reach the tip's link or button before it hides.
       _releaseTip();
@@ -637,7 +694,10 @@ function _initOrrery() {
   // except that a ride or the Earth view moves the scene out from under it.
   canvas.onclick = function(e) {
     var rect = canvas.getBoundingClientRect();
-    var res = _orreryTap(e.clientX - rect.left, e.clientY - rect.top, 10, false);
+    var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    var tol = _tipTolerance(e, mx, my, 10);
+    if (tol < 0) return;
+    var res = _orreryTap(mx, my, tol, false);
     if (res && (res.action === 'fly' || res.action === 'earth')) _hideTip();
   };
 
@@ -658,7 +718,10 @@ function _initOrrery() {
       if (moved > 12) return; // a drag/scroll, not a tap
     }
     var rect = canvas.getBoundingClientRect();
-    var res = _orreryTap(touch.clientX - rect.left, touch.clientY - rect.top, 14, true);
+    var tx = touch.clientX - rect.left, ty = touch.clientY - rect.top;
+    var tol = _tipTolerance(touch, tx, ty, 14);
+    if (tol < 0) { e.preventDefault(); return; }   // a tap on the tip's text: the tip stays as it was
+    var res = _orreryTap(tx, ty, tol, true);
     if (res) e.preventDefault();
     var keep = res && (res.action === 'info' ||
       (res.action !== 'fly' && res.action !== 'earth' && _orreryLinkFor(res.hit)));
@@ -926,7 +989,7 @@ function _drawOrrery(canvas, dpr) {
     var glowR = 0;
     if (names[i] === 'Earth' && _orreryEarthViewAvailable()) {
       glowR = pr * _EARTH_GLOW_SCALE;
-      var ga = _orreryEarthGlowAlpha(typeof performance !== 'undefined' ? performance.now() : 0);
+      var ga = _orreryEarthGlowAlpha(typeof performance !== 'undefined' && !_orreryReduceMotion() ? performance.now() : 0);
       var eg = ctx.createRadialGradient(px, py, pr, px, py, glowR);
       eg.addColorStop(0, _hexToRgba(p.glow, 0));
       eg.addColorStop(0.45, _hexToRgba(p.glow, ga));
@@ -1068,16 +1131,8 @@ function _drawOrrery(canvas, dpr) {
       ctx.moveTo(-0.8 * u, 3.5 * u); ctx.lineTo(0, flameLen * 0.6); ctx.lineTo(0.8 * u, 3.5 * u);
       ctx.closePath(); ctx.fill();
       ctx.restore();
-
-      // Transit label (only for the newest in-flight rocket)
-      if (ri === _orreryRockets.length - 1 && progress > 0.05 && progress < 0.95) {
-        var daysElapsed = Math.round(rk.elapsed / MS_PER_DAY);
-        var totalDays = Math.round(rk.duration / MS_PER_DAY);
-        ctx.font = (10 * u) + 'px -apple-system, system-ui, sans-serif';
-        ctx.fillStyle = 'rgba(255,200,100,0.6)';
-        ctx.textAlign = 'left';
-        ctx.fillText(daysElapsed + 'd / ' + totalDays + 'd', rkX + 10 * u, rkY + 4 * u);
-      }
+      // No days label beside the rocket: the transit slider's readout, just
+      // below the canvas, says the same (and the label sat on the trail).
     }
 
     // Arrived — orbiting target planet
@@ -1330,37 +1385,36 @@ function _orreryUpdateTransitLabel() {
   var slider = document.getElementById('orrery-transit-slider');
   var rk = _orreryGetActiveRocket();
   if (!label || !rk) return;
-  var daysElapsed = Math.round(rk.elapsed / MS_PER_DAY);
-  var totalDays = Math.round(rk.duration / MS_PER_DAY);
-  label.textContent = rk.target + ' · ' + daysElapsed + 'd / ' + totalDays + 'd';
+  // The ride panel just below names the ride's planet; the slider names its
+  // own only when it holds an older rocket still in flight.
+  var days = _orrFmtTransitDays(rk);
+  label.textContent = rk === _orreryRide() ? days : _tp(rk.target) + ' · ' + days;
   if (slider) {
     slider.value = Math.round((rk.elapsed / rk.duration) * 1000);
   }
 }
 
+// The missions the ride panel does not describe: earlier rockets, still on
+// their way or orbiting where they arrived. The ride (the newest) is the
+// panel's, so a single flight lists nothing here.
+function _orreryMissionHtml(rk) {
+  var color = _PLANETS[rk.target] ? _PLANETS[rk.target].color : '#888';
+  var html = '<div class="orrery-mission"><span style="color:' + color + '">●</span>';
+  if (rk.arrived) return html + _almEsc(_tp(rk.target) + ' · ' + t('alm_orbiting')) + '</div>';
+  var pct = Math.floor(Math.min(1, Math.max(0, rk.elapsed / rk.duration)) * 100);
+  return html + _almEsc(t('alm_orr_ride_to', { planet: _tp(rk.target) })) +
+    '<span class="orrery-mission-pct">' + _almEsc(_orrNum(pct, 'percent')) + '</span>' +
+    '<span class="orrery-mission-days">' + _almEsc(_orrFmtTransitDays(rk)) + '</span></div>';
+}
+
 function _orreryUpdateMissions() {
   var el = document.getElementById('orrery-missions');
-  if (!el || _orreryRockets.length === 0) { if (el) el.style.display = 'none'; return; }
-  el.style.display = 'block';
+  if (!el) return;
   var html = '';
-  for (var i = 0; i < _orreryRockets.length; i++) {
-    var rk = _orreryRockets[i];
-    var totalD = Math.round(rk.duration / MS_PER_DAY);
-    var color = _PLANETS[rk.target] ? _PLANETS[rk.target].color : '#888';
-    if (rk.arrived) {
-      html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0">' +
-        '<span style="color:' + color + '">●</span> ' + rk.target + ' \u2014 ' + t('alm_orbiting') +
-        ' <span style="color:var(--text3);font-size:10px">(' + totalD + 'd transit)</span></div>';
-    } else {
-      var elapsedD = Math.round(rk.elapsed / MS_PER_DAY);
-      var pct = Math.round((rk.elapsed / rk.duration) * 100);
-      html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0">' +
-        '<span style="color:' + color + '">●</span> → ' + rk.target +
-        ' <span style="color:var(--amber)">' + pct + '%</span>' +
-        ' <span style="color:var(--text3);font-size:10px">' + elapsedD + 'd / ' + totalD + 'd</span></div>';
-    }
-  }
-  el.innerHTML = html;
+  for (var i = 0; i < _orreryRockets.length - 1; i++) html += _orreryMissionHtml(_orreryRockets[i]);
+  // Called every frame: write only what changed.
+  if (el._orrHtml !== html) { el.innerHTML = html; el._orrHtml = html; }
+  el.style.display = html ? 'block' : 'none';
 }
 
 // ── The ride's readout and the twins (#orrery-ride, under the controls) ──
