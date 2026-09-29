@@ -56,28 +56,30 @@ function svButtons() {
   var on = S.has(it), liked = on && S.inList(it, S.LIKED), names = _svOpts.save || [w.save, w.saved];
   var b = function(which, pressed, icon, label, extra) {
     return '<button type="button" class="svb' + (pressed ? ' on' : '') + '" data-sv="' + which + '"' + (extra || ' aria-pressed="' + pressed + '"') +
-      ' onclick="savedDo(this)">' + icon + '<span>' + esc(label) + '</span></button>';
+      ' onclick="savedDo(this, event)">' + icon + '<span>' + esc(label) + '</span></button>';
   };
   return (_svOpts.like === false ? '' : b('like', liked, SV_HEART, liked ? w.liked : w.like)) + b('save', on, SV_MARK, on ? names[1] || names[0] : names[0]) +
     b('lists', false, SV_LISTS, w.lists, ' aria-haspopup="menu" title="' + esc(w.add_to_list || '') + '"');
 }
 function savedPaint() { document.querySelectorAll('.svbar').forEach(function(bar) { bar.innerHTML = svButtons(); }); }
-function savedDo(el) {
+function savedDo(el, e) {
   var S = saved(), it = _svItem, which = el.getAttribute('data-sv');
   if (!S || !it) return;
-  if (which === 'lists') { pickLists(it, el); return; }
+  if (which === 'lists') { pickLists(it, el, e); return; }
   if (which === 'save') { if (S.has(it)) S.remove(it); else { S.save(it); threadWrite(); } }
   else if (S.inList(it, S.LIKED)) S.removeFromList(it, S.LIKED);
   else S.addToList(it, S.LIKED);
   savedPaint();
 }
 // The shell's list picker (every list, a tick where the item is, a new one),
-// opened over the control that asked for it.
-function pickLists(item, el) {
+// opened over the control that asked for it. e is the click: one from a
+// finger or a mouse (detail > 0), not Enter or Space, opens it with no list
+// looking chosen.
+function pickLists(item, el, e) {
   var p = window.parent, f = window.frameElement, r = el.getBoundingClientRect();
   if (!f || typeof p.savedPickLists !== 'function') return;
   var o = f.getBoundingClientRect();
-  p.savedPickLists(item, { left: o.left + r.left, right: o.left + r.right, top: o.top + r.top, bottom: o.top + r.bottom });
+  p.savedPickLists(item, { left: o.left + r.left, right: o.left + r.right, top: o.top + r.top, bottom: o.top + r.bottom }, !!(e && e.detail > 0));
 }
 // Where you are in a long thread you saved, as a share of the way down, so it
 // opens there again on any screen: written once the scroll settles, and

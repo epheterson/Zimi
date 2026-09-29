@@ -15,3 +15,14 @@ What the UX pass found needs rethinking rather than fixing, collected per surfac
 
 1. The Earth view opens at the orrery's spun-forward date (the orrery runs fast by default), so a first open is rarely "live".
 2. A partial solar eclipse shows nothing on the globe.
+
+## Saving, lists, highlights (UX pass)
+
+1. "Watch later" also labels audiobooks: one word that fits listening too.
+2. "New list…" sits below every list; with 20 lists it needs a scroll. Put it first.
+3. A saved map place's row reads "Saved", which looks like a heading, and tapping it un-saves.
+4. Signed in with the server down, nothing says the account copy is behind.
+5. Removing an item or highlight has no undo.
+6. Places show a letter tile, not a map pin.
+7. Two whole-library exports are both titled "Saved".
+8. The two 44px buttons above the tree feel heavy on a phone.
