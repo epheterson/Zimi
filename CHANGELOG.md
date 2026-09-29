@@ -58,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - On the Bookshelf, a book without a cover picture is the same size as the others instead of spilling over its neighbours, with a title you can read on a phone. ([#101](https://github.com/epheterson/Zimi/issues/101))
 - After a Gutenberg ZIM updates, the Bookshelf's eras and subjects come back: it no longer waits for the records of the build the update replaced.
 - Copy link and Copy title on a link's menu, and Copy on a new API token, work over plain http on a LAN and in an iOS home-screen app, and say so; where the browser cannot copy at all, the text is shown to copy by hand.
+- Two ZIMs of one collection in different languages (Aleut and English Gutenberg, say) no longer hide one another: the one listed before keeps its name and the other appears beside it, named with its language (gutenberg_ale).
 
 ## [1.11.0] - 2026-09-27
 
