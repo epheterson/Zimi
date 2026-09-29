@@ -1211,8 +1211,10 @@
   .app-tile .card-icon { color: var(--amber); display: flex; align-items: center; justify-content: center; }
   /* Quiet, like any other detail line: an empty app is not an error (Eric). */
   .app-tile.app-empty .detail { color: var(--text2); }
-  /* Reddot's dot keeps its colour in the breadcrumb, where line marks take the text's. */
-  #bc-icon circle { fill: var(--amber); }
+  /* Reddot's dot keeps its colour in the breadcrumb, where line marks take the
+     text's. Only a filled dot: Zimipedia's globe is a line mark too, and
+     filling its circle painted a dark disc on the light header. */
+  #bc-icon circle[fill="currentColor"] { fill: var(--amber); }
   .suggest-item.sg-place .sg-title::before { content: '\25CF'; color: var(--amber); font-size: 8px; margin-right: 8px; vertical-align: middle; }
   .stat-card:hover, .stat-card:focus-visible {
     background: var(--surface2); border-color: var(--amber-border);
