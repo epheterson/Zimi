@@ -4849,7 +4849,7 @@ _MOON_TEX.onload = function() {
   _moonSpriteCache = {};
   if (typeof _repaintMoons === 'function') _repaintMoons();
 };
-_MOON_TEX.src = '/static/moon.png?v=2';
+_MOON_TEX.src = '/static/moon.webp?v=1';
 
 var _moonSpriteCache = {};
 
