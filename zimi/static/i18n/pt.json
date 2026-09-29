@@ -1971,7 +1971,7 @@
   "alm_earth_no_orbital_data": "Não há dados orbitais aqui, então nenhum satélite é desenhado",
   "alm_earth_credit": "Imagens: NASA",
   "alm_earth_gps_sentence": "Este relógio ganha {net} µs por dia em relação aos relógios no solo (+{grav} pela gravidade mais fraca aqui em cima, −{speed} pelos seus {v} km/s), então sem correção o GPS erraria cerca de {km} km por dia.",
-  "alm_earth_since_tap": "Ganho desde o seu toque: {ns} ns",
+  "alm_earth_since_tap": "Ganho desde o seu toque: {t}",
   "alm_earth_time_dilation": "Dilatação do tempo",
   "alm_earth_ecl_total_solar": "Eclipse solar total: a sombra da Lua está sobre a Terra em {place}",
   "alm_earth_ecl_annular_solar": "Eclipse solar anular: a sombra da Lua está sobre a Terra em {place}",

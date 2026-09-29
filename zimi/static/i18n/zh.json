@@ -1971,7 +1971,7 @@
   "alm_earth_no_orbital_data": "这里没有轨道数据，因此不显示卫星",
   "alm_earth_credit": "图像：NASA",
   "alm_earth_gps_sentence": "这台时钟每天比地面时钟快 {net} 微秒（高空引力较弱 +{grav}，其 {v} 公里/秒的速度 −{speed}），若不校正，GPS 每天会偏差约 {km} 公里。",
-  "alm_earth_since_tap": "自你点击以来快了：{ns} 纳秒",
+  "alm_earth_since_tap": "自你点击以来快了：{t}",
   "alm_earth_time_dilation": "时间膨胀",
   "alm_earth_ecl_total_solar": "日全食：月影落在地球上的 {place}",
   "alm_earth_ecl_annular_solar": "日环食：月影落在地球上的 {place}",

@@ -1971,7 +1971,7 @@
   "alm_earth_no_orbital_data": "لا توجد بيانات مدار هنا، لذلك لا تُرسم أقمار",
   "alm_earth_credit": "الصور: NASA",
   "alm_earth_gps_sentence": "تتقدم هذه الساعة {net} ميكروثانية في اليوم على ساعات الأرض (+{grav} من الجاذبية الأضعف هناك، −{speed} من سرعتها {v} كم/ث)، لذا لو أُهمل ذلك لانحرف GPS نحو {km} كم كل يوم.",
-  "alm_earth_since_tap": "المكسب منذ لمستك: {ns} نانوثانية",
+  "alm_earth_since_tap": "المكسب منذ لمستك: {t}",
   "alm_earth_time_dilation": "تمدد الزمن",
   "alm_earth_ecl_total_solar": "كسوف كلي للشمس: ظل القمر على الأرض عند {place}",
   "alm_earth_ecl_annular_solar": "كسوف حلقي للشمس: ظل القمر على الأرض عند {place}",

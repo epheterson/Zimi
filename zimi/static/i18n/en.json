@@ -1971,7 +1971,7 @@
   "alm_earth_no_orbital_data": "No orbital data here, so no satellites are drawn",
   "alm_earth_credit": "Images: NASA",
   "alm_earth_gps_sentence": "This clock gains {net} µs a day on clocks on the ground (+{grav} from weaker gravity up here, −{speed} from its {v} km/s), so ignoring it would put GPS about {km} km off each day.",
-  "alm_earth_since_tap": "Gained since you tapped: {ns} ns",
+  "alm_earth_since_tap": "Gained since you tapped: {t}",
   "alm_earth_time_dilation": "Time dilation",
   "alm_earth_ecl_total_solar": "Total solar eclipse: the Moon’s shadow is on the Earth at {place}",
   "alm_earth_ecl_annular_solar": "Annular solar eclipse: the Moon’s shadow is on the Earth at {place}",

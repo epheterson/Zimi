@@ -142,19 +142,38 @@
 .sunmap-flash.show { opacity: 1; transform: translate(-50%, 0); }
 .orrery-transit-wrap { display: none; align-items: center; gap: 6px; max-width: 500px; margin: 4px auto 0; padding: 0 4px; }
 .orrery-transit-end { font-size: 11px; color: var(--text3); flex-shrink: 0; min-width: 40px; }
-.orrery-transit-label { color: var(--amber); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 90px; text-align: right; font-family: 'SF Mono', 'Fira Code', monospace; }
+.orrery-transit-label { color: var(--amber); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 90px; text-align: end; }
 .orrery-now { width: auto; padding: 0 10px; font-size: 11px; color: var(--amber); border-color: var(--amber-border); }
+/* Earlier missions under the ride, in line with the controls above. */
+.orrery-missions { max-width: 500px; margin: 4px auto 0; padding: 0 4px; font-size: 11px; color: var(--text3); }
+.orrery-mission { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+.orrery-mission-pct { color: var(--amber); font-variant-numeric: tabular-nums; }
+.orrery-mission-days { font-size: 10px; font-variant-numeric: tabular-nums; }
+/* A finger needs more than a 4px track and a 14px thumb: the input grows to
+   a 28px target and paints the same 4px track across its middle. */
+@media (pointer: coarse) {
+  .orrery-slider { height: 28px; border-radius: 0; background: linear-gradient(var(--surface2), var(--surface2)) center / 100% 4px no-repeat; }
+  .orrery-slider::-webkit-slider-thumb { width: 22px; height: 22px; }
+  .orrery-slider::-moz-range-thumb { width: 22px; height: 22px; }
+  .orrery-slider::-moz-range-track { background: transparent; }
+}
 /* Orrery hover/tap tooltip: body stats with the body NAME itself as the link
-   (dotted-amber .alm-link idiom). The box takes pointer events itself (not
-   just the name link) so a hover-intent grace period can keep it open while
-   the pointer travels from the body onto the tooltip to reach the link —
-   with pointer-events:none here that traversal never registered and the tip
-   vanished before it could be clicked. */
-#orrery-tooltip { position: absolute; display: none; z-index: 10; pointer-events: auto; background: rgba(0,0,0,0.78); color: #ccc; font-size: 11px; line-height: 1.5; padding: 4px 8px; border-radius: 5px; white-space: nowrap; backdrop-filter: blur(4px); }
+   (dotted-amber .alm-link idiom). Only the link and the button take the
+   pointer: the box sits among crowded inner planets (Earth's covered Mars),
+   and a box that held the pointer kept the planets under it out of reach.
+   The canvas sees through the rest of it, and its mousemove keeps the tip
+   open while the pointer crosses the box toward the link or the button (the
+   traversal a pointer-transparent box once lost; almanac-orrery.js _overTip). */
+#orrery-tooltip { position: absolute; display: none; z-index: 10; pointer-events: none; background: rgba(0,0,0,0.78); color: #ccc; font-size: 11px; line-height: 1.5; padding: 4px 8px; border-radius: 5px; white-space: nowrap; backdrop-filter: blur(4px); }
+#orrery-tooltip .alm-link, #orrery-tooltip .orrery-tip-btn { pointer-events: auto; }
 .orrery-tip-info { display: block; }
 .orrery-tip-line { display: block; color: #bbb; white-space: normal; max-width: 230px; }
 .orrery-tip-btn { display: block; margin-top: 5px; padding: 2px 10px; background: var(--amber-glow); border: 1px solid var(--amber-border); border-radius: 999px; color: var(--amber); font: inherit; font-weight: 600; cursor: pointer; }
-.orrery-tip-btn:hover, .orrery-tip-btn:focus-visible { background: var(--amber); color: #000; outline: none; }
+.orrery-tip-btn:focus-visible { background: var(--amber); color: #000; outline: none; }
+/* Hover only where there is one: a tapped button kept the hover look on a
+   phone and read as pressed. */
+@media (hover: hover) { .orrery-tip-btn:hover { background: var(--amber); color: #000; } }
+@media (pointer: coarse) { .orrery-tip-btn { min-height: 34px; padding: 4px 14px; font-size: 13px; } }
 /* The ride under the orrery: where the rocket is, the delay home, the twins. */
 .orrery-ride { max-width: 500px; margin: 8px auto 0; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; font-size: 12px; color: var(--text2); }
 .orrery-ride-head, .orrery-twin-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }

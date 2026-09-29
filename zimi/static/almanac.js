@@ -1748,7 +1748,7 @@ function _renderAlmanacContent() {
   html += '<span id="orrery-transit-label" class="orrery-transit-label"></span>';
   html += '</div>';
   // Missions panel — inline with controls
-  html += '<div id="orrery-missions" style="display:none;margin-top:4px;font-size:11px;color:var(--text3)"></div>';
+  html += '<div id="orrery-missions" class="orrery-missions" style="display:none"></div>';
   // The ride: distance and delay home, and the twin paradox (almanac-orrery.js)
   html += '<div id="orrery-ride" class="orrery-ride" style="display:none"></div>';
   // Voyager detail card — appears on click
