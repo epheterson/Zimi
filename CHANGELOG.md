@@ -35,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Maps keeps places: Save this place under the pin names the view from your search or the nearest town, and your places are listed there, a tap flying back.
 - Every app, Bookshelf included, puts a thing in a list with the same picker the Saved panel uses.
 - Saved never drops what you keep to make room: at a limit a new save is refused with a word, the Saved panel says when sync is paused and what to do, a shared browser's old bookmarks are offered to an account instead of copied into it, and a book read further on another device offers to continue there.
+- Server settings lists what Zimi fetches from the internet: every destination, when it happens, whether it happens on its own right now, and a link to its switch. The Operations docs carry the same table.
+- Check for updates, in Server settings: Ask first, Automatically (the default) or Never, for both the server's check and the desktop app's updater; `ZIMI_UPDATE_CHECK` sets it.
 
 ### Changed
 
@@ -45,6 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The bookmark button saves an article at the section you are reading, and a map at the place on screen.
 - Recently updated counts a ZIM added since as a change, for the sources as for the apps, so the Apps page agrees with them.
 - Every language with a two-letter code is known by it (Breton, Esperanto, Latin and dozens more), so its ZIMs are labelled with it and `lang:` finds them.
+- An idle Zimi asks the internet for nothing when it starts: the BitTorrent engine waits until there is something to download or seed, and the port check (portcheck.transmissionbt.com) runs only when an admin presses recheck.
+- `ZIMI_OFFLINE` also refuses downloads from the internet, Auto-update's included (a download from a Nearby peer still works), and a download waiting to resume keeps its place for later.
+- A question or post in ZimiExchange, Reddot and the other apps can no longer load pictures from the internet, the same rule ZIM articles already follow.
 
 ### Fixed
 
