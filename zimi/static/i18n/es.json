@@ -1224,6 +1224,8 @@
   "ext_links_mark": "Marcarlos",
   "ext_links_hide": "Ocultarlos",
   "ext_links_hint": "Un enlace que sale de tu biblioteca hacia la web lleva una pequeña flecha y dice adónde va antes de ir. Oculto, se lee como texto normal.",
+  "open_in_apps": "Abrir artículos en las apps",
+  "open_in_apps_hint": "Un resultado de un wiki se abre en Zimipedia, un libro en Bookshelf, un vídeo en ZimiTube, una pregunta en ZimiExchange, una publicación en Reddot. Desactivado, se abre la página propia del ZIM.",
   "data_folder": "Carpeta de datos",
   "data_folder_hint": "Caché, colecciones, marcadores e historial. Déjalo en blanco para guardar junto a los ZIM.",
   "default_flavor": "Variante por defecto",
