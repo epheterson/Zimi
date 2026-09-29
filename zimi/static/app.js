@@ -1155,9 +1155,18 @@ function _searchPlaceholderText() {
 // decide.
 var _placeholderFull = '';
 var _placeholderCanvas = null;
+// Measured once a frame, just before the paint that lays the page out anyway.
+// Measuring on every call forced a layout each time, several times over while
+// the home page was still being built (~40 ms of a phone's first paint).
+var _placeholderRaf = 0;
 function _fitSearchPlaceholder(text) {
   if (!q) return;
   if (text != null) _placeholderFull = text;
+  if (_placeholderRaf) return;
+  _placeholderRaf = requestAnimationFrame(_fitSearchPlaceholderNow);
+}
+function _fitSearchPlaceholderNow() {
+  _placeholderRaf = 0;
   var full = _placeholderFull, room = q.clientWidth;
   if (!full || !room) { q.placeholder = full; return; }
   var cs = getComputedStyle(q);
@@ -2226,9 +2235,9 @@ function _bindConnEvents() {
     }
   });
   window.addEventListener('resize', _syncConnBannerHeight);
-  // The box's room changes with the window: the placeholder is fitted again.
-  var _fitRaf = 0;
-  window.addEventListener('resize', function() { cancelAnimationFrame(_fitRaf); _fitRaf = requestAnimationFrame(function() { _fitSearchPlaceholder(); }); });
+  // The box's room changes with the window: the placeholder is fitted again
+  // (on the next frame, once however many resizes come before it).
+  window.addEventListener('resize', function() { _fitSearchPlaceholder(); });
 }
 
 // Shared honest-empty markup for any surface that would otherwise assert "no
