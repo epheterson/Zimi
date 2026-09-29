@@ -401,6 +401,25 @@ function _cssColorLum(css) {
   var p = m[1].split(',').map(parseFloat);
   return { lum: (0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]) / 255, alpha: p.length > 3 ? p[3] : 1 };
 }
+function _articleHasNoBackground(doc) {
+  try {
+    var win = doc.defaultView;
+    var body = _cssColorLum(win.getComputedStyle(doc.body).backgroundColor);
+    var root = _cssColorLum(win.getComputedStyle(doc.documentElement).backgroundColor);
+    return !(body && body.alpha >= _OPAQUE_MIN_ALPHA) && !(root && root.alpha >= _OPAQUE_MIN_ALPHA);
+  } catch (e) { return false; }
+}
+function _setCanvasBackground(doc) {
+  var html = doc.documentElement;
+  html.style.backgroundColor = 'Canvas';
+  html.dataset.zimiCanvasBg = '1';
+}
+function _dropCanvasBackground(doc) {
+  var html = doc && doc.documentElement;
+  if (!html || !html.dataset.zimiCanvasBg) return;
+  html.style.backgroundColor = '';
+  delete html.dataset.zimiCanvasBg;
+}
 function _articleDeclaresDark(doc) {
   try {
     var meta = doc.querySelector('meta[name="color-scheme"]');
@@ -485,14 +504,20 @@ function _applyArticleDarken(doc) {
   // off first. Nothing repaints between here and the end of this function —
   // the browser paints between tasks, not inside one.
   _dropArticleDarken(doc);
+  _dropCanvasBackground(doc);
   _askArticleFor(doc, scheme);
   // Asked for dark and STILL painting light: this page has no dark mode of its
   // own. Measured rather than assumed — an unstyled ZIM article, a MediaWiki
   // one and a captured site are indistinguishable from the outside until you
   // ask them.
+  var paintsDark = _articleDeclaresDark(doc);
+  // A page with no background of its own that follows the scheme (its text
+  // turned light) would show the reader frame's white through it: white on
+  // white. It gets the scheme's own page colour instead.
+  if (scheme === 'dark' && paintsDark && _articleHasNoBackground(doc)) _setCanvasBackground(doc);
   if (!_shouldSimulateDark(dark, _darkenArticlesOn(), _darkenArticlesExplicit(),
                            _readerViewOn, loc, _articleIsWebCapture(),
-                           _articleDeclaresDark(doc))) return;
+                           paintsDark)) return;
   if (doc.head) {
     var st = doc.createElement('style');
     st.id = _ARTICLE_DARKEN_STYLE_ID;
