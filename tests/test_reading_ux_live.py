@@ -265,6 +265,18 @@ def test_side_by_side_keeps_its_name_and_close_and_the_rail_label_stands_over_it
                   return { dir: b.getAttribute('dir'), label: b.getBoundingClientRect().left, list: li.getBoundingClientRect().left }; })()""",
             )
             assert rail["dir"] == "rtl" and abs(rail["label"] - rail["list"]) < 20, rail
+            # From the keyboard: a sheet opened from the bar gives the focus
+            # back to its button when it closes.
+            fr = pg.frame_locator("#reader-frame")
+            fr.locator(".zw-bar .zb-aa").focus()
+            pg.keyboard.press("Enter")
+            pg.wait_for_timeout(300)
+            assert _q(pg, "d.documentElement.classList.contains('zb-sheet-open')")
+            pg.keyboard.press("Escape")
+            pg.wait_for_timeout(300)
+            assert _q(
+                pg, "d.activeElement && d.activeElement.classList.contains('zb-aa')"
+            ), _q(pg, "d.activeElement && d.activeElement.outerHTML.slice(0, 80)")
             # Read to a section, then open Hebrew beside it: it lands there,
             # under its own name and close.
             _q(

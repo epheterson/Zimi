@@ -442,8 +442,22 @@ function _wikiLayout(frame) {
   [bar, scrim, tocSheet, setSheet, langSheet, saveSheet, card].forEach(function(n) { doc.body.appendChild(n); });
   var sheets = [tocSheet, setSheet, langSheet, saveSheet];
   var sheetOpen = function() { return html.classList.contains('zb-sheet-open'); };
-  var closeSheets = function() { sheets.forEach(function(s) { s.classList.remove('zb-open'); }); html.classList.remove('zb-sheet-open'); };
-  var openSheet = function(s) { closeSheets(); hideCard(); s.classList.add('zb-open'); html.classList.add('zb-sheet-open'); showBars(true); };
+  // A sheet closed gives the focus back to the button that opened it: a
+  // keyboard or a screen reader was left at the top of the page.
+  var opener = null;
+  var closeSheets = function() {
+    var was = sheetOpen();
+    sheets.forEach(function(s) { s.classList.remove('zb-open'); });
+    html.classList.remove('zb-sheet-open');
+    if (was && opener && opener.isConnected && doc.activeElement !== opener) opener.focus({ preventScroll: true });
+    opener = null;
+  };
+  var openSheet = function(s) {
+    var from = doc.activeElement;
+    closeSheets(); hideCard();
+    opener = from && from.closest && from.closest('.zw-bar') ? from : null;
+    s.classList.add('zb-open'); html.classList.add('zb-sheet-open'); showBars(true);
+  };
   scrim.onclick = closeSheets;
 
   // ── how you read: the settings, laid onto the page ──
