@@ -31,14 +31,16 @@ function highlights() { try { return (window.parent !== window && window.parent.
 // chose), and say where they go before they go. The shell does it
 // (zimiMarkLinks); a page open on its own, outside the shell, is left as is.
 function markLinks(root) { try { return window.parent !== window ? window.parent.zimiMarkLinks(root) : 0; } catch (e) { return 0; } }
-// The thing open in an app (a video, a question, a post) has three controls:
-// Like, Save and Lists, drawn from the store and drawn again by savedPaint()
-// whenever it changes (the page's window.__saved calls it). item is what
-// Saved keeps: {kind, app, zim, path, title, meta}. opts.save names Save in
-// the app's words ([off, on]: ZimiTube's "Watch later"); opts.thread keeps
-// where you are in a long thread once it is saved (threadRestore below). The
-// page's markup holds the place: <span class="svbar"></span> in its actions.
-// savedBar(null) when the thing closes.
+// The thing open in an app (a video, a question, a post, a book) has three
+// controls: Like, Save and Lists, drawn from the store and drawn again by
+// savedPaint() whenever it changes (the page's window.__saved calls it).
+// item is what Saved keeps: {kind, app, zim, path, title, meta}. opts.save
+// names Save in the app's words ([off, on]: ZimiTube's "Watch later",
+// Bookshelf's "Add to my shelf"); opts.like false leaves Like out;
+// opts.thread keeps where you are in a long thread once it is saved
+// (threadRestore below). The page's markup holds the place:
+// <span class="svbar"></span> in its actions. savedBar(null) when the thing
+// closes.
 var SV_HEART = '<svg class="fill" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 5.6a5.5 5.5 0 0 0-7.8 0L12 6.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 22l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>';
 var SV_MARK = '<svg class="fill" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
 var SV_LISTS = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>';
@@ -56,7 +58,7 @@ function svButtons() {
     return '<button type="button" class="svb' + (pressed ? ' on' : '') + '" data-sv="' + which + '"' + (extra || ' aria-pressed="' + pressed + '"') +
       ' onclick="savedDo(this)">' + icon + '<span>' + esc(label) + '</span></button>';
   };
-  return b('like', liked, SV_HEART, liked ? w.liked : w.like) + b('save', on, SV_MARK, on ? names[1] || names[0] : names[0]) +
+  return (_svOpts.like === false ? '' : b('like', liked, SV_HEART, liked ? w.liked : w.like)) + b('save', on, SV_MARK, on ? names[1] || names[0] : names[0]) +
     b('lists', false, SV_LISTS, w.lists, ' aria-haspopup="menu" title="' + esc(w.add_to_list || '') + '"');
 }
 function savedPaint() { document.querySelectorAll('.svbar').forEach(function(bar) { bar.innerHTML = svButtons(); }); }
@@ -117,6 +119,39 @@ function savedListChips(app, on, fn) {
   var lists = S.lists({ app: app }).filter(function(l) { return l.count; });
   if (!lists.length) return '';
   return chip('', w.all, S.itemsFor({ app: app }).length) + lists.map(function(l) { return chip(l.id, l.builtin ? w.liked : l.name, l.count); }).join('');
+}
+// An app's Saved view (ZimiExchange's, Reddot's): what the app keeps, the
+// latest first, or one list's in its order, with the lists as chips, drawn
+// from the store with no request. It draws into the page's list view: the
+// title (#l-title), the chips (the element marked data-sv-lists) and the
+// rows (#l-rows); it empties what is marked data-sv-off (a count, the sorts)
+// and hides #shelves and #more. toRow(x) is a kept item's row. .on and
+// .list say what is shown; open(list) shows it, draw() draws it again,
+// count() is how many things the app keeps. The page's openSaved(list),
+// which the chips call, closes what is open and calls open.
+function savedView(app, toRow) {
+  var v = { on: false, list: '' };
+  var el = function(id) { return document.getElementById(id); };
+  v.count = function() { var S = saved(); return S ? S.itemsFor({ app: app }).length : 0; };
+  v.draw = function() {
+    var S = saved();
+    if (!S) return;
+    var items = S.itemsFor(v.list ? { list: v.list, app: app } : { app: app });
+    var chips = document.querySelector('#list [data-sv-lists]');
+    el('shelves').hidden = true;
+    el('list').hidden = false;
+    el('l-title').textContent = STR.sv.saved;
+    document.querySelectorAll('#list [data-sv-off]').forEach(function(n) { n.innerHTML = ''; });
+    chips.innerHTML = savedListChips(app, v.list, 'openSaved');
+    chips.hidden = !chips.innerHTML;
+    el('l-rows').innerHTML = items.map(function(x) { return toRow(x); }).join('');
+    el('more').hidden = true;
+    var empty = el('empty');
+    empty.hidden = items.length > 0;
+    empty.textContent = STR.sv.none;
+  };
+  v.open = function(list) { v.on = true; v.list = list || ''; v.draw(); window.scrollTo(0, 0); };
+  return v;
 }
 // A value into an onclick attribute: its JSON, escaped as attribute text, so
 // no value (a saved path that says &quot;, a title from a file) can end the

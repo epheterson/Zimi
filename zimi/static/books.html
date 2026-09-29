@@ -81,12 +81,10 @@
   .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
   .actions .read { display: inline-flex; align-items: center; gap: 8px; padding: 10px 22px; border-radius: 22px; background: var(--amber); color: #fff; font-weight: 600; font-size: 14.5px; border: 0; cursor: pointer; }
   .actions .read:hover { filter: brightness(1.08); }
-  /* On my shelf: the bookmark, filled once the book is kept. */
-  .actions .keep, .actions .lists { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 22px; border: 1px solid var(--border); background: var(--surface); font-weight: 600; font-size: 14px; cursor: pointer; }
-  .actions .keep:hover, .actions .lists:hover { border-color: var(--amber); color: var(--amber); }
-  .actions .keep.on { border-color: var(--amber); color: var(--amber); background: var(--amber-glow); }
-  .actions .keep.on svg { fill: currentColor; }
-  .actions .lists svg { width: 16px; height: 16px; flex: none; }
+  /* Add to my shelf and Lists (apps.js savedBar), beside Read and as tall. */
+  .actions .svb { gap: 7px; padding: 9px 16px; border-radius: 22px; font-weight: 600; font-size: 14px; }
+  .actions .svb:hover { border-color: var(--amber); color: var(--amber); }
+  .actions .svb svg { width: 16px; height: 16px; }
   .subjects { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 0; }
   .subjects span { font-size: 12px; padding: 3px 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text2); unicode-bidi: plaintext; }
   .note { color: var(--text2); font-size: 12.5px; margin: 10px 0 0; }
@@ -197,13 +195,6 @@ function noteOpened(b) {
 function shelf() {
   var S = saved();
   return (S ? S.itemsFor({ app: 'books' }) : []).map(card);
-}
-function onShelf(b) { var S = saved(); return !!(S && S.has(bookRef(b))); }
-function toggleShelf(id) {
-  var b = _known[id], S = saved();
-  if (!b || !S) return;
-  if (S.has(bookRef(b))) S.remove(bookRef(b));
-  else S.save(bookRef(b));
 }
 
 // ── views ────────────────────────────────────────────────────────────────
@@ -411,14 +402,24 @@ function moreAuthors(v, seq) {
 function renderBook(v) {
   var seq = ++_seq;
   var b = _known[v.id];
-  if (b) $('view').innerHTML = bookPage(b, null);
+  if (b) showBook(b, null);
   get('/books/book?zim=' + encodeURIComponent(v.zim || '') + '&id=' + encodeURIComponent(v.id)).then(function(d) {
     if (seq !== _seq) return;
-    if (d === FAILED) { $('view').innerHTML = (b ? bookPage(b, null) : '') + failedHtml(STR.load_part, 'show()'); return; }
+    if (d === FAILED) {
+      if (b) showBook(b, null, failedHtml(STR.load_part, 'show()'));
+      else $('view').innerHTML = failedHtml(STR.load_part, 'show()');
+      return;
+    }
     _known[d.id] = d;
     remember(d.more);
-    $('view').innerHTML = bookPage(d, d);
+    showBook(d, d);
   });
+}
+// A book's page, with Add to my shelf and Lists: the controls every app
+// shares (apps.js savedBar), Save in the shelf's words and no Like.
+function showBook(b, full, after) {
+  $('view').innerHTML = bookPage(b, full) + (after || '');
+  savedBar(bookRef(b), { save: [STR.add_shelf, STR.on_shelf], like: false });
 }
 function bookPage(b, full) {
   var place = placeOf(b);
@@ -434,7 +435,7 @@ function bookPage(b, full) {
     '<h1>' + esc(b.title) + '</h1>' + (b.subtitle ? '<p class="st">' + esc(b.subtitle) + '</p>' : '') +
     (b.author ? '<p class="by"><a onclick="go({v:\'list\',author:' + J(b.author) + '})">' + esc(b.author) + '</a>' + (yrs ? ' <span class="yrs">' + esc(yrs) + '</span>' : '') + '</p>' : '') +
     (facts ? '<dl class="facts">' + facts + '</dl>' : '') +
-    '<div class="actions"><button type="button" class="read" onclick="readBook(' + J(b.id) + ')">' + esc(readLabel) + '</button>' + keepHtml(b) +
+    '<div class="actions"><button type="button" class="read" onclick="readBook(' + J(b.id) + ')">' + esc(readLabel) + '</button><span class="svbar"></span>' +
     (full && full.epub ? '<a href="' + esc(zpath(b.zim, full.epub)) + '" download>' + esc(STR.epub) + '</a>' : '') + '</div>' +
     (b.html === false ? '<p class="note">' + esc(STR.epub_only) + '</p>' : '') +
     (full && full.subjects && full.subjects.length ? '<div class="subjects">' + full.subjects.map(function(s) { return '<span>' + esc(s) + '</span>'; }).join('') + '</div>' : '') +
@@ -442,18 +443,6 @@ function bookPage(b, full) {
   if (full && full.more && full.more.length) html += shelfHtml(STR.more_by.replace('{name}', b.author), full.more, full.more.length >= 24 ? "go({v:'list',author:" + J(b.author) + "})" : '');
   return html;
 }
-// On my shelf, or not: the shell's bookmark, as the shelf says it.
-var KEEP_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
-function keepHtml(b) {
-  if (!saved()) return '';
-  var on = onShelf(b);
-  return '<button type="button" class="keep' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="toggleShelf(' + J(b.id) + ')">' +
-    KEEP_SVG + esc(on ? STR.on_shelf : STR.add_shelf) + '</button>' +
-    '<button type="button" class="lists" aria-haspopup="menu" title="' + esc((STR.sv || {}).add_to_list || '') + '" onclick="listsFor(' + J(b.id) + ', this)">' +
-    SV_LISTS + esc((STR.sv || {}).lists || '') + '</button>';
-}
-// A book into a list: the picker every app shares (apps.js pickLists).
-function listsFor(id, el) { var b = _known[id]; if (b) pickLists(bookRef(b), el); }
 function readBook(id) {
   var b = _known[id];
   if (!b) return;
@@ -516,7 +505,6 @@ function refreshHome() {
 }
 
 window.booksSearch = booksSearch; window.go = go; window.tab = tab; window.resort = resort; window.readBook = readBook; window.noCover = noCover;
-window.toggleShelf = toggleShelf; window.listsFor = listsFor;
 // What you keep changed (here, in the Saved panel, on another device): the
 // parts that show it are drawn again, where they are, without a scroll.
 window.__saved = function() {
@@ -524,11 +512,7 @@ window.__saved = function() {
   if (!_home || !_home.total) return;
   if (v.v === 'home') renderHome();
   else if (v.v === 'mine') renderMine();
-  else if (v.v === 'book') {
-    var k = document.querySelector('.actions .keep'), l = document.querySelector('.actions .lists'), b = _known[v.id];
-    if (l) l.remove();
-    if (k && b) k.outerHTML = keepHtml(b);
-  }
+  else if (v.v === 'book') savedPaint();
 };
 window.__top = function() { return _stack.length <= 1; };
 window.__back = back;

@@ -60,6 +60,7 @@ function page(extra) {
     extract(shared, /function esc\(x\) \{[^\n]*\n/, 'esc'),
     extract(shared, /function J\(v\) \{[^\n]*\n/, 'J'),
     extract(shared, /function saved\(\) \{[\s\S]*?\nfunction savedListChips[\s\S]*?\n\}/, 'the saved controls'),
+    extract(shared, /function savedView\(app, toRow\) \{[\s\S]*?\n\}/, 'savedView'),
   ].join('\n'), ctx);
   return ctx;
 }
@@ -134,6 +135,37 @@ function page(extra) {
   const chips = p.savedListChips('exchange', p.Saved.LIKED, 'openSaved');
   ok('All with every question, Liked with its one; a list holding only videos is not here',
     /All <span class="n">2<\/span>/.test(chips) && /class="chip tag on" aria-pressed="true" onclick="openSaved\(&quot;liked&quot;\)">Liked <span class="n">1<\/span>/.test(chips) && !/Trip/.test(chips), chips);
+}
+
+// ── an app's Saved view: one for ZimiExchange and Reddot ─────────────────
+{
+  const p = page();
+  const els = {};
+  ['shelves', 'list', 'l-title', 'l-rows', 'more', 'empty', 'chips', 'count'].forEach((id) => { els[id] = { hidden: false, innerHTML: 'old', textContent: '' }; });
+  els.list.hidden = true;
+  p.document = {
+    getElementById: (id) => els[id],
+    querySelector: (sel) => (sel === '#list [data-sv-lists]' ? els.chips : null),
+    querySelectorAll: (sel) => (sel === '#list [data-sv-off]' ? [els.count] : p.bars),
+  };
+  p.window.scrollTo = () => { p.scrolled = -1; };
+  const one = { kind: 'question', app: 'exchange', zim: 'c', path: 'q/1', title: 'One' };
+  p.Saved.save(one);
+  p.Saved.save({ kind: 'question', app: 'exchange', zim: 'c', path: 'q/2', title: 'Two' });
+  p.Saved.save({ kind: 'video', app: 'tube', zim: 't', path: 'v/1', title: 'A talk' });
+  p.Saved.addToList(one, p.Saved.LIKED);
+  const SV = p.savedView('exchange', (x) => '<r>' + x.title + '</r>');
+  ok('it counts what the app keeps, and nothing of another app\'s', SV.count() === 2 && !SV.on);
+  SV.open('');
+  ok('open: the latest first, in the list view, titled, the page\'s count and sorts emptied, at the top',
+    SV.on && els['l-rows'].innerHTML === '<r>Two</r><r>One</r>' && els.shelves.hidden && !els.list.hidden && els['l-title'].textContent === 'Saved' &&
+    els.count.innerHTML === '' && els.more.hidden && els.empty.hidden && p.scrolled === -1, els['l-rows'].innerHTML);
+  ok('...with its lists as chips', /All <span class="n">2<\/span>/.test(els.chips.innerHTML) && /openSaved\(&quot;liked&quot;\)/.test(els.chips.innerHTML) && !els.chips.hidden);
+  SV.open(p.Saved.LIKED);
+  ok('a list chip narrows it to that list', SV.list === 'liked' && els['l-rows'].innerHTML === '<r>One</r>');
+  p.Saved.removeFromList(one, p.Saved.LIKED);
+  SV.draw();
+  ok('an empty list says so', els['l-rows'].innerHTML === '' && !els.empty.hidden && els.empty.textContent === 'Nothing saved.');
 }
 
 // ── a value in an onclick is data, never script ───────────────────────────
@@ -225,11 +257,12 @@ function page(extra) {
 ok('every app page is handed the words for what is kept', /sv: _savedAppWords\(app\) \};/.test(src) && /function _savedAppWords\(app\) \{/.test(src));
 ok('ZimiTube is handed Watch later and Continue watching', /'tube_watch_later', 'tube_continue'\]/.test(src));
 ok('one list picker, the panel\'s own lists, for every app', /function savedPickLists\(ref, rect\) \{[\s\S]*?_bmListsSubmenuHtml\(key\)/.test(src) && /p\.savedPickLists\(item, /.test(shared) &&
-  /savedPickLists\(place, at\)/.test(src) && /pickLists\(bookRef\(b\), el\)/.test(books) && !/savedPickLists|_bmListsSubmenuHtml/.test(tube + exchange + reddot + books));
+  /savedPickLists\(place, at\)/.test(src) && /savedBar\(bookRef\(b\), /.test(books) && !/savedPickLists|_bmListsSubmenuHtml|pickLists\(/.test(tube + exchange + reddot + books));
 ok('the controls sit in each app\'s own actions, a thread\'s under its title', /<span class="svbar"><\/span>\s*<button id="autoplay"/.test(tube) &&
   /id="q-who"><\/div>\s*<div class="actions top"><span class="svbar"><\/span><\/div>/.test(exchange) && /id="p-who"><\/div>\s*<div class="actions top"><span class="svbar"><\/span><\/div>/.test(reddot));
-ok('the Saved tab in ZimiExchange and Reddot, from the store, no request', /function openSaved\(list\)/.test(exchange) && /function openSaved\(list\)/.test(reddot) &&
-  !/fetch\(/.test(extract(exchange, /function renderSaved\(\) \{[\s\S]*?\n\}/, 'renderSaved')) && !/fetch\(/.test(extract(reddot, /function renderSaved\(\) \{[\s\S]*?\n\}/, 'renderSaved')));
+ok('the Saved tab in ZimiExchange and Reddot is the one savedView, from the store, no request', /var SV = savedView\('exchange', /.test(exchange) && /var SV = savedView\('reddot', /.test(reddot) &&
+  /function openSaved\(list\)/.test(exchange) && /function openSaved\(list\)/.test(reddot) && !/fetch\(/.test(extract(shared, /function savedView\(app, toRow\) \{[\s\S]*?\n\}/, 'savedView')) &&
+  !/renderSaved|savedCount|_savedList/.test(exchange + reddot) && /data-sv-lists/.test(exchange) && /data-sv-lists/.test(reddot));
 ok('each page redraws what it shows of Saved when the store changes', [tube, exchange, reddot].every((p) => /window\.__saved = function\(\) \{\s*savedPaint\(\);/.test(p)));
 ok('Places and maps is on every map page, and saves the view on screen', /aria-label="Places and maps" data-i18n-aria="map_places_and_maps"/.test(shell) &&
   /if \(role === 'save-place'\) \{ toggleBookmark\(\); _renderMapSourceDropdown\(dd\); return; \}/.test(src) &&

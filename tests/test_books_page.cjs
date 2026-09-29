@@ -59,8 +59,6 @@ vm.runInContext([
   extract(page, /function placeOf\(b\) \{[\s\S]*?\n\}/, 'placeOf'),
   extract(page, /function noteOpened\(b\) \{[\s\S]*?\n\}/, 'noteOpened'),
   extract(page, /function shelf\(\) \{[\s\S]*?\n\}/, 'shelf'),
-  extract(page, /function onShelf\(b\) \{[^\n]*\n/, 'onShelf'),
-  extract(page, /function toggleShelf\(id\) \{[\s\S]*?\n\}/, 'toggleShelf'),
   'var _known = {};',
 ].join('\n'), ctx);
 
@@ -85,14 +83,18 @@ ok('Continue reading: the books you are in, the latest first, with what the shel
 ok('a book\'s place, found by its ZIM and page', ctx.placeOf({ zim: 'gutenberg_la', path: 'Aeneidos.227' }).f === 0.34 && ctx.placeOf({ zim: 'x', path: 'y' }) === null);
 // My shelf: kept in the same store, under the same key as the reader's bookmark.
 ctx._known[227] = { zim: 'gutenberg_la', path: 'Aeneidos.227', id: 227, title: 'Aeneidos', author: 'Virgil', cover: '' };
-ok('a book not on my shelf', !ctx.onShelf(ctx._known[227]) && ctx.shelf().length === 0);
-ctx.toggleShelf(227);
-ok('Add to my shelf keeps it as a book of Bookshelf\'s', ctx.onShelf(ctx._known[227]) && ctx.shelf()[0].id === 227 && ctx.shelf()[0].author === 'Virgil' &&
+const onShelf = (b) => S.has(ctx.bookRef(b));
+ok('a book not on my shelf', !onShelf(ctx._known[227]) && ctx.shelf().length === 0);
+S.save(ctx.bookRef(ctx._known[227]));  // what Add to my shelf (apps.js savedBar) saves
+ok('Add to my shelf keeps it as a book of Bookshelf\'s', onShelf(ctx._known[227]) && ctx.shelf()[0].id === 227 && ctx.shelf()[0].author === 'Virgil' &&
   S.get('gutenberg_la\nAeneidos.227').kind === 'book' && S.get('gutenberg_la\nAeneidos.227').app === 'books');
 ok('a book the reader bookmarked (no card) still has its number', ctx.card({ zim: 'g', path: 'Tales.5139', title: 'Tales' }).id === 5139);
-ctx.toggleShelf(227);
-ok('and taken off again', !ctx.onShelf(ctx._known[227]) && ctx.shelf().length === 0);
-ok('outside the shell (no saved()), an empty shelf, not a broken one', (ctx.saved = () => null, ctx.places().length === 0 && ctx.shelf().length === 0 && !ctx.onShelf({ zim: 'a', path: 'b' })));
+S.remove(ctx.bookRef(ctx._known[227]));
+ok('and taken off again', !onShelf(ctx._known[227]) && ctx.shelf().length === 0);
+ok('outside the shell (no saved()), an empty shelf, not a broken one', (ctx.saved = () => null, ctx.places().length === 0 && ctx.shelf().length === 0));
+ok('a book\'s page has the controls every app shares: Save in the shelf\'s words, Lists, no Like', /<span class="svbar"><\/span>/.test(page) &&
+  /savedBar\(bookRef\(b\), \{ save: \[STR\.add_shelf, STR\.on_shelf\], like: false \}\);/.test(page) && /else if \(v\.v === 'book'\) savedPaint\(\);/.test(page) &&
+  !/toggleShelf|keepHtml|listsFor/.test(page));
 ctx.saved = () => shell.Saved;
 
 // ── the page's surface ───────────────────────────────────────────────────

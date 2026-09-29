@@ -33,6 +33,7 @@ const ctx = {
   location: { hash: '', origin: 'http://zimi.test' },
   document: {
     getElementById: id => (els[id] = els[id] || el()),
+    querySelectorAll: () => [],
     addEventListener: () => {},
     documentElement: {}
   },

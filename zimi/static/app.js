@@ -18400,6 +18400,15 @@ function _openAppItem(app, zim, path) {
   var id = zim + '/' + path;
   if (app === 'tube') openTube(false, id); else if (app === 'exchange') openExchange(false, id); else openReddot(false, id);
 }
+// The apps whose things (a video, a question, a post) open in the app, not
+// the reader; each thing's kind is the one Saved.KIND_APP gives the app.
+var _APP_ITEM_APPS = ['tube', 'exchange', 'reddot'];
+function _appItemKind(app) {
+  if (_APP_ITEM_APPS.indexOf(app) < 0) return '';
+  for (var k in Saved.KIND_APP) if (Saved.KIND_APP[k] === app) return k;
+  return '';
+}
+function _savedOpensInApp(it) { return !!it.app && _appItemKind(it.app) === it.kind; }
 var _TUBE_PAGE = '/static/tube.html?v=1';
 
 // Video ZIMs, and the ZIMs that feed ZimiTube beside their own kind: a
@@ -20064,8 +20073,6 @@ var _BM_ROOT = '';          // the top level: items in no list
 var _BM_CONTINUE = '__continue';
 var _BM_CONTINUE_SHOWN = 8; // books (later videos) listed under Continue
 var _BM_HIGHLIGHTS = '__highlights'; // every highlight, the latest first
-// What opens inside an app page rather than the reader.
-var _SAVED_APP_KINDS = { video: 'tube', question: 'exchange', post: 'reddot' };
 // The app the panel shows, '' for everything. Chosen as the panel opens: the
 // app on screen, if one is.
 var _bmScope = '';
@@ -20096,13 +20103,11 @@ function _bmSetScope(app) { _bmScope = app || ''; _bmRerender(); }
 // Per-device collapse state (UI, not data: never synced). Lists migrated from
 // folders keep their ids, so a folder closed before is a list closed now.
 function _bmCollapsedSet() {
-  try { return new Set(JSON.parse(localStorage.getItem(SK.BM_COLLAPSED)) || []); }
-  catch (e) { return new Set(); }
+  var ids = _getStorageJSON(SK.BM_COLLAPSED, []);
+  return new Set(Array.isArray(ids) ? ids : []);
 }
 function _bmIsCollapsed(id) { return _bmCollapsedSet().has(String(id)); }
-function _bmSaveCollapsed(s) {
-  try { localStorage.setItem(SK.BM_COLLAPSED, JSON.stringify(Array.from(s))); } catch (e) {}
-}
+function _bmSaveCollapsed(s) { _setStorageJSON(SK.BM_COLLAPSED, Array.from(s)); }
 function _bmToggleCollapse(id) {
   var s = _bmCollapsedSet();
   id = String(id);
@@ -20172,9 +20177,7 @@ function _renderBookmarksContent() {
 function _hlQuote(h) { return h.exact + (h.end ? ' \u2026 ' + h.end : ''); }
 // Which highlights a page opened on this device did not have (highlights.js
 // keeps the list; per device, as another may hold another build).
-function _hlMissingSet() {
-  try { return JSON.parse(localStorage.getItem(SK.HL_MISSING)) || {}; } catch (e) { return {}; }
-}
+function _hlMissingSet() { return _getStorageJSON(SK.HL_MISSING, {}) || {}; }
 // An item's row, and its page's highlights under it in the order of the text.
 function _bmItemWithHlHtml(it, fid, depth) {
   var html = _bmItemRowHtml(it, fid, depth), hls = Saved.highlights(it);
@@ -20283,7 +20286,7 @@ function _fmtClock(s) {
 
 function _bmItemRowHtml(it, fid, depth) {
   var missing = _bkSourceMissing(it);
-  var inApp = _SAVED_APP_KINDS[it.kind] && it.app;
+  var inApp = _savedOpensInApp(it);
   var icon = inApp ? _appIcon(it.app).replace('width="26" height="26"', 'width="20" height="20"') : it.zim ? _sourceIconHtml(it.zim, 20) : _BM_PAGE_SVG;
   var sub = missing ? t('bm_source_missing') : inApp ? _appTitle(it.app) : (it.zim ? _zimTitleWithLang(it.zim) : '');
   var where = fid === _BM_CONTINUE ? _savedWhereLabel(it) : '';
@@ -20308,7 +20311,7 @@ function _bmItemRowHtml(it, fid, depth) {
 // an article at its section.
 function _savedOpen(it) {
   _closeLibraryPanel();
-  if (_SAVED_APP_KINDS[it.kind] && it.app) { _openAppItem(it.app, it.zim, it.path); return; }
+  if (_savedOpensInApp(it)) { _openAppItem(it.app, it.zim, it.path); return; }
   var w = it.where || {};
   var pos = it.kind === 'place' ? w.pos : '';
   openArticle(it.zim, it.path + (w.s && !pos ? '#' + w.s : ''), it.title, pos ? { pos: pos } : undefined);
@@ -20452,7 +20455,7 @@ function _bmNewListPrompt(then) {
   wrap.className = 'bm-row bm-newfolder';
   wrap.style.paddingLeft = '6px';
   wrap.innerHTML = '<span class="bm-ficon">' + _BM_LIST_SVG + '</span>' +
-    '<input class="bm-newfolder-input" type="text" placeholder="' + escAttr(t('saved_list_name')) + '" maxlength="60">';
+    '<input class="bm-newfolder-input" type="text" placeholder="' + escAttr(t('saved_list_name')) + '" maxlength="' + Saved.NAME_MAX + '">';
   // After Continue and Liked, before the other lists: where it will be seen.
   var after = host.querySelector('.bm-folder[data-fid="liked"]');
   var at = after;
@@ -20480,13 +20483,13 @@ function _bmCloseInlineInput() {
 // trimmed value, empty string included), Escape cancels. Semantics of an empty
 // commit are the caller's call: lists keep their old name, items revert to
 // the page's own title.
-function _bmInlineRenameRow(row, value, apply) {
+function _bmInlineRenameRow(row, value, max, apply) {
   if (!row) return;
   var nameEl = row.querySelector('.bm-name');
   if (!nameEl) return;
   var input = document.createElement('input');
   input.className = 'bm-rename-input';
-  input.type = 'text'; input.value = value; input.maxLength = 60;
+  input.type = 'text'; input.value = value; input.maxLength = max;
   nameEl.replaceWith(input);
   row.classList.add('bm-renaming');
   input.focus(); input.select();
@@ -20501,7 +20504,7 @@ function _bmInlineRenameRow(row, value, apply) {
 // ── Delete a list: its items stay saved; a list with something in it asks
 // first (what is lost is the grouping, and there is no undo) ──
 function _bmDeleteList(lid) {
-  var l = Saved.lists().filter(function (x) { return x.id === lid; })[0];
+  var l = Saved.list(lid);
   if (!l || l.builtin) return;
   if (!l.count) { Saved.deleteList(lid); return; }
   var html = '<div class="ctx-note">' + tH('saved_delete_list_q', { name: l.name }) + '</div>' +
@@ -20562,7 +20565,7 @@ function savedPickLists(ref, rect) {
 function _savedPickNewList(row, then) {
   var was = row.innerHTML;
   row.removeAttribute('data-action');
-  row.innerHTML = '<input class="bm-newfolder-input ctx-input" type="text" maxlength="60" placeholder="' + escAttr(t('saved_list_name')) + '">';
+  row.innerHTML = '<input class="bm-newfolder-input ctx-input" type="text" maxlength="' + Saved.NAME_MAX + '" placeholder="' + escAttr(t('saved_list_name')) + '">';
   var input = row.querySelector('input');
   input.focus();
   var done = false;
@@ -20594,10 +20597,10 @@ function _bmListMenu(lid, x, y) {
   });
 }
 function _bmRenameList(lid) {
-  var l = Saved.lists().filter(function (x) { return x.id === lid; })[0];
+  var l = Saved.list(lid);
   if (!l || l.builtin) return;
   var row = document.querySelector('.bm-folder[data-fid="' + _cssEsc(lid) + '"]');
-  _bmInlineRenameRow(row, l.name, function (name) { if (name) Saved.renameList(lid, name); });
+  _bmInlineRenameRow(row, l.name, Saved.NAME_MAX, function (name) { if (name) Saved.renameList(lid, name); });
 }
 
 function _bmItemMenu(row, x, y) {
@@ -20622,7 +20625,7 @@ function _bmItemMenu(row, x, y) {
     var it = Saved.get(key);
     if (!it) return;
     if (action === 'open') _savedOpen(it);
-    else if (action === 'rename') _bmInlineRenameRow(row, it.title || _titleFromPath(it.path), function (name) { Saved.rename(key, name); });
+    else if (action === 'rename') _bmInlineRenameRow(row, it.title || _titleFromPath(it.path), Saved.TITLE_MAX, function (name) { Saved.rename(key, name); });
     else if (action === 'unlist') Saved.removeFromList(key, fid);
     else if (action === 'remove') Saved.remove(key);
     else if (action === 'toggle-list') {
@@ -22012,7 +22015,8 @@ var Highlights = (function () {
     if (!loading) {
       loading = new Promise(function (resolve, reject) {
         var el = document.createElement('script');
-        el.src = '/static/highlights.js?v=1';
+        // The version moves with the engine: /static is cached for a year.
+        el.src = '/static/highlights.js?v=2';
         el.onload = function () { engine = window.ZimiHighlightsEngine || null; if (engine) resolve(engine); else reject(); };
         el.onerror = function () { loading = null; reject(); };
         document.head.appendChild(el);
@@ -22105,7 +22109,7 @@ var Highlights = (function () {
     var it = Saved.get(hl) || hl;
     _savedOpen({ kind: it.kind, app: it.app, zim: hl.zim, path: hl.path, title: it.title });
   }
-  return { attach: attach, handleFor: handleFor, open: open, changed: changed, load: load };
+  return { attach: attach, open: open, changed: changed };
 })();
 // The reader's document and its highlights: an article (raw or in Reader
 // View), a book, an EPUB's chapters; not a map, the PDF viewer or an app's
@@ -22165,7 +22169,7 @@ function _bmExportSelector(preListId) {
     '<div class="bm-export-desc">' + tH('saved_export_desc') + '</div>' +
     '<div class="bm-export-tree" id="bm-export-tree">' + rows + '</div>' +
     '<label class="bm-export-name-row" for="bm-export-name">' + tH('bm_export_name_label') +
-    '<input id="bm-export-name" type="text" maxlength="60" spellcheck="false" autocomplete="off"></label>' +
+    '<input id="bm-export-name" type="text" maxlength="' + Saved.NAME_MAX + '" spellcheck="false" autocomplete="off"></label>' +
     '<div class="bm-export-count" id="bm-export-count"></div>' +
     '<div class="bm-export-status" id="bm-export-status"></div>' +
     '<div class="bm-export-actions">' +
@@ -22249,7 +22253,7 @@ function _bmSanitizeZimName(s) {
   return s.slice(0, 60);
 }
 function _bmListNameById(id) {
-  var l = Saved.lists().filter(function (x) { return x.id === id; })[0];
+  var l = Saved.list(id);
   return l ? _savedListName(l) : '';
 }
 // The name the picker suggests: the list's own when exactly one is ticked,
@@ -22275,7 +22279,7 @@ function _bmComposeExportJob(ids, unfiled, nameRaw) {
     Saved.itemsFor({ list: id }).forEach(function (it) { add(it, section); });
   });
   if (unfiled) Saved.itemsFor({ list: _BM_ROOT }).forEach(function (it) { add(it, ''); });
-  var title = String(nameRaw || '').trim().slice(0, 120);
+  var title = String(nameRaw || '').trim().slice(0, Saved.NAME_MAX);
   return {
     name: _bmSanitizeZimName(title) || null,
     title: title || null,
@@ -22363,10 +22367,9 @@ async function _revealExportedZim(file) {
 // What is on screen, as a saved item has it: a thing inside an app (a video,
 // a question, a post: reopened in the app), a place on a map, a book, or an
 // article. null when there is nothing to keep.
-var _APP_ITEM_KINDS = { tube: 'video', exchange: 'question', reddot: 'post' };
 function _savedRefOnScreen() {
   if (!currentArticle && _appItem) {
-    return { kind: _APP_ITEM_KINDS[_appItem.app] || 'article', app: _appItem.app, zim: _appItem.zim, path: _appItem.path,
+    return { kind: _appItemKind(_appItem.app) || 'article', app: _appItem.app, zim: _appItem.zim, path: _appItem.path,
       title: _appItem.title || document.title.replace(/ — .*$/, '') };
   }
   if (!currentArticle) return null;

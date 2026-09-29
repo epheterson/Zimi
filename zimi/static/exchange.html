@@ -23,8 +23,8 @@
     <div class="chips" id="chips"></div>
     <div id="shelves"></div>
     <div id="list" hidden>
-      <div class="head"><h2 id="l-title"></h2><span class="n" id="l-n"></span></div>
-      <div class="chips" id="l-tags"></div>
+      <div class="head"><h2 id="l-title"></h2><span class="n" id="l-n" data-sv-off></span></div>
+      <div class="chips" id="l-tags" data-sv-lists></div>
       <div id="l-rows"></div>
       <button class="more" id="more" hidden onclick="more()"></button>
     </div>
@@ -51,8 +51,6 @@
 // title search across the sites.
 var STR = strings({ title: 'ZimiExchange', all: 'All', more: 'More', questions: 'questions', answers: 'answers', answer: 'answer', votes: 'votes', vote: 'vote', asked: 'asked by', open_page: 'Open the original page', none: 'No questions match.', empty: 'No Q&A site installed yet.', catalog: 'Browse the catalog', q: '', sv: {} });
 var _sites = [], _site = '', _tag = '', _q = '', _page = 1, _pages = 0, _busy = false;
-// Saved: the questions you keep, all of them or one list's (_savedList).
-var _saved = false, _savedList = '';
 function icon(s) { return s.icon ? zimIcon(s.name) : ''; }
 function siteOf(name) { return _sites.filter(function(s) { return s.name === name; })[0] || { name: name, title: name }; }
 function goCatalog() { tell({ zimi: 'catalog', category: 'stack_exchange' }); return false; }
@@ -71,9 +69,9 @@ function row(r, zim, mixed) {
 }
 
 function renderChips() {
-  var c = document.getElementById('chips'), n = savedCount();
-  c.innerHTML = (n ? '<button class="chip' + (_saved ? ' on' : '') + '" onclick="openSaved(\'\')">' + esc(STR.sv.saved) + ' <span class="n">' + n + '</span></button>' : '') +
-    (_sites.length > 1 ? '<button class="chip' + (!_site && !_saved ? ' on' : '') + '" onclick="openSite(\'\')">' + esc(STR.all) + '</button>' : '') +
+  var c = document.getElementById('chips'), n = SV.count();
+  c.innerHTML = (n ? '<button class="chip' + (SV.on ? ' on' : '') + '" onclick="openSaved(\'\')">' + esc(STR.sv.saved) + ' <span class="n">' + n + '</span></button>' : '') +
+    (_sites.length > 1 ? '<button class="chip' + (!_site && !SV.on ? ' on' : '') + '" onclick="openSite(\'\')">' + esc(STR.all) + '</button>' : '') +
     _sites.map(function(s) { return '<button class="chip' + (_site === s.name ? ' on' : '') + '" onclick="openSite(' + J(s.name) + ')">' + icon(s) + esc(s.title) + '</button>'; }).join('');
   c.hidden = _sites.length < 2 && !n;
 }
@@ -86,35 +84,18 @@ function qRef(zim, page, d) {
   return { kind: 'question', app: 'exchange', zim: zim, path: page, title: d.title,
     meta: { votes: d.votes, answers: (d.answers || []).length, accepted: (d.answers || []).some(function(a) { return a.accepted; }), tags: (d.tags || []).slice(0, 5).join(' ') } };
 }
-function savedCount() { var S = saved(); return S ? S.itemsFor({ app: 'exchange' }).length : 0; }
-function savedRow(x) {
+// The Saved tab (apps.js savedView): every question kept, the latest first,
+// or one list's in its order; the lists as chips above them.
+var SV = savedView('exchange', function(x) {
   var m = x.meta || {};
-  return { title: x.title || x.path, page: x.path, votes: m.votes == null ? '' : m.votes, answers: m.answers == null ? '' : m.answers,
-    accepted: !!m.accepted, excerpt: '', tags: String(m.tags || '').split(' ').filter(Boolean) };
-}
-// The Saved tab: every question kept, the latest first, or one list's in its
-// order; the lists as chips above them.
+  return row({ title: x.title || x.path, page: x.path, votes: m.votes == null ? '' : m.votes, answers: m.answers == null ? '' : m.answers,
+    accepted: !!m.accepted, excerpt: '', tags: String(m.tags || '').split(' ').filter(Boolean) }, x.zim, true);
+});
 function openSaved(list) {
   closeQ(true);
-  _saved = true; _savedList = list || ''; _site = ''; _tag = ''; _q = ''; _pages = 0;
+  _site = ''; _tag = ''; _q = ''; _pages = 0;
+  SV.open(list);
   renderChips();
-  renderSaved();
-  window.scrollTo(0, 0);
-}
-function renderSaved() {
-  var S = saved();
-  if (!S) return;
-  var items = S.itemsFor(_savedList ? { list: _savedList, app: 'exchange' } : { app: 'exchange' });
-  document.getElementById('shelves').hidden = true;
-  document.getElementById('list').hidden = false;
-  document.getElementById('l-title').textContent = STR.sv.saved;
-  document.getElementById('l-n').textContent = '';
-  var lt = document.getElementById('l-tags');
-  lt.innerHTML = savedListChips('exchange', _savedList, 'openSaved');
-  lt.hidden = !lt.innerHTML;
-  document.getElementById('l-rows').innerHTML = items.map(function(x) { return row(savedRow(x), x.zim, true); }).join('');
-  document.getElementById('more').hidden = true;
-  var empty = document.getElementById('empty'); empty.hidden = items.length > 0; empty.textContent = STR.sv.none;
 }
 
 function renderHome(data) {
@@ -165,8 +146,8 @@ function loadList(append) {
     renderList((_tag ? '[' + _tag + '] · ' : '') + siteOf(_site).title, d.rows || [], append);
   }).finally(function() { _busy = false; });
 }
-function openSite(name) { closeQ(true); _saved = false; _site = name; _tag = ''; _q = ''; _page = 1; renderChips(); if (!name) { document.getElementById('list').hidden = true; document.getElementById('shelves').hidden = false; document.getElementById('empty').hidden = _sites.length > 0; return; } loadList(false); window.scrollTo(0, 0); }
-function openTag(name, tag) { closeQ(true); _saved = false; _site = name; _tag = tag; _q = ''; _page = 1; renderChips(); loadList(false); window.scrollTo(0, 0); }
+function openSite(name) { closeQ(true); SV.on = false; _site = name; _tag = ''; _q = ''; _page = 1; renderChips(); if (!name) { document.getElementById('list').hidden = true; document.getElementById('shelves').hidden = false; document.getElementById('empty').hidden = _sites.length > 0; return; } loadList(false); window.scrollTo(0, 0); }
+function openTag(name, tag) { closeQ(true); SV.on = false; _site = name; _tag = tag; _q = ''; _page = 1; renderChips(); loadList(false); window.scrollTo(0, 0); }
 function more() { if (_q) return; _page += 1; loadList(true); }
 
 // The library's own title search, over the installed sites only. A hit is
@@ -174,7 +155,7 @@ function more() { if (_q) return; _page += 1; loadList(true); }
 function exchangeSearch(q) {
   _q = (q || '').trim();
   closeQ(true);
-  if (_saved) { _saved = false; renderChips(); }
+  if (SV.on) { SV.on = false; renderChips(); }
   if (!_q) { openSite(_site); return; }
   var zims = (_site ? [_site] : _sites.map(function(s) { return s.name; })).join(',');
   if (!zims) return;
@@ -230,9 +211,9 @@ window.openSaved = openSaved;
 // What you keep changed (here, in the Saved panel, on another device).
 window.__saved = function() {
   savedPaint();
-  if (!_sites.length && !savedCount()) return;
+  if (!_sites.length && !SV.count()) return;
   renderChips();
-  if (_saved) renderSaved();
+  if (SV.on) SV.draw();
 };
 window.__top = function() { return document.getElementById('qview').hidden && document.getElementById('list').hidden; };
 window.__random = function() {

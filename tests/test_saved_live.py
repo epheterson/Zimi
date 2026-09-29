@@ -387,7 +387,7 @@ def test_bookshelf_continue_reading_and_my_shelf_follow_the_account(served):
         frame = phone.frame_locator("#reader-frame")
         frame.locator(".bk").first.wait_for()
         frame.locator(".bk[data-book='1']").first.click()
-        frame.locator(".actions .keep").click()  # Add to my shelf
+        frame.locator(".svb[data-sv=save]").click()  # Add to my shelf
         phone.wait_for_function(
             "() => Saved.has('gutenberg_mul\\nLiber.1')", timeout=5000
         )
