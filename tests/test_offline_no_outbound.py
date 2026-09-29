@@ -54,10 +54,15 @@ class _Tripwire:
     def __init__(self):
         self.attempts = []
         self._lock = threading.Lock()
+        # Threads alive before the test belong to earlier tests' servers,
+        # which were not offline; in a full run their background work can
+        # reach out while this test watches. Refused, but not this server's.
+        self._before = {t.ident for t in threading.enumerate()} - {threading.get_ident()}
 
     def hit(self, what, host):
-        with self._lock:
-            self.attempts.append("%s %s" % (what, host))
+        if threading.get_ident() not in self._before:
+            with self._lock:
+                self.attempts.append("%s %s (thread %s)" % (what, host, threading.current_thread().name))
         raise OSError("tripwire: %s %s (ZIMI_OFFLINE)" % (what, host))
 
 
