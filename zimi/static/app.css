@@ -336,6 +336,9 @@
   }
   .topbar-search input:focus { border-color: var(--amber-border); box-shadow: 0 0 0 3px var(--amber-glow), 0 0 20px var(--amber-glow); }
   .topbar-search input::placeholder { color: var(--text2); }
+  /* What is typed reads in its own direction: "-ted" typed under a Hebrew
+     interface showed as "ted-", an operator that is not the one typed. */
+  .topbar-search input { unicode-bidi: plaintext; }
   /* The box is written in logical sides: in a right-to-left UI the glass
      sits at the right, where the text starts, and ×, ? and / at the left. */
   .topbar-search .search-icon { position: absolute; inset-inline-start: 11px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text2); pointer-events: none; }
@@ -1083,7 +1086,12 @@
   [dir="rtl"] .bc-sep { transform: scaleX(-1); }
   [dir="rtl"] .result { direction: rtl; }
   [dir="rtl"] .result-body { text-align: right; }
-  [dir="rtl"] .result-source { flex-direction: row-reverse; }
+  /* A result's lines read in their own direction, still set from the
+     interface's side: an English snippet under a Hebrew interface ended
+     in "…" at its start. (Its source row needs no reversing: the result
+     is already right to left, and reversing it again sent the row to the
+     left, away from its title.) */
+  .result .snippet { unicode-bidi: plaintext; }
   [dir="rtl"] .result-thumb { order: 1; }
   [dir="rtl"] .footer { direction: rtl; }
   [dir="rtl"] .footer-sub { direction: ltr; } /* keep kbd hints LTR */

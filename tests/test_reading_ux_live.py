@@ -189,6 +189,31 @@ def test_a_count_of_one_and_a_query_that_asks_for_nothing(served):
             br.close()
 
 
+def test_under_a_hebrew_interface_english_results_and_queries_read_as_written(served):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br, pg = _page(pw, PHONE, lang="he")
+        try:
+            _boot(pg, served)
+            _search(pg, "physics")
+            r = pg.evaluate(
+                """() => { var res = document.querySelector('#output .result'), src = res.querySelector('.result-source'),
+                  t = res.querySelector('.title'), sn = res.querySelector('.snippet');
+                  return { src: src.getBoundingClientRect().right, title: t.getBoundingClientRect().right,
+                    icon: src.firstElementChild.getBoundingClientRect().right, name: src.querySelector('.rs-name').getBoundingClientRect().right,
+                    snippet: getComputedStyle(sn).unicodeBidi, box: getComputedStyle(document.getElementById('q')).unicodeBidi }; }"""
+            )
+            # The source row stands over its title, on the interface's side,
+            # its icon first; it had gone to the far side, reversed twice.
+            assert abs(r["src"] - r["title"]) < 4 and r["icon"] > r["name"], r
+            # An English snippet ends where English ends, not in "…" at its
+            # start; "-ted" typed in the box shows as typed, not "ted-".
+            assert r["snippet"] == "plaintext" and r["box"] == "plaintext", r
+        finally:
+            br.close()
+
+
 def test_the_reader_keeps_what_reader_view_would_undo(served):
     from playwright.sync_api import sync_playwright
 
