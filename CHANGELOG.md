@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The home page's sort governs the apps too, and the Apps heading opens a page of each app's ZIMs ([#100](https://github.com/epheterson/Zimi/issues/100)).
 - `ZIMI_OFFLINE` now also refuses internet downloads, and an idle Zimi asks the internet for nothing at startup.
 - The home page ships a third fewer bytes, and search asks for half as many snippets.
+- A search result opens in its app: a wiki's article in Zimipedia's reader, a book in Bookshelf, a video in ZimiTube, a question in ZimiExchange, a post in Reddot (Settings > Reading, "Open articles in apps").
+- Zimipedia's Today: the day's article and Continue reading, then On this day with pictures, Did you know, the picture of the day, a card from each other wiki of the language, your trails and each wiki's front page.
+- Zimipedia's reader keeps its bar at the top on a phone too, under Zimi's header and leaving with it as you read.
 
 ### Fixed
 
