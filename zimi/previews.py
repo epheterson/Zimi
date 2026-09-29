@@ -16,8 +16,20 @@ log = logging.getLogger("zimi")
 # <script .../> has no body to remove, and taking it as an opening tag
 # swallowed the whole page after it.
 _SCRIPT_OR_STYLE_RE = re.compile(
-    r"<(script|style)(?=[\s/>])(?![^>]*/>)[^>]*>.*?(?:</\1\s*>|$)", re.DOTALL | re.IGNORECASE
+    r"<(script|style)(?=[\s/>])(?![^>]*/>)[^>]*>.*?(?:</\1\s*>|$)",
+    re.DOTALL | re.IGNORECASE,
 )
+
+
+# A tag, to its own end: a quoted attribute value may hold a ">" of its own.
+# MediaWiki's pronunciation button carries a whole button's HTML in one
+# (data-ooui="{...<b><span dir=\"auto\">smörgåsbord</span></b>...}"), and a
+# pattern that stopped at the first ">" left the rest as the page's text: a
+# Hebrew article's lead read as JSON. A tag a read cut off has no end: the
+# pattern below is left for what is left over. Each character has one way
+# to match, so a long tag that never ends fails in one pass.
+_TAG_BODY = r"""(?:=\s*"[^"]*"|=\s*'[^']*'|=(?!\s*["'])|[^>=])*"""
+_TAG_RE = re.compile("<" + _TAG_BODY + ">")
 
 
 def strip_html(text):
@@ -26,7 +38,7 @@ def strip_html(text):
     # mwoffliner's Wikivoyage pages open with a config script longer than
     # /snippet's read, and its code came back as the page's snippet.
     text = _SCRIPT_OR_STYLE_RE.sub("", text)
-    text = re.sub(r"<[^>]+>", " ", text)
+    text = _TAG_RE.sub(" ", text)
     # A read of the start of a page can end inside a tag, which the pattern
     # above cannot close: '... 1879 <a rel="mw:WikiLink" href="Ulm" t'.
     text = re.sub(r"<[^>]*$", "", text)
@@ -36,7 +48,9 @@ def strip_html(text):
 
 
 _BLOCK_TAG_RE = re.compile(
-    r"</?(?:br|p|div|li|ul|ol|dl|dd|dt|table|tr|td|th|h[1-6]|section|blockquote)\b[^>]*>",
+    r"</?(?:br|p|div|li|ul|ol|dl|dd|dt|table|tr|td|th|h[1-6]|section|blockquote)\b"
+    + _TAG_BODY
+    + ">",
     re.IGNORECASE,
 )
 
@@ -49,6 +63,7 @@ def inline_text(fragment):
     text = re.sub(r"<!--.*?-->", "", fragment, flags=re.DOTALL)
     text = re.sub(r"<(script|style)\b[^>]*>.*?(?:</\1>|$)", "", text, flags=re.DOTALL)
     text = _BLOCK_TAG_RE.sub(" ", text)
+    text = _TAG_RE.sub("", text)
     text = re.sub(r"<[^>]*>?", "", text)
     text = html.unescape(text)
     return re.sub(r"\s+", " ", text).strip()
@@ -150,9 +165,11 @@ def extract_snippet(text, zim_name=""):
     cleaned = _SNIPPET_BOILERPLATE_RE.sub(" ", text)
     # 3. The first real paragraph, citation markers out. An encyclopedia page
     # opens with hatnotes and an infobox table; its lead sentence is the
-    # first <p> with some length to it.
+    # first <p> with some length to it. Read as running text: Hebrew and
+    # Arabic glue a prefix to a linked word ("ב<a>שוודית</a>"), which a
+    # space per tag split in two.
     for m in _SNIPPET_PARAGRAPH_RE.finditer(cleaned):
-        s = strip_html(_SNIPPET_CITATION_RE.sub("", m.group(1)))
+        s = inline_text(_SNIPPET_CITATION_RE.sub("", m.group(1)))
         s = _SNIPPET_SPACE_BEFORE_PUNCT_RE.sub(lambda g: g.group(1) or g.group(2), s)
         if len(s) >= _SNIPPET_MIN_PARAGRAPH:
             return s[:300].strip()
