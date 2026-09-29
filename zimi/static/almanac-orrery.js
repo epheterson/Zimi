@@ -359,7 +359,52 @@ var _EARTH_GLOW_PULSE = 0.08;       // how much the breath adds
 function _orreryEarthViewAvailable() {
   return typeof window.openAlmanacEarth === 'function' && !window.openAlmanacEarth.unsupported;
 }
-function _orreryOpenEarthView() { if (_orreryEarthViewAvailable()) window.openAlmanacEarth(); }
+function _orreryOpenEarthView() {
+  if (!_orreryEarthViewAvailable()) return;
+  _orreryMarkTried('earth');
+  window.openAlmanacEarth();
+}
+
+// ── Saying what the orrery does, until it has been done ──
+// A phone has no hover, and nothing said that a planet flies or that Earth
+// opens in 3D (Eric, 2026-09-29, found neither). Until each has been done
+// once on this device, a line under the orrery says it (on touch), and Earth
+// sends out a slow ring over its glow. Done, each goes quiet for good.
+var _ORRERY_TRIED_KEY = 'zimi_orrery_tried';
+var _ORRERY_BEACON_PERIOD_MS = 2400;   // one ring, out and gone
+var _ORRERY_BEACON_REACH = 4.2;        // how far it goes, in Earth radii
+var _ORRERY_BEACON_ALPHA = 0.55;       // how bright it starts
+var _orreryTriedCache = null;          // read once: the draw loop asks every frame
+function _orreryTried() {
+  if (!_orreryTriedCache) {
+    try { _orreryTriedCache = JSON.parse(localStorage.getItem(_ORRERY_TRIED_KEY)) || {}; }
+    catch (e) { _orreryTriedCache = {}; }
+  }
+  return _orreryTriedCache;
+}
+function _orreryMarkTried(what) {
+  var tried = _orreryTried();
+  if (tried[what]) return;
+  tried[what] = 1;
+  try { localStorage.setItem(_ORRERY_TRIED_KEY, JSON.stringify(tried)); } catch (e) { /* this visit only */ }
+  _orreryRenderHint();
+}
+function _orreryRenderHint() {
+  var el = document.getElementById('orrery-hint');
+  if (!el) return;
+  var tried = _orreryTried(), parts = [];
+  if (!tried.fly) parts.push(t('alm_orr_hint_fly'));
+  if (!tried.earth && _orreryEarthViewAvailable()) parts.push(t('alm_orr_hint_earth'));
+  el.textContent = parts.join(' · ');
+  el.hidden = !parts.length;
+}
+// The ring's radius (in Earth radii) and strength at an instant; a still
+// ring when motion is reduced.
+function _orreryBeacon(nowMs, reduced) {
+  if (reduced) return { r: _EARTH_GLOW_SCALE, a: _ORRERY_BEACON_ALPHA * 0.6 };
+  var p = (nowMs % _ORRERY_BEACON_PERIOD_MS) / _ORRERY_BEACON_PERIOD_MS;
+  return { r: 1 + (_ORRERY_BEACON_REACH - 1) * p, a: _ORRERY_BEACON_ALPHA * (1 - p) };
+}
 function _orreryEarthGlowAlpha(nowMs) {
   return _EARTH_GLOW_ALPHA + _EARTH_GLOW_PULSE * (0.5 + 0.5 * Math.sin(2 * Math.PI * nowMs / _EARTH_GLOW_PERIOD_MS));
 }
@@ -383,6 +428,9 @@ var _orrerySunPos = null; // {x, y, r} in world CSS px — the Sun is always at 
 //   • With a mouse, a SECOND click on a body whose article resolved opens it.
 
 var _orrerySelectedKey = null; // link key of the selected body
+// How far past a body's edge a finger still reaches it: a planet is a few
+// pixels across on a phone, a fingertip about forty. The nearest body wins.
+var _ORRERY_TOUCH_REACH_PX = 20;
 
 // Belt annulus hit zones, recorded on each draw (asteroid + Kuiper belts). Each
 // is {key, rIn, rOut} in world CSS px measured from the canvas centre.
@@ -396,13 +444,13 @@ function _orreryHitTest(mx, my, tolerance) {
   var wp = _orreryScreenToWorld(mx, my);
   mx = wp.x; my = wp.y;
   tolerance /= _orreryCam.zoom;
+  // The Sun is one more disc in the nearest-wins race: taken first, its
+  // finger-wide margin swallowed Mercury and Venus beside it.
+  var best = null, bestGap = Infinity, glow = null, sun = false;
   if (_orrerySunPos) {
-    var sdx = mx - _orrerySunPos.x, sdy = my - _orrerySunPos.y;
-    if (sdx * sdx + sdy * sdy < (_orrerySunPos.r + tolerance) * (_orrerySunPos.r + tolerance)) {
-      return { type: 'sun', data: _orrerySunPos };
-    }
+    var sd = Math.sqrt((mx - _orrerySunPos.x) * (mx - _orrerySunPos.x) + (my - _orrerySunPos.y) * (my - _orrerySunPos.y));
+    if (sd - _orrerySunPos.r < tolerance) { sun = true; bestGap = sd - _orrerySunPos.r; }
   }
-  var best = null, bestGap = Infinity, glow = null;
   for (var i = 0; i < _orreryPlanetPositions.length; i++) {
     var p = _orreryPlanetPositions[i];
     var dx = mx - p.x, dy = my - p.y;
@@ -410,7 +458,9 @@ function _orreryHitTest(mx, my, tolerance) {
     if (d - p.r < tolerance && d - p.r < bestGap) { best = p; bestGap = d - p.r; }
     if (p.glowR && d < p.glowR + tolerance) glow = p;
   }
-  if (best || glow) return { type: 'planet', data: best || glow };
+  if (best) return { type: 'planet', data: best };
+  if (sun) return { type: 'sun', data: _orrerySunPos };
+  if (glow) return { type: 'planet', data: glow };
   for (var j = 0; j < _voyagerPositions.length; j++) {
     var v = _voyagerPositions[j];
     var vdx = mx - v.x, vdy = my - v.y;
@@ -532,6 +582,7 @@ function _initOrrery() {
   _orrerySpeedLabel = document.getElementById('orrery-speed-label');
   _orrerySliderEl = document.getElementById('orrery-slider');
   _orrerySelectedKey = null;
+  _orreryRenderHint();
   _orreryCamReset();
   _drawOrrery(canvas, dpr);
   _orreryUpdateRide();
@@ -719,7 +770,7 @@ function _initOrrery() {
     }
     var rect = canvas.getBoundingClientRect();
     var tx = touch.clientX - rect.left, ty = touch.clientY - rect.top;
-    var tol = _tipTolerance(touch, tx, ty, 14);
+    var tol = _tipTolerance(touch, tx, ty, _ORRERY_TOUCH_REACH_PX);
     if (tol < 0) { e.preventDefault(); return; }   // a tap on the tip's text: the tip stays as it was
     var res = _orreryTap(tx, ty, tol, true);
     if (res) e.preventDefault();
@@ -999,6 +1050,15 @@ function _drawOrrery(canvas, dpr) {
       ctx.beginPath(); ctx.arc(px, py, glowR * 0.62, 0, Math.PI * 2);
       ctx.strokeStyle = _hexToRgba(p.glow, ga);
       ctx.lineWidth = 0.8 * u; ctx.stroke();
+      if (!_orreryTried().earth) {
+        // Still when motion is reduced, and when the orrery is paused: no
+        // next frame comes, and a ring caught fading out would stay unseen.
+        var reduced = _orreryReduceMotion() || !_orreryPlaying;
+        var bc = _orreryBeacon(typeof performance !== 'undefined' ? performance.now() : 0, reduced);
+        ctx.beginPath(); ctx.arc(px, py, pr * bc.r, 0, Math.PI * 2);
+        ctx.strokeStyle = _hexToRgba(p.glow, bc.a);
+        ctx.lineWidth = 1.5 * u; ctx.stroke();
+      }
     }
 
     // Record position for hover (world CSS px)
@@ -1588,6 +1648,7 @@ function _orreryLaunchRocket(targetName) {
   // would be frozen at the focus instant, leaving a rocket welded to Earth.
   // The tap still selects the planet, so its article stays one tap away.
   if (_orreryTravelFocus()) return;
+  _orreryMarkTried('fly');
 
   var earthA = _PLANETS['Earth'].a;
   var targetA = _PLANETS[targetName].a;

@@ -607,6 +607,9 @@ var AE_ISS_POINT_PX = 6;
 var AE_ISS_FADED_ALPHA = 0.45;
 var AE_SUN_POINT_PX = 30;
 var AE_HINT_MS = 4500;
+// Show where I am: a crosshair, the mark every map uses for "locate me".
+var AE_LOCATE_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
+var AE_LOCATE_TIMEOUT_MS = 15000;
 var AE_SPEEDS = [1, 60, 3600];        // real time, a minute a second, an hour a second
 var AE_SPEED_KEYS = ['alm_earth_rate_real', 'alm_earth_rate_min', 'alm_earth_rate_hour'];
 var AE_GPS_COLOR = [0.55, 0.85, 1.0];
@@ -681,7 +684,14 @@ var AE_CSS = [
   '.ae-when{text-align:end;font-size:11px;color:var(--text2);font-variant-numeric:tabular-nums;line-height:1.35;min-width:0}',
   '.ae-when b{display:block;font-size:13px;color:var(--text);font-weight:600}',
   '.ae-top-end{display:flex;align-items:flex-start;gap:8px;min-width:0}',
-  '.ae-gear{flex:0 0 auto;width:34px;padding:0;display:inline-flex;align-items:center;justify-content:center}',
+  '.ae-when-col{display:flex;flex-direction:column;align-items:flex-end;gap:6px;min-width:0}',
+  '.ae-tools{display:flex;flex-direction:column;gap:6px}',
+  '.ae-view.ae-away .ae-when b{color:var(--amber)}',
+  // Away from now, Now stands under the date: the eclipse line steps below it.
+  '.ae-view.ae-away .ae-status{top:96px}',
+  '.ae-btn.ae-now,.ae-btn.ae-now:focus-visible{color:#000;background:var(--amber);border-color:var(--amber);font-weight:600}',
+  '@media (hover:hover){.ae-btn.ae-now:hover{color:#000;background:var(--amber);filter:brightness(1.1)}}',
+  '.ae-round{flex:0 0 auto;width:34px;padding:0;display:inline-flex;align-items:center;justify-content:center}',
   '.ae-gear[aria-expanded="true"]{color:var(--amber);border-color:var(--amber-border)}',
   '.ae-set{position:absolute;top:56px;inset-inline-end:16px;width:min(300px,calc(100% - 32px));box-sizing:border-box;background:rgba(14,14,16,.96);border:1px solid var(--border);border-radius:12px;padding:12px 10px 10px;font-size:13px;line-height:1.45;color:var(--text2);z-index:1}',
   '.ae-set[hidden]{display:none}',
@@ -757,6 +767,7 @@ function _aeBuildDom() {
   el.setAttribute('aria-modal', 'true');
   el.setAttribute('aria-label', _tp('Earth'));
   var gearLabel = _aeT('alm_earth_sat_setting');
+  var locateLabel = _aeT('alm_earth_where_i_am');
   var speeds = AE_SPEEDS.map(function (s, i) {
     return '<button type="button" class="ae-btn" data-ae-speed="' + s + '" aria-pressed="' + (i === 0) + '">' +
       _almEsc(_aeT(AE_SPEED_KEYS[i])) + '</button>';
@@ -773,10 +784,21 @@ function _aeBuildDom() {
     '<div class="ae-top">' +
       '<button type="button" class="ae-btn ae-back" id="ae-back"><span class="ae-chev" aria-hidden="true">‹</span> ' + _almEsc(_aeT('alm_solar_system')) + '</button>' +
       '<div class="ae-top-end">' +
-        '<div class="ae-when" id="ae-when"></div>' +
-        '<button type="button" class="ae-btn ae-gear" id="ae-gear" aria-expanded="false" aria-controls="ae-set"' +
-          ' aria-label="' + _almEsc(gearLabel) + '" title="' + _almEsc(gearLabel) + '">' +
-          (typeof _gearSvg === 'string' ? _gearSvg : '⚙') + '</button>' +
+        // Now stands under the date it corrects, lit, whenever the view is
+        // away from now (after Next eclipse it sat at the end of a row of
+        // look-alike buttons, easy to miss).
+        '<div class="ae-when-col" id="ae-when-col">' +
+          '<div class="ae-when" id="ae-when"></div>' +
+          '<button type="button" class="ae-btn ae-now" id="ae-now" hidden>' + _almEsc(_aeT('alm_now')) + '</button>' +
+        '</div>' +
+        // The round tools stand in a column, so the date keeps its one line.
+        '<div class="ae-tools">' +
+          '<button type="button" class="ae-btn ae-round ae-gear" id="ae-gear" aria-expanded="false" aria-controls="ae-set"' +
+            ' aria-label="' + _almEsc(gearLabel) + '" title="' + _almEsc(gearLabel) + '">' +
+            (typeof _gearSvg === 'string' ? _gearSvg : '⚙') + '</button>' +
+          '<button type="button" class="ae-btn ae-round" id="ae-locate" aria-pressed="false"' +
+            ' aria-label="' + _almEsc(locateLabel) + '" title="' + _almEsc(locateLabel) + '">' + AE_LOCATE_SVG + '</button>' +
+        '</div>' +
       '</div>' +
     '</div>' +
     '<div class="ae-set" id="ae-set" role="group" aria-labelledby="ae-set-title" hidden></div>' +
@@ -791,7 +813,6 @@ function _aeBuildDom() {
       '</div>' +
       '<div class="ae-row" role="group" id="ae-time">' + speeds +
         '<button type="button" class="ae-btn" id="ae-eclipse">' + _almEsc(_aeT('alm_earth_next_eclipse')) + '</button>' +
-        '<button type="button" class="ae-btn" id="ae-now" hidden>' + _almEsc(_aeT('alm_now')) + '</button>' +
       '</div>' +
       '<div class="ae-note">' +
         '<span id="ae-ask" hidden><span class="ae-ask-text" id="ae-ask-text"></span>' +
@@ -1660,10 +1681,10 @@ function _aeUpdateLabels() {
     issEl.classList.toggle('ae-faded', approx);
   }
   _aePlaceLabel('ae-lbl-iss', iss && iss.p.pos, !!iss && !_aeBehindEarth(iss.p.pos));
-  // You: only for a place the person chose. The Almanac's stand-in location
-  // (a guess from the time zone) is not somewhere to point at.
-  var loc = (typeof _getLocation === 'function') ? _getLocation() : null;
-  var you = loc && loc.stored ? _aeFixedToScene(_aeGeodeticToFixed(loc.lat, loc.lon), sc.gast) : null;
+  // You: only where the device says it is, once the person asked
+  // (_aeLocateMe). A guess, from the time zone or a city picked for the
+  // Almanac, drew "You" far from anyone (Eric).
+  var you = _ae.you ? _aeFixedToScene(_aeGeodeticToFixed(_ae.you.lat, _ae.you.lon), sc.gast) : null;
   _aePlaceLabel('ae-lbl-you', you, !!you && _aeFacing(you) && _ae.target === 'earth');
   var ecl = _ae.eclipse;
   var sh = ecl && ecl.solar && ecl.hit ? _aeFixedToScene(_aeGeodeticToFixed(ecl.hit.lat, ecl.hit.lon), sc.gast) : null;
@@ -1827,8 +1848,11 @@ function _aeUpdateText(ms) {
       (_aeIsLive() ? '<span class="ae-live">● ' + _almEsc(_aeT('alm_earth_live')) + '</span>' : '');
     if (whenHtml !== _ae.whenHtml) { when.innerHTML = whenHtml; _ae.whenHtml = whenHtml; }
   }
-  var nowBtn = _aeById('ae-now');
-  if (nowBtn) nowBtn.hidden = _aeIsLive();
+  var nowBtn = _aeById('ae-now'), live = _aeIsLive();
+  if (nowBtn && nowBtn.hidden !== live) {
+    nowBtn.hidden = live;
+    _ae.el.classList.toggle('ae-away', !live);
+  }
   var sc = _ae.scene;
   var status = _aeById('ae-status');
   if (sc && status) {
@@ -2062,6 +2086,7 @@ function _aeBindControls() {
   }
   _aeById('ae-eclipse').onclick = _aeJumpToNextEclipse;
   _aeById('ae-now').onclick = _aeNow;
+  _aeById('ae-locate').onclick = _aeLocateMe;
   _aeById('ae-gear').onclick = function () { _aeShowSettings(!_ae.setOpen); };
   _aeById('ae-fresh').onclick = _aeGetFresh;
   // The panel's radios are drawn afresh with each answer: one listener.
@@ -2137,12 +2162,42 @@ function _aeEnter() {
   _ae.az = azel.az; _ae.el_ = azel.el;
   _ae.dist = _aeReduceMotion() ? _aeFitDist(AE_FIT_EARTH) : AE_FLY_START_DIST;
   _aePreset('earth');
+  if (!_ae.hinted) { _ae.hinted = true; _aeShowHint(); }
+}
+
+// The hint over the controls, for a moment: the first open's, or `text`.
+function _aeShowHint(text) {
   var hint = _aeById('ae-hint');
-  if (hint && !_ae.hinted) {
-    _ae.hinted = true;
-    hint.classList.add('ae-show');
-    setTimeout(function () { hint.classList.remove('ae-show'); }, AE_HINT_MS);
-  }
+  if (!hint) return;
+  if (text) hint.textContent = text;
+  hint.classList.add('ae-show');
+  clearTimeout(_ae.hintTimer);
+  _ae.hintTimer = setTimeout(function () { hint.classList.remove('ae-show'); }, AE_HINT_MS);
+}
+
+// Show where I am. The position is asked for only here, when the person
+// taps for it, as the Maps app asks: opening the view asks nothing. Granted,
+// "You" marks the device's own position and the view turns to it; denied or
+// unavailable, nothing is drawn and the hint says so. A second tap hides it.
+function _aeLocateMe() {
+  var btn = _aeById('ae-locate');
+  if (_ae.you) { _ae.you = null; btn.setAttribute('aria-pressed', 'false'); _aeKick(); return; }
+  var fail = function () {
+    btn.disabled = false;
+    _aeShowHint(_aeT('alm_earth_where_unknown'));
+  };
+  if (!navigator.geolocation) { fail(); return; }
+  btn.disabled = true;
+  navigator.geolocation.getCurrentPosition(function (pos) {
+    btn.disabled = false;
+    var lat = pos.coords.latitude, lon = pos.coords.longitude;
+    if (!_almValidLatLon(lat, lon)) { fail(); return; }
+    _ae.you = { lat: lat, lon: lon };
+    btn.setAttribute('aria-pressed', 'true');
+    var sc = _ae.scene || _aeSceneAt(_aeDisplayMs());
+    _ae.preset = 'earth';
+    _aeFlyTo('earth', _aeFitDist(AE_FIT_EARTH), _aeAzElOf(_aeFixedToScene(_aeGeodeticToFixed(lat, lon), sc.gast)));
+  }, fail, { timeout: AE_LOCATE_TIMEOUT_MS, maximumAge: 60000 });
 }
 
 function openAlmanacEarth() {
@@ -2204,6 +2259,7 @@ function _aeClose() {
   // Found unsupported, the orrery drops its Earth glow; a paused orrery
   // (1x) draws nothing by itself, so give it the frame without.
   if (openAlmanacEarth.unsupported && typeof _orrerySyncToFocus === 'function') _orrerySyncToFocus();
+  if (openAlmanacEarth.unsupported && typeof _orreryRenderHint === 'function') _orreryRenderHint();
 }
 
 // Give the GPU back: every geometry, material and map, then the context
@@ -2247,3 +2303,5 @@ function _aeRelease() {
 }
 
 window.openAlmanacEarth = openAlmanacEarth;
+// The orrery, drawn before this file ran, can now say Earth opens in 3D.
+if (typeof _orreryRenderHint === 'function') _orreryRenderHint();

@@ -1731,6 +1731,7 @@ function _renderAlmanacContent() {
   html += '<div class="almanac-section">';
   html += '<div class="almanac-section-title">' + _lterm('solar_system', t('alm_solar_system')) + '</div>';
   html += '<div class="almanac-orrery-wrap"><canvas id="almanac-orrery"></canvas></div>';
+  html += '<div id="orrery-hint" class="orrery-hint" hidden></div>';
   html += '<div class="orrery-controls">';
   // Bidirectional speed slider: left = rewind, center = 1×, right = fast forward
   html += '<span class="orrery-speed-word">' + _tLookup('alm_speed', 'Speed') + '</span>';

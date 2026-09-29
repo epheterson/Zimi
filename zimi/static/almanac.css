@@ -168,12 +168,21 @@
 #orrery-tooltip .alm-link, #orrery-tooltip .orrery-tip-btn { pointer-events: auto; }
 .orrery-tip-info { display: block; }
 .orrery-tip-line { display: block; color: #bbb; white-space: normal; max-width: 230px; }
-.orrery-tip-btn { display: block; margin-top: 5px; padding: 2px 10px; background: var(--amber-glow); border: 1px solid var(--amber-border); border-radius: 999px; color: var(--amber); font: inherit; font-weight: 600; cursor: pointer; }
-.orrery-tip-btn:focus-visible { background: var(--amber); color: #000; outline: none; }
-/* Hover only where there is one: a tapped button kept the hover look on a
-   phone and read as pressed. */
-@media (hover: hover) { .orrery-tip-btn:hover { background: var(--amber); color: #000; } }
-@media (pointer: coarse) { .orrery-tip-btn { min-height: 34px; padding: 4px 14px; font-size: 13px; } }
+/* The tip's one action (Fly there, See the Earth up close) is the loudest
+   thing in it: filled amber, the tip's full width. A tinted outline read as
+   one more line of text, and a phone gave no other sign a planet flies. */
+.orrery-tip-btn { display: block; width: 100%; margin-top: 6px; padding: 3px 12px; background: var(--amber); border: 1px solid var(--amber); border-radius: 999px; color: #000; font: inherit; font-weight: 600; cursor: pointer; }
+.orrery-tip-btn:focus-visible { outline: 2px solid var(--amber-border); outline-offset: 2px; }
+@media (hover: hover) { .orrery-tip-btn:hover { filter: brightness(1.1); } }
+@media (pointer: coarse) {
+  #orrery-tooltip { font-size: 12px; padding: 6px 10px; border-radius: 8px; }
+  .orrery-tip-btn { min-height: 40px; padding: 6px 16px; font-size: 14px; }
+}
+/* Under the orrery, until each has been done once: what a tap does. Touch
+   only; a pointer finds it by hovering (almanac-orrery.js _orreryRenderHint). */
+.orrery-hint { margin: 6px auto 0; max-width: 500px; text-align: center; font-size: 12px; color: var(--text2); }
+.orrery-hint[hidden] { display: none; }
+@media (hover: hover) and (pointer: fine) { .orrery-hint { display: none; } }
 /* The ride under the orrery: where the rocket is, the delay home, the twins. */
 .orrery-ride { max-width: 500px; margin: 8px auto 0; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; font-size: 12px; color: var(--text2); }
 .orrery-ride-head, .orrery-twin-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
