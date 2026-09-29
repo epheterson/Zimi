@@ -3370,6 +3370,17 @@ document.addEventListener('touchend', _reorderTouchEnd);
 document.addEventListener('touchcancel', _reorderTouchEnd);
 
 // ── Render: Home ──
+// A section's name that opens its page (the Apps page, a language, a
+// category): a link for the keyboard and a screen reader too, not only a
+// finger or a mouse (a plain div with an onclick was neither).
+var _CAT_HEAD_OPENS = ' role="link" tabindex="0"';
+document.addEventListener('keydown', function(e) {
+  var h = e.target;
+  if ((e.key === 'Enter' || e.key === ' ') && h && h.classList && h.classList.contains('cat-heading') && h.classList.contains('clickable')) {
+    e.preventDefault();
+    h.click();
+  }
+});
 function renderHome(filter) {
   // We could not ask the server. Say so — never "No knowledge sources found",
   // which reads as "your library was wiped". Discover is skipped too: its cards
@@ -3583,6 +3594,8 @@ function renderHome(filter) {
     var _welcomeLang = (_AVAILABLE_LANGS.find(function(l) { return l.code === _currentLang; }) || {}).name || _currentLang;
     var _hasLangZims = (zimsCache || []).some(function(z) { return z.language === _currentLang; });
     var _welcomeDismissed = localStorage.getItem('zimi_welcome_' + _currentLang) === '0';
+    // The card's ×, named for a screen reader ("✕" read as a letter).
+    var _welcomeX = '<button class="lang-banner-dismiss" aria-label="' + tH('close') + '" title="' + tH('close') + '" onclick="localStorage.setItem(\'zimi_welcome_\'+_currentLang,\'0\');var el=document.getElementById(\'lang-welcome\');if(el)el.remove()">\u2715</button>';
     if (!_welcomeDismissed) {
       if (!_hasLangZims && manageEnabled) {
         h += '<div class="lang-welcome-card" id="lang-welcome">' +
@@ -3592,14 +3605,13 @@ function renderHome(filter) {
           '</div>' +
           '<div class="lang-welcome-actions">' +
             '<button class="lang-banner-btn" onclick="localStorage.setItem(\'zimi_welcome_\'+_currentLang,\'0\');_langBannerDownload(_currentLang,\'wikipedia\')">' + tH('welcome_lang_browse') + '</button>' +
-            '<button class="lang-banner-dismiss" onclick="localStorage.setItem(\'zimi_welcome_\'+_currentLang,\'0\');var el=document.getElementById(\'lang-welcome\');if(el)el.remove()">\u2715</button>' +
+            _welcomeX +
           '</div>' +
         '</div>';
       } else {
         var _langZimCount = (zimsCache || []).filter(function(z) { return z.language === _currentLang; }).length;
         h += '<div class="lang-welcome-card lang-welcome-subtle" id="lang-welcome">' +
-          '<span>' + tH('welcome_lang_have', {n: _langZimCount, lang: _welcomeLang}) + '</span>' +
-          '<button class="lang-banner-dismiss" onclick="localStorage.setItem(\'zimi_welcome_\'+_currentLang,\'0\');var el=document.getElementById(\'lang-welcome\');if(el)el.remove()">\u2715</button>' +
+          '<span>' + tPluralH('welcome_lang_have', _langZimCount, {lang: _welcomeLang}) + '</span>' + _welcomeX +
         '</div>';
       }
     }
@@ -3624,7 +3636,7 @@ function renderHome(filter) {
       const favZims = _sortLibrary(favNames.map(n => _zimInfo(n)).filter(z => z && _homeShown.has(z.name)));
       if (favZims.length > 0) {
         const favZimNames = favZims.map(z => z.name);
-        h += '<div class="cat-heading clickable" onclick="enterScope(\'favorites\',\'\u2605 ' + escJs(t('favorites')) + '\',' + escJs(JSON.stringify(favZimNames)) + ',true)">\u2605 ' + tH('favorites') + '</div>';
+        h += '<div class="cat-heading clickable"' + _CAT_HEAD_OPENS + ' onclick="enterScope(\'favorites\',\'\u2605 ' + escJs(t('favorites')) + '\',' + escJs(JSON.stringify(favZimNames)) + ',true)">\u2605 ' + tH('favorites') + '</div>';
         h += renderCardGrid(favZims, true, true);
       }
     }
@@ -3640,8 +3652,8 @@ function renderHome(filter) {
     if (_langZims.length > 0) {
       _langZims.forEach(function(z) { _langSectionNames.add(z.name); });
       var _langZimNames = _langZims.map(function(z) { return z.name; });
-      h += '<div class="cat-heading clickable" onclick="enterScope(\'language\',\'' + escJs(_uiLangName) + '\',' + escJs(JSON.stringify(_langZimNames)) + ',true)">' +
-        '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" style="vertical-align:-2px;margin-right:4px"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>' +
+      h += '<div class="cat-heading clickable"' + _CAT_HEAD_OPENS + ' onclick="enterScope(\'language\',\'' + escJs(_uiLangName) + '\',' + escJs(JSON.stringify(_langZimNames)) + ',true)">' +
+        '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" style="vertical-align:-2px;margin-inline-end:4px"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>' +
         esc(_uiLangName) + '</div>';
       h += renderCardGrid(_langZims, true, true);
     }
@@ -3676,7 +3688,7 @@ function renderHome(filter) {
         if (collZims.length > 0) {
           const collZimNames = collZims.map(z => z.name);
           _sections.push({ key: 'col:' + cname, html:
-            '<div class="cat-heading clickable" onclick="enterScope(\'collection\',\'' + escJs(coll.label || cname) + '\',' + escJs(JSON.stringify(collZimNames)) + ',true)">' + esc(coll.label || cname) + '</div>' +
+            '<div class="cat-heading clickable"' + _CAT_HEAD_OPENS + ' onclick="enterScope(\'collection\',\'' + escJs(coll.label || cname) + '\',' + escJs(JSON.stringify(collZimNames)) + ',true)">' + esc(coll.label || cname) + '</div>' +
             renderCardGrid(collZims, true, true) });
         }
       }
@@ -3686,7 +3698,7 @@ function renderHome(filter) {
       if (catItems.length === 0) return;
       const catZimNames = catItems.map(z => z.name);
       _sections.push({ key: 'cat:' + cat, html:
-        '<div class="cat-heading clickable" onclick="enterScope(\'category\',\'' + escJs(_catDisplayName(cat)) + '\',' + escJs(JSON.stringify(catZimNames)) + ',true)">' + esc(_catDisplayName(cat)) + '</div>' +
+        '<div class="cat-heading clickable"' + _CAT_HEAD_OPENS + ' onclick="enterScope(\'category\',\'' + escJs(_catDisplayName(cat)) + '\',' + escJs(JSON.stringify(catZimNames)) + ',true)">' + esc(_catDisplayName(cat)) + '</div>' +
         renderCardGrid(catItems, true) });
     });
     var _otherItems = _dedupLang(groups[OTHER_CAT] || [], _langSectionNames);
@@ -4685,6 +4697,8 @@ function renderCardGrid(items, showStars, showCategory) {
 // ── Discover: computed cards first, random fill to ~4 ──
 // Slot order: 1) Today (always), 2) APOD (if installed), 3) On This Day (if Wikipedia), 4+) 🎲 Random
 var _discoverLoading = false;
+var DISCOVER_RETRY_MS = 10000;  // a cold start's partial row asks again once, this much later
+var _discoverRetried = {};      // the day's cache keys already asked again in this page
 
 function _moonPhase(date) {
   // True phase from the Moon–Sun elongation (Meeus, main periodic terms).
@@ -5535,17 +5549,22 @@ function _loadDiscover() {
     if (items.length > 0 && items.length >= serverSlots.length - 1) {
       try { localStorage.setItem(cacheKey, JSON.stringify(all)); } catch(e) {}
     }
-    // If we got partial results (cold start), auto-retry after 10s
+    // Partial results (a cold start): one more try, of the cards alone. It
+    // redrew the whole home page every ten seconds, for good in a library
+    // that cannot fill the row (nopic builds have no pictures to show), and
+    // over whatever was on screen by then: search results, the catalog.
+    // _loadDiscover draws only into the Discover row, when there is one.
     var missing = serverSlots.length - items.length;
-    if (missing > 1 && !localStorage.getItem(cacheKey)) {
-      setTimeout(function() { if (!localStorage.getItem(cacheKey)) renderHome(); }, 10000);
+    if (missing > 1 && !localStorage.getItem(cacheKey) && !_discoverRetried[cacheKey]) {
+      _discoverRetried[cacheKey] = true;
+      setTimeout(function() { if (!localStorage.getItem(cacheKey)) _loadDiscover(); }, DISCOVER_RETRY_MS);
     }
     var el2 = document.getElementById('discover-row');
     if (el2 && !_getStorageFlag(SK.HIDE_DISCOVER)) _renderDiscover(el2, all);
   });
 }
 function _renderDiscover(el, items) {
-  var h = '<div class="discover-section"><div class="discover-label"><span>' + tH('discover') + '</span><button class="dc-dismiss" onclick="event.stopPropagation();_dismissDiscover()" title="' + escAttr(t('hide_discover')) + '">\u00D7</button></div><div class="discover-scroll">';
+  var h = '<div class="discover-section"><div class="discover-label"><span>' + tH('discover') + '</span><button class="dc-dismiss" onclick="event.stopPropagation();_dismissDiscover()" title="' + escAttr(t('hide_discover')) + '" aria-label="' + escAttr(t('hide_discover')) + '">\u00D7</button></div><div class="discover-scroll">';
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
     if (!it) continue; // Skip null results (e.g. failed dated entry lookups)
@@ -7092,7 +7111,9 @@ function renderSearchResults(data, scope) {
   }
 
   const displayElapsed = data._clientElapsed || (data.elapsed ? data.elapsed.toFixed(1) : null);
-  document.getElementById('search-count').textContent = t('n_results', {n: totalCount});
+  // A count of results has one phrase in each plural form ("1 result"),
+  // Zimipedia's and this box's alike.
+  document.getElementById('search-count').textContent = tPlural('wiki_results', totalCount);
   document.getElementById('search-time').textContent = displayElapsed ? t('in_time', {time: displayElapsed}) : '';
   searchMeta.style.display = items.length ? 'flex' : 'none';
 
@@ -7111,7 +7132,10 @@ function renderSearchResults(data, scope) {
   // What the query's operators did, each a tap away from undone.
   const chipsHtml = searchChipsHtml(data._query, zimsCache, data.unsearched);
   if (!items.length) {
-    output.innerHTML = chipsHtml + '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH('try_different') + '</p></div>';
+    // A query of only exclusions and filters ("-ted") asks for nothing, so
+    // the library finds nothing: say what it needs, not "try other words".
+    const asksNothing = !!data._query && !parseSearchQuery(data._query).groups.length;
+    output.innerHTML = chipsHtml + '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH(asksNothing ? 'search_needs_word' : 'try_different') + '</p></div>';
     return;
   }
 
@@ -7168,10 +7192,8 @@ function renderSearchResults(data, scope) {
       tH('show_more', {n: Math.min(RESULTS_PER_PAGE, remaining)}) + '</button></div>';
   }
 
-  if (displayElapsed) {
-    html += '<div class="results-summary">' + tH('found_results_in', {n: totalCount, time: displayElapsed}) + '</div>';
-  }
-
+  // The count and the time are said once, over the results ("Found 1
+  // results in 0.3s" said them again under them).
   output.innerHTML = html;
 
   loadSnippets();
@@ -9226,10 +9248,18 @@ const _CATALOG_FILTER_TESTS = {
   lang: (v, item) => (item.language || '').toLowerCase().split(',').some(c => _catalogLang(c.trim()) === _catalogLang(v)),
 };
 
+// A catalog field as it reads. Kiwix's feed escapes some summaries twice,
+// so after one decode they still say "d&apos;articles" (95 of 2,653 in the
+// shipped snapshot, mostly French).
+const _CATALOG_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#39': "'" };
+function _catalogText(s) {
+  return String(s || '').replace(/&(amp|lt|gt|quot|apos|#39);/g, (m, k) => _CATALOG_ENTITIES[k]);
+}
+
 function catalogItemMatches(parsed, item) {
   // Fields joined by a separator that is not a space, so a phrase cannot
   // run from the end of the title into the summary.
-  const text = [item.title, item.summary, item.name].join('\u0001');
+  const text = [_catalogText(item.title), _catalogText(item.summary), item.name].join('\u0001');
   return searchQueryMatches(parsed, text) &&
     parsed.filters.every(f => _CATALOG_FILTER_TESTS[f.key](f.value, item) !== f.negate);
 }
@@ -9387,6 +9417,24 @@ function _searchHelpExpanded(on) {
   if (btn) btn.setAttribute('aria-expanded', on ? 'true' : 'false');
 }
 
+// An example as it is typed. In a Hebrew or Arabic example a Latin operator
+// ("-wikipedia", "lang:he") is set apart left to right, or its minus takes
+// the line's direction and goes to the other end ("wikipedia-"), which is not
+// what to type; the example's own words read in its direction, from its
+// first letter.
+const _RTL_LETTER = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
+const _firstLetterRtl = s => _RTL_LETTER.test((s.match(/\p{L}/u) || [''])[0]);
+function _searchExampleHtml(ex) {
+  const rtl = _firstLetterRtl(ex);
+  let out = '', at = 0;
+  if (rtl) for (const tok of _searchTokens(ex)) {
+    const s = ex.slice(tok[3], tok[4]);
+    out += esc(ex.slice(at, tok[3])) + (_firstLetterRtl(s) ? esc(s) : '<bdi dir="ltr">' + esc(s) + '</bdi>');
+    at = tok[4];
+  }
+  return '<bdi class="search-example-q" dir="' + (rtl ? 'rtl' : 'ltr') + '">' + out + esc(ex.slice(at)) + '</bdi>';
+}
+
 function toggleSearchTips(e) {
   if (_searchTipsOpen()) { hideSuggest(); return; }
   // From the keyboard, into the box, where the arrows and Enter pick one; a
@@ -9401,7 +9449,7 @@ function toggleSearchTips(e) {
     '<div class="search-tips-head">' + tH('search_tips') + '</div>' +
     examples.map((ex, i) =>
       '<div class="suggest-item search-example" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
-        '<bdi class="search-example-q" dir="auto">' + esc(ex) + '</bdi>' +
+        _searchExampleHtml(ex) +
         searchQueryChips(ex).map(c => _searchChipHtml(c, pool, false)).join('') +
       '</div>').join('') + '</div>';
   suggestDropdown.style.display = 'block';
@@ -9448,7 +9496,7 @@ function browseCatalogFilter(query) {
       : tH('back_to_catalog');
     let h = '<div class="browse-drilldown-header">' +
       '<button class="browse-back" onclick="' + (manageCategoryFilter ? "drillCategory('" + escAttr(manageCategoryFilter) + "')" : 'renderBrowseGallery()') + '">' + back + '</button>' +
-      '<span class="browse-drilldown-count">' + tH('n_results', {n: filtered.length}) + '</span>' +
+      '<span class="browse-drilldown-count">' + tPluralH('wiki_results', filtered.length) + '</span>' +
     '</div>' + searchChipsHtml(query, items);
     if (grouped.length) {
       h += _renderCatalogGrid(grouped);
@@ -9723,8 +9771,10 @@ function renderCatalogItem(group) {
     selectHtml +
     '<div class="ci-icon">' + iconHtml + '</div>' +
     '<div class="ci-info">' +
-      '<div class="ci-title">' + esc(item.title || item.name) + _catLangTag(item.language, item.name) + '</div>' +
-      (item.summary ? '<div class="ci-summary">' + esc(item.summary) + '</div>' : '') +
+      '<div class="ci-title">' + esc(_catalogText(item.title) || item.name) + _catLangTag(item.language, item.name) + '</div>' +
+      // In its own direction: a French summary under a Hebrew interface was
+      // cut at its start ("…ne sélection") rather than its end.
+      (item.summary ? '<div class="ci-summary" dir="auto">' + esc(_catalogText(item.summary)) + '</div>' : '') +
       '<div class="ci-meta">' + metaTags.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
       (hierarchyHtml ? '<div class="ci-hier">' + hierarchyHtml + '</div>' : '') +
     '</div>' +
@@ -15953,8 +16003,10 @@ var READER_THEMES = ['dark', 'light', 'sepia'];
 // User-selectable modes in the picker. 'auto' follows the app theme: dark→dark,
 // light→SEPIA (a warm paper tone reads better out of the box than raw white).
 // A user's explicit pick (dark/light/sepia) always wins and persists. Stored
-// value is the MODE; _readerTheme() resolves it to a palette.
-var READER_THEME_MODES = ['auto', 'dark', 'light', 'sepia'];
+// value is the MODE; _readerTheme() resolves it to a palette. In the order
+// every picker shows them, Reader View's and the books' and Zimipedia's
+// reading settings alike (the two had them in different orders).
+var READER_THEME_MODES = ['auto', 'light', 'sepia', 'dark'];
 // The <body> background each theme paints — mirrors --rv-bg in the injected CSS.
 // Used to tint the iframe/loading chrome so AUTO mode never flashes ZIM-white.
 var READER_THEME_BG = { dark: '#0a0a0b', light: '#fbfbf9', sepia: '#f4ecd8' };
@@ -16039,6 +16091,14 @@ function _readerViewClean(root, doc) {
     for (var i = 0; i < junk.length; i++) {
       if (junk[i].parentNode) junk[i].parentNode.removeChild(junk[i]);
     }
+    // A MediaWiki section that held only what went ("Other websites": the
+    // sister-project boxes) would be a heading over nothing, and a line in
+    // the contents that leads nowhere.
+    Array.prototype.forEach.call(root.querySelectorAll('section[data-mw-section-id]'), function(sec) {
+      var head = sec.firstElementChild;
+      if (head && head === sec.lastElementChild && head.matches('h2,h3,h4,h5,h6,.mw-heading') &&
+          sec.textContent.trim() === head.textContent.trim()) sec.remove();
+    });
   } catch(e) {}
   // Neutralize INLINE layout constraints that would make the clone a fixed-height
   // inner scroller inside the reader column (the devdocs-class bug: a main element
@@ -16835,8 +16895,7 @@ function _rvSwatchesHtml(mode) {
   // `mode` is the stored selection (auto|dark|light|sepia) so the Auto swatch
   // lights up when chosen — not the resolved palette.
   return '<div class="rv-swatches" role="radiogroup" aria-label="' + tH('reader_theme') + '">' +
-    _rvSwatchHtml('auto', mode) + _rvSwatchHtml('dark', mode) +
-    _rvSwatchHtml('light', mode) + _rvSwatchHtml('sepia', mode) + '</div>';
+    READER_THEME_MODES.map(function(k) { return _rvSwatchHtml(k, mode); }).join('') + '</div>';
 }
 function _rvFamPillHtml(key, fam) {
   return '<button type="button" class="rv-pill' + (fam === key ? ' active' : '') +
@@ -17651,7 +17710,7 @@ function _readingSettingsHtml(prefs, layouts) {
   };
   var row = function(label, body) { return '<div class="zb-set"><div class="zb-set-label">' + label + '</div>' + body + '</div>'; };
   var mode = _readerThemeMode(), fam = _readerFamily(), si = _READING_SIZES.indexOf(prefs.size);
-  var themes = ['auto', 'light', 'sepia', 'dark'].map(function(k) {
+  var themes = READER_THEME_MODES.map(function(k) {
     var lbl = tH(k === 'auto' ? 'theme_auto' : 'reader_theme_' + k);
     return [k, '<span class="zb-dot zb-dot-' + k + '"></span>' + lbl];
   });
@@ -19016,7 +19075,7 @@ function _appsRowHtml() {
   // like theirs, its name opens its page (#100): the Apps page. An empty
   // library has nothing to show there, so its name is only a name.
   var open = zimsCache && zimsCache.length;
-  return '<div class="cat-heading' + (open ? ' clickable" onclick="openAppsPage()"' : '"') + '>' + tH('apps_section') + '</div>' +
+  return '<div class="cat-heading' + (open ? ' clickable"' + _CAT_HEAD_OPENS + ' onclick="openAppsPage()"' : '"') + '>' + tH('apps_section') + '</div>' +
     _appsGridHtml(tiles);
 }
 
@@ -19034,7 +19093,7 @@ function _appsPageHtml(shown) {
     }
     var zims = _sortLibrary(inside.filter(function(z) { return shown.has(z.name); }));
     if (!zims.length) return '';
-    return '<div class="cat-heading clickable" onclick="_APP_OPEN.' + app + '()">' + esc(_appTitle(app)) + '</div>' +
+    return '<div class="cat-heading clickable"' + _CAT_HEAD_OPENS + ' onclick="_APP_OPEN.' + app + '()">' + esc(_appTitle(app)) + '</div>' +
       renderCardGrid(zims, true);
   }).join('');
 }
@@ -23807,6 +23866,15 @@ function _extStyle(doc) {
       '-webkit-mask:' + svg + ' center/contain no-repeat;mask:' + svg + ' center/contain no-repeat}' +
     'a.' + EXT_CLASS + ':dir(rtl)::after{transform:scaleX(-1)}' +
     '.' + EXT_OWN + ' a.external.' + EXT_CLASS + '::after{display:none}' +
+    // Reader View themes the page, and MediaWiki's mark is a blue picture
+    // that does not follow: there, the page's mark gives way to ours.
+    '.zimi-reader a.external.' + EXT_CLASS + '{background-image:none!important;padding-left:0!important;padding-right:0!important}' +
+    // And a MediaWiki "external" link an installed ZIM answers (the licence
+    // line's Wikipedia, with that Wikipedia installed) stays in the library:
+    // no mark says it leaves, the page's or ours.
+    '.' + EXT_OWN + ' :is(a.external[href^="http"],a.external[href^="//"]):not(.' + EXT_CLASS + ')' +
+      '{background-image:none!important;padding-left:0!important;padding-right:0!important}' +
+    '.' + EXT_OWN + ' .zimi-reader a.external.' + EXT_CLASS + ':not(.' + EXT_BARE + ')::after{display:inline-block}' +
     '.' + EXT_OFF + '{color:inherit!important;text-decoration:none!important;cursor:auto!important;border-bottom:0!important}' +
     'a.external.' + EXT_OFF + '{background-image:none!important;padding-left:0!important;padding-right:0!important}';
   (doc.head || doc.documentElement).appendChild(st);

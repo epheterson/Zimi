@@ -31,10 +31,10 @@ function grab(name, kind) {
 
 const sandbox = { console, tH: (k) => k };
 vm.createContext(sandbox);
-for (const c of ['SEARCH_QUOTES', '_SEARCH_UNSPACED', 'SEARCH_FILTERS', '_reEscape', '_LANG3TO2', '_catalogLang', '_CATALOG_FILTER_TESTS']) {
+for (const c of ['SEARCH_QUOTES', '_SEARCH_UNSPACED', 'SEARCH_FILTERS', '_reEscape', '_LANG3TO2', '_catalogLang', '_CATALOG_FILTER_TESTS', '_CATALOG_ENTITIES']) {
   vm.runInContext(grab(c, 'const').replace(/^const /, 'var '), sandbox);
 }
-for (const f of ['_searchTokens', 'parseSearchQuery', '_searchTermRe', 'searchQueryMatches', 'catalogItemMatches']) {
+for (const f of ['_searchTokens', 'parseSearchQuery', '_searchTermRe', 'searchQueryMatches', '_catalogText', 'catalogItemMatches']) {
   vm.runInContext(grab(f), sandbox);
 }
 
@@ -92,6 +92,14 @@ check(same(find('"science wikipedia"'), []), 'catalog: a phrase does not run acr
 // these found nothing, the third found every TED ZIM.
 check(find('science -ted').length === 1 && find('culture OR lessons').length === 2 && !find('-ted').some(n => n.startsWith('ted_')),
   'catalog: operators do what the old substring filter could not');
+
+// A summary escaped twice reads, and is found, as its words.
+check(sandbox._catalogText('d&apos;articles &amp; l&#39;informatique') === "d'articles & l'informatique",
+  'catalog: a summary escaped twice reads as words');
+// As Kiwix's feed has it: escaped twice, "&apos;" left after one decode.
+const twice = { name: 'wikipedia_fr_computer', title: 'Informatique', summary: 'Une sélection d&apos;articles sur l&apos;informatique', language: 'fra' };
+check(sandbox.catalogItemMatches(sandbox.parseSearchQuery('"d\'articles"', sandbox.SEARCH_FILTERS), twice),
+  'catalog: a phrase with an apostrophe finds a summary escaped twice');
 
 if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
 console.log('all passed');

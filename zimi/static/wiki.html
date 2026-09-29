@@ -64,6 +64,8 @@
   .trails a { color: inherit; font-weight: 500; }
   .trails a:hover { color: var(--amber); }
   .trails a:last-of-type { font-weight: 600; }
+  /* Each step of a trail is a finger's height on a touch screen. */
+  @media (pointer: coarse) { .trails a { padding: 12px 0; margin: -12px 0; } }
   .trails .step { color: var(--text2); }
   .trails .when { margin-inline-start: auto; font-size: 12px; color: var(--text2); white-space: nowrap; }
 

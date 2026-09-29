@@ -118,7 +118,10 @@ def test_an_article_from_zimipedia_reads_in_its_reader_on_a_phone(served):
             assert not s["top"], "no jump-to-top button: the reader has its own bar"
             # A citation opens in place, with its note.
             mark = fr.locator("p sup.reference a").nth(1)
-            mark.scroll_into_view_if_needed()
+            # In the middle of the screen, as a reader taps it: at the
+            # screen's foot it is under the reader's bar.
+            mark.evaluate("e => e.scrollIntoView({ block: 'center' })")
+            pg.wait_for_timeout(300)
             y0 = _q(pg, "w.scrollY")
             mark.click()
             pg.wait_for_timeout(300)
@@ -148,7 +151,9 @@ def test_an_article_from_zimipedia_reads_in_its_reader_on_a_phone(served):
                 "zb-sub:Early life",
                 ":Relativity",
                 ":Legacy",
-                ":Other websites",
+                # "Other websites" held only the sister-project boxes, which
+                # Reader View takes out (the strip carries them): a heading
+                # over nothing is not a place to go.
                 ":References",
             ], items
             fr.locator('.zw-toc-sheet button[data-k="2"]').click()
@@ -688,25 +693,45 @@ def lenders(tmp_path, monkeypatch):
     with Creator(maxi).config_indexing(True, "eng") as cr:
         cr.set_mainpath("Main_Page")
         cr.add_item(wf._Page("Main_Page", "Main Page", wf.MAIN))
-        cr.add_item(wf._Page("Mercury_(planet)", "Mercury (planet)", planet("Mercury", "Q308")))
+        cr.add_item(
+            wf._Page("Mercury_(planet)", "Mercury (planet)", planet("Mercury", "Q308"))
+        )
         cr.add_redirection("Mercury", "Mercury", "Mercury_(planet)", {})
-        for k, v in {"Scraper": wf.MW, "Name": "wikipedia_en_all", "Language": "eng", "Title": "Wikipedia"}.items():
+        for k, v in {
+            "Scraper": wf.MW,
+            "Name": "wikipedia_en_all",
+            "Language": "eng",
+            "Title": "Wikipedia",
+        }.items():
             cr.add_metadata(k, v)
     wf._zim(
         os.path.join(zdir, "wikipedia_en_top_mini_2026-09.zim"),
-        "wikipedia_en_top", "eng", "Best of Wikipedia",
-        [("Main_Page", "Main Page", wf.MAIN, H), ("Mercury", "Mercury", mini("Mercury"), H), ("Venus", "Venus", mini("Venus"), H)],
+        "wikipedia_en_top",
+        "eng",
+        "Best of Wikipedia",
+        [
+            ("Main_Page", "Main Page", wf.MAIN, H),
+            ("Mercury", "Mercury", mini("Mercury"), H),
+            ("Venus", "Venus", mini("Venus"), H),
+        ],
         "Main_Page",
     )
     wf._zim(
         os.path.join(zdir, "wikipedia_en_simple_all_nopic_2026-05.zim"),
-        "wikipedia_en_simple_all", "eng", "Simple English Wikipedia",
-        [("Main_Page", "Main Page", wf.MAIN, H), ("Venus", "Venus", planet("Venus", "Q313"), H)],
+        "wikipedia_en_simple_all",
+        "eng",
+        "Simple English Wikipedia",
+        [
+            ("Main_Page", "Main Page", wf.MAIN, H),
+            ("Venus", "Venus", planet("Venus", "Q313"), H),
+        ],
         "Main_Page",
     )
     wf._zim(
         os.path.join(zdir, "wikipedia_he_all_nopic_2026-04.zim"),
-        "wikipedia_he_all", "heb", "ויקיפדיה",
+        "wikipedia_he_all",
+        "heb",
+        "ויקיפדיה",
         [
             ("Main_Page", "Main Page", wf.MAIN, H),
             ("כוכב_חמה", "כוכב חמה", planet("כוכב חמה", "Q308", "he"), H),

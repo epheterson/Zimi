@@ -51,6 +51,7 @@ const decls = [
   'function _searchTokenWords(', 'function searchQueryChips(', 'const _reEscape = ', 'function _searchSourceTitle(',
   'function _searchChipLabel(', 'const _CHIP_X_SVG = ', 'function _searchChipHtml(', 'function searchChipsHtml(',
   'const SEARCH_EXAMPLES = ', 'const CATALOG_EXAMPLES = ', 'function _searchHelpApplies(',
+  'const _RTL_LETTER = ', 'const _firstLetterRtl = ', 'function _searchExampleHtml(',
 ];
 vm.runInContext(decls.map(grab).join('').replace(/^(const|let) /gm, 'var '), sandbox);
 const S = sandbox;
@@ -201,6 +202,28 @@ check(helpIn({ mode: 'manage', manageTab: 'browse' }), 'in the catalog');
 check(!helpIn({ mode: 'manage', manageTab: 'installed' }), 'not on the installed list, which filters its own way');
 check(!helpIn({ mode: 'home', readerOpen: true }), 'not in an article, an app or a map');
 check(!helpIn({ readerOpen: false, _almanacOpen: true }) && !helpIn({ _almanacOpen: false, _createOpen: true }), 'not in the Almanac or Create');
+
+// ── the "?" examples: a Latin operator in a right-to-left example is set
+// apart left to right, so it reads as it is typed ──
+// Under a Hebrew interface "היסטוריה -wikipedia" drew as "wikipedia- היסטוריה":
+// the minus took the line's direction and went to the other end. The
+// example's own words stay plain (isolating "-מכונית" put its minus on the
+// wrong side instead), and the example's direction is set from its first
+// letter: dir="auto" does not look inside the isolated parts.
+check(S._searchExampleHtml('היסטוריה -wikipedia') === '<bdi class="search-example-q" dir="rtl">היסטוריה <bdi dir="ltr">-wikipedia</bdi></bdi>',
+  'a Latin operator in a Hebrew example is set apart left to right');
+check(S._searchExampleHtml('יגואר -מכונית') === '<bdi class="search-example-q" dir="rtl">יגואר -מכונית</bdi>',
+  'a Hebrew exclusion stays as written');
+check(S._searchExampleHtml('"solar panel" -car') === '<bdi class="search-example-q" dir="ltr">&quot;solar panel&quot; -car</bdi>',
+  'a left-to-right example is written as it is');
+for (const lang of LANGS) {
+  ui(lang);
+  for (const k of S.SEARCH_EXAMPLES.concat(S.CATALOG_EXAMPLES)) {
+    const ex = S.t(k), got = S._searchExampleHtml(ex).replace(/<\/?bdi[^>]*>/g, '');
+    check(got === S.esc(ex), lang + ': ' + k + ' keeps its words and spaces');
+  }
+}
+ui('en');
 
 if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
 console.log('all passed');

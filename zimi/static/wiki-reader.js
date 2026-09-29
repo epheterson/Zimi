@@ -33,6 +33,7 @@ var _WIKI_SVG_TOC = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0
 var _WIKI_SVG_LANG = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h9M8.5 3v2M6 5c.6 3 2.6 5.6 5.5 7M11 5c-.7 3.4-3.1 6.4-6.5 8"/><path d="M12.5 21l4-10 4 10M14 17.5h5"/></svg>';
 var _WIKI_SVG_SIDE = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>';
 var _WIKI_SPLIT_MIN = 1100;     // px wide: two languages side by side
+var _WIKI_PANE_HEAD = 44;       // px: the other language's name and its close, over its pane
 var _WIKI_MAP_ZOOM = 12;        // a map opened on an article's coordinates: a town and around it
 var _WIKI_SVG_MAP = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>';
 // Where the next article lands, when it is this one in another language or
@@ -56,6 +57,18 @@ var _WIKI_CSS = [
   'html.zw .zimi-reader-body{max-width:var(--zw-measure);position:relative}',
   'html.zw .zimi-reader h1.zimi-reader-title{border:0;margin:.15em 0 .2em;padding:0;font-size:2.05em;line-height:1.15}',
   'html.zw .zimi-reader h2{margin-top:1.5em}',
+  // Reader View's own rules outrank two things this reader counts on: an
+  // element's hidden attribute (its img{display:block} showed Read next's
+  // empty pictures as an 80px gap), and a box that clips (it lets
+  // everything overflow, so a card's three lines ran out over the next
+  // card, a chip's title past its end, and a cropped picture past its
+  // frame: the lead image ran on behind the title).
+  'html.zw [hidden]{display:none!important}',
+  'html.zw .zimi-reader :is(.zw-facts,.zw-next em,.zw-strip em,.zw-trail button,.zw-hero img,.zw-next img){overflow:hidden!important}',
+  // A footnote mark does not open up the line it is on, and is a little
+  // easier to hit than its digits.
+  'html.zw .zimi-reader sup{line-height:0}',
+  'html.zw .zimi-reader :is(sup.reference,.mw-ref) a{padding:.5em .3em;margin:-.5em -.3em}',
   // A formula is a picture of black type: in the dark, it is turned light.
   'body.rv-theme-dark.zimi-reader-active img[class*="mwe-math"]{filter:invert(.88)}',
   '.zw-sub{margin:0 0 1.1em;color:var(--rv-muted);font:15px/1.4 ' + _WIKI_UI_FONT + '}',
@@ -64,8 +77,11 @@ var _WIKI_CSS = [
   'html.zw .zimi-reader h2,html.zw .zimi-reader h3{scroll-margin-top:calc(var(--zw-top) + 12px)}',
   // ── the lead image: on a phone, over the title ──
   '.zw-hero{display:none}',
-  '@media (max-width:' + (_WIKI_RAIL_MIN - 1) + 'px){.zw-hero{display:block;margin:-14px calc(-1 * var(--zw-m)) 18px;background:var(--rv-code)}',
-    '.zw-hero img{display:block;width:100%!important;max-height:48vh;object-fit:cover;border-radius:0!important;margin:0!important}}',
+  // (Stated past Reader View's own rules, which take every element's
+  // max-height and margins off: a portrait lead filled most of a phone,
+  // inset, with the title under the fold.)
+  '@media (max-width:' + (_WIKI_RAIL_MIN - 1) + 'px){html.zw .zimi-reader .zw-hero{display:block;margin:-14px calc(-1 * var(--zw-m)) 18px!important;max-width:none!important;background:var(--rv-code)}',
+    'html.zw .zimi-reader .zw-hero img{display:block;width:100%!important;max-height:48vh!important;object-fit:cover;border-radius:0!important;margin:0!important}}',
   // ── the facts (the infobox): folded on a phone, beside the text on a wide screen ──
   '.zw-facts{margin:.4em 0 1.4em;border:1px solid var(--rv-border);border-radius:12px;overflow:hidden!important;font:14px/1.45 ' + _WIKI_UI_FONT + '}',
   '.zw-facts > summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;padding:11px 14px;font-weight:600;color:var(--rv-head);-webkit-tap-highlight-color:transparent}',
@@ -155,9 +171,14 @@ var _WIKI_CSS = [
     // On the side the article ends (right of a left-to-right one), whichever
     // way the other one reads.
     'html.zw-split .zw-pane{display:block;position:fixed;top:0;bottom:0;right:0;width:46vw;min-height:0;overflow-y:auto!important;overscroll-behavior:contain;',
-      'box-sizing:border-box;padding:calc(var(--zw-top) + 14px) 32px 72px;border-left:1px solid var(--rv-border);font-size:var(--zw-size);line-height:var(--zw-lh);z-index:1}',
+      'box-sizing:border-box;padding:calc(var(--zw-top) + ' + (14 + _WIKI_PANE_HEAD) + 'px) 32px 72px;border-left:1px solid var(--rv-border);font-size:var(--zw-size);line-height:var(--zw-lh);z-index:1}',
+    // The pane's name and its close stay in view, over it: the pane opens
+    // scrolled to the section you were in, which left them out of sight.
+    'html.zw-split .zw-pane-head{position:fixed;top:var(--zw-top);right:0;width:46vw;height:' + _WIKI_PANE_HEAD + 'px;box-sizing:border-box;padding:0 26px 0 32px;margin:0;',
+      'z-index:2;background:var(--rv-bg);border-left:1px solid var(--rv-border);transition:top .25s ease}',
+    'html.zw-split.zb-away .zw-pane-head{top:0}',
     'html.zw-split .zimi-reader:not(.zw-pane){padding-left:32px;padding-right:calc(46vw + 32px)}',
-    'html.zw-split.zw-rtl .zw-pane{right:auto;left:0;border-left:0;border-right:1px solid var(--rv-border)}',
+    'html.zw-split.zw-rtl .zw-pane,html.zw-split.zw-rtl .zw-pane-head{right:auto;left:0;border-left:0;border-right:1px solid var(--rv-border)}',
     'html.zw-split.zw-rtl .zimi-reader:not(.zw-pane){padding-right:32px;padding-left:calc(46vw + 32px)}',
     'html.zw-split .zw-rail{display:none}',
     'html.zw-split .zb-bar .zw-cbtn{display:flex!important}',
@@ -173,6 +194,9 @@ var _WIKI_CSS = [
   '.zw-lists{list-style:none;margin:0 0 8px;padding:0}',
   '.zw-lists button{display:flex;align-items:center;width:100%;gap:10px;padding:10px;border-radius:10px;text-align:start}',
   '.zw-lists button span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;unicode-bidi:plaintext}',
+  // A list's name reads in its own direction and stands where the sheet's
+  // words start: an English name in a Hebrew sheet sat across from the others.
+  '.zw-sheet[dir="rtl"] .zw-lists button span{text-align:right}',
   '.zw-lists button::after{content:"";width:18px;height:18px;flex:none;border-radius:5px;border:1.5px solid var(--rv-border);box-sizing:border-box}',
   '.zw-lists button[aria-pressed="true"]::after{background:var(--rv-link);border-color:var(--rv-link);box-shadow:inset 0 0 0 3px var(--rv-bg)}',
   '.zw-new{display:flex;gap:8px;padding:6px 0 0}',
@@ -191,6 +215,8 @@ var _WIKI_CSS = [
   '.zw-trail button{border:0;background:none;color:var(--rv-link);font:inherit;padding:2px 4px;border-radius:6px;cursor:pointer;unicode-bidi:plaintext;max-width:14em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
   '.zw-trail b{font-weight:600;color:var(--rv-fg);padding:2px 4px;unicode-bidi:plaintext}',
   '.zw-trail i{font-style:normal;opacity:.6}',
+  // A step back along the trail is a finger's height on a touch screen.
+  '@media (pointer:coarse){.zw-trail button{padding-block:11px;margin-block:-9px}}',
   '.zw-trail i:dir(ltr)::before{content:"›"}.zw-trail i:dir(rtl)::before{content:"‹"}',
   '.zw-next{margin:2.4em 0 0;padding-top:1em;border-top:1px solid var(--rv-border)}',
   'html.zw .zimi-reader .zw-next h2{border:0;margin:0 0 .6em;font:600 13px/1.3 ' + _WIKI_UI_FONT + ';text-transform:uppercase;letter-spacing:.06em;color:var(--rv-muted)}',
@@ -420,8 +446,22 @@ function _wikiLayout(frame) {
   [bar, scrim, tocSheet, setSheet, langSheet, saveSheet, card].forEach(function(n) { doc.body.appendChild(n); });
   var sheets = [tocSheet, setSheet, langSheet, saveSheet];
   var sheetOpen = function() { return html.classList.contains('zb-sheet-open'); };
-  var closeSheets = function() { sheets.forEach(function(s) { s.classList.remove('zb-open'); }); html.classList.remove('zb-sheet-open'); };
-  var openSheet = function(s) { closeSheets(); hideCard(); s.classList.add('zb-open'); html.classList.add('zb-sheet-open'); showBars(true); };
+  // A sheet closed gives the focus back to the button that opened it: a
+  // keyboard or a screen reader was left at the top of the page.
+  var opener = null;
+  var closeSheets = function() {
+    var was = sheetOpen();
+    sheets.forEach(function(s) { s.classList.remove('zb-open'); });
+    html.classList.remove('zb-sheet-open');
+    if (was && opener && opener.isConnected && doc.activeElement !== opener) opener.focus({ preventScroll: true });
+    opener = null;
+  };
+  var openSheet = function(s) {
+    var from = doc.activeElement;
+    closeSheets(); hideCard();
+    opener = from && from.closest && from.closest('.zw-bar') ? from : null;
+    s.classList.add('zb-open'); html.classList.add('zb-sheet-open'); showBars(true);
+  };
   scrim.onclick = closeSheets;
 
   // ── how you read: the settings, laid onto the page ──
@@ -469,12 +509,20 @@ function _wikiLayout(frame) {
   var readingLine = function() { return headTop() + _WIKI_HEAD_SLACK; };
   var barLabel = bar.querySelector('.zw-cbtn span');
   var markCurrent = function() {
-    var k = _wikiCurrent(heads, readingLine());
+    // At the foot of the page the last sections never climb to the reading
+    // line: there, you are in the last one you can see. (The foot is within
+    // a bar's height: in a phone's frame the last pixels can be out of reach.)
+    var sc = doc.scrollingElement || html, y = win.scrollY || 0;
+    var atEnd = y > 0 && y >= sc.scrollHeight - sc.clientHeight - _READING_BAR_H;
+    var k = _wikiCurrent(heads, atEnd ? win.innerHeight - (barAtFoot() ? _READING_BAR_H + insets.b : insets.b) : readingLine());
     if (k === current && rail && rail.firstChild) return;
     current = k;
     if (barLabel) barLabel.textContent = k >= 0 ? _wikiText(heads[k]) : t('books_contents');
     if (rail) {
-      rail.innerHTML = '<b dir="' + (uiRtl ? 'rtl' : 'ltr') + '">' + tH('books_contents') + '</b>' + tocHtml(k);
+      // The label reads in the interface's language but stands on the
+      // rail's side, over the list: a Hebrew label over an English
+      // article's contents sat across the rail from them.
+      rail.innerHTML = '<b><span dir="' + (uiRtl ? 'rtl' : 'ltr') + '" lang="' + escAttr(_currentLang || 'en') + '">' + tH('books_contents') + '</span></b>' + tocHtml(k);
       var on = rail.querySelector('[aria-current="true"]');
       if (on && on.scrollIntoView && (on.offsetTop < rail.scrollTop || on.offsetTop > rail.scrollTop + rail.clientHeight - 40)) rail.scrollTop = on.offsetTop - rail.clientHeight / 3;
     }
@@ -875,7 +923,8 @@ function _wikiLayout(frame) {
       // The links out of the library are marked as the shell marks the page's.
       try { if (typeof zimiMarkLinks === 'function') zimiMarkLinks(pane); } catch (e) {}
       var to = _wikiLandOn(_wikiHeadings(art), land);
-      if (to) pane.scrollTop = to.getBoundingClientRect().top - pane.getBoundingClientRect().top - 12;
+      // The section below the pane's own head, which stays at the top.
+      if (to) pane.scrollTop = to.getBoundingClientRect().top - head.getBoundingClientRect().bottom - 12;
       markCurrent();
     });
   };
@@ -897,8 +946,11 @@ function _wikiLayout(frame) {
   }
   var renderStrip = function() {
     var items = (info.topic || []).map(function(tp) {
+      // The wiki's icon when it has one: asked of one without, it left an
+      // empty square before the words.
+      var icon = (_zimInfo(tp.zim) || {}).has_icon ? '<img src="/w/' + encodeURIComponent(tp.zim) + '/-/icon" alt="" loading="lazy">' : '';
       return '<li><a href="' + escAttr(_articleUrl(tp.zim, tp.path)) + '" data-zim="' + escAttr(tp.zim) + '" data-path="' + escAttr(tp.path) + '">' +
-        '<img src="/w/' + encodeURIComponent(tp.zim) + '/-/icon" alt="" loading="lazy"><span><i>' + esc(tp.project.charAt(0).toUpperCase() + tp.project.slice(1)) + '</i>' +
+        icon + '<span><i>' + esc(tp.project.charAt(0).toUpperCase() + tp.project.slice(1)) + '</i>' +
         '<em' + (lang ? ' lang="' + escAttr(lang) + '"' : '') + '>' + esc(tp.title) + '</em></span></a></li>';
     });
     if (place) items.push('<li><a href="#" class="zw-map">' + _WIKI_SVG_MAP + '<span><i>' + tH('wiki_map') + '</i><em>' + esc(_zimTitle(place.zim)) + '</em></span></a></li>');
@@ -937,7 +989,10 @@ function _wikiLayout(frame) {
         note.appendChild(doc.createTextNode(' '));
         note.appendChild(a);
       }
-      article.insertBefore(note, article.querySelector(':scope > .zw-next'));
+      // Where the text ends: before mwoffliner's licence line, not after it.
+      var foot = article.querySelector('.zim-footer');
+      if (foot) foot.parentNode.insertBefore(note, foot);
+      else article.insertBefore(note, article.querySelector(':scope > .zw-next'));
     }
   };
   _wikiInfo(zim, _splitPathFragment(path).base).then(function(d) {
