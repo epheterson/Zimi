@@ -26,3 +26,12 @@ What the UX pass found needs rethinking rather than fixing, collected per surfac
 6. Places show a letter tile, not a map pin.
 7. Two whole-library exports are both titled "Saved".
 8. The two 44px buttons above the tree feel heavy on a phone.
+
+## Reading, search, home (UX pass)
+
+1. Zimipedia's reader shows two bookmarks, and two language controls on desktop.
+2. Reader View's menu and the Aa sheet are two settings interfaces for the same settings.
+3. "Retry" and "Try again" both used; the "M" size label means nothing.
+4. The Bookshelf tile has a gap under its name.
+5. A Discover card with no picture shows a blank box.
+6. Long placeholders in the search box are cut off.
