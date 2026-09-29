@@ -2065,5 +2065,7 @@
   "net_create": "创建 ZIM",
   "net_create_when": "有人抓取的页面、网站、视频或 subreddit，以及抓取时安装的工具",
   "net_nearby": "附近",
-  "net_nearby_when": "本网络中的其他 Zimi，发现和共享都不离开本网络"
+  "net_nearby_when": "本网络中的其他 Zimi，发现和共享都不离开本网络",
+  "app_sources_one": "{n} 个来源",
+  "app_sources_other": "{n} 个来源"
 }

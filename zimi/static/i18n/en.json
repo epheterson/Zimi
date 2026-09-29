@@ -2065,5 +2065,7 @@
   "net_create": "Create a ZIM",
   "net_create_when": "The page, site, video or subreddit someone captures, and the tools a capture installs",
   "net_nearby": "Nearby",
-  "net_nearby_when": "Other Zimis on this network, found and shared without leaving it"
+  "net_nearby_when": "Other Zimis on this network, found and shared without leaving it",
+  "app_sources_one": "{n} source",
+  "app_sources_other": "{n} sources"
 }

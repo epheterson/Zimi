@@ -2065,5 +2065,7 @@
   "net_create": "ZIM erstellen",
   "net_create_when": "Die Seite, Website, das Video oder der Subreddit, die jemand erfasst, und die Werkzeuge, die eine Erfassung installiert",
   "net_nearby": "In der Nähe",
-  "net_nearby_when": "Andere Zimis in diesem Netz, gefunden und geteilt, ohne es zu verlassen"
+  "net_nearby_when": "Andere Zimis in diesem Netz, gefunden und geteilt, ohne es zu verlassen",
+  "app_sources_one": "{n} Quelle",
+  "app_sources_other": "{n} Quellen"
 }

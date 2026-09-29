@@ -19,6 +19,7 @@ const path = require('path');
 const vm = require('vm');
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.js'), 'utf8').replace(/\r\n/g, '\n');
+const css = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.css'), 'utf8').replace(/\r\n/g, '\n');
 let failures = 0;
 function ok(label, cond, detail) {
   console.log((cond ? 'PASS  ' : 'FAIL  ') + label + (detail ? '  ' + detail : ''));
@@ -42,15 +43,13 @@ const ctx = {
     { name: 'osm-hawaii', title: 'Hawaii', kind: 'map', main_path: 'i', first_seen: NOW - 70 * DAY, entries: 10 },
     { name: 'wikipedia_en_all', title: 'Wikipedia', main_path: 'A/Main', first_seen: NOW - 5 * DAY, entries: 6000000 },
   ],
-  esc, t: k => NAMES[k] || k, tH: k => esc(NAMES[k] || k), tPlural: (k, n) => k + ':' + n,
+  esc, t: k => NAMES[k] || k, tH: k => esc(NAMES[k] || k), tPlural: (k, n) => k + ':' + n, tPluralH: (k, n) => k + ':' + n,
   // The server offers these five (named, so the orders below don't shift when
   // an app's default changes: Zimipedia is on by default from 1.12).
   _getLibraryView: () => 'list', _userSession: null, document: { body: { dataset: { zimiApps: 'maps,tube,exchange,reddot,books' } } },
   homeRecentFilter: null, homeLangFilter: new Set(),
-  // A card grid, as its ZIMs' names in the order it was handed them, after
-  // the tile that leads it (its app, and whether that app is empty).
-  renderCardGrid: (zims, stars, cat, lead) => (lead ? '<lead ' + /data-app="(\w+)"/.exec(lead)[1] + (/app-empty/.test(lead) ? ' empty' : '') + '>' : '') +
-    '<grid ' + zims.map(z => z.name).join(',') + '>',
+  // A card grid, as its ZIMs' names in the order it was handed them.
+  renderCardGrid: (zims) => '<grid ' + zims.map(z => z.name).join(',') + '>',
   _zimInfo: name => ctx.zimsCache.find(z => z.name === name) || null,
 };
 vm.createContext(ctx);
@@ -84,6 +83,7 @@ vm.runInContext([
   extract(/function _booksTileHtml\(\) \{[\s\S]*?\n\}/, '_booksTileHtml'),
   extract(/function _appsRowHtml\(\) \{[\s\S]*?\n\}/, '_appsRowHtml'),
   extract(/function _appsPageHtml\(shown\) \{[\s\S]*?\n\}/, '_appsPageHtml'),
+  extract(/function _appSectionHtml\(app, n, grid\) \{[\s\S]*?\n\}/, '_appSectionHtml'),
   extract(/function _cardsInOrder\(cards, compare\) \{[\s\S]*?\n\}/, '_cardsInOrder'),
 ].join('\n'), ctx);
 require('./apps_order_parts.cjs')(src, ctx);
@@ -131,18 +131,24 @@ ok('its library is every ZIM inside an offered app, once', vm.runInContext('_app
 // ── the Apps page ────────────────────────────────────────────────────────
 ctx.localStorage.setItem('zimi_library_sort', 'alpha');
 const all = new Set(ctx.zimsCache.map(z => z.name));
-let pageHtml = vm.runInContext('_appsPageHtml', ctx)(all);
+// Each app's section, as its app (and whether it is empty) then its grid.
+const appsPage = shown => vm.runInContext('_appsPageHtml', ctx)(shown)
+  .replace(/<section class="app-section" data-app="(\w+)">(<a [^>]*>)[\s\S]*?<\/a>/g, (m, a, tag) => '<lead ' + a + (/app-empty/.test(tag) ? ' empty' : '') + '>')
+  .replace(/<\/section>/g, '');
+let pageHtml = appsPage(all);
+const banner = vm.runInContext('_appSectionHtml', ctx)('books', 2, '<grid x>');
+ok('an app is a banner over its ZIMs, not one more card among them', /^<section class="app-section" data-app="books"><a class="stat-card app-tile app-banner books-tile"/.test(banner) && /<div class="detail">app_sources:2<\/div>/.test(banner) && /<\/a><grid x><\/section>$/.test(banner), banner);
 const sections = pageHtml.split('<lead ').slice(1);
 ok('one heading on top for the controls, no heading per app', /^<div class="cat-heading">Apps<\/div><lead /.test(pageHtml) && (pageHtml.match(/cat-heading/g) || []).length === 1, pageHtml.slice(0, 80));
 ok('one group per app, in the library\'s order, each led by the app\'s own tile', sections.length === 5 && /^books>/.test(sections[0]) && /^tube>/.test(sections[4]));
 ok('each app\'s ZIMs after its tile, in the library\'s order', /<grid gutenberg_en_all,nautilus_books>/.test(sections[0]) && /<grid ted_en_all,blender>/.test(sections[4]));
-ok('an app with nothing inside is its door to what it needs, alone', /^reddot empty><grid >$/.test(sections[2]));
-ok('the leading tile heads the real grid, which is spaced as one group', /function renderCardGrid\(items, showStars, showCategory, lead\) \{\n\s*if \(\(!items \|\| !items\.length\) && !lead\) return '';/.test(src) && /\(lead \? ' app-group' : ''\) \+ '">' \+ \(lead \|\| ''\)/.test(src));
+ok('an app with nothing inside is its door to what it needs, alone', /^reddot empty>$/.test(sections[2]), sections[2]);
+ok('the ZIMs sit on a rail under the banner, spaced from the next app', /\.app-section \{ margin-top: 30px; \}/.test(css) && /\.app-section > \.stats-grid \{[^}]*border-inline-start: 2px solid/.test(css));
 ctx.localStorage.setItem('zimi_library_sort', 'entries');
-pageHtml = vm.runInContext('_appsPageHtml', ctx)(all);
+pageHtml = appsPage(all);
 ok('a new order: the groups and the ZIMs in them move with it', /<lead books>[\s\S]*<grid gutenberg_en_all,nautilus_books>[\s\S]*<lead exchange>[\s\S]*<lead tube><grid blender,ted_en_all>/.test(pageHtml));
 ctx.homeRecentFilter = 'added';
-pageHtml = vm.runInContext('_appsPageHtml', ctx)(new Set(['nautilus_books']));
+pageHtml = appsPage(new Set(['nautilus_books']));
 ok('a filter narrows the page to the apps holding what it lets through', (pageHtml.match(/<lead /g) || []).length === 1 && /<lead books><grid nautilus_books>/.test(pageHtml));
 ok('a filter that lets nothing through leaves no heading alone', vm.runInContext('_appsPageHtml', ctx)(new Set()) === '');
 ctx.homeRecentFilter = null;

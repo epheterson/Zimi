@@ -4680,17 +4680,15 @@ function _shortAge(tsSec) {
   return t('just_now');
 }
 
-// `lead`, when given, is a tile that heads the grid: an app before the ZIMs
-// inside it (the Apps page), the grid then spaced as one group among others.
-function renderCardGrid(items, showStars, showCategory, lead) {
-  if ((!items || !items.length) && !lead) return '';
+function renderCardGrid(items, showStars, showCategory) {
+  if (!items || !items.length) return '';
   const favs = (collectionsCache && collectionsCache.favorites) || [];
   const isTiles = _getLibraryView() === 'tiles';
   const gridCls = isTiles ? 'stats-grid tiles' : 'stats-grid';
   // Export cards carry a download slot that fills only when peer-share is live
   // (see _fillCardDlSlots) — probed after the caller's synchronous insert.
   // Download-this-ZIM is right-click / Manage-⋯ only; no card pill.
-  return '<div class="' + gridCls + (lead ? ' app-group' : '') + '">' + (lead || '') + items.map(z => {
+  return '<div class="' + gridCls + '">' + items.map(z => {
     const icon = z.has_icon
       ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="48" height="48" loading="lazy">'
       : '<span class="icon-letter">' + esc(z.title || z.name)[0].toUpperCase() + '</span>';
@@ -19208,21 +19206,30 @@ function _appsRowHtml() {
 
 // The Apps page (#100): each app, in the library's order, with the ZIMs
 // inside it, also in the library's order, so you can see what an app is
-// made of and open any of them. Each app is one group led by its own tile,
-// which opens the app (Eric, 2026-09-29: under a heading of its own the tile
-// got lost); the tile names the app, so a group needs no heading and the
-// page stays short. An app with nothing inside is only its tile, the door to
-// what it needs, unless a filter is narrowing the page. One heading on top
-// carries the order and view controls, as every page's first heading does.
+// made of and open any of them. Each app is a section: a banner that is the
+// app (its mark, its name, how many sources it reads; a tap opens it), and
+// under it, set in on a rail, the ZIMs it is made of. Eric, 2026-09-29: "not
+// having sections and app looking too close to zims with no spacing"; a
+// tile shaped like a ZIM card read as one more ZIM. An app with nothing
+// inside is only its banner, dotted, the door to what it needs, unless a
+// filter is narrowing the page. One heading on top carries the order and
+// view controls, as every page's first heading does.
 function _appsPageHtml(shown) {
   var narrowed = !!(homeRecentFilter || homeLangFilter.size);
   var groups = _shownApps().map(function(app) {
     var inside = _appZims(app);
-    if (!inside.length) return narrowed ? '' : renderCardGrid([], false, false, _APP_TILES[app]());
+    if (!inside.length) return narrowed ? '' : _appSectionHtml(app, 0, '');
     var zims = _sortLibrary(inside.filter(function(z) { return shown.has(z.name); }));
-    return zims.length ? renderCardGrid(zims, true, false, _APP_TILES[app]()) : '';
+    return zims.length ? _appSectionHtml(app, inside.length, renderCardGrid(zims, true, false)) : '';
   }).join('');
   return groups && '<div class="cat-heading">' + tH('apps_section') + '</div>' + groups;
+}
+// One app's section: its tile drawn as a banner (the count of what it reads
+// in place of their names, which follow under it), then its ZIMs.
+function _appSectionHtml(app, n, grid) {
+  var tile = _APP_TILES[app]().replace('class="stat-card app-tile', 'class="stat-card app-tile app-banner');
+  if (n) tile = tile.replace(/<div class="detail">[^<]*<\/div>/, '<div class="detail">' + tPluralH('app_sources', n) + '</div>');
+  return '<section class="app-section" data-app="' + app + '">' + tile + grid + '</section>';
 }
 
 function _appTileHtml(app, title, icon, names, openFn) {
