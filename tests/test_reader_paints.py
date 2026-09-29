@@ -160,6 +160,9 @@ def _serve(zim_dir):
     _srv.ZIM_DIR = str(zim_dir)
     _srv.ZIMI_DATA_DIR = str(zim_dir)
     _srv._cache_generation += 1
+    # Read this library now: a test that ran before may have left the
+    # server's list of files pointing at its own.
+    _srv.load_cache(force=True)
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
     port = sock.getsockname()[1]

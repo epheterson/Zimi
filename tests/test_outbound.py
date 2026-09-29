@@ -204,7 +204,7 @@ def test_the_desktop_reads_the_setting_from_its_own_data_dir(
     one the server will use, not whatever the process has now."""
     other = tmp_path_factory.mktemp("desktop-data")
     (other / "app_update_channel.json").write_text(
-        json.dumps({"update_check": "never"})
+        json.dumps({"update_check": "never"}), encoding="utf-8"
     )
     assert desktop._auto_update_allowed(_Config(), data_dir=str(other)) is False
     assert desktop._auto_update_allowed(_Config(), data_dir=str(data_dir)) is True

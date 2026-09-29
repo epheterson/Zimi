@@ -80,7 +80,10 @@ def test_probe_shape_and_caching(monkeypatch):
     monkeypatch.setattr(nat, "add_port_mapping", lambda p: True)
     monkeypatch.setattr(nat, "get_external_ip", lambda: "203.0.113.7")
     monkeypatch.setattr(nat, "_port_reachable_external", lambda p: True)
-    result = nat.probe(6881, try_upnp=True)
+    # Reachability is asked of the outside world only when someone asks
+    # (the Recheck button): a plain probe leaves it unknown.
+    assert nat.probe(6881, try_upnp=True)["reachable"] is None
+    result = nat.probe(6881, try_upnp=True, check_reachable=True)
     assert result["listening"] is True
     assert result["upnp"] == "mapped"
     assert result["external_ip"] == "203.0.113.7"
