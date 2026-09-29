@@ -65,6 +65,10 @@ VARS: dict[str, tuple[str, str]] = {
         "Waits this long before taking an app update",
         "App updates",
     ),
+    "ZIMI_UPDATE_CHECK": (
+        "Whether Zimi looks for its own updates: ask (only on Check now), auto or never",
+        "Check for Zimi updates",
+    ),
     "ZIMI_INSTALL_TYPE": ("How Zimi was installed, for the updater", ""),
     "ZIMI_SATELLITE_UPDATES": (
         "Satellite data for the Almanac's 3D Earth, from CelesTrak: ask (only when an admin asks), auto or never",

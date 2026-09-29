@@ -1105,6 +1105,28 @@ def unrecord_seed(filename):
         log.debug("seed ledger unrecord failed for %s: %s", filename, e)
 
 
+def bt_work_waiting():
+    """Has the BitTorrent engine anything to do at boot: torrents it was
+    running when the server stopped (their resume files come back with the
+    session), seeds someone kept, or Mirror mode? With none of those the
+    engine waits for the first download, so an idle Zimi joins no swarm and
+    no DHT (Eric, 2026-09-28: "i'm not positive how i feel about unexpected
+    network calls from zimi")."""
+    from zimi import p2p as _p2p
+
+    if not _p2p.is_torrent_enabled():
+        return False
+    if _p2p.is_mirror_enabled():
+        return True
+    if _p2p.is_seeding_enabled() and _seed_ledger():
+        return True
+    try:
+        names = os.listdir(_p2p.resume_dir(_srv.ZIMI_DATA_DIR))
+    except OSError:
+        return False
+    return any(n.endswith(".fastresume") for n in names)
+
+
 def reseed_from_ledger():
     """Re-add any intended seed that isn't live — run after startup.
 
@@ -1244,6 +1266,12 @@ def resume_pending_downloads():
                     kept.append(it)
                     log.info("Peer resume deferred for %s: %s", filename, err)
                     continue
+            elif _offline_refusal():
+                # Waits for a run that may use the internet, rather than
+                # being dropped from the list.
+                kept.append(it)
+                log.info("Not resuming %s while offline", filename)
+                continue
             elif _is_trusted_kiwix_url(it.get("url", "")):
                 dl_id, err = _start_download(it["url"], it.get("size_bytes"))
             else:
@@ -3879,6 +3907,19 @@ def _enqueue_zim_download(url, mirrors, filename, size_bytes=None, extra=None):
     return dl_id, None
 
 
+# ZIMI_OFFLINE refuses a download from the internet: the switch promises
+# nothing leaves for the internet, and Auto-update would otherwise start one
+# from the cached catalog on its own. A LAN peer (_start_peer_download) is
+# not the internet and stays allowed.
+OFFLINE_DOWNLOAD_ERROR = "Zimi is offline (ZIMI_OFFLINE)"
+
+
+def _offline_refusal():
+    from zimi import p2p as _p2p
+
+    return OFFLINE_DOWNLOAD_ERROR if _p2p.is_offline() else None
+
+
 def _start_download(url, size_bytes=None, actor=None):
     """Start a background download via urllib. Returns (download_id, error).
 
@@ -3889,6 +3930,9 @@ def _start_download(url, size_bytes=None, actor=None):
     record so the activity journal can say who when the transfer lands — an
     hour later, on a thread that never saw the request.
     """
+    refused = _offline_refusal()
+    if refused:
+        return None, refused
     # Validate URL — only allow Kiwix-controlled hosts (download.kiwix.org,
     # lbo.download.kiwix.org load-balanced origin, dumps.wikimedia.org/kiwix
     # mirror, any other *.kiwix.org). Prevents attacker-controlled metadata.
@@ -3991,6 +4035,9 @@ def _start_peer_download(peer_name, filename, size_bytes=None, actor=None):
 def _start_import(url, size_bytes=None, actor=None):
     """Start a background download from any HTTPS URL. Returns download ID."""
     global _download_counter
+    refused = _offline_refusal()
+    if refused:
+        return None, refused
     if not url.startswith("https://"):
         return None, "URL must use HTTPS"
 

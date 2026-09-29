@@ -44,6 +44,7 @@ import time
 import urllib.parse
 import urllib.request
 
+from zimi import outbound
 from zimi import server as _srv
 
 log = logging.getLogger("zimi")
@@ -68,14 +69,14 @@ FETCH_TIMEOUT_S = 20
 # The setting. Saved beside the other server-wide choices (the app-update
 # prefs file, like the Apps switch); the env var, when it names a mode, wins.
 UPDATES_ENV = "ZIMI_SATELLITE_UPDATES"
-UPDATE_ASK = "ask"
-UPDATE_AUTO = "auto"
-UPDATE_NEVER = "never"
-UPDATE_MODES = (UPDATE_ASK, UPDATE_AUTO, UPDATE_NEVER)
+UPDATE_ASK = outbound.ASK
+UPDATE_AUTO = outbound.AUTO
+UPDATE_NEVER = outbound.NEVER
+UPDATE_MODES = outbound.MODES
 UPDATE_DEFAULT = UPDATE_ASK
 PREFS_KEY = "satellite_updates"
-LOCKED_ENV = "env"
-LOCKED_OFFLINE = "offline"
+LOCKED_ENV = outbound.LOCKED_ENV
+LOCKED_OFFLINE = outbound.LOCKED_OFFLINE
 MAX_RESPONSE_BYTES = 512 * 1024
 MAX_GPS = 64
 
@@ -129,56 +130,34 @@ def _offline():
     return bool(p2p.is_offline())
 
 
-def normalize_mode(value):
-    """'Auto ' -> 'auto'; anything that is not a mode -> None."""
-    name = str(value or "").strip().lower()
-    return name if name in UPDATE_MODES else None
+# The shared Ask first / Automatically / Never machinery (outbound.py), read
+# through this module's _offline so a test can stand in for ZIMI_OFFLINE.
+POLICY = outbound.FetchPolicy(
+    UPDATES_ENV,
+    PREFS_KEY,
+    UPDATE_DEFAULT,
+    "Satellite data from the internet",
+    offline=lambda: _offline(),
+)
+normalize_mode = outbound.normalize_mode
 
 
 def update_mode():
     """The mode in force and what fixed it: ``(mode, locked)``. ``locked`` is
     "offline" (ZIMI_OFFLINE: never), "env" (ZIMI_SATELLITE_UPDATES names a
     mode) or None, when the saved choice, or the default, decides."""
-    if _offline():
-        return UPDATE_NEVER, LOCKED_OFFLINE
-    from_env = normalize_mode(os.environ.get(UPDATES_ENV))
-    if from_env:
-        return from_env, LOCKED_ENV
-    from zimi import manage
-
-    saved = normalize_mode(manage._read_app_update_prefs().get(PREFS_KEY))
-    return saved or UPDATE_DEFAULT, None
+    return POLICY.mode()
 
 
 def setting():
     """The setting as Server settings shows it."""
-    mode, locked = update_mode()
-    return {
-        "mode": mode,
-        "locked": locked,
-        "choices": list(UPDATE_MODES),
-        "env": UPDATES_ENV,
-    }
+    return POLICY.setting()
 
 
 def set_update_mode(value):
     """Save the choice. ``(mode, error)``: error is "invalid", "env" or
     "offline" (the choice is not the setting's to make), or "unwritable"."""
-    mode = normalize_mode(value)
-    if not mode:
-        return None, "invalid"
-    _, locked = update_mode()
-    if locked:
-        return None, locked
-    from zimi import manage
-
-    manage._write_app_update_prefs(**{PREFS_KEY: mode})
-    # A failed write logs itself; read back so a choice that did not land is
-    # never reported as made.
-    if update_mode()[0] != mode:
-        return None, "unwritable"
-    log.info("Satellite data from the internet: %s", mode)
-    return mode, None
+    return POLICY.set(value)
 
 
 def normalize_record(rec):

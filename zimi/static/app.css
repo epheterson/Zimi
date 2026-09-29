@@ -1659,6 +1659,23 @@
        otherwise pushes the row sideways on a phone. */
     .env-row { grid-template-columns: minmax(0, 1fr); }
   }
+  /* What Zimi fetches from the internet: folded to its counts, which is the
+     answer; open, a name and its state on one line, what and where under it.
+     The state is the one word that matters, so "on its own" is amber. */
+  .net-details > summary { cursor: pointer; font-size: 13px; color: var(--text); padding: 4px 0; }
+  .net-rows { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .net-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: baseline; }
+  .net-name { font-size: 13px; color: var(--text); }
+  .net-state { font-size: 12px; color: var(--text2); white-space: nowrap; }
+  .net-state-auto { color: var(--amber); }
+  .net-state-off, .net-state-unset { color: var(--text3); }
+  .net-what { grid-column: 1 / -1; font-size: 12px; line-height: 1.5; color: var(--text2); }
+  /* Where it goes on a line of its own, whole names (a host broken mid-word
+     reads as two), and the way to its switch at the far end. */
+  .net-where { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font-size: 11px; color: var(--text3); }
+  .net-where code { overflow-wrap: anywhere; }
+  .net-go { font-size: 12px; color: var(--amber); white-space: nowrap; }
+  .net-where .net-go { margin-inline-start: auto; }
   /* App-theme segmented control (Auto / Dark / Light). Three equal pills in a
      recessed track, amber-filled when active — mirrors the reader palette's
      control language so the two theme pickers feel like one family. */
