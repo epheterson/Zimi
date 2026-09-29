@@ -456,7 +456,7 @@ def test_a_data_dir_that_cannot_be_written_keeps_the_fetch_in_memory(
     monkeypatch.setenv(satellites.UPDATES_ENV, "auto")
     # A data directory that is a file: no write can land, on any platform.
     blocked = data_dir / "not-a-directory"
-    blocked.write_text("")
+    blocked.write_text("", encoding="utf-8")
     monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(blocked))
     monkeypatch.setattr(satellites, "fetch_live", lambda: _payload(time.time(), "live"))
     assert satellites.refresh()["gps"][0]["OBJECT_ID"] == "live"
