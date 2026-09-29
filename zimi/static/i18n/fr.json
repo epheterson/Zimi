@@ -1961,7 +1961,7 @@
   "alm_earth_no_orbital_data": "Aucune donnée orbitale ici, donc aucun satellite n’est dessiné",
   "alm_earth_credit": "Images : NASA",
   "alm_earth_gps_sentence": "Cette horloge avance de {net} µs par jour sur les horloges au sol (+{grav} grâce à la gravité plus faible là-haut, −{speed} à cause de ses {v} km/s) : sans correction, le GPS se tromperait d’environ {km} km chaque jour.",
-  "alm_earth_since_tap": "Gagné depuis votre toucher : {ns} ns",
+  "alm_earth_since_tap": "Gagné depuis votre toucher : {t}",
   "alm_earth_time_dilation": "Dilatation du temps",
   "alm_earth_ecl_total_solar": "Éclipse solaire totale : l’ombre de la Lune est sur la Terre à {place}",
   "alm_earth_ecl_annular_solar": "Éclipse solaire annulaire : l’ombre de la Lune est sur la Terre à {place}",

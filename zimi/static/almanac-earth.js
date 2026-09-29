@@ -484,8 +484,11 @@ function _aeEqEq(scene) {
 // Which eclipses happen comes from the Almanac's own list (almanac.js
 // _computeEclipses, Meeus ch. 54, with its NASA-checked filters); the instant
 // of greatest eclipse is refined here from the same geometry the view draws.
+// A candidate the view's own geometry shows no eclipse at is passed over:
+// tens of millennia out the list's series and this view's part ways, and
+// the button landed on an ordinary day with nothing to see.
 var AE_ECLIPSE_MIN_AHEAD_MS = 60 * 60 * 1000;
-var AE_ECLIPSE_CANDIDATES = 3;
+var AE_ECLIPSE_CANDIDATES = 6;
 var AE_NOON_HOUR = 12;
 function _aeNextEclipse(ms) {
   if (typeof _computeEclipses !== 'function') return null;
@@ -497,7 +500,9 @@ function _aeNextEclipse(ms) {
     guess.setFullYear(+m[1], +m[2] - 1, +m[3]);
     guess.setHours(AE_NOON_HOUR, 0, 0, 0);
     var at = _aeGreatestEclipse(guess.getTime(), list[i].solar);
-    if (at > ms + AE_ECLIPSE_MIN_AHEAD_MS) return { ms: at, solar: list[i].solar, type: list[i].type };
+    if (at <= ms + AE_ECLIPSE_MIN_AHEAD_MS) continue;
+    var seen = _aeEclipseNow(_aeSceneAt(at));
+    if (seen && seen.solar === list[i].solar) return { ms: at, solar: list[i].solar, type: list[i].type };
   }
   return null;
 }
@@ -628,9 +633,12 @@ function _aeLink(key, html) { return window.AlmanacLinks ? window.AlmanacLinks.w
 function _aeLinked(key) { return !!(window.AlmanacLinks && window.AlmanacLinks.linkFor(key)); }
 function _aeClamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
 function _aeEaseOut(p) { return 1 - Math.pow(1 - p, 3); }
+// Isolated left-to-right (U+2066 ... U+2069): inside a right-to-left
+// sentence the bidi algorithm otherwise reorders its runs ("S, 48.5° W 31.3°").
+var AE_LTR_ISOLATE = '\u2066', AE_POP_ISOLATE = '\u2069';
 function _aeFmtLatLon(p) {
   var ns = p.lat >= 0 ? 'N' : 'S', ew = p.lon >= 0 ? 'E' : 'W';
-  return _orrNum(Math.abs(p.lat), null, 1) + '° ' + ns + ', ' + _orrNum(Math.abs(p.lon), null, 1) + '° ' + ew;
+  return AE_LTR_ISOLATE + _orrNum(Math.abs(p.lat), null, 1) + '° ' + ns + ', ' + _orrNum(Math.abs(p.lon), null, 1) + '° ' + ew + AE_POP_ISOLATE;
 }
 // Numbers and dates through the orrery's formatter cache (almanac-orrery.js
 // _orrNum, _orrFormatter): the readouts run ten times a second, and building
@@ -661,7 +669,11 @@ var AE_CSS = [
   '.ae-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:12px 16px 28px;background:linear-gradient(rgba(0,0,0,.6),transparent);pointer-events:none}',
   '.ae-top>*{pointer-events:auto}',
   '.ae-btn{font:inherit;font-size:13px;line-height:1;padding:8px 12px;min-height:34px;border-radius:999px;border:1px solid var(--border);background:rgba(18,18,20,.82);color:var(--text2);cursor:pointer;white-space:nowrap}',
-  '.ae-btn:hover,.ae-btn:focus-visible{color:var(--amber);border-color:var(--amber-border);background:var(--amber-glow);outline:none}',
+  // Hover only where there is one: on a phone a tapped button kept the hover
+  // look, and Next eclipse read as pressed beside the real toggles.
+  '.ae-btn:focus-visible{color:var(--amber);border-color:var(--amber-border);background:var(--amber-glow);outline:none}',
+  '@media (hover:hover){.ae-btn:hover{color:var(--amber);border-color:var(--amber-border);background:var(--amber-glow)}}',
+  '.ae-btn[disabled]{opacity:.45;cursor:default;pointer-events:none}',
   '.ae-btn[aria-pressed="true"]{color:var(--amber);border-color:var(--amber-border);background:rgba(245,158,11,.14)}',
   '.ae-btn[hidden]{display:none}',
   '.ae-back{color:var(--text);flex:0 0 auto}',
@@ -689,7 +701,9 @@ var AE_CSS = [
   '.ae-note{font-size:10.5px;line-height:1.4;color:var(--text3);text-align:center;pointer-events:auto;max-width:560px}',
   '.ae-ask-text{color:var(--text2)}',
   '.ae-fresh{font:inherit;font-size:11px;line-height:1;padding:6px 10px;min-height:26px;margin:2px 0;margin-inline-start:6px;border-radius:999px;border:1px solid var(--amber-border);background:var(--amber-glow);color:var(--amber);cursor:pointer;vertical-align:middle}',
-  '.ae-fresh:hover,.ae-fresh:focus-visible{background:rgba(245,158,11,.18);outline:none}',
+  '.ae-fresh:focus-visible{background:rgba(245,158,11,.18);outline:none}',
+  '@media (hover:hover){.ae-fresh:hover{background:rgba(245,158,11,.18)}}',
+  '@media (pointer:coarse){.ae-fresh{min-height:32px;padding:8px 12px}}',
   '.ae-fresh[disabled]{opacity:.7;cursor:default}',
   '.ae-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}',
   '.ae-label{position:absolute;left:0;top:0;font-size:11px;color:#dfe6f0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000}',
@@ -698,7 +712,15 @@ var AE_CSS = [
   '.ae-label-sub{display:block;font-size:10px;color:var(--text2)}',
   '.ae-label-you{color:#f5c16c}',
   '.ae-label-shadow{color:#ffb4a0}',
-  '.ae-card{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(118px + env(safe-area-inset-bottom));width:min(420px,calc(100% - 32px));box-sizing:border-box;background:rgba(14,14,16,.94);border:1px solid var(--border);border-radius:12px;padding:12px 40px 12px 14px;font-size:13px;line-height:1.5;color:var(--text2)}',
+  // A label that marks a place carries its dot ON the place: the dot hangs
+  // off the label by the label's own gap (AE_LABEL_DX), on whichever side
+  // the label hangs from its point, in either writing direction.
+  '.ae-mark{position:absolute;top:50%;left:-' + AE_LABEL_DX + 'px;width:8px;height:8px;box-sizing:border-box;border-radius:50%;background:currentColor;transform:translate(-50%,-50%);box-shadow:0 0 3px #000}',
+  '.ae-hang-left .ae-mark{left:auto;right:-' + AE_LABEL_DX + 'px;transform:translate(50%,-50%)}',
+  '.ae-label-shadow .ae-mark{width:10px;height:10px;border:1.5px solid currentColor;background:radial-gradient(currentColor 30%,transparent 38%)}',
+  // The card and the hint stand just above the controls, however tall the
+  // controls and the note under them grow (a two-line note overlapped them).
+  '.ae-card{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% - 18px);width:min(420px,calc(100% - 32px));box-sizing:border-box;background:rgba(14,14,16,.94);border:1px solid var(--border);border-radius:12px;padding:12px 40px 12px 14px;font-size:13px;line-height:1.5;color:var(--text2);pointer-events:auto}',
   '.ae-card[hidden]{display:none}',
   '.ae-card h3{margin:0 0 4px;font-size:14px;font-weight:600;color:var(--text)}',
   '.ae-card p{margin:0}',
@@ -710,7 +732,8 @@ var AE_CSS = [
   '[dir="rtl"] .ae-card-x{right:auto;left:4px}',
   '.ae-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--text2);font-size:14px;pointer-events:none}',
   '.ae-msg[hidden]{display:none}',
-  '.ae-hint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:8px 14px;border-radius:999px;background:rgba(0,0,0,.6);color:var(--text2);font-size:12px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .6s}',
+  '.ae-view.ae-blank .ae-bottom,.ae-view.ae-blank .ae-status{display:none}',
+  '.ae-hint{position:absolute;left:50%;bottom:calc(100% - 18px);transform:translateX(-50%);padding:8px 14px;border-radius:999px;background:rgba(0,0,0,.6);color:var(--text2);font-size:12px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .6s}',
   '.ae-hint.ae-show{opacity:1}',
   '@media (prefers-reduced-motion: reduce){.ae-hint{transition:none}}',
   '@media (max-width:420px){.ae-btn{font-size:12px;padding:7px 10px;min-height:32px}.ae-status{top:60px;font-size:12px}}'
@@ -743,11 +766,10 @@ function _aeBuildDom() {
     '<div class="ae-labels" id="ae-labels">' +
       '<span class="ae-label" id="ae-lbl-moon" hidden>' + _almEsc(_aeT('alm_moon')) + '</span>' +
       '<span class="ae-label" id="ae-lbl-iss" hidden></span>' +
-      '<span class="ae-label ae-label-you" id="ae-lbl-you" hidden>● ' + _almEsc(_aeT('alm_earth_you')) + '</span>' +
-      '<span class="ae-label ae-label-shadow" id="ae-lbl-shadow" hidden>◉ ' + _almEsc(_aeT('alm_earth_shadow')) + '</span>' +
+      '<span class="ae-label ae-label-you" id="ae-lbl-you" hidden><i class="ae-mark" aria-hidden="true"></i>' + _almEsc(_aeT('alm_earth_you')) + '</span>' +
+      '<span class="ae-label ae-label-shadow" id="ae-lbl-shadow" hidden><i class="ae-mark" aria-hidden="true"></i>' + _almEsc(_aeT('alm_earth_shadow')) + '</span>' +
     '</div>' +
     '<div class="ae-msg" id="ae-msg"></div>' +
-    '<div class="ae-hint" id="ae-hint">' + _almEsc(_aeT('alm_earth_hint')) + '</div>' +
     '<div class="ae-top">' +
       '<button type="button" class="ae-btn ae-back" id="ae-back"><span class="ae-chev" aria-hidden="true">‹</span> ' + _almEsc(_aeT('alm_solar_system')) + '</button>' +
       '<div class="ae-top-end">' +
@@ -759,8 +781,9 @@ function _aeBuildDom() {
     '</div>' +
     '<div class="ae-set" id="ae-set" role="group" aria-labelledby="ae-set-title" hidden></div>' +
     '<div class="ae-status" id="ae-status" aria-live="polite"></div>' +
-    '<div class="ae-card" id="ae-card" hidden></div>' +
     '<div class="ae-bottom">' +
+      '<div class="ae-hint" id="ae-hint">' + _almEsc(_aeT('alm_earth_hint')) + '</div>' +
+      '<div class="ae-card" id="ae-card" hidden></div>' +
       '<div class="ae-row" role="group" id="ae-views">' +
         '<button type="button" class="ae-btn" data-ae-view="earth" aria-pressed="true">' + _almEsc(_tp('Earth')) + '</button>' +
         '<button type="button" class="ae-btn" data-ae-view="sats" aria-pressed="false">' + _almEsc(_aeT('alm_earth_view_sats')) + '</button>' +
@@ -1455,7 +1478,11 @@ function _aeUpdateSats(ms, sc) {
           _ae.issRingAt = ms;
         }
       }
-      S.issRing.material.opacity = standing === 'exact' ? AE_ISS_RING_ALPHA : AE_ISS_RING_FADED;
+      // Faded beside a faded (approximate) dot. Past that the ring is all
+      // that is drawn, and it is right (the orbit's shape and tilt hold), so
+      // it is drawn in full: at the faded strength it all but vanished and
+      // the note's "orbit only" pointed at nothing.
+      S.issRing.material.opacity = standing === 'approximate' ? AE_ISS_RING_FADED : AE_ISS_RING_ALPHA;
     } else if (refreshRings) {
       var pts = _aeOrbitPoints(s, ms, eqeq, AE_GPS_RING_POINTS);
       if (pts) {
@@ -1587,6 +1614,7 @@ function _aePlaceLabel(id, p, show) {
   // the edge nearest its point.
   var toLeft = s.x > _ae.w / 2;
   el.style.textAlign = toLeft ? 'right' : 'left';
+  el.classList.toggle('ae-hang-left', toLeft);   // where a place label's dot goes (.ae-mark)
   el.style.transform = 'translate(' + Math.round(s.x) + 'px,' + Math.round(s.y) + 'px) translate(' +
     (toLeft ? 'calc(-100% - ' + AE_LABEL_DX + 'px)' : AE_LABEL_DX + 'px') + ',-50%)';
 }
@@ -1703,12 +1731,27 @@ function _aeUpdateCard(ms) {
     v: _orrNum(v, null, 2),
     km: _orrNum(_aeKmPerDay(rates.net), null, 0)
   });
-  // The satellite's clock pulls ahead by the net rate for as long as the
-  // shown time runs; the counter starts at the tap.
-  if (ms < _ae.selected.tapMs) _ae.selected.tapMs = ms;
-  var gainedNs = (ms - _ae.selected.tapMs) / 1000 * rates.net * AE_NANO;
+  // The satellite's clock pulls ahead at the net rate for as long as the
+  // shown time runs; the counter starts at the tap. The rate wanders a
+  // little round an orbit that is not quite circular, so the gain is summed
+  // step by step: elapsed time times the rate of the moment ran backwards
+  // whenever the rate dipped.
+  var sel = _ae.selected;
+  if (sel.lastMs === undefined || ms < sel.tapMs) { sel.tapMs = Math.min(sel.tapMs, ms); sel.lastMs = ms; sel.gainedS = 0; }
+  sel.gainedS = Math.max(0, sel.gainedS + (ms - sel.lastMs) / 1000 * rates.net);
+  sel.lastMs = ms;
   var count = _aeById('ae-card-count');
-  if (count) count.textContent = _aeT('alm_earth_since_tap', { ns: _orrNum(gainedNs, null, gainedNs < 100 ? 2 : 0) });
+  if (count) count.textContent = _aeT('alm_earth_since_tap', { t: _aeFmtGain(sel.gainedS) });
+}
+
+// The counter's reading: nanoseconds to two places while it is young, then
+// the unit that keeps the number short (at an hour a second it passes a
+// microsecond within a second, and a clock jump makes milliseconds).
+var AE_GAIN_FINE_NS = 100;
+function _aeFmtGain(sec) {
+  var ns = sec * AE_NANO;
+  if (ns < 1000) return _orrNum(ns, 'nanosecond', ns < AE_GAIN_FINE_NS ? 2 : 0);
+  return _orrFmtSpan(sec);
 }
 
 // The note under the controls: where the drawn orbits come from, or why
@@ -1944,7 +1987,12 @@ function _aeSetSpeed(speed) {
 // After the clock jumps: this view's own run-up is spent, the cached orbits
 // belong to the old instant, and the Almanac's loops (its repaint restarts
 // them) stay paused under the view.
+function _aeEclipseButton(on) {
+  var b = _aeById('ae-eclipse');
+  if (b) b.disabled = !on;
+}
 function _aeJumped() {
+  _aeEclipseButton(true);
   _ae.offset = 0;
   _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
   _aePauseAlmanac();
@@ -1965,7 +2013,9 @@ function _aeNow() {
 }
 function _aeJumpToNextEclipse() {
   var next = _aeNextEclipse(_aeDisplayMs());
-  if (!next) return;
+  // None found (far outside the centuries the series hold): say so by
+  // standing down until the clock jumps, rather than doing nothing.
+  if (!next) { _aeEclipseButton(false); return; }
   _aeGoTo(next.ms);
   var sc = _aeSceneAt(next.ms);
   _ae.scene = sc;
@@ -2023,17 +2073,28 @@ function _aeCoverAlmanac(on) {
   if (c) c.style.visibility = on ? 'hidden' : '';
 }
 
+// A message stands in for the view (loading, no WebGL, no maps): the
+// controls and the notes under them belong to a view that is not there,
+// so they step aside with it (ae-blank) instead of doing nothing when tapped.
 function _aeMessage(text) {
   var m = _aeById('ae-msg');
   if (!m) return;
   m.textContent = text || '';
   m.hidden = !text;
+  if (_ae && _ae.el) _ae.el.classList.toggle('ae-blank', !!text);
 }
 
 // ── Open and close ──
 function _aeStartView(THREE) {
   var S = _aeBuildGl(THREE, _aeById('ae-canvas'));
-  if (!S) { _ae.failed = true; _aeMessage(_aeT('alm_earth_nogl')); return; }
+  if (!S) {
+    _ae.failed = true;
+    // The orrery stops offering what this browser cannot draw (its glow and
+    // Earth's button go; Earth opens its article again).
+    openAlmanacEarth.unsupported = true;
+    _aeMessage(_aeT('alm_earth_nogl'));
+    return;
+  }
   _ae.gl = S;
   return _aeLoadMaps(S).then(function (dayMapIn) {
     if (_ae.gl !== S) return;   // the Almanac closed while it loaded
@@ -2082,6 +2143,7 @@ function openAlmanacEarth() {
   _aeRenderCard();
   _aeShowSettings(false);
   _ae.freshFailed = false;
+  _aeEclipseButton(true);
   _aeSetSpeed(1);
   _aePauseAlmanac();
   _aeCoverAlmanac(true);
@@ -2119,6 +2181,9 @@ function _aeClose() {
   if (typeof _almanacOpen === 'undefined' || _almanacOpen) _aeResumeAlmanac();
   var orr = _aeById('almanac-orrery');
   if (orr && orr.focus) orr.focus({ preventScroll: true });
+  // Found unsupported, the orrery drops its Earth glow; a paused orrery
+  // (1x) draws nothing by itself, so give it the frame without.
+  if (openAlmanacEarth.unsupported && typeof _orrerySyncToFocus === 'function') _orrerySyncToFocus();
 }
 
 // Give the GPU back: every geometry, material and map, then the context
