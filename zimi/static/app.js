@@ -11796,49 +11796,47 @@ function _autoUpdateNextHtml(au) {
   return esc(_relTime(au.next_check));
 }
 
-// How the library splits for the updater: catalog ZIMs it can check against a
-// newer edition, versus local or custom ones (created here, or with no dated
-// edition to match) that there is simply nothing to check. Two plain counts,
-// no wall of filenames — those names read as debug output, not information.
-function _autoUpdateCoverageHtml(coverage) {
+// What the ZIM count is made of, under it and quieter: the ones from the
+// catalog (the updater can check them for a newer edition) and the local ones
+// (made here, or brought in with no catalog edition to match). Only when
+// there are local ones: an all-catalog library needs no breakdown.
+function _libSplitHtml(coverage) {
   if (!coverage) return '';
   var tracked = (coverage.tracked || []).length;
-  var custom = (coverage.skipped || []).length;
-  // Nothing local or custom → nothing worth explaining: every source is a
-  // catalog ZIM the updater checks, which is the quiet, expected state.
-  if (!custom) return '';
-  return _mcRow(tH('au_from_catalog'),
-      esc(t('au_from_catalog_n', { n: tracked, total: tracked + custom }))) +
-    _mcRow(tH('au_local_custom'), esc(String(custom)));
+  var local = (coverage.skipped || []).length;
+  if (!local) return '';
+  return '<div class="mc-row mc-sub"><span class="mc-label">' + tH('au_from_catalog') + '</span><span class="mc-value">' + esc(String(tracked)) + '</span></div>' +
+    '<div class="mc-row mc-sub"><span class="mc-label">' + tH('au_local') + '</span><span class="mc-value">' + esc(String(local)) + '</span></div>';
 }
 
-function _autoUpdateHtml(au, coverage) {
-  // Frequency + what the library splits into for the updater. The last-run /
-  // next-run clock rows are gone — operational noise the operator did not ask
-  // for; what they want to know is how much of the library is even checkable
-  // (Eric: "why not say how many are local/custom instead").
+function _autoUpdateHtml(au) {
+  // Frequency alone. The last-run / next-run clock rows are gone: operational
+  // noise the operator did not ask for. How much of the library the updater
+  // can check reads under the ZIM count (_libSplitHtml).
   return '<div class="ms-section-label">' + tH('auto_update') + '</div>' +
-    _mcRow(tH('au_frequency'), _autoUpdateSelectHtml(au)) +
-    _autoUpdateCoverageHtml(coverage);
+    _mcRow(tH('au_frequency'), _autoUpdateSelectHtml(au));
 }
 
 // Repaint the section from server truth. The library pane draws it once from
 // the status payload it already has (so the select is never missing while a
-// second request is in flight), then this fills in last/next/coverage.
+// second request is in flight), then this fills in the select and the split.
 function _renderAutoUpdateSection() {
   var el = document.getElementById('ms-auto-update');
   if (!el) return;
   manageFetch('/manage/auto-update').then(function(r) { return r.json(); }).then(function(d) {
     var slot = document.getElementById('ms-auto-update');
-    if (slot) slot.innerHTML = _autoUpdateHtml(d, d.coverage);
+    if (slot) slot.innerHTML = _autoUpdateHtml(d);
+    var split = document.getElementById('ms-lib-split');
+    if (split) split.innerHTML = _libSplitHtml(d.coverage);
   }).catch(function() {});
 }
 
 function _msLibraryHtml() {
   var d = _manageStatusData;
   if (!d) return '<div class="loading"><span class="spinner-inline"></span>Loading\u2026</div>';
-  var h = '<div class="mc-row"><span class="mc-label">' + tH('zim_files') + '</span><span class="mc-value">' + esc(String(d.zim_count)) + '</span></div>' +
-    '<div class="mc-row"><span class="mc-label">' + tH('total_size') + '</span><span class="mc-value">' + fmtSize(d.total_size_gb) + '</span></div>' +
+  var h = '<div class="mc-row"><span class="mc-label">' + tH('zim_files') + '</span><span class="mc-value" id="ms-zim-count">' + esc(String(d.zim_count)) + '</span></div>' +
+    '<div id="ms-lib-split"></div>' +
+    '<div class="mc-row"><span class="mc-label">' + tH('total_size') + '</span><span class="mc-value" id="ms-total-size">' + fmtSize(d.total_size_gb) + '</span></div>' +
     // Summary line + (only when updates exist) an expandable detail panel. The
     // row's state, clickability and detail are all driven by _renderUpdatesSummary
     // — the single writer — so the top-level label never strands on "Checking…".
@@ -11848,7 +11846,7 @@ function _msLibraryHtml() {
     '<div id="updates-detail" class="updates-detail" style="display:none"></div>' +
     // Space before the ZIM auto-update block so its header doesn't crowd the
     // app-update line above it (Eric: "no spacing after Updates line").
-    '<div id="ms-auto-update" style="margin-top:16px">' + _autoUpdateHtml(d.auto_update || {}, null) + '</div>' +
+    '<div id="ms-auto-update" style="margin-top:16px">' + _autoUpdateHtml(d.auto_update || {}) + '</div>' +
     '<div class="ms-actions">' +
       '<button class="manage-btn-action" onclick="manageImportZim()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('import_zim') + '</button>' +
       '<button id="refresh-cache-btn" class="manage-btn-action" onclick="settingsRefreshCache()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('refresh_cache') + '</button>' +
@@ -12128,78 +12126,89 @@ function _msReorderHtml() {
       ' ondragend="_reorderDragEnd(event)">' + _reorderSectionsHtml() + '</div>';
 }
 
+// A local flag that is either set ('1') or absent.
+function _setStorageFlag(key, on) {
+  try { if (on) localStorage.setItem(key, '1'); else localStorage.removeItem(key); } catch (e) {}
+}
+
+// Every on/off in Settings is this one row: what it is, a line on what it
+// does, and the switch at the far end. The whole row is the label, so a tap
+// anywhere on it flips the switch. o: {title, desc, on, onchange (JS run
+// with `this` the checkbox), id, icon, cls, disabled}.
+function _switchRowHtml(o) {
+  return '<label class="share-row set-row' + (o.cls ? ' ' + o.cls : '') + (o.disabled ? ' share-locked' : '') + '">' +
+    (o.icon || '') +
+    '<span class="share-row-text"><span class="share-row-title">' + o.title + '</span>' +
+      (o.desc ? '<span class="share-row-desc">' + o.desc + '</span>' : '') + '</span>' +
+    '<span class="switch"><input type="checkbox" role="switch"' + (o.id ? ' id="' + o.id + '"' : '') +
+      (o.on ? ' checked' : '') + (o.disabled ? ' disabled' : '') +
+      ' onchange="' + o.onchange + '"><span class="switch-slider"></span></span></label>';
+}
+// A card of switch rows.
+function _switchRowsHtml(rows) {
+  return '<div class="share-rows set-rows">' + rows.map(_switchRowHtml).join('') + '</div>';
+}
+
 function _msPreferencesHtml() {
-  var showXzim = !_getStorageFlag(SK.HIDE_XZIM_LINKS);
-  var showDiscover = !_getStorageFlag(SK.HIDE_DISCOVER);
-  var showLangChooser = !_getStorageFlag(SK.HIDE_LANG_CHOOSER);
-  var darkenOn = _darkenArticlesOn();
-  // Apps first, a section of its own: the tiles offered to everyone (the
-  // server's choice; painted from its answer, and an account that may not
-  // set it sees nothing), then a signed-in account's own. Eric: "its own
-  // proper lil section with header just APPS and no subtext".
-  var h = '<div id="ms-apps-wrap" hidden><div class="ms-section-label">' + tH('apps_section') + '</div><div id="ms-apps"></div></div>' +
+  // Apps: every app a row of the same shape, and whether results open in
+  // them right under it. The rows offered to everyone (the server's choice)
+  // paint from its answer into #ms-apps; an account that may not set them
+  // sees none. A signed-in account's own choice follows, titled so the two
+  // cards are not mistaken for one.
+  var h = '<div class="ms-section-label ms-section-head">' + tH('apps_section') + '<span id="ms-apps-all"></span></div>' +
+    '<div id="ms-apps-wrap" hidden><div id="ms-apps"></div></div>' +
     (_appsAllowedByServer() && _userSession
       ? '<div class="ms-theme-label" style="margin-top:12px">' + tH('show_apps') + '</div>' +
         _appPicksHtml(APP_NAMES.filter(_appsAllowedByServer), _appShown, '_setUserApp')
       : '') +
-    '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_display_section') + '</div>' +
-    // App theme: Auto / Dark / Light segmented control.
+    _switchRowsHtml([{ id: 'ms-open-in-apps', title: tH('open_in_apps'), desc: tH('open_in_apps_hint'),
+      on: _openInApps(), onchange: '_setOpenInApps(this.checked)' }]) +
+
+    '<div class="ms-section-label" style="margin-top:24px">' + tH('ms_display_section') + '</div>' +
     '<div class="ms-theme-label">' + tH('app_theme') + '</div>' +
     _appThemeSegHtml() +
     '<div class="ms-hint">' + tH('app_theme_hint') + '</div>' +
-    // Reading: article appearance, grouped apart from the app chrome. WHEN
-    // articles are dark, then what to do about the ones that cannot be.
-    '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_reader_section') + '</div>' +
+    _switchRowsHtml([{ title: tH('show_discover'), on: !_getStorageFlag(SK.HIDE_DISCOVER),
+      onchange: '_setStorageFlag(SK.HIDE_DISCOVER, !this.checked);renderHome()' }]) +
+
+    // Reading: everything about how an article reads, in one place. The two
+    // choices first, then the switches.
+    '<div class="ms-section-label" style="margin-top:24px">' + tH('ms_reader_section') + '</div>' +
     '<div class="ms-theme-label">' + tH('article_theme') + '</div>' +
     _articleThemeSegHtml() +
     '<div class="ms-hint">' + tH('article_theme_hint') + '</div>' +
-    '<label class="ms-check" style="margin-top:12px"><input type="checkbox" id="ms-darken-articles"' + (darkenOn ? ' checked' : '') +
-      ' onchange="_setDarkenArticles(this.checked)"> ' + tH('darken_articles') + '</label>' +
-    '<div class="ms-hint" id="ms-darken-hint">' + tH('darken_articles_hint') + '</div>' +
     // Links that leave the library for the web (#99): marked, or plain text.
     '<div class="ms-theme-label" style="margin-top:16px">' + tH('ext_links') + '</div>' +
     _segHtml('ext-links-seg', 'ext_links', _extLinksSegInner()) +
     '<div class="ms-hint">' + tH('ext_links_hint') + '</div>' +
-    '<label class="ms-check" style="margin-top:12px"><input type="checkbox" id="ms-open-in-apps"' + (_openInApps() ? ' checked' : '') +
-      ' onchange="_setOpenInApps(this.checked)"> ' + tH('open_in_apps') + '</label>' +
-    '<div class="ms-hint">' + tH('open_in_apps_hint') + '</div>' +
-    '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
-    '<label class="ms-check"><input type="checkbox"' + (showDiscover ? ' checked' : '') +
-      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> ' + tH('show_discover') + '</label>' +
-    '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
-      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>' +
+    _switchRowsHtml([
+      // The mirror of the in-article palette's AUTO switch, same key.
+      { id: 'ms-reader-auto', title: tH('reader_auto'), desc: tH('reader_auto_hint'),
+        on: _readerAuto(), onchange: '_setReaderAuto(this.checked)' },
+      { id: 'ms-darken-articles', title: tH('darken_articles'), desc: tH('darken_articles_hint'),
+        on: _darkenArticlesOn(), onchange: '_setDarkenArticles(this.checked)' },
+      { title: tH('show_cross_links'), on: !_getStorageFlag(SK.HIDE_XZIM_LINKS),
+        onchange: '_setStorageFlag(SK.HIDE_XZIM_LINKS, !this.checked)' },
+      { title: tH('a11y_rewrite_label'), desc: tH('a11y_rewrite_hint'), on: _getStorageFlag(SK.A11Y_REWRITE),
+        onchange: '_setStorageFlag(SK.A11Y_REWRITE, this.checked)' },
+    ]) +
 
-    // Default download flavor (above languages — reached more often)
-    '<div class="ms-section-label" style="margin-top:20px">' + tH('default_flavor') + '</div>' +
+    // Default download flavor (above languages: reached more often)
+    '<div class="ms-section-label" style="margin-top:24px">' + tH('default_flavor') + '</div>' +
     '<div class="ms-hint">' + tH('default_flavor_hint') + '</div>' +
     '<div class="ms-flavor-row">' +
       _flavorRadio('full', tH('flavor_full')) +
       _flavorRadio('nopic', tH('flavor_nopic')) +
       _flavorRadio('mini', tH('flavor_mini')) +
     '</div>' +
-    // Languages section combines display toggle + multi-select pref.
-    // The pill list is long — collapsed behind a toggle by default.
-    '<div class="ms-section-label" style="margin-top:20px">' + tH('languages_section') + '</div>' +
-    '<label class="ms-check"><input type="checkbox"' + (showLangChooser ? ' checked' : '') +
-      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_lang_chooser\',\'1\');else localStorage.removeItem(\'zimi_hide_lang_chooser\');if(window.updateTopbar)updateTopbar()"> ' + tH('show_lang_chooser') + '</label>' +
-    '<div class="ms-hint" style="margin-top:8px">' + tH('catalog_languages_hint_short') + '</div>' +
+    // The pill list is long: collapsed behind a toggle by default.
+    '<div class="ms-section-label" style="margin-top:24px">' + tH('languages_section') + '</div>' +
+    _switchRowsHtml([{ title: tH('show_lang_chooser'), on: !_getStorageFlag(SK.HIDE_LANG_CHOOSER),
+      onchange: '_setStorageFlag(SK.HIDE_LANG_CHOOSER, !this.checked);if(window.updateTopbar)updateTopbar()' }]) +
+    '<div class="ms-hint" style="margin-top:12px">' + tH('catalog_languages_hint_short') + '</div>' +
     '<button class="pill" onclick="_msToggleCollapse(\'ms-lang-pills\', this)">' + tH('show_list') + '</button>' +
     '<div class="ms-lang-pills ms-collapsed-list" id="ms-lang-pills">' + _renderLangPrefPills() + '</div>';
-  // Reader section — mirror of the in-article palette's AUTO switch, so the
-  // setting is discoverable without first opening an article. Same wording,
-  // same localStorage key (via _setReaderAuto).
-  var readerAutoOn = _readerAuto();
-  h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_reader') + '</div>' +
-    '<label class="ms-check"><input type="checkbox" id="ms-reader-auto"' + (readerAutoOn ? ' checked' : '') +
-      ' onchange="_setReaderAuto(this.checked)"> ' + tH('reader_auto') + '</label>' +
-    '<div class="ms-hint">' + tH('reader_auto_hint') + '</div>';
-  // Accessibility section
-  var a11yOn = _getStorageFlag(SK.A11Y_REWRITE);
-  h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_accessibility') + '</div>' +
-    '<label class="ms-check"><input type="checkbox"' + (a11yOn ? ' checked' : '') +
-      ' onchange="if(this.checked)localStorage.setItem(\'zimi_a11y_rewrite\',\'1\');else localStorage.removeItem(\'zimi_a11y_rewrite\')"> ' + tH('a11y_rewrite_label') + '</label>' +
-    '<div class="ms-hint">' + tH('a11y_rewrite_hint') + '</div>';
-  // Security (password + logout) now lives in the Users pane ("Your account").
+  // Security (password + logout) lives in the Users pane ("Your account").
   return h;
 }
 
@@ -12640,15 +12649,18 @@ async function _renderAppsSection() {
   try { d = await _msFetch('/manage/apps'); } catch (e) {}
   var el = document.getElementById('ms-apps');
   var wrap = document.getElementById('ms-apps-wrap');
+  var all = document.getElementById('ms-apps-all');
   if (!el) return;
   if (!d) { if (wrap) wrap.hidden = true; return; }
   if (wrap) wrap.hidden = false;
   var shown = Array.isArray(d.shown) ? d.shown : (d.enabled ? APPS_DEFAULT : []);
   _serverApps = shown;
   el.innerHTML = _appPicksHtml(_serverOfferable(shown), function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', d.env_locked) +
-    (d.env_locked ? '<div class="ms-hint">' + tH('env_controlled', { v: 'ZIMI_APPS' }) + '</div>'
-      : '<div class="app-picks-all"><button type="button" class="pill" onclick="_setAppsForServerAll(true)">' + tH('filter_all') + '</button>' +
-        '<button type="button" class="pill" onclick="_setAppsForServerAll(false)">' + tH('apps_none') + '</button></div>');
+    (d.env_locked ? '<div class="ms-hint">' + tH('env_controlled', { v: 'ZIMI_APPS' }) + '</div>' : '');
+  // All and None sit on the section's header line, out of the rows' way.
+  if (all) all.innerHTML = d.env_locked ? ''
+    : '<button type="button" class="set-head-btn" onclick="_setAppsForServerAll(true)">' + tH('filter_all') + '</button>' +
+      '<button type="button" class="set-head-btn" onclick="_setAppsForServerAll(false)">' + tH('apps_none') + '</button>';
 }
 var _serverApps = APPS_DEFAULT;
 // The apps the server switch lists: the default ones, and an opt-in one only
@@ -14795,8 +14807,9 @@ async function deleteZim(filename, btn) {
     const tabBtn = document.querySelector('.manage-tab[data-tab="installed"]');
     if (tabBtn) tabBtn.textContent = t('installed_tab');
     // Update status card count
-    const statusVal = document.querySelector('#manage-status .mc-value');
+    const statusVal = document.getElementById('ms-zim-count');
     if (statusVal) statusVal.textContent = String(zimsCache ? zimsCache.length : 0);
+    _renderAutoUpdateSection();
     // Re-render current view
     if (manageTab === 'installed') renderInstalled();
     else if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
@@ -15435,12 +15448,11 @@ async function _refreshDownloadsInner(useCache) {
         // Update status card counts
         const sr = await manageFetch('/manage/status');
         const sd = await sr.json();
-        const statusEl = document.getElementById('manage-status');
-        if (statusEl) {
-          statusEl.querySelector('.mc-value').textContent = String(sd.zim_count);
-          const sizeVal = statusEl.querySelectorAll('.mc-value')[1];
-          if (sizeVal) sizeVal.textContent = fmtSize(sd.total_size_gb);
-        }
+        const countVal = document.getElementById('ms-zim-count');
+        if (countVal) countVal.textContent = String(sd.zim_count);
+        const sizeVal = document.getElementById('ms-total-size');
+        if (sizeVal) sizeVal.textContent = fmtSize(sd.total_size_gb);
+        _renderAutoUpdateSection();
         // Update tab count
         const tabBtn = document.querySelector('.manage-tab[data-tab="installed"]');
         if (tabBtn) tabBtn.textContent = t('installed_tab');
@@ -16091,6 +16103,10 @@ var READER_THEME_MODES = ['auto', 'light', 'sepia', 'dark'];
 // The <body> background each theme paints — mirrors --rv-bg in the injected CSS.
 // Used to tint the iframe/loading chrome so AUTO mode never flashes ZIM-white.
 var READER_THEME_BG = { dark: '#0a0a0b', light: '#fbfbf9', sepia: '#f4ecd8' };
+// Auto's swatch is the two palettes Auto paints (sepia by day, dark by
+// night; see _readerTheme), not light and dark: it showed a white page it
+// never gives. app.css's .rv-sw-auto draws the same split.
+var READER_AUTO_SWATCH = 'linear-gradient(135deg,' + READER_THEME_BG.sepia + ' 50%,' + READER_THEME_BG.dark + ' 50%)';
 function _readerFamily() {
   var v = localStorage.getItem(SK.READER_FAMILY);
   return READER_FAMILIES.indexOf(v) >= 0 ? v : 'serif';
@@ -17751,6 +17767,9 @@ var _READING_CSS = [
   // ── the sheets: contents and reading settings ──
   '.zb-scrim{position:fixed;inset:0;z-index:2147482100;background:rgba(0,0,0,.28);opacity:0;pointer-events:none;transition:opacity .2s}',
   'html.zb-sheet-open .zb-scrim{opacity:1;pointer-events:auto}',
+  // Reading settings leave the page undimmed: a theme or a size is judged
+  // on the page itself, which a grey veil turned muddy. A tap on it still closes.
+  'html.zb-set-open .zb-scrim{background:transparent}',
   '.zb-sheet{position:fixed;left:0;right:0;bottom:0;z-index:2147482200;max-height:min(82vh,680px);overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;',
     'box-sizing:border-box;padding:6px calc(16px + var(--zb-sar)) calc(18px + var(--zb-sab)) calc(16px + var(--zb-sal));border-radius:16px 16px 0 0;',
     'background:var(--rv-bg);color:var(--rv-fg);border:1px solid var(--rv-border);box-shadow:0 -8px 30px rgba(0,0,0,.25);',
@@ -17774,8 +17793,10 @@ var _READING_CSS = [
   '.zb-seg button{flex:1;min-height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;padding:0 8px}',
   '.zb-seg button[aria-pressed="true"],.zb-seg button[aria-checked="true"]{border-color:var(--rv-link)!important;color:var(--rv-link);box-shadow:inset 0 0 0 1px var(--rv-link)}',
   '.zb-themes button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;padding:6px 2px;min-height:0}',
-  '.zb-dot{width:22px;height:22px;border-radius:50%;border:1px solid rgba(128,128,128,.45);box-sizing:border-box}',
-  '.zb-dot-auto{background:linear-gradient(135deg,#fbfbf9 50%,#0a0a0b 50%)}.zb-dot-light{background:#fbfbf9}.zb-dot-sepia{background:#f4ecd8}.zb-dot-dark{background:#0a0a0b}',
+  // A ring that reads on every sheet, so the sheet's own colour's dot is not
+  // a hole in it (sepia's on the sepia sheet, dark's on the dark one).
+  '.zb-dot{width:24px;height:24px;border-radius:50%;border:1.5px solid rgba(128,128,128,.6);box-sizing:border-box}',
+  '.zb-dot-auto{background:' + READER_AUTO_SWATCH + '}.zb-dot-light{background:' + READER_THEME_BG.light + '}.zb-dot-sepia{background:' + READER_THEME_BG.sepia + '}.zb-dot-dark{background:' + READER_THEME_BG.dark + '}',
   '.zb-step{display:flex;align-items:center;gap:8px}',
   '.zb-step button{width:52px;height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;font-family:Georgia,serif}',
   '.zb-step output{flex:1;text-align:center;font-variant-numeric:tabular-nums;color:var(--rv-muted)}',
@@ -18145,7 +18166,7 @@ function _bookAttach(frame) {
 }
 function _bookUndo(doc) {
   try {
-    doc.documentElement.classList.remove('zb-book', 'zb-paged', 'zb-away', 'zb-sheet-open');
+    doc.documentElement.classList.remove('zb-book', 'zb-paged', 'zb-away', 'zb-sheet-open', 'zb-set-open');
     Array.prototype.forEach.call(doc.querySelectorAll('#zb-style,.zb-bar,.zb-mini,.zb-scrim,.zb-sheet'), function(n) { n.remove(); });
   } catch (e) {}
 }
@@ -18433,12 +18454,13 @@ function _bookLay(frame) {
   var sheetOpen = function() { return html.classList.contains('zb-sheet-open'); };
   var closeSheets = function() {
     [tocSheet, setSheet].forEach(function(s) { s.classList.remove('zb-open'); });
-    html.classList.remove('zb-sheet-open');
+    html.classList.remove('zb-sheet-open', 'zb-set-open');
   };
   var openSheet = function(s) {
     closeSheets();
     s.classList.add('zb-open');
     html.classList.add('zb-sheet-open');
+    html.classList.toggle('zb-set-open', s === setSheet);
     showBars(true);
   };
 
@@ -19131,12 +19153,14 @@ function _appCountLine(app) {
     : zims.length;
   return tPlural('apps_count_' + app, n);
 }
+// Each app a Settings switch row: its icon, its name, what the library holds
+// for it, and the switch. The same row every other on/off in Settings is.
 function _appPicksHtml(apps, checked, onchange, disabled) {
-  return '<div class="app-picks" role="group">' + apps.map(function(app) {
-    var on = !!checked(app);
-    return '<button type="button" class="app-pick' + (on ? ' on' : '') + '" aria-pressed="' + on + '"' + (disabled ? ' disabled' : '') +
-      ' onclick="' + onchange + '(\'' + app + '\', ' + (!on) + ')">' + _appIcon(app) + '<span class="app-pick-t"><span>' + esc(_appTitle(app)) + '</span><small>' + esc(_appCountLine(app)) + '</small></span></button>';
-  }).join('') + '</div>';
+  return _switchRowsHtml(apps.map(function(app) {
+    return { cls: 'app-pick', icon: '<span class="set-row-icon">' + _appIcon(app) + '</span>',
+      title: esc(_appTitle(app)), desc: esc(_appCountLine(app)), on: !!checked(app), disabled: disabled,
+      onchange: onchange + '(\'' + app + '\', this.checked)' };
+  }));
 }
 
 // Each app's tile and its door, by name, so the row and the Apps page can

@@ -18,6 +18,8 @@
   }
 }
 html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-text-size-adjust: 100%; }
+/* A double tap is a tap, as in the shell; pinch-zoom stays. */
+html { touch-action: manipulation; }
 a { color: var(--amber); text-decoration: none; }
 button { font: inherit; color: inherit; }
 [hidden] { display: none !important; }

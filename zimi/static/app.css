@@ -151,6 +151,17 @@
   html.manage-boot #main-view { visibility: hidden; }
 
   html { height: 100%; overflow-y: auto; overscroll-behavior-y: none; }
+  /* Zimi never zooms by accident on a phone, and pinch-zoom stays (the
+     viewport does not cap the scale, so a reader who needs it still has it).
+     A double tap is a tap, not a zoom; the text keeps its size when the
+     phone turns; and a field or menu gets 16px type on a touch screen,
+     because iOS zooms the page into any it focuses that is smaller. The
+     !important outranks the inline sizes a few controls are drawn with. */
+  html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  @media (pointer: coarse) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+    select, textarea { font-size: 16px !important; }
+  }
   body { background: var(--bg); color: var(--text); min-height: 100%; padding-top: var(--under-topbar); overflow: visible; }
 
   /* Anti-flash guard. The head bootstrap stamps .theme-boot on <html> while it
@@ -908,7 +919,8 @@
   .rv-sw-dot { width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.14); }
   /* Auto = follows the app theme: a split dark/light disc, same language as the
      app-theme Auto icon. Half-and-half via a hard-stop gradient. */
-  .rv-sw-auto .rv-sw-dot { background: linear-gradient(90deg, #0a0a0b 0 50%, #fbfbf9 50% 100%); border-color: rgba(127,127,127,0.4); }
+  /* Auto paints sepia by day and dark by night (READER_AUTO_SWATCH in app.js). */
+  .rv-sw-auto .rv-sw-dot { background: linear-gradient(135deg, #f4ecd8 50%, #0a0a0b 50%); border-color: rgba(127,127,127,0.5); }
   .rv-sw-dark .rv-sw-dot { background: #0a0a0b; }
   .rv-sw-light .rv-sw-dot { background: #fbfbf9; border-color: rgba(0,0,0,0.18); }
   .rv-sw-sepia .rv-sw-dot { background: #f4ecd8; border-color: rgba(0,0,0,0.14); }
@@ -1614,6 +1626,10 @@
   .manage-card .mc-row, .ms-pane .mc-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--text2); padding: 4px 0; }
   .manage-card .mc-row .mc-label, .ms-pane .mc-label { color: var(--text2); }
   .manage-card .mc-row .mc-value, .ms-pane .mc-value { color: var(--text); font-weight: 500; }
+  /* What a count above is made of: indented under it, smaller and quieter. */
+  .ms-pane .mc-row.mc-sub { font-size: 12px; padding: 1px 0; padding-inline-start: 14px; }
+  .ms-pane .mc-row.mc-sub .mc-value { color: var(--text2); font-weight: 400; }
+  .ms-pane .mc-row.mc-sub:last-child { padding-bottom: 5px; }
   /* App updates (Server pane): quiet when current, amber when a release is out */
   /* The four atoms every settings section states a fact with: the notable
      value, the quiet one, an outbound link, and a command to copy. Scoped to
@@ -1662,16 +1678,23 @@
   .ms-pane .ms-actions { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
   .ms-pane .ms-check { display: flex; align-items: center; gap: 8px; padding: 6px 0; cursor: pointer; font-size: 13px; color: var(--text); }
   .ms-pane .ms-check input { accent-color: var(--amber); }
-  /* The apps to offer, as the tiles they are: lit when on. */
-  .app-picks { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
-  .app-pick { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; font: inherit; font-size: 13px; color: var(--text2);
-    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; }
-  .app-pick svg { width: 20px; height: 20px; }
-  .app-pick.on { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
-  .app-pick[disabled] { opacity: 0.5; cursor: default; }
-  .app-pick-t { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.25; }
-  .app-pick-t small { font-size: 11px; opacity: 0.75; }
-  .app-picks-all { display: flex; gap: 6px; margin: 2px 0 8px; }
+  /* Settings' on/off rows: the sharing card's row shape, the whole row the
+     label of its switch. Apps add their icon at the start. */
+  .set-rows { margin: 10px 0 0; }
+  label.set-row { cursor: pointer; }
+  .set-row .share-row-title, .set-row .share-row-desc { display: block; }
+  .set-row .share-row-title { font-weight: 500; font-size: 14px; }
+  .set-row-icon { display: flex; flex-shrink: 0; color: var(--amber); }
+  .set-row-icon svg { width: 22px; height: 22px; }
+  .set-row.share-locked { cursor: default; }
+  /* A section header with its actions at the far end (Apps: All, None). */
+  .ms-section-head { display: flex; align-items: center; gap: 4px; }
+  .ms-section-head > span { margin-inline-start: auto; display: flex; gap: 2px; }
+  .set-head-btn {
+    font: inherit; font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: 0;
+    color: var(--amber); background: none; border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer;
+  }
+  .set-head-btn:hover { background: var(--amber-glow); }
   .ms-pane .ms-field { margin-bottom: 10px; }
   /* Field labels stay mixed-case 12px — uppercase is reserved for section
      headers so the two hierarchy levels read as different levels. */
@@ -3094,6 +3117,14 @@
     .bm-actions .hp-action-btn, .bm-note-actions .hp-action-btn, .library-panel-header .library-tab,
     .bm-export-actions .hp-action-btn, .bm-exp-row { min-height: 44px; }
     .library-panel-header .hp-clear { min-width: 44px; min-height: 44px; }
+    /* The targets stay a thumb's size; the room around them goes, so the
+       header and the actions under it take one short band, not a third of
+       the phone. The close is a bare mark, as the sheets' are. */
+    .library-panel-header { padding: 4px 6px 4px 12px; }
+    [dir="rtl"] .library-panel-header { padding: 4px 12px 4px 6px; }
+    .library-panel-header .hp-clear { border-color: transparent; font-size: 15px; }
+    .bm-actions { padding-top: 0; }
+    .bm-actions + .bm-tree, .bm-actions ~ .bm-tree { padding-top: 0; }
   }
   /* Drag feedback */
   .bm-row.bm-dragging { opacity: 0.4; }

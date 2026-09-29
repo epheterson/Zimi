@@ -148,14 +148,14 @@ def test_new_list_is_typed_where_it_lands(served, browser):
     after = pg.evaluate(
         "() => { var n = document.querySelector('.bm-newfolder').nextElementSibling; return n && n.dataset.fid; }"
     )
-    assert after == "", "the box is not just above Not in a list: %r" % after
+    assert after == "", "the box is not just above Saved: %r" % after
     pg.locator(".bm-newfolder-input").fill("Groceries")
     pg.locator(".bm-newfolder-input").press("Enter")
     pg.wait_for_timeout(200)
     order = pg.evaluate(
         "() => Array.from(document.querySelectorAll('#bm-tree .bm-folder .bm-name')).map(n => n.textContent)"
     )
-    assert order[order.index("Groceries") + 1] == "Not in a list", order
+    assert order[order.index("Groceries") + 1] == "Saved", order
 
 
 def test_a_removal_says_so_and_can_be_undone(served, browser):

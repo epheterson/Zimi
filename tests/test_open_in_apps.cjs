@@ -93,7 +93,7 @@ ok('on again: the default, nothing stored', !('zimi_open_in_apps' in store) && c
 // ── wiring ──
 ok('search results and Discover cards take the route', /function _spaCardClick\(e, el\) \{\s*return _spaNav\(e, function \(\) \{\s*_openResult\(/.test(src));
 ok('a suggestion takes it too (a place keeps its own way to the map)', /if \(s\.pos\) openArticle\(s\.zim, s\.path, s\.title, \{pos: s\.pos\}\); else _openResult\(s\.zim, s\.path, s\.title\);/.test(src));
-ok('Settings > Reading has the switch', /id="ms-open-in-apps"/.test(src) && /tH\('open_in_apps'\)/.test(src) && /tH\('open_in_apps_hint'\)/.test(src));
+ok('Settings > Apps has the switch, under the apps', /id: 'ms-open-in-apps', title: tH\('open_in_apps'\), desc: tH\('open_in_apps_hint'\)/.test(src));
 ok('kept with the account\'s preferences (and in a backup)', /SK\.EXT_LINKS, SK\.OPEN_IN_APPS,\n\];/.test(src));
 for (const lang of fs.readdirSync(path.join(root, 'i18n'))) {
   const d = JSON.parse(fs.readFileSync(path.join(root, 'i18n', lang), 'utf8'));

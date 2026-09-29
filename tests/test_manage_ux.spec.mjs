@@ -306,14 +306,13 @@ test('a library of undated ZIMs is told that the updater cannot reach them', asy
     coverage: { tracked: ['wikipedia_en_all'], skipped: [{ name: 'field_notes', reason: 'undated' }] },
   });
   await enterSection(page, 'library');
-  // Catalog ZIMs it can check, then the local/custom count — two plain numbers,
-  // no wall of filenames.
-  await expect(page.locator('#ms-auto-update .mc-label', { hasText: 'From the catalog' }))
+  // Under the ZIM count, quieter: how many came from the catalog and how many
+  // are local. Two plain numbers, no wall of filenames.
+  await expect(page.locator('#ms-lib-split .mc-sub .mc-label', { hasText: 'From the catalog' }))
     .toHaveCount(1);
-  await expect(page.locator('#ms-auto-update .mc-value').filter({ hasText: '1 of 2' }))
+  await expect(page.locator('#ms-lib-split .mc-sub .mc-label', { hasText: /^Local$/ }))
     .toHaveCount(1);
-  await expect(page.locator('#ms-auto-update .mc-label', { hasText: 'Local or custom' }))
-    .toHaveCount(1);
+  await expect(page.locator('#ms-lib-split .mc-sub .mc-value')).toHaveText(['1', '1']);
   await expect(page.locator('.au-skipped')).toHaveCount(0);
 });
 
@@ -326,7 +325,7 @@ for (const theme of ['dark', 'light']) {
         skipped: [{ name: 'field_notes', reason: 'undated' }] },
     });
     await enterSection(page, 'library', theme);
-    await expect(page.locator('#ms-auto-update .mc-label', { hasText: 'From the catalog' }))
+    await expect(page.locator('#ms-lib-split .mc-label', { hasText: 'From the catalog' }))
       .toHaveCount(1);
     await page.locator('#ms-auto-update').screenshot({
       path: `ui-review/manage-autoupdate-${theme}.png`,

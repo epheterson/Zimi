@@ -214,7 +214,7 @@ def test_bookmarks_v2_come_in_as_saved_lists(served):
             "Mercury",
             "# Medical",
             "Sun, renamed",
-            "# Not in a list",
+            "# Saved",
             "A talk",
         ], rows
         place = pg.evaluate(
@@ -427,7 +427,7 @@ def test_bookshelf_continue_reading_and_my_shelf_follow_the_account(served):
         assert _rows(tablet) == [
             "# Continue",
             "Liber",
-            "# Not in a list",
+            "# Saved",
             "Liber",
         ], _rows(tablet)
         tablet.evaluate("() => _closeLibraryPanel()")

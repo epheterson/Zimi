@@ -97,7 +97,8 @@ def test_bookshelf_switched_in_server_settings_holds_after_leaving(served, on):
         pg.goto(served + "/?manage=preferences")
         pick = pg.locator("#ms-apps .app-pick", has_text="Bookshelf")
         pick.wait_for(timeout=15000)
-        assert pick.get_attribute("aria-pressed") == ("false" if on else "true")
+        # Each app is a row with the Settings switch; a tap anywhere on it flips it.
+        assert pick.locator("input[role=switch]").is_checked() is (not on)
         pick.click()
         pg.wait_for_function(
             "(on) => (document.body.dataset.zimiApps || '').split(',').includes('books') === on",
