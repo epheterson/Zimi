@@ -5678,6 +5678,7 @@ function _renderDiscover(el, items) {
 
     // Display title: cleaned for each content type
     var displayTitle = it.title || it.path;
+    if (/gutenberg/i.test(it.zim || '')) displayTitle = _gutenbergTitle(displayTitle);
     if (it.type === 'apod' && displayTitle) {
       displayTitle = displayTitle.replace(/^APOD:\s*\d{4}\s+\w+\s+\d+\s*[\u2013\-]\s*/i, '');
     }
@@ -5739,7 +5740,7 @@ function _renderDiscover(el, items) {
       } else if (it.type === 'country') {
         thumbHtml = '<div class="dc-icon-thumb" style="background:linear-gradient(135deg,#0a1628,#162040)"><span style="font-size:40px;line-height:1">&#x1F30D;</span></div>';
       } else {
-        thumbHtml = '<div class="dc-icon-thumb">' + iconHtml + '</div>';
+        thumbHtml = '<div class="dc-icon-thumb">' + (iconHtml || _sourceIconHtml(it.zim, 48)) + '</div>';
       }
       // Speaker/author line (TED talks, books)
       var speakerHtml = '';
@@ -6976,6 +6977,12 @@ function mergeSearchResults(phase1, phase2) {
   };
 }
 
+// A Gutenberg book's cover page can be named by its path ("Aeneid_cover.227"):
+// its title is the part before the cover mark and the book's number.
+function _gutenbergTitle(s) {
+  s = String(s || '');
+  return s.replace(/(?:_cover)?\.\d+(?:\.html)?$/, '') || s;
+}
 function _sourceIconHtml(zimName, size) {
   const info = _zimInfo(zimName);
   const title = (info && info.title) || zimName;

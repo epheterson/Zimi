@@ -1203,10 +1203,14 @@
      saves what is on screen). A map's places are the map's: saved and
      listed in its own picker, Places and maps (map-source-btn). */
   body.app-page #library-btn, body.map-page #bm-panel-btn, body.map-page #library-btn { display: none !important; }
-  .app-tile .detail { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  /* An app's name and what it holds read together, beside its icon: a ZIM
+     card's detail sits at the card's foot (margin-top: auto), which left a
+     one-line app's name alone at the top and its detail a gap below. */
+  .app-tile .card-info { justify-content: center; }
+  .stat-card.app-tile .detail { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 4px; }
   .app-tile .card-icon { color: var(--amber); display: flex; align-items: center; justify-content: center; }
   /* Quiet, like any other detail line: an empty app is not an error (Eric). */
-  .app-tile.app-empty .detail { color: var(--text2); margin-top: 4px; }
+  .app-tile.app-empty .detail { color: var(--text2); }
   /* Reddot's dot keeps its colour in the breadcrumb, where line marks take the text's. */
   #bc-icon circle { fill: var(--amber); }
   .suggest-item.sg-place .sg-title::before { content: '\25CF'; color: var(--amber); font-size: 8px; margin-right: 8px; vertical-align: middle; }
@@ -3290,6 +3294,9 @@
   .dc-word-card .dc-def { font-size: 13px; color: var(--text2); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .dc-icon-thumb { width: 100%; height: 120px; display: flex; align-items: center; justify-content: center; background: var(--surface2); }
   .dc-icon-thumb img { width: 48px; height: 48px; opacity: 0.6; }
+  /* A source with no icon of its own: its letter, as everywhere else it is
+     named, not an empty box. */
+  .dc-icon-thumb .rs-letter { width: 56px; height: 56px; border-radius: 12px; background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 600; color: var(--text2); }
   .dc-dice { font-size: 12px; flex-shrink: 0; opacity: 0.7; }
   /* Video ZIMs (TED/Khan): play badge centered over the 120px thumbnail so a
      "random" pick reads as "play a video", not "read an article". */
