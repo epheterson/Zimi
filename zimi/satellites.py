@@ -8,15 +8,26 @@ newest wins:
                was cut (``python3 scripts/build_satellite_snapshot.py``)
     cache      the last live fetch, in the data directory (and in memory, so
                a data directory that cannot be written still keeps it)
-    live       CelesTrak's GP data, fetched in the background when the cache is
-               older than CACHE_TTL_S and the machine may reach out
+    live       CelesTrak's GP data, fetched when the cache is older than
+               CACHE_TTL_S and the setting below allows it
 
-A request is answered at once from what is here; a stale answer starts one
-background refresh (single flight, with a cooldown after a failure), the same
-stale-while-revalidate rule the Kiwix catalog follows, and says so
-(``refreshing``) so an open view knows to ask again. ZIMI_OFFLINE turns the
-refresh off. The upstream request carries Zimi's user agent and nothing about
-whoever opened the view.
+A request is answered at once from what is here. Whether Zimi then reaches
+CelesTrak is a server-wide setting, "Satellite data from the internet"
+(Eric, 2026-09-28: "i'm not positive how i feel about unexpected network
+calls from zimi"):
+
+    ask    the default. Nothing is fetched on its own: a stale answer says
+           so (``stale``), and an admin's "Get fresh data" (refresh_now)
+           fetches once.
+    auto   a stale answer starts one background refresh (single flight, with
+           a cooldown after a failure), the stale-while-revalidate rule the
+           Kiwix catalog follows, and says so (``refreshing``) so an open
+           view knows to ask again.
+    never  nothing is fetched, ever; the view says how old its data is.
+
+ZIMI_SATELLITE_UPDATES wins over the saved choice, and ZIMI_OFFLINE forces
+never over both. The upstream request carries Zimi's user agent and nothing
+about whoever opened the view.
 
 Records are CelesTrak's OMM JSON (the CCSDS Orbit Mean-Elements Message
 fields), checked field by field before they are kept: a bad or partial answer
@@ -53,6 +64,18 @@ CACHE_FILENAME = "satellites_cache.json"
 CACHE_TTL_S = 6 * 3600
 FAIL_COOLDOWN_S = 3600
 FETCH_TIMEOUT_S = 20
+
+# The setting. Saved beside the other server-wide choices (the app-update
+# prefs file, like the Apps switch); the env var, when it names a mode, wins.
+UPDATES_ENV = "ZIMI_SATELLITE_UPDATES"
+UPDATE_ASK = "ask"
+UPDATE_AUTO = "auto"
+UPDATE_NEVER = "never"
+UPDATE_MODES = (UPDATE_ASK, UPDATE_AUTO, UPDATE_NEVER)
+UPDATE_DEFAULT = UPDATE_ASK
+PREFS_KEY = "satellite_updates"
+LOCKED_ENV = "env"
+LOCKED_OFFLINE = "offline"
 MAX_RESPONSE_BYTES = 512 * 1024
 MAX_GPS = 64
 
@@ -104,6 +127,58 @@ def _offline():
     from zimi import p2p
 
     return bool(p2p.is_offline())
+
+
+def normalize_mode(value):
+    """'Auto ' -> 'auto'; anything that is not a mode -> None."""
+    name = str(value or "").strip().lower()
+    return name if name in UPDATE_MODES else None
+
+
+def update_mode():
+    """The mode in force and what fixed it: ``(mode, locked)``. ``locked`` is
+    "offline" (ZIMI_OFFLINE: never), "env" (ZIMI_SATELLITE_UPDATES names a
+    mode) or None, when the saved choice, or the default, decides."""
+    if _offline():
+        return UPDATE_NEVER, LOCKED_OFFLINE
+    from_env = normalize_mode(os.environ.get(UPDATES_ENV))
+    if from_env:
+        return from_env, LOCKED_ENV
+    from zimi import manage
+
+    saved = normalize_mode(manage._read_app_update_prefs().get(PREFS_KEY))
+    return saved or UPDATE_DEFAULT, None
+
+
+def setting():
+    """The setting as Server settings shows it."""
+    mode, locked = update_mode()
+    return {
+        "mode": mode,
+        "locked": locked,
+        "choices": list(UPDATE_MODES),
+        "env": UPDATES_ENV,
+    }
+
+
+def set_update_mode(value):
+    """Save the choice. ``(mode, error)``: error is "invalid", "env" or
+    "offline" (the choice is not the setting's to make), or "unwritable"."""
+    mode = normalize_mode(value)
+    if not mode:
+        return None, "invalid"
+    _, locked = update_mode()
+    if locked:
+        return None, locked
+    from zimi import manage
+
+    manage._write_app_update_prefs(**{PREFS_KEY: mode})
+    # A failed write logs itself; read back so a choice that did not land is
+    # never reported as made.
+    if update_mode()[0] != mode:
+        return None, "unwritable"
+    log.info("Satellite data from the internet: %s", mode)
+    return mode, None
 
 
 def normalize_record(rec):
@@ -264,8 +339,11 @@ def _newest(*payloads):
 
 def get(allow_refresh=True):
     """The newest element set here, at once: ``{source, fetched, gps, iss,
-    refreshing}``. A stale one starts a background refresh when allowed, and
-    ``refreshing`` says one is under way, so fresher elements are coming."""
+    stale, refreshing, mode, locked}``. Under Automatically a stale one
+    starts a background refresh when allowed, and ``refreshing`` says one is
+    under way, so fresher elements are coming. Under Ask first and Never
+    nothing is fetched here; ``stale`` is what lets the view offer to."""
+    mode, locked = update_mode()
     live, snap = _newest(read_cache(), _memory), read_snapshot()
     best, source = None, "none"
     if live and (not snap or live["fetched_at"] >= snap["fetched_at"]):
@@ -273,22 +351,44 @@ def get(allow_refresh=True):
     elif snap:
         best, source = snap, "snapshot"
     age = time.time() - best["fetched_at"] if best else float("inf")
-    refreshing = bool(allow_refresh and age > CACHE_TTL_S and _kick_refresh())
-    if not best:
-        return {
-            "source": "none",
-            "fetched": None,
-            "gps": [],
-            "iss": None,
-            "refreshing": refreshing,
-        }
+    stale = age > CACHE_TTL_S
+    refreshing = bool(
+        allow_refresh and mode == UPDATE_AUTO and stale and _kick_refresh()
+    )
     return {
         "source": source,
-        "fetched": best.get("fetched"),
-        "gps": best["gps"],
-        "iss": best["iss"],
+        "fetched": best.get("fetched") if best else None,
+        "gps": best["gps"] if best else [],
+        "iss": best["iss"] if best else None,
+        "stale": stale,
         "refreshing": refreshing,
+        "mode": mode,
+        "locked": locked,
     }
+
+
+def refresh_now():
+    """An admin's "Get fresh data": one fetch, waited for. ``(payload,
+    error)``: the view's answer, and "never" when this server may not fetch
+    (Never, or ZIMI_OFFLINE) or "failed" when CelesTrak could not be had.
+    Elements that are already fresh are answered as they are: CelesTrak asks
+    not to be asked again for data that has not changed. A fetch already
+    under way is answered with ``refreshing``, so the view asks again."""
+    if update_mode()[0] == UPDATE_NEVER:
+        return None, "never"
+    current = get(allow_refresh=False)
+    if not current["stale"]:
+        return current, None
+    fetched = refresh()
+    after = get(allow_refresh=False)
+    if fetched is not None or not after["stale"]:
+        return after, None
+    with _lock:
+        running = _refreshing
+    if running:
+        after["refreshing"] = True
+        return after, None
+    return after, "failed"
 
 
 def _reset_for_tests():

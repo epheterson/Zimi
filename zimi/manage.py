@@ -5314,6 +5314,12 @@ def handle_manage_get(handler, parsed, params):
             {"enabled": bool(shown), "shown": [n for n in _srv.APP_NAMES if n in shown], "env_locked": _srv._apps_env() is not None},
         )
 
+    elif parsed.path == "/manage/satellites":
+        # "Satellite data from the internet" for Server settings.
+        from zimi import satellites as _sats
+
+        return handler._json(200, _sats.setting())
+
     elif parsed.path == "/manage/books/whole":
         # The ZIMs put on the Bookshelf as one book, or taken off it, by hand.
         from zimi import books as _books
@@ -6267,6 +6273,39 @@ def handle_manage_post(handler, parsed, data):
         shown = _srv.apps_shown()
         log.info("Apps offered: %s", ", ".join(n for n in _srv.APP_NAMES if n in shown) or "none")
         return handler._json(200, {"enabled": enabled, "shown": [n for n in _srv.APP_NAMES if n in shown], "env_locked": False})
+
+    elif parsed.path == "/manage/satellites":
+        # "Satellite data from the internet": {"mode": "ask"|"auto"|"never"}.
+        # Same env-lock contract as the other settings: ZIMI_SATELLITE_UPDATES
+        # (or ZIMI_OFFLINE, which forces never) wins and the write is refused.
+        from zimi import satellites as _sats
+
+        _mode, err = _sats.set_update_mode(data.get("mode"))
+        if err == "invalid":
+            return handler._json(400, {"error": "mode is ask, auto or never"})
+        if err == _sats.LOCKED_OFFLINE:
+            return handler._json(403, {"error": "Zimi is offline (ZIMI_OFFLINE)"})
+        if err == _sats.LOCKED_ENV:
+            return handler._json(
+                403,
+                {"error": "Satellite data is controlled by the %s env var" % _sats.UPDATES_ENV},
+            )
+        if err:
+            return handler._json(500, {"error": "Could not save the setting"})
+        return handler._json(200, _sats.setting())
+
+    elif parsed.path == "/manage/satellites/refresh":
+        # The Earth view's "Get fresh data": one CelesTrak fetch, waited for,
+        # answered with the view's payload so it redraws from the answer.
+        from zimi import satellites as _sats
+
+        payload, err = _sats.refresh_now()
+        if err == "never":
+            return handler._json(409, {"error": "Satellite data is set to never be fetched"})
+        if err:
+            return handler._json(502, {"error": "Could not reach CelesTrak"})
+        payload["can_change"] = True
+        return handler._json(200, payload)
 
     elif parsed.path == "/manage/books/whole":
         # A ZIM that is one book (a textbook captured whole) onto the

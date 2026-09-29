@@ -2125,11 +2125,18 @@ class ZimHandler(BaseHTTPRequestHandler):
 
             elif parsed.path == "/almanac-satellites":
                 # Orbital elements for the Almanac's Earth view: answered at
-                # once from the snapshot or cache; a stale set refreshes in
-                # the background (never under ZIMI_OFFLINE).
+                # once from the snapshot or cache. A stale set is refreshed in
+                # the background only when "Satellite data from the internet"
+                # is Automatically; can_change says whether this viewer may
+                # change that setting or ask for fresh data (the admin rule
+                # every /manage write follows).
                 from zimi import satellites as _sats
 
-                return self._json(200, _sats.get())
+                payload = _sats.get()
+                payload["can_change"] = bool(
+                    _srv.ZIMI_MANAGE and _users._request_is_admin(self)
+                )
+                return self._json(200, payload)
 
             elif parsed.path == "/list":
                 result = _srv.list_zims()
