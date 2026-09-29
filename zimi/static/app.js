@@ -12093,10 +12093,11 @@ var _APP_UPDATE_CHANNEL_LABELS = {
 var _APP_UPDATE_SELECT_CSS = 'font-size:12px;padding:3px 8px;border-radius:4px;' +
   'border:1px solid var(--border);background:var(--surface2);color:var(--text)';
 
-// One row shape for both update selects: label, <select>, and either the
-// setting's hint or the env-controlled note when the env var owns it.
+// One row shape for the update selects: label, <select>, and either the
+// setting's hint or, locked, why (the env-controlled note unless the caller
+// names another reason in o.lockNote).
 function _appUpdateSelectRow(o) {
-  var lockNote = t('env_controlled', { v: o.envVar });
+  var lockNote = o.lockNote || t('env_controlled', { v: o.envVar });
   return '<div class="mc-row" style="align-items:center">' +
       '<span class="mc-label">' + esc(t(o.labelKey)) + '</span>' +
       '<span class="mc-value"><select id="' + escAttr(o.id) + '" style="' + _APP_UPDATE_SELECT_CSS +
@@ -12323,6 +12324,58 @@ function _appUpdateSetDelay(days) {
   _appUpdateSaveSetting('/manage/app-update-delay', { delay_days: parseInt(days, 10) }, 'ZIMI_UPDATE_DELAY_DAYS');
 }
 
+// "Satellite data from the internet" (satellites.py): whether this server
+// reaches CelesTrak for the Almanac's 3D Earth. The same setting as the Earth
+// view's gear, whose labels it shares (alm_earth_sat_<mode>). Locked by
+// ZIMI_SATELLITE_UPDATES it shows the standard env note; ZIMI_OFFLINE locks
+// it to Never and says so. Hidden, separator and all, until the server
+// answers.
+var _SAT_UPDATES_WRAP_ID = 'ms-sat-wrap';
+var _SAT_UPDATES_ID = 'ms-sat-updates';
+
+function _satUpdatesHtml(d) {
+  var opts = (d.choices || []).map(function(m) {
+    return _appUpdateOption(m, t('alm_earth_sat_' + m), m === d.mode);
+  }).join('');
+  return _appUpdateSelectRow({
+    id: 'ms-sat-mode',
+    labelKey: 'alm_earth_sat_setting',
+    hintKey: 'alm_earth_sat_setting_hint',
+    envVar: d.env,
+    locked: !!d.locked,
+    lockNote: d.locked === 'offline' ? t('alm_earth_sat_offline') : '',
+    onchange: '_setSatUpdates(this.value)',
+    options: opts
+  });
+}
+
+function _paintSatUpdates(d) {
+  var wrap = document.getElementById(_SAT_UPDATES_WRAP_ID);
+  if (wrap) wrap.hidden = !d;
+  if (d) _setHtmlIfChanged(_SAT_UPDATES_ID, _satUpdatesHtml(d));
+}
+
+// The element is looked up after the fetch (see _renderEnvSection for why).
+async function _renderSatUpdatesSection() {
+  var d = null;
+  try { d = await _msFetch('/manage/satellites'); } catch (e) {}
+  _paintSatUpdates(d);
+}
+
+// The answer is the setting as it now stands. A refusal (the env var or
+// ZIMI_OFFLINE took it over since the pane was drawn) is said, and the pane
+// repaints from server truth.
+function _setSatUpdates(mode) {
+  manageFetch('/manage/satellites', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: mode })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d && d.error) { _showToast(t('save_failed')); _renderSatUpdatesSection(); return; }
+    _paintSatUpdates(d);
+  }).catch(function() { _renderSatUpdatesSection(); });
+}
+
 // The server-wide apps switch. The element is looked up after the fetch
 // (see _renderEnvSection for why).
 async function _renderAppsSection() {
@@ -12420,6 +12473,13 @@ function _msServerHtml() {
   var updatesSec = '<div class="ms-section-label">' + tH('app_update_section') + '</div>' +
     '<div id="' + _APP_UPDATE_ID + '" class="ms-app-update">' + tH('loading') + '</div>';
 
+  // Beside App updates: the other thing this server may fetch on its own.
+  // Its separator lives inside it, so a section that never answers leaves
+  // no empty band behind.
+  var satSec = '<div id="' + _SAT_UPDATES_WRAP_ID + '" hidden>' + sep +
+    '<div class="ms-section-label">' + tH('almanac') + '</div>' +
+    '<div id="' + _SAT_UPDATES_ID + '"></div></div>';
+
   var sharingSec = '<div class="ms-section-label">' + tH('sharing_section') + '</div>' +
     '<div id="ms-mirror-status" class="share-rows-slot">' + (shareCached || _shareSkeletonHtml()) + '</div>';
 
@@ -12474,8 +12534,9 @@ function _msServerHtml() {
   // Sharing, Downloads, Storage, My Data / Server Backups, then App Updates
   // just before the API Token, and Hot ZIMs + cache last (Eric moved Updates
   // down from the top on the second pass).
-  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec, envSec].join(sep);
+  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec + satSec, tokenSec, hotSec, envSec].join(sep);
   _renderEnvSection();
+  _renderSatUpdatesSection();
   // Async fill security
   Promise.all([
     fetch('/manage/has-password').then(function(r) { return r.json(); }).catch(function() { return {}; }),

@@ -66,6 +66,10 @@ VARS: dict[str, tuple[str, str]] = {
         "App updates",
     ),
     "ZIMI_INSTALL_TYPE": ("How Zimi was installed, for the updater", ""),
+    "ZIMI_SATELLITE_UPDATES": (
+        "Satellite data for the Almanac's 3D Earth, from CelesTrak: ask (only when an admin asks), auto or never",
+        "Satellite data from the internet",
+    ),
     # ── downloads ─────────────────────────────────────────────────────────
     "ZIMI_MAX_CONCURRENT_DOWNLOADS": (
         "How many downloads run at once",

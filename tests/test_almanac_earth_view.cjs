@@ -23,6 +23,12 @@
 //      on black) and the city lights none, the note says so, and the next
 //      open asks again; the day map (the view itself) gives the GPU back and
 //      says the view is unavailable, and the next open starts over.
+//   6. Satellite data from the internet: under Ask first, stale data is
+//      dated and offered fresh to a viewer who may fetch (one POST, and the
+//      view redraws from its answer; a failure says so); under Never, or to
+//      anyone else, it is dated and nothing more. The gear shows the choice
+//      to everyone, lets an admin change it (one POST, then the view asks
+//      again), and says why when it cannot be changed.
 //
 // Run: node tests/test_almanac_earth_view.cjs   (exit 0 = pass)
 
@@ -120,12 +126,15 @@ function fakeTexture(url) {
 
 // ── Timers, frames and the network ──
 const timers = [];
-const fetches = [];      // queued answers: an object (the JSON), or 'fail'
+const fetches = [];      // queued answers: an object (the JSON), { __status } (a refusal), or 'fail'
+const requests = [];     // every request made: { url, method, body }
 let fetchCount = 0;
-function fakeFetch() {
+function fakeFetch(url, opts) {
   fetchCount++;
+  requests.push({ url, method: (opts && opts.method) || 'GET', body: opts && opts.body });
   const next = fetches.shift();
   if (!next || next === 'fail') return Promise.reject(new TypeError('Failed to fetch'));
+  if (next.__status) return Promise.resolve({ ok: false, status: next.__status, json: () => Promise.resolve({}) });
   return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(next) });
 }
 
@@ -326,6 +335,106 @@ const run = (code) => vm.runInContext(code, S);
     await reopen();
     check(renderers.length === built + 1 && run('!!(_ae.gl && _ae.gl.earthUni.dayMap.value)'), 'the next open starts over and gets it');
     check(msg().hidden === true, 'and the message goes');
+  }
+
+  // ── 6. Satellite data from the internet ───────────────────────────────
+  {
+    const el = (id) => document.getElementById(id);
+    const stale = (over) => answer(Object.assign({ mode: 'ask', locked: null, stale: true, can_change: true }, over));
+    const lastReq = () => requests[requests.length - 1];
+    // A frame first (none run here on their own): it places the satellites,
+    // which is what says whether any is drawn.
+    const askText = () => {
+      run('_ae.gl && _aeUpdate(_aeDisplayMs()); _aeUpdateText(_aeDisplayMs())');
+      return el('ae-ask').hidden ? null : text('ae-ask-text');
+    };
+
+    // Ask first, stale, and an admin: the data's date stands before the offer.
+    fetches.push(stale({}));
+    await reopen();
+    check(lastReq().url === S.AE_SATS_URL && lastReq().method === 'GET', 'the view asks for its data with a GET');
+    const offered = askText();
+    check(offered !== null && offered.includes('alm_earth_data_from'), 'under Ask first, stale data is dated and offered fresh (' + offered + ')');
+    check(!note().includes('alm_earth_data_from'), 'and the date is not said twice');
+    check(text('ae-fresh') === 'alm_earth_get_fresh', 'the button says Get fresh data');
+
+    // The button: one POST, and the view redraws from its answer.
+    const before = requests.length;
+    fetches.push(answer({ source: 'cache', fetched: '2026-09-28T18:00:00Z', mode: 'ask', stale: false, can_change: true }));
+    el('ae-fresh').onclick();
+    check(text('ae-fresh') === 'alm_earth_getting_fresh' && el('ae-fresh').disabled === true, 'pressed, it says it is getting fresh data, and waits');
+    await flush();
+    check(requests.length === before + 1 && lastReq().method === 'POST' && lastReq().url === S.AE_SATS_REFRESH_URL,
+      'Get fresh data is one POST to the admin route');
+    check(run('_ae.sats.source') === 'cache' && run('_ae.sats.fetched') === '2026-09-28T18:00:00Z', 'and the fresh elements are drawn');
+    check(askText() === null && note().includes('alm_earth_data_from'), 'fresh, the offer goes and the note dates the data again');
+
+    fetches.push(stale({}));
+    await reopen();
+    fetches.push('fail');
+    el('ae-fresh').onclick();
+    await flush();
+    check((askText() || '').includes('alm_earth_fresh_failed') && el('ae-fresh').disabled === false,
+      'a fetch that failed says so, and can be tried again');
+    fetches.push({ __status: 401 });
+    el('ae-fresh').onclick();
+    await flush();
+    check(askText() === null, 'refused (no longer an admin), the offer goes');
+
+    fetches.push(stale({ can_change: false }));
+    await reopen();
+    check(askText() === null && note().includes('alm_earth_data_from'), 'a viewer who may not fetch sees the date and no button');
+    fetches.push(stale({ mode: 'never' }));
+    await reopen();
+    check(askText() === null && note().includes('alm_earth_data_from'), 'under Never, stale data is dated and nothing more');
+    fetches.push(stale({ mode: 'auto', refreshing: true }));
+    await reopen();
+    check(askText() === null, 'under Automatically nothing is offered: the server is fetching already');
+
+    // The gear.
+    const gear = el('ae-gear'), panel = el('ae-set');
+    fetches.push(stale({}));
+    await reopen();
+    check(panel.hidden === true, 'the setting is put away at open');
+    gear.onclick();
+    const html = panel.innerHTML;
+    check(panel.hidden === false && gear.getAttribute('aria-expanded') === 'true', 'the gear opens "Satellite data from the internet"');
+    check(/value="ask" checked/.test(html) && !/disabled/.test(html), 'an admin sees Ask first chosen, and may change it');
+    check(['alm_earth_sat_ask', 'alm_earth_sat_auto', 'alm_earth_sat_never'].every((k) => html.includes(k)), 'with all three choices');
+    const n0 = requests.length;
+    fetches.push({ mode: 'auto', locked: null, choices: ['ask', 'auto', 'never'] });
+    fetches.push(stale({ mode: 'auto', refreshing: true }));
+    panel.onchange({ target: { name: 'ae-sat-mode', value: 'auto' } });
+    await flush();
+    const saved = requests[n0];
+    check(saved && saved.method === 'POST' && saved.url === S.AE_SATS_SETTING_URL && JSON.parse(saved.body).mode === 'auto',
+      'choosing Automatically saves it with one POST');
+    check(requests.length === n0 + 2 && requests[n0 + 1].method === 'GET', 'then the view asks again');
+    check(/value="auto" checked/.test(panel.innerHTML), 'and shows the new choice');
+
+    const panelFor = async (over) => { fetches.push(stale(over)); await reopen(); gear.onclick(); return panel.innerHTML; };
+    let h = await panelFor({ can_change: false });
+    check(/value="ask" checked/.test(h) && (h.match(/ disabled/g) || []).length === 3 && h.includes('alm_earth_sat_admin_only'),
+      'anyone else sees the choice read-only, and why');
+    const n1 = requests.length;
+    panel.onchange({ target: { name: 'ae-sat-mode', value: 'never' } });
+    await flush();
+    check(requests.length === n1, 'and a change from them sends nothing');
+    h = await panelFor({ mode: 'never', locked: 'env' });
+    check(/value="never" checked/.test(h) && /disabled/.test(h) && h.includes('env_controlled') && h.includes('ZIMI_SATELLITE_UPDATES'),
+      'set by ZIMI_SATELLITE_UPDATES, it cannot be changed here and says so');
+    h = await panelFor({ mode: 'never', locked: 'offline' });
+    check(/value="never" checked/.test(h) && /disabled/.test(h) && h.includes('alm_earth_sat_offline'),
+      'under ZIMI_OFFLINE it is Never, and says why');
+
+    const escape = { key: 'Escape', preventDefault() {}, stopPropagation() {}, target: null };
+    run('_ae.el').listeners.keydown[0](escape);
+    check(panel.hidden === true && run('_aeIsOpen') === true, 'Escape puts the panel away and leaves the view open');
+    gear.onclick();
+    el('ae-canvas').listeners.pointerdown[0]({ pointerId: 1, clientX: 0, clientY: 0 });
+    check(panel.hidden === true, 'so does a touch on the globe');
+    run('_ae.el').listeners.keydown[0](escape);
+    check(run('_aeIsOpen') === false, 'and the next Escape leaves the view');
   }
 
   if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }

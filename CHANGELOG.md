@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Diving in, in Zimipedia: a link shows a card first (the article's first sentence and picture) and a second tap follows it; a trail over the title shows where you came through, a step back along it is a tap; Read next closes an article with the articles its lead links to.
 - Zimipedia's reading lists: the reader's bookmark saves an article (at the section you are in) and puts it in Liked or any list, or a new one.
 - The Almanac zooms from the solar system to a 3D Earth: lit by the real Sun, with the Moon, eclipses as they fall, the ISS and the GPS satellites (tap one: its clock gains 38 microseconds a day).
+- The 3D Earth's satellite data comes from the internet only as you choose: a gear in the view (and Server settings) offers Ask first (the default: an admin's Get fresh data fetches once), Automatically or Never, and `ZIMI_SATELLITE_UPDATES` sets it.
 - ZimiTube plays the videos and audiobooks in Kiwix's document libraries (Maître Lucas, YouScribe's audiobooks, Zaya and more): an audiobook is one card, its tracks listed and played in turn.
 - A folder of videos or audio made with Create a ZIM plays in ZimiTube.
 - Links that leave your library get a small arrow in every reader, and hovering or tapping one says where it goes ("Opens example.com on the web", or that it needs the internet when Zimi is offline); Settings can hide them as plain text instead. ([#99](https://github.com/epheterson/Zimi/issues/99))

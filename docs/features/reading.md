@@ -87,13 +87,22 @@ Location is asked for once and kept **session-scoped** on purpose — the almana
 
 **Deep-links.** Almanac objects (planets, stars, and other entities) can deep-link into the installed library via a closed set of Q-IDs resolved against your ZIMs, so clicking an object opens its article when a matching source is installed.
 
+**The 3D Earth.** Tap the glow around the Earth in the orrery to drop to a 3D Earth lit by the real Sun, with the Moon, eclipses, the ISS and the GPS satellites. The Sun, the Moon and the eclipses are computed like the rest of the almanac. The satellites are drawn from orbital elements: a snapshot ships with every release, and the server can fetch fresher ones from CelesTrak (`GET /almanac-satellites` answers at once with the newest it has). Whether it does is the one almanac setting that touches the network, **Satellite data from the internet**:
+
+- **Ask first** (the default). Zimi never contacts CelesTrak on its own. When the data is more than six hours old, the view says its date ("Orbital data from 27 Sep") and offers an admin **Get fresh data**, which fetches once (`POST /manage/satellites/refresh`) and redraws the view. Anyone else sees the date.
+- **Automatically.** A stale answer has the server fetch fresh data in the background, at most once every six hours, and the open view picks it up.
+- **Never.** Nothing is fetched; the view says how old its data is.
+
+The choice sits behind a gear in the Earth view's corner (admins change it there; everyone else sees it read-only) and under Almanac in Server settings. `ZIMI_SATELLITE_UPDATES=ask|auto|never` overrides the saved choice, and `ZIMI_OFFLINE=1` forces Never; either way the control says why it will not move.
+
 ### Configure
 
-There's nothing to configure server-side — the almanac is a client feature. Location is entered in the UI (browser geolocation, or a manual lat/lon prompt when geolocation is unavailable, e.g. the desktop app). It resets each session by design.
+Location is entered in the UI (browser geolocation, or a manual lat/lon prompt when geolocation is unavailable, e.g. the desktop app). It resets each session by design. The one server-side setting is Satellite data from the internet (above; `GET`/`POST /manage/satellites`, or `ZIMI_SATELLITE_UPDATES`).
 
 ### Troubleshoot
 
 - **It asks for location every time** — intended. The almanac is session-scoped and doesn't persist location.
 - **Geolocation does nothing (desktop app)** — GPS can fail silently in the pywebview shell; enter latitude/longitude manually when prompted.
+- **The Earth's satellite data is old and there is no Get fresh data button.** The button is for admins, under Ask first. Check the gear: Never, `ZIMI_SATELLITE_UPDATES` or `ZIMI_OFFLINE` each keep Zimi from fetching, and the panel names which.
 - **Clicking an object doesn't open an article** — deep-links resolve against a closed Q-ID set and only land when a ZIM containing that entity is installed. Install the relevant source (e.g. a Wikipedia ZIM) and retry.
 - **The scene looks "wrong" for today** — check the time machine; it may be parked on another date. Reset it to now.
