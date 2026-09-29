@@ -7296,7 +7296,7 @@ async function loadSnippets() {
   let idx = 0;
 
   function next() {
-    while (active < concurrency && idx < queue.length) {
+    while (!signal.aborted && active < concurrency && idx < queue.length) {
       const card = queue[idx++];
       const zim = card.dataset.zim;
       const path = card.dataset.path;
@@ -7310,10 +7310,38 @@ async function loadSnippets() {
   next();
 }
 
+// Snippets already read (or on their way), by ZIM and path. The quick first
+// pass and the full results draw many of the same cards, and every card drawn
+// again asked the server again: a third of a search's requests were repeats.
+// A redraw stops its predecessor's queue, not the few asks already out: they
+// land here, where the new cards find them.
+var _snippetKept = new Map();
+var _snippetPending = new Map();
+var SNIPPET_KEPT_MAX = 500;
+function _snippetData(zim, path) {
+  var key = zim + '\n' + path;
+  if (_snippetKept.has(key)) return Promise.resolve(_snippetKept.get(key));
+  if (_snippetPending.has(key)) return _snippetPending.get(key);
+  var asked = fetch('/snippet?zim=' + encodeURIComponent(zim) + '&path=' + encodeURIComponent(path))
+    .then(function(res) {
+      return res.json().then(function(data) {
+        if (res.ok) {
+          if (_snippetKept.size >= SNIPPET_KEPT_MAX) _snippetKept.delete(_snippetKept.keys().next().value);
+          _snippetKept.set(key, data);
+        }
+        return data;
+      });
+    })
+    .finally(function() { _snippetPending.delete(key); });
+  _snippetPending.set(key, asked);
+  return asked;
+}
+
 async function fetchSnippet(snippetEl, zim, path, signal, card) {
   try {
-    const res = await fetch('/snippet?zim=' + encodeURIComponent(zim) + '&path=' + encodeURIComponent(path), { signal });
-    const data = await res.json();
+    const data = await _snippetData(zim, path);
+    // Results drawn again (or cleared) since: these cards are gone.
+    if (signal.aborted) return;
     // Populate snippet text if needed
     if (snippetEl && snippetEl.hasAttribute('data-needs-snippet')) {
       if (data.snippet) {
