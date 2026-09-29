@@ -633,11 +633,16 @@ def home():
         books, lambda b: b["shelf"][:2] if b["shelf"][:1] == "P" else b["shelf"][:1]
     )
     eras = _counts(books, lambda b: b.get("era"))
+    per_zim = _counts(books, lambda b: b["zim"])
     ready = (
         all(_details_ready(z) for z in zims)
         if zims
         else False
     )
+    # Most read is Gutenberg's count of readers: its books alone when there
+    # are any. A shelf without them opens on its books in their own order.
+    ranked = [b for b in books[:SHELF_SIZE] if b["rank"] < SOURCE_RANK]
+    front = ranked or books[:SHELF_SIZE]
     # Newest to Project Gutenberg: its books only, the others have no such day.
     recent = (
         [
@@ -657,9 +662,13 @@ def home():
                 "language": (z.get("language") or "").split(",")[0],
                 "date": z.get("date") or "",
                 "reader": reader_of(z),
+                # Its books on the shelf, so the front can offer it as a way in.
+                "n": per_zim.get(z["name"], 0),
+                "lang": _shelf_lang(z),
             }
             for z in zims
         ],
+        "ranked": bool(ranked),
         "languages": sorted(
             ({"code": k, "n": v} for k, v in langs.items()), key=lambda r: -r["n"]
         ),
@@ -670,7 +679,7 @@ def home():
             ({"from": k, "n": v} for k, v in eras.items()), key=lambda r: r["from"]
         ),
         "details": ready,
-        "popular": [card(b) for b in books[:SHELF_SIZE]],
+        "popular": [card(b) for b in front],
         "recent": [card(b) for b in recent],
     }
 

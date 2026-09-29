@@ -812,6 +812,39 @@ def test_kiwix_document_libraries_are_on_the_shelf(shelf_lib):
     ]
 
 
+def test_the_front_names_gutenbergs_most_read_and_every_source(shelf_lib):
+    """The front's Most read is Gutenberg's count of readers, so it holds
+    Gutenberg's books alone, however few; every ZIM the books come from is
+    named with its books, the way in to the ones Most read never shows."""
+    from zimi import books
+
+    names = shelf_lib([_gutenberg(), _water(), _lessons()])
+    gut = names["gutenberg_la_all_2026-01"]
+    water = names["zimgit-water_en_2024-08"]
+    lessons = names["python-class-vc_zh_all_2026-02"]
+    home = books.home()
+    assert home["ranked"] is True
+    assert home["popular"] and all("source" not in b for b in home["popular"])
+    assert len(home["popular"]) == len(_titles(zim=gut))
+    got = {s["name"]: (s["n"], s["lang"]) for s in home["sources"]}
+    assert got == {gut: (len(_titles(zim=gut)), "la"), water: (7, "en"), lessons: (2, "zh")}
+
+
+def test_a_shelf_without_gutenberg_opens_on_its_books_unranked(shelf_lib):
+    """No Gutenberg, no count of readers: the front is the books in their
+    own order, and says it is not ranked, so nothing is called Most read."""
+    from zimi import books
+
+    shelf_lib([_water(), _lessons()])
+    home = books.home()
+    assert home["ranked"] is False
+    assert len(home["popular"]) == 9
+    assert {b["title"] for b in home["popular"]} >= {
+        "Distillation For Home Water Treatment",
+        "1. Python 程式設計的第一步",
+    }
+
+
 def test_opening_the_shelf_reads_no_zim_of_the_other_families(shelf_lib, monkeypatch):
     """The other families are read in the background; the shelf opens on
     what is read, and says the rest is coming."""

@@ -101,7 +101,9 @@ button { font: inherit; color: inherit; }
 .prose td, .prose th { border: 1px solid var(--border); padding: 4px 8px; }
 .section-h { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: .06em; margin: 22px 0 6px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0 0; }
-.actions a, .actions button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: 12.5px; }
+/* Border-box, so the 44px a finger gets (below) is the pill's height, not
+   44px of text inside its padding (Autoplay stood 60px tall beside Like). */
+.actions a, .actions button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: 12.5px; box-sizing: border-box; }
 .actions .on { background: var(--amber-glow); border-color: var(--amber); color: var(--amber); }
 /* Like, Save, Lists on the thing open (apps.js savedBar): the heart and the
    bookmark fill once it is kept. */

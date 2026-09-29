@@ -32,7 +32,9 @@ function memoryStorage() {
 
 // ── the page's pure parts ───────────────────────────────────────────────
 const ctx = { localStorage: memoryStorage(), Intl, Date, Math, JSON, String, Number, Object,
-  STR: { lang: 'en', bce: '{from} to {to} BCE', bce_ce: '{from} BCE to {to} CE', lcc: { P: 'Language and literature', PR: 'English literature', Q: 'Science' } } };
+  STR: { lang: 'en', bce: '{from} to {to} BCE', bce_ce: '{from} BCE to {to} CE', lcc: { P: 'Language and literature', PR: 'English literature', Q: 'Science' },
+    sort_popular: 'Most read', sort_title: 'Title', sort_author: 'Author', sort_recent: 'Newest', empty: 'No books installed yet.',
+    unreadable: 'Bookshelf found no books in {names}.' } };
 vm.createContext(ctx);
 // The shell's Saved, as the page reaches it through apps.js's saved(), on a
 // clock that moves a millisecond each time it is read (so "the latest first"
@@ -53,6 +55,12 @@ vm.runInContext([
   extract(page, /function yearsLabel\(born, died\) \{[\s\S]*?\n\}/, 'yearsLabel'),
   extract(page, /function shelfName\(code\) \{[\s\S]*?\n\}/, 'shelfName'),
   extract(page, /function langName\(code\) \{[\s\S]*?\n\}/, 'langName'),
+  extract(page, /function dayLabel\(d\) \{[\s\S]*?\n\}/, 'dayLabel'),
+  extract(page, /function sourceOf\(home, name\) \{[^\n]*\n/, 'sourceOf'),
+  extract(page, /function sourcesWithBooks\(home\) \{[\s\S]*?\n\}/, 'sourcesWithBooks'),
+  extract(page, /function rankedList\(home, v\) \{[\s\S]*?\n\}/, 'rankedList'),
+  extract(page, /function listSortsFor\(home, v\) \{[\s\S]*?\n\}/, 'listSortsFor'),
+  extract(page, /function emptyWords\(home\) \{[\s\S]*?\n\}/, 'emptyWords'),
   extract(page, /function bookRef\(b\) \{[\s\S]*?\n\}/, 'bookRef'),
   extract(page, /function card\(x\) \{[\s\S]*?\n\}/, 'card'),
   extract(page, /function places\(\) \{[\s\S]*?\n\}/, 'places'),
@@ -70,6 +78,36 @@ ok('a writer\'s years, and BCE ones', plain(ctx.yearsLabel(1856, 1908)) === '185
 ok('a shelf by its subclass name, else its class\'s', ctx.shelfName('PR') === 'English literature' && ctx.shelfName('PQ') === 'Language and literature' && ctx.shelfName('QA') === 'Science' && ctx.shelfName('XX') === 'XX');
 ok('a language by its name, in the shell\'s language', ctx.langName('la') === 'Latin' && ctx.langName('he') === 'Hebrew');
 ok('a cover set in type keeps its colour wherever it is shown', ctx.coverHue('Aeneidos') === ctx.coverHue('Aeneidos') && ctx.COVER_HUES.indexOf(ctx.coverHue('Tales')) >= 0);
+
+// A shelf of more than Gutenberg (the 1.12 UX pass): Most read and Newest are
+// Gutenberg's own measures, offered where its books are and never over
+// another source alone; every source is a way in, the biggest first; an
+// empty shelf that was read says which ZIMs held nothing it can open.
+const sortKeys = (home, v) => ctx.listSortsFor(home, v).map(s => s[0]).join();
+const mixed = { ranked: true, details: true, sources: [
+  { name: 'gutenberg', reader: 'gutenberg', title: 'Project Gutenberg', n: 60 },
+  { name: 'water', reader: 'nautilus', title: 'Water Treatment Library', n: 7 },
+  { name: 'broken', reader: 'nautilus', title: 'Broken Library', n: 0 },
+  { name: 'stats', reader: 'libretexts', title: 'Statistics LibreTexts', n: 109 }] };
+ok('a mixed shelf orders by Most read, and by Newest once read', sortKeys(mixed, {}) === 'popular,title,author,recent' && sortKeys(Object.assign({}, mixed, { details: false }), {}) === 'popular,title,author');
+ok('one source that is not Gutenberg has no Most read and no Newest', sortKeys(mixed, { zim: 'water' }) === 'title,author' && sortKeys(mixed, { zim: 'gutenberg' }) === 'popular,title,author,recent');
+ok('a shelf without Gutenberg has neither', sortKeys({ ranked: false, details: true, sources: [] }, {}) === 'title,author');
+ok('an author\'s list is not ordered by author', sortKeys(mixed, { author: 'Virgil' }) === 'popular,title,recent');
+ok('the sources with books, the biggest first', ctx.sourcesWithBooks(mixed).map(s => s.name).join() === 'stats,gutenberg,water' && ctx.sourcesWithBooks(null).length === 0);
+ok('a source by its name', ctx.sourceOf(mixed, 'water').title === 'Water Treatment Library' && ctx.sourceOf(mixed, 'nope') === null && ctx.sourceOf(null, 'water') === null);
+ok('nothing installed says so; ZIMs read with no book are named', ctx.emptyWords({ sources: [] }) === 'No books installed yet.' &&
+  ctx.emptyWords({ sources: [{ title: 'Broken Library' }, { title: 'Wikizdroje' }] }) === 'Bookshelf found no books in Broken Library, Wikizdroje.');
+ok('a day in words, a year or a listing\'s own words as they are', /2015/.test(ctx.dayLabel('2015-01-01')) && /January/.test(ctx.dayLabel('2015-01-01')) && ctx.dayLabel('1912') === '1912' && ctx.dayLabel('') === '');
+ok('the front: Most read only when ranked, All books otherwise; Sources past one; Subjects only when there are any',
+  /html \+= h\.ranked \? shelfHtml\(STR\.popular, /.test(page) && /: shelfHtml\(STR\.all_books, h\.popular \|\| \[\], "go\(\{v:'list',sort:'title'\}\)"\);/.test(page) &&
+  /if \(srcs\.length > 1\) html \+= /.test(page) && /if \(\(h\.shelves \|\| \[\]\)\.length\) html \+= /.test(page) && /if \(\(h\.shelves \|\| \[\]\)\.length\) tabs\.push\(\['subjects'/.test(page));
+ok('a list takes its first order when the one it had is not offered', /if \(!sorts\.some\(function\(s\) \{ return s\[0\] === v\.sort; \}\)\) v\.sort = sorts\[0\]\[0\];/.test(page) && /go\(\{ v: 'list', q: _q \}\);/.test(page));
+ok('a book\'s page names its source, its format, what the source says of it', /fact\(STR\.source, src \?/.test(page) && /fact\(STR\.format, b\.format && b\.format !== 'html'/.test(page) && /f\.description \? '<p class="desc">'/.test(page));
+{
+  const coarse = (page.match(/@media \(pointer: coarse\) \{[\s\S]*?\n  \}/) || [''])[0];
+  ok('a finger reaches every era, fact and author in 44px', /\.era \{ min-height: 44px; \}/.test(coarse) && /\.facts dd a \{ display: inline-flex; align-items: center; min-height: 44px; \}/.test(coarse) && /\.book \.by a \{[^}]*padding-block: 12px; margin-block: -12px;/.test(coarse));
+  ok('on a phone Read comes before the facts', /@media \(max-width: 600px\) \{[\s\S]*?\.book \.info > \.actions \{ order: 1;/.test(page) && /<div class="info">/.test(page));
+}
 
 // Where you are: the reader writes f, the shelf remembers what it opened.
 const S = shell.Saved;
@@ -110,7 +148,7 @@ ok('eras and subjects arrive without a reload once the records are read', /if \(
 // A shelf of Wikisource or a document library alone is empty until its books
 // are read: it says they are coming, and fills when the first arrive.
 ok('an empty shelf still being read says the books are coming', /if \(!_home\.details && \(_home\.sources \|\| \[\]\)\.length\) \{ \$\('view'\)\.innerHTML = '<div class="empty">' \+ esc\(STR\.reading\)/.test(page) &&
-  /\(d\.total && !was\.total\)\) && cur\(\)\.v === 'home'\) show\(\);/.test(page) && /'books_load_part', 'books_reading'\]/.test(src));
+  /\(d\.total && !was\.total\)\) && cur\(\)\.v === 'home'\) show\(\);/.test(page) && /'books_load_part', 'books_reading',/.test(src));
 ok('a book of another family is opened by its "<zim>/<id>"', /onclick="readBook\(' \+ J\(b\.id\) \+ '\)"/.test(page) && /id: \/\^\\d\+\$\/\.test\(id\) \? Number\(id\) : id/.test(page));
 
 // ── the reader: a book opens in Reader View, keeps its place, steps by chapter
@@ -192,6 +230,11 @@ for (const lang of fs.readdirSync(path.join(root, 'i18n'))) {
   if (Object.keys(d).filter(k => /^books|_books/.test(k)).some(k => /\u2014/.test(d[k]))) ok('no em dash in ' + lang, false);
 }
 ok('the strings are in all ten languages', fs.readdirSync(path.join(root, 'i18n')).length === 10);
+// A finger on the reader's sheet and slider, and on any app's pill.
+ok('the reading sheet\'s choices, its close and the book\'s slider reach 44px on a finger',
+  /@media \(pointer:coarse\)\{\.zb-seg button\{min-height:44px\}\.zb-step button\{height:44px\}\.zb-x\{width:44px;height:44px\}\}/.test(src) && /@media \(pointer:coarse\)\{\.zb-scrub\{height:44px;/.test(src));
+ok('a pill under a book or a video is border-box, so a finger\'s 44px is its height, not 60',
+  /\.actions a, \.actions button \{[^}]*box-sizing: border-box;/.test(fs.readFileSync(path.join(root, 'apps.css'), 'utf8')));
 
 console.log(failures ? '\n' + failures + ' FAILED' : '\nall books-page checks passed');
 const css = fs.readFileSync(path.join(root, 'apps.css'), 'utf8');
