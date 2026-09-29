@@ -17416,7 +17416,8 @@ function _booksStrings() {
     'books_continue', 'books_my_shelf', 'books_add_shelf', 'books_on_shelf', 'books_all_books', 'books_see_all', 'books_sort_popular', 'books_sort_title', 'books_sort_author', 'books_sort_recent',
     'books_sort_name', 'books_sort_books', 'books_read', 'books_resume', 'books_epub', 'books_more_by', 'books_added', 'books_language',
     'books_subject', 'books_era', 'books_author', 'books_more', 'books_none', 'books_empty', 'books_book', 'books_books', 'books_bce', 'books_bce_ce',
-    'books_pending', 'books_epub_only', 'books_load_failed', 'books_load_part', 'books_reading'], { lcc: lcc, retry: t('retry') });
+    'books_pending', 'books_epub_only', 'books_load_failed', 'books_load_part', 'books_reading', 'books_sources', 'books_source', 'books_format',
+    'books_chapters', 'books_translator', 'books_publisher', 'books_published', 'books_unreadable'], { lcc: lcc, retry: t('retry') });
 }
 function openBooks(replaceState) {
   _openHashApp('books', replaceState, function() { _booksOpen = true; return _BOOKS_PAGE + '#' + _booksStrings(); });
@@ -17491,6 +17492,8 @@ var _READING_CSS = [
   '.zb-step button{width:52px;height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;font-family:Georgia,serif}',
   '.zb-step output{flex:1;text-align:center;font-variant-numeric:tabular-nums;color:var(--rv-muted)}',
   '.zb-range{width:100%;accent-color:var(--rv-link);height:26px;margin:0}',
+  // A finger: the sheet's choices and its close reach 44px.
+  '@media (pointer:coarse){.zb-seg button{min-height:44px}.zb-step button{height:44px}.zb-x{width:44px;height:44px}}',
   '@media print{.zb-bar,.zb-sheet,.zb-scrim{display:none!important}}',
   '@media (prefers-reduced-motion:reduce){.zb-bar,.zb-sheet,.zb-scrim{transition:none!important}}'
 ].join('');
@@ -17635,6 +17638,8 @@ var _BOOK_CSS = [
   '.zb-info .zb-ch{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;unicode-bidi:plaintext}',
   '.zb-info .zb-left{display:block;font-size:12px;color:var(--rv-muted);font-variant-numeric:tabular-nums}',
   '.zb-scrub{width:100%;margin:2px 0 0;height:24px;accent-color:var(--rv-link);cursor:pointer;touch-action:none}',
+  // A finger takes the slider anywhere in 44px, the bar keeping its height.
+  '@media (pointer:coarse){.zb-scrub{height:44px;margin:-8px 0 -10px}}',
   // The line a page keeps at its foot while the bars are away.
   '.zb-mini{position:fixed;left:0;right:0;bottom:calc(10px + var(--zb-sab));text-align:center;font:11.5px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;',
     'color:var(--rv-muted);pointer-events:none;opacity:0;transition:opacity .25s;font-variant-numeric:tabular-nums;z-index:1}',
@@ -18542,7 +18547,7 @@ function _tubeStrings(play) {
   _installedVideoZims().forEach(function(z) { if (z.language) langs[z.language] = _langDisplayName(z.language) || z.language; });
   return _appStrings('tube', ['tube_videos', 'tube_video', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay',
     'tube_theater', 'tube_pip', 'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_track', 'tube_tracks',
-    'tube_no_media', 'tube_missing', 'tube_watch_later', 'tube_continue'], { play: play || '', langs: langs });
+    'tube_no_media', 'tube_missing', 'tube_watch_later', 'tube_continue', 'tube_recording', 'tube_recordings'], { play: play || '', langs: langs });
 }
 
 // A thing inside an app (a video, a question, a post) is a step in history

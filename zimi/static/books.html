@@ -46,7 +46,7 @@
   @media (max-width: 480px) { .tiles { grid-template-columns: 1fr 1fr; gap: 8px; } }
   .tile { display: flex; flex-direction: column; gap: 2px; padding: 11px 12px; border-radius: var(--radius-s); border: 1px solid var(--border); background: var(--surface); cursor: pointer; color: inherit; min-width: 0; text-align: start; font: inherit; }
   .tile:hover, .tile:focus-visible { border-color: var(--amber); outline: none; }
-  .tile .nm { font-weight: 600; font-size: 13.5px; line-height: 1.3; color: var(--text); }
+  .tile .nm { font-weight: 600; font-size: 13.5px; line-height: 1.3; color: var(--text); unicode-bidi: plaintext; overflow-wrap: anywhere; }
   .tile .sub { font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; }
   .tile .code { font-size: 10.5px; font-weight: 700; letter-spacing: .04em; color: var(--text2); }
   /* Eras: a bar per hundred years, as long as its shelf. */
@@ -61,7 +61,7 @@
   .au { display: flex; align-items: baseline; gap: 10px; padding: 11px 4px; border-top: 1px solid var(--border); cursor: pointer; color: inherit; }
   .au:first-child { border-top: 0; }
   .au:hover .nm { color: var(--amber); }
-  .au .nm { font-weight: 600; font-size: 14px; flex: 1; min-width: 0; unicode-bidi: plaintext; }
+  .au .nm { font-weight: 600; font-size: 14px; flex: 1; min-width: 0; unicode-bidi: plaintext; overflow-wrap: anywhere; }
   .au .yrs { font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .au .c { font-size: 12px; color: var(--text2); white-space: nowrap; font-variant-numeric: tabular-nums; }
   /* One book: the cover large beside what is known of it. */
@@ -72,6 +72,8 @@
   .book .by { font-size: 15px; margin: 0 0 16px; }
   .book .by a { font-weight: 600; cursor: pointer; }
   .book .by .yrs { color: var(--text2); font-size: 13px; }
+  /* What the source says of it (a document library's line, a ZIM's own). */
+  .book .desc { font-size: 14px; line-height: 1.5; margin: 0 0 16px; max-width: 62ch; white-space: pre-line; unicode-bidi: plaintext; overflow-wrap: anywhere; }
   /* A writer's years keep their own order beside a name in either direction. */
   .yrs { unicode-bidi: isolate; }
   .facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; font-size: 13px; margin: 0 0 16px; }
@@ -82,8 +84,8 @@
   .actions .read { display: inline-flex; align-items: center; gap: 8px; padding: 10px 22px; border-radius: 22px; background: var(--amber); color: #fff; font-weight: 600; font-size: 14.5px; border: 0; cursor: pointer; }
   .actions .read:hover { filter: brightness(1.08); }
   /* Add to my shelf and Lists (apps.js savedBar), beside Read and as tall. */
-  .actions .svb { gap: 7px; padding: 9px 16px; border-radius: 22px; font-weight: 600; font-size: 14px; }
-  .actions .svb:hover { border-color: var(--amber); color: var(--amber); }
+  .actions .svb, .actions > a[download] { gap: 7px; padding: 9px 16px; border-radius: 22px; font-weight: 600; font-size: 14px; }
+  .actions .svb:hover, .actions > a[download]:hover { border-color: var(--amber); color: var(--amber); }
   .actions .svb svg { width: 16px; height: 16px; }
   .subjects { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 0; }
   .subjects span { font-size: 12px; padding: 3px 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text2); unicode-bidi: plaintext; }
@@ -92,6 +94,20 @@
   .sk { background: var(--surface2); border-radius: 4px 8px 8px 4px; aspect-ratio: 2 / 3; }
   .head .n { margin-inline-start: 2px; }
   .head .sorts { margin-inline-start: auto; }
+  /* A phone: Read comes before the facts, reached without a scroll past them. */
+  @media (max-width: 600px) {
+    .book .info { display: flex; flex-direction: column; }
+    .book .info > .actions { order: 1; margin: 0 0 18px; }
+    .book .info > .facts, .book .info > .note, .book .info > .subjects { order: 2; }
+  }
+  /* A finger: every way in reaches 44px (apps.css does the chips). */
+  @media (pointer: coarse) {
+    .era { min-height: 44px; }
+    .facts { row-gap: 0; }
+    .facts dt, .facts dd { display: flex; align-items: center; min-height: 44px; }
+    .facts dd a { display: inline-flex; align-items: center; min-height: 44px; }
+    .book .by a { display: inline-block; padding-block: 12px; margin-block: -12px; }
+  }
 </style>
 </head>
 <body>
@@ -116,12 +132,15 @@ var STR = strings({ title: 'Bookshelf', shelf: 'Shelf', authors: 'Authors', subj
   subject: 'Subject', era: 'Era', author: 'Author', more: 'More', none: 'No books match.', empty: 'No books installed yet.', book: 'book', books: 'books',
   bce: '{from} to {to} BCE', bce_ce: '{from} BCE to {to} CE', pending: 'Eras and subjects appear once the books have been read, a few minutes for a big library.',
   epub_only: 'This ZIM has this book as an EPUB only.', catalog: 'Browse the catalog', load_failed: 'Couldn\'t load the shelf.',
-  load_part: 'Couldn\'t load this.', reading: 'Reading the books in your library. They appear here in a few minutes.', retry: 'Retry', lcc: {} });
+  load_part: 'Couldn\'t load this.', reading: 'Reading the books in your library. They appear here in a few minutes.', retry: 'Retry', lcc: {},
+  sources: 'Sources', source: 'Source', format: 'Format', chapters: 'Chapters', translator: 'Translator', publisher: 'Publisher', published: 'Published',
+  unreadable: 'Bookshelf found no books in {names}.' });
 
 // ── pure parts (tests/test_books_page.cjs runs these) ─────────────────────
 var PAGE = 60;
 var STRIP = 24;
 var CONTINUE_SHOWN = 12;
+var SOURCES_SHOWN = 8;     // source tiles on the front before See all
 // While the book records are read in the background the front looks again
 // this often; after a failed look, twice as long each time, up to the most.
 var HOME_POLL_MS = 8000;
@@ -158,6 +177,31 @@ function shelfName(code) {
 }
 function langName(code) {
   try { return new Intl.DisplayNames([STR.lang || 'en'], { type: 'language' }).of(code) || code; } catch (e) { return code; }
+}
+// A day as the reader's language writes it ("1 January 2015"); anything
+// that is not a whole day (a year, a listing's own words) as it is.
+function dayLabel(d) {
+  d = String(d || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+  return new Date(d + 'T12:00:00').toLocaleDateString(STR.lang || undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+}
+// The ZIMs the shelf reads (the front's `sources`), each with its books.
+function sourceOf(home, name) { return ((home && home.sources) || []).filter(function(s) { return s.name === name; })[0] || null; }
+function sourcesWithBooks(home) {
+  return ((home && home.sources) || []).filter(function(s) { return s.n > 0; }).sort(function(a, b) { return b.n - a.n; });
+}
+// Most read is Gutenberg's count of readers, and Newest its day of arrival:
+// offered only where its books are, never over one other source alone.
+function rankedList(home, v) {
+  var src = v && v.zim ? sourceOf(home, v.zim) : null;
+  return !!(home && home.ranked) && !(src && src.reader !== 'gutenberg');
+}
+function listSortsFor(home, v) {
+  var ranked = rankedList(home, v), s = ranked ? [['popular', STR.sort_popular]] : [];
+  s.push(['title', STR.sort_title]);
+  if (!v.author) s.push(['author', STR.sort_author]);
+  if (ranked && home.details) s.push(['recent', STR.sort_recent]);
+  return s;
 }
 // What you keep lives in the shell's Saved (apps.js saved()): this
 // browser's, or the account's when signed in, so a place in a book follows
@@ -202,7 +246,8 @@ var _home = null, _stack = [], _q = '', _seq = 0;
 function cur() { return _stack[_stack.length - 1] || { v: 'home' }; }
 function $(id) { return document.getElementById(id); }
 function coverHtml(b) {
-  var typo = '<div class="cover typo" style="background:hsl(' + coverHue(b.title) + ',28%,30%)"><span class="tt">' + esc(b.title) + '</span>' +
+  // In the book's language, so a long word breaks where that language hyphenates it.
+  var typo = '<div class="cover typo"' + (b.lang ? ' lang="' + esc(b.lang) + '"' : '') + ' style="background:hsl(' + coverHue(b.title) + ',28%,30%)"><span class="tt">' + esc(b.title) + '</span>' +
     (b.author ? '<span class="rule"></span><span class="ta">' + esc(b.author) + '</span>' : '') + '</div>';
   if (!b.cover) return typo;
   // The picture, with the typographic cover behind it for when it is not there.
@@ -236,14 +281,16 @@ function failedHtml(msg, retry) {
 
 function renderTabs() {
   var v = cur().v, h = _home || {};
-  var tabs = [['home', STR.shelf], ['authors', STR.authors], ['subjects', STR.subjects]];
+  var tabs = [['home', STR.shelf], ['authors', STR.authors]];
+  // Subjects are Gutenberg's Library of Congress shelves: a tab only when they are there.
+  if ((h.shelves || []).length) tabs.push(['subjects', STR.subjects]);
   if ((h.eras || []).length) tabs.push(['eras', STR.eras]);
   if ((h.languages || []).length > 1) tabs.push(['langs', STR.languages]);
   $('tabs').innerHTML = tabs.map(function(t) {
     var on = v === t[0];
     return '<button type="button" role="tab" class="chip' + (on ? ' on' : '') + '" aria-selected="' + on + '" onclick="tab(' + J(t[0]) + ')">' + esc(t[1]) + '</button>';
   }).join('');
-  $('tabs').hidden = !h.total || v === 'book' || v === 'list' || v === 'mine';
+  $('tabs').hidden = !h.total || v === 'book' || v === 'list' || v === 'mine' || v === 'sources';
 }
 function tab(v) { _q = ''; _stack = [{ v: 'home' }]; if (v !== 'home') _stack.push({ v: v }); show(); }
 function go(view) { _stack.push(view); show(); }
@@ -257,6 +304,7 @@ function show() {
   if (v.v === 'list') return renderList(v);
   if (v.v === 'authors') return renderAuthors(v);
   if (v.v === 'subjects') return renderSubjects();
+  if (v.v === 'sources') return renderSources();
   if (v.v === 'eras') return renderEras();
   if (v.v === 'langs') return renderLangs();
   if (v.v === 'mine') return renderMine();
@@ -266,7 +314,14 @@ function showEmpty() {
   // Books still being read in the background (a Wikisource, a document
   // library): they are coming, not missing.
   if (!_home.details && (_home.sources || []).length) { $('view').innerHTML = '<div class="empty">' + esc(STR.reading) + '</div>'; return; }
-  $('view').innerHTML = '<div class="empty">' + esc(STR.empty) + '<br><a class="door" href="/?manage" onclick="return goCatalog()">' + esc(STR.catalog) + CHEV + '</a></div>';
+  $('view').innerHTML = '<div class="empty">' + esc(emptyWords(_home)) + '<br><a class="door" href="/?manage" onclick="return goCatalog()">' + esc(STR.catalog) + CHEV + '</a></div>';
+}
+// An empty shelf says why: nothing installed, or ZIMs that were read and
+// held no book it can open (a listing that does not parse), named.
+function emptyWords(home) {
+  var srcs = (home && home.sources) || [];
+  if (!srcs.length) return STR.empty;
+  return STR.unreadable.replace('{names}', srcs.map(function(s) { return s.title; }).join(', '));
 }
 function goCatalog() { tell({ zimi: 'catalog', category: 'gutenberg' }); return false; }
 
@@ -285,9 +340,16 @@ function renderHome() {
   }
   var mine = shelf();
   html += shelfHtml(STR.my_shelf, mine.slice(0, STRIP), mine.length > STRIP ? "go({v:'mine'})" : '');
-  html += shelfHtml(STR.popular, h.popular || [], "go({v:'list',sort:'popular'})");
+  // Gutenberg's most read; a shelf without Gutenberg opens on its books.
+  html += h.ranked ? shelfHtml(STR.popular, h.popular || [], "go({v:'list',sort:'popular'})")
+    : shelfHtml(STR.all_books, h.popular || [], "go({v:'list',sort:'title'})");
   html += shelfHtml(STR.recent, h.recent || [], "go({v:'list',sort:'recent'})");
-  html += '<section class="shelf"><div class="shelf-h"><h2>' + esc(STR.subjects) + '</h2></div>' + subjectTiles(h.shelves.slice().sort(function(a, b) { return b.n - a.n; }).slice(0, 8)) + '</section>';
+  // Each ZIM the books come from, a way in to the ones no shelf above shows.
+  var srcs = sourcesWithBooks(h);
+  if (srcs.length > 1) html += '<section class="shelf"><div class="shelf-h"><h2>' + esc(STR.sources) + '</h2>' +
+    (srcs.length > SOURCES_SHOWN ? '<button type="button" class="all" onclick="go({v:\'sources\'})">' + esc(STR.see_all) + CHEV + '</button>' : '') + '</div>' +
+    sourceTiles(srcs.slice(0, SOURCES_SHOWN)) + '</section>';
+  if ((h.shelves || []).length) html += '<section class="shelf"><div class="shelf-h"><h2>' + esc(STR.subjects) + '</h2></div>' + subjectTiles(h.shelves.slice().sort(function(a, b) { return b.n - a.n; }).slice(0, 8)) + '</section>';
   if ((h.eras || []).length) html += '<section class="shelf"><div class="shelf-h"><h2>' + esc(STR.eras) + '</h2>' +
     '<button type="button" class="all" onclick="tab(\'eras\')">' + esc(STR.see_all) + CHEV + '</button></div>' + erasHtml(h.eras.slice().sort(function(a, b) { return b.from - a.from; }).slice(0, 5)) + '</section>';
   else if (!h.details) html += '<p class="note">' + esc(STR.pending) + '</p>';
@@ -297,6 +359,17 @@ function subjectTiles(list) {
   return '<div class="tiles">' + list.map(function(s) {
     return '<button type="button" class="tile" onclick="go({v:\'list\',shelf:' + J(s.code) + '})"><span class="code">' + esc(s.code) + '</span><span class="nm">' + esc(shelfName(s.code)) + '</span>' +
       '<span class="sub">' + esc(count(s.n, STR.book, STR.books)) + '</span></button>';
+  }).join('') + '</div>';
+}
+// A source as a tile: its title, its books, and its language when the
+// sources are in more than one.
+function sourceTiles(list) {
+  var langs = {};
+  list.forEach(function(s) { if (s.lang) langs[s.lang] = 1; });
+  var many = Object.keys(langs).length > 1;
+  return '<div class="tiles">' + list.map(function(s) {
+    return '<button type="button" class="tile" onclick="go({v:\'list\',zim:' + J(s.name) + '})">' + (many && s.lang ? '<span class="code">' + esc(langName(s.lang)) + '</span>' : '') +
+      '<span class="nm">' + esc(s.title) + '</span><span class="sub">' + esc(count(s.n, STR.book, STR.books)) + '</span></button>';
   }).join('') + '</div>';
 }
 function erasHtml(list) {
@@ -310,6 +383,9 @@ function renderMine() {
   var mine = shelf();
   $('view').innerHTML = '<div class="head"><h2>' + esc(STR.my_shelf) + ' <span class="n">' + esc(count(mine.length, STR.book, STR.books)) + '</span></h2></div>' +
     (mine.length ? booksHtml(mine) : '<div class="empty">' + esc(STR.none) + '</div>');
+}
+function renderSources() {
+  $('view').innerHTML = '<div class="head"><h2>' + esc(STR.sources) + '</h2></div>' + sourceTiles(sourcesWithBooks(_home));
 }
 function renderSubjects() {
   $('view').innerHTML = '<div class="head"><h2>' + esc(STR.subjects) + '</h2></div>' + subjectTiles(_home.shelves);
@@ -332,30 +408,26 @@ function listTitle(v) {
   if (v.shelf) return shelfName(v.shelf);
   if (v.era != null && v.era !== '') return eraLabel(v.era);
   if (v.lang) return langName(v.lang);
+  if (v.zim) { var s = sourceOf(_home, v.zim); return s ? s.title : v.zim; }
   return v.sort === 'recent' ? STR.recent : v.sort === 'popular' ? STR.popular : STR.all_books;
 }
 function listUrl(v, offset) {
   var p = ['sort=' + encodeURIComponent(v.sort || 'popular'), 'offset=' + offset, 'limit=' + PAGE];
-  ['q', 'author', 'shelf', 'era', 'lang'].forEach(function(k) { if (v[k] != null && v[k] !== '') p.push(k + '=' + encodeURIComponent(v[k])); });
+  ['q', 'author', 'shelf', 'era', 'lang', 'zim'].forEach(function(k) { if (v[k] != null && v[k] !== '') p.push(k + '=' + encodeURIComponent(v[k])); });
   return '/books/list?' + p.join('&');
 }
 function sortsHtml(v, sorts, fn) {
-  return '<span class="sorts">' + sorts.map(function(s) {
+  return '<span class="sorts" id="sorts">' + sorts.map(function(s) {
     var on = (v.sort || sorts[0][0]) === s[0];
     return '<button type="button" class="chip tag' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="' + fn + '(' + J(s[0]) + ')">' + esc(s[1]) + '</button>';
   }).join('') + '</span>';
 }
-function listSorts(v) {
-  var s = [['popular', STR.sort_popular], ['title', STR.sort_title]];
-  if (!v.author) s.push(['author', STR.sort_author]);
-  if (_home.details) s.push(['recent', STR.sort_recent]);
-  return s;
-}
 function resort(s) { cur().sort = s; show(); }
 function renderList(v) {
   var seq = ++_seq;
-  v.sort = v.sort || 'popular';
-  var head = '<div class="head"><h2>' + esc(listTitle(v)) + ' <span class="n" id="n"></span></h2>' + sortsHtml(v, listSorts(v), 'resort') + '</div>';
+  var sorts = listSortsFor(_home, v);
+  if (!sorts.some(function(s) { return s[0] === v.sort; })) v.sort = sorts[0][0];
+  var head = '<div class="head"><h2>' + esc(listTitle(v)) + ' <span class="n" id="n"></span></h2>' + sortsHtml(v, sorts, 'resort') + '</div>';
   $('view').innerHTML = head + '<div id="books">' + skeleton(12) + '</div>';
   v.got = [];
   more(v, seq);
@@ -367,6 +439,8 @@ function more(v, seq) {
     v.got = v.got.concat(remember(d.books));
     v.total = d.total;
     $('n').textContent = count(d.total, STR.book, STR.books);
+    // Nothing found: nothing to put in order.
+    $('sorts').hidden = !d.total;
     $('books').innerHTML = v.got.length ? booksHtml(v.got) + (v.got.length < d.total ? '<button type="button" class="more" onclick="moreClick()">' + esc(STR.more) + '</button>' : '')
       : '<div class="empty">' + esc(STR.none) + '</div>';
   });
@@ -377,8 +451,10 @@ function moreClick() { more(cur(), _seq); }
 function renderAuthors(v) {
   var seq = ++_seq;
   v.sort = v.sort || 'name';
+  var sorts = [['name', STR.sort_name], ['books', STR.sort_books]];
+  if (_home.ranked) sorts.push(['popular', STR.sort_popular]);
   $('view').innerHTML = '<div class="head"><h2>' + esc(STR.authors) + ' <span class="n" id="n"></span></h2>' +
-    sortsHtml(v, [['name', STR.sort_name], ['books', STR.sort_books], ['popular', STR.sort_popular]], 'resort') + '</div><div id="authors"></div>';
+    sortsHtml(v, sorts, 'resort') + '</div><div id="authors"></div>';
   v.got = [];
   moreAuthors(v, seq);
 }
@@ -425,15 +501,26 @@ function bookPage(b, full) {
   var place = placeOf(b);
   var facts = '';
   var fact = function(k, v) { if (v) facts += '<dt>' + esc(k) + '</dt><dd>' + v + '</dd>'; };
+  var f = full || {};
+  // Which of the library's ZIMs it is in, once there is more than one.
+  var src = (_home && (_home.sources || []).length > 1) ? sourceOf(_home, b.zim) : null;
+  fact(STR.source, src ? '<a onclick="go({v:\'list\',zim:' + J(src.name) + '})">' + esc(src.title) + '</a>' : '');
   fact(STR.language, b.lang ? '<a onclick="go({v:\'list\',lang:' + J(b.lang) + '})">' + esc(langName(b.lang)) + '</a>' : '');
-  fact(STR.subject, b.shelf ? '<a onclick="go({v:\'list\',shelf:' + J(b.shelf.slice(0, b.shelf.charAt(0) === "P" ? 2 : 1)) + '})">' + esc(shelfName(b.shelf)) + '</a>' : '');
+  fact(STR.subject, b.shelf ? '<a onclick="go({v:\'list\',shelf:' + J(b.shelf.slice(0, b.shelf.charAt(0) === "P" ? 2 : 1)) + '})">' + esc(shelfName(b.shelf)) + '</a>' : f.subject ? esc(f.subject) : '');
+  // What Read opens, when it is a file rather than a page.
+  fact(STR.format, b.format && b.format !== 'html' ? esc(String(b.format).toUpperCase()) : '');
+  fact(STR.chapters, f.chapters > 1 ? esc(String(f.chapters)) : '');
+  fact(STR.translator, f.translator ? esc(f.translator) : '');
+  fact(STR.publisher, f.publisher ? esc(f.publisher) : '');
+  fact(STR.published, f.date ? esc(dayLabel(f.date)) : b.year ? esc(String(b.year)) : '');
   fact(STR.era, b.era != null ? '<a onclick="go({v:\'list\',era:' + J(b.era) + '})">' + esc(eraLabel(b.era)) + '</a>' : '');
-  fact(STR.added, b.created ? esc(new Date(b.created + 'T12:00:00').toLocaleDateString(STR.lang || undefined, { year: 'numeric', month: 'long', day: 'numeric' })) : '');
+  fact(STR.added, b.created ? esc(dayLabel(b.created)) : '');
   var yrs = yearsLabel(b.born, b.died);
   var readLabel = place ? STR.resume + ' · ' + Math.round(place.f * 100) + '%' : STR.read;
-  var html = '<div class="book">' + coverHtml(b) + '<div>' +
+  var html = '<div class="book">' + coverHtml(b) + '<div class="info">' +
     '<h1>' + esc(b.title) + '</h1>' + (b.subtitle ? '<p class="st">' + esc(b.subtitle) + '</p>' : '') +
     (b.author ? '<p class="by"><a onclick="go({v:\'list\',author:' + J(b.author) + '})">' + esc(b.author) + '</a>' + (yrs ? ' <span class="yrs">' + esc(yrs) + '</span>' : '') + '</p>' : '') +
+    (f.description ? '<p class="desc">' + esc(f.description) + '</p>' : '') +
     (facts ? '<dl class="facts">' + facts + '</dl>' : '') +
     '<div class="actions"><button type="button" class="read" onclick="readBook(' + J(b.id) + ')">' + esc(readLabel) + '</button><span class="svbar"></span>' +
     (full && full.epub ? '<a href="' + esc(zpath(b.zim, full.epub)) + '" download>' + esc(STR.epub) + '</a>' : '') + '</div>' +
@@ -455,8 +542,9 @@ function booksSearch(q) {
   _q = (q || '').trim();
   var top = cur();
   if (!_q) { if (top.v === 'list' && top.q) back(); return; }
-  if (top.v === 'list' && top.q) { top.q = _q; top.sort = 'popular'; show(); return; }
-  go({ v: 'list', q: _q, sort: 'popular' });
+  // A search takes the list's first order (Most read where Gutenberg is).
+  if (top.v === 'list' && top.q) { top.q = _q; top.sort = ''; show(); return; }
+  go({ v: 'list', q: _q });
 }
 function back() {
   if (_stack.length > 1) { _stack.pop(); show(); return true; }
