@@ -5,7 +5,7 @@ and learn better ... Have a refined article reader."
 
 An article opened from Zimipedia reads in Zimipedia's reader: Reader View
 laid out as an encyclopedia. On a phone: the lead image over the title, the
-facts folded, a bar at the foot (contents, reading settings) that steps
+facts folded, a bar at the top under Zimi's header (contents, reading settings) that steps
 aside with Zimi's header as you read, and a citation as a card in place. On
 a desk: the contents in a rail that follows you, the facts beside the text.
 The reading settings are the book reader's own sheet; where you were goes to
@@ -101,7 +101,8 @@ def test_an_article_from_zimipedia_reads_in_its_reader_on_a_phone(served):
             _from_zimipedia(pg, "wikipedia", "Albert_Einstein")
             s = _q(
                 pg,
-                """{ reader: !!d.querySelector('.zimi-reader'), bar: d.querySelector('.zw-bar').getBoundingClientRect().bottom,
+                """{ reader: !!d.querySelector('.zimi-reader'), bar: d.querySelector('.zw-bar').getBoundingClientRect().top,
+              barH: d.querySelector('.zw-bar').getBoundingClientRect().height, title: d.querySelector('.zimi-reader-title').getBoundingClientRect().top,
               h: w.innerHeight, facts: !!d.querySelector('details.zw-facts table.infobox'), open: d.querySelector('details.zw-facts').open,
               hero: (d.querySelector('.zw-hero img') || {}).getAttribute ? d.querySelector('.zw-hero img').getAttribute('src') : '',
               heroShown: !!(d.querySelector('.zw-hero') && d.querySelector('.zw-hero').getBoundingClientRect().height > 0),
@@ -109,7 +110,10 @@ def test_an_article_from_zimipedia_reads_in_its_reader_on_a_phone(served):
               zoom: d.body.style.zoom, top: !!d.getElementById('zimi-top') }""",
             )
             assert s["reader"], "Reader View is on for an article from Zimipedia"
-            assert abs(s["bar"] - s["h"]) < 2, "the bar sits at the foot on a phone"
+            # At the top, under Zimi's header, within a thumb's reach on a
+            # curved screen; the article starts below it.
+            assert abs(s["bar"]) < 2, "the bar sits at the top on a phone"
+            assert s["title"] >= s["barH"], "nothing of the article is under the bar"
             assert s["facts"] and not s["open"], "the infobox is kept, folded"
             assert (
                 s["hero"].endswith("I/Einstein_1921.png") and s["heroShown"]
@@ -159,7 +163,8 @@ def test_an_article_from_zimipedia_reads_in_its_reader_on_a_phone(served):
             fr.locator('.zw-toc-sheet button[data-k="2"]').click()
             pg.wait_for_timeout(400)
             top = _q(pg, "d.getElementById('Relativity').getBoundingClientRect().top")
-            assert 0 <= top < 80, top
+            # Just under the bar, which is at the top now.
+            assert s["barH"] <= top < s["barH"] + 60, top
             assert (
                 _q(pg, "d.querySelector('.zw-cbtn span').textContent") == "Relativity"
             ), "the bar says where you are"
@@ -571,7 +576,7 @@ def test_saving_to_reading_lists(served):
             br.close()
 
 
-def test_today_is_a_front_door(served):
+def test_today_is_where_you_were_and_the_day_of_every_wiki(served):
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
@@ -603,24 +608,31 @@ def test_today_is_a_front_door(served):
                 timeout=15000,
             )
             pg.wait_for_timeout(300)
-            # Zimipedia's front door: the day's article, where you were, the trail.
+            # Today: the day's article, where you were, the day of the other
+            # wikis (worked out in the background), the trail. Eric,
+            # 2026-09-29, on the front door alone: "Pretty useless home
+            # view... You had better homepage ideas before".
             pg.evaluate("() => openWiki()")
             pg.wait_for_function(
-                "() => { var d = document.getElementById('reader-frame').contentDocument; return d && d.querySelector('#s-continue') && d.querySelector('#s-trails') && d.querySelector('.hero'); }",
+                "() => { var d = document.getElementById('reader-frame').contentDocument; return d && d.querySelector('#s-continue') && d.querySelector('#s-trails') && d.querySelector('.hero') && d.querySelector('#s-wk .card'); }",
                 timeout=20000,
             )
             s = page(
                 """{ cont: Array.prototype.map.call(d.querySelectorAll('#s-continue .t'), function(t) { return t.textContent; }),
               prog: d.querySelector('#s-continue .prog i').style.width, href: d.querySelector('#s-continue a').getAttribute('data-path'),
               trail: Array.prototype.map.call(d.querySelectorAll('#s-trails a'), function(a) { return a.textContent; }),
-              old: !!d.querySelector('#s-otd,#s-dyk,#s-potd,#s-trail,#s-front,#s-wk') }"""
+              order: Array.prototype.map.call(d.querySelectorAll('#today [id^="s-"]'), function(s) { return s.id; }),
+              kinds: Array.prototype.map.call(d.querySelectorAll('#s-wk .card'), function(c) { return c.className; }) }"""
             )
             assert s["cont"] == ["Albert Einstein"] and s["prog"] not in ("", "0%"), s
             assert s["href"].startswith(
                 "Albert_Einstein#"
             ), "back in at the section you were in"
             assert s["trail"] == ["Albert Einstein", "Physics"], s
-            assert not s["old"], "1.11's front page is gone"
+            assert s["order"][:2] == ["s-hero", "s-continue"], s["order"]
+            assert "s-trails" in s["order"], s["order"]
+            # One card from each other wiki of the language, as what it is.
+            assert "card word" in s["kinds"] and "card quote" in s["kinds"], s["kinds"]
             # A trail's step goes back in, with the trail as it was.
             pg.frame_locator("#reader-frame").locator("#s-trails a").nth(1).click()
             pg.wait_for_function(READY, timeout=15000)
@@ -633,18 +645,72 @@ def test_today_is_a_front_door(served):
             br.close()
 
 
-def test_the_day_works_out_only_what_the_front_door_shows(library):
+def test_a_search_result_from_a_wiki_opens_in_zimipedias_reader(served):
+    """Eric, 2026-09-29: a search result from a wiki opens in Zimipedia's
+    reader (saving, highlights, languages), not the raw page; Settings >
+    Reading can say otherwise. On the way, Zimipedia's globe in the
+    breadcrumb is a line mark like the other apps' (it rendered as a dark
+    disc on the light header)."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        ctx = br.new_context(**pw.devices["iPhone 13"])
+        try:
+            pg = ctx.new_page()
+            _boot(pg, served)
+            pg.evaluate("() => openWiki()")
+            pg.wait_for_timeout(800)
+            assert pg.evaluate("() => getComputedStyle(document.querySelector('#bc-icon circle')).fill") == "none"
+            for on in (True, False):
+                # A fresh page each time: Reader View stays on, once on, for
+                # the tab's next articles.
+                pg.close()
+                pg = ctx.new_page()
+                _boot(pg, served)
+                pg.evaluate("(on) => _setOpenInApps(on)", on)
+                pg.fill("#q", "Albert Einstein")
+                pg.press("#q", "Enter")
+                hit = 'a.result[data-zim="wikipedia"][data-path="Albert_Einstein"]'
+                pg.wait_for_selector(hit, timeout=15000)
+                pg.click(hit)
+                pg.wait_for_function(
+                    "() => { var d = document.getElementById('reader-frame').contentDocument; return d && /Albert_Einstein$/.test(d.location.pathname) && d.readyState === 'complete'; }",
+                    timeout=15000,
+                )
+                pg.wait_for_timeout(800)
+                bar = _q(pg, "!!d.querySelector('.zw-bar')")
+                assert bar is on, "Zimipedia's reader when the setting is on, the ZIM's page when off"
+                if on:
+                    # The reader's bar at the top, under Zimi's header.
+                    assert abs(_q(pg, "d.querySelector('.zw-bar').getBoundingClientRect().top")) < 2
+        finally:
+            br.close()
+
+
+def test_the_background_pass_works_out_every_part_today_shows(library):
     import datetime
 
     day = datetime.date.today().strftime("%Y%m%d")
     names = [w["name"] for w in wiki.wikis()]
     wiki._warm(day, names)
-    assert {k[0] for k in wiki._pick_cache} == set(names)
-    got = wiki.today(day, ["wikipedia"])
+    # Every part the page shows is kept before a page asks: opening Today
+    # reads nothing.
+    assert (
+        wiki._pick_cache and wiki._otd_cache and wiki._extra_cache and wiki._front_cache
+    )
+    home = wiki.home(day, "en")
+    assert home["otd"].get("wikipedia") is not None
+    assert not wiki._warming, "a warm day starts no second pass"
+    got = wiki.today(day, ["wikipedia"], ["picks"])
     assert set(got) == {"picks", "failed"} and got["picks"]["wikipedia"]["path"]
-    # 1.11's On this day, facts and front pages are gone, from the API too.
-    for gone in ("on_this_day", "extras", "front", "_otd_cache", "_extra_cache"):
-        assert not hasattr(wiki, gone), gone
+    assert set(wiki.today(day, ["wikipedia"])) == {
+        "picks",
+        "otd",
+        "extras",
+        "front",
+        "failed",
+    }
 
 
 def test_a_right_to_left_article_and_a_mini(served):
