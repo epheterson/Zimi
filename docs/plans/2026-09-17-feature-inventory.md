@@ -148,6 +148,7 @@ Eric: "We're on a new major release here maps release and each of those apps of 
 - Kiwix and NOMAD outreach. Parked.
 - Lists, bookmarks and all the saving things, per app (Eric, 2026-09-25: "I want to get to the lists and bookmarks and all the saving things per app but can be next release"). Next release.
 - One background-details builder for the apps: books.py:589-772 repeats tube.py:511-670 (_details_dir, details_current, _claim, _build_claimed, request_details); extract a shared builder taking the kind, build function and version. Deferred from 1.11's final review (refactoring working ZimiTube code on release night was the bigger risk).
+- Suggestions from what you liked or viewed (Eric, 2026-09-29: "Maybe we should start being able to suggest content based on what you liked or viewed, future."): local-only, from Saved, Liked and history, across apps.
 
 ## Killed, and staying killed
 
