@@ -11,8 +11,10 @@
 //   - The Sun, the Moon, the Earth's turning and the eclipses are pure maths,
 //     exact offline for any date (Meeus, "Astronomical Algorithms", 2nd ed.).
 //   - Satellites come from orbital elements (CelesTrak's OMM records):
-//     a snapshot ships with each release, the server refreshes it when online
-//     (/almanac-satellites; ZIMI_OFFLINE turns that off), and SGP4/SDP4
+//     a snapshot ships with each release, the server fetches fresher ones as
+//     "Satellite data from the internet" allows (/almanac-satellites: Ask
+//     first, the default, fetches only when an admin presses Get fresh data;
+//     Automatically; Never; ZIMI_OFFLINE forces Never), and SGP4/SDP4
 //     (satellite.js, MIT) propagates them. The ISS's place along its orbit
 //     drifts once its data is a few days old, so its dot fades and says so,
 //     and past two weeks only its orbit is drawn.
@@ -535,6 +537,16 @@ var AE_SATS_URL = '/almanac-satellites';
 // its refresh is two CelesTrak requests of up to 20 s each (satellites.py
 // FETCH_TIMEOUT_S), and a little over.
 var AE_SATS_REFETCH_MS = 45 * 1000;
+// "Satellite data from the internet" (satellites.py): the setting, and the
+// admin's one fetch under Ask first. Both are /manage writes, admin-gated.
+var AE_SATS_SETTING_URL = '/manage/satellites';
+var AE_SATS_REFRESH_URL = '/manage/satellites/refresh';
+// Each choice is labelled alm_earth_sat_<mode>, and described by <that>_hint
+// (Server settings in app.js reads the same labels).
+var AE_SAT_MODES = ['ask', 'auto', 'never'];
+var AE_SAT_MODE_KEY = 'alm_earth_sat_';
+var AE_SAT_ENV = 'ZIMI_SATELLITE_UPDATES';
+var AE_HTTP_UNAUTHORIZED = 401, AE_HTTP_FORBIDDEN = 403;
 
 // Camera.
 var AE_FOV_DEG = 35;
@@ -656,11 +668,29 @@ var AE_CSS = [
   '[dir="rtl"] .ae-chev{display:inline-block;transform:scaleX(-1)}',
   '.ae-when{text-align:end;font-size:11px;color:var(--text2);font-variant-numeric:tabular-nums;line-height:1.35;min-width:0}',
   '.ae-when b{display:block;font-size:13px;color:var(--text);font-weight:600}',
+  '.ae-top-end{display:flex;align-items:flex-start;gap:8px;min-width:0}',
+  '.ae-gear{flex:0 0 auto;width:34px;padding:0;display:inline-flex;align-items:center;justify-content:center}',
+  '.ae-gear[aria-expanded="true"]{color:var(--amber);border-color:var(--amber-border)}',
+  '.ae-set{position:absolute;top:56px;inset-inline-end:16px;width:min(300px,calc(100% - 32px));box-sizing:border-box;background:rgba(14,14,16,.96);border:1px solid var(--border);border-radius:12px;padding:12px 10px 10px;font-size:13px;line-height:1.45;color:var(--text2);z-index:1}',
+  '.ae-set[hidden]{display:none}',
+  '.ae-set h3{margin:0 4px 6px;font-size:13px;font-weight:600;color:var(--text)}',
+  '.ae-set-choice{display:flex;gap:10px;align-items:flex-start;padding:7px 4px;border-radius:8px;cursor:pointer}',
+  '.ae-set-choice:hover{background:rgba(255,255,255,.04)}',
+  '.ae-set-choice input{margin:3px 0 0;flex:0 0 auto;accent-color:var(--amber)}',
+  '.ae-set-choice b{display:block;font-weight:500;color:var(--text)}',
+  '.ae-set-choice small{display:block;font-size:11.5px;color:var(--text2)}',
+  '.ae-set-choice.ae-off{cursor:default}',
+  '.ae-set-choice.ae-off:hover{background:none}',
+  '.ae-set-why{margin:6px 4px 0;font-size:11.5px;color:var(--text2)}',
   '.ae-live{color:#6ec56e}',
   '.ae-status{position:absolute;left:16px;right:16px;top:66px;text-align:center;font-size:13px;line-height:1.4;color:#f5c16c;pointer-events:none;text-shadow:0 1px 3px #000}',
   '.ae-bottom{position:absolute;left:0;right:0;bottom:0;padding:28px 16px calc(12px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;align-items:center;background:linear-gradient(transparent,rgba(0,0,0,.72));pointer-events:none}',
   '.ae-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;pointer-events:auto}',
   '.ae-note{font-size:10.5px;line-height:1.4;color:var(--text3);text-align:center;pointer-events:auto;max-width:560px}',
+  '.ae-ask-text{color:var(--text2)}',
+  '.ae-fresh{font:inherit;font-size:11px;line-height:1;padding:6px 10px;min-height:26px;margin:2px 0;margin-inline-start:6px;border-radius:999px;border:1px solid var(--amber-border);background:var(--amber-glow);color:var(--amber);cursor:pointer;vertical-align:middle}',
+  '.ae-fresh:hover,.ae-fresh:focus-visible{background:rgba(245,158,11,.18);outline:none}',
+  '.ae-fresh[disabled]{opacity:.7;cursor:default}',
   '.ae-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}',
   '.ae-label{position:absolute;left:0;top:0;font-size:11px;color:#dfe6f0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000}',
   '.ae-label[hidden]{display:none}',
@@ -703,6 +733,7 @@ function _aeBuildDom() {
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-modal', 'true');
   el.setAttribute('aria-label', _tp('Earth'));
+  var gearLabel = _aeT('alm_earth_sat_setting');
   var speeds = AE_SPEEDS.map(function (s, i) {
     return '<button type="button" class="ae-btn" data-ae-speed="' + s + '" aria-pressed="' + (i === 0) + '">' +
       _almEsc(_aeT(AE_SPEED_KEYS[i])) + '</button>';
@@ -719,8 +750,14 @@ function _aeBuildDom() {
     '<div class="ae-hint" id="ae-hint">' + _almEsc(_aeT('alm_earth_hint')) + '</div>' +
     '<div class="ae-top">' +
       '<button type="button" class="ae-btn ae-back" id="ae-back"><span class="ae-chev" aria-hidden="true">‹</span> ' + _almEsc(_aeT('alm_solar_system')) + '</button>' +
-      '<div class="ae-when" id="ae-when"></div>' +
+      '<div class="ae-top-end">' +
+        '<div class="ae-when" id="ae-when"></div>' +
+        '<button type="button" class="ae-btn ae-gear" id="ae-gear" aria-expanded="false" aria-controls="ae-set"' +
+          ' aria-label="' + _almEsc(gearLabel) + '" title="' + _almEsc(gearLabel) + '">' +
+          (typeof _gearSvg === 'string' ? _gearSvg : '⚙') + '</button>' +
+      '</div>' +
     '</div>' +
+    '<div class="ae-set" id="ae-set" role="group" aria-labelledby="ae-set-title" hidden></div>' +
     '<div class="ae-status" id="ae-status" aria-live="polite"></div>' +
     '<div class="ae-card" id="ae-card" hidden></div>' +
     '<div class="ae-bottom">' +
@@ -733,7 +770,11 @@ function _aeBuildDom() {
         '<button type="button" class="ae-btn" id="ae-eclipse">' + _almEsc(_aeT('alm_earth_next_eclipse')) + '</button>' +
         '<button type="button" class="ae-btn" id="ae-now" hidden>' + _almEsc(_aeT('alm_now')) + '</button>' +
       '</div>' +
-      '<div class="ae-note" id="ae-note"></div>' +
+      '<div class="ae-note">' +
+        '<span id="ae-ask" hidden><span class="ae-ask-text" id="ae-ask-text"></span>' +
+          '<button type="button" class="ae-fresh" id="ae-fresh"></button><span aria-hidden="true"> · </span></span>' +
+        '<span id="ae-note"></span>' +
+      '</div>' +
     '</div>';
   host.appendChild(el);
   return el;
@@ -1080,6 +1121,9 @@ function _aeNewState(el) {
     fly: null,                            // { start, from:{target pos, dist}, to }
     pointers: {}, pinch: null, drag: null,
     sats: null, satsFailed: false, satsLoading: false,
+    satMeta: null,                        // { mode, locked, stale, canChange }: the server's setting
+    freshBusy: false, freshFailed: false, // the admin's "Get fresh data", under way / failed
+    setOpen: false, setBusy: false, setError: '',   // the gear's panel
     selected: null,                       // { norad, tapMs }: the tapped satellite
     ringsAt: null, issRingAt: null, moonPathAt: null,
     positions: [],                        // projected satellites for tapping
@@ -1203,28 +1247,142 @@ function _aeMarkViews() {
 }
 
 // ── Satellites ──
-// Asked for at every open. The server answers at once with what it has and,
-// when that is stale, fetches fresher elements behind the answer and says so
-// (refreshing): then the view asks once more when that fetch has had time to
-// land, so an open view gets them too. A failed load keeps whatever was drawn
-// before, says so if nothing was, and is asked for again at the next open.
+// Asked for at every open. The server answers at once with what it has, and
+// with what "Satellite data from the internet" is set to. Set to
+// Automatically, a stale answer has the server fetch fresher elements behind
+// it and say so (refreshing): then the view asks once more when that fetch
+// has had time to land, so an open view gets them too. Set to Ask first, a
+// stale answer is offered to a viewer who may fetch (Get fresh data). A
+// failed load keeps whatever was drawn before, says so if nothing was, and
+// is asked for again at the next open.
+//
+// Through app.js's authedFetch when it is there, so an admin signed in by
+// token is known as one (can_change) and may fetch and change the setting.
+function _aeFetch(url, opts) {
+  return (typeof authedFetch === 'function' ? authedFetch : fetch)(url, opts);
+}
+function _aeJson(r) {
+  if (r.ok) return r.json();
+  var err = new Error('status ' + r.status);
+  err.status = r.status;
+  throw err;
+}
+function _aePost(url, body) {
+  return _aeFetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {})
+  }).then(_aeJson);
+}
+function _aeDenied(err) { return !!err && (err.status === AE_HTTP_UNAUTHORIZED || err.status === AE_HTTP_FORBIDDEN); }
+
 function _aeLoadSats(again) {
   if (_ae.satsLoading) return;
   _ae.satsLoading = true;
-  Promise.all([_aeLoadSgp4(), fetch(AE_SATS_URL).then(function (r) {
-    if (!r.ok) throw new Error('status ' + r.status);
-    return r.json();
-  })]).then(function (res) {
-    var data = res[1];
-    if (!_ae.sats || _ae.sats.fetched !== data.fetched) _aeSetSats(res[0], data);
-    _ae.satsFailed = false;
-    if (data.refreshing && !again) setTimeout(function () { _aeLoadSats(true); }, AE_SATS_REFETCH_MS);
+  Promise.all([_aeLoadSgp4(), _aeFetch(AE_SATS_URL).then(_aeJson)]).then(function (res) {
+    _aeTakeSats(res[0], res[1], again);
   }).catch(function () {
     _ae.satsFailed = !_ae.sats;
   }).then(function () {
     _ae.satsLoading = false;
     _ae.dirty = true;
     _aeKick();
+  });
+}
+// An answer from the server, a GET's or Get fresh data's: the elements
+// (rebuilt only when they changed), the setting as it stands, and one more
+// ask when a fetch is under way.
+function _aeTakeSats(lib, data, again) {
+  if (!_ae.sats || _ae.sats.fetched !== data.fetched) _aeSetSats(lib, data);
+  _ae.satsFailed = false;
+  _ae.satMeta = { mode: data.mode, locked: data.locked || null, stale: !!data.stale, canChange: !!data.can_change };
+  _aeRenderSettings();
+  if (data.refreshing && !again) setTimeout(function () { _aeLoadSats(true); }, AE_SATS_REFETCH_MS);
+}
+
+// Ask first, stale data, and a viewer who may fetch: the note offers to.
+function _aeAsking() {
+  var m = _ae.satMeta;
+  return !!(m && m.mode === 'ask' && m.stale && m.canChange);
+}
+// Get fresh data: one fetch on the server, waited for, and the view redrawn
+// from its answer. Refused (the viewer is no longer an admin), the offer goes.
+function _aeGetFresh() {
+  if (_ae.freshBusy) return;
+  _ae.freshBusy = true;
+  _ae.freshFailed = false;
+  _aeRefreshText();
+  Promise.all([_aeLoadSgp4(), _aePost(AE_SATS_REFRESH_URL)]).then(function (res) {
+    _aeTakeSats(res[0], res[1], false);
+  }).catch(function (err) {
+    if (_aeDenied(err) && _ae.satMeta) _ae.satMeta.canChange = false;
+    else _ae.freshFailed = true;
+  }).then(function () {
+    _ae.freshBusy = false;
+    _aeRefreshText();
+    _ae.dirty = true;
+    _aeKick();
+  });
+}
+
+// ── The gear: "Satellite data from the internet" ──
+// Everyone sees the choice in force; an admin may change it, unless the
+// environment has (ZIMI_SATELLITE_UPDATES, or ZIMI_OFFLINE forcing Never),
+// and then the panel says which.
+function _aeShowSettings(on) {
+  _ae.setOpen = !!on;
+  _ae.setError = '';
+  var panel = _aeById('ae-set'), gear = _aeById('ae-gear');
+  if (panel) panel.hidden = !on;
+  if (gear) gear.setAttribute('aria-expanded', String(!!on));
+  _aeRenderSettings();
+}
+function _aeSettingsWhy(m) {
+  if (m.locked === 'offline') return _aeT('alm_earth_sat_offline');
+  if (m.locked === 'env') return _aeT('env_controlled', { v: AE_SAT_ENV });
+  if (!m.canChange) return _aeT('alm_earth_sat_admin_only');
+  return _ae.setError;
+}
+function _aeRenderSettings() {
+  var panel = _aeById('ae-set');
+  if (!panel || !_ae.setOpen) return;
+  var m = _ae.satMeta || {};
+  var editable = !!m.canChange && !m.locked && !_ae.setBusy;
+  var html = '<h3 id="ae-set-title">' + _almEsc(_aeT('alm_earth_sat_setting')) + '</h3>' +
+    '<div role="radiogroup" aria-labelledby="ae-set-title">';
+  AE_SAT_MODES.forEach(function (mode) {
+    var key = AE_SAT_MODE_KEY + mode;
+    html += '<label class="ae-set-choice' + (editable ? '' : ' ae-off') + '">' +
+      '<input type="radio" name="ae-sat-mode" value="' + mode + '"' +
+        (m.mode === mode ? ' checked' : '') + (editable ? '' : ' disabled') + '>' +
+      '<span><b>' + _almEsc(_aeT(key)) + '</b><small>' + _almEsc(_aeT(key + '_hint')) + '</small></span></label>';
+  });
+  html += '</div>';
+  var why = _aeSettingsWhy(m);
+  if (why) html += '<p class="ae-set-why">' + _almEsc(why) + '</p>';
+  panel.innerHTML = html;
+}
+// An admin's choice, saved on the server; then the view asks again, since
+// the choice changes what a stale answer brings (Automatically fetches
+// behind it, Ask first offers to).
+function _aeSetMode(mode) {
+  var m = _ae.satMeta;
+  if (!m || !m.canChange || m.locked || _ae.setBusy || mode === m.mode) return;
+  _ae.setBusy = true;
+  _ae.setError = '';
+  _aePost(AE_SATS_SETTING_URL, { mode: mode }).then(function (d) {
+    m.mode = d.mode;
+    m.locked = d.locked || null;
+  }).catch(function (err) {
+    if (_aeDenied(err)) m.canChange = false;
+    _ae.setError = _aeT('save_failed');
+  }).then(function () {
+    _ae.setBusy = false;
+    _aeRenderSettings();
+    var checked = _aeById('ae-set');
+    checked = checked && checked.querySelector && checked.querySelector('input:checked');
+    if (checked) checked.focus({ preventScroll: true });
+    _aeLoadSats();
   });
 }
 function _aeSetSats(lib, data) {
@@ -1554,9 +1712,11 @@ function _aeUpdateCard(ms) {
 }
 
 // The note under the controls: where the drawn orbits come from, or why
-// none are drawn, and the images' credit.
-function _aeNoteText() {
-  var parts = [], sats = _ae.sats;
+// none are drawn, and the images' credit. When the view offers fresh data
+// (Ask first), the data's date moves out of the note to stand before the
+// offer: { ask, note }.
+function _aeNoteParts() {
+  var parts = [], dated = '', sats = _ae.sats;
   if (sats && sats.list.length) {
     var newest = 0, anyShown = false, issOrbit = null;
     sats.list.forEach(function (s) {
@@ -1564,7 +1724,9 @@ function _aeNoteText() {
       if (s.standing && s.standing !== 'none') anyShown = true;
       if (s.iss && s.standing === 'orbit') issOrbit = s;
     });
-    parts.push(_aeT(anyShown ? 'alm_earth_data_from' : 'alm_earth_no_sat_data', { date: _aeFmtDate(newest) }));
+    var line = _aeT(anyShown ? 'alm_earth_data_from' : 'alm_earth_no_sat_data', { date: _aeFmtDate(newest) });
+    if (anyShown && _aeAsking()) dated = line;
+    else parts.push(line);
     if (issOrbit) parts.push(_aeT('alm_earth_iss_orbit_only', { date: _aeFmtDate(issOrbit.epochMs) }));
   } else if (sats) {
     parts.push(_aeT('alm_earth_no_orbital_data'));
@@ -1574,10 +1736,26 @@ function _aeNoteText() {
   var S = _ae.gl;
   if (S && (S.mapFailed[AE_TEX_NIGHT] || S.mapFailed[AE_TEX_MOON])) parts.push(_aeT('alm_earth_maps_failed'));
   parts.push(_aeT('alm_earth_credit'));
-  return parts.join(' · ');
+  return { ask: dated, note: parts.join(' · ') };
+}
+
+// The offer before the note: the data's date, whether the last try failed,
+// and the button.
+function _aeRenderAsk(dated) {
+  var box = _aeById('ae-ask'), btn = _aeById('ae-fresh');
+  if (!box || !btn) return;
+  var on = _aeAsking();
+  if (box.hidden === on) box.hidden = !on;
+  if (!on) return;
+  var parts = dated ? [dated] : [];
+  if (_ae.freshFailed) parts.push(_aeT('alm_earth_fresh_failed'));
+  _aeSetText(_aeById('ae-ask-text'), parts.join(' · '));
+  _aeSetText(btn, _aeT(_ae.freshBusy ? 'alm_earth_getting_fresh' : 'alm_earth_get_fresh'));
+  btn.disabled = !!_ae.freshBusy;
 }
 
 // ── Text: the clock, the eclipse line, the data note ──
+function _aeRefreshText() { if (_aeIsOpen) _aeUpdateText(_aeDisplayMs()); }
 function _aeUpdateText(ms) {
   var when = _aeById('ae-when');
   var whenText = _aeFmtWhen(ms);
@@ -1602,7 +1780,9 @@ function _aeUpdateText(ms) {
     }
     if (status.textContent !== txt) status.textContent = txt;
   }
-  _aeSetText(_aeById('ae-note'), _aeNoteText());
+  var note = _aeNoteParts();
+  _aeRenderAsk(note.ask);
+  _aeSetText(_aeById('ae-note'), note.note);
   var canvas = _aeById('ae-canvas');
   if (canvas && sc) {
     var aria = _aeT('alm_earth_aria', { when: whenText, place: _aeFmtLatLon(_aeSubsolarPoint(sc)) });
@@ -1677,6 +1857,7 @@ function _aeDragScale() {
 // one whose context was given back (_aeDisposeGl).
 function _aeBindCanvas(canvas) {
   canvas.addEventListener('pointerdown', function (e) {
+    if (_ae.setOpen) _aeShowSettings(false);   // a touch on the globe puts the panel away
     canvas.setPointerCapture(e.pointerId);
     _ae.pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
     var ids = Object.keys(_ae.pointers);
@@ -1730,8 +1911,15 @@ function _aeBindCanvas(canvas) {
 }
 function _aeBindKeys() {
   _ae.el.addEventListener('keydown', function (e) {
-    // Escape leaves this view only; the Almanac underneath stays open.
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); _aeClose(); return; }
+    // Escape shuts the gear's panel first, then leaves this view only; the
+    // Almanac underneath stays open.
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (_ae.setOpen) { _aeShowSettings(false); _aeById('ae-gear').focus({ preventScroll: true }); return; }
+      _aeClose();
+      return;
+    }
     if (e.target !== _aeById('ae-canvas')) return;
     var handled = true;
     if (e.key === 'ArrowLeft') _aeTurnBy(AE_KEY_TURN, 0);
@@ -1804,6 +1992,13 @@ function _aeBindControls() {
   }
   _aeById('ae-eclipse').onclick = _aeJumpToNextEclipse;
   _aeById('ae-now').onclick = _aeNow;
+  _aeById('ae-gear').onclick = function () { _aeShowSettings(!_ae.setOpen); };
+  _aeById('ae-fresh').onclick = _aeGetFresh;
+  // The panel's radios are drawn afresh with each answer: one listener.
+  _aeById('ae-set').onchange = function (e) {
+    var input = e && e.target;
+    if (input && input.name === 'ae-sat-mode') _aeSetMode(input.value);
+  };
   // Article links in the card need no binding of their own: the view sits
   // inside #almanac-view, where AlmanacLinks already listens.
   if (typeof ResizeObserver === 'function') new ResizeObserver(_aeResize).observe(_ae.el);
@@ -1885,6 +2080,8 @@ function openAlmanacEarth() {
   _ae.offset = 0;
   _ae.selected = null;
   _aeRenderCard();
+  _aeShowSettings(false);
+  _ae.freshFailed = false;
   _aeSetSpeed(1);
   _aePauseAlmanac();
   _aeCoverAlmanac(true);
