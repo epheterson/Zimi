@@ -10,3 +10,8 @@ What the UX pass found needs rethinking rather than fixing, collected per surfac
 4. The Apps page counts entries, not books or videos, and lists ZIMs that yield nothing.
 5. The 44px fact rows make a phone book page long.
 6. LibreTexts lists "Back Matter" as a book.
+
+## Almanac (UX pass)
+
+1. The Earth view opens at the orrery's spun-forward date (the orrery runs fast by default), so a first open is rarely "live".
+2. A partial solar eclipse shows nothing on the globe.
