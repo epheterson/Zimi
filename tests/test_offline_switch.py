@@ -131,7 +131,8 @@ def test_probe_touches_no_network_when_offline(monkeypatch):
 
 
 def test_probe_runs_checks_when_online(monkeypatch):
-    # Contrast case: without the flag the probe DOES consult the helpers.
+    # Contrast case: without the flag the probe DOES consult the helpers
+    # (the external port check only when asked, as the recheck button does).
     calls = []
     monkeypatch.setattr(
         p2p_nat, "_port_listening", lambda p: calls.append("listen") or False
@@ -144,7 +145,7 @@ def test_probe_runs_checks_when_online(monkeypatch):
         "_port_reachable_external",
         lambda p: calls.append("portcheck") or None,
     )
-    p2p_nat.probe(6881, try_upnp=True)
+    p2p_nat.probe(6881, try_upnp=True, check_reachable=True)
     assert calls == ["listen", "upnp", "portcheck"]
 
 

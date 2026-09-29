@@ -688,19 +688,37 @@ def _env_offline():
     )
 
 
-def _auto_update_allowed(config=None):
+def _update_check_mode(data_dir):
+    """Server settings' "Check for Zimi updates" (auto, ask or never), read
+    from ``data_dir`` before the server is up: the updater starts first. An
+    unreadable answer is the default, auto, which is what every install did
+    before the setting existed."""
+    try:
+        from zimi import manage
+
+        return manage.UPDATE_CHECK.mode(manage._read_app_update_prefs(data_dir))[0]
+    except Exception:
+        return "auto"
+
+
+def _auto_update_allowed(config=None, data_dir=None):
     """May the platform auto-updater initialize AT ALL?
 
     False means Sparkle/WinSparkle is never loaded — no framework load, no
     background scheduler, no appcast fetch — not "check and discard the
     result". ZIMI_OFFLINE outranks the persisted ``auto_update_check``
     config key; the key defaults to True so existing installs keep their
-    behavior. ``config`` is optional because the Sparkle init runs via
+    behavior. Then "Check for Zimi updates" in Server settings, read from
+    ``data_dir``: the updater checks on its own, so it runs only under
+    Automatically; Ask first leaves the check to that pane's Check now.
+    ``config`` is optional because the Sparkle init runs via
     AppHelper.callAfter with no arguments — env-only when absent, the
-    config gate then lives at the call site."""
+    config and setting gates then live at the call site."""
     if _env_offline():
         return False
     if config is not None and not config.get("auto_update_check"):
+        return False
+    if data_dir is not None and _update_check_mode(data_dir) != "auto":
         return False
     return True
 
@@ -967,10 +985,12 @@ def _run():
         # Initialize the platform auto-updater. macOS uses Sparkle.framework
         # (main-thread init so the menu setup can find the controller); Windows
         # uses WinSparkle.dll via ctypes. Both soft-fail to no-updater.
-        # Gated up front: ZIMI_OFFLINE or auto_update_check=false means the
-        # updater machinery is never even imported, so a disabled updater
-        # produces zero network traffic and zero framework state.
-        if _auto_update_allowed(config):
+        # Gated up front: ZIMI_OFFLINE, auto_update_check=false or "Check for
+        # Zimi updates" set to anything but Automatically means the updater
+        # machinery is never even imported, so a disabled updater produces
+        # zero network traffic and zero framework state.
+        data_dir = config.get("data_dir") or os.path.join(zim_dir, ".zimi")
+        if _auto_update_allowed(config, data_dir=data_dir):
             if platform.system() == "Darwin":
                 try:
                     from PyObjCTools import AppHelper
@@ -990,7 +1010,6 @@ def _run():
         # Add native macOS menu items now that the app menu bar exists
         _set_macos_app_identity(window_ref)
 
-        data_dir = config.get("data_dir") or os.path.join(zim_dir, ".zimi")
         server = ServerThread(zim_dir, config.get("port"), data_dir=data_dir, host=_bind_host(config))
         server.start()
         server.ready.wait(timeout=60)
