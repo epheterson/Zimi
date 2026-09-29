@@ -206,6 +206,17 @@ def test_header_bookmark_keeps_what_the_app_keeps(served, browser):
     fr = pg.frame_locator("#reader-frame")
     fr.locator(".row .t >> visible=true").first.click()
     fr.locator(".svbar .svb").first.wait_for()
+    # Its Lists, tapped in the page: no list looks chosen before one is
+    # (focus coming out of the frame painted the first as the keyboard's).
+    fr.locator(".svb[data-sv=lists]").tap()
+    pg.wait_for_selector("#zim-ctx-menu.visible")
+    pg.wait_for_timeout(150)
+    painted = pg.evaluate(
+        "() => Array.from(document.querySelectorAll('#zim-ctx-menu .ctx-item')).filter(i => getComputedStyle(i).backgroundColor !== 'rgba(0, 0, 0, 0)').map(i => i.textContent)"
+    )
+    assert painted == [], painted
+    pg.evaluate("() => _closeMenu()")
+    # The header's bookmark: the row it makes has the question's votes.
     pg.locator("#library-btn").tap()
     pg.wait_for_function("() => Saved.itemsFor({app: 'exchange'}).length === 1")
     it = pg.evaluate("() => Saved.itemsFor({app: 'exchange'})[0]")

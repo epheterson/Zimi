@@ -20621,7 +20621,7 @@ function _bmListsSubmenuHtml(key) {
 // item-shaped (a list takes it saved); rect is the control, in this window.
 // It stays open while lists are ticked, a new list is typed in place, and a
 // tap anywhere else closes it, the app page or the map under it included.
-function savedPickLists(ref, rect) {
+function savedPickLists(ref, rect, byPointer) {
   var key = Saved.key(ref);
   if (!key || !rect) return;
   var show = function () {
@@ -20629,6 +20629,13 @@ function savedPickLists(ref, rect) {
     var menu = document.getElementById('zim-ctx-menu');
     // Right to left, it hangs from the control's other edge.
     if (menu && document.documentElement.getAttribute('dir') === 'rtl') menu.style.left = Math.max(8, rect.right - menu.offsetWidth) + 'px';
+    // Tapped in an app page: focus coming out of the frame reads as the
+    // keyboard's, and the first list, focused for the keyboard, looked
+    // chosen. Taken back once the menu has placed it.
+    if (byPointer) setTimeout(function () {
+      var f = document.activeElement;
+      if (f && f.closest && f.closest('#zim-ctx-menu')) f.blur();
+    }, 0);
   };
   var pick = function (action, el) {
     if (action === 'toggle-list') {
