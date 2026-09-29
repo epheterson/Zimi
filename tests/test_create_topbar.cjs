@@ -95,10 +95,11 @@ check(/bcIcon\.removeAttribute\('href'\)/.test(topbar.slice(topbar.indexOf('if (
       'identity only — there is no destination behind it to link to');
 // The search box keeps its place and takes the page's name, exactly as the
 // Almanac does one branch below. Before, it fell through to the ZIM behind.
-check(/if \(_createOpen\) \{\s*\n[^}]*q\.placeholder = t\('create_zim'\);/.test(topbar),
+// One answer for what the box says (the header and a language change ask it).
+const ph = fn('_searchPlaceholderText');
+check(/if \(_createOpen\) \{[^}]*return t\('create_zim'\);/.test(ph) && /_updateSearchPlaceholder\(\);/.test(topbar),
       'the search box wears the page name, not the ZIM underneath');
-check(topbar.indexOf("q.placeholder = t('create_zim')") <
-      topbar.indexOf('q.placeholder = _zimTitle(currentSource)'),
+check(ph.indexOf("return t('create_zim')") < ph.indexOf('return _zimTitle(currentSource)'),
       'and that branch is reached before the source one');
 
 console.log('');

@@ -1131,18 +1131,46 @@ function _managePlaceholder() {
   return t('search_catalog');
 }
 
+// What the box asks, wherever you are: one answer for the header and for a
+// language change (which used to write its own, and said "Search in
+// Wikipedia…" where the header said "Wikipedia").
+function _searchPlaceholderText() {
+  if (_createOpen) {
+    // Same treatment as the Almanac below: the box stays and takes the page's
+    // name. It used to fall through to the ZIM underneath, so the header on
+    // the page where you make a NEW ZIM read "Lit Docs".
+    return t('create_zim');
+  }
+  if (_almanacOpen) return t('almanac');
+  if (_appPlaceholder()) return _appPlaceholder();
+  if (currentSource) return _zimTitle(currentSource);
+  if (readerOpen && readerSource) return _zimTitle(readerSource);
+  if (mode === 'manage') return _managePlaceholder();
+  if (homeScope) return t('search_in', {source: homeScope.label});
+  return t('search_placeholder');
+}
+// A prompt cut off mid-word ("Search books ar") is half a sentence: where
+// the whole one does not fit the box (a phone, the ? beside it), the box
+// says Search. Measured, not guessed: the words, the language and the box
+// decide.
+var _placeholderFull = '';
+var _placeholderCanvas = null;
+function _fitSearchPlaceholder(text) {
+  if (!q) return;
+  if (text != null) _placeholderFull = text;
+  var full = _placeholderFull, room = q.clientWidth;
+  if (!full || !room) { q.placeholder = full; return; }
+  var cs = getComputedStyle(q);
+  room -= (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+  _placeholderCanvas = _placeholderCanvas || document.createElement('canvas');
+  var ctx = _placeholderCanvas.getContext('2d');
+  if (!ctx) { q.placeholder = full; return; }
+  ctx.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+  q.placeholder = ctx.measureText(full).width <= room ? full : t('search');
+}
 function _updateSearchPlaceholder() {
   if (!q) return;
-  if (mode === 'manage') {
-    q.placeholder = _managePlaceholder();
-  } else if (_appPlaceholder()) {
-    q.placeholder = _appPlaceholder();
-  } else if (currentSource) {
-    var info = _zimInfo(currentSource);
-    q.placeholder = t('search_in', { source: (info && info.title) || currentSource });
-  } else {
-    q.placeholder = t('search_placeholder');
-  }
+  _fitSearchPlaceholder(_searchPlaceholderText());
 }
 
 // Sizes are DECIMAL, everywhere, and this is the only place that says so.
@@ -1923,28 +1951,9 @@ function updateTopbar() {
     _getStorageFlag(SK.HIDE_LANG_CHOOSER) ? 'none' : '';
   _updateLibraryBtnIcon();
 
-  // Search placeholder
-  if (_createOpen) {
-    // Same treatment as the Almanac below: the box stays and takes the page's
-    // name. It used to fall through to the ZIM underneath, so the header on
-    // the page where you make a NEW ZIM read "Lit Docs".
-    q.placeholder = t('create_zim');
-  } else if (_almanacOpen) {
-    q.placeholder = t('almanac');
-  } else if (_appPlaceholder()) {
-    q.placeholder = _appPlaceholder();
-  } else if (currentSource) {
-    q.placeholder = _zimTitle(currentSource);
-  } else if (readerOpen && readerSource) {
-    q.placeholder = _zimTitle(readerSource);
-  } else if (mode === 'manage') {
-    q.placeholder = _managePlaceholder();
-  } else if (homeScope) {
-    q.placeholder = t('search_in', {source: homeScope.label});
-  } else {
-    q.placeholder = t('search_placeholder');
-  }
+  // Search placeholder: fitted once the ? has taken (or given back) its room.
   _syncSearchHelp();
+  _updateSearchPlaceholder();
 
   // Footer
   updateFooter();
@@ -2217,6 +2226,9 @@ function _bindConnEvents() {
     }
   });
   window.addEventListener('resize', _syncConnBannerHeight);
+  // The box's room changes with the window: the placeholder is fitted again.
+  var _fitRaf = 0;
+  window.addEventListener('resize', function() { cancelAnimationFrame(_fitRaf); _fitRaf = requestAnimationFrame(function() { _fitSearchPlaceholder(); }); });
 }
 
 // Shared honest-empty markup for any surface that would otherwise assert "no
@@ -8887,7 +8899,7 @@ function renderBrowseGallery() {
   _browseView = 'gallery';
   manageCategoryFilter = null;
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
-  q.placeholder = t('search_catalog');
+  _fitSearchPlaceholder(t('search_catalog'));
 
   // Only show loading spinner if catalog hasn't been fetched yet
   if (!_catalogCache) results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading_catalog') + '</div>';
@@ -9100,7 +9112,7 @@ function drillCategory(catKey, namePrefix) {
 
   const catMeta = BROWSE_CATEGORIES.find(c => c.key === catKey);
   const catName = catMeta ? t(catMeta.i18n) : catKey;
-  q.placeholder = t('search_in', {source: catName});
+  _fitSearchPlaceholder(t('search_in', {source: catName}));
   q.value = '';
 
   if (!_catalogCache) results.innerHTML = _loadingHtml('loading_catalog');
@@ -9923,20 +9935,20 @@ function switchManageTab(tab) {
   q.value = '';
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   if (tab === 'installed') {
-    q.placeholder = t('filter_installed');
+    _fitSearchPlaceholder(t('filter_installed'));
     renderInstalled();
   } else if (tab === 'downloads') {
-    q.placeholder = t('search_placeholder');
+    _fitSearchPlaceholder(t('search_placeholder'));
     refreshDownloads();
   } else if (tab === 'collections') {
-    q.placeholder = t('search_placeholder');
+    _fitSearchPlaceholder(t('search_placeholder'));
     renderCollectionsTab();
   } else if (tab === 'history') {
-    q.placeholder = t('search_placeholder');
+    _fitSearchPlaceholder(t('search_placeholder'));
     _act.showAll = false;   // re-entering the tab defaults back to the capped view
     renderActivityLog();
   } else if (tab === 'activity') {
-    q.placeholder = t('search_placeholder');
+    _fitSearchPlaceholder(t('search_placeholder'));
     renderActivityTab();
   } else {
     // Default catalog language pill to the UI language UNLESS the user has

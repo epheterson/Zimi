@@ -53,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Zimipedia's reader keeps saving, reading settings and the article's languages in its own bar only: Zimi's header no longer shows a second bookmark, the ⋯ menu a second set of reading settings, or the language menu the article's languages; Reader View's text size reads as a percentage.
 - Removing something from Saved, or a highlight, can be undone from the message that says so; New list comes first in every list picker; a kept place shows a pin; an audiobook is kept to Listen later; signed in, Saved says when your account is behind because the server is not answering.
 - A book's page on a phone shows its cover, title and Read on the first screen, with its facts two to a row; audio in ZimiTube no longer sits on an empty 16:9 video stage; an app's page has one Save (its own), not a second bookmark in the header; LibreTexts no longer lists a shelf's Back Matter as a book or counts front and back matter as chapters.
+- A search box's prompt that does not fit the box (Bookshelf's on a phone) says Search instead of being cut off mid-word, and a language change keeps the prompt the header gave.
 
 ### Fixed
 
