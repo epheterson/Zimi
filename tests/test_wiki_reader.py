@@ -645,6 +645,58 @@ def test_today_is_where_you_were_and_the_day_of_every_wiki(served):
             br.close()
 
 
+def test_the_wikis_lead_the_row_and_the_language_is_one_chip_at_its_end(served):
+    """Eric, 2026-09-29: "maybe language can be shorter and flip it to be
+    first filter on zims then languages". One row on a phone: the wikis,
+    which scroll, then the language as a short chip that stays on screen and
+    opens the list; choosing Hebrew turns the page right to left."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        ctx = br.new_context(**pw.devices["iPhone 13"])
+        pg = ctx.new_page()
+        fr = pg.frame_locator("#reader-frame")
+        try:
+            _boot(pg, served)
+            pg.evaluate("() => openWiki()")
+            pg.wait_for_function(
+                "() => { var d = document.getElementById('reader-frame').contentDocument; return d && d.querySelector('#lang-btn') && d.querySelector('#pills .chip'); }",
+                timeout=20000,
+            )
+            row = _q(
+                pg,
+                """(function() { var r = function(e) { var b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+                  return { pills: r(d.getElementById('pills')), lang: r(d.getElementById('lang-btn')), text: d.getElementById('lang-btn').textContent,
+                    vw: d.documentElement.clientWidth, sw: d.documentElement.scrollWidth, rows: d.querySelectorAll('.chips').length }; })()""",
+            )
+            assert row["text"] == "EN" and row["rows"] == 1, row
+            assert (
+                row["lang"]["t"] < row["pills"]["b"]
+                and row["pills"]["r"] <= row["lang"]["l"] + 1
+            ), row
+            assert row["lang"]["r"] <= row["vw"] and row["sw"] <= row["vw"], row
+            fr.locator("#lang-btn").click()
+            items = fr.locator("#lang-menu [role=menuitemradio]")
+            assert items.count() == 2
+            fr.locator('#lang-menu [lang="he"]').click()
+            pg.wait_for_timeout(300)
+            got = _q(
+                pg,
+                "({ dir: d.documentElement.dir, text: d.getElementById('lang-btn').textContent, open: !!d.getElementById('lang-menu') })",
+            )
+            assert got == {"dir": "rtl", "text": "HE", "open": False}, got
+            # In right to left the chip sits at the row's left end (Hebrew has one
+            # wiki here, so no pills: the chip is the row).
+            lr = _q(
+                pg,
+                "(function() { var l = d.getElementById('lang-btn').getBoundingClientRect(); return l.left >= 0 && l.right < d.documentElement.clientWidth / 2; })()",
+            )
+            assert lr
+        finally:
+            br.close()
+
+
 def test_a_search_result_from_a_wiki_opens_in_zimipedias_reader(served):
     """Eric, 2026-09-29: a search result from a wiki opens in Zimipedia's
     reader (saving, highlights, languages), not the raw page; Settings >
@@ -661,7 +713,12 @@ def test_a_search_result_from_a_wiki_opens_in_zimipedias_reader(served):
             _boot(pg, served)
             pg.evaluate("() => openWiki()")
             pg.wait_for_timeout(800)
-            assert pg.evaluate("() => getComputedStyle(document.querySelector('#bc-icon circle')).fill") == "none"
+            assert (
+                pg.evaluate(
+                    "() => getComputedStyle(document.querySelector('#bc-icon circle')).fill"
+                )
+                == "none"
+            )
             for on in (True, False):
                 # A fresh page each time: Reader View stays on, once on, for
                 # the tab's next articles.
@@ -680,10 +737,20 @@ def test_a_search_result_from_a_wiki_opens_in_zimipedias_reader(served):
                 )
                 pg.wait_for_timeout(800)
                 bar = _q(pg, "!!d.querySelector('.zw-bar')")
-                assert bar is on, "Zimipedia's reader when the setting is on, the ZIM's page when off"
+                assert (
+                    bar is on
+                ), "Zimipedia's reader when the setting is on, the ZIM's page when off"
                 if on:
                     # The reader's bar at the top, under Zimi's header.
-                    assert abs(_q(pg, "d.querySelector('.zw-bar').getBoundingClientRect().top")) < 2
+                    assert (
+                        abs(
+                            _q(
+                                pg,
+                                "d.querySelector('.zw-bar').getBoundingClientRect().top",
+                            )
+                        )
+                        < 2
+                    )
         finally:
             br.close()
 

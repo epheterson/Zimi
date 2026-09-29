@@ -6,10 +6,26 @@
 <title>Zimipedia</title>
 <!--@apps.css@-->
 <style>
-  /* The languages, each in its own name; then the wikis of the one chosen. */
-  .langs { margin-bottom: 8px; }
-  .langs .chip { font-weight: 600; }
-  .chip .n { font-weight: 400; }
+  /* One row: the wikis of the language shown, which scroll, and at its end
+     the language, a short chip that stays put and opens the list of them. */
+  .filters { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
+  .filters .chips { flex: 1; min-width: 0; margin-block: 0; padding-inline-end: 20px;
+    /* The wikis that do not fit fade out under the language, not cut off. */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent); }
+  html[dir="rtl"] .filters .chips { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 22px), transparent); }
+  .lang-pick { position: relative; flex: none; margin-inline-start: auto; }
+  .lang-btn { gap: 5px; padding-inline: 10px 8px; font-weight: 600; letter-spacing: .02em; color: var(--text); }
+  .lang-btn svg { width: 15px; height: 15px; flex: none; color: var(--text2); }
+  .lang-btn .dn { width: 12px; height: 12px; }
+  .lang-btn[aria-expanded="true"] { border-color: var(--amber); }
+  .lang-menu { position: absolute; top: calc(100% + 6px); inset-inline-end: 0; z-index: 30; min-width: 210px; max-height: min(60vh, 420px); overflow-y: auto;
+    margin: 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, .18); }
+  .lang-menu button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 8px 12px; border: 0; border-radius: 8px; background: none; color: var(--text); font: inherit; font-size: 14px; cursor: pointer; text-align: start; }
+  .lang-menu button:hover, .lang-menu button:focus-visible { background: var(--surface2); outline: none; }
+  .lang-menu button[aria-checked="true"] { font-weight: 600; }
+  .lang-menu button[aria-checked="true"]::after { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); order: 3; }
+  .lang-menu .nm { flex: 1; }
+  .lang-menu .n { color: var(--text2); font-size: 12px; font-variant-numeric: tabular-nums; order: 2; }
   .chips .sep { flex: none; width: 1px; align-self: stretch; margin: 4px 2px; background: var(--border); }
   /* The head: what is shown, and (for a search) the two ways to show it. */
   .head .views { display: inline-flex; gap: 2px; margin-inline-start: auto; border: 1px solid var(--border); border-radius: 10px; padding: 2px; background: var(--surface); }
@@ -144,8 +160,10 @@
 </head>
 <body>
 <div class="page">
-  <div class="chips langs" id="langs" role="group"></div>
-  <div class="chips" id="pills" role="group"></div>
+  <div class="filters" id="filters">
+    <div class="chips" id="pills" role="group"></div>
+    <div class="lang-pick" id="langs"></div>
+  </div>
   <div class="head">
     <h2 id="h"></h2><span class="n" id="n"></span>
     <span class="views" id="views" role="group" hidden></span>
@@ -180,7 +198,7 @@ var STR = strings({ title: 'Zimipedia', all: 'All', today: 'Today', article: 'Ar
   load_failed: 'Zimipedia could not load its wikis.', search_failed: 'The search did not go through.', retry: 'Try again', langs: {},
   languages: 'Languages', read_more: 'Read the article', search_all_languages: 'Search all languages', search_one_language: 'Only {lang}',
   continue: 'Continue reading', trails: 'Recent trails', on_this_day: 'On this day', featured: 'From the wikis', word: 'Word of the day',
-  quote: 'Quote of the day', place: 'A place to go', book: 'Book of the day', text: 'Text of the day', course: 'Lesson of the day',
+  quote: 'Quote of the day', place: 'A place to go', book: 'Textbook of the day', text: 'Text of the day', course: 'Lesson of the day',
   news: 'From the news', species: 'Species of the day', did_you_know: 'Did you know…', picture: 'Picture of the day',
   front: 'From the front page', front_as_of: 'As featured on {date}, when this copy was made' });
 
@@ -737,15 +755,44 @@ function showToday() {
 }
 
 // ── languages and pills ──────────────────────────────────────────────────
+// The language is one short chip (a globe and its code) at the end of the
+// wikis' row: the wikis are what you narrow most, the language what you set
+// once. It opens the languages, each in its own name with its wikis.
+var GLOBE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>';
+var CARET = '<svg class="dn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+function langCode(code) { return String(code || '').split('-')[0].toUpperCase(); }
 function renderLangs() {
   var host = document.getElementById('langs');
-  host.setAttribute('aria-label', STR.languages);
-  host.innerHTML = _langs.map(function(l) {
-    var on = l.code === _lang;
-    return '<button type="button" class="chip' + (on ? ' on' : '') + '" aria-pressed="' + on + '" lang="' + esc(l.code) + '" title="' + esc(langName(l.code)) +
-      '" onclick="setLang(' + J(l.code) + ')">' + esc(endonym(l.code, langName(l.code))) + ' <span class="n">' + l.wikis + '</span></button>';
-  }).join('');
+  var name = endonym(_lang, langName(_lang));
+  host.innerHTML = '<button type="button" class="chip lang-btn" id="lang-btn" aria-haspopup="true" aria-expanded="false" aria-label="' + esc(STR.languages + ': ' + name) +
+    '" title="' + esc(name) + '" onclick="toggleLangs()">' + GLOBE + '<span>' + esc(langCode(_lang)) + '</span>' + CARET + '</button>';
   host.hidden = _langs.length < 2;
+  filtersShown();
+}
+function toggleLangs(open) {
+  var btn = document.getElementById('lang-btn'), menu = document.getElementById('lang-menu');
+  if (open === undefined) open = !menu;
+  if (menu) menu.remove();
+  if (btn) btn.setAttribute('aria-expanded', String(!!open));
+  if (!open || !btn) return;
+  btn.insertAdjacentHTML('afterend', '<ul class="lang-menu" id="lang-menu" role="menu" aria-label="' + esc(STR.languages) + '"' + ui() + '>' + _langs.map(function(l) {
+    return '<li role="none"><button type="button" role="menuitemradio" aria-checked="' + (l.code === _lang) + '" lang="' + esc(l.code) + '" onclick="pickLang(' + J(l.code) + ')">' +
+      '<span class="nm">' + esc(endonym(l.code, langName(l.code))) + '</span><span class="n">' + l.wikis + '</span></button></li>';
+  }).join('') + '</ul>');
+  var on = document.querySelector('#lang-menu [aria-checked="true"]') || document.querySelector('#lang-menu button');
+  if (on) on.focus();
+}
+function pickLang(code) { toggleLangs(false); setLang(code); var b = document.getElementById('lang-btn'); if (b) b.focus(); }
+// A tap outside the list, or Escape, closes it.
+document.addEventListener('click', function(e) {
+  if (document.getElementById('lang-menu') && !(e.target.closest && e.target.closest('.lang-pick'))) toggleLangs(false);
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && document.getElementById('lang-menu')) { toggleLangs(false); var b = document.getElementById('lang-btn'); if (b) b.focus(); }
+});
+// The row is there while it holds something: wikis to choose, or languages.
+function filtersShown() {
+  document.getElementById('filters').hidden = document.getElementById('pills').hidden && document.getElementById('langs').hidden;
 }
 function renderPills() {
   var host = document.getElementById('pills');
@@ -761,6 +808,7 @@ function renderPills() {
   });
   host.innerHTML = h;
   host.hidden = ws.length < 2;
+  filtersShown();
 }
 // All on until one is tapped: the first tap narrows to that wiki, the next
 // ones add or take away, and the last one taken away is all again.
@@ -850,7 +898,7 @@ document.addEventListener('visibilitychange', function() { if (!document.hidden)
 window.addEventListener('focus', checkDay);
 
 window.wikiSearch = wikiSearch; window.pill = pill; window.pillAll = pillAll; window.setView = setView; window.load = load;
-window.setLang = setLang; window.everyLanguage = everyLanguage;
+window.setLang = setLang; window.everyLanguage = everyLanguage; window.toggleLangs = toggleLangs; window.pickLang = pickLang;
 window.__top = function() { return !_q; };
 window.__saved = function() { if (!_q) drawYours(); };
 // Back from an article: where you were and the trail just taken are new.
