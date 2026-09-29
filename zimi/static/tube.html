@@ -176,7 +176,7 @@ var PAGE = 60;
 var STR = strings({ title: 'ZimiTube', videos: 'videos', video: 'video', langs: {}, more: 'More', none: 'No videos match.', empty: 'No video ZIMs installed yet.',
   up_next: 'Up next', autoplay: 'Autoplay', theater: 'Theater', pip: 'Picture in picture', open_page: 'Open the original page', all: 'All', track: 'track', tracks: 'tracks',
   sort_top: 'Top', sort_title: 'Title', sort_newest: 'Newest', sort_longest: 'Longest', no_media: 'This video cannot be played here.', missing: 'This video isn\'t in this ZIM.', play_pause: 'Play or pause', seek: 'Seek', sound: 'Sound', full_screen: 'Full screen',
-  watch_later: 'Watch later', continue: 'Continue watching', recording: 'recording', recordings: 'recordings', sv: {} });
+  watch_later: 'Watch later', listen_later: 'Listen later', continue: 'Continue watching', recording: 'recording', recordings: 'recordings', sv: {} });
 var SORTS = ['top', 'title', 'newest', 'longest'];
 // _feed is the home's order (a source, a query, a sort); _list is what is
 // playing through (the feed, or a row of what you keep), Up next its rest.
@@ -254,6 +254,12 @@ function videoRef(v) {
   return { kind: 'video', app: 'tube', zim: v.zim, path: v.page, title: v.title,
     meta: { thumb: v.thumb || '', duration: v.duration || '', speaker: v.speaker || '', zim_title: v.zim_title || '', audio: !!v.audio, tracks: v.tracks || 0, icon: !!v.zim_icon } };
 }
+// What "later" means for these: an audiobook is listened to, not watched;
+// a shelf of both is what you saved.
+function laterWord(list) {
+  var n = list.filter(function(v) { return v.audio; }).length;
+  return !n ? STR.watch_later : n === list.length ? STR.listen_later : (STR.sv.saved || STR.watch_later);
+}
 function fromSaved(x) {
   var live = _byKey[x.zim + '\n' + x.path];
   if (live) return live;
@@ -273,7 +279,7 @@ function savedRows() {
   var rows = [], cont = S.continued({ app: 'tube' }).filter(function(p) { return p.where.t >= POS_MIN_S || p.where.k > 0; }).slice(0, CONTINUE_SHOWN);
   if (cont.length) rows.push({ id: 'continue', title: STR.continue, items: cont.map(fromSaved), f: cont.map(function(p) { return p.where.f || 0; }) });
   var mine = S.itemsFor({ app: 'tube' });
-  if (mine.length) rows.push({ id: 'later', title: STR.watch_later, items: mine.map(fromSaved) });
+  if (mine.length) { var later = mine.map(fromSaved); rows.push({ id: 'later', title: laterWord(later), items: later }); }
   S.lists({ app: 'tube' }).forEach(function(l) {
     if (l.count) rows.push({ id: l.id, title: l.builtin ? STR.sv.liked : l.name, items: S.itemsFor({ list: l.id, app: 'tube' }).map(fromSaved), list: !l.builtin });
   });
@@ -502,7 +508,7 @@ function play(e, i) {
   document.getElementById('w-tracks').innerHTML = '';
   openLink(document.getElementById('w-open'), v.zim, v.page, STR.open_page);
   document.getElementById('w-open').hidden = false;
-  savedBar(videoRef(v), { save: [STR.watch_later] });
+  savedBar(videoRef(v), { save: [laterWord([v])] });
   paintAutoplay(); paintTheater();
   document.getElementById('dock').hidden = true;
   var stage = document.getElementById('stage'); stage.innerHTML = ''; stage.classList.remove('audio'); _video = null;
@@ -685,7 +691,7 @@ function undock() {
   document.getElementById('dock').hidden = true;
   document.getElementById('stage').appendChild(v);
   window.scrollTo(0, 0);
-  if (w) { savedBar(videoRef(w), { save: [STR.watch_later] }); tell({ zimi: 'tube-play', play: w.zim + '/' + w.page, title: w.title }); }
+  if (w) { savedBar(videoRef(w), { save: [laterWord([w])] }); tell({ zimi: 'tube-play', play: w.zim + '/' + w.page, title: w.title }); }
 }
 function stopDock() {
   var v = _video; if (v) { try { v.pause(); } catch (e) {} v.remove(); }

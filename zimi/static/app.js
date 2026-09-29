@@ -2573,10 +2573,26 @@ async function _bootDeepLinkArticle(zim, path) {
   openArticle(zim, path, null, { replace: true, pos: pos ? mapPositionHash(pos.zoom, pos.lat, pos.lng) : '' });
 }
 
-function _showToast(msg, duration) {
+// `undo`: a toast for something just taken away carries its way back, and
+// stays long enough to reach it.
+var _TOAST_UNDO_MS = 6000;
+var _toastUndoLast = null;
+function _showToast(msg, duration, undo) {
   var toast = document.createElement('div');
   toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;font-size:13px;color:var(--text2);z-index:300;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
   toast.textContent = msg;
+  if (undo) {
+    // One undo at a time: the one before it is what the newer took over.
+    if (_toastUndoLast && _toastUndoLast.parentNode) _toastUndoLast.remove();
+    _toastUndoLast = toast;
+    toast.className = 'toast-undo';
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = t('undo');
+    b.onclick = function() { toast.remove(); undo(); };
+    toast.appendChild(b);
+    duration = duration || _TOAST_UNDO_MS;
+  }
   document.body.appendChild(toast);
   // Mirror to the screen-reader live region so non-sighted users hear it too.
   var live = document.getElementById('a11y-toast-region');
@@ -5311,12 +5327,7 @@ function _dismissDiscover() {
   localStorage.setItem(SK.HIDE_DISCOVER, '1');
   _discoverLoading = false;
   renderHome();  // Re-render to move stats bar to top
-  // Show undo toast
-  var toast = document.createElement('div');
-  toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;font-size:13px;color:var(--text2);z-index:300;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
-  toast.innerHTML = tH('discover_hidden') + ' <a href="#" style="color:var(--amber);text-decoration:none" onclick="event.preventDefault();localStorage.removeItem(\'zimi_hide_discover\');this.parentNode.remove();renderHome()">' + tH('undo') + '</a>';
-  document.body.appendChild(toast);
-  setTimeout(function() { if (toast.parentNode) toast.remove(); }, 5000);
+  _showToast(t('discover_hidden'), 0, function() { localStorage.removeItem(SK.HIDE_DISCOVER); renderHome(); });
 }
 
 // ─── Discover Card Pipeline ─────────────────────────────────────────────
@@ -18755,7 +18766,7 @@ function _tubeStrings(play) {
   _installedVideoZims().forEach(function(z) { if (z.language) langs[z.language] = _langDisplayName(z.language) || z.language; });
   return _appStrings('tube', ['tube_videos', 'tube_video', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay',
     'tube_theater', 'tube_pip', 'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_track', 'tube_tracks',
-    'tube_no_media', 'tube_missing', 'tube_watch_later', 'tube_continue', 'tube_recording', 'tube_recordings'], { play: play || '', langs: langs });
+    'tube_no_media', 'tube_missing', 'tube_watch_later', 'tube_listen_later', 'tube_continue', 'tube_recording', 'tube_recordings'], { play: play || '', langs: langs });
 }
 
 // A thing inside an app (a video, a question, a post) is a step in history
@@ -19449,7 +19460,9 @@ function _mapPlacesHtml(here) {
   var mine = places.filter(function(p) { return p.zim === here; }), others = places.filter(function(p) { return p.zim !== here; });
   return '<div class="mp-head" role="separator">' + tH('map_places') + '</div>' +
     '<div class="mp-row mp-save' + (kept ? ' active' : '') + '" role="menuitemcheckbox" aria-checked="' + kept + '" data-role="save-place">' +
-    '<span class="mp-name">' + (kept ? _libBookmarkFilledSvg : _libBookmarkSvg) + '<span>' + tH(kept ? 'saved_tab' : 'map_place_save') + '</span></span></div>' +
+    // A checkbox that keeps its name: "Saved" in its place read as a heading
+    // over the places, and a tap on it took the place away.
+    '<span class="mp-name">' + (kept ? _libBookmarkFilledSvg : _libBookmarkSvg) + '<span>' + tH('map_place_save') + '</span></span></div>' +
     mine.concat(others).map(function(p) {
       var on = p.zim === here && _mapNear(parseMapHash('#' + ((p.where || {}).pos || '')), at);
       var z = p.zim === here ? null : _zimInfo(p.zim);
@@ -20393,6 +20406,8 @@ var _BM_SVG_ATTRS = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" strok
 var _BM_LIST_SVG = '<svg width="17" height="17" ' + _BM_SVG_ATTRS + '><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>';
 var _BM_HEART_SVG = '<svg width="17" height="17" ' + _BM_SVG_ATTRS + '><path d="M20.8 5.6a5.5 5.5 0 0 0-7.8 0L12 6.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 22l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>';
 var _BM_CONTINUE_SVG = '<svg width="17" height="17" ' + _BM_SVG_ATTRS + '><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3H9a3 3 0 0 1 3 3v15a2.5 2.5 0 0 0-2.5-2.5H3.5A1.5 1.5 0 0 1 2 17z"/><path d="M22 4.5A1.5 1.5 0 0 0 20.5 3H15a3 3 0 0 0-3 3v15a2.5 2.5 0 0 1 2.5-2.5h6a1.5 1.5 0 0 0 1.5-1.5z"/></svg>';
+// A kept place is a pin, whatever map it is on (the map's letter said nothing of it).
+var _BM_PIN_SVG = '<svg width="18" height="18" ' + _BM_SVG_ATTRS + '><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>';
 var _BM_PAGE_SVG = '<svg width="15" height="15" ' + _BM_SVG_ATTRS + '><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
 
 // The app on screen, for the panel's slice: an app page, a map, a book.
@@ -20435,6 +20450,7 @@ function _bmExpand(id) {
 function _savedNotesHtml() {
   var html = '';
   if (_savedPaused) html += '<div class="bm-note bm-warn" role="status">' + tH('saved_sync_paused') + '</div>';
+  else if (_savedBehind && _savedSignedIn()) html += '<div class="bm-note" role="status">' + tH('saved_sync_behind') + '</div>';
   if (Saved.legacyOffered()) {
     html += '<div class="bm-note" role="group">' + tH('saved_legacy_offer') + '<div class="bm-note-actions">' +
       '<button class="hp-action-btn primary" onclick="Saved.legacyAnswer(true)">' + tH('saved_legacy_add') + '</button>' +
@@ -20452,7 +20468,7 @@ function _renderBookmarksContent() {
   var hls = Saved.highlights(q);
   var any = loose.length || cont.length || hls.length || lists.some(function (l) { return l.count || !l.builtin; });
   var html = _bmScopeHtml() + _savedNotesHtml() + '<div class="hp-actions bm-actions">' +
-    '<button class="hp-action-btn" onclick="_bmNewListPrompt()">' + tH('saved_new_list') + '</button>' +
+    '<button class="hp-action-btn bm-new" onclick="_bmNewListPrompt()"><span aria-hidden="true">+</span>' + tH('saved_new_list') + '</button>' +
     (Saved.all().length ? '<button id="export-bookmarks-btn" class="hp-action-btn" onclick="_bmOpenExport()">' + tH('save_to_zim') + '</button>' : '') +
     '</div>';
   // The tree host is there even when empty: a new list's name is typed into it.
@@ -20485,6 +20501,21 @@ function _renderBookmarksContent() {
     }
   }
   return html + '</div>';
+}
+
+// Taking something out of Saved says so, with the way back: an item returns
+// to its lists where it stood, a highlight with its colour and note.
+function _savedRemoveUndoable(ref) {
+  var snap = Saved.snapshot(ref);
+  if (!snap) return;
+  Saved.remove(ref);
+  _showToast(t('saved_removed'), 0, function() { Saved.restore(snap); });
+}
+function _savedRemoveHighlight(id, then) {
+  var h = Saved.getHighlight(id);
+  if (!h) return;
+  Saved.removeHighlight(id);
+  _showToast(t('hl_removed'), 0, function() { Saved.highlight(h); if (then) then(); });
 }
 
 // ── Highlights in the panel: under their page, and on their own ──
@@ -20527,7 +20558,7 @@ function _bmHlMenu(row, x, y) {
     '<div class="ctx-sep"></div><div class="ctx-item danger" data-action="remove">' + tH('hl_remove') + '</div>', x, y, function (action) {
     if (action === 'open') Highlights.open(h);
     else if (action === 'copy') _copyText(_hlQuote(h));
-    else if (action === 'remove') Saved.removeHighlight(h.id);
+    else if (action === 'remove') _savedRemoveHighlight(h.id);
   });
 }
 // "All" and the app on screen, when one is: the panel opens on the app's own.
@@ -20586,7 +20617,7 @@ function _fmtClock(s) {
 function _bmItemRowHtml(it, fid, depth) {
   var missing = _bkSourceMissing(it);
   var inApp = _savedOpensInApp(it);
-  var icon = inApp ? _appIcon(it.app).replace('width="26" height="26"', 'width="20" height="20"') : it.zim ? _sourceIconHtml(it.zim, 20) : _BM_PAGE_SVG;
+  var icon = it.kind === 'place' ? _BM_PIN_SVG : inApp ? _appIcon(it.app).replace('width="26" height="26"', 'width="20" height="20"') : it.zim ? _sourceIconHtml(it.zim, 20) : _BM_PAGE_SVG;
   var sub = missing ? t('bm_source_missing') : inApp ? _appTitle(it.app) : (it.zim ? _zimTitleWithLang(it.zim) : '');
   var where = fid === _BM_CONTINUE ? _savedWhereLabel(it) : '';
   if (where && !missing) sub = where + ' · ' + sub;
@@ -20819,13 +20850,15 @@ function _bmDeleteList(lid) {
   }, 0);
 }
 
-// The Lists submenu: every list with a tick where the item is, and a new one.
+// The Lists submenu: a new list first (under twenty lists it was a scroll
+// away), then every list with a tick where the item is.
 function _bmListsSubmenuHtml(key) {
-  return Saved.lists().map(function (l) {
-    var on = Saved.inList(key, l.id);
-    return '<div class="ctx-item" data-action="toggle-list" data-lid="' + escAttr(l.id) + '" role="menuitemcheckbox" aria-checked="' + on + '">' +
-      '<span class="ctx-check">' + (on ? '✓' : '') + '</span><span dir="auto">' + esc(_savedListName(l)) + '</span></div>';
-  }).join('') + '<div class="ctx-sep"></div><div class="ctx-item" data-action="new-list"><span class="ctx-check">+</span>' + tH('saved_new_list') + '…</div>';
+  return '<div class="ctx-item" data-action="new-list"><span class="ctx-check">+</span>' + tH('saved_new_list') + '…</div><div class="ctx-sep"></div>' +
+    Saved.lists().map(function (l) {
+      var on = Saved.inList(key, l.id);
+      return '<div class="ctx-item" data-action="toggle-list" data-lid="' + escAttr(l.id) + '" role="menuitemcheckbox" aria-checked="' + on + '">' +
+        '<span class="ctx-check">' + (on ? '✓' : '') + '</span><span dir="auto">' + esc(_savedListName(l)) + '</span></div>';
+    }).join('');
 }
 // The same lists, as a picker of their own: what an app page's Lists button
 // opens (apps.js pickLists), and a place's row in Maps. ref is the thing,
@@ -20937,7 +20970,7 @@ function _bmItemMenu(row, x, y) {
     if (action === 'open') _savedOpen(it);
     else if (action === 'rename') _bmInlineRenameRow(row, it.title || _titleFromPath(it.path), Saved.TITLE_MAX, function (name) { Saved.rename(key, name); });
     else if (action === 'unlist') Saved.removeFromList(key, fid);
-    else if (action === 'remove') Saved.remove(key);
+    else if (action === 'remove') _savedRemoveUndoable(key);
     else if (action === 'toggle-list') {
       var lid = itemEl.dataset.lid;
       if (Saved.inList(key, lid)) Saved.removeFromList(key, lid);
@@ -21280,6 +21313,8 @@ function _pushArticleHistory(zim, path) {
 //   Saved.get(ref) / Saved.has(ref)    one item, with key and lists / is it kept
 //   Saved.all()                        every item, the latest added first
 //   Saved.rename(ref, title)           '' goes back to the page's own title
+//   Saved.snapshot(ref) -> snap        before a remove; Saved.restore(snap) puts
+//                                      it back as it was, in each list's place
 //   Saved.itemsFor({app, kind, list})  a list's items in its order (list: '' is
 //                                      the items in no list), else the latest first
 //   Saved.lists({app, kind})           [{id, name, builtin, count}], Liked first;
@@ -21995,6 +22030,30 @@ var Saved = (function () {
     commit(false, false, 'main');
     return id;
   }
+  // Undo of a remove: the item as it was, its date and name, and its place
+  // in each of its lists (before the item that followed it there).
+  function snapshot(ref) {
+    var s = load(), id = key(ref);
+    if (!has(s.items, id)) return null;
+    var ix = idx(), at = {};
+    (ix.listsOf[id] || []).forEach(function (lid) {
+      var seq = ix.byList[lid] || [], i = seq.indexOf(id);
+      at[lid] = i >= 0 && i + 1 < seq.length ? seq[i + 1] : null;
+    });
+    return { id: id, rec: copy(s.items[id]), at: at };
+  }
+  function restore(snap) {
+    if (!snap || !snap.rec) return;
+    var s = load(), t = now();
+    if (!has(s.items, snap.id) && !room('items')) return;
+    var rec = copy(snap.rec);
+    rec.ts = t;
+    s.items[snap.id] = rec;
+    delete s.gone['i:' + snap.id];
+    _idx = null;
+    Object.keys(snap.at).forEach(function (lid) { addMember(s, snap.id, lid, snap.at[lid], t); });
+    commit();
+  }
   function removeHighlight(id) {
     var s = load();
     if (!has(s.highlights, id)) return;
@@ -22095,7 +22154,7 @@ var Saved = (function () {
 
   return {
     LIKED: LIKED, NAME_MAX: NAME_MAX, TITLE_MAX: TITLE_MAX, KIND_APP: copy(KIND_APP),
-    key: key, save: save, remove: remove, get: get, has: function (ref) { return has(load().items, key(ref)); },
+    key: key, save: save, remove: remove, snapshot: snapshot, restore: restore, get: get, has: function (ref) { return has(load().items, key(ref)); },
     all: function () { return itemsFor({}); }, rename: rename, itemsFor: itemsFor,
     list: list, lists: lists, createList: createList, renameList: renameList, deleteList: deleteList, moveList: moveList,
     inList: inList, addToList: addToList, moveInList: moveInList, removeFromList: removeFromList,
@@ -22182,6 +22241,16 @@ var _savedPushTimer = null, _savedPushDue = 0, _savedPushing = null, _savedPushA
 // null until it has; the body last sent while leaving; whether the account
 // refused the store as too large (sync paused until something is let go).
 var _savedBase = null, _savedLeftBody = '', _savedPaused = false;
+// Signed in, a change the account has not taken (the server did not answer):
+// the panel says the account's copy is behind, and it is sent again.
+var _savedBehind = false, _savedRetryTimer = null;
+function _savedSetBehind(on) {
+  clearTimeout(_savedRetryTimer);
+  _savedRetryTimer = on ? setTimeout(function () { _savedPush(); }, _SAVED_PUSH_OFTEN_MS) : null;
+  if (_savedBehind === on) return;
+  _savedBehind = on;
+  _savedRefreshPanel();
+}
 function _savedSignedIn() { return !!(_userSession && _userSession.name); }
 // What the account has not had: null when it has everything.
 function _savedDelta() {
@@ -22229,11 +22298,12 @@ function _savedPush(leaving) {
     if (r.status === 413) { _savedSetPaused(true); return null; }
     return r.ok ? r.json() : null;
   }).then(function (d) {
-    if (!d || !d.saved) return false;
+    if (!d || !d.saved) { if (!leaving) _savedSetBehind(true); return false; }
     _savedSetPaused(false);
+    _savedSetBehind(false);
     if (Saved.account() === account) { _savedBase = Saved.stamps(d.saved); Saved.merge(d.saved, { fromSync: true }); }
     return true;
-  }).catch(function () { return false; });
+  }).catch(function () { if (!leaving) _savedSetBehind(true); return false; });
   if (leaving && _savedPushing) return sent;
   _savedPushing = sent.then(function (ok) {
     _savedPushing = null;
@@ -22739,7 +22809,7 @@ function toggleBookmark() {
       if (doc && doc.body && doc.body.hasAttribute('data-zimi-uncaptured')) return;
     } catch (e) {}
   }
-  if (Saved.has(ref)) { Saved.remove(ref); return; }
+  if (Saved.has(ref)) { _savedRemoveUndoable(ref); return; }
   if (ref.kind === 'article') {
     var sec = _readerSectionAnchor();
     if (sec) ref.where = { s: sec };

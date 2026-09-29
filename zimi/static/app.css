@@ -2981,8 +2981,16 @@
      ends in its own question mark) and the list's alignment. */
   .bm-name, .bm-sub { unicode-bidi: plaintext; text-align: left; }
   [dir="rtl"] .bm-name, [dir="rtl"] .bm-sub { text-align: right; }
-  .bm-actions { border-bottom: 1px solid var(--border); }
+  /* Two quiet actions over the lists, in the tree's own voice: New list
+     where a list's name starts, Export at the far end. Boxed, at a thumb's
+     height each, they outweighed the lists they act on. */
+  .bm-actions { justify-content: space-between; padding: 2px 10px 0; }
+  .bm-actions .hp-action-btn { background: none; border: 0; color: var(--text2); font-size: 13px; padding: 6px 8px; display: inline-flex; align-items: center; gap: 8px; }
+  .bm-actions .bm-new > span { width: 17px; text-align: center; font-size: 17px; line-height: 1; }
   /* Something to say above the lists: sync paused, 1.11's bookmarks offered. */
+  /* A toast for something taken away carries its way back. */
+  .toast-undo { display: flex; align-items: center; gap: 16px; width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; }
+  .toast-undo button { border: 0; background: none; color: var(--amber); font: inherit; font-weight: 600; cursor: pointer; padding: 8px 4px; margin: -8px 0; white-space: nowrap; }
   .bm-note { margin: 10px 12px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; line-height: 1.45; color: var(--text2); }
   .bm-note.bm-warn { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
   .bm-note-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }

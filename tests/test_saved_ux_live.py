@@ -158,6 +158,35 @@ def test_new_list_is_typed_where_it_lands(served, browser):
     assert order[order.index("Groceries") + 1] == "Not in a list", order
 
 
+def test_a_removal_says_so_and_can_be_undone(served, browser):
+    """Remove from Saved (and a highlight) says so, with Undo; Undo puts the
+    item back in its lists, where it stood."""
+    pg = _page(browser, served)
+    _panel(pg)
+    key = "hlwiki\nA/Lighthouse"
+    row = '#bm-tree .bm-bk[data-key="%s"]' % key.replace("\n", "\\a ")
+    pg.evaluate("(k) => _savedRemoveUndoable(k)", key)
+    pg.wait_for_selector(".toast-undo")
+    assert "Removed from Saved" in pg.inner_text(".toast-undo")
+    assert not pg.evaluate("(k) => Saved.has(k)", key)
+    pg.locator(".toast-undo button").tap()
+    pg.wait_for_timeout(200)
+    assert pg.evaluate(
+        "(k) => Saved.has(k) && Saved.inList(k, Saved.LIKED) && Saved.lists().some(l => l.name === 'Portugal trip' && Saved.inList(k, l.id))",
+        key,
+    ), "back in Liked and in its list"
+    assert pg.locator(row).count() >= 1, "and back in the panel"
+    hid = pg.evaluate("() => Saved.highlights({})[0].id")
+    pg.evaluate("(h) => _savedRemoveHighlight(h)", hid)
+    pg.wait_for_selector(".toast-undo")
+    assert "Highlight removed" in pg.inner_text(".toast-undo")
+    pg.locator(".toast-undo button").tap()
+    pg.wait_for_timeout(200)
+    h = pg.evaluate("(h) => Saved.getHighlight(h)", hid)
+    assert h and h["note"] == "A note" and h["color"] == "green", h
+    assert not pg.errors, pg.errors
+
+
 def test_right_to_left_tree(served, browser):
     pg = _page(browser, served, lang="he")
     _panel(pg)

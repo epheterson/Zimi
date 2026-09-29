@@ -199,9 +199,9 @@ def test_zimitube_watch_later_like_lists_and_continue_watching(phone):
     ), "the header knows it is kept"
     # Lists: the panel's own picker, over the page; a new list typed in place.
     frame.locator(".svb[data-sv=lists]").click()
-    assert _picker(pg) == ["[x] Liked", "New list…"]
+    assert _picker(pg) == ["New list…", "[x] Liked"]
     _new_list(pg, "Grammar")
-    assert _picker(pg) == ["[x] Liked", "[x] Grammar", "New list…"]
+    assert _picker(pg) == ["New list…", "[x] Liked", "[x] Grammar"]
     _tall(pg, "#zim-ctx-menu .ctx-item")
     _shot(pg, "tube_lists.png")
     frame.locator("#w-title").click()
@@ -325,7 +325,7 @@ def test_a_thread_saved_liked_listed_and_reopened_where_you_were(phone, app):
     frame.locator(".svb[data-sv=like]").click()
     frame.locator(".svb[data-sv=lists]").click()
     _new_list(pg, "Kitchen")
-    assert _picker(pg) == ["[x] Liked", "[x] Kitchen", "New list…"]
+    assert _picker(pg) == ["New list…", "[x] Liked", "[x] Kitchen"]
     pg.evaluate("() => _closeMenu()")
     # Half way down a long thread, then away.
     _in_frame(
@@ -476,9 +476,9 @@ def test_maps_save_a_place_by_its_name_list_it_and_fly_back(phone):
     pg.click("#map-source-btn")
     pg.wait_for_selector("#map-source-dropdown.visible")
     pg.locator("#map-source-dropdown .mp-lists").first.click()
-    assert _picker(pg) == ["Liked", "New list…"]
+    assert _picker(pg) == ["New list…", "Liked"]
     _new_list(pg, "Portugal trip")
-    assert _picker(pg) == ["Liked", "[x] Portugal trip", "New list…"]
+    assert _picker(pg) == ["New list…", "Liked", "[x] Portugal trip"]
     pg.evaluate("() => _closeMenu()")
     # Let it go from where it was saved.
     pg.click("#map-source-btn")

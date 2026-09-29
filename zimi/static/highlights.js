@@ -419,7 +419,7 @@ var ZimiHighlightsEngine = (function () {
       _copyText(h.textOf(hid));
       hideBar();
     } else if (a === 'remove') {
-      Saved.removeHighlight(hid);
+      _savedRemoveHighlight(hid, function () { h.refresh(true); });
       h.refresh(true);
       hideBar();
     }

@@ -460,5 +460,29 @@ const LEGACY = {
   ok('...and the shell is told, to say so', d.storageFull > 0);
 }
 
+// Undo: a removed item comes back as it was, where it stood in each list.
+{
+  const d = device();
+  const a = d.Saved.createList('A'), b = d.Saved.createList('B');
+  ['1', '2', '3'].forEach((n) => { d.clock += 1000; d.Saved.addToList({ zim: 'w', path: 'A/' + n, title: n }, a); });
+  d.Saved.addToList('w\nA/2', b);
+  d.Saved.addToList({ zim: 'w', path: 'A/4', title: '4' }, b);
+  d.Saved.addToList('w\nA/2', d.Saved.LIKED);
+  d.Saved.rename('w\nA/2', 'Two');
+  const before = d.Saved.get('w\nA/2');
+  const snap = d.Saved.snapshot('w\nA/2');
+  d.Saved.remove('w\nA/2');
+  ok('removed', !d.Saved.has('w\nA/2'));
+  d.clock += 5000;
+  d.Saved.restore(snap);
+  const after = d.Saved.get('w\nA/2');
+  const order = (lid) => d.Saved.itemsFor({ list: lid }).map((x) => x.path).join(',');
+  ok('restored with its date and its name', after && after.added === before.added && after.title === 'Two' && after.origTitle === '2');
+  ok('...in the middle of the list it was in the middle of', order(a) === 'A/1,A/2,A/3', order(a));
+  ok('...first where it was first, and in Liked', order(b) === 'A/2,A/4' && d.Saved.inList('w\nA/2', d.Saved.LIKED), order(b));
+  ok('...and the restore is newer than the delete, so it syncs', after.ts > before.ts);
+  ok('nothing to snapshot: null, and restoring it is nothing', d.Saved.snapshot('w\nA/9') === null && (d.Saved.restore(null), true));
+}
+
 console.log(failures ? '\n' + failures + ' FAILED' : '\nall saved-store checks passed');
 process.exit(failures ? 1 : 0);
