@@ -5937,14 +5937,17 @@ function _moveZimTo(zim, category) {
   function _prepMenuA11y() {
     menu.setAttribute('role', 'menu');
     _kbSub = null;
+    // An item that says what it is keeps it: a list's row in the Lists picker
+    // is a menuitemcheckbox, so a screen reader says whether it is ticked.
+    var stamp = function(el) { if (!el.hasAttribute('role')) el.setAttribute('role', 'menuitem'); el.setAttribute('tabindex', '-1'); };
     _ctxItems(menu).forEach(function(it) {
-      it.setAttribute('role', 'menuitem');
-      it.setAttribute('tabindex', '-1');
+      stamp(it);
       var sub = _ctxSubOf(it);
       if (sub) {
+        sub.setAttribute('role', 'menu');
         it.setAttribute('aria-haspopup', 'true');
         it.setAttribute('aria-expanded', 'false');
-        _ctxItems(sub).forEach(function(si) { si.setAttribute('role', 'menuitem'); si.setAttribute('tabindex', '-1'); });
+        _ctxItems(sub).forEach(stamp);
       }
     });
     var first = _ctxItems(menu)[0];
@@ -19241,7 +19244,9 @@ function _mapPlacesHtml(here) {
       var on = p.zim === here && _mapNear(parseMapHash('#' + ((p.where || {}).pos || '')), at);
       var z = p.zim === here ? null : _zimInfo(p.zim);
       return '<div class="mp-row mp-place' + (on ? ' active' : '') + '" role="menuitem" data-role="place" data-key="' + escAttr(p.key) + '">' +
-        '<span class="mp-name">' + esc(p.title || _fallbackTitle(p.zim, p.path)) + '</span>' +
+        // In a span of its own: a long name ends in an ellipsis, and one in
+        // another script than the shell's is cut at its own end.
+        '<span class="mp-name"><span>' + esc(p.title || _fallbackTitle(p.zim, p.path)) + '</span></span>' +
         '<span class="mp-meta">' + (z ? esc(_mapName(z)) : '') +
         '<button type="button" class="mp-lists" data-role="place-lists" aria-haspopup="menu" title="' + escAttr(t('saved_add_to_list')) +
         '" aria-label="' + escAttr(t('saved_add_to_list')) + '">' + _BM_LIST_SVG + '</button></span></div>';
@@ -20076,7 +20081,7 @@ function renderLibraryPanel() {
     '<button class="library-tab' + (isHistory ? ' active' : '') + '" onclick="_switchLibraryTab(\'history\')">' + tH('kbd_history') + '</button>' +
     '<button class="library-tab' + (!isHistory ? ' active' : '') + '" onclick="_switchLibraryTab(\'bookmarks\')">' + tH('saved_tab') + '</button>' +
     '</div>' +
-    '<button class="hp-clear" style="margin-left:8px" onclick="_closeLibraryPanel()">\u2715</button>' +
+    '<button class="hp-clear" style="margin-inline-start:8px" onclick="_closeLibraryPanel()" aria-label="' + escAttr(t('close')) + '" title="' + escAttr(t('close')) + '">\u2715</button>' +
     '</div>';
   if (isHistory) {
     html += _renderHistoryContent();
@@ -20240,14 +20245,19 @@ function _renderBookmarksContent() {
     (Saved.all().length ? '<button id="export-bookmarks-btn" class="hp-action-btn" onclick="_bmOpenExport()">' + tH('save_to_zim') + '</button>' : '') +
     '</div>';
   // The tree host is there even when empty: a new list's name is typed into it.
-  if (!any) html += '<div class="hp-empty">' + (_bmScope ? tH('saved_none_app', { app: _appTitle(_bmScope) }) : tH('no_bookmarks')) + '</div>';
+  // Nothing kept at all: the note alone, not an empty Liked under it.
+  if (!any) {
+    html += '<div class="hp-empty">' + (_bmScope ? tH('saved_none_app', { app: _appTitle(_bmScope) }) : tH('no_bookmarks')) + '</div>';
+    lists = [];
+  }
   html += '<div class="bm-tree" id="bm-tree" data-fid="" role="tree" aria-label="' + escAttr(t('saved_tab')) + '">';
   if (cont.length) {
     html += _bmGroupRowHtml(_BM_CONTINUE, t('saved_continue'), _BM_CONTINUE_SVG, cont.length, false);
     if (!_bmIsCollapsed(_BM_CONTINUE)) cont.forEach(function (p) { html += _bmItemRowHtml(p, _BM_CONTINUE, 1); });
   }
   lists.forEach(function (l) {
-    html += _bmGroupRowHtml(l.id, _savedListName(l), l.builtin ? _BM_HEART_SVG : _BM_LIST_SVG, l.count, true);
+    // An empty Liked has nothing to rename, delete or export: no menu.
+    html += _bmGroupRowHtml(l.id, _savedListName(l), l.builtin ? _BM_HEART_SVG : _BM_LIST_SVG, l.count, !l.builtin || l.count > 0);
     if (!_bmIsCollapsed(l.id)) Saved.itemsFor({ list: l.id, app: q.app }).forEach(function (it) { html += _bmItemWithHlHtml(it, l.id, 1); });
   });
   // The items in no list, under a name of their own once anything is above
@@ -20290,12 +20300,12 @@ function _bmHlRowHtml(h, fid, depth, key, lost, withPage) {
     : [h.note || '', withPage ? (h.title || _titleFromPath(h.path)) : ''].filter(Boolean).join(' \u00b7 ');
   return '<div class="bm-row bm-hl' + (missing ? ' bm-missing' : '') + (gone ? ' bm-hl-lost' : '') + '"' +
     ' data-hid="' + escAttr(h.id) + '" data-key="' + escAttr(key) + '" data-fid="' + escAttr(fid) + '" data-depth="' + depth + '"' +
-    ' style="padding-left:' + (6 + depth * _BM_INDENT) + 'px" role="treeitem" aria-level="' + (depth + 1) + '" tabindex="-1">' +
+    ' style="padding-inline-start:' + (6 + depth * _BM_INDENT) + 'px" role="treeitem" aria-level="' + (depth + 1) + '" tabindex="-1">' +
     '<span class="bm-twist bm-twist-gap"></span>' +
     '<span class="bm-hl-bar hl-c-' + escAttr(h.color) + '" aria-hidden="true"></span>' +
     '<span class="bm-detail"><span class="bm-name" dir="auto">' + esc(_hlQuote(h)) + '</span>' +
     (sub ? '<span class="bm-sub" dir="auto">' + esc(sub) + '</span>' : '') + '</span>' +
-    '<button class="bm-gear" data-role="menu" title="' + escAttr(t('more_actions')) + '" aria-label="' + escAttr(t('more_actions')) + '">⋯</button>' +
+    _bmGearHtml() +
     '</div>';
 }
 function _bmHlMenu(row, x, y) {
@@ -20320,16 +20330,22 @@ function _bmScopeHtml() {
   return '<div class="bm-scope" role="group">' + chip(app, _appTitle(app)) + chip('', t('saved_all')) + '</div>';
 }
 
+// A row's ⋯: its menu. Out of the Tab order, so Tab leaves the tree in one
+// step (the rows are its stops, arrows move between them); the keyboard
+// opens the same menu on a row with the menu key, Shift+F10 or F2.
+function _bmGearHtml() {
+  return '<button class="bm-gear" data-role="menu" tabindex="-1" title="' + escAttr(t('more_actions')) + '" aria-label="' + escAttr(t('more_actions')) + '">⋯</button>';
+}
 function _bmGroupRowHtml(id, name, icon, count, menu) {
   var collapsed = _bmIsCollapsed(id);
   return '<div class="bm-row bm-folder' + (id === _BM_CONTINUE ? ' bm-continue' : '') + '" data-fid="' + escAttr(id) + '" data-depth="0"' +
-    ' style="padding-left:6px" role="treeitem" aria-level="1" aria-expanded="' + (!collapsed) + '" tabindex="-1">' +
+    ' style="padding-inline-start:6px" role="treeitem" aria-level="1" aria-expanded="' + (!collapsed) + '" tabindex="-1">' +
     '<span class="bm-twist' + (collapsed ? '' : ' open') + '" data-role="twist">▸</span>' +
     '<span class="bm-ficon">' + icon + '</span>' +
     '<span class="bm-name">' + esc(name) + '</span>' +
     '<span class="bm-count">' + count + '</span>' +
     // Without a menu the gear's place is kept, so every count lines up.
-    (menu ? '<button class="bm-gear" data-role="menu" title="' + escAttr(t('more_actions')) + '" aria-label="' + escAttr(t('more_actions')) + '">⋯</button>'
+    (menu ? _bmGearHtml()
       : '<span class="bm-gear bm-gear-gap" aria-hidden="true">⋯</span>') +
     '</div>';
 }
@@ -20367,14 +20383,14 @@ function _bmItemRowHtml(it, fid, depth) {
   return '<div class="bm-row bm-bk' + (missing ? ' bm-missing' : '') + '"' +
     ' data-key="' + escAttr(it.key) + '" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '"' +
     ' data-fid="' + escAttr(fid) + '" data-depth="' + depth + '"' +
-    ' style="padding-left:' + pad + 'px" role="treeitem" aria-level="' + (depth + 1) + '" tabindex="-1">' +
+    ' style="padding-inline-start:' + pad + 'px" role="treeitem" aria-level="' + (depth + 1) + '" tabindex="-1">' +
     // Stands in for the group rows' twist so an item sits to the RIGHT of
     // the list holding it, not left of it.
     '<span class="bm-twist bm-twist-gap"></span>' +
     '<span class="bm-bicon">' + icon + '</span>' +
     '<span class="bm-detail"><span class="bm-name">' + esc(it.title || _titleFromPath(it.path)) + '</span>' +
     (sub ? '<span class="bm-sub">' + esc(sub) + '</span>' : '') + '</span>' +
-    '<button class="bm-gear" data-role="menu" title="' + escAttr(t('more_actions')) + '" aria-label="' + escAttr(t('more_actions')) + '">⋯</button>' +
+    _bmGearHtml() +
     '</div>';
 }
 
@@ -20475,6 +20491,7 @@ function _bmTreeKeydown(e) {
       _bmFocusKey = _bmRowKey(row);
       row.click();
       break;
+    case 'F10': if (!e.shiftKey) return;  // falls through: Shift+F10 is the menu key's twin
     case 'ContextMenu': case 'F2': {
       e.preventDefault();
       var r = row.getBoundingClientRect();
@@ -20525,18 +20542,18 @@ function _bmNewListPrompt(then) {
   if (!host) return;
   var wrap = document.createElement('div');
   wrap.className = 'bm-row bm-newfolder';
-  wrap.style.paddingLeft = '6px';
+  wrap.style.paddingInlineStart = '6px';
   wrap.innerHTML = '<span class="bm-ficon">' + _BM_LIST_SVG + '</span>' +
-    '<input class="bm-newfolder-input" type="text" placeholder="' + escAttr(t('saved_list_name')) + '" maxlength="' + Saved.NAME_MAX + '">';
-  // After Continue and Liked, before the other lists: where it will be seen.
-  var after = host.querySelector('.bm-folder[data-fid="liked"]');
-  var at = after;
-  while (at && at.nextSibling && at.nextSibling.classList && at.nextSibling.classList.contains('bm-bk') && at.nextSibling.dataset.fid === 'liked') at = at.nextSibling;
-  if (at && at.nextSibling) host.insertBefore(wrap, at.nextSibling);
-  else if (at) host.appendChild(wrap);
-  else host.insertBefore(wrap, host.firstChild);
+    '<input class="bm-newfolder-input" type="text" placeholder="' + escAttr(t('saved_list_name')) + '" aria-label="' + escAttr(t('saved_list_name')) +
+    '" maxlength="' + Saved.NAME_MAX + '">';
+  // Where the list will be once made: after the last list, before what is in
+  // no list and the highlights (typed after Liked, it landed at the end).
+  var tail = host.querySelector('.bm-folder[data-fid="' + _BM_ROOT + '"]') || host.querySelector('.bm-bk[data-depth="0"]') ||
+    host.querySelector('.bm-folder[data-fid="' + _BM_HIGHLIGHTS + '"]');
+  host.insertBefore(wrap, tail);
   var input = wrap.querySelector('input');
   input.focus();
+  wrap.scrollIntoView({ block: 'nearest' });
   var commit = function (save) {
     if (wrap._done) return; wrap._done = true;
     var id = save ? Saved.createList(input.value) : '';
@@ -20596,7 +20613,7 @@ function _bmListsSubmenuHtml(key) {
   return Saved.lists().map(function (l) {
     var on = Saved.inList(key, l.id);
     return '<div class="ctx-item" data-action="toggle-list" data-lid="' + escAttr(l.id) + '" role="menuitemcheckbox" aria-checked="' + on + '">' +
-      '<span class="ctx-check">' + (on ? '✓' : '') + '</span>' + esc(_savedListName(l)) + '</div>';
+      '<span class="ctx-check">' + (on ? '✓' : '') + '</span><span dir="auto">' + esc(_savedListName(l)) + '</span></div>';
   }).join('') + '<div class="ctx-sep"></div><div class="ctx-item" data-action="new-list"><span class="ctx-check">+</span>' + tH('saved_new_list') + '…</div>';
 }
 // The same lists, as a picker of their own: what an app page's Lists button
@@ -20659,9 +20676,12 @@ function _savedAppWords(app) {
 function _bmListMenu(lid, x, y) {
   var builtin = lid === Saved.LIKED;
   if (lid === _BM_CONTINUE || lid === _BM_ROOT || lid === _BM_HIGHLIGHTS) return;  // not lists: nothing to do to them
+  // An empty list has nothing to export: the export would open with Export off.
+  var l = Saved.list(lid), full = !!(l && l.count);
   var html = (builtin ? '' : '<div class="ctx-item" data-action="rename">' + tH('rename') + '</div>') +
-    '<div class="ctx-item" data-action="export">' + tH('saved_export_list') + '</div>' +
+    (full ? '<div class="ctx-item" data-action="export">' + tH('saved_export_list') + '</div>' : '') +
     (builtin ? '' : '<div class="ctx-sep"></div><div class="ctx-item danger" data-action="delete">' + tH('saved_delete_list') + '</div>');
+  if (!html) return;
   window._openMenuAt(html, x, y, function (action) {
     if (action === 'rename') _bmRenameList(lid);
     else if (action === 'delete') _bmDeleteList(lid);
@@ -22088,7 +22108,7 @@ var Highlights = (function () {
       loading = new Promise(function (resolve, reject) {
         var el = document.createElement('script');
         // The version moves with the engine: /static is cached for a year.
-        el.src = '/static/highlights.js?v=2';
+        el.src = '/static/highlights.js?v=3';
         el.onload = function () { engine = window.ZimiHighlightsEngine || null; if (engine) resolve(engine); else reject(); };
         el.onerror = function () { loading = null; reject(); };
         document.head.appendChild(el);
@@ -22329,11 +22349,12 @@ function _bmListNameById(id) {
   return l ? _savedListName(l) : '';
 }
 // The name the picker suggests: the list's own when exactly one is ticked,
-// otherwise plain "Bookmarks".
+// otherwise the panel's own name for what is kept ("Saved"), in the
+// person's language.
 function _bmExportDefaultName() {
   var sel = _bmExportSelection();
-  if (sel.ids.length === 1 && !sel.unfiled) return _bmListNameById(sel.ids[0]) || 'Bookmarks';
-  return 'Bookmarks';
+  if (sel.ids.length === 1 && !sel.unfiled) return _bmListNameById(sel.ids[0]) || t('saved_tab');
+  return t('saved_tab');
 }
 // Compose THE export job (one ZIM per export). `ids` = ticked list ids in
 // order, `unfiled` = the items in no list ticked, `nameRaw` = the name field.
@@ -22441,6 +22462,12 @@ async function _revealExportedZim(file) {
 // article. null when there is nothing to keep.
 function _savedRefOnScreen() {
   if (!currentArticle && _appItem) {
+    // The page's own item when it shows this one (apps.js savedBar): kept by
+    // the header's bookmark, it has what the app's row draws from (a
+    // question's votes, a video's picture), as it would from the page's Save.
+    var own = null;
+    try { own = document.getElementById('reader-frame').contentWindow._svItem; } catch (e) {}
+    if (own && own.zim === _appItem.zim && own.path === _appItem.path) return Object.assign({}, own);
     return { kind: _appItemKind(_appItem.app) || 'article', app: _appItem.app, zim: _appItem.zim, path: _appItem.path,
       title: _appItem.title || document.title.replace(/ — .*$/, '') };
   }

@@ -313,6 +313,17 @@ var ZimiHighlightsEngine = (function () {
   function button(action, icon, label) {
     return '<button type="button" data-a="' + action + '">' + icon + '<span>' + esc(label) + '</span></button>';
   }
+  function noteButton(has) {
+    var label = t(has ? 'hl_note_edit' : 'hl_note');
+    return '<button type="button" class="hl-note-btn" data-a="note" aria-label="' + escAttr(label) + '" title="' + escAttr(label) + '">' + ICON.note + '<span>' + esc(t('hl_note')) + '</span></button>';
+  }
+  // A phone too narrow for the edit bar with Note's word (Russian, Arabic at
+  // 360px): Note keeps its pencil, like Copy and Remove beside it.
+  function fitBar(h, range) {
+    var nb = ui.bar.querySelector('.hl-note-btn');
+    ui.bar.classList.remove('hl-tight');
+    if (nb && nb.scrollWidth > nb.clientWidth + 1) { ui.bar.classList.add('hl-tight'); placeBar(h, range); }
+  }
   function iconButton(action, icon, label) {
     return '<button type="button" class="hl-icon" data-a="' + action + '" aria-label="' + escAttr(label) + '" title="' + escAttr(label) + '">' + icon + '</button>';
   }
@@ -367,10 +378,13 @@ var ZimiHighlightsEngine = (function () {
         return '<button type="button" class="hl-swatch" data-a="color" data-c="' + c + '" aria-pressed="' + (hl.color === c) + '" aria-label="' +
           escAttr(t('hl_' + c)) + '" title="' + escAttr(t('hl_' + c)) + '"><span class="hl-c-' + c + '"></span></button>';
       }).join('') + '</span><span class="hl-sep" aria-hidden="true"></span>' +
-        button('note', ICON.note, hl.note ? t('hl_note_edit') : t('hl_note')) + iconButton('copy', ICON.copy, t('copy')) +
+        // "Note" either way (a note is shown by the underline): "Edit note"
+        // ran out of its button in German and Russian. Said in full to a
+        // screen reader and on hover.
+        noteButton(hl.note) + iconButton('copy', ICON.copy, t('copy')) +
         iconButton('remove', ICON.remove, t('hl_remove'));
     }
-    placeBar(h, range);
+    if (placeBar(h, range)) fitBar(h, range);
   }
   function onBarClick(e) {
     var b = e.target.closest('button[data-a]');
