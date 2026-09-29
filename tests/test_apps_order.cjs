@@ -47,8 +47,10 @@ const ctx = {
   // an app's default changes: Zimipedia is on by default from 1.12).
   _getLibraryView: () => 'list', _userSession: null, document: { body: { dataset: { zimiApps: 'maps,tube,exchange,reddot,books' } } },
   homeRecentFilter: null, homeLangFilter: new Set(),
-  // A card grid, as its ZIMs' names in the order it was handed them.
-  renderCardGrid: zims => '<grid ' + zims.map(z => z.name).join(',') + '>',
+  // A card grid, as its ZIMs' names in the order it was handed them, after
+  // the tile that leads it (its app, and whether that app is empty).
+  renderCardGrid: (zims, stars, cat, lead) => (lead ? '<lead ' + /data-app="(\w+)"/.exec(lead)[1] + (/app-empty/.test(lead) ? ' empty' : '') + '>' : '') +
+    '<grid ' + zims.map(z => z.name).join(',') + '>',
   _zimInfo: name => ctx.zimsCache.find(z => z.name === name) || null,
 };
 vm.createContext(ctx);
@@ -130,17 +132,19 @@ ok('its library is every ZIM inside an offered app, once', vm.runInContext('_app
 ctx.localStorage.setItem('zimi_library_sort', 'alpha');
 const all = new Set(ctx.zimsCache.map(z => z.name));
 let pageHtml = vm.runInContext('_appsPageHtml', ctx)(all);
-const sections = pageHtml.split('<div class="cat-heading').slice(1);
-ok('one section per app, in the library\'s order', sections.length === 5 && />Bookshelf</.test(sections[0]) && />ZimiTube</.test(sections[4]));
-ok('each app\'s ZIMs under its name, in the library\'s order', /<grid gutenberg_en_all,nautilus_books>/.test(sections[0]) && /<grid ted_en_all,blender>/.test(sections[4]));
-ok('the app\'s name opens the app', /clickable" role="link" tabindex="0" onclick="_APP_OPEN\.books\(\)">Bookshelf</.test(sections[0]) && /_APP_OPEN = \{ maps: openMaps, tube: openTube, exchange: openExchange, reddot: openReddot, wiki: openWiki, books: openBooks \}/.test(src));
-ok('an app with nothing inside shows its door to what it needs', /^">Reddot<\/div><div class="stats-grid apps-grid"><a class="stat-card app-tile app-empty reddot-tile"/.test(sections[2]));
+const sections = pageHtml.split('<lead ').slice(1);
+ok('one heading on top for the controls, no heading per app', /^<div class="cat-heading">Apps<\/div><lead /.test(pageHtml) && (pageHtml.match(/cat-heading/g) || []).length === 1, pageHtml.slice(0, 80));
+ok('one group per app, in the library\'s order, each led by the app\'s own tile', sections.length === 5 && /^books>/.test(sections[0]) && /^tube>/.test(sections[4]));
+ok('each app\'s ZIMs after its tile, in the library\'s order', /<grid gutenberg_en_all,nautilus_books>/.test(sections[0]) && /<grid ted_en_all,blender>/.test(sections[4]));
+ok('an app with nothing inside is its door to what it needs, alone', /^reddot empty><grid >$/.test(sections[2]));
+ok('the leading tile heads the real grid, which is spaced as one group', /function renderCardGrid\(items, showStars, showCategory, lead\) \{\n\s*if \(\(!items \|\| !items\.length\) && !lead\) return '';/.test(src) && /\(lead \? ' app-group' : ''\) \+ '">' \+ \(lead \|\| ''\)/.test(src));
 ctx.localStorage.setItem('zimi_library_sort', 'entries');
 pageHtml = vm.runInContext('_appsPageHtml', ctx)(all);
-ok('a new order: the sections and the ZIMs in them move with it', /Bookshelf[\s\S]*<grid gutenberg_en_all,nautilus_books>[\s\S]*ZimiExchange[\s\S]*ZimiTube[\s\S]*<grid blender,ted_en_all>/.test(pageHtml));
+ok('a new order: the groups and the ZIMs in them move with it', /<lead books>[\s\S]*<grid gutenberg_en_all,nautilus_books>[\s\S]*<lead exchange>[\s\S]*<lead tube><grid blender,ted_en_all>/.test(pageHtml));
 ctx.homeRecentFilter = 'added';
 pageHtml = vm.runInContext('_appsPageHtml', ctx)(new Set(['nautilus_books']));
-ok('a filter narrows the page to the apps holding what it lets through', (pageHtml.match(/cat-heading/g) || []).length === 1 && /<grid nautilus_books>/.test(pageHtml));
+ok('a filter narrows the page to the apps holding what it lets through', (pageHtml.match(/<lead /g) || []).length === 1 && /<lead books><grid nautilus_books>/.test(pageHtml));
+ok('a filter that lets nothing through leaves no heading alone', vm.runInContext('_appsPageHtml', ctx)(new Set()) === '');
 ctx.homeRecentFilter = null;
 ok('the page is rebuilt on a new order (its sections move), the home row slides in place',
   /if \(homeScope && homeScope\.type === 'apps'\) return false;/.test(src));

@@ -4678,15 +4678,17 @@ function _shortAge(tsSec) {
   return t('just_now');
 }
 
-function renderCardGrid(items, showStars, showCategory) {
-  if (!items || !items.length) return '';
+// `lead`, when given, is a tile that heads the grid: an app before the ZIMs
+// inside it (the Apps page), the grid then spaced as one group among others.
+function renderCardGrid(items, showStars, showCategory, lead) {
+  if ((!items || !items.length) && !lead) return '';
   const favs = (collectionsCache && collectionsCache.favorites) || [];
   const isTiles = _getLibraryView() === 'tiles';
   const gridCls = isTiles ? 'stats-grid tiles' : 'stats-grid';
   // Export cards carry a download slot that fills only when peer-share is live
   // (see _fillCardDlSlots) — probed after the caller's synchronous insert.
   // Download-this-ZIM is right-click / Manage-⋯ only; no card pill.
-  return '<div class="' + gridCls + '">' + items.map(z => {
+  return '<div class="' + gridCls + (lead ? ' app-group' : '') + '">' + (lead || '') + items.map(z => {
     const icon = z.has_icon
       ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="48" height="48" loading="lazy">'
       : '<span class="icon-letter">' + esc(z.title || z.name)[0].toUpperCase() + '</span>';
@@ -19104,7 +19106,6 @@ function _appPicksHtml(apps, checked, onchange, disabled) {
 // Each app's tile and its door, by name, so the row and the Apps page can
 // take the apps in any order.
 var _APP_TILES = { maps: _mapsTileHtml, tube: _tubeTileHtml, exchange: _exchangeTileHtml, reddot: _reddotTileHtml, wiki: _wikiTileHtml, books: _booksTileHtml };
-var _APP_OPEN = { maps: openMaps, tube: openTube, exchange: openExchange, reddot: openReddot, wiki: openWiki, books: openBooks };
 
 // The apps follow the library's order, as the sources do (#100). Eric: "sort
 // the apps by recently updated (i.e. contains zims that were recently
@@ -19169,21 +19170,21 @@ function _appsRowHtml() {
 
 // The Apps page (#100): each app, in the library's order, with the ZIMs
 // inside it, also in the library's order, so you can see what an app is
-// made of and open any of them. An app's name opens the app, a card its ZIM.
-// An app with nothing inside shows its tile, the door to what it needs,
-// unless a filter is narrowing the page.
+// made of and open any of them. Each app is one group led by its own tile,
+// which opens the app (Eric, 2026-09-29: under a heading of its own the tile
+// got lost); the tile names the app, so a group needs no heading and the
+// page stays short. An app with nothing inside is only its tile, the door to
+// what it needs, unless a filter is narrowing the page. One heading on top
+// carries the order and view controls, as every page's first heading does.
 function _appsPageHtml(shown) {
   var narrowed = !!(homeRecentFilter || homeLangFilter.size);
-  return _shownApps().map(function(app) {
+  var groups = _shownApps().map(function(app) {
     var inside = _appZims(app);
-    if (!inside.length) {
-      return narrowed ? '' : '<div class="cat-heading">' + esc(_appTitle(app)) + '</div>' + _appsGridHtml(_APP_TILES[app]());
-    }
+    if (!inside.length) return narrowed ? '' : renderCardGrid([], false, false, _APP_TILES[app]());
     var zims = _sortLibrary(inside.filter(function(z) { return shown.has(z.name); }));
-    if (!zims.length) return '';
-    return '<div class="cat-heading clickable"' + _CAT_HEAD_OPENS + ' onclick="_APP_OPEN.' + app + '()">' + esc(_appTitle(app)) + '</div>' +
-      renderCardGrid(zims, true);
+    return zims.length ? renderCardGrid(zims, true, false, _APP_TILES[app]()) : '';
   }).join('');
+  return groups && '<div class="cat-heading">' + tH('apps_section') + '</div>' + groups;
 }
 
 function _appTileHtml(app, title, icon, names, openFn) {

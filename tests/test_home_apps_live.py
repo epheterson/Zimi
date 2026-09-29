@@ -12,7 +12,8 @@ heading, above the row, clear of its name and on the screen; the apps move
 with the order (an app holding a ZIM updated an hour ago comes first under
 Recently updated, and the tiles slide rather than being drawn again); the
 Apps heading opens the Apps page, each app with the ZIMs inside it in the
-same order, its name opening the app and its cards the ZIMs; Back returns
+same order, led by its own tile (which opens the app; an empty app is only
+its tile, outlined in dots), its cards the ZIMs; Back returns
 to it.
 
 Run: pytest tests/test_home_apps_live.py -v
@@ -147,23 +148,16 @@ LAYOUT = r"""() => {
 TILES = "() => Array.from(document.querySelectorAll('#output .apps-grid .app-tile')).map(a => a.dataset.app + (a.__kept ? '' : '*'))"
 MARK = "() => document.querySelectorAll('#output .apps-grid .app-tile').forEach(a => { a.__kept = 1; })"
 SORTED = """(names) => names.every((n, i) => i === 0 || names[i - 1].localeCompare(n, undefined, {sensitivity: 'base', numeric: true}) <= 0)"""
-# The Apps page: each heading and the ZIMs (or the door) in the grid after it.
-PAGE = r"""() => {
-  const out = [];
-  let cur = null;
-  for (const el of document.querySelectorAll('#output > *')) {
-    if (el.classList.contains('cat-heading')) {
-      cur = { title: el.firstChild.textContent, clickable: el.classList.contains('clickable'), zims: [], titles: [], door: '' };
-      out.push(cur);
-    } else if (cur && el.classList.contains('stats-grid')) {
-      el.querySelectorAll('.stat-card').forEach(c => {
-        if (c.dataset.zim) { cur.zims.push(c.dataset.zim); cur.titles.push(c.querySelector('.zt').textContent); }
-        else cur.door = c.dataset.app;
-      });
-    }
-  }
-  return out;
-}"""
+# The Apps page: each app's group, its leading tile and the ZIMs after it,
+# and how the page and its tiles are drawn.
+PAGE = r"""() => Array.from(document.querySelectorAll('#output > .stats-grid.app-group')).map(g => {
+  const cards = Array.from(g.children), lead = cards[0], zims = cards.slice(1);
+  return { title: lead.querySelector('.zt').textContent, app: lead.dataset.app, leads: lead.classList.contains('app-tile'),
+    empty: lead.classList.contains('app-empty'), border: getComputedStyle(lead).borderTopStyle,
+    zims: zims.map(c => c.dataset.zim), titles: zims.map(c => c.querySelector('.zt').textContent) };
+})"""
+PAGE_SHAPE = r"""() => ({ headings: Array.from(document.querySelectorAll('#output .cat-heading')).map(h => h.firstChild.textContent),
+  height: document.documentElement.scrollHeight })"""
 
 
 def _sort(pg, key):
@@ -218,6 +212,13 @@ def test_the_order_governs_the_apps_and_their_title_opens_their_page(
             ), "the controls are on the screen"
             assert ctl["l"] >= text["r"] or ctl["r"] <= text["l"], "clear of the name"
             assert at["scrollW"] <= at["vw"], "nothing pushes the page sideways"
+            # An app with nothing inside is outlined in dots, not set up yet.
+            borders = pg.evaluate(
+                "() => Object.fromEntries(Array.from(document.querySelectorAll('#output .apps-grid .app-tile'))"
+                ".map(a => [a.dataset.app, getComputedStyle(a).borderTopStyle]))"
+            )
+            assert borders["reddot"] == borders["maps"] == "dotted", borders
+            assert borders["tube"] == borders["books"] == "solid", borders
 
             # The apps follow the order, sliding into place: Ask Ubuntu arrived
             # last, CrashCourse's new build landed an hour ago.
@@ -241,18 +242,25 @@ def test_the_order_governs_the_apps_and_their_title_opens_their_page(
             pg.wait_for_timeout(300)
             assert "scope=apps" in pg.url
             page = pg.evaluate(PAGE)
-            by_app = {p["title"]: p for p in page}
+            by_app = {p["app"]: p for p in page}
             titles = {
                 a: pg.evaluate("(a) => _appTitle(a)", a)
                 for a in ("tube", "books", "exchange", "maps", "reddot")
             }
+            # Each app leads its own group with its tile; one heading on top
+            # holds the controls, and no heading per app.
+            shape = pg.evaluate(PAGE_SHAPE)
+            assert shape["headings"] == [apps], shape
             for app, zims in APP_ZIMS.items():
-                sec = by_app[titles[app]]
-                assert set(sec["zims"]) == zims and sec["clickable"], (app, sec)
+                sec = by_app[app]
+                assert sec["leads"] and sec["title"] == titles[app], sec
+                assert set(sec["zims"]) == zims and not sec["empty"], (app, sec)
+                assert sec["border"] == "solid", sec
                 assert pg.evaluate(SORTED, sec["titles"]), sec["titles"]
-            assert (
-                by_app[titles["reddot"]]["door"] == "reddot"
-            ), "an empty app offers its door"
+            for app in ("reddot", "maps"):
+                sec = by_app[app]
+                assert sec["empty"] and not sec["zims"], "an empty app is its door"
+                assert sec["border"] == "dotted", "drawn as not set up yet"
             assert pg.evaluate(
                 SORTED, [p["title"] for p in page]
             ), "the apps in the library's order"
@@ -263,6 +271,10 @@ def test_the_order_governs_the_apps_and_their_title_opens_their_page(
                 pg.screenshot(
                     path=os.path.join(SHOTS, "apps-page-%s.png" % tag), full_page=True
                 )
+            # Short: three groups of ZIMs and three doors, in under two phone
+            # screens (a heading per app and full cards took 1,240px).
+            if phone:
+                assert shape["height"] < 1060, shape
 
             # The same order governs the page: most articles puts ZimiExchange first.
             _sort(pg, "entries")
@@ -294,10 +306,8 @@ def test_the_order_governs_the_apps_and_their_title_opens_their_page(
             pg.wait_for_function(
                 "() => homeScope && homeScope.type === 'apps' && !!document.querySelector('#output .stat-card[data-zim]')"
             )
-            # An app's name opens the app.
-            pg.locator(
-                "#output .cat-heading.clickable", has_text=titles["tube"]
-            ).first.click(position={"x": 4, "y": 4})
+            # An app's own tile, first in its group, opens the app.
+            pg.locator("#output .app-group .app-tile[data-app='tube']").click()
             pg.wait_for_function("() => _tubeOpen && readerOpen")
             assert not errors, errors
         finally:

@@ -1211,6 +1211,27 @@
   .app-tile .card-icon { color: var(--amber); display: flex; align-items: center; justify-content: center; }
   /* Quiet, like any other detail line: an empty app is not an error (Eric). */
   .app-tile.app-empty .detail { color: var(--text2); }
+  /* An app with nothing inside is drawn as a place still to fill: a dotted
+     outline reads "not set up yet" before the words do (Eric, 2026-09-29).
+     Hover and focus keep the dots and take the amber like any card. */
+  .stat-card.app-tile.app-empty { border: 1.5px dotted var(--text3); background: transparent; box-shadow: none; }
+  .stat-card.app-tile.app-empty:hover, .stat-card.app-tile.app-empty:focus-visible { border-color: var(--amber); background: var(--surface2); }
+  /* The Apps page: one group per app, its tile first; the gap between groups
+     does the work a heading per app did, in a quarter of the height. */
+  .stats-grid.app-group { margin-top: 14px; gap: 6px; }
+  .cat-heading + .stats-grid.app-group { margin-top: 8px; }
+  /* In the list, a group reads as a short list: the tile names the app (the
+     ZIMs it would list follow it, so it lists none), and under it the ZIMs
+     are its contents, not headliners: a name, its numbers, a smaller mark.
+     A ZIM's description is a long-press away (About this ZIM). */
+  .stats-grid.app-group:not(.tiles) .stat-card { padding: 8px 12px; gap: 12px; }
+  .stats-grid.app-group:not(.tiles) .card-icon { width: 40px; height: 40px; border-radius: 9px; }
+  .stats-grid.app-group:not(.tiles) .stat-card:not(.app-tile) .card-icon { width: 34px; height: 34px; border-radius: 8px; }
+  .stats-grid.app-group:not(.tiles) .card-icon img { width: 30px; height: 30px; }
+  .stats-grid.app-group:not(.tiles) .stat-card:not(.app-tile) .desc,
+  .stats-grid.app-group .app-tile:not(.app-empty) .detail { display: none; }
+  .stats-grid.app-group:not(.tiles) .stat-card:not(.app-tile) .card-info { justify-content: center; }
+  .stats-grid.app-group:not(.tiles) .stat-card:not(.app-tile) .detail { margin-top: 2px; }
   /* Reddot's dot keeps its colour in the breadcrumb, where line marks take the text's. */
   #bc-icon circle { fill: var(--amber); }
   .suggest-item.sg-place .sg-title::before { content: '\25CF'; color: var(--amber); font-size: 8px; margin-right: 8px; vertical-align: middle; }
