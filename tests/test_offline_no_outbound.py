@@ -119,6 +119,10 @@ def offline_server(tmp_path, monkeypatch, tripwire):
     import zimi.server as srv
     from zimi.http import ZimHandler
 
+    # One engine per process: an earlier test's (online) engine would be
+    # found here and blamed on offline mode. Start with none.
+    p2p.shutdown_backend()
+
     zdir = tmp_path / "zims"
     data = tmp_path / "data"
     zdir.mkdir()
