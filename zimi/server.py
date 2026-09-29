@@ -182,17 +182,13 @@ def start_background_services(http_port):
     atexit.register(_lib_flush.note_exiting)
 
     def _init_p2p_background():
+        # The engine starts now only when it has work waiting (see
+        # bt_work_waiting); otherwise the first download starts it.
         try:
-            backend = p2p.get_backend(data_dir=ZIMI_DATA_DIR)
-            if backend:
-                # Ask the router to open the BT port + record
-                # reachability for the settings UI. Fails soft.
-                try:
-                    from zimi import p2p_nat
+            from zimi import library as _lib_bt
 
-                    p2p_nat.probe(p2p.get_bt_port(), try_upnp=p2p.is_upnp_enabled())
-                except Exception as e:
-                    log.debug("NAT probe failed: %s", e)
+            if _lib_bt.bt_work_waiting():
+                p2p.get_backend(data_dir=ZIMI_DATA_DIR)
         except Exception as e:
             log.warning("BT backend init failed (HTTP downloads unaffected): %s", e)
         try:
@@ -249,6 +245,7 @@ def start_background_services(http_port):
             ).start()
         except Exception as e:
             log.warning("Download resume failed: %s", e)
+        _nat_upkeep()
 
     threading.Thread(target=_init_p2p_background, daemon=True, name="p2p-init").start()
 
@@ -577,12 +574,11 @@ def kind_store(records):
     _update_disk_cache(_apply)
 
 
-def _maintenance_pass():
-    """One standing-maintenance sweep: renew the UPnP mapping (24h lease
-    dies silently otherwise), refresh the offline catalog inside its TTL,
-    keep magnets / mirror seeds / torrent archive current. Runs on the
-    12h loop; extracted so tests can pin it."""
-    from zimi import library as _lib
+def _nat_upkeep():
+    """Map (or renew) the running BT engine's port on the router, for the
+    settings UI and incoming peers. The router is on this network; the
+    external reachability check is the recheck button's alone. Nothing
+    without a running engine: an idle Zimi asks its router for nothing."""
     from zimi import p2p as _p2p
 
     try:
@@ -591,7 +587,17 @@ def _maintenance_pass():
 
             p2p_nat.probe(_p2p.get_bt_port(), try_upnp=_p2p.is_upnp_enabled())
     except Exception as e:
-        log.debug("maintenance: NAT renew failed: %s", e)
+        log.debug("NAT upkeep failed: %s", e)
+
+
+def _maintenance_pass():
+    """One standing-maintenance sweep: renew the UPnP mapping (24h lease
+    dies silently otherwise), refresh the offline catalog inside its TTL,
+    keep magnets / mirror seeds / torrent archive current. Runs on the
+    12h loop; extracted so tests can pin it."""
+    from zimi import library as _lib
+
+    _nat_upkeep()
     try:
         # Gated: only instances that consume the catalog (Mirror mode,
         # auto-update, recent user browsing) refresh it; idle Zimis make

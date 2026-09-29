@@ -1642,6 +1642,16 @@ def _reconstruct_source_url(archive, entry_path):
 
 
 APP_PAGES = ("tube.html", "exchange.html", "reddot.html", "wiki.html", "books.html")
+# Pages that show a ZIM's own HTML may load only from Zimi: inline styles and
+# scripts run (ZIM content uses them), anything on another host is refused,
+# and nothing outside Zimi may frame them. A ZIM's article and an app page
+# showing a question or a post from one (ZimiExchange keeps a body's absolute
+# image URLs as they are) both carry it, so neither reaches the internet
+# because of what a ZIM holds.
+ZIM_HTML_CSP = (
+    "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; "
+    "frame-ancestors 'self'"
+)
 _APPS_CSS_MARK = b"<!--@apps.css@-->"
 _APPS_JS_MARK = b"<!--@apps.js@-->"
 _APP_ASSETS = (
@@ -3742,14 +3752,10 @@ class ZimHandler(BaseHTTPRequestHandler):
         if is_streamable:
             self.send_header("Accept-Ranges", "bytes")
 
-        # Sandbox ZIM HTML: allow inline styles/scripts (ZIM content uses them)
-        # but block external requests and prevent framing outside Zimi
+        # Sandbox ZIM HTML (ZIM_HTML_CSP): inline styles and scripts run,
+        # external requests are blocked, nothing outside Zimi frames it.
         if mimetype.startswith("text/html"):
-            self.send_header(
-                "Content-Security-Policy",
-                "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; "
-                "frame-ancestors 'self'",
-            )
+            self.send_header("Content-Security-Policy", ZIM_HTML_CSP)
 
         if not stream_whole:
             content = self._maybe_gzip(content, mimetype)
@@ -4183,6 +4189,7 @@ class ZimHandler(BaseHTTPRequestHandler):
             # year" kept the old page on a phone after every deploy. Small
             # and inlined at serve time: ask each time.
             self.send_header("Cache-Control", "no-cache")
+            self.send_header("Content-Security-Policy", ZIM_HTML_CSP)
         elif rel_path.startswith("i18n/"):
             self.send_header("Cache-Control", "public, max-age=86400")
         else:
