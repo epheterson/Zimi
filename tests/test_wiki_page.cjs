@@ -203,7 +203,7 @@ ok('the catalog door is allowed', /_APP_CATEGORY_KEYS = \[[^\]]*'wikipedia'[^\]]
 for (const lang of fs.readdirSync(path.join(root, 'i18n'))) {
   const d = JSON.parse(fs.readFileSync(path.join(root, 'i18n', lang), 'utf8'));
   if (d.wiki !== 'Zimipedia') ok('it is called Zimipedia in ' + lang, false);
-  for (const k of ['wiki_search_placeholder', 'wiki_today', 'wiki_empty', 'app_empty_wiki', 'apps_count_wiki_other', 'wiki_search_heading', 'wiki_article', 'wiki_load_failed', 'wiki_search_failed', 'wiki_retry', 'wiki_results_one', 'wiki_results_other', 'wiki_languages', 'wiki_read_more', 'wiki_search_all_languages', 'wiki_search_one_language', 'wiki_continue', 'wiki_trails']) if (!d[k]) ok(k + ' in ' + lang, false);
+  for (const k of ['wiki_search_placeholder', 'wiki_today', 'wiki_empty', 'app_empty_wiki', 'apps_count_wiki_other', 'wiki_search_heading', 'wiki_article', 'wiki_load_failed', 'wiki_search_failed', 'wiki_results_one', 'wiki_results_other', 'wiki_languages', 'wiki_read_more', 'wiki_search_all_languages', 'wiki_search_one_language', 'wiki_continue', 'wiki_trails']) if (!d[k]) ok(k + ' in ' + lang, false);
   for (const k of ['wiki_on_this_day', 'wiki_rabbit_hole', 'wiki_front']) if (d[k]) ok('1.11\'s Today is gone: no ' + k + ' in ' + lang, false);
 }
 process.exit(failures ? 1 : 0);

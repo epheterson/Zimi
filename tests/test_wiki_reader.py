@@ -243,6 +243,74 @@ def test_on_a_desk_the_contents_follow_and_the_facts_sit_beside_the_text(served)
             br.close()
 
 
+def test_the_header_offers_nothing_the_readers_bar_already_holds(served):
+    """One save, one set of reading settings, one place for the article's
+    languages: the reader's bar. Zimi's header keeps what is Zimi's (Saved,
+    its own language) and gets its save back when the article is shown as
+    the wiki made it."""
+    from playwright.sync_api import sync_playwright
+
+    shown = "(id) => { var b = document.getElementById(id); return !!b && b.getBoundingClientRect().width > 0; }"
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = br.new_page(viewport={"width": 1440, "height": 900})
+        try:
+            _boot(pg, served)
+            _from_zimipedia(pg, "wikipedia", "Albert_Einstein")
+            assert not pg.evaluate(shown, "library-btn"), "one bookmark: the bar's"
+            assert pg.evaluate(shown, "bm-panel-btn"), "Saved is still one tap away"
+            pg.click(".topbar-more")
+            pg.wait_for_timeout(300)
+            assert pg.locator("#tbm-readerview").count() == 1
+            assert (
+                pg.locator("#topbar-menu .tbm-reader-settings").count() == 0
+            ), "the reading settings are the bar's Aa sheet, not a second copy here"
+            pg.evaluate("() => _closeTopbarMenu()")
+            pg.evaluate("() => toggleLangDropdown({ stopPropagation: function () {} })")
+            pg.wait_for_timeout(500)
+            assert (
+                pg.locator(
+                    "#lang-dropdown .ld-interlang, #lang-dropdown .switchable"
+                ).count()
+                == 0
+            ), "the article's languages are the bar's; this menu is Zimi's language"
+            pg.evaluate("() => _closeLangDropdown()")
+            # The wiki's own page: the header saves again.
+            pg.evaluate("() => _readerViewToggle()")
+            pg.wait_for_timeout(300)
+            assert pg.evaluate(shown, "library-btn")
+        finally:
+            br.close()
+
+
+def test_the_reader_view_size_says_what_it_is():
+    """The size step reads as a size (100 %), not a letter ("M")."""
+    import subprocess
+
+    js = open(
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "zimi",
+            "static",
+            "app.js",
+        )
+    ).read()
+    assert "_READER_SIZE_LABELS" not in js
+    out = subprocess.run(
+        [
+            "node",
+            "-e",
+            "var _currentLang='en';"
+            + js[js.index("function _readerSizeLabel") :].split("\n}\n")[0]
+            + "\n}\nconsole.log([85,100,130].map(_readerSizeLabel).join(' '))",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert out == "85% 100% 130%", out
+
+
 def test_languages_by_qid_land_on_the_same_section_and_sit_side_by_side(served):
     from playwright.sync_api import sync_playwright
 

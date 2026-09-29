@@ -32,7 +32,7 @@ vm.createContext(sandbox);
 vm.runInContext(
   (reAt >= 0 ? src.slice(reAt, src.indexOf('\n', reAt)) : '') + '\n' +
   slice('_defineLang2') + '\n' + slice('_featuredZimFor') + '\n' +
-  slice('_blurbRepeatsTitle') + '\n' + slice('_otdDateLine') + '\n' +
+  slice('_blurbRepeatsTitle') + '\n' + slice('_otdDateLine') + '\n' + slice('_gutenbergTitle') + '\n' +
   'function _zimInfo(n) { return LIB.find(function(z) { return z.name === n; }); }',
   sandbox);
 
@@ -83,6 +83,16 @@ check(sandbox._otdDateLine('1066').indexOf('1066年') === 0, 'Chinese date line:
 sandbox._currentLang = 'en';
 check(/ 356 BC$/.test(sandbox._otdDateLine('356 BC')), 'a year before Christ follows the day as written');
 check(sandbox._otdDateLine('0275'.replace(/^0+/, '')).endsWith(', 275'), 'a three-digit year is a date');
+
+// Book of the Day names the book, not its cover page's path; a source with
+// no icon shows its letter, not an empty box.
+check(sandbox._gutenbergTitle('Biblia Sacra Vulgata - Psalmi XXII_cover.19635') === 'Biblia Sacra Vulgata - Psalmi XXII', 'a cover page is named by its book');
+check(sandbox._gutenbergTitle('Tales - Fables.5139') === 'Tales - Fables', 'a book page too');
+check(sandbox._gutenbergTitle('The Aeneid') === 'The Aeneid' && sandbox._gutenbergTitle('.227') === '.227', 'a title of its own is kept, and nothing is never the title');
+check(/dc-icon-thumb">' \+ \(iconHtml \|\| _sourceIconHtml\(it\.zim, 48\)\)/.test(src), 'no icon: the source\'s letter in the picture\'s place');
+const css = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.css'), 'utf8');
+check(/\.app-tile \.card-info \{ justify-content: center; \}/.test(css) && /\.stat-card\.app-tile \.detail \{[^}]*margin-top: 4px;/.test(css),
+  'an app tile\'s detail reads under its name, not at the card\'s foot');
 
 if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
 console.log('all discover pick checks passed');

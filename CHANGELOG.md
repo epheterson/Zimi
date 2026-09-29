@@ -50,10 +50,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - An idle Zimi asks the internet for nothing when it starts: the BitTorrent engine waits until there is something to download or seed, and the port check (portcheck.transmissionbt.com) runs only when an admin presses recheck.
 - `ZIMI_OFFLINE` also refuses downloads from the internet, Auto-update's included (a download from a Nearby peer still works), and a download waiting to resume keeps its place for later.
 - A question or post in ZimiExchange, Reddot and the other apps can no longer load pictures from the internet, the same rule ZIM articles already follow.
+- Zimipedia's reader keeps saving, reading settings and the article's languages in its own bar only: Zimi's header no longer shows a second bookmark, the ⋯ menu a second set of reading settings, or the language menu the article's languages; Reader View's text size reads as a percentage.
+- Removing something from Saved, or a highlight, can be undone from the message that says so; New list comes first in every list picker; a kept place shows a pin; an audiobook is kept to Listen later; signed in, Saved says when your account is behind because the server is not answering.
+- A book's page on a phone shows its cover, title and Read on the first screen, with its facts two to a row; audio in ZimiTube no longer sits on an empty 16:9 video stage; an app's page has one Save (its own), not a second bookmark in the header; LibreTexts no longer lists a shelf's Back Matter as a book or counts front and back matter as chapters.
+- A search box's prompt that does not fit the box (Bookshelf's on a phone) says Search instead of being cut off mid-word, and a language change keeps the prompt the header gave.
+- The Almanac's 3D Earth opens at now (Live) unless you set a moment with the time machine, the orrery's speed or a ride, and stays there while open; a partial solar eclipse is drawn with its edge and a line at every quarter of the Sun covered.
 
 ### Fixed
 
 - In dark mode, a ZIM page with no colours of its own no longer shows black text on black.
+- Discover's Book of the Day names the book rather than its cover page's path, and a card without a picture shows its source's letter instead of an empty box; an app's tile on the home page reads its name and contents together.
 - A subreddit made with Create a ZIM now says it was made by Zimi: the Subreddit badge on its card, and a place in Manage's list of ZIMs made here.
 - In Arabic and Hebrew the search box's clear button no longer sits on its magnifier, and a catalog search inside a category says Back in your language.
 - A catalog search typed while the catalog was still loading is no longer replaced by the category gallery.

@@ -62,6 +62,11 @@ _YEAR_RE = re.compile(r"(?<!\d)(\d{3,4})(?!\d)")
 # LibreTexts: where the books are, and a trailing "(Author)" in a title.
 _LT_SHELVES = ("Bookshelves", "Courses")
 _LT_BOOK_DEPTH = 3
+# A book's front and back matter ("00:_Front_Matter", "zz:_Back_Matter"):
+# its title page and index, not chapters, and never a book of their own
+# (a shelf's own back matter, with its index under it, sat on the shelf
+# as a book called "Back Matter").
+_LT_MATTER_RE = re.compile(r"^(?:00|zz):_(?:Front|Back)_Matter$", re.I)
 _LT_AUTHOR_RE = re.compile(r"\(([^()\d:]{2,60})\)\s*$")
 
 # A wiki page in one of the project's namespaces (Author:Jane_Austen,
@@ -236,11 +241,14 @@ def libretexts_books(archive):
         p["path"].rsplit("/", 1)[0]
         for p in pages
         if p["path"].count("/") == _LT_BOOK_DEPTH
+        and not _LT_MATTER_RE.match(p["path"].rsplit("/", 1)[1])
     )
     out = []
     for p in pages:
         parts = p["path"].split("/")
         if len(parts) != _LT_BOOK_DEPTH or parts[0] not in _LT_SHELVES:
+            continue
+        if _LT_MATTER_RE.match(parts[-1]):
             continue
         n = chapters.get(p["path"], 0)
         page = f"index/page_{p['id']}"

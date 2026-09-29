@@ -869,6 +869,9 @@ var AE_SPHERE_VERT = [
 // The Earth: the day map where the Sun is up, city lights where it is down,
 // a soft twilight band between, sun glint on the oceans, and the Moon's
 // shadow wherever the Moon covers some of the Sun.
+var AE_ECL_LINES = 4;        // lines at every quarter of the Sun covered
+var AE_ECL_EDGE = 0.004;     // covered share from which the shadow's edge is drawn
+var AE_ECL_LINE_W = 0.08;    // a line's half-width, in quarters
 var AE_EARTH_FRAG = [
   'precision highp float;',
   'uniform sampler2D dayMap; uniform sampler2D nightMap;',
@@ -897,6 +900,14 @@ var AE_EARTH_FRAG = [
   '  col += vec3(1.0, 0.78, 0.45) * pow(lights, 1.6) * 1.25 * night;',
   '  float rim = pow(1.0 - max(dot(N, V), 0.0), 3.0);',
   '  col += vec3(0.30, 0.55, 1.0) * rim * 0.55 * smoothstep(-0.25, 0.4, mu) * max(light, 0.35);',
+  // Where the Moon covers some of the Sun, the map says so, as an eclipse
+  // map does: the shadow's edge and a line at every quarter of the Sun
+  // covered, on the day side. The dimming alone is the truth, and at a
+  // partial eclipse's tenth or third of the Sun it cannot be seen from here.
+  '  float cover = 1.0 - light;',
+  '  float quarter = abs(fract(cover * ' + AE_ECL_LINES.toFixed(1) + ' + 0.5) - 0.5);',
+  '  float contour = step(' + AE_ECL_EDGE.toFixed(3) + ', cover) * (1.0 - smoothstep(0.0, ' + AE_ECL_LINE_W.toFixed(2) + ', quarter));',
+  '  col = mix(col, vec3(1.0, 0.72, 0.35), contour * 0.65 * smoothstep(-0.05, 0.1, mu));',
   '  gl_FragColor = vec4(col, 1.0);',
   '}'
 ].join('\n');
@@ -1164,11 +1175,20 @@ function _aeDisplayMs() {
   var base = (typeof _orrerySimTime === 'function') ? _orrerySimTime() : Date.now();
   return base + (_ae ? _ae.offset : 0);
 }
-// Live: nothing has moved the clock off now.
+// Live: nothing has moved the clock off now (the view's own offset may
+// cancel the orrery's scenery spin, _aeOpenOffset).
 function _aeIsLive() {
   var focus = typeof _almFocus !== 'undefined' && _almFocus;
-  var orrery = typeof _orreryTimeOffset !== 'undefined' && _orreryTimeOffset !== 0;
-  return !focus && !orrery && !!_ae && _ae.offset === 0 && _ae.speed === 1;
+  var orrery = typeof _orreryTimeOffset !== 'undefined' ? _orreryTimeOffset : 0;
+  return !focus && !!_ae && _ae.offset + orrery === 0 && _ae.speed === 1;
+}
+// Where the view's clock starts: the moment the Almanac or the orrery was
+// set to when someone set one (the time machine, the speed slider, a ride),
+// now otherwise. The orrery spins fast from the start as scenery, so a first
+// open landed weeks ahead and was rarely live.
+function _aeOpenOffset() {
+  if (typeof _almFocus !== 'undefined' && _almFocus) return 0;
+  return typeof _orreryAmbientOffset === 'function' ? -_orreryAmbientOffset() : 0;
 }
 
 // ── Camera ──
@@ -2138,7 +2158,7 @@ function openAlmanacEarth() {
   }
   _aeIsOpen = true;
   _ae.el.classList.add('open');
-  _ae.offset = 0;
+  _ae.offset = _aeOpenOffset();
   _ae.selected = null;
   _aeRenderCard();
   _aeShowSettings(false);

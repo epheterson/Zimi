@@ -46,7 +46,7 @@ function page(extra) {
     clock: 1790000000000,
     _savedChanged: () => {},
     STR: { sv: { save: 'Save', saved: 'Saved', like: 'Like', liked: 'Liked', lists: 'Lists', add_to_list: 'Add to a list', all: 'All', none: 'Nothing saved.' },
-      watch_later: 'Watch later', continue: 'Continue watching' },
+      watch_later: 'Watch later', listen_later: 'Listen later', continue: 'Continue watching' },
     document: { querySelectorAll: () => bars, documentElement: { scrollHeight: 4000 } },
     bars, scrolled: 0, clearTimeout: () => {}, setTimeout: () => 0,
   }, extra || {});
@@ -212,6 +212,16 @@ function page(extra) {
   ok('a card draws from what was kept when the feed does not have it', rows[1].items[1].thumb === 'thumbs/4.jpg' && rows[1].items[1].speaker === 'S4' && rows[1].items[1].zim_title === 'TED');
   p._byKey['ted\ntalks/4'] = vid(4, { title: 'Talk 4, as the feed has it' });
   ok('...and from the feed when it does', p.savedRows()[1].items[1].title === 'Talk 4, as the feed has it');
+  // An audiobook is listened to: a shelf of them says so, one of both is what you saved.
+  p.Saved.save(p.videoRef(vid(6, { audio: true, tracks: 2 })));
+  ok('a shelf of videos and audiobooks is what you saved', p.savedRows()[1].title === 'Saved', p.savedRows()[1].title);
+  p.Saved.remove(p.videoRef(vid(4)));
+  p.Saved.remove(p.videoRef(vid(5)));
+  ok('a shelf of audiobooks is Listen later', p.savedRows()[1].title === 'Listen later', p.savedRows()[1].title);
+  ok('the save button says Listen later for an audiobook, Watch later for a video', p.laterWord([vid(6, { audio: true })]) === 'Listen later' && p.laterWord([vid(1)]) === 'Watch later');
+  p.Saved.save(p.videoRef(vid(4)));
+  p.Saved.addToList(p.videoRef(vid(5)), p.Saved.LIKED);
+  p.Saved.remove(p.videoRef(vid(6)));
   ok('a video resumes where it was, an audiobook at its track', p.resumeOf(vid(1)).t === 300 && p.resumeOf(vid(3)).k === 1 && p.resumeOf(vid(2)) === null);
 }
 
@@ -255,7 +265,7 @@ function page(extra) {
 
 // ── the pages and the shell ───────────────────────────────────────────────
 ok('every app page is handed the words for what is kept', /sv: _savedAppWords\(app\) \};/.test(src) && /function _savedAppWords\(app\) \{/.test(src));
-ok('ZimiTube is handed Watch later and Continue watching', /'tube_watch_later', 'tube_continue'[,\]]/.test(src));
+ok('ZimiTube is handed Watch later, Listen later and Continue watching', /'tube_watch_later', 'tube_listen_later', 'tube_continue'[,\]]/.test(src));
 ok('one list picker, the panel\'s own lists, for every app', /function savedPickLists\(ref, rect, byPointer\) \{[\s\S]*?_bmListsSubmenuHtml\(key\)/.test(src) && /p\.savedPickLists\(item, /.test(shared) &&
   /savedPickLists\(place, at\)/.test(src) && /savedBar\(bookRef\(b\), /.test(books) && !/savedPickLists|_bmListsSubmenuHtml|pickLists\(/.test(tube + exchange + reddot + books));
 ok('the controls sit in each app\'s own actions, a thread\'s under its title', /<span class="svbar"><\/span>\s*<button id="autoplay"/.test(tube) &&
@@ -269,7 +279,7 @@ ok('Places and maps is on every map page, and saves the view on screen', /aria-l
   /if \(ref\.kind === 'place'\) ref\.title = _mapPlaceTitle\(ref\.zim, ref\.where && ref\.where\.pos\) \|\| ref\.title;/.test(src));
 ok('a tap in the page under the picker closes it', /window\._closeMenu = closeCtx;/.test(src) && /window\.addEventListener\('blur', function \(\) \{[\s\S]*?window\._closeMenu\(\);\s*\}, \{ once: true \}\);/.test(src));
 
-const KEYS = ['saved_save', 'saved_like', 'saved_add_to_list', 'tube_watch_later', 'tube_continue', 'map_places', 'map_places_and_maps', 'map_place_save'];
+const KEYS = ['saved_save', 'saved_like', 'saved_add_to_list', 'tube_watch_later', 'tube_listen_later', 'tube_continue', 'saved_removed', 'hl_removed', 'saved_sync_behind', 'map_places', 'map_places_and_maps', 'map_place_save'];
 const en = JSON.parse(fs.readFileSync(path.join(root, 'static', 'i18n', 'en.json'), 'utf8'));
 for (const lang of fs.readdirSync(path.join(root, 'static', 'i18n'))) {
   const d = JSON.parse(fs.readFileSync(path.join(root, 'static', 'i18n', lang), 'utf8'));

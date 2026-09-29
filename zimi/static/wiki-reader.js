@@ -199,7 +199,7 @@ var _WIKI_CSS = [
   '.zw-sheet[dir="rtl"] .zw-lists button span{text-align:right}',
   '.zw-lists button::after{content:"";width:18px;height:18px;flex:none;border-radius:5px;border:1.5px solid var(--rv-border);box-sizing:border-box}',
   '.zw-lists button[aria-pressed="true"]::after{background:var(--rv-link);border-color:var(--rv-link);box-shadow:inset 0 0 0 3px var(--rv-bg)}',
-  '.zw-new{display:flex;gap:8px;padding:6px 0 0}',
+  '.zw-new{display:flex;gap:8px;padding:2px 0 6px}',
   '.zw-new input{flex:1;min-width:0;height:38px;border-radius:10px;border:1px solid var(--rv-border);background:none;color:inherit;padding:0 12px;font:inherit}',
   '.zw-new button{flex:none;height:38px;border-radius:10px!important;border:1px solid var(--rv-border)!important;padding:0 12px!important;font-weight:600!important}',
   // ── diving in: a link's card, the trail, read next ──
@@ -780,11 +780,13 @@ function _wikiLayout(frame) {
     var ref = saveRef(), on = Saved.has(ref);
     saveSheet.innerHTML = '<div class="zb-sheet-head"><b>' + tH('saved_tab') + '</b><button type="button" class="zb-x" aria-label="' + tH('close') + '">×</button></div>' +
       '<button type="button" class="zw-save-row" data-act="save" aria-pressed="' + on + '">' + _WIKI_SVG_SAVE + '<span>' + tH(on ? 'wiki_unsave' : 'wiki_save') + '</span></button>' +
-      '<div class="zb-set-label">' + tH('saved_lists') + '</div><ul class="zw-lists">' + Saved.lists().map(function(l) {
-        return '<li><button type="button" data-list="' + escAttr(l.id) + '" aria-pressed="' + Saved.inList(ref, l.id) + '"><span>' + esc(l.builtin ? t('saved_liked') : l.name) + '</span></button></li>';
-      }).join('') + '</ul>' +
+      // A new list first, where it is in reach with twenty lists under it.
       // Not a form: the reader's frame is sandboxed without forms.
-      '<div class="zw-new"><input type="text" maxlength="120" placeholder="' + tH('saved_list_name') + '" aria-label="' + tH('saved_list_name') + '"><button type="button" data-act="new">' + tH('saved_new_list') + '</button></div>';
+      '<div class="zb-set-label">' + tH('saved_lists') + '</div>' +
+      '<div class="zw-new"><input type="text" maxlength="120" placeholder="' + tH('saved_list_name') + '" aria-label="' + tH('saved_list_name') + '"><button type="button" data-act="new">' + tH('saved_new_list') + '</button></div>' +
+      '<ul class="zw-lists">' + Saved.lists().map(function(l) {
+        return '<li><button type="button" data-list="' + escAttr(l.id) + '" aria-pressed="' + Saved.inList(ref, l.id) + '"><span>' + esc(l.builtin ? t('saved_liked') : l.name) + '</span></button></li>';
+      }).join('') + '</ul>';
   };
   saveSheet.addEventListener('click', function(e) {
     var b = e.target.closest && e.target.closest('button');

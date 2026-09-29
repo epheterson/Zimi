@@ -193,6 +193,33 @@ const run = (code) => vm.runInContext(code, S);
     S._orreryTimeOffset = 259 * DAY;
     run('_aeNow()');
     check(S._orreryTimeOffset === 0 && run('_aeIsLive()') === true, 'Now brings the orrery back to now as well');
+    // The orrery spins fast from the start as scenery: a first open is at
+    // now and Live, not weeks ahead; a moment someone chose (the slider, a
+    // ride) is where it opens.
+    S._orreryTimeOffset = 40 * DAY; S._orreryClockChosen = false;
+    run('_ae.offset = _aeOpenOffset();');
+    check(Math.abs(run('_aeDisplayMs()') - Date.now()) < 5000 && run('_aeIsLive()') === true,
+      'the orrery\'s own spin: the view opens at now, Live');
+    S._orreryClockChosen = true;
+    run('_ae.offset = _aeOpenOffset();');
+    check(Math.abs(run('_aeDisplayMs()') - (Date.now() + 40 * DAY)) < 5000 && run('_aeIsLive()') === false,
+      'a moment chosen on the orrery: the view opens there');
+    S._orreryClockChosen = false; S._almFocus = new Date(Date.UTC(2031, 4, 21, 12));
+    run('_ae.offset = _aeOpenOffset();');
+    check(run('_aeDisplayMs()') === Date.UTC(2031, 4, 21, 12), 'the time machine: the view opens at its moment');
+    S._almFocus = null; S._orreryTimeOffset = 0; run('_ae.offset = 0;');
+    check(/function _orrerySliderInput\(val\) \{\s*_orreryClockChosen = true;/.test(fs.readFileSync(path.join(STATIC, 'almanac-orrery.js'), 'utf8')) &&
+      /function _orrerySnapToNow\(\) \{[^}]*_orreryClockChosen = false;/.test(fs.readFileSync(path.join(STATIC, 'almanac-orrery.js'), 'utf8')),
+      'the slider chooses a moment; Now lets it go');
+    // One orrery loop: a second start took over nothing and ran beside the
+    // first, and the Earth view's pause stopped only one of them.
+    check(/if \(_almanacOrreryRAF\) cancelAnimationFrame\(_almanacOrreryRAF\);\s*_almanacOrreryRAF = requestAnimationFrame\(_orreryAnimate\);/.test(fs.readFileSync(path.join(STATIC, 'almanac-orrery.js'), 'utf8')),
+      'the orrery asks for one frame at a time, whoever starts it');
+    // A partial solar eclipse is drawn, as an eclipse map draws it: the
+    // shadow's edge and a line at every quarter of the Sun covered.
+    const frag = run('AE_EARTH_FRAG');
+    check(/float cover = 1\.0 - light;/.test(frag) && /fract\(cover \* 4\.0/.test(frag) && /step\(0\.004, cover\)/.test(frag),
+      'the Earth draws the lines of a partial eclipse where the Moon covers some of the Sun');
   }
 
   // ── 2. The orbital data ───────────────────────────────────────────────

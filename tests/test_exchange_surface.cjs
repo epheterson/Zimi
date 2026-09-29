@@ -24,7 +24,7 @@ ok("a question is a step in history; the header's arrow is the only back (no arr
 ok('a question has an address, replaced as you read', /d\.zimi === 'exchange-q' && _exchangeOpen[\s\S]*_exchangeUrl\(d\.q\)/.test(src) && /tell\(\{ zimi: 'exchange-q', q: zim \+ '\/' \+ page/.test(page));
 ok('typing asks the page, which asks the library\'s own search across the sites', /_exchangeSearch\(val\)/.test(src) && /fetch\('\/search\?q=' \+ encodeURIComponent\(_q\) \+ '&zim=' \+ encodeURIComponent\(zims\)/.test(page) && /\/\^questions\\\/\\d\+\\\//.test(page));
 ok('no reading controls on it', /function _isAppPage\(\) \{\n\s*return [^\n]*_isExchangePage\(\)/.test(src) && /_readingText = _readingArticle && !_isMapPage\(\) && !_isAppPage\(\)/.test(src));
-ok('the breadcrumb is ZimiExchange and the box says what it is for', /bcIcon\.title = t\('exchange'\)/.test(src) && /return t\('exchange_search_placeholder'\)/.test(src) && (src.match(/q\.placeholder = _appPlaceholder\(\)/g) || []).length === 2);
+ok('the breadcrumb is ZimiExchange and the box says what it is for', /bcIcon\.title = t\('exchange'\)/.test(src) && /return t\('exchange_search_placeholder'\)/.test(src) && /if \(_appPlaceholder\(\)\) return _appPlaceholder\(\);/.test(src) && /function updateTopbar\(\) \{[\s\S]*?_updateSearchPlaceholder\(\);/.test(src));
 ok('shelves per site with tags, a paged list per site or tag, a question view with answers', /class="shelf"/.test(page) && /openTag\(/.test(page) && /'\/exchange\/site\?zim='/.test(page) && /'\/exchange\/q\?zim='/.test(page) && /q-answers/.test(page));
 ok('a link to another question stays inside ZimiExchange', /a\[data-q\]/.test(page));
 ok('the empty page is a door to the Q&A category', /category: 'stack_exchange'/.test(page));

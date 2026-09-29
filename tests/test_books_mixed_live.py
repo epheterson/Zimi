@@ -126,6 +126,16 @@ def test_a_mixed_shelf_on_a_phone(served, lang):
                 and "Statistics LibreTexts" in sources
             ), (heads, sources)
             assert not fr.evaluate(SMALL), fr.evaluate(SMALL)
+            # The box's prompt is whole: "Search books and authors" does not
+            # fit a phone's box beside the ?, so it says Search, not "Search books ar".
+            fit = pg.evaluate(
+                """() => { var q = document.getElementById('q'), cs = getComputedStyle(q), c = document.createElement('canvas').getContext('2d');
+                c.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+                return { ph: q.placeholder, fits: c.measureText(q.placeholder).width <= q.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) }; }"""
+            )
+            assert fit["fits"] and fit["ph"], fit
+            if lang == "en":
+                assert fit["ph"] == "Search", fit
             # A source: its own list, no Most read over books nobody counted.
             fr.evaluate(
                 "go({v:'list', zim: %r})"
