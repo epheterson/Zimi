@@ -66,7 +66,10 @@
   .au .c { font-size: 12px; color: var(--text2); white-space: nowrap; font-variant-numeric: tabular-nums; }
   /* One book: the cover large beside what is known of it. */
   .book { display: grid; grid-template-columns: 220px 1fr; gap: 28px; align-items: start; margin: 4px 0 28px; }
-  @media (max-width: 600px) { .book { grid-template-columns: 1fr; gap: 18px; } .book > .cover { width: 58%; max-width: 220px; margin: 0 auto; } }
+  /* A phone: the cover, the title and Read share the first screen. The
+     cover is at most a third of its height (a 2:3 cover 24vh wide); it was
+     most of the screen, and Read under the fold. */
+  @media (max-width: 600px) { .book { grid-template-columns: 1fr; gap: 18px; } .book > .cover { width: min(58%, 220px, 24vh); margin: 0 auto; } }
   .book h1 { font: 600 26px/1.2 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; margin: 0 0 4px; color: var(--text); unicode-bidi: plaintext; overflow-wrap: anywhere; }
   .book .st { font: 17px/1.35 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; color: var(--text2); margin: 0 0 10px; unicode-bidi: plaintext; }
   .book .by { font-size: 15px; margin: 0 0 16px; }
@@ -77,6 +80,7 @@
   /* A writer's years keep their own order beside a name in either direction. */
   .yrs { unicode-bidi: isolate; }
   .facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; font-size: 13px; margin: 0 0 16px; }
+  .facts > div { display: contents; }
   .facts dt { color: var(--text2); }
   .facts dd { margin: 0; min-width: 0; }
   .facts dd a { cursor: pointer; }
@@ -99,6 +103,12 @@
     .book .info { display: flex; flex-direction: column; }
     .book .info > .actions { order: 1; margin: 0 0 18px; }
     .book .info > .facts, .book .info > .note, .book .info > .subjects { order: 2; }
+    /* The facts two to a row, each its name over its value: a table of
+       44px rows, one fact each, made the page a long scroll of reference. */
+    .facts { grid-template-columns: 1fr 1fr; gap: 10px 16px; }
+    .facts > div { display: flex; flex-direction: column; min-width: 0; }
+    .facts dt { font-size: 11.5px; }
+    .facts dd { overflow-wrap: anywhere; }
   }
   /* A finger: every way in reaches 44px (apps.css does the chips). */
   @media (pointer: coarse) {
@@ -107,6 +117,9 @@
     .facts dt, .facts dd { display: flex; align-items: center; min-height: 44px; }
     .facts dd a { display: inline-flex; align-items: center; min-height: 44px; }
     .book .by a { display: inline-block; padding-block: 12px; margin-block: -12px; }
+    /* Two to a row: the value sits under its name, its 44px reaching down
+       into the room before the next row, not centred away from its name. */
+    @media (max-width: 600px) { .facts dt, .facts dd { min-height: 0; } .facts { row-gap: 0; } .facts dd a { align-items: flex-start; padding-top: 2px; } }
   }
 </style>
 </head>
@@ -500,7 +513,7 @@ function showBook(b, full, after) {
 function bookPage(b, full) {
   var place = placeOf(b);
   var facts = '';
-  var fact = function(k, v) { if (v) facts += '<dt>' + esc(k) + '</dt><dd>' + v + '</dd>'; };
+  var fact = function(k, v) { if (v) facts += '<div><dt>' + esc(k) + '</dt><dd>' + v + '</dd></div>'; };
   var f = full || {};
   // Which of the library's ZIMs it is in, once there is more than one.
   var src = (_home && (_home.sources || []).length > 1) ? sourceOf(_home, b.zim) : null;

@@ -697,15 +697,17 @@ def _wikibooks():
     )
 
 
-def _libretexts():
+def _libretexts(extra_pages=()):
     shared = json.loads(fx.LIBRETEXTS_SHARED)
+    shared["pages"] += list(extra_pages)
+    raw = json.dumps(shared) if extra_pages else fx.LIBRETEXTS_SHARED
     entries = {
         "index.html": (
             "text/html",
             "<html><body><div id=app></div></body></html>",
             "Statistics",
         ),
-        "content/shared.json": ("application/json", fx.LIBRETEXTS_SHARED, ""),
+        "content/shared.json": ("application/json", raw, ""),
     }
     for p in shared["pages"]:
         # Every page has its address, a redirect into the ZIM's own app.
@@ -873,9 +875,15 @@ def test_opening_the_shelf_reads_no_zim_of_the_other_families(shelf_lib, monkeyp
 def test_libretexts_textbooks_from_the_page_tree(shelf_lib):
     from zimi import books
 
-    names = shelf_lib([_libretexts()])
+    # A shelf's own back matter, its index under it: not a book.
+    matter = [
+        {"id": "999", "title": "Back Matter", "path": "Bookshelves/Probability_Theory/zz:_Back_Matter"},
+        {"id": "998", "title": "Index", "path": "Bookshelves/Probability_Theory/zz:_Back_Matter/10:_Index"},
+    ]
+    names = shelf_lib([_libretexts(matter)])
     got = books.listing(sort="popular", limit=50)["books"]
-    # The library's shelves first; the Workbench, and a page with no chapters, are not books.
+    # The library's shelves first; the Workbench, a page with no chapters and
+    # a shelf's back matter are not books.
     assert [b["title"] for b in got] == [
         "Probability, Mathematical Statistics, and Stochastic Processes (Siegrist)",
         "Graduate-Level Statistics in Psychology",
@@ -884,7 +892,8 @@ def test_libretexts_textbooks_from_the_page_tree(shelf_lib):
     assert (
         siegrist["author"] == "Siegrist" and siegrist["subject"] == "Probability Theory"
     )
-    assert siegrist["chapters"] == 20 and siegrist["path"] == "index/page_10114"
+    # Its 18 chapters: its front and back matter are not chapters.
+    assert siegrist["chapters"] == 18 and siegrist["path"] == "index/page_10114"
     assert "author" not in books.book("", got[1]["id"])
     assert srv.list_zims()[0]["name"] == names["libretexts.org_en_stats_2026-01"]
 

@@ -1196,11 +1196,13 @@
   }
   /* Zimi Maps' tile: a source among the sources, its icon a pin. */
   .apps-grid { margin-bottom: 16px; }
-  /* An app's home has nothing of its own to save, so no bookmark button; the
-     Saved panel's opener stays, and opens on the app's own saved things. A
-     map's places are the map's: saved and listed in its own picker, Places
-     and maps (map-source-btn). */
-  body.app-page.app-noitem #library-btn, body.map-page #bm-panel-btn, body.map-page #library-btn { display: none !important; }
+  /* An app saves from its own page (a video's Watch later, a question's
+     Save, beside Like and Lists), so the header offers no second bookmark
+     for the same thing; its home has nothing to save at all. The Saved
+     panel's opener stays, and opens on the app's own saved things (B still
+     saves what is on screen). A map's places are the map's: saved and
+     listed in its own picker, Places and maps (map-source-btn). */
+  body.app-page #library-btn, body.map-page #bm-panel-btn, body.map-page #library-btn { display: none !important; }
   .app-tile .detail { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .app-tile .card-icon { color: var(--amber); display: flex; align-items: center; justify-content: center; }
   /* Quiet, like any other detail line: an empty app is not an error (Eric). */
