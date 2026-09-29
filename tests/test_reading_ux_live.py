@@ -3,6 +3,12 @@
 Each test is one thing that went wrong in front of a reader on a 390px phone
 or a desk, fixed, and held here against the real page:
 
+- Discover's second try redrew the whole home page ten seconds after it
+  loaded, over whatever was on screen by then: a search's results, the
+  catalog. A library that cannot fill the row (nopic builds, no pictures)
+  did it every ten seconds, for good.
+- The library search said "1 results", twice, and a query of exclusions
+  only ("-ted") was told to "try different keywords".
 - Zimipedia's reader: Reader View's own rules showed Read next's empty
   pictures as an 80px gap and let a card's three lines run out over the next
   card; a strip chip asked a wiki with no icon for one; at the foot of an
@@ -113,6 +119,74 @@ def _q(pg, js, arg=None):
         + "); }",
         arg,
     )
+
+
+def test_a_search_stays_on_screen_when_discover_asks_again(served):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br, pg = _page(pw, PHONE)
+        try:
+            pg.clock.install()
+            # The row cannot fill, as in a library of nopic builds: no page
+            # has a picture to show.
+            pg.route(
+                "**/random?*",
+                lambda r: r.fulfill(
+                    status=200, content_type="application/json", body="{}"
+                ),
+            )
+            _boot(pg, served)
+            pg.wait_for_function(
+                "() => !_discoverLoading && !!document.querySelector('.discover-card')",
+                timeout=30000,
+            )
+            _search(pg, "einstein")
+            shown = pg.evaluate(
+                "() => document.querySelectorAll('#output .result').length"
+            )
+            assert shown, "the search found the article"
+            pg.clock.fast_forward(25000)
+            pg.wait_for_timeout(500)
+            assert (
+                pg.evaluate("() => document.querySelectorAll('#output .result').length")
+                == shown
+            ), "the results are still there: Discover's second try drew over them"
+            assert not pg.evaluate(
+                "() => !!document.querySelector('#output .apps-grid')"
+            ), "not the home page"
+        finally:
+            br.close()
+
+
+def test_a_count_of_one_and_a_query_that_asks_for_nothing(served):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br, pg = _page(pw, PHONE)
+        try:
+            _boot(pg, served)
+            _search(pg, "paris")
+            assert (
+                pg.evaluate("() => document.querySelectorAll('#output .result').length")
+                == 1
+            )
+            assert (
+                pg.evaluate("() => document.getElementById('search-count').textContent")
+                == "1 result"
+            )
+            assert not pg.evaluate(
+                "() => !!document.querySelector('.results-summary')"
+            ), "the count is said once"
+            _search(pg, "-einstein")
+            hint = pg.evaluate(
+                "() => document.querySelector('#output .empty .hint').textContent"
+            )
+            assert (
+                hint == pg.evaluate("() => t('search_needs_word')") and "minus" in hint
+            ), hint
+        finally:
+            br.close()
 
 
 def test_the_reader_keeps_what_reader_view_would_undo(served):

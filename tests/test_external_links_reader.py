@@ -52,12 +52,15 @@ RTL = f"""<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
 <p>اقرأ <a id="web" href="https://elsewhere.example/ar">موقعًا خارجيًا</a> أو
 <a id="rel" href="Other">صفحة هنا</a>.</p><p>{PROSE}</p></main></body></html>"""
 
-# MediaWiki draws its own icon on a.external: one mark per link, not two.
+# MediaWiki draws its own icon on a.external: one mark per link, not two. Its
+# licence line links an installed wiki the same way (#libref).
 MW = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Refs</title>
 <style>.mw-parser-output a.external{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Crect width='10' height='10'/%3E%3C/svg%3E");
 background-repeat:no-repeat;background-position:center right;padding-right:13px}</style></head>
 <body><div class="mw-parser-output"><p>A reference:
-<a id="ref" class="external text" href="https://elsewhere.example/ref">the source</a>.</p></div></body></html>"""
+<a id="ref" class="external text" href="https://elsewhere.example/ref">the source</a>, issued from
+<a id="libref" class="external text" href="https://library.example/Some_page">the library's own copy</a>.</p>
+<p>""" + PROSE + """</p></div></body></html>"""
 
 QUESTION_LINK = '<a href="https://elsewhere.example/onions">a site about onions</a>'
 
@@ -403,13 +406,33 @@ def test_right_to_left_and_reader_view_and_a_page_with_its_own_mark(served):
                 .querySelector('.zimi-reader a.zimi-ext')"""
             )
             _shot(pg, "ext-desktop-rtl-reader-view")
-            # MediaWiki draws its own icon: ours steps aside.
+            # MediaWiki draws its own icon: ours steps aside (on the page as
+            # written: Reader View, on above, holds for the next article).
+            pg.evaluate("() => { if (_readerViewOn) _readerViewToggle(); }")
             _open(pg, served, "A/mw")
             m = pg.evaluate(MARKS)
             assert m["ref"]["ext"] and m["ref"]["after"] == "none"
             assert pg.evaluate(
                 "() => document.getElementById('reader-frame').contentDocument.documentElement.classList.contains('zimi-ext-own')"
             )
+            bg = """(id) => { var d = document.getElementById('reader-frame').contentDocument;
+                return d.defaultView.getComputedStyle(d.getElementById(id)).backgroundImage; }"""
+            # A link an installed ZIM answers stays in the library: MediaWiki's
+            # "external" picture does not say otherwise.
+            assert not m["libref"]["ext"] and pg.evaluate(bg, "libref") == "none"
+            assert (
+                pg.evaluate(bg, "ref") != "none"
+            ), "the web link keeps the page's own mark"
+            # Reader View themes the page and MediaWiki's picture does not
+            # follow: there the mark is ours, in the link's colour.
+            pg.evaluate("() => _readerViewToggle()")
+            pg.wait_for_function(
+                "() => !!document.getElementById('reader-frame').contentDocument.querySelector('.zimi-reader #ref')"
+            )
+            m = pg.evaluate(MARKS)
+            assert m["ref"]["ext"] and m["ref"]["after"] == "inline-block", m["ref"]
+            assert pg.evaluate(bg, "ref") == "none"
+            _shot(pg, "ext-desktop-mw-reader-view")
         finally:
             br.close()
 

@@ -2549,9 +2549,6 @@
   .search-example-q { color: var(--text); font-weight: 500; }
 
   /* ── Mobile ── */
-  /* ── Results summary ── */
-  .results-summary { text-align: center; padding: 16px 0 4px; font-size: 12px; color: var(--text2); opacity: 0.6; }
-
   /* ── Footer ── */
   .footer-sub { margin-top: 6px; font-size: 11px; opacity: 0.7; }
   /* WCAG 1.4.1: links inside text need a non-color cue. Using a 1px
@@ -3468,3 +3465,15 @@
   -webkit-text-fill-color: initial;
 }
 .lib-sort:hover, .lib-sort:focus-visible { color: var(--text); border-color: var(--amber-border); }
+
+/* On a touch screen the home page's and the search's small controls take a
+   finger (44px): the order and view controls grow to it, the marks that
+   close or clear keep their look and gain an invisible margin. */
+@media (pointer: coarse) {
+  .lib-sort { min-height: 44px; }
+  .lib-view-btn { width: 44px; height: 42px; }
+  .dc-dismiss, .lang-banner-dismiss, .search-chip-x { position: relative; }
+  .dc-dismiss::after, .lang-banner-dismiss::after, .search-chip-x::after, .topbar-search .search-help::after {
+    content: ''; position: absolute; inset: -12px;
+  }
+}
