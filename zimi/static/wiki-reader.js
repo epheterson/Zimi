@@ -190,6 +190,9 @@ var _WIKI_CSS = [
   '.zw-lists{list-style:none;margin:0 0 8px;padding:0}',
   '.zw-lists button{display:flex;align-items:center;width:100%;gap:10px;padding:10px;border-radius:10px;text-align:start}',
   '.zw-lists button span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;unicode-bidi:plaintext}',
+  // A list's name reads in its own direction and stands where the sheet's
+  // words start: an English name in a Hebrew sheet sat across from the others.
+  '.zw-sheet[dir="rtl"] .zw-lists button span{text-align:right}',
   '.zw-lists button::after{content:"";width:18px;height:18px;flex:none;border-radius:5px;border:1.5px solid var(--rv-border);box-sizing:border-box}',
   '.zw-lists button[aria-pressed="true"]::after{background:var(--rv-link);border-color:var(--rv-link);box-shadow:inset 0 0 0 3px var(--rv-bg)}',
   '.zw-new{display:flex;gap:8px;padding:6px 0 0}',
@@ -208,6 +211,8 @@ var _WIKI_CSS = [
   '.zw-trail button{border:0;background:none;color:var(--rv-link);font:inherit;padding:2px 4px;border-radius:6px;cursor:pointer;unicode-bidi:plaintext;max-width:14em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
   '.zw-trail b{font-weight:600;color:var(--rv-fg);padding:2px 4px;unicode-bidi:plaintext}',
   '.zw-trail i{font-style:normal;opacity:.6}',
+  // A step back along the trail is a finger's height on a touch screen.
+  '@media (pointer:coarse){.zw-trail button{padding-block:11px;margin-block:-9px}}',
   '.zw-trail i:dir(ltr)::before{content:"›"}.zw-trail i:dir(rtl)::before{content:"‹"}',
   '.zw-next{margin:2.4em 0 0;padding-top:1em;border-top:1px solid var(--rv-border)}',
   'html.zw .zimi-reader .zw-next h2{border:0;margin:0 0 .6em;font:600 13px/1.3 ' + _WIKI_UI_FONT + ';text-transform:uppercase;letter-spacing:.06em;color:var(--rv-muted)}',

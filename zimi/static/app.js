@@ -3370,6 +3370,17 @@ document.addEventListener('touchend', _reorderTouchEnd);
 document.addEventListener('touchcancel', _reorderTouchEnd);
 
 // ── Render: Home ──
+// A section's name that opens its page (the Apps page, a language, a
+// category): a link for the keyboard and a screen reader too, not only a
+// finger or a mouse (a plain div with an onclick was neither).
+var _CAT_HEAD_OPENS = ' role="link" tabindex="0"';
+document.addEventListener('keydown', function(e) {
+  var h = e.target;
+  if ((e.key === 'Enter' || e.key === ' ') && h && h.classList && h.classList.contains('cat-heading') && h.classList.contains('clickable')) {
+    e.preventDefault();
+    h.click();
+  }
+});
 function renderHome(filter) {
   // We could not ask the server. Say so — never "No knowledge sources found",
   // which reads as "your library was wiped". Discover is skipped too: its cards
@@ -3625,7 +3636,7 @@ function renderHome(filter) {
       const favZims = _sortLibrary(favNames.map(n => _zimInfo(n)).filter(z => z && _homeShown.has(z.name)));
       if (favZims.length > 0) {
         const favZimNames = favZims.map(z => z.name);
-        h += '<div class="cat-heading clickable" onclick="enterScope(\'favorites\',\'\u2605 ' + escJs(t('favorites')) + '\',' + escJs(JSON.stringify(favZimNames)) + ',true)">\u2605 ' + tH('favorites') + '</div>';
+        h += '<div class="cat-heading clickable"' + _CAT_HEAD_OPENS + ' onclick="enterScope(\'favorites\',\'\u2605 ' + escJs(t('favorites')) + '\',' + escJs(JSON.stringify(favZimNames)) + ',true)">\u2605 ' + tH('favorites') + '</div>';
         h += renderCardGrid(favZims, true, true);
       }
     }
@@ -3641,8 +3652,8 @@ function renderHome(filter) {
     if (_langZims.length > 0) {
       _langZims.forEach(function(z) { _langSectionNames.add(z.name); });
       var _langZimNames = _langZims.map(function(z) { return z.name; });
-      h += '<div class="cat-heading clickable" onclick="enterScope(\'language\',\'' + escJs(_uiLangName) + '\',' + escJs(JSON.stringify(_langZimNames)) + ',true)">' +
-        '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" style="vertical-align:-2px;margin-right:4px"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>' +
+      h += '<div class="cat-heading clickable"' + _CAT_HEAD_OPENS + ' onclick="enterScope(\'language\',\'' + escJs(_uiLangName) + '\',' + escJs(JSON.stringify(_langZimNames)) + ',true)">' +
+        '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" style="vertical-align:-2px;margin-inline-end:4px"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>' +
         esc(_uiLangName) + '</div>';
       h += renderCardGrid(_langZims, true, true);
     }
@@ -3677,7 +3688,7 @@ function renderHome(filter) {
         if (collZims.length > 0) {
           const collZimNames = collZims.map(z => z.name);
           _sections.push({ key: 'col:' + cname, html:
-            '<div class="cat-heading clickable" onclick="enterScope(\'collection\',\'' + escJs(coll.label || cname) + '\',' + escJs(JSON.stringify(collZimNames)) + ',true)">' + esc(coll.label || cname) + '</div>' +
+            '<div class="cat-heading clickable"' + _CAT_HEAD_OPENS + ' onclick="enterScope(\'collection\',\'' + escJs(coll.label || cname) + '\',' + escJs(JSON.stringify(collZimNames)) + ',true)">' + esc(coll.label || cname) + '</div>' +
             renderCardGrid(collZims, true, true) });
         }
       }
@@ -3687,7 +3698,7 @@ function renderHome(filter) {
       if (catItems.length === 0) return;
       const catZimNames = catItems.map(z => z.name);
       _sections.push({ key: 'cat:' + cat, html:
-        '<div class="cat-heading clickable" onclick="enterScope(\'category\',\'' + escJs(_catDisplayName(cat)) + '\',' + escJs(JSON.stringify(catZimNames)) + ',true)">' + esc(_catDisplayName(cat)) + '</div>' +
+        '<div class="cat-heading clickable"' + _CAT_HEAD_OPENS + ' onclick="enterScope(\'category\',\'' + escJs(_catDisplayName(cat)) + '\',' + escJs(JSON.stringify(catZimNames)) + ',true)">' + esc(_catDisplayName(cat)) + '</div>' +
         renderCardGrid(catItems, true) });
     });
     var _otherItems = _dedupLang(groups[OTHER_CAT] || [], _langSectionNames);
@@ -15885,8 +15896,10 @@ var READER_THEMES = ['dark', 'light', 'sepia'];
 // User-selectable modes in the picker. 'auto' follows the app theme: dark→dark,
 // light→SEPIA (a warm paper tone reads better out of the box than raw white).
 // A user's explicit pick (dark/light/sepia) always wins and persists. Stored
-// value is the MODE; _readerTheme() resolves it to a palette.
-var READER_THEME_MODES = ['auto', 'dark', 'light', 'sepia'];
+// value is the MODE; _readerTheme() resolves it to a palette. In the order
+// every picker shows them, Reader View's and the books' and Zimipedia's
+// reading settings alike (the two had them in different orders).
+var READER_THEME_MODES = ['auto', 'light', 'sepia', 'dark'];
 // The <body> background each theme paints — mirrors --rv-bg in the injected CSS.
 // Used to tint the iframe/loading chrome so AUTO mode never flashes ZIM-white.
 var READER_THEME_BG = { dark: '#0a0a0b', light: '#fbfbf9', sepia: '#f4ecd8' };
@@ -16775,8 +16788,7 @@ function _rvSwatchesHtml(mode) {
   // `mode` is the stored selection (auto|dark|light|sepia) so the Auto swatch
   // lights up when chosen — not the resolved palette.
   return '<div class="rv-swatches" role="radiogroup" aria-label="' + tH('reader_theme') + '">' +
-    _rvSwatchHtml('auto', mode) + _rvSwatchHtml('dark', mode) +
-    _rvSwatchHtml('light', mode) + _rvSwatchHtml('sepia', mode) + '</div>';
+    READER_THEME_MODES.map(function(k) { return _rvSwatchHtml(k, mode); }).join('') + '</div>';
 }
 function _rvFamPillHtml(key, fam) {
   return '<button type="button" class="rv-pill' + (fam === key ? ' active' : '') +
@@ -17588,7 +17600,7 @@ function _readingSettingsHtml(prefs, layouts) {
   };
   var row = function(label, body) { return '<div class="zb-set"><div class="zb-set-label">' + label + '</div>' + body + '</div>'; };
   var mode = _readerThemeMode(), fam = _readerFamily(), si = _READING_SIZES.indexOf(prefs.size);
-  var themes = ['auto', 'light', 'sepia', 'dark'].map(function(k) {
+  var themes = READER_THEME_MODES.map(function(k) {
     var lbl = tH(k === 'auto' ? 'theme_auto' : 'reader_theme_' + k);
     return [k, '<span class="zb-dot zb-dot-' + k + '"></span>' + lbl];
   });
@@ -18951,7 +18963,7 @@ function _appsRowHtml() {
   // like theirs, its name opens its page (#100): the Apps page. An empty
   // library has nothing to show there, so its name is only a name.
   var open = zimsCache && zimsCache.length;
-  return '<div class="cat-heading' + (open ? ' clickable" onclick="openAppsPage()"' : '"') + '>' + tH('apps_section') + '</div>' +
+  return '<div class="cat-heading' + (open ? ' clickable"' + _CAT_HEAD_OPENS + ' onclick="openAppsPage()"' : '"') + '>' + tH('apps_section') + '</div>' +
     _appsGridHtml(tiles);
 }
 
@@ -18969,7 +18981,7 @@ function _appsPageHtml(shown) {
     }
     var zims = _sortLibrary(inside.filter(function(z) { return shown.has(z.name); }));
     if (!zims.length) return '';
-    return '<div class="cat-heading clickable" onclick="_APP_OPEN.' + app + '()">' + esc(_appTitle(app)) + '</div>' +
+    return '<div class="cat-heading clickable"' + _CAT_HEAD_OPENS + ' onclick="_APP_OPEN.' + app + '()">' + esc(_appTitle(app)) + '</div>' +
       renderCardGrid(zims, true);
   }).join('');
 }

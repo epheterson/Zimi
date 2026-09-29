@@ -116,7 +116,8 @@ ok('ordering reads only the library list: no fetch, no disk', !/serverFetch|fetc
 
 // ── the heading, above the row, opens the Apps page ─────────────────────
 const row = vm.runInContext('_appsRowHtml()', ctx);
-ok('the Apps heading is a clickable section heading like the categories\'', /^<div class="cat-heading clickable" onclick="openAppsPage\(\)">Apps<\/div><div class="stats-grid apps-grid">/.test(row), row.slice(0, 120));
+ok('the Apps heading is a clickable section heading like the categories\', a link for the keyboard too', /^<div class="cat-heading clickable" role="link" tabindex="0" onclick="openAppsPage\(\)">Apps<\/div><div class="stats-grid apps-grid">/.test(row), row.slice(0, 120));
+ok('Enter or Space on a clickable section heading opens it', /document\.addEventListener\('keydown', function\(e\) \{\n\s*var h = e\.target;\n\s*if \(\(e\.key === 'Enter' \|\| e\.key === ' '\) && h && h\.classList && h\.classList\.contains\('cat-heading'\) && h\.classList\.contains\('clickable'\)\)/.test(src));
 ok('the order and view controls ride the first section heading, which is now the Apps heading above the row', /function _placeViewToggle\(\) \{[\s\S]*?output\.querySelector\('\.cat-heading'\)/.test(src) && src.indexOf('h += _appsRowHtml();') < src.indexOf("const favNames = (collectionsCache && collectionsCache.favorites)"));
 const saved = ctx.zimsCache;
 ctx.zimsCache = [];
@@ -132,7 +133,7 @@ let pageHtml = vm.runInContext('_appsPageHtml', ctx)(all);
 const sections = pageHtml.split('<div class="cat-heading').slice(1);
 ok('one section per app, in the library\'s order', sections.length === 5 && />Bookshelf</.test(sections[0]) && />ZimiTube</.test(sections[4]));
 ok('each app\'s ZIMs under its name, in the library\'s order', /<grid gutenberg_en_all,nautilus_books>/.test(sections[0]) && /<grid ted_en_all,blender>/.test(sections[4]));
-ok('the app\'s name opens the app', /clickable" onclick="_APP_OPEN\.books\(\)">Bookshelf</.test(sections[0]) && /_APP_OPEN = \{ maps: openMaps, tube: openTube, exchange: openExchange, reddot: openReddot, wiki: openWiki, books: openBooks \}/.test(src));
+ok('the app\'s name opens the app', /clickable" role="link" tabindex="0" onclick="_APP_OPEN\.books\(\)">Bookshelf</.test(sections[0]) && /_APP_OPEN = \{ maps: openMaps, tube: openTube, exchange: openExchange, reddot: openReddot, wiki: openWiki, books: openBooks \}/.test(src));
 ok('an app with nothing inside shows its door to what it needs', /^">Reddot<\/div><div class="stats-grid apps-grid"><a class="stat-card app-tile app-empty reddot-tile"/.test(sections[2]));
 ctx.localStorage.setItem('zimi_library_sort', 'entries');
 pageHtml = vm.runInContext('_appsPageHtml', ctx)(all);

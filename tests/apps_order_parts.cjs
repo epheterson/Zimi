@@ -25,6 +25,7 @@ const PARTS = [
   /function _shownApps\(\) \{[^\n]*\n/,
   /function _appsZimNames\(\) \{[\s\S]*?\n\}/,
   /function _appsGridHtml\(tiles\) \{[\s\S]*?\n\}/,
+  /var _CAT_HEAD_OPENS = [^\n]*\n/,
 ];
 
 module.exports = function loadAppsOrder(src, ctx) {
