@@ -61,9 +61,10 @@ var _WIKI_CSS = [
   // element's hidden attribute (its img{display:block} showed Read next's
   // empty pictures as an 80px gap), and a box that clips (it lets
   // everything overflow, so a card's three lines ran out over the next
-  // card and a chip's title past its end).
+  // card, a chip's title past its end, and a cropped picture past its
+  // frame: the lead image ran on behind the title).
   'html.zw [hidden]{display:none!important}',
-  'html.zw .zimi-reader :is(.zw-facts,.zw-next em,.zw-strip em,.zw-trail button){overflow:hidden!important}',
+  'html.zw .zimi-reader :is(.zw-facts,.zw-next em,.zw-strip em,.zw-trail button,.zw-hero img,.zw-next img){overflow:hidden!important}',
   // A footnote mark does not open up the line it is on, and is a little
   // easier to hit than its digits.
   'html.zw .zimi-reader sup{line-height:0}',
@@ -76,8 +77,11 @@ var _WIKI_CSS = [
   'html.zw .zimi-reader h2,html.zw .zimi-reader h3{scroll-margin-top:calc(var(--zw-top) + 12px)}',
   // ── the lead image: on a phone, over the title ──
   '.zw-hero{display:none}',
-  '@media (max-width:' + (_WIKI_RAIL_MIN - 1) + 'px){.zw-hero{display:block;margin:-14px calc(-1 * var(--zw-m)) 18px;background:var(--rv-code)}',
-    '.zw-hero img{display:block;width:100%!important;max-height:48vh;object-fit:cover;border-radius:0!important;margin:0!important}}',
+  // (Stated past Reader View's own rules, which take every element's
+  // max-height and margins off: a portrait lead filled most of a phone,
+  // inset, with the title under the fold.)
+  '@media (max-width:' + (_WIKI_RAIL_MIN - 1) + 'px){html.zw .zimi-reader .zw-hero{display:block;margin:-14px calc(-1 * var(--zw-m)) 18px!important;max-width:none!important;background:var(--rv-code)}',
+    'html.zw .zimi-reader .zw-hero img{display:block;width:100%!important;max-height:48vh!important;object-fit:cover;border-radius:0!important;margin:0!important}}',
   // ── the facts (the infobox): folded on a phone, beside the text on a wide screen ──
   '.zw-facts{margin:.4em 0 1.4em;border:1px solid var(--rv-border);border-radius:12px;overflow:hidden!important;font:14px/1.45 ' + _WIKI_UI_FONT + '}',
   '.zw-facts > summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;padding:11px 14px;font-weight:600;color:var(--rv-head);-webkit-tap-highlight-color:transparent}',

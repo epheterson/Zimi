@@ -224,6 +224,19 @@ def test_the_reader_keeps_what_reader_view_would_undo(served):
         try:
             _boot(pg, served)
             _zimipedia(pg, "wikipedia", "Albert_Einstein")
+            # The lead image: edge to edge, under half the screen, and the
+            # picture stays in its frame (it ran on behind the title).
+            hero = _q(
+                pg,
+                """(function(){ var img = d.querySelector('.zw-hero img'), r = img.getBoundingClientRect(),
+                  t = d.querySelector('h1.zimi-reader-title').getBoundingClientRect();
+                  return { w: r.width, h: r.height, vw: w.innerWidth, vh: w.innerHeight, bottom: r.bottom, title: t.top,
+                    clip: w.getComputedStyle(img).overflow }; })()""",
+            )
+            assert (
+                abs(hero["w"] - hero["vw"]) < 1 and hero["h"] <= hero["vh"] * 0.48 + 1
+            ), hero
+            assert hero["title"] >= hero["bottom"] and hero["clip"] == "hidden", hero
             # The strip: the fixture's wikis have no icon, and none is asked for.
             chips = _q(pg, "d.querySelectorAll('.zw-strip a').length")
             assert (

@@ -118,7 +118,10 @@ def test_an_article_from_zimipedia_reads_in_its_reader_on_a_phone(served):
             assert not s["top"], "no jump-to-top button: the reader has its own bar"
             # A citation opens in place, with its note.
             mark = fr.locator("p sup.reference a").nth(1)
-            mark.scroll_into_view_if_needed()
+            # In the middle of the screen, as a reader taps it: at the
+            # screen's foot it is under the reader's bar.
+            mark.evaluate("e => e.scrollIntoView({ block: 'center' })")
+            pg.wait_for_timeout(300)
             y0 = _q(pg, "w.scrollY")
             mark.click()
             pg.wait_for_timeout(300)
