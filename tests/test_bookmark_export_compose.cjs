@@ -58,7 +58,9 @@ function mkComposeSandbox() {
   const sandbox = {
     _BM_ROOT: '',
     Saved: {
+      NAME_MAX: 120,
       lists: () => LISTS.map((l) => Object.assign({ count: IN[l.id].length }, l)),
+      list: (id) => sandbox.Saved.lists().filter((l) => l.id === id)[0] || null,
       itemsFor: (q) => IN[q.list].slice(),
     },
     t: (k) => ({ saved_liked: 'Liked' }[k] || k),

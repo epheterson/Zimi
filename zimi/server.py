@@ -1658,7 +1658,8 @@ def _atomic_write_json(path, data, indent=None):
     """Write JSON data to a file atomically via temp file + os.replace().
 
     Used for all persistent state files to prevent corruption from
-    crashes or concurrent writes. indent=None for compact output.
+    crashes or concurrent writes. indent=None for compact output. Returns
+    whether the file was written (a failure is logged, never raised).
     """
     # Unique temp name per write: a fixed "<path>.tmp" collides when two
     # threads write the same target concurrently — the second os.replace races
@@ -1676,7 +1677,7 @@ def _atomic_write_json(path, data, indent=None):
             os.fchmod(fd, 0o644)
     except OSError as e:
         log.warning("Atomic write failed for %s: %s", path, e)
-        return
+        return False
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(
@@ -1687,12 +1688,15 @@ def _atomic_write_json(path, data, indent=None):
                 separators=(",", ":") if indent is None else None,
             )
         _replace_with_retry(tmp, path)
-    except OSError as e:
+        return True
+    except (OSError, ValueError) as e:
+        # ValueError: text that is not UTF-8 (a lone surrogate) cannot be written.
         log.warning("Atomic write failed for %s: %s", path, e)
         try:
             os.unlink(tmp)
         except OSError:
             pass
+        return False
 
 
 # MIME type fallback for ZIM entries with empty mimetype

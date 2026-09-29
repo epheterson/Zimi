@@ -22,10 +22,14 @@
 // the shell's document; the page gets one stylesheet. A book page or an EPUB
 // forbids scripts of its own, and none are put in it: everything runs here.
 var ZimiHighlightsEngine = (function () {
-  var COLORS = ['yellow', 'green', 'blue', 'pink'];
+  // The colours and the longest quote are the store's (Saved.HL_COLORS, the
+  // first the default; Saved.HL_QUOTE_MAX, a longer passage keeping its first
+  // and last half). Each colour's tint, for the Custom Highlight API and for
+  // <mark>s alike:
+  var TINT = { yellow: 'rgba(255,204,0,.42)', green: 'rgba(52,199,89,.34)', blue: 'rgba(64,156,255,.32)', pink: 'rgba(255,64,129,.30)' };
+  var ON_TINT = 'rgba(255,149,0,.62)';                          // the passage just opened
+  var NOTE_LINE = 'underline dotted 2px;text-underline-offset:3px';  // one with a note
   var CONTEXT = 32;            // characters of context kept on each side
-  var QUOTE_MAX = 600;         // a longer passage keeps its first and last QUOTE_HALF
-  var QUOTE_HALF = 300;
   var POS_WEIGHT = 24;         // the share of the page, against up to 2 x CONTEXT of context
   var OCC_MAX = 500;           // repeats of one passage weighed at most
   var END_SLACK = 0.25;        // a long passage may have grown or shrunk this much
@@ -44,19 +48,16 @@ var ZimiHighlightsEngine = (function () {
   // Invisible or spacing: not compared (a soft hyphen, the zero-width marks).
   var IGNORABLE = /[\s\u00ad\u200b-\u200f\u2060\ufeff]/;
   var IGNORABLE_G = /[\s\u00ad\u200b-\u200f\u2060\ufeff]+/g;
-  var HL_CSS = [
-    '::highlight(zimi-hl-yellow){background-color:rgba(255,204,0,.42)}',
-    '::highlight(zimi-hl-green){background-color:rgba(52,199,89,.34)}',
-    '::highlight(zimi-hl-blue){background-color:rgba(64,156,255,.32)}',
-    '::highlight(zimi-hl-pink){background-color:rgba(255,64,129,.30)}',
-    '::highlight(zimi-hl-note){text-decoration:underline dotted 2px;text-underline-offset:3px}',
-    '::highlight(zimi-hl-on){background-color:rgba(255,149,0,.62)}',
-    'mark[' + MARK_ATTR + ']{color:inherit;background:none;padding:0;border-radius:2px}',
-    'mark[data-c=yellow]{background:rgba(255,204,0,.42)}mark[data-c=green]{background:rgba(52,199,89,.34)}',
-    'mark[data-c=blue]{background:rgba(64,156,255,.32)}mark[data-c=pink]{background:rgba(255,64,129,.30)}',
-    'mark.zimi-hl-note{text-decoration:underline dotted 2px;text-underline-offset:3px}',
-    'mark.zimi-hl-on{background:rgba(255,149,0,.62)}'
-  ].join('');
+  // The page's one stylesheet: each colour's tint, as a registered highlight
+  // and as a <mark>, then a note's underline and the passage just opened.
+  function hlCss() {
+    var css = ['mark[' + MARK_ATTR + ']{color:inherit;background:none;padding:0;border-radius:2px}'];
+    Saved.HL_COLORS.forEach(function (c) {
+      css.push('::highlight(zimi-hl-' + c + '){background-color:' + TINT[c] + '}', 'mark[data-c=' + c + ']{background:' + TINT[c] + '}');
+    });
+    return css.concat(['::highlight(zimi-hl-note){text-decoration:' + NOTE_LINE + '}', 'mark.zimi-hl-note{text-decoration:' + NOTE_LINE + '}',
+      '::highlight(zimi-hl-on){background-color:' + ON_TINT + '}', 'mark.zimi-hl-on{background:' + ON_TINT + '}']).join('');
+  }
 
   // ── the page's text, as compared ──────────────────────────────────────────
   // Lower case without changing a string's length (a character whose lower
@@ -157,8 +158,9 @@ var ZimiHighlightsEngine = (function () {
     if (!shown) return null;
     var sel = { prefix: ix.text.slice(Math.max(0, s - CONTEXT), s), suffix: ix.text.slice(e, e + CONTEXT),
       pos: Math.round(s / Math.max(1, ix.text.length) * 1e5) / 1e5 };
-    if (shown.length <= QUOTE_MAX) sel.exact = shown;
-    else { sel.exact = shown.slice(0, QUOTE_HALF).trim(); sel.end = shown.slice(-QUOTE_HALF).trim(); sel.n = e - s; }
+    var most = Saved.HL_QUOTE_MAX, half = most / 2;
+    if (shown.length <= most) sel.exact = shown;
+    else { sel.exact = shown.slice(0, half).trim(); sel.end = shown.slice(-half).trim(); sel.n = e - s; }
     return sel;
   }
   // How many characters of context agree, outward from the passage.
@@ -200,13 +202,13 @@ var ZimiHighlightsEngine = (function () {
     if (doc.getElementById(STYLE_ID)) return;
     var st = doc.createElement('style');
     st.id = STYLE_ID;
-    st.textContent = HL_CSS;
+    st.textContent = hlCss();
     (doc.head || doc.documentElement).appendChild(st);
   }
   // The Custom Highlight API: one registered highlight per colour, one for
   // the underline of a note, one for the passage just opened.
-  var NAMES = COLORS.concat(['note', 'on']);
   function apiPainter(doc) {
+    var NAMES = Saved.HL_COLORS.concat(['note', 'on']);
     var win = doc.defaultView;
     return {
       marks: false,
@@ -306,7 +308,7 @@ var ZimiHighlightsEngine = (function () {
   function isTouch() { return typeof _defineIsTouch === 'function' && _defineIsTouch(); }
   function lastColor() {
     var c = ''; try { c = localStorage.getItem(SK.HL_COLOR) || ''; } catch (e) {}
-    return COLORS.indexOf(c) >= 0 ? c : COLORS[0];
+    return Saved.HL_COLORS.indexOf(c) >= 0 ? c : Saved.HL_COLORS[0];
   }
   function button(action, icon, label) {
     return '<button type="button" data-a="' + action + '">' + icon + '<span>' + esc(label) + '</span></button>';
@@ -361,7 +363,7 @@ var ZimiHighlightsEngine = (function () {
     } else {
       var hl = Saved.getHighlight(id);
       if (!hl) { hideBar(); return; }
-      el.innerHTML = '<span class="hl-swatches" role="group" aria-label="' + escAttr(t('hl_color')) + '">' + COLORS.map(function (c) {
+      el.innerHTML = '<span class="hl-swatches" role="group" aria-label="' + escAttr(t('hl_color')) + '">' + Saved.HL_COLORS.map(function (c) {
         return '<button type="button" class="hl-swatch" data-a="color" data-c="' + c + '" aria-pressed="' + (hl.color === c) + '" aria-label="' +
           escAttr(t('hl_' + c)) + '" title="' + escAttr(t('hl_' + c)) + '"><span class="hl-c-' + c + '"></span></button>';
       }).join('') + '</span><span class="hl-sep" aria-hidden="true"></span>' +
@@ -660,18 +662,16 @@ var ZimiHighlightsEngine = (function () {
   // This browser's memory of what a page did not have (per device, never
   // synced: another device may hold another build), for the panel to say so.
   function noteMissing(list, lost) {
-    var m = {}, changed = false;
-    try { m = JSON.parse(localStorage.getItem(SK.HL_MISSING)) || {}; } catch (e) { m = {}; }
+    var m = _hlMissingSet(), changed = false;
     list.forEach(function (h) {
       var miss = lost.indexOf(h.id) >= 0;
       if (miss && !m[h.id]) { m[h.id] = 1; changed = true; }
       else if (!miss && m[h.id]) { delete m[h.id]; changed = true; }
     });
-    if (changed) try { localStorage.setItem(SK.HL_MISSING, JSON.stringify(m)); } catch (e) {}
+    if (changed) _setStorageJSON(SK.HL_MISSING, m);
   }
 
   var engine = {
-    COLORS: COLORS.slice(),
     attach: function (host) { return new Page(host); },
     // The pure parts, for the tests.
     _canon: canon, _locateIn: locateIn, _textIndex: textIndex, _describe: describe, _describeAt: describeAt,

@@ -43,6 +43,17 @@ ENGINE = os.path.join(
     "static",
     "highlights.js",
 )
+
+
+def _saved_store():
+    """app.js's Saved, on its own: what the engine reads its colours and its
+    longest quote from when it runs outside the shell."""
+    with open(os.path.join(os.path.dirname(ENGINE), "app.js"), encoding="utf-8") as f:
+        return re.search(
+            r"var Saved = \(function \(\) \{[\s\S]*?\n\}\)\(\);", f.read()
+        ).group(0)
+
+
 PHRASE = "the old lighthouse"
 FILLER = [
     "Keepers trimmed the wick at dusk and wound the clockwork that turned the lens %d.",
@@ -743,6 +754,8 @@ def test_the_anchor_survives_the_dom_changing():
                 '<p id="p2">Sailors trusted the old lighthouse in the fog.</p>'
                 '<p id="p3">The storm took the old lighthouse lamp.</p></div>'
             )
+            # The engine's colours and longest quote are the shell's store's.
+            pg.add_script_tag(content=_saved_store())
             pg.add_script_tag(path=ENGINE)
             out = pg.evaluate(ANCHOR)
             assert out["before"] == ["the old lighthouse", "p2"]

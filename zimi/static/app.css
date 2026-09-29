@@ -2948,6 +2948,10 @@
   .bm-name { unicode-bidi: plaintext; text-align: left; }
   [dir="rtl"] .bm-name { text-align: right; }
   .bm-actions { border-bottom: 1px solid var(--border); }
+  /* Something to say above the lists: sync paused, 1.11's bookmarks offered. */
+  .bm-note { margin: 10px 12px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; line-height: 1.45; color: var(--text2); }
+  .bm-note.bm-warn { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .bm-note-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
   .bm-tree { padding: 6px 10px 16px; -webkit-user-select: none; user-select: none; touch-action: pan-y; }
   .bm-tree.bm-drop-root { background: var(--amber-glow); border-radius: 8px; }
   .bm-row {

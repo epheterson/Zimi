@@ -16,6 +16,9 @@ const vm = require('vm');
 const src = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.js'), 'utf8');
 const m = src.match(/var Saved = \(function \(\) \{[\s\S]*?\n\}\)\(\);/);
 if (!m) throw new Error('could not extract Saved from app.js');
+// The shell's storage helpers the store reads and writes its small keys with.
+const helpers = src.match(/function _getStorageJSON\(key, fallback, session\) \{[\s\S]*?\nfunction _setStorageJSON\(key, value\) \{[\s\S]*?\n\}/);
+if (!helpers) throw new Error('could not extract the storage helpers from app.js');
 const CASES = JSON.parse(fs.readFileSync(path.join(__dirname, 'saved_merge_cases.json'), 'utf8')).cases;
 const SKM = src.match(/SAVED: '([^']+)'/);
 
@@ -38,16 +41,19 @@ function device(seed, opts) {
   opts = opts || {};
   const ctx = {
     localStorage: memoryStorage(seed),
-    SK: { SAVED: 'zimi_saved', BOOKMARKS: 'zimi_bookmarks', BM_FOLDERS: 'zimi_bm_folders', BOOK_PLACES: 'zimi_book_places' },
+    SK: { SAVED: 'zimi_saved', SAVED_POS: 'zimi_saved_pos', SAVED_LEGACY_ASKED: 'zimi_saved_legacy_asked',
+      BOOKMARKS: 'zimi_bookmarks', BM_FOLDERS: 'zimi_bm_folders', BOOK_PLACES: 'zimi_book_places' },
     Math, JSON, Object, Array, String, Number, isFinite, Infinity,
-    changes: [],
+    changes: [], full: 0, storageFull: 0,
     _zimInfo: opts.zimInfo,
   };
   ctx.clock = opts.clock || 1700000000000;
   ctx.Date = { now: () => ctx.clock };
   ctx._savedChanged = (fromSync) => ctx.changes.push(fromSync);
+  ctx._savedFull = () => ctx.full++;
+  ctx._savedStorageFull = () => ctx.storageFull++;
   vm.createContext(ctx);
-  vm.runInContext(m[0], ctx);
+  vm.runInContext(helpers[0] + '\n' + m[0], ctx);
   return ctx;
 }
 const J = (x) => JSON.stringify(x);
@@ -68,7 +74,7 @@ ok('the store has its own key, beside the old ones', SKM && SKM[1] === 'zimi_sav
 {
   const d = device();
   CASES.forEach((c) => {
-    const got = d.Saved._merge(d.Saved._clean(c.a), d.Saved._clean(c.b), c.now);
+    const got = d.Saved._merge(d.Saved._clean(c.a), d.Saved._clean(c.b), c.now, c.budget);
     ok('merge: ' + c.name, same(JSON.parse(J(got)), full(c.expect)), same(JSON.parse(J(got)), full(c.expect)) ? '' : J(got));
   });
 }
@@ -286,8 +292,9 @@ const LEGACY = {
   S.highlight({ id: a, note: '' });
   ok('an empty note takes the note away', !('note' in S.getHighlight(a)));
   ok('nothing to quote is no highlight', S.highlight({ zim: 'w', path: 'A/Fox', exact: '' }) === '' && S.highlight(null) === '');
+  const hb = S.getHighlight(b);
   S.removeHighlight(b);
-  ok('removeHighlight leaves a tombstone', S.getHighlight(b) === null && S.data().gone['h:' + b] === d.clock && S.highlights(page).length === 1);
+  ok('removeHighlight leaves a tombstone, after the highlight it deletes', S.getHighlight(b) === null && S.data().gone['h:' + b] > hb.ts && S.highlights(page).length === 1);
 }
 {
   const phone = device({}, { clock: 1000 }), tablet = device({}, { clock: 1000 });
@@ -311,12 +318,135 @@ const LEGACY = {
 {
   const d = device(LEGACY);
   d.Saved.save({ zim: 'w', path: 'A/Mine', title: 'Mine (signed out)' });
+  ok('the signed-out store takes in what the browser kept before', d.Saved.all().length === 11 && !d.Saved.legacyOffered());
   ok('use(name) switches store', d.Saved.use('Alice') === true && d.Saved.account() === 'alice');
-  ok('an account\'s first store in this browser starts from what the browser kept before', d.Saved.all().length === 10 && !d.Saved.has('w\nA/Mine'));
+  ok('an account\'s first store in this browser starts empty: a shared screen\'s old bookmarks are not every account\'s',
+    d.Saved.all().length === 0 && d.Saved.lists().length === 1 && d.Saved.continued().length === 0);
+  ok('...they are offered to it instead', d.Saved.legacyOffered() === true);
+  d.Saved.legacyAnswer(true);
+  ok('asked for, they come in, and are not offered again', d.Saved.all().length === 10 && d.Saved.continued().length === 2 && !d.Saved.legacyOffered());
   d.Saved.save({ zim: 'w', path: 'A/Hers', title: 'Hers' });
   ok('kept under its own key', !!d.localStorage.getItem('zimi_saved:alice') && d.localStorage.getItem('zimi_saved').indexOf('A/Hers') < 0);
+  d.Saved.use('bob');
+  ok('another account is asked for itself', d.Saved.legacyOffered() === true);
+  d.Saved.legacyAnswer(false);
+  ok('turned down, nothing comes in and it is not asked again', d.Saved.all().length === 0 && !d.Saved.legacyOffered());
+  const again = device(Object.assign({}, d.localStorage._all));
+  again.Saved.use('bob');
+  ok('...in the next visit either', !again.Saved.legacyOffered() && again.Saved.all().length === 0);
   d.Saved.use('');
-  ok('signed out again: the signed-out store, without the account\'s', d.Saved.has('w\nA/Mine') && !d.Saved.has('w\nA/Hers'));
+  ok('signed out again: the signed-out store, without the accounts\'', d.Saved.has('w\nA/Mine') && !d.Saved.has('w\nA/Hers'));
+  d.Saved.use('alice');
+  d.Saved.setPosition({ kind: 'book', zim: 'g', path: 'B.1', title: 'B' }, { f: 0.5, c: 50 });
+  d.Saved.forget();
+  ok('signing out takes the account\'s copy (and its places) out of the browser', d.localStorage.getItem('zimi_saved:alice') === null &&
+    d.localStorage.getItem('zimi_saved_pos:alice') === null && d.localStorage.getItem('zimi_saved') !== null);
+  d.Saved.setPosition({ kind: 'book', zim: 'g', path: 'B.1', title: 'B' }, { f: 0.6, c: 60 });
+  d.Saved.save({ zim: 'w', path: 'A/Late', title: 'written as the page closes' });
+  ok('...and nothing written after puts it back', !Object.keys(d.localStorage._all).some((k) => /:alice$/.test(k)) && d.Saved.account() === '');
+}
+
+// ── where you were: a key of its own ────────────────────────────────────────
+{
+  const d = device();
+  const S = d.Saved;
+  S.save({ zim: 'w', path: 'A/X', title: 'X' });
+  const main = d.localStorage.getItem('zimi_saved');
+  S.setPosition({ kind: 'book', zim: 'g', path: 'B.1', title: 'B' }, { f: 0.1, c: 10 });
+  S.setPosition({ kind: 'book', zim: 'g', path: 'B.1', title: 'B' }, { f: 0.2, c: 20 });
+  ok('a place moving writes its own key, not the whole store again', d.localStorage.getItem('zimi_saved') === main &&
+    JSON.parse(d.localStorage.getItem('zimi_saved_pos')).positions['g\nB.1'].where.c === 20);
+  S.clearPosition({ zim: 'g', path: 'B.1' });
+  const back = device(Object.assign({}, d.localStorage._all));
+  ok('the next visit reads both, the place\'s tombstone with it', back.Saved.has('w\nA/X') && back.Saved.position({ zim: 'g', path: 'B.1' }) === null &&
+    back.Saved.data().gone['p:g\nB.1'] > 0);
+  // A store written before places had a key of their own.
+  const old = full({ items: { 'w\nA/Y': { kind: 'article', zim: 'w', path: 'A/Y', title: 'Y', added: 5, ts: 5 } },
+    positions: { 'g\nB.2': { kind: 'book', zim: 'g', path: 'B.2', title: 'B2', app: 'books', ts: 6, where: { f: 0.3, c: 30 } } } });
+  const moved = device({ zimi_saved: J(old) });
+  ok('a store from before keeps its places, moved to their key', moved.Saved.position({ zim: 'g', path: 'B.2' }).where.c === 30 &&
+    !('positions' in JSON.parse(moved.localStorage.getItem('zimi_saved'))) && !!JSON.parse(moved.localStorage.getItem('zimi_saved_pos')).positions['g\nB.2']);
+  moved.Saved.save({ zim: 'w', path: 'A/Z', title: 'Z' });
+  ok('...and a save after does not lose them', device(Object.assign({}, moved.localStorage._all)).Saved.position({ zim: 'g', path: 'B.2' }).where.c === 30);
+}
+
+// ── each app keeps its own places ───────────────────────────────────────────
+{
+  const d = device(), S = d.Saved;
+  S.setPosition({ kind: 'book', app: 'books', zim: 'g', path: 'B.1', title: 'A book' }, { f: 0.4, c: 400 });
+  for (let i = 0; i < 320; i++) { d.clock += 1; S.setPosition({ kind: 'article', app: 'wiki', zim: 'w', path: 'A/' + i, title: String(i) }, { s: 'h', f: 0.5 }); }
+  ok('Zimipedia\'s articles never push a book out of Continue', S.continued({ app: 'books' }).length === 1 && S.continued({ app: 'wiki' }).length === 300 &&
+    !S.position({ zim: 'w', path: 'A/0' }) && !!S.position({ zim: 'w', path: 'A/319' }));
+}
+
+// ── nothing saved is dropped: past a limit, a new one is refused ───────────
+{
+  const d = device(), S = d.Saved;
+  S._max.items = 3;
+  ['a', 'b', 'c'].forEach((p) => S.save({ zim: 'w', path: p, title: p }));
+  ok('at the limit a new save is refused and said', S.save({ zim: 'w', path: 'd', title: 'd' }) === '' && !S.has('w\nd') && d.full === 1 && S.all().length === 3);
+  ok('...never an old one dropped to make room', ['a', 'b', 'c'].every((p) => S.has('w\n' + p)));
+  ok('what is kept still changes', S.save({ zim: 'w', path: 'a', title: 'A again' }) === 'w\na' && S.get('w\na').title === 'A again');
+  S.remove('w\nb');
+  ok('let one go, and there is room', S.save({ zim: 'w', path: 'd', title: 'd' }) === 'w\nd');
+  const big = device(), B = big.Saved;
+  B._max.bytes = 2000;
+  let n = 0;
+  while (B.save({ zim: 'w', path: 'p' + n, title: 'Ω'.repeat(200) })) n++;
+  ok('the byte budget, counted as the account\'s file holds it (UTF-8), refuses the next save', n > 0 && n < 10 && big.full === 1 && B.all().length === n);
+  ok('...a highlight, a list and a place in a list too', B.highlight({ zim: 'w', path: 'p0', exact: 'x' }) === '' && B.createList('More') === '' &&
+    (B.addToList('w\np0', B.LIKED), !B.inList('w\np0', B.LIKED)));
+  B.setPosition({ kind: 'book', zim: 'g', path: 'B.1', title: 'B' }, { f: 0.1, c: 1 });
+  ok('...while where you were is still kept (it trims itself)', !!B.position({ zim: 'g', path: 'B.1' }));
+}
+
+// ── a slow clock never undoes a delete ──────────────────────────────────────
+{
+  const fast = device({}, { clock: 5000000 }), slow = device({}, { clock: 1000 });
+  fast.Saved.save({ zim: 'w', path: 'A/X', title: 'X' });
+  slow.Saved.merge(fast.Saved.data(), { fromSync: true });
+  slow.Saved.remove('w\nA/X');
+  ok('a delete on a device whose clock is behind is dated after what it deletes', slow.Saved.data().gone['i:w\nA/X'] > 5000000);
+  fast.Saved.merge(slow.Saved.data());
+  ok('...so it holds on the device that saved it', !fast.Saved.has('w\nA/X'));
+  const later = device({}, { clock: 1000 });
+  later.Saved.merge({ items: { 'w\nA/Y': { kind: 'article', zim: 'w', path: 'A/Y', title: 'Y', added: 9000, ts: 9000 } } });
+  ok('what a store has seen sets its clock, from a merge too', later.Saved.save({ zim: 'w', path: 'A/Z', title: 'Z' }) && later.Saved.get('w\nA/Z').ts > 9000);
+}
+
+// ── overwrite, with other devices in it ─────────────────────────────────────
+{
+  const phone = device({}, { clock: 1000 });
+  const X = { zim: 'w', path: 'A/X', title: 'X' }, Y = { zim: 'w', path: 'A/Y', title: 'Y' };
+  phone.Saved.save(X); phone.Saved.save(Y);
+  phone.Saved.setPosition({ kind: 'book', zim: 'g', path: 'B.1', title: 'B' }, { f: 0.5, c: 5 });
+  const account = phone.Saved.data();  // what the account holds
+  phone.clock = 2000;
+  const file = { items: { 'w\nA/Z': { kind: 'article', zim: 'w', path: 'A/Z', title: 'Z from a file', added: 10, ts: 10 } } };
+  phone.Saved.merge(file, { overwrite: true });
+  ok('overwrite takes the file whole', phone.Saved.all().map((i) => i.key).join() === 'w\nA/Z' && !phone.Saved.position({ zim: 'g', path: 'B.1' }));
+  const merged = device().Saved._merge(phone.Saved._clean(account), phone.Saved._clean(phone.Saved.data()), 3000);
+  ok('...and it holds when the account merges it: what it replaced does not come back, what it brought outranks the account\'s copy',
+    Object.keys(merged.items).join() === 'w\nA/Z' && !merged.positions['g\nB.1'] && merged.gone['i:w\nA/X'] > account.items['w\nA/X'].ts);
+  const legacy = device({}, { clock: 1000 });
+  legacy.Saved.save(X);
+  legacy.Saved.mergeLegacy({ bookmarks: [{ zim: 'w', path: 'A/Old', title: 'Old', timestamp: 5 }] }, { overwrite: true });
+  ok('a file from before 1.12 overwrites as well', legacy.Saved.all().map((i) => i.key).join() === 'w\nA/Old');
+}
+
+// ── what goes up: only what the account has not had ────────────────────────
+{
+  const d = device(), S = d.Saved;
+  S.save({ zim: 'w', path: 'A/X', title: 'X' });
+  S.setPosition({ kind: 'book', zim: 'g', path: 'B.1', title: 'B' }, { f: 0.1, c: 1 });
+  const answered = S.stamps(S.data());
+  d.clock += 10;
+  S.remove('w\nA/X');
+  S.setPosition({ kind: 'book', zim: 'g', path: 'B.1', title: 'B' }, { f: 0.2, c: 2 });
+  const delta = S.since(answered);
+  ok('the changes since the account answered, and nothing else', Object.keys(delta.items).length === 0 && Object.keys(delta.positions).join() === 'g\nB.1' &&
+    Object.keys(delta.gone).join() === 'i:w\nA/X');
+  ok('with no answer yet, everything', Object.keys(S.since(null).positions).length === 1 && Object.keys(S.since(null).gone).length === 1);
 }
 
 // ── storage that throws (a private window, a full disk) ─────────────────────
@@ -327,6 +457,7 @@ const LEGACY = {
   let threw = false;
   try { d.Saved.save({ zim: 'w', path: 'A/X', title: 'X' }); } catch (e) { threw = true; }
   ok('storage that throws is not an error: the store lives in memory', !threw && d.Saved.has('w\nA/X'));
+  ok('...and the shell is told, to say so', d.storageFull > 0);
 }
 
 console.log(failures ? '\n' + failures + ' FAILED' : '\nall saved-store checks passed');

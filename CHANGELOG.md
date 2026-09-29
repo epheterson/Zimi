@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - ZimiExchange and Reddot have Like, Save and Lists under a question or post, a Saved tab of what you kept, and a long thread you saved opens where you were.
 - Maps keeps places: Save this place under the pin names the view from your search or the nearest town, and your places are listed there, a tap flying back.
 - Every app, Bookshelf included, puts a thing in a list with the same picker the Saved panel uses.
+- Saved never drops what you keep to make room: at a limit a new save is refused with a word, the Saved panel says when sync is paused and what to do, a shared browser's old bookmarks are offered to an account instead of copied into it, and a book read further on another device offers to continue there.
 
 ### Changed
 

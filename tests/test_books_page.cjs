@@ -39,9 +39,10 @@ vm.createContext(ctx);
 // is decided by the order things happen here, not by how fast they ran).
 let clock = 1700000000000;
 const shell = { localStorage: memoryStorage(), Math, JSON, Object, Array, String, Number, isFinite, Date: { now: () => ++clock },
-  SK: { SAVED: 'zimi_saved', BOOKMARKS: 'zimi_bookmarks', BM_FOLDERS: 'zimi_bm_folders', BOOK_PLACES: 'zimi_book_places' } };
+  SK: { SAVED: 'zimi_saved', SAVED_POS: 'zimi_saved_pos', SAVED_LEGACY_ASKED: 'zimi_saved_legacy_asked', BOOKMARKS: 'zimi_bookmarks', BM_FOLDERS: 'zimi_bm_folders', BOOK_PLACES: 'zimi_book_places' } };
 vm.createContext(shell);
-vm.runInContext(extract(src, /var Saved = \(function \(\) \{[\s\S]*?\n\}\)\(\);/, 'Saved'), shell);
+vm.runInContext(extract(src, /function _getStorageJSON\(key, fallback, session\) \{[\s\S]*?\nfunction _setStorageJSON\(key, value\) \{[\s\S]*?\n\}/, 'the storage helpers') + '\n' +
+  extract(src, /var Saved = \(function \(\) \{[\s\S]*?\n\}\)\(\);/, 'Saved'), shell);
 ctx.saved = () => shell.Saved;
 vm.runInContext([
   extract(page, /var COVER_HUES = [^\n]*\n/, 'COVER_HUES'),
@@ -58,8 +59,6 @@ vm.runInContext([
   extract(page, /function placeOf\(b\) \{[\s\S]*?\n\}/, 'placeOf'),
   extract(page, /function noteOpened\(b\) \{[\s\S]*?\n\}/, 'noteOpened'),
   extract(page, /function shelf\(\) \{[\s\S]*?\n\}/, 'shelf'),
-  extract(page, /function onShelf\(b\) \{[^\n]*\n/, 'onShelf'),
-  extract(page, /function toggleShelf\(id\) \{[\s\S]*?\n\}/, 'toggleShelf'),
   'var _known = {};',
 ].join('\n'), ctx);
 
@@ -84,14 +83,18 @@ ok('Continue reading: the books you are in, the latest first, with what the shel
 ok('a book\'s place, found by its ZIM and page', ctx.placeOf({ zim: 'gutenberg_la', path: 'Aeneidos.227' }).f === 0.34 && ctx.placeOf({ zim: 'x', path: 'y' }) === null);
 // My shelf: kept in the same store, under the same key as the reader's bookmark.
 ctx._known[227] = { zim: 'gutenberg_la', path: 'Aeneidos.227', id: 227, title: 'Aeneidos', author: 'Virgil', cover: '' };
-ok('a book not on my shelf', !ctx.onShelf(ctx._known[227]) && ctx.shelf().length === 0);
-ctx.toggleShelf(227);
-ok('Add to my shelf keeps it as a book of Bookshelf\'s', ctx.onShelf(ctx._known[227]) && ctx.shelf()[0].id === 227 && ctx.shelf()[0].author === 'Virgil' &&
+const onShelf = (b) => S.has(ctx.bookRef(b));
+ok('a book not on my shelf', !onShelf(ctx._known[227]) && ctx.shelf().length === 0);
+S.save(ctx.bookRef(ctx._known[227]));  // what Add to my shelf (apps.js savedBar) saves
+ok('Add to my shelf keeps it as a book of Bookshelf\'s', onShelf(ctx._known[227]) && ctx.shelf()[0].id === 227 && ctx.shelf()[0].author === 'Virgil' &&
   S.get('gutenberg_la\nAeneidos.227').kind === 'book' && S.get('gutenberg_la\nAeneidos.227').app === 'books');
 ok('a book the reader bookmarked (no card) still has its number', ctx.card({ zim: 'g', path: 'Tales.5139', title: 'Tales' }).id === 5139);
-ctx.toggleShelf(227);
-ok('and taken off again', !ctx.onShelf(ctx._known[227]) && ctx.shelf().length === 0);
-ok('outside the shell (no saved()), an empty shelf, not a broken one', (ctx.saved = () => null, ctx.places().length === 0 && ctx.shelf().length === 0 && !ctx.onShelf({ zim: 'a', path: 'b' })));
+S.remove(ctx.bookRef(ctx._known[227]));
+ok('and taken off again', !onShelf(ctx._known[227]) && ctx.shelf().length === 0);
+ok('outside the shell (no saved()), an empty shelf, not a broken one', (ctx.saved = () => null, ctx.places().length === 0 && ctx.shelf().length === 0));
+ok('a book\'s page has the controls every app shares: Save in the shelf\'s words, Lists, no Like', /<span class="svbar"><\/span>/.test(page) &&
+  /savedBar\(bookRef\(b\), \{ save: \[STR\.add_shelf, STR\.on_shelf\], like: false \}\);/.test(page) && /else if \(v\.v === 'book'\) savedPaint\(\);/.test(page) &&
+  !/toggleShelf|keepHtml|listsFor/.test(page));
 ctx.saved = () => shell.Saved;
 
 // ── the page's surface ───────────────────────────────────────────────────
@@ -126,7 +129,7 @@ ok('Zimi\'s header is held away for a book, known from its address before it loa
 ok('no jump-to-top button and no capture passes on a book', /if \(!_frameIsOurOwnPage\(frame\) && !_bookDoc && !_wikiOn\) try \{/.test(src) && /if \(_frameIsOurOwnPage\(frame\) \|\| _bookDoc\) return;/.test(src));
 ok('opening a book lays nothing out early: its text is counted, not measured', /return \(main === doc\.body \? main\.textContent :/.test(src) && /if \(!_isBookDoc\(doc\)\) _readerBindLightbox\(shell, doc\);/.test(src));
 ok('pages are one chapter at a time, and a long run is cut again', /html\.zb-paged \.zb-sec:not\(\.zb-cur\)\{display:none\}/.test(src) && /var _BOOK_SECTION_CHARS = \d+;/.test(src));
-ok('the place is a character of the book, kept with the share read, as a position in Saved', /Saved\.setPosition\(\{ kind: 'book', app: 'books', zim: zim, path: path,[\s\S]{0,400}\{ f: Math\.round\(f \* _BOOK_PLACE_SCALE\) \/ _BOOK_PLACE_SCALE, c: c \}\);/.test(src) && /var _BOOK_PLACE_SCALE = 1e5;/.test(src) && /var place = \(Saved\.position\(\{ zim: zim, path: path \}\) \|\| \{\}\)\.where;/.test(src));
+ok('the place is a character of the book, kept with the share read, as a position in Saved', /Saved\.setPosition\(\{ kind: 'book', app: 'books', zim: zim, path: path,[\s\S]{0,400}\{ f: Math\.round\(f \* _BOOK_PLACE_SCALE\) \/ _BOOK_PLACE_SCALE, c: c \}\);/.test(src) && /var _BOOK_PLACE_SCALE = 1e5;/.test(src) && /var placed = Saved\.position\(\{ zim: zim, path: path \}\), place = \(placed \|\| \{\}\)\.where;/.test(src));
 ok('a tap just after a swipe is the swipe\'s, by a named window', /Date\.now\(\) - swipedAt < _BOOK_SWIPE_TAP_MS\) return;/.test(src) && /var _BOOK_SWIPE_TAP_MS = \d+;/.test(src));
 // A book that never loads (an error, the 15 s stall) gives Zimi's header back:
 // it was held away before the load for a book header that never came.
@@ -137,7 +140,7 @@ ok('a link to a place in the book wins over the remembered place', /if \(tgtSec\
 ok('a right-to-left book turns the other way', /if \(rel < _BOOK_EDGE\) \{ turn\(bookRtl \? 1 : -1\); return; \}/.test(src));
 ok('chapters: the heading level with the most different headings', /hs\._n = Object\.keys\(distinct\)\.length;/.test(src));
 ok('the chapter arrows point the way the interface reads', /\(uiRtl \? pv : nx\)\.firstChild\.style\.transform = 'scaleX\(-1\)';/.test(src));
-ok('places are capped, the oldest dropped first', /var MAX = \{ items: \d+, lists: \d+, members: \d+, positions: \d+, highlights: \d+, gone: \d+ \};/.test(src) && /cap\(s\.positions, MAX\.positions, recTs\);/.test(src));
+ok('places are capped per app, the oldest dropped first (a Zimipedia article never pushes out a book)', /var POS_PER_APP = \d+;/.test(src) && /capPlaces\(s\.positions\);\n\s*commit\(false, true, 'pos'\);/.test(src));
 
 // A layout that throws is taken back off the page, and the document is not
 // marked done, so the next load of it tries again.

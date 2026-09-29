@@ -25,6 +25,7 @@ var _WIKI_BARS_HIDE = 24;       // px scrolled down (or up) before the bar leave
 var _WIKI_PLACE_MS = 2000;      // ms between writes of the place while reading
 var _WIKI_PLACE_START = 0.08;   // share of the article read before it counts as started
 var _WIKI_PLACE_DONE = 0.9;     // share read from which it counts as finished
+var _WIKI_PLACE_STEP = 0.05;    // share of the article moved, within a section, before the place is written again
 var _WIKI_HEAD_SLACK = 40;
 var _WIKI_CARD_SCROLL = 80;     // px scrolled away from a card before it is put away      // px below the bar a heading may sit and still be the one you are in
 var _WIKI_SVG_TOC = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".6" fill="currentColor"/><circle cx="4.5" cy="12" r=".6" fill="currentColor"/><circle cx="4.5" cy="18" r=".6" fill="currentColor"/></svg>';
@@ -508,14 +509,21 @@ function _wikiLayout(frame) {
   var meta = { lang: lang };
   if (leadImg) { try { meta.thumb = new URL(leadImg.getAttribute('src'), win.location.href).pathname; } catch (e) {} }
   var ref = _wikiPlaceRef(zim, path, title, meta);
-  var placeAt = 0, placeTimer = null;
+  // Written only when you have moved: into another section, or a step on
+  // within one, from the place last known (what Saved held as the article
+  // opened, else the last written), so an article read or left open is not a
+  // write every two seconds.
+  var placeAt = 0, placeTimer = null, placeKept = (Saved.position(ref) || {}).where || null;
   var keepPlace = function() {
     placeAt = Date.now();
     var room = Math.max(1, Math.max(html.scrollHeight, doc.body.scrollHeight) - win.innerHeight);
     var f = Math.min(1, (win.scrollY || 0) / room);
-    if (f >= _WIKI_PLACE_DONE) { if (Saved.position(ref)) Saved.clearPosition(ref); return; }
+    if (f >= _WIKI_PLACE_DONE) { if (Saved.position(ref)) Saved.clearPosition(ref); placeKept = null; return; }
     if (f < _WIKI_PLACE_START || current < 0) return;
-    Saved.setPosition(ref, { s: heads[current].id, f: Math.round(f * 100) / 100 });
+    var at = { s: heads[current].id, f: Math.round(f * 100) / 100 };
+    if (placeKept && placeKept.s === at.s && Math.abs((placeKept.f || 0) - at.f) < _WIKI_PLACE_STEP) return;
+    placeKept = at;
+    Saved.setPosition(ref, at);
   };
   var placeSoon = function() {
     clearTimeout(placeTimer);

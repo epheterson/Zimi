@@ -70,13 +70,19 @@ var SK = {
   // predict when you are looking for a title you already know. Article count
   // was the old default and rewards big files rather than the one you want.
   LIBRARY_SORT: 'zimi_library_sort',
-  // Everything kept (1.12): items, lists, memberships, positions and their
-  // tombstones, one JSON value (see Saved). Signed out it is this key; an
-  // account's own copy is this key + ':' + its name.
+  // Everything kept (1.12): items, lists, memberships, highlights and their
+  // tombstones, one JSON value (see Saved); where you were (positions and
+  // theirs) under SAVED_POS, written on its own as you read. Signed out it
+  // is these keys; an account's own copy is each + ':' + its name.
   SAVED: 'zimi_saved',
+  SAVED_POS: 'zimi_saved_pos',
+  // The accounts already asked whether to add this browser's pre-1.12
+  // bookmarks to them (a JSON list of names).
+  SAVED_LEGACY_ASKED: 'zimi_saved_legacy_asked',
   // Before 1.12: bookmarks, and their folders ({id,name,parent,order}).
-  // Read once into SAVED when a store is first used, and left in place for
-  // one release so an older Zimi still finds them.
+  // Read into the signed-out SAVED when it is first used (an account's only
+  // when its person asks), and left in place for one release so an older
+  // Zimi still finds them.
   BOOKMARKS: 'zimi_bookmarks',
   BM_FOLDERS: 'zimi_bm_folders',
   // Per-device UI state: ids of collapsed folders in the bookmarks tree.
@@ -1300,8 +1306,12 @@ function _applyUserSession(name, canCreate) {
 }
 
 function userLogout() {
-  // A change still waiting to go to the account goes before the session does.
-  _savedFlush().then(function() {
+  // A change still waiting to go to the account goes before the session does;
+  // once the account has everything, its copy leaves this browser (a shared
+  // screen keeps nothing of it, highlights and notes included). One that
+  // could not go stays, to go up at the next sign-in.
+  _savedFlush().then(function(ok) {
+    if (ok && !_savedDelta()) Saved.forget();
     return fetch('/logout', { method: 'POST', credentials: 'same-origin' });
   }).catch(function(){}).then(function() {
     _userSession = null;
@@ -17380,6 +17390,10 @@ var _READING_CSS = [
   '@media (hover:hover){.zb-bar button:hover:not(:disabled),.zb-sheet button:hover:not(:disabled){background:var(--rv-code)}}',
   '.zb-bar button:focus-visible,.zb-sheet button:focus-visible,.zb-sheet input:focus-visible{outline:2px solid var(--rv-link);outline-offset:1px}',
   '.zb-bar button:disabled{opacity:.3;cursor:default}',
+  '.zb-bar button[hidden]{display:none}',
+  // Another device's newer place in this book, offered above the scrubber.
+  '.zb-foot .zb-remote{align-self:center;height:auto;min-height:34px;max-width:100%;padding:6px 14px;border:1px solid var(--rv-border);',
+    'border-radius:17px;font-size:13px;color:var(--rv-link);text-align:center;white-space:normal}',
   '.zb-aa{font:600 17px/1 Georgia,serif!important;letter-spacing:.02em}',
   '.zb-title{flex:1;min-width:0;text-align:center;line-height:1.2}',
   '.zb-title b,.zb-title span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;unicode-bidi:plaintext}',
@@ -17514,6 +17528,7 @@ function _readingSettingsBind(sheet, getPrefs, apply, close) {
 // a turn of the phone, a change of type, and reopening.
 var _BOOK_PLACE_THROTTLE = 800;   // ms between writes while reading
 var _BOOK_PLACE_SCALE = 1e5;      // the share read is kept to five decimal places
+var _BOOK_REMOTE_NEAR = 400;      // chars: another device's place this near where you are is where you are
 var _BOOK_CHAPTERS_MIN = 2;       // fewer headings than this is not a book of chapters
 var _BOOK_FRONT_MIN = 200;        // chars: a first "chapter" with less than this before it is the title page's
 var _BOOK_SECTION_CHARS = 150000; // chars: the longest run laid out as pages at once
@@ -17585,6 +17600,13 @@ function _bookSavePlace(doc, zim, path, f, c) {
     meta: { id: cur.meta.id || (m ? Number(m[1]) : 0), author: cur.meta.author || _bookAuthorName(meta('dc.creator')),
       cover: cur.meta.cover || (m ? 'covers/' + m[1] + '_cover_image.jpg' : '') } },
     { f: Math.round(f * _BOOK_PLACE_SCALE) / _BOOK_PLACE_SCALE, c: c });
+}
+// The account's copy came in: the book open here, if one is, looks for a
+// newer place from another device and offers it (doc.__zbRemotePlace).
+function _bookSeeRemotePlace() {
+  if (!_bookReading) return;
+  var doc = _readerFrameDoc();
+  try { if (doc && typeof doc.__zbRemotePlace === 'function') doc.__zbRemotePlace(); } catch (e) {}
 }
 // "Ewald, Carl, 1856-1908" as a cover prints it: "Carl Ewald".
 function _bookAuthorName(creator) {
@@ -17836,7 +17858,8 @@ function _bookLay(frame) {
   if (!author) head.querySelector('.zb-title span').style.display = 'none';
   var foot = el('div', 'zb-bar zb-foot');
   foot.setAttribute('dir', uiRtl ? 'rtl' : 'ltr');
-  foot.innerHTML = '<input type="range" class="zb-scrub" min="0" max="1000" step="1" value="0" aria-label="' + tH('books_position') + '">' +
+  foot.innerHTML = '<button type="button" class="zb-remote" hidden></button>' +
+    '<input type="range" class="zb-scrub" min="0" max="1000" step="1" value="0" aria-label="' + tH('books_position') + '">' +
     '<div class="zb-row"><button type="button" class="zb-pv" aria-label="' + tH('books_prev_chapter') + '" title="' + tH('books_prev_chapter') + '"></button>' +
     '<div class="zb-info"><span class="zb-ch"></span><span class="zb-left"></span></div>' +
     '<button type="button" class="zb-nx" aria-label="' + tH('books_next_chapter') + '" title="' + tH('books_next_chapter') + '"></button></div>';
@@ -18004,11 +18027,41 @@ function _bookLay(frame) {
     pv.disabled = paged ? (cur === 0 && page === 0) : (win.scrollY || 0) <= 2;
     nx.disabled = !chapters.length || k >= chapters.length - 1;
   };
-  var last = 0, saveTimer = null;
+  // The place last known here (the one it opened at, or last wrote, or went
+  // to) and the time of the record: only a move from it is written, so a
+  // book left open never writes its older place over one read since on
+  // another device; a newer one from there is offered instead.
+  var last = 0, saveTimer = null, known = { c: -1, ts: 0 };
+  var remote = foot.querySelector('.zb-remote');
+  var offerOff = function() { remote.hidden = true; remote.__c = -1; };
   var save = function() {
     last = Date.now();
     var c = charOf(anchor);
+    if (c === known.c) return;
+    known.c = c;
+    offerOff();
     _bookSavePlace(doc, zim, path, c / total, c);
+    known.ts = (Saved.position({ zim: zim, path: path }) || known).ts;
+  };
+  doc.__zbRemotePlace = function() {
+    var p = Saved.position({ zim: zim, path: path }), w = p && p.where;
+    if (!w || p.ts <= known.ts) return;
+    known.ts = p.ts;
+    var c = w.c > 0 ? Math.min(total, w.c) : Math.round((w.f || 0) * total);
+    if (Math.abs(c - charOf(anchor)) < _BOOK_REMOTE_NEAR) return;
+    remote.textContent = t('books_remote_place', { where: pct(c / total) });
+    remote.__c = c;
+    remote.hidden = false;
+    showBars(true);
+  };
+  remote.onclick = function() {
+    var c = remote.__c;
+    offerOff();
+    if (c < 0) return;
+    held = false;
+    goToChar(c);
+    known.c = charOf(anchor);
+    paint();
   };
   var settleTimer = null;
   // After a scroll or a turn has come to rest: read where you are, show it, keep it.
@@ -18288,7 +18341,7 @@ function _bookLay(frame) {
   paged = prefs.mode === 'pages';
   applyVars();
   html.classList.toggle('zb-paged', paged);
-  var place = (Saved.position({ zim: zim, path: path }) || {}).where;
+  var placed = Saved.position({ zim: zim, path: path }), place = (placed || {}).where;
   var hash = (win.location.hash || '').slice(1), tgt = null;
   if (hash) { try { hash = decodeURIComponent(hash); } catch (e) {} tgt = doc.getElementById(hash); }
   var tgtSec = tgt && tgt.closest('.zb-sec');
@@ -18302,6 +18355,7 @@ function _bookLay(frame) {
     goTo({ s: 0, o: 0 });
     if (!paged) win.scrollTo(0, 0);
   }
+  known = { c: charOf(anchor), ts: placed ? placed.ts : 0 };
   lastY = win.scrollY || 0;
   held = true;
   paint();
@@ -18397,6 +18451,15 @@ function _openAppItem(app, zim, path) {
   var id = zim + '/' + path;
   if (app === 'tube') openTube(false, id); else if (app === 'exchange') openExchange(false, id); else openReddot(false, id);
 }
+// The apps whose things (a video, a question, a post) open in the app, not
+// the reader; each thing's kind is the one Saved.KIND_APP gives the app.
+var _APP_ITEM_APPS = ['tube', 'exchange', 'reddot'];
+function _appItemKind(app) {
+  if (_APP_ITEM_APPS.indexOf(app) < 0) return '';
+  for (var k in Saved.KIND_APP) if (Saved.KIND_APP[k] === app) return k;
+  return '';
+}
+function _savedOpensInApp(it) { return !!it.app && _appItemKind(it.app) === it.kind; }
 var _TUBE_PAGE = '/static/tube.html?v=1';
 
 // Video ZIMs, and the ZIMs that feed ZimiTube beside their own kind: a
@@ -20043,8 +20106,6 @@ var _BM_ROOT = '';          // the top level: items in no list
 var _BM_CONTINUE = '__continue';
 var _BM_CONTINUE_SHOWN = 8; // books (later videos) listed under Continue
 var _BM_HIGHLIGHTS = '__highlights'; // every highlight, the latest first
-// What opens inside an app page rather than the reader.
-var _SAVED_APP_KINDS = { video: 'tube', question: 'exchange', post: 'reddot' };
 // The app the panel shows, '' for everything. Chosen as the panel opens: the
 // app on screen, if one is.
 var _bmScope = '';
@@ -20075,13 +20136,11 @@ function _bmSetScope(app) { _bmScope = app || ''; _bmRerender(); }
 // Per-device collapse state (UI, not data: never synced). Lists migrated from
 // folders keep their ids, so a folder closed before is a list closed now.
 function _bmCollapsedSet() {
-  try { return new Set(JSON.parse(localStorage.getItem(SK.BM_COLLAPSED)) || []); }
-  catch (e) { return new Set(); }
+  var ids = _getStorageJSON(SK.BM_COLLAPSED, []);
+  return new Set(Array.isArray(ids) ? ids : []);
 }
 function _bmIsCollapsed(id) { return _bmCollapsedSet().has(String(id)); }
-function _bmSaveCollapsed(s) {
-  try { localStorage.setItem(SK.BM_COLLAPSED, JSON.stringify(Array.from(s))); } catch (e) {}
-}
+function _bmSaveCollapsed(s) { _setStorageJSON(SK.BM_COLLAPSED, Array.from(s)); }
 function _bmToggleCollapse(id) {
   var s = _bmCollapsedSet();
   id = String(id);
@@ -20093,6 +20152,19 @@ function _bmExpand(id) {
   if (s.delete(String(id))) _bmSaveCollapsed(s);
 }
 
+// Above the lists, when there is something to say: sync paused (the account
+// refused the store as too large, and what to do), and, once per account,
+// whether to add this browser's bookmarks from before 1.12 to it.
+function _savedNotesHtml() {
+  var html = '';
+  if (_savedPaused) html += '<div class="bm-note bm-warn" role="status">' + tH('saved_sync_paused') + '</div>';
+  if (Saved.legacyOffered()) {
+    html += '<div class="bm-note" role="group">' + tH('saved_legacy_offer') + '<div class="bm-note-actions">' +
+      '<button class="hp-action-btn primary" onclick="Saved.legacyAnswer(true)">' + tH('saved_legacy_add') + '</button>' +
+      '<button class="hp-action-btn" onclick="Saved.legacyAnswer(false)">' + tH('saved_legacy_skip') + '</button></div></div>';
+  }
+  return html;
+}
 function _renderBookmarksContent() {
   // Left the app with the panel open: its slice goes with it.
   if (_bmScope && _savedCurrentApp() !== _bmScope) _bmScope = '';
@@ -20102,7 +20174,7 @@ function _renderBookmarksContent() {
   var cont = Saved.continued(q).filter(function (p) { return p.kind === 'book' || p.kind === 'video'; }).slice(0, _BM_CONTINUE_SHOWN);
   var hls = Saved.highlights(q);
   var any = loose.length || cont.length || hls.length || lists.some(function (l) { return l.count || !l.builtin; });
-  var html = _bmScopeHtml() + '<div class="hp-actions bm-actions">' +
+  var html = _bmScopeHtml() + _savedNotesHtml() + '<div class="hp-actions bm-actions">' +
     '<button class="hp-action-btn" onclick="_bmNewListPrompt()">' + tH('saved_new_list') + '</button>' +
     (Saved.all().length ? '<button id="export-bookmarks-btn" class="hp-action-btn" onclick="_bmOpenExport()">' + tH('save_to_zim') + '</button>' : '') +
     '</div>';
@@ -20138,9 +20210,7 @@ function _renderBookmarksContent() {
 function _hlQuote(h) { return h.exact + (h.end ? ' \u2026 ' + h.end : ''); }
 // Which highlights a page opened on this device did not have (highlights.js
 // keeps the list; per device, as another may hold another build).
-function _hlMissingSet() {
-  try { return JSON.parse(localStorage.getItem(SK.HL_MISSING)) || {}; } catch (e) { return {}; }
-}
+function _hlMissingSet() { return _getStorageJSON(SK.HL_MISSING, {}) || {}; }
 // An item's row, and its page's highlights under it in the order of the text.
 function _bmItemWithHlHtml(it, fid, depth) {
   var html = _bmItemRowHtml(it, fid, depth), hls = Saved.highlights(it);
@@ -20227,7 +20297,7 @@ function _fmtClock(s) {
 
 function _bmItemRowHtml(it, fid, depth) {
   var missing = _bkSourceMissing(it);
-  var inApp = _SAVED_APP_KINDS[it.kind] && it.app;
+  var inApp = _savedOpensInApp(it);
   var icon = inApp ? _appIcon(it.app).replace('width="26" height="26"', 'width="20" height="20"') : it.zim ? _sourceIconHtml(it.zim, 20) : _BM_PAGE_SVG;
   var sub = missing ? t('bm_source_missing') : inApp ? _appTitle(it.app) : (it.zim ? _zimTitleWithLang(it.zim) : '');
   var where = fid === _BM_CONTINUE ? _savedWhereLabel(it) : '';
@@ -20252,7 +20322,7 @@ function _bmItemRowHtml(it, fid, depth) {
 // an article at its section.
 function _savedOpen(it) {
   _closeLibraryPanel();
-  if (_SAVED_APP_KINDS[it.kind] && it.app) { _openAppItem(it.app, it.zim, it.path); return; }
+  if (_savedOpensInApp(it)) { _openAppItem(it.app, it.zim, it.path); return; }
   var w = it.where || {};
   var pos = it.kind === 'place' ? w.pos : '';
   openArticle(it.zim, it.path + (w.s && !pos ? '#' + w.s : ''), it.title, pos ? { pos: pos } : undefined);
@@ -20396,7 +20466,7 @@ function _bmNewListPrompt(then) {
   wrap.className = 'bm-row bm-newfolder';
   wrap.style.paddingLeft = '6px';
   wrap.innerHTML = '<span class="bm-ficon">' + _BM_LIST_SVG + '</span>' +
-    '<input class="bm-newfolder-input" type="text" placeholder="' + escAttr(t('saved_list_name')) + '" maxlength="60">';
+    '<input class="bm-newfolder-input" type="text" placeholder="' + escAttr(t('saved_list_name')) + '" maxlength="' + Saved.NAME_MAX + '">';
   // After Continue and Liked, before the other lists: where it will be seen.
   var after = host.querySelector('.bm-folder[data-fid="liked"]');
   var at = after;
@@ -20424,13 +20494,13 @@ function _bmCloseInlineInput() {
 // trimmed value, empty string included), Escape cancels. Semantics of an empty
 // commit are the caller's call: lists keep their old name, items revert to
 // the page's own title.
-function _bmInlineRenameRow(row, value, apply) {
+function _bmInlineRenameRow(row, value, max, apply) {
   if (!row) return;
   var nameEl = row.querySelector('.bm-name');
   if (!nameEl) return;
   var input = document.createElement('input');
   input.className = 'bm-rename-input';
-  input.type = 'text'; input.value = value; input.maxLength = 60;
+  input.type = 'text'; input.value = value; input.maxLength = max;
   nameEl.replaceWith(input);
   row.classList.add('bm-renaming');
   input.focus(); input.select();
@@ -20445,7 +20515,7 @@ function _bmInlineRenameRow(row, value, apply) {
 // ── Delete a list: its items stay saved; a list with something in it asks
 // first (what is lost is the grouping, and there is no undo) ──
 function _bmDeleteList(lid) {
-  var l = Saved.lists().filter(function (x) { return x.id === lid; })[0];
+  var l = Saved.list(lid);
   if (!l || l.builtin) return;
   if (!l.count) { Saved.deleteList(lid); return; }
   var html = '<div class="ctx-note">' + tH('saved_delete_list_q', { name: l.name }) + '</div>' +
@@ -20506,7 +20576,7 @@ function savedPickLists(ref, rect) {
 function _savedPickNewList(row, then) {
   var was = row.innerHTML;
   row.removeAttribute('data-action');
-  row.innerHTML = '<input class="bm-newfolder-input ctx-input" type="text" maxlength="60" placeholder="' + escAttr(t('saved_list_name')) + '">';
+  row.innerHTML = '<input class="bm-newfolder-input ctx-input" type="text" maxlength="' + Saved.NAME_MAX + '" placeholder="' + escAttr(t('saved_list_name')) + '">';
   var input = row.querySelector('input');
   input.focus();
   var done = false;
@@ -20538,10 +20608,10 @@ function _bmListMenu(lid, x, y) {
   });
 }
 function _bmRenameList(lid) {
-  var l = Saved.lists().filter(function (x) { return x.id === lid; })[0];
+  var l = Saved.list(lid);
   if (!l || l.builtin) return;
   var row = document.querySelector('.bm-folder[data-fid="' + _cssEsc(lid) + '"]');
-  _bmInlineRenameRow(row, l.name, function (name) { if (name) Saved.renameList(lid, name); });
+  _bmInlineRenameRow(row, l.name, Saved.NAME_MAX, function (name) { if (name) Saved.renameList(lid, name); });
 }
 
 function _bmItemMenu(row, x, y) {
@@ -20566,7 +20636,7 @@ function _bmItemMenu(row, x, y) {
     var it = Saved.get(key);
     if (!it) return;
     if (action === 'open') _savedOpen(it);
-    else if (action === 'rename') _bmInlineRenameRow(row, it.title || _titleFromPath(it.path), function (name) { Saved.rename(key, name); });
+    else if (action === 'rename') _bmInlineRenameRow(row, it.title || _titleFromPath(it.path), Saved.TITLE_MAX, function (name) { Saved.rename(key, name); });
     else if (action === 'unlist') Saved.removeFromList(key, fid);
     else if (action === 'remove') Saved.remove(key);
     else if (action === 'toggle-list') {
@@ -20944,7 +21014,9 @@ function _pushArticleHistory(zim, path) {
 // tombstone in `gone` (i:item, l:list, m:membership, p:position, h:highlight) that beats
 // anything as old or older, so a delete on one device survives a merge from
 // another. Tombstones are forgotten after GONE_MS. users.py holds the same
-// rules for the account's copy (_clean_saved, _merge_saved).
+// rules for the account's copy (_clean_saved, _merge_saved), and the same
+// byte budget: past it the oldest tombstones go, then the oldest places, and
+// what a person saved is never dropped (a new save is refused instead).
 var Saved = (function () {
   var LIKED = 'liked';
   var KINDS = ['article', 'book', 'video', 'question', 'post', 'place'];
@@ -20952,8 +21024,14 @@ var Saved = (function () {
   // The app a kind belongs to when the one saving it did not say.
   var KIND_APP = { book: 'books', video: 'tube', question: 'exchange', post: 'reddot', place: 'maps' };
   var COLLS = [['items', 'i:'], ['lists', 'l:'], ['members', 'm:'], ['positions', 'p:'], ['highlights', 'h:']];
-  // Caps (users.py _SAVED_MAX holds the same): past one, the newest are kept.
-  var MAX = { items: 5000, lists: 500, members: 20000, positions: 1000, highlights: 2000, gone: 10000 };
+  // How many of each a person can keep, and the store's bytes as the
+  // account's file holds it (UTF-8 JSON): past one, a new one is refused with
+  // a word (_savedFull), never an old one dropped to make room. The byte
+  // budget and how a store is trimmed to fit it (fit) are users.py's too
+  // (_SAVED_MAX_BYTES, _SAVED_POS_PER_APP, _SAVED_GONE_MAX).
+  var MAX = { items: 5000, lists: 500, members: 20000, highlights: 2000, bytes: 3 * 1024 * 1024 };
+  var POS_PER_APP = 300;     // places kept per app, the latest
+  var GONE_MAX = 10000;      // tombstones kept, the newest
   // A highlight's colours, the first the default; its quote (the engine keeps
   // the start and the end of a longer passage), its context, its note.
   var HL_COLORS = ['yellow', 'green', 'blue', 'pink'];
@@ -20965,11 +21043,40 @@ var Saved = (function () {
   var SMALL_KEYS = 16, SMALL_KEY_MAX = 32, SMALL_VAL_MAX = 1000;
   var ORDER_GAP_MIN = 1e-9;  // two neighbours closer than this: the list is numbered again
   var ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
-  var _ns = '', _s = null, _idx = null, _hidx = null;
+  // _ns: whose store ('' signed out, an account's name, null once forgotten).
+  // _newest: the latest time the store has seen. _sizes: each key's bytes as
+  // last written (-1 not yet known). _offer: whether 1.11's bookmarks are offered.
+  var _ns = '', _s = null, _idx = null, _hidx = null, _newest = 0, _sizes = { main: -1, pos: -1 }, _offer = null;
 
-  function now() { return Date.now(); }
+  // Now, and never before anything the store has seen: a device whose clock
+  // is slow still dates a delete after the thing it deletes.
+  function now() {
+    _newest = Math.max(Date.now(), _newest + 1);
+    return _newest;
+  }
+  function see(s) {
+    COLLS.forEach(function (c) {
+      var m = s[c[0]];
+      Object.keys(m).forEach(function (id) { var ts = m[id] && num(m[id].ts); if (ts > _newest) _newest = ts; });
+    });
+    Object.keys(s.gone).forEach(function (g) { var ts = num(s.gone[g]); if (ts > _newest) _newest = ts; });
+  }
+  // The bytes a string takes in UTF-8 (a JSON text: its surrogates come in pairs).
+  function utf8(str) {
+    var n = str.length;
+    for (var i = 0, len = str.length; i < len; i++) {
+      var c = str.charCodeAt(i);
+      if (c >= 0x80) n += c < 0x800 || (c >= 0xd800 && c <= 0xdfff) ? 1 : 2;
+    }
+    return n;
+  }
+  function size(x) { return utf8(JSON.stringify(x)); }
   function empty() { return { v: 1, items: {}, lists: {}, members: {}, positions: {}, highlights: {}, gone: {}, legacy: false }; }
+  // The store is kept under two keys: where you were (a place moves every few
+  // seconds while you read) apart from the rest, so a place written does not
+  // write everything again.
   function storeKey() { return SK.SAVED + (_ns ? ':' + _ns : ''); }
+  function posKey() { return SK.SAVED_POS + (_ns ? ':' + _ns : ''); }
   function key(ref) {
     if (typeof ref === 'string') return ref;
     if (!ref || !ref.zim || !ref.path) return '';
@@ -21072,25 +21179,51 @@ var Saved = (function () {
   }
   function recTs(r) { return r.ts; }
   function goneTs(v) { return v; }
-  // A membership needs its item and its list; tombstones age out; caps hold.
-  function normalize(s, t) {
-    cap(s.items, MAX.items, recTs);
-    cap(s.lists, MAX.lists, recTs);
-    cap(s.positions, MAX.positions, recTs);
-    cap(s.highlights, MAX.highlights, recTs);
+  // Each app keeps its latest POS_PER_APP places: Zimipedia's articles never
+  // push Bookshelf's books out of Continue.
+  function capPlaces(p) {
+    var byApp = {};
+    Object.keys(p).forEach(function (k) { var a = p[k].app || ''; (byApp[a] = byApp[a] || []).push(k); });
+    Object.keys(byApp).forEach(function (a) {
+      var ks = byApp[a];
+      if (ks.length > POS_PER_APP) ks.sort(newestFirst(p, recTs)).slice(POS_PER_APP).forEach(function (k) { delete p[k]; });
+    });
+  }
+  // Past `budget` bytes the oldest tombstones go first, then the oldest
+  // places, until the store fits; returns its size. Nothing a person saved
+  // goes: a store still over refuses new saves (room) and the account
+  // refuses it until something is let go.
+  function fit(s, budget) {
+    var n = size(s);
+    [['gone', goneTs], ['positions', recTs]].forEach(function (c) {
+      var m = s[c[0]], getTs = c[1], ks = Object.keys(m), left = ks.length;
+      ks.sort(function (a, b) { return getTs(m[a]) - getTs(m[b]) || cmp(a, b); }).forEach(function (k) {
+        if (n <= budget) return;
+        // "key":value, and the comma beside it while another is left.
+        n -= size(k) + 1 + size(m[k]) + (left > 1 ? 1 : 0);
+        left--;
+        delete m[k];
+      });
+    });
+    return n;
+  }
+  // A membership needs its item and its list; tombstones age out; each app
+  // keeps its latest places; the store fits its byte budget.
+  function normalize(s, t, budget) {
     Object.keys(s.members).forEach(function (mk) {
       var i = mk.indexOf('\t'), lid = mk.slice(0, i);
       if (!has(s.items, mk.slice(i + 1)) || (lid !== LIKED && !has(s.lists, lid))) delete s.members[mk];
     });
-    cap(s.members, MAX.members, recTs);
     Object.keys(s.gone).forEach(function (g) { if (s.gone[g] < t - GONE_MS) delete s.gone[g]; });
-    cap(s.gone, MAX.gone, goneTs);
+    cap(s.gone, GONE_MAX, goneTs);
+    capPlaces(s.positions);
+    fit(s, budget == null ? MAX.bytes : budget);
     return s;
   }
   // Every record: the newer copy wins (a tie keeps a's). A tombstone as new
   // as the record or newer removes it; a record newer than its tombstone
   // (saved again after the delete) outlives it.
-  function mergeStores(a, b, t) {
+  function mergeStores(a, b, t, budget) {
     var out = empty(), gone = {};
     out.legacy = !!(a.legacy || b.legacy);
     [a.gone, b.gone].forEach(function (src) {
@@ -21110,7 +21243,7 @@ var Saved = (function () {
       });
     });
     out.gone = gone;
-    return normalize(out, t);
+    return normalize(out, t, budget);
   }
 
   // ── what the browser kept before 1.12 ──
@@ -21184,42 +21317,97 @@ var Saved = (function () {
     return clean(out);
   }
   function readLegacy() {
-    var get = function (k, fallback) {
-      try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? fallback : v; } catch (e) { return fallback; }
-    };
-    return { bookmarks: get(SK.BOOKMARKS, []), folders: get(SK.BM_FOLDERS, []), places: get(SK.BOOK_PLACES, {}) };
+    return { bookmarks: _getStorageJSON(SK.BOOKMARKS, []) || [], folders: _getStorageJSON(SK.BM_FOLDERS, []) || [],
+      places: _getStorageJSON(SK.BOOK_PLACES, {}) || {} };
   }
   function zimKind(zim) {
     try { var z = typeof _zimInfo === 'function' ? _zimInfo(zim) : null; return z ? z.kind : ''; } catch (e) { return ''; }
+  }
+  // 1.11 kept bookmarks per browser, not per account. They come into the
+  // signed-out store on its first use; into an account only when its person
+  // says so, asked once in the Saved panel (a shared screen's bookmarks are
+  // not every account's that signs in on it).
+  function legacyOffered() {
+    if (!_ns) return false;
+    if (_offer === null) {
+      var old = readLegacy();
+      _offer = (_getStorageJSON(SK.SAVED_LEGACY_ASKED, []) || []).indexOf(_ns) < 0 &&
+        !!(old.bookmarks.length || old.folders.length || Object.keys(old.places).length);
+    }
+    return _offer;
+  }
+  function legacyAnswer(take) {
+    if (!legacyOffered()) return;
+    var asked = _getStorageJSON(SK.SAVED_LEGACY_ASKED, []) || [];
+    asked.push(_ns);
+    _setStorageJSON(SK.SAVED_LEGACY_ASKED, asked);
+    _offer = false;
+    if (take) merge(fromLegacy(readLegacy(), zimKind));
+    else if (typeof _savedChanged === 'function') _savedChanged(true);
   }
 
   // ── the store ──
   function load() {
     if (_s) return _s;
-    var raw = null, parsed = null;
-    try { raw = localStorage.getItem(storeKey()); } catch (e) {}
-    if (raw) { try { parsed = JSON.parse(raw); } catch (e) {} }
-    if (parsed && typeof parsed === 'object' && parsed.items) {
-      _s = parsed;
-      ['items', 'lists', 'members', 'positions', 'highlights', 'gone'].forEach(function (c) { if (!_s[c] || typeof _s[c] !== 'object') _s[c] = {}; });
+    if (_ns === null) { _s = empty(); return _s; }
+    var main = _getStorageJSON(storeKey(), null), pos = _getStorageJSON(posKey(), null);
+    if (main && typeof main === 'object' && main.items) {
+      ['items', 'lists', 'members', 'positions', 'highlights', 'gone'].forEach(function (c) { if (!main[c] || typeof main[c] !== 'object') main[c] = {}; });
+      var places = clean(pos);
+      see(main); see(places);
+      // A store written before places had a key of their own moves them there.
+      var moved = Object.keys(main.positions).length > 0;
+      _s = Object.keys(places.positions).length || Object.keys(places.gone).length || moved ? mergeStores(main, places, Date.now()) : main;
+      if (moved) write();
       return _s;
     }
-    // This store's first use: what the browser kept before comes in (the
-    // old keys stay where they are, readable by an older Zimi).
-    _s = mergeStores(empty(), fromLegacy(readLegacy(), zimKind), now());
+    // This store's first use: signed out, what the browser kept before comes
+    // in (the old keys stay where they are, readable by an older Zimi); an
+    // account's starts empty and its own copy arrives from the server.
+    _s = _ns ? empty() : mergeStores(empty(), fromLegacy(readLegacy(), zimKind), Date.now());
+    see(_s);
     write();
     return _s;
   }
-  function write() {
-    try { localStorage.setItem(storeKey(), JSON.stringify(_s)); } catch (e) {}
+  // The store as its two keys hold it: where you were (places, and their
+  // tombstones), and the rest.
+  function split(s, which) {
+    var out = { gone: {} }, pos = which === 'pos';
+    if (pos) out.positions = s.positions;
+    else Object.keys(s).forEach(function (k) { if (k !== 'positions' && k !== 'gone') out[k] = s[k]; });
+    Object.keys(s.gone).forEach(function (g) { if ((g.charAt(0) === 'p') === pos) out.gone[g] = s.gone[g]; });
+    return out;
+  }
+  // part: 'main' or 'pos' alone, else both. A browser whose storage is full
+  // keeps the store in memory for this page, and the shell says so once.
+  function write(part) {
+    if (_ns === null) return;
+    ['main', 'pos'].forEach(function (p) {
+      if (part && part !== p) return;
+      var text = JSON.stringify(split(_s, p));
+      _sizes[p] = utf8(text);
+      try { localStorage.setItem(p === 'pos' ? posKey() : storeKey(), text); }
+      catch (e) { if (typeof _savedStorageFull === 'function') _savedStorageFull(); }
+    });
   }
   // fromSync: the change came from the account or another tab (nothing to
   // send). often: a place moving while something is read (sent less eagerly).
-  function commit(fromSync, often) {
+  // part: the one key the change is in.
+  function commit(fromSync, often, part) {
     _idx = null;
     if (!often) _hidx = null;  // a place moving while reading leaves highlights as they were
-    write();
+    write(part);
     if (typeof _savedChanged === 'function') _savedChanged(!!fromSync, !!often);
+  }
+  // Room for one more of a kind (items, lists, members, highlights): under
+  // its count and the byte budget. Otherwise the shell says so and nothing
+  // already kept makes way.
+  function room(coll) {
+    var s = load();
+    ['main', 'pos'].forEach(function (p) { if (_sizes[p] < 0) _sizes[p] = size(split(s, p)); });
+    if (Object.keys(s[coll]).length < MAX[coll] && _sizes.main + _sizes.pos < MAX.bytes) return true;
+    if (typeof _savedFull === 'function') _savedFull();
+    return false;
   }
   // Which lists hold what, in order; rebuilt after a change.
   function idx() {
@@ -21282,7 +21470,8 @@ var Saved = (function () {
   }
   function addMember(s, id, lid, before, t) {
     if (!has(s.items, id) || (lid !== LIKED && !has(s.lists, lid))) return false;
-    if (has(s.members, lid + '\t' + id) && before == null) return false;
+    var there = has(s.members, lid + '\t' + id);
+    if ((there && before == null) || (!there && !room('members'))) return false;
     place(s, id, lid, before, t);
     return true;
   }
@@ -21294,7 +21483,9 @@ var Saved = (function () {
   function save(item) {
     var id = key(item);
     if (!id || typeof item !== 'object') return '';
-    var s = load(), t = now(), cur = has(s.items, id) ? s.items[id] : null;
+    var s = load(), cur = has(s.items, id) ? s.items[id] : null;
+    if (!cur && !room('items')) return '';
+    var t = now();
     var kind = KINDS.indexOf(item.kind) >= 0 ? item.kind : (cur ? cur.kind : 'article');
     var rec = { kind: kind, zim: String(item.zim), path: String(item.path), title: '', added: cur ? cur.added : t, ts: t };
     // A title given here is the page's; a name the person chose stays.
@@ -21359,7 +21550,7 @@ var Saved = (function () {
   }
   function createList(name) {
     name = String(name || '').trim().slice(0, NAME_MAX);
-    if (!name) return '';
+    if (!name || !room('lists')) return '';
     var s = load(), t = now(), ids = listIds(s);
     var id = 'l_' + t.toString(36) + '_' + Math.random().toString(36).slice(2, 7);
     s.lists[id] = { name: name, order: ids.length ? s.lists[ids[ids.length - 1]].order + 1 : 0, ts: t };
@@ -21437,15 +21628,15 @@ var Saved = (function () {
     if (m2) rec.meta = m2;
     s.positions[id] = rec;
     delete s.gone['p:' + id];
-    cap(s.positions, MAX.positions, recTs);
-    commit(false, true);
+    capPlaces(s.positions);
+    commit(false, true, 'pos');
   }
   function clearPosition(ref) {
     var s = load(), id = key(ref);
     if (!has(s.positions, id)) return;
     delete s.positions[id];
     s.gone['p:' + id] = now();
-    commit();
+    commit(false, false, 'pos');
   }
   function continued(q) {
     q = q || {};
@@ -21489,8 +21680,9 @@ var Saved = (function () {
   // given replace its own (a note of '' takes the note away).
   function highlight(h) {
     if (!h || typeof h !== 'object') return '';
-    var s = load(), t = now(), id = typeof h.id === 'string' && has(s.highlights, h.id) ? h.id : '';
-    var rec = id ? copy(s.highlights[id]) : { added: t };
+    var s = load(), id = typeof h.id === 'string' && has(s.highlights, h.id) ? h.id : '';
+    if (!id && !room('highlights')) return '';
+    var t = now(), rec = id ? copy(s.highlights[id]) : { added: t };
     ['zim', 'path', 'kind', 'app', 'title', 'exact', 'end', 'n', 'prefix', 'suffix', 'pos', 'color', 'note'].forEach(function (f) {
       if (h[f] !== undefined) rec[f] = h[f];
     });
@@ -21501,8 +21693,7 @@ var Saved = (function () {
     if (!r) return '';
     s.highlights[id] = r;
     delete s.gone['h:' + id];
-    cap(s.highlights, MAX.highlights, recTs);
-    commit();
+    commit(false, false, 'main');
     return id;
   }
   function removeHighlight(id) {
@@ -21514,13 +21705,51 @@ var Saved = (function () {
   }
 
   // ── sync: the account's copy, a file, another device ──
-  // A store's fingerprint: every record by id and time, every tombstone.
-  // Equal fingerprints hold the same records (a tie keeps one copy either way).
+  // What a copy holds, by id: every record's time and every tombstone's.
+  function stamps(s) {
+    var out = {};
+    COLLS.forEach(function (c) { Object.keys(s[c[0]]).forEach(function (id) { out[c[1] + id] = s[c[0]][id].ts; }); });
+    Object.keys(s.gone).forEach(function (g) { out['g' + g] = s.gone[g]; });
+    return out;
+  }
+  // A store's fingerprint. Equal fingerprints hold the same records (a tie
+  // keeps one copy either way).
   function sig(s) {
-    var out = [];
-    COLLS.forEach(function (c) { Object.keys(s[c[0]]).forEach(function (id) { out.push(c[1] + id + '\u0000' + s[c[0]][id].ts); }); });
-    Object.keys(s.gone).forEach(function (g) { out.push('g' + g + '\u0000' + s.gone[g]); });
-    return out.sort().join('\u0001') + (s.legacy ? '+' : '');
+    var st = stamps(s);
+    return Object.keys(st).sort().map(function (k) { return k + '\u0000' + st[k]; }).join('\u0001') + (s.legacy ? '+' : '');
+  }
+  // What this store holds that a copy with these stamps does not, as a store
+  // of just those records and tombstones: what goes to the account after it
+  // last answered, small enough to go while the page closes.
+  function since(st) {
+    var s = load(), out = empty();
+    out.legacy = s.legacy;
+    COLLS.forEach(function (c) {
+      var m = s[c[0]];
+      Object.keys(m).forEach(function (id) { if (!st || st[c[1] + id] !== m[id].ts) out[c[0]][id] = m[id]; });
+    });
+    Object.keys(s.gone).forEach(function (g) { if (!st || st['g' + g] !== s.gone[g]) out.gone[g] = s.gone[g]; });
+    return out;
+  }
+  // Overwrite, with other devices in it: the incoming store whole, each of
+  // its records dated now (a moment apart, in the order they were, so the
+  // latest read stays the latest) to outrank every copy of it elsewhere, and
+  // a tombstone as new for each record here it does not hold, so no copy of
+  // that one comes back with the next sync.
+  function replacing(s, inc, t) {
+    var out = copy(inc), stamp = t;
+    COLLS.forEach(function (c) {
+      var m = out[c[0]];
+      Object.keys(m).sort(function (a, b) { return m[a].ts - m[b].ts || cmp(a, b); }).forEach(function (id) {
+        m[id].ts = stamp++;
+        delete out.gone[c[1] + id];
+      });
+    });
+    COLLS.forEach(function (c) {
+      Object.keys(s[c[0]]).forEach(function (id) { if (!has(out[c[0]], id)) out.gone[c[1] + id] = stamp; });
+    });
+    _newest = Math.max(_newest, stamp);
+    return out;
   }
   // Merge a store in (overwrite: take it whole). Returns what came in:
   // {added, dupes, changed, ahead}; ahead: this browser holds what the
@@ -21528,10 +21757,11 @@ var Saved = (function () {
   // something to send back to it.
   function merge(incoming, opts) {
     opts = opts || {};
-    var s = load(), inc = clean(incoming), t = now();
-    var res = { added: 0, dupes: 0, changed: false, ahead: false };
+    var s = load(), inc = clean(incoming);
+    see(inc);
+    var t = opts.overwrite ? now() : Date.now(), res = { added: 0, dupes: 0, changed: false, ahead: false };
     Object.keys(inc.items).forEach(function (id) { if (has(s.items, id)) res.dupes++; });
-    var next = opts.overwrite ? normalize(inc, t) : mergeStores(s, inc, t);
+    var next = opts.overwrite ? normalize(replacing(s, inc, t), t) : mergeStores(s, inc, t);
     if (opts.legacy) next.legacy = true;
     Object.keys(next.items).forEach(function (id) { if (!has(s.items, id)) res.added++; });
     var after = sig(next);
@@ -21546,27 +21776,41 @@ var Saved = (function () {
     return merge(fromLegacy(old || {}, zimKind), opts);
   }
   // Whose store: '' signed out, the account's name signed in. Each account
-  // keeps its own in the browser, so signing out never leaves one person's
-  // saved things on a shared screen for the next.
+  // keeps its own in the browser; signing out takes it away (forget).
   function use(name) {
     var ns = name ? String(name).toLowerCase() : '';
     if (ns === _ns) return false;
-    _ns = ns; _s = null; _idx = null; _hidx = null;
+    _ns = ns; _s = null; _idx = null; _hidx = null; _newest = 0; _offer = null;
+    _sizes = { main: -1, pos: -1 };
     return true;
   }
+  // Signed out, once the account has everything: its copy leaves this
+  // browser, and nothing is kept until a store is used again.
+  function forget() {
+    if (!_ns) return;
+    try { localStorage.removeItem(storeKey()); localStorage.removeItem(posKey()); } catch (e) {}
+    use(null);
+    _ns = null;
+  }
+  function list(id) { return lists().filter(function (l) { return l.id === id; })[0] || null; }
 
   return {
-    LIKED: LIKED, KINDS: KINDS.slice(),
+    LIKED: LIKED, NAME_MAX: NAME_MAX, TITLE_MAX: TITLE_MAX, KIND_APP: copy(KIND_APP),
     key: key, save: save, remove: remove, get: get, has: function (ref) { return has(load().items, key(ref)); },
     all: function () { return itemsFor({}); }, rename: rename, itemsFor: itemsFor,
-    lists: lists, createList: createList, renameList: renameList, deleteList: deleteList, moveList: moveList,
+    list: list, lists: lists, createList: createList, renameList: renameList, deleteList: deleteList, moveList: moveList,
     inList: inList, addToList: addToList, moveInList: moveInList, removeFromList: removeFromList,
     position: position, setPosition: setPosition, clearPosition: clearPosition, continued: continued,
-    HL_COLORS: HL_COLORS.slice(), highlight: highlight, highlights: highlights, getHighlight: getHighlight, removeHighlight: removeHighlight,
-    data: function () { return copy(load()); }, merge: merge, mergeLegacy: mergeLegacy, use: use,
-    account: function () { return _ns; }, storageKey: storeKey,
+    HL_COLORS: HL_COLORS.slice(), HL_QUOTE_MAX: HL_QUOTE_MAX,
+    highlight: highlight, highlights: highlights, getHighlight: getHighlight, removeHighlight: removeHighlight,
+    data: function () { return copy(load()); }, merge: merge, mergeLegacy: mergeLegacy,
+    // stamps(copy): what a copy holds (this store's without one); since(stamps): what this store has beyond it.
+    stamps: function (x) { return stamps(x ? clean(x) : load()); }, since: since,
+    legacyOffered: legacyOffered, legacyAnswer: legacyAnswer,
+    use: use, forget: forget, account: function () { return _ns || ''; },
+    ownsKey: function (k) { return _ns !== null && (k === storeKey() || k === posKey()); },
     // For the tests: the pure parts.
-    _merge: mergeStores, _clean: clean, _fromLegacy: fromLegacy, _normalize: normalize,
+    _merge: mergeStores, _clean: clean, _fromLegacy: fromLegacy, _normalize: normalize, _max: MAX,
   };
 })();
 
@@ -21574,9 +21818,10 @@ var Saved = (function () {
 // A change to what is kept, from anywhere (this page, an app page, the
 // account): the bookmark button, the open panel and the app on screen catch up
 // once, after the change is complete; signed in, it goes to the account.
-var _savedFlushQueued = false;
+var _savedFlushQueued = false, _savedSyncedIn = false;
 function _savedChanged(fromSync, often) {
   if (!fromSync) _savedPushSoon(often);
+  else _savedSyncedIn = true;
   if (_savedFlushQueued) return;
   _savedFlushQueued = true;
   Promise.resolve().then(function () {
@@ -21585,7 +21830,26 @@ function _savedChanged(fromSync, often) {
     _savedRefreshPanel();
     _savedTellApp();
     if (typeof Highlights !== 'undefined') Highlights.changed();
+    // Another device's (or tab's) place in the book open here.
+    if (_savedSyncedIn) { _savedSyncedIn = false; _bookSeeRemotePlace(); }
   });
+}
+// A new save refused: the store is at its limit (said at most every few
+// seconds, so a list moved whole says it once).
+var _SAVED_FULL_SAY_MS = 5000;
+var _savedFullSaid = 0;
+function _savedFull() {
+  if (Date.now() - _savedFullSaid < _SAVED_FULL_SAY_MS) return;
+  _savedFullSaid = Date.now();
+  _showToast(t('saved_full'), 6000);
+}
+// This browser's storage is full: the store lives in memory for this page.
+// Said once a page.
+var _savedStorageSaid = false;
+function _savedStorageFull() {
+  if (_savedStorageSaid) return;
+  _savedStorageSaid = true;
+  _showToast(t('saved_storage_full'), 8000);
 }
 // The panel draws what is saved when it opens; a change while it is open
 // redraws it (#96: a bookmark added with the list open did not appear until it
@@ -21604,16 +21868,34 @@ function _savedTellApp() {
 }
 
 // Signed in, the store follows the account through /userdata, the path the
-// My data card already used: GET brings the account's copy, POST merges this
-// one into it (users.sync_user_data) and hands the merged copy back. Nothing
-// waits on either: the page works from the browser's copy, and the account's
-// arrives as a change like any other.
+// My data card already used: GET brings the account's copy, POST merges what
+// is sent into it (users.sync_user_data) and hands the merged copy back.
+// Nothing waits on either: the page works from the browser's copy, and the
+// account's arrives as a change like any other. What goes up is what the
+// account has not had since it last answered (Saved.since), a few records,
+// so it still goes while the tab closes.
 var _SAVED_PUSH_MS = 2000;           // a change goes up this long after it is made
 var _SAVED_PUSH_OFTEN_MS = 20000;    // a place moving while reading: at most this often
 var _SAVED_PULL_EVERY_MS = 60000;    // coming back to the tab, at most this often
 var _SAVED_KEEPALIVE_MAX = 60000;    // bytes a request sent while leaving may carry
 var _savedPushTimer = null, _savedPushDue = 0, _savedPushing = null, _savedPushAgain = false, _savedPulledAt = 0;
+// What the account held when it last answered (Saved.stamps of its copy),
+// null until it has; the body last sent while leaving; whether the account
+// refused the store as too large (sync paused until something is let go).
+var _savedBase = null, _savedLeftBody = '', _savedPaused = false;
 function _savedSignedIn() { return !!(_userSession && _userSession.name); }
+// What the account has not had: null when it has everything.
+function _savedDelta() {
+  var d = Saved.since(_savedBase), n = 0;
+  ['items', 'lists', 'members', 'positions', 'highlights', 'gone'].forEach(function (c) { n += Object.keys(d[c]).length; });
+  return n || _savedBase === null ? d : null;
+}
+function _savedSetPaused(on) {
+  if (_savedPaused === on) return;
+  _savedPaused = on;
+  if (on) _showToast(t('saved_sync_paused'), 8000);
+  _savedRefreshPanel();
+}
 // A push is due a moment after a change; one already due sooner stands, so a
 // burst of changes (or a book read for an hour) is a push every so often, not
 // one per change. Leaving the tab sends whatever is still waiting.
@@ -21625,23 +21907,39 @@ function _savedPushSoon(often) {
   _savedPushDue = due;
   _savedPushTimer = setTimeout(_savedPush, due - Date.now());
 }
-// Send the store now. Returns a promise that settles once it has been
-// answered (or has failed: the next change tries again).
+// Send what the account has not had, now. Returns a promise of whether the
+// account has it (a failure: the next change tries again). leaving: the page
+// is going, so the request is one the browser finishes after it (keepalive),
+// sent beside one already on its way, which may not outlive the page.
 function _savedPush(leaving) {
   clearTimeout(_savedPushTimer);
   _savedPushTimer = null;
-  if (!_savedSignedIn()) return Promise.resolve();
-  if (_savedPushing) { _savedPushAgain = true; return _savedPushing; }
-  var account = Saved.account();
-  var body = JSON.stringify({ saved: Saved.data() });
-  _savedPushing = fetch('/userdata', {
+  if (!_savedSignedIn()) return Promise.resolve(true);
+  if (_savedPushing && !leaving) { _savedPushAgain = true; return _savedPushing; }
+  var delta = _savedDelta();
+  if (!delta) return _savedPushing || Promise.resolve(true);
+  var account = Saved.account(), body = JSON.stringify({ saved: delta });
+  if (leaving) {
+    if (body === _savedLeftBody) return _savedPushing || Promise.resolve(true);
+    _savedLeftBody = body;
+  }
+  var sent = fetch('/userdata', {
     method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: body,
     keepalive: !!leaving && new Blob([body]).size < _SAVED_KEEPALIVE_MAX,
-  }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
-    if (d && d.saved && Saved.account() === account) Saved.merge(d.saved, { fromSync: true });
-  }).catch(function () {}).then(function () {
+  }).then(function (r) {
+    if (r.status === 413) { _savedSetPaused(true); return null; }
+    return r.ok ? r.json() : null;
+  }).then(function (d) {
+    if (!d || !d.saved) return false;
+    _savedSetPaused(false);
+    if (Saved.account() === account) { _savedBase = Saved.stamps(d.saved); Saved.merge(d.saved, { fromSync: true }); }
+    return true;
+  }).catch(function () { return false; });
+  if (leaving && _savedPushing) return sent;
+  _savedPushing = sent.then(function (ok) {
     _savedPushing = null;
     if (_savedPushAgain) { _savedPushAgain = false; return _savedPush(); }
+    return ok;
   });
   return _savedPushing;
 }
@@ -21650,7 +21948,9 @@ function _savedPull() {
   _savedPulledAt = Date.now();
   var account = Saved.account();
   fetch('/userdata', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
-    if (d && Saved.account() === account) _savedTake(d, false, true);
+    if (!d || Saved.account() !== account) return;
+    if (d.saved && typeof d.saved === 'object') _savedBase = Saved.stamps(d.saved);
+    _savedTake(d, false, true);
   }).catch(function () {});
 }
 // Data that holds a store (the account's copy, a My data file) comes in: the
@@ -21659,15 +21959,16 @@ function _savedPull() {
 // brings back what was deleted since. What this browser has that the other
 // copy lacked goes to the account.
 function _savedTake(d, overwrite, fromAccount) {
-  var res = { added: 0, dupes: 0 };
-  if (d.saved && typeof d.saved === 'object') {
+  var res = { added: 0, dupes: 0 }, store = !!(d.saved && typeof d.saved === 'object');
+  if (store) {
     var r = Saved.merge(d.saved, { overwrite: overwrite, fromSync: !!fromAccount });
     res.added = r.added; res.dupes = r.dupes;
     if (fromAccount && r.ahead) _savedPushSoon();
   }
+  // A file from before 1.12 is its bookmarks: overwrite takes those whole.
   var old = (Array.isArray(d.bookmarks) && d.bookmarks.length) || (Array.isArray(d.folders) && d.folders.length);
-  if (old && !(fromAccount && d.saved && d.saved.legacy)) {
-    var r2 = Saved.mergeLegacy({ bookmarks: d.bookmarks, folders: d.folders }, { legacy: !!fromAccount });
+  if (old && !(fromAccount && store && d.saved.legacy)) {
+    var r2 = Saved.mergeLegacy({ bookmarks: d.bookmarks, folders: d.folders }, { legacy: !!fromAccount, overwrite: !!overwrite && !store });
     res.added += r2.added; res.dupes += r2.dupes;
   }
   return res;
@@ -21675,26 +21976,30 @@ function _savedTake(d, overwrite, fromAccount) {
 // Whose store the page shows: the account's once signed in (the browser
 // keeps a copy of each), the browser's own signed out.
 function _savedUseSession() {
-  if (Saved.use(_savedSignedIn() ? _userSession.name : '')) _savedChanged(true);
+  if (Saved.use(_savedSignedIn() ? _userSession.name : '')) { _savedBase = null; _savedChanged(true); }
   _savedPull();
 }
-// A change still waiting to go up, sent now (leaving: while the page closes).
+// What the account has not had, sent now; the promise says whether it has it
+// all. leaving: while the page closes (or hides, which on a phone may be the
+// last it hears), in a request that outlives it.
 function _savedFlush(leaving) {
-  return _savedPushTimer ? _savedPush(leaving) : (_savedPushing || Promise.resolve());
+  if (!_savedSignedIn()) return Promise.resolve(true);
+  if (!leaving && !_savedPushTimer && !_savedDelta()) return _savedPushing || Promise.resolve(true);
+  return _savedPush(leaving);
 }
 // Once the page is up: the account's copy is fetched when the browser is idle
 // (nothing waits for it), again on coming back to the tab after a while, and
-// a pending change is sent on leaving it.
+// what it has not had is sent on leaving it.
 function _savedStart() {
   document.addEventListener('visibilitychange', function () {
-    if (document.hidden) _savedFlush();
+    if (document.hidden) _savedFlush(true);
     else if (Date.now() - _savedPulledAt > _SAVED_PULL_EVERY_MS) _savedPull();
   });
   window.addEventListener('pagehide', function () { _savedFlush(true); });
   // Another tab of this browser wrote the store: merged in, not overwritten
   // the next time this tab writes (the other tab sends its own change up).
   window.addEventListener('storage', function (e) {
-    if (e.key !== Saved.storageKey() || !e.newValue) return;
+    if (!Saved.ownsKey(e.key) || !e.newValue) return;
     try { Saved.merge(JSON.parse(e.newValue), { fromSync: true }); } catch (err) {}
   });
   // The store is read while the page is idle, so the first app home or
@@ -21721,7 +22026,8 @@ var Highlights = (function () {
     if (!loading) {
       loading = new Promise(function (resolve, reject) {
         var el = document.createElement('script');
-        el.src = '/static/highlights.js?v=1';
+        // The version moves with the engine: /static is cached for a year.
+        el.src = '/static/highlights.js?v=2';
         el.onload = function () { engine = window.ZimiHighlightsEngine || null; if (engine) resolve(engine); else reject(); };
         el.onerror = function () { loading = null; reject(); };
         document.head.appendChild(el);
@@ -21814,7 +22120,7 @@ var Highlights = (function () {
     var it = Saved.get(hl) || hl;
     _savedOpen({ kind: it.kind, app: it.app, zim: hl.zim, path: hl.path, title: it.title });
   }
-  return { attach: attach, handleFor: handleFor, open: open, changed: changed, load: load };
+  return { attach: attach, open: open, changed: changed };
 })();
 // The reader's document and its highlights: an article (raw or in Reader
 // View), a book, an EPUB's chapters; not a map, the PDF viewer or an app's
@@ -21874,7 +22180,7 @@ function _bmExportSelector(preListId) {
     '<div class="bm-export-desc">' + tH('saved_export_desc') + '</div>' +
     '<div class="bm-export-tree" id="bm-export-tree">' + rows + '</div>' +
     '<label class="bm-export-name-row" for="bm-export-name">' + tH('bm_export_name_label') +
-    '<input id="bm-export-name" type="text" maxlength="60" spellcheck="false" autocomplete="off"></label>' +
+    '<input id="bm-export-name" type="text" maxlength="' + Saved.NAME_MAX + '" spellcheck="false" autocomplete="off"></label>' +
     '<div class="bm-export-count" id="bm-export-count"></div>' +
     '<div class="bm-export-status" id="bm-export-status"></div>' +
     '<div class="bm-export-actions">' +
@@ -21958,7 +22264,7 @@ function _bmSanitizeZimName(s) {
   return s.slice(0, 60);
 }
 function _bmListNameById(id) {
-  var l = Saved.lists().filter(function (x) { return x.id === id; })[0];
+  var l = Saved.list(id);
   return l ? _savedListName(l) : '';
 }
 // The name the picker suggests: the list's own when exactly one is ticked,
@@ -21984,7 +22290,7 @@ function _bmComposeExportJob(ids, unfiled, nameRaw) {
     Saved.itemsFor({ list: id }).forEach(function (it) { add(it, section); });
   });
   if (unfiled) Saved.itemsFor({ list: _BM_ROOT }).forEach(function (it) { add(it, ''); });
-  var title = String(nameRaw || '').trim().slice(0, 120);
+  var title = String(nameRaw || '').trim().slice(0, Saved.NAME_MAX);
   return {
     name: _bmSanitizeZimName(title) || null,
     title: title || null,
@@ -22072,10 +22378,9 @@ async function _revealExportedZim(file) {
 // What is on screen, as a saved item has it: a thing inside an app (a video,
 // a question, a post: reopened in the app), a place on a map, a book, or an
 // article. null when there is nothing to keep.
-var _APP_ITEM_KINDS = { tube: 'video', exchange: 'question', reddot: 'post' };
 function _savedRefOnScreen() {
   if (!currentArticle && _appItem) {
-    return { kind: _APP_ITEM_KINDS[_appItem.app] || 'article', app: _appItem.app, zim: _appItem.zim, path: _appItem.path,
+    return { kind: _appItemKind(_appItem.app) || 'article', app: _appItem.app, zim: _appItem.zim, path: _appItem.path,
       title: _appItem.title || document.title.replace(/ — .*$/, '') };
   }
   if (!currentArticle) return null;

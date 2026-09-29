@@ -38,6 +38,7 @@ are migrated in-memory on load: an allowlist present → ``limited``, else ``use
 """
 
 import hashlib
+import json
 import logging
 import math
 import os
@@ -595,8 +596,9 @@ def touch_federated_user(name, identity):
 #: (items, lists, memberships, positions, highlights and their tombstones), merged on every
 #: write rather than replaced. bookmarks/folders stay readable for one release.
 _USERDATA_VERSION = 2
-#: Hard ceiling per blob so one account can't fill the disk (server-side twin of
-#: the client cap). Comfortably above a heavy bookmarks+history set.
+#: Hard ceiling per blob, apart from the saved store (which has its own,
+#: _SAVED_MAX_BYTES), so one account can't fill the disk. Comfortably above a
+#: heavy bookmarks+history set. Measured as the file is written: UTF-8, compact.
 _USERDATA_MAX_BYTES = 4 * 1024 * 1024
 
 # ── Saved: the account's copy of the store (app.js's Saved is the twin) ──
@@ -606,7 +608,10 @@ _USERDATA_MAX_BYTES = 4 * 1024 * 1024
 # on one device survives the next sync from another. Tombstones are forgotten
 # after _SAVED_GONE_MS. Nothing from the client is trusted: every record is
 # rebuilt from the fields it may have, and an item's key must be the one its
-# own zim and path (and a place's position) make.
+# own zim and path (and a place's position) make. What a person saved (items,
+# lists, memberships, highlights) is never dropped to make room: the store has
+# a byte budget, past it the oldest tombstones go, then the oldest places, and
+# a store still over it is refused whole (the device says sync is paused).
 _SAVED_LIKED = "liked"
 _SAVED_KINDS = ("article", "book", "video", "question", "post", "place")
 _SAVED_APPS = ("books", "tube", "exchange", "reddot", "maps", "wiki")
@@ -617,15 +622,18 @@ _SAVED_COLLS = (
     ("positions", "p:"),
     ("highlights", "h:"),
 )
-_SAVED_MAX = {
-    "items": 5000,
-    "lists": 500,
-    "members": 20000,
-    "positions": 1000,
-    "highlights": 2000,
-    "gone": 10000,
-}
+#: The store as the file holds it (UTF-8 JSON, compact), at most. app.js's
+#: Saved holds the same budget and trims the same way.
+_SAVED_MAX_BYTES = 3 * 1024 * 1024
+#: Where you were: the latest this many places per app (Zimipedia's articles
+#: never push Bookshelf's books out of Continue).
+_SAVED_POS_PER_APP = 300
+#: Tombstones kept at most, the newest.
+_SAVED_GONE_MAX = 10000
 _SAVED_GONE_MS = 90 * 86400 * 1000
+#: A time from a device this far past the server's clock is taken as the
+#: server's clock plus this: a fast clock never outranks every later edit.
+_SAVED_FUTURE_MS = 5 * 60 * 1000
 _SAVED_TITLE_MAX = 500
 _SAVED_NAME_MAX = 120
 _SAVED_ZIM_MAX = 200
@@ -876,12 +884,37 @@ def _saved_rec_ts(r):
     return r["ts"]
 
 
-def _saved_normalize(s, now_ms):
-    """A membership needs its item and its list; tombstones age out; caps hold."""
-    _saved_cap(s["items"], _SAVED_MAX["items"], _saved_rec_ts)
-    _saved_cap(s["lists"], _SAVED_MAX["lists"], _saved_rec_ts)
-    _saved_cap(s["positions"], _SAVED_MAX["positions"], _saved_rec_ts)
-    _saved_cap(s["highlights"], _SAVED_MAX["highlights"], _saved_rec_ts)
+def _saved_gone_ts(v):
+    return v
+
+
+def _saved_bytes(x):
+    """The bytes x takes as the file holds it: UTF-8 JSON, compact."""
+    return len(
+        json.dumps(x, ensure_ascii=False, separators=(",", ":")).encode(
+            "utf-8", "surrogatepass"
+        )
+    )
+
+
+def _saved_fit(s, budget):
+    """Past ``budget`` bytes the oldest tombstones go first, then the oldest
+    places, until the store fits. Nothing a person saved is dropped here: a
+    store still over is the caller's to refuse."""
+    size = _saved_bytes(s)
+    for name, ts_of in (("gone", _saved_gone_ts), ("positions", _saved_rec_ts)):
+        m = s[name]
+        for k in sorted(m, key=lambda k: (ts_of(m[k]), k)):
+            if size <= budget:
+                return
+            # "key":value, and the comma beside it while another is left.
+            size -= _saved_bytes(k) + 1 + _saved_bytes(m[k]) + (len(m) > 1)
+            del m[k]
+
+
+def _saved_normalize(s, now_ms, budget=None):
+    """A membership needs its item and its list; tombstones age out; each app
+    keeps its latest places; the store fits its byte budget (_saved_fit)."""
     for mk in list(s["members"]):
         i = mk.find("\t")
         lid = mk[:i]
@@ -889,14 +922,32 @@ def _saved_normalize(s, now_ms):
             lid != _SAVED_LIKED and lid not in s["lists"]
         ):
             del s["members"][mk]
-    _saved_cap(s["members"], _SAVED_MAX["members"], _saved_rec_ts)
     for g in [g for g, ts in s["gone"].items() if ts < now_ms - _SAVED_GONE_MS]:
         del s["gone"][g]
-    _saved_cap(s["gone"], _SAVED_MAX["gone"], lambda v: v)
+    _saved_cap(s["gone"], _SAVED_GONE_MAX, _saved_gone_ts)
+    p, by_app = s["positions"], {}
+    for k, r in p.items():
+        by_app.setdefault(r.get("app", ""), []).append(k)
+    for ks in by_app.values():
+        for k in sorted(ks, key=lambda k: (-p[k]["ts"], k))[_SAVED_POS_PER_APP:]:
+            del p[k]
+    _saved_fit(s, _SAVED_MAX_BYTES if budget is None else budget)
     return s
 
 
-def _merge_saved(a, b, now_ms):
+def _saved_clamp(s, most):
+    """No time in a cleaned store later than ``most`` (ms)."""
+    for name, _pre in _SAVED_COLLS:
+        for r in s[name].values():
+            r["ts"] = min(r["ts"], most)
+            if "added" in r:
+                r["added"] = min(r["added"], most)
+    for g in s["gone"]:
+        s["gone"][g] = min(s["gone"][g], most)
+    return s
+
+
+def _merge_saved(a, b, now_ms, budget=None):
     """Two cleaned stores as one: per record the newer wins (a tie keeps
     ``a``'s); a tombstone as new as a record or newer removes it, and a record
     saved again after its delete outlives the tombstone."""
@@ -921,7 +972,7 @@ def _merge_saved(a, b, now_ms):
                 del gone[pre + id_]
             out[name][id_] = r
     out["gone"] = gone
-    return _saved_normalize(out, now_ms)
+    return _saved_normalize(out, now_ms, budget)
 
 
 def _now_ms():
@@ -979,9 +1030,12 @@ def load_user_data(name):
     return _empty_user_data()
 
 
-def _user_data_doc(blob, now_ms):
+def _user_data_doc(blob, now_ms, saved=None):
     """The blob as it is kept: known fields only, each of its type, and the
-    saved store rebuilt record by record and held to its caps."""
+    saved store rebuilt record by record and normalized (``saved``: a store
+    that already is)."""
+    if saved is None:
+        saved = _saved_normalize(_clean_saved(blob.get("saved")), now_ms)
     bookmarks = blob.get("bookmarks")
     folders = blob.get("folders")
     history = blob.get("history")
@@ -992,19 +1046,24 @@ def _user_data_doc(blob, now_ms):
         "folders": folders if isinstance(folders, list) else [],
         "history": history if isinstance(history, list) else [],
         "preferences": prefs if isinstance(prefs, dict) else {},
-        "saved": _saved_normalize(_clean_saved(blob.get("saved")), now_ms),
+        "saved": saved,
         "updated": int(time.time()),
     }
 
 
 def _write_user_data(name, doc):
-    import json
-
-    if len(json.dumps(doc)) > _USERDATA_MAX_BYTES:
+    """Write a kept doc, the store and the rest each held to its budget as
+    the file holds them. Returns (ok, error); a write that did not land is
+    a failure, not an ok."""
+    if _saved_bytes(doc["saved"]) > _SAVED_MAX_BYTES:
+        return False, "saved too large"
+    rest = {k: v for k, v in doc.items() if k != "saved"}
+    if _saved_bytes(rest) > _USERDATA_MAX_BYTES:
         return False, "data too large"
     with _lock:
         os.makedirs(_userdata_dir(), exist_ok=True)
-        _srv._atomic_write_json(_userdata_path(name), doc, indent=2)
+        if not _srv._atomic_write_json(_userdata_path(name), doc):
+            return False, "write failed"
     return True, None
 
 
@@ -1038,9 +1097,14 @@ def sync_user_data(name, patch, now_ms=None):
                 blob[field] = patch[field]
         kept = _clean_saved(cur.get("saved"))
         if "saved" in patch:
-            kept = _merge_saved(kept, _clean_saved(patch.get("saved")), now_ms)
-        blob["saved"] = kept
-        doc = _user_data_doc(blob, now_ms)
+            # A device whose clock runs ahead is held to the server's.
+            sent = _saved_clamp(
+                _clean_saved(patch.get("saved")), now_ms + _SAVED_FUTURE_MS
+            )
+            kept = _merge_saved(kept, sent, now_ms)
+        else:
+            kept = _saved_normalize(kept, now_ms)
+        doc = _user_data_doc(blob, now_ms, saved=kept)
         ok, err = _write_user_data(name, doc)
     return ok, err, (doc if ok else None)
 

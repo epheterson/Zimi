@@ -4531,7 +4531,8 @@ class ZimHandler(BaseHTTPRequestHandler):
             return self._json(401, {"error": "sign in required"})
         ok, err, doc = _users.sync_user_data(name, data if isinstance(data, dict) else {})
         if not ok:
-            return self._json(400, {"error": err})
+            # Too large is the account's to fix (the device says sync is paused).
+            return self._json(413 if err.endswith("too large") else 400, {"error": err})
         return self._json(200, {"status": "ok", "saved": doc["saved"]})
 
     def log_message(self, format, *args):
