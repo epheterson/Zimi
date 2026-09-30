@@ -20690,11 +20690,13 @@ function _renderBookmarksContent() {
 }
 
 // Taking something out of Saved says so, with the way back: an item returns
-// to its lists where it stood, a highlight with its colour and note.
-function _savedRemoveUndoable(ref) {
+// to its lists where it stood, a highlight with its colour and note. From
+// Liked (fid) it is unliked; anywhere else unsaved, and a like stays.
+function _savedRemoveUndoable(ref, fid) {
   var snap = Saved.snapshot(ref);
   if (!snap) return;
-  Saved.remove(ref);
+  if (fid === Saved.LIKED) Saved.removeFromList(ref, Saved.LIKED);
+  else Saved.unsave(ref);
   _showToast(t('saved_removed'), 0, function() { Saved.restore(snap); });
 }
 function _savedRemoveHighlight(id, then) {
@@ -21149,7 +21151,7 @@ function _bmItemMenu(row, x, y) {
   var html = open +
     '<div class="ctx-item">' + tH('saved_lists') + ' ›<div class="ctx-sub">' + _bmListsSubmenuHtml(key) + '</div></div>' +
     '<div class="ctx-item" data-action="rename">' + tH('rename') + '</div>' +
-    (fid !== _BM_ROOT ? '<div class="ctx-item" data-action="unlist">' + tH('saved_remove_from_list') + '</div>' : '') +
+    (fid !== _BM_ROOT && fid !== Saved.LIKED ? '<div class="ctx-item" data-action="unlist">' + tH('saved_remove_from_list') + '</div>' : '') +
     '<div class="ctx-sep"></div>' +
     '<div class="ctx-item danger" data-action="remove">' + tH('bm_remove') + '</div>';
   window._openMenuAt(html, x, y, function (action, itemEl) {
@@ -21158,7 +21160,7 @@ function _bmItemMenu(row, x, y) {
     if (action === 'open') _savedOpen(it);
     else if (action === 'rename') _bmInlineRenameRow(row, it.title || _titleFromPath(it.path), Saved.TITLE_MAX, function (name) { Saved.rename(key, name); });
     else if (action === 'unlist') Saved.removeFromList(key, fid);
-    else if (action === 'remove') _savedRemoveUndoable(key);
+    else if (action === 'remove') _savedRemoveUndoable(key, fid);
     else if (action === 'toggle-list') {
       var lid = itemEl.dataset.lid;
       if (Saved.inList(key, lid)) Saved.removeFromList(key, lid);
@@ -21482,7 +21484,9 @@ function _pushArticleHistory(zim, path) {
 // (1.12, docs/features/saving.md). An item is one thing kept: what it is
 // (kind), its ZIM and path, a title, the app it belongs to, where you were in
 // it, when it was added, and the lists it is in (as many as you like). Liked
-// is a list every store has. Where you are in a book (a video, later) is a
+// is a list every store has, apart from saving (1.12.1): a like never saves.
+// A thing liked and not saved is an item marked likeOnly, in Liked and in
+// nothing else; saving it clears the mark, letting it go keeps the like. Where you are in a book (a video, later) is a
 // position, kept whether or not the thing is saved; Continue reading is drawn
 // from positions, it is not a list.
 //
@@ -21492,13 +21496,17 @@ function _pushArticleHistory(zim, path) {
 //   Saved.save(item) -> key            add, or update what is given; a renamed
 //                                      title, the lists and the added time stay
 //   Saved.remove(ref)                  removed from every list and every device
-//   Saved.get(ref) / Saved.has(ref)    one item, with key and lists / is it kept
-//   Saved.all()                        every item, the latest added first
+//   Saved.unsave(ref)                  not saved any more; a like stays
+//   Saved.get(ref) / Saved.has(ref)    one item, with key and lists / is it saved
+//                                      (a thing only liked is not)
+//   Saved.all()                        every saved item, the latest added first
 //   Saved.rename(ref, title)           '' goes back to the page's own title
 //   Saved.snapshot(ref) -> snap        before a remove; Saved.restore(snap) puts
 //                                      it back as it was, in each list's place
-//   Saved.itemsFor({app, kind, list})  a list's items in its order (list: '' is
-//                                      the items in no list), else the latest first
+//   Saved.itemsFor({app, kind, list, withLiked})  a list's items in its order
+//                                      (list: '' is the saved items in no list of
+//                                      their own), else the saved ones the latest
+//                                      first, and those only liked too withLiked
 //   Saved.lists({app, kind})           [{id, name, builtin, count}], Liked first;
 //                                      filtered, count counts only what matches
 //   Saved.createList(name) -> id       Saved.renameList(id, name)
@@ -21506,7 +21514,8 @@ function _pushArticleHistory(zim, path) {
 //   Saved.moveList(id, beforeId)       before another list; null is the end
 //   Saved.inList(ref, listId)          Saved.removeFromList(ref, listId)
 //   Saved.addToList(ref, listId, beforeRef)  at the end, or before beforeRef;
-//                                      saves an item given whole first
+//                                      saves an item given whole first (Liked
+//                                      only likes it)
 //   Saved.moveInList(ref, listId, beforeRef) along its list (null: the end)
 //   Saved.position(ref)                {key, kind, zim, path, app, title, meta,
 //                                      where, ts} or null
@@ -21535,6 +21544,8 @@ function _pushArticleHistory(zim, path) {
 // what a person saved is never dropped (a new save is refused instead).
 var Saved = (function () {
   var LIKED = 'liked';
+  // The store's shape. 1: 1.12.0, where a like saved the thing too (see likesFromV1).
+  var VERSION = 2;
   var KINDS = ['article', 'book', 'video', 'question', 'post', 'place'];
   var APPS = ['books', 'tube', 'exchange', 'reddot', 'maps', 'wiki'];
   // The app a kind belongs to when the one saving it did not say.
@@ -21587,7 +21598,7 @@ var Saved = (function () {
     return n;
   }
   function size(x) { return utf8(JSON.stringify(x)); }
-  function empty() { return { v: 1, items: {}, lists: {}, members: {}, positions: {}, highlights: {}, gone: {}, legacy: false }; }
+  function empty() { return { v: VERSION, items: {}, lists: {}, members: {}, positions: {}, highlights: {}, gone: {}, legacy: false }; }
   // The store is kept under two keys: where you were (a place moves every few
   // seconds while you read) apart from the rest, so a place written does not
   // write everything again.
@@ -21663,7 +21674,7 @@ var Saved = (function () {
     };
     each(x.items, function (id, r) {
       var it = thing(r, id), added = r && num(r.added);
-      if (it) { it.added = Math.round(added === null ? it.ts : added); s.items[id] = it; }
+      if (it) { it.added = Math.round(added === null ? it.ts : added); if (r.likeOnly === true) it.likeOnly = true; s.items[id] = it; }
     });
     each(x.lists, function (id, r) {
       var o = order(r);
@@ -21681,7 +21692,20 @@ var Saved = (function () {
       if (num(ts) !== null && /^[ilmph]:./.test(g) && g.length < ZIM_MAX + PATH_MAX + 128) s.gone[g] = Math.round(ts);
     });
     s.legacy = x.legacy === true;
+    if (x.v === 1) likesFromV1(s);
     return s;
+  }
+  // 1.12.0 saved whatever was liked. A thing in Liked and in no list of its
+  // own was most likely kept by the heart alone: it stays liked and leaves
+  // Bookmarks. Its time is left as it was, so every copy agrees.
+  function likesFromV1(s) {
+    var liked = {}, listed = {};
+    Object.keys(s.members).forEach(function (mk) {
+      var i = mk.indexOf('\t');
+      (mk.slice(0, i) === LIKED ? liked : listed)[mk.slice(i + 1)] = 1;
+    });
+    Object.keys(liked).forEach(function (id) { if (has(s.items, id) && !listed[id]) s.items[id].likeOnly = true; });
+    s.v = VERSION;
   }
 
   // ── merge: two copies of a store become one ──
@@ -21723,13 +21747,17 @@ var Saved = (function () {
     });
     return n;
   }
-  // A membership needs its item and its list; tombstones age out; each app
+  // A membership needs its item and its list, and a list of its own a saved
+  // item; a thing only liked needs its like; tombstones age out; each app
   // keeps its latest places; the store fits its byte budget.
   function normalize(s, t, budget) {
+    var liked = {};
     Object.keys(s.members).forEach(function (mk) {
-      var i = mk.indexOf('\t'), lid = mk.slice(0, i);
-      if (!has(s.items, mk.slice(i + 1)) || (lid !== LIKED && !has(s.lists, lid))) delete s.members[mk];
+      var i = mk.indexOf('\t'), lid = mk.slice(0, i), id = mk.slice(i + 1), it = has(s.items, id) ? s.items[id] : null;
+      if (!it || (lid !== LIKED && (!has(s.lists, lid) || it.likeOnly))) delete s.members[mk];
+      else if (lid === LIKED) liked[id] = 1;
     });
+    Object.keys(s.items).forEach(function (id) { if (s.items[id].likeOnly && !liked[id]) delete s.items[id]; });
     Object.keys(s.gone).forEach(function (g) { if (s.gone[g] < t - GONE_MS) delete s.gone[g]; });
     cap(s.gone, GONE_MAX, goneTs);
     capPlaces(s.positions);
@@ -21869,12 +21897,14 @@ var Saved = (function () {
     var main = _getStorageJSON(storeKey(), null), pos = _getStorageJSON(posKey(), null);
     if (main && typeof main === 'object' && main.items) {
       ['items', 'lists', 'members', 'positions', 'highlights', 'gone'].forEach(function (c) { if (!main[c] || typeof main[c] !== 'object') main[c] = {}; });
+      var old = main.v === 1;
+      if (old) likesFromV1(main);
       var places = clean(pos);
       see(main); see(places);
       // A store written before places had a key of their own moves them there.
       var moved = Object.keys(main.positions).length > 0;
       _s = Object.keys(places.positions).length || Object.keys(places.gone).length || moved ? mergeStores(main, places, Date.now()) : main;
-      if (moved) write();
+      if (moved || old) write();
       return _s;
     }
     // This store's first use: signed out, what the browser kept before comes
@@ -21955,6 +21985,7 @@ var Saved = (function () {
     var o = { key: id, kind: r.kind, zim: r.zim, path: r.path, title: r.title, app: r.app || '', added: r.added, ts: r.ts,
       lists: (idx().listsOf[id] || []).slice() };
     if (r.origTitle) o.origTitle = r.origTitle;
+    if (r.likeOnly) o.likeOnly = true;
     if (r.where) o.where = copy(r.where);
     if (r.meta) o.meta = copy(r.meta);
     return o;
@@ -21996,7 +22027,9 @@ var Saved = (function () {
     s.gone['m:' + mk] = t;
   }
 
-  function save(item) {
+  // likeOnly: kept for a like alone (addToList to Liked), and only while it
+  // is not saved already.
+  function save(item, likeOnly) {
     var id = key(item);
     if (!id || typeof item !== 'object') return '';
     var s = load(), cur = has(s.items, id) ? s.items[id] : null;
@@ -22013,6 +22046,7 @@ var Saved = (function () {
     var meta = small(item.meta !== undefined ? item.meta : cur && cur.meta);
     if (where) rec.where = where;
     if (meta) rec.meta = meta;
+    if (likeOnly && (!cur || cur.likeOnly)) rec.likeOnly = true;
     s.items[id] = rec;
     delete s.gone['i:' + id];
     _idx = null;
@@ -22026,6 +22060,16 @@ var Saved = (function () {
     delete s.items[id];
     s.gone['i:' + id] = t;
     (idx().listsOf[id] || []).forEach(function (lid) { dropMember(s, lid + '\t' + id, t); });
+    commit();
+  }
+  // Saved no more: out of its lists; a liked thing stays, in Liked alone.
+  function unsave(ref) {
+    var s = load(), id = key(ref), t = now();
+    if (!has(s.items, id) || s.items[id].likeOnly) return;
+    if (!has(s.members, LIKED + '\t' + id)) { remove(id); return; }
+    (idx().listsOf[id] || []).forEach(function (lid) { if (lid !== LIKED) dropMember(s, lid + '\t' + id, t); });
+    s.items[id].likeOnly = true;
+    s.items[id].ts = t;
     commit();
   }
   // The custom name is the title (every view reads that); the page's own
@@ -22048,10 +22092,12 @@ var Saved = (function () {
   function itemsFor(q) {
     q = q || {};
     var s = load(), ix = idx(), ids;
-    if (q.list === '') ids = Object.keys(s.items).filter(function (id) { return !(ix.listsOf[id] || []).length; }).sort(newestAdded(s));
+    var own = function (id) { return (ix.listsOf[id] || []).some(function (lid) { return lid !== LIKED; }); };
+    if (q.list === '') ids = Object.keys(s.items).filter(function (id) { return !own(id); }).sort(newestAdded(s));
     else if (q.list != null) ids = (ix.byList[q.list] || []).slice();
     else ids = Object.keys(s.items).sort(newestAdded(s));
-    return ids.filter(function (id) { return has(s.items, id) && matches(q, s.items[id]); })
+    var only = q.list !== LIKED && !q.withLiked;
+    return ids.filter(function (id) { return has(s.items, id) && !(only && s.items[id].likeOnly) && matches(q, s.items[id]); })
       .map(function (id) { return pub(id, s.items[id]); });
   }
   function lists(q) {
@@ -22102,7 +22148,13 @@ var Saved = (function () {
   function inList(ref, lid) { return has(load().members, lid + '\t' + key(ref)); }
   function addToList(ref, lid, before) {
     var s = load(), id = key(ref);
-    if (!has(s.items, id) && ref && typeof ref === 'object') save(ref);
+    if (!has(s.items, id) && ref && typeof ref === 'object') save(ref, lid === LIKED);
+    else if (lid !== LIKED && has(s.items, id) && s.items[id].likeOnly) {
+      // Into a list of your own: saved now.
+      delete s.items[id].likeOnly;
+      s.items[id].ts = now();
+      _idx = null;
+    }
     if (addMember(s, id, lid, before == null ? null : before, now())) commit();
   }
   function moveInList(ref, lid, before) {
@@ -22112,8 +22164,10 @@ var Saved = (function () {
     commit();
   }
   function removeFromList(ref, lid) {
-    var s = load(), mk = lid + '\t' + key(ref);
+    var s = load(), id = key(ref), mk = lid + '\t' + id;
     if (!has(s.members, mk)) return;
+    // Unliked, a thing only liked is not kept at all.
+    if (lid === LIKED && s.items[id] && s.items[id].likeOnly) { remove(id); return; }
     dropMember(s, mk, now());
     commit();
   }
@@ -22336,7 +22390,8 @@ var Saved = (function () {
 
   return {
     LIKED: LIKED, NAME_MAX: NAME_MAX, TITLE_MAX: TITLE_MAX, KIND_APP: copy(KIND_APP),
-    key: key, save: save, remove: remove, snapshot: snapshot, restore: restore, get: get, has: function (ref) { return has(load().items, key(ref)); },
+    key: key, save: function (item) { return save(item); }, remove: remove, unsave: unsave, snapshot: snapshot, restore: restore, get: get,
+    has: function (ref) { var s = load(), id = key(ref); return has(s.items, id) && !s.items[id].likeOnly; },
     all: function () { return itemsFor({}); }, rename: rename, itemsFor: itemsFor,
     list: list, lists: lists, createList: createList, renameList: renameList, deleteList: deleteList, moveList: moveList,
     inList: inList, addToList: addToList, moveInList: moveInList, removeFromList: removeFromList,

@@ -202,6 +202,41 @@
       "a": {"items": {"w\nA/Kept": {"kind": "article", "zim": "w", "path": "A/Kept", "title": "Сохранено навсегда", "added": 1000, "ts": 1000}}, "highlights": {"h_1": {"zim": "w", "path": "A/Kept", "kind": "article", "title": "", "exact": "漢字の引用", "prefix": "", "suffix": "", "pos": 0.5, "color": "yellow", "added": 1100, "ts": 1100}}, "positions": {"g\nB.1": {"kind": "book", "zim": "g", "path": "B.1", "title": "Old", "app": "books", "ts": 500, "where": {"f": 0.1, "c": 10}}}, "gone": {"i:w\nA/Old1": 100}},
       "b": {"positions": {"g\nB.2": {"kind": "book", "zim": "g", "path": "B.2", "title": "New", "app": "books", "ts": 900, "where": {"f": 0.2, "c": 20}}}, "gone": {"i:w\nA/Old2": 200, "l:gone_list": 300}},
       "expect": {"items": {"w\nA/Kept": {"kind": "article", "zim": "w", "path": "A/Kept", "title": "Сохранено навсегда", "added": 1000, "ts": 1000}}, "highlights": {"h_1": {"zim": "w", "path": "A/Kept", "kind": "article", "title": "", "exact": "漢字の引用", "prefix": "", "suffix": "", "pos": 0.5, "color": "yellow", "added": 1100, "ts": 1100}}}
+    },
+    {
+      "name": "from 1.12.0 (v 1): a thing in Liked and no list of its own was liked, not saved",
+      "now": 3000,
+      "a": {"v": 1, "items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}, "w\nA/Y": {"kind": "article", "zim": "w", "path": "A/Y", "title": "Y", "added": 1000, "ts": 1000}, "w\nA/Z": {"kind": "article", "zim": "w", "path": "A/Z", "title": "Z", "added": 1000, "ts": 1000}}, "lists": {"trip": {"name": "Trip", "order": 0, "ts": 1000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}, "liked\tw\nA/Y": {"order": 1, "ts": 1000}, "trip\tw\nA/Y": {"order": 0, "ts": 1000}}},
+      "b": {},
+      "expect": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000, "likeOnly": true}, "w\nA/Y": {"kind": "article", "zim": "w", "path": "A/Y", "title": "Y", "added": 1000, "ts": 1000}, "w\nA/Z": {"kind": "article", "zim": "w", "path": "A/Z", "title": "Z", "added": 1000, "ts": 1000}}, "lists": {"trip": {"name": "Trip", "order": 0, "ts": 1000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}, "liked\tw\nA/Y": {"order": 1, "ts": 1000}, "trip\tw\nA/Y": {"order": 0, "ts": 1000}}}
+    },
+    {
+      "name": "a store of today's shape is taken as it is: saved and liked stays saved",
+      "now": 3000,
+      "a": {"v": 2, "items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}}},
+      "b": {},
+      "expect": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}}}
+    },
+    {
+      "name": "a thing only liked, unliked on the other device, is not kept",
+      "now": 3000,
+      "a": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000, "likeOnly": true}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}}},
+      "b": {"gone": {"m:liked\tw\nA/X": 2000}},
+      "expect": {"gone": {"m:liked\tw\nA/X": 2000}}
+    },
+    {
+      "name": "saved on one device after a like on the other: saved and liked",
+      "now": 3000,
+      "a": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000, "likeOnly": true}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}}},
+      "b": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 2000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}}},
+      "expect": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 2000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}}}
+    },
+    {
+      "name": "let go (only liked now) after it went into a list elsewhere: out of the list, still liked",
+      "now": 3000,
+      "a": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 2000, "likeOnly": true}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}}},
+      "b": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}}, "lists": {"trip": {"name": "Trip", "order": 0, "ts": 1000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}, "trip\tw\nA/X": {"order": 0, "ts": 1000}}},
+      "expect": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 2000, "likeOnly": true}}, "lists": {"trip": {"name": "Trip", "order": 0, "ts": 1000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}}}
     }
   ]
 }

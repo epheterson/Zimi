@@ -6,13 +6,13 @@ One place for everything you keep: bookmarks, lists, Liked, and where you were i
 
 **A saved item** is one thing kept: what it is (an article, a book, a video, a question, a post or a place on a map), its ZIM and page, a title, the app it belongs to, where you were in it (the section of an article, the place in a book, the time in a video, the view of a map) and when you saved it. The bookmark button in the header saves what is on screen, or lets it go; **B** does the same.
 
-**Lists** are named groups, and an item can be in as many as you like: a "Portugal trip" list can hold a Wikivoyage guide, a place on a map and a TED talk. **Liked** is a list every library has. An item's menu has **Lists**, with a tick beside each list it is in and **New list** at the bottom.
+**Lists** are named groups, and an item can be in as many as you like: a "Portugal trip" list can hold a Wikivoyage guide, a place on a map and a TED talk. **Liked** is a list every library has, and liking is apart from saving: the heart puts a thing in Liked and nowhere else, Save is its own button, and letting a save go keeps the like. An item's menu has **Lists**, with a tick beside each list it is in and **New list** at the bottom.
 
 **Continue** is where you were: the books you are reading and the videos you are watching, the latest first. It is not a list and not something you kept: it fills itself as you read, heads the **History** panel (the header's clock, or **H**) above what you read and searched, and **Remove from Continue** takes a book off it.
 
 **Highlights** work the same in every reader: an article, Reader View, a book in pages or scrolling, an EPUB's chapters, Zimipedia. Select text (on a phone, with the usual handles) and a small bar offers **Highlight**, **Note** and **Copy** (and **Define** for one word when a Wiktionary is installed). Tap a highlight to change its color (yellow, green, blue or pink), write or edit its note, copy it or remove it; a highlight with a note is underlined. Highlighting a page saves the page too, so it can go in lists; removing the page from Saved keeps its highlights. A highlight is found again by what it says, so it comes back after the text is laid out again, in another font or size, on another page of a book, and in a newer build of the same ZIM as long as the passage is still there. One that is not in the page any more is never dropped: the page says how many are missing, and the Saved panel marks each one **Not found in this version**.
 
-**The Saved panel** (the header's two-bookmark button beside the clock, or **B** on the home page) holds what you chose to keep: Liked and your lists, each with its items (and a highlighted page's highlights under it), then **Bookmarks**, what you saved in no list, then **Highlights**: every highlight, the latest first, each opening at its place in the text. Opened over an app, it shows that app's own first, with **All** beside it. Make a list with **New list**; rename, export or delete one from its menu (deleting a list keeps its items saved); drag a list to reorder the lists; drag an item into another list to move it, onto **Bookmarks** to take it out of its lists, or along its list to reorder. Opening an item takes you back where you were: an article at its section, a book at its page, a place on its map, a video, question or post in its app.
+**The Saved panel** (the header's two-bookmark button beside the clock, or **B** on the home page) holds what you chose to keep: Liked and your lists, each with its items (and a highlighted page's highlights under it), then **Bookmarks**, what you saved in no list of your own (a thing only liked is not here), then **Highlights**: every highlight, the latest first, each opening at its place in the text. Opened over an app, it shows that app's own first, with **All** beside it. Make a list with **New list**; rename, export or delete one from its menu (deleting a list keeps its items saved); drag a list to reorder the lists; drag an item into another list to move it, onto **Bookmarks** to take it out of its lists, or along its list to reorder. Opening an item takes you back where you were: an article at its section, a book at its page, a place on its map, a video, question or post in its app.
 
 **Export to ZIM** turns lists into one ZIM you can keep or share: each ticked list becomes a section of it. A list's own menu opens the export with that list alone ticked.
 
@@ -40,10 +40,11 @@ An app page (the pages under `zimi/static/`, shown in the reader) calls the shel
 var S = saved();
 var key = S.save({ kind: 'book', app: 'books', zim: b.zim, path: b.path, title: b.title,
   meta: { id: b.id, author: b.author, cover: b.cover } });   // add or update; returns the key
-S.has(key); S.get(key);          // {key, kind, zim, path, title, app, where, meta, added, lists}
+S.has(key); S.get(key);          // saved? / {key, kind, zim, path, title, app, where, meta, added, lists, likeOnly}
 S.remove(key);                   // from every list, on every device
-S.itemsFor({ app: 'books' });    // this app's items, the latest first
-S.itemsFor({ list: id });        // a list's items in its order ('' is the items in no list)
+S.unsave(key);                   // not saved any more; a like stays
+S.itemsFor({ app: 'books' });    // this app's saved items, the latest first (withLiked: true adds those only liked)
+S.itemsFor({ list: id });        // a list's items in its order ('' is the saved items in no list of their own)
 S.lists({ app: 'books' });       // [{id, name, builtin, count}], Liked first; name '' for Liked
 S.list(id);                      // one of them, or null
 S.createList(name); S.renameList(id, name); S.deleteList(id); S.moveList(id, beforeId);

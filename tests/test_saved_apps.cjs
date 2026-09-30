@@ -83,11 +83,16 @@ function page(extra) {
   ok('and out again, still kept', !p.Saved.inList(q, p.Saved.LIKED) && p.Saved.has(q));
   p.savedDo({ getAttribute: () => 'like' });
   p.savedDo({ getAttribute: () => 'save' });
-  ok('letting it go takes it out of every list', !p.Saved.has(q) && p.Saved.itemsFor({ list: p.Saved.LIKED }).length === 0);
+  ok('letting the save go keeps the like', !p.Saved.has(q) && p.Saved.inList(q, p.Saved.LIKED) &&
+    /class="svb on" data-sv="like"/.test(p.bars[0].innerHTML) && /data-sv="save" aria-pressed="false"/.test(p.bars[0].innerHTML));
+  p.savedDo({ getAttribute: () => 'like' });
+  ok('...and unliked it is not kept at all', !p.Saved.get(q) && p.Saved.itemsFor({ list: p.Saved.LIKED }).length === 0);
   const liked = page();
   liked.savedBar(q);
   liked.savedDo({ getAttribute: () => 'like' });
-  ok('a like keeps a thing never saved, in Liked', liked.Saved.has(q) && liked.Saved.inList(q, liked.Saved.LIKED));
+  ok('a like alone does not save: in Liked, Save not pressed, not among the saved', !liked.Saved.has(q) && liked.Saved.inList(q, liked.Saved.LIKED) &&
+    /data-sv="save" aria-pressed="false"/.test(liked.bars[0].innerHTML) && /class="svb on" data-sv="like"/.test(liked.bars[0].innerHTML) &&
+    liked.Saved.all().length === 0 && liked.Saved.itemsFor({ list: '' }).length === 0);
   const tubeBar = page();
   tubeBar.savedBar({ kind: 'video', app: 'tube', zim: 'ted', path: 'talks/1', title: 'A talk' }, { save: ['Watch later'] });
   ok('ZimiTube calls Save Watch later, pressed or not', /<span>Watch later<\/span>/.test(tubeBar.bars[0].innerHTML));
@@ -132,9 +137,11 @@ function page(extra) {
   p.Saved.addToList(a, p.Saved.LIKED);
   const trip = p.Saved.createList('Trip');
   p.Saved.addToList(v, trip);
+  p.Saved.addToList({ kind: 'question', app: 'exchange', zim: 'c', path: 'q/3', title: 'Only liked' }, p.Saved.LIKED);
   const chips = p.savedListChips('exchange', p.Saved.LIKED, 'openSaved');
-  ok('All with every question, Liked with its one; a list holding only videos is not here',
-    /All <span class="n">2<\/span>/.test(chips) && /class="chip tag on" aria-pressed="true" onclick="openSaved\(&quot;liked&quot;\)">Liked <span class="n">1<\/span>/.test(chips) && !/Trip/.test(chips), chips);
+  ok('only liked is not saved', !p.Saved.has({ zim: 'c', path: 'q/3' }));
+  ok('All with every question, liked or saved, Liked with its two; a list holding only videos is not here',
+    /All <span class="n">3<\/span>/.test(chips) && /class="chip tag on" aria-pressed="true" onclick="openSaved\(&quot;liked&quot;\)">Liked <span class="n">2<\/span>/.test(chips) && !/Trip/.test(chips), chips);
 }
 
 // ── an app's Saved view: one for ZimiExchange and Reddot ─────────────────
@@ -208,10 +215,11 @@ function page(extra) {
   ok('Continue watching, Watch later, Liked, then each list with a video', rows.map((r) => r.title).join(' | ') === 'Continue watching | Watch later | Liked | Trip', rows.map((r) => r.title).join(' | '));
   ok('Continue watching: the latest first, past its first seconds or into a later track, with how far',
     rows[0].items.map((v) => v.page).join(',') === 'talks/3,talks/1' && rows[0].f.join(',') === '0.34,0.5');
-  ok('Watch later is every video kept, the latest first', rows[1].items.map((v) => v.page).join(',') === 'talks/5,talks/4');
-  ok('a card draws from what was kept when the feed does not have it', rows[1].items[1].thumb === 'thumbs/4.jpg' && rows[1].items[1].speaker === 'S4' && rows[1].items[1].zim_title === 'TED');
+  ok('Watch later is every video saved, not one only liked', rows[1].items.map((v) => v.page).join(',') === 'talks/4' && rows[2].items.map((v) => v.page).join(',') === 'talks/5',
+    rows[1].items.map((v) => v.page).join(','));
+  ok('a card draws from what was kept when the feed does not have it', rows[1].items[0].thumb === 'thumbs/4.jpg' && rows[1].items[0].speaker === 'S4' && rows[1].items[0].zim_title === 'TED');
   p._byKey['ted\ntalks/4'] = vid(4, { title: 'Talk 4, as the feed has it' });
-  ok('...and from the feed when it does', p.savedRows()[1].items[1].title === 'Talk 4, as the feed has it');
+  ok('...and from the feed when it does', p.savedRows()[1].items[0].title === 'Talk 4, as the feed has it');
   // An audiobook is listened to: a shelf of them says so, one of both is what you saved.
   p.Saved.save(p.videoRef(vid(6, { audio: true, tracks: 2 })));
   ok('a shelf of videos and audiobooks is what you saved', p.savedRows()[1].title === 'Saved', p.savedRows()[1].title);

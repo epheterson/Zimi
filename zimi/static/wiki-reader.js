@@ -794,7 +794,7 @@ function _wikiLayout(frame) {
     if (b.classList.contains('zb-x')) { closeSheets(); return; }
     var ref = saveRef(), id = b.getAttribute('data-list'), act = b.getAttribute('data-act');
     if (act === 'new') { newList(); return; }
-    if (act === 'save') { if (Saved.has(ref)) Saved.remove(ref); else Saved.save(ref); }
+    if (act === 'save') { if (Saved.has(ref)) Saved.unsave(ref); else Saved.save(ref); }
     else if (id) { if (Saved.inList(ref, id)) Saved.removeFromList(ref, id); else Saved.addToList(ref, id); }
     renderSave();
     paintSave();

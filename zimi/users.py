@@ -613,6 +613,10 @@ _USERDATA_MAX_BYTES = 4 * 1024 * 1024
 # a byte budget, past it the oldest tombstones go, then the oldest places, and
 # a store still over it is refused whole (the device says sync is paused).
 _SAVED_LIKED = "liked"
+#: The store's shape. 1: 1.12.0, where a like saved the thing too
+#: (_saved_likes_from_v1). A thing liked and not saved is an item marked
+#: likeOnly, in Liked and in nothing else.
+_SAVED_VERSION = 2
 _SAVED_KINDS = ("article", "book", "video", "question", "post", "place")
 _SAVED_APPS = ("books", "tube", "exchange", "reddot", "maps", "wiki")
 _SAVED_COLLS = (
@@ -652,7 +656,7 @@ _SAVED_HL_NOTE_MAX = 2000
 
 def _saved_empty():
     return {
-        "v": 1,
+        "v": _SAVED_VERSION,
         "items": {},
         "lists": {},
         "members": {},
@@ -823,6 +827,8 @@ def _clean_saved(x):
         if it:
             added = _saved_num(r.get("added"))
             it["added"] = _saved_round(it["ts"] if added is None else added)
+            if r.get("likeOnly") is True:
+                it["likeOnly"] = True
             s["items"][id_] = it
     for id_, r in each(x.get("lists")):
         o = _saved_order(r)
@@ -869,7 +875,23 @@ def _clean_saved(x):
         ):
             s["gone"][g] = _saved_round(ts)
     s["legacy"] = x.get("legacy") is True
+    v = x.get("v")
+    if v == 1 and not isinstance(v, bool):
+        _saved_likes_from_v1(s)
     return s
+
+
+def _saved_likes_from_v1(s):
+    """1.12.0 saved whatever was liked. A thing in Liked and in no list of
+    its own was most likely kept by the heart alone: it stays liked and
+    leaves Bookmarks. Its time is left as it was, so every copy agrees."""
+    liked, listed = set(), set()
+    for mk in s["members"]:
+        i = mk.find("\t")
+        (liked if mk[:i] == _SAVED_LIKED else listed).add(mk[i + 1 :])
+    for id_ in liked - listed:
+        if id_ in s["items"]:
+            s["items"][id_]["likeOnly"] = True
 
 
 def _saved_cap(m, n, ts_of):
@@ -913,15 +935,24 @@ def _saved_fit(s, budget):
 
 
 def _saved_normalize(s, now_ms, budget=None):
-    """A membership needs its item and its list; tombstones age out; each app
-    keeps its latest places; the store fits its byte budget (_saved_fit)."""
+    """A membership needs its item and its list, and a list of its own a
+    saved item; a thing only liked needs its like; tombstones age out; each
+    app keeps its latest places; the store fits its byte budget
+    (_saved_fit)."""
+    liked = set()
     for mk in list(s["members"]):
         i = mk.find("\t")
-        lid = mk[:i]
-        if mk[i + 1 :] not in s["items"] or (
-            lid != _SAVED_LIKED and lid not in s["lists"]
+        lid, id_ = mk[:i], mk[i + 1 :]
+        it = s["items"].get(id_)
+        if not it or (
+            lid != _SAVED_LIKED and (lid not in s["lists"] or it.get("likeOnly"))
         ):
             del s["members"][mk]
+        elif lid == _SAVED_LIKED:
+            liked.add(id_)
+    for id_ in [k for k, it in s["items"].items() if it.get("likeOnly")]:
+        if id_ not in liked:
+            del s["items"][id_]
     for g in [g for g, ts in s["gone"].items() if ts < now_ms - _SAVED_GONE_MS]:
         del s["gone"][g]
     _saved_cap(s["gone"], _SAVED_GONE_MAX, _saved_gone_ts)

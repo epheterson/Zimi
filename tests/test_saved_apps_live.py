@@ -236,12 +236,13 @@ def test_zimitube_watch_later_like_lists_and_continue_watching(phone):
     frame.locator("#mine .shelf[data-row=continue] .card").first.click()
     _wait_media(pg, 20)
     assert abs(_media(pg)["t"] - 22) < 2, _media(pg)
-    # Let it go: out of Watch later, Liked and the list, the rows say so.
+    # Let the save go: out of Watch later and the list; a like is apart
+    # from saving (1.12.1), it stays.
     frame.locator(".svb[data-sv=save]").click()
     assert not pg.evaluate("() => Saved.all().length")
     _in_frame(pg, "(w) => w.closePlayer()")
     pg.wait_for_timeout(400)
-    assert _rows(pg) == ["Continue watching: " + title], _rows(pg)
+    assert _rows(pg) == ["Continue watching: " + title, "Liked: " + title], _rows(pg)
 
 
 def test_zimitube_a_long_row_shows_a_dozen_and_all_opens_it_whole(phone):
@@ -372,15 +373,60 @@ def test_a_thread_saved_liked_listed_and_reopened_where_you_were(phone, app):
         "(w) => w.scrollY / (w.document.documentElement.scrollHeight - w.innerHeight)",
     )
     assert abs(at - 0.5) < 0.05, at
-    # Let it go: the Saved tab goes with the last thing in it.
+    # Let the save go: the like stays; unliked, the Saved tab goes with the
+    # last thing in it.
     frame.locator(".svb[data-sv=save]").click()
     assert not pg.evaluate("(a) => Saved.itemsFor({app: a}).length", app)
+    assert pg.evaluate("(a) => Saved.itemsFor({app: a, list: Saved.LIKED}).length", app)
+    frame.locator(".svb[data-sv=like]").click()
+    assert not pg.evaluate(
+        "(a) => Saved.itemsFor({app: a, withLiked: true}).length", app
+    )
     _in_frame(pg, "(w) => w.__back()")
     pg.wait_for_timeout(300)
     assert not _in_frame(
         pg,
         "(w) => Array.from(w.document.querySelectorAll('#chips .chip')).some(c => /Saved/.test(c.textContent))",
     )
+
+
+@pytest.mark.parametrize("app", ["tube", "exchange"])
+def test_a_like_in_an_app_adds_nothing_to_bookmarks(phone, app):
+    """Like and Save are apart (1.12.1): the heart puts the thing in Liked
+    and nowhere else. Not saved, not under Bookmarks in the Saved panel, the
+    header's button not pressed, Save not pressed in the app."""
+    pg, names = phone
+    frame = pg.frame_locator("#reader-frame")
+    if app == "tube":
+        pg.evaluate("() => openTube()")
+        frame.locator(".card").first.wait_for()
+        frame.locator(".card").first.click()
+    else:
+        pg.evaluate("() => openExchange()")
+        title = "How can I chop onions without crying?"
+        frame.locator(".row .t", has_text=title).first.wait_for()
+        frame.locator(".row .t", has_text=title).first.click()
+    frame.locator(".svbar .svb").first.wait_for()
+    frame.locator(".svb[data-sv=like]").first.click()
+    pg.wait_for_timeout(200)
+    state = pg.evaluate(
+        "() => ({ liked: Saved.itemsFor({list: Saved.LIKED}).map(i => i.app), all: Saved.all().length,"
+        " loose: Saved.itemsFor({list: ''}).length, header: document.getElementById('library-btn').dataset.state })"
+    )
+    assert state == {"liked": [app], "all": 0, "loose": 0, "header": "save"}, state
+    assert _in_frame(
+        pg,
+        "(w) => { var s = w.document.querySelector('.svb[data-sv=save]'), l = w.document.querySelector('.svb[data-sv=like]');"
+        " return s.getAttribute('aria-pressed') === 'false' && l.getAttribute('aria-pressed') === 'true'; }",
+    ), "Liked pressed, Save not"
+    pg.evaluate("() => toggleLibraryPanel('bookmarks')")
+    pg.wait_for_selector("#bm-tree")
+    tree = pg.evaluate(
+        "() => ({ folders: Array.from(document.querySelectorAll('#bm-tree .bm-folder')).map(f => f.dataset.fid),"
+        " rows: Array.from(document.querySelectorAll('#bm-tree .bm-bk')).map(r => r.dataset.fid) })"
+    )
+    assert tree["rows"] == ["liked"] and "liked" in tree["folders"], tree
+    _shot(pg, app + "_liked_only.png")
 
 
 @pytest.mark.parametrize("app", ["exchange", "reddot"])
