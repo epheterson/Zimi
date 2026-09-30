@@ -920,9 +920,9 @@
   /* One ring on every swatch, readable on a light sheet and a dark one; the
      same as the reading sheets' .zb-dot (_READING_CSS in app.js). */
   .rv-sw-dot { width: 22px; height: 22px; border-radius: 50%; box-sizing: border-box; border: 1.5px solid rgba(128,128,128,0.6); }
-  /* Auto follows the system: the Light swatch and the Dark one, a half each
-     (READER_AUTO_SWATCH in app.js). */
-  .rv-sw-auto .rv-sw-dot { background: linear-gradient(90deg, #fbfbf9 50%, #0a0a0b 50%); }
+  /* Auto shows what it paints: the Sepia swatch by day, the Dark one by night,
+     a half each (READER_AUTO_SWATCH in app.js). */
+  .rv-sw-auto .rv-sw-dot { background: linear-gradient(90deg, #f4ecd8 50%, #0a0a0b 50%); }
   .rv-sw-dark .rv-sw-dot { background: #0a0a0b; }
   .rv-sw-light .rv-sw-dot { background: #fbfbf9; }
   .rv-sw-sepia .rv-sw-dot { background: #f4ecd8; }

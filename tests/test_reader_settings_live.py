@@ -272,9 +272,11 @@ def _same_ring(dots):
         assert ring(dots["auto"]) == ring(dots[k]), (k, dots)
     bg = dots["auto"]["bg"]
     assert "90deg" in bg, bg
-    assert "rgb(251, 251, 249)" in bg and "rgb(10, 10, 11)" in bg, (
-        "Auto is the Light swatch and the Dark one: %s" % bg
+    # Auto paints sepia by day and dark by night, so its swatch is those two.
+    assert "rgb(244, 236, 216)" in bg and "rgb(10, 10, 11)" in bg, (
+        "Auto is the Sepia swatch and the Dark one: %s" % bg
     )
+    assert "rgb(251, 251, 249)" not in bg, bg
     assert dots["light"]["c"] == "rgb(251, 251, 249)"
     assert dots["dark"]["c"] == "rgb(10, 10, 11)"
 

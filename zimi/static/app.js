@@ -16083,10 +16083,10 @@ var READER_THEME_MODES = ['auto', 'light', 'sepia', 'dark'];
 // The <body> background each theme paints — mirrors --rv-bg in the injected CSS.
 // Used to tint the iframe/loading chrome so AUTO mode never flashes ZIM-white.
 var READER_THEME_BG = { dark: '#0a0a0b', light: '#fbfbf9', sepia: '#f4ecd8' };
-// Auto's swatch says "follows the system": the Light swatch and the Dark
-// one, a half each, side by side, in the same ring as every swatch.
-// app.css's .rv-sw-auto draws the same split.
-var READER_AUTO_SWATCH = 'linear-gradient(90deg,' + READER_THEME_BG.light + ' 50%,' + READER_THEME_BG.dark + ' 50%)';
+// Auto's swatch shows what Auto paints (_readerTheme): the Sepia swatch by
+// day and the Dark one by night, a half each, in the same ring as every
+// swatch. app.css's .rv-sw-auto draws the same split.
+var READER_AUTO_SWATCH = 'linear-gradient(90deg,' + READER_THEME_BG.sepia + ' 50%,' + READER_THEME_BG.dark + ' 50%)';
 function _readerFamily() {
   var v = localStorage.getItem(SK.READER_FAMILY);
   return READER_FAMILIES.indexOf(v) >= 0 ? v : 'serif';
