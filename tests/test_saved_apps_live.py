@@ -560,6 +560,9 @@ def test_an_app_home_asks_the_server_for_nothing_more(phone):
     """What is kept is drawn from the browser's store: with things saved in
     every app, each home still makes the one request it made before."""
     pg, names = phone
+    # The boot's own requests (the manage probe) finish first: only what an
+    # app home asks for is counted.
+    pg.wait_for_function("() => _manageProbed", timeout=30000)
     pg.evaluate(
         """(n) => {
           Saved.save({ kind: 'video', app: 'tube', zim: n.tube, path: 'files/talk.webm', title: 'A talk' });

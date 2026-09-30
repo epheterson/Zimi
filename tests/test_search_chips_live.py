@@ -184,7 +184,17 @@ def test_chips_and_help_fit_a_phone(served, lang):
         pg.locator("#q").tap()
         pg.locator("#q").fill("wikipedia -medicine lang:fr")
         pg.keyboard.press("Enter")
-        pg.wait_for_selector("#catalog-results .search-chips", timeout=20000)
+        try:
+            pg.wait_for_selector("#catalog-results .search-chips", timeout=20000)
+        except Exception:
+            # What the catalog shows instead, for a failure seen only on CI.
+            state = pg.evaluate(
+                """() => ({ mode, manageTab, view: _browseView, q: q.value,
+                  cache: _catalogCache && _catalogCache.length,
+                  html: (document.getElementById('catalog-results') || {}).innerHTML })"""
+            )
+            state["html"] = (state.get("html") or "")[:600]
+            raise AssertionError("catalog chips never showed: %r; page errors %r" % (state, errors))
         assert pg.locator("#catalog-results .search-chip").count() == 2
         pg.evaluate("document.activeElement.blur()")
         assert pg.evaluate(_FIT) == []

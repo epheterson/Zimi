@@ -121,7 +121,7 @@ def test_a_language_name_a_file_already_has_is_never_taken(scan_dir):
 def test_a_subfolder_build_of_another_language_is_not_a_backup(scan_dir):
     """Root beats subfolder for copies of one thing; another language in a
     subfolder is a different library and is served."""
-    sub_ale = os.path.join("more", ALE)
+    sub_ale = "more/" + ALE  # the scan reports "/" on every OS
     assert _scan(scan_dir, EN, sub_ale) == {"gutenberg": EN, "gutenberg_ale": sub_ale}
 
 
