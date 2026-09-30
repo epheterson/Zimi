@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Zimipedia's reader: citations in place, contents that follow you, languages by Wikidata ID (side by side on a wide screen), everything else the library holds on the topic, and link previews. Zimipedia is on by default again.
 - Bookshelf reads document libraries (zimgit and more), LibreTexts textbooks, Wikisource, Wikibooks, EPUBs and your own folders of PDFs and EPUBs.
 - ZimiTube plays the document libraries' videos and audiobooks, and your own folders of video and audio.
-- Search operators in search, the catalog and the API: `-word`, `"exact words"`, `OR`, `lang:` and `in:`, shown as chips you can remove.
+- Search operators in search, the catalog and the API: `-word`, `"exact words"`, `OR`, `lang:` and `in:`, shown as chips you can remove ([#94](https://github.com/epheterson/Zimi/issues/94)).
 - The Almanac's orrery shows each planet's radio delay and flies you there, with the twin paradox; a glow on Earth opens a 3D Earth with real daylight, eclipses, the ISS and GPS satellites, and the hero Moon opens the same view on the Moon.
 - Links that leave your library are marked in every reader and say where they go ([#99](https://github.com/epheterson/Zimi/issues/99)); Create a ZIM can remove them.
 - Server settings end with Internet use: everything Zimi fetches from the internet, each with its switch, including a new one for update checks.
