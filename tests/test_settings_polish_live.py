@@ -8,7 +8,8 @@ polish pass), in a real browser at 390x844 touch:
   quieter, not under Auto-update.
 - Nothing zooms by accident: a double tap is a tap, and every field and
   menu on a touch screen is 16px (iOS zooms into any smaller one it focuses).
-  Pinch-zoom is left alone: the viewport does not cap the scale.
+  No pinch-zoom either: the viewport caps the scale and iOS's pinch is
+  cancelled in the shell, the reader's document and the app pages.
 - The book's reading settings leave the page undimmed, and Auto's swatch is
   the sepia and dark Auto actually paints, not a white page it never gives.
 - The Saved panel's group of things in no list is called Saved.
@@ -32,6 +33,11 @@ READY = "() => typeof zimsCache !== 'undefined' && (zimsCache || []).length > 0"
 SMALL_FIELDS = """() => Array.from(document.querySelectorAll(
   'input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden]):not([type=file]), select, textarea'))
   .filter(e => parseFloat(getComputedStyle(e).fontSize) < 16).map(e => e.id || e.className || e.tagName)"""
+
+
+# A synthetic iOS pinch: is its gesturestart cancelled?
+PINCH_CANCELLED = """(doc) => { var e = new (doc.defaultView.Event)('gesturestart', {cancelable: true, bubbles: true});
+  doc.body.dispatchEvent(e); return e.defaultPrevented; }"""
 
 
 @pytest.fixture(scope="module")
@@ -164,9 +170,24 @@ def test_nothing_zooms_by_accident(served, phone):
       vp: document.querySelector('meta[name=viewport]').content })"""
     )
     assert got["ta"] == "manipulation", got
-    # Pinch-zoom stays for whoever needs it.
-    assert "maximum-scale" not in got["vp"] and "user-scalable" not in got["vp"], got
+    # No zoom at all: the viewport caps it, and iOS's pinch (which ignores
+    # the cap) is cancelled in the shell and in the reader's document.
+    assert "maximum-scale=1" in got["vp"] and "user-scalable=no" in got["vp"], got
+    assert pg.evaluate("(" + PINCH_CANCELLED + ")(document)") is True
     assert pg.evaluate(SMALL_FIELDS) == []
+    # An article in the reader, and an app page on its own.
+    pg.evaluate("() => openArticle('hlwiki', 'A/Lighthouse')")
+    pg.wait_for_function(
+        "() => { var d = document.getElementById('reader-frame').contentDocument; return d && d.__zimiNoPinch; }",
+        timeout=15000,
+    )
+    assert pg.evaluate(
+        "(" + PINCH_CANCELLED + ")(document.getElementById('reader-frame').contentDocument)"
+    )
+    pg.goto(served + "/static/tube.html")
+    vp = pg.evaluate("() => document.querySelector('meta[name=viewport]').content")
+    assert "user-scalable=no" in vp, vp
+    assert pg.evaluate("(" + PINCH_CANCELLED + ")(document)") is True
     pg.goto(served + "/?manage=server")
     pg.wait_for_timeout(1500)
     assert pg.evaluate(SMALL_FIELDS) == []

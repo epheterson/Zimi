@@ -239,3 +239,8 @@ var appChrome = (function() {
 var _place = 0;
 function keepPlace() { _place = window.scrollY || 0; }
 function returnToPlace() { window.scrollTo(0, _place); _place = 0; }
+// No pinch-zoom, as in the shell: iOS Safari ignores user-scalable=no for a
+// pinch, so its gesture events are cancelled.
+['gesturestart', 'gesturechange'].forEach(function(type) {
+  document.addEventListener(type, function(e) { e.preventDefault(); }, { passive: false });
+});

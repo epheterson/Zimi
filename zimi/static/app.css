@@ -151,8 +151,8 @@
   html.manage-boot #main-view { visibility: hidden; }
 
   html { height: 100%; overflow-y: auto; overscroll-behavior-y: none; }
-  /* Zimi never zooms by accident on a phone, and pinch-zoom stays (the
-     viewport does not cap the scale, so a reader who needs it still has it).
+  /* Zimi does not zoom on a phone: the viewport caps the scale at 1 and
+     _blockPinch (app.js) cancels iOS's pinch, which ignores that cap.
      A double tap is a tap, not a zoom; the text keeps its size when the
      phone turns; and a field or menu gets 16px type on a touch screen,
      because iOS zooms the page into any it focuses that is smaller. The
