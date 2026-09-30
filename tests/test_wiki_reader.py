@@ -298,7 +298,8 @@ def test_the_reader_view_size_says_what_it_is():
             "zimi",
             "static",
             "app.js",
-        )
+        ),
+        encoding="utf-8",
     ).read()
     assert "_READER_SIZE_LABELS" not in js
     out = subprocess.run(
