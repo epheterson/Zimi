@@ -19768,6 +19768,46 @@ function _readerShare() {
   navigator.share({ title: title, url: _currentPageUrl() }).catch(function () {});
 }
 
+// Only a PICTURE forces a viewport-less page to be scaled down: one that
+// would otherwise be cut off, like xkcd's comic in its 780px table, which
+// is the case this fitting exists for. Text never is: the containment CSS
+// the reader puts in wraps it, clips it, or gives a <pre> or a wide table
+// its own scrollbar. Measuring text shrank whole documents for nothing: an
+// installed devdocs ZIM, which carries no viewport meta on any page,
+// rendered at 81% because one footer paragraph held a long unbreakable URL
+// (found in review before 1.9.0 was published).
+var MIN_FIT_SCALE = 0.25;  // below this nothing is readable anyway
+var FIT_SLACK_PX = 8;      // wider than the frame by less than this: left as it is
+var FIT_SCAN_MAX = 3000;   // pictures measured at most
+// A page with no viewport meta was laid out for a desktop: xkcd's comic
+// sits in a 780px table. A phone browser shows such a page zoomed out to
+// fit; inside this frame it was clipped at the right edge instead, half the
+// comic gone (seen 2026-09-03). Scale the document to the frame the way the
+// phone would. Measured unzoomed and with the reader's containment CSS
+// (sheet, once it is in) off: it hides the overflow it measures. Called
+// again when the pictures have loaded, so it starts from no zoom each time.
+function _fitWidePictures(d, w, sheet) {
+  if (sheet) sheet.disabled = true;
+  d.documentElement.style.zoom = '';
+  try {
+    // The widest PICTURE, counting spill to the left of the frame (a centred
+    // fixed-width table spills both ways). Anything parked far off-screen, a
+    // skip link at -9999px, is not layout and is ignored.
+    var have = w.innerWidth, wide = have;
+    var shown = d.body ? d.body.querySelectorAll('img,video,canvas,svg,object,embed,iframe,picture') : [];
+    for (var i = 0; i < shown.length && i < FIT_SCAN_MAX; i++) {
+      var r = shown[i].getBoundingClientRect();
+      if (r.width <= 0 || r.left < -have * 2 || r.right > have * 6) continue;
+      var extent = r.right - Math.min(r.left, 0);
+      if (extent > wide) wide = extent;
+    }
+    var scale = have / wide;
+    if (wide > have + FIT_SLACK_PX && have > 0 && scale >= MIN_FIT_SCALE) d.documentElement.style.zoom = String(scale);
+  } finally {
+    if (sheet) sheet.disabled = false;
+  }
+}
+
 // ── Reader ──
 // Calls fn once the frame holds a new document whose DOM is parsed
 // (DOMContentLoaded), before its images load. Gives up when the frame's
@@ -20068,39 +20108,18 @@ function openReader(url) {
         'html{overscroll-behavior:none}',
         '#zimi-top{position:fixed;bottom:20px;right:20px;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;border:none;font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:9999;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}'
       ]).join('');
-      // Only a PICTURE forces a viewport-less page to be scaled down: one that
-  // would otherwise be cut off, like xkcd's comic in its 780px table, which
-  // is the case this fitting exists for. Text never is — the containment CSS
-  // injected below wraps it, clips it, or gives a <pre> or a wide table its
-  // own scrollbar. Measuring text shrank whole documents for nothing: an
-  // installed devdocs ZIM, which carries no viewport meta on any page,
-  // rendered at 81% because one footer paragraph held a long unbreakable URL
-  // (found in review before 1.9.0 was published).
-  var MIN_FIT_SCALE = 0.25;  // below this nothing is readable anyway
-  // A page with no viewport meta was laid out for a desktop: xkcd's comic
-      // sits in a 780px table. A phone browser shows such a page zoomed out to
-      // fit; inside this frame it was clipped at the right edge instead, half
-      // the comic gone (seen 2026-09-03). Scale the document to the frame the
-      // way the phone would, only when the page did not say it is responsive.
-      // Measured BEFORE the overflow rule below hides the overflow it measures.
+      // A page with no viewport meta was laid out for a desktop: scaled to
+      // the frame (_fitWidePictures). Shown early (at DOMContentLoaded, with
+      // Reader View on), its pictures had no size yet, so an xkcd comic
+      // without width attributes measured nothing and stayed clipped: it is
+      // measured again once they have loaded.
       try {
         var _d = frame.contentDocument, _w = frame.contentWindow;
         if (!_isWebMirror && !_d.querySelector('meta[name="viewport"]')) {
-          // The widest PICTURE, counting spill to the left of the frame (a
-          // centred fixed-width table spills both ways). Anything parked far
-          // off-screen — a skip link at -9999px — is not layout and is ignored.
-          var _have = _w.innerWidth, _wide = _have;
-          var _shown = _d.body ? _d.body.querySelectorAll('img,video,canvas,svg,object,embed,iframe,picture') : [];
-          for (var _i = 0; _i < _shown.length && _i < 3000; _i++) {
-            var _r = _shown[_i].getBoundingClientRect();
-            if (_r.width <= 0 || _r.left < -_have * 2 || _r.right > _have * 6) continue;
-            var _extent = _r.right - Math.min(_r.left, 0);
-            if (_extent > _wide) _wide = _extent;
-          }
-          var _scale = _have / _wide;
-          if (_wide > _have + 8 && _have > 0 && _scale >= MIN_FIT_SCALE) {
-            _d.documentElement.style.zoom = String(_scale);
-          }
+          _fitWidePictures(_d, _w, null);
+          if (_d.readyState !== 'complete') _w.addEventListener('load', function() {
+            try { if (frame.contentDocument === _d) _fitWidePictures(_d, _w, _rStyle.sheet); } catch (e) {}
+          }, { once: true });
         }
       } catch(e) {}
       frame.contentDocument.head.appendChild(_rStyle);
