@@ -1,7 +1,7 @@
 # Zimi
 
 [![CI](https://github.com/epheterson/Zimi/actions/workflows/ci.yml/badge.svg)](https://github.com/epheterson/Zimi/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-3123-brightgreen)](#)
+[![Tests](https://img.shields.io/badge/tests-3859-brightgreen)](#)
 [![Lighthouse Accessibility](https://img.shields.io/badge/Lighthouse%20a11y-100%2F100-success?logo=lighthouse&logoColor=white)](docs/plans/2026-04-26-accessibility.md)
 [![WCAG 2.1 AA](https://img.shields.io/badge/WCAG%202.1-AA-blue)](docs/plans/2026-04-26-accessibility.md)
 [![i18n](https://img.shields.io/badge/i18n-10%20languages-blueviolet)](#languages)
@@ -16,9 +16,10 @@ A modern experience for your ZIM files.
 ## What is Zimi?
 
 - **The offline internet.** Whole sites, cross-ZIM links, real search, a browser that feels like one.
-- **Apps over your library.** Offline street maps, every video ZIM as one feed, every Q&A in one place, and your favorite subreddits thread together.
-- **Search that hits everything.** One query, every source, 100M+ articles, the right answer on top.
-- **A real library.** 1,000+ archives one click away, auto-updating, with collections and bookmarks.
+- **Apps over your library.** Every wiki in one reader, offline street maps, every video ZIM as one feed, every Q&A in one place, your subreddits threaded together, and a bookshelf of everything you can read.
+- **Search that hits everything.** One query, every source, 100M+ articles, the right answer on top. `-word`, `"exact words"`, `OR`, `lang:` and `in:` when you need them.
+- **A real library.** 1,000+ archives one click away, auto-updating, with collections.
+- **Keep what you find.** Bookmarks, lists, Liked and highlights with notes in every app, following you across devices when you sign in.
 - **Multilingual.** Any article in any language it has. Ten UI languages built in.
 - **Fresh daily.** Picture of the Day, On This Day, a word, a quote, a comic, a live sky. Computed locally, forever.
 - **Your own network.** Your machines find each other and pass ZIMs around at LAN speed.
@@ -32,13 +33,14 @@ A modern experience for your ZIM files.
 
 ## Apps
 
-Some ZIMs hold a map, a video library, a Q&A site, a subreddit or a library of books. Zimi gives each kind a view of its own, over whatever you already have.
+Some ZIMs hold a wiki, a map, a video library, a Q&A site, a subreddit or a library of books. Zimi gives each kind a view of its own, over whatever you already have.
 
+- **Zimipedia.** Every wiki in the library (Wikipedia, Wiktionary, Wikivoyage, Wikisource and more) in one reader: a Today page with the article of the day, On this day and Did you know, and articles with citations in place, contents that follow you, the same article in your other languages side by side, and link previews.
 - **Maps.** Kiwix's regional maps and StreetZim's larger builds. Type a town, a street or an address and the map flies there; the position lives in the address bar, so a link or a bookmark comes back to the same place at the same zoom.
 - **ZimiTube.** Every video ZIM as one feed: Kiwix's TED and TED-Ed, YouTube channels, and the ones `zimi create` makes. Subtitles, Up next, autoplay, a dock so a video keeps playing while you browse.
 - **ZimiExchange.** Every Stack Exchange site as one place: a shelf per site with its top tags, paged lists, and a question with its answers scored, the accepted one first.
 - **Reddot.** Subreddits as ZIMs. `zimi create r/<name>` builds one from the public Arctic Shift archive; the app reads shelves, Top and New, and a post's whole comment tree.
-- **Bookshelf.** Every Project Gutenberg ZIM as one shelf: most read, newest, by author, subject, era and language, with covers. A book opens in Reader View, keeps your place and steps chapter by chapter.
+- **Bookshelf.** Every book in the library as one shelf: Project Gutenberg, the document libraries, LibreTexts textbooks, Wikisource, Wikibooks, EPUBs and ZIMs you make from a folder of documents. Most read, newest, by author, subject, era and language, with covers. A book opens in a reader made for a phone and keeps your place on every device.
 
 They share the shell: one search box, one back arrow, bookmarks and history, right to left where the language runs that way. Each can be offered or not, for the whole server or per account, and an agent reads the same content through the API and MCP tools. See the [apps guide](docs/features/apps.md).
 
@@ -47,6 +49,10 @@ They share the shell: one search box, one back arrow, bookmarks and history, rig
 | Homepage | Search Results |
 |----------|---------------|
 | ![Homepage](screenshots/homepage.png) | ![Search](screenshots/search.png) |
+
+| Zimipedia | Bookshelf |
+|-----------|-----------|
+| ![Zimipedia](screenshots/zimipedia.png) | ![Bookshelf](screenshots/bookshelf.png) |
 
 | Maps | ZimiTube |
 |------|----------|

@@ -148,6 +148,28 @@ def shot_create(page, base, out, url, engine):
     page.screenshot(path=str(out / "create.png"))
 
 
+APP_SETTLE_MS = 4000  # an app page's covers and pictures after its first paint
+
+
+def _shot_app(page, base, out, name, opener):
+    """An app's home in the reader frame, opened the way its tile opens it."""
+    page.set_viewport_size(DESKTOP)
+    page.goto(base + "/")
+    page.wait_for_selector(".card-info, .discover-card", timeout=30000)
+    page.evaluate("() => " + opener)
+    page.frame_locator("#reader-frame").locator("body *").first.wait_for(timeout=60000)
+    _settle(page, APP_SETTLE_MS)
+    page.screenshot(path=str(out / (name + ".png")))
+
+
+def shot_zimipedia(page, base, out):
+    _shot_app(page, base, out, "zimipedia", "openWiki()")
+
+
+def shot_bookshelf(page, base, out):
+    _shot_app(page, base, out, "bookshelf", "openBooks()")
+
+
 SHOTS = (
     "homepage",
     "search",
@@ -155,6 +177,8 @@ SHOTS = (
     "browse-library",
     "sharing",
     "create",
+    "zimipedia",
+    "bookshelf",
 )
 
 
@@ -228,6 +252,10 @@ def main():
                 shot_catalog(page, args.base, out, args.category)
             elif name == "sharing":
                 shot_sharing(page, args.base, out)
+            elif name == "zimipedia":
+                shot_zimipedia(page, args.base, out)
+            elif name == "bookshelf":
+                shot_bookshelf(page, args.base, out)
             elif name == "create":
                 shot_create(page, args.base, out, args.create_url, args.create_engine)
             print("%-18s %5.1fs  %s" % (name, time.time() - t0, out / (name + ".png")))
