@@ -10763,8 +10763,13 @@ async function renderManage() {
   } else if (manageTab === 'activity') {
     renderActivityTab();
   } else {
+    // A repaint (a language arriving late, a refresh) keeps the catalog
+    // search that is on screen rather than dropping back to the gallery.
+    var _catalogQuery = _browseView === 'search' ? q.value.trim() : '';
     if (manageCategoryFilter) {
       drillCategory(manageCategoryFilter);
+    } else if (_catalogQuery) {
+      browseCatalogFilter(_catalogQuery);
     } else {
       renderBrowseGallery();
     }

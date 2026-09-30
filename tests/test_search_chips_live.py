@@ -181,6 +181,11 @@ def test_chips_and_help_fit_a_phone(served, lang):
         # The catalog: the same chips under its count, the same "?".
         pg.evaluate("async () => { await enterManage(); switchManageTab('browse'); }")
         pg.wait_for_function("() => manageTab === 'browse' && _catalogCache !== null")
+        # Typed once the catalog is on screen, as a person would.
+        pg.wait_for_function(
+            "() => _browseView === 'gallery' && document.getElementById('catalog-results').children.length > 0",
+            timeout=30000,
+        )
         pg.locator("#q").tap()
         pg.locator("#q").fill("wikipedia -medicine lang:fr")
         pg.keyboard.press("Enter")
