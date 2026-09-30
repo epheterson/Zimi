@@ -2133,8 +2133,21 @@ function _renderAlmanacMoon(m, tiltDeg) {
   var illumFrac = m.illumination / 100;
   var glowOpacity = (illumFrac * 0.15 + 0.02).toFixed(2);
   return '<div class="almanac-moon-glow" style="background:radial-gradient(circle, rgba(232,224,208,' + glowOpacity + ') 0%, transparent 65%)"></div>' +
-    _renderMoonHTML(m, 'almanac-moon', tiltDeg);
+    '<div class="almanac-moon-open" role="button" tabindex="0" aria-label="' + _almEsc(t('alm_moon_open_3d')) + '" title="' + _almEsc(t('alm_moon_open_3d')) + '">' +
+    _renderMoonHTML(m, 'almanac-moon', tiltDeg) + '</div>';
 }
+
+// The hero moon opens the 3D view on the Moon (the orrery's Earth opens it
+// on the Earth): one viewer, two ways in.
+function _almOpenMoon3d(e) {
+  var el = e.target && e.target.closest && e.target.closest('#almanac-head .almanac-moon-open');
+  if (!el || typeof window.openAlmanacEarth !== 'function') return;
+  if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+  e.preventDefault();
+  window.openAlmanacEarth({ target: 'moon' });
+}
+document.addEventListener('click', _almOpenMoon3d);
+document.addEventListener('keydown', _almOpenMoon3d);
 
 // Next full moon after fromDate, with its distance and whether it's a
 // "supermoon" (full within ~90% of perigee ≈ ≤ 361,500 km).

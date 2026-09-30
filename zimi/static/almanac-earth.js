@@ -2161,7 +2161,7 @@ function _aeEnter() {
   _ae.target = 'earth';
   _ae.az = azel.az; _ae.el_ = azel.el;
   _ae.dist = _aeReduceMotion() ? _aeFitDist(AE_FIT_EARTH) : AE_FLY_START_DIST;
-  _aePreset('earth');
+  _aePreset(_aeOpenTarget === 'moon' ? 'moon' : 'earth');
   if (!_ae.hinted) { _ae.hinted = true; _aeShowHint(); }
 }
 
@@ -2200,8 +2200,11 @@ function _aeLocateMe() {
   }, fail, { timeout: AE_LOCATE_TIMEOUT_MS, maximumAge: 60000 });
 }
 
-function openAlmanacEarth() {
+// `opts.target` 'moon' opens on the Moon (the hero moon's way in); else Earth.
+var _aeOpenTarget = 'earth';
+function openAlmanacEarth(opts) {
   if (_aeIsOpen) return;
+  _aeOpenTarget = opts && opts.target === 'moon' ? 'moon' : 'earth';
   _aeEnsureStyles();
   if (!_ae) {
     var el = _aeBuildDom();
