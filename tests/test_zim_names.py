@@ -43,7 +43,7 @@ def scan_dir(tmp_path, monkeypatch):
 def _scan(root, *files):
     for rel in files:
         _touch(root, rel)
-    return {n: os.path.relpath(p, root) for n, p in server._scan_zim_files().items()}
+    return {n: os.path.relpath(p, root).replace(os.sep, "/") for n, p in server._scan_zim_files().items()}
 
 
 # ---------------------------------------------------------------------------

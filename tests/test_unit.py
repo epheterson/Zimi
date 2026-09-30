@@ -2004,7 +2004,8 @@ class TestVersionConsistency(unittest.TestCase):
         import re as _re
 
         pyproject = open(
-            os.path.join(os.path.dirname(os.path.dirname(__file__)), "pyproject.toml")
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "pyproject.toml"),
+            encoding="utf-8",
         ).read()
         m = _re.search(r'^version = "([^"]+)"', pyproject, _re.M)
         self.assertIsNotNone(m)

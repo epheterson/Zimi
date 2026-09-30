@@ -10,7 +10,8 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const src = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.js'), 'utf8');
+// A Windows checkout carries CRLF; the patterns below are written with \n.
+const src = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.js'), 'utf8').replace(/\r\n/g, '\n');
 function extract(re, label) {
   const m = src.match(re);
   if (!m) throw new Error('could not extract ' + label + ' from app.js');
