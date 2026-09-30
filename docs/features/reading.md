@@ -93,7 +93,7 @@ Location is asked for once and kept **session-scoped** on purpose — the almana
 - **Automatically.** A stale answer has the server fetch fresh data in the background, at most once every six hours, and the open view picks it up.
 - **Never.** Nothing is fetched; the view says how old its data is.
 
-The choice sits behind a gear in the Earth view's corner (admins change it there; everyone else sees it read-only) and under Almanac in Server settings. `ZIMI_SATELLITE_UPDATES=ask|auto|never` overrides the saved choice, and `ZIMI_OFFLINE=1` forces Never; either way the control says why it will not move.
+The choice sits behind a gear in the Earth view's corner (admins change it there; everyone else sees it read-only). It is not in Settings: the Almanac is an Easter egg. `ZIMI_SATELLITE_UPDATES=ask|auto|never` overrides the saved choice, and `ZIMI_OFFLINE=1` forces Never; either way the control says why it will not move.
 
 ### Configure
 

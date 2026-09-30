@@ -63,8 +63,8 @@ ok('Server settings lists every app, Zimipedia too, whatever the server offers n
   ctx._serverOfferable(['maps', 'tube']).join() === 'maps,tube,exchange,reddot,wiki,books');
 ok('and lists Zimipedia while the server offers it', ctx._serverOfferable(['wiki']).indexOf('wiki') >= 0);
 ok('the Server settings picker and its All button draw from that list, not every app',
-  /el\.innerHTML = _appPicksHtml\(_serverOfferable\(shown\),/.test(src) &&
-  /function _setAppsForServerAll\(on\) \{ _postServerApps\(on \? _serverOfferable\(_serverApps\) : \[\]\); \}/.test(src));
+  /return _appPicksHtml\(_serverOfferable\(shown\),/.test(src) &&
+  /function _setAppsForServerAll\(on\) \{ _postServerApps\(on \? _serverOfferable\(_serverAppsNow\(\)\) : \[\]\); \}/.test(src));
 ok('the shell drops its stamp when the server is back to the default apps, not to every app',
   /_setAppsStamp\(d\.shown\.join\(','\) === APPS_DEFAULT\.join\(','\) \? null : d\.shown\.join\(','\) \|\| '0'\)/.test(src));
 ctx._setAppsStamp('books');

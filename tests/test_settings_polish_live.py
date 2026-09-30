@@ -139,6 +139,56 @@ def test_preferences_are_one_row_shape(served, phone):
     assert not pg.errors, pg.errors
 
 
+def test_apps_paint_in_their_final_shape_with_discover(served, phone):
+    """The apps list is drawn with the pane, not after /manage/apps answers:
+    nothing below it moves while it loads. Discover is one of its rows."""
+    pg = phone
+    # /manage/apps answers late, as it does on a slow link.
+    pg.add_init_script(
+        """(() => { var f = window.fetch; window.fetch = function(u) { var a = arguments, self = this;
+      if (String(u).indexOf('/manage/apps') >= 0) return new Promise(r => setTimeout(r, 800)).then(() => f.apply(self, a));
+      return f.apply(self, a); }; })()"""
+    )
+    pg.goto(served + "/?manage=preferences")
+    pg.wait_for_selector("#ms-open-in-apps", state="attached", timeout=15000)
+    where = """() => ({ apps: document.querySelectorAll('#ms-apps .app-pick').length,
+      hidden: document.getElementById('ms-apps-wrap').hidden,
+      all: document.querySelectorAll('#ms-apps-all button').length,
+      open: Math.round(document.getElementById('ms-open-in-apps').closest('.set-row').getBoundingClientRect().top) })"""
+    first = pg.evaluate(where)
+    pg.wait_for_timeout(1600)
+    last = pg.evaluate(where)
+    assert first["apps"] >= 5 and not first["hidden"] and first["all"] == 2, first
+    assert first == last, (first, last)
+    discover = pg.evaluate(
+        """() => { var r = document.getElementById('ms-show-discover').closest('.set-rows');
+      return r === document.getElementById('ms-open-in-apps').closest('.set-rows'); }"""
+    )
+    assert discover, "Show Discover is not with the apps"
+
+
+def test_every_settings_on_off_is_a_switch(served, phone):
+    pg = phone
+    for section in ("library", "preferences", "creator", "server", "users"):
+        pg.goto(served + "/?manage=" + section)
+        pg.wait_for_timeout(1800)
+        if section == "users":
+            pg.evaluate("() => { var b = document.getElementById('add-user-toggle'); if (b) b.click(); }")
+            pg.wait_for_timeout(300)
+        loose = pg.evaluate(
+            """() => Array.from(document.querySelectorAll('#ms-pane input[type=checkbox]'))
+          .filter(i => !i.closest('.switch') && !i.closest('.ms-allowlist-picker, #ms-hot-zims'))
+          .map(i => i.id || i.className || i.outerHTML.slice(0, 60))"""
+        )
+        assert loose == [], (section, loose)
+    # The Almanac's satellite setting is the Earth view's, not Settings'.
+    pg.goto(served + "/?manage=server")
+    pg.wait_for_selector("#ms-net", state="attached", timeout=15000)
+    pg.wait_for_timeout(1000)
+    assert pg.locator("#ms-sat-mode").count() == 0
+    assert not pg.errors, pg.errors
+
+
 def test_library_split_sits_under_the_count(served, phone):
     pg = phone
     pg.goto(served + "/?manage=library")

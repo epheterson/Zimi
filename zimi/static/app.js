@@ -11013,8 +11013,7 @@ function _msUsersHtml() {
       // a creation control there is noise (Eric: "Admin means all we get it").
       '<div id="new-user-creation">' +
         '<div class="ms-form-label">' + tH('users_creation_label') + '</div>' +
-        '<label class="ms-check-row"><input type="checkbox" id="new-user-can-create"> ' +
-          tH('users_can_create') + '</label>' +
+        _switchRowsHtml([{ id: 'new-user-can-create', title: tH('users_can_create'), onchange: '' }]) +
       '</div>' +
       '<div id="new-user-error" class="pw-error" style="display:none"></div>' +
       '<div class="ms-actions">' +
@@ -11514,13 +11513,10 @@ function _creatorSidecarHtml(sidecar) {
     _creatorStateHtml(sidecar.installed);
 }
 
-// A capture-default switch — the app's own .switch control, wired to the
-// admin-only POST half of /manage/creator so the choice persists server-side.
-function _creatorDefaultSwitch(key, labelKey, on) {
-  return '<label class="switch"><input type="checkbox" role="switch" id="ms-cr-' + key + '"' +
-    (on ? ' checked' : '') +
-    ' aria-label="' + escAttr(t(labelKey)) + '"' +
-    ' onchange="_setCreatorDefault(\'' + key + '\', this)"><span class="switch-slider"></span></label>';
+// A capture-default switch row, wired to the admin-only POST half of
+// /manage/creator so the choice persists server-side.
+function _creatorDefaultRow(key, labelKey, on) {
+  return { id: 'ms-cr-' + key, title: tH(labelKey), on: on, onchange: '_setCreatorDefault(\'' + key + '\', this)' };
 }
 
 function _creatorQueueHtml(queue) {
@@ -11534,8 +11530,8 @@ function _creatorHtml(d) {
 
   // Defaults a new capture starts with — the control you actually touch.
   var h = '<div class="ms-section-label">' + tH('creator_defaults') + '</div>' +
-    _mcRow(tH('create_block_ads'), _creatorDefaultSwitch('block_ads', 'create_block_ads', d.block_ads_default)) +
-    _mcRow(tH('create_capture_variants'), _creatorDefaultSwitch('capture_variants', 'create_capture_variants', d.capture_variants_default)) +
+    _switchRowsHtml([_creatorDefaultRow('block_ads', 'create_block_ads', d.block_ads_default),
+      _creatorDefaultRow('capture_variants', 'create_capture_variants', d.capture_variants_default)]) +
     '<div class="ms-hint">' + tH('creator_defaults_hint') + '</div>';
 
   // The queue, when it matters.
@@ -12173,21 +12169,21 @@ function _msPreferencesHtml() {
   // paint from its answer into #ms-apps; an account that may not set them
   // sees none. A signed-in account's own choice follows, titled so the two
   // cards are not mistaken for one.
-  var h = '<div class="ms-section-label ms-section-head">' + tH('apps_section') + '<span id="ms-apps-all"></span></div>' +
-    '<div id="ms-apps-wrap" hidden><div id="ms-apps"></div></div>' +
+  var h = '<div class="ms-section-label ms-section-head">' + tH('apps_section') + '<span id="ms-apps-all">' + _serverAppsAllHtml() + '</span></div>' +
+    '<div id="ms-apps-wrap"><div id="ms-apps">' + _serverAppsHtml() + '</div></div>' +
     (_appsAllowedByServer() && _userSession
       ? '<div class="ms-theme-label" style="margin-top:12px">' + tH('show_apps') + '</div>' +
         _appPicksHtml(APP_NAMES.filter(_appsAllowedByServer), _appShown, '_setUserApp')
       : '') +
     _switchRowsHtml([{ id: 'ms-open-in-apps', title: tH('open_in_apps'), desc: tH('open_in_apps_hint'),
-      on: _openInApps(), onchange: '_setOpenInApps(this.checked)' }]) +
+      on: _openInApps(), onchange: '_setOpenInApps(this.checked)' },
+      { id: 'ms-show-discover', title: tH('show_discover'), on: !_getStorageFlag(SK.HIDE_DISCOVER),
+        onchange: '_setStorageFlag(SK.HIDE_DISCOVER, !this.checked);renderHome()' }]) +
 
     '<div class="ms-section-label" style="margin-top:24px">' + tH('ms_display_section') + '</div>' +
     '<div class="ms-theme-label">' + tH('app_theme') + '</div>' +
     _appThemeSegHtml() +
     '<div class="ms-hint">' + tH('app_theme_hint') + '</div>' +
-    _switchRowsHtml([{ title: tH('show_discover'), on: !_getStorageFlag(SK.HIDE_DISCOVER),
-      onchange: '_setStorageFlag(SK.HIDE_DISCOVER, !this.checked);renderHome()' }]) +
 
     // Reading: everything about how an article reads, in one place. The two
     // choices first, then the switches.
@@ -12536,59 +12532,6 @@ function _appUpdateSetDelay(days) {
   _appUpdateSaveSetting('/manage/app-update-delay', { delay_days: parseInt(days, 10) }, 'ZIMI_UPDATE_DELAY_DAYS');
 }
 
-// "Satellite data from the internet" (satellites.py): whether this server
-// reaches CelesTrak for the Almanac's 3D Earth. The same setting as the Earth
-// view's gear, whose labels it shares (alm_earth_sat_<mode>). Locked by
-// ZIMI_SATELLITE_UPDATES it shows the standard env note; ZIMI_OFFLINE locks
-// it to Never and says so. Hidden, separator and all, until the server
-// answers.
-var _SAT_UPDATES_WRAP_ID = 'ms-sat-wrap';
-var _SAT_UPDATES_ID = 'ms-sat-updates';
-
-function _satUpdatesHtml(d) {
-  var opts = (d.choices || []).map(function(m) {
-    return _appUpdateOption(m, t('alm_earth_sat_' + m), m === d.mode);
-  }).join('');
-  return _appUpdateSelectRow({
-    id: 'ms-sat-mode',
-    labelKey: 'alm_earth_sat_setting',
-    hintKey: 'alm_earth_sat_setting_hint',
-    envVar: d.env,
-    locked: !!d.locked,
-    lockNote: d.locked === 'offline' ? t('alm_earth_sat_offline') : '',
-    onchange: '_setSatUpdates(this.value)',
-    options: opts
-  });
-}
-
-function _paintSatUpdates(d) {
-  var wrap = document.getElementById(_SAT_UPDATES_WRAP_ID);
-  if (wrap) wrap.hidden = !d;
-  if (d) _setHtmlIfChanged(_SAT_UPDATES_ID, _satUpdatesHtml(d));
-}
-
-// The element is looked up after the fetch (see _renderEnvSection for why).
-async function _renderSatUpdatesSection() {
-  var d = null;
-  try { d = await _msFetch('/manage/satellites'); } catch (e) {}
-  _paintSatUpdates(d);
-}
-
-// The answer is the setting as it now stands. A refusal (the env var or
-// ZIMI_OFFLINE took it over since the pane was drawn) is said, and the pane
-// repaints from server truth.
-function _setSatUpdates(mode) {
-  manageFetch('/manage/satellites', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode: mode })
-  }).then(function(r) { return r.json(); }).then(function(d) {
-    if (d && d.error) { _showToast(t('save_failed')); _renderSatUpdatesSection(); return; }
-    _paintSatUpdates(d);
-    _renderNetSection();
-  }).catch(function() { _renderSatUpdatesSection(); });
-}
-
 // "What Zimi fetches from the internet" (outbound.py): every destination, one
 // row each, what sets it off and whether it happens on its own. Folded to one
 // line, the count of each, so a phone reads the answer without scrolling past
@@ -12599,7 +12542,6 @@ var _NET_ID = 'ms-net';
 // own action (a download, a capture) or by ZIMI_OFFLINE.
 var _NET_CONTROLS = {
   update_check: _APP_UPDATE_CHECK_ID,
-  satellites: 'ms-sat-mode',
   sharing: 'ms-mirror-status',
   auto_update: 'library'
 };
@@ -12665,30 +12607,40 @@ async function _renderNetSection() {
 async function _renderAppsSection() {
   var d = null;
   try { d = await _msFetch('/manage/apps'); } catch (e) {}
-  var el = document.getElementById('ms-apps');
   var wrap = document.getElementById('ms-apps-wrap');
-  var all = document.getElementById('ms-apps-all');
-  if (!el) return;
-  if (!d) { if (wrap) wrap.hidden = true; return; }
+  if (!document.getElementById('ms-apps')) return;
+  if (!d) { if (wrap) wrap.hidden = true; _setHtmlIfChanged('ms-apps-all', ''); return; }
   if (wrap) wrap.hidden = false;
-  var shown = Array.isArray(d.shown) ? d.shown : (d.enabled ? APPS_DEFAULT : []);
-  _serverApps = shown;
-  el.innerHTML = _appPicksHtml(_serverOfferable(shown), function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', d.env_locked) +
-    (d.env_locked ? '<div class="ms-hint">' + tH('env_controlled', { v: 'ZIMI_APPS' }) + '</div>' : '');
-  // All and None sit on the section's header line, out of the rows' way.
-  if (all) all.innerHTML = d.env_locked ? ''
+  _serverApps = Array.isArray(d.shown) ? d.shown : (d.enabled ? APPS_DEFAULT : []);
+  _serverAppsLocked = !!d.env_locked;
+  _setHtmlIfChanged('ms-apps', _serverAppsHtml());
+  _setHtmlIfChanged('ms-apps-all', _serverAppsAllHtml());
+}
+// What the server offers, as far as the page knows: the stamp it booted with
+// (the default apps, none, or the names), until /manage/apps answers.
+var _serverApps = null;
+var _serverAppsLocked = false;
+function _serverAppsNow() { return _serverApps || APP_NAMES.filter(_appsAllowedByServer); }
+function _serverAppsHtml() {
+  var shown = _serverAppsNow();
+  return _appPicksHtml(_serverOfferable(shown), function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', _serverAppsLocked) +
+    (_serverAppsLocked ? '<div class="ms-hint">' + tH('env_controlled', { v: 'ZIMI_APPS' }) + '</div>' : '');
+}
+// All and None sit on the section's header line, out of the rows' way.
+function _serverAppsAllHtml() {
+  return _serverAppsLocked ? ''
     : '<button type="button" class="set-head-btn" onclick="_setAppsForServerAll(true)">' + tH('filter_all') + '</button>' +
       '<button type="button" class="set-head-btn" onclick="_setAppsForServerAll(false)">' + tH('apps_none') + '</button>';
 }
-var _serverApps = APPS_DEFAULT;
 // The apps the server switch lists: the default ones, and an opt-in one only
 // while the server already offers it (named in ZIMI_APPS or a saved list).
 function _serverOfferable(shown) {
   return APP_NAMES.filter(function(a) { return !_appOptIn(a) || shown.indexOf(a) >= 0; });
 }
-function _setAppsForServerAll(on) { _postServerApps(on ? _serverOfferable(_serverApps) : []); }
+function _setAppsForServerAll(on) { _postServerApps(on ? _serverOfferable(_serverAppsNow()) : []); }
 function _setAppForServer(app, on) {
-  _postServerApps(APP_NAMES.filter(function(a) { return a === app ? on : _serverApps.indexOf(a) >= 0; }));
+  var shown = _serverAppsNow();
+  _postServerApps(APP_NAMES.filter(function(a) { return a === app ? on : shown.indexOf(a) >= 0; }));
 }
 function _postServerApps(shown) {
   manageFetch('/manage/apps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shown: shown }) })
@@ -12761,13 +12713,6 @@ function _msServerHtml() {
   var updatesSec = '<div class="ms-section-label">' + tH('app_update_section') + '</div>' +
     '<div id="' + _APP_UPDATE_ID + '" class="ms-app-update">' + tH('loading') + '</div>';
 
-  // Beside App updates: the other thing this server may fetch on its own.
-  // Its separator lives inside it, so a section that never answers leaves
-  // no empty band behind.
-  var satSec = '<div id="' + _SAT_UPDATES_WRAP_ID + '" hidden>' + sep +
-    '<div class="ms-section-label">' + tH('almanac') + '</div>' +
-    '<div id="' + _SAT_UPDATES_ID + '"></div></div>';
-
   var sharingSec = '<div class="ms-section-label">' + tH('sharing_section') + '</div>' +
     '<div id="ms-mirror-status" class="share-rows-slot">' + (shareCached || _shareSkeletonHtml()) + '</div>';
 
@@ -12827,9 +12772,8 @@ function _msServerHtml() {
   // Sharing, Downloads, Storage, My Data / Server Backups, then App Updates
   // just before the API Token, and Hot ZIMs + cache last (Eric moved Updates
   // down from the top on the second pass).
-  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec + satSec, netSec, tokenSec, hotSec, envSec].join(sep);
+  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, netSec, tokenSec, hotSec, envSec].join(sep);
   _renderEnvSection();
-  _renderSatUpdatesSection();
   _renderNetSection();
   // Async fill security
   Promise.all([
@@ -13362,7 +13306,7 @@ function _portRowInner(bt, btOn) {
       '<span class="share-port-dot" id="share-port-dot" title="' + escAttr(dotTitle) + '" style="background:' + dotColor + '"></span>' +
       '<button class="share-port-retry"' + (btOn ? '' : ' disabled') + ' onclick="_natRecheck(this)" title="' + escAttr(t('bt_port_recheck_hint')) + '" aria-label="' + escAttr(t('retry')) + '">' + _SVG_REFRESH + '</button>' +
       '<label class="share-upnp"' + (upnpLock ? ' title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') + '>' +
-        '<input type="checkbox"' + (bt.upnp_enabled ? ' checked' : '') + upnpDis + (upnpLock ? ' data-envlock="1"' : '') + ' onchange="_setUpnp(this)"> UPnP' +
+        'UPnP <span class="switch switch-sm"><input type="checkbox" role="switch"' + (bt.upnp_enabled ? ' checked' : '') + upnpDis + (upnpLock ? ' data-envlock="1"' : '') + ' onchange="_setUpnp(this)"><span class="switch-slider"></span></span>' +
       '</label>' +
     '</span>';
 }
@@ -13620,9 +13564,8 @@ async function _renderDownloadSchedule() {
   window._dlSchedule = s;
   var enabled = !!s.enabled, locked = !!s.locked, speedLocked = !!s.download_kb_locked;
 
-  var toggle = '<label class="ms-toggle-row"><input type="checkbox"' +
-    (enabled ? ' checked' : '') + (locked ? ' disabled' : '') +
-    ' onchange="_setDownloadScheduleEnabled(this.checked)"> ' + tH('dl_schedule_toggle') + '</label>';
+  var toggle = _switchRowsHtml([{ title: tH('dl_schedule_toggle'), on: enabled, disabled: locked,
+    onchange: '_setDownloadScheduleEnabled(this.checked)' }]);
   var lockNote = locked ? '<div class="ms-hint">' + tH('dl_window_env_locked') + '</div>' : '';
 
   // The window times drive BOTH download-queueing and the upload restrictor, so
@@ -13659,9 +13602,8 @@ async function _renderDownloadSchedule() {
   // field + "throttling now" note only appear once it's on).
   var uploadRestrict = !!s.upload_restrict;
   var uploadRow =
-    '<label class="ms-toggle-row"><input type="checkbox"' +
-      (uploadRestrict ? ' checked' : '') + (locked ? ' disabled' : '') +
-      ' onchange="_setUploadRestrict(this.checked)"> ' + tH('dl_upload_restrict') + '</label>' +
+    _switchRowsHtml([{ title: tH('dl_upload_restrict'), on: uploadRestrict, disabled: locked,
+      onchange: '_setUploadRestrict(this.checked)' }]) +
     (uploadRestrict ?
       '<div class="share-field ms-dl-trickle"><label>' + tH('dl_upload_trickle') + '</label>' +
         '<span class="share-port-group">' +
@@ -13765,7 +13707,7 @@ function _myDataCardHtml() {
       '<input type="file" id="ms-mydata-file" accept="application/json,.json" style="display:none" onchange="importMyDataFile(this)">' +
       '<span id="ms-mydata-status" class="ms-hint" style="margin:0;align-self:center"></span>' +
     '</div>' +
-    '<label class="ms-toggle-row"><input type="checkbox" id="ms-mydata-overwrite"> ' + tH('backup_overwrite') + '</label>' +
+    _switchRowsHtml([{ id: 'ms-mydata-overwrite', title: tH('backup_overwrite'), onchange: '' }]) +
     '<div id="ms-mydata-result" class="ms-backup-import"></div>';
 }
 
@@ -13778,7 +13720,7 @@ function _serverBackupCardHtml() {
       '<input type="file" id="ms-server-file" accept="application/json,.json" style="display:none" onchange="importServerBackupFile(this)">' +
       '<span id="ms-server-status" class="ms-hint" style="margin:0;align-self:center"></span>' +
     '</div>' +
-    '<label class="ms-toggle-row"><input type="checkbox" id="ms-server-overwrite"> ' + tH('backup_overwrite') + '</label>' +
+    _switchRowsHtml([{ id: 'ms-server-overwrite', title: tH('backup_overwrite'), onchange: '' }]) +
     '<div id="ms-server-import" class="ms-backup-import"></div>';
 }
 
@@ -25219,10 +25161,9 @@ async function _renderDesktopLan() {
     if (cfg.lan_access || cfg.lan_access_env) addrs = await pywebview.api.lan_addresses();
   } catch (e) { return; }
   var locked = !!cfg.lan_access_env;
-  var h = '<label class="ms-toggle-row"><input type="checkbox" id="ms-lan-access"' +
-    (cfg.lan_access ? ' checked' : '') + (locked ? ' disabled' : '') +
-    ' onchange="_setDesktopLan(this)"> ' + tH('desktop_lan_access') + '</label>' +
-    '<div class="ms-hint">' + tH(locked ? 'configured_via_env' : 'desktop_lan_hint') + '</div>';
+  var h = _switchRowsHtml([{ id: 'ms-lan-access', title: tH('desktop_lan_access'),
+    desc: tH(locked ? 'configured_via_env' : 'desktop_lan_hint'), on: cfg.lan_access, disabled: locked,
+    onchange: '_setDesktopLan(this)' }]);
   if (addrs.length) {
     var port = location.port || '80';
     h += '<div class="ms-hint">' + tH('desktop_lan_open_at') + ' ' + addrs.map(function(ip) {

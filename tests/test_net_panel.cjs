@@ -70,9 +70,12 @@ const rows = [
   ok('no row shows a raw key', !/<</.test(h), (h.match(/<<[^>]*>>/g) || []).join(' '));
   ok('each row says its state', /net-state-auto">On its own</.test(h) && /net-state-lan">This network</.test(h) && /net-state-unset">Not set up</.test(h));
   ok('hosts read left to right, escaped', /<code dir="ltr">library\.kiwix\.org<\/code>/.test(h) && /team&lt;x&gt;/.test(h) && !/team<x>/.test(h));
-  ok('a row with a switch here links to it', /_netGo\('update_check'\)/.test(h) && /_netGo\('satellites'\)/.test(h) && /_netGo\('auto_update'\)/.test(h));
+  ok('a row with a switch here links to it', /_netGo\('update_check'\)/.test(h) && /_netGo\('auto_update'\)/.test(h));
+  // The satellite data's switch is the Almanac's Earth view (a hidden
+  // Easter egg), not Settings, so its row has no link.
+  ok('the satellite row has no switch here', !/_netGo\('satellites'\)/.test(h));
   const linkCount = (h.match(/class="net-go"/g) || []).length;
-  ok('rows changed only by ZIMI_OFFLINE or by the person have no link', linkCount === 6, String(linkCount));
+  ok('rows changed only by ZIMI_OFFLINE or by the person have no link', linkCount === 5, String(linkCount));
 
   el = { innerHTML: '', querySelector: () => null };
   answer = { offline: true, rows: rows.map(r => Object.assign({}, r, { state: r.id === 'nearby' ? 'lan' : 'off' })) };

@@ -98,21 +98,11 @@ for (const [theme, lang] of [['dark', ''], ['light', ''], ['dark', 'he']]) {
   });
 }
 
-test('the same setting in Server settings, saved on the server', async ({ page }) => {
+test('Server settings does not show the Almanac setting (the Almanac is an Easter egg)', async ({ page }) => {
   await page.setViewportSize(PHONE);
   await page.goto(`${BASE}/?manage=server`);
-  const select = page.locator('#ms-sat-mode');
-  await expect(select).toBeVisible({ timeout: 20000 });
-  await expect(select.locator('option')).toHaveCount(3);
-  await expect(select).toHaveValue('ask');
-  await select.scrollIntoViewIfNeeded();
-  await expectNoSidewaysScroll(page);
-  await page.screenshot({ path: `${SHOTS}/server-settings.png` });
-  await select.selectOption('never');
-  await expect.poll(async () => (await (await fetch(`${BASE}/almanac-satellites`)).json()).mode).toBe('never');
-  await expect(page.locator('#ms-sat-mode')).toHaveValue('never');
-  await page.locator('#ms-sat-mode').selectOption('ask');
-  await expect.poll(async () => (await (await fetch(`${BASE}/almanac-satellites`)).json()).mode).toBe('ask');
+  await expect(page.locator('#ms-net')).toBeAttached({ timeout: 20000 });
+  await expect(page.locator('#ms-sat-mode')).toHaveCount(0);
 });
 
 test('Get fresh data is one POST, and the view redraws from its answer', async ({ page }) => {

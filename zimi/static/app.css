@@ -560,13 +560,11 @@
   .ms-user-addbar { margin-top: 16px; }
   .ms-user-add { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; max-width: 420px; }
   .ms-user-add[hidden] { display: none; }  /* [hidden] must beat the display:flex above */
-  .ms-user-add input, .create-field { padding: 8px 10px; font-size: 13px; font-family: inherit; color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); box-sizing: border-box; width: 100%; }
-  /* A checkbox is not a text field: the width:100% above stretched it across
-     the row and shoved its label to the far edge. Keep it its own size, and
-     lay the grant out as [box] label so they read as one control. */
-  .ms-user-add input[type="checkbox"] { width: auto; padding: 0; accent-color: var(--amber); }
-  .ms-check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
-  .ms-user-add input:focus, .create-field:focus { outline: none; border-color: var(--amber-border); box-shadow: 0 0 0 3px var(--amber-glow); }
+  .ms-user-add input:not([role="switch"]), .create-field { padding: 8px 10px; font-size: 13px; font-family: inherit; color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); box-sizing: border-box; width: 100%; }
+  /* A checkbox (the allowlist's) is not a text field: the width:100% above
+     stretched it across the row. Keep it its own size. */
+  .ms-user-add input[type="checkbox"]:not([role="switch"]) { width: auto; padding: 0; accent-color: var(--amber); }
+  .ms-user-add input:not([role="switch"]):focus, .create-field:focus { outline: none; border-color: var(--amber-border); box-shadow: 0 0 0 3px var(--amber-glow); }
   .ms-form-label { font-size: 12px; color: var(--text2); }
   .ms-user-account { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
   /* "Your Account" now leads the pane: no top border, and a divider below it
@@ -1686,8 +1684,6 @@
   .ms-nav-item.active { color: var(--amber); background: var(--amber-glow); }
   .ms-pane { flex: 1; padding: 16px 20px; }
   .ms-pane .ms-actions { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
-  .ms-pane .ms-check { display: flex; align-items: center; gap: 8px; padding: 6px 0; cursor: pointer; font-size: 13px; color: var(--text); }
-  .ms-pane .ms-check input { accent-color: var(--amber); }
   /* Settings' on/off rows: the sharing card's row shape, the whole row the
      label of its switch. Apps add their icon at the start. */
   .set-rows { margin: 10px 0 0; }
@@ -1999,13 +1995,6 @@
   .dl-item .dl-error { color: var(--error); font-weight: 600; min-width: 0; }
   .dl-item .dl-scheduled { color: var(--text2); flex-shrink: 0; font-weight: 500; white-space: nowrap; }
   /* Download-scheduling card */
-  /* 12px of air above every toggle row: keeps the checkbox off the hint text /
-     button row that precedes it (Downloads restrictor, both Overwrite rows). */
-  .ms-toggle-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--text); cursor: pointer; }
-  /* Match the app's styled checkbox (amber accent) instead of the bare native
-     square — consistent with .ms-check / .share-upnp elsewhere in the pane. */
-  .ms-toggle-row input[type="checkbox"] { accent-color: var(--amber); width: 15px; height: 15px; flex-shrink: 0; }
-  .ms-toggle-row input[disabled] { cursor: not-allowed; }
   .ms-dl-window { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 10px; }
   .ms-dl-window label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); }
   .ms-dl-window input[type="time"] {
@@ -2127,8 +2116,7 @@
   .share-inactive .switch { cursor: default; }
   .share-port-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 12px; color: var(--text2); flex-wrap: wrap; }
   .share-port-label { font-family: monospace; font-size: 11px; }
-  .share-upnp { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-size: 11px; }
-  .share-upnp input { accent-color: var(--amber); }
+  .share-upnp { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; }
   /* Icon button matching the num-input chrome beside it (6px radius,
      surface fill) — an SVG reload glyph, centered, amber on hover. */
   .share-port-retry { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text2); cursor: pointer; transition: color 0.15s, border-color 0.15s; }
@@ -2381,7 +2369,12 @@
   }
   .switch input:checked + .switch-slider::before { transform: translateX(18px); background: #000; }
   .switch input:focus-visible + .switch-slider { outline: 2px solid var(--amber); outline-offset: 2px; }
-  .switch input:disabled + .switch-slider { cursor: default; }
+  .switch input:disabled, .switch input:disabled + .switch-slider { cursor: default; }
+  .set-row .switch input:disabled + .switch-slider { opacity: 0.5; }
+  /* The small one, inline beside a field (UPnP by the port). */
+  .switch-sm { width: 32px; height: 18px; }
+  .switch-sm .switch-slider::before { width: 12px; height: 12px; }
+  .switch-sm input:checked + .switch-slider::before { transform: translateX(14px); }
   @media (prefers-reduced-motion: reduce) {
     .switch-slider, .switch-slider::before { transition: none; }
   }
