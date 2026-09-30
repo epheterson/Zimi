@@ -4603,7 +4603,9 @@ class ZimHandler(BaseHTTPRequestHandler):
         ok, err, doc = _users.sync_user_data(name, data if isinstance(data, dict) else {})
         if not ok:
             # Too large is the account's to fix (the device says sync is paused).
-            return self._json(413 if err.endswith("too large") else 400, {"error": err})
+            # A file that could not be read is the server's, and passes.
+            status = 413 if err.endswith("too large") else 503 if err == "read failed" else 400
+            return self._json(status, {"error": err})
         return self._json(200, {"status": "ok", "saved": doc["saved"]})
 
     def log_message(self, format, *args):

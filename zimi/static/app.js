@@ -19764,9 +19764,13 @@ function _readerShare() {
 // safety timeout.
 var _FRAME_DOC_POLL_MS = 16;
 var _FRAME_DOC_WAIT_MS = 15000;  // the reader's own safety timeout
+// Each openReader call's number: a poller left from an earlier page stops
+// rather than handle the page opened after it.
+var _frameOpenGen = 0;
 function _whenFrameDocReady(frame, prevDoc, fn) {
-  var t0 = Date.now();
+  var t0 = Date.now(), gen = _frameOpenGen;
   var tick = function() {
+    if (gen !== _frameOpenGen) return;
     var d = null; try { d = frame.contentDocument; } catch (e) { return; }
     if (d && d !== prevDoc && d.readyState !== 'loading' && d.URL !== 'about:blank') {
       if (d.readyState === 'complete' || _isBookDoc(d)) return; // the load event has it
@@ -19894,6 +19898,7 @@ function openReader(url) {
   // a masked article (Reader View, Zimipedia's reader) waited on the load
   // event, which waits on every eager picture read out of a big ZIM first. The DOM is complete at DOMContentLoaded; the pictures
   // fill in after. A book waits for its load: its pages are measured once.
+  _frameOpenGen++;
   var _prevDoc = null; try { _prevDoc = frame.contentDocument; } catch (e) {}
   var _earlyOk = _maskFrame && url.slice(0, 3) === '/w/' && !lurl.endsWith('.pdf');
   var _onDoc = function() {
@@ -22461,9 +22466,12 @@ function _savedPush(leaving) {
     method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: body,
     keepalive: !!leaving && new Blob([body]).size < _SAVED_KEEPALIVE_MAX,
   }).then(function (r) {
-    if (r.status === 413) { _savedSetPaused(true); return null; }
+    // Too large: paused until something is let go (the next change sends it),
+    // not re-sent on a timer.
+    if (r.status === 413) { _savedSetPaused(true); return 'too-large'; }
     return r.ok ? r.json() : null;
   }).then(function (d) {
+    if (d === 'too-large') return false;
     if (!d || !d.saved) { if (!leaving) _savedSetBehind(true); return false; }
     _savedSetPaused(false);
     _savedSetBehind(false);
@@ -22563,7 +22571,13 @@ var Highlights = (function () {
         var el = document.createElement('script');
         // The version moves with the engine: /static is cached for a year.
         el.src = '/static/highlights.js?v=3';
-        el.onload = function () { engine = window.ZimiHighlightsEngine || null; if (engine) resolve(engine); else reject(); };
+        el.onload = function () {
+          engine = window.ZimiHighlightsEngine || null;
+          if (engine) return resolve(engine);
+          loading = null; // the next selection tries again
+          console.warn('highlights.js loaded without its engine');
+          reject();
+        };
         el.onerror = function () { loading = null; reject(); };
         document.head.appendChild(el);
       });
@@ -23017,6 +23031,7 @@ function _updateLibraryBtnIcon() {
       btn.style.color = '';
       btn.title = t('history');
     }
+    btn.setAttribute('aria-label', btn.title); // what it does now, read aloud too
   }
   // Saved's opener: its own glyph and its own name, in every view.
   var panelBtn = document.getElementById('bm-panel-btn');

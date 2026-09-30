@@ -452,3 +452,54 @@ def test_userdata_post_merges_and_hands_back_the_store(monkeypatch, tmp_path):
     h._handle_userdata_post({"saved": _store(items={"w\nA/B": _item("A/B")})})
     assert h.status == 200
     assert set(h.body["saved"]["items"]) == {"w\nA/A", "w\nA/B"}
+
+
+def test_a_file_that_cannot_be_read_is_never_written_over(monkeypatch, tmp_path):
+    """A data file that is there but unreadable (bad bytes, a permission
+    change after a restore) must not be taken for an empty one: the next
+    sync would merge into nothing and write that over the file."""
+    _setup(monkeypatch, tmp_path)
+    users.sync_user_data("alice", {"saved": _store(items={"w\nA/A": _item("A/A")})})
+    path = users._userdata_path("alice")
+    with open(path, "rb") as f:
+        good = f.read()
+    with open(path, "wb") as f:
+        f.write(b"\xff\xfe not json")
+    ok, err, doc = users.sync_user_data(
+        "alice", {"saved": _store(items={"w\nA/B": _item("A/B", ts=1100)})}
+    )
+    assert (ok, err, doc) == (False, "read failed", None)
+    with open(path, "rb") as f:
+        assert f.read() == b"\xff\xfe not json"  # untouched, for someone to rescue
+    # The endpoint says the server failed, so the device keeps it and retries.
+    h = _Handler()
+    monkeypatch.setattr(users, "resolve_request_user", lambda _h: "alice")
+    h._handle_userdata_post({"saved": _store()})
+    assert h.status == 503
+    with open(path, "wb") as f:
+        f.write(good)
+    assert list(users.load_user_data("alice")["saved"]["items"]) == ["w\nA/A"]
+
+
+def test_a_merge_restore_keeps_what_was_saved_since_the_backup(monkeypatch, tmp_path):
+    """Restoring last month's backup in merge mode merges each user's saved
+    store; what they saved after the backup stays. A backup from before 1.12
+    carries no store and leaves the kept one as it is."""
+    _setup(monkeypatch, tmp_path)
+    users.sync_user_data("alice", {"saved": _store(items={"w\nA/A": _item("A/A")})})
+    backup = users.all_user_data()
+    users.sync_user_data(
+        "alice", {"saved": _store(items={"w\nA/B": _item("A/B", ts=2000)})}
+    )
+    users.sync_user_data("bob", {"saved": _store(items={"w\nB/B": _item("B/B")})})
+    assert users.restore_user_data(backup) == 1
+    assert set(users.load_user_data("alice")["saved"]["items"]) == {"w\nA/A", "w\nA/B"}
+    old = {"bob": {"bookmarks": [{"zim": "b", "path": "old"}]}}
+    assert users.restore_user_data(old) == 1
+    bob = users.load_user_data("bob")
+    assert list(bob["saved"]["items"]) == ["w\nB/B"]
+    assert bob["bookmarks"] == [{"zim": "b", "path": "old"}]
+    # Overwrite still writes the backup as it was.
+    users.restore_user_data(backup, overwrite=True)
+    assert set(users.load_user_data("alice")["saved"]["items"]) == {"w\nA/A"}
+    assert set(users.all_user_data()) == {"alice"}

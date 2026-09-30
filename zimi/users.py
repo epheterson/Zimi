@@ -1013,21 +1013,37 @@ def _empty_user_data():
     }
 
 
+class UserDataUnreadable(Exception):
+    """A user's data file exists but could not be read. Nothing may be
+    written over it: the next write would replace what it holds."""
+
+
+def _read_user_data(name):
+    """A user's stored blob; fresh-empty when there is none. Raises
+    UserDataUnreadable when the file is there but cannot be read."""
+    import json
+
+    try:
+        with open(_userdata_path(name), encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return _empty_user_data()
+    except (ValueError, OSError) as e:
+        log.warning("Could not read user data for %s: %s", name, e)
+        raise UserDataUnreadable(name) from e
+    return data if isinstance(data, dict) else _empty_user_data()
+
+
 def load_user_data(name):
-    """Return a user's stored data blob, or a fresh-empty one when none exists.
-    Caller has already authorized the requester for ``name``."""
+    """Return a user's stored data blob, or a fresh-empty one when none exists
+    or it cannot be read (logged; only a read, so nothing is lost). Caller
+    has already authorized the requester for ``name``."""
     if _safe_userdata_key(name) is None:
         return _empty_user_data()
     try:
-        import json
-
-        with open(_userdata_path(name), encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, dict):
-            return data
-    except (FileNotFoundError, ValueError, OSError):
-        pass
-    return _empty_user_data()
+        return _read_user_data(name)
+    except UserDataUnreadable:
+        return _empty_user_data()
 
 
 def _user_data_doc(blob, now_ms, saved=None):
@@ -1090,7 +1106,11 @@ def sync_user_data(name, patch, now_ms=None):
         return False, "invalid data", None
     now_ms = _now_ms() if now_ms is None else now_ms
     with _lock:
-        cur = load_user_data(name)
+        try:
+            cur = _read_user_data(name)
+        except UserDataUnreadable:
+            # Merging into an empty blob and writing would wipe the file.
+            return False, "read failed", None
         blob = dict(cur)
         for field in ("bookmarks", "folders", "history", "preferences"):
             if field in patch:
@@ -1150,8 +1170,11 @@ def all_user_data():
 def restore_user_data(blobs, overwrite=False):
     """Restore per-user blobs from a full-server backup. ``blobs`` is keyed by
     casefold name (as ``all_user_data`` emits). ``overwrite`` clears every
-    existing blob first; otherwise incoming wins per user, others untouched.
-    Returns the number of user blobs written."""
+    existing blob first and writes each as it was backed up; otherwise each
+    is merged the way a device's sync is (sync_user_data): the plain fields
+    it carries replace the kept ones, and its saved store is merged with the
+    kept one, so what was saved since the backup stays. Other users are
+    untouched. Returns the number of user blobs written."""
     if not isinstance(blobs, dict):
         return 0
     if overwrite:
@@ -1159,9 +1182,15 @@ def restore_user_data(blobs, overwrite=False):
             delete_user_data(key)
     written = 0
     for key, blob in blobs.items():
-        ok, _ = save_user_data(key, blob)  # key is already casefold; _key is idempotent
+        # key is already casefold; _key is idempotent
+        if overwrite:
+            ok, err = save_user_data(key, blob)
+        else:
+            ok, err, _ = sync_user_data(key, blob)
         if ok:
             written += 1
+        else:
+            log.warning("Restore skipped user data for %s: %s", key, err)
     return written
 
 
