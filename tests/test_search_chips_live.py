@@ -105,6 +105,8 @@ def test_chips_and_help_fit_a_phone(served, lang):
         pg = ctx.new_page()
         errors = []
         pg.on("pageerror", lambda e: errors.append(str(e)))
+        console = []
+        pg.on("console", lambda m: console.append(m.type + ": " + m.text[:200]))
         pg.route(
             "**/manage/catalog?*",
             lambda route: route.fulfill(
@@ -182,11 +184,24 @@ def test_chips_and_help_fit_a_phone(served, lang):
         pg.evaluate("async () => { await enterManage(); switchManageTab('browse'); }")
         pg.wait_for_function("() => manageTab === 'browse' && _catalogCache !== null")
         # Typed once the catalog is on screen, as a person would.
-        pg.wait_for_function(
-            "() => { var r = document.getElementById('catalog-results');"
-            " return _browseView === 'gallery' && !!r && r.children.length > 0; }",
-            timeout=30000,
-        )
+        try:
+            pg.wait_for_function(
+                "() => { var r = document.getElementById('catalog-results');"
+                " return _browseView === 'gallery' && !!r && r.children.length > 0; }",
+                timeout=30000,
+            )
+        except Exception:
+            state = pg.evaluate(
+                """() => ({ mode, manageTab, view: _browseView, manageEnabled,
+                  pw: _managePwRequired, cache: _catalogCache && _catalogCache.length,
+                  results: !!document.getElementById('catalog-results'),
+                  output: (document.getElementById('output') || {}).innerHTML.slice(0, 400),
+                  req: performance.getEntriesByType('resource').map(e => e.name.replace(location.origin, ''))
+                    .filter(n => /manage|catalog/.test(n)) })"""
+            )
+            raise AssertionError(
+                "catalog never painted: %r; errors %r; console %r" % (state, errors, console[-15:])
+            )
         pg.locator("#q").tap()
         pg.locator("#q").fill("wikipedia -medicine lang:fr")
         pg.keyboard.press("Enter")
