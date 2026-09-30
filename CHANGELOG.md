@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Wikisource works, textbooks and single-book ZIMs open in the book reader.
+- The Sun in the Almanac's 3D view.
+- The AppImage updates itself (AppImageUpdate).
+
+### Changed
+
+- Like and Save are separate: liking no longer bookmarks.
+- Text size is five steps instead of a number.
+- Download file names: `Zimi-<version>-<os>-<arch>`.
+- The Apps page counts books, videos, questions and posts.
+- The Environment panel starts folded; Internet use rows line up.
+
+### Fixed
+
+- Turning Discover on or off no longer leaves Settings.
+- The Auto theme swatch draws cleanly.
+- Wide pictures on pages without a mobile layout fit once loaded.
+- The PDF toolbar fits a phone.
+- The Moon is turned as it appears in your sky.
+- On Linux, the browser fallback opens once Zimi is ready.
+
 ## [1.12.0] - 2026-09-30
 
 ### Added
