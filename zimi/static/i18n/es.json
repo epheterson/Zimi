@@ -2050,7 +2050,7 @@
   "net_bittorrent": "BitTorrent",
   "net_bittorrent_when": "Pares, trackers y la DHT, mientras un ZIM se descarga o se comparte. Nada en reposo",
   "net_portcheck": "Comprobación de puerto",
-  "net_portcheck_when": "Si los pares llegan al puerto de BitTorrent, cuando un administrador pulsa Volver a comprobar",
+  "net_portcheck_when": "Si los pares llegan al puerto de BitTorrent, cuando abres los ajustes de compartir o pulsas Volver a comprobar",
   "net_app_updates": "Actualizaciones de Zimi",
   "net_app_updates_when": "Si hay un Zimi más reciente",
   "net_satellites": "Datos de satélites",

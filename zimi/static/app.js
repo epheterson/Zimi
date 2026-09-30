@@ -12735,6 +12735,7 @@ function _msServerHtml() {
   // pops in); _renderMirrorSection repaints from server truth right after.
   var shareCached = '';
   try { shareCached = localStorage.getItem(SK.SHARE_ROWS) || ''; } catch (e) {}
+  _natCheckedThisOpening = false;
   var sep = '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
 
   // App updates FIRST — the thing an operator opens Server settings to check.
@@ -13371,18 +13372,27 @@ function _natBadge(nat) {
     : '<span style="color:var(--error)">\u2717 ' + tH('bt_port_closed') + '</span>';
 }
 
-async function _natRecheck(btn) {
-  btn.disabled = true;
-  btn.classList.add('spinning');  // CSS spins the SVG; don't touch innerHTML
+// Whether peers can reach the port is asked of the port checker only when
+// someone looks: the Recheck button, or the sharing settings opening with
+// BitTorrent on (once per opening; nothing at startup or in the background).
+// The opening's own check fails quietly: the dot keeps saying "unknown".
+var _natCheckedThisOpening = false;
+function _natCheckOnOpen(btOn) {
+  if (!btOn || _natCheckedThisOpening) return;
+  _natCheckedThisOpening = true;
+  _natRecheck(document.querySelector('#share-port-row .share-port-retry'), true);
+}
+
+async function _natRecheck(btn, quiet) {
+  if (btn) { btn.disabled = true; btn.classList.add('spinning'); }  // CSS spins the SVG; don't touch innerHTML
   try {
     const r = await manageFetch('/manage/nat-recheck', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' });
     await r.json().catch(function() { return null; });
-    if (!r.ok) _showToast(t('error'));
+    if (!r.ok && !quiet) _showToast(t('error'));
   } catch (e) {
-    _showToast(t('error'));
+    if (!quiet) _showToast(t('error'));
   }
-  btn.disabled = false;
-  btn.classList.remove('spinning');
+  if (btn) { btn.disabled = false; btn.classList.remove('spinning'); }
   // Update only the port row — a full section re-render makes everything
   // blink for a one-line change.
   try {
@@ -13578,6 +13588,7 @@ async function _renderMirrorSection() {
   try { localStorage.setItem(SK.SHARE_ROWS, h); } catch (e) {}
   // Fill the status dot + port dot in place.
   _renderSeedingSection();
+  _natCheckOnOpen(btOn);
 }
 
 

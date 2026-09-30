@@ -2050,7 +2050,7 @@
   "net_bittorrent": "BitTorrent",
   "net_bittorrent_when": "Пиры, трекеры и DHT, пока ZIM скачивается или раздаётся. В простое ничего",
   "net_portcheck": "Проверка порта",
-  "net_portcheck_when": "Доступен ли порт BitTorrent для пиров, когда администратор нажимает «Проверить снова»",
+  "net_portcheck_when": "Доступен ли порт BitTorrent для пиров, когда вы открываете настройки обмена или нажимаете «Проверить снова»",
   "net_app_updates": "Обновления Zimi",
   "net_app_updates_when": "Вышла ли более новая версия Zimi",
   "net_satellites": "Спутниковые данные",

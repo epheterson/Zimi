@@ -105,6 +105,31 @@ const rows = [
   const statusFn = extract(/function _appUpdateStatusHtml\(d, checking\) \{[\s\S]*?\n\}/, '_appUpdateStatusHtml');
   ok('Never hides Check now', /d\.check_mode === 'never' \? ''/.test(statusFn));
 
+  // The port check: asked only when the sharing settings open with
+  // BitTorrent on (once per opening) or on Recheck; a quiet failure.
+  const natCtx = { posts: [], toasts: [], document: { querySelector: () => null, getElementById: () => null } };
+  natCtx.manageFetch = (url) => { natCtx.posts.push(url); return Promise.resolve({ ok: false, json: () => Promise.resolve({}) }); };
+  natCtx._showToast = (m) => natCtx.toasts.push(m);
+  natCtx.t = tH;
+  vm.createContext(natCtx);
+  vm.runInContext(extract(/var _natCheckedThisOpening = false;[\s\S]*?\nasync function _natRecheck\(btn, quiet\) \{[\s\S]*?\n\}/, 'the port check'), natCtx);
+  natCtx._natCheckOnOpen(false);
+  ok('BitTorrent off: the opening asks nothing', natCtx.posts.length === 0);
+  natCtx._natCheckOnOpen(true);
+  natCtx._natCheckOnOpen(true);
+  await new Promise(r => setTimeout(r, 10));
+  ok('BitTorrent on: the opening asks once', natCtx.posts.filter(u => u === '/manage/nat-recheck').length === 1, natCtx.posts.join(' '));
+  ok('the opening\'s own check fails quietly', natCtx.toasts.length === 0);
+  vm.runInContext('_natCheckedThisOpening = false', natCtx);
+  natCtx._natCheckOnOpen(true);
+  await new Promise(r => setTimeout(r, 10));
+  ok('a new opening asks again', natCtx.posts.filter(u => u === '/manage/nat-recheck').length === 2);
+  const serverFn = extract(/function _msServerHtml\(\) \{[\s\S]*?\n\}/, '_msServerHtml');
+  const mirrorFn = extract(/async function _renderMirrorSection\(\) \{[\s\S]*?\n\}/, '_renderMirrorSection');
+  ok('the Server pane opening resets it', /_natCheckedThisOpening = false/.test(serverFn));
+  ok('the sharing rows ask after they paint', /_natCheckOnOpen\(btOn\)/.test(mirrorFn));
+  ok('the row says when', /open the sharing settings/.test(en.net_portcheck_when));
+
   // No em dashes in the new strings, in any language.
   const keys = Object.keys(en).filter(k => k.startsWith('net_') || k.startsWith('app_update_check'));
   const langs = fs.readdirSync(path.join(root, 'i18n')).filter(f => f.endsWith('.json'));

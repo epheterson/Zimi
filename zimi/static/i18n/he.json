@@ -2050,7 +2050,7 @@
   "net_bittorrent": "BitTorrent",
   "net_bittorrent_when": "עמיתים, טרקרים וה-DHT, בזמן ש-ZIM יורד או משותף. כלום במנוחה",
   "net_portcheck": "בדיקת פורט",
-  "net_portcheck_when": "האם עמיתים מגיעים לפורט ה-BitTorrent, כשמנהל לוחץ על בדיקה חוזרת",
+  "net_portcheck_when": "האם עמיתים מגיעים לפורט ה-BitTorrent, כשפותחים את הגדרות השיתוף או לוחצים על בדיקה חוזרת",
   "net_app_updates": "עדכוני Zimi",
   "net_app_updates_when": "האם יצאה גרסה חדשה יותר של Zimi",
   "net_satellites": "נתוני לווינים",

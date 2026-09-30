@@ -2050,7 +2050,7 @@
   "net_bittorrent": "BitTorrent",
   "net_bittorrent_when": "Peers, trackers and the DHT, while a ZIM downloads or seeds. Nothing while idle",
   "net_portcheck": "Port check",
-  "net_portcheck_when": "Whether peers can reach the BitTorrent port, when an admin presses Recheck",
+  "net_portcheck_when": "Whether peers can reach the BitTorrent port, when you open the sharing settings or press Recheck",
   "net_app_updates": "Zimi updates",
   "net_app_updates_when": "Whether a newer Zimi is out",
   "net_satellites": "Satellite data",

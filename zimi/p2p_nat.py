@@ -8,8 +8,9 @@ via UPnP; Zimi does the same with a stdlib-only implementation:
   refreshed on every startup/recheck)
 - GetExternalIPAddress comes straight from the gateway (works offline)
 - Actual reachability is confirmed via Transmission's public port checker,
-  only when an admin asks (the recheck button beside the port): a third
-  party learning this machine's address and port is not something the
+  only when an admin looks: the sharing settings opening with BitTorrent on,
+  or the recheck button beside the port (both POST /manage/nat-recheck). A
+  third party learning this machine's address and port is not something the
   startup or the 12h upkeep should do on its own. Until then it is "unknown"
 
 Everything fails soft — a router without UPnP or an offline network just
@@ -249,7 +250,7 @@ def probe(
 ) -> dict:
     """NAT probe: listen state, UPnP mapping (the router, on this network)
     and, with ``check_reachable``, the external view from Transmission's port
-    checker. Only the explicit recheck asks for that; everything automatic
+    checker. Only /manage/nat-recheck asks for that; everything automatic
     keeps the last answer for this port, or "unknown".
 
     Slow (seconds) — callers run it off the request thread except for the

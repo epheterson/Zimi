@@ -2050,7 +2050,7 @@
   "net_bittorrent": "BitTorrent",
   "net_bittorrent_when": "الأقران والمتتبعات وDHT، أثناء تنزيل ZIM أو مشاركته. لا شيء في وقت الخمول",
   "net_portcheck": "فحص المنفذ",
-  "net_portcheck_when": "هل يصل الأقران إلى منفذ BitTorrent، عندما يضغط مشرف على إعادة الفحص",
+  "net_portcheck_when": "هل يصل الأقران إلى منفذ BitTorrent، عند فتح إعدادات المشاركة أو الضغط على إعادة الفحص",
   "net_app_updates": "تحديثات Zimi",
   "net_app_updates_when": "هل صدر إصدار أحدث من Zimi",
   "net_satellites": "بيانات الأقمار الصناعية",

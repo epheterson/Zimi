@@ -2050,7 +2050,7 @@
   "net_bittorrent": "BitTorrent",
   "net_bittorrent_when": "ZIM 下载或做种时的节点、Tracker 和 DHT。空闲时不连接",
   "net_portcheck": "端口检测",
-  "net_portcheck_when": "管理员点击重新检测时，检查节点能否访问 BitTorrent 端口",
+  "net_portcheck_when": "打开共享设置或点击重新检测时，检查节点能否访问 BitTorrent 端口",
   "net_app_updates": "Zimi 更新",
   "net_app_updates_when": "是否有更新版本的 Zimi",
   "net_satellites": "卫星数据",

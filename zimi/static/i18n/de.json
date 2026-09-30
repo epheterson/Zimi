@@ -2050,7 +2050,7 @@
   "net_bittorrent": "BitTorrent",
   "net_bittorrent_when": "Peers, Tracker und das DHT, solange eine ZIM lädt oder geteilt wird. Nichts im Leerlauf",
   "net_portcheck": "Portprüfung",
-  "net_portcheck_when": "Ob Peers den BitTorrent-Port erreichen, wenn ein Admin auf Erneut prüfen tippt",
+  "net_portcheck_when": "Ob Peers den BitTorrent-Port erreichen, wenn du die Freigabe-Einstellungen öffnest oder auf Erneut prüfen tippst",
   "net_app_updates": "Zimi-Updates",
   "net_app_updates_when": "Ob es ein neueres Zimi gibt",
   "net_satellites": "Satellitendaten",

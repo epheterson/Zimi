@@ -2050,7 +2050,7 @@
   "net_bittorrent": "BitTorrent",
   "net_bittorrent_when": "पीयर, ट्रैकर और DHT, जब कोई ZIM डाउनलोड या सीड हो रहा हो। खाली समय में कुछ नहीं",
   "net_portcheck": "पोर्ट जाँच",
-  "net_portcheck_when": "क्या पीयर BitTorrent पोर्ट तक पहुँच सकते हैं, जब कोई एडमिन फिर से जाँचें दबाए",
+  "net_portcheck_when": "क्या पीयर BitTorrent पोर्ट तक पहुँच सकते हैं, जब आप साझा करने की सेटिंग्स खोलें या फिर से जाँचें दबाएँ",
   "net_app_updates": "Zimi अपडेट",
   "net_app_updates_when": "क्या Zimi का नया संस्करण आया है",
   "net_satellites": "उपग्रह डेटा",

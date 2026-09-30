@@ -5455,7 +5455,7 @@ def handle_manage_get(handler, parsed, params):
                 # is optimistic (importable counts). The UI reads this key.
                 "sidecar_running": engine_alive,
                 "bt_port_env_locked": p2p.is_bt_port_env_locked(),
-                # Cached: the probe runs at startup and on explicit recheck
+                # Cached: reachability is asked only by /manage/nat-recheck
                 "nat": p2p_nat.last_status() or None,
             },
         )
@@ -6545,7 +6545,8 @@ def handle_manage_post(handler, parsed, data):
     elif parsed.path == "/manage/nat-recheck":
         # The "retry" button every real BT client has: re-map UPnP and
         # re-test reachability. Slow (SSDP + external check, a few
-        # seconds) but explicitly user-initiated, and the only caller that
+        # seconds) but asked for by an admin looking: the button, or the
+        # sharing settings opening with BitTorrent on. The only caller that
         # asks portcheck.transmissionbt.com.
         from zimi import p2p, p2p_nat
 
