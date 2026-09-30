@@ -15835,12 +15835,37 @@ function _stepBackToArticle(prev, replaceState) {
 // A single cycling control (chosen over an A−/A+ pair to conserve the already
 // crowded topbar) steps through these percentages, applied as a `zoom` on the
 // iframe body and reapplied on every article load. Persisted in localStorage.
-var READER_FONT_LEVELS = [85, 100, 115, 130];
+var READER_FONT_LEVELS = [85, 92, 100, 115, 130];
 var READER_FONT_DEFAULT = 100;
 
+// Text size, wherever it is set (Reader View, Zimipedia, a book): five named
+// steps, one per READER_FONT_LEVELS entry, drawn as five A's that grow. No
+// numbers: a size is picked by eye (Eric, 2026-09-30).
+var TEXT_SIZE_STEPS = ['smaller', 'small', 'default', 'large', 'larger'];
+var TEXT_SIZE_GLYPH_PX = [12, 14, 16, 19, 22];
+// The step of `list` nearest a stored value, so a size saved on the old,
+// finer scales lands on the step closest to it rather than being dropped.
+// Nothing a size could be (not a number, or far off the scale) is `fallback`.
+function _nearestStep(list, v, fallback) {
+  v = Number(v);
+  if (!isFinite(v) || v < list[0] / 2 || v > list[list.length - 1] * 2) return fallback;
+  return list.reduce(function(best, s) { return Math.abs(s - v) < Math.abs(best - v) ? s : best; });
+}
+// The five buttons. `cls` is the host's group class; each button carries
+// data-size (its step) for a sheet's own click handling, and runs
+// `onpick(step)` when the host passes one.
+function _textSizeStepsHtml(cls, cur, onpick) {
+  return '<div class="' + cls + '" role="radiogroup" aria-label="' + tH('reader_text_size') + '">' +
+    TEXT_SIZE_STEPS.map(function(k, i) {
+      var lbl = tH('text_size_' + k);
+      return '<button type="button" class="tsz-btn" role="radio" aria-checked="' + (i === cur) + '" data-size="' + i +
+        '" title="' + lbl + '" aria-label="' + lbl + '" style="font-size:' + TEXT_SIZE_GLYPH_PX[i] + 'px"' +
+        (onpick ? ' onclick="event.stopPropagation();' + onpick + '(' + i + ')"' : '') + '>A</button>';
+    }).join('') + '</div>';
+}
+
 function _readerFontLevel() {
-  var v = parseInt(localStorage.getItem(SK.READER_FONT), 10);
-  return READER_FONT_LEVELS.indexOf(v) >= 0 ? v : READER_FONT_DEFAULT;
+  return _nearestStep(READER_FONT_LEVELS, parseInt(localStorage.getItem(SK.READER_FONT), 10), READER_FONT_DEFAULT);
 }
 function _applyReaderFont(doc) {
   if (!doc || !doc.documentElement) return;
@@ -15880,21 +15905,16 @@ function _syncFontBtnGlyph() {
   var btn = document.getElementById('font-btn');
   if (!btn) return;
   var level = _readerFontLevel();
-  var idx = READER_FONT_LEVELS.indexOf(level); if (idx < 0) idx = 1;
+  var idx = READER_FONT_LEVELS.indexOf(level);
   var glyph = btn.querySelector('.font-glyph');
-  if (glyph) glyph.style.fontSize = (12 + idx * 2) + 'px'; // 12/14/16/18px live preview
-  var label = t('font_size') + ' — ' + level + '%';
+  if (glyph) glyph.style.fontSize = (12 + idx * 1.5) + 'px'; // 12 to 18px, a live preview
+  var label = t('font_size') + ': ' + t('text_size_' + TEXT_SIZE_STEPS[idx]);
   btn.title = label;
   btn.setAttribute('aria-label', label);
   _syncTopbarMenuReaderItems(); // keep the ... menu row (if open) in step
 }
 function _cycleReaderFont() {
-  var idx = READER_FONT_LEVELS.indexOf(_readerFontLevel());
-  var next = READER_FONT_LEVELS[(idx + 1) % READER_FONT_LEVELS.length];
-  try { localStorage.setItem(SK.READER_FONT, String(next)); } catch(e) {}
-  var frame = document.getElementById('reader-frame');
-  try { if (frame && frame.contentDocument) _applyReaderFont(frame.contentDocument); } catch(e) {}
-  _syncFontBtnGlyph();
+  _setReaderFontStep((READER_FONT_LEVELS.indexOf(_readerFontLevel()) + 1) % READER_FONT_LEVELS.length);
 }
 
 // ── Reader text-to-speech (offline Web Speech API) ──
@@ -16943,11 +16963,9 @@ function _setReaderTheme(theme) {
   _tintReaderChrome();
   _renderReaderPalette();
 }
-function _stepReaderFont(dir) {
-  var idx = READER_FONT_LEVELS.indexOf(_readerFontLevel());
-  if (idx < 0) idx = READER_FONT_LEVELS.indexOf(READER_FONT_DEFAULT);
-  var next = Math.min(READER_FONT_LEVELS.length - 1, Math.max(0, idx + dir));
-  try { localStorage.setItem(SK.READER_FONT, String(READER_FONT_LEVELS[next])); } catch(e) {}
+// One of the five text-size steps (an index into READER_FONT_LEVELS).
+function _setReaderFontStep(step) {
+  try { localStorage.setItem(SK.READER_FONT, String(READER_FONT_LEVELS[step])); } catch(e) {}
   var doc = _readerFrameDoc();
   try { if (doc) _applyReaderFont(doc); } catch(e) {}
   _syncFontBtnGlyph();
@@ -16984,11 +17002,6 @@ function _tintReaderChrome() {
 }
 
 var _READER_PALETTE_ID = 'reader-palette';
-// The size says what it is: a share of the page's own size, in the
-// interface's numerals ("M" named nothing a reader could picture).
-function _readerSizeLabel(lvl) {
-  try { return (lvl / 100).toLocaleString(_currentLang || 'en', { style: 'percent' }); } catch (e) { return lvl + '%'; }
-}
 function _readerPaletteHtml() {
   return '<div class="rv-pal-head">' + _READER_VIEW_ICON + '<span>' + tH('reader_view') +
     '</span></div>' + _readerSettingsRowsHtml();
@@ -17024,15 +17037,7 @@ function _rvFamPillsHtml(fam) {
     _rvFamPillHtml('serif', fam) + _rvFamPillHtml('sans', fam) + '</div>';
 }
 function _rvSizeStepperHtml(lvl) {
-  var minSize = lvl === READER_FONT_LEVELS[0];
-  var maxSize = lvl === READER_FONT_LEVELS[READER_FONT_LEVELS.length - 1];
-  return '<div class="rv-size">' +
-    '<button type="button" class="rv-size-btn"' + (minSize ? ' disabled' : '') +
-      ' aria-label="' + tH('reader_size_smaller') + '" onclick="event.stopPropagation();_stepReaderFont(-1)">A<span class="rv-minus">&minus;</span></button>' +
-    '<span class="rv-size-val">' + esc(_readerSizeLabel(lvl)) + '</span>' +
-    '<button type="button" class="rv-size-btn"' + (maxSize ? ' disabled' : '') +
-      ' aria-label="' + tH('reader_size_larger') + '" onclick="event.stopPropagation();_stepReaderFont(1)">A<span class="rv-plus">+</span></button>' +
-    '</div>';
+  return _textSizeStepsHtml('rv-size', READER_FONT_LEVELS.indexOf(lvl), '_setReaderFontStep');
 }
 
 // Compact controls for the ⋯ menu when Reader View is on: theme swatches row +
@@ -17058,7 +17063,7 @@ function _readerSettingsRowsHtml() {
   // Font family
   h += '<div class="rv-row"><div class="rv-row-label">' + tH('reader_font_family') + '</div>' +
     _rvFamPillsHtml(fam) + '</div>';
-  // Text size (reuses the persisted zoom levels as A−/A+)
+  // Text size: the five steps
   h += '<div class="rv-row"><div class="rv-row-label">' + tH('reader_text_size') + '</div>' +
     _rvSizeStepperHtml(lvl) + '</div>';
   // AUTO mode
@@ -17751,7 +17756,10 @@ function _booksSearch(val) { _appFrameCall('booksSearch', val); }
 // reader's own, kept per browser (a book reads larger and airier than an
 // encyclopedia).
 var _READING_BAR_H = 48;             // px: a reader's bar, under the top inset
-var _READING_SIZES = [14, 16, 17, 19, 21, 23, 26, 30, 34];  // px
+// px: the five text-size steps, the same shares of 19px as Reader View's
+// zoom levels are of the page (16, 17, 19, 22, 25).
+var _READING_SIZE_BASE = 19;
+var _READING_SIZES = READER_FONT_LEVELS.map(function(p) { return Math.round(_READING_SIZE_BASE * p / 100); });
 var _READING_LEADINGS = [1.35, 1.5, 1.65, 1.8, 2];
 var _READING_MARGINS = [8, 16, 24, 40];      // px at either side on a phone
 var _READING_MEASURES = [42, 36, 33, 29];    // em: the longest line, by the same setting
@@ -17812,12 +17820,11 @@ var _READING_CSS = [
   // a hole in it (sepia's on the sepia sheet, dark's on the dark one).
   '.zb-dot{width:24px;height:24px;border-radius:50%;border:1.5px solid rgba(128,128,128,.6);box-sizing:border-box}',
   '.zb-dot-auto{background:' + READER_AUTO_SWATCH + '}.zb-dot-light{background:' + READER_THEME_BG.light + '}.zb-dot-sepia{background:' + READER_THEME_BG.sepia + '}.zb-dot-dark{background:' + READER_THEME_BG.dark + '}',
-  '.zb-step{display:flex;align-items:center;gap:8px}',
-  '.zb-step button{width:52px;height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;font-family:Georgia,serif}',
-  '.zb-step output{flex:1;text-align:center;font-variant-numeric:tabular-nums;color:var(--rv-muted)}',
+  // Text size: five A's, each drawn at its own size (inline).
+  '.zb-sizes button{font-family:Georgia,serif;padding:0;line-height:1}',
   '.zb-range{width:100%;accent-color:var(--rv-link);height:26px;margin:0}',
   // A finger: the sheet's choices and its close reach 44px.
-  '@media (pointer:coarse){.zb-seg button{min-height:44px}.zb-step button{height:44px}.zb-x{width:44px;height:44px}}',
+  '@media (pointer:coarse){.zb-seg button{min-height:44px}.zb-x{width:44px;height:44px}}',
   '@media print{.zb-bar,.zb-sheet,.zb-scrim{display:none!important}}',
   '@media (prefers-reduced-motion:reduce){.zb-bar,.zb-sheet,.zb-scrim{transition:none!important}}'
 ].join('');
@@ -17827,7 +17834,7 @@ function _readingPrefs(key, defaults) {
   var p = _getStorageJSON(key, {}) || {};
   var idx = function(v, list, d) { return typeof v === 'number' && v >= 0 && v < list.length ? v : d; };
   return {
-    size: _READING_SIZES.indexOf(p.size) >= 0 ? p.size : defaults.size,
+    size: _nearestStep(_READING_SIZES, p.size, defaults.size),
     lh: idx(p.lh, _READING_LEADINGS, defaults.lh),
     margin: idx(p.margin, _READING_MARGINS, defaults.margin),
     mode: p.mode
@@ -17850,8 +17857,7 @@ function _readingSettingsHtml(prefs, layouts) {
   return '<div class="zb-sheet-head"><b>' + tH('books_settings') + '</b><button type="button" class="zb-x" aria-label="' + tH('close') + '">×</button></div>' +
     row(tH('reader_theme'), seg('theme', themes, mode, tH('reader_theme')).replace('zb-seg', 'zb-seg zb-themes')) +
     row(tH('reader_font_family'), seg('fam', [['serif', tH('reader_font_serif'), 'font-family:Georgia,serif'], ['sans', tH('reader_font_sans'), 'font-family:-apple-system,sans-serif']], fam, tH('reader_font_family'))) +
-    row(tH('reader_text_size'), '<div class="zb-step"><button type="button" data-size="-1" aria-label="' + tH('reader_size_smaller') + '"' + (si <= 0 ? ' disabled' : '') + ' style="font-size:14px">A</button>' +
-      '<output><bdi>' + prefs.size + ' px</bdi></output><button type="button" data-size="1" aria-label="' + tH('reader_size_larger') + '"' + (si >= _READING_SIZES.length - 1 ? ' disabled' : '') + ' style="font-size:21px">A</button></div>') +
+    row(tH('reader_text_size'), _textSizeStepsHtml('zb-seg zb-sizes', si)) +
     row('<label for="zb-lh">' + tH('books_line_spacing') + '</label>', '<input id="zb-lh" class="zb-range" type="range" min="0" max="' + (_READING_LEADINGS.length - 1) + '" step="1" value="' + prefs.lh + '" data-pref="lh">') +
     row('<label for="zb-mg">' + tH('books_margins') + '</label>', '<input id="zb-mg" class="zb-range" type="range" min="0" max="' + (_READING_MARGINS.length - 1) + '" step="1" value="' + prefs.margin + '" data-pref="margin">') +
     (layouts ? row(tH('books_layout'), seg('mode', layouts, prefs.mode, tH('books_layout'))) : '');
@@ -17863,10 +17869,7 @@ function _readingSettingsPick(el, prefs) {
   if (el.hasAttribute('data-theme')) return { theme: el.getAttribute('data-theme') };
   if (el.hasAttribute('data-fam')) return { fam: el.getAttribute('data-fam') };
   if (el.hasAttribute('data-mode')) return { prefs: { mode: el.getAttribute('data-mode') } };
-  if (el.hasAttribute('data-size')) {
-    var i = _READING_SIZES.indexOf(prefs.size) + Number(el.getAttribute('data-size'));
-    return { prefs: { size: _READING_SIZES[Math.max(0, Math.min(_READING_SIZES.length - 1, i))] } };
-  }
+  if (el.hasAttribute('data-size')) return { prefs: { size: _READING_SIZES[Number(el.getAttribute('data-size'))] } };
   var p = el.getAttribute('data-pref');
   if (!p) return null;
   var o = {}; o[p] = Number(el.value);
