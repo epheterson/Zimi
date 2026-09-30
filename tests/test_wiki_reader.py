@@ -373,7 +373,7 @@ def test_languages_by_qid_land_on_the_same_section_and_sit_side_by_side(served):
             pg.wait_for_timeout(300)
             fr.locator(".zw-lang-list li:not(.zw-level) .zw-go").click()
             pg.wait_for_function(
-                "() => { var d = document.getElementById('reader-frame').contentDocument; return d && d.documentElement.lang === 'he' && d.querySelector('.zw-bar'); }",
+                "() => { var d = document.getElementById('reader-frame').contentDocument; return d && d.documentElement && d.documentElement.lang === 'he' && d.querySelector('.zw-bar'); }",
                 timeout=15000,
             )
             pg.wait_for_timeout(500)

@@ -16074,10 +16074,10 @@ var READER_THEME_MODES = ['auto', 'light', 'sepia', 'dark'];
 // The <body> background each theme paints — mirrors --rv-bg in the injected CSS.
 // Used to tint the iframe/loading chrome so AUTO mode never flashes ZIM-white.
 var READER_THEME_BG = { dark: '#0a0a0b', light: '#fbfbf9', sepia: '#f4ecd8' };
-// Auto's swatch is the two palettes Auto paints (sepia by day, dark by
-// night; see _readerTheme), not light and dark: it showed a white page it
-// never gives. app.css's .rv-sw-auto draws the same split.
-var READER_AUTO_SWATCH = 'linear-gradient(135deg,' + READER_THEME_BG.sepia + ' 50%,' + READER_THEME_BG.dark + ' 50%)';
+// Auto's swatch says "follows the system": the Light swatch and the Dark
+// one, a half each, side by side, in the same ring as every swatch.
+// app.css's .rv-sw-auto draws the same split.
+var READER_AUTO_SWATCH = 'linear-gradient(90deg,' + READER_THEME_BG.light + ' 50%,' + READER_THEME_BG.dark + ' 50%)';
 function _readerFamily() {
   var v = localStorage.getItem(SK.READER_FAMILY);
   return READER_FAMILIES.indexOf(v) >= 0 ? v : 'serif';
@@ -16116,8 +16116,10 @@ function _applyReaderTheme(doc) {
 // How much text the article holds. innerText lays the page out first, which
 // for a book (its body is the article) is seconds on a long one; a book's
 // text is all text, so it is counted as it stands.
+// A wiki's article is counted the same way: it needs one character, and
+// laying the whole of a long one out to count them held its first paint.
 function _readerTextLen(doc, main) {
-  return (main === doc.body ? main.textContent : (main.innerText || main.textContent || '')).trim().length;
+  return (main === doc.body || doc.__zimiWiki ? main.textContent : (main.innerText || main.textContent || '')).trim().length;
 }
 // A wiki's article in Zimipedia's reader is an article however short (a
 // stub is still one): the floor is for pages that may not be articles.
@@ -16140,7 +16142,7 @@ function _readerViewAvailable() {
 // An element's text as shown. In a book, as it stands: innerText lays the
 // page out first, and a book is the one page long enough for that to cost.
 function _readerElText(doc, el) {
-  if (_isBookDoc(doc)) return (el.textContent || '').replace(/\s+/g, ' ').trim();
+  if (_isBookDoc(doc) || doc.__zimiWiki) return (el.textContent || '').replace(/\s+/g, ' ').trim();
   return (el.innerText || el.textContent || '').trim();
 }
 function _readerViewTitle(doc) {
@@ -16255,6 +16257,12 @@ function _readerViewInjectStyle(doc) {
       '--rv-font:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;',
       'background:var(--rv-bg) !important;margin:0 !important}',
     'body.zimi-reader-active.rv-font-sans{--rv-font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}',
+    // Pulled past the top or an edge, the page shows the theme under it (the
+    // ZIM's skin paints html white), and does not spring or scroll sideways.
+    'html:has(> body.zimi-reader-active){overscroll-behavior:none;overflow-x:hidden}',
+  ].concat(READER_THEMES.map(function(th) {
+    return 'html:has(> body.zimi-reader-active.rv-theme-' + th + '){background:' + READER_THEME_BG[th] + '!important}';
+  })).concat([
     'body.zimi-reader-active.rv-theme-light{--rv-bg:#fbfbf9;--rv-fg:#1f1f22;--rv-head:#0a0a0b;',
       '--rv-muted:#63636b;--rv-border:#e3e2dd;--rv-link:#aa4e08;--rv-code:#f0efe9;',
       '--rv-pre:#f5f4ee;--rv-th:#f0efe9}',
@@ -16280,6 +16288,12 @@ function _readerViewInjectStyle(doc) {
     '.zimi-reader *:not(.zimi-table-wrap):not(pre){height:auto !important;max-height:none !important;',
       'min-height:0 !important;overflow:visible !important}',
     '.zimi-reader-body{max-width:68ch;margin:0 auto}',
+    // The article's own wrappers take the reader's type. Wikipedia's skin
+    // sizes its body box in rem (.vector-body{font-size:1rem;line-height:1.6}),
+    // which Reader View's size and spacing never reach: Text size grew the
+    // title and left the text at 16px.
+    '.zimi-reader :is(.mw-body,.vector-body,#bodyContent,.mw-body-content,.mw-parser-output){',
+      'font-size:inherit!important;line-height:inherit!important}',
     // Headings follow the reader's font-family choice (serif/sans) like the body,
     // via --rv-font — a serif pick that left headings sans looked half-applied.
     '.zimi-reader h1,.zimi-reader h2,.zimi-reader h3,.zimi-reader h4,.zimi-reader h5,.zimi-reader h6{',
@@ -16370,7 +16384,7 @@ function _readerViewInjectStyle(doc) {
       '.zimi-reader h1,.zimi-reader h2,.zimi-reader h3{page-break-after:avoid;break-after:avoid}',
       '.' + _READER_LIGHTBOX_CLASS + ',.zimi-lightbox-close{display:none !important}',
     '}'
-  ].join('');
+  ]).join('');
   var style = doc.createElement('style');
   style.id = _READER_VIEW_STYLE_ID;
   style.textContent = css;
@@ -16767,8 +16781,14 @@ function _readerViewApply(doc) {
   _applyReaderFont(doc); // font zoom composes over the shell
   // Tap-to-full-size on scaled-down images: measured, so a book (whose pages
   // are laid out by the book reader) binds it once they are.
-  if (!_isBookDoc(doc)) _readerBindLightbox(shell, doc);
+  // Measuring every picture lays the whole article out: after the text is
+  // on screen, not before (a long article paid it before its first paint).
+  if (!_isBookDoc(doc)) _afterPaint(function() { _readerBindLightbox(shell, doc); });
   return true;
+}
+// Work that can wait until the page has painted: the next frame, then a task.
+function _afterPaint(fn) {
+  requestAnimationFrame(function() { setTimeout(fn, 0); });
 }
 
 function _readerViewRestore(doc) {
@@ -19729,6 +19749,24 @@ function _readerShare() {
 }
 
 // ── Reader ──
+// Calls fn once the frame holds a new document whose DOM is parsed
+// (DOMContentLoaded), before its images load. Gives up when the frame's
+// load event comes first (it calls fn itself) or after the reader's own
+// safety timeout.
+var _FRAME_DOC_POLL_MS = 16;
+var _FRAME_DOC_WAIT_MS = 15000;  // the reader's own safety timeout
+function _whenFrameDocReady(frame, prevDoc, fn) {
+  var t0 = Date.now();
+  var tick = function() {
+    var d = null; try { d = frame.contentDocument; } catch (e) { return; }
+    if (d && d !== prevDoc && d.readyState !== 'loading' && d.URL !== 'about:blank') {
+      if (d.readyState === 'complete' || _isBookDoc(d)) return; // the load event has it
+      fn(); return;
+    }
+    if (Date.now() - t0 < _FRAME_DOC_WAIT_MS) setTimeout(tick, _FRAME_DOC_POLL_MS);
+  };
+  setTimeout(tick, _FRAME_DOC_POLL_MS);
+}
 function openReader(url) {
   _chromeReset(); // a new page starts with the header in place
   // Same-document fragment scroll fast-path. When the frame already holds the
@@ -19843,7 +19881,20 @@ function openReader(url) {
     frame.style.visibility = 'visible'; // reveal even if the load stalled
     if (_bookReading) _bookChrome(false); // and give Zimi's header back until a book is shown
   }, 15000);
-  frame.onload = function() {
+  // The page is shown when its text is there, not when its last picture is:
+  // a masked article (Reader View, Zimipedia's reader) waited on the load
+  // event, which waits on every eager picture read out of a big ZIM first. The DOM is complete at DOMContentLoaded; the pictures
+  // fill in after. A book waits for its load: its pages are measured once.
+  var _prevDoc = null; try { _prevDoc = frame.contentDocument; } catch (e) {}
+  var _earlyOk = _maskFrame && url.slice(0, 3) === '/w/' && !lurl.endsWith('.pdf');
+  var _onDoc = function() {
+    var _d0 = null; try { _d0 = frame.contentDocument; } catch (e) {}
+    if (_d0) { if (_d0.__zimiShown) return; _d0.__zimiShown = true; }
+    _frameDocShown(frame, loading);
+  };
+  if (_earlyOk) _whenFrameDocReady(frame, _prevDoc, _onDoc);
+  frame.onload = _onDoc;
+  function _frameDocShown(frame, loading) {
     clearTimeout(_readerTimeout);
     if (!readerOpen) { loading.classList.add('hidden'); return; } // reader was closed — don't update title
     _ttsStop(); // stop any in-progress speech when the article changes
@@ -19930,12 +19981,17 @@ function openReader(url) {
     // again for pdf.js's own observer, and no page ever rendered. Reported by
     // Joe (WB3IHY), with the cause and the fix (#71).
     var _settlePasses = function() {
-      // A book is no capture: nothing of a web page's chrome to put back.
-      if (_frameIsOurOwnPage(frame) || _bookDoc) return;
+      // A book is no capture: nothing of a web page's chrome to put back;
+      // nor is a wiki's article in Zimipedia's reader (a style read for every
+      // element of a long one, for nothing).
+      if (_frameIsOurOwnPage(frame) || _bookDoc || _wikiOn) return;
       try { _sweepBlockingOverlays(frame); } catch(e) {}
       try { _settleCapturedChrome(frame); } catch(e) {}
     };
     if (_replayAlive) setTimeout(_settlePasses, REPLAY_SETTLE_MS);
+    // Reader View shows its own shell: the capture's chrome is put away, and
+    // tidying it (a style read per element) waits until the text is shown.
+    else if (_readerViewOn) _afterPaint(_settlePasses);
     else _settlePasses();
     // A map ZIM: put it where the link says, then follow it. Both are no-ops
     // on every other kind of page, since neither finds a map handle.
@@ -19983,6 +20039,8 @@ function openReader(url) {
         '.thumb,.thumbinner,figure,.gallery,.mw-kartographer-map,.mw-kartographer-maplink,' +
           '.floatright,.floatleft,.tright,.tleft{max-width:100%!important}'
       ]).concat([
+        // No bounce past the top or an edge: it showed white under a dark page.
+        'html{overscroll-behavior:none}',
         '#zimi-top{position:fixed;bottom:20px;right:20px;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;border:none;font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:9999;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}'
       ]).join('');
       // Only a PICTURE forces a viewport-less page to be scaled down: one that
@@ -20247,7 +20305,7 @@ function openReader(url) {
     // already in place and get stashed with the rest of the original body.
     if (_readerViewOn) { try { _readerViewApply(frame.contentDocument); } catch(e) {} }
     _syncReaderViewBtn();
-  };
+  }
   // Use location.replace to avoid polluting parent history stack
   // (setting iframe.src adds a session history entry that breaks the back button)
   try { frame.contentWindow.location.replace(url); } catch(e) { frame.src = url; }

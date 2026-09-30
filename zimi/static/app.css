@@ -150,7 +150,10 @@
      the library instead. */
   html.manage-boot #main-view { visibility: hidden; }
 
-  html { height: 100%; overflow-y: auto; overscroll-behavior-y: none; }
+  /* Pulled past an edge, the page shows its own background, not the
+     browser's white, and does not spring: no bounce either way, no sideways
+     scroll. */
+  html { height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: none; background: var(--bg); }
   /* Zimi does not zoom on a phone: the viewport caps the scale at 1 and
      _blockPinch (app.js) cancels iOS's pinch, which ignores that cap.
      A double tap is a tap, not a zoom; the text keeps its size when the
@@ -914,14 +917,15 @@
   }
   .rv-swatch:hover { border-color: var(--amber-border); color: var(--text); }
   .rv-swatch.active { border-color: var(--amber); color: var(--text); }
-  .rv-sw-dot { width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.14); }
-  /* Auto = follows the app theme: a split dark/light disc, same language as the
-     app-theme Auto icon. Half-and-half via a hard-stop gradient. */
-  /* Auto paints sepia by day and dark by night (READER_AUTO_SWATCH in app.js). */
-  .rv-sw-auto .rv-sw-dot { background: linear-gradient(135deg, #f4ecd8 50%, #0a0a0b 50%); border-color: rgba(127,127,127,0.5); }
+  /* One ring on every swatch, readable on a light sheet and a dark one; the
+     same as the reading sheets' .zb-dot (_READING_CSS in app.js). */
+  .rv-sw-dot { width: 22px; height: 22px; border-radius: 50%; box-sizing: border-box; border: 1.5px solid rgba(128,128,128,0.6); }
+  /* Auto follows the system: the Light swatch and the Dark one, a half each
+     (READER_AUTO_SWATCH in app.js). */
+  .rv-sw-auto .rv-sw-dot { background: linear-gradient(90deg, #fbfbf9 50%, #0a0a0b 50%); }
   .rv-sw-dark .rv-sw-dot { background: #0a0a0b; }
-  .rv-sw-light .rv-sw-dot { background: #fbfbf9; border-color: rgba(0,0,0,0.18); }
-  .rv-sw-sepia .rv-sw-dot { background: #f4ecd8; border-color: rgba(0,0,0,0.14); }
+  .rv-sw-light .rv-sw-dot { background: #fbfbf9; }
+  .rv-sw-sepia .rv-sw-dot { background: #f4ecd8; }
   .rv-swatch.active .rv-sw-dot { box-shadow: 0 0 0 2px var(--surface2), 0 0 0 3px var(--amber); }
   /* Family pills */
   .rv-pills { display: flex; gap: 6px; }
