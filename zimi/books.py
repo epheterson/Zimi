@@ -49,7 +49,7 @@ import re
 import threading
 import unicodedata
 
-from zimi import booksources
+from zimi import bookpages, booksources
 from zimi import epub as _epub
 from zimi import server as _srv
 from zimi.details import DetailsBuilder
@@ -398,6 +398,9 @@ def _merge_source(book, z, reader):
     b.setdefault("author", "")
     b["shelf"] = ""
     b["html"] = True
+    if reader in bookpages.READERS and b.get("format") == "html":
+        # Its chapters are pages: the e-reader reads them as one book.
+        b["path"] = bookpages.address(book["path"])
     b["lang"] = book.get("lang") or _shelf_lang(z)
     if book.get("year") is not None:
         b["era"] = era_of(None, book["year"])
@@ -516,7 +519,10 @@ _SORTS = {
     "author": lambda b: (surname(b), fold(b["title"])),
     # Newest to Project Gutenberg: the day it came, else its number, which
     # Gutenberg gives out in order. The other families have neither.
-    "recent": lambda b: (b.get("created") or "", b["id"] if isinstance(b["id"], int) else -1),
+    "recent": lambda b: (
+        b.get("created") or "",
+        b["id"] if isinstance(b["id"], int) else -1,
+    ),
 }
 
 
@@ -634,11 +640,7 @@ def home():
     )
     eras = _counts(books, lambda b: b.get("era"))
     per_zim = _counts(books, lambda b: b["zim"])
-    ready = (
-        all(_details_ready(z) for z in zims)
-        if zims
-        else False
-    )
+    ready = all(_details_ready(z) for z in zims) if zims else False
     # Most read is Gutenberg's count of readers: its books alone when there
     # are any. A shelf without them opens on its books in their own order.
     ranked = [b for b in books[:SHELF_SIZE] if b["rank"] < SOURCE_RANK]
@@ -709,7 +711,14 @@ def book(zim, book_id):
     if b.get("source"):
         if zim and b["zim"] != zim:
             return None
-        for k in ("description", "chapters", "subject", "translator", "publisher", "date"):
+        for k in (
+            "description",
+            "chapters",
+            "subject",
+            "translator",
+            "publisher",
+            "date",
+        ):
             if b.get(k) not in (None, ""):
                 out[k] = b[k]
         if b.get("format") == "epub":
@@ -920,7 +929,12 @@ def set_whole(name, whole):
     with _lock:
         _whole["names"] = names
         _shelf["key"] = None
-    return reader_of(next((z for z in _srv._zim_list_cache or [] if z.get("name") == name), {"name": name}))
+    return reader_of(
+        next(
+            (z for z in _srv._zim_list_cache or [] if z.get("name") == name),
+            {"name": name},
+        )
+    )
 
 
 def _reset_for_tests(timeout=30):

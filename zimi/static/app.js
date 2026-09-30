@@ -18009,12 +18009,14 @@ function _bookPrefs() {
 }
 // Is this reader address a book? Known before it loads (the ZIM is a
 // Gutenberg one and the page is a book's, <title>.<number>; or it is an
-// EPUB's chapters, <book>.epub/), so Zimi's header can step aside before
+// EPUB's chapters, <book>.epub/; or a book whose chapters are pages,
+// _zimi_book_/<root>, zimi/bookpages.py), so Zimi's header can step aside before
 // the book is laid out, not after (a change of the frame's size then would
 // lay the book out twice).
+var _BOOK_PAGES_PREFIX = '_zimi_book_/';
 function _bookUrl(url) {
   var m = /^\/w\/([^\/?#]+)\/([^?#]+)/.exec(url || '');
-  if (m && /\.epub\/$/i.test(m[2])) return true;
+  if (m && (/\.epub\/$/i.test(m[2]) || m[2].indexOf(_BOOK_PAGES_PREFIX) === 0)) return true;
   if (!m || !/\.\d+$/.test(m[2]) || /_cover\.\d+$/.test(m[2])) return false;
   var zim = ''; try { zim = decodeURIComponent(m[1]); } catch (e) { return false; }
   return (zimsCache || []).some(function(z) { return z.name === zim && z.kind === 'books'; });
@@ -18210,7 +18212,9 @@ function _bookLay(frame) {
   var pre = doc.createRange();
   // A "chapter" with no more than a title before it is the title page's
   // (By Fyodor Dostoevsky, Contents): the book starts where there is more.
-  while (chapters.length) {
+  // A book of pages names its chapters itself (zimi/bookpages.py): a short
+  // first page is still its own.
+  while (chapters.length && meta('zimi-book') !== 'pages') {
     pre.setStart(article, 0); pre.setEndBefore(chapters[0]);
     if (pre.toString().replace(/\s+/g, '').length >= _BOOK_FRONT_MIN) break;
     chapters = Array.prototype.slice.call(chapters, 1);
@@ -18543,8 +18547,9 @@ function _bookLay(frame) {
     h += '<li' + (k < 0 ? ' aria-current="true"' : '') + '><button type="button" data-k="-1">' + esc(bookTitle) + '</button></li>';
     chapters.forEach(function(ch, i) {
       var x = _bookText(ch);
-      // A name that recurs (CHAPTER I in every part) sits under the one before it that does not.
-      h += '<li' + (seen[x] > 1 ? ' class="zb-sub"' : '') + (i === k ? ' aria-current="true"' : '') + '><button type="button" data-k="' + i + '">' + esc(x) + '</button></li>';
+      // A name that recurs (CHAPTER I in every part) sits under the one before it that does not;
+      // so does a section a book of pages marks as one (data-zb-sub).
+      h += '<li' + (seen[x] > 1 || ch.hasAttribute('data-zb-sub') ? ' class="zb-sub"' : '') + (i === k ? ' aria-current="true"' : '') + '><button type="button" data-k="' + i + '">' + esc(x) + '</button></li>';
     });
     tocSheet.innerHTML = h + '</ol>';
   };
