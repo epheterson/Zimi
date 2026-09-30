@@ -76,6 +76,10 @@ const rows = [
   ok('the satellite row has no switch here', !/_netGo\('satellites'\)/.test(h));
   const linkCount = (h.match(/class="net-go"/g) || []).length;
   ok('rows changed only by ZIMI_OFFLINE or by the person have no link', linkCount === 5, String(linkCount));
+  // Eric, 1.12.1: "change isn't even uniformly placed". Every row has the
+  // link's cell, under its state, and a link sits nowhere else.
+  const acts = h.match(/<span class="net-act">(<a [^>]*class="net-go"[^>]*>[^<]*<\/a>)?<\/span>/g) || [];
+  ok('every row\'s link sits in the one cell under its state', acts.length === 10 && acts.filter(a => /net-go/.test(a)).length === 5, String(acts.length));
 
   el = { innerHTML: '', querySelector: () => null };
   answer = { offline: true, rows: rows.map(r => Object.assign({}, r, { state: r.id === 'nearby' ? 'lan' : 'off' })) };
@@ -131,7 +135,7 @@ const rows = [
   const mirrorFn = extract(/async function _renderMirrorSection\(\) \{[\s\S]*?\n\}/, '_renderMirrorSection');
   ok('the Server pane opening resets it', /_natCheckedThisOpening = false/.test(serverFn));
   ok('the sharing rows ask after they paint', /_natCheckOnOpen\(btOn\)/.test(mirrorFn));
-  ok('the row says when', /open the sharing settings/.test(en.net_portcheck_when));
+  ok('the row says when', /opening sharing settings/.test(en.net_portcheck_when));
 
   // No em dashes in the new strings, in any language.
   const keys = Object.keys(en).filter(k => k.startsWith('net_') || k.startsWith('app_update_check'));

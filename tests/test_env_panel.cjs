@@ -39,6 +39,8 @@ vm.runInContext(extract(/async function _renderEnvSection\(\) \{[\s\S]*?\n\}/, '
   el = { innerHTML: 'Loading…' };             // the pane is inserted
   resolveFetch({ vars: [{ name: 'ZIM_DIR', value: '/zims', description: 'Where the ZIM files are', locks: 'ZIM folder', source: 'env', path: '' }] });
   await p;
+  ok('folded by default: the names are the summary, a tap opens the rest',
+    /^<details class="net-details env-details"><summary><span class="env-names" dir="ltr">ZIM_DIR<\/span><\/summary>/.test(el.innerHTML) && !/<details[^>]* open/.test(el.innerHTML));
   ok('the answer lands in the element that exists when it arrives', /ZIM_DIR/.test(el.innerHTML) && /\/zims/.test(el.innerHTML), el.innerHTML.slice(0, 80));
 
   el = null;

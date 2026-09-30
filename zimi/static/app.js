@@ -3504,23 +3504,15 @@ function renderHome(filter) {
       fmtSize(totalGb, true);
   }
 
-  // Check if Discover will be active (not hidden and not filtered/scoped)
   var discoverHidden = _getStorageFlag(SK.HIDE_DISCOVER);
-  var discoverWillShow = !homeScope && !filter && !homeRecentFilter && !homeLangFilter.size && !discoverHidden;
 
-  // Counts sit at the BOTTOM in every discover-capable home state — the clean
-  // idle view AND while a language filter is active — so tapping a
-  // filter pill never makes the counts bar jump from bottom to top (#8). The
-  // top stats bar is used only when discover is user-hidden or the view is
-  // scoped / text-filtered.
-  var countsAtBottom = !homeScope && !filter && !discoverHidden;
+  // The counts close the unscoped home, Discover on or off: the apps lead
+  // the page, and the counts squeezed in above them (Discover off) pushed
+  // its first job down and moved the line between two places (#8). The top
+  // bar is for a scoped or text-filtered view, where the count is the answer.
+  var countsAtBottom = !homeScope && !filter;
   if (countsAtBottom) {
-    // Counts render at the bottom of the content — keep the top bar empty.
     statsBar.innerHTML = ''; statsBar.style.display = 'none';
-  } else if (!homeScope && !filter && discoverHidden) {
-    // Discover hidden — stats clickable to re-enable
-    statsBar.innerHTML = '<a href="#" onclick="event.preventDefault();localStorage.removeItem(\'zimi_hide_discover\');renderHome()" style="color:inherit;text-decoration:none" title="' + escAttr(t('show_discover')) + '">' + statsHtml + '</a>';
-    statsBar.style.display = '';
   } else {
     statsBar.innerHTML = statsHtml;
     statsBar.style.display = '';
@@ -3766,8 +3758,8 @@ function renderHome(filter) {
     h += _orderSections(_sections).map(function(s) { return s.html; }).join('');
   }
 
-  // Counts at the bottom whenever the top bar is suppressed (idle discover view
-  // or an active recency/language filter) — a stable anchor, no jump (#8).
+  // Counts at the bottom whenever the top bar is suppressed: a stable anchor
+  // through Discover on/off and the recency/language pills, no jump (#8).
   if (countsAtBottom) {
     h += '<div class="stats-bar" style="padding:28px 0 0">' + statsHtml + '</div>';
   }
@@ -5367,11 +5359,17 @@ function closeAlmanac() {
   updateTopbar();
 }
 
+// Discover on or off. Home is drawn again only when it is what is on
+// screen: Settings paints into the same #output, and drawing home from the
+// switch there took the person out of Settings.
+function _setShowDiscover(on) {
+  _setStorageFlag(SK.HIDE_DISCOVER, !on);
+  if (!on) _discoverLoading = false;
+  if (mode === 'home' && !readerOpen) renderHome();
+}
 function _dismissDiscover() {
-  localStorage.setItem(SK.HIDE_DISCOVER, '1');
-  _discoverLoading = false;
-  renderHome();  // Re-render to move stats bar to top
-  _showToast(t('discover_hidden'), 0, function() { localStorage.removeItem(SK.HIDE_DISCOVER); renderHome(); });
+  _setShowDiscover(false);
+  _showToast(t('discover_hidden'), 0, function() { _setShowDiscover(true); });
 }
 
 // ─── Discover Card Pipeline ─────────────────────────────────────────────
@@ -12189,7 +12187,7 @@ function _msPreferencesHtml() {
     _switchRowsHtml([{ id: 'ms-open-in-apps', title: tH('open_in_apps'), desc: tH('open_in_apps_hint'),
       on: _openInApps(), onchange: '_setOpenInApps(this.checked)' },
       { id: 'ms-show-discover', title: tH('show_discover'), on: !_getStorageFlag(SK.HIDE_DISCOVER),
-        onchange: '_setStorageFlag(SK.HIDE_DISCOVER, !this.checked);renderHome()' }]) +
+        onchange: '_setShowDiscover(this.checked)' }]) +
 
     '<div class="ms-section-label" style="margin-top:24px">' + tH('ms_display_section') + '</div>' +
     '<div class="ms-theme-label">' + tH('app_theme') + '</div>' +
@@ -12574,13 +12572,15 @@ function _netRowHtml(r, offline) {
   var go = !offline && _NET_CONTROLS[r.control]
     ? '<a href="#" class="net-go" onclick="return _netGo(\'' + escAttr(r.control) + '\')">' + tH('net_change') + '</a>'
     : '';
+  // The link sits in the state's column, right under it, on every row: at
+  // the end of whichever line came last it wandered row to row (Eric:
+  // "change isn't even uniformly placed").
   return '<li class="net-row">' +
     '<span class="net-name">' + tH('net_' + r.id) + '</span>' +
     '<span class="net-state net-state-' + escAttr(r.state) + '">' + tH('net_state_' + r.state) + '</span>' +
-    // The link sits at the end of the hosts' line, or of the text when a
-    // row has no host of its own, so it never takes a line to itself.
-    '<span class="net-what">' + tH('net_' + r.id + '_when') + (hosts ? '' : (go ? ' ' + go : '')) + '</span>' +
-    (hosts ? '<span class="net-where">' + hosts + go + '</span>' : '') +
+    '<span class="net-what">' + tH('net_' + r.id + '_when') + '</span>' +
+    '<span class="net-act">' + go + '</span>' +
+    (hosts ? '<span class="net-where">' + hosts + '</span>' : '') +
     '</li>';
 }
 
@@ -12697,7 +12697,11 @@ async function _renderEnvSection() {
   // Values come from the operator's own environment, so they are escaped like
   // any other untrusted string. Secrets arrive as the word "set" and are
   // rendered in the same slot, so the row shape never gives away which is which.
-  el.innerHTML = '<div class="env-rows">' + rows.map(function(r) {
+  // Folded, like Internet use: the summary is the names themselves, which is
+  // the answer most visits want; a tap opens what each one does.
+  el.innerHTML = '<details class="net-details env-details"><summary><span class="env-names" dir="ltr">' +
+    rows.map(function(r) { return esc(r.name); }).join(', ') + '</span></summary>' +
+  '<div class="env-rows">' + rows.map(function(r) {
     return '<div class="env-row">' +
       '<code class="env-name">' + esc(r.name) + '</code>' +
       '<code class="env-value' + (r.secret ? ' env-secret' : '') + '">' +
@@ -12707,7 +12711,7 @@ async function _renderEnvSection() {
         (r.source === 'config' ? ' <span class="env-locks">' + tH('env_from_config', {path: esc(r.path)}) + '</span>' : '') +
       '</div></div>';
   }).join('') + '</div>' +
-  '<div class="ms-hint">' + tH('env_hint') + '</div>';
+  '<div class="ms-hint">' + tH('env_hint') + '</div></details>';
 }
 
 function _msServerHtml() {
