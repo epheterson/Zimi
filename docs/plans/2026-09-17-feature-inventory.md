@@ -151,6 +151,7 @@ Eric: "We're on a new major release here maps release and each of those apps of 
 - Suggestions from what you liked or viewed (Eric, 2026-09-29: "Maybe we should start being able to suggest content based on what you liked or viewed, future."): local-only, from Saved, Liked and history, across apps.
 - Browse what's available inside each app before downloading (Eric, 2026-09-29: "we can allow browsing available content within apps then you download the zim and it shows up in place kinda like opening a new video app on a streaming box").
 - 1.12.1 dot release (Eric, 2026-09-29: "All the noted for later sound great but maybe a dot release"): Wikisource/textbook/whole-ZIM books in the e-reader, PDF toolbar on phones, Apps page counting books/videos not entries, the Sun in the 3D view and flying between Sun, Moon and Earth, the AppImage catalog items (browser fallback's broken tab, file name, update info).
+- 1.12.1 from the pre-ship look (Eric, 2026-09-29: "I still think all this can be after ship"): toggling Discover must not jump to the home page; with Discover off, fix the gap under Apps (or keep Discover at the bottom now that apps lead); the Reader View Auto swatch still reads wrong ("still sucks wow"); text size as 3 to 5 steps without numbers; liking something must not also save it; shorten "Capture image sizes for every screen (larger)" (asked twice); collapse the Environment panel; tidy Internet use so every row's switch sits in the same place.
 
 ## Killed, and staying killed
 
