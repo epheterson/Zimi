@@ -268,7 +268,9 @@ def start_background_services(http_port):
     # Zimipedia's Today, worked out before anyone opens it.
     from zimi import wiki as _wiki
 
-    threading.Thread(target=_wiki.warm_daily, daemon=True, name="zimipedia-daily").start()
+    threading.Thread(
+        target=_wiki.warm_daily, daemon=True, name="zimipedia-daily"
+    ).start()
 
 
 # Working files a capture left behind.
@@ -516,6 +518,51 @@ def _shape_store(measured):
     _update_disk_cache(_apply)
 
 
+def note_app_items(name, app, n):
+    """How many of what ``app`` shows the ZIM ``name`` holds (its books, its
+    videos, its questions, its posts), counted by the app when it has read
+    them anyway: kept on the live entry as ``items`` and in the metadata
+    cache beside it, so the Apps page counts what each app shows without
+    reading anything on its way. A new build of the ZIM is another file,
+    so another record, counted afresh when the app reads it."""
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return
+    if n <= 0:
+        return
+    entry = next((z for z in _zim_list_cache or [] if z.get("name") == name), None)
+    if entry is None or (entry.get("items") or {}).get(app) == n:
+        return
+    entry["items"] = dict(entry.get("items") or {}, **{app: n})
+    filename = entry.get("file", "")
+
+    def _apply(disk):
+        cached = disk.get(filename)
+        if not isinstance(cached, dict) or (cached.get("items") or {}).get(app) == n:
+            return False
+        cached["items"] = dict(cached.get("items") or {}, **{app: n})
+        return True
+
+    _update_disk_cache(_apply)
+
+
+def app_items_known(name, app):
+    """Whether ``app`` has counted what the ZIM ``name`` holds already."""
+    entry = next((z for z in _zim_list_cache or [] if z.get("name") == name), None)
+    return bool(entry and (entry.get("items") or {}).get(app))
+
+
+def paged_count(first, read_page):
+    """How many rows a paged listing holds (Stack Exchange's questions, a
+    subreddit's posts): its first page ``{rows, pages}`` full, the last
+    read for what it has left."""
+    per, pages = len(first.get("rows") or []), int(first.get("pages") or 1)
+    if pages <= 1:
+        return per
+    return (pages - 1) * per + len(read_page(pages).get("rows") or [])
+
+
 # Provenance survives a restart, because the walk that builds it does not.
 #
 # "Which ZIMs did Zimi make" is answered by opening each archive and reading
@@ -635,6 +682,7 @@ def announce_ready(port):
     "READY 888323:07:20 Title indexes warmed", which reads as no READY."""
     sys.stdout.write(f"READY {port}\n")
     sys.stdout.flush()
+
 
 # ---------------------------------------------------------------------------
 # Zero-config ZIM discovery (1.9 portable mode)
@@ -2040,7 +2088,9 @@ def archive_feeds(archive, kind=None, project=None):
         kind = _zim_kind(scraper, vals["Tags"], name) or ""
     if project is None:
         project = _wiki_project(name) if kind == "wiki" else ""
-    return _zim_feeds(kind, project, scraper, name, vals["Counter"], vals["X-Zimi-History"])
+    return _zim_feeds(
+        kind, project, scraper, name, vals["Counter"], vals["X-Zimi-History"]
+    )
 
 
 def _read_zim_feeds(path, kind, project):
@@ -2076,9 +2126,13 @@ def _zim_kind(scraper, tags, meta_name):
         return "qa"
     if s.startswith(_REDDIT_SCRAPERS):
         return "reddit"
-    if s.startswith(_WIKI_SCRAPERS) or (meta_name or "").lower().startswith(WIKI_PROJECTS):
+    if s.startswith(_WIKI_SCRAPERS) or (meta_name or "").lower().startswith(
+        WIKI_PROJECTS
+    ):
         return "wiki"
-    if s.startswith(_BOOK_SCRAPERS) or (meta_name or "").lower().startswith("gutenberg_"):
+    if s.startswith(_BOOK_SCRAPERS) or (meta_name or "").lower().startswith(
+        "gutenberg_"
+    ):
         return "books"
     return None
 
@@ -2099,8 +2153,15 @@ def _zim_map_search(scraper):
 # it uses. StreetZim: map-config.json, bounds as [W, S, E, N]. Kiwix's
 # maps2zim: content/config.json, boundingBox as [[W, S], [E, N]]. Both are
 # the same four numbers; Zimi keeps the first shape.
-_MAP_CONFIG_PATHS = (("map-config.json", "bounds"), ("content/config.json", "boundingBox"))
-_MAP_SOURCE_LABELS = (("streetzim", "StreetZim"), ("atlaszim", "AtlasZim"), ("maps2zim", "Kiwix"))
+_MAP_CONFIG_PATHS = (
+    ("map-config.json", "bounds"),
+    ("content/config.json", "boundingBox"),
+)
+_MAP_SOURCE_LABELS = (
+    ("streetzim", "StreetZim"),
+    ("atlaszim", "AtlasZim"),
+    ("maps2zim", "Kiwix"),
+)
 
 
 def _map_source(scraper):
@@ -2126,7 +2187,11 @@ def _map_bounds(archive):
             continue
         box = raw.get(key) if isinstance(raw, dict) else None
         try:
-            if isinstance(box, list) and len(box) == 2 and all(isinstance(c, list) for c in box):
+            if (
+                isinstance(box, list)
+                and len(box) == 2
+                and all(isinstance(c, list) for c in box)
+            ):
                 box = [box[0][0], box[0][1], box[1][0], box[1][1]]
             w, so, e, n = (float(v) for v in box)
         except (TypeError, ValueError):
@@ -2154,7 +2219,9 @@ def _reddit_facts(archive):
             entry = archive.get_entry_by_path(path)
             if entry.is_redirect:
                 entry = entry.get_redirect_entry()
-            subs = reddot.subreddits_from_page(bytes(entry.get_item().content).decode("utf-8", "replace"))
+            subs = reddot.subreddits_from_page(
+                bytes(entry.get_item().content).decode("utf-8", "replace")
+            )
             if subs:
                 return {"subreddits": subs}
         except Exception:
@@ -2170,7 +2237,9 @@ _TOOL_TITLES = ("arcticzim", "")
 
 def _subreddit_title(title, subreddits):
     if str(title or "").strip().lower() in _TOOL_TITLES and subreddits:
-        return " · ".join("r/" + s for s in subreddits[:3]) + (" …" if len(subreddits) > 3 else "")
+        return " · ".join("r/" + s for s in subreddits[:3]) + (
+            " …" if len(subreddits) > 3 else ""
+        )
     return title
 
 
@@ -2228,7 +2297,9 @@ def _apps_value(raw, every=APPS_DEFAULT):
             return every
         raw = text.split(",")
     if isinstance(raw, (list, tuple, set, frozenset)):
-        return frozenset(n for n in (str(x).strip().lower() for x in raw) if n in APP_NAMES)
+        return frozenset(
+            n for n in (str(x).strip().lower() for x in raw) if n in APP_NAMES
+        )
     return every if raw else frozenset()
 
 
@@ -2340,7 +2411,10 @@ def newest_per(entries, key):
 
 def _is_map_zim(name):
     """Whether the registered ZIM ``name`` is a map, from the list cache."""
-    return any(z.get("name") == name and z.get("kind") == "map" for z in (_zim_list_cache or []))
+    return any(
+        z.get("name") == name and z.get("kind") == "map"
+        for z in (_zim_list_cache or [])
+    )
 
 
 def _read_zim_kind(path):
@@ -3254,7 +3328,12 @@ def _extract_zim_metadata(name, path):
     if kind == "wiki":
         info["project"] = _wiki_project(meta_name, name)
     feeds = _zim_feeds(
-        kind, info.get("project", ""), meta_scraper, meta_name, meta_counter, meta_history
+        kind,
+        info.get("project", ""),
+        meta_scraper,
+        meta_name,
+        meta_counter,
+        meta_history,
     )
     if feeds:
         info["feeds"] = feeds
@@ -3657,6 +3736,9 @@ def load_cache(force=False):
             # open without adding a read of every file to it.
             if cached.get("shape"):
                 entry["shape"] = cached["shape"]
+            # What each app counted of it (note_app_items), for the Apps page.
+            if cached.get("items"):
+                entry["items"] = cached["items"]
             # The file's own identity, carried on the entry. Small, and it is
             # what lets a picture request be answered from the client's copy
             # without opening the archive to find out — see _picture_etag.
@@ -3738,7 +3820,14 @@ def load_cache(force=False):
 
     # Persist cache if we scanned anything new, backfilled a legacy first_seen
     # (so the mtime stamp is computed once), or repaired mass-stamped entries.
-    if scanned > 0 or backfilled > 0 or kind_backfilled or disk_cache is None or healed or healed_updates:
+    if (
+        scanned > 0
+        or backfilled > 0
+        or kind_backfilled
+        or disk_cache is None
+        or healed
+        or healed_updates
+    ):
         # Wholesale, not a merge — but under the same lock, so it cannot land
         # in the middle of somebody else's read-modify-write.
         with _disk_cache_lock:
@@ -4058,6 +4147,7 @@ def register_zim_file(path, removed_files=()):
         # Invalidates /w/ entry ETags and the interlang resolution caches —
         # cross-ZIM answers can genuinely change when a ZIM arrives.
         _cache_generation += 1
+
         # Re-read the disk cache under the lock: the phase-1 copy fed the
         # stamp inheritance, but a concurrent full load_cache (manage
         # refresh) may have rewritten the file since — mutate the freshest
@@ -4192,6 +4282,7 @@ def unregister_zim_file(filename):
         # Invalidates /w/ entry ETags and the interlang resolution caches —
         # cross-ZIM answers genuinely change when a ZIM leaves.
         _cache_generation += 1
+
         # Re-read under the lock: a concurrent load_cache may have rewritten
         # the file since phase 1, so mutate the freshest version.
         def _apply(disk_now):
@@ -4931,6 +5022,7 @@ def main():
         # --port 0 is used to let the OS pick a free port.
         actual_port = server.server_address[1]
         announce_ready(actual_port)
+
         # The Creator pane's engines (a browser launch, two sidecars) are
         # found out in the background, so the first look at that pane is not
         # "Checking…" for as long as a browser takes to start. After READY
@@ -4946,7 +5038,9 @@ def main():
             except Exception:
                 pass
 
-        threading.Thread(target=_probe_engines_later, daemon=True, name="creator-probe-boot").start()
+        threading.Thread(
+            target=_probe_engines_later, daemon=True, name="creator-probe-boot"
+        ).start()
         try:
             server.serve_forever()
         except KeyboardInterrupt:

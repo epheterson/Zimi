@@ -797,8 +797,13 @@ def _records_of(rows):
     }
 
 
-def _shelf_changed(_name, _key, _records):
+def _shelf_changed(name, _key, records):
+    """A ZIM's records (Gutenberg's, one per book) or books (the other
+    families') were read: the shelf is merged again, and the ZIM's count of
+    books is noted for the Apps page."""
     _shelf["key"] = None
+    if records:
+        _srv.note_app_items(name, "books", len(records))
 
 
 def _gone(name):

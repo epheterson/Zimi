@@ -3499,8 +3499,10 @@ function renderHome(filter) {
   if (filter && zims.length !== baseZims.length) {
     statsHtml = '<span class="num">' + zims.length + '</span> ' + tH('sources_matching', {n: zims.length, total: n, query: filter});
   } else {
+    // The Apps page counts what each app shows on its own cards: a sum of
+    // ZIM entries across books, videos and maps would count none of them.
     statsHtml = t('sources_count', {n: '<span class="num">' + n + '</span>'}) + ' &middot; ' +
-      t('articles_count', {n: '<span class="num">' + totalEntries.toLocaleString() + '</span>'}) + ' &middot; ' +
+      (homeScope && homeScope.type === 'apps' ? '' : t('articles_count', {n: '<span class="num">' + totalEntries.toLocaleString() + '</span>'}) + ' &middot; ') +
       fmtSize(totalGb, true);
   }
 
@@ -4697,8 +4699,11 @@ function _shortAge(tsSec) {
   return t('just_now');
 }
 
-function renderCardGrid(items, showStars, showCategory) {
+// ``countOf(z)``: the count on a card's line, _zimCountHtml's by default (the
+// Apps page counts what each app shows, _appItemsHtml); '' leaves it out.
+function renderCardGrid(items, showStars, showCategory, countOf) {
   if (!items || !items.length) return '';
+  countOf = countOf || _zimCountHtml;
   const favs = (collectionsCache && collectionsCache.favorites) || [];
   const isTiles = _getLibraryView() === 'tiles';
   const gridCls = isTiles ? 'stats-grid tiles' : 'stats-grid';
@@ -4742,8 +4747,7 @@ function renderCardGrid(items, showStars, showCategory) {
         // (in the list the .zt span is inline, so nothing changes there).
         '<div class="name">' + newHtml + '<span class="zt">' + esc(z.title || z.name) + '</span>' + badge + qidIcon + _provBadgeHtml(z.name) + '</div>' +
         (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
-        '<div class="detail">' + catPrefix + _zimCountHtml(z) +
-        ' &middot; ' + fmtSize(z.size_gb) +
+        '<div class="detail">' + catPrefix + [countOf(z), fmtSize(z.size_gb)].filter(Boolean).join(' &middot; ') +
         // Both dates carry their own separator, so either can be taken out
         // without leaving a dangling middot behind — which is what lets the
         // in-place re-sort swap them without rebuilding the card.
@@ -19260,15 +19264,40 @@ function _appsPageHtml(shown) {
     var inside = _appZims(app);
     if (!inside.length) return narrowed ? '' : _appSectionHtml(app, 0, '');
     var zims = _sortLibrary(inside.filter(function(z) { return shown.has(z.name); }));
-    return zims.length ? _appSectionHtml(app, inside.length, renderCardGrid(zims, true, false)) : '';
+    return zims.length ? _appSectionHtml(app, inside.length, renderCardGrid(zims, true, false, function(z) { return _appItemsHtml(app, z); })) : '';
   }).join('');
   return groups && '<div class="cat-heading">' + tH('apps_section') + '</div>' + groups;
 }
+// How many of what the app shows a ZIM holds, as the app counts them: books,
+// videos, questions, posts (server.note_app_items, counted when the app read
+// them and kept with the library's list), a wiki's articles. ZIM entries
+// (pictures, stylesheets, a tag's pages) are not what an app shows. A video
+// ZIM ZimiTube has not read yet counts its video and audio files (its
+// measured shape). Undefined when not known yet: the card then says nothing.
+function _appItemsCount(app, z) {
+  var items = z.items || {};
+  if (items[app]) return items[app];
+  if (app === 'books' && z.feeds && z.feeds.books === 'whole') return 1;
+  if (app === 'wiki') return typeof z.article_count === 'number' ? z.article_count : undefined;
+  if (app === 'tube' && z.shape && z.shape.breakdown) {
+    var n = 0;
+    z.shape.breakdown.forEach(function(b) { if (b.key === 'video' || b.key === 'audio') n += b.count || 0; });
+    return n || undefined;
+  }
+  return undefined;
+}
+// A card's count on the Apps page. A map is not counted in entries (its
+// tiles): its publisher says which map it is.
+function _appItemsHtml(app, z) {
+  if (app === 'maps') return esc(_mapSourceLabel(z));
+  var n = _appItemsCount(app, z);
+  return n ? esc(tPlural('app_items_' + app, n, {n: n.toLocaleString()})) : '';
+}
 // One app's section: its tile drawn as a banner (the count of what it reads
-// in place of their names, which follow under it), then its ZIMs.
+// in place of their names, which follow under it: a map app's maps), then its ZIMs.
 function _appSectionHtml(app, n, grid) {
   var tile = _APP_TILES[app]().replace('class="stat-card app-tile', 'class="stat-card app-tile app-banner');
-  if (n) tile = tile.replace(/<div class="detail">[^<]*<\/div>/, '<div class="detail">' + tPluralH('app_sources', n) + '</div>');
+  if (n) tile = tile.replace(/<div class="detail">[^<]*<\/div>/, '<div class="detail">' + tPluralH(app === 'maps' ? 'apps_count_maps' : 'app_sources', n) + '</div>');
   return '<section class="app-section" data-app="' + app + '">' + tile + grid + '</section>';
 }
 
