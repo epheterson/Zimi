@@ -13,11 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Saving in every app: bookmarks, lists, Liked and highlights with notes, synced across devices when signed in.
 - Search operators: `-word`, `"exact words"`, `OR`, `lang:`, `in:` ([#94](https://github.com/epheterson/Zimi/issues/94)).
 - Search results can open in their app.
-- Bookshelf: document libraries, textbooks, Wikisource, Wikibooks, EPUBs and your own folders.
-- ZimiTube: document library videos, audiobooks and your own folders.
+- Bookshelf: document libraries, textbooks, Wikisource, Wikibooks, EPUBs, and ZIMs you create from a folder of documents.
+- ZimiTube: document library videos, audiobooks, and ZIMs you create from a folder of videos or audio.
 - External links are marked in readers; Create a ZIM can remove them ([#99](https://github.com/epheterson/Zimi/issues/99)).
 - Settings > Server > Internet use: every outbound connection, each with a switch.
-- Almanac: radio delay, flights, and a 3D Earth and Moon.
 
 ### Changed
 
