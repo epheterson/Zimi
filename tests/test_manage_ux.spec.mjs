@@ -308,7 +308,7 @@ test('a library of undated ZIMs is told that the updater cannot reach them', asy
   await enterSection(page, 'library');
   // Under the ZIM count, quieter: how many came from the catalog and how many
   // are local. Two plain numbers, no wall of filenames.
-  await expect(page.locator('#ms-lib-split .mc-sub .mc-label', { hasText: 'From the catalog' }))
+  await expect(page.locator('#ms-lib-split .mc-sub .mc-label', { hasText: 'Catalog' }))
     .toHaveCount(1);
   await expect(page.locator('#ms-lib-split .mc-sub .mc-label', { hasText: /^Local$/ }))
     .toHaveCount(1);
@@ -325,7 +325,7 @@ for (const theme of ['dark', 'light']) {
         skipped: [{ name: 'field_notes', reason: 'undated' }] },
     });
     await enterSection(page, 'library', theme);
-    await expect(page.locator('#ms-lib-split .mc-label', { hasText: 'From the catalog' }))
+    await expect(page.locator('#ms-lib-split .mc-label', { hasText: 'Catalog' }))
       .toHaveCount(1);
     await page.locator('#ms-auto-update').screenshot({
       path: `ui-review/manage-autoupdate-${theme}.png`,

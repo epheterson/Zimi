@@ -155,7 +155,7 @@ def test_library_split_sits_under_the_count(served, phone):
         in_auto_update: document.querySelectorAll('#ms-auto-update .mc-sub').length };
     }""")
     assert split["right_after"] and split["quieter"], split
-    assert split["labels"] == ["From the catalog", "Local"], split
+    assert split["labels"] == ["Catalog", "Local"], split
     assert sum(split["values"]) == split["total"], split
     assert split["in_auto_update"] == 0
     assert pg.evaluate(SMALL_FIELDS) == []

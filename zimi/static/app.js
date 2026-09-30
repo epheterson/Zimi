@@ -11596,14 +11596,20 @@ function _creatorLoadInventory() {
   });
 }
 
-// The provenance types, in the order the breakdown reads them, paired with the
-// i18n key for each label. A type with a zero count is left out of the chip
-// row entirely — a wall of "0 · 0 · 0" is noise, not information.
+// The provenance types, in the order the breakdown reads them. Each chip is
+// its count in words, pluralized (creator_made_<type>_<plural category>: "5
+// pages", not "5 page"), the number in bold. A type with a zero count is left
+// out of the chip row entirely: a wall of "0 · 0 · 0" is noise, not information.
+// The table's Type column names each with the label key paired here.
 var _CREATOR_TYPE_KEYS = {
   page: 'zi_kind_page', site: 'zi_kind_site', video: 'zi_kind_video',
   import: 'zi_kind_import', folder: 'zi_kind_folder',
   export: 'zi_kind_export', edit: 'zi_kind_edit', reddit: 'create_mode_reddit'
 };
+function _creatorMadeChip(type, n) {
+  return '<span class="cr-made-chip">' +
+    tPluralH('creator_made_' + type, n).replace(String(n), '<b>' + n + '</b>') + '</span>';
+}
 var _creatorSort = { key: 'created_ts', dir: -1 };  // newest first by default
 
 // The by-type counts as amber chips, then a sortable table of everything Zimi
@@ -11616,10 +11622,8 @@ function _creatorMadeHtml(d) {
     return '<div class="ms-hint">' + tH('creator_made_empty') + '</div>';
   }
   var chips = '';
-  Object.keys(_CREATOR_TYPE_KEYS).forEach(function(t) {
-    var n = counts[t] || 0;
-    if (!n) return;
-    chips += '<span class="cr-made-chip"><b>' + n + '</b> ' + tH(_CREATOR_TYPE_KEYS[t]) + '</span>';
+  Object.keys(_CREATOR_TYPE_KEYS).forEach(function(type) {
+    if (counts[type]) chips += _creatorMadeChip(type, counts[type]);
   });
   var s = _creatorSort;
   list.sort(function(a, b) {
