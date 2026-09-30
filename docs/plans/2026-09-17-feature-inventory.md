@@ -149,6 +149,8 @@ Eric: "We're on a new major release here maps release and each of those apps of 
 - Lists, bookmarks and all the saving things, per app (Eric, 2026-09-25: "I want to get to the lists and bookmarks and all the saving things per app but can be next release"). Next release.
 - One background-details builder for the apps: books.py:589-772 repeats tube.py:511-670 (_details_dir, details_current, _claim, _build_claimed, request_details); extract a shared builder taking the kind, build function and version. Deferred from 1.11's final review (refactoring working ZimiTube code on release night was the bigger risk).
 - Suggestions from what you liked or viewed (Eric, 2026-09-29: "Maybe we should start being able to suggest content based on what you liked or viewed, future."): local-only, from Saved, Liked and history, across apps.
+- Browse what's available inside each app before downloading (Eric, 2026-09-29: "we can allow browsing available content within apps then you download the zim and it shows up in place kinda like opening a new video app on a streaming box").
+- 1.12.1 dot release (Eric, 2026-09-29: "All the noted for later sound great but maybe a dot release"): Wikisource/textbook/whole-ZIM books in the e-reader, PDF toolbar on phones, Apps page counting books/videos not entries, the Sun in the 3D view and flying between Sun, Moon and Earth, the AppImage catalog items (browser fallback's broken tab, file name, update info).
 
 ## Killed, and staying killed
 

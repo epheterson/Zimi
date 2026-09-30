@@ -20,6 +20,7 @@ An app earns a place when the library already holds the data, in a shape Zimi ca
 | **Repair** (iFixit) | 12 ZIMs, 42.7 GB, 188k guides by device | The ZIM's own interface, which works | Later: a guide walker by device and part |
 | **Nearby** | Wikipedia articles with coordinates, maps | Not surfaced | "What's around here" on a map. To verify: which Wikipedia builds keep article coordinates |
 | **Zimi Earth** | The Almanac's 3D Earth (1.12), maps, Wikipedia articles with coordinates, satellites, Wikivoyage | Pieces in the Almanac, Maps and Zimipedia | A Google Earth of the library: drag the globe, see places, articles, day and night and satellites together |
+| **Zimiflix** (Eric, 2026-09-29: "For ZimiTube I can point it to my own tv and movie directories?... I literally had the idea for Zetflix or Zimiflix... Especially for people's random folders that may be hard to discover otherwise.") | Your own media folders (Eric's NAS: tv, movies, movies4k), read in place without packing into a ZIM | Nothing; ZimiTube only reads ZIMs (a folder packed with Create a ZIM) | ZimiTube, or a sibling app, over local media folders: posters, seasons, continue watching; needs a folder indexer, metadata and a player for large files |
 | **Arcade** | The library itself: a link race across Wikipedia, geography from maps, Wiktionary word games, On this day trivia | Nothing | Parked by Eric (2026-09-27: "maybe not arcade this time") |
 
 ## Eric's reactions (2026-09-28)
