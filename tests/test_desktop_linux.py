@@ -283,6 +283,43 @@ def test_browser_mode_honours_the_command_lines_port_and_folder(monkeypatch, tmp
     assert desktop._cli_port_and_zim_dir(["--port", "7", "x", "--zim-dir"]) == (7, None)
 
 
+def test_browser_mode_serves_while_the_browser_is_open(monkeypatch, tmp_path):
+    """webbrowser waits for a console browser (and anything BROWSER names) to
+    exit, and on_ready runs before the server serves: opened inline, the tab
+    asked a server that could not answer until the tab closed. The browser
+    must be opened beside the server, not in its way."""
+    import threading
+    import webbrowser
+
+    monkeypatch.setattr(sys, "argv", ["Zimi", "--browser", "--port", "0", "--zim-dir", str(tmp_path)])
+    monkeypatch.setattr(desktop, "ConfigManager", lambda: type("C", (), {"get": lambda self, k: None})())
+    monkeypatch.setattr(desktop, "_discover_portable_zim_dir", lambda config: None)
+    import zimi.server
+
+    monkeypatch.setattr(sys.modules["zimi.server"], "announce_ready", lambda port: None)
+    tab_closed, asked, returned = threading.Event(), [], []
+
+    def browser_that_stays_open(url):
+        asked.append(url)
+        tab_closed.wait(5)
+        returned.append(url)
+        return True
+
+    monkeypatch.setattr(webbrowser, "open", browser_that_stays_open)
+    served = []
+    monkeypatch.setattr(desktop, "_serve", lambda zim_dir, port, on_ready, host="127.0.0.1": (on_ready(4321), served.append(bool(returned))))
+    desktop._run_in_browser()
+    try:
+        assert served == [False], "the server serves while the browser is still open"
+        for _ in range(100):
+            if asked:
+                break
+            threading.Event().wait(0.02)
+        assert asked == ["http://127.0.0.1:4321"]
+    finally:
+        tab_closed.set()
+
+
 def test_the_window_keeps_its_storage_and_the_page_survives_without_one():
     with open(os.path.join(REPO, "zimi", "desktop.py"), encoding="utf-8") as f:
         src = f.read()

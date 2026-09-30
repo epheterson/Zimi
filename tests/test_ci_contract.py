@@ -343,7 +343,9 @@ _BUILDS = [
     ("Zimi-Intel", "Zimi-Intel.dmg"),
     ("Zimi-windows-x64-Setup", "Zimi-windows-x64-Setup.exe"),
     ("Zimi-windows-x64", "Zimi-windows-x64.zip"),
-    ("Zimi-Linux-amd64", "Zimi-Linux-amd64.AppImage"),
+    # Named when built: the .zsync records the AppImage's own name.
+    ("Zimi-Linux-amd64", "Zimi-1.2.3-x86_64.AppImage"),
+    ("Zimi-Linux-amd64", "Zimi-1.2.3-x86_64.AppImage.zsync"),
 ]
 
 
@@ -360,29 +362,49 @@ def _run_release_naming(tmp, builds):
 
 @pytest.mark.skipif(os.name == "nt" or not shutil.which("bash"), reason="the release job runs on macOS")
 def test_release_files_are_named_version_platform_chip(tmp_path):
-    """What people download is Zimi-<version>-<platform>-<chip>, named in one
-    step of the release job; the appcasts, the cask and the release all read
-    those files, so a name changed there is changed everywhere."""
+    """What people download is Zimi-<version>-<os>-<arch>, named in one step
+    of the release job; the appcasts, the cask and the release all read those
+    files, so a name changed there is changed everywhere. The AppImage says
+    no "Linux" (the AppImage catalog's rule) and ships its .zsync."""
     done = _run_release_naming(tmp_path, _BUILDS + [("Zimi-Linux-snap", "zimi_1.2.3_amd64.snap")])
     assert done.returncode == 0, done.stderr
     assert sorted(p.name for p in (tmp_path / "release").iterdir()) == [
-        "Zimi-1.2.3-Linux-x64.AppImage",
-        "Zimi-1.2.3-Linux-x64.snap",
-        "Zimi-1.2.3-Windows-x64-Setup.exe",
-        "Zimi-1.2.3-Windows-x64.zip",
-        "Zimi-1.2.3-macOS-AppleSilicon.dmg",
-        "Zimi-1.2.3-macOS-Intel.dmg",
+        "Zimi-1.2.3-linux-x64.snap",
+        "Zimi-1.2.3-mac-arm64.dmg",
+        "Zimi-1.2.3-mac-x64.dmg",
+        "Zimi-1.2.3-windows-x64-setup.exe",
+        "Zimi-1.2.3-windows-x64.zip",
+        "Zimi-1.2.3-x86_64.AppImage",
+        "Zimi-1.2.3-x86_64.AppImage.zsync",
     ]
     text = (WORKFLOWS / "desktop-release.yml").read_text(encoding="utf-8")
     assert "files: release/*" in text
-    assert 'Zimi-#{version}-macOS-#{arch}.dmg' in text
+    assert 'arch arm: "arm64", intel: "x64"' in text
+    assert 'Zimi-#{version}-mac-#{arch}.dmg' in text
+    for asset in ("mac-x64.dmg", "mac-arm64.dmg", "windows-x64-setup.exe"):
+        assert f'"release/$ZIMI_STEM-{asset}" "$ZIMI_STEM-{asset}"' in text, f"the appcast signs and links {asset}"
+
+
+def test_the_appimage_carries_update_information_and_its_zsync():
+    """AppImageUpdate reads the update information embedded in the AppImage,
+    finds the newest release's .zsync by it, and downloads the file the
+    .zsync names. appimagetool writes the .zsync beside the AppImage with the
+    AppImage's name inside, so the AppImage is built under its release name
+    and never renamed after."""
+    text = (WORKFLOWS / "desktop-release.yml").read_text(encoding="utf-8")
+    step = text.split("- name: Package AppImage (Linux)", 1)[1].split("\n      - name:", 1)[0]
+    assert '-u "gh-releases-zsync|epheterson|Zimi|latest|Zimi-*x86_64.AppImage.zsync"' in step
+    assert 'APPIMAGE="Zimi-${V//\\//-}-x86_64.AppImage"' in step
+    assert '"$APPDIR" "$APPIMAGE"' in step and '"$APPIMAGE.zsync"' in step
+    assert "asset: Zimi-*-x86_64.AppImage*" in text, "the build uploads the AppImage and its .zsync"
+    assert "Linux-x64.AppImage" not in text and "Zimi-Linux-amd64.AppImage" not in text
 
 
 @pytest.mark.skipif(os.name == "nt" or not shutil.which("bash"), reason="the release job runs on macOS")
 def test_a_release_without_its_snap_still_ships_the_rest(tmp_path):
     done = _run_release_naming(tmp_path, _BUILDS)
     assert done.returncode == 0, done.stderr
-    assert len(list((tmp_path / "release").iterdir())) == 5
+    assert len(list((tmp_path / "release").iterdir())) == 6
 
 
 @pytest.mark.skipif(os.name == "nt" or not shutil.which("bash"), reason="the release job runs on macOS")
