@@ -3499,8 +3499,10 @@ function renderHome(filter) {
   if (filter && zims.length !== baseZims.length) {
     statsHtml = '<span class="num">' + zims.length + '</span> ' + tH('sources_matching', {n: zims.length, total: n, query: filter});
   } else {
+    // The Apps page counts what each app shows on its own cards: a sum of
+    // ZIM entries across books, videos and maps would count none of them.
     statsHtml = t('sources_count', {n: '<span class="num">' + n + '</span>'}) + ' &middot; ' +
-      t('articles_count', {n: '<span class="num">' + totalEntries.toLocaleString() + '</span>'}) + ' &middot; ' +
+      (homeScope && homeScope.type === 'apps' ? '' : t('articles_count', {n: '<span class="num">' + totalEntries.toLocaleString() + '</span>'}) + ' &middot; ') +
       fmtSize(totalGb, true);
   }
 
@@ -4689,8 +4691,11 @@ function _shortAge(tsSec) {
   return t('just_now');
 }
 
-function renderCardGrid(items, showStars, showCategory) {
+// ``countOf(z)``: the count on a card's line, _zimCountHtml's by default (the
+// Apps page counts what each app shows, _appItemsHtml); '' leaves it out.
+function renderCardGrid(items, showStars, showCategory, countOf) {
   if (!items || !items.length) return '';
+  countOf = countOf || _zimCountHtml;
   const favs = (collectionsCache && collectionsCache.favorites) || [];
   const isTiles = _getLibraryView() === 'tiles';
   const gridCls = isTiles ? 'stats-grid tiles' : 'stats-grid';
@@ -4734,8 +4739,7 @@ function renderCardGrid(items, showStars, showCategory) {
         // (in the list the .zt span is inline, so nothing changes there).
         '<div class="name">' + newHtml + '<span class="zt">' + esc(z.title || z.name) + '</span>' + badge + qidIcon + _provBadgeHtml(z.name) + '</div>' +
         (z.description ? '<div class="desc">' + esc(z.description) + '</div>' : '') +
-        '<div class="detail">' + catPrefix + _zimCountHtml(z) +
-        ' &middot; ' + fmtSize(z.size_gb) +
+        '<div class="detail">' + catPrefix + [countOf(z), fmtSize(z.size_gb)].filter(Boolean).join(' &middot; ') +
         // Both dates carry their own separator, so either can be taken out
         // without leaving a dangling middot behind — which is what lets the
         // in-place re-sort swap them without rebuilding the card.
@@ -18016,12 +18020,14 @@ function _bookPrefs() {
 }
 // Is this reader address a book? Known before it loads (the ZIM is a
 // Gutenberg one and the page is a book's, <title>.<number>; or it is an
-// EPUB's chapters, <book>.epub/), so Zimi's header can step aside before
+// EPUB's chapters, <book>.epub/; or a book whose chapters are pages,
+// _zimi_book_/<root>, zimi/bookpages.py), so Zimi's header can step aside before
 // the book is laid out, not after (a change of the frame's size then would
 // lay the book out twice).
+var _BOOK_PAGES_PREFIX = '_zimi_book_/';
 function _bookUrl(url) {
   var m = /^\/w\/([^\/?#]+)\/([^?#]+)/.exec(url || '');
-  if (m && /\.epub\/$/i.test(m[2])) return true;
+  if (m && (/\.epub\/$/i.test(m[2]) || m[2].indexOf(_BOOK_PAGES_PREFIX) === 0)) return true;
   if (!m || !/\.\d+$/.test(m[2]) || /_cover\.\d+$/.test(m[2])) return false;
   var zim = ''; try { zim = decodeURIComponent(m[1]); } catch (e) { return false; }
   return (zimsCache || []).some(function(z) { return z.name === zim && z.kind === 'books'; });
@@ -18217,7 +18223,9 @@ function _bookLay(frame) {
   var pre = doc.createRange();
   // A "chapter" with no more than a title before it is the title page's
   // (By Fyodor Dostoevsky, Contents): the book starts where there is more.
-  while (chapters.length) {
+  // A book of pages names its chapters itself (zimi/bookpages.py): a short
+  // first page is still its own.
+  while (chapters.length && meta('zimi-book') !== 'pages') {
     pre.setStart(article, 0); pre.setEndBefore(chapters[0]);
     if (pre.toString().replace(/\s+/g, '').length >= _BOOK_FRONT_MIN) break;
     chapters = Array.prototype.slice.call(chapters, 1);
@@ -18550,8 +18558,9 @@ function _bookLay(frame) {
     h += '<li' + (k < 0 ? ' aria-current="true"' : '') + '><button type="button" data-k="-1">' + esc(bookTitle) + '</button></li>';
     chapters.forEach(function(ch, i) {
       var x = _bookText(ch);
-      // A name that recurs (CHAPTER I in every part) sits under the one before it that does not.
-      h += '<li' + (seen[x] > 1 ? ' class="zb-sub"' : '') + (i === k ? ' aria-current="true"' : '') + '><button type="button" data-k="' + i + '">' + esc(x) + '</button></li>';
+      // A name that recurs (CHAPTER I in every part) sits under the one before it that does not;
+      // so does a section a book of pages marks as one (data-zb-sub).
+      h += '<li' + (seen[x] > 1 || ch.hasAttribute('data-zb-sub') ? ' class="zb-sub"' : '') + (i === k ? ' aria-current="true"' : '') + '><button type="button" data-k="' + i + '">' + esc(x) + '</button></li>';
     });
     tocSheet.innerHTML = h + '</ol>';
   };
@@ -19262,15 +19271,40 @@ function _appsPageHtml(shown) {
     var inside = _appZims(app);
     if (!inside.length) return narrowed ? '' : _appSectionHtml(app, 0, '');
     var zims = _sortLibrary(inside.filter(function(z) { return shown.has(z.name); }));
-    return zims.length ? _appSectionHtml(app, inside.length, renderCardGrid(zims, true, false)) : '';
+    return zims.length ? _appSectionHtml(app, inside.length, renderCardGrid(zims, true, false, function(z) { return _appItemsHtml(app, z); })) : '';
   }).join('');
   return groups && '<div class="cat-heading">' + tH('apps_section') + '</div>' + groups;
 }
+// How many of what the app shows a ZIM holds, as the app counts them: books,
+// videos, questions, posts (server.note_app_items, counted when the app read
+// them and kept with the library's list), a wiki's articles. ZIM entries
+// (pictures, stylesheets, a tag's pages) are not what an app shows. A video
+// ZIM ZimiTube has not read yet counts its video and audio files (its
+// measured shape). Undefined when not known yet: the card then says nothing.
+function _appItemsCount(app, z) {
+  var items = z.items || {};
+  if (items[app]) return items[app];
+  if (app === 'books' && z.feeds && z.feeds.books === 'whole') return 1;
+  if (app === 'wiki') return typeof z.article_count === 'number' ? z.article_count : undefined;
+  if (app === 'tube' && z.shape && z.shape.breakdown) {
+    var n = 0;
+    z.shape.breakdown.forEach(function(b) { if (b.key === 'video' || b.key === 'audio') n += b.count || 0; });
+    return n || undefined;
+  }
+  return undefined;
+}
+// A card's count on the Apps page. A map is not counted in entries (its
+// tiles): its publisher says which map it is.
+function _appItemsHtml(app, z) {
+  if (app === 'maps') return esc(_mapSourceLabel(z));
+  var n = _appItemsCount(app, z);
+  return n ? esc(tPlural('app_items_' + app, n, {n: n.toLocaleString()})) : '';
+}
 // One app's section: its tile drawn as a banner (the count of what it reads
-// in place of their names, which follow under it), then its ZIMs.
+// in place of their names, which follow under it: a map app's maps), then its ZIMs.
 function _appSectionHtml(app, n, grid) {
   var tile = _APP_TILES[app]().replace('class="stat-card app-tile', 'class="stat-card app-tile app-banner');
-  if (n) tile = tile.replace(/<div class="detail">[^<]*<\/div>/, '<div class="detail">' + tPluralH('app_sources', n) + '</div>');
+  if (n) tile = tile.replace(/<div class="detail">[^<]*<\/div>/, '<div class="detail">' + tPluralH(app === 'maps' ? 'apps_count_maps' : 'app_sources', n) + '</div>');
   return '<section class="app-section" data-app="' + app + '">' + tile + grid + '</section>';
 }
 

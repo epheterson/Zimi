@@ -24,6 +24,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote, quote
 
 import zimi.server as _srv
+from zimi import bookpages as _bookpages
 from zimi import sso as _sso
 from zimi import users as _users
 from zimi.manage import (
@@ -3433,11 +3434,15 @@ class ZimHandler(BaseHTTPRequestHandler):
     def _serve_epub_part(self, zim_name, entry_path):
         """``/w/<zim>/<book>.epub/`` (the book's chapters as one page, which
         the reader opens like any book) and ``/w/<zim>/<book>.epub/<file>``
-        (a picture or a stylesheet inside it), from zimi.epub. False when the
-        path is not inside an EPUB of this ZIM, for the ordinary lookup."""
+        (a picture or a stylesheet inside it), from zimi.epub; and
+        ``/w/<zim>/_zimi_book_/<root>``, a book whose chapters are pages of
+        the ZIM, as one page (zimi.bookpages). False when the path is
+        neither, for the ordinary lookup."""
         from zimi import epub as _epub
 
         got = _epub.respond(zim_name, entry_path)
+        if got is None:
+            got = _bookpages.respond(zim_name, entry_path)
         if got is None:
             return False
         mimetype, content = got
@@ -3480,10 +3485,11 @@ class ZimHandler(BaseHTTPRequestHandler):
             if etag and self.headers.get("If-None-Match") == etag:
                 return self._picture_not_modified(etag)
 
-        # Inside an EPUB: the book as one page to read, or a file of it.
-        if ".epub/" in entry_path.lower() and self._serve_epub_part(
-            zim_name, entry_path
-        ):
+        # Inside an EPUB: the book as one page to read, or a file of it. A
+        # book whose chapters are pages (zimi.bookpages): them as one page.
+        if (
+            ".epub/" in entry_path.lower() or entry_path.startswith(_bookpages.PREFIX)
+        ) and self._serve_epub_part(zim_name, entry_path):
             return
 
         # Phase 1: Read from ZIM under lock
