@@ -1692,7 +1692,10 @@ def test_a_hostile_chapter_is_sanitized_in_linear_time(shape):
     small = _cpu_seconds(shape, 32 * 1024)
     assert small < 0.05, f"{shape}: 32 KB took {small:.2f}s"
     big = _cpu_seconds(shape, _MB)
-    assert big < (0.1 if shape == "unclosed script" else 0.5), f"{shape}: 1 MB took {big:.2f}s"
+    # Linear: 32 times the text, well under 32 squared the time. Held as a
+    # ratio as well as a ceiling, since a slow runner's ceiling moves.
+    assert big < (0.25 if shape == "unclosed script" else 1.5), f"{shape}: 1 MB took {big:.2f}s"
+    assert big < max(small, 0.01) * 100, f"{shape}: 1 MB took {big:.2f}s against {small:.3f}s for 32 KB"
 
 
 def test_an_xhtml_self_closed_script_keeps_the_rest_of_the_chapter():

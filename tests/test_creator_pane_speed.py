@@ -69,6 +69,12 @@ def slow_probes(monkeypatch):
     monkeypatch.setattr(_manage, "_creator_probing", False, raising=False)
     monkeypatch.setattr(_manage, "_create_queue_view", lambda: [])
     yield calls
+    # A test that ends before its probe lands (the pane answering first) must
+    # not mark the probe done under a thread that is still running: that
+    # thread would publish into the next test.
+    deadline = time.time() + 10
+    while _manage._creator_probing and time.time() < deadline:
+        time.sleep(0.05)
     _manage._creator_probed = None
     _manage._creator_probed_at = 0.0
     _manage._creator_probing = False
