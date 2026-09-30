@@ -263,6 +263,11 @@ function _aeSceneAt(ms) {
   };
 }
 
+// Where the Sun is drawn (AE_SUN_SHOW_DIST): its true direction, nearer.
+function _aeSunShown(scene) {
+  return _aeScale(_aeNorm(scene.sun), AE_SUN_SHOW_DIST);
+}
+
 // ── Small vector helpers ──
 function _aeDot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
 function _aeSub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
@@ -605,7 +610,19 @@ var AE_SAT_POINT_PX = 4;
 var AE_SAT_SELECTED_PX = 9;
 var AE_ISS_POINT_PX = 6;
 var AE_ISS_FADED_ALPHA = 0.45;
-var AE_SUN_POINT_PX = 30;
+// The Sun, drawn where it is but not at its distance or size: a disc 3,000
+// Earth radii out along its true direction (the real one is ~23,500), about
+// three times its true width, so it can be seen, and flown to, from here.
+// Its light on the Earth and the Moon comes from the real Sun (sunPos).
+var AE_SUN_SHOW_DIST = 3000;
+var AE_SUN_SHOW_R = 40;               // ~0.76 degrees as seen from the Earth (real: 0.27)
+var AE_SUN_SEGMENTS = [48, 24];
+var AE_SUN_GLOW_SCALE = 7;            // the glow's width, in the disc's radii
+var AE_SUN_LIMB_DARK = 0.6;           // linear limb darkening, the visible band's
+var AE_FIT_SUN = AE_SUN_SHOW_R * 2.2; // the disc and the glow nearest it
+var AE_MIN_DIST_SUN = AE_SUN_SHOW_R * 1.3;
+var AE_MAX_DIST_SUN = 1400;
+var AE_FLY_FAR_MS = 1600;             // flights to or from the Sun cross 3,000 Earth radii
 var AE_HINT_MS = 4500;
 // Show where I am: a crosshair, the mark every map uses for "locate me".
 var AE_LOCATE_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
@@ -615,7 +632,6 @@ var AE_SPEED_KEYS = ['alm_earth_rate_real', 'alm_earth_rate_min', 'alm_earth_rat
 var AE_GPS_COLOR = [0.55, 0.85, 1.0];
 var AE_ISS_COLOR = [1.0, 0.82, 0.35];
 var AE_SELECTED_COLOR = [1.0, 0.62, 0.04];
-var AE_SUN_COLOR = [1.0, 0.93, 0.78];
 var AE_GPS_RING_COLOR = 0x6fb8ff, AE_GPS_RING_ALPHA = 0.2;
 var AE_GPS_SHELL_RE = 4.16;           // GPS orbit radius, 26,560 km, in Earth radii
 // Orbits fade in between the view holding half of one and nearly all of it.
@@ -708,6 +724,8 @@ var AE_CSS = [
   '.ae-status{position:absolute;left:16px;right:16px;top:66px;text-align:center;font-size:13px;line-height:1.4;color:#f5c16c;pointer-events:none;text-shadow:0 1px 3px #000}',
   '.ae-bottom{position:absolute;left:0;right:0;bottom:0;padding:28px 16px calc(12px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;align-items:center;background:linear-gradient(transparent,rgba(0,0,0,.72));pointer-events:none}',
   '.ae-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;pointer-events:auto}',
+  '.ae-orient{font-size:11px;line-height:1;color:var(--text3);letter-spacing:.02em;text-shadow:0 1px 2px #000}',
+  '.ae-orient[hidden]{display:none}',
   '.ae-note{font-size:10.5px;line-height:1.4;color:var(--text3);text-align:center;pointer-events:auto;max-width:560px}',
   '.ae-ask-text{color:var(--text2)}',
   '.ae-fresh{font:inherit;font-size:11px;line-height:1;padding:6px 10px;min-height:26px;margin:2px 0;margin-inline-start:6px;border-radius:999px;border:1px solid var(--amber-border);background:var(--amber-glow);color:var(--amber);cursor:pointer;vertical-align:middle}',
@@ -806,10 +824,13 @@ function _aeBuildDom() {
     '<div class="ae-bottom">' +
       '<div class="ae-hint" id="ae-hint">' + _almEsc(_aeT('alm_earth_hint')) + '</div>' +
       '<div class="ae-card" id="ae-card" hidden></div>' +
+      '<div class="ae-orient" id="ae-orient" hidden>' + _almEsc(_aeT('alm_moon_north_up')) + '</div>' +
       '<div class="ae-row" role="group" id="ae-views">' +
+        // Outward from home: the Earth, its satellites, the Moon, the Sun.
         '<button type="button" class="ae-btn" data-ae-view="earth" aria-pressed="true">' + _almEsc(_tp('Earth')) + '</button>' +
         '<button type="button" class="ae-btn" data-ae-view="sats" aria-pressed="false">' + _almEsc(_aeT('alm_earth_view_sats')) + '</button>' +
         '<button type="button" class="ae-btn" data-ae-view="moon" aria-pressed="false">' + _almEsc(_aeT('alm_moon')) + '</button>' +
+        '<button type="button" class="ae-btn" data-ae-view="sun" aria-pressed="false">' + _almEsc(_aeT('alm_sun')) + '</button>' +
       '</div>' +
       '<div class="ae-row" role="group" id="ae-time">' + speeds +
         '<button type="button" class="ae-btn" id="ae-eclipse">' + _almEsc(_aeT('alm_earth_next_eclipse')) + '</button>' +
@@ -971,7 +992,38 @@ var AE_MOON_FRAG = [
   '}'
 ].join('\n');
 
-// Points with their own colour, alpha and size: satellites, stars, the Sun.
+// The Sun's disc: white-hot at the centre, darker and warmer toward the limb
+// (limb darkening, the one thing that makes it read as a ball of gas).
+var AE_SUN_FRAG = [
+  'precision mediump float;',
+  'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
+  'void main() {',
+  '  float mu = max(dot(normalize(vNormal), normalize(cameraPosition - vWorld)), 0.0);',
+  '  float dark = 1.0 - ' + AE_SUN_LIMB_DARK.toFixed(2) + ' * (1.0 - mu);',
+  '  vec3 col = mix(vec3(1.0, 0.62, 0.28), vec3(1.0, 0.97, 0.9), mu) * (0.35 + 0.75 * dark);',
+  '  gl_FragColor = vec4(col, 1.0);',
+  '}'
+].join('\n');
+
+// The glow round the Sun: the inside of a wider shell, added over the sky.
+// Each pixel asks how near its line of sight passes the Sun's centre, in the
+// disc's radii, so the glow is round from anywhere, inside the shell or out.
+var AE_SUN_GLOW_FRAG = [
+  'precision highp float;',
+  'uniform vec3 center; uniform float radius;',
+  'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
+  'void main() {',
+  '  vec3 ray = normalize(vWorld - cameraPosition);',
+  '  vec3 toC = center - cameraPosition;',
+  '  float r = length(cross(ray, toC)) / radius;',
+  '  float edge = ' + AE_SUN_GLOW_SCALE.toFixed(1) + ';',
+  '  if (r > edge || dot(ray, toC) < 0.0) discard;',
+  '  float a = 0.6 / (1.0 + 2.5 * (r - 1.0) * (r - 1.0)) * (1.0 - r / edge);',
+  '  gl_FragColor = vec4(vec3(1.0, 0.78, 0.5) * a, 1.0);',
+  '}'
+].join('\n');
+
+// Points with their own colour, alpha and size: satellites and stars.
 var AE_POINTS_VERT = [
   'attribute vec3 aColor; attribute float aAlpha; attribute float aSize;',
   'uniform float dpr;',
@@ -1111,9 +1163,20 @@ function _aeBuildGl(THREE, canvas) {
 
   var sky = new THREE.Group();
   sky.add(_aeStarField(THREE, dpr));
-  var sunDot = _aePointCloud(THREE, 1, dpr, true, { depthTest: true });
-  sky.add(sunDot);
   scene.add(sky);
+
+  var sun = new THREE.Group();
+  sun.add(new THREE.Mesh(
+    new THREE.SphereGeometry(AE_SUN_SHOW_R, AE_SUN_SEGMENTS[0], AE_SUN_SEGMENTS[1]),
+    new THREE.ShaderMaterial({ vertexShader: AE_SPHERE_VERT, fragmentShader: AE_SUN_FRAG })));
+  var sunGlowUni = { center: { value: new THREE.Vector3() }, radius: { value: AE_SUN_SHOW_R } };
+  sun.add(new THREE.Mesh(
+    new THREE.SphereGeometry(AE_SUN_SHOW_R * AE_SUN_GLOW_SCALE, AE_SUN_SEGMENTS[0], AE_SUN_SEGMENTS[1]),
+    new THREE.ShaderMaterial({
+      uniforms: sunGlowUni, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_SUN_GLOW_FRAG,
+      side: THREE.BackSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
+    })));
+  scene.add(sun);
 
   var moonPathCount = Math.round(2 * AE_MOON_PATH_HALF_DAYS * 24 / AE_MOON_PATH_STEP_HOURS) + 1;
   var moonPath = _aeLine(THREE, THREE.Line, moonPathCount, AE_MOON_PATH_COLOR, AE_MOON_PATH_ALPHA);
@@ -1128,7 +1191,7 @@ function _aeBuildGl(THREE, canvas) {
   return {
     THREE: THREE, renderer: renderer, scene: scene, camera: camera, dpr: dpr,
     earth: earth, earthUni: earthUni, moon: moon, moonUni: moonUni, shared: shared,
-    sky: sky, sunDot: sunDot, moonPath: moonPath, moonPathCount: moonPathCount,
+    sky: sky, sun: sun, sunGlowUni: sunGlowUni, moonPath: moonPath, moonPathCount: moonPathCount,
     gpsRings: gpsRings, issRing: issRing, sats: sats,
     basis: new THREE.Matrix4(), vx: new THREE.Vector3(), vy: new THREE.Vector3(), vz: new THREE.Vector3(),
     aniso: Math.min(AE_ANISOTROPY, renderer.capabilities.getMaxAnisotropy()),
@@ -1218,9 +1281,43 @@ function _aeFitDist(radius) {
   var half = Math.tan(_aeRad(AE_FOV_DEG) / 2) * Math.min(1, cam.aspect);
   return radius / (half * AE_FIT_FILL);
 }
-function _aeMinDist() { return _ae.target === 'moon' ? AE_MIN_DIST_MOON : AE_MIN_DIST_EARTH; }
+// What the camera can circle: how near and far it may go, and the surface a
+// drag's speed is measured from.
+var AE_TARGETS = {
+  earth: { min: AE_MIN_DIST_EARTH, max: AE_MAX_DIST, surface: 1 },
+  moon: { min: AE_MIN_DIST_MOON, max: AE_MAX_DIST, surface: AE_MOON_RADIUS_RE },
+  sun: { min: AE_MIN_DIST_SUN, max: AE_MAX_DIST_SUN, surface: AE_SUN_SHOW_R }
+};
+function _aeClampDist(d) { var t = AE_TARGETS[_ae.target]; return _aeClamp(d, t.min, t.max); }
 function _aeTargetPos() {
-  return (_ae.target === 'moon' && _ae.scene) ? _ae.scene.moon : [0, 0, 0];
+  if (!_ae.scene || _ae.target === 'earth') return [0, 0, 0];
+  return _ae.target === 'moon' ? _ae.scene.moon : _aeSunShown(_ae.scene);
+}
+// Whose sky the Moon is shown in: the device's place once asked for (the
+// crosshair), else the place chosen for the Almanac; null for neither, and
+// then the Moon stands celestial north up and the view says so.
+function _aeObserver() {
+  if (_ae.you) return _ae.you;
+  var loc = (typeof _getLocation === 'function') ? _getLocation() : null;
+  return loc && loc.stored ? loc : null;
+}
+// The camera's turn about its line of sight, in degrees from celestial north
+// (positive toward east): on the Moon, the parallactic angle at the observer
+// (app.js _moonLimbAngles, the same answer the hero disc turns by), so the
+// terminator lies as it does in their sky; everywhere else north is up.
+function _aeRollDeg(target, ms) {
+  var obs = target === 'moon' ? _aeObserver() : null;
+  return obs ? _moonLimbAngles(new Date(ms), obs.lat, obs.lon).q : 0;
+}
+// The camera's up for a line of sight `dir` turned `rollDeg` from celestial
+// north toward east. East on the sky, looking along dir, is north x dir.
+function _aeViewUp(dir, rollDeg) {
+  var d = _aeNorm(dir);
+  var n = _aeSub([0, 0, 1], _aeScale(d, d[2]));
+  if (_aeLen(n) < 1e-9) return [0, 0, 1];
+  n = _aeNorm(n);
+  var e = _aeCross(n, d), r = _aeRad(rollDeg);
+  return _aeNorm([n[0] * Math.cos(r) + e[0] * Math.sin(r), n[1] * Math.cos(r) + e[1] * Math.sin(r), n[2] * Math.cos(r) + e[2] * Math.sin(r)]);
 }
 function _aeCameraOffset(az, el, dist) {
   return [dist * Math.cos(el) * Math.cos(az), dist * Math.cos(el) * Math.sin(az), dist * Math.sin(el)];
@@ -1232,24 +1329,30 @@ function _aeAzElOf(v) {
 }
 
 function _aeFlyTo(target, dist, azel) {
-  var from = { pos: _aeTargetPos(), dist: _ae.dist, az: _ae.az, el: _ae.el_ };
+  var from = { pos: _aeTargetPos(), dist: _ae.dist, az: _ae.az, el: _ae.el_, roll: _ae.roll || 0 };
+  var far = target === 'sun' || _ae.target === 'sun';
   _ae.target = target;
   if (azel) { _ae.az = azel.az; _ae.el_ = azel.el; }
-  var to = { dist: _aeClamp(dist, _aeMinDist(), AE_MAX_DIST) };
+  var to = { dist: _aeClampDist(dist) };
   if (_aeReduceMotion()) { _ae.dist = to.dist; _ae.fly = null; }
   else {
     // Turn the short way round.
     var daz = ((_ae.az - from.az + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
-    _ae.fly = { start: performance.now(), from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_ };
+    _ae.fly = { start: performance.now(), ms: far ? AE_FLY_FAR_MS : AE_FLY_MS, from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_ };
     _ae.az = from.az; _ae.el_ = from.el;
   }
   _aeMarkViews();
   _aeKick();
 }
+// How far along the flight is, eased (1 when there is none).
+function _aeFlyEase(now) {
+  var f = _ae.fly;
+  return f ? _aeEaseOut(_aeClamp((now - f.start) / f.ms, 0, 1)) : 1;
+}
 function _aeStepFly(now) {
   var f = _ae.fly;
   if (!f) return false;
-  var p = _aeClamp((now - f.start) / AE_FLY_MS, 0, 1), e = _aeEaseOut(p);
+  var p = _aeClamp((now - f.start) / f.ms, 0, 1), e = _aeEaseOut(p);
   _ae.dist = Math.exp(Math.log(f.from.dist) + (Math.log(f.toDist) - Math.log(f.from.dist)) * e);
   _ae.az = f.from.az + (f.toAz - f.from.az) * e;
   _ae.el_ = f.from.el + (f.toEl - f.from.el) * e;
@@ -1259,7 +1362,7 @@ function _aeStepFly(now) {
 function _aeFlyTargetPos() {
   var f = _ae.fly, to = _aeTargetPos();
   if (!f) return to;
-  var e = _aeEaseOut(_aeClamp((performance.now() - f.start) / AE_FLY_MS, 0, 1));
+  var e = _aeFlyEase(performance.now());
   return [f.from.pos[0] + (to[0] - f.from.pos[0]) * e, f.from.pos[1] + (to[1] - f.from.pos[1]) * e, f.from.pos[2] + (to[2] - f.from.pos[2]) * e];
 }
 
@@ -1269,12 +1372,20 @@ function _aePlaceCamera() {
   var off = _aeCameraOffset(_ae.az, _ae.el_, _ae.dist);
   var pos = [tp[0] + off[0], tp[1] + off[1], tp[2] + off[2]];
   cam.position.set(pos[0], pos[1], pos[2]);
+  // Up is the observer's zenith on the Moon, north elsewhere; a flight
+  // turns from one to the other on the way.
+  var roll = _ae.scene ? _aeRollDeg(_ae.target, _ae.scene.ms) : 0;
+  if (_ae.fly) roll = _ae.fly.from.roll + _angleDelta(_ae.fly.from.roll, roll) * _aeFlyEase(performance.now());
+  _ae.roll = roll;
+  var up = _aeViewUp(_aeSub(tp, pos), roll);
+  cam.up.set(up[0], up[1], up[2]);
   cam.lookAt(tp[0], tp[1], tp[2]);
   // Near plane from the nearest surface, so the Earth's limb never clips
   // and depth precision stays where the eye is.
   var toEarth = _aeLen(pos) - 1;
   var toMoon = _ae.scene ? _aeLen(_aeSub(pos, _ae.scene.moon)) - AE_MOON_RADIUS_RE : Infinity;
-  cam.near = Math.max(AE_NEAR_MIN, Math.min(toEarth, toMoon) * AE_NEAR_FRACTION);
+  var toSun = _ae.scene ? _aeLen(_aeSub(pos, _aeSunShown(_ae.scene))) - AE_SUN_SHOW_R : Infinity;
+  cam.near = Math.max(AE_NEAR_MIN, Math.min(toEarth, toMoon, toSun) * AE_NEAR_FRACTION);
   cam.updateProjectionMatrix();
   S.sky.position.copy(cam.position);
   // An orbit much wider than the screen shows only as arcs through it, a web
@@ -1297,8 +1408,13 @@ function _aePreset(name) {
     // From the Earth's side: the phase (and any eclipse) as seen from home.
     var azel = _ae.scene ? _aeAzElOf(_aeScale(_ae.scene.moon, -1)) : null;
     _aeFlyTo('moon', _aeFitDist(AE_FIT_MOON), azel);
+  } else if (name === 'sun') {
+    // From the Earth's side too: the Sun as it stands in our sky, ahead.
+    _aeFlyTo('sun', _aeFitDist(AE_FIT_SUN), _ae.scene ? _aeAzElOf(_aeScale(_ae.scene.sun, -1)) : null);
   } else {
-    _aeFlyTo('earth', _aeFitDist(name === 'sats' ? AE_FIT_SATS : AE_FIT_EARTH), null);
+    // Back from the Sun, arrive over the day side, the Sun behind the camera.
+    var fromSun = _ae.target === 'sun' && _ae.scene ? _aeAzElOf(_ae.scene.sun) : null;
+    _aeFlyTo('earth', _aeFitDist(name === 'sats' ? AE_FIT_SATS : AE_FIT_EARTH), fromSun);
   }
   _ae.preset = name;
   _aeMarkViews();
@@ -1596,9 +1712,9 @@ function _aeUpdate(ms) {
   S.shared.sunPos.value.set(sc.sun[0], sc.sun[1], sc.sun[2]);
   S.earthUni.moonPos.value.set(sc.moon[0], sc.moon[1], sc.moon[2]);
   _aeOrientMoon(sc);
-  var sd = _aeScale(_aeNorm(sc.sun), AE_STAR_RADIUS * 0.98);
-  _aeSetPoint(S.sunDot, 0, sd, AE_SUN_COLOR, 1, AE_SUN_POINT_PX);
-  _aeCommitPoints(S.sunDot, 1);
+  var sd = _aeSunShown(sc);
+  S.sun.position.set(sd[0], sd[1], sd[2]);
+  S.sunGlowUni.center.value.set(sd[0], sd[1], sd[2]);
   _aeUpdateMoonPath(ms);
   _aeUpdateSats(ms, sc);
   _aePlaceCamera();
@@ -1867,6 +1983,10 @@ function _aeUpdateText(ms) {
     }
     if (status.textContent !== txt) status.textContent = txt;
   }
+  // On the Moon with no place to stand, up is celestial north: said, not guessed.
+  var orient = _aeById('ae-orient');
+  var northUp = _ae.target === 'moon' && !_aeObserver();
+  if (orient && orient.hidden === northUp) orient.hidden = !northUp;
   var note = _aeNoteParts();
   _aeRenderAsk(note.ask);
   _aeSetText(_aeById('ae-note'), note.note);
@@ -1920,10 +2040,10 @@ function _aeZoomBy(factor) {
   // Mid-flight, a zoom rescales the flight and lets it finish turning.
   var f = _ae.fly;
   if (f) {
-    f.toDist = _aeClamp(f.toDist * factor, _aeMinDist(), AE_MAX_DIST);
-    f.from.dist = _aeClamp(f.from.dist * factor, _aeMinDist(), AE_MAX_DIST);
+    f.toDist = _aeClampDist(f.toDist * factor);
+    f.from.dist = _aeClampDist(f.from.dist * factor);
   }
-  _ae.dist = _aeClamp(_ae.dist * factor, _aeMinDist(), AE_MAX_DIST);
+  _ae.dist = _aeClampDist(_ae.dist * factor);
   _ae.preset = null;
   _aeMarkViews();
   _ae.dirty = true;
@@ -1937,7 +2057,7 @@ function _aeTurnBy(dAz, dEl) {
   _aeKick();
 }
 function _aeDragScale() {
-  var surface = _ae.target === 'moon' ? AE_MOON_RADIUS_RE : 1;
+  var surface = AE_TARGETS[_ae.target].surface;
   return _aeClamp((_ae.dist - surface) / _ae.dist, AE_DRAG_MIN_SCALE, 1);
 }
 // The canvas's own listeners: bound again to the fresh canvas that replaces
