@@ -148,12 +148,16 @@ LAYOUT = r"""() => {
 TILES = "() => Array.from(document.querySelectorAll('#output .apps-grid .app-tile')).map(a => a.dataset.app + (a.__kept ? '' : '*'))"
 MARK = "() => document.querySelectorAll('#output .apps-grid .app-tile').forEach(a => { a.__kept = 1; })"
 SORTED = """(names) => names.every((n, i) => i === 0 || names[i - 1].localeCompare(n, undefined, {sensitivity: 'base', numeric: true}) <= 0)"""
-# The Apps page: each app's group, its leading tile and the ZIMs after it,
-# and how the page and its tiles are drawn.
-PAGE = r"""() => Array.from(document.querySelectorAll('#output > .stats-grid.app-group')).map(g => {
-  const cards = Array.from(g.children), lead = cards[0], zims = cards.slice(1);
-  return { title: lead.querySelector('.zt').textContent, app: lead.dataset.app, leads: lead.classList.contains('app-tile'),
+# The Apps page: each app's section, its banner and the ZIMs under it, and
+# how they are drawn: the banner taller than a ZIM's card and wider than the
+# ZIMs, which sit set in under it; the gap to the next section.
+PAGE = r"""() => Array.from(document.querySelectorAll('#output > .app-section')).map(s => {
+  const lead = s.firstElementChild, zims = Array.from(s.querySelectorAll('.stats-grid > .stat-card'));
+  const b = lead.getBoundingClientRect(), z = zims[0] && zims[0].getBoundingClientRect(), next = s.nextElementSibling;
+  return { title: lead.querySelector('.zt').textContent, app: lead.dataset.app, leads: lead.classList.contains('app-banner'),
     empty: lead.classList.contains('app-empty'), border: getComputedStyle(lead).borderTopStyle,
+    taller: !z || b.height > z.height + 8, setIn: !z || z.width < b.width - 16,
+    gap: next ? next.getBoundingClientRect().top - s.getBoundingClientRect().bottom : null,
     zims: zims.map(c => c.dataset.zim), titles: zims.map(c => c.querySelector('.zt').textContent) };
 })"""
 PAGE_SHAPE = r"""() => ({ headings: Array.from(document.querySelectorAll('#output .cat-heading')).map(h => h.firstChild.textContent),
@@ -247,8 +251,10 @@ def test_the_order_governs_the_apps_and_their_title_opens_their_page(
                 a: pg.evaluate("(a) => _appTitle(a)", a)
                 for a in ("tube", "books", "exchange", "maps", "reddot")
             }
-            # Each app leads its own group with its tile; one heading on top
-            # holds the controls, and no heading per app.
+            # Each app is a section: its banner, then its ZIMs set in under it
+            # (Eric, 2026-09-29: "not having sections and app looking too
+            # close to zims with no spacing"); one heading on top holds the
+            # controls.
             shape = pg.evaluate(PAGE_SHAPE)
             assert shape["headings"] == [apps], shape
             for app, zims in APP_ZIMS.items():
@@ -256,7 +262,9 @@ def test_the_order_governs_the_apps_and_their_title_opens_their_page(
                 assert sec["leads"] and sec["title"] == titles[app], sec
                 assert set(sec["zims"]) == zims and not sec["empty"], (app, sec)
                 assert sec["border"] == "solid", sec
+                assert sec["taller"] and sec["setIn"], sec
                 assert pg.evaluate(SORTED, sec["titles"]), sec["titles"]
+            assert all(p["gap"] >= 24 for p in page if p["gap"] is not None), page
             for app in ("reddot", "maps"):
                 sec = by_app[app]
                 assert sec["empty"] and not sec["zims"], "an empty app is its door"
@@ -271,10 +279,10 @@ def test_the_order_governs_the_apps_and_their_title_opens_their_page(
                 pg.screenshot(
                     path=os.path.join(SHOTS, "apps-page-%s.png" % tag), full_page=True
                 )
-            # Short: three groups of ZIMs and three doors, in under two phone
-            # screens (a heading per app and full cards took 1,240px).
+            # Still short: five sections, five ZIMs, in under two phone
+            # screens.
             if phone:
-                assert shape["height"] < 1060, shape
+                assert shape["height"] < 2 * 844, shape
 
             # The same order governs the page: most articles puts ZimiExchange first.
             _sort(pg, "entries")
@@ -306,8 +314,8 @@ def test_the_order_governs_the_apps_and_their_title_opens_their_page(
             pg.wait_for_function(
                 "() => homeScope && homeScope.type === 'apps' && !!document.querySelector('#output .stat-card[data-zim]')"
             )
-            # An app's own tile, first in its group, opens the app.
-            pg.locator("#output .app-group .app-tile[data-app='tube']").click()
+            # An app's banner, heading its section, opens the app.
+            pg.locator("#output .app-section .app-banner[data-app='tube']").click()
             pg.wait_for_function("() => _tubeOpen && readerOpen")
             assert not errors, errors
         finally:

@@ -820,7 +820,7 @@
   "wiki_word": "Mot du jour",
   "wiki_quote": "Citation du jour",
   "wiki_place": "Une destination",
-  "wiki_book": "Livre du jour",
+  "wiki_book": "Manuel du jour",
   "wiki_text": "Texte du jour",
   "wiki_course": "Leçon du jour",
   "wiki_news": "Dans l’actualité",
@@ -1555,7 +1555,7 @@
   "peer_name_hint": "Le nom que voient les autres appareils Zimi. Effectif après redémarrage.",
   "peer_pill_click_tip": "Télécharger depuis {peers} sur ton LAN, chemin le plus rapide, sans WAN.",
   "peers": "pairs",
-  "picture_of_day": "Image du jour",
+  "picture_of_day": "Image astronomique du jour",
   "play_video": "Lire la vidéo",
   "port": "Port",
   "powered_by": "Propulsé par",
@@ -2062,5 +2062,7 @@
   "net_create": "Créer un ZIM",
   "net_create_when": "La page, le site, la vidéo ou le subreddit que quelqu'un capture, et les outils qu'une capture installe",
   "net_nearby": "À proximité",
-  "net_nearby_when": "Les autres Zimi de ce réseau, trouvés et partagés sans en sortir"
+  "net_nearby_when": "Les autres Zimi de ce réseau, trouvés et partagés sans en sortir",
+  "app_sources_one": "{n} source",
+  "app_sources_other": "{n} sources"
 }

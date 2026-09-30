@@ -2630,6 +2630,15 @@ class ZimHandler(BaseHTTPRequestHandler):
                     if _srv._is_map_zim(zim):
                         place = _srv._random_map_place(zim)
                         return self._json(200, place or {"error": "no places found"})
+                    # The day's card from a wiki is Zimipedia's pick for
+                    # that day, worked out once and kept (wiki.daily_card):
+                    # the home page and Today show one word of the day.
+                    if param("day"):
+                        from zimi import wiki as _wiki
+
+                        card = _wiki.daily_card(zim, param("day"))
+                        if card:
+                            return self._json(200, card)
                     pick_names = [zim]
                 else:
                     # Maps are left out: their entries are tiles, and the

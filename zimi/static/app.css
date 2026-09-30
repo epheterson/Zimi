@@ -1228,22 +1228,32 @@
      Hover and focus keep the dots and take the amber like any card. */
   .stat-card.app-tile.app-empty { border: 1.5px dotted var(--text3); background: transparent; box-shadow: none; }
   .stat-card.app-tile.app-empty:hover, .stat-card.app-tile.app-empty:focus-visible { border-color: var(--amber); background: var(--surface2); }
-  /* The Apps page: one group per app, its tile first; the gap between groups
-     does the work a heading per app did, in a quarter of the height. */
-  .stats-grid.app-group { margin-top: 14px; gap: 6px; }
-  .cat-heading + .stats-grid.app-group { margin-top: 8px; }
-  /* In the list, a group reads as a short list: the tile names the app (the
-     ZIMs it would list follow it, so it lists none), and under it the ZIMs
-     are its contents, not headliners: a name, its numbers, a smaller mark.
-     A ZIM's description is a long-press away (About this ZIM). */
-  .stats-grid.app-group:not(.tiles) .stat-card { padding: 8px 12px; gap: 12px; }
-  .stats-grid.app-group:not(.tiles) .card-icon { width: 40px; height: 40px; border-radius: 9px; }
-  .stats-grid.app-group:not(.tiles) .stat-card:not(.app-tile) .card-icon { width: 34px; height: 34px; border-radius: 8px; }
-  .stats-grid.app-group:not(.tiles) .card-icon img { width: 30px; height: 30px; }
-  .stats-grid.app-group:not(.tiles) .stat-card:not(.app-tile) .desc,
-  .stats-grid.app-group .app-tile:not(.app-empty) .detail { display: none; }
-  .stats-grid.app-group:not(.tiles) .stat-card:not(.app-tile) .card-info { justify-content: center; }
-  .stats-grid.app-group:not(.tiles) .stat-card:not(.app-tile) .detail { margin-top: 2px; }
+  /* The Apps page: a section per app. The app is a banner, not a card shaped
+     like a ZIM: a tinted band with its mark in a larger rounded square, its
+     name set bigger, how many sources it reads, and a chevron, because it is
+     a door. Its ZIMs follow set in on a rail, so they read as what the app is
+     made of; the space between sections separates one app from the next. */
+  .app-section { margin-top: 30px; }
+  .cat-heading + .app-section { margin-top: 10px; }
+  .stat-card.app-banner { flex-direction: row; align-items: center; gap: 14px; padding: 14px 16px; border-color: var(--amber-border);
+    background: linear-gradient(to right, var(--amber-glow), transparent 80%), var(--surface); }
+  [dir="rtl"] .stat-card.app-banner { background: linear-gradient(to left, var(--amber-glow), transparent 80%), var(--surface); }
+  .app-banner .card-icon { width: 48px; height: 48px; border-radius: 14px; background: var(--amber-glow); box-shadow: inset 0 0 0 1px var(--amber-border); }
+  .app-banner .zt { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+  .stat-card.app-banner .detail { color: var(--text2); margin-top: 2px; }
+  .app-banner::after { content: '\203A'; margin-inline-start: auto; padding-inline-start: 8px; font-size: 26px; line-height: 1; color: var(--amber); }
+  /* The chevron mirrors itself in right to left (U+203A is bidi-mirrored). */
+  .stat-card.app-banner.app-empty, [dir="rtl"] .stat-card.app-banner.app-empty { background: transparent; }
+  .app-section > .stats-grid { margin: 10px 0 0; margin-inline-start: 23px; padding-inline-start: 13px; border-inline-start: 2px solid var(--border); gap: 6px; }
+  /* In the list, the ZIMs are its contents, not headliners: a name, its
+     numbers, a smaller mark. A ZIM's description is a long-press away (About
+     this ZIM). */
+  .app-section > .stats-grid:not(.tiles) .stat-card { padding: 8px 12px; gap: 12px; }
+  .app-section > .stats-grid:not(.tiles) .card-icon { width: 34px; height: 34px; border-radius: 8px; }
+  .app-section > .stats-grid:not(.tiles) .card-icon img { width: 30px; height: 30px; }
+  .app-section > .stats-grid:not(.tiles) .desc { display: none; }
+  .app-section > .stats-grid:not(.tiles) .card-info { justify-content: center; }
+  .app-section > .stats-grid:not(.tiles) .detail { margin-top: 2px; }
   /* Reddot's dot keeps its colour in the breadcrumb, where line marks take the
      text's. Only a filled dot: Zimipedia's globe is a line mark too, and
      filling its circle painted a dark disc on the light header. */
