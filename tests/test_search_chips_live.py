@@ -183,7 +183,8 @@ def test_chips_and_help_fit_a_phone(served, lang):
         pg.wait_for_function("() => manageTab === 'browse' && _catalogCache !== null")
         # Typed once the catalog is on screen, as a person would.
         pg.wait_for_function(
-            "() => _browseView === 'gallery' && document.getElementById('catalog-results').children.length > 0",
+            "() => { var r = document.getElementById('catalog-results');"
+            " return _browseView === 'gallery' && !!r && r.children.length > 0; }",
             timeout=30000,
         )
         pg.locator("#q").tap()
