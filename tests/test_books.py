@@ -445,6 +445,20 @@ def test_a_zim_gone_before_its_records_are_read_does_not_hold_them_back(
     assert books.home()["details"] is True
 
 
+def _assert_not_held(path):
+    """Nothing in this process has ``path`` open, so Windows would let it be
+    removed. lsof shows it where there is one (macOS, most Linux)."""
+    import shutil
+    import subprocess
+
+    if not shutil.which("lsof"):
+        return
+    out = subprocess.run(
+        ["lsof", "-p", str(os.getpid())], capture_output=True, text=True
+    ).stdout
+    assert os.path.realpath(path) not in out and path not in out
+
+
 def test_an_updated_zim_is_read_again_and_its_old_rows_let_go(tmp_path, monkeypatch):
     """The auto-updater puts this month's build beside last month's under
     one name and removes the old file. The shelf was keyed by whichever
@@ -461,8 +475,11 @@ def test_an_updated_zim_is_read_again_and_its_old_rows_let_go(tmp_path, monkeypa
     rows = books._js_array(LATIN["full_by_popularity.js"].decode())
     files = dict(LATIN, **{"full_by_popularity.js": _js("json_data", rows[:3])})
     build_fixture_zim(new, dict(LIBRARY[0][1], Date="2026-05-02"), files=files)
-    os.remove(old)
+    # The updater's order: let go of the old build, then remove it. Windows
+    # refuses to remove a file an Archive still holds open.
     srv.release_zim_handles(list(srv.get_zim_files()))
+    _assert_not_held(old)
+    os.remove(old)
     srv.load_cache(force=True)
     assert srv.get_zim_files()["gutenberg_la"] == new
 
