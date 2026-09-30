@@ -9,35 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Zimipedia, a new app for every wiki in your library (Wikipedia, Wiktionary, Wikivoyage, Wikisource and more): a Today page (article of the day, On this day, Did you know, picture of the day), and a reader with citations in place, contents that follow you, the same article in other languages side by side, everything else your library holds on the topic, and link previews. On by default; turn it off under Settings > Apps.
-- Saving in every app: bookmarks, your own lists and Liked in one place (ZimiTube's Watch later, Maps' Places, Bookshelf's My shelf and more); an item can sit in many lists; export any list as a ZIM; undo on every removal.
-- Highlights with notes in every reader: articles, books and EPUBs.
-- Signed in, what you save and where you are in each book follow you to every device.
-- Search operators in search, the Catalog and the API: `-word`, `"exact words"`, `OR`, `lang:` and `in:`, shown as chips you can remove ([#94](https://github.com/epheterson/Zimi/issues/94)).
-- A search result can open in its app: a wiki article in Zimipedia, a book in Bookshelf, a video in ZimiTube, a question in ZimiExchange, a post in Reddot (Settings > Reading, "Open articles in apps").
-- Bookshelf reads more than Gutenberg: document libraries, LibreTexts textbooks, Wikisource, Wikibooks, EPUBs and your own folders of PDFs and EPUBs.
-- ZimiTube plays the document libraries' videos and audiobooks, and your own folders of video and audio.
-- Links that leave your library are marked in every reader and say where they go ([#99](https://github.com/epheterson/Zimi/issues/99)); Create a ZIM can remove them.
-- Settings > Server > Internet use lists everything Zimi fetches from the internet, each with its own switch, including a new one for update checks.
-- The Almanac: each planet's radio delay and a flight there, the twin paradox, and a 3D Earth and Moon with real daylight, eclipses, the ISS and GPS satellites.
+- Zimipedia: an app for every wiki in your library, with a Today page and a reader.
+- Saving in every app: bookmarks, lists, Liked and highlights with notes, synced across devices when signed in.
+- Search operators: `-word`, `"exact words"`, `OR`, `lang:`, `in:` ([#94](https://github.com/epheterson/Zimi/issues/94)).
+- Search results can open in their app.
+- Bookshelf: document libraries, textbooks, Wikisource, Wikibooks, EPUBs and your own folders.
+- ZimiTube: document library videos, audiobooks and your own folders.
+- External links are marked in readers; Create a ZIM can remove them ([#99](https://github.com/epheterson/Zimi/issues/99)).
+- Settings > Server > Internet use: every outbound connection, each with a switch.
+- Almanac: radio delay, flights, and a 3D Earth and Moon.
 
 ### Changed
 
-- History and Saved are two panels with their own buttons (the Library panel's two tabs before).
-- The home page's sort now orders the apps too, and the Apps heading opens a page of each app's ZIMs ([#100](https://github.com/epheterson/Zimi/issues/100)).
-- An idle Zimi contacts nothing on the internet at startup, and `ZIMI_OFFLINE` now also refuses internet downloads.
-- Settings use one kind of switch throughout, and phones no longer zoom the app.
-- Faster: the home page is a third smaller, search makes half as many requests, and articles show their text before their pictures finish.
+- History and Saved are separate panels.
+- Home sort orders the apps; the Apps heading opens an Apps page ([#100](https://github.com/epheterson/Zimi/issues/100)).
+- An idle Zimi makes no internet connections; `ZIMI_OFFLINE` also blocks downloads.
+- Faster home page, search and article loading.
 
 ### Fixed
 
-- Bookshelf: a book without a cover no longer spills over its neighbours ([#101](https://github.com/epheterson/Zimi/issues/101)), and the shelf recovers after a Gutenberg update.
-- An app turned on or off no longer flips back when you return with Back ([#98](https://github.com/epheterson/Zimi/issues/98)).
-- The bookmark button updates when you remove a bookmark from the panel ([#96](https://github.com/epheterson/Zimi/issues/96)).
-- Two ZIMs of one collection in different languages no longer hide one another.
-- Dark mode shows pages that set no colours of their own correctly.
-- Text size changes an article's text, not only its title.
-- Copy link works over plain http and in the iOS home-screen app.
+- Bookshelf covers overlapping ([#101](https://github.com/epheterson/Zimi/issues/101)).
+- App toggles reverting on Back ([#98](https://github.com/epheterson/Zimi/issues/98)).
+- Bookmark button not updating after removal ([#96](https://github.com/epheterson/Zimi/issues/96)).
+- ZIMs of one collection in different languages hiding each other.
+- Dark mode on pages without their own colours.
+- Text size not changing article text.
+- Copy link over http and in the iOS home-screen app.
 
 ## [1.11.0] - 2026-09-27
 
