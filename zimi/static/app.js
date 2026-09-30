@@ -4279,13 +4279,16 @@ function _refreshCreatedBuckets() {
 // for. Only the follow-ups coalesce, into one render a beat later. The window
 // is long enough to catch two fetches finishing near each other and short
 // enough that nobody sees it wait.
+//
+// Only onto home itself: a search typed while the library was still arriving
+// had its results painted over by the home page it had just left.
 var HOME_RERENDER_COALESCE_MS = 60;
 var _homeRerenderTimer = null;
 function _renderHomeSoon() {
   clearTimeout(_homeRerenderTimer);
   _homeRerenderTimer = setTimeout(function() {
     _homeRerenderTimer = null;
-    if (mode === 'manage' || readerOpen || currentSource || readerSource) return;
+    if (mode !== 'home' || readerOpen || currentSource || readerSource) return;
     renderHome();
   }, HOME_RERENDER_COALESCE_MS);
 }

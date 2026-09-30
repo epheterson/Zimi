@@ -5,7 +5,7 @@ or a desk, fixed, and held here against the real page:
 
 - Discover's second try redrew the whole home page ten seconds after it
   loaded, over whatever was on screen by then: a search's results, the
-  catalog. A library that cannot fill the row (nopic builds, no pictures)
+  catalog. So did the home render that follows late library data. A library that cannot fill the row (nopic builds, no pictures)
   did it every ten seconds, for good.
 - The library search said "1 results", twice, and a query of exclusions
   only ("-ted") was told to "try different keywords".
@@ -92,8 +92,10 @@ def _search(pg, text):
     pg.click("#q")
     pg.fill("#q", text)
     pg.keyboard.press("Enter")
+    # Both phases: the title matches draw first, the full search after them.
     pg.wait_for_function(
-        "() => !!document.querySelector('#output .result, #output .empty')",
+        "() => !!document.querySelector('#output .result, #output .empty')"
+        " && !document.getElementById('fts-indicator')",
         timeout=30000,
     )
 
@@ -146,6 +148,9 @@ def test_a_search_stays_on_screen_when_discover_asks_again(served):
                 "() => document.querySelectorAll('#output .result').length"
             )
             assert shown, "the search found the article"
+            # Late library data asks home to draw again (the kinds, the
+            # collections): home is not on screen, so it does not.
+            pg.evaluate("() => _renderHomeSoon()")
             pg.clock.fast_forward(25000)
             pg.wait_for_timeout(500)
             assert (
