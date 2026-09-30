@@ -218,7 +218,8 @@ def test_zimitube_watch_later_like_lists_and_continue_watching(phone):
     pg.wait_for_timeout(400)
     assert _rows(pg) == [
         "Continue watching: " + title,
-        "Watch later: " + title,
+        # An audiobook is listened to: the row says so (tube.html laterWord).
+        ("Watch later: " if video else "Listen later: ") + title,
         "Liked: " + title,
         "Lists: Grammar",
     ], _rows(pg)
