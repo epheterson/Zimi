@@ -46,7 +46,37 @@ import zlib
 # carry a type no other machine would produce. A private MimeTypes() copies
 # the table Python ships and nothing else, so the same capture has the same
 # entry types on every platform.
-_MIME_DB = mimetypes.MimeTypes()
+#
+# That table is not the same from one Python to the next, either: 3.10 to
+# 3.13 (Docker and CI run 3.11, the desktop app 3.12) have no .epub, .ogg,
+# .m4a, .mkv, .flac, .ogv, .m4v or .webp, so a folder's EPUBs were stored as
+# application/octet-stream and never reached the Bookshelf, its .ogg never
+# ZimiTube. These are pinned, every type a document library or ZimiTube
+# reads by extension (zimi.nautilus) among them.
+_PINNED_TYPES = {
+    ".epub": "application/epub+zip",
+    ".ogg": "audio/ogg",
+    ".oga": "audio/ogg",
+    ".opus": "audio/opus",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".flac": "audio/flac",
+    ".wav": "audio/wav",
+    ".ogv": "video/ogg",
+    ".m4v": "video/mp4",
+    ".mkv": "video/x-matroska",
+    ".webp": "image/webp",
+}
+
+
+def _mime_db():
+    db = mimetypes.MimeTypes()
+    for ext, mime in _PINNED_TYPES.items():
+        db.add_type(mime, ext)
+    return db
+
+
+_MIME_DB = _mime_db()
 
 
 def guess_mime(name, fallback="application/octet-stream"):
@@ -2045,7 +2075,10 @@ def scraper_string(tool=None, version=None):
     return f"{base} + {tool} {version}" if version else f"{base} + {tool}"
 
 
-def history_record(op, mode, detail, *, tools=None, counts=None, blocked=None, stopped=None, ts=None):
+def history_record(
+    op, mode, detail, *, tools=None, counts=None, blocked=None, stopped=None,
+    links_removed=None, ts=None,
+):
     """One provenance record. ``op`` is what happened ("created"), ``mode`` how
     ("folder", "page", "site", "video", "import", "bookmarks"), ``detail`` one
     human sentence. ``tools`` names the outside engine and version when one ran;
@@ -2079,6 +2112,10 @@ def history_record(op, mode, detail, *, tools=None, counts=None, blocked=None, s
     # so and which limit, in the reader's language (Eric, 2026-09-25).
     if stopped:
         record["stopped"] = str(stopped)
+    # "Remove links to other sites" was on: how many links became plain text.
+    # Zero is kept (the option ran and found none); None means it was off.
+    if links_removed is not None:
+        record["links_removed"] = int(links_removed)
     return record
 
 

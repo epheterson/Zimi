@@ -213,9 +213,9 @@ for (const key of Object.keys(CREATE_FIELDS)) {
 // The advanced sets, pinned. These are the flags the engines take that a
 // browser can reach; changing one is a product decision, not a refactor.
 eq(CREATE_MODE_DEFS.map(d => [d.id, d.advanced]), [
-  ['page', ['block_ads', 'capture_variants', 'language']],
+  ['page', ['block_ads', 'capture_variants', 'strip_links', 'language']],
   ['site', ['max_depth', 'max_bytes', 'delay', 'block_ads', 'capture_variants',
-    'language', 'ignore_robots']],
+    'strip_links', 'language', 'ignore_robots']],
   ['video', ['format', 'max_bytes', 'language']],
   ['bookmarks', []],
   ['import', []]
@@ -410,6 +410,29 @@ check(!sandbox._createFieldApplies(sandbox.CREATE_FIELDS.block_ads, ''),
   'the field does not apply under the fast engine');
 check(sandbox._createFieldApplies(sandbox.CREATE_FIELDS.language, ''),
   'a field with no engine requirement applies everywhere');
+
+// ── "Remove links to other sites" (#99) ─────────────────────────────────────
+//
+// Off until ticked, and only where Zimi writes the pages: the fast and the
+// rendered engines. An alive capture's links are rewritten when it replays.
+
+check(!sandbox.CREATE_FIELDS.strip_links.on, 'removing links to other sites starts unticked');
+eq(_createBuildRequest('site',
+  { source: 'https://e.org/', engine: '', strip_links: true }),
+  { mode: 'site', source: 'https://e.org/', strip_links: true },
+  'ticked under the fast engine, the site capture asks for it');
+eq(_createBuildRequest('page',
+  { source: 'https://e.org/', engine: 'rendered', strip_links: true }),
+  { mode: 'page', source: 'https://e.org/', engine: 'rendered', strip_links: true },
+  'and the page capture, under the rendered engine');
+eq(_createBuildRequest('page',
+  { source: 'https://e.org/', engine: '', strip_links: false }),
+  { mode: 'page', source: 'https://e.org/' },
+  'unticked, it says nothing: off is the default');
+eq(_createBuildRequest('site',
+  { source: 'https://e.org/', engine: 'alive', strip_links: true }),
+  { mode: 'site', source: 'https://e.org/', engine: 'alive' },
+  'under the alive engine the field is not drawn and not sent');
 
 // ── the responsive-variant sweep ────────────────────────────────────────────
 //

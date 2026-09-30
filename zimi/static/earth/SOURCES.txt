@@ -1,0 +1,27 @@
+Where the files in this folder come from (the Almanac's Earth view, almanac-earth.js).
+
+earth-day-v1.webp
+  NASA Earth Observatory, Blue Marble: Next Generation, July 2004, topography
+  (world.topo.200407.3x5400x2700.jpg), Reto Stockli, NASA Goddard Space Flight
+  Center. Public domain (NASA imagery). Resized to 2048x1024, WebP quality 75.
+  https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/
+
+earth-night-v1.webp
+  NASA Earth Observatory, Black Marble 2016 (BlackMarble_2016_01deg.jpg),
+  Joshua Stevens / Miguel Roman, NASA. Public domain. Greyscale, 2048x1024,
+  WebP quality 75.
+  https://earthobservatory.nasa.gov/features/NightLights
+
+moon-v1.webp
+  NASA Scientific Visualization Studio, CGI Moon Kit (lroc_color_poles_1k.jpg),
+  from the Lunar Reconnaissance Orbiter Camera. Public domain. Greyscale,
+  1024x512, WebP quality 75.
+  https://svs.gsfc.nasa.gov/4720
+
+three-r186.min.js (three-LICENSE.txt)
+  three.js r186, MIT License. Tree-shaken and minified; the build line is in
+  the file's first comment.
+
+satellite-7.1.0.min.js (satellite.js-LICENSE.txt)
+  satellite.js 7.1.0, MIT License: SGP4/SDP4 only. The build line is in the
+  file's first comment.

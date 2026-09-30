@@ -39,6 +39,7 @@ vm.runInContext([
   extract(/var _MAPS_SVG = [^\n]*\n/, '_MAPS_SVG'), extract(/var _TUBE_PLAY_SVG = [^\n]*\n/, '_TUBE_PLAY_SVG'),
   extract(/function _newestPer\(list, key\) \{[\s\S]*?\n\}/, '_newestPer'),
   extract(/function _installedOfKind\(kind, key\) \{[\s\S]*?\n\}/, '_installedOfKind'),
+  extract(/function _installedFor\(kind, app, key\) \{[\s\S]*?\n\}/, '_installedFor'),
   extract(/function _mapName\(z\) \{[\s\S]*?\n\}/, '_mapName'),
   extract(/function _mapSourceLabel\(z\) \{[\s\S]*?\n\}/, '_mapSourceLabel'),
   extract(/function _installedMaps\(\) \{[\s\S]*?\n\}/, '_installedMaps'),
@@ -69,6 +70,7 @@ vm.runInContext([
   extract(/function _booksTileHtml\(\) \{[\s\S]*?\n\}/, '_booksTileHtml'),
   extract(/function _appsRowHtml\(\) \{[\s\S]*?\n\}/, '_appsRowHtml'),
 ].join('\n'), ctx);
+require('./apps_order_parts.cjs')(src, ctx);
 
 // ── the apps row ─────────────────────────────────────────────────────────
 const row = ctx._appsRowHtml();
@@ -77,7 +79,7 @@ ok('the ZimiTube tile names the video ZIMs', /<span class="zt">ZimiTube<\/span>/
 ctx.zimsCache = ctx.zimsCache.filter(z => z.kind !== 'video');
 ok('no video ZIM: the tile stays, empty, and opens the Video category', /app-empty tube-tile/.test(ctx._appsRowHtml()) && /No videos yet/.test(ctx._appsRowHtml()) && /_openCategory\(_APP_CATEGORY\.tube\)/.test(ctx._appsRowHtml()));
 ctx.zimsCache = [];
-ok('a fresh install still has the apps row, every tile a door (Zimipedia, a preview, only when the server names it)', (ctx._appsRowHtml().match(/app-empty/g) || []).length === 5 && !/wiki-tile/.test(ctx._appsRowHtml()));
+ok('a fresh install still has the apps row, every tile a door, Zimipedia too', (ctx._appsRowHtml().match(/app-empty/g) || []).length === 6 && /wiki-tile/.test(ctx._appsRowHtml()));
 ctx.document.body.dataset.zimiApps = 'maps,tube,exchange,reddot,wiki,books';
 ok('a server that names wiki offers its tile', (ctx._appsRowHtml().match(/app-empty/g) || []).length === 6 && /wiki-tile/.test(ctx._appsRowHtml()));
 delete ctx.document.body.dataset.zimiApps;
@@ -109,15 +111,15 @@ ok('the empty page is a door to the catalog', /goCatalog\(\)/.test(page) && /cat
 ok('the page is a static asset the server versions', /var _TUBE_PAGE = '\/static\/tube\.html\?v=1';/.test(src));
 ok('/#tube on a cold load opens it, with the address\'s video', /location\.hash === '#tube' \|\| location\.hash\.indexOf\('#tube\?'\) === 0/.test(src));
 ok('Back and Forward steer the open page, video included, and reload it only when it is gone', /s\.mode === 'reader' && s\.tube\) \{\n\s*if \(!_appFrameRoute\(_tubeOpen, s\.play\)\) openTube\(true, s\.play \|\| ''\);/.test(src) && /window\.__route = function\(id\)/.test(page) && !/class="back"/.test(page) && !/l-back|backlabel/.test(page));
-ok('the page says when it is at its top (the shelves, or the one-source list with nothing chosen), and the shell reads it', /window\.__top = function\(\) \{ return _now < 0 && !_q && !_zim; \};/.test(page) && /function tellTop\(\)/.test(shared) && /attributeFilter: \['hidden'\]/.test(shared) && /d\.zimi === 'top'[\s\S]*?_appTop = d\.top !== false;/.test(src));
+ok('the page says when it is at its top (the shelves, or the one-source list with nothing chosen, no row of what you keep open), and the shell reads it', /window\.__top = function\(\) \{ return _now < 0 && !_q && !_zim && !_mineOpen; \};/.test(page) && /function tellTop\(\)/.test(shared) && /attributeFilter: \['hidden'\]/.test(shared) && /d\.zimi === 'top'[\s\S]*?_appTop = d\.top !== false;/.test(src));
 ok('the dice stay in the app: the shell asks the page, ZimiTube plays a video from the whole feed', /if \(_isAppPage\(\)\) \{[\s\S]*?postMessage\(\{ zimi: 'random' \}/.test(src) && /e\.data\.zimi === 'random'[\s\S]*?window\.__random\(\)/.test(shared) && /window\.__random = function\(\) \{[\s\S]*?_all\[Math\.floor\(Math\.random\(\) \* _all\.length\)\]/.test(page));
 ok('a menu with nothing in it is no menu: the ⋯ button goes when the open page folds no rows', /readerOpen && !_buildTopbarMenuHtml\(\) \? 'none' : ''/.test(src));
 ok('the "cannot be played" line links the page by its path (a bare `page` was once referenced there and threw)', !/esc\(page\)/.test(page) && /noMedia = function\(missing\)[^\n]*esc\(zpath\(v\.zim, v\.page\)\)/.test(page));
-ok("the two truths of a video that will not play: not in the ZIM, or not decodable here", /m\.missing\) \{ noMedia\(!!\(m && m\.missing\)\); return; \}/.test(page) && /missing \? STR\.missing : STR\.no_media/.test(page) && /'tube_missing'\]/.test(src) && /function _videoFileMissing\(v\)/.test(src) && /t\('video_not_playable'\)/.test(src));
+ok("the two truths of a video that will not play: not in the ZIM, or not decodable here", /m\.missing\) \{ noMedia\(!!\(m && m\.missing\)\); return; \}/.test(page) && /missing \? STR\.missing : STR\.no_media/.test(page) && /'tube_missing'[,\]]/.test(src) && /function _videoFileMissing\(v\)/.test(src) && /t\('video_not_playable'\)/.test(src));
 const css = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.css'), 'utf8');
 ok("the header's arrow shows on every app page: a video is a history step back, a list asks the page, the home leaves the app", /homeScope \|\| \(_isAppPage\(\) && !_appTop\);/.test(src) && /if \(_isAppPage\(\)\) \{[\s\S]*?if \(st && \(st\.play \|\| st\.q \|\| st\.p\)\) \{ if \(st\.entry\) _appEntryHome\(\); else history\.back\(\); return; \}[\s\S]*?postMessage\(\{ zimi: 'back-request' \}/.test(src) && /d\.zimi === 'at-home'[\s\S]*?if \(_isAppPage\(\)\) closeReader\(\);/.test(src) && /e\.data\.zimi === 'back-request'[\s\S]*?window\.__back\(\)[\s\S]*?tell\(\{ zimi: 'at-home' \}\)/.test(shared) && /window\.__back = function\(\) \{\s*if \(_now >= 0\) \{ closePlayer\(\); return true; \}/.test(page));
-ok('a video, a question, a post is bookmarked and remembered as the app\'s, and opens back into it', /function _appItemOpened\(app, id, title\)/.test(src) && /_histPushArticle\(zim, path, title, null, app\)/.test(src) && /if \(app\) record\.app = app;/.test(src) && /_openAppItem\(row\.dataset\.app, row\.dataset\.zim, row\.dataset\.path\)/.test(src) && /var cur = currentArticle \|\| _appItem;/.test(src));
-ok('the reader\'s bookmark buttons are for articles, not app pages', /body\.app-page #bm-panel-btn, body\.app-page\.app-noitem #library-btn, body\.map-page #bm-panel-btn, body\.map-page #library-btn \{ display: none !important; \}/.test(css));
+ok('a video, a question, a post is bookmarked and remembered as the app\'s, and opens back into it', /function _appItemOpened\(app, id, title\)/.test(src) && /_histPushArticle\(zim, path, title, null, app\)/.test(src) && /var _APP_ITEM_APPS = \['tube', 'exchange', 'reddot'\];/.test(src) && /if \(!currentArticle && _appItem\) \{[\s\S]*?if \(own && own\.zim === _appItem\.zim && own\.path === _appItem\.path\) return Object\.assign\(\{\}, own\);\n\s*return \{ kind: _appItemKind\(_appItem\.app\) \|\| 'article', app: _appItem\.app/.test(src) && /if \(_savedOpensInApp\(it\)\) \{ _openAppItem\(it\.app, it\.zim, it\.path\); return; \}/.test(src));
+ok('an app page has no header bookmark (its item saves from its own page), but the Saved panel opens from it (on the app\'s own); a map has neither', /body\.app-page #library-btn, body\.map-page #bm-panel-btn, body\.map-page #library-btn \{ display: none !important; \}/.test(css) && !/body\.app-page #bm-panel-btn/.test(css) && /if \(!isOpen\) _bmScope = _savedCurrentApp\(\);/.test(src));
 ok('"Open the original page" is a step: the shell opens the article with the app behind it, and the arrow (or Back) returns to the video', /function openLink\(a, zim, page, label\)/.test(shared) && /tell\(\{ zimi: 'open', zim: zim, path: page \}\)/.test(shared) && /openLink\(document\.getElementById\('w-open'\), v\.zim, v\.page, STR\.open_page\)/.test(page) && /d\.zimi === 'open'[\s\S]*?openArticle\(d\.zim, d\.path\);\n\s*if \(fromApp\) \{ articleHistory\.push\(\{ app: true \}\); updateTopbar\(\); \}/.test(src) && /if \(prev\.app\) \{ history\.back\(\); return; \}/.test(src) && /if \(replaceState && play\) st\.entry = true;/.test(src) && /if \(st\.entry\) _appEntryHome\(\); else history\.back\(\);/.test(src) && /var toApp = app && app\.mode === 'reader' && \(app\.tube \|\| app\.exchange \|\| app\.reddot \|\| app\.wiki \|\| app\.books\);/.test(src) && /if \(readerOpen && articleHistory\.length > 0 && !toApp\) \{/.test(src));
 ok('Theater and Picture in picture sit on the stage; PIP only where a native video plays', /function stageTools\(stage, pip\)/.test(page) && /\.stage-tools \{ position: absolute; top: 8px; inset-inline-end: 8px;/.test(page) && /stageTools\(stage, pipAvailable\(vid\)\);/.test(page) && /stageTools\(stage, false\);\s*ogvControls\(stage, p\);\s*p\.play\(\);/.test(page) && !/<button id="theater"/.test(page) && !/<button id="pip"/.test(page));
 ok('an iPhone gets the decoder first for a WebM-only talk: it says it can play WebM and then cannot', /var apple = \/iPhone\|iPad\|iPod\/\.test\(ua\)[^\n]*Safari/.test(page) && /webmOnly = m\.media\.every/.test(page) && /if \(\(!playable \|\| \(apple && webmOnly\)\) && m\.ogv\) \{ playWithOgv\(v, m, stage, i\); return; \}/.test(page));
@@ -126,7 +128,7 @@ ok('an iPhone gets the decoder first for a WebM-only talk: it says it can play W
 ok('typing on Tube filters the feed inside the page', /if \(_isTubePage\(\)\) \{\n\s*\/\/ Tube[^\n]*\n\s*hideSuggest\(\);\n\s*suggestTimer = setTimeout\(function\(\) \{ _tubeSearch\(val\); \}, 150\);/.test(src));
 ok('the hand-off calls the page\'s own function', /win\.tubeSearch\(val\)/.test(extract(/function _tubeSearch\(val\) \{[\s\S]*?\n\}/, '_tubeSearch')));
 ok('no reading controls on Tube, in the bar or the ⋯', /_readingText = _readingArticle && !_isMapPage\(\) && !_isAppPage\(\)/.test(src) && /_TTS_AVAILABLE && !_isMapPage\(\) && !_isAppPage\(\)/.test(src) && /function _isAppPage\(\) \{\n\s*return _isTubePage\(\)/.test(src));
-ok('the breadcrumb is ZimiTube and the box says what it is for', /bcIcon\.title = t\('tube'\)/.test(src) && /return t\('tube_search_placeholder'\)/.test(src) && (src.match(/q\.placeholder = _appPlaceholder\(\)/g) || []).length === 2);
+ok('the breadcrumb is ZimiTube and the box says what it is for', /bcIcon\.title = t\('tube'\)/.test(src) && /return t\('tube_search_placeholder'\)/.test(src) && /if \(_appPlaceholder\(\)\) return _appPlaceholder\(\);/.test(src) && /function updateTopbar\(\) \{[\s\S]*?_updateSearchPlaceholder\(\);/.test(src));
 
 // ── a card becomes a page ────────────────────────────────────────────────
 ok('a ZIM page opened from an app gets history and an address, and the app closes', /function _appsOff\(\) \{\n\s*_tubeOpen = false; _exchangeOpen = false; _reddotOpen = false;/.test(src) && /return _tubeOpen \|\| _exchangeOpen \|\| _reddotOpen/.test(src) && /if \(_anyAppOpen\(\)\) \{[\s\S]*?_appsOff\(\);[\s\S]*?history\.pushState\(\{ mode: 'reader', zim: _navZim, path: _navPath \}, '', _articleDeepLinkPath\(_navZim, _navPath\)\);/.test(src));
@@ -134,10 +136,10 @@ ok('closing the reader or opening any article leaves Tube', /function closeReade
 
 // ── the page ─────────────────────────────────────────────────────────────
 ok('the page asks /tube once and pages what it shows', /fetch\(url\)/.test(page) && /'\/tube\?limit=5000&offset=0'/.test(page) && /function tubeMore\(\)/.test(page));
-ok('a card is a real link to the page, and a click plays in ZimiTube\'s own player', /href="' \+ esc\(zpath\(v\.zim, v\.page\)\) \+ '"/.test(page) && /onclick="return play\(event, ' \+ i \+ '\)"/.test(page));
+ok('a card is a real link to the page, and a click plays in ZimiTube\'s own player', /href="' \+ esc\(zpath\(v\.zim, v\.page\)\) \+ '"/.test(page) && /onclick="return pick\(event, ' \+ J\(from \|\| ''\) \+ ', ' \+ i \+ '\)"/.test(page) && /function pick\(e, from, i\) \{[\s\S]*?return play\(e, i\);/.test(page));
 ok('the player reads the media behind the page and rolls into the next', /fetch\('\/tube\/play\?zim='/.test(page) && /addEventListener\('ended'[\s\S]*play\(null, i \+ 1\)/.test(page) && /STR\.up_next/.test(page));
 ok('shelves per source, chips, sorts, ZIM icons', /class="shelf"/.test(page) && /class="chip/.test(page) && /sort_longest/.test(page) && /zimIcon\(v\.zim, cls\)/.test(page));
-ok('browsing is the shelves alone; the grid is for a chip, a query or another order', /shelves\.hidden = !browsing;/.test(page) && /list\.hidden = browsing;/.test(page) && !/<select/.test(page));
+ok('browsing is the shelves alone; the grid is for a chip, a query or another order', /shelves\.hidden = !browsing;/.test(page) && /list\.hidden = browsing \|\| /.test(page) && !/<select/.test(page));
 ok('the default order is called Top', /_sort = 'top'/.test(page) && /sort_top/.test(page) && !/sort_mixed/.test(page));
 ok('the original page stays one tap away', /STR\.open_page/.test(page));
 ok('the page exposes its search to the top bar', /window\.tubeSearch = tubeSearch/.test(page));

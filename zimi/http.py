@@ -196,6 +196,7 @@ _RATE_LIMITED_API_PATHS = (
     "/chunks",
     "/openapi.json",
     "/almanac-links",
+    "/almanac-satellites",
 )
 
 # The apps' routes below their bare path (/exchange/question, /reddot/post):
@@ -263,9 +264,16 @@ _PRIVATE_LOGIN_SURFACE_EXACT = frozenset(
 _PRIVATE_LOGIN_SURFACE_PREFIX = ("/static/", "/manage/")
 
 
+# Asked by the shell once for every wiki article opened (its language menu,
+# and Zimipedia's reader beside it): the traffic of reading, like /snippet,
+# so it rides the content bucket. On the API budget, a 429 left the language
+# menu silently empty.
+_CONTENT_PATHS = frozenset(("/snippet", "/wiki/article"))
+
+
 def _rate_class(path):
     """(is_rate_limited, uses_content_bucket) for a GET path."""
-    is_content = path.startswith("/w/") or path == "/snippet" or path in _POLL_PATHS
+    is_content = path.startswith("/w/") or path in _CONTENT_PATHS or path in _POLL_PATHS
     limited = (
         is_content
         or path in _RATE_LIMITED_API_PATHS
@@ -751,6 +759,50 @@ COMPRESSIBLE_TYPES = {
     "application/xml",
     "image/svg+xml",
 }
+# Below this a body goes as it is: gzip's own header and trailer take back
+# most of what it would save.
+GZIP_MIN_BYTES = 256
+# zlib's level 4: most of level 9's saving on text, at a fraction of its time.
+GZIP_LEVEL = 4
+
+
+# Static bodies gzipped once rather than on every request: app.js alone is
+# ~25 ms of zlib per page load here, several times that on a NAS. Keyed by
+# path and holding the very body it was made from, so a file that changes
+# (a new body from the mtime-checked cache) is compressed afresh.
+_gzip_memo_lock = threading.Lock()
+_gzip_memo_kept = {}
+
+
+def _gzip_memo(key, body):
+    with _gzip_memo_lock:
+        kept = _gzip_memo_kept.get(key)
+    if kept is not None and kept[0] is body:
+        return kept[1]
+    gz = gzip.compress(body, compresslevel=GZIP_LEVEL)
+    with _gzip_memo_lock:
+        _gzip_memo_kept[key] = (body, gz)
+    return gz
+
+
+# APP_JS_REWRITTEN as the bytes that go out, encoded once (and again only if
+# it is replaced), so its gzip above is kept too.
+_app_js_encoded = [None, b""]
+
+
+def _app_js_bytes():
+    src = APP_JS_REWRITTEN
+    if _app_js_encoded[0] is not src:
+        _app_js_encoded[:] = [src, src.encode("utf-8")]
+    return _app_js_encoded[1]
+
+
+def _compressible(content_type):
+    """Whether a body of this type is worth gzip: text, never a picture or
+    a PDF, which are compressed already."""
+    base = content_type.split(";", 1)[0].strip()
+    return any(base.startswith(t) for t in COMPRESSIBLE_TYPES)
+
 
 _TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 try:
@@ -758,6 +810,22 @@ try:
         SEARCH_UI_HTML = f.read()
 except FileNotFoundError:
     SEARCH_UI_HTML = "<html><body><h1>Zimi</h1><p>UI template not found. API endpoints are still available.</p></body></html>"
+
+# Where app.js takes the language-code table (server._ISO639_3_TO_1, from
+# assets/lang-codes.json): one table for both sides, put in as app.js is
+# served, so the file itself carries none of its own.
+_LANG_CODES_MARK = "/*@lang-codes.json@*/{}"
+
+
+def _inline_lang_codes(js):
+    if _LANG_CODES_MARK not in js:
+        log.warning("app.js has no %s: its language table is empty", _LANG_CODES_MARK)
+        return js
+    return js.replace(
+        _LANG_CODES_MARK,
+        json.dumps(_srv._ISO639_3_TO_1, separators=(",", ":"), sort_keys=True),
+    )
+
 
 # Auto-version static assets: replace ?v=N with content-hash so deploys bust caches.
 # This eliminates manual version bumping — any file change gets a new URL automatically.
@@ -785,8 +853,8 @@ if os.path.isdir(_STATIC_DIR):
     if os.path.exists(_app_js_path):
         with open(_app_js_path, "r", encoding="utf-8") as _f:
             _app_js_src = _f.read()
-        _rewritten = re.sub(
-            r"/static/([\w./-]+)\?v=\d+", _replace_static_ver, _app_js_src
+        _rewritten = _inline_lang_codes(
+            re.sub(r"/static/([\w./-]+)\?v=\d+", _replace_static_ver, _app_js_src)
         )
         if _rewritten != _app_js_src:
             APP_JS_REWRITTEN = _rewritten
@@ -842,10 +910,13 @@ if os.path.isdir(_STATIC_DIR):
             # bundle hash or a change to one ships behind a stale SW cache.
             + _static_hash("almanac-orrery.js")
             + _static_hash("almanac-sky.js")
+            + _static_hash("almanac-earth.js")
+            + _static_hash("highlights.js")
             + _static_hash("tube.html")
             + _static_hash("exchange.html")
             + _static_hash("reddot.html")
             + _static_hash("wiki.html")
+            + _static_hash("wiki-reader.js")
             + _static_hash("books.html")
             + _static_hash("apps.css")
             + _static_hash("apps.js")
@@ -1602,6 +1673,16 @@ def _reconstruct_source_url(archive, entry_path):
 
 
 APP_PAGES = ("tube.html", "exchange.html", "reddot.html", "wiki.html", "books.html")
+# Pages that show a ZIM's own HTML may load only from Zimi: inline styles and
+# scripts run (ZIM content uses them), anything on another host is refused,
+# and nothing outside Zimi may frame them. A ZIM's article and an app page
+# showing a question or a post from one (ZimiExchange keeps a body's absolute
+# image URLs as they are) both carry it, so neither reaches the internet
+# because of what a ZIM holds.
+ZIM_HTML_CSP = (
+    "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; "
+    "frame-ancestors 'self'"
+)
 _APPS_CSS_MARK = b"<!--@apps.css@-->"
 _APPS_JS_MARK = b"<!--@apps.js@-->"
 _APP_ASSETS = (
@@ -1640,9 +1721,25 @@ def _prefs_reply(prefs):
     return {"apps": bool(shown), "shown": [n for n in _srv.APP_NAMES if n in shown]}
 
 
+# A line break inside a header ends it; two end the headers, and what
+# follows is the body. BaseHTTPRequestHandler writes a header as it is given.
+_HEADER_BREAK_RE = re.compile(r"[\r\n]")
+
+
 class ZimHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     timeout = 30  # seconds — prevents slow-client DoS on POST bodies
+
+    def send_header(self, keyword, value):
+        """Every header Zimi sends, refused when its name or value carries a
+        line break: an EPUB's manifest type once put ``\\r\\n\\r\\n<script>`` in
+        a Content-Type, which ended the headers early, pushed the policy
+        into the body and ran the script on Zimi's origin. The answer begun
+        is dropped with it, so the caller's error reply starts clean."""
+        if _HEADER_BREAK_RE.search(str(keyword)) or _HEADER_BREAK_RE.search(str(value)):
+            self._headers_buffer = []
+            raise ValueError(f"a line break in the {str(keyword)[:40]!r} header")
+        super().send_header(keyword, value)
 
     def handle_one_request(self):
         """Backstop for disconnects escaping ANY write path (rate-limit
@@ -2090,6 +2187,21 @@ class ZimHandler(BaseHTTPRequestHandler):
                 langs = [x for x in (param("langs") or "").split(",") if x]
                 return _almanac_links_response(self, qids, langs)
 
+            elif parsed.path == "/almanac-satellites":
+                # Orbital elements for the Almanac's Earth view: answered at
+                # once from the snapshot or cache. A stale set is refreshed in
+                # the background only when "Satellite data from the internet"
+                # is Automatically; can_change says whether this viewer may
+                # change that setting or ask for fresh data (the admin rule
+                # every /manage write follows).
+                from zimi import satellites as _sats
+
+                payload = _sats.get()
+                payload["can_change"] = bool(
+                    _srv.ZIMI_MANAGE and _users._request_is_admin(self)
+                )
+                return self._json(200, payload)
+
             elif parsed.path == "/list":
                 result = _srv.list_zims()
                 # Per-ZIM category overrides win over the _categorize_zim
@@ -2304,6 +2416,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # that answers 0 about a library of 73 is worse than no health
                 # check at all.
                 zim_count = _srv.server_zim_count()
+                from zimi.p2p import is_offline as _is_offline
                 return self._json(
                     200,
                     {
@@ -2312,6 +2425,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                         "asset_version": _asset_version(),
                         "zim_count": zim_count,
                         "pdf_support": _srv.HAS_PYMUPDF,
+                        # ZIMI_OFFLINE: the reader says a link to the web
+                        # needs the internet rather than opening a dead tab.
+                        "offline": _is_offline(),
                     },
                 )
 
@@ -2375,8 +2491,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # Zimipedia: every wiki in the library, as one.
                 from zimi import wiki as _wiki
 
-                # A preview, off unless ZIMI_APPS (or a saved list) names it:
-                # not offered, it is not here at all.
+                # Not offered (ZIMI_APPS or a saved list leaves it out): it is
+                # not here at all.
                 if "wiki" not in _srv.apps_shown():
                     return self._json(404, {"error": "not found"})
                 sub = parsed.path[len("/wiki"):].strip("/")
@@ -2391,7 +2507,18 @@ class ZimHandler(BaseHTTPRequestHandler):
                     names = [n for n in (param("zim") or "").split(",") if n]
                     if not names or len(names) > _wiki.TODAY_BATCH_MAX:
                         return self._json(400, {"error": "zim"})
-                    return self._json(200, _wiki.today(day, names))
+                    parts = [x for x in (param("parts") or "").split(",") if x]
+                    return self._json(200, _wiki.today(day, names, parts))
+                if sub == "article":
+                    # What the reader shows beside an article, asked once it is
+                    # on screen (in place of /article-languages); only=languages
+                    # is the shell's language menu, which needs nothing else.
+                    got = _wiki.article(
+                        param("zim") or "",
+                        param("path") or "",
+                        languages_only=param("only") == "languages",
+                    )
+                    return self._json(200, got) if got else self._json(404, {"error": "not found"})
                 if sub != "onthisday":
                     return self._json(404, {"error": "not found"})
                 zim = param("zim")
@@ -2503,6 +2630,15 @@ class ZimHandler(BaseHTTPRequestHandler):
                     if _srv._is_map_zim(zim):
                         place = _srv._random_map_place(zim)
                         return self._json(200, place or {"error": "no places found"})
+                    # The day's card from a wiki is Zimipedia's pick for
+                    # that day, worked out once and kept (wiki.daily_card):
+                    # the home page and Today show one word of the day.
+                    if param("day"):
+                        from zimi import wiki as _wiki
+
+                        card = _wiki.daily_card(zim, param("day"))
+                        if card:
+                            return self._json(200, card)
                     pick_names = [zim]
                 else:
                     # Maps are left out: their entries are tiles, and the
@@ -2830,8 +2966,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if "apps" in data:
                     # True, False, or the names of the apps to keep.
                     prefs["apps"] = _srv._apps_setting(_srv._apps_value(data.get("apps"), _srv.APPS_ALL) or frozenset(), _srv.APPS_ALL)
-                blob["preferences"] = prefs
-                ok, err = _users.save_user_data(name, blob)
+                # Only the preferences go back: the rest of the blob (the saved
+                # store another device may be syncing this moment) stays as kept.
+                ok, err, _ = _users.sync_user_data(name, {"preferences": prefs})
                 if not ok:
                     return self._json(400, {"error": err})
                 return self._json(200, _prefs_reply(prefs))
@@ -3293,6 +3430,35 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(msg)
 
+    def _serve_epub_part(self, zim_name, entry_path):
+        """``/w/<zim>/<book>.epub/`` (the book's chapters as one page, which
+        the reader opens like any book) and ``/w/<zim>/<book>.epub/<file>``
+        (a picture or a stylesheet inside it), from zimi.epub. False when the
+        path is not inside an EPUB of this ZIM, for the ordinary lookup."""
+        from zimi import epub as _epub
+
+        got = _epub.respond(zim_name, entry_path)
+        if got is None:
+            return False
+        mimetype, content = got
+        if content is None:
+            self._json(404, {"error": "not in this book"})
+            return True
+        self.send_response(200)
+        self.send_header("Content-Type", mimetype)
+        self.send_header("Cache-Control", f"private, max-age={ZIM_CONTENT_MAX_AGE}")
+        self.send_header("Vary", "Sec-Fetch-Dest")
+        # On every answer, not only the page: an SVG inside the book, opened
+        # on its own, is a document too. No script of the book runs; the
+        # reader drives the page from the shell.
+        self.send_header("Content-Security-Policy", _epub.CSP)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        content = self._maybe_gzip(content, mimetype)
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+        return True
+
     def _serve_zim_content(self, zim_name, entry_path, *, a11y=False):
         """Serve raw ZIM content with correct MIME type for the /w/ endpoint.
 
@@ -3313,6 +3479,12 @@ class ZimHandler(BaseHTTPRequestHandler):
             etag = self._picture_etag(zim_name, entry_path)
             if etag and self.headers.get("If-None-Match") == etag:
                 return self._picture_not_modified(etag)
+
+        # Inside an EPUB: the book as one page to read, or a file of it.
+        if ".epub/" in entry_path.lower() and self._serve_epub_part(
+            zim_name, entry_path
+        ):
+            return
 
         # Phase 1: Read from ZIM under lock
         with _srv._zim_lock:
@@ -3632,27 +3804,13 @@ class ZimHandler(BaseHTTPRequestHandler):
         if is_streamable:
             self.send_header("Accept-Ranges", "bytes")
 
-        # Sandbox ZIM HTML: allow inline styles/scripts (ZIM content uses them)
-        # but block external requests and prevent framing outside Zimi
+        # Sandbox ZIM HTML (ZIM_HTML_CSP): inline styles and scripts run,
+        # external requests are blocked, nothing outside Zimi frames it.
         if mimetype.startswith("text/html"):
-            self.send_header(
-                "Content-Security-Policy",
-                "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; "
-                "frame-ancestors 'self'",
-            )
+            self.send_header("Content-Security-Policy", ZIM_HTML_CSP)
 
-        # Gzip text-based content only (images/PDFs are already compressed)
-        compressible = any(
-            mimetype.startswith(t) or mimetype == t for t in COMPRESSIBLE_TYPES
-        )
-        if (
-            compressible
-            and not stream_whole
-            and self._accepts_gzip()
-            and len(content) > 256
-        ):
-            content = gzip.compress(content, compresslevel=4)
-            self.send_header("Content-Encoding", "gzip")
+        if not stream_whole:
+            content = self._maybe_gzip(content, mimetype)
 
         if stream_whole:
             self.send_header("Content-Length", str(total_size))
@@ -3913,6 +4071,24 @@ class ZimHandler(BaseHTTPRequestHandler):
     def _accepts_gzip(self):
         return "gzip" in self.headers.get("Accept-Encoding", "")
 
+    def _maybe_gzip(self, body, content_type=None, memo=None):
+        """``body`` gzipped, its Content-Encoding header sent, when the
+        client takes gzip, it is over GZIP_MIN_BYTES and (given a
+        ``content_type``) of a type that compresses; else as it is. Called
+        after send_response, before the Content-Length of what it returns.
+        ``memo`` names a body served again unchanged (a static file): its
+        compressed bytes are kept for the next request."""
+        if (
+            len(body) > GZIP_MIN_BYTES
+            and self._accepts_gzip()
+            and (content_type is None or _compressible(content_type))
+        ):
+            self.send_header("Content-Encoding", "gzip")
+            if memo is None:
+                return gzip.compress(body, compresslevel=GZIP_LEVEL)
+            return _gzip_memo(memo, body)
+        return body
+
     @staticmethod
     def _parse_range(header, total_size):
         """Parse HTTP Range header. Returns (start, end) or (None, None)."""
@@ -3952,9 +4128,7 @@ class ZimHandler(BaseHTTPRequestHandler):
             self.send_header("ETag", etag)
         if vary:
             self.send_header("Vary", vary)
-        if self._accepts_gzip() and len(body_bytes) > 256:
-            body_bytes = gzip.compress(body_bytes, compresslevel=4)
-            self.send_header("Content-Encoding", "gzip")
+        body_bytes = self._maybe_gzip(body_bytes)
         self.send_header("Content-Length", str(len(body_bytes)))
         self.end_headers()
         self.wfile.write(body_bytes)
@@ -3993,7 +4167,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         # app.js gets the in-memory rewrite when present (auto-versioned ?v=
         # references inside the file). Avoids touching the read-only filesystem.
         if rel_path == "app.js" and APP_JS_REWRITTEN is not None:
-            body = APP_JS_REWRITTEN.encode("utf-8")
+            body = _app_js_bytes()
             content_type = "application/javascript"
         else:
             # The cache is validated against the file's mtime: one stat per
@@ -4056,18 +4230,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                         stored_mtime,
                     )
 
-        # Compress text-based static files (viewer.mjs, viewer.css, etc.)
-        ct_base = content_type.split(";")[0]
-        compressible = any(
-            ct_base.startswith(t) or ct_base == t for t in COMPRESSIBLE_TYPES
-        )
-        if self._accepts_gzip() and compressible and len(body) > 256:
-            body = gzip.compress(body, compresslevel=4)
-            is_gzipped = True
-        else:
-            is_gzipped = False
         self.send_response(200)
         self.send_header("Content-Type", content_type)
+        # Text-based static files (viewer.mjs, viewer.css, etc.) go gzipped,
+        # compressed once per body rather than once per request.
+        body = self._maybe_gzip(body, content_type, memo=rel_path)
         self.send_header("Content-Length", str(len(body)))
         # Service worker needs scope override; i18n files change between versions
         if rel_path == "sw.js":
@@ -4079,13 +4246,12 @@ class ZimHandler(BaseHTTPRequestHandler):
             # year" kept the old page on a phone after every deploy. Small
             # and inlined at serve time: ask each time.
             self.send_header("Cache-Control", "no-cache")
+            self.send_header("Content-Security-Policy", ZIM_HTML_CSP)
         elif rel_path.startswith("i18n/"):
             self.send_header("Cache-Control", "public, max-age=86400")
         else:
             self.send_header("Cache-Control", "public, max-age=31536000, immutable")
         self.send_header("Access-Control-Allow-Origin", "*")
-        if is_gzipped:
-            self.send_header("Content-Encoding", "gzip")
         self.end_headers()
         self.wfile.write(body)
 
@@ -4345,13 +4511,18 @@ class ZimHandler(BaseHTTPRequestHandler):
         of this — it keys off the cookie/token, not the client's belief."""
         from zimi import manage as _manage
 
+        # The apps this server offers, as the shell stamps them. A browser can
+        # show a shell it kept from before the setting changed (Chrome's Back
+        # reuses it without asking), and every boot asks here before it draws,
+        # so the client corrects its stamp from this (#98).
+        apps = _srv.apps_stamp(_srv.apps_shown())
         name = _users.resolve_request_user(self)
         if name:
             # A SECONDARY admin keeps the admin chrome on reload (their session
             # token is restored from storage as the manage Bearer token).
             if _users.is_admin_user(name):
                 return self._json(
-                    200, {"role": "admin", "name": name, "secondary": True}
+                    200, {"role": "admin", "name": name, "secondary": True, "apps": apps}
                 )
             rec = _users.get_user(name)
             allowlist = rec.get("allowlist") if rec else None
@@ -4364,6 +4535,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                     # Per-user create permission — the client's + button and
                     # Create page consult this (the server gates regardless).
                     "can_create": _users.user_can_create(name),
+                    "apps": apps,
                 },
             )
 
@@ -4375,6 +4547,7 @@ class ZimHandler(BaseHTTPRequestHandler):
             resp: dict[str, object] = {
                 "role": "admin",
                 "name": _manage._get_manage_user() or "admin",
+                "apps": apps,
             }
             # Ensure the header-less transports (reader iframe, plain-fetch data
             # endpoints) carry admin identity. If this admin was recognised by the
@@ -4391,7 +4564,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         # Anonymous. Expose a first-login hint ONLY when the default username
         # applies — no custom username AND no named users configured. This is
         # not an info leak: "the default username is admin" is in the docs.
-        resp = {"role": "anonymous"}
+        resp = {"role": "anonymous", "apps": apps}
         if not _manage._get_manage_user() and not _users.list_users():
             resp["default_username"] = "admin"
         # Tell the SPA how the public-access policy shapes its view: ``private``
@@ -4416,16 +4589,24 @@ class ZimHandler(BaseHTTPRequestHandler):
         return self._json(200, _users.load_user_data(name))
 
     def _handle_userdata_post(self, data):
-        """POST /userdata — save the signed-in user's own My-data blob. A user
+        """POST /userdata — the signed-in user's own My-data blob. A user
         can only ever touch their OWN data: the target is the session identity,
-        never a name from the body, so there is no cross-user write path."""
+        never a name from the body, so there is no cross-user write path.
+
+        Each plain field sent replaces the kept one and a field not sent is
+        left alone; ``saved`` (1.12) is merged with the kept store
+        (users.sync_user_data), and the merged store comes back, so a device
+        takes in what the others wrote in the same trip."""
         name = _users.resolve_request_user(self)
         if not name:
             return self._json(401, {"error": "sign in required"})
-        ok, err = _users.save_user_data(name, data if isinstance(data, dict) else {})
+        ok, err, doc = _users.sync_user_data(name, data if isinstance(data, dict) else {})
         if not ok:
-            return self._json(400, {"error": err})
-        return self._json(200, {"status": "ok"})
+            # Too large is the account's to fix (the device says sync is paused).
+            # A file that could not be read is the server's, and passes.
+            status = 413 if err.endswith("too large") else 503 if err == "read failed" else 400
+            return self._json(status, {"error": err})
+        return self._json(200, {"status": "ok", "saved": doc["saved"]})
 
     def log_message(self, format, *args):
         # Light logging: errors + slow requests. Suppress 200/304 noise.

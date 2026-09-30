@@ -773,7 +773,7 @@ class LibtorrentBackend(BTBackend):
         self.data_dir = data_dir
         self.staging_dir = staging_dir
         self.bt_dir = os.path.join(data_dir, "bt")
-        self.resume_dir = os.path.join(self.bt_dir, "resume")
+        self.resume_dir = resume_dir(data_dir)
         self._ses = None
         self._handles: dict[str, Any] = {}
         self._lock = threading.Lock()
@@ -1262,6 +1262,12 @@ class LibtorrentBackend(BTBackend):
 
 _backend_singleton: BTBackend | None = None
 _backend_lock = threading.Lock()
+
+
+def resume_dir(data_dir: str) -> str:
+    """Where the engine keeps each torrent's fastresume file. Every torrent
+    in it comes back when the session starts."""
+    return os.path.join(data_dir, "bt", "resume")
 
 
 def get_backend(*, data_dir: str) -> BTBackend | None:

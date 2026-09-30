@@ -175,7 +175,7 @@ def _library(tmp_path, monkeypatch, zims=LIBRARY, details=True):
     if details:
         # The startup worker may have claimed a ZIM already: wait for it.
         books.build_all_details()
-        books.wait_for_builds()
+        books._builder.wait()
 
 
 # ── reading a ZIM ──────────────────────────────────────────────────────────
@@ -238,8 +238,8 @@ def test_a_marc_subtitle_is_a_subtitle():
 
 def test_the_listings_alone_make_the_shelf(tmp_path, monkeypatch):
     """Before any book is read the shelf is there, most read first, each
-    book in its language and on its LCC shelf; an EPUB-only book opens on
-    its cover page."""
+    book in its language and on its LCC shelf; an EPUB-only book opens in
+    its EPUB's chapters (zimi/epub.py)."""
     _library(tmp_path, monkeypatch, details=False)
     home = books.home()
     assert home["total"] == 7 and home["details"] is False and home["eras"] == []
@@ -249,7 +249,8 @@ def test_the_listings_alone_make_the_shelf(tmp_path, monkeypatch):
     ]
     by = {b["id"]: b for b in books.listing(limit=50)["books"]}
     assert by[5139]["lang"] == "he" and by[23294]["lang"] == "la"
-    assert by[19635]["html"] is False and by[19635]["path"].endswith("_cover.19635")
+    assert by[19635]["html"] is False
+    assert by[19635]["path"] == "Biblia Sacra Vulgata - Psalmi XXII.19635.epub/"
     assert by[5139]["path"] == "Tales - Fables.5139"
     assert {s["code"] for s in home["shelves"]} == {"PA", "B", "G", "PT"}
 
@@ -440,8 +441,53 @@ def test_a_zim_gone_before_its_records_are_read_does_not_hold_them_back(
     books.home()
     monkeypatch.setattr(srv, "get_zim_files", lambda: {})
     for z in books._book_zims():
-        books._build_one(z["name"])
+        books._builder.build_one(z["name"])
     assert books.home()["details"] is True
+
+
+def _assert_not_held(path):
+    """Nothing in this process has ``path`` open, so Windows would let it be
+    removed. lsof shows it where there is one (macOS, most Linux)."""
+    import shutil
+    import subprocess
+
+    if not shutil.which("lsof"):
+        return
+    out = subprocess.run(
+        ["lsof", "-p", str(os.getpid())], capture_output=True, text=True
+    ).stdout
+    assert os.path.realpath(path) not in out and path not in out
+
+
+def test_an_updated_zim_is_read_again_and_its_old_rows_let_go(tmp_path, monkeypatch):
+    """The auto-updater puts this month's build beside last month's under
+    one name and removes the old file. The shelf was keyed by whichever
+    build it read first, never let go: it waited for records of a file no
+    longer there and "reading the catalog" never ended."""
+    from conftest_zim import build_fixture_zim
+
+    _library(tmp_path, monkeypatch, LIBRARY[:1])
+    assert books.home()["details"] is True
+    zdir = tmp_path / "zims"
+    old = str(zdir / "gutenberg_la_all_2026-01.zim")
+    new = str(zdir / "gutenberg_la_all_2026-05.zim")
+    # This month's build lists three of the six.
+    rows = books._js_array(LATIN["full_by_popularity.js"].decode())
+    files = dict(LATIN, **{"full_by_popularity.js": _js("json_data", rows[:3])})
+    build_fixture_zim(new, dict(LIBRARY[0][1], Date="2026-05-02"), files=files)
+    # The updater's order: let go of the old build, then remove it. Windows
+    # refuses to remove a file an Archive still holds open.
+    srv.release_zim_handles(list(srv.get_zim_files()))
+    _assert_not_held(old)
+    os.remove(old)
+    srv.load_cache(force=True)
+    assert srv.get_zim_files()["gutenberg_la"] == new
+
+    books.home()  # reads the new build's listings and asks for its records
+    books._builder.wait()
+    home = books.home()
+    assert home["details"] is True and home["total"] == 3
+    assert [k for k, (n, _rows) in books._base.items() if n == "gutenberg_la"] == [new]
 
 
 def test_a_book_is_not_shown_by_way_of_a_zim_the_account_may_not_read(

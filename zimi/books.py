@@ -1,4 +1,7 @@
-"""Bookshelf: every Project Gutenberg ZIM in the library, as one shelf.
+"""Bookshelf: every book in the library, as one shelf. Project Gutenberg
+first, and beside it the other families (zimi.booksources): Kiwix's
+document libraries, LibreTexts, Wikisource and Wikibooks, Zimi's own folders
+of documents, and ZIMs that are one book each.
 
 Eric, 2026-09-25: "Book app with nice browsing interface by author and date
 or whatever and reading view of course."
@@ -28,18 +31,28 @@ author's era and "newest" is newest to Gutenberg. Reading 60,000 heads takes
 about half an hour on the NAS, so it happens once, in the background, into
 ``<data dir>/books/<name>.db`` (checked against the ZIM as the title index
 is), and the shelf gains eras and subjects when it is there.
+
+The other families are read the same way, but wholly: a ZIM's books are
+listed by its background read (build_sources, into ``<data dir>/shelf/``)
+and join the shelf when it is done, so opening the shelf never reads a ZIM
+for them. A ZIM is on the shelf by what it feeds (server._zim_feeds, from
+metadata the library load reads anyway); a ZIM that is one book (a textbook
+captured whole) is on it by a shipped list of Names, or by hand
+(set_whole). Their ids are ``<zim>/<id in the ZIM>``, Gutenberg's its book
+numbers.
 """
 
 import json
 import logging
 import os
 import re
-import sqlite3
 import threading
-import time
 import unicodedata
 
+from zimi import booksources
+from zimi import epub as _epub
 from zimi import server as _srv
+from zimi.details import DetailsBuilder
 
 log = logging.getLogger("zimi")
 
@@ -54,42 +67,26 @@ LIST_LIMIT = 60
 LIST_LIMIT_MAX = 200
 SHELF_SIZE = 24
 AUTHOR_BOOKS = 24
+# The other families' books come after every Gutenberg one in "most read":
+# they have no count of readers, only their own order.
+SOURCE_RANK = 10_000_000
 
 _lock = threading.Lock()
 _base = {}  # archive filename -> (name, [book]) from the listings alone
-_details = {}  # name -> (real path of the ZIM, {id: detail})
 _shelf = {
     "key": None,
     "books": [],
     "by_id": {},
 }  # the merged shelf, rebuilt when a source changes
 
-_DETAILS_VERSION = "1"
-# Past this many entries the details build runs in a process of its own
-# (search._build_index_isolated); it reads one entry per book.
-_DETAILS_ISOLATE_MIN_ENTRIES = 5_000
-_build_lock = threading.Lock()
-_queue_lock = threading.Lock()
-_queued = set()
-
 
 # ── reading a ZIM ──────────────────────────────────────────────────────────
 
 
-def _read(archive, path, max_bytes=_MAX_LISTING_BYTES, head=None):
-    try:
-        entry = archive.get_entry_by_path(path)
-        if entry.is_redirect:
-            entry = entry.get_redirect_entry()
-        item = entry.get_item()
-        if item.size > max_bytes and head is None:
-            return None
-        data = bytes(item.content)
-        if head is not None:
-            data = data[:head]
-        return data.decode("utf-8", "replace")
-    except Exception:
-        return None
+def _read(archive, path, limit=_MAX_LISTING_BYTES, head=False):
+    """The text at ``path`` (server.entry_bytes), or None."""
+    data = _srv.entry_bytes(archive, path, limit, head=head)
+    return data.decode("utf-8", "replace") if data is not None else None
 
 
 def _js_array(text):
@@ -117,6 +114,11 @@ def book_path(title, book_id, cover=False):
 
 def cover_image(book_id):
     return f"covers/{book_id}_cover_image.jpg"
+
+
+def epub_file(title, book_id):
+    """Where gutenberg2zim puts a book's EPUB."""
+    return f"{page_title(title)}.{book_id}.epub"
 
 
 def _languages(archive):
@@ -166,6 +168,8 @@ def books_of(archive):
                 "lang": lang_of.get(book_id, only),
                 "rank": rank,
                 "html": html,
+                # The second flag: an EPUB, which an EPUB-only book is read in.
+                "epub": str(formats or "")[1:2] == "1",
                 "path": book_path(title, book_id, cover=not html),
             }
         )
@@ -241,18 +245,51 @@ def era_of(born, died):
 # ── the shelf across ZIMs ──────────────────────────────────────────────────
 
 
+def reader_of(z):
+    """How the shelf reads the library entry ``z``: "gutenberg", a family of
+    booksources ("nautilus", "wikisource"...), "whole" for a ZIM that is one
+    book, or "" for a ZIM that is not on the shelf."""
+    if z.get("kind") == "books":
+        return "gutenberg"
+    by_hand = _whole_overrides().get(z.get("name") or "")
+    if by_hand is False:
+        return ""
+    return (z.get("feeds") or {}).get("books") or ("whole" if by_hand else "")
+
+
 def _book_zims():
     return [
         z
         for z in (_srv._zim_list_cache or [])
-        if z.get("kind") == "books" and z.get("name") and _srv.zim_allowed(z["name"])
+        if z.get("name") and reader_of(z) and _srv.zim_allowed(z["name"])
     ]
+
+
+def _source_zim(z):
+    """A ZIM whose books the background read lists (not Gutenberg's, whose
+    listings are read at once; not a whole-ZIM book, which is its entry)."""
+    return reader_of(z) in booksources.READERS
+
+
+def _zim_key(name):
+    """What a ZIM's rows and records are kept under: the file the library
+    has registered for ``name`` (a new build is another file, read afresh),
+    or the name when there is none."""
+    return _srv.get_zim_files().get(name) or name
+
+
+def _let_go(name, keep=None):
+    """Free the listed books of every build of ``name`` but ``keep``'s.
+    Caller holds _lock."""
+    for key in [k for k, (n, _rows) in _base.items() if n == name and k != keep]:
+        del _base[key]
 
 
 def _books_for(name):
     """The listed books of the installed ZIM ``name``, cached per file."""
     from zimi.search import _get_fts_archive
 
+    key = _zim_key(name)
     try:
         archive, lock = _get_fts_archive(name)
     except Exception as e:
@@ -261,11 +298,8 @@ def _books_for(name):
     if archive is None or lock is None:
         # Nothing to read, so nothing to wait for: the shelf is ready without
         # it. Not kept in _base, so the next look tries the file again.
-        _store_details(name, name, {})
+        _builder.keep(name, key, {})
         return None, []
-    # Keyed by the file the library has registered under the name, so a new
-    # build of the ZIM is read afresh.
-    key = _srv.get_zim_files().get(name) or getattr(archive, "filename", None) or name
     with _lock:
         if key in _base:
             return key, _base[key][1]
@@ -277,27 +311,15 @@ def _books_for(name):
         log.warning("Bookshelf: the listings of %s could not be read: %s", name, e)
         rows = []
     with _lock:
+        # Last month's build, read before this one, is let go.
+        _let_go(name, keep=key)
         _base[key] = (name, rows)
     if not rows:
-        _store_details(name, key, {})
-    elif _details_for(name, key) is None:
+        # No books, so no records to read: the shelf stops waiting for them.
+        _builder.keep(name, key, {})
+    elif _builder.kept(name, key) is None:
         request_details(name)
     return key, rows
-
-
-def _store_details(name, key, details):
-    """``name``'s book records, for the file ``key``; {} when there are none
-    to read, so the shelf stops waiting for them."""
-    with _lock:
-        _details[name] = (os.path.realpath(key), details)
-        _shelf["key"] = None
-
-
-def _details_for(name, key):
-    got = _details.get(name)
-    if got and got[0] == os.path.realpath(key):
-        return got[1]
-    return None
 
 
 def _merge(book, zim, detail):
@@ -317,32 +339,109 @@ def _merge(book, zim, detail):
         # Not read yet: the picture is where gutenberg2zim puts it, and the
         # page falls back to a typographic cover when it is not there.
         b["cover"] = cover_image(b["id"])
+    if not b["html"] and b.get("epub"):
+        # No page to read: its EPUB's chapters, served from the zip.
+        b["path"] = _epub.book_path(epub_file(b["title"], b["id"]))
+    return b
+
+
+def _whole_book(z):
+    """A ZIM that is one book: its own card, its main page the contents."""
+    return {
+        "id": "",
+        "title": z.get("title") or z["name"],
+        "author": "",
+        "path": z.get("main_path") or "",
+        "format": "html",
+        "description": z.get("description") or "",
+    }
+
+
+def _source_parts(z):
+    """``(reader, key, books)`` for a ZIM of the other families: what its
+    background read listed, or None while it is still to be read (asked for
+    here, in the background, never waited for)."""
+    reader = reader_of(z)
+    key = _zim_key(z["name"])
+    if reader == "whole":
+        return reader, key, [_whole_book(z)] if z.get("main_path") else []
+    got = _sources.kept(z["name"], key)
+    if got is None:
+        request_sources(z["name"])
+    return reader, key, got
+
+
+# Kiwix names a ZIM with the two-letter code of its language where there
+# is one (wikisource_eo_all), which Gutenberg's listings use too; the
+# metadata may carry the three-letter one (epo).
+_NAME_LANG_RE = re.compile(r"^[^_]+_([a-z]{2})_")
+
+
+def _shelf_lang(z):
+    """A ZIM's language as the shelf files its books: two letters where
+    the language has them, so Esperanto is one language whichever ZIM."""
+    code = (z.get("language") or "").split(",")[0]
+    if len(code) == 3:
+        m = _NAME_LANG_RE.match(z.get("file") or "")
+        if m:
+            return m.group(1)
+    return code
+
+
+def _merge_source(book, z, reader):
+    b = dict(book)
+    b["id"] = f"{z['name']}/{book['id']}"
+    b["zim"] = z["name"]
+    b["source"] = reader
+    b["rank"] = SOURCE_RANK + book.get("_n", 0)
+    b.pop("_n", None)
+    b.setdefault("author", "")
+    b["shelf"] = ""
+    b["html"] = True
+    b["lang"] = book.get("lang") or _shelf_lang(z)
+    if book.get("year") is not None:
+        b["era"] = era_of(None, book["year"])
     return b
 
 
 def shelf():
     """Every book on the shelf, once: a book in two ZIMs (all of English and
     one of its LCC subsets, last month's build beside this month's) comes
-    from the newest build, then the fullest."""
+    from the newest build, then the fullest. The other families' books join
+    as their ZIMs are read."""
     zims = sorted(_book_zims(), key=_srv.build_rank, reverse=True)
-    parts = []
+    parts, sources = [], []
     for z in zims:
+        if reader_of(z) != "gutenberg":
+            reader, key, got = _source_parts(z)
+            if got is not None:
+                sources.append((z, reader, key, got))
+            continue
         key, rows = _books_for(z["name"])
         if key is None:
             continue
-        parts.append((z["name"], key, rows, _details_for(z["name"], key)))
-    stamp = tuple((n, k, len(r), d is not None) for n, k, r, d in parts)
+        parts.append((z["name"], key, rows, _builder.kept(z["name"], key)))
+    stamp = tuple((n, k, len(r), d is not None) for n, k, r, d in parts) + tuple(
+        (z["name"], reader, k, len(got)) for z, reader, k, got in sources
+    )
     with _lock:
         if _shelf["key"] == stamp:
             return _shelf["books"], _shelf["by_id"]
     books, by_id = [], {}
     for name, _key, rows, details in parts:
         for book in rows:
-            if book["id"] in by_id:
+            key = str(book["id"])
+            if key in by_id:
                 continue
             b = _merge(book, name, (details or {}).get(book["id"]))
-            by_id[b["id"]] = b
+            by_id[key] = b
             books.append(b)
+    for z, reader, _key, got in sources:
+        for book in got:
+            b = _merge_source(book, z, reader)
+            if b["id"] not in by_id:
+                by_id[b["id"]] = b
+                books.append(b)
     # Most read first across ZIMs: each ZIM's rank is its own order, so
     # interleave by rank (the top of every shelf before the rest of any).
     books.sort(key=lambda b: b["rank"])
@@ -403,6 +502,9 @@ def _card_fields(b):
             "died",
             "era",
             "created",
+            "source",
+            "format",
+            "year",
         )
         if b.get(k) not in (None, "")
     }
@@ -413,8 +515,8 @@ _SORTS = {
     "title": lambda b: fold(b["title"]),
     "author": lambda b: (surname(b), fold(b["title"])),
     # Newest to Project Gutenberg: the day it came, else its number, which
-    # Gutenberg gives out in order.
-    "recent": lambda b: (b.get("created") or "", b["id"]),
+    # Gutenberg gives out in order. The other families have neither.
+    "recent": lambda b: (b.get("created") or "", b["id"] if isinstance(b["id"], int) else -1),
 }
 
 
@@ -531,13 +633,25 @@ def home():
         books, lambda b: b["shelf"][:2] if b["shelf"][:1] == "P" else b["shelf"][:1]
     )
     eras = _counts(books, lambda b: b.get("era"))
+    per_zim = _counts(books, lambda b: b["zim"])
     ready = (
-        all(_details_for(z["name"], _base_key(z["name"])) is not None for z in zims)
+        all(_details_ready(z) for z in zims)
         if zims
         else False
     )
+    # Most read is Gutenberg's count of readers: its books alone when there
+    # are any. A shelf without them opens on its books in their own order.
+    ranked = [b for b in books[:SHELF_SIZE] if b["rank"] < SOURCE_RANK]
+    front = ranked or books[:SHELF_SIZE]
+    # Newest to Project Gutenberg: its books only, the others have no such day.
     recent = (
-        sorted(books, key=_SORTS["recent"], reverse=True)[:SHELF_SIZE] if ready else []
+        [
+            b
+            for b in sorted(books, key=_SORTS["recent"], reverse=True)[:SHELF_SIZE]
+            if b.get("created")
+        ]
+        if ready
+        else []
     )
     return {
         "total": len(books),
@@ -547,9 +661,14 @@ def home():
                 "title": z.get("title") or z["name"],
                 "language": (z.get("language") or "").split(",")[0],
                 "date": z.get("date") or "",
+                "reader": reader_of(z),
+                # Its books on the shelf, so the front can offer it as a way in.
+                "n": per_zim.get(z["name"], 0),
+                "lang": _shelf_lang(z),
             }
             for z in zims
         ],
+        "ranked": bool(ranked),
         "languages": sorted(
             ({"code": k, "n": v} for k, v in langs.items()), key=lambda r: -r["n"]
         ),
@@ -560,17 +679,22 @@ def home():
             ({"from": k, "n": v} for k, v in eras.items()), key=lambda r: r["from"]
         ),
         "details": ready,
-        "popular": [card(b) for b in books[:SHELF_SIZE]],
+        "popular": [card(b) for b in front],
         "recent": [card(b) for b in recent],
     }
 
 
-def _base_key(name):
-    with _lock:
-        for key, (n, _rows) in _base.items():
-            if n == name:
-                return key
-    return name
+def _details_ready(z):
+    """Whether what the background reads of ``z`` has been read, from the
+    build of it the library has now."""
+    reader = reader_of(z)
+    if reader == "gutenberg":
+        builder = _builder
+    elif reader in booksources.READERS:
+        builder = _sources
+    else:
+        return True
+    return builder.kept(z["name"], _zim_key(z["name"])) is not None
 
 
 def book(zim, book_id):
@@ -578,13 +702,25 @@ def book(zim, book_id):
     if zim and not _srv.zim_allowed(zim):
         return None
     books, by_id = shelf()
-    b = by_id.get(_int(book_id))
-    if not b or (zim and b["zim"] != zim and not _has_book(zim, b["id"])):
+    b = by_id.get(str(book_id))
+    if not b:
         return None
     out = card(b)
-    out["subjects"] = b.get("subjects") or []
-    out["cover_page"] = book_path(b["title"], b["id"], cover=True)
-    out["epub"] = f"{page_title(b['title'])}.{b['id']}.epub"
+    if b.get("source"):
+        if zim and b["zim"] != zim:
+            return None
+        for k in ("description", "chapters", "subject", "translator", "publisher", "date"):
+            if b.get(k) not in (None, ""):
+                out[k] = b[k]
+        if b.get("format") == "epub":
+            # The file itself, to download.
+            out["epub"] = b["path"].rstrip("/")
+    else:
+        if zim and b["zim"] != zim and not _has_book(zim, b["id"]):
+            return None
+        out["subjects"] = b.get("subjects") or []
+        out["cover_page"] = book_path(b["title"], b["id"], cover=True)
+        out["epub"] = epub_file(b["title"], b["id"])
     more = (
         [card(x) for x in books if x["author"] == b["author"] and x["id"] != b["id"]][
             :AUTHOR_BOOKS
@@ -608,50 +744,21 @@ def is_books(name):
 # ── the details build ──────────────────────────────────────────────────────
 
 
-def _details_dir():
-    """A function, not a constant: ZIMI_DATA_DIR can be repointed after import."""
-    return os.path.join(_srv.ZIMI_DATA_DIR, "books")
-
-
-def _details_path(name):
-    return os.path.join(_details_dir(), f"{name}.db")
-
-
-def details_current(name, zim_path):
-    from zimi.search import _index_is_current
-
-    return _index_is_current(_details_path(name), zim_path, _DETAILS_VERSION)
-
-
-def _exists(archive, path):
-    try:
-        return archive.has_entry_by_path(path)
-    except Exception:
-        return False
-
-
 def build_details(zim_name, zim_path):
     """Read each book's head once, into the details file: its writers and
     their years, its subjects, the day it came to Gutenberg, whether it has
     a picture, and its page when the listing's title does not lead to it.
     Opens an archive of its own, never the pool's; runs in a child process
     for a big ZIM."""
-    from zimi.search import _write_index_meta
-
-    os.makedirs(_details_dir(), exist_ok=True)
-    db_path = _details_path(zim_name)
-    tmp_path = db_path + ".tmp"
-    if os.path.exists(tmp_path):
-        os.remove(tmp_path)
     archive = _srv.open_archive(zim_path)
     rows = []
     for b in books_of(archive):
         path = b["path"]
-        if not _exists(archive, path):
+        if not archive.has_entry_by_path(path):
             cover_page = book_path(b["title"], b["id"], cover=True)
-            path = cover_page if _exists(archive, cover_page) else ""
+            path = cover_page if archive.has_entry_by_path(cover_page) else ""
         facts = (
-            head_facts(_read(archive, path, head=_HEAD_BYTES) or "")
+            head_facts(_read(archive, path, _HEAD_BYTES, head=True) or "")
             if path and b["html"] and path == b["path"]
             else {}
         )
@@ -661,142 +768,167 @@ def build_details(zim_name, zim_path):
                 json.dumps(facts.get("creators") or []),
                 json.dumps(facts.get("subjects") or []),
                 facts.get("created") or "",
-                1 if _exists(archive, cover_image(b["id"])) else 0,
+                1 if archive.has_entry_by_path(cover_image(b["id"])) else 0,
                 "" if path == b["path"] else path,
             )
         )
-    conn = sqlite3.connect(tmp_path)
-    try:
-        conn.execute(
-            "CREATE TABLE books (id INTEGER PRIMARY KEY, creators TEXT, subjects TEXT, created TEXT, cover INTEGER, path TEXT)"
-        )
-        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
-        conn.executemany("INSERT OR REPLACE INTO books VALUES (?, ?, ?, ?, ?, ?)", rows)
-        _write_index_meta(conn, archive, zim_path, _DETAILS_VERSION, len(rows))
-        conn.commit()
-    except Exception:
-        conn.close()
-        os.remove(tmp_path)
-        raise
-    conn.close()
-    os.replace(tmp_path, db_path)
-    return len(rows)
+    return _builder.write(zim_name, zim_path, archive, rows)
 
 
-def _load_details(name):
-    conn = sqlite3.connect(_details_path(name), timeout=5)
-    try:
-        out = {}
-        for i, creators, subjects, created, cover, path in conn.execute(
-            "SELECT id, creators, subjects, created, cover, path FROM books"
-        ):
-            out[i] = {
-                "creators": [tuple(c) for c in json.loads(creators or "[]")],
-                "subjects": json.loads(subjects or "[]"),
-                "created": created,
-                "cover": bool(cover),
-                "path": path,
-            }
-        return out
-    finally:
-        conn.close()
+def _records_of(rows):
+    return {
+        i: {
+            "creators": [tuple(c) for c in json.loads(creators or "[]")],
+            "subjects": json.loads(subjects or "[]"),
+            "created": created,
+            "cover": bool(cover),
+            "path": path,
+        }
+        for i, creators, subjects, created, cover, path in rows
+    }
 
 
-def _build_one(name):
-    from zimi.search import (
-        _background_end,
-        _background_fail,
-        _background_ok,
-        _background_start,
-        _background_step,
-        _build_index_isolated,
-    )
-
-    with _build_lock:
-        path = _srv.get_zim_files().get(name)
-        if not path:
-            log.warning("Bookshelf: %s is no longer in the library", name)
-            _store_details(name, _base_key(name), {})
-            return
-        try:
-            if not details_current(name, path):
-                t0 = time.time()
-                _background_start("books")
-                _background_step("books", name)
-                try:
-                    _build_index_isolated(
-                        "books",
-                        name,
-                        path,
-                        build_details,
-                        lambda _name: None,
-                        min_entries=_DETAILS_ISOLATE_MIN_ENTRIES,
-                    )
-                finally:
-                    _background_end("books")
-                log.info(
-                    "Bookshelf: read the book records of %s (%.1fs)",
-                    name,
-                    time.time() - t0,
-                )
-            details = _load_details(name)
-            _background_ok("books", name)
-        except Exception as e:
-            _background_fail("books", name)
-            log.warning("Bookshelf: book records of %s failed: %s", name, e)
-            details = {}
-        _store_details(name, path, details)
+def _shelf_changed(_name, _key, _records):
+    _shelf["key"] = None
 
 
-def _claim(name):
-    with _queue_lock:
-        if name in _queued:
-            return False
-        _queued.add(name)
-        return True
+def _gone(name):
+    """A ZIM taken out of the library before its records were read: nothing
+    left to wait for."""
+    log.warning("Bookshelf: %s is no longer in the library", name)
+    with _lock:
+        _let_go(name)
+    _builder.keep(name, _zim_key(name), {})
 
 
-def _build_claimed(name):
-    try:
-        _build_one(name)
-    finally:
-        with _queue_lock:
-            _queued.discard(name)
+_builder = DetailsBuilder(
+    "books",
+    zims="books",
+    label="Bookshelf",
+    what="book records",
+    version="1",
+    table="books",
+    columns=(
+        "id INTEGER PRIMARY KEY",
+        "creators TEXT",
+        "subjects TEXT",
+        "created TEXT",
+        "cover INTEGER",
+        "path TEXT",
+    ),
+    # Looked up when it runs, as the child process looks it up.
+    build=lambda name, path: build_details(name, path),
+    load=_records_of,
+    lock=_lock,
+    on_keep=_shelf_changed,
+    gone=_gone,
+)
+# One Gutenberg ZIM's book records, in the background.
+request_details = _builder.request
 
 
-def request_details(name):
-    """Start ``name``'s details build in the background, unless it is
-    already waiting or running. Returns at once."""
-    if _claim(name):
-        threading.Thread(
-            target=_build_claimed, args=(name,), name="books-details", daemon=True
-        ).start()
+# ── the other families: each ZIM's books, read once in the background ────
+
+
+def build_sources(zim_name, zim_path):
+    """List a ZIM's books into its file (zimi.booksources), by the family
+    its own metadata names. Opens an archive of its own; runs in a child
+    process for a big ZIM, which has no library to ask."""
+    archive = _srv.open_archive(zim_path)
+    reader = _srv.archive_feeds(archive).get("books") or ""
+    rows = []
+    for n, book in enumerate(booksources.books_in(archive, reader)):
+        book = dict(book, _n=n)
+        rows.append((str(book["id"]), json.dumps(book, ensure_ascii=False)))
+    return _sources.write(zim_name, zim_path, archive, rows)
+
+
+def _sources_of(rows):
+    got = [json.loads(book) for _id, book in rows]
+    got.sort(key=lambda b: b.get("_n", 0))
+    return got
+
+
+def _gone_source(name):
+    log.warning("Bookshelf: %s is no longer in the library", name)
+    _sources.keep(name, name, [])
+
+
+_sources = DetailsBuilder(
+    "shelf",
+    zims=_source_zim,
+    label="Bookshelf",
+    what="books",
+    version="1",
+    table="books",
+    columns=("id TEXT PRIMARY KEY", "book TEXT"),
+    # Looked up when it runs, as the child process looks it up.
+    build=lambda name, path: build_sources(name, path),
+    load=_sources_of,
+    lock=_lock,
+    on_keep=_shelf_changed,
+    gone=_gone_source,
+)
+request_sources = _sources.request
 
 
 def build_all_details():
-    """Every Gutenberg ZIM's book records, one after another (the startup
-    worker's phase after ZimiTube's)."""
-    for z in list(_srv._zim_list_cache or []):
-        name = z.get("name")
-        if z.get("kind") == "books" and name and _claim(name):
-            _build_claimed(name)
+    """Every Gutenberg ZIM's book records, then every other family's books,
+    one ZIM after another (the startup worker's phase after ZimiTube's)."""
+    _whole_overrides()
+    _builder.build_all()
+    _sources.build_all()
 
 
-def wait_for_builds(timeout=30):
-    """Until no details build waits or runs (for tests, and for a caller
-    that needs the records now)."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        with _queue_lock:
-            if not _queued:
-                return True
-        time.sleep(0.05)
-    return False
+# ── a ZIM that is one book, by hand ────────────────────────────────────────
+
+_whole = {"loaded": False, "names": {}}
+
+
+def _whole_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "books", "whole.json")
+
+
+def _whole_overrides():
+    """``{zim name: True|False}``: ZIMs put on the shelf as one book, or
+    taken off it, by hand. Read once (the startup worker reads it first)."""
+    if not _whole["loaded"]:
+        names = {}
+        try:
+            with open(_whole_path(), encoding="utf-8") as f:
+                got = json.load(f)
+            if isinstance(got, dict):
+                names = {str(k): bool(v) for k, v in got.items()}
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError) as e:
+            log.warning("Bookshelf: %s unreadable: %s", _whole_path(), e)
+        _whole.update(loaded=True, names=names)
+    return _whole["names"]
+
+
+def set_whole(name, whole):
+    """Put the ZIM ``name`` on the shelf as one book (True), take it off
+    the shelf (False), or leave it to what it is (None)."""
+    names = dict(_whole_overrides())
+    if whole is None:
+        names.pop(name, None)
+    else:
+        names[name] = bool(whole)
+    os.makedirs(os.path.dirname(_whole_path()), exist_ok=True)
+    _srv._atomic_write_json(_whole_path(), names, indent=1)
+    with _lock:
+        _whole["names"] = names
+        _shelf["key"] = None
+    return reader_of(next((z for z in _srv._zim_list_cache or [] if z.get("name") == name), {"name": name}))
 
 
 def _reset_for_tests(timeout=30):
-    wait_for_builds(timeout)
+    _builder.wait(timeout)
+    _builder.forget()
+    _sources.wait(timeout)
+    _sources.forget()
     with _lock:
         _base.clear()
-        _details.clear()
         _shelf.update(key=None, books=[], by_id={})
+        _whole.update(loaded=False, names={})

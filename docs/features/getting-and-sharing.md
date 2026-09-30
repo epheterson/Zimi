@@ -6,7 +6,7 @@ Your installed ZIM sources, the catalog you download more from, and how updates 
 
 **Installed library.** Zimi serves every `.zim` in `ZIM_DIR`. On first load it builds a metadata cache (`.zimi_cache.json` — entry counts, sizes, main paths, real article counts) so subsequent boots are fast. `zimi list` (or `GET /list`) shows what's installed.
 
-**Catalog & downloads.** The Catalog view proxies Kiwix's OPDS feed (`/manage/catalog`, count capped server-side). The client fetches the full item list once (~1,000+ items) for instant client-side category browsing and filtering, then downloads are driven through Zimi's own download machinery (with optional BitTorrent acceleration — see [Sharing](getting-and-sharing.md)). Sort order: Manage view alphabetical, Home alphabetical by default with a sort menu (recently added, recently updated, most articles), Catalog installed-first then alphabetical.
+**Catalog & downloads.** The Catalog view proxies Kiwix's OPDS feed (`/manage/catalog`, count capped server-side). The client fetches the full item list once (~1,000+ items) for instant client-side category browsing and filtering (the search box takes the [search operators](reading.md#how-it-works): `science -ted`, `"exact words"`, `OR`, `in:`, `lang:`), then downloads are driven through Zimi's own download machinery (with optional BitTorrent acceleration — see [Sharing](getting-and-sharing.md)). Sort order: Manage view alphabetical, Home alphabetical by default with a sort menu (recently added, recently updated, most articles), Catalog installed-first then alphabetical.
 
 **Folders as categories.** Subfolders under `ZIM_DIR` are scanned and surface as categories. Root always wins over a subfolder copy, and the subfolder scan respects quarantines.
 

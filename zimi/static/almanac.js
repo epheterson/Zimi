@@ -92,7 +92,7 @@ function _almSetHolidayScope(scope) {
 }
 
 function _signalDelay(au) {
-  var sec = au * 499;
+  var sec = _lightDelaySeconds(au);
   return { h: Math.floor(sec / 3600), m: Math.floor((sec % 3600) / 60) };
 }
 
@@ -219,6 +219,9 @@ function _almanacTeardown() {
   if (typeof _chromeReset === 'function') _chromeReset();
   document.body.classList.remove('almanac-mode');
   if (typeof _almTravelUnfreeze === 'function') _almTravelUnfreeze();
+  // The 3D Earth (almanac-earth.js, loaded after this file) gives its GPU
+  // memory back: a phone keeps a tab that holds less.
+  if (typeof _aeRelease === 'function') _aeRelease();
   _cancelAllRAF();
   _activeSkyLoop = null;
   _almSelectedTz = null;
@@ -1728,6 +1731,7 @@ function _renderAlmanacContent() {
   html += '<div class="almanac-section">';
   html += '<div class="almanac-section-title">' + _lterm('solar_system', t('alm_solar_system')) + '</div>';
   html += '<div class="almanac-orrery-wrap"><canvas id="almanac-orrery"></canvas></div>';
+  html += '<div id="orrery-hint" class="orrery-hint" hidden></div>';
   html += '<div class="orrery-controls">';
   // Bidirectional speed slider: left = rewind, center = 1×, right = fast forward
   html += '<span class="orrery-speed-word">' + _tLookup('alm_speed', 'Speed') + '</span>';
@@ -1745,7 +1749,9 @@ function _renderAlmanacContent() {
   html += '<span id="orrery-transit-label" class="orrery-transit-label"></span>';
   html += '</div>';
   // Missions panel — inline with controls
-  html += '<div id="orrery-missions" style="display:none;margin-top:4px;font-size:11px;color:var(--text3)"></div>';
+  html += '<div id="orrery-missions" class="orrery-missions" style="display:none"></div>';
+  // The ride: distance and delay home, and the twin paradox (almanac-orrery.js)
+  html += '<div id="orrery-ride" class="orrery-ride" style="display:none"></div>';
   // Voyager detail card — appears on click
   html += '<div id="voyager-card" style="display:none"></div>';
   html += '</div>';
@@ -2127,8 +2133,21 @@ function _renderAlmanacMoon(m, tiltDeg) {
   var illumFrac = m.illumination / 100;
   var glowOpacity = (illumFrac * 0.15 + 0.02).toFixed(2);
   return '<div class="almanac-moon-glow" style="background:radial-gradient(circle, rgba(232,224,208,' + glowOpacity + ') 0%, transparent 65%)"></div>' +
-    _renderMoonHTML(m, 'almanac-moon', tiltDeg);
+    '<div class="almanac-moon-open" role="button" tabindex="0" aria-label="' + _almEsc(t('alm_moon_open_3d')) + '" title="' + _almEsc(t('alm_moon_open_3d')) + '">' +
+    _renderMoonHTML(m, 'almanac-moon', tiltDeg) + '</div>';
 }
+
+// The hero moon opens the 3D view on the Moon (the orrery's Earth opens it
+// on the Earth): one viewer, two ways in.
+function _almOpenMoon3d(e) {
+  var el = e.target && e.target.closest && e.target.closest('#almanac-head .almanac-moon-open');
+  if (!el || typeof window.openAlmanacEarth !== 'function') return;
+  if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+  e.preventDefault();
+  window.openAlmanacEarth({ target: 'moon' });
+}
+document.addEventListener('click', _almOpenMoon3d);
+document.addEventListener('keydown', _almOpenMoon3d);
 
 // Next full moon after fromDate, with its distance and whether it's a
 // "supermoon" (full within ~90% of perigee ≈ ≤ 361,500 km).
@@ -2391,7 +2410,7 @@ function _updateVoyagerCard() {
   var simTime = _orrerySimTime();
   var dist = _voyagerDist(v, simTime);
   var yearsInSpace = ((simTime - v.launch) / (365.25 * MS_PER_DAY));
-  var speed = v.vel * 149597870.7 / (365.25 * 24 * 3600);
+  var speed = v.vel * AU_KM / SECONDS_PER_JULIAN_YEAR;
   var sig = _signalDelay(dist);
 
   var html = '<div class="voyager-card-inner">';

@@ -1,0 +1,94 @@
+# Saving
+
+One place for everything you keep: bookmarks, lists, Liked, and where you were in a book. Every app shows its own part of it, and the Saved panel shows all of it.
+
+## How it works
+
+**A saved item** is one thing kept: what it is (an article, a book, a video, a question, a post or a place on a map), its ZIM and page, a title, the app it belongs to, where you were in it (the section of an article, the place in a book, the time in a video, the view of a map) and when you saved it. The bookmark button in the header saves what is on screen, or lets it go; **B** does the same.
+
+**Lists** are named groups, and an item can be in as many as you like: a "Portugal trip" list can hold a Wikivoyage guide, a place on a map and a TED talk. **Liked** is a list every library has. An item's menu has **Lists**, with a tick beside each list it is in and **New list** at the bottom.
+
+**Continue** is where you were: the books you are reading and the videos you are watching, the latest first. It is not a list and not something you kept: it fills itself as you read, heads the **History** panel (the header's clock, or **H**) above what you read and searched, and **Remove from Continue** takes a book off it.
+
+**Highlights** work the same in every reader: an article, Reader View, a book in pages or scrolling, an EPUB's chapters, Zimipedia. Select text (on a phone, with the usual handles) and a small bar offers **Highlight**, **Note** and **Copy** (and **Define** for one word when a Wiktionary is installed). Tap a highlight to change its color (yellow, green, blue or pink), write or edit its note, copy it or remove it; a highlight with a note is underlined. Highlighting a page saves the page too, so it can go in lists; removing the page from Saved keeps its highlights. A highlight is found again by what it says, so it comes back after the text is laid out again, in another font or size, on another page of a book, and in a newer build of the same ZIM as long as the passage is still there. One that is not in the page any more is never dropped: the page says how many are missing, and the Saved panel marks each one **Not found in this version**.
+
+**The Saved panel** (the header's two-bookmark button beside the clock, or **B** on the home page) holds what you chose to keep: Liked and your lists, each with its items (and a highlighted page's highlights under it), then **Bookmarks**, what you saved in no list, then **Highlights**: every highlight, the latest first, each opening at its place in the text. Opened over an app, it shows that app's own first, with **All** beside it. Make a list with **New list**; rename, export or delete one from its menu (deleting a list keeps its items saved); drag a list to reorder the lists; drag an item into another list to move it, onto **Bookmarks** to take it out of its lists, or along its list to reorder. Opening an item takes you back where you were: an article at its section, a book at its page, a place on its map, a video, question or post in its app.
+
+**Export to ZIM** turns lists into one ZIM you can keep or share: each ticked list becomes a section of it. A list's own menu opens the export with that list alone ticked.
+
+**In each app.** Each app shows its own part, in place, and every one puts a thing in a list with the same picker the panel's **Lists** uses (a tick beside each list it is in, and **New list** typed in place).
+
+- **Bookshelf** shows **Continue reading** (how far you are in each book) and **My shelf** (the books you keep: **Add to my shelf** on a book's page, with **Lists** beside it).
+- **ZimiTube**: under a video, **Like**, **Watch later** and **Lists**. The home starts with your rows: **Continue watching** (where you stopped, a video at its time, an audiobook at its track; one watched to the end leaves it), **Watch later** (every video you keep), **Liked**, then each of your lists that holds a video.
+- **ZimiExchange** and **Reddot**: under a question's or a post's title, **Like**, **Save** and **Lists**. **Saved** among the chips at the top lists what you kept, the latest first, with your lists as chips to narrow it. A long thread you saved opens again where you were in it, on any screen.
+- **Maps**: the pin in the header is **Places and maps**. **Save this place** keeps the view on screen (its centre and zoom) under the name of the place your search found there, else the nearest town on the map; your places follow, this map's first. Tapping one flies there (on another map, that map opens there); its list button opens the picker. **B** saves the place too.
+- **Zimipedia**: its reader keeps where you are in an article (Today lists them under **Continue reading**), and its bookmark saves an article to Zimipedia's reading lists.
+
+**Where it is kept.** Signed out, in this browser. Signed in with a named account, with the account on the server as well, so what you save on the phone is on the tablet and a book read on one continues on the other. Each device keeps working without the server and catches up when it can: the account's copy is fetched when a page is idle, a change goes up two seconds after it is made (a place in a book at most every twenty seconds), and hiding or closing the tab sends what the account has not had yet, in a request the browser finishes after the tab is gone. A delete on one device holds when another device syncs later, even one whose clock is behind: every deletion is remembered for 90 days, so only a device away for longer than that can bring back something deleted meanwhile. A book open on one device never writes its place over a place read since on another: it offers **Continue at** that place instead. Each account keeps its own copy in the browser, and signing out takes it away once the account has everything, so a shared screen keeps nothing of yours (highlight notes included) for the next person.
+
+**How much.** Nothing you save is ever dropped to make room. Past 5,000 saved things, 2,000 highlights, 500 lists or 3 MB in all (counted the way the account's file holds it), a new save is refused with **Saved is full** and what is kept stays; let something go to save more. Continue keeps the latest 300 places of each app, so reading many articles in Zimipedia never pushes a book out of Bookshelf's Continue. If the account's copy would pass 3 MB, the oldest remembered deletions go first, then the oldest places; if it is still too large, the Saved panel says **Sync paused** until something is let go, and this browser keeps working meanwhile.
+
+**From earlier versions.** Bookmarks and their folders come into this browser's own store the first time it opens 1.12: each folder becomes a list named by its path ("Travel / Portugal"), in the same order, with its bookmarks in their order; a bookmark at the top level is saved in no list; a map's bookmark keeps its place; Bookshelf's places become Continue. They were this browser's, not an account's, so an account signed in here is asked once, in the Saved panel, whether to add them to it. An account's bookmarks saved to the server by an earlier version come in the same way, once. The old keys stay in the browser for one release, so going back to 1.11 still finds them.
+
+### For an app page
+
+An app page (the pages under `zimi/static/`, shown in the reader) calls the shell's store directly: same origin, so `saved()` from `apps.js` returns `window.parent.Saved`, or `null` when the page is opened on its own. A change from anywhere (the page, the panel, another device) reaches the page as `window.__saved()`, which the page defines to redraw its part.
+
+`apps.js` also holds the parts every app shares: `savedBar(item, opts)` draws Like, Save and Lists into each `<span class="svbar"></span>` of the page for the thing open (`savedBar(null)` as it closes; `opts.save` names Save in the app's words, `opts.like: false` leaves Like out, `opts.thread` keeps where you are in a long thread), `savedPaint()` draws them again from the store (call it from `window.__saved`), `threadRestore()` scrolls a saved thread back to its place, `pickLists(item, el)` opens the shell's list picker over `el`, and `savedView(app, toRow)` is an app's Saved view: what it keeps, or one list's, with the lists as chips (`savedListChips`), drawn into the page's list view (`open(list)`, `draw()`, `count()`, `.on`, `.list`; the page's `openSaved(list)` calls `open`).
+
+```js
+var S = saved();
+var key = S.save({ kind: 'book', app: 'books', zim: b.zim, path: b.path, title: b.title,
+  meta: { id: b.id, author: b.author, cover: b.cover } });   // add or update; returns the key
+S.has(key); S.get(key);          // {key, kind, zim, path, title, app, where, meta, added, lists}
+S.remove(key);                   // from every list, on every device
+S.itemsFor({ app: 'books' });    // this app's items, the latest first
+S.itemsFor({ list: id });        // a list's items in its order ('' is the items in no list)
+S.lists({ app: 'books' });       // [{id, name, builtin, count}], Liked first; name '' for Liked
+S.list(id);                      // one of them, or null
+S.createList(name); S.renameList(id, name); S.deleteList(id); S.moveList(id, beforeId);
+S.addToList(keyOrItem, id, beforeKey); S.moveInList(key, id, beforeKey); S.removeFromList(key, id);
+S.inList(key, id); S.LIKED;      // 'liked'
+S.setPosition({ kind: 'video', app: 'tube', zim: z, path: p, title: t }, { t: 312, d: 900 });
+S.position(key);                 // {key, kind, zim, path, app, title, meta, where, ts} or null
+S.continued({ app: 'tube' });    // positions, the latest first
+S.clearPosition(key);
+window.__saved = function () { /* redraw what shows saved things */ };
+```
+
+A key is the ZIM's name and the page, `zim + '\n' + path`, and for a place the map view too (`+ '\n' + where.pos`), so one map can hold many places. The ZIM's name is its short name (`wikipedia`, `osm-hawaii`), the same across builds, so a new build of a ZIM keeps its saved things. `where` is a few short fields: `{s}` a section, `{f, c}` a book (share read, character), `{t, d}` a video (seconds), `{pos}` a map view. `meta` is what the app needs to draw a card without asking the server. Kinds: `article`, `book`, `video`, `question`, `post`, `place`; the app follows from the kind when not given.
+
+### Highlights in a page's own text
+
+A reader Zimi shows (an article, a book, an EPUB) gets highlights from the shell with nothing to do. A page that draws text of its own to read (Zimipedia's article) attaches the same engine to it. `highlights()` from `apps.js` returns the shell's `Highlights`, or `null` outside the shell. `attach` costs nothing on the page's first paint: the engine (`/static/highlights.js`) loads only when the page already has highlights or when text is selected in it.
+
+```js
+var H = highlights();
+var hl = H && H.attach(document, { kind: 'article', app: 'wiki', zim: z, path: p, title: t },
+  { root: articleEl });           // root: what holds the text (default: the body)
+hl.refresh();                     // the text was drawn again (a re-render, a toggle): found again
+hl.goTo(id);                      // bring one into view, flashed
+hl.missing();                     // ids not found in this text ([] until the engine has looked)
+hl.detach();                      // the page shows something else; attach again for the next
+H.open(h);                        // open a highlight at its place, as the Saved panel does
+S.highlights({ zim: z, path: p }); // a page's highlights, in the order of the text
+S.highlights({ app: 'wiki' });     // an app's (or {} for all), the latest first
+S.getHighlight(id); S.highlight({ id: id, note: 'why', color: 'green' }); S.removeHighlight(id);
+```
+
+`attach` takes one more option, `show(range)`: how to bring a passage into view when the page does not simply scroll (the book reader turns to its page). The ref is the saved item the page stands for, as `S.save` takes it: highlighting saves it. Call `attach` once per document shown, and `detach` before the text is replaced by another page's; a page that redraws the same text in place calls `refresh`. The bar, the note card and the colors are the shell's; nothing is injected into the page but one stylesheet. A highlight is `{id, zim, path, kind, app, title, exact, prefix, suffix, pos, color, note, added, ts}` (a passage longer than 600 characters keeps its first 300 in `exact` and its last in `end`, with `n` its length): `exact` is the passage as read, `prefix` and `suffix` a little of the text around it (lower case, without spaces), `pos` where it starts as a share of the page's text. It is found by comparing text without spaces and in lower case, the context around each match deciding between repeats of the same words and `pos` between repeats with the same context. Colors are `yellow`, `green`, `blue`, `pink`.
+
+## Configure
+
+Nothing to set. What is kept is stored under `zimi_saved` in the browser, and where you were under `zimi_saved_pos` (each + `:<account>` for a signed-in account's copy), and, for a named account, in its data file under `ZIMI_DATA_DIR/userdata/`, which a server backup includes. The My data card's Export and Import carry it to and from a file; Import with **Overwrite** replaces what is kept on the account too, not only in this browser.
+
+## Troubleshoot
+
+- **Saved things did not follow me to another device**: both must be signed in with the same named account; an admin without a named account keeps them in that browser only. See [Access](access.md). They arrive when the page is idle or when you come back to the tab after a minute.
+- **Something I deleted came back**: a device that had not synced for more than 90 days can bring back what was deleted meanwhile. Delete it again.
+- **The Saved panel says "Sync paused"**: what the account keeps would pass 3 MB. Remove what you no longer need (long highlight notes take the most room); syncing picks up at the next change. Nothing is lost meanwhile: this browser keeps it all.
+- **"Saved is full"**: a limit is reached (see How much); nothing already kept was dropped. Let something go to save more.
+- **"This browser's storage is full"**: the browser refused to store more (a private window, or a full disk). What you save stays until the tab closes; signed in, it also goes to the account.
+- **A highlight says "Not found in this version"**: the page opened on this device no longer has its words (a newer build of the ZIM changed or dropped them). It is kept, on every device; if the passage comes back, or you open it where the older build is, it shows again. Remove it from its menu if it is gone for good.
+- **Selecting text shows no Highlight bar**: highlights are offered in a reader (an article, a book, an EPUB, Zimipedia), not on a map, in the PDF viewer or in an app's own lists.
+- **A saved item says "Source no longer installed"**: its ZIM is not in the library (removed, or not allowed for this account). It opens again when the ZIM is back.

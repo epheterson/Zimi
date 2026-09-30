@@ -12,6 +12,20 @@ window.addEventListener('unhandledrejection', function(e) {
   if (window.__zimiErrors.length > 20) window.__zimiErrors.shift();
 });
 
+// No zooming on a phone, not even a pinch (Eric: "I can still zoom and
+// don't want to"). The viewport says maximum-scale=1, user-scalable=no, but
+// iOS Safari ignores that for pinch, so its gesture events are cancelled here,
+// and in each document the reader frame loads (a pinch over an article is
+// the article's). A map's own pinch rides touch events and still works.
+function _blockPinch(doc) {
+  if (!doc || doc.__zimiNoPinch) return;
+  doc.__zimiNoPinch = true;
+  ['gesturestart', 'gesturechange'].forEach(function(type) {
+    doc.addEventListener(type, function(e) { e.preventDefault(); }, { passive: false });
+  });
+}
+_blockPinch(document);
+
 // Storage that is always there. WebKitGTK hands a private-mode window a
 // null localStorage, and one unguarded read of it at load killed the whole
 // script: the desktop window on Linux stayed a bare shell (issue #81). A
@@ -56,6 +70,10 @@ var SK = {
   // _createCanShow for why optimism here is safe in one direction only.
   CAN_CREATE: 'zimi_can_create',
   HIDE_XZIM_LINKS: 'zimi_hide_cross_zim_links',
+  // Links that leave the library (#99): absent = mark them, 'hide' = plain text.
+  EXT_LINKS: 'zimi_external_links',
+  // Search results open in their app (absent = yes, '0' = the ZIM's own page).
+  OPEN_IN_APPS: 'zimi_open_in_apps',
   // When set, ZIM article HTML is run through the server-side a11y
   // rewriter (alt="" on images, h1 promotion, html lang). Off by
   // default to keep ZIM content byte-identical for purist users.
@@ -68,14 +86,28 @@ var SK = {
   // predict when you are looking for a title you already know. Article count
   // was the old default and rewards big files rather than the one you want.
   LIBRARY_SORT: 'zimi_library_sort',
-  BROWSE_HISTORY: 'zimi_browse_history',
+  // Everything kept (1.12): items, lists, memberships, highlights and their
+  // tombstones, one JSON value (see Saved); where you were (positions and
+  // theirs) under SAVED_POS, written on its own as you read. Signed out it
+  // is these keys; an account's own copy is each + ':' + its name.
+  SAVED: 'zimi_saved',
+  SAVED_POS: 'zimi_saved_pos',
+  // The accounts already asked whether to add this browser's pre-1.12
+  // bookmarks to them (a JSON list of names).
+  SAVED_LEGACY_ASKED: 'zimi_saved_legacy_asked',
+  // Before 1.12: bookmarks, and their folders ({id,name,parent,order}).
+  // Read into the signed-out SAVED when it is first used (an account's only
+  // when its person asks), and left in place for one release so an older
+  // Zimi still finds them.
   BOOKMARKS: 'zimi_bookmarks',
-  // Bookmark folders (v2) — array of {id,name,parent,order}. Root is implicit
-  // (a bookmark/folder with parent null|"" is top-level). Rides in the same
-  // /userdata + My-data backup blob as BOOKMARKS.
   BM_FOLDERS: 'zimi_bm_folders',
   // Per-device UI state: ids of collapsed folders in the bookmarks tree.
   BM_COLLAPSED: 'zimi_bm_collapsed',
+  // Highlights, per device: the colour last chosen, and the highlights a
+  // page opened here did not have ({id: 1}), for the panel to say so. Never
+  // synced: another device may hold another build of the ZIM.
+  HL_COLOR: 'zimi_hl_color',
+  HL_MISSING: 'zimi_hl_missing',
   // The admin's session token. Never the password: that used to be kept here
   // in plain text under the key zimi_manage_pw, which _purgeStoredPassword
   // removes wherever an older version left it.
@@ -106,15 +138,21 @@ var SK = {
   // Video resume ledger: {"<zim>\n<path>#<i>": {t, d, ts}} — playback position
   // per video, restored on reopen and dropped once watched to completion.
   VIDEO_RESUME: 'zimi_video_resume',
-  // Where you are in each book: {"<zim>\n<path>": {f, c, ts, id, title,
-  // author, cover}}, f the fraction of the book read and c the character it
-  // is at. The reader keeps them; Bookshelf shows the books under Continue
-  // reading, through apps.js's BOOK_PLACES_KEY (the same key: the shell does
-  // not load apps.js, and tests/test_books_page.cjs holds the two together).
+  // Before 1.12, where you were in each book: {"<zim>\n<path>": {f, c, ts,
+  // id, title, author, cover}}. Read once into SAVED's positions, like the
+  // bookmarks, and left in place for one release.
   BOOK_PLACES: 'zimi_book_places',
   // How books are read in this browser: {mode: 'scroll'|'pages', size (px),
-  // lh and margin (indexes into _BOOK_LEADINGS / _BOOK_MARGINS)}.
+  // lh and margin (indexes into _READING_LEADINGS / _READING_MARGINS)}.
   BOOK_PREFS: 'zimi_book_prefs',
+  // How Zimipedia's reader reads articles in this browser: {size (px), lh and
+  // margin (indexes into _READING_LEADINGS / _READING_MARGINS)}.
+  WIKI_PREFS: 'zimi_wiki_prefs',
+  // Zimipedia's trails: this tab's (SESSION-scoped: the articles you came
+  // through, one link at a time) and the recent ones in this browser, which
+  // its front door lists (_wikiTrailsKept, _wikiTrailResume).
+  WIKI_TRAIL: 'zimi_wiki_trail',
+  WIKI_TRAILS: 'zimi_wiki_trails',
   // Whole-app theme: 'auto' (follow prefers-color-scheme, dark fallback) |
   // 'dark' | 'light'. Default auto. Read/written via _appTheme/_setAppTheme;
   // the head bootstrap in index.html stamps the resolved value pre-paint.
@@ -292,15 +330,24 @@ var _APP_THEME_ICONS = {
   dark: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
   light: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>'
 };
-function _appThemeSegInner() {
-  var cur = _appTheme();
-  return APP_THEMES.map(function(m) {
+// A segmented control's buttons: one per value, the current one on. `setter`
+// is the global each button calls with its value; `keyPrefix` + value is its
+// label. Every such control in Settings is this one shape.
+function _segButtonsHtml(values, cur, icons, setter, keyPrefix) {
+  return values.map(function(m) {
     var on = m === cur;
     return '<button type="button" class="app-theme-btn' + (on ? ' active' : '') +
       '" role="radio" aria-checked="' + (on ? 'true' : 'false') +
-      '" onclick="_setAppTheme(\'' + m + '\')">' + _APP_THEME_ICONS[m] +
-      '<span>' + tH('theme_' + m) + '</span></button>';
+      '" onclick="' + setter + '(\'' + m + '\')">' + icons[m] +
+      '<span>' + tH(keyPrefix + m) + '</span></button>';
   }).join('');
+}
+function _segHtml(id, labelKey, inner) {
+  return '<div class="app-theme-seg" id="' + id + '" role="radiogroup" aria-label="' +
+    escAttr(t(labelKey)) + '">' + inner + '</div>';
+}
+function _appThemeSegInner() {
+  return _segButtonsHtml(APP_THEMES, _appTheme(), _APP_THEME_ICONS, '_setAppTheme', 'theme_');
 }
 // Article theme reuses the app-theme control's icons and chrome — same shape,
 // same language, one row below it — with `match` in the slot where the app
@@ -311,22 +358,13 @@ var _ARTICLE_THEME_ICONS = {
   light: _APP_THEME_ICONS.light
 };
 function _articleThemeSegInner() {
-  var cur = _articleTheme();
-  return ARTICLE_THEMES.map(function(m) {
-    var on = m === cur;
-    return '<button type="button" class="app-theme-btn' + (on ? ' active' : '') +
-      '" role="radio" aria-checked="' + (on ? 'true' : 'false') +
-      '" onclick="_setArticleTheme(\'' + m + '\')">' + _ARTICLE_THEME_ICONS[m] +
-      '<span>' + tH('article_theme_' + m) + '</span></button>';
-  }).join('');
+  return _segButtonsHtml(ARTICLE_THEMES, _articleTheme(), _ARTICLE_THEME_ICONS, '_setArticleTheme', 'article_theme_');
 }
 function _articleThemeSegHtml() {
-  return '<div class="app-theme-seg" id="article-theme-seg" role="radiogroup" aria-label="' +
-    escAttr(t('article_theme')) + '">' + _articleThemeSegInner() + '</div>';
+  return _segHtml('article-theme-seg', 'article_theme', _articleThemeSegInner());
 }
 function _appThemeSegHtml() {
-  return '<div class="app-theme-seg" id="app-theme-seg" role="radiogroup" aria-label="' +
-    escAttr(t('app_theme')) + '">' + _appThemeSegInner() + '</div>';
+  return _segHtml('app-theme-seg', 'app_theme', _appThemeSegInner());
 }
 
 // ── Article dark adaptation (raw / non-Reader-View pages) ──
@@ -367,23 +405,50 @@ var _ARTICLE_DARKEN_CSS = [
 // A page "declares its own dark scheme" (so we must NOT invert it, or we'd flip it
 // back to blinding white) when it opts into dark via <meta name="color-scheme">
 // or its body already paints a dark background.
+// The page's own background decides. With none (body and root both
+// transparent) the browser paints the canvas, which follows the color-scheme
+// _askArticleFor just set, and draws default text to match: then the text
+// colour is the honest answer. Inverting such a page turned its white text
+// black on a canvas the filter cannot reach (black on black).
+var _DARK_BG_MAX_LUM = 0.4, _LIGHT_TEXT_MIN_LUM = 0.6, _OPAQUE_MIN_ALPHA = 0.5;
+function _cssColorLum(css) {
+  var m = css && css.match(/rgba?\(([^)]+)\)/);
+  if (!m) return null;
+  var p = m[1].split(',').map(parseFloat);
+  return { lum: (0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]) / 255, alpha: p.length > 3 ? p[3] : 1 };
+}
+function _articleHasNoBackground(doc) {
+  try {
+    var win = doc.defaultView;
+    var body = _cssColorLum(win.getComputedStyle(doc.body).backgroundColor);
+    var root = _cssColorLum(win.getComputedStyle(doc.documentElement).backgroundColor);
+    return !(body && body.alpha >= _OPAQUE_MIN_ALPHA) && !(root && root.alpha >= _OPAQUE_MIN_ALPHA);
+  } catch (e) { return false; }
+}
+function _setCanvasBackground(doc) {
+  var html = doc.documentElement;
+  html.style.backgroundColor = 'Canvas';
+  html.dataset.zimiCanvasBg = '1';
+}
+function _dropCanvasBackground(doc) {
+  var html = doc && doc.documentElement;
+  if (!html || !html.dataset.zimiCanvasBg) return;
+  html.style.backgroundColor = '';
+  delete html.dataset.zimiCanvasBg;
+}
 function _articleDeclaresDark(doc) {
   try {
     var meta = doc.querySelector('meta[name="color-scheme"]');
     if (meta && /dark/i.test(meta.getAttribute('content') || '')) return true;
   } catch (e) {}
   try {
-    var bg = doc.defaultView.getComputedStyle(doc.body).backgroundColor;
-    var m = bg && bg.match(/rgba?\(([^)]+)\)/);
-    if (m) {
-      var p = m[1].split(',').map(parseFloat);
-      var a = p.length > 3 ? p[3] : 1;
-      // Only trust an opaque background; a transparent body defaults to white.
-      if (a >= 0.5) {
-        var lum = (0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]) / 255;
-        if (lum < 0.4) return true;
-      }
-    }
+    var win = doc.defaultView;
+    var bodyBg = _cssColorLum(win.getComputedStyle(doc.body).backgroundColor);
+    if (bodyBg && bodyBg.alpha >= _OPAQUE_MIN_ALPHA) return bodyBg.lum < _DARK_BG_MAX_LUM;
+    var rootBg = _cssColorLum(win.getComputedStyle(doc.documentElement).backgroundColor);
+    if (rootBg && rootBg.alpha >= _OPAQUE_MIN_ALPHA) return rootBg.lum < _DARK_BG_MAX_LUM;
+    var text = _cssColorLum(win.getComputedStyle(doc.body).color);
+    if (text) return text.lum > _LIGHT_TEXT_MIN_LUM;
   } catch (e) {}
   return false;
 }
@@ -455,14 +520,20 @@ function _applyArticleDarken(doc) {
   // off first. Nothing repaints between here and the end of this function —
   // the browser paints between tasks, not inside one.
   _dropArticleDarken(doc);
+  _dropCanvasBackground(doc);
   _askArticleFor(doc, scheme);
   // Asked for dark and STILL painting light: this page has no dark mode of its
   // own. Measured rather than assumed — an unstyled ZIM article, a MediaWiki
   // one and a captured site are indistinguishable from the outside until you
   // ask them.
+  var paintsDark = _articleDeclaresDark(doc);
+  // A page with no background of its own that follows the scheme (its text
+  // turned light) would show the reader frame's white through it: white on
+  // white. It gets the scheme's own page colour instead.
+  if (scheme === 'dark' && paintsDark && _articleHasNoBackground(doc)) _setCanvasBackground(doc);
   if (!_shouldSimulateDark(dark, _darkenArticlesOn(), _darkenArticlesExplicit(),
                            _readerViewOn, loc, _articleIsWebCapture(),
-                           _articleDeclaresDark(doc))) return;
+                           paintsDark)) return;
   if (doc.head) {
     var st = doc.createElement('style');
     st.id = _ARTICLE_DARKEN_STYLE_ID;
@@ -790,7 +861,7 @@ async function _fetchList() {
   _declaredSections = Array.isArray(data.sections) ? data.sections : [];
   return Array.isArray(data.zims) ? data.zims : [];
 }
-let homeScope = null; // {type:'favorites'|'category'|'collection', label, zimNames:[]}
+let homeScope = null; // {type:'favorites'|'category'|'collection'|'apps', label, zimNames:[]}
 // #34 library recency filter: null | 'added' | 'updated'. Transient view state —
 // deliberately NOT persisted, so a reload always lands on the full library. An
 // active pill narrows the existing home sections in place (like a language pill),
@@ -1076,18 +1147,55 @@ function _managePlaceholder() {
   return t('search_catalog');
 }
 
+// What the box asks, wherever you are: one answer for the header and for a
+// language change (which used to write its own, and said "Search in
+// Wikipedia…" where the header said "Wikipedia").
+function _searchPlaceholderText() {
+  if (_createOpen) {
+    // Same treatment as the Almanac below: the box stays and takes the page's
+    // name. It used to fall through to the ZIM underneath, so the header on
+    // the page where you make a NEW ZIM read "Lit Docs".
+    return t('create_zim');
+  }
+  if (_almanacOpen) return t('almanac');
+  if (_appPlaceholder()) return _appPlaceholder();
+  if (currentSource) return _zimTitle(currentSource);
+  if (readerOpen && readerSource) return _zimTitle(readerSource);
+  if (mode === 'manage') return _managePlaceholder();
+  if (homeScope) return t('search_in', {source: homeScope.label});
+  return t('search_placeholder');
+}
+// A prompt cut off mid-word ("Search books ar") is half a sentence: where
+// the whole one does not fit the box (a phone, the ? beside it), the box
+// says Search. Measured, not guessed: the words, the language and the box
+// decide.
+var _placeholderFull = '';
+var _placeholderCanvas = null;
+// Measured once a frame, just before the paint that lays the page out anyway.
+// Measuring on every call forced a layout each time, several times over while
+// the home page was still being built (~40 ms of a phone's first paint).
+var _placeholderRaf = 0;
+function _fitSearchPlaceholder(text) {
+  if (!q) return;
+  if (text != null) _placeholderFull = text;
+  if (_placeholderRaf) return;
+  _placeholderRaf = requestAnimationFrame(_fitSearchPlaceholderNow);
+}
+function _fitSearchPlaceholderNow() {
+  _placeholderRaf = 0;
+  var full = _placeholderFull, room = q.clientWidth;
+  if (!full || !room) { q.placeholder = full; return; }
+  var cs = getComputedStyle(q);
+  room -= (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+  _placeholderCanvas = _placeholderCanvas || document.createElement('canvas');
+  var ctx = _placeholderCanvas.getContext('2d');
+  if (!ctx) { q.placeholder = full; return; }
+  ctx.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+  q.placeholder = ctx.measureText(full).width <= room ? full : t('search');
+}
 function _updateSearchPlaceholder() {
   if (!q) return;
-  if (mode === 'manage') {
-    q.placeholder = _managePlaceholder();
-  } else if (_appPlaceholder()) {
-    q.placeholder = _appPlaceholder();
-  } else if (currentSource) {
-    var info = _zimInfo(currentSource);
-    q.placeholder = t('search_in', { source: (info && info.title) || currentSource });
-  } else {
-    q.placeholder = t('search_placeholder');
-  }
+  _fitSearchPlaceholder(_searchPlaceholderText());
 }
 
 // Sizes are DECIMAL, everywhere, and this is the only place that says so.
@@ -1271,11 +1379,19 @@ function _applyUserSession(name, canCreate) {
   // A user is never admin — drop any admin token so ambient manage polls stop.
   _manageToken = ''; _clearManageToken();
   if (manageBtnEl) manageBtnEl.style.display = 'none';
+  _savedUseSession();
   _refreshAfterAuthChange();
 }
 
 function userLogout() {
-  fetch('/logout', { method: 'POST', credentials: 'same-origin' }).catch(function(){}).then(function() {
+  // A change still waiting to go to the account goes before the session does;
+  // once the account has everything, its copy leaves this browser (a shared
+  // screen keeps nothing of it, highlights and notes included). One that
+  // could not go stays, to go up at the next sign-in.
+  _savedFlush().then(function(ok) {
+    if (ok && !_savedDelta()) Saved.forget();
+    return fetch('/logout', { method: 'POST', credentials: 'same-origin' });
+  }).catch(function(){}).then(function() {
     _userSession = null;
     // Reboot at the ROOT so the boot gate re-runs from a clean anonymous state.
     // In private mode it re-shows the non-dismissible login gate (never a stale
@@ -1328,6 +1444,10 @@ async function _bootAuthGate() {
     // the same way and the offline state (not a fake empty library) paints.
     return false;
   }
+  // The apps the server offers now: the shell's stamp can be older than the
+  // setting (Chrome's Back shows a kept shell without asking), and nothing
+  // has drawn yet (#98).
+  if (j && 'apps' in j) _setAppsStamp(j.apps);
   // First-login hint: the server only sends this when the default username
   // ("admin") applies (no custom username, no named users). The login modal
   // reads it to show "Default username: admin".
@@ -1336,6 +1456,9 @@ async function _bootAuthGate() {
     _userSession = { name: j.name, restricted: !!j.restricted, canCreate: !!j.can_create };
     if (manageBtnEl) manageBtnEl.style.display = 'none';
     _loadUserPrefs();
+    // The account's own saved things, from the browser's copy of them (the
+    // account's arrives in the background once the page is up: _savedStart).
+    Saved.use(j.name);
     return false;
   }
   if (j && j.role === 'admin') {
@@ -1780,17 +1903,9 @@ function updateTopbar() {
   var _readingText = _readingArticle && !_isMapPage() && !_isAppPage() && !_isPdfPage();
   var fontBtn = document.getElementById('font-btn');
   if (fontBtn) fontBtn.style.display = (_readingText && !_foldReaderExtras) ? 'flex' : 'none';
-  // Bookmarks-panel opener — reader only (#65). Everywhere else the library
-  // button already opens the panel, but while reading it becomes the
-  // save-bookmark toggle, which left the bookmark tree unreachable without
-  // leaving the article. Deliberately NOT folded into the ⋯ menu: reaching a
-  // saved article should stay one tap from the page you're on.
-  var bmPanelBtn = document.getElementById('bm-panel-btn');
-  if (bmPanelBtn) bmPanelBtn.style.display = _readingArticle ? 'flex' : 'none';
-  // Other maps of the same place: a map page, and somewhere else to go.
+  // Places and maps: the places kept, and the same place on another map.
   var mapSrcBtn = document.getElementById('map-source-btn');
   if (mapSrcBtn) {
-    var showMapSrc = _readingArticle && currentArticle && _isMapZim(currentArticle.zim) && _installedMaps().length > 1;
     // A map page carries one more button (the picker) than any other page,
     // and on a phone that squeezed the box to a third of its placeholder.
     // The bookmarks button steps aside there: the history button's panel
@@ -1799,6 +1914,8 @@ function updateTopbar() {
     // An app page is not an article: nothing on it to bookmark as one.
     document.body.classList.toggle('app-page', _isAppPage());
   document.body.classList.toggle('app-noitem', _isAppPage() && !_appItem);
+    // Places and maps: on every map page, since it is where a place is saved.
+    var showMapSrc = !!(_readingArticle && currentArticle && _isMapZim(currentArticle.zim));
     mapSrcBtn.style.display = showMapSrc ? 'flex' : 'none';
     if (!showMapSrc) _closeMapSourceDropdown();
   }
@@ -1828,7 +1945,17 @@ function updateTopbar() {
   var libraryChromeOff = mode === 'manage' || _almanacOpen || _createOpen;
   randomBtn.style.display = libraryChromeOff ? 'none' : 'flex';
 
-  document.getElementById('library-btn').style.display = libraryChromeOff ? 'none' : 'flex';
+  // Zimipedia's reader saves from its own bar: the header's save toggle
+  // would be a second bookmark for the same article. Saved stays one tap
+  // away (bm-panel-btn).
+  document.getElementById('library-btn').style.display = (libraryChromeOff || (readerOpen && _wikiReading)) ? 'none' : 'flex';
+  // History and Saved are two panels with two openers (Eric: "both under the
+  // clock is weird"). The clock opens History: library-btn off the reader,
+  // history-btn in it, where library-btn is the save toggle. The bookmarks
+  // mark opens Saved, wherever the library chrome shows. Neither folds into
+  // the ⋯ menu: what you read and what you kept stay one tap away.
+  document.getElementById('history-btn').style.display = (readerOpen && !libraryChromeOff) ? 'flex' : 'none';
+  document.getElementById('bm-panel-btn').style.display = libraryChromeOff ? 'none' : 'flex';
   // Create-a-ZIM lives in the ⋯ menu at every width — creation is an
   // occasional, deliberate act, so it stays out of the primary topbar. The ⋯
   // trigger is CSS-hidden on a wide viewport at rest, so reveal it (inline
@@ -1849,27 +1976,9 @@ function updateTopbar() {
     _getStorageFlag(SK.HIDE_LANG_CHOOSER) ? 'none' : '';
   _updateLibraryBtnIcon();
 
-  // Search placeholder
-  if (_createOpen) {
-    // Same treatment as the Almanac below: the box stays and takes the page's
-    // name. It used to fall through to the ZIM underneath, so the header on
-    // the page where you make a NEW ZIM read "Lit Docs".
-    q.placeholder = t('create_zim');
-  } else if (_almanacOpen) {
-    q.placeholder = t('almanac');
-  } else if (_appPlaceholder()) {
-    q.placeholder = _appPlaceholder();
-  } else if (currentSource) {
-    q.placeholder = _zimTitle(currentSource);
-  } else if (readerOpen && readerSource) {
-    q.placeholder = _zimTitle(readerSource);
-  } else if (mode === 'manage') {
-    q.placeholder = _managePlaceholder();
-  } else if (homeScope) {
-    q.placeholder = t('search_in', {source: homeScope.label});
-  } else {
-    q.placeholder = t('search_placeholder');
-  }
+  // Search placeholder: fitted once the ? has taken (or given back) its room.
+  _syncSearchHelp();
+  _updateSearchPlaceholder();
 
   // Footer
   updateFooter();
@@ -2142,6 +2251,9 @@ function _bindConnEvents() {
     }
   });
   window.addEventListener('resize', _syncConnBannerHeight);
+  // The box's room changes with the window: the placeholder is fitted again
+  // (on the next frame, once however many resizes come before it).
+  window.addEventListener('resize', function() { _fitSearchPlaceholder(); });
 }
 
 // Shared honest-empty markup for any surface that would otherwise assert "no
@@ -2203,8 +2315,6 @@ async function init() {
     _renderConnBanner();
   }
   _rebuildZimsMap();
-  // Migrate bookmarks if ZIM names changed
-  _migrateBookmarks();
   // Render immediately with what we have
   if (!history.state) history.replaceState({ mode: 'home' }, '', location.href);
   _applyI18nToDOM();
@@ -2216,6 +2326,7 @@ async function init() {
   }
   // Fetch secondary data in parallel, update UI as each arrives
   _initSecondary();
+  _savedStart();
 }
 
 // Resolves once we know whether the server wants a password. Ambient
@@ -2286,11 +2397,13 @@ async function _initSecondary() {
       if (hres.ok) {
         const hdata = await hres.json();
         if (hdata.version) document.getElementById('footer-version').textContent = hdata.version + ' ';
+        _extServerOffline = !!hdata.offline;
       }
     }).catch(function(){}),
-    // Domain→ZIM map for cross-ZIM links
+    // Domain→ZIM map for cross-ZIM links. A page read before it arrived
+    // marked a link to an installed site as the web; now it knows better.
     fetch('/resolve?domains=1').then(async dres => {
-      if (dres.ok) _domainZimMap = await dres.json();
+      if (dres.ok) { _domainZimMap = await dres.json(); _extRemarkOpen(); }
     }).catch(function(){})
   ]);
   // Always update topbar after secondary data (manage status determines gear visibility)
@@ -2497,10 +2610,26 @@ async function _bootDeepLinkArticle(zim, path) {
   openArticle(zim, path, null, { replace: true, pos: pos ? mapPositionHash(pos.zoom, pos.lat, pos.lng) : '' });
 }
 
-function _showToast(msg, duration) {
+// `undo`: a toast for something just taken away carries its way back, and
+// stays long enough to reach it.
+var _TOAST_UNDO_MS = 6000;
+var _toastUndoLast = null;
+function _showToast(msg, duration, undo) {
   var toast = document.createElement('div');
   toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;font-size:13px;color:var(--text2);z-index:300;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
   toast.textContent = msg;
+  if (undo) {
+    // One undo at a time: the one before it is what the newer took over.
+    if (_toastUndoLast && _toastUndoLast.parentNode) _toastUndoLast.remove();
+    _toastUndoLast = toast;
+    toast.className = 'toast-undo';
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = t('undo');
+    b.onclick = function() { toast.remove(); undo(); };
+    toast.appendChild(b);
+    duration = duration || _TOAST_UNDO_MS;
+  }
   document.body.appendChild(toast);
   // Mirror to the screen-reader live region so non-sighted users hear it too.
   var live = document.getElementById('a11y-toast-region');
@@ -2532,21 +2661,45 @@ function _currentPageUrl() {
 // ── Open in browser (escape the app shell into a real browser tab) ──
 function _openInBrowser() {
   var url = _currentPageUrl();
-  // Desktop app: hand off to the system browser via the pywebview bridge.
+  // iOS PWA can't window.open to Safari — copy the URL to the clipboard.
+  if (_isStandalonePWA() && !IS_DESKTOP) { _copyText(url, true); return; }
+  _openOnWeb(url);
+}
+
+// A new browser tab, or in the desktop app the system's browser (the
+// pywebview bridge): where Zimi sends anything that leaves it.
+function _openOnWeb(url) {
   if (IS_DESKTOP && window.pywebview && window.pywebview.api && window.pywebview.api.open_external) {
     window.pywebview.api.open_external(url).catch(function() {});
     return;
   }
-  if (_isStandalonePWA()) {
-    // iOS PWA can't window.open to Safari — copy the URL to the clipboard.
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url).then(function() { _showToast(t('link_copied')); });
-    } else {
-      prompt(t('copy_link'), url);
-    }
-    return;
-  }
   window.open(url, '_blank', 'noopener');
+}
+
+// Onto the clipboard, and say so ("Link copied" for a link, "Copied" for
+// words). Over plain http on a LAN, or in an iOS home-screen app, there is no
+// navigator.clipboard (it needs a secure context), so the old way, inside the
+// tap that asked; and failing that, the text in a box to copy by hand.
+function _copyText(text, isLink) {
+  var done = function() { _showToast(t(isLink ? 'link_copied' : 'copied')); };
+  var fallback = function() {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+    document.body.appendChild(ta);
+    ta.select();
+    try { ta.setSelectionRange(0, text.length); } catch (e) {}  // iOS selects nothing without it
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    ta.remove();
+    if (ok) done(); else prompt(t(isLink ? 'copy_link' : 'copy'), text);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(done, fallback);
+  } else {
+    fallback();
+  }
 }
 
 // ── Navigation ──
@@ -2791,6 +2944,7 @@ function _resolveScopeZims(type, label) {
     const coll = Object.values(collectionsCache.collections).find(c => c.label === label);
     return coll ? (coll.zims || []) : [];
   }
+  if (type === 'apps') return _appsZimNames();
   return [];
 }
 
@@ -3272,6 +3426,17 @@ document.addEventListener('touchend', _reorderTouchEnd);
 document.addEventListener('touchcancel', _reorderTouchEnd);
 
 // ── Render: Home ──
+// A section's name that opens its page (the Apps page, a language, a
+// category): a link for the keyboard and a screen reader too, not only a
+// finger or a mouse (a plain div with an onclick was neither).
+var _CAT_HEAD_OPENS = ' role="link" tabindex="0"';
+document.addEventListener('keydown', function(e) {
+  var h = e.target;
+  if ((e.key === 'Enter' || e.key === ' ') && h && h.classList && h.classList.contains('cat-heading') && h.classList.contains('clickable')) {
+    e.preventDefault();
+    h.click();
+  }
+});
 function renderHome(filter) {
   // We could not ask the server. Say so — never "No knowledge sources found",
   // which reads as "your library was wiped". Discover is skipped too: its cards
@@ -3300,6 +3465,9 @@ function renderHome(filter) {
   // Determine base ZIM set (scoped or all)
   let baseZims = zimsCache;
   if (homeScope) {
+    // The Apps page holds what is inside the apps now, so a ZIM that lands
+    // while it is open joins its app there.
+    if (homeScope.type === 'apps') homeScope.zimNames = _appsZimNames();
     const scopeSet = new Set(homeScope.zimNames);
     baseZims = zimsCache.filter(z => scopeSet.has(z.name));
   }
@@ -3482,6 +3650,8 @@ function renderHome(filter) {
     var _welcomeLang = (_AVAILABLE_LANGS.find(function(l) { return l.code === _currentLang; }) || {}).name || _currentLang;
     var _hasLangZims = (zimsCache || []).some(function(z) { return z.language === _currentLang; });
     var _welcomeDismissed = localStorage.getItem('zimi_welcome_' + _currentLang) === '0';
+    // The card's ×, named for a screen reader ("✕" read as a letter).
+    var _welcomeX = '<button class="lang-banner-dismiss" aria-label="' + tH('close') + '" title="' + tH('close') + '" onclick="localStorage.setItem(\'zimi_welcome_\'+_currentLang,\'0\');var el=document.getElementById(\'lang-welcome\');if(el)el.remove()">\u2715</button>';
     if (!_welcomeDismissed) {
       if (!_hasLangZims && manageEnabled) {
         h += '<div class="lang-welcome-card" id="lang-welcome">' +
@@ -3491,14 +3661,13 @@ function renderHome(filter) {
           '</div>' +
           '<div class="lang-welcome-actions">' +
             '<button class="lang-banner-btn" onclick="localStorage.setItem(\'zimi_welcome_\'+_currentLang,\'0\');_langBannerDownload(_currentLang,\'wikipedia\')">' + tH('welcome_lang_browse') + '</button>' +
-            '<button class="lang-banner-dismiss" onclick="localStorage.setItem(\'zimi_welcome_\'+_currentLang,\'0\');var el=document.getElementById(\'lang-welcome\');if(el)el.remove()">\u2715</button>' +
+            _welcomeX +
           '</div>' +
         '</div>';
       } else {
         var _langZimCount = (zimsCache || []).filter(function(z) { return z.language === _currentLang; }).length;
         h += '<div class="lang-welcome-card lang-welcome-subtle" id="lang-welcome">' +
-          '<span>' + tH('welcome_lang_have', {n: _langZimCount, lang: _welcomeLang}) + '</span>' +
-          '<button class="lang-banner-dismiss" onclick="localStorage.setItem(\'zimi_welcome_\'+_currentLang,\'0\');var el=document.getElementById(\'lang-welcome\');if(el)el.remove()">\u2715</button>' +
+          '<span>' + tPluralH('welcome_lang_have', _langZimCount, {lang: _welcomeLang}) + '</span>' + _welcomeX +
         '</div>';
       }
     }
@@ -3523,7 +3692,7 @@ function renderHome(filter) {
       const favZims = _sortLibrary(favNames.map(n => _zimInfo(n)).filter(z => z && _homeShown.has(z.name)));
       if (favZims.length > 0) {
         const favZimNames = favZims.map(z => z.name);
-        h += '<div class="cat-heading clickable" onclick="enterScope(\'favorites\',\'\u2605 ' + escJs(t('favorites')) + '\',' + escJs(JSON.stringify(favZimNames)) + ',true)">\u2605 ' + tH('favorites') + '</div>';
+        h += '<div class="cat-heading clickable"' + _CAT_HEAD_OPENS + ' onclick="enterScope(\'favorites\',\'\u2605 ' + escJs(t('favorites')) + '\',' + escJs(JSON.stringify(favZimNames)) + ',true)">\u2605 ' + tH('favorites') + '</div>';
         h += renderCardGrid(favZims, true, true);
       }
     }
@@ -3539,8 +3708,8 @@ function renderHome(filter) {
     if (_langZims.length > 0) {
       _langZims.forEach(function(z) { _langSectionNames.add(z.name); });
       var _langZimNames = _langZims.map(function(z) { return z.name; });
-      h += '<div class="cat-heading clickable" onclick="enterScope(\'language\',\'' + escJs(_uiLangName) + '\',' + escJs(JSON.stringify(_langZimNames)) + ',true)">' +
-        '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" style="vertical-align:-2px;margin-right:4px"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>' +
+      h += '<div class="cat-heading clickable"' + _CAT_HEAD_OPENS + ' onclick="enterScope(\'language\',\'' + escJs(_uiLangName) + '\',' + escJs(JSON.stringify(_langZimNames)) + ',true)">' +
+        '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" style="vertical-align:-2px;margin-inline-end:4px"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>' +
         esc(_uiLangName) + '</div>';
       h += renderCardGrid(_langZims, true, true);
     }
@@ -3548,6 +3717,8 @@ function renderHome(filter) {
 
   if (filter && zims.length === 0) {
     h += '<div class="empty"><p>' + tH('no_sources_matching', {query: filter}) + '</p></div>';
+  } else if (homeScope && homeScope.type === 'apps') {
+    h += _appsPageHtml(_homeShown);
   } else if (homeScope) {
     // Scoped view: plain category headings, no reordering or collections.
     cats.forEach(cat => {
@@ -3573,7 +3744,7 @@ function renderHome(filter) {
         if (collZims.length > 0) {
           const collZimNames = collZims.map(z => z.name);
           _sections.push({ key: 'col:' + cname, html:
-            '<div class="cat-heading clickable" onclick="enterScope(\'collection\',\'' + escJs(coll.label || cname) + '\',' + escJs(JSON.stringify(collZimNames)) + ',true)">' + esc(coll.label || cname) + '</div>' +
+            '<div class="cat-heading clickable"' + _CAT_HEAD_OPENS + ' onclick="enterScope(\'collection\',\'' + escJs(coll.label || cname) + '\',' + escJs(JSON.stringify(collZimNames)) + ',true)">' + esc(coll.label || cname) + '</div>' +
             renderCardGrid(collZims, true, true) });
         }
       }
@@ -3583,7 +3754,7 @@ function renderHome(filter) {
       if (catItems.length === 0) return;
       const catZimNames = catItems.map(z => z.name);
       _sections.push({ key: 'cat:' + cat, html:
-        '<div class="cat-heading clickable" onclick="enterScope(\'category\',\'' + escJs(_catDisplayName(cat)) + '\',' + escJs(JSON.stringify(catZimNames)) + ',true)">' + esc(_catDisplayName(cat)) + '</div>' +
+        '<div class="cat-heading clickable"' + _CAT_HEAD_OPENS + ' onclick="enterScope(\'category\',\'' + escJs(_catDisplayName(cat)) + '\',' + escJs(JSON.stringify(catZimNames)) + ',true)">' + esc(_catDisplayName(cat)) + '</div>' +
         renderCardGrid(catItems, true) });
     });
     var _otherItems = _dedupLang(groups[OTHER_CAT] || [], _langSectionNames);
@@ -3729,8 +3900,12 @@ function _zimRecentUpdated(z) {
   if (!ua || ua <= (z.first_seen || 0)) return false;
   return (Date.now() / 1000 - ua) < _ZIM_RECENT_WINDOW_DAYS * 86400;
 }
+// When a ZIM last changed in the library: its update, or its arrival when it
+// has not been updated since. Recently updated orders the cards and the apps
+// (_APP_SORT_DATE) by it alike, so the Apps page agrees with the sources.
+function _zimChangedAt(z) { return Math.max(z.updated_at || 0, z.first_seen || 0); }
 function _byFirstSeenDesc(a, b) { return (b.first_seen || 0) - (a.first_seen || 0); }
-function _byUpdatedDesc(a, b) { return (b.updated_at || 0) - (a.updated_at || 0); }
+function _byUpdatedDesc(a, b) { return _zimChangedAt(b) - _zimChangedAt(a); }
 
 // One recency filter pill. kind=null is the "All" reset; aria-pressed reflects
 // state so the row is usable from the keyboard (each pill is a real <button>).
@@ -3817,6 +3992,9 @@ var LIBRARY_REFLOW_MS = 320;
 // then does the honest thing and rebuilds.
 function _reorderLibraryInPlace() {
   if (!output || !zimsCache || !zimsCache.length) return false;
+  // The Apps page's sections are the apps themselves, and they move with
+  // the order too: that is a rebuild, not a shuffle within each grid.
+  if (homeScope && homeScope.type === 'apps') return false;
   var grids = output.querySelectorAll('.stats-grid');
   if (!grids.length) return false;
   var compare = _LIBRARY_SORTERS[_librarySort()] || _LIBRARY_SORTERS.alpha;
@@ -3830,14 +4008,11 @@ function _reorderLibraryInPlace() {
     var grid = grids[g];
     var cards = Array.prototype.slice.call(grid.querySelectorAll('.stat-card[data-zim]'));
     if (cards.length < 2) continue;
-    var known = cards.map(function(card) {
-      return { card: card, zim: _zimInfo(card.dataset.zim) };
-    });
+    var sorted = _cardsInOrder(cards, compare);
     // A card whose ZIM we cannot look up means the page and the library have
     // drifted apart; a rebuild is the only honest answer.
-    if (known.some(function(k) { return !k.zim; })) return false;
-    var sorted = known.slice().sort(function(a, b) { return compare(a.zim, b.zim); });
-    var same = sorted.every(function(k, i) { return k.card === known[i].card; });
+    if (!sorted) return false;
+    var same = sorted.every(function(card, i) { return card === cards[i]; });
     if (same) continue;
     moves.push({ grid: grid, sorted: sorted, cards: cards });
   }
@@ -3849,7 +4024,7 @@ function _reorderLibraryInPlace() {
 
   moves.forEach(function(m) {
     var before = still ? null : m.cards.map(function(c) { return c.getBoundingClientRect(); });
-    m.sorted.forEach(function(k) { m.grid.appendChild(k.card); });
+    m.sorted.forEach(function(card) { m.grid.appendChild(card); });
     if (still) return;
     // First/Last/Invert/Play: put every card back where the eye last saw it,
     // then let it travel to where it now is.
@@ -3887,6 +4062,20 @@ function _reorderLibraryInPlace() {
     });
   });
   return true;
+}
+
+// One grid's cards in the library's order: the apps' tiles by _sortApps,
+// every other card by its ZIM. Null when a card names a ZIM the library no
+// longer has.
+function _cardsInOrder(cards, compare) {
+  if (cards.every(function(c) { return c.dataset.app; })) {
+    var byApp = {};
+    cards.forEach(function(c) { byApp[c.dataset.app] = c; });
+    return _sortApps(Object.keys(byApp)).map(function(app) { return byApp[app]; });
+  }
+  var known = cards.map(function(card) { return { card: card, zim: _zimInfo(card.dataset.zim) }; });
+  if (known.some(function(k) { return !k.zim; })) return null;
+  return known.sort(function(a, b) { return compare(a.zim, b.zim); }).map(function(k) { return k.card; });
 }
 
 // The age on each card, after the thing being sorted by has changed. Rewrites
@@ -3962,9 +4151,10 @@ function _libSortHtml() {
     ' onclick="event.stopPropagation()">' + opts + '</select>';
 }
 
-// Place the segmented view toggle on the first section header (Favorites, or the
-// first category/collection) — a global control that reuses the first header's
-// line rather than a bar of its own. No-op when there is no header to host it.
+// Place the segmented view toggle on the first section header (the Apps, which
+// the order governs too (#100), else Favorites or the first category or
+// collection) — a global control that reuses the first header's line rather
+// than a bar of its own. No-op when there is no header to host it.
 function _placeViewToggle() {
   if (!zimsCache || !zimsCache.length) return;
   var heading = output.querySelector('.cat-heading');
@@ -4003,6 +4193,8 @@ var _PROV_MODE_KEYS = {
   video: 'zi_kind_video',
   bookmarks: 'zi_kind_bookmarks',
   import: 'zi_kind_import',
+  // A subreddit Zimi built with ArcticZim, named as the Create page names it.
+  reddit: 'create_mode_reddit',
 };
 // The engine outranks the mode where the two differ: a replay ZIM opens into a
 // replay shell and behaves unlike an article ZIM, whatever it captured.
@@ -4087,13 +4279,16 @@ function _refreshCreatedBuckets() {
 // for. Only the follow-ups coalesce, into one render a beat later. The window
 // is long enough to catch two fetches finishing near each other and short
 // enough that nobody sees it wait.
+//
+// Only onto home itself: a search typed while the library was still arriving
+// had its results painted over by the home page it had just left.
 var HOME_RERENDER_COALESCE_MS = 60;
 var _homeRerenderTimer = null;
 function _renderHomeSoon() {
   clearTimeout(_homeRerenderTimer);
   _homeRerenderTimer = setTimeout(function() {
     _homeRerenderTimer = null;
-    if (mode === 'manage' || readerOpen || currentSource || readerSource) return;
+    if (mode !== 'home' || readerOpen || currentSource || readerSource) return;
     renderHome();
   }, HOME_RERENDER_COALESCE_MS);
 }
@@ -4561,6 +4756,8 @@ function renderCardGrid(items, showStars, showCategory) {
 // ── Discover: computed cards first, random fill to ~4 ──
 // Slot order: 1) Today (always), 2) APOD (if installed), 3) On This Day (if Wikipedia), 4+) 🎲 Random
 var _discoverLoading = false;
+var DISCOVER_RETRY_MS = 10000;  // a cold start's partial row asks again once, this much later
+var _discoverRetried = {};      // the day's cache keys already asked again in this page
 
 function _moonPhase(date) {
   // True phase from the Moon–Sun elongation (Meeus, main periodic terms).
@@ -4671,7 +4868,7 @@ _MOON_TEX.onload = function() {
   _moonSpriteCache = {};
   if (typeof _repaintMoons === 'function') _repaintMoons();
 };
-_MOON_TEX.src = '/static/moon.png?v=2';
+_MOON_TEX.src = '/static/moon.webp?v=1';
 
 var _moonSpriteCache = {};
 
@@ -5112,37 +5309,46 @@ function openAlmanac(replaceState) {
   }
   if (!_almanacLoaded) {
     // The almanac is split across sibling modules (it outgrew one file). They
-    // share a global scope, so load them in sequence and only open once the
-    // last one lands — opening early would call into functions not yet defined.
+    // share a global scope, so they must run in order, and it opens only once
+    // the last one has run: opening early would call into functions not yet
+    // defined. async=false keeps that order while all four download at once,
+    // one round trip instead of four on a phone away from home.
     var almanacModules = [
       '/static/almanac-links.js?v=45',
       '/static/almanac-orrery.js?v=45',
       '/static/almanac-sky.js?v=45',
       '/static/almanac.js?v=45'
     ];
-    var loadNext = function(i) {
-      if (i >= almanacModules.length) {
+    var failed = false;
+    almanacModules.forEach(function(src, i) {
+      var s = document.createElement('script');
+      s.src = src;
+      s.async = false;
+      if (i === almanacModules.length - 1) s.onload = function() {
+        if (failed) return;
         _almanacLoaded = true;
         _openAlmanacInner(replaceState);
-        return;
-      }
-      var s = document.createElement('script');
-      s.src = almanacModules[i];
-      s.onload = function() { loadNext(i + 1); };
+        // The 3D Earth's module follows the open instead of delaying it; the
+        // orrery draws the Earth's glow (the way in) once it has landed.
+        var earth = document.createElement('script');
+        earth.src = '/static/almanac-earth.js?v=45';
+        document.head.appendChild(earth);
+      };
       // Offline with a cold cache: these modules were never fetched, so there is
       // nothing to serve. Say so — a console line and a button that appears to
       // do nothing is the same "silent absence" the connection banner exists to
       // eliminate.
       s.onerror = function() {
-        console.error('Failed to load ' + almanacModules[i]);
+        console.error('Failed to load ' + src);
+        if (failed) return;
+        failed = true;
         // Drop the reload-into-almanac boot gate so the library becomes
         // visible again instead of an empty dark shell.
         document.documentElement.classList.remove('almanac-boot');
         _showToast(t('almanac_unavailable_offline'));
       };
       document.head.appendChild(s);
-    };
-    loadNext(0);
+    });
     return;
   }
   _openAlmanacInner(replaceState);
@@ -5165,12 +5371,7 @@ function _dismissDiscover() {
   localStorage.setItem(SK.HIDE_DISCOVER, '1');
   _discoverLoading = false;
   renderHome();  // Re-render to move stats bar to top
-  // Show undo toast
-  var toast = document.createElement('div');
-  toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;font-size:13px;color:var(--text2);z-index:300;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
-  toast.innerHTML = tH('discover_hidden') + ' <a href="#" style="color:var(--amber);text-decoration:none" onclick="event.preventDefault();localStorage.removeItem(\'zimi_hide_discover\');this.parentNode.remove();renderHome()">' + tH('undo') + '</a>';
-  document.body.appendChild(toast);
-  setTimeout(function() { if (toast.parentNode) toast.remove(); }, 5000);
+  _showToast(t('discover_hidden'), 0, function() { localStorage.removeItem(SK.HIDE_DISCOVER); renderHome(); });
 }
 
 // ─── Discover Card Pipeline ─────────────────────────────────────────────
@@ -5367,7 +5568,9 @@ function _loadDiscover() {
     _discoverResults.push(null);
     var url = '/random?zim=' + encodeURIComponent(s.name) + '&thumb=1&require_thumb=1';
     if (s.dated) url += '&date=' + mmdd;
-    url += '&seed=' + mmdd;
+    // day: a wiki's card is Zimipedia's pick of the day (wiki.daily_card),
+    // so the word or quote of the day is the same one in both places.
+    url += '&seed=' + mmdd + '&day=' + now.getFullYear() + mmdd;
     return fetch(url)
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(d) {
@@ -5406,17 +5609,22 @@ function _loadDiscover() {
     if (items.length > 0 && items.length >= serverSlots.length - 1) {
       try { localStorage.setItem(cacheKey, JSON.stringify(all)); } catch(e) {}
     }
-    // If we got partial results (cold start), auto-retry after 10s
+    // Partial results (a cold start): one more try, of the cards alone. It
+    // redrew the whole home page every ten seconds, for good in a library
+    // that cannot fill the row (nopic builds have no pictures to show), and
+    // over whatever was on screen by then: search results, the catalog.
+    // _loadDiscover draws only into the Discover row, when there is one.
     var missing = serverSlots.length - items.length;
-    if (missing > 1 && !localStorage.getItem(cacheKey)) {
-      setTimeout(function() { if (!localStorage.getItem(cacheKey)) renderHome(); }, 10000);
+    if (missing > 1 && !localStorage.getItem(cacheKey) && !_discoverRetried[cacheKey]) {
+      _discoverRetried[cacheKey] = true;
+      setTimeout(function() { if (!localStorage.getItem(cacheKey)) _loadDiscover(); }, DISCOVER_RETRY_MS);
     }
     var el2 = document.getElementById('discover-row');
     if (el2 && !_getStorageFlag(SK.HIDE_DISCOVER)) _renderDiscover(el2, all);
   });
 }
 function _renderDiscover(el, items) {
-  var h = '<div class="discover-section"><div class="discover-label"><span>' + tH('discover') + '</span><button class="dc-dismiss" onclick="event.stopPropagation();_dismissDiscover()" title="' + escAttr(t('hide_discover')) + '">\u00D7</button></div><div class="discover-scroll">';
+  var h = '<div class="discover-section"><div class="discover-label"><span>' + tH('discover') + '</span><button class="dc-dismiss" onclick="event.stopPropagation();_dismissDiscover()" title="' + escAttr(t('hide_discover')) + '" aria-label="' + escAttr(t('hide_discover')) + '">\u00D7</button></div><div class="discover-scroll">';
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
     if (!it) continue; // Skip null results (e.g. failed dated entry lookups)
@@ -5516,6 +5724,7 @@ function _renderDiscover(el, items) {
 
     // Display title: cleaned for each content type
     var displayTitle = it.title || it.path;
+    if (/gutenberg/i.test(it.zim || '')) displayTitle = _gutenbergTitle(displayTitle);
     if (it.type === 'apod' && displayTitle) {
       displayTitle = displayTitle.replace(/^APOD:\s*\d{4}\s+\w+\s+\d+\s*[\u2013\-]\s*/i, '');
     }
@@ -5577,7 +5786,7 @@ function _renderDiscover(el, items) {
       } else if (it.type === 'country') {
         thumbHtml = '<div class="dc-icon-thumb" style="background:linear-gradient(135deg,#0a1628,#162040)"><span style="font-size:40px;line-height:1">&#x1F30D;</span></div>';
       } else {
-        thumbHtml = '<div class="dc-icon-thumb">' + iconHtml + '</div>';
+        thumbHtml = '<div class="dc-icon-thumb">' + (iconHtml || _sourceIconHtml(it.zim, 48)) + '</div>';
       }
       // Speaker/author line (TED talks, books)
       var speakerHtml = '';
@@ -5833,14 +6042,17 @@ function _moveZimTo(zim, category) {
   function _prepMenuA11y() {
     menu.setAttribute('role', 'menu');
     _kbSub = null;
+    // An item that says what it is keeps it: a list's row in the Lists picker
+    // is a menuitemcheckbox, so a screen reader says whether it is ticked.
+    var stamp = function(el) { if (!el.hasAttribute('role')) el.setAttribute('role', 'menuitem'); el.setAttribute('tabindex', '-1'); };
     _ctxItems(menu).forEach(function(it) {
-      it.setAttribute('role', 'menuitem');
-      it.setAttribute('tabindex', '-1');
+      stamp(it);
       var sub = _ctxSubOf(it);
       if (sub) {
+        sub.setAttribute('role', 'menu');
         it.setAttribute('aria-haspopup', 'true');
         it.setAttribute('aria-expanded', 'false');
-        _ctxItems(sub).forEach(function(si) { si.setAttribute('role', 'menuitem'); si.setAttribute('tabindex', '-1'); });
+        _ctxItems(sub).forEach(stamp);
       }
     });
     var first = _ctxItems(menu)[0];
@@ -6040,6 +6252,9 @@ function _moveZimTo(zim, category) {
     menu.innerHTML = html;
     posMenu(x, y);
   };
+  // For a menu opened over a page in the reader: a tap there never reaches
+  // this document's outside-click dismissal.
+  window._closeMenu = closeCtx;
 
   // Right-click resolves its ZIM through _lpHit, the same way long-press does.
   // It used to read the name out of the card's `onclick` attribute, which only
@@ -6518,6 +6733,7 @@ q.addEventListener('blur', function() {
 });
 
 q.addEventListener('input', () => {
+  _searchHelpExpanded(false); // what is typed replaces the examples
   clearTimeout(searchTimer);
   const val = q.value.trim();
   // Suggest (200ms debounce) — include history items when typing
@@ -6695,6 +6911,8 @@ async function doSearch(query, push) {
       { signal: searchController.signal });
     _throwIfRateLimited(r1);
     const d1 = await r1.json();
+    // Left for Settings or home while it ran: that page is on screen now.
+    if (mode !== 'search') return;
     const phase1Elapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
     d1._clientElapsed = phase1Elapsed;
     d1._query = query;
@@ -6739,13 +6957,14 @@ async function doSearch(query, push) {
       _throwIfRateLimited(r2);
       const d2 = await r2.json();
       clearInterval(timerInterval);
+      if (mode !== 'search') return; // the full-text pass landed after you left
       d2._clientElapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
       d2._query = query;
       allResults = mergeSearchResults(d1, d2);
       renderSearchResults(allResults, scope);
     }
   } catch(e) {
-    if (e.name === 'AbortError') return;
+    if (e.name === 'AbortError' || mode !== 'search') return;
     // "Search failed / try again" implies the server tried and something went
     // wrong there. If we never reached it, say that instead and offer Retry.
     if (_isOfflineError(e)) {
@@ -6798,6 +7017,7 @@ function mergeSearchResults(phase1, phase2) {
     elapsed: phase2.elapsed,
     partial: false,
     did_you_mean: phase2.did_you_mean || phase1.did_you_mean,
+    unsearched: phase2.unsearched || phase1.unsearched,
     _clientElapsed: phase2._clientElapsed,
     _query: phase2._query,
     // Places come only from the full phase; the keystroke phase reads no
@@ -6806,6 +7026,12 @@ function mergeSearchResults(phase1, phase2) {
   };
 }
 
+// A Gutenberg book's cover page can be named by its path ("Aeneid_cover.227"):
+// its title is the part before the cover mark and the book's number.
+function _gutenbergTitle(s) {
+  s = String(s || '');
+  return s.replace(/(?:_cover)?\.\d+(?:\.html)?$/, '') || s;
+}
 function _sourceIconHtml(zimName, size) {
   const info = _zimInfo(zimName);
   const title = (info && info.title) || zimName;
@@ -6955,7 +7181,9 @@ function renderSearchResults(data, scope) {
   }
 
   const displayElapsed = data._clientElapsed || (data.elapsed ? data.elapsed.toFixed(1) : null);
-  document.getElementById('search-count').textContent = t('n_results', {n: totalCount});
+  // A count of results has one phrase in each plural form ("1 result"),
+  // Zimipedia's and this box's alike.
+  document.getElementById('search-count').textContent = tPlural('wiki_results', totalCount);
   document.getElementById('search-time').textContent = displayElapsed ? t('in_time', {time: displayElapsed}) : '';
   searchMeta.style.display = items.length ? 'flex' : 'none';
 
@@ -6971,20 +7199,22 @@ function renderSearchResults(data, scope) {
       '</div>';
   }
 
+  // What the query's operators did, each a tap away from undone.
+  const chipsHtml = searchChipsHtml(data._query, zimsCache, data.unsearched);
   if (!items.length) {
-    output.innerHTML = '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH('try_different') + '</p></div>';
+    // A query of only exclusions and filters ("-ted") asks for nothing, so
+    // the library finds nothing: say what it needs, not "try other words".
+    const asksNothing = !!data._query && !parseSearchQuery(data._query).groups.length;
+    output.innerHTML = chipsHtml + '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH(asksNothing ? 'search_needs_word' : 'try_different') + '</p></div>';
     return;
   }
 
   // Show matching ZIM sources above results (global search only)
   let zimMatchHtml = '';
   if (!scope && zimsCache && data._query) {
-    const ql = data._query.toLowerCase();
-    const qw = ql.split(/\s+/).filter(Boolean);
-    const matches = zimsCache.filter(z => {
-      const t = ((z.title || '') + ' ' + z.name + ' ' + (z.description || '')).toLowerCase();
-      return qw.every(w => t.includes(w));
-    });
+    const parsed = parseSearchQuery(data._query);
+    const matches = parsed.groups.length ? zimsCache.filter(z =>
+      searchQueryMatches(parsed, (z.title || '') + '\u0001' + z.name + '\u0001' + (z.description || ''))) : [];
     if (matches.length > 0 && matches.length <= 8) {
       zimMatchHtml = '<div class="stats-grid" style="margin-bottom:16px">' + matches.map(z => {
         const icon = z.has_icon
@@ -7012,7 +7242,7 @@ function renderSearchResults(data, scope) {
   // the shards had nothing, not a second row under every hit.
   const placesHtml = _mapPlaceRowsHtml(data.places || []);
   const mapFindHtml = (!scope && !placesHtml) ? _mapFindRowsHtml(data._query || '') : '';
-  let html = dymHtml + zimMatchHtml + '<div class="results">' + placesHtml + mapFindHtml + visible.map((r, i) => {
+  let html = chipsHtml + dymHtml + zimMatchHtml + '<div class="results">' + placesHtml + mapFindHtml + visible.map((r, i) => {
     const sourceRow = !scope
       ? '<div class="result-source">' + _sourceIconHtml(r.zim, 20) +
         '<span class="rs-name">' + esc(_zimTitle(r.zim)) + '</span></div>'
@@ -7032,10 +7262,8 @@ function renderSearchResults(data, scope) {
       tH('show_more', {n: Math.min(RESULTS_PER_PAGE, remaining)}) + '</button></div>';
   }
 
-  if (displayElapsed) {
-    html += '<div class="results-summary">' + tH('found_results_in', {n: totalCount, time: displayElapsed}) + '</div>';
-  }
-
+  // The count and the time are said once, over the results ("Found 1
+  // results in 0.3s" said them again under them).
   output.innerHTML = html;
 
   loadSnippets();
@@ -7092,7 +7320,7 @@ async function loadSnippets() {
   let idx = 0;
 
   function next() {
-    while (active < concurrency && idx < queue.length) {
+    while (!signal.aborted && active < concurrency && idx < queue.length) {
       const card = queue[idx++];
       const zim = card.dataset.zim;
       const path = card.dataset.path;
@@ -7106,10 +7334,38 @@ async function loadSnippets() {
   next();
 }
 
+// Snippets already read (or on their way), by ZIM and path. The quick first
+// pass and the full results draw many of the same cards, and every card drawn
+// again asked the server again: a third of a search's requests were repeats.
+// A redraw stops its predecessor's queue, not the few asks already out: they
+// land here, where the new cards find them.
+var _snippetKept = new Map();
+var _snippetPending = new Map();
+var SNIPPET_KEPT_MAX = 500;
+function _snippetData(zim, path) {
+  var key = zim + '\n' + path;
+  if (_snippetKept.has(key)) return Promise.resolve(_snippetKept.get(key));
+  if (_snippetPending.has(key)) return _snippetPending.get(key);
+  var asked = fetch('/snippet?zim=' + encodeURIComponent(zim) + '&path=' + encodeURIComponent(path))
+    .then(function(res) {
+      return res.json().then(function(data) {
+        if (res.ok) {
+          if (_snippetKept.size >= SNIPPET_KEPT_MAX) _snippetKept.delete(_snippetKept.keys().next().value);
+          _snippetKept.set(key, data);
+        }
+        return data;
+      });
+    })
+    .finally(function() { _snippetPending.delete(key); });
+  _snippetPending.set(key, asked);
+  return asked;
+}
+
 async function fetchSnippet(snippetEl, zim, path, signal, card) {
   try {
-    const res = await fetch('/snippet?zim=' + encodeURIComponent(zim) + '&path=' + encodeURIComponent(path), { signal });
-    const data = await res.json();
+    const data = await _snippetData(zim, path);
+    // Results drawn again (or cleared) since: these cards are gone.
+    if (signal.aborted) return;
     // Populate snippet text if needed
     if (snippetEl && snippetEl.hasAttribute('data-needs-snippet')) {
       if (data.snippet) {
@@ -7341,6 +7597,7 @@ function showSuggest() {
 function hideSuggest() {
   suggestDropdown.style.display = 'none';
   suggestIndex = -1;
+  _searchHelpExpanded(false);
   if (suggestController) { suggestController.abort(); suggestController = null; }
 }
 
@@ -7354,6 +7611,7 @@ function selectSuggest(i) {
   const s = suggestItems[i];
   if (!s) return;
   hideSuggest();
+  if (s._example) { _searchAgain(s.query); return; }
   // History search item: re-execute the search
   if (s._histSearch) {
     _runRecentSearch(s.query, s.zim);
@@ -7361,7 +7619,7 @@ function selectSuggest(i) {
   }
   // Regular suggestion or history article; a place carries where it is.
   q.value = s.title;
-  openArticle(s.zim, s.path, s.title, s.pos ? {pos: s.pos} : undefined);
+  if (s.pos) openArticle(s.zim, s.path, s.title, {pos: s.pos}); else _openResult(s.zim, s.path, s.title);
 }
 
 // ── Library Manager ──
@@ -7722,6 +7980,26 @@ var _LANG3_NAMES = {
   sgs:'Samogitian',alt:'Southern Altai',mhr:'Eastern Mari',frp:'Arpitan',
   udm:'Udmurt',crh:'Crimean Tatar',nqo:"N'Ko",ang:'Old English'
 };
+// A language named in itself (עברית, Français, ייִדיש), which is how a
+// reader finds their own: `own`, the server's name for it (interlang's
+// _LANG_NATIVE_NAMES, which knows the ones a browser cannot name in
+// themselves), else the browser's; else `fallback` (the interface's name),
+// else the code. Capitalised as the language writes it. Zimipedia's reader
+// and its front door (wiki.html, through window.parent) both name languages
+// with it.
+function _langEndonym(code, own, fallback) {
+  var name = own && own !== code ? own : '';
+  if (!name) {
+    try {
+      var self = new Intl.DisplayNames([code], { type: 'language' }).of(code) || '';
+      var english = new Intl.DisplayNames(['en'], { type: 'language' }).of(code) || '';
+      // A browser that does not speak the language answers in English.
+      if (self && self !== code && (code === 'en' || self !== english)) name = self;
+    } catch (e) {}
+  }
+  name = name || fallback || code;
+  try { return name.charAt(0).toLocaleUpperCase(code) + name.slice(1); } catch (e) { return name; }
+}
 function _langDisplayName(code) {
   if (!code) return '';
   var uiLang = _currentLang || 'en';
@@ -7781,8 +8059,11 @@ function formatLanguage(langStr) {
   return t('multilingual', {n: codes.length});
 }
 
-// 3-letter → 2-letter language code for tags
-const _LANG3TO2 = {eng:'en',fra:'fr',deu:'de',spa:'es',por:'pt',ita:'it',rus:'ru',ara:'ar',zho:'zh',jpn:'ja',kor:'ko',hin:'hi',tur:'tr',pol:'pl',nld:'nl',swe:'sv',vie:'vi',tha:'th',heb:'he',ell:'el',ron:'ro',hun:'hu',fas:'fa',far:'fa',ind:'id',ukr:'uk',ces:'cs',dan:'da',fin:'fi',nor:'no',cat:'ca',mul:'mul',msa:'ms',ben:'bn',tam:'ta',tel:'te',urd:'ur',srp:'sr',hrv:'hr',bos:'bs',slk:'sk',slv:'sl',bul:'bg',lit:'lt',lav:'lv',est:'et',swa:'sw',amh:'am',hau:'ha',yor:'yo',zul:'zu',afr:'af',gle:'ga',cym:'cy',eus:'eu',glg:'gl',kat:'ka',hye:'hy',mkd:'mk',sqi:'sq',bel:'be',kaz:'kk',uzb:'uz',tgl:'tl',mal:'ml',kan:'kn',guj:'gu',mar:'mr',mya:'my',khm:'km',lao:'lo',sin:'si',nep:'ne',mlt:'mt',tsn:'tn',pan:'pa',aze:'az',mon:'mn',tgk:'tg',kir:'ky',isl:'is',fao:'fo',kur:'ku',ori:'or',jav:'jv',sun:'su',asm:'as',snd:'sd',kas:'ks',kik:'ki',sme:'se',lim:'li',pam:'pam',tir:'ti',lin:'ln',wol:'wo',som:'so',run:'rn',bis:'bi',nav:'nv',dzo:'dz',vol:'vo',ina:'ia',tat:'tt',bak:'ba',chv:'cv',oss:'os',tuk:'tk',sah:'sah'};
+// ISO 639-3 (ZIM metadata, the catalog) → 639-1: the server's own table
+// (zimi/assets/lang-codes.json), put in here as app.js is served
+// (http._inline_lang_codes), so lang: means the same in the library and the
+// catalog. Read from the file itself (a test), it is empty.
+const _LANG3TO2 = /*@lang-codes.json@*/{};
 // Extract actual language from ZIM name when catalog says "mul" or comma-separated
 // e.g. "ted_fr_design" → "fr", "wikipedia_de_all" → "de"
 function _langFromName(name) {
@@ -8567,7 +8848,13 @@ function _newestPer(list, key) {
 
 // The installed ZIMs of one kind, by title; with a key, one per identity.
 function _installedOfKind(kind, key) {
-  var all = (zimsCache || []).filter(function(z) { return z.kind === kind && z.main_path; })
+  return _installedFor(kind, '', key);
+}
+// The ZIMs an app reads: its own kind, and those that feed it beside
+// another (server._zim_feeds: Wikisource on the Bookshelf, a document
+// library's videos in ZimiTube).
+function _installedFor(kind, app, key) {
+  var all = (zimsCache || []).filter(function(z) { return z.main_path && (z.kind === kind || !!(app && z.feeds && z.feeds[app])); })
     .sort(function(a, b) { return (a.title || a.name).localeCompare(b.title || b.name); });
   return key ? _newestPer(all, key) : all;
 }
@@ -8677,12 +8964,15 @@ function renderBrowseGallery() {
   _browseView = 'gallery';
   manageCategoryFilter = null;
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
-  q.placeholder = t('search_catalog');
+  _fitSearchPlaceholder(t('search_catalog'));
 
   // Only show loading spinner if catalog hasn't been fetched yet
   if (!_catalogCache) results.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading_catalog') + '</div>';
 
   loadFullCatalog().then(items => {
+    // A search or a category opened while the catalog loaded is what the
+    // page shows now; painting the gallery over it lost what was typed.
+    if (_browseView !== 'gallery') return;
     // Count unique ZIMs per category (group variants by name)
     const catNames = {};    // cat -> Set of names
     const catInstalled = {};
@@ -8887,7 +9177,7 @@ function drillCategory(catKey, namePrefix) {
 
   const catMeta = BROWSE_CATEGORIES.find(c => c.key === catKey);
   const catName = catMeta ? t(catMeta.i18n) : catKey;
-  q.placeholder = t('search_in', {source: catName});
+  _fitSearchPlaceholder(t('search_in', {source: catName}));
   q.value = '';
 
   if (!_catalogCache) results.innerHTML = _loadingHtml('loading_catalog');
@@ -8946,6 +9236,324 @@ function drillCategory(catKey, namePrefix) {
   });
 }
 
+// ── Search grammar (#94) ──
+// The same parser as zimi/query.py, which the library search uses; the cases
+// both must agree on are tests/fixtures/search_query_cases.json.
+//   word  "two words"  -word  -"two words"  a OR b  key:value  -key:value
+// A hyphen inside a word (e-mail) is part of it; a lone "-", a stray quote
+// and a dangling OR are dropped. Filters are a table: a new one is a new key.
+const SEARCH_QUOTES = '"“”„';
+// Scripts written without spaces (Thai, Lao, Myanmar, Khmer, kana, CJK): a
+// term there matches anywhere, since a word boundary means nothing.
+const _SEARCH_UNSPACED = /[฀-໿က-႟ក-៿぀-ヿ㐀-䶿一-鿿豈-﫿]/;
+// The keys both searches know (query.LIBRARY_FILTERS on the server).
+const SEARCH_FILTERS = { in: 'source', source: 'source', lang: 'lang' };
+
+// Each token is [text, phrase, negated, start, end]: where it sits in what
+// was typed is what lets a chip take one operator back out (searchQueryChips).
+function _searchTokens(q) {
+  const out = [], n = q.length, isQ = c => SEARCH_QUOTES.includes(c), isS = c => /\s/.test(c);
+  let i = 0;
+  while (i < n) {
+    let ch = q[i];
+    if (isS(ch)) { i++; continue; }
+    let neg = false, start = i;
+    if (ch === '-' && i + 1 < n && isQ(q[i + 1])) { neg = true; i++; ch = q[i]; }
+    if (isQ(ch)) {
+      let end = -1;
+      for (let j = i + 1; j < n; j++) if (isQ(q[j])) { end = j; break; }
+      if (end >= 0) {
+        const text = q.slice(i + 1, end).split(/\s+/).filter(Boolean).join(' ');
+        if (text) out.push([text, true, neg, start, end + 1]);
+        i = end + 1;
+        continue;
+      }
+      i++; // unbalanced: the quote goes, its words stay
+      if (neg) continue;
+      start = i;
+      if (start >= n) break;
+    }
+    let j = start;
+    while (j < n && !isS(q[j])) j++;
+    out.push([q.slice(start, j), false, false, start, j]);
+    i = j;
+  }
+  return out;
+}
+
+// Beyond what query.py returns, each term and filter carries `at`, its token
+// in `tokens`, and `joins` lists per group the OR tokens that joined it.
+function parseSearchQuery(q, filters) {
+  filters = filters || SEARCH_FILTERS;
+  const groups = [], joins = [], exclude = [], found = [];
+  const tokens = _searchTokens(q || '');
+  let joinNext = false, orAt = -1;
+  for (let at = 0; at < tokens.length; at++) {
+    let [text, phrase, neg] = tokens[at];
+    if (!phrase) {
+      if (text === 'OR') { joinNext = groups.length > 0; orAt = at; continue; }
+      if (text.startsWith('-')) {
+        text = text.replace(/^-+/, ''); neg = true;
+        if (!text) { joinNext = false; continue; }
+      }
+      const c = text.indexOf(':');
+      const key = c > 0 ? text.slice(0, c).toLowerCase() : '';
+      if (c > 0 && c < text.length - 1 && Object.prototype.hasOwnProperty.call(filters, key)) {
+        found.push({ key: filters[key], value: text.slice(c + 1).toLowerCase(), negate: neg, at: at });
+        joinNext = false;
+        continue;
+      }
+      if ([...text].some(ch => SEARCH_QUOTES.includes(ch))) {
+        text = [...text].filter(ch => !SEARCH_QUOTES.includes(ch)).join('');
+        if (!text) continue;
+      }
+    }
+    const term = { text: text.toLowerCase(), phrase: phrase, at: at };
+    if (neg) { exclude.push(term); joinNext = false; continue; }
+    if (joinNext) { groups[groups.length - 1].push(term); joins[joins.length - 1].push(orAt); }
+    else { groups.push([term]); joins.push([]); }
+    joinNext = false;
+  }
+  // No `plain` (query.py's): only the library's index needs to know a query
+  // had no syntax, and the library parses on the server.
+  return { groups: groups, exclude: exclude, filters: found, tokens: tokens, joins: joins };
+}
+
+const _reEscape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// A phrase or an exclusion matches from the start of a word ("-ted" drops
+// TED and TEDx, not United), or anywhere in a script without spaces.
+function _searchTermRe(text) {
+  const body = text.split(/\s+/).map(_reEscape).join('\\s+');
+  return new RegExp((_SEARCH_UNSPACED.test(text[0]) ? '' : '(?<![\\p{L}\\p{N}_])') + body, 'u');
+}
+
+// The whole query against one text: a word anywhere (so "wiki" still finds
+// Wikipedia, as the catalog always did), phrases and exclusions as above.
+function searchQueryMatches(parsed, text) {
+  const low = (text || '').toLowerCase();
+  const hit = t => t.phrase ? _searchTermRe(t.text).test(low) : low.includes(t.text);
+  return parsed.groups.every(g => g.some(hit)) &&
+    !parsed.exclude.some(t => _searchTermRe(t.text).test(low));
+}
+
+// What a catalog filter asks of an item. source:/in: is the name, title or
+// category; lang: one of the item's languages, which the catalog lists in
+// three letters ("fra") and people type in either.
+const _catalogLang = c => (typeof _LANG3TO2 !== 'undefined' && _LANG3TO2[c]) || c;
+const _CATALOG_FILTER_TESTS = {
+  source: (v, item) => [item.name, item.title, item.category].some(s => (s || '').toLowerCase().includes(v)),
+  lang: (v, item) => (item.language || '').toLowerCase().split(',').some(c => _catalogLang(c.trim()) === _catalogLang(v)),
+};
+
+// A catalog field as it reads. Kiwix's feed escapes some summaries twice,
+// so after one decode they still say "d&apos;articles" (95 of 2,653 in the
+// shipped snapshot, mostly French).
+const _CATALOG_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#39': "'" };
+function _catalogText(s) {
+  return String(s || '').replace(/&(amp|lt|gt|quot|apos|#39);/g, (m, k) => _CATALOG_ENTITIES[k]);
+}
+
+function catalogItemMatches(parsed, item) {
+  // Fields joined by a separator that is not a space, so a phrase cannot
+  // run from the end of the title into the summary.
+  const text = [_catalogText(item.title), _catalogText(item.summary), item.name].join('\u0001');
+  return searchQueryMatches(parsed, text) &&
+    parsed.filters.every(f => _CATALOG_FILTER_TESTS[f.key](f.value, item) !== f.negate);
+}
+
+// ── What the operators did, as chips ──
+// Eric, 2026-09-27, of a sentence of syntax under the results: "didn't read
+// well probably wouldn't translate well". So each operator in a query shows
+// as a chip in plain words ("without ted", "exact: solar panel", "French",
+// "Wikipedia"), the same in the library search and the catalog, and its ×
+// searches again without that operator. `query` on a chip is that search.
+const _isOrToken = tok => !!tok && !tok[1] && tok[0] === 'OR';
+
+// What was typed, with some tokens dropped and some replaced, and no OR left
+// hanging at either end or doubled.
+function _searchRebuild(q, tokens, drop, replace) {
+  const out = [];
+  tokens.forEach((tok, k) => {
+    if (drop.has(k)) return;
+    const s = replace && replace.has(k) ? replace.get(k) : q.slice(tok[3], tok[4]);
+    if (s === 'OR' && _isOrToken(tok) && (!out.length || out[out.length - 1] === 'OR')) return;
+    out.push(s);
+  });
+  while (out.length && out[out.length - 1] === 'OR') out.pop();
+  return out.join(' ');
+}
+
+// A token's words as typed: no leading "-", no quotes, case kept.
+function _searchTokenWords(tok) {
+  return tok[1] ? tok[0] : [...tok[0].replace(/^-+/, '')].filter(ch => !SEARCH_QUOTES.includes(ch)).join('');
+}
+
+function searchQueryChips(q) {
+  q = q || '';
+  const p = parseSearchQuery(q), toks = p.tokens, chips = [];
+  // An OR just before an exclusion or a filter joined nothing; taken out
+  // alone it would join the terms either side, so it goes with it.
+  const without = at => _searchRebuild(q, toks, new Set(_isOrToken(toks[at - 1]) ? [at, at - 1] : [at]));
+  for (const t of p.exclude) {
+    chips.push({ kind: 'without', at: t.at, words: [_searchTokenWords(toks[t.at])], query: without(t.at) });
+  }
+  for (const f of p.filters) {
+    chips.push({ kind: f.key, at: f.at, value: f.value, negate: f.negate, query: without(f.at) });
+  }
+  p.groups.forEach((g, i) => {
+    for (const t of g) {
+      if (!t.phrase) continue;
+      // The words stay, as words: it is the exactness the × takes away.
+      const words = _searchTokenWords(toks[t.at]);
+      chips.push({ kind: 'exact', at: t.at, words: [words], query: _searchRebuild(q, toks, new Set(), new Map([[t.at, words]])) });
+    }
+    if (g.length > 1) {
+      chips.push({ kind: 'or', at: g[0].at, words: g.map(t => t.phrase ? '"' + _searchTokenWords(toks[t.at]) + '"' : _searchTokenWords(toks[t.at])),
+        terms: g.map(t => t.text), query: _searchRebuild(q, toks, new Set(p.joins[i])) });
+    }
+  });
+  return chips.sort((a, b) => a.at - b.at);
+}
+
+// The source an in: names, as its title: the one source it matches, or the
+// word as those sources' titles write it ("wikipedia" → "Wikipedia", "ted" →
+// "TED"), or what was typed.
+function _searchSourceTitle(value, pool) {
+  const hit = s => (s || '').toLowerCase().includes(value);
+  const titles = [...new Set((pool || []).filter(z => hit(z.name) || hit(z.title)).map(z => z.title || z.name))];
+  if (titles.length === 1) return titles[0];
+  const word = new RegExp('(?<![\\p{L}\\p{N}])' + _reEscape(value) + '(?![\\p{L}\\p{N}])', 'iu');
+  for (const title of titles) { const m = title.match(word); if (m) return m[0]; }
+  return value;
+}
+
+// A chip's words, as HTML (user words isolated, so a Latin word keeps its
+// place in a Hebrew label) or as plain text for its button's label.
+function _searchChipLabel(chip, pool, html) {
+  const w = html ? (s => '<bdi>' + esc(s) + '</bdi>') : (s => s);
+  const tpl = (key, vars) => {
+    if (!html) return t(key, vars);
+    let s = tH(key);
+    for (const k in vars) s = s.split('{' + k + '}').join(vars[k]);
+    return s;
+  };
+  if (chip.kind === 'without') return tpl('search_chip_without', { word: w(chip.words[0]) });
+  if (chip.kind === 'exact') return tpl('search_chip_exact', { words: w(chip.words[0]) });
+  if (chip.kind === 'or') {
+    const list = (words, type) => {
+      try {
+        return new Intl.ListFormat(_currentLang, { type: type }).formatToParts(words)
+          .map(part => part.type === 'element' ? w(part.value) : (html ? esc(part.value) : part.value)).join('');
+      } catch (e) { return words.map(w).join(type === 'disjunction' ? ' OR ' : ', '); }
+    };
+    // An OR past the search's budget (query.MAX_SEARCHES): what was not searched is said.
+    const left = chip.skipped && chip.skipped.length ? ' ' + tpl('search_chip_not_searched', { words: list(chip.skipped, 'conjunction') }) : '';
+    return list(chip.words, 'disjunction') + left;
+  }
+  const lang = chip.kind === 'lang';
+  const name = lang ? _langDisplayName(chip.value) : _searchSourceTitle(chip.value, pool);
+  if (chip.negate) return tpl('search_chip_without', { word: w(name) });
+  // On its own a language is a label, so it starts with a capital ("Français").
+  return w(lang ? name.charAt(0).toLocaleUpperCase(_currentLang) + name.slice(1) : name);
+}
+
+const _CHIP_X_SVG = '<svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+
+function _searchChipHtml(chip, pool, removable) {
+  const label = '<span class="search-chip-label">' + _searchChipLabel(chip, pool, true) + '</span>';
+  if (!removable) return '<span class="search-chip search-chip-static">' + label + '</span>';
+  const remove = t('remove') + ': ' + _searchChipLabel(chip, pool, false);
+  return '<span class="search-chip">' + label +
+    '<button type="button" class="search-chip-x" data-q="' + escAttr(chip.query) + '" onclick="_searchAgain(this.dataset.q)" aria-label="' +
+    escAttr(remove) + '" title="' + escAttr(remove) + '">' + _CHIP_X_SVG + '</button></span>';
+}
+
+// The chips for a query, or nothing when it has no operators. `pool` is what
+// an in: is looked up in: the installed sources, or the catalog. `unsearched`:
+// the OR alternatives the library search left out (its answer's unsearched).
+function searchChipsHtml(query, pool, unsearched) {
+  const chips = searchQueryChips(query);
+  const left = new Set(unsearched || []);
+  chips.forEach(c => { if (c.kind === 'or') c.skipped = c.words.filter((x, k) => left.has(c.terms[k])); });
+  return chips.length ? '<div class="search-chips">' + chips.map(c => _searchChipHtml(c, pool, true)).join('') + '</div>' : '';
+}
+
+// A chip's ×, or an example from the "?": search for this instead, where the
+// box is searching now (the catalog in Manage, the library everywhere else).
+function _searchAgain(query) {
+  q.value = query || '';
+  hideSuggest();
+  if (!query) { clearSearch(); return; }
+  if (mode === 'manage') browseCatalogFilter(query);
+  else doSearch(query);
+}
+
+// The "?" beside the box: examples written for each language, one operator
+// each, shown with the chip it makes. The library's are about articles, the
+// catalog's about finding ZIMs.
+const SEARCH_EXAMPLES = ['search_example_exact', 'search_example_without', 'search_example_or', 'search_example_lang', 'search_example_source'];
+const CATALOG_EXAMPLES = ['catalog_example_or', 'catalog_example_without', 'catalog_example_lang'];
+
+// Where the grammar applies: the library's own search and the catalog. Not
+// in an article, an app, a map, the Almanac or Create, which search their own way.
+function _searchHelpApplies() {
+  if (mode === 'manage') return manageTab === 'browse';
+  return !readerOpen && !_almanacOpen && !_createOpen;
+}
+function _searchTipsOpen() {
+  return suggestDropdown.style.display !== 'none' && !!suggestDropdown.querySelector('.search-tips');
+}
+function _syncSearchHelp() {
+  const on = _searchHelpApplies();
+  q.parentElement.classList.toggle('has-help', on);
+  if (!on && _searchTipsOpen()) hideSuggest();
+}
+
+function _searchHelpExpanded(on) {
+  const btn = document.getElementById('search-help');
+  if (btn) btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+}
+
+// An example as it is typed. In a Hebrew or Arabic example a Latin operator
+// ("-wikipedia", "lang:he") is set apart left to right, or its minus takes
+// the line's direction and goes to the other end ("wikipedia-"), which is not
+// what to type; the example's own words read in its direction, from its
+// first letter.
+const _RTL_LETTER = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
+const _firstLetterRtl = s => _RTL_LETTER.test((s.match(/\p{L}/u) || [''])[0]);
+function _searchExampleHtml(ex) {
+  const rtl = _firstLetterRtl(ex);
+  let out = '', at = 0;
+  if (rtl) for (const tok of _searchTokens(ex)) {
+    const s = ex.slice(tok[3], tok[4]);
+    out += esc(ex.slice(at, tok[3])) + (_firstLetterRtl(s) ? esc(s) : '<bdi dir="ltr">' + esc(s) + '</bdi>');
+    at = tok[4];
+  }
+  return '<bdi class="search-example-q" dir="' + (rtl ? 'rtl' : 'ltr') + '">' + out + esc(ex.slice(at)) + '</bdi>';
+}
+
+function toggleSearchTips(e) {
+  if (_searchTipsOpen()) { hideSuggest(); return; }
+  // From the keyboard, into the box, where the arrows and Enter pick one; a
+  // tap leaves the box alone, so a phone's keyboard does not cover the list.
+  if (e && e.detail === 0) q.focus();
+  const catalog = mode === 'manage';
+  const pool = catalog ? _catalogCache : zimsCache;
+  const examples = (catalog ? CATALOG_EXAMPLES : SEARCH_EXAMPLES).map(k => t(k));
+  suggestItems = examples.map(ex => ({ _example: true, query: ex }));
+  suggestIndex = -1;
+  suggestDropdown.innerHTML = '<div class="search-tips">' +
+    '<div class="search-tips-head">' + tH('search_tips') + '</div>' +
+    examples.map((ex, i) =>
+      '<div class="suggest-item search-example" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
+        _searchExampleHtml(ex) +
+        searchQueryChips(ex).map(c => _searchChipHtml(c, pool, false)).join('') +
+      '</div>').join('') + '</div>';
+  suggestDropdown.style.display = 'block';
+  _searchHelpExpanded(true);
+}
+
 function browseCatalogFilter(query) {
   if (!query) { renderBrowseGallery(); return; }
   const results = document.getElementById('catalog-results');
@@ -8958,7 +9566,7 @@ function browseCatalogFilter(query) {
     results.innerHTML = _loadingHtml('loading_catalog');
   }
   loadFullCatalog().then(items => {
-    const lq = query.toLowerCase();
+    const parsed = parseSearchQuery(query);
     const knownKeys = new Set(BROWSE_CATEGORIES.map(c => c.key));
     // Filter within current category if drilled down, otherwise all
     let pool = items;
@@ -8969,11 +9577,7 @@ function browseCatalogFilter(query) {
         return cat === manageCategoryFilter;
       });
     }
-    const filtered = pool.filter(item => {
-      const title = (item.title || item.name || '').toLowerCase();
-      const summary = (item.summary || '').toLowerCase();
-      return title.includes(lq) || summary.includes(lq) || (item.name || '').toLowerCase().includes(lq);
-    });
+    const filtered = pool.filter(item => catalogItemMatches(parsed, item));
     const grouped = groupVariants(filtered);
     // Sort: actionable items first (not installed, not covered by an installed bundle),
     // then installed/covered items pushed to the back. Within each group, alphabetical.
@@ -8983,10 +9587,15 @@ function browseCatalogFilter(query) {
       if (aDemoted !== bDemoted) return aDemoted ? 1 : -1;
       return (a.title || a.name || '').localeCompare(b.title || b.name || '');
     });
+    // Back to the category it searched in, or to the catalog. The query is
+    // in the box; under the count, what its operators did.
+    const back = manageCategoryFilter
+      ? (_RTL_LANGS.has(_currentLang) ? tH('back') + ' \u2192' : '\u2190 ' + tH('back'))
+      : tH('back_to_catalog');
     let h = '<div class="browse-drilldown-header">' +
-      '<button class="browse-back" onclick="' + (manageCategoryFilter ? "drillCategory('" + escAttr(manageCategoryFilter) + "')" : 'renderBrowseGallery()') + '">\u2190 Back</button>' +
-      '<span class="browse-drilldown-count">' + t('n_results', {n: filtered.length}) + ' \u2014 \u201C' + esc(query) + '\u201D</span>' +
-    '</div>';
+      '<button class="browse-back" onclick="' + (manageCategoryFilter ? "drillCategory('" + escAttr(manageCategoryFilter) + "')" : 'renderBrowseGallery()') + '">' + back + '</button>' +
+      '<span class="browse-drilldown-count">' + tPluralH('wiki_results', filtered.length) + '</span>' +
+    '</div>' + searchChipsHtml(query, items);
     if (grouped.length) {
       h += _renderCatalogGrid(grouped);
     } else {
@@ -9260,8 +9869,10 @@ function renderCatalogItem(group) {
     selectHtml +
     '<div class="ci-icon">' + iconHtml + '</div>' +
     '<div class="ci-info">' +
-      '<div class="ci-title">' + esc(item.title || item.name) + _catLangTag(item.language, item.name) + '</div>' +
-      (item.summary ? '<div class="ci-summary">' + esc(item.summary) + '</div>' : '') +
+      '<div class="ci-title">' + esc(_catalogText(item.title) || item.name) + _catLangTag(item.language, item.name) + '</div>' +
+      // In its own direction: a French summary under a Hebrew interface was
+      // cut at its start ("…ne sélection") rather than its end.
+      (item.summary ? '<div class="ci-summary" dir="auto">' + esc(_catalogText(item.summary)) + '</div>' : '') +
       '<div class="ci-meta">' + metaTags.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; ') + '</div>' +
       (hierarchyHtml ? '<div class="ci-hier">' + hierarchyHtml + '</div>' : '') +
     '</div>' +
@@ -9389,20 +10000,20 @@ function switchManageTab(tab) {
   q.value = '';
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   if (tab === 'installed') {
-    q.placeholder = t('filter_installed');
+    _fitSearchPlaceholder(t('filter_installed'));
     renderInstalled();
   } else if (tab === 'downloads') {
-    q.placeholder = t('search_placeholder');
+    _fitSearchPlaceholder(t('search_placeholder'));
     refreshDownloads();
   } else if (tab === 'collections') {
-    q.placeholder = t('search_placeholder');
+    _fitSearchPlaceholder(t('search_placeholder'));
     renderCollectionsTab();
   } else if (tab === 'history') {
-    q.placeholder = t('search_placeholder');
+    _fitSearchPlaceholder(t('search_placeholder'));
     _act.showAll = false;   // re-entering the tab defaults back to the capped view
     renderActivityLog();
   } else if (tab === 'activity') {
-    q.placeholder = t('search_placeholder');
+    _fitSearchPlaceholder(t('search_placeholder'));
     renderActivityTab();
   } else {
     // Default catalog language pill to the UI language UNLESS the user has
@@ -9411,6 +10022,7 @@ function switchManageTab(tab) {
     if (!_getPrefLanguages().length && _currentLang) manageLangFilter = _currentLang;
     renderBrowseGallery();
   }
+  _syncSearchHelp();
   _renderSelectionBar();
 }
 
@@ -10154,8 +10766,13 @@ async function renderManage() {
   } else if (manageTab === 'activity') {
     renderActivityTab();
   } else {
+    // A repaint (a language arriving late, a refresh) keeps the catalog
+    // search that is on screen rather than dropping back to the gallery.
+    var _catalogQuery = _browseView === 'search' ? q.value.trim() : '';
     if (manageCategoryFilter) {
       drillCategory(manageCategoryFilter);
+    } else if (_catalogQuery) {
+      browseCatalogFilter(_catalogQuery);
     } else {
       renderBrowseGallery();
     }
@@ -10407,8 +11024,7 @@ function _msUsersHtml() {
       // a creation control there is noise (Eric: "Admin means all we get it").
       '<div id="new-user-creation">' +
         '<div class="ms-form-label">' + tH('users_creation_label') + '</div>' +
-        '<label class="ms-check-row"><input type="checkbox" id="new-user-can-create"> ' +
-          tH('users_can_create') + '</label>' +
+        _switchRowsHtml([{ id: 'new-user-can-create', title: tH('users_can_create'), onchange: '' }]) +
       '</div>' +
       '<div id="new-user-error" class="pw-error" style="display:none"></div>' +
       '<div class="ms-actions">' +
@@ -10908,13 +11524,10 @@ function _creatorSidecarHtml(sidecar) {
     _creatorStateHtml(sidecar.installed);
 }
 
-// A capture-default switch — the app's own .switch control, wired to the
-// admin-only POST half of /manage/creator so the choice persists server-side.
-function _creatorDefaultSwitch(key, labelKey, on) {
-  return '<label class="switch"><input type="checkbox" role="switch" id="ms-cr-' + key + '"' +
-    (on ? ' checked' : '') +
-    ' aria-label="' + escAttr(t(labelKey)) + '"' +
-    ' onchange="_setCreatorDefault(\'' + key + '\', this)"><span class="switch-slider"></span></label>';
+// A capture-default switch row, wired to the admin-only POST half of
+// /manage/creator so the choice persists server-side.
+function _creatorDefaultRow(key, labelKey, on) {
+  return { id: 'ms-cr-' + key, title: tH(labelKey), on: on, onchange: '_setCreatorDefault(\'' + key + '\', this)' };
 }
 
 function _creatorQueueHtml(queue) {
@@ -10928,8 +11541,8 @@ function _creatorHtml(d) {
 
   // Defaults a new capture starts with — the control you actually touch.
   var h = '<div class="ms-section-label">' + tH('creator_defaults') + '</div>' +
-    _mcRow(tH('create_block_ads'), _creatorDefaultSwitch('block_ads', 'create_block_ads', d.block_ads_default)) +
-    _mcRow(tH('create_capture_variants'), _creatorDefaultSwitch('capture_variants', 'create_capture_variants', d.capture_variants_default)) +
+    _switchRowsHtml([_creatorDefaultRow('block_ads', 'create_block_ads', d.block_ads_default),
+      _creatorDefaultRow('capture_variants', 'create_capture_variants', d.capture_variants_default)]) +
     '<div class="ms-hint">' + tH('creator_defaults_hint') + '</div>';
 
   // The queue, when it matters.
@@ -10947,7 +11560,7 @@ function _creatorHtml(d) {
     _mcRow(tH('creator_reddit'), '<span id="ms-cr-reddit">' + _creatorStateHtml(d.reddit_ready) + '</span>') +
     '<div id="ms-cr-reddit-cmd">' + _creatorInstallHtml(d.reddit_ready, _creatorSetupCmd('zimi create --setup-reddit', d)) + '</div>';
 
-  // Made here LAST — an unbounded, growing list, and the slow half to gather
+  // Created LAST: an unbounded, growing list, and the slow half to gather
   // (a provenance walk of the library), so it never blocks the pane. It fills
   // in from its own request; until then a spinner sits in its slot.
   h += sep + '<div class="ms-section-label">' + tH('creator_made') + '</div>' +
@@ -10990,14 +11603,20 @@ function _creatorLoadInventory() {
   });
 }
 
-// The provenance types, in the order the breakdown reads them, paired with the
-// i18n key for each label. A type with a zero count is left out of the chip
-// row entirely — a wall of "0 · 0 · 0" is noise, not information.
+// The provenance types, in the order the breakdown reads them. Each chip is
+// its count in words, pluralized (creator_made_<type>_<plural category>: "5
+// pages", not "5 page"), the number in bold. A type with a zero count is left
+// out of the chip row entirely: a wall of "0 · 0 · 0" is noise, not information.
+// The table's Type column names each with the label key paired here.
 var _CREATOR_TYPE_KEYS = {
   page: 'zi_kind_page', site: 'zi_kind_site', video: 'zi_kind_video',
   import: 'zi_kind_import', folder: 'zi_kind_folder',
-  export: 'zi_kind_export', edit: 'zi_kind_edit'
+  export: 'zi_kind_export', edit: 'zi_kind_edit', reddit: 'create_mode_reddit'
 };
+function _creatorMadeChip(type, n) {
+  return '<span class="cr-made-chip">' +
+    tPluralH('creator_made_' + type, n).replace(String(n), '<b>' + n + '</b>') + '</span>';
+}
 var _creatorSort = { key: 'created_ts', dir: -1 };  // newest first by default
 
 // The by-type counts as amber chips, then a sortable table of everything Zimi
@@ -11010,10 +11629,8 @@ function _creatorMadeHtml(d) {
     return '<div class="ms-hint">' + tH('creator_made_empty') + '</div>';
   }
   var chips = '';
-  Object.keys(_CREATOR_TYPE_KEYS).forEach(function(t) {
-    var n = counts[t] || 0;
-    if (!n) return;
-    chips += '<span class="cr-made-chip"><b>' + n + '</b> ' + tH(_CREATOR_TYPE_KEYS[t]) + '</span>';
+  Object.keys(_CREATOR_TYPE_KEYS).forEach(function(type) {
+    if (counts[type]) chips += _creatorMadeChip(type, counts[type]);
   });
   var s = _creatorSort;
   list.sort(function(a, b) {
@@ -11204,49 +11821,47 @@ function _autoUpdateNextHtml(au) {
   return esc(_relTime(au.next_check));
 }
 
-// How the library splits for the updater: catalog ZIMs it can check against a
-// newer edition, versus local or custom ones (created here, or with no dated
-// edition to match) that there is simply nothing to check. Two plain counts,
-// no wall of filenames — those names read as debug output, not information.
-function _autoUpdateCoverageHtml(coverage) {
+// What the ZIM count is made of, under it and quieter: the ones from the
+// catalog (the updater can check them for a newer edition) and the local ones
+// (made here, or brought in with no catalog edition to match). Only when
+// there are local ones: an all-catalog library needs no breakdown.
+function _libSplitHtml(coverage) {
   if (!coverage) return '';
   var tracked = (coverage.tracked || []).length;
-  var custom = (coverage.skipped || []).length;
-  // Nothing local or custom → nothing worth explaining: every source is a
-  // catalog ZIM the updater checks, which is the quiet, expected state.
-  if (!custom) return '';
-  return _mcRow(tH('au_from_catalog'),
-      esc(t('au_from_catalog_n', { n: tracked, total: tracked + custom }))) +
-    _mcRow(tH('au_local_custom'), esc(String(custom)));
+  var local = (coverage.skipped || []).length;
+  if (!local) return '';
+  return '<div class="mc-row mc-sub"><span class="mc-label">' + tH('au_from_catalog') + '</span><span class="mc-value">' + esc(String(tracked)) + '</span></div>' +
+    '<div class="mc-row mc-sub"><span class="mc-label">' + tH('au_local') + '</span><span class="mc-value">' + esc(String(local)) + '</span></div>';
 }
 
-function _autoUpdateHtml(au, coverage) {
-  // Frequency + what the library splits into for the updater. The last-run /
-  // next-run clock rows are gone — operational noise the operator did not ask
-  // for; what they want to know is how much of the library is even checkable
-  // (Eric: "why not say how many are local/custom instead").
+function _autoUpdateHtml(au) {
+  // Frequency alone. The last-run / next-run clock rows are gone: operational
+  // noise the operator did not ask for. How much of the library the updater
+  // can check reads under the ZIM count (_libSplitHtml).
   return '<div class="ms-section-label">' + tH('auto_update') + '</div>' +
-    _mcRow(tH('au_frequency'), _autoUpdateSelectHtml(au)) +
-    _autoUpdateCoverageHtml(coverage);
+    _mcRow(tH('au_frequency'), _autoUpdateSelectHtml(au));
 }
 
 // Repaint the section from server truth. The library pane draws it once from
 // the status payload it already has (so the select is never missing while a
-// second request is in flight), then this fills in last/next/coverage.
+// second request is in flight), then this fills in the select and the split.
 function _renderAutoUpdateSection() {
   var el = document.getElementById('ms-auto-update');
   if (!el) return;
   manageFetch('/manage/auto-update').then(function(r) { return r.json(); }).then(function(d) {
     var slot = document.getElementById('ms-auto-update');
-    if (slot) slot.innerHTML = _autoUpdateHtml(d, d.coverage);
+    if (slot) slot.innerHTML = _autoUpdateHtml(d);
+    var split = document.getElementById('ms-lib-split');
+    if (split) split.innerHTML = _libSplitHtml(d.coverage);
   }).catch(function() {});
 }
 
 function _msLibraryHtml() {
   var d = _manageStatusData;
   if (!d) return '<div class="loading"><span class="spinner-inline"></span>Loading\u2026</div>';
-  var h = '<div class="mc-row"><span class="mc-label">' + tH('zim_files') + '</span><span class="mc-value">' + esc(String(d.zim_count)) + '</span></div>' +
-    '<div class="mc-row"><span class="mc-label">' + tH('total_size') + '</span><span class="mc-value">' + fmtSize(d.total_size_gb) + '</span></div>' +
+  var h = '<div class="mc-row"><span class="mc-label">' + tH('zim_files') + '</span><span class="mc-value" id="ms-zim-count">' + esc(String(d.zim_count)) + '</span></div>' +
+    '<div id="ms-lib-split"></div>' +
+    '<div class="mc-row"><span class="mc-label">' + tH('total_size') + '</span><span class="mc-value" id="ms-total-size">' + fmtSize(d.total_size_gb) + '</span></div>' +
     // Summary line + (only when updates exist) an expandable detail panel. The
     // row's state, clickability and detail are all driven by _renderUpdatesSummary
     // — the single writer — so the top-level label never strands on "Checking…".
@@ -11256,7 +11871,7 @@ function _msLibraryHtml() {
     '<div id="updates-detail" class="updates-detail" style="display:none"></div>' +
     // Space before the ZIM auto-update block so its header doesn't crowd the
     // app-update line above it (Eric: "no spacing after Updates line").
-    '<div id="ms-auto-update" style="margin-top:16px">' + _autoUpdateHtml(d.auto_update || {}, null) + '</div>' +
+    '<div id="ms-auto-update" style="margin-top:16px">' + _autoUpdateHtml(d.auto_update || {}) + '</div>' +
     '<div class="ms-actions">' +
       '<button class="manage-btn-action" onclick="manageImportZim()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('import_zim') + '</button>' +
       '<button id="refresh-cache-btn" class="manage-btn-action" onclick="settingsRefreshCache()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">' + tH('refresh_cache') + '</button>' +
@@ -11536,71 +12151,89 @@ function _msReorderHtml() {
       ' ondragend="_reorderDragEnd(event)">' + _reorderSectionsHtml() + '</div>';
 }
 
+// A local flag that is either set ('1') or absent.
+function _setStorageFlag(key, on) {
+  try { if (on) localStorage.setItem(key, '1'); else localStorage.removeItem(key); } catch (e) {}
+}
+
+// Every on/off in Settings is this one row: what it is, a line on what it
+// does, and the switch at the far end. The whole row is the label, so a tap
+// anywhere on it flips the switch. o: {title, desc, on, onchange (JS run
+// with `this` the checkbox), id, icon, cls, disabled}.
+function _switchRowHtml(o) {
+  return '<label class="share-row set-row' + (o.cls ? ' ' + o.cls : '') + (o.disabled ? ' share-locked' : '') + '">' +
+    (o.icon || '') +
+    '<span class="share-row-text"><span class="share-row-title">' + o.title + '</span>' +
+      (o.desc ? '<span class="share-row-desc">' + o.desc + '</span>' : '') + '</span>' +
+    '<span class="switch"><input type="checkbox" role="switch"' + (o.id ? ' id="' + o.id + '"' : '') +
+      (o.on ? ' checked' : '') + (o.disabled ? ' disabled' : '') +
+      ' onchange="' + o.onchange + '"><span class="switch-slider"></span></span></label>';
+}
+// A card of switch rows.
+function _switchRowsHtml(rows) {
+  return '<div class="share-rows set-rows">' + rows.map(_switchRowHtml).join('') + '</div>';
+}
+
 function _msPreferencesHtml() {
-  var showXzim = !_getStorageFlag(SK.HIDE_XZIM_LINKS);
-  var showDiscover = !_getStorageFlag(SK.HIDE_DISCOVER);
-  var showLangChooser = !_getStorageFlag(SK.HIDE_LANG_CHOOSER);
-  var darkenOn = _darkenArticlesOn();
-  // Apps first, a section of its own: the tiles offered to everyone (the
-  // server's choice; painted from its answer, and an account that may not
-  // set it sees nothing), then a signed-in account's own. Eric: "its own
-  // proper lil section with header just APPS and no subtext".
-  var h = '<div id="ms-apps-wrap" hidden><div class="ms-section-label">' + tH('apps_section') + '</div><div id="ms-apps"></div></div>' +
+  // Apps: every app a row of the same shape, and whether results open in
+  // them right under it. The rows offered to everyone (the server's choice)
+  // paint from its answer into #ms-apps; an account that may not set them
+  // sees none. A signed-in account's own choice follows, titled so the two
+  // cards are not mistaken for one.
+  var h = '<div class="ms-section-label ms-section-head">' + tH('apps_section') + '<span id="ms-apps-all">' + _serverAppsAllHtml() + '</span></div>' +
+    '<div id="ms-apps-wrap"><div id="ms-apps">' + _serverAppsHtml() + '</div></div>' +
     (_appsAllowedByServer() && _userSession
       ? '<div class="ms-theme-label" style="margin-top:12px">' + tH('show_apps') + '</div>' +
         _appPicksHtml(APP_NAMES.filter(_appsAllowedByServer), _appShown, '_setUserApp')
       : '') +
-    '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_display_section') + '</div>' +
-    // App theme: Auto / Dark / Light segmented control.
+    _switchRowsHtml([{ id: 'ms-open-in-apps', title: tH('open_in_apps'), desc: tH('open_in_apps_hint'),
+      on: _openInApps(), onchange: '_setOpenInApps(this.checked)' },
+      { id: 'ms-show-discover', title: tH('show_discover'), on: !_getStorageFlag(SK.HIDE_DISCOVER),
+        onchange: '_setStorageFlag(SK.HIDE_DISCOVER, !this.checked);renderHome()' }]) +
+
+    '<div class="ms-section-label" style="margin-top:24px">' + tH('ms_display_section') + '</div>' +
     '<div class="ms-theme-label">' + tH('app_theme') + '</div>' +
     _appThemeSegHtml() +
     '<div class="ms-hint">' + tH('app_theme_hint') + '</div>' +
-    // Reading: article appearance, grouped apart from the app chrome. WHEN
-    // articles are dark, then what to do about the ones that cannot be.
-    '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_reader_section') + '</div>' +
+
+    // Reading: everything about how an article reads, in one place. The two
+    // choices first, then the switches.
+    '<div class="ms-section-label" style="margin-top:24px">' + tH('ms_reader_section') + '</div>' +
     '<div class="ms-theme-label">' + tH('article_theme') + '</div>' +
     _articleThemeSegHtml() +
     '<div class="ms-hint">' + tH('article_theme_hint') + '</div>' +
-    '<label class="ms-check" style="margin-top:12px"><input type="checkbox" id="ms-darken-articles"' + (darkenOn ? ' checked' : '') +
-      ' onchange="_setDarkenArticles(this.checked)"> ' + tH('darken_articles') + '</label>' +
-    '<div class="ms-hint" id="ms-darken-hint">' + tH('darken_articles_hint') + '</div>' +
-    '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>' +
-    '<label class="ms-check"><input type="checkbox"' + (showDiscover ? ' checked' : '') +
-      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_discover\',\'1\');else localStorage.removeItem(\'zimi_hide_discover\');renderHome()"> ' + tH('show_discover') + '</label>' +
-    '<label class="ms-check"><input type="checkbox"' + (showXzim ? ' checked' : '') +
-      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_cross_zim_links\',\'1\');else localStorage.removeItem(\'zimi_hide_cross_zim_links\')"> ' + tH('show_cross_links') + '</label>' +
+    // Links that leave the library for the web (#99): marked, or plain text.
+    '<div class="ms-theme-label" style="margin-top:16px">' + tH('ext_links') + '</div>' +
+    _segHtml('ext-links-seg', 'ext_links', _extLinksSegInner()) +
+    '<div class="ms-hint">' + tH('ext_links_hint') + '</div>' +
+    _switchRowsHtml([
+      // The mirror of the in-article palette's AUTO switch, same key.
+      { id: 'ms-reader-auto', title: tH('reader_auto'), desc: tH('reader_auto_hint'),
+        on: _readerAuto(), onchange: '_setReaderAuto(this.checked)' },
+      { id: 'ms-darken-articles', title: tH('darken_articles'), desc: tH('darken_articles_hint'),
+        on: _darkenArticlesOn(), onchange: '_setDarkenArticles(this.checked)' },
+      { title: tH('show_cross_links'), on: !_getStorageFlag(SK.HIDE_XZIM_LINKS),
+        onchange: '_setStorageFlag(SK.HIDE_XZIM_LINKS, !this.checked)' },
+      { title: tH('a11y_rewrite_label'), desc: tH('a11y_rewrite_hint'), on: _getStorageFlag(SK.A11Y_REWRITE),
+        onchange: '_setStorageFlag(SK.A11Y_REWRITE, this.checked)' },
+    ]) +
 
-    // Default download flavor (above languages — reached more often)
-    '<div class="ms-section-label" style="margin-top:20px">' + tH('default_flavor') + '</div>' +
+    // Default download flavor (above languages: reached more often)
+    '<div class="ms-section-label" style="margin-top:24px">' + tH('default_flavor') + '</div>' +
     '<div class="ms-hint">' + tH('default_flavor_hint') + '</div>' +
     '<div class="ms-flavor-row">' +
       _flavorRadio('full', tH('flavor_full')) +
       _flavorRadio('nopic', tH('flavor_nopic')) +
       _flavorRadio('mini', tH('flavor_mini')) +
     '</div>' +
-    // Languages section combines display toggle + multi-select pref.
-    // The pill list is long — collapsed behind a toggle by default.
-    '<div class="ms-section-label" style="margin-top:20px">' + tH('languages_section') + '</div>' +
-    '<label class="ms-check"><input type="checkbox"' + (showLangChooser ? ' checked' : '') +
-      ' onchange="if(!this.checked)localStorage.setItem(\'zimi_hide_lang_chooser\',\'1\');else localStorage.removeItem(\'zimi_hide_lang_chooser\');if(window.updateTopbar)updateTopbar()"> ' + tH('show_lang_chooser') + '</label>' +
-    '<div class="ms-hint" style="margin-top:8px">' + tH('catalog_languages_hint_short') + '</div>' +
+    // The pill list is long: collapsed behind a toggle by default.
+    '<div class="ms-section-label" style="margin-top:24px">' + tH('languages_section') + '</div>' +
+    _switchRowsHtml([{ title: tH('show_lang_chooser'), on: !_getStorageFlag(SK.HIDE_LANG_CHOOSER),
+      onchange: '_setStorageFlag(SK.HIDE_LANG_CHOOSER, !this.checked);if(window.updateTopbar)updateTopbar()' }]) +
+    '<div class="ms-hint" style="margin-top:12px">' + tH('catalog_languages_hint_short') + '</div>' +
     '<button class="pill" onclick="_msToggleCollapse(\'ms-lang-pills\', this)">' + tH('show_list') + '</button>' +
     '<div class="ms-lang-pills ms-collapsed-list" id="ms-lang-pills">' + _renderLangPrefPills() + '</div>';
-  // Reader section — mirror of the in-article palette's AUTO switch, so the
-  // setting is discoverable without first opening an article. Same wording,
-  // same localStorage key (via _setReaderAuto).
-  var readerAutoOn = _readerAuto();
-  h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_reader') + '</div>' +
-    '<label class="ms-check"><input type="checkbox" id="ms-reader-auto"' + (readerAutoOn ? ' checked' : '') +
-      ' onchange="_setReaderAuto(this.checked)"> ' + tH('reader_auto') + '</label>' +
-    '<div class="ms-hint">' + tH('reader_auto_hint') + '</div>';
-  // Accessibility section
-  var a11yOn = _getStorageFlag(SK.A11Y_REWRITE);
-  h += '<div class="ms-section-label" style="margin-top:20px">' + tH('ms_accessibility') + '</div>' +
-    '<label class="ms-check"><input type="checkbox"' + (a11yOn ? ' checked' : '') +
-      ' onchange="if(this.checked)localStorage.setItem(\'zimi_a11y_rewrite\',\'1\');else localStorage.removeItem(\'zimi_a11y_rewrite\')"> ' + tH('a11y_rewrite_label') + '</label>' +
-    '<div class="ms-hint">' + tH('a11y_rewrite_hint') + '</div>';
-  // Security (password + logout) now lives in the Users pane ("Your account").
+  // Security (password + logout) lives in the Users pane ("Your account").
   return h;
 }
 
@@ -11631,9 +12264,9 @@ function _appUpdateHowHtml(d) {
   }
   if (type === 'snap') return '<div class="ms-hint">' + tH('app_update_how_snap') + '</div>';
   if (type === 'desktop-mac' || type === 'desktop-windows') {
-    // Sparkle/WinSparkle self-updates — unless offline mode disabled the
-    // appcast, in which case the releases page is the only path.
-    return d.offline
+    // Sparkle/WinSparkle self-updates only under Automatically: offline, Ask
+    // first and Never never start it, so the releases page is the path.
+    return (d.offline || (d.check_mode && d.check_mode !== 'auto'))
       ? '<div class="ms-hint">' + tH('app_update_how_releases') + ' ' + _appUpdateReleasesLink(d) + '</div>'
       : '<div class="ms-hint">' + tH('app_update_how_desktop') + '</div>';
   }
@@ -11653,10 +12286,11 @@ var _APP_UPDATE_CHANNEL_LABELS = {
 var _APP_UPDATE_SELECT_CSS = 'font-size:12px;padding:3px 8px;border-radius:4px;' +
   'border:1px solid var(--border);background:var(--surface2);color:var(--text)';
 
-// One row shape for both update selects: label, <select>, and either the
-// setting's hint or the env-controlled note when the env var owns it.
+// One row shape for the update selects: label, <select>, and either the
+// setting's hint or, locked, why (the env-controlled note unless the caller
+// names another reason in o.lockNote).
 function _appUpdateSelectRow(o) {
-  var lockNote = t('env_controlled', { v: o.envVar });
+  var lockNote = o.lockNote || t('env_controlled', { v: o.envVar });
   return '<div class="mc-row" style="align-items:center">' +
       '<span class="mc-label">' + esc(t(o.labelKey)) + '</span>' +
       '<span class="mc-value"><select id="' + escAttr(o.id) + '" style="' + _APP_UPDATE_SELECT_CSS +
@@ -11756,7 +12390,7 @@ function _appUpdateStatusHtml(d, checking) {
     : _appUpdateVerdictHtml(d);
   var action = checking
     ? '<span class="spinner-inline" aria-hidden="true"></span>'
-    : (d.offline ? '' : '<button class="pill" onclick="_appUpdateCheckNow()">' +
+    : (d.offline || d.check_mode === 'never' ? '' : '<button class="pill" onclick="_appUpdateCheckNow()">' +
         tH('app_update_check_now') + '</button>');
   return '<div class="mc-row"><span class="mc-label">' + tH('app_update_version') + '</span>' +
     '<span class="mc-value">' + esc(d.current || '?') + '</span></div>' +
@@ -11771,8 +12405,26 @@ function _appUpdateHowSlot(d) {
 // Offline mode does no checking at all, so these would be controls with
 // nothing behind them.
 function _appUpdateSettingsSlot(d) {
-  return d.offline ? '' : _appUpdateChannelHtml(d) + _appUpdateDelayHtml(d);
+  return d.offline ? '' : _appUpdateCheckHtml(d) + _appUpdateChannelHtml(d) + _appUpdateDelayHtml(d);
 }
+
+// "Check for updates": Ask first / Automatically / Never, the choice the
+// satellite data offers too, with the same labels (alm_earth_sat_<mode>).
+function _appUpdateCheckHtml(d) {
+  var opts = (d.check_modes || ['ask', 'auto', 'never']).map(function(m) {
+    return _appUpdateOption(m, t('alm_earth_sat_' + m), m === d.check_mode);
+  }).join('');
+  return _appUpdateSelectRow({
+    id: _APP_UPDATE_CHECK_ID,
+    labelKey: 'app_update_check',
+    hintKey: 'app_update_check_hint',
+    envVar: d.check_env || 'ZIMI_UPDATE_CHECK',
+    locked: !!d.check_locked,
+    onchange: '_appUpdateSetCheck(this.value)',
+    options: opts
+  });
+}
+var _APP_UPDATE_CHECK_ID = 'app-update-check';
 
 function _appUpdateHtml(d) {
   return '<div id="' + _APP_UPDATE_STATUS_ID + '">' + _appUpdateStatusHtml(d, false) + '</div>' +
@@ -11809,6 +12461,9 @@ function _appUpdateVerdictHtml(d) {
       tH('app_update_held', { v: d.latest, d: tPlural('app_update_delay_days', _appUpdateHeldDays(d)) }) + '</span>';
   } else if (d.offline) {
     status = '<span class="app-update-quiet">' + tH('app_update_offline') + '</span>';
+  } else if (d.check_mode === 'never') {
+    // A months-old "Up to date" would be a claim nobody is checking.
+    status = '<span class="app-update-quiet">' + tH('app_update_checks_off') + '</span>';
   } else if (d.latest && !d.error) {
     // Up to date: one quiet line, no celebration.
     status = '<span class="app-update-quiet">' + tH('app_update_up_to_date') + '</span>';
@@ -11862,7 +12517,7 @@ function _appUpdateCheckNow() { _renderAppUpdate(true); }
 function _appUpdateSaveSetting(path, body, envVar) {
   if (!document.getElementById(_APP_UPDATE_ID)) return;
   _appUpdateShowChecking();
-  manageFetch(path, {
+  return manageFetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -11879,8 +12534,83 @@ function _appUpdateSetChannel(channel) {
   _appUpdateSaveSetting('/manage/app-update-channel', { channel: channel }, 'ZIMI_UPDATE_CHANNEL');
 }
 
+function _appUpdateSetCheck(mode) {
+  var saved = _appUpdateSaveSetting('/manage/app-update-mode', { mode: mode }, 'ZIMI_UPDATE_CHECK');
+  if (saved) saved.then(_renderNetSection);
+}
+
 function _appUpdateSetDelay(days) {
   _appUpdateSaveSetting('/manage/app-update-delay', { delay_days: parseInt(days, 10) }, 'ZIMI_UPDATE_DELAY_DAYS');
+}
+
+// "What Zimi fetches from the internet" (outbound.py): every destination, one
+// row each, what sets it off and whether it happens on its own. Folded to one
+// line, the count of each, so a phone reads the answer without scrolling past
+// ten rows; open, each row says where it goes and links to its switch.
+var _NET_ID = 'ms-net';
+// A row's switch, as the element this pane draws it in (scrolled to), or the
+// settings section that has it. Rows without one change only by the person's
+// own action (a download, a capture) or by ZIMI_OFFLINE.
+var _NET_CONTROLS = {
+  update_check: _APP_UPDATE_CHECK_ID,
+  sharing: 'ms-mirror-status',
+  auto_update: 'library'
+};
+
+function _netGo(control) {
+  var target = _NET_CONTROLS[control];
+  if (_MS_SECTIONS.indexOf(target) >= 0) { switchMs(target); return false; }
+  var el = document.getElementById(target);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (el.focus) el.focus({ preventScroll: true });
+  }
+  return false;
+}
+
+// Offline, no row has a switch to go to: ZIMI_OFFLINE has taken them all.
+function _netRowHtml(r, offline) {
+  var hosts = (r.hosts || []).map(function(h) { return '<code dir="ltr">' + esc(h) + '</code>'; }).join(' ');
+  var go = !offline && _NET_CONTROLS[r.control]
+    ? '<a href="#" class="net-go" onclick="return _netGo(\'' + escAttr(r.control) + '\')">' + tH('net_change') + '</a>'
+    : '';
+  return '<li class="net-row">' +
+    '<span class="net-name">' + tH('net_' + r.id) + '</span>' +
+    '<span class="net-state net-state-' + escAttr(r.state) + '">' + tH('net_state_' + r.state) + '</span>' +
+    // The link sits at the end of the hosts' line, or of the text when a
+    // row has no host of its own, so it never takes a line to itself.
+    '<span class="net-what">' + tH('net_' + r.id + '_when') + (hosts ? '' : (go ? ' ' + go : '')) + '</span>' +
+    (hosts ? '<span class="net-where">' + hosts + go + '</span>' : '') +
+    '</li>';
+}
+
+function _netSummaryHtml(d) {
+  if (d.offline) return tH('net_offline');
+  var n = { auto: 0, ask: 0, off: 0 };
+  (d.rows || []).forEach(function(r) {
+    if (r.state === 'auto' || r.state === 'ask') n[r.state]++;
+    else if (r.state !== 'lan') n.off++;
+  });
+  return tH('net_summary', { a: n.auto, b: n.ask, c: n.off });
+}
+
+function _netHtml(d) {
+  return '<details class="net-details"><summary>' + _netSummaryHtml(d) + '</summary>' +
+    '<ul class="net-rows">' + (d.rows || []).map(function(r) { return _netRowHtml(r, d.offline); }).join('') + '</ul>' +
+    '<div class="ms-hint">' + tH('net_hint') + '</div></details>';
+}
+
+// The element is looked up after the fetch (see _renderEnvSection for why).
+// The <details> keeps whether it is open across a repaint after a change.
+async function _renderNetSection() {
+  var d = null;
+  try { d = await _msFetch('/manage/outbound'); } catch (e) {}
+  var el = document.getElementById(_NET_ID);
+  if (!el) return;
+  if (!d) { el.innerHTML = '<div class="ms-hint">' + tH('net_unavailable') + '</div>'; return; }
+  var open = !!el.querySelector('details[open]');
+  el.innerHTML = _netHtml(d);
+  if (open) el.querySelector('details').open = true;
 }
 
 // The server-wide apps switch. The element is looked up after the fetch
@@ -11888,27 +12618,40 @@ function _appUpdateSetDelay(days) {
 async function _renderAppsSection() {
   var d = null;
   try { d = await _msFetch('/manage/apps'); } catch (e) {}
-  var el = document.getElementById('ms-apps');
   var wrap = document.getElementById('ms-apps-wrap');
-  if (!el) return;
-  if (!d) { if (wrap) wrap.hidden = true; return; }
+  if (!document.getElementById('ms-apps')) return;
+  if (!d) { if (wrap) wrap.hidden = true; _setHtmlIfChanged('ms-apps-all', ''); return; }
   if (wrap) wrap.hidden = false;
-  var shown = Array.isArray(d.shown) ? d.shown : (d.enabled ? APPS_DEFAULT : []);
-  _serverApps = shown;
-  el.innerHTML = _appPicksHtml(_serverOfferable(shown), function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', d.env_locked) +
-    (d.env_locked ? '<div class="ms-hint">' + tH('env_controlled', { v: 'ZIMI_APPS' }) + '</div>'
-      : '<div class="app-picks-all"><button type="button" class="pill" onclick="_setAppsForServerAll(true)">' + tH('filter_all') + '</button>' +
-        '<button type="button" class="pill" onclick="_setAppsForServerAll(false)">' + tH('apps_none') + '</button></div>');
+  _serverApps = Array.isArray(d.shown) ? d.shown : (d.enabled ? APPS_DEFAULT : []);
+  _serverAppsLocked = !!d.env_locked;
+  _setHtmlIfChanged('ms-apps', _serverAppsHtml());
+  _setHtmlIfChanged('ms-apps-all', _serverAppsAllHtml());
 }
-var _serverApps = APPS_DEFAULT;
+// What the server offers, as far as the page knows: the stamp it booted with
+// (the default apps, none, or the names), until /manage/apps answers.
+var _serverApps = null;
+var _serverAppsLocked = false;
+function _serverAppsNow() { return _serverApps || APP_NAMES.filter(_appsAllowedByServer); }
+function _serverAppsHtml() {
+  var shown = _serverAppsNow();
+  return _appPicksHtml(_serverOfferable(shown), function(app) { return shown.indexOf(app) >= 0; }, '_setAppForServer', _serverAppsLocked) +
+    (_serverAppsLocked ? '<div class="ms-hint">' + tH('env_controlled', { v: 'ZIMI_APPS' }) + '</div>' : '');
+}
+// All and None sit on the section's header line, out of the rows' way.
+function _serverAppsAllHtml() {
+  return _serverAppsLocked ? ''
+    : '<button type="button" class="set-head-btn" onclick="_setAppsForServerAll(true)">' + tH('filter_all') + '</button>' +
+      '<button type="button" class="set-head-btn" onclick="_setAppsForServerAll(false)">' + tH('apps_none') + '</button>';
+}
 // The apps the server switch lists: the default ones, and an opt-in one only
 // while the server already offers it (named in ZIMI_APPS or a saved list).
 function _serverOfferable(shown) {
   return APP_NAMES.filter(function(a) { return !_appOptIn(a) || shown.indexOf(a) >= 0; });
 }
-function _setAppsForServerAll(on) { _postServerApps(on ? _serverOfferable(_serverApps) : []); }
+function _setAppsForServerAll(on) { _postServerApps(on ? _serverOfferable(_serverAppsNow()) : []); }
 function _setAppForServer(app, on) {
-  _postServerApps(APP_NAMES.filter(function(a) { return a === app ? on : _serverApps.indexOf(a) >= 0; }));
+  var shown = _serverAppsNow();
+  _postServerApps(APP_NAMES.filter(function(a) { return a === app ? on : shown.indexOf(a) >= 0; }));
 }
 function _postServerApps(shown) {
   manageFetch('/manage/apps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shown: shown }) })
@@ -11916,10 +12659,7 @@ function _postServerApps(shown) {
       if (d && d.error) { _showToast(t('env_controlled', { v: 'ZIMI_APPS' })); }
       // The shell's stamp is read at render; refresh it here so the home
       // page follows without a reload.
-      if (document.body && document.body.dataset && d && Array.isArray(d.shown)) {
-        if (d.shown.join(',') === APPS_DEFAULT.join(',')) delete document.body.dataset.zimiApps;
-        else document.body.dataset.zimiApps = d.shown.join(',') || '0';
-      }
+      if (d && Array.isArray(d.shown)) _setAppsStamp(d.shown.join(',') === APPS_DEFAULT.join(',') ? null : d.shown.join(',') || '0');
       _renderAppsSection();
       // And the home page behind, if that is what is showing: the Apps row
       // stayed until something else redrew it (#88).
@@ -11976,6 +12716,7 @@ function _msServerHtml() {
   // pops in); _renderMirrorSection repaints from server truth right after.
   var shareCached = '';
   try { shareCached = localStorage.getItem(SK.SHARE_ROWS) || ''; } catch (e) {}
+  _natCheckedThisOpening = false;
   var sep = '<div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>';
 
   // App updates FIRST — the thing an operator opens Server settings to check.
@@ -12034,11 +12775,17 @@ function _msServerHtml() {
   var envSec = '<div class="ms-section-label">' + tH('env_section') + '</div>' +
     '<div id="ms-env">' + tH('loading') + '</div>';
 
+  // Internet use, last on the tab: everything this server can fetch, and
+  // which of it happens without anyone asking.
+  var netSec = '<div class="ms-section-label">' + tH('net_section') + '</div>' +
+    '<div id="' + _NET_ID + '">' + tH('loading') + '</div>';
+
   // Sharing, Downloads, Storage, My Data / Server Backups, then App Updates
-  // just before the API Token, and Hot ZIMs + cache last (Eric moved Updates
-  // down from the top on the second pass).
-  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec, envSec].join(sep);
+  // just before the API Token, Hot ZIMs + cache, the environment, and
+  // Internet use last (Eric's final pass for 1.12).
+  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec, envSec, netSec].join(sep);
   _renderEnvSection();
+  _renderNetSection();
   // Async fill security
   Promise.all([
     fetch('/manage/has-password').then(function(r) { return r.json(); }).catch(function() { return {}; }),
@@ -12116,7 +12863,7 @@ function _msServerHtml() {
 // disk), refreshed while anything is building and only while this section is
 // open; when nothing is, it says so, which is the other half of the answer.
 const _BG_WORK_POLL_MS = 5000;
-const _BG_WORK_LABEL = { qids: 'qid_indexes', vocab: 'bg_vocab', tube: 'bg_tube', books: 'bg_books' };
+const _BG_WORK_LABEL = { qids: 'qid_indexes', vocab: 'bg_vocab', tube: 'bg_tube', books: 'bg_books', shelf: 'bg_shelf' };
 let _bgWorkTimer = null;
 
 function _bgWorkRow(label, value) {
@@ -12570,7 +13317,7 @@ function _portRowInner(bt, btOn) {
       '<span class="share-port-dot" id="share-port-dot" title="' + escAttr(dotTitle) + '" style="background:' + dotColor + '"></span>' +
       '<button class="share-port-retry"' + (btOn ? '' : ' disabled') + ' onclick="_natRecheck(this)" title="' + escAttr(t('bt_port_recheck_hint')) + '" aria-label="' + escAttr(t('retry')) + '">' + _SVG_REFRESH + '</button>' +
       '<label class="share-upnp"' + (upnpLock ? ' title="' + escAttr(t('env_controlled', {v: 'ZIMI_BT'})) + '"' : '') + '>' +
-        '<input type="checkbox"' + (bt.upnp_enabled ? ' checked' : '') + upnpDis + (upnpLock ? ' data-envlock="1"' : '') + ' onchange="_setUpnp(this)"> UPnP' +
+        'UPnP <span class="switch switch-sm"><input type="checkbox" role="switch"' + (bt.upnp_enabled ? ' checked' : '') + upnpDis + (upnpLock ? ' data-envlock="1"' : '') + ' onchange="_setUpnp(this)"><span class="switch-slider"></span></span>' +
       '</label>' +
     '</span>';
 }
@@ -12598,18 +13345,27 @@ function _natBadge(nat) {
     : '<span style="color:var(--error)">\u2717 ' + tH('bt_port_closed') + '</span>';
 }
 
-async function _natRecheck(btn) {
-  btn.disabled = true;
-  btn.classList.add('spinning');  // CSS spins the SVG; don't touch innerHTML
+// Whether peers can reach the port is asked of the port checker only when
+// someone looks: the Recheck button, or the sharing settings opening with
+// BitTorrent on (once per opening; nothing at startup or in the background).
+// The opening's own check fails quietly: the dot keeps saying "unknown".
+var _natCheckedThisOpening = false;
+function _natCheckOnOpen(btOn) {
+  if (!btOn || _natCheckedThisOpening) return;
+  _natCheckedThisOpening = true;
+  _natRecheck(document.querySelector('#share-port-row .share-port-retry'), true);
+}
+
+async function _natRecheck(btn, quiet) {
+  if (btn) { btn.disabled = true; btn.classList.add('spinning'); }  // CSS spins the SVG; don't touch innerHTML
   try {
     const r = await manageFetch('/manage/nat-recheck', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' });
     await r.json().catch(function() { return null; });
-    if (!r.ok) _showToast(t('error'));
+    if (!r.ok && !quiet) _showToast(t('error'));
   } catch (e) {
-    _showToast(t('error'));
+    if (!quiet) _showToast(t('error'));
   }
-  btn.disabled = false;
-  btn.classList.remove('spinning');
+  if (btn) { btn.disabled = false; btn.classList.remove('spinning'); }
   // Update only the port row — a full section re-render makes everything
   // blink for a one-line change.
   try {
@@ -12805,6 +13561,7 @@ async function _renderMirrorSection() {
   try { localStorage.setItem(SK.SHARE_ROWS, h); } catch (e) {}
   // Fill the status dot + port dot in place.
   _renderSeedingSection();
+  _natCheckOnOpen(btOn);
 }
 
 
@@ -12818,9 +13575,8 @@ async function _renderDownloadSchedule() {
   window._dlSchedule = s;
   var enabled = !!s.enabled, locked = !!s.locked, speedLocked = !!s.download_kb_locked;
 
-  var toggle = '<label class="ms-toggle-row"><input type="checkbox"' +
-    (enabled ? ' checked' : '') + (locked ? ' disabled' : '') +
-    ' onchange="_setDownloadScheduleEnabled(this.checked)"> ' + tH('dl_schedule_toggle') + '</label>';
+  var toggle = _switchRowsHtml([{ title: tH('dl_schedule_toggle'), on: enabled, disabled: locked,
+    onchange: '_setDownloadScheduleEnabled(this.checked)' }]);
   var lockNote = locked ? '<div class="ms-hint">' + tH('dl_window_env_locked') + '</div>' : '';
 
   // The window times drive BOTH download-queueing and the upload restrictor, so
@@ -12857,9 +13613,8 @@ async function _renderDownloadSchedule() {
   // field + "throttling now" note only appear once it's on).
   var uploadRestrict = !!s.upload_restrict;
   var uploadRow =
-    '<label class="ms-toggle-row"><input type="checkbox"' +
-      (uploadRestrict ? ' checked' : '') + (locked ? ' disabled' : '') +
-      ' onchange="_setUploadRestrict(this.checked)"> ' + tH('dl_upload_restrict') + '</label>' +
+    _switchRowsHtml([{ title: tH('dl_upload_restrict'), on: uploadRestrict, disabled: locked,
+      onchange: '_setUploadRestrict(this.checked)' }]) +
     (uploadRestrict ?
       '<div class="share-field ms-dl-trickle"><label>' + tH('dl_upload_trickle') + '</label>' +
         '<span class="share-port-group">' +
@@ -12917,6 +13672,7 @@ var _PREF_KEYS = [
   SK.UI_LANG, SK.HIDE_DISCOVER, SK.HIDE_LANG_CHOOSER, SK.HIDE_XZIM_LINKS,
   SK.A11Y_REWRITE, SK.LIBRARY_VIEW, SK.PREF_LANGUAGES, SK.PREF_FLAVOR,
   SK.READER_FONT, SK.READER_FAMILY, SK.READER_THEME, SK.READER_AUTO,
+  SK.EXT_LINKS, SK.OPEN_IN_APPS,
 ];
 
 function _collectPreferences() {
@@ -12936,9 +13692,18 @@ function _setBackupStatus(id, key) {
   if (el) el.textContent = key ? t(key) : '';
 }
 
-function _cbChecked(id) {
+// An import's Merge data switch, on by default. Turned off, the file replaces
+// everything, and the row says so in red under its title.
+function _mergeRowHtml(id) {
+  return _switchRowsHtml([{ id: id, cls: 'merge-row', title: tH('backup_merge'), on: true,
+    desc: tH('backup_replace_warn'),
+    onchange: "this.closest('.set-row').classList.toggle('merge-off', !this.checked)" }]);
+}
+// Replace only when the switch is there and turned off: an import with no
+// pane open (an account restore) always merges.
+function _replaceChosen(id) {
   var cb = document.getElementById(id);
-  return !!(cb && cb.checked);
+  return !!(cb && !cb.checked);
 }
 
 // ── Card markup ──
@@ -12962,7 +13727,7 @@ function _myDataCardHtml() {
       '<input type="file" id="ms-mydata-file" accept="application/json,.json" style="display:none" onchange="importMyDataFile(this)">' +
       '<span id="ms-mydata-status" class="ms-hint" style="margin:0;align-self:center"></span>' +
     '</div>' +
-    '<label class="ms-toggle-row"><input type="checkbox" id="ms-mydata-overwrite"> ' + tH('backup_overwrite') + '</label>' +
+    _mergeRowHtml('ms-mydata-merge') +
     '<div id="ms-mydata-result" class="ms-backup-import"></div>';
 }
 
@@ -12975,7 +13740,7 @@ function _serverBackupCardHtml() {
       '<input type="file" id="ms-server-file" accept="application/json,.json" style="display:none" onchange="importServerBackupFile(this)">' +
       '<span id="ms-server-status" class="ms-hint" style="margin:0;align-self:center"></span>' +
     '</div>' +
-    '<label class="ms-toggle-row"><input type="checkbox" id="ms-server-overwrite"> ' + tH('backup_overwrite') + '</label>' +
+    _mergeRowHtml('ms-server-merge') +
     '<div id="ms-server-import" class="ms-backup-import"></div>';
 }
 
@@ -12992,10 +13757,10 @@ function _downloadJson(filename, obj) {
   setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
 }
 
-// Bookmarks/history live in localStorage; the server never sees them (a signed-in
-// user's copy rides in their own /userdata blob). Identity is zim+path, newest
-// (by timestamp) wins on conflict — mirrors the server's merge rules.
-function _bookmarkKey(b) {
+// History lives in localStorage (a signed-in user's copy rides in their own
+// /userdata blob). Identity is zim+path, newest (by timestamp) wins on
+// conflict. What is saved has a store of its own with its own merge (Saved).
+function _historyKey(b) {
   return (b && b.zim ? b.zim : '') + '\n' + (b && b.path ? b.path : '');
 }
 
@@ -13014,22 +13779,18 @@ function _mergeByKey(current, incoming, keyFn, overwrite) {
 }
 
 // ── My data (browser half) — the one payload the My-data card moves, whether to
-// a file, from a file, or to/from the signed-in user's server account. ──
+// a file, from a file, or to/from the signed-in user's server account. The
+// saved store rides as `saved`; a file from before 1.12 carries bookmarks and
+// folders instead, and they come in through the same migration. ──
 function _collectBrowserData() {
   return {
-    bookmarks: _getStorageJSON(SK.BOOKMARKS, []),
-    folders: _getStorageJSON(SK.BM_FOLDERS, []),
-    history: _getStorageJSON(SK.BROWSE_HISTORY, []),
+    saved: Saved.data(),
+    history: _histLoad().slice(),
     preferences: _collectPreferences(),
   };
 }
 
-// Folders merge by id (not zim+path). Newer (higher order/updated wins isn't
-// meaningful for folders, so incoming simply overrides an existing id) — this
-// keeps a restored/synced tree consistent with the bookmarks that reference it.
-function _folderKey(f) { return (f && f.id) ? String(f.id) : ''; }
-
-function _applyBrowserData(data, overwrite) {
+function _applyBrowserData(data, overwrite, fromAccount) {
   var res = { bm: { added: 0, dupes: 0 } };
   if (data && data.preferences && typeof data.preferences === 'object') {
     Object.keys(data.preferences).forEach(function(k) {
@@ -13037,18 +13798,11 @@ function _applyBrowserData(data, overwrite) {
       try { localStorage.setItem(k, data.preferences[k]); } catch (e) {}
     });
   }
-  if (data && Array.isArray(data.bookmarks)) {
-    res.bm = _mergeByKey(_getStorageJSON(SK.BOOKMARKS, []), data.bookmarks, _bookmarkKey, overwrite);
-    _setStorageJSON(SK.BOOKMARKS, res.bm.list);
-    if (typeof _bookmarks !== 'undefined') _bookmarks = null;  // drop the in-memory cache
-  }
-  if (data && Array.isArray(data.folders)) {
-    var fm = _mergeByKey(_getStorageJSON(SK.BM_FOLDERS, []), data.folders, _folderKey, overwrite);
-    _setStorageJSON(SK.BM_FOLDERS, fm.list);
-    if (typeof _bmFolders !== 'undefined') _bmFolders = null;  // drop the in-memory cache
-  }
+  if (data) res.bm = _savedTake(data, overwrite, fromAccount);
   if (data && Array.isArray(data.history)) {
-    _setStorageJSON(SK.BROWSE_HISTORY, _mergeByKey(_getStorageJSON(SK.BROWSE_HISTORY, []), data.history, _bookmarkKey, overwrite).list);
+    // The history the panel shows (it used to go to a key nothing read).
+    _persistHist = _mergeByKey(_histLoad(), data.history, _historyKey, overwrite).list;
+    _histSave();
   }
   return res;
 }
@@ -13091,7 +13845,7 @@ function _applyMyDataFile(text) {
     _setBackupStatus('ms-mydata-status', 'backup_wrong_card_server');
     return;
   }
-  var res = _applyBrowserData(bundle, _cbChecked('ms-mydata-overwrite'));
+  var res = _applyBrowserData(bundle, _replaceChosen('ms-mydata-merge'));
   _setBackupStatus('ms-mydata-status', 'backup_mydata_imported');
   _showMyDataResult(res);
 }
@@ -13105,6 +13859,9 @@ async function saveMyDataToServer() {
       body: JSON.stringify(_collectBrowserData()),
     });
     if (!res.ok) throw new Error('http ' + res.status);
+    // The account merged this browser's store with its own: take the result.
+    var back = await res.json().catch(function() { return null; });
+    if (back && back.saved) Saved.merge(back.saved, { fromSync: true });
     _setBackupStatus('ms-mydata-status', 'backup_saved_server');
   } catch (e) { _setBackupStatus('ms-mydata-status', 'error'); }
 }
@@ -13117,7 +13874,7 @@ async function restoreMyDataFromServer() {
     if (!res.ok) throw new Error('http ' + res.status);
     data = await res.json();
   } catch (e) { _setBackupStatus('ms-mydata-status', 'error'); return; }
-  var res2 = _applyBrowserData(data || {}, _cbChecked('ms-mydata-overwrite'));
+  var res2 = _applyBrowserData(data || {}, _replaceChosen('ms-mydata-merge'), true);
   _setBackupStatus('ms-mydata-status', 'backup_restored_server');
   _showMyDataResult(res2);
 }
@@ -13159,7 +13916,7 @@ async function _previewServerBackup(text) {
   }
   _pendingServerBackup = bundle;
   _setBackupStatus('ms-server-status', 'working');
-  var overwrite = _cbChecked('ms-server-overwrite');
+  var overwrite = _replaceChosen('ms-server-merge');
   var srv = {};
   try {
     var res = await manageFetch('/manage/backup', {
@@ -13212,7 +13969,7 @@ function _serverBackupCancel() {
 async function _serverBackupApply() {
   var bundle = _pendingServerBackup;
   if (!bundle) return;
-  var overwrite = _cbChecked('ms-server-overwrite');
+  var overwrite = _replaceChosen('ms-server-merge');
   _setBackupStatus('ms-server-status', 'working');
   try {
     await manageFetch('/manage/backup', {
@@ -13748,7 +14505,7 @@ async function _generateToken() {
       '<div style="color:var(--text2);font-size:11px;margin-bottom:4px">' + tH('copy_token_now') + '</div>' +
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
       '<span>' + esc(data.token) + '</span>' +
-      '<button class="pill" onclick="navigator.clipboard.writeText(\'' + escAttr(data.token) + '\');this.textContent=t(\'copied\')">' + tH('copy') + '</button>' +
+      '<button class="pill" data-token="' + escAttr(data.token) + '" onclick="_copyText(this.dataset.token)">' + tH('copy') + '</button>' +
       '</div></div>' +
       '<button class="pill" style="margin-top:8px" onclick="switchMs(\'server\')">' + tH('done') + '</button>';
   }
@@ -14041,8 +14798,9 @@ async function deleteZim(filename, btn) {
     const tabBtn = document.querySelector('.manage-tab[data-tab="installed"]');
     if (tabBtn) tabBtn.textContent = t('installed_tab');
     // Update status card count
-    const statusVal = document.querySelector('#manage-status .mc-value');
+    const statusVal = document.getElementById('ms-zim-count');
     if (statusVal) statusVal.textContent = String(zimsCache ? zimsCache.length : 0);
+    _renderAutoUpdateSection();
     // Re-render current view
     if (manageTab === 'installed') renderInstalled();
     else if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
@@ -14681,12 +15439,11 @@ async function _refreshDownloadsInner(useCache) {
         // Update status card counts
         const sr = await manageFetch('/manage/status');
         const sd = await sr.json();
-        const statusEl = document.getElementById('manage-status');
-        if (statusEl) {
-          statusEl.querySelector('.mc-value').textContent = String(sd.zim_count);
-          const sizeVal = statusEl.querySelectorAll('.mc-value')[1];
-          if (sizeVal) sizeVal.textContent = fmtSize(sd.total_size_gb);
-        }
+        const countVal = document.getElementById('ms-zim-count');
+        if (countVal) countVal.textContent = String(sd.zim_count);
+        const sizeVal = document.getElementById('ms-total-size');
+        if (sizeVal) sizeVal.textContent = fmtSize(sd.total_size_gb);
+        _renderAutoUpdateSection();
         // Update tab count
         const tabBtn = document.querySelector('.manage-tab[data-tab="installed"]');
         if (tabBtn) tabBtn.textContent = t('installed_tab');
@@ -15094,7 +15851,7 @@ function _applyReaderFont(doc) {
     var body = doc.body || doc.documentElement;
     // A book sets its own type size (the book's reading settings); a zoom
     // would scale its pages and its header too.
-    if (_isBookDoc(doc)) { body.style.removeProperty('zoom'); return; }
+    if (_isBookDoc(doc) || doc.__zimiWikiLaid) { body.style.removeProperty('zoom'); return; }
     if (level === READER_FONT_DEFAULT) {
       // Default (100%): REMOVE the override rather than pin zoom:1. Also strip any
       // leftover root font-size an older (pre-zoom) session may have pinned, so a
@@ -15191,9 +15948,10 @@ function _readerMainContent(doc) {
 }
 // A Project Gutenberg book page, from its own head: Gutenberg's Dublin Core
 // record names the book it is a format of. Its body is the book (no <main>),
-// and it is read in Reader View.
+// and it is read in Reader View. An EPUB's chapters served as one page
+// (zimi/epub.py) say so in their head.
 function _isBookDoc(doc) {
-  try { return !!doc.querySelector('link[rel="dcterms.isFormatOf"][href*="gutenberg.org"]'); } catch (e) { return false; }
+  try { return !!doc.querySelector('link[rel="dcterms.isFormatOf"][href*="gutenberg.org"],meta[name="zimi-book"]'); } catch (e) { return false; }
 }
 // Reader View reads the article element; a book's is its body.
 function _readerViewReadable(doc, main) {
@@ -15297,10 +16055,11 @@ var _READER_LIGHTBOX_OVERLAY_CSS = [
 ].join('');
 // Chrome that Reader View drops. Wikipedia/MediaWiki-heavy; harmless no-ops on
 // other ZIM DOMs (stackexchange/devdocs) whose main element is already clean.
+// The infobox goes too, except in Zimipedia's reader (_readerViewClean).
 var _READER_VIEW_STRIP = [
   'script', 'style', 'link', 'noscript',
   '.mw-editsection', '.navbox', '.vertical-navbox', '.navbox-inner',
-  '.noprint', '.mw-jump-link', '.infobox', '.metadata', '.ambox', '.mbox-small',
+  '.noprint', '.mw-jump-link', '.metadata', '.ambox', '.mbox-small',
   '.sistersitebox', '.sidebar', '.side-box', '.hatnote', '.shortdescription',
   '.printfooter', '.catlinks', '.mw-hidden-catlinks', '#toc', '.toc',
   '.mw-empty-elt', '.mw-editsection-like'
@@ -15328,11 +16087,17 @@ var READER_THEMES = ['dark', 'light', 'sepia'];
 // User-selectable modes in the picker. 'auto' follows the app theme: dark→dark,
 // light→SEPIA (a warm paper tone reads better out of the box than raw white).
 // A user's explicit pick (dark/light/sepia) always wins and persists. Stored
-// value is the MODE; _readerTheme() resolves it to a palette.
-var READER_THEME_MODES = ['auto', 'dark', 'light', 'sepia'];
+// value is the MODE; _readerTheme() resolves it to a palette. In the order
+// every picker shows them, Reader View's and the books' and Zimipedia's
+// reading settings alike (the two had them in different orders).
+var READER_THEME_MODES = ['auto', 'light', 'sepia', 'dark'];
 // The <body> background each theme paints — mirrors --rv-bg in the injected CSS.
 // Used to tint the iframe/loading chrome so AUTO mode never flashes ZIM-white.
 var READER_THEME_BG = { dark: '#0a0a0b', light: '#fbfbf9', sepia: '#f4ecd8' };
+// Auto's swatch shows what Auto paints (_readerTheme): the Sepia swatch by
+// day and the Dark one by night, a half each, in the same ring as every
+// swatch. app.css's .rv-sw-auto draws the same split.
+var READER_AUTO_SWATCH = 'linear-gradient(90deg,' + READER_THEME_BG.sepia + ' 50%,' + READER_THEME_BG.dark + ' 50%)';
 function _readerFamily() {
   var v = localStorage.getItem(SK.READER_FAMILY);
   return READER_FAMILIES.indexOf(v) >= 0 ? v : 'serif';
@@ -15371,9 +16136,14 @@ function _applyReaderTheme(doc) {
 // How much text the article holds. innerText lays the page out first, which
 // for a book (its body is the article) is seconds on a long one; a book's
 // text is all text, so it is counted as it stands.
+// A wiki's article is counted the same way: it needs one character, and
+// laying the whole of a long one out to count them held its first paint.
 function _readerTextLen(doc, main) {
-  return (main === doc.body ? main.textContent : (main.innerText || main.textContent || '')).trim().length;
+  return (main === doc.body || doc.__zimiWiki ? main.textContent : (main.innerText || main.textContent || '')).trim().length;
 }
+// A wiki's article in Zimipedia's reader is an article however short (a
+// stub is still one): the floor is for pages that may not be articles.
+function _readerMinChars(doc) { return doc.__zimiWiki ? 1 : READER_VIEW_MIN_CHARS; }
 function _readerViewAvailable() {
   if (!readerOpen || _almanacOpen) return false;
   var frame = document.getElementById('reader-frame');
@@ -15386,13 +16156,13 @@ function _readerViewAvailable() {
   if (doc[_READER_VIEW_STASH]) return true;
   var main = _readerMainContent(doc);
   if (!_readerViewReadable(doc, main)) return false;
-  return _readerTextLen(doc, main) >= READER_VIEW_MIN_CHARS;
+  return _readerTextLen(doc, main) >= _readerMinChars(doc);
 }
 
 // An element's text as shown. In a book, as it stands: innerText lays the
 // page out first, and a book is the one page long enough for that to cost.
 function _readerElText(doc, el) {
-  if (_isBookDoc(doc)) return (el.textContent || '').replace(/\s+/g, ' ').trim();
+  if (_isBookDoc(doc) || doc.__zimiWiki) return (el.textContent || '').replace(/\s+/g, ' ').trim();
   return (el.innerText || el.textContent || '').trim();
 }
 function _readerViewTitle(doc) {
@@ -15407,10 +16177,18 @@ function _readerViewTitle(doc) {
 // the live document is untouched until the caller swaps it in.
 function _readerViewClean(root, doc) {
   try {
-    var junk = root.querySelectorAll(_isBookDoc(doc) ? 'script,style,link,noscript' : _READER_VIEW_STRIP);
+    var junk = root.querySelectorAll(_isBookDoc(doc) ? 'script,style,link,noscript' : _READER_VIEW_STRIP + (doc.__zimiWiki ? ',.sisterproject' : ',.infobox'));
     for (var i = 0; i < junk.length; i++) {
       if (junk[i].parentNode) junk[i].parentNode.removeChild(junk[i]);
     }
+    // A MediaWiki section that held only what went ("Other websites": the
+    // sister-project boxes) would be a heading over nothing, and a line in
+    // the contents that leads nowhere.
+    Array.prototype.forEach.call(root.querySelectorAll('section[data-mw-section-id]'), function(sec) {
+      var head = sec.firstElementChild;
+      if (head && head === sec.lastElementChild && head.matches('h2,h3,h4,h5,h6,.mw-heading') &&
+          sec.textContent.trim() === head.textContent.trim()) sec.remove();
+    });
   } catch(e) {}
   // Neutralize INLINE layout constraints that would make the clone a fixed-height
   // inner scroller inside the reader column (the devdocs-class bug: a main element
@@ -15499,6 +16277,12 @@ function _readerViewInjectStyle(doc) {
       '--rv-font:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;',
       'background:var(--rv-bg) !important;margin:0 !important}',
     'body.zimi-reader-active.rv-font-sans{--rv-font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}',
+    // Pulled past the top or an edge, the page shows the theme under it (the
+    // ZIM's skin paints html white), and does not spring or scroll sideways.
+    'html:has(> body.zimi-reader-active){overscroll-behavior:none;overflow-x:hidden}',
+  ].concat(READER_THEMES.map(function(th) {
+    return 'html:has(> body.zimi-reader-active.rv-theme-' + th + '){background:' + READER_THEME_BG[th] + '!important}';
+  })).concat([
     'body.zimi-reader-active.rv-theme-light{--rv-bg:#fbfbf9;--rv-fg:#1f1f22;--rv-head:#0a0a0b;',
       '--rv-muted:#63636b;--rv-border:#e3e2dd;--rv-link:#aa4e08;--rv-code:#f0efe9;',
       '--rv-pre:#f5f4ee;--rv-th:#f0efe9}',
@@ -15524,6 +16308,12 @@ function _readerViewInjectStyle(doc) {
     '.zimi-reader *:not(.zimi-table-wrap):not(pre){height:auto !important;max-height:none !important;',
       'min-height:0 !important;overflow:visible !important}',
     '.zimi-reader-body{max-width:68ch;margin:0 auto}',
+    // The article's own wrappers take the reader's type. Wikipedia's skin
+    // sizes its body box in rem (.vector-body{font-size:1rem;line-height:1.6}),
+    // which Reader View's size and spacing never reach: Text size grew the
+    // title and left the text at 16px.
+    '.zimi-reader :is(.mw-body,.vector-body,#bodyContent,.mw-body-content,.mw-parser-output){',
+      'font-size:inherit!important;line-height:inherit!important}',
     // Headings follow the reader's font-family choice (serif/sans) like the body,
     // via --rv-font — a serif pick that left headings sans looked half-applied.
     '.zimi-reader h1,.zimi-reader h2,.zimi-reader h3,.zimi-reader h4,.zimi-reader h5,.zimi-reader h6{',
@@ -15614,7 +16404,7 @@ function _readerViewInjectStyle(doc) {
       '.zimi-reader h1,.zimi-reader h2,.zimi-reader h3{page-break-after:avoid;break-after:avoid}',
       '.' + _READER_LIGHTBOX_CLASS + ',.zimi-lightbox-close{display:none !important}',
     '}'
-  ].join('');
+  ]).join('');
   var style = doc.createElement('style');
   style.id = _READER_VIEW_STYLE_ID;
   style.textContent = css;
@@ -15960,7 +16750,7 @@ function _readerViewApply(doc) {
   if (doc[_READER_VIEW_STASH]) return true; // already applied to this document
   var main = _readerMainContent(doc);
   if (!_readerViewReadable(doc, main)) return false;
-  if (_readerTextLen(doc, main) < READER_VIEW_MIN_CHARS) return false;
+  if (_readerTextLen(doc, main) < _readerMinChars(doc)) return false;
 
   var clone;
   if (main === doc.body) {
@@ -16011,12 +16801,19 @@ function _readerViewApply(doc) {
   _applyReaderFont(doc); // font zoom composes over the shell
   // Tap-to-full-size on scaled-down images: measured, so a book (whose pages
   // are laid out by the book reader) binds it once they are.
-  if (!_isBookDoc(doc)) _readerBindLightbox(shell, doc);
+  // Measuring every picture lays the whole article out: after the text is
+  // on screen, not before (a long article paid it before its first paint).
+  if (!_isBookDoc(doc)) _afterPaint(function() { _readerBindLightbox(shell, doc); });
   return true;
+}
+// Work that can wait until the page has painted: the next frame, then a task.
+function _afterPaint(fn) {
+  requestAnimationFrame(function() { setTimeout(fn, 0); });
 }
 
 function _readerViewRestore(doc) {
   if (!doc || !doc[_READER_VIEW_STASH]) return;
+  if (doc.__zimiWikiLaid && typeof _wikiUndo === 'function') { _wikiUndo(doc); _wikiChrome(false); }
   var shell = doc.querySelector('.zimi-reader');
   if (shell && shell.parentNode) shell.parentNode.removeChild(shell);
   var stash = doc[_READER_VIEW_STASH];
@@ -16031,6 +16828,7 @@ function _readerViewRestore(doc) {
 function _readerViewToggle() {
   var doc = _readerFrameDoc();
   if (!doc) return;
+  _extHide(); // the link it was showing is about to be swapped out
   if (_readerViewOn) {
     _readerViewOn = false;
     try { _readerViewRestore(doc); } catch(e) {}
@@ -16046,7 +16844,10 @@ function _readerViewToggle() {
       return;
     }
     _readerViewOn = true;
+    if (doc.__zimiWiki) _wikiReaderAttach(document.getElementById('reader-frame'));
   }
+  // The text was swapped for its other form: its highlights found again in it.
+  if (_hlReader) _hlReader.refresh();
   _tintReaderChrome(); // paint (on) or clear (off) the iframe/loading tint
   // Reader View owns its own themes: strip the raw-article dark filter when it
   // turns on (it would invert the reader shell), restore it when it turns off.
@@ -16173,13 +16974,17 @@ function _toggleReaderAuto() {
 function _tintReaderChrome() {
   var frame = document.getElementById('reader-frame');
   var loading = document.getElementById('reader-loading');
-  var bg = (_readerViewOn || _readerAuto() || _bookReading) ? _readerThemeBg() : '';
+  var bg = (_readerViewOn || _readerAuto() || _bookReading || _wikiFromApp) ? _readerThemeBg() : '';
   if (frame) frame.style.background = bg || '#fff';
   if (loading) loading.style.background = bg || '';
 }
 
 var _READER_PALETTE_ID = 'reader-palette';
-var _READER_SIZE_LABELS = { 85: 'S', 100: 'M', 115: 'L', 130: 'XL' };
+// The size says what it is: a share of the page's own size, in the
+// interface's numerals ("M" named nothing a reader could picture).
+function _readerSizeLabel(lvl) {
+  try { return (lvl / 100).toLocaleString(_currentLang || 'en', { style: 'percent' }); } catch (e) { return lvl + '%'; }
+}
 function _readerPaletteHtml() {
   return '<div class="rv-pal-head">' + _READER_VIEW_ICON + '<span>' + tH('reader_view') +
     '</span></div>' + _readerSettingsRowsHtml();
@@ -16202,8 +17007,7 @@ function _rvSwatchesHtml(mode) {
   // `mode` is the stored selection (auto|dark|light|sepia) so the Auto swatch
   // lights up when chosen — not the resolved palette.
   return '<div class="rv-swatches" role="radiogroup" aria-label="' + tH('reader_theme') + '">' +
-    _rvSwatchHtml('auto', mode) + _rvSwatchHtml('dark', mode) +
-    _rvSwatchHtml('light', mode) + _rvSwatchHtml('sepia', mode) + '</div>';
+    READER_THEME_MODES.map(function(k) { return _rvSwatchHtml(k, mode); }).join('') + '</div>';
 }
 function _rvFamPillHtml(key, fam) {
   return '<button type="button" class="rv-pill' + (fam === key ? ' active' : '') +
@@ -16221,7 +17025,7 @@ function _rvSizeStepperHtml(lvl) {
   return '<div class="rv-size">' +
     '<button type="button" class="rv-size-btn"' + (minSize ? ' disabled' : '') +
       ' aria-label="' + tH('reader_size_smaller') + '" onclick="event.stopPropagation();_stepReaderFont(-1)">A<span class="rv-minus">&minus;</span></button>' +
-    '<span class="rv-size-val">' + (_READER_SIZE_LABELS[lvl] || lvl + '%') + '</span>' +
+    '<span class="rv-size-val">' + esc(_readerSizeLabel(lvl)) + '</span>' +
     '<button type="button" class="rv-size-btn"' + (maxSize ? ' disabled' : '') +
       ' aria-label="' + tH('reader_size_larger') + '" onclick="event.stopPropagation();_stepReaderFont(1)">A<span class="rv-plus">+</span></button>' +
     '</div>';
@@ -16683,7 +17487,7 @@ function _reddotUrl(p) {
 // considerations with all this."
 function _appStrings(app, keys, extra) {
   var out = { title: t(app), catalog: t('app_browse_catalog'), lang: _currentLang || 'en',
-    dir: document.documentElement.getAttribute('dir') || 'ltr' };
+    dir: document.documentElement.getAttribute('dir') || 'ltr', sv: _savedAppWords(app) };
   keys.forEach(function(k) { out[k.slice(app.length + 1)] = t(k); });
   for (var k in extra) out[k] = extra[k];
   return encodeURIComponent(JSON.stringify(out));
@@ -16748,16 +17552,16 @@ function _wikiStrings() {
   // in the shell's language, on hover.
   var langs = {};
   _installedWikiZims().forEach(function(z) { var c = String(z.language || '').split(',')[0]; if (c) langs[c] = _langDisplayName(c) || c; });
-  return _appStrings('wiki', ['wiki_all', 'wiki_today', 'wiki_on_this_day', 'wiki_featured', 'wiki_word', 'wiki_quote', 'wiki_place', 'wiki_none', 'wiki_empty',
-    'wiki_cards', 'wiki_list', 'wiki_searching', 'wiki_did_you_mean', 'wiki_search_heading', 'wiki_article', 'wiki_book', 'wiki_text', 'wiki_course',
-    'wiki_news', 'wiki_species', 'wiki_otd_unavailable', 'wiki_load_failed', 'wiki_search_failed', 'wiki_retry', 'wiki_languages', 'wiki_did_you_know',
-    'wiki_picture', 'wiki_rabbit_hole', 'wiki_rabbit_hint', 'wiki_front', 'wiki_front_as_of', 'wiki_read_more', 'wiki_search_all_languages',
-    'wiki_search_one_language'].concat(
+  return _appStrings('wiki', ['wiki_all', 'wiki_today', 'wiki_none', 'wiki_empty', 'wiki_cards', 'wiki_list', 'wiki_searching', 'wiki_did_you_mean',
+    'wiki_search_heading', 'wiki_article', 'wiki_load_failed', 'wiki_search_failed', 'wiki_languages', 'wiki_read_more',
+    'wiki_search_all_languages', 'wiki_search_one_language', 'wiki_continue', 'wiki_trails', 'wiki_on_this_day', 'wiki_featured', 'wiki_word',
+    'wiki_quote', 'wiki_place', 'wiki_book', 'wiki_text', 'wiki_course', 'wiki_news', 'wiki_species', 'wiki_did_you_know', 'wiki_picture',
+    'wiki_front', 'wiki_front_as_of'].concat(
     // Every plural form the language has; the page picks one by Intl.PluralRules.
-    ['zero', 'one', 'two', 'few', 'many', 'other'].map(function(c) { return 'wiki_results_' + c; })), { langs: langs });
+    ['zero', 'one', 'two', 'few', 'many', 'other'].map(function(c) { return 'wiki_results_' + c; })), { langs: langs, retry: t('retry') });
 }
 function openWiki(replaceState) {
-  // Not offered here (off unless the server names it): home, and an
+  // Not offered here (the server's ZIMI_APPS leaves it out): home, and an
   // address that says so, not a page whose every call is a 404.
   if (!_appsAllowedByServer('wiki')) {
     if (mode !== 'home') enterHome(false);
@@ -16765,8 +17569,92 @@ function openWiki(replaceState) {
     return;
   }
   _openHashApp('wiki', replaceState, function() { _wikiOpen = true; return _WIKI_PAGE + '#' + _wikiStrings(); });
+  _wikiReaderLoad();
 }
 function _wikiSearch(val) { _appFrameCall('wikiSearch', val); }
+// Zimipedia's trails, for its front door (wiki.html asks through
+// window.parent): the recent ones, and taking one up again as this tab's,
+// so the reader goes on from there. Its reader (wiki-reader.js) walks them.
+function _wikiTrailsKept() { return _getStorageJSON(SK.WIKI_TRAILS, []) || []; }
+function _wikiTrailResume(items) { try { sessionStorage.setItem(SK.WIKI_TRAIL, JSON.stringify(items || [])); } catch (e) {} }
+
+// ── Zimipedia's reader ──
+// A wiki's article read in Zimipedia's reader: Reader View laid out as an
+// encyclopedia (/static/wiki-reader.js, _wikiLay). Its code comes in the
+// background (with Zimipedia's page, or alongside a wiki's article), never
+// on the way to an article: one shown before it lands reads in Reader View
+// and gains the rest when it does.
+var _wikiFromApp = false;    // the article on its way was opened from Zimipedia
+// The frame's article is laid out by Zimipedia's reader. Its bar is the
+// page's: saving, the article's languages and the reading settings are
+// there, so Zimi's header does not offer them a second time.
+var _wikiReading = false;
+var _wikiReaderState = 0;    // 0 not asked, 1 on its way, 2 here
+var _wikiReaderWaiting = [];
+function _wikiReaderLoad(then) {
+  if (then) _wikiReaderWaiting.push(then);
+  if (_wikiReaderState === 2) { _wikiReaderFlush(); return; }
+  if (_wikiReaderState === 1) return;
+  _wikiReaderState = 1;
+  var s = document.createElement('script');
+  s.src = '/static/wiki-reader.js?v=1';
+  s.onload = function() { _wikiReaderState = 2; _wikiReaderFlush(); };
+  // Offline with a cold cache: the article stays in Reader View.
+  s.onerror = function() { _wikiReaderState = 0; _wikiReaderWaiting = []; _wikiChrome(false); };
+  document.head.appendChild(s);
+}
+function _wikiReaderFlush() {
+  var w = _wikiReaderWaiting; _wikiReaderWaiting = [];
+  w.forEach(function(f) { try { f(); } catch (e) { console.warn('Zimipedia reader:', e); } });
+}
+// A reader address that is a wiki's article, known before it loads.
+function _wikiUrl(url) {
+  var m = /^\/w\/([^\/?#]+)\//.exec(url || '');
+  if (!m || !_appShown('wiki')) return false;
+  var z = null; try { z = _zimInfo(decodeURIComponent(m[1])); } catch (e) { return false; }
+  return !!(z && z.kind === 'wiki');
+}
+// The frame holds a wiki's article (not its front page), and Zimipedia is offered.
+function _wikiArticleDoc(frame) {
+  var m = null; try { m = /^\/w\/([^\/]+)\/(.+)$/.exec(frame.contentWindow.location.pathname); } catch (e) { return false; }
+  if (!m || !_wikiUrl(m[0])) return false;
+  var z = _zimInfo(decodeURIComponent(m[1]));
+  if (decodeURIComponent(m[2]) === z.main_path) return false;
+  try { return !!frame.contentDocument.querySelector('#mw-content-text,.mw-parser-output'); } catch (e) { return false; }
+}
+// What Zimipedia's reader shows beside a wiki's article (wiki.article on the
+// server: its languages by Q-ID, Simple English, a mini's fuller build, the
+// other wikis on it), asked once the article is on screen and kept for the
+// session, so Back and Forward ask nothing. A failed ask is asked again.
+// `langsOnly`: the language menu's ask, which needs only the languages: the
+// whole answer when one is kept (or on its way), else only=languages, which
+// reads no more of the article than its ID.
+var _wikiInfoKept = {}, _wikiInfoOrder = [];
+var _WIKI_INFO_KEPT = 64;
+function _wikiInfo(zim, path, langsOnly) {
+  var k = zim + '\n' + path;
+  if (_wikiInfoKept[k]) return _wikiInfoKept[k];
+  if (langsOnly) k += '\nlanguages';
+  if (_wikiInfoKept[k]) return _wikiInfoKept[k];
+  var p = _wikiInfoKept[k] = fetch('/wiki/article?zim=' + encodeURIComponent(zim) + '&path=' + encodeURIComponent(path) + (langsOnly ? '&only=languages' : ''))
+    .then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; })
+    .then(function(d) { if (!d) delete _wikiInfoKept[k]; return d; });
+  _wikiInfoOrder.push(k);
+  if (_wikiInfoOrder.length > _WIKI_INFO_KEPT) delete _wikiInfoKept[_wikiInfoOrder.shift()];
+  return p;
+}
+function _wikiReaderAttach(frame) {
+  _wikiReaderLoad(function() {
+    var d = null; try { d = frame.contentDocument; } catch (e) {}
+    if (d && d.__zimiWiki && d[_READER_VIEW_STASH] && !d.__zimiWikiLaid) _wikiChrome(_wikiLay(frame));
+  });
+}
+function _wikiChrome(on) {
+  on = !!on;
+  if (on === _wikiReading) return;
+  _wikiReading = on;
+  updateTopbar();
+}
 
 // Zimipedia and Bookshelf open alike: a page Zimi owns at /#<app>, with no
 // item of its own (what it opens, an article or a book, opens in the reader
@@ -16825,8 +17713,10 @@ var _BOOKS_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24
 var _BOOKS_LCC = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'Z',
   'PA', 'PC', 'PG', 'PH', 'PJ', 'PK', 'PL', 'PM', 'PN', 'PQ', 'PR', 'PS', 'PT', 'PZ'];
 
+// Gutenberg's, and the ZIMs that feed the shelf beside another app
+// (server._zim_feeds: document libraries, LibreTexts, Wikisource...).
 function _installedBookZims() {
-  return _installedOfKind('books');
+  return _installedFor('books', 'books');
 }
 function _isBooksPage() {
   return !!(_booksOpen && readerOpen && !_almanacOpen && !_createOpen);
@@ -16838,15 +17728,169 @@ function _booksStrings() {
   var lcc = {};
   _BOOKS_LCC.forEach(function(c) { lcc[c] = t('books_lcc_' + c); });
   return _appStrings('books', ['books_shelf', 'books_authors', 'books_subjects', 'books_eras', 'books_languages', 'books_popular', 'books_recent',
-    'books_continue', 'books_all_books', 'books_see_all', 'books_sort_popular', 'books_sort_title', 'books_sort_author', 'books_sort_recent',
+    'books_continue', 'books_my_shelf', 'books_add_shelf', 'books_on_shelf', 'books_all_books', 'books_see_all', 'books_sort_popular', 'books_sort_title', 'books_sort_author', 'books_sort_recent',
     'books_sort_name', 'books_sort_books', 'books_read', 'books_resume', 'books_epub', 'books_more_by', 'books_added', 'books_language',
     'books_subject', 'books_era', 'books_author', 'books_more', 'books_none', 'books_empty', 'books_book', 'books_books', 'books_bce', 'books_bce_ce',
-    'books_pending', 'books_epub_only', 'books_load_failed', 'books_load_part'], { lcc: lcc, retry: t('retry') });
+    'books_pending', 'books_epub_only', 'books_load_failed', 'books_load_part', 'books_reading', 'books_sources', 'books_source', 'books_format',
+    'books_chapters', 'books_translator', 'books_publisher', 'books_published', 'books_unreadable'], { lcc: lcc, retry: t('retry') });
 }
 function openBooks(replaceState) {
   _openHashApp('books', replaceState, function() { _booksOpen = true; return _BOOKS_PAGE + '#' + _booksStrings(); });
 }
 function _booksSearch(val) { _appFrameCall('booksSearch', val); }
+
+// ── Reading settings: the book reader's and Zimipedia's ──
+// One sheet (theme, font, text size, line spacing, margins, and for a book
+// the layout), one set of scales, and one stylesheet for the bars and sheets
+// both readers draw in the page. The theme and the font are Reader View's,
+// so every article follows them; size, spacing and margins are each
+// reader's own, kept per browser (a book reads larger and airier than an
+// encyclopedia).
+var _READING_BAR_H = 48;             // px: a reader's bar, under the top inset
+var _READING_SIZES = [14, 16, 17, 19, 21, 23, 26, 30, 34];  // px
+var _READING_LEADINGS = [1.35, 1.5, 1.65, 1.8, 2];
+var _READING_MARGINS = [8, 16, 24, 40];      // px at either side on a phone
+var _READING_MEASURES = [42, 36, 33, 29];    // em: the longest line, by the same setting
+var _READING_CSS = [
+  // ── the bars ──
+  '.zb-bar{position:fixed;left:0;right:0;z-index:2147482000;display:flex;align-items:center;gap:2px;box-sizing:border-box;',
+    'background:var(--rv-bg);color:var(--rv-fg);font:14px/1.25 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;',
+    'transition:transform .25s ease,opacity .25s ease;-webkit-user-select:none;user-select:none}',
+  '@supports (background:color-mix(in srgb,red 50%,transparent)){.zb-bar{background:color-mix(in srgb,var(--rv-bg) 90%,transparent);',
+    '-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%)}}',
+  '.zb-head{top:0;height:calc(' + _READING_BAR_H + 'px + var(--zb-sat));padding:var(--zb-sat) calc(6px + var(--zb-sar)) 0 calc(6px + var(--zb-sal));border-bottom:1px solid var(--rv-border)}',
+  '.zb-foot{bottom:0;flex-direction:column;align-items:stretch;gap:4px;padding:6px calc(10px + var(--zb-sar)) calc(6px + var(--zb-sab)) calc(10px + var(--zb-sal));border-top:1px solid var(--rv-border)}',
+  'html.zb-away .zb-head{transform:translateY(-100%);opacity:0;pointer-events:none}',
+  'html.zb-away .zb-foot{transform:translateY(100%);opacity:0;pointer-events:none}',
+  '.zb-bar button{border:0;background:none;color:inherit;font:inherit;min-width:44px;height:44px;border-radius:22px;cursor:pointer;flex:none;',
+    'display:inline-flex;align-items:center;justify-content:center;padding:0 6px;-webkit-tap-highlight-color:transparent}',
+  '@media (hover:hover){.zb-bar button:hover:not(:disabled),.zb-sheet button:hover:not(:disabled){background:var(--rv-code)}}',
+  '.zb-bar button:focus-visible,.zb-sheet button:focus-visible,.zb-sheet input:focus-visible{outline:2px solid var(--rv-link);outline-offset:1px}',
+  '.zb-bar button:disabled{opacity:.3;cursor:default}',
+  '.zb-bar button[hidden]{display:none}',
+  // Another device's newer place in this book, offered above the scrubber.
+  '.zb-foot .zb-remote{align-self:center;height:auto;min-height:34px;max-width:100%;padding:6px 14px;border:1px solid var(--rv-border);',
+    'border-radius:17px;font-size:13px;color:var(--rv-link);text-align:center;white-space:normal}',
+  '.zb-aa{font:600 17px/1 Georgia,serif!important;letter-spacing:.02em}',
+  '.zb-title{flex:1;min-width:0;text-align:center;line-height:1.2}',
+  '.zb-title b,.zb-title span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;unicode-bidi:plaintext}',
+  '.zb-title b{font-weight:600;font-size:14.5px}.zb-title span{font-size:12px;color:var(--rv-muted)}',
+  // ── the sheets: contents and reading settings ──
+  '.zb-scrim{position:fixed;inset:0;z-index:2147482100;background:rgba(0,0,0,.28);opacity:0;pointer-events:none;transition:opacity .2s}',
+  'html.zb-sheet-open .zb-scrim{opacity:1;pointer-events:auto}',
+  // Reading settings leave the page undimmed: a theme or a size is judged
+  // on the page itself, which a grey veil turned muddy. A tap on it still closes.
+  'html.zb-set-open .zb-scrim{background:transparent}',
+  '.zb-sheet{position:fixed;left:0;right:0;bottom:0;z-index:2147482200;max-height:min(82vh,680px);overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;',
+    'box-sizing:border-box;padding:6px calc(16px + var(--zb-sar)) calc(18px + var(--zb-sab)) calc(16px + var(--zb-sal));border-radius:16px 16px 0 0;',
+    'background:var(--rv-bg);color:var(--rv-fg);border:1px solid var(--rv-border);box-shadow:0 -8px 30px rgba(0,0,0,.25);',
+    'font:15px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;transform:translateY(105%);visibility:hidden;',
+    'transition:transform .25s ease,visibility 0s linear .25s}',
+  '.zb-sheet.zb-open{transform:none;visibility:visible;transition:transform .25s ease}',
+  '@media (min-width:700px){.zb-sheet{left:auto;right:calc(16px + var(--zb-sar));bottom:auto;top:calc(' + (_READING_BAR_H + 8) + 'px + var(--zb-sat));width:380px;',
+    'max-height:calc(100vh - ' + (_READING_BAR_H + 32) + 'px);border-radius:14px;transform:translateY(-8px);opacity:0;transition:transform .2s,opacity .2s,visibility 0s linear .2s}',
+    '.zb-sheet.zb-open{transform:none;opacity:1;transition:transform .2s,opacity .2s}}',
+  '.zb-sheet-head{display:flex;align-items:center;justify-content:space-between;position:sticky;top:-6px;background:var(--rv-bg);padding:6px 0;z-index:1}',
+  '.zb-sheet-head b{font-size:16px}',
+  '.zb-sheet button{border:0;background:none;color:inherit;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}',
+  '.zb-x{width:40px;height:40px;border-radius:20px;font-size:22px!important;line-height:1}',
+  '.zb-toc-list{list-style:none;margin:0;padding:0}',
+  '.zb-toc-list button{display:block;width:100%;text-align:start;padding:11px 10px;border-radius:10px;unicode-bidi:plaintext}',
+  '.zb-toc-list .zb-sub button{padding-inline-start:28px;color:var(--rv-muted)}',
+  '.zb-toc-list [aria-current="true"] button{background:var(--rv-code);color:var(--rv-link);font-weight:600}',
+  '.zb-set{padding:7px 0;border-top:1px solid var(--rv-border)}.zb-set:first-of-type{border-top:0}',
+  '.zb-set-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--rv-muted);margin:0 0 6px}',
+  '.zb-seg{display:flex;gap:6px}',
+  '.zb-seg button{flex:1;min-height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;padding:0 8px}',
+  '.zb-seg button[aria-pressed="true"],.zb-seg button[aria-checked="true"]{border-color:var(--rv-link)!important;color:var(--rv-link);box-shadow:inset 0 0 0 1px var(--rv-link)}',
+  '.zb-themes button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;padding:6px 2px;min-height:0}',
+  // A ring that reads on every sheet, so the sheet's own colour's dot is not
+  // a hole in it (sepia's on the sepia sheet, dark's on the dark one).
+  '.zb-dot{width:24px;height:24px;border-radius:50%;border:1.5px solid rgba(128,128,128,.6);box-sizing:border-box}',
+  '.zb-dot-auto{background:' + READER_AUTO_SWATCH + '}.zb-dot-light{background:' + READER_THEME_BG.light + '}.zb-dot-sepia{background:' + READER_THEME_BG.sepia + '}.zb-dot-dark{background:' + READER_THEME_BG.dark + '}',
+  '.zb-step{display:flex;align-items:center;gap:8px}',
+  '.zb-step button{width:52px;height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;font-family:Georgia,serif}',
+  '.zb-step output{flex:1;text-align:center;font-variant-numeric:tabular-nums;color:var(--rv-muted)}',
+  '.zb-range{width:100%;accent-color:var(--rv-link);height:26px;margin:0}',
+  // A finger: the sheet's choices and its close reach 44px.
+  '@media (pointer:coarse){.zb-seg button{min-height:44px}.zb-step button{height:44px}.zb-x{width:44px;height:44px}}',
+  '@media print{.zb-bar,.zb-sheet,.zb-scrim{display:none!important}}',
+  '@media (prefers-reduced-motion:reduce){.zb-bar,.zb-sheet,.zb-scrim{transition:none!important}}'
+].join('');
+// How one reader is read in this browser: {size (px), lh and margin (indexes
+// into the scales)} and, where the reader has one, its mode.
+function _readingPrefs(key, defaults) {
+  var p = _getStorageJSON(key, {}) || {};
+  var idx = function(v, list, d) { return typeof v === 'number' && v >= 0 && v < list.length ? v : d; };
+  return {
+    size: _READING_SIZES.indexOf(p.size) >= 0 ? p.size : defaults.size,
+    lh: idx(p.lh, _READING_LEADINGS, defaults.lh),
+    margin: idx(p.margin, _READING_MARGINS, defaults.margin),
+    mode: p.mode
+  };
+}
+// The settings sheet's rows; `layouts` ([[value, label]]) adds the layout
+// row (a book's Scroll and Pages).
+function _readingSettingsHtml(prefs, layouts) {
+  var seg = function(attr, items, curVal, label) {
+    return '<div class="zb-seg" role="group" aria-label="' + label + '">' + items.map(function(it) {
+      return '<button type="button" data-' + attr + '="' + it[0] + '" aria-pressed="' + (String(it[0]) === String(curVal)) + '"' + (it[2] ? ' style="' + it[2] + '"' : '') + '>' + it[1] + '</button>';
+    }).join('') + '</div>';
+  };
+  var row = function(label, body) { return '<div class="zb-set"><div class="zb-set-label">' + label + '</div>' + body + '</div>'; };
+  var mode = _readerThemeMode(), fam = _readerFamily(), si = _READING_SIZES.indexOf(prefs.size);
+  var themes = READER_THEME_MODES.map(function(k) {
+    var lbl = tH(k === 'auto' ? 'theme_auto' : 'reader_theme_' + k);
+    return [k, '<span class="zb-dot zb-dot-' + k + '"></span>' + lbl];
+  });
+  return '<div class="zb-sheet-head"><b>' + tH('books_settings') + '</b><button type="button" class="zb-x" aria-label="' + tH('close') + '">×</button></div>' +
+    row(tH('reader_theme'), seg('theme', themes, mode, tH('reader_theme')).replace('zb-seg', 'zb-seg zb-themes')) +
+    row(tH('reader_font_family'), seg('fam', [['serif', tH('reader_font_serif'), 'font-family:Georgia,serif'], ['sans', tH('reader_font_sans'), 'font-family:-apple-system,sans-serif']], fam, tH('reader_font_family'))) +
+    row(tH('reader_text_size'), '<div class="zb-step"><button type="button" data-size="-1" aria-label="' + tH('reader_size_smaller') + '"' + (si <= 0 ? ' disabled' : '') + ' style="font-size:14px">A</button>' +
+      '<output><bdi>' + prefs.size + ' px</bdi></output><button type="button" data-size="1" aria-label="' + tH('reader_size_larger') + '"' + (si >= _READING_SIZES.length - 1 ? ' disabled' : '') + ' style="font-size:21px">A</button></div>') +
+    row('<label for="zb-lh">' + tH('books_line_spacing') + '</label>', '<input id="zb-lh" class="zb-range" type="range" min="0" max="' + (_READING_LEADINGS.length - 1) + '" step="1" value="' + prefs.lh + '" data-pref="lh">') +
+    row('<label for="zb-mg">' + tH('books_margins') + '</label>', '<input id="zb-mg" class="zb-range" type="range" min="0" max="' + (_READING_MARGINS.length - 1) + '" step="1" value="' + prefs.margin + '" data-pref="margin">') +
+    (layouts ? row(tH('books_layout'), seg('mode', layouts, prefs.mode, tH('books_layout'))) : '');
+}
+// What a control of the sheet asks for: {theme}, {fam} or {prefs: a change
+// to the reader's own}; null for anything else (the close button).
+function _readingSettingsPick(el, prefs) {
+  if (!el || el.disabled) return null;
+  if (el.hasAttribute('data-theme')) return { theme: el.getAttribute('data-theme') };
+  if (el.hasAttribute('data-fam')) return { fam: el.getAttribute('data-fam') };
+  if (el.hasAttribute('data-mode')) return { prefs: { mode: el.getAttribute('data-mode') } };
+  if (el.hasAttribute('data-size')) {
+    var i = _READING_SIZES.indexOf(prefs.size) + Number(el.getAttribute('data-size'));
+    return { prefs: { size: _READING_SIZES[Math.max(0, Math.min(_READING_SIZES.length - 1, i))] } };
+  }
+  var p = el.getAttribute('data-pref');
+  if (!p) return null;
+  var o = {}; o[p] = Number(el.value);
+  return { prefs: o };
+}
+// A reader's settings sheet, live: a tap or a slide sets the theme and the
+// font at once (Reader View's own setters); a change to the reader's own
+// (size, spacing, margins, layout) goes to apply(change, fam) with fam true
+// when the font changed; the sheet is drawn again with the same control
+// focused. render() draws it.
+function _readingSettingsBind(sheet, getPrefs, apply, close) {
+  var act = function(el) {
+    if (el.classList.contains('zb-x')) { close(); return; }
+    var pick = _readingSettingsPick(el, getPrefs());
+    if (!pick) return;
+    if (pick.theme) _setReaderTheme(pick.theme);
+    else if (pick.fam) { _setReaderFamily(pick.fam); apply(null, true); }
+    else apply(pick.prefs, false);
+    render();
+    var attr = ['theme', 'fam', 'size', 'mode', 'pref'].filter(function(a) { return el.hasAttribute('data-' + a); })[0];
+    var again = attr && sheet.querySelector('[data-' + attr + '="' + el.getAttribute('data-' + attr) + '"]');
+    if (again && !again.disabled) again.focus({ preventScroll: true });
+  };
+  var render = function() { sheet.innerHTML = _readingSettingsHtml(getPrefs(), sheet.__zbLayouts); };
+  sheet.addEventListener('click', function(e) { var b = e.target.closest && e.target.closest('button'); if (b && !b.disabled) act(b); });
+  sheet.addEventListener('change', function(e) { if (e.target.getAttribute && e.target.getAttribute('data-pref')) act(e.target); });
+  return render;
+}
 
 // ── Reading a book ──
 // Eric, 2026-09-25: "For the book reader it needs to be awesome on mobile:
@@ -16866,9 +17910,9 @@ function _booksSearch(val) { _appFrameCall('booksSearch', val); }
 // on it. A place in the book is
 // a character offset into its text, which holds across scrolling and pages,
 // a turn of the phone, a change of type, and reopening.
-var _BOOK_PLACES_MAX = 200;       // books remembered (oldest dropped first)
 var _BOOK_PLACE_THROTTLE = 800;   // ms between writes while reading
 var _BOOK_PLACE_SCALE = 1e5;      // the share read is kept to five decimal places
+var _BOOK_REMOTE_NEAR = 400;      // chars: another device's place this near where you are is where you are
 var _BOOK_CHAPTERS_MIN = 2;       // fewer headings than this is not a book of chapters
 var _BOOK_FRONT_MIN = 200;        // chars: a first "chapter" with less than this before it is the title page's
 var _BOOK_SECTION_CHARS = 150000; // chars: the longest run laid out as pages at once
@@ -16881,19 +17925,14 @@ var _BOOK_EDGE = 0.3;             // share of the width at either side where a t
 var _BOOK_SPREAD_MIN = 1000;      // px wide (and _BOOK_SPREAD_MIN_H tall) from which pages come two at a time
 var _BOOK_SPREAD_MIN_H = 480;
 var _BOOK_WHEEL_GAP = 350;        // ms between page turns by the wheel or trackpad
-var _BOOK_HEAD_H = 48;            // px: the header's height, under the top inset
 var _BOOK_PAGE_TOP = 44;          // px above and below the text of a page
 var _BOOK_PAGE_BOTTOM = 40;
-var _BOOK_SIZES = [14, 16, 17, 19, 21, 23, 26, 30, 34];  // px
-var _BOOK_LEADINGS = [1.35, 1.5, 1.65, 1.8, 2];
-var _BOOK_MARGINS = [8, 16, 24, 40];      // px at either side on a phone
-var _BOOK_MEASURES = [42, 36, 33, 29];    // em: the longest line, by the same setting
 var _BOOK_PREFS_DEFAULT = { size: 19, lh: 2, margin: 1 };
 var _BOOK_RTL_LANGS = /^(ar|arc|ckb|dv|fa|he|ku|ps|sd|ug|ur|yi)(-|$)/i;
 var _BOOK_CSS = [
   // ── the page ──
   'html.zb-book .zimi-reader{text-align:start;font-size:var(--zb-size);line-height:var(--zb-lh);',
-    'padding:calc(' + (_BOOK_HEAD_H + 12) + 'px + var(--zb-sat)) calc(var(--zb-m) + var(--zb-sar)) calc(96px + var(--zb-sab)) calc(var(--zb-m) + var(--zb-sal));',
+    'padding:calc(' + (_READING_BAR_H + 12) + 'px + var(--zb-sat)) calc(var(--zb-m) + var(--zb-sar)) calc(96px + var(--zb-sab)) calc(var(--zb-m) + var(--zb-sal));',
     '-webkit-hyphens:auto;hyphens:auto}',
   'html.zb-book .zimi-reader-body{max-width:var(--zb-measure)}',
   // Gutenberg's own paragraphs (an indent, no gap) are a book's; its screen
@@ -16914,94 +17953,46 @@ var _BOOK_CSS = [
   'html.zb-paged .zb-sec > :first-child{margin-top:0}',
   'html.zb-paged .zimi-reader img{max-height:var(--zb-colh)!important;width:auto;object-fit:contain;break-inside:avoid}',
   'html.zb-paged .zimi-reader h1,html.zb-paged .zimi-reader h2,html.zb-paged .zimi-reader h3{break-after:avoid}',
-  // ── the bars ──
-  '.zb-bar{position:fixed;left:0;right:0;z-index:2147482000;display:flex;align-items:center;gap:2px;box-sizing:border-box;',
-    'background:var(--rv-bg);color:var(--rv-fg);font:14px/1.25 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;',
-    'transition:transform .25s ease,opacity .25s ease;-webkit-user-select:none;user-select:none}',
-  '@supports (background:color-mix(in srgb,red 50%,transparent)){.zb-bar{background:color-mix(in srgb,var(--rv-bg) 90%,transparent);',
-    '-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%)}}',
-  '.zb-head{top:0;height:calc(' + _BOOK_HEAD_H + 'px + var(--zb-sat));padding:var(--zb-sat) calc(6px + var(--zb-sar)) 0 calc(6px + var(--zb-sal));border-bottom:1px solid var(--rv-border)}',
-  '.zb-foot{bottom:0;flex-direction:column;align-items:stretch;gap:4px;padding:6px calc(10px + var(--zb-sar)) calc(6px + var(--zb-sab)) calc(10px + var(--zb-sal));border-top:1px solid var(--rv-border)}',
-  'html.zb-away .zb-head{transform:translateY(-100%);opacity:0;pointer-events:none}',
-  'html.zb-away .zb-foot{transform:translateY(100%);opacity:0;pointer-events:none}',
-  '.zb-bar button{border:0;background:none;color:inherit;font:inherit;min-width:44px;height:44px;border-radius:22px;cursor:pointer;flex:none;',
-    'display:inline-flex;align-items:center;justify-content:center;padding:0 6px;-webkit-tap-highlight-color:transparent}',
-  '@media (hover:hover){.zb-bar button:hover:not(:disabled),.zb-sheet button:hover:not(:disabled){background:var(--rv-code)}}',
-  '.zb-bar button:focus-visible,.zb-sheet button:focus-visible,.zb-sheet input:focus-visible{outline:2px solid var(--rv-link);outline-offset:1px}',
-  '.zb-bar button:disabled{opacity:.3;cursor:default}',
-  '.zb-aa{font:600 17px/1 Georgia,serif!important;letter-spacing:.02em}',
-  '.zb-title{flex:1;min-width:0;text-align:center;line-height:1.2}',
-  '.zb-title b,.zb-title span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;unicode-bidi:plaintext}',
-  '.zb-title b{font-weight:600;font-size:14.5px}.zb-title span{font-size:12px;color:var(--rv-muted)}',
   '.zb-row{display:flex;align-items:center;gap:2px}',
   '.zb-info{flex:1;min-width:0;text-align:center;line-height:1.3}',
   '.zb-info .zb-ch{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;unicode-bidi:plaintext}',
   '.zb-info .zb-left{display:block;font-size:12px;color:var(--rv-muted);font-variant-numeric:tabular-nums}',
   '.zb-scrub{width:100%;margin:2px 0 0;height:24px;accent-color:var(--rv-link);cursor:pointer;touch-action:none}',
+  // A finger takes the slider anywhere in 44px, the bar keeping its height.
+  '@media (pointer:coarse){.zb-scrub{height:44px;margin:-8px 0 -10px}}',
   // The line a page keeps at its foot while the bars are away.
   '.zb-mini{position:fixed;left:0;right:0;bottom:calc(10px + var(--zb-sab));text-align:center;font:11.5px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;',
     'color:var(--rv-muted);pointer-events:none;opacity:0;transition:opacity .25s;font-variant-numeric:tabular-nums;z-index:1}',
   'html.zb-paged.zb-away .zb-mini{opacity:1}',
-  // ── the sheets: contents and reading settings ──
-  '.zb-scrim{position:fixed;inset:0;z-index:2147482100;background:rgba(0,0,0,.28);opacity:0;pointer-events:none;transition:opacity .2s}',
-  'html.zb-sheet-open .zb-scrim{opacity:1;pointer-events:auto}',
-  '.zb-sheet{position:fixed;left:0;right:0;bottom:0;z-index:2147482200;max-height:min(82vh,680px);overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;',
-    'box-sizing:border-box;padding:6px calc(16px + var(--zb-sar)) calc(18px + var(--zb-sab)) calc(16px + var(--zb-sal));border-radius:16px 16px 0 0;',
-    'background:var(--rv-bg);color:var(--rv-fg);border:1px solid var(--rv-border);box-shadow:0 -8px 30px rgba(0,0,0,.25);',
-    'font:15px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;transform:translateY(105%);visibility:hidden;',
-    'transition:transform .25s ease,visibility 0s linear .25s}',
-  '.zb-sheet.zb-open{transform:none;visibility:visible;transition:transform .25s ease}',
-  '@media (min-width:700px){.zb-sheet{left:auto;right:calc(16px + var(--zb-sar));bottom:auto;top:calc(' + (_BOOK_HEAD_H + 8) + 'px + var(--zb-sat));width:380px;',
-    'max-height:calc(100vh - ' + (_BOOK_HEAD_H + 32) + 'px);border-radius:14px;transform:translateY(-8px);opacity:0;transition:transform .2s,opacity .2s,visibility 0s linear .2s}',
-    '.zb-sheet.zb-open{transform:none;opacity:1;transition:transform .2s,opacity .2s}}',
-  '.zb-sheet-head{display:flex;align-items:center;justify-content:space-between;position:sticky;top:-6px;background:var(--rv-bg);padding:6px 0;z-index:1}',
-  '.zb-sheet-head b{font-size:16px}',
-  '.zb-sheet button{border:0;background:none;color:inherit;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}',
-  '.zb-x{width:40px;height:40px;border-radius:20px;font-size:22px!important;line-height:1}',
-  '.zb-toc-list{list-style:none;margin:0;padding:0}',
-  '.zb-toc-list button{display:block;width:100%;text-align:start;padding:11px 10px;border-radius:10px;unicode-bidi:plaintext}',
-  '.zb-toc-list .zb-sub button{padding-inline-start:28px;color:var(--rv-muted)}',
-  '.zb-toc-list [aria-current="true"] button{background:var(--rv-code);color:var(--rv-link);font-weight:600}',
-  '.zb-set{padding:7px 0;border-top:1px solid var(--rv-border)}.zb-set:first-of-type{border-top:0}',
-  '.zb-set-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--rv-muted);margin:0 0 6px}',
-  '.zb-seg{display:flex;gap:6px}',
-  '.zb-seg button{flex:1;min-height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;padding:0 8px}',
-  '.zb-seg button[aria-pressed="true"],.zb-seg button[aria-checked="true"]{border-color:var(--rv-link)!important;color:var(--rv-link);box-shadow:inset 0 0 0 1px var(--rv-link)}',
-  '.zb-themes button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;padding:6px 2px;min-height:0}',
-  '.zb-dot{width:22px;height:22px;border-radius:50%;border:1px solid rgba(128,128,128,.45);box-sizing:border-box}',
-  '.zb-dot-auto{background:linear-gradient(135deg,#fbfbf9 50%,#0a0a0b 50%)}.zb-dot-light{background:#fbfbf9}.zb-dot-sepia{background:#f4ecd8}.zb-dot-dark{background:#0a0a0b}',
-  '.zb-step{display:flex;align-items:center;gap:8px}',
-  '.zb-step button{width:52px;height:38px;border-radius:10px;border:1px solid var(--rv-border)!important;font-family:Georgia,serif}',
-  '.zb-step output{flex:1;text-align:center;font-variant-numeric:tabular-nums;color:var(--rv-muted)}',
-  '.zb-range{width:100%;accent-color:var(--rv-link);height:26px;margin:0}',
-  '@media print{.zb-bar,.zb-sheet,.zb-scrim,.zb-mini{display:none!important}',
+  '@media print{.zb-mini{display:none!important}',
     'html.zb-paged,html.zb-paged body{overflow:visible!important;height:auto}',
     'html.zb-paged .zimi-reader{position:static!important;height:auto!important;overflow:visible!important;padding:0!important}',
     'html.zb-paged .zimi-reader-body{height:auto!important;width:auto!important;margin:0!important;column-count:auto!important;transform:none!important}',
     'html.zb-paged .zb-sec{display:block!important}}',
-  '@media (prefers-reduced-motion:reduce){.zb-bar,.zb-sheet,.zb-scrim,.zb-mini{transition:none!important}}'
+  '@media (prefers-reduced-motion:reduce){.zb-mini{transition:none!important}}'
 ].join('');
 var _BOOK_SVG_BACK = '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
 var _BOOK_SVG_TOC = '<svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".6" fill="currentColor"/><circle cx="4.5" cy="12" r=".6" fill="currentColor"/><circle cx="4.5" cy="18" r=".6" fill="currentColor"/></svg>';
 
-function _bookPlaceKey(zim, path) { return zim + '\n' + path; }
-function _bookPlaces() { return _getStorageJSON(SK.BOOK_PLACES, {}) || {}; }
-// Keep a book's place: f the share of it read (Bookshelf shows it), c the
-// character it is at. With what Bookshelf needs to show it (its number,
-// title and author from the page's own record) when it was opened elsewhere.
+// Keep a book's place, as a position in Saved (Bookshelf's Continue reading,
+// and the account's when signed in): f the share of it read, c the character
+// it is at. With what Bookshelf needs to show it (its number, title and
+// author from the page's own record) when it was opened elsewhere.
 function _bookSavePlace(doc, zim, path, f, c) {
-  var all = _bookPlaces(), key = _bookPlaceKey(zim, path), cur = all[key] || {};
+  var cur = Saved.position({ zim: zim, path: path }) || { meta: {} };
   var m = path.match(/\.(\d+)$/);
   var meta = function(n) { var el = doc.querySelector('meta[name="' + n + '"]'); return el ? el.getAttribute('content') || '' : ''; };
-  all[key] = { f: Math.round(f * _BOOK_PLACE_SCALE) / _BOOK_PLACE_SCALE, c: c, ts: Date.now(), id: cur.id || (m ? Number(m[1]) : 0),
-    title: cur.title || meta('dc.title'), author: cur.author || _bookAuthorName(meta('dc.creator')),
-    cover: cur.cover || (m ? 'covers/' + m[1] + '_cover_image.jpg' : '') };
-  var keys = Object.keys(all);
-  if (keys.length > _BOOK_PLACES_MAX) {
-    keys.sort(function(a, b) { return (all[a].ts || 0) - (all[b].ts || 0); });
-    keys.slice(0, keys.length - _BOOK_PLACES_MAX).forEach(function(k) { delete all[k]; });
-  }
-  _setStorageJSON(SK.BOOK_PLACES, all);
+  Saved.setPosition({ kind: 'book', app: 'books', zim: zim, path: path, title: cur.title || meta('dc.title'),
+    meta: { id: cur.meta.id || (m ? Number(m[1]) : 0), author: cur.meta.author || _bookAuthorName(meta('dc.creator')),
+      cover: cur.meta.cover || (m ? 'covers/' + m[1] + '_cover_image.jpg' : '') } },
+    { f: Math.round(f * _BOOK_PLACE_SCALE) / _BOOK_PLACE_SCALE, c: c });
+}
+// The account's copy came in: the book open here, if one is, looks for a
+// newer place from another device and offers it (doc.__zbRemotePlace).
+function _bookSeeRemotePlace() {
+  if (!_bookReading) return;
+  var doc = _readerFrameDoc();
+  try { if (doc && typeof doc.__zbRemotePlace === 'function') doc.__zbRemotePlace(); } catch (e) {}
 }
 // "Ewald, Carl, 1856-1908" as a cover prints it: "Carl Ewald".
 function _bookAuthorName(creator) {
@@ -17011,22 +18002,19 @@ function _bookAuthorName(creator) {
 // How you like to read, per browser. Turning pages is the default where
 // fingers are; scrolling where a wheel is.
 function _bookPrefs() {
-  var p = _getStorageJSON(SK.BOOK_PREFS, {}) || {}, coarse = false;
+  var p = _readingPrefs(SK.BOOK_PREFS, _BOOK_PREFS_DEFAULT), coarse = false;
   try { coarse = window.matchMedia('(pointer: coarse)').matches; } catch (e) {}
-  var idx = function(v, list, d) { return typeof v === 'number' && v >= 0 && v < list.length ? v : d; };
-  return {
-    mode: p.mode === 'pages' || p.mode === 'scroll' ? p.mode : (coarse ? 'pages' : 'scroll'),
-    size: _BOOK_SIZES.indexOf(p.size) >= 0 ? p.size : _BOOK_PREFS_DEFAULT.size,
-    lh: idx(p.lh, _BOOK_LEADINGS, _BOOK_PREFS_DEFAULT.lh),
-    margin: idx(p.margin, _BOOK_MARGINS, _BOOK_PREFS_DEFAULT.margin)
-  };
+  if (p.mode !== 'pages' && p.mode !== 'scroll') p.mode = coarse ? 'pages' : 'scroll';
+  return p;
 }
 // Is this reader address a book? Known before it loads (the ZIM is a
-// Gutenberg one and the page is a book's, <title>.<number>), so Zimi's
-// header can step aside before the book is laid out, not after (a change
-// of the frame's size then would lay the book out twice).
+// Gutenberg one and the page is a book's, <title>.<number>; or it is an
+// EPUB's chapters, <book>.epub/), so Zimi's header can step aside before
+// the book is laid out, not after (a change of the frame's size then would
+// lay the book out twice).
 function _bookUrl(url) {
   var m = /^\/w\/([^\/?#]+)\/([^?#]+)/.exec(url || '');
+  if (m && /\.epub\/$/i.test(m[2])) return true;
   if (!m || !/\.\d+$/.test(m[2]) || /_cover\.\d+$/.test(m[2])) return false;
   var zim = ''; try { zim = decodeURIComponent(m[1]); } catch (e) { return false; }
   return (zimsCache || []).some(function(z) { return z.name === zim && z.kind === 'books'; });
@@ -17189,7 +18177,7 @@ function _bookAttach(frame) {
 }
 function _bookUndo(doc) {
   try {
-    doc.documentElement.classList.remove('zb-book', 'zb-paged', 'zb-away', 'zb-sheet-open');
+    doc.documentElement.classList.remove('zb-book', 'zb-paged', 'zb-away', 'zb-sheet-open', 'zb-set-open');
     Array.prototype.forEach.call(doc.querySelectorAll('#zb-style,.zb-bar,.zb-mini,.zb-scrim,.zb-sheet'), function(n) { n.remove(); });
   } catch (e) {}
 }
@@ -17204,7 +18192,7 @@ function _bookLay(frame) {
   var html = doc.documentElement, uiRtl = document.documentElement.getAttribute('dir') === 'rtl';
   var st = doc.createElement('style');
   st.id = 'zb-style';
-  st.textContent = _BOOK_CSS;
+  st.textContent = _READING_CSS + _BOOK_CSS;
   doc.head.appendChild(st);
   html.classList.add('zb-book');
   // Gutenberg's own page-top links (the book's page, its EPUB, a jump up)
@@ -17256,7 +18244,8 @@ function _bookLay(frame) {
   if (!author) head.querySelector('.zb-title span').style.display = 'none';
   var foot = el('div', 'zb-bar zb-foot');
   foot.setAttribute('dir', uiRtl ? 'rtl' : 'ltr');
-  foot.innerHTML = '<input type="range" class="zb-scrub" min="0" max="1000" step="1" value="0" aria-label="' + tH('books_position') + '">' +
+  foot.innerHTML = '<button type="button" class="zb-remote" hidden></button>' +
+    '<input type="range" class="zb-scrub" min="0" max="1000" step="1" value="0" aria-label="' + tH('books_position') + '">' +
     '<div class="zb-row"><button type="button" class="zb-pv" aria-label="' + tH('books_prev_chapter') + '" title="' + tH('books_prev_chapter') + '"></button>' +
     '<div class="zb-info"><span class="zb-ch"></span><span class="zb-left"></span></div>' +
     '<button type="button" class="zb-nx" aria-label="' + tH('books_next_chapter') + '" title="' + tH('books_next_chapter') + '"></button></div>';
@@ -17286,9 +18275,9 @@ function _bookLay(frame) {
   var applyVars = function() {
     var s = html.style;
     s.setProperty('--zb-size', prefs.size + 'px');
-    s.setProperty('--zb-lh', String(_BOOK_LEADINGS[prefs.lh]));
-    s.setProperty('--zb-m', _BOOK_MARGINS[prefs.margin] + 'px');
-    s.setProperty('--zb-measure', _BOOK_MEASURES[prefs.margin] + 'em');
+    s.setProperty('--zb-lh', String(_READING_LEADINGS[prefs.lh]));
+    s.setProperty('--zb-m', _READING_MARGINS[prefs.margin] + 'px');
+    s.setProperty('--zb-measure', _READING_MEASURES[prefs.margin] + 'em');
     s.setProperty('--zb-sat', insets.t + 'px'); s.setProperty('--zb-sar', insets.r + 'px');
     s.setProperty('--zb-sab', insets.b + 'px'); s.setProperty('--zb-sal', insets.l + 'px');
   };
@@ -17301,8 +18290,8 @@ function _bookLay(frame) {
   var layoutPages = function() {
     W = win.innerWidth; H = win.innerHeight;
     var cols = W >= _BOOK_SPREAD_MIN && H >= _BOOK_SPREAD_MIN_H ? 2 : 1;
-    var m = _BOOK_MARGINS[prefs.margin] + Math.max(insets.l, insets.r);
-    var colW = Math.floor(Math.min(W / cols - 2 * m, _BOOK_MEASURES[prefs.margin] * prefs.size));
+    var m = _READING_MARGINS[prefs.margin] + Math.max(insets.l, insets.r);
+    var colW = Math.floor(Math.min(W / cols - 2 * m, _READING_MEASURES[prefs.margin] * prefs.size));
     var gap = (W - cols * colW) / cols;
     var top = _BOOK_PAGE_TOP + insets.t, bottom = _BOOK_PAGE_BOTTOM + insets.b;
     var colh = Math.max(80, H - top - bottom);
@@ -17343,7 +18332,7 @@ function _bookLay(frame) {
     return Math.max(0, Math.min(pages - 1, Math.floor((pos + 1) / W)));
   };
   var barsShown = function() { return !html.classList.contains('zb-away'); };
-  var topGap = function() { return barsShown() ? _BOOK_HEAD_H + insets.t + 8 : 8; };
+  var topGap = function() { return barsShown() ? _READING_BAR_H + insets.t + 8 : 8; };
   // Go to a character of the book.
   var goTo = function(a) {
     if (!secs.length) return;
@@ -17424,11 +18413,41 @@ function _bookLay(frame) {
     pv.disabled = paged ? (cur === 0 && page === 0) : (win.scrollY || 0) <= 2;
     nx.disabled = !chapters.length || k >= chapters.length - 1;
   };
-  var last = 0, saveTimer = null;
+  // The place last known here (the one it opened at, or last wrote, or went
+  // to) and the time of the record: only a move from it is written, so a
+  // book left open never writes its older place over one read since on
+  // another device; a newer one from there is offered instead.
+  var last = 0, saveTimer = null, known = { c: -1, ts: 0 };
+  var remote = foot.querySelector('.zb-remote');
+  var offerOff = function() { remote.hidden = true; remote.__c = -1; };
   var save = function() {
     last = Date.now();
     var c = charOf(anchor);
+    if (c === known.c) return;
+    known.c = c;
+    offerOff();
     _bookSavePlace(doc, zim, path, c / total, c);
+    known.ts = (Saved.position({ zim: zim, path: path }) || known).ts;
+  };
+  doc.__zbRemotePlace = function() {
+    var p = Saved.position({ zim: zim, path: path }), w = p && p.where;
+    if (!w || p.ts <= known.ts) return;
+    known.ts = p.ts;
+    var c = w.c > 0 ? Math.min(total, w.c) : Math.round((w.f || 0) * total);
+    if (Math.abs(c - charOf(anchor)) < _BOOK_REMOTE_NEAR) return;
+    remote.textContent = t('books_remote_place', { where: pct(c / total) });
+    remote.__c = c;
+    remote.hidden = false;
+    showBars(true);
+  };
+  remote.onclick = function() {
+    var c = remote.__c;
+    offerOff();
+    if (c < 0) return;
+    held = false;
+    goToChar(c);
+    known.c = charOf(anchor);
+    paint();
   };
   var settleTimer = null;
   // After a scroll or a turn has come to rest: read where you are, show it, keep it.
@@ -17446,12 +18465,13 @@ function _bookLay(frame) {
   var sheetOpen = function() { return html.classList.contains('zb-sheet-open'); };
   var closeSheets = function() {
     [tocSheet, setSheet].forEach(function(s) { s.classList.remove('zb-open'); });
-    html.classList.remove('zb-sheet-open');
+    html.classList.remove('zb-sheet-open', 'zb-set-open');
   };
   var openSheet = function(s) {
     closeSheets();
     s.classList.add('zb-open');
     html.classList.add('zb-sheet-open');
+    html.classList.toggle('zb-set-open', s === setSheet);
     showBars(true);
   };
 
@@ -17544,58 +18564,18 @@ function _bookLay(frame) {
   };
 
   // ── reading settings: theme and font are Reader View's; the rest the book's ──
-  var seg = function(attr, items, curVal, label) {
-    return '<div class="zb-seg" role="group" aria-label="' + label + '">' + items.map(function(it) {
-      return '<button type="button" data-' + attr + '="' + it[0] + '" aria-pressed="' + (String(it[0]) === String(curVal)) + '"' + (it[2] ? ' style="' + it[2] + '"' : '') + '>' + it[1] + '</button>';
-    }).join('') + '</div>';
-  };
-  var row = function(label, body) { return '<div class="zb-set"><div class="zb-set-label">' + label + '</div>' + body + '</div>'; };
-  var renderSettings = function() {
-    var mode = _readerThemeMode(), fam = _readerFamily(), si = _BOOK_SIZES.indexOf(prefs.size);
-    var themes = ['auto', 'light', 'sepia', 'dark'].map(function(k) {
-      var lbl = tH(k === 'auto' ? 'theme_auto' : 'reader_theme_' + k);
-      return [k, '<span class="zb-dot zb-dot-' + k + '"></span>' + lbl];
-    });
-    setSheet.innerHTML = '<div class="zb-sheet-head"><b>' + tH('books_settings') + '</b><button type="button" class="zb-x" aria-label="' + tH('close') + '">×</button></div>' +
-      row(tH('reader_theme'), seg('theme', themes, mode, tH('reader_theme')).replace('zb-seg', 'zb-seg zb-themes')) +
-      row(tH('reader_font_family'), seg('fam', [['serif', tH('reader_font_serif'), 'font-family:Georgia,serif'], ['sans', tH('reader_font_sans'), 'font-family:-apple-system,sans-serif']], fam, tH('reader_font_family'))) +
-      row(tH('reader_text_size'), '<div class="zb-step"><button type="button" data-size="-1" aria-label="' + tH('reader_size_smaller') + '"' + (si <= 0 ? ' disabled' : '') + ' style="font-size:14px">A</button>' +
-        '<output>' + prefs.size + ' px</output><button type="button" data-size="1" aria-label="' + tH('reader_size_larger') + '"' + (si >= _BOOK_SIZES.length - 1 ? ' disabled' : '') + ' style="font-size:21px">A</button></div>') +
-      row('<label for="zb-lh">' + tH('books_line_spacing') + '</label>', '<input id="zb-lh" class="zb-range" type="range" min="0" max="' + (_BOOK_LEADINGS.length - 1) + '" step="1" value="' + prefs.lh + '" data-pref="lh">') +
-      row('<label for="zb-mg">' + tH('books_margins') + '</label>', '<input id="zb-mg" class="zb-range" type="range" min="0" max="' + (_BOOK_MARGINS.length - 1) + '" step="1" value="' + prefs.margin + '" data-pref="margin">') +
-      row(tH('books_layout'), seg('mode', [['scroll', tH('books_mode_scroll')], ['pages', tH('books_mode_pages')]], prefs.mode, tH('books_layout')));
-  };
   // A change of type or layout keeps the passage you were reading on screen.
   var setPrefs = function(change) {
     var keep = anchor;
-    for (var k in change) prefs[k] = change[k];
-    _setStorageJSON(SK.BOOK_PREFS, prefs);
-    paged = prefs.mode === 'pages';
+    if (change) {
+      for (var k in change) prefs[k] = change[k];
+      _setStorageJSON(SK.BOOK_PREFS, prefs);
+      paged = prefs.mode === 'pages';
+    }
     relayout(keep);
-    renderSettings();
   };
-  setSheet.addEventListener('click', function(e) {
-    var b = e.target.closest('button');
-    if (!b || b.disabled) return;
-    if (b.classList.contains('zb-x')) { closeSheets(); return; }
-    var key = ['theme', 'fam', 'size', 'mode'].filter(function(a) { return b.hasAttribute('data-' + a); })[0];
-    if (!key) return;
-    var val = b.getAttribute('data-' + key), keep = anchor;
-    if (key === 'theme') { _setReaderTheme(val); renderSettings(); }
-    else if (key === 'fam') { _setReaderFamily(val); relayout(keep); renderSettings(); }
-    else if (key === 'size') setPrefs({ size: _BOOK_SIZES[Math.max(0, Math.min(_BOOK_SIZES.length - 1, _BOOK_SIZES.indexOf(prefs.size) + Number(val)))] });
-    else setPrefs({ mode: val });
-    var again = setSheet.querySelector('[data-' + key + '="' + val + '"]');
-    if (again && !again.disabled) again.focus({ preventScroll: true });
-  });
-  setSheet.addEventListener('change', function(e) {
-    var p = e.target.getAttribute && e.target.getAttribute('data-pref');
-    if (!p) return;
-    var o = {}; o[p] = Number(e.target.value);
-    setPrefs(o);
-    var again = setSheet.querySelector('[data-pref="' + p + '"]');
-    if (again) again.focus({ preventScroll: true });
-  });
+  setSheet.__zbLayouts = [['scroll', tH('books_mode_scroll')], ['pages', tH('books_mode_pages')]];
+  var renderSettings = _readingSettingsBind(setSheet, function() { return prefs; }, setPrefs, closeSheets);
   head.querySelector('.zb-aa').onclick = function() {
     renderSettings();
     openSheet(setSheet);
@@ -17731,12 +18711,24 @@ function _bookLay(frame) {
   // Leaving: the place as last read (the frame may already be hidden, with
   // nothing on screen to read it from).
   win.addEventListener('pagehide', function() { clearTimeout(settleTimer); save(); });
+  // A passage brought into view from outside (a highlight opened from the
+  // Saved panel): its page turned to, or scrolled to under the header.
+  doc.__zbShowRange = function(r) {
+    var n = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentNode;
+    var s = n && n.closest && n.closest('.zb-sec');
+    if (!s) return;
+    held = false;
+    goTo({ s: s.__zbI, o: _bookOffsetIn(doc, s, r.startContainer, r.startOffset) });
+    showBars(false);
+    paint();
+    settleSoon();
+  };
 
   // ── open where you left it (or where the link points) ──
   paged = prefs.mode === 'pages';
   applyVars();
   html.classList.toggle('zb-paged', paged);
-  var place = _bookPlaces()[_bookPlaceKey(zim, path)];
+  var placed = Saved.position({ zim: zim, path: path }), place = (placed || {}).where;
   var hash = (win.location.hash || '').slice(1), tgt = null;
   if (hash) { try { hash = decodeURIComponent(hash); } catch (e) {} tgt = doc.getElementById(hash); }
   var tgtSec = tgt && tgt.closest('.zb-sec');
@@ -17750,6 +18742,7 @@ function _bookLay(frame) {
     goTo({ s: 0, o: 0 });
     if (!paged) win.scrollTo(0, 0);
   }
+  known = { c: charOf(anchor), ts: placed ? placed.ts : 0 };
   lastY = win.scrollY || 0;
   held = true;
   paint();
@@ -17845,10 +18838,50 @@ function _openAppItem(app, zim, path) {
   var id = zim + '/' + path;
   if (app === 'tube') openTube(false, id); else if (app === 'exchange') openExchange(false, id); else openReddot(false, id);
 }
+
+// A search result (or a Discover card) opens in the app made for its kind,
+// by default: a wiki's article in Zimipedia's reader (saving, highlights,
+// languages), a book in Bookshelf's, a video in ZimiTube, a question in
+// ZimiExchange, a post in Reddot. A map already opens in Maps' viewer. The
+// ZIM's own page when Settings > Reading says so, when the app is not shown
+// here, or when the page is not one of the app's things (a ZIM's front page,
+// a tag list, a user page).
+var _RESULT_APP = { wiki: 'wiki', books: 'books', video: 'tube', qa: 'exchange', reddit: 'reddot' };
+var _APP_ITEM_PATH = { exchange: /^(?:A\/)?questions\/\d+\//, reddot: /^(?:A\/)?r\/[^\/]+\/[^\/]+/ };
+function _openInApps() { try { return localStorage.getItem(SK.OPEN_IN_APPS) !== '0'; } catch (e) { return true; } }
+function _setOpenInApps(on) { try { if (on) localStorage.removeItem(SK.OPEN_IN_APPS); else localStorage.setItem(SK.OPEN_IN_APPS, '0'); } catch (e) {} }
+function _resultApp(zim, path) {
+  if (!_openInApps()) return '';
+  var z = _zimInfo(zim), app = z && _RESULT_APP[z.kind];
+  if (!app || !path || path === z.main_path || !_appShown(app)) return '';
+  if (_APP_ITEM_PATH[app] && !_APP_ITEM_PATH[app].test(path)) return '';
+  return app;
+}
+// A Gutenberg book's cover page (<title>_cover.<id>) is the way to the book
+// (<title>.<id>, zimi/books.py): Bookshelf opens the book.
+function _bookOfCover(path) { return String(path).replace(/_cover(\.\d+(?:\.html)?)$/, '$1'); }
+function _openResult(zim, path, title) {
+  var app = _resultApp(zim, path);
+  if (app === 'wiki') { _wikiFromApp = true; openArticle(zim, path, title); }
+  else if (app === 'books') openArticle(zim, _bookOfCover(path), title);
+  else if (app) _openAppItem(app, zim, path);
+  else openArticle(zim, path, title);
+}
+// The apps whose things (a video, a question, a post) open in the app, not
+// the reader; each thing's kind is the one Saved.KIND_APP gives the app.
+var _APP_ITEM_APPS = ['tube', 'exchange', 'reddot'];
+function _appItemKind(app) {
+  if (_APP_ITEM_APPS.indexOf(app) < 0) return '';
+  for (var k in Saved.KIND_APP) if (Saved.KIND_APP[k] === app) return k;
+  return '';
+}
+function _savedOpensInApp(it) { return !!it.app && _appItemKind(it.app) === it.kind; }
 var _TUBE_PAGE = '/static/tube.html?v=1';
 
+// Video ZIMs, and the ZIMs that feed ZimiTube beside their own kind: a
+// document library's videos and audiobooks, a folder of videos Zimi made.
 function _installedVideoZims() {
-  return _installedOfKind('video');
+  return _installedFor('video', 'tube');
 }
 
 function _isTubePage() {
@@ -17863,7 +18896,8 @@ function _tubeStrings(play) {
   var langs = {};
   _installedVideoZims().forEach(function(z) { if (z.language) langs[z.language] = _langDisplayName(z.language) || z.language; });
   return _appStrings('tube', ['tube_videos', 'tube_video', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay',
-    'tube_theater', 'tube_pip', 'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_no_media', 'tube_missing'], { play: play || '', langs: langs });
+    'tube_theater', 'tube_pip', 'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_track', 'tube_tracks',
+    'tube_no_media', 'tube_missing', 'tube_watch_later', 'tube_listen_later', 'tube_continue', 'tube_recording', 'tube_recordings'], { play: play || '', langs: langs });
 }
 
 // A thing inside an app (a video, a question, a post) is a step in history
@@ -17913,6 +18947,7 @@ window.addEventListener('message', function(e) {
     // step behind it, so the header's arrow returns to the video, the
     // question or the post (the browser's Back does the same).
     var fromApp = _isAppPage();
+    if (_isWikiPage()) _wikiFromApp = true;
     openArticle(d.zim, d.path);
     if (fromApp) { articleHistory.push({ app: true }); updateTopbar(); }
   } else if (d.zimi === 'top') {
@@ -18048,9 +19083,9 @@ var _REDDIT_ADDRESS_START = 'https://www.reddit.com/r/Kiwix';
 // this signed-in person turned it off for their account. Never per
 // browser (Eric: "Not per browser only per user or server").
 var APP_NAMES = ['maps', 'tube', 'exchange', 'reddot', 'wiki', 'books'];
-// Offered only when the server names them (ZIMI_APPS=...,wiki or a saved
-// list): Zimipedia is a preview being redesigned. Mirrors server.APPS_OPT_IN.
-var APPS_OPT_IN = ['wiki'];
+// Offered only when the server names them (a preview, while it is built):
+// none now, Zimipedia was one until its reader. Mirrors server.APPS_OPT_IN.
+var APPS_OPT_IN = [];
 function _appOptIn(app) { return APPS_OPT_IN.indexOf(app) >= 0; }
 var APPS_DEFAULT = APP_NAMES.filter(function(a) { return !_appOptIn(a); });
 var _userPrefs = { apps: true, shown: null };
@@ -18061,6 +19096,13 @@ function _appsAllowedByServer(app) {
   if (stamp === undefined || stamp === '') return !app || !_appOptIn(app);
   if (stamp === '0') return false;
   return app ? stamp.split(',').indexOf(app) >= 0 : true;
+}
+// The stamp as the server gives it (/whoami, or a saved switch): null for
+// the default apps.
+function _setAppsStamp(stamp) {
+  if (!document.body || !document.body.dataset) return;
+  if (stamp == null) delete document.body.dataset.zimiApps;
+  else document.body.dataset.zimiApps = stamp;
 }
 function _appShown(app) {
   if (!_appsAllowedByServer(app)) return false;
@@ -18105,41 +19147,130 @@ function _setUserApp(app, on) {
 function _appIcon(app) {
   return app === 'maps' ? _MAPS_SVG : app === 'tube' ? _TUBE_PLAY_SVG : app === 'exchange' ? _EXCHANGE_SVG : app === 'wiki' ? _WIKI_SVG : app === 'books' ? _BOOKS_SVG : _REDDOT_SVG;
 }
+// The ZIMs inside each app: the ones its tile names and its page reads.
+function _appZims(app) {
+  return app === 'maps' ? _installedMaps()
+    : app === 'tube' ? _installedVideoZims()
+    : app === 'exchange' ? _installedQaZims()
+    : app === 'wiki' ? _installedWikiZims()
+    : app === 'books' ? _installedBookZims()
+    : _installedRedditZims();
+}
 // What the library holds for each app, in a line under its name.
 function _appCountLine(app) {
-  var n = app === 'maps' ? _installedMaps().length
-    : app === 'tube' ? _installedVideoZims().length
-    : app === 'exchange' ? _installedQaZims().length
-    : app === 'wiki' ? _installedWikiZims().length
-    : app === 'books' ? _installedBookZims().length
-    : _installedRedditZims().reduce(function(s, z) { return s + (z.subreddits && z.subreddits.length ? z.subreddits.length : 1); }, 0);
+  var zims = _appZims(app);
+  var n = app === 'reddot'
+    ? zims.reduce(function(s, z) { return s + (z.subreddits && z.subreddits.length ? z.subreddits.length : 1); }, 0)
+    : zims.length;
   return tPlural('apps_count_' + app, n);
 }
+// Each app a Settings switch row: its icon, its name, what the library holds
+// for it, and the switch. The same row every other on/off in Settings is.
 function _appPicksHtml(apps, checked, onchange, disabled) {
-  return '<div class="app-picks" role="group">' + apps.map(function(app) {
-    var on = !!checked(app);
-    return '<button type="button" class="app-pick' + (on ? ' on' : '') + '" aria-pressed="' + on + '"' + (disabled ? ' disabled' : '') +
-      ' onclick="' + onchange + '(\'' + app + '\', ' + (!on) + ')">' + _appIcon(app) + '<span class="app-pick-t"><span>' + esc(_appTitle(app)) + '</span><small>' + esc(_appCountLine(app)) + '</small></span></button>';
-  }).join('') + '</div>';
+  return _switchRowsHtml(apps.map(function(app) {
+    return { cls: 'app-pick', icon: '<span class="set-row-icon">' + _appIcon(app) + '</span>',
+      title: esc(_appTitle(app)), desc: esc(_appCountLine(app)), on: !!checked(app), disabled: disabled,
+      onchange: onchange + '(\'' + app + '\', this.checked)' };
+  }));
+}
+
+// Each app's tile and its door, by name, so the row and the Apps page can
+// take the apps in any order.
+var _APP_TILES = { maps: _mapsTileHtml, tube: _tubeTileHtml, exchange: _exchangeTileHtml, reddot: _reddotTileHtml, wiki: _wikiTileHtml, books: _booksTileHtml };
+
+// The apps follow the library's order, as the sources do (#100). Eric: "sort
+// the apps by recently updated (i.e. contains zims that were recently
+// updated, added, etc.)". So an app is as recent as the newest ZIM inside it
+// (Recently added: its newest arrival; Recently updated: its newest arrival
+// or update), as big as its ZIMs together (Most articles), and otherwise
+// goes by its name. All of it from the library list already in hand, so
+// nothing is read to sort them. Under the dates and sizes an app with
+// nothing inside comes last; ties keep the row's own order.
+var _APP_SORT_DATE = {
+  added: function(z) { return z.first_seen || 0; },
+  updated: _zimChangedAt,
+};
+function _appSortValue(app, mode) {
+  var zims = _appZims(app);
+  if (mode === 'entries') {
+    return zims.reduce(function(s, z) { return s + (typeof z.entries === 'number' ? z.entries : 0); }, 0);
+  }
+  var date = _APP_SORT_DATE[mode];
+  return zims.reduce(function(m, z) { return Math.max(m, date(z)); }, 0);
+}
+function _sortApps(apps) {
+  var mode = _librarySort();
+  if (!_APP_SORT_DATE[mode] && mode !== 'entries') {
+    return apps.slice().sort(function(a, b) {
+      return _LIBRARY_SORTERS.alpha({ title: _appTitle(a) }, { title: _appTitle(b) });
+    });
+  }
+  var value = {};
+  apps.forEach(function(app) { value[app] = _appSortValue(app, mode); });
+  return apps.slice().sort(function(a, b) { return value[b] - value[a]; });
+}
+function _shownApps() { return _sortApps(APP_NAMES.filter(_appShown)); }
+
+// Every ZIM inside an app that is offered, once: the Apps page's library.
+function _appsZimNames() {
+  var names = {};
+  _shownApps().forEach(function(app) { _appZims(app).forEach(function(z) { names[z.name] = 1; }); });
+  return Object.keys(names);
+}
+function openAppsPage() {
+  enterScope('apps', t('apps_section'), _appsZimNames(), true);
+}
+
+// App tiles in a grid, laid out as the library is (list or tiles).
+function _appsGridHtml(tiles) {
+  return '<div class="' + (_getLibraryView() === 'tiles' ? 'stats-grid tiles' : 'stats-grid') + ' apps-grid">' + tiles + '</div>';
 }
 
 function _appsRowHtml() {
   if (!_appsEnabled()) return '';
-  var tiles = (_appShown('maps') ? _mapsTileHtml() : '') + (_appShown('tube') ? _tubeTileHtml() : '') +
-    (_appShown('exchange') ? _exchangeTileHtml() : '') + (_appShown('reddot') ? _reddotTileHtml() : '') +
-    (_appShown('wiki') ? _wikiTileHtml() : '') + (_appShown('books') ? _booksTileHtml() : '');
+  var tiles = _shownApps().map(function(app) { return _APP_TILES[app](); }).join('');
   if (!tiles) return '';
-  var isTiles = _getLibraryView() === 'tiles';
   // Labelled like every section around it (Discover above, the categories
-  // below): a row without a name between rows with names reads as lost.
-  return '<div class="ci-section-label">' + tH('apps_section') + '</div>' +
-    '<div class="' + (isTiles ? 'stats-grid tiles' : 'stats-grid') + ' apps-grid">' + tiles + '</div>';
+  // below): a row without a name between rows with names reads as lost. And
+  // like theirs, its name opens its page (#100): the Apps page. An empty
+  // library has nothing to show there, so its name is only a name.
+  var open = zimsCache && zimsCache.length;
+  return '<div class="cat-heading' + (open ? ' clickable"' + _CAT_HEAD_OPENS + ' onclick="openAppsPage()"' : '"') + '>' + tH('apps_section') + '</div>' +
+    _appsGridHtml(tiles);
+}
+
+// The Apps page (#100): each app, in the library's order, with the ZIMs
+// inside it, also in the library's order, so you can see what an app is
+// made of and open any of them. Each app is a section: a banner that is the
+// app (its mark, its name, how many sources it reads; a tap opens it), and
+// under it, set in on a rail, the ZIMs it is made of. Eric, 2026-09-29: "not
+// having sections and app looking too close to zims with no spacing"; a
+// tile shaped like a ZIM card read as one more ZIM. An app with nothing
+// inside is only its banner, dotted, the door to what it needs, unless a
+// filter is narrowing the page. One heading on top carries the order and
+// view controls, as every page's first heading does.
+function _appsPageHtml(shown) {
+  var narrowed = !!(homeRecentFilter || homeLangFilter.size);
+  var groups = _shownApps().map(function(app) {
+    var inside = _appZims(app);
+    if (!inside.length) return narrowed ? '' : _appSectionHtml(app, 0, '');
+    var zims = _sortLibrary(inside.filter(function(z) { return shown.has(z.name); }));
+    return zims.length ? _appSectionHtml(app, inside.length, renderCardGrid(zims, true, false)) : '';
+  }).join('');
+  return groups && '<div class="cat-heading">' + tH('apps_section') + '</div>' + groups;
+}
+// One app's section: its tile drawn as a banner (the count of what it reads
+// in place of their names, which follow under it), then its ZIMs.
+function _appSectionHtml(app, n, grid) {
+  var tile = _APP_TILES[app]().replace('class="stat-card app-tile', 'class="stat-card app-tile app-banner');
+  if (n) tile = tile.replace(/<div class="detail">[^<]*<\/div>/, '<div class="detail">' + tPluralH('app_sources', n) + '</div>');
+  return '<section class="app-section" data-app="' + app + '">' + tile + grid + '</section>';
 }
 
 function _appTileHtml(app, title, icon, names, openFn) {
   names = names.filter(function(n, i) { return names.indexOf(n) === i; });
   if (names.length) {
-    return '<a class="stat-card app-tile ' + app + '-tile" href="#' + app + '" data-zim="" onclick="return _spaNav(event, ' + openFn + ')">' +
+    return '<a class="stat-card app-tile ' + app + '-tile" href="#' + app + '" data-zim="" data-app="' + app + '" onclick="return _spaNav(event, ' + openFn + ')">' +
       '<div class="card-icon">' + icon + '</div>' +
       '<div class="card-info"><div class="name"><span class="zt">' + esc(title) + '</span></div>' +
       '<div class="detail">' + esc(names.join(' \u00b7 ')) + '</div></div></a>';
@@ -18147,7 +19278,7 @@ function _appTileHtml(app, title, icon, names, openFn) {
   var door = _APP_CATEGORY[app]
     ? 'href="/?manage" onclick="return _spaNav(event, function() { _openCategory(_APP_CATEGORY.' + app + '); })"'
     : 'href="/#create" onclick="return _spaNav(event, function() { _createRememberMode = \'page\'; _createRememberSource = _REDDIT_ADDRESS_START; openCreate(); })"';
-  return '<a class="stat-card app-tile app-empty ' + app + '-tile" ' + door + ' data-zim="">' +
+  return '<a class="stat-card app-tile app-empty ' + app + '-tile" ' + door + ' data-zim="" data-app="' + app + '">' +
     '<div class="card-icon">' + icon + '</div>' +
     '<div class="card-info"><div class="name"><span class="zt">' + esc(title) + '</span></div>' +
     '<div class="detail">' + esc(t('app_empty_' + app)) + '</div></div></a>';
@@ -18450,7 +19581,70 @@ function _renderMapSourceDropdown(dd) {
   var maps = _installedMaps();
   var cur = currentArticle && (zimsCache || []).filter(function(z) { return z.name === currentArticle.zim; })[0];
   if (cur && !maps.some(function(m) { return m.name === cur.name; })) maps.unshift(cur);
-  dd.innerHTML = _mapSourceRowsHtml(maps, currentArticle ? currentArticle.zim : '', pos, extras);
+  var here = currentArticle ? currentArticle.zim : '';
+  dd.innerHTML = _mapPlacesHtml(here) + _mapSourceRowsHtml(maps, here, pos, extras);
+}
+
+// ── Places: Maps' own part of Saved ──
+// The picker on a map page is Places and maps: first Save this place (the
+// view on screen: its centre and zoom), then the places kept, this map's
+// first, each flying there when tapped, its list button opening the list
+// picker every app shares; then the maps. B saves the place too.
+var _MAP_SAME_SPOT_DEG = 1e-4;  // closer than this, the view is still on the place
+function _mapNear(a, b) {
+  return !!(a && b && Math.abs(a.lat - b.lat) < _MAP_SAME_SPOT_DEG && Math.abs(a.lng - b.lng) < _MAP_SAME_SPOT_DEG);
+}
+function _mapPlacesHtml(here) {
+  var places = Saved.itemsFor({ app: 'maps' });
+  var ref = _savedRefOnScreen(), kept = !!(ref && Saved.has(ref));
+  var at = parseMapHash('#' + (_currentMapPositionHash() || ''));
+  var mine = places.filter(function(p) { return p.zim === here; }), others = places.filter(function(p) { return p.zim !== here; });
+  return '<div class="mp-head" role="separator">' + tH('map_places') + '</div>' +
+    '<div class="mp-row mp-save' + (kept ? ' active' : '') + '" role="menuitemcheckbox" aria-checked="' + kept + '" data-role="save-place">' +
+    // A checkbox that keeps its name: "Saved" in its place read as a heading
+    // over the places, and a tap on it took the place away.
+    '<span class="mp-name">' + (kept ? _libBookmarkFilledSvg : _libBookmarkSvg) + '<span>' + tH('map_place_save') + '</span></span></div>' +
+    mine.concat(others).map(function(p) {
+      var on = p.zim === here && _mapNear(parseMapHash('#' + ((p.where || {}).pos || '')), at);
+      var z = p.zim === here ? null : _zimInfo(p.zim);
+      return '<div class="mp-row mp-place' + (on ? ' active' : '') + '" role="menuitem" data-role="place" data-key="' + escAttr(p.key) + '">' +
+        // In a span of its own: a long name ends in an ellipsis, and one in
+        // another script than the shell's is cut at its own end.
+        '<span class="mp-name"><span>' + esc(p.title || _fallbackTitle(p.zim, p.path)) + '</span></span>' +
+        '<span class="mp-meta">' + (z ? esc(_mapName(z)) : '') +
+        '<button type="button" class="mp-lists" data-role="place-lists" aria-haspopup="menu" title="' + escAttr(t('saved_add_to_list')) +
+        '" aria-label="' + escAttr(t('saved_add_to_list')) + '">' + _BM_LIST_SVG + '</button></span></div>';
+    }).join('') + '<div class="mp-head" role="separator">' + tH('cat_maps') + '</div>';
+}
+// A place is kept under the name you would give it: the place a search flew
+// to while the map is still on it, else the label nearest the middle of the
+// map (a town or a quarter before anything else named), else the map's.
+function _mapPlaceTitle(zim, pos) {
+  var at = parseMapHash('#' + (pos || ''));
+  if (!at) return '';
+  var own = _fallbackTitle(zim, '');
+  var h = _histLoad();
+  for (var i = 0; i < h.length; i++) {
+    var e = h[i];
+    if (e.type === 'article' && e.zim === zim && e.pos && e.title && e.title !== own && _mapNear(parseMapHash('#' + e.pos), at)) return e.title;
+  }
+  return _mapNearestLabel();
+}
+var _MAP_PLACE_LAYER_RE = /^place/;
+function _mapNearestLabel() {
+  var map = _readerMap();
+  if (!map || typeof map.queryRenderedFeatures !== 'function' || typeof map.project !== 'function') return '';
+  try {
+    var mid = map.project(map.getCenter()), lang = _currentLang || 'en', best = null;
+    (map.queryRenderedFeatures() || []).forEach(function(f) {
+      var p = f.properties || {}, g = f.geometry, name = p['name:' + lang] || p.name;
+      if (!name || !g || g.type !== 'Point') return;
+      var xy = map.project(g.coordinates), d = Math.pow(xy.x - mid.x, 2) + Math.pow(xy.y - mid.y, 2);
+      var place = _MAP_PLACE_LAYER_RE.test(f.sourceLayer || (f.layer && f.layer['source-layer']) || '');
+      if (!best || (place && !best.place) || (place === best.place && d < best.d)) best = { d: d, place: place, name: String(name) };
+    });
+    return best ? best.name : '';
+  } catch (e) { return ''; }
 }
 
 var _mapSourceDetach = null;
@@ -18465,6 +19659,17 @@ function toggleMapSourceDropdown(event) {
     var row = e.target.closest('.mp-row');
     if (!row) return;
     var role = row.getAttribute('data-role');
+    if (role === 'save-place') { toggleBookmark(); _renderMapSourceDropdown(dd); return; }
+    if (role === 'place') {
+      var place = Saved.get(row.getAttribute('data-key'));
+      var lists = e.target.closest('[data-role="place-lists"]');
+      var at = lists && lists.getBoundingClientRect();
+      _closeMapSourceDropdown();
+      // After this click has finished, or the menu's own outside-click closes it.
+      if (place && lists) setTimeout(function() { savedPickLists(place, at); }, 0);
+      else if (place) _savedOpen(place);
+      return;
+    }
     if (role === 'fold') {
       var folded = row.nextElementSibling;
       var open = folded && folded.hidden;
@@ -18564,6 +19769,28 @@ function _readerShare() {
 }
 
 // ── Reader ──
+// Calls fn once the frame holds a new document whose DOM is parsed
+// (DOMContentLoaded), before its images load. Gives up when the frame's
+// load event comes first (it calls fn itself) or after the reader's own
+// safety timeout.
+var _FRAME_DOC_POLL_MS = 16;
+var _FRAME_DOC_WAIT_MS = 15000;  // the reader's own safety timeout
+// Each openReader call's number: a poller left from an earlier page stops
+// rather than handle the page opened after it.
+var _frameOpenGen = 0;
+function _whenFrameDocReady(frame, prevDoc, fn) {
+  var t0 = Date.now(), gen = _frameOpenGen;
+  var tick = function() {
+    if (gen !== _frameOpenGen) return;
+    var d = null; try { d = frame.contentDocument; } catch (e) { return; }
+    if (d && d !== prevDoc && d.readyState !== 'loading' && d.URL !== 'about:blank') {
+      if (d.readyState === 'complete' || _isBookDoc(d)) return; // the load event has it
+      fn(); return;
+    }
+    if (Date.now() - t0 < _FRAME_DOC_WAIT_MS) setTimeout(tick, _FRAME_DOC_POLL_MS);
+  };
+  setTimeout(tick, _FRAME_DOC_POLL_MS);
+}
 function openReader(url) {
   _chromeReset(); // a new page starts with the header in place
   // Same-document fragment scroll fast-path. When the frame already holds the
@@ -18646,7 +19873,11 @@ function openReader(url) {
   // it can't be trusted to fully mask the raw white ZIM paint — hiding the frame
   // outright guarantees the first painted frame is the reader, never the original.
   // (visibility:hidden preserves layout + load, so extraction still works.)
-  var _maskFrame = _readerViewOn || _readerAuto() || _bookLoading;
+  var _maskFrame = _readerViewOn || _readerAuto() || _bookLoading || _wikiFromApp;
+  // A wiki's article: the reader's code comes alongside the page (it is
+  // usually here already), never before it.
+  // Not a wiki's article: Zimi's header offers saving again from the start.
+  if (_wikiUrl(url)) _wikiReaderLoad(); else _wikiChrome(false);
   frame.style.visibility = _maskFrame ? 'hidden' : 'visible';
 
   // Punch-out button: for pdf.js viewer URLs, link to the raw PDF for download
@@ -18674,10 +19905,29 @@ function openReader(url) {
     frame.style.visibility = 'visible'; // reveal even if the load stalled
     if (_bookReading) _bookChrome(false); // and give Zimi's header back until a book is shown
   }, 15000);
-  frame.onload = function() {
+  // The page is shown when its text is there, not when its last picture is:
+  // a masked article (Reader View, Zimipedia's reader) waited on the load
+  // event, which waits on every eager picture read out of a big ZIM first. The DOM is complete at DOMContentLoaded; the pictures
+  // fill in after. A book waits for its load: its pages are measured once.
+  _frameOpenGen++;
+  var _prevDoc = null; try { _prevDoc = frame.contentDocument; } catch (e) {}
+  var _earlyOk = _maskFrame && url.slice(0, 3) === '/w/' && !lurl.endsWith('.pdf');
+  var _onDoc = function() {
+    var _d0 = null; try { _d0 = frame.contentDocument; } catch (e) {}
+    if (_d0) { if (_d0.__zimiShown) return; _d0.__zimiShown = true; }
+    _frameDocShown(frame, loading);
+  };
+  if (_earlyOk) _whenFrameDocReady(frame, _prevDoc, _onDoc);
+  frame.onload = _onDoc;
+  function _frameDocShown(frame, loading) {
     clearTimeout(_readerTimeout);
     if (!readerOpen) { loading.classList.add('hidden'); return; } // reader was closed — don't update title
     _ttsStop(); // stop any in-progress speech when the article changes
+    try { _blockPinch(frame.contentDocument); } catch (e) {}
+    // Links out of the library, marked (or made plain text) before anything
+    // is shown or copied: Reader View and the book reader clone the marks.
+    _extHide();
+    if (!_frameIsOurOwnPage(frame)) try { _extMark(frame.contentDocument); } catch (e) {}
     // AUTO / sticky Reader View: transform the freshly loaded document BEFORE we
     // reveal it. The reader was on for the previous article (sticky, Safari-like)
     // or AUTO is armed → re-apply to this doc. The tinted loading overlay stays up
@@ -18685,9 +19935,16 @@ function openReader(url) {
     // unbroken"). Non-eligible docs (PDF viewer, thin pages) fall through silently.
     var _bookDoc = false; try { _bookDoc = _isBookDoc(frame.contentDocument); } catch (e) {}
     var _wantReader = _readerViewOn || _readerAuto() || _bookDoc;
+    // A wiki's article opened from Zimipedia reads in Zimipedia's reader
+    // (Reader View laid out as an encyclopedia); one opened anywhere else does
+    // when Reader View is on, so it stays as you follow links.
+    var _wikiDoc = !_bookDoc && _wikiArticleDoc(frame);
+    if (_wikiDoc && _wikiFromApp) _wantReader = true;
+    _wikiFromApp = false;
     _readerViewOn = false; // the new document has no shell yet
     if (_wantReader) {
       var _rdoc = null; try { _rdoc = frame.contentDocument; } catch(e) { _rdoc = null; }
+      if (_rdoc && _wikiDoc) _rdoc.__zimiWiki = true;
       if (_rdoc && _readerViewAvailable()) {
         var _rok = false; try { _rok = _readerViewApply(_rdoc); } catch(e) { _rok = false; }
         if (_rok) _readerViewOn = true;
@@ -18700,6 +19957,8 @@ function openReader(url) {
       try { _bookOn = _bookAttach(frame); } catch (e) { console.warn('Book reader:', e); _showToast(t('books_view_unavailable')); }
     }
     _bookChrome(_bookOn);
+    var _wikiOn = _wikiDoc && _readerViewOn;
+    if (_wikiOn) _wikiReaderAttach(frame); else _wikiChrome(false);
     _tintReaderChrome(); // reset frame bg to #fff if reader ended up off
     _syncReaderViewBtn();
     // Auto-darken a raw (non-Reader-View) ZIM page when the app is dark, so the
@@ -18716,6 +19975,8 @@ function openReader(url) {
     // wiktionary ZIM is installed). Works in the normal reader AND Reader View
     // (same document, listeners attached once per load survive the transform).
     try { _defineAttachToDoc(frame); } catch(e) {}
+    // Highlights: painted when the page has some, offered when text is selected.
+    try { _hlReaderAttach(frame); } catch(e) { console.warn('Highlights:', e); }
     try { _sayMissingVideos(frame); } catch(e) {}
     // A consent wall the ARCHIVE rebuilds every time it is opened, and a
     // captured page's JS-driven chrome put back in its place. Both edit the
@@ -18745,12 +20006,17 @@ function openReader(url) {
     // again for pdf.js's own observer, and no page ever rendered. Reported by
     // Joe (WB3IHY), with the cause and the fix (#71).
     var _settlePasses = function() {
-      // A book is no capture: nothing of a web page's chrome to put back.
-      if (_frameIsOurOwnPage(frame) || _bookDoc) return;
+      // A book is no capture: nothing of a web page's chrome to put back;
+      // nor is a wiki's article in Zimipedia's reader (a style read for every
+      // element of a long one, for nothing).
+      if (_frameIsOurOwnPage(frame) || _bookDoc || _wikiOn) return;
       try { _sweepBlockingOverlays(frame); } catch(e) {}
       try { _settleCapturedChrome(frame); } catch(e) {}
     };
     if (_replayAlive) setTimeout(_settlePasses, REPLAY_SETTLE_MS);
+    // Reader View shows its own shell: the capture's chrome is put away, and
+    // tidying it (a style read per element) waits until the text is shown.
+    else if (_readerViewOn) _afterPaint(_settlePasses);
     else _settlePasses();
     // A map ZIM: put it where the link says, then follow it. Both are no-ops
     // on every other kind of page, since neither finds a map handle.
@@ -18762,8 +20028,8 @@ function openReader(url) {
     // Inject responsive CSS + scroll-to-top button for mobile. Not into
     // Zimi's own pages (the apps, the PDF viewer): they lay themselves out,
     // and the button sat on a video's dock and over a thread's last lines.
-    // Nor into a book: the book reader has its own footer and way through.
-    if (!_frameIsOurOwnPage(frame) && !_bookDoc) try {
+    // Nor into a book, nor Zimipedia's reader: each has its own bar and way through.
+    if (!_frameIsOurOwnPage(frame) && !_bookDoc && !_wikiOn) try {
       // Web-mirror pages (alive engine, zimit) ship a browser's-eye recording of
       // a real site: their own viewport meta, their own responsive CSS, their own
       // replay shim (wombat). The mwoffliner first-aid below actively BREAKS them
@@ -18798,6 +20064,8 @@ function openReader(url) {
         '.thumb,.thumbinner,figure,.gallery,.mw-kartographer-map,.mw-kartographer-maplink,' +
           '.floatright,.floatleft,.tright,.tleft{max-width:100%!important}'
       ]).concat([
+        // No bounce past the top or an edge: it showed white under a dark page.
+        'html{overscroll-behavior:none}',
         '#zimi-top{position:fixed;bottom:20px;right:20px;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;border:none;font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:9999;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}'
       ]).join('');
       // Only a PICTURE forces a viewport-less page to be scaled down: one that
@@ -18917,50 +20185,10 @@ function openReader(url) {
           openArticle(linkZim, linkPath);
           return;
         }
-        // External links: try cross-ZIM resolution, fall back to new tab
-        // Check both raw href (https://...) and protocol-relative (//domain/...)
-        if ((/^https?:\/\//.test(href) || /^\/\//.test(href)) && !fullUrl.startsWith(location.origin)) {
-          e.preventDefault();
-          // Quick client-side check: skip /resolve if domain isn't in any installed ZIM
-          try {
-            var linkHost = new URL(fullUrl).hostname;
-            var linkBare = linkHost.replace(/^www\./, '');
-            if (!_domainZimMap[linkHost] && !_domainZimMap[linkBare]) {
-              window.open(fullUrl, '_blank');
-              return;
-            }
-          } catch(ex) {}
-          // Check cached resolve results first (populated by batch resolve on load)
-          var _cached = _resolveCache && _resolveCache[fullUrl];
-          if (_cached && _cached.found) {
-            openArticle(_cached.zim, _cached.path);
-            return;
-          }
-          var fromZim = readerSource || (currentArticle && currentArticle.zim) || '';
-          // When resolve says "not captured" but the domain BELONGS to an
-          // installed ZIM, stay in the archive: navigate to the mirrored
-          // path so the reader serves the page if it exists and the
-          // not-captured interstitial (with its explicit live-web link) if
-          // it does not. Leaving the archive is always a stated choice, so
-          // window.open(live) is reserved for domains no ZIM claims.
-          var _mapped = _domainZimMap[linkHost] || _domainZimMap[linkBare] || '';
-          function _stayInArchive() {
-            try {
-              var u = new URL(fullUrl);
-              openArticle(_mapped, u.hostname + u.pathname + (u.search || ''));
-              return true;
-            } catch (ex) { return false; }
-          }
-          fetch('/resolve?url=' + encodeURIComponent(fullUrl) + (fromZim ? '&from=' + encodeURIComponent(fromZim) : ''))
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-              if (data.found) openArticle(data.zim, data.path);
-              else if (_mapped && _stayInArchive()) return;
-              else window.open(fullUrl, '_blank');
-            })
-            .catch(function() {
-              if (!(_mapped && _stayInArchive())) window.open(fullUrl, '_blank');
-            });
+        // Off this server: into the library when an installed ZIM holds the
+        // site, else out to the web, saying where before it goes.
+        if (!fullUrl.startsWith(location.origin)) {
+          _extFollow(e, a, fullUrl, readerSource || (currentArticle && currentArticle.zim) || '');
         }
       };
       // capture: true so we run before wombat's own click interceptor.
@@ -18980,35 +20208,17 @@ function openReader(url) {
     // Only highlight links that actually resolve to a different installed ZIM
     // Feature flag: enabled by default, user can hide via Settings checkbox
     var _currentZim = readerSource || (currentArticle && currentArticle.zim) || '';
-    if (!_getStorageFlag(SK.HIDE_XZIM_LINKS) && Object.keys(_domainZimMap).length > 0 && !_frameLoc.startsWith('/static/')) try {
-      var styleEl = frame.contentDocument.createElement('style');
-      styleEl.textContent = '.zimi-xzim{text-decoration-style:dotted;text-decoration-color:var(--amber,#f59e0b)}';
-      frame.contentDocument.head.appendChild(styleEl);
-      // Collect external URLs that might resolve to installed ZIMs
-      var urlMap = {}; // url → [anchor elements]
-      var links = frame.contentDocument.querySelectorAll('a[href]');
-      var frameLoc2 = frame.contentWindow.location;
-      links.forEach(function(a) {
-        var h2 = a.getAttribute('href') || '';
-        var full2;
-        try { full2 = new URL(h2, frameLoc2.href).href; } catch(ex) { return; }
-        if (full2.startsWith(location.origin)) return;
-        if (!/^https?:\/\//.test(full2)) return;
-        try {
-          var host2 = new URL(full2).hostname;
-          var bare2 = host2.replace(/^www\./, '');
-          if (_domainZimMap[host2] || _domainZimMap[bare2]) {
-            // This domain has a matching ZIM — collect for batch resolve
-            if (!urlMap[full2]) urlMap[full2] = [];
-            urlMap[full2].push(a);
-          }
-          // Unresolved external links: no special styling (leave as normal links)
-        } catch(ex) {}
-      });
+    if (!_getStorageFlag(SK.HIDE_XZIM_LINKS) && !_frameLoc.startsWith('/static/')) try {
+      // The links to sites an installed ZIM holds, from the one pass over the
+      // page's links that marked it (_extMark, above): url → [anchor elements].
+      var urlMap = frame.contentDocument.__zimiSiteLinks || {};
       // Batch resolve collected URLs — chunked to stay under body limits
       _resolveCache = {}; // Reset per page load
       var extUrls = Object.keys(urlMap).slice(0, 300); // Cap to prevent pathological load on large articles
       if (extUrls.length > 0) {
+        var styleEl = frame.contentDocument.createElement('style');
+        styleEl.textContent = '.zimi-xzim{text-decoration-style:dotted;text-decoration-color:var(--amber,#f59e0b)}';
+        frame.contentDocument.head.appendChild(styleEl);
         var CHUNK_SIZE = 30;
         var chunks = [];
         for (var ci2 = 0; ci2 < extUrls.length; ci2 += CHUNK_SIZE) {
@@ -19112,7 +20322,7 @@ function openReader(url) {
     // Check language banner for view-in-lang options + prefetch article languages
     if (currentArticle) {
       _checkReaderLangBanner();
-      _prefetchArticleLangs();
+      _prefetchArticleLangs(true);
     }
     // Reader View: reapply the session preference to the freshly-loaded article
     // (same pattern as _applyReaderFont), then sync the toggle's availability.
@@ -19120,7 +20330,7 @@ function openReader(url) {
     // already in place and get stashed with the rest of the original body.
     if (_readerViewOn) { try { _readerViewApply(frame.contentDocument); } catch(e) {} }
     _syncReaderViewBtn();
-  };
+  }
   // Use location.replace to avoid polluting parent history stack
   // (setting iframe.src adds a session history entry that breaks the back button)
   try { frame.contentWindow.location.replace(url); } catch(e) { frame.src = url; }
@@ -19226,18 +20436,19 @@ function _histDateGroup(ts) {
   if (d >= weekAgo) return t('this_week');
   return t('older');
 }
-// Both panel openers (the app-wide library button and the reader's bookmarks
-// button, #65) mirror the panel's open state with the same class.
+// Each panel's opener mirrors whether its panel is open. The highlight
+// belongs to the button that OPENS the panel: in the reader library-btn is
+// the save toggle, so it never lights up (Eric: tapping the bookmarks view
+// highlighted the bookmark button); history-btn is the clock there.
 function _libPanelBtnState(open) {
-  // The panel-open highlight belongs to the button that OPENS the panel. In
-  // the reader the topbar library-btn is the bookmark-this-article toggle, not
-  // the panel opener, so it must never light up when the panel opens (Eric:
-  // tapping the bookmarks view highlighted the bookmark button). bm-panel-btn
-  // is the reader's panel opener and always reflects the state.
+  var tab = _getLibraryTab();
+  var hist = open && tab === 'history';
   var bmBtn = document.getElementById('bm-panel-btn');
-  if (bmBtn) bmBtn.classList.toggle('panel-open', open);
+  if (bmBtn) bmBtn.classList.toggle('panel-open', open && tab === 'bookmarks');
+  var histBtn = document.getElementById('history-btn');
+  if (histBtn) histBtn.classList.toggle('panel-open', hist);
   var libBtn = document.getElementById('library-btn');
-  if (libBtn) libBtn.classList.toggle('panel-open', open && !readerOpen);
+  if (libBtn) libBtn.classList.toggle('panel-open', hist && !readerOpen);
 }
 function toggleLibraryPanel(forceTab) {
   var panel = document.getElementById('history-panel');
@@ -19247,16 +20458,16 @@ function toggleLibraryPanel(forceTab) {
     panel.classList.remove('open');
     _libPanelBtnState(false);
   } else {
-    // Open (or switch tabs if already open on different tab)
+    // Open (or switch tabs if already open on different tab). Opened over an
+    // app, the Saved tab shows that app's own first.
+    if (!isOpen) _bmScope = _savedCurrentApp();
     if (forceTab) { _setLibraryTab(forceTab); _updateLibraryBtnIcon(); }
     renderLibraryPanel();
     panel.classList.add('open');
     _libPanelBtnState(true);
   }
 }
-// The panel draws what is saved when it opens; anything that changes the
-// saved lists while it is open redraws it (#96: a bookmark added with the
-// list open did not appear until it was reopened).
+// Whatever tab is open, drawn again (the language changed).
 function _refreshLibraryPanelIfOpen() {
   var panel = document.getElementById('history-panel');
   if (panel && panel.classList.contains('open')) renderLibraryPanel();
@@ -19266,37 +20477,32 @@ function _closeLibraryPanel() {
   if (panel) panel.classList.remove('open');
   _libPanelBtnState(false);
 }
-function _switchLibraryTab(tab) {
-  _setLibraryTab(tab);
-  _updateLibraryBtnIcon();
-  renderLibraryPanel();
-}
+// One panel element, two panels: History (the clock) and Saved (the
+// bookmarks mark). Each is named in a short header with its close.
 function renderLibraryPanel() {
   var panel = document.getElementById('history-panel');
-  var tab = _getLibraryTab();
-  var isHistory = (tab === 'history');
+  var isHistory = _getLibraryTab() === 'history';
+  var title = t(isHistory ? 'kbd_history' : 'saved_tab');
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', title);
   var html = '<div class="library-panel-header">' +
-    '<div class="library-tabs">' +
-    '<button class="library-tab' + (isHistory ? ' active' : '') + '" onclick="_switchLibraryTab(\'history\')">' + tH('kbd_history') + '</button>' +
-    '<button class="library-tab' + (!isHistory ? ' active' : '') + '" onclick="_switchLibraryTab(\'bookmarks\')">' + tH('kbd_bookmark') + '</button>' +
-    '</div>' +
-    '<button class="hp-clear" style="margin-left:8px" onclick="_closeLibraryPanel()">\u2715</button>' +
+    '<h2 class="library-panel-title">' + esc(title) + '</h2>' +
+    '<button class="hp-clear" onclick="_closeLibraryPanel()" aria-label="' + escAttr(t('close')) + '" title="' + escAttr(t('close')) + '">\u2715</button>' +
     '</div>';
-  if (isHistory) {
-    html += _renderHistoryContent();
-  } else {
-    html += _renderBookmarksContent();
-  }
+  html += isHistory ? _renderHistoryContent() : _renderBookmarksContent();
   panel.innerHTML = html;
-  _bmEnsureBound();  // idempotent — attaches the bookmark-tree delegation once
-  if (!isHistory) _bmSyncRovingTabindex(false);
+  _bmEnsureBound();  // idempotent — attaches the tree delegation once
+  _bmSyncRovingTabindex(false);
 }
+// History: Continue first (the books and videos you are part-way through,
+// drawn from where you were), then what you read and searched, by day.
 function _renderHistoryContent() {
   var h = _histLoad();
+  var cont = _continueHtml();
   if (h.length === 0) {
-    return '<div class="hp-empty">' + tH('no_history_panel') + '</div>';
+    return cont + (cont ? '' : '<div class="hp-empty">' + tH('no_history_panel') + '</div>');
   }
-  var html = '';
+  var html = cont;
   var currentGroup = '';
   var firstGroup = true;
   var i = 0;
@@ -19355,95 +20561,286 @@ function _renderHistoryContent() {
   if (currentGroup) html += '</div>';
   return html;
 }
-// \u2500\u2500 Bookmarks tab: folder tree (v2) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-// Rows are data-attribute driven so one delegated handler set on the persistent
-// #history-panel covers click-to-open, collapse, context menus and pointer DnD
-// across innerHTML re-renders (see _bmEnsureBound). Folders render above their
-// bookmarks within a parent; each is independently ordered.
+// ── Saved tab: the lists and what is in them ───────────────────────────────
+// Two levels. Continue (where you were in a book, drawn from positions),
+// Liked and your lists, each holding its items in order; the items in no list
+// after them at the top level. An item in three lists is a row under each.
+// Rows are data-attribute driven so one delegated handler set on the
+// persistent #history-panel covers click-to-open, collapse, context menus and
+// pointer DnD across innerHTML re-renders (see _bmEnsureBound). A group row
+// is .bm-folder with data-fid (a list's id, 'liked', or _BM_CONTINUE); an
+// item row is .bm-bk with data-key and data-fid (the list it is shown in, ''
+// for none).
 var _BM_INDENT = 14;        // px of indent per nesting level
 var _bmBound = false;       // delegated listeners attached once to the panel
+var _BM_ROOT = '';          // the top level: items in no list
+var _BM_CONTINUE = '__continue';
+var _BM_CONTINUE_SHOWN = 8; // books (later videos) listed under Continue
+var _BM_HIGHLIGHTS = '__highlights'; // every highlight, the latest first
+// The app the panel shows, '' for everything. Chosen as the panel opens: the
+// app on screen, if one is.
+var _bmScope = '';
 
-// Folder/page glyphs in the app's own icon language (thin stroke, currentColor,
-// round caps and joins, the same family as the topbar SVGs). The OS-flavored
-// emoji folder read as foreign next to them and ignored the theme ink.
+// Glyphs in the app's own icon language (thin stroke, currentColor, round caps
+// and joins, the family of the topbar SVGs).
 var _BM_SVG_ATTRS = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
-var _BM_FOLDER_SVG = '<svg width="17" height="17" ' + _BM_SVG_ATTRS + '><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>';
-var _BM_FOLDER_OPEN_SVG = '<svg width="17" height="17" ' + _BM_SVG_ATTRS + '><path d="M6 14l1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v2"/></svg>';
+var _BM_LIST_SVG = '<svg width="17" height="17" ' + _BM_SVG_ATTRS + '><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>';
+var _BM_HEART_SVG = '<svg width="17" height="17" ' + _BM_SVG_ATTRS + '><path d="M20.8 5.6a5.5 5.5 0 0 0-7.8 0L12 6.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 22l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>';
+var _BM_CONTINUE_SVG = '<svg width="17" height="17" ' + _BM_SVG_ATTRS + '><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3H9a3 3 0 0 1 3 3v15a2.5 2.5 0 0 0-2.5-2.5H3.5A1.5 1.5 0 0 1 2 17z"/><path d="M22 4.5A1.5 1.5 0 0 0 20.5 3H15a3 3 0 0 0-3 3v15a2.5 2.5 0 0 1 2.5-2.5h6a1.5 1.5 0 0 0 1.5-1.5z"/></svg>';
+// A kept place is a pin, whatever map it is on (the map's letter said nothing of it).
+var _BM_PIN_SVG = '<svg width="18" height="18" ' + _BM_SVG_ATTRS + '><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>';
 var _BM_PAGE_SVG = '<svg width="15" height="15" ' + _BM_SVG_ATTRS + '><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
 
-function _renderBookmarksContent() {
-  var bk = _bkLoad();
-  var folders = _folLoad();
-  if (!bk.length && !folders.length) {
-    // Still offer New folder so an empty library can start organizing. The
-    // (empty) tree host must exist even now, because _bmNewFolderPrompt mounts
-    // its inline input INTO #bm-tree — without it the very first folder could
-    // never be created (the button did nothing on a pristine bookmarks tab).
-    return '<div class="hp-actions bm-actions">' +
-      '<button class="hp-action-btn" onclick="_bmNewFolderPrompt(\'\')">' + tH('bm_new_folder') + '</button></div>' +
-      '<div class="hp-empty">' + tH('no_bookmarks') + '</div>' +
-      '<div class="bm-tree" id="bm-tree" data-fid="" role="tree" aria-label="' + escAttr(t('bookmarks')) + '"></div>';
-  }
-  var html = '<div class="hp-actions bm-actions">' +
-    '<button class="hp-action-btn" onclick="_bmNewFolderPrompt(\'\')">' + tH('bm_new_folder') + '</button>' +
-    '<button id="export-bookmarks-btn" class="hp-action-btn" onclick="_bmOpenExport()">' + tH('save_to_zim') + '</button></div>';
-  html += '<div class="bm-tree" id="bm-tree" data-fid="" role="tree"' +
-    ' aria-label="' + escAttr(t('bookmarks')) + '">' + _bmChildrenHtml(_BM_ROOT, 0) + '</div>';
-  return html;
+// The app on screen, for the panel's slice: an app page, a map, a book.
+function _savedCurrentApp() {
+  if (!readerOpen || _almanacOpen || _createOpen) return '';
+  if (_isBooksPage() || _bookReading) return 'books';
+  if (_isTubePage()) return 'tube';
+  if (_isExchangePage()) return 'exchange';
+  if (_isReddotPage()) return 'reddot';
+  if (_isWikiPage()) return 'wiki';
+  if (_isMapPage()) return 'maps';
+  return '';
+}
+function _savedListName(l) { return l.builtin ? t('saved_liked') : l.name; }
+function _bmScopeQuery() { return _bmScope ? { app: _bmScope } : {}; }
+function _bmSetScope(app) { _bmScope = app || ''; _bmRerender(); }
+
+// Per-device collapse state (UI, not data: never synced). Lists migrated from
+// folders keep their ids, so a folder closed before is a list closed now.
+function _bmCollapsedSet() {
+  var ids = _getStorageJSON(SK.BM_COLLAPSED, []);
+  return new Set(Array.isArray(ids) ? ids : []);
+}
+function _bmIsCollapsed(id) { return _bmCollapsedSet().has(String(id)); }
+function _bmSaveCollapsed(s) { _setStorageJSON(SK.BM_COLLAPSED, Array.from(s)); }
+function _bmToggleCollapse(id) {
+  var s = _bmCollapsedSet();
+  id = String(id);
+  if (s.has(id)) s.delete(id); else s.add(id);
+  _bmSaveCollapsed(s);
+}
+function _bmExpand(id) {
+  var s = _bmCollapsedSet();
+  if (s.delete(String(id))) _bmSaveCollapsed(s);
 }
 
-// Recursive body of a folder (its child folders, then its bookmarks).
-function _bmChildrenHtml(folderId, depth) {
+// Above the lists, when there is something to say: sync paused (the account
+// refused the store as too large, and what to do), and, once per account,
+// whether to add this browser's bookmarks from before 1.12 to it.
+function _savedNotesHtml() {
   var html = '';
-  _folChildren(folderId).forEach(function (f) {
-    html += _bmFolderRowHtml(f, depth);
-    if (!_folIsCollapsed(f.id)) html += _bmChildrenHtml(f.id, depth + 1);
-  });
-  _bkInFolder(folderId).forEach(function (b) { html += _bmBookmarkRowHtml(b, depth); });
+  if (_savedPaused) html += '<div class="bm-note bm-warn" role="status">' + tH('saved_sync_paused') + '</div>';
+  else if (_savedBehind && _savedSignedIn()) html += '<div class="bm-note" role="status">' + tH('saved_sync_behind') + '</div>';
+  if (Saved.legacyOffered()) {
+    html += '<div class="bm-note" role="group">' + tH('saved_legacy_offer') + '<div class="bm-note-actions">' +
+      '<button class="hp-action-btn primary" onclick="Saved.legacyAnswer(true)">' + tH('saved_legacy_add') + '</button>' +
+      '<button class="hp-action-btn" onclick="Saved.legacyAnswer(false)">' + tH('saved_legacy_skip') + '</button></div></div>';
+  }
   return html;
 }
+// Continue, at the head of History: a tree of its own (the same rows, menu
+// and keys as Saved's), so a position is opened, or let go, the same way.
+function _continueHtml() {
+  var cont = Saved.continued({}).filter(function (p) { return p.kind === 'book' || p.kind === 'video'; }).slice(0, _BM_CONTINUE_SHOWN);
+  if (!cont.length) return '';
+  var html = '<div class="bm-tree hp-continue" id="bm-tree" data-fid="" role="tree" aria-label="' + escAttr(t('saved_continue')) + '">' +
+    _bmGroupRowHtml(_BM_CONTINUE, t('saved_continue'), _BM_CONTINUE_SVG, cont.length, false);
+  if (!_bmIsCollapsed(_BM_CONTINUE)) cont.forEach(function (p) { html += _bmItemRowHtml(p, _BM_CONTINUE, 1); });
+  return html + '</div>';
+}
+function _renderBookmarksContent() {
+  // Left the app with the panel open: its slice goes with it.
+  if (_bmScope && _savedCurrentApp() !== _bmScope) _bmScope = '';
+  var q = _bmScopeQuery();
+  var lists = Saved.lists(q).filter(function (l) { return !_bmScope || l.count; });
+  var loose = Saved.itemsFor({ list: _BM_ROOT, app: q.app });
+  var hls = Saved.highlights(q);
+  var any = loose.length || hls.length || lists.some(function (l) { return l.count || !l.builtin; });
+  var html = _bmScopeHtml() + _savedNotesHtml() + '<div class="hp-actions bm-actions">' +
+    '<button class="hp-action-btn bm-new" onclick="_bmNewListPrompt()"><span aria-hidden="true">+</span>' + tH('saved_new_list') + '</button>' +
+    (Saved.all().length ? '<button id="export-bookmarks-btn" class="hp-action-btn" onclick="_bmOpenExport()">' + tH('save_to_zim') + '</button>' : '') +
+    '</div>';
+  // The tree host is there even when empty: a new list's name is typed into it.
+  // Nothing kept at all: the note alone, not an empty Liked under it.
+  if (!any) {
+    html += '<div class="hp-empty">' + (_bmScope ? tH('saved_none_app', { app: _appTitle(_bmScope) }) : tH('no_bookmarks')) + '</div>';
+    lists = [];
+  }
+  html += '<div class="bm-tree" id="bm-tree" data-fid="" role="tree" aria-label="' + escAttr(t('saved_tab')) + '">';
+  lists.forEach(function (l) {
+    // An empty Liked has nothing to rename, delete or export: no menu.
+    html += _bmGroupRowHtml(l.id, _savedListName(l), l.builtin ? _BM_HEART_SVG : _BM_LIST_SVG, l.count, !l.builtin || l.count > 0);
+    if (!_bmIsCollapsed(l.id)) Saved.itemsFor({ list: l.id, app: q.app }).forEach(function (it) { html += _bmItemWithHlHtml(it, l.id, 1); });
+  });
+  // The items in no list, under a name of their own once anything is above
+  // them: bare, they read as the last list's.
+  var grouped = loose.length && lists.length;
+  if (grouped) html += _bmGroupRowHtml(_BM_ROOT, t('saved_unlisted'), _BM_PAGE_SVG, loose.length, false);
+  if (!grouped || !_bmIsCollapsed(_BM_ROOT)) loose.forEach(function (it) { html += _bmItemWithHlHtml(it, _BM_ROOT, grouped ? 1 : 0); });
+  // Every highlight on its own, the latest first, each with its page.
+  if (hls.length) {
+    html += _bmGroupRowHtml(_BM_HIGHLIGHTS, t('saved_highlights'), _HL_SVG.replace('<svg ', '<svg width="17" height="17" '), hls.length, false);
+    if (!_bmIsCollapsed(_BM_HIGHLIGHTS)) {
+      var lost = _hlMissingSet();
+      hls.forEach(function (h) { html += _bmHlRowHtml(h, _BM_HIGHLIGHTS, 1, h.zim + '\n' + h.path, lost, true); });
+    }
+  }
+  return html + '</div>';
+}
 
-function _bmFolderRowHtml(f, depth) {
-  var collapsed = _folIsCollapsed(f.id);
-  var count = _folBookmarkCount(f.id);
-  var pad = 6 + depth * _BM_INDENT;
-  return '<div class="bm-row bm-folder" data-fid="' + escAttr(f.id) + '" data-depth="' + depth + '"' +
-    ' style="padding-left:' + pad + 'px" role="treeitem" aria-level="' + (depth + 1) + '"' +
-    ' aria-expanded="' + (!collapsed) + '" tabindex="-1">' +
-    '<span class="bm-twist' + (collapsed ? '' : ' open') + '" data-role="twist">\u25B8</span>' +
-    '<span class="bm-ficon">' + (collapsed ? _BM_FOLDER_SVG : _BM_FOLDER_OPEN_SVG) + '</span>' +
-    '<span class="bm-name">' + esc(f.name) + '</span>' +
+// Taking something out of Saved says so, with the way back: an item returns
+// to its lists where it stood, a highlight with its colour and note.
+function _savedRemoveUndoable(ref) {
+  var snap = Saved.snapshot(ref);
+  if (!snap) return;
+  Saved.remove(ref);
+  _showToast(t('saved_removed'), 0, function() { Saved.restore(snap); });
+}
+function _savedRemoveHighlight(id, then) {
+  var h = Saved.getHighlight(id);
+  if (!h) return;
+  Saved.removeHighlight(id);
+  _showToast(t('hl_removed'), 0, function() { Saved.highlight(h); if (then) then(); });
+}
+
+// ── Highlights in the panel: under their page, and on their own ──
+// A highlight's passage as kept: a long one is its start and its end.
+function _hlQuote(h) { return h.exact + (h.end ? ' \u2026 ' + h.end : ''); }
+// Which highlights a page opened on this device did not have (highlights.js
+// keeps the list; per device, as another may hold another build).
+function _hlMissingSet() { return _getStorageJSON(SK.HL_MISSING, {}) || {}; }
+// An item's row, and its page's highlights under it in the order of the text.
+function _bmItemWithHlHtml(it, fid, depth) {
+  var html = _bmItemRowHtml(it, fid, depth), hls = Saved.highlights(it);
+  if (hls.length) {
+    var lost = _hlMissingSet();
+    hls.forEach(function (h) { html += _bmHlRowHtml(h, fid, depth + 1, it.key, lost, false); });
+  }
+  return html;
+}
+// A highlight's row: its passage, its colour, its note; with its page when
+// it stands on its own. data-key is the item it is under (or its page), so a
+// drag over it lands beside that item.
+function _bmHlRowHtml(h, fid, depth, key, lost, withPage) {
+  var missing = _bkSourceMissing(h), gone = !missing && !!lost[h.id];
+  var sub = missing ? t('bm_source_missing') : gone ? t('hl_not_found')
+    : [h.note || '', withPage ? (h.title || _titleFromPath(h.path)) : ''].filter(Boolean).join(' \u00b7 ');
+  return '<div class="bm-row bm-hl' + (missing ? ' bm-missing' : '') + (gone ? ' bm-hl-lost' : '') + '"' +
+    ' data-hid="' + escAttr(h.id) + '" data-key="' + escAttr(key) + '" data-fid="' + escAttr(fid) + '" data-depth="' + depth + '"' +
+    ' style="padding-inline-start:' + (6 + depth * _BM_INDENT) + 'px" role="treeitem" aria-level="' + (depth + 1) + '" tabindex="-1">' +
+    '<span class="bm-twist bm-twist-gap"></span>' +
+    '<span class="bm-hl-bar hl-c-' + escAttr(h.color) + '" aria-hidden="true"></span>' +
+    '<span class="bm-detail"><span class="bm-name" dir="auto">' + esc(_hlQuote(h)) + '</span>' +
+    (sub ? '<span class="bm-sub" dir="auto">' + esc(sub) + '</span>' : '') + '</span>' +
+    _bmGearHtml() +
+    '</div>';
+}
+function _bmHlMenu(row, x, y) {
+  var h = Saved.getHighlight(row.dataset.hid);
+  if (!h) return;
+  var open = row.classList.contains('bm-missing') ? '<div class="ctx-note">' + tH('bm_source_missing') + '</div>' : '<div class="ctx-item" data-action="open">' + tH('open') + '</div>';
+  window._openMenuAt(open + '<div class="ctx-item" data-action="copy">' + tH('copy') + '</div>' +
+    '<div class="ctx-sep"></div><div class="ctx-item danger" data-action="remove">' + tH('hl_remove') + '</div>', x, y, function (action) {
+    if (action === 'open') Highlights.open(h);
+    else if (action === 'copy') _copyText(_hlQuote(h));
+    else if (action === 'remove') _savedRemoveHighlight(h.id);
+  });
+}
+// "All" and the app on screen, when one is: the panel opens on the app's own.
+function _bmScopeHtml() {
+  var app = _savedCurrentApp();
+  if (!app) return '';
+  var chip = function (value, label) {
+    var on = _bmScope === value;
+    return '<button type="button" class="pill' + (on ? ' active' : '') + '" aria-pressed="' + on + '" onclick="_bmSetScope(\'' + value + '\')">' + esc(label) + '</button>';
+  };
+  return '<div class="bm-scope" role="group">' + chip(app, _appTitle(app)) + chip('', t('saved_all')) + '</div>';
+}
+
+// A row's ⋯: its menu. Out of the Tab order, so Tab leaves the tree in one
+// step (the rows are its stops, arrows move between them); the keyboard
+// opens the same menu on a row with the menu key, Shift+F10 or F2.
+function _bmGearHtml() {
+  return '<button class="bm-gear" data-role="menu" tabindex="-1" title="' + escAttr(t('more_actions')) + '" aria-label="' + escAttr(t('more_actions')) + '">⋯</button>';
+}
+function _bmGroupRowHtml(id, name, icon, count, menu) {
+  var collapsed = _bmIsCollapsed(id);
+  return '<div class="bm-row bm-folder' + (id === _BM_CONTINUE ? ' bm-continue' : '') + '" data-fid="' + escAttr(id) + '" data-depth="0"' +
+    ' style="padding-inline-start:6px" role="treeitem" aria-level="1" aria-expanded="' + (!collapsed) + '" tabindex="-1">' +
+    '<span class="bm-twist' + (collapsed ? '' : ' open') + '" data-role="twist">▸</span>' +
+    '<span class="bm-ficon">' + icon + '</span>' +
+    '<span class="bm-name">' + esc(name) + '</span>' +
     '<span class="bm-count">' + count + '</span>' +
-    '<button class="bm-gear" data-role="menu" title="' + escAttr(t('more_actions')) + '" aria-label="' + escAttr(t('more_actions')) + '">\u22EF</button>' +
+    // Without a menu the gear's place is kept, so every count lines up.
+    (menu ? _bmGearHtml()
+      : '<span class="bm-gear bm-gear-gap" aria-hidden="true">⋯</span>') +
     '</div>';
 }
 
-// True once the library list has arrived and this bookmark's ZIM is not in it \u2014
-// the source was deleted or renamed under the bookmark. Opening one of these
-// lands the reader on a page that never loads, so the row says so up front.
-// Gated on a loaded list, or every row would read as dead during boot.
+// True once the library list has arrived and this item's ZIM is not in it:
+// the source was deleted or renamed under it. Opening one lands the reader on
+// a page that never loads, so the row says so up front. Gated on a loaded
+// list, or every row would read as dead during boot.
 function _bkSourceMissing(b) {
   return !!(b.zim && zimsCache && zimsCache.length && !_zimInfo(b.zim));
 }
 
-function _bmBookmarkRowHtml(b, depth) {
-  var missing = _bkSourceMissing(b);
-  var icon = b.app ? _appIcon(b.app).replace('width="26" height="26"', 'width="20" height="20"') : b.zim ? _sourceIconHtml(b.zim, 20) : _BM_PAGE_SVG;
-  var sub = missing ? t('bm_source_missing') : b.app ? _appTitle(b.app) : (b.zim ? _zimTitleWithLang(b.zim) : '');
+// Where you were, in a word: how far into a book, how far into a video.
+function _savedWhereLabel(it) {
+  var w = it.where || {};
+  if (it.kind === 'book' && w.f > 0) return Math.round(w.f * 100) + '%';
+  if (it.kind === 'video' && w.t > 0) return _fmtClock(w.t);
+  return '';
+}
+function _fmtClock(s) {
+  s = Math.floor(s);
+  var h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = s % 60;
+  var two = function (n) { return (n < 10 ? '0' : '') + n; };
+  return (h ? h + ':' + two(m) : m) + ':' + two(sec);
+}
+
+function _bmItemRowHtml(it, fid, depth) {
+  var missing = _bkSourceMissing(it);
+  var inApp = _savedOpensInApp(it);
+  var icon = it.kind === 'place' ? _BM_PIN_SVG : inApp ? _appIcon(it.app).replace('width="26" height="26"', 'width="20" height="20"') : it.zim ? _sourceIconHtml(it.zim, 20) : _BM_PAGE_SVG;
+  var sub = missing ? t('bm_source_missing') : inApp ? _appTitle(it.app) : (it.zim ? _zimTitleWithLang(it.zim) : '');
+  var where = fid === _BM_CONTINUE ? _savedWhereLabel(it) : '';
+  if (where && !missing) sub = where + ' · ' + sub;
   var pad = 6 + depth * _BM_INDENT;
   return '<div class="bm-row bm-bk' + (missing ? ' bm-missing' : '') + '"' +
-    ' data-zim="' + escAttr(b.zim) + '" data-path="' + escAttr(b.path) + '"' + (b.app ? ' data-app="' + escAttr(b.app) + '"' : '') +
-    (b.pos ? ' data-pos="' + escAttr(b.pos) + '"' : '') +
-    ' data-fid="' + escAttr(_bkFolderOf(b)) + '" data-depth="' + depth + '"' +
-    ' style="padding-left:' + pad + 'px" role="treeitem" aria-level="' + (depth + 1) + '" tabindex="-1">' +
-    // Stands in for the folder rows' twist so a bookmark sits to the RIGHT of
-    // the folder holding it, not left of it.
+    ' data-key="' + escAttr(it.key) + '" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '"' +
+    ' data-fid="' + escAttr(fid) + '" data-depth="' + depth + '"' +
+    ' style="padding-inline-start:' + pad + 'px" role="treeitem" aria-level="' + (depth + 1) + '" tabindex="-1">' +
+    // Stands in for the group rows' twist so an item sits to the RIGHT of
+    // the list holding it, not left of it.
     '<span class="bm-twist bm-twist-gap"></span>' +
     '<span class="bm-bicon">' + icon + '</span>' +
-    '<span class="bm-detail"><span class="bm-name">' + esc(b.title || _titleFromPath(b.path)) + '</span>' +
+    '<span class="bm-detail"><span class="bm-name">' + esc(it.title || _titleFromPath(it.path)) + '</span>' +
     (sub ? '<span class="bm-sub">' + esc(sub) + '</span>' : '') + '</span>' +
-    '<button class="bm-gear" data-role="menu" title="' + escAttr(t('more_actions')) + '" aria-label="' + escAttr(t('more_actions')) + '">\u22EF</button>' +
+    _bmGearHtml() +
     '</div>';
+}
+
+// Open what a row keeps, where you were in it: a video, a question or a post
+// in its app; a book at its place (the reader keeps it); a map at the place;
+// an article at its section.
+function _savedOpen(it) {
+  _closeLibraryPanel();
+  if (_savedOpensInApp(it)) { _openAppItem(it.app, it.zim, it.path); return; }
+  var w = it.where || {};
+  var pos = it.kind === 'place' ? w.pos : '';
+  openArticle(it.zim, it.path + (w.s && !pos ? '#' + w.s : ''), it.title, pos ? { pos: pos } : undefined);
+  // Already on this map: nothing reloaded, so nudge the hash to move it.
+  // Assigning fires hashchange; a replaceState would change the bar and tell nobody.
+  if (pos && location.hash.indexOf(pos) < 0) {
+    try { location.hash = pos; } catch (e) {}
+  }
+}
+// The thing a row stands for: a saved item, or (under Continue) a position.
+function _bmRowThing(row) {
+  var key = row.dataset.key;
+  return row.dataset.fid === _BM_CONTINUE ? Saved.position(key) : Saved.get(key);
 }
 
 // ── Keyboard: the tree behaves like one ────────────────────────────────────
@@ -19454,17 +20851,17 @@ var _bmFocusKey = null;
 
 function _bmRowKey(row) {
   if (!row) return null;
-  return row.classList.contains('bm-folder')
-    ? 'f:' + row.dataset.fid
-    : 'b:' + row.dataset.zim + '\n' + row.dataset.path;
+  if (row.classList.contains('bm-hl')) return 'h:' + row.dataset.fid + '\t' + row.dataset.hid;
+  return row.classList.contains('bm-folder') ? 'f:' + row.dataset.fid : 'b:' + row.dataset.fid + '\t' + row.dataset.key;
 }
 function _bmRowByKey(key) {
   if (!key) return null;
   var host = document.getElementById('bm-tree');
   if (!host) return null;
   if (key.slice(0, 2) === 'f:') return host.querySelector('.bm-folder[data-fid="' + _cssEsc(key.slice(2)) + '"]');
-  var parts = key.slice(2).split('\n');
-  return host.querySelector('.bm-bk[data-zim="' + _cssEsc(parts[0]) + '"][data-path="' + _cssEsc(parts[1]) + '"]');
+  var tab = key.indexOf('\t');
+  if (key.slice(0, 2) === 'h:') return host.querySelector('.bm-hl[data-fid="' + _cssEsc(key.slice(2, tab)) + '"][data-hid="' + _cssEsc(key.slice(tab + 1)) + '"]');
+  return host.querySelector('.bm-bk[data-fid="' + _cssEsc(key.slice(2, tab)) + '"][data-key="' + _cssEsc(key.slice(tab + 1)) + '"]');
 }
 function _bmRows() {
   var host = document.getElementById('bm-tree');
@@ -19484,17 +20881,13 @@ function _bmFocusRow(row) {
   _bmRows().forEach(function (r) { r.tabIndex = (r === row) ? 0 : -1; });
   row.focus();
 }
-// The row whose subtree contains `row` — Left arrow's "go to my parent".
+// The row whose group holds `row`: Left arrow's "go to my parent".
 function _bmParentRow(row) {
-  var fid = row.classList.contains('bm-folder')
-    ? _folNorm((_folById(row.dataset.fid) || {}).parent)
-    : _folNorm(row.dataset.fid);
-  if (fid === _BM_ROOT) return null;
-  return _bmRowByKey('f:' + fid);
+  return row.classList.contains('bm-folder') ? null : _bmRowByKey('f:' + row.dataset.fid);
 }
 
 function _bmTreeKeydown(e) {
-  // An inline edit (rename / new folder) owns the keyboard. Without this guard
+  // An inline edit (rename / new list) owns the keyboard. Without this guard
   // the tree handler steals ArrowUp/Down (focus moves to another row, the input
   // blurs and commits) and Space (preventDefault + row.click() rerenders the
   // tree), killing the edit mid-word.
@@ -19505,7 +20898,7 @@ function _bmTreeKeydown(e) {
   var rows = _bmRows();
   var i = rows.indexOf(row);
   var isFolder = row.classList.contains('bm-folder');
-  var expanded = isFolder && !_folIsCollapsed(row.dataset.fid);
+  var expanded = isFolder && !_bmIsCollapsed(row.dataset.fid);
   switch (e.key) {
     case 'ArrowDown': e.preventDefault(); _bmFocusRow(rows[Math.min(i + 1, rows.length - 1)]); break;
     case 'ArrowUp': e.preventDefault(); _bmFocusRow(rows[Math.max(i - 1, 0)]); break;
@@ -19513,12 +20906,12 @@ function _bmTreeKeydown(e) {
     case 'End': e.preventDefault(); _bmFocusRow(rows[rows.length - 1]); break;
     case 'ArrowRight':
       e.preventDefault();
-      if (isFolder && !expanded) { _bmFocusKey = _bmRowKey(row); _folToggleCollapse(row.dataset.fid); _bmRerender(); }
+      if (isFolder && !expanded) { _bmFocusKey = _bmRowKey(row); _bmToggleCollapse(row.dataset.fid); _bmRerender(); }
       else if (isFolder && rows[i + 1]) _bmFocusRow(rows[i + 1]);
       break;
     case 'ArrowLeft':
       e.preventDefault();
-      if (isFolder && expanded) { _bmFocusKey = _bmRowKey(row); _folToggleCollapse(row.dataset.fid); _bmRerender(); }
+      if (isFolder && expanded) { _bmFocusKey = _bmRowKey(row); _bmToggleCollapse(row.dataset.fid); _bmRerender(); }
       else _bmFocusRow(_bmParentRow(row));
       break;
     case 'Enter': case ' ':
@@ -19526,6 +20919,7 @@ function _bmTreeKeydown(e) {
       _bmFocusKey = _bmRowKey(row);
       row.click();
       break;
+    case 'F10': if (!e.shiftKey) return;  // falls through: Shift+F10 is the menu key's twin
     case 'ContextMenu': case 'F2': {
       e.preventDefault();
       var r = row.getBoundingClientRect();
@@ -19536,24 +20930,26 @@ function _bmTreeKeydown(e) {
   }
 }
 
-// Re-render the bookmarks tab. renderLibraryPanel rebuilds the panel innerHTML;
-// the delegated listeners live on the persistent panel element so they survive.
+// Re-render the open panel (History holds Continue's tree, Saved the rest).
+// renderLibraryPanel rebuilds the panel innerHTML; the delegated listeners
+// live on the persistent panel element so they survive.
 function _bmRerender() {
-  if (_getLibraryTab() !== 'bookmarks') return;
+  var panel = document.getElementById('history-panel');
+  if (!panel || !panel.classList.contains('open')) return;
   var hadFocus = document.activeElement && document.activeElement.closest &&
     !!document.activeElement.closest('.bm-row');
   renderLibraryPanel();
   _bmSyncRovingTabindex(hadFocus);
 }
 
-// Export entry point: the tree selector, optionally pre-ticked to one folder.
-function _bmOpenExport(folderId) {
-  _bmExportSelector(folderId);
+// Export entry point: the list picker, optionally with only one list ticked.
+function _bmOpenExport(listId) {
+  _bmExportSelector(listId);
 }
 
 // One keyboard contract for every inline edit input in the tree: Enter commits,
 // Escape cancels, and EVERY key stops here. The blanket stopPropagation is the
-// fix for edits dying mid-word \u2014 upstream of this input sit the tree's
+// fix for edits dying mid-word: upstream of this input sit the tree's
 // delegated keydown (_bmTreeKeydown: arrows move row focus, blurring the input,
 // which commits; Space "clicks" the row) and the document-level Escape handler
 // that would slam the whole panel shut. Blur commits, so clicking away keeps
@@ -19567,41 +20963,31 @@ function _bmBindEditInput(input, commit) {
   input.addEventListener('blur', function () { commit(true); });
 }
 
-// \u2500\u2500 New folder (inline input, not prompt()) \u2500\u2500
-function _bmNewFolderPrompt(parentId) {
+// ── New list (inline input, not prompt()) ──
+// `then(id)` runs with the new list's id once it is made (the Lists menu's
+// "New list…" puts the item straight in).
+function _bmNewListPrompt(then) {
   _bmCloseInlineInput();
   var host = document.getElementById('bm-tree');
-  if (!host) { // empty state: rerender with a tree first
-    _bmRerender();
-    host = document.getElementById('bm-tree');
-    if (!host) return;
-  }
-  var depth = 0;
-  if (parentId) {
-    var pr = host.querySelector('.bm-folder[data-fid="' + _cssEsc(parentId) + '"]');
-    depth = pr ? (parseInt(pr.dataset.depth, 10) + 1) : 0;
-  }
+  if (!host) return;
   var wrap = document.createElement('div');
   wrap.className = 'bm-row bm-newfolder';
-  wrap.style.paddingLeft = (6 + depth * _BM_INDENT) + 'px';
-  wrap.innerHTML = '<span class="bm-ficon">' + _BM_FOLDER_SVG + '</span>' +
-    '<input class="bm-newfolder-input" type="text" placeholder="' + escAttr(t('bm_folder_name')) + '" maxlength="60">';
-  // Insert at the top of the target parent's child region (root: top of tree).
-  if (parentId) {
-    var anchor = host.querySelector('.bm-folder[data-fid="' + _cssEsc(parentId) + '"]');
-    if (anchor && anchor.nextSibling) host.insertBefore(wrap, anchor.nextSibling);
-    else host.appendChild(wrap);
-  } else {
-    host.insertBefore(wrap, host.firstChild);
-  }
+  wrap.style.paddingInlineStart = '6px';
+  wrap.innerHTML = '<span class="bm-ficon">' + _BM_LIST_SVG + '</span>' +
+    '<input class="bm-newfolder-input" type="text" placeholder="' + escAttr(t('saved_list_name')) + '" aria-label="' + escAttr(t('saved_list_name')) +
+    '" maxlength="' + Saved.NAME_MAX + '">';
+  // Where the list will be once made: after the last list, before what is in
+  // no list and the highlights (typed after Liked, it landed at the end).
+  var tail = host.querySelector('.bm-folder[data-fid="' + _BM_ROOT + '"]') || host.querySelector('.bm-bk[data-depth="0"]') ||
+    host.querySelector('.bm-folder[data-fid="' + _BM_HIGHLIGHTS + '"]');
+  host.insertBefore(wrap, tail);
   var input = wrap.querySelector('input');
   input.focus();
+  wrap.scrollIntoView({ block: 'nearest' });
   var commit = function (save) {
     if (wrap._done) return; wrap._done = true;
-    if (save) {
-      var name = input.value.trim();
-      if (name) { _folCreate(name, parentId); }
-    }
+    var id = save ? Saved.createList(input.value) : '';
+    if (id && then) then(id);
     _bmRerender();
   };
   _bmBindEditInput(input, commit);
@@ -19611,18 +20997,18 @@ function _bmCloseInlineInput() {
   if (ex && ex.parentNode) ex.parentNode.removeChild(ex);
 }
 
-// \u2500\u2500 Inline rename (folders and bookmarks share one mechanism) \u2500\u2500
+// ── Inline rename (lists and items share one mechanism) ──
 // Swap the row's .bm-name for an input; Enter/blur commit (apply gets the
 // trimmed value, empty string included), Escape cancels. Semantics of an empty
-// commit are the caller's call: folders keep their old name, bookmarks revert
-// to the article's own title.
-function _bmInlineRenameRow(row, value, apply) {
+// commit are the caller's call: lists keep their old name, items revert to
+// the page's own title.
+function _bmInlineRenameRow(row, value, max, apply) {
   if (!row) return;
   var nameEl = row.querySelector('.bm-name');
   if (!nameEl) return;
   var input = document.createElement('input');
   input.className = 'bm-rename-input';
-  input.type = 'text'; input.value = value; input.maxLength = 60;
+  input.type = 'text'; input.value = value; input.maxLength = max;
   nameEl.replaceWith(input);
   row.classList.add('bm-renaming');
   input.focus(); input.select();
@@ -19633,108 +21019,158 @@ function _bmInlineRenameRow(row, value, apply) {
   };
   _bmBindEditInput(input, done);
 }
-function _bmRenameFolder(fid) {
-  var f = _folById(fid);
-  if (!f) return;
-  var row = document.querySelector('.bm-folder[data-fid="' + _cssEsc(fid) + '"]');
-  _bmInlineRenameRow(row, f.name, function (name) { if (name) _folRename(fid, name); });
-}
-function _bmRenameBookmark(zim, path) {
-  var idx = _bkFind(zim, path);
-  if (idx < 0) return;
-  var b = _bkLoad()[idx];
-  var row = document.querySelector('.bm-bk[data-zim="' + _cssEsc(zim) + '"][data-path="' + _cssEsc(path) + '"]');
-  _bmInlineRenameRow(row, b.title || _titleFromPath(b.path), function (name) { _bkRename(zim, path, name); });
-}
 
-// \u2500\u2500 Delete (a non-empty folder asks what to do with its contents) \u2500\u2500
-function _bmDeleteFolder(fid) {
-  var f = _folById(fid);
-  if (!f) return;
-  var count = _folBookmarkCount(fid);
-  var kids = _folChildren(fid).length;
-  if (!count && !kids) { _folDelete(fid, 'promote'); _bmRerender(); return; }
-  // Non-empty \u2192 offer Move-out vs Delete-all. Reuse the generic menu at center.
-  // Deferred so the folder menu's own closeCtx (fired after this action) doesn't
-  // immediately close the choice menu we're opening. A folder holding only
-  // subfolders is counted in subfolders \u2014 "0 bookmarks" is not what's at stake.
-  var note = count
-    ? tH('bm_delete_folder_q', { name: f.name, n: count })
-    : tH('bm_delete_folder_subs_q', { name: f.name, n: kids });
-  var html = '<div class="ctx-note">' + note + '</div>' +
-    '<div class="ctx-item" data-action="promote">' + tH('bm_delete_keep') + '</div>' +
-    '<div class="ctx-item danger" data-action="purge">' + tH('bm_delete_all') + '</div>';
-  var vw = window.innerWidth, vh = window.innerHeight;
+// ── Delete a list: its items stay saved; a list with something in it asks
+// first (what is lost is the grouping, and there is no undo) ──
+function _bmDeleteList(lid) {
+  var l = Saved.list(lid);
+  if (!l || l.builtin) return;
+  if (!l.count) { Saved.deleteList(lid); return; }
+  var html = '<div class="ctx-note">' + tH('saved_delete_list_q', { name: l.name }) + '</div>' +
+    '<div class="ctx-item danger" data-action="delete">' + tH('saved_delete_list') + '</div>' +
+    '<div class="ctx-item" data-action="keep">' + tH('cancel') + '</div>';
+  // Deferred so the list menu's own close (after this action) does not shut
+  // the question as it opens.
   setTimeout(function () {
-    window._openMenuAt(html, vw / 2 - 90, vh / 2 - 60, function (action) {
-      if (action === 'promote') { _folDelete(fid, 'promote'); _bmRerender(); }
-      else if (action === 'purge') { _folDelete(fid, 'contents'); _bmRerender(); }
+    window._openMenuAt(html, window.innerWidth / 2 - 90, window.innerHeight / 2 - 60, function (action) {
+      if (action === 'delete') Saved.deleteList(lid);
     });
   }, 0);
 }
 
-// \u2500\u2500 Move to\u2026 submenu (flat, indented list of every folder + Root) \u2500\u2500
-function _bmMoveSubmenuHtml(excludeFolderId) {
-  // excludeFolderId (for moving a FOLDER) hides itself and its subtree so a
-  // cycle can't be picked.
-  var banned = {};
-  if (excludeFolderId) {
-    banned[_folNorm(excludeFolderId)] = 1;
-    _folDescendants(excludeFolderId).forEach(function (d) { banned[d] = 1; });
-  }
-  var html = '<div class="ctx-item" data-action="mv-root">' + tH('bm_root') + '</div>';
-  var walk = function (parentId, depth) {
-    _folChildren(parentId).forEach(function (f) {
-      if (banned[f.id]) return;
-      html += '<div class="ctx-item" data-action="mv" data-fid="' + escAttr(f.id) + '"' +
-        ' style="padding-left:' + (10 + depth * 12) + 'px"><span class="ctx-fico">' + _BM_FOLDER_SVG + '</span>' + esc(f.name) + '</div>';
-      walk(f.id, depth + 1);
-    });
-  };
-  walk(_BM_ROOT, 0);
-  return html;
+// The Lists submenu: a new list first (under twenty lists it was a scroll
+// away), then every list with a tick where the item is.
+function _bmListsSubmenuHtml(key) {
+  return '<div class="ctx-item" data-action="new-list"><span class="ctx-check">+</span>' + tH('saved_new_list') + '…</div><div class="ctx-sep"></div>' +
+    Saved.lists().map(function (l) {
+      var on = Saved.inList(key, l.id);
+      return '<div class="ctx-item" data-action="toggle-list" data-lid="' + escAttr(l.id) + '" role="menuitemcheckbox" aria-checked="' + on + '">' +
+        '<span class="ctx-check">' + (on ? '✓' : '') + '</span><span dir="auto">' + esc(_savedListName(l)) + '</span></div>';
+    }).join('');
 }
-
-function _bmFolderMenu(fid, x, y) {
-  var f = _folById(fid);
-  if (!f) return;
-  var html = '<div class="ctx-item" data-action="newsub">' + tH('bm_new_subfolder') + '</div>' +
-    '<div class="ctx-item">' + tH('move_to') + ' \u203A<div class="ctx-sub">' + _bmMoveSubmenuHtml(fid) + '</div></div>' +
-    '<div class="ctx-item" data-action="rename">' + tH('rename') + '</div>' +
-    '<div class="ctx-sep"></div>' +
-    '<div class="ctx-item" data-action="export">' + tH('bm_export_folder') + '</div>' +
-    '<div class="ctx-sep"></div>' +
-    '<div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
-  window._openMenuAt(html, x, y, function (action, itemEl) {
-    if (action === 'newsub') _bmNewFolderPrompt(fid);
-    else if (action === 'rename') _bmRenameFolder(fid);
-    else if (action === 'delete') _bmDeleteFolder(fid);
-    else if (action === 'export') _bmOpenExport(fid);
-    else if (action === 'mv-root') { _folReparent(fid, _BM_ROOT); _bmRerender(); }
-    else if (action === 'mv') { _folReparent(fid, itemEl.dataset.fid); _bmRerender(); }
+// The same lists, as a picker of their own: what an app page's Lists button
+// opens (apps.js pickLists), and a place's row in Maps. ref is the thing,
+// item-shaped (a list takes it saved); rect is the control, in this window.
+// It stays open while lists are ticked, a new list is typed in place, and a
+// tap anywhere else closes it, the app page or the map under it included.
+function savedPickLists(ref, rect, byPointer) {
+  var key = Saved.key(ref);
+  if (!key || !rect) return;
+  var show = function () {
+    window._openMenuAt(_bmListsSubmenuHtml(key), rect.left, rect.bottom + 4, pick);
+    var menu = document.getElementById('zim-ctx-menu');
+    // Right to left, it hangs from the control's other edge.
+    if (menu && document.documentElement.getAttribute('dir') === 'rtl') menu.style.left = Math.max(8, rect.right - menu.offsetWidth) + 'px';
+    // Tapped in an app page: focus coming out of the frame reads as the
+    // keyboard's, and the first list, focused for the keyboard, looked
+    // chosen. Taken back once the menu has placed it.
+    if (byPointer) setTimeout(function () {
+      var f = document.activeElement;
+      if (f && f.closest && f.closest('#zim-ctx-menu')) f.blur();
+    }, 0);
+  };
+  var pick = function (action, el) {
+    if (action === 'toggle-list') {
+      var lid = el.dataset.lid, on = !Saved.inList(key, lid);
+      if (on) Saved.addToList(ref, lid); else Saved.removeFromList(key, lid);
+      el.setAttribute('aria-checked', String(on));
+      el.querySelector('.ctx-check').textContent = on ? '✓' : '';
+    } else if (action === 'new-list') {
+      _savedPickNewList(el, function (lid) { Saved.addToList(ref, lid); show(); });
+    }
+    return false;
+  };
+  show();
+  // A tap in the page below never reaches this document; this window losing
+  // the focus to it is the tap.
+  window.addEventListener('blur', function () {
+    var menu = document.getElementById('zim-ctx-menu');
+    if (menu && menu.classList.contains('visible') && menu.querySelector('[data-action="toggle-list"]')) window._closeMenu();
+  }, { once: true });
+}
+// "New list" becomes the box its name is typed in: Enter (or leaving it) makes
+// the list, Escape puts the row back.
+function _savedPickNewList(row, then) {
+  var was = row.innerHTML;
+  row.removeAttribute('data-action');
+  row.innerHTML = '<input class="bm-newfolder-input ctx-input" type="text" maxlength="' + Saved.NAME_MAX + '" placeholder="' + escAttr(t('saved_list_name')) + '">';
+  var input = row.querySelector('input');
+  input.focus();
+  var done = false;
+  _bmBindEditInput(input, function (save) {
+    if (done) return;
+    done = true;
+    var id = save ? Saved.createList(input.value) : '';
+    if (id) { then(id); return; }
+    row.setAttribute('data-action', 'new-list');
+    row.innerHTML = was;
   });
 }
+// The words an app page shows for what is kept, in the shell's language.
+function _savedAppWords(app) {
+  return { save: t('saved_save'), saved: t('saved_tab'), like: t('saved_like'), liked: t('saved_liked'),
+    lists: t('saved_lists'), add_to_list: t('saved_add_to_list'), all: t('saved_all'), none: t('saved_none_app', { app: _appTitle(app) }) };
+}
 
-function _bmBookmarkMenu(zim, path, x, y) {
-  var row = document.querySelector('.bm-bk[data-zim="' + _cssEsc(zim) + '"][data-path="' + _cssEsc(path) + '"]');
-  var missing = !!(row && row.classList.contains('bm-missing'));
-  var html = (missing
-      ? '<div class="ctx-note">' + tH('bm_source_missing') + '</div>'
-      : '<div class="ctx-item" data-action="open">' + tH('open') + '</div>') +
-    '<div class="ctx-item">' + tH('move_to') + ' \u203A<div class="ctx-sub">' + _bmMoveSubmenuHtml('') + '</div></div>' +
+function _bmListMenu(lid, x, y) {
+  var builtin = lid === Saved.LIKED;
+  if (lid === _BM_CONTINUE || lid === _BM_ROOT || lid === _BM_HIGHLIGHTS) return;  // not lists: nothing to do to them
+  // An empty list has nothing to export: the export would open with Export off.
+  var l = Saved.list(lid), full = !!(l && l.count);
+  var html = (builtin ? '' : '<div class="ctx-item" data-action="rename">' + tH('rename') + '</div>') +
+    (full ? '<div class="ctx-item" data-action="export">' + tH('saved_export_list') + '</div>' : '') +
+    (builtin ? '' : '<div class="ctx-sep"></div><div class="ctx-item danger" data-action="delete">' + tH('saved_delete_list') + '</div>');
+  if (!html) return;
+  window._openMenuAt(html, x, y, function (action) {
+    if (action === 'rename') _bmRenameList(lid);
+    else if (action === 'delete') _bmDeleteList(lid);
+    else if (action === 'export') _bmOpenExport(lid);
+  });
+}
+function _bmRenameList(lid) {
+  var l = Saved.list(lid);
+  if (!l || l.builtin) return;
+  var row = document.querySelector('.bm-folder[data-fid="' + _cssEsc(lid) + '"]');
+  _bmInlineRenameRow(row, l.name, Saved.NAME_MAX, function (name) { if (name) Saved.renameList(lid, name); });
+}
+
+function _bmItemMenu(row, x, y) {
+  var key = row.dataset.key, fid = row.dataset.fid;
+  var missing = row.classList.contains('bm-missing');
+  var open = missing ? '<div class="ctx-note">' + tH('bm_source_missing') + '</div>' : '<div class="ctx-item" data-action="open">' + tH('open') + '</div>';
+  if (fid === _BM_CONTINUE) {
+    window._openMenuAt(open + '<div class="ctx-sep"></div><div class="ctx-item danger" data-action="forget">' + tH('saved_remove_continue') + '</div>', x, y, function (action) {
+      var p = Saved.position(key);
+      if (action === 'open' && p) _savedOpen(p);
+      else if (action === 'forget') Saved.clearPosition(key);
+    });
+    return;
+  }
+  var html = open +
+    '<div class="ctx-item">' + tH('saved_lists') + ' ›<div class="ctx-sub">' + _bmListsSubmenuHtml(key) + '</div></div>' +
     '<div class="ctx-item" data-action="rename">' + tH('rename') + '</div>' +
+    (fid !== _BM_ROOT ? '<div class="ctx-item" data-action="unlist">' + tH('saved_remove_from_list') + '</div>' : '') +
     '<div class="ctx-sep"></div>' +
     '<div class="ctx-item danger" data-action="remove">' + tH('bm_remove') + '</div>';
   window._openMenuAt(html, x, y, function (action, itemEl) {
-    if (action === 'open') { _closeLibraryPanel(); openArticle(zim, path, ''); }
-    else if (action === 'rename') _bmRenameBookmark(zim, path);
-    else if (action === 'remove') { _bkRemove(zim, path); _bmRerender(); }
-    else if (action === 'mv-root') { _bkSetFolder(zim, path, _BM_ROOT); _bmRerender(); }
-    else if (action === 'mv') { _bkSetFolder(zim, path, itemEl.dataset.fid); _bmRerender(); }
+    var it = Saved.get(key);
+    if (!it) return;
+    if (action === 'open') _savedOpen(it);
+    else if (action === 'rename') _bmInlineRenameRow(row, it.title || _titleFromPath(it.path), Saved.TITLE_MAX, function (name) { Saved.rename(key, name); });
+    else if (action === 'unlist') Saved.removeFromList(key, fid);
+    else if (action === 'remove') _savedRemoveUndoable(key);
+    else if (action === 'toggle-list') {
+      var lid = itemEl.dataset.lid;
+      if (Saved.inList(key, lid)) Saved.removeFromList(key, lid);
+      else { _bmExpand(lid); Saved.addToList(key, lid); }
+    } else if (action === 'new-list') {
+      // Deferred so the menu's own close (after this action) settles first.
+      setTimeout(function () { _bmNewListPrompt(function (lid) { _bmExpand(lid); Saved.addToList(key, lid); }); }, 0);
+    }
   });
 }
 
-// \u2500\u2500 Delegated interaction: click / contextmenu / pointer DnD + long-press \u2500\u2500
+// ── Delegated interaction: click / contextmenu / pointer DnD + long-press ──
 var _bmDrag = null;        // active drag state
 var _bmLpTimer = null;     // touch long-press timer
 var _bmPointerStart = null;
@@ -19746,12 +21182,11 @@ function _bmEnsureBound() {
   _bmBound = true;
 
   panel.addEventListener('click', function (e) {
-    if (_getLibraryTab() !== 'bookmarks') return;
     var menuBtn = e.target.closest('.bm-gear');
     var row = e.target.closest('.bm-row');
     if (!row) return;
     // A row mid-edit acts as a form, not a row: a click inside it must neither
-    // open the article nor toggle collapse (the input's blur already committed).
+    // open the item nor toggle collapse (the input's blur already committed).
     if (row.classList.contains('bm-renaming') || row.classList.contains('bm-newfolder')) return;
     if (menuBtn) {
       e.preventDefault(); e.stopPropagation();
@@ -19760,30 +21195,20 @@ function _bmEnsureBound() {
       return;
     }
     if (row.classList.contains('bm-folder')) {
-      // Twist or anywhere on the folder row toggles collapse.
-      _folToggleCollapse(row.dataset.fid);
+      // Twist or anywhere on the group row toggles collapse.
+      _bmToggleCollapse(row.dataset.fid);
       _bmRerender();
+    } else if (row.classList.contains('bm-missing')) {
+      _showToast(t('bm_source_missing'));
+    } else if (row.classList.contains('bm-hl')) {
+      Highlights.open(Saved.getHighlight(row.dataset.hid));
     } else if (row.classList.contains('bm-bk')) {
-      if (row.classList.contains('bm-missing')) { _showToast(t('bm_source_missing')); return; }
-      _closeLibraryPanel();
-      // A bookmarked map opens at the place it was bookmarked. The hash is
-      // set before openArticle so the frame's load handler, which is what
-      // actually moves the map, already sees it.
-      var bkTitle = row.querySelector('.bm-name') ? row.querySelector('.bm-name').textContent : '';
-      var bkPos = row.dataset.pos || '';
-      if (row.dataset.app) { _openAppItem(row.dataset.app, row.dataset.zim, row.dataset.path); return; }
-      openArticle(row.dataset.zim, row.dataset.path, bkTitle, bkPos ? {pos: bkPos} : undefined);
-      // Already on this map: nothing reloaded, so nudge the hash to move it.
-      // Assigning fires hashchange; a replaceState would change the bar and
-      // tell nobody.
-      if (bkPos && location.hash.indexOf(bkPos) < 0) {
-        try { location.hash = bkPos; } catch (e) {}
-      }
+      var it = _bmRowThing(row);
+      if (it) _savedOpen(it);
     }
   });
 
   panel.addEventListener('contextmenu', function (e) {
-    if (_getLibraryTab() !== 'bookmarks') return;
     var row = e.target.closest('.bm-row');
     if (!row) return;
     e.preventDefault();
@@ -19793,10 +21218,7 @@ function _bmEnsureBound() {
 
   // Pointer DnD + touch long-press. One handler set, both input types.
   panel.addEventListener('pointerdown', _bmPointerDown);
-  panel.addEventListener('keydown', function (e) {
-    if (_getLibraryTab() !== 'bookmarks') return;
-    _bmTreeKeydown(e);
-  });
+  panel.addEventListener('keydown', _bmTreeKeydown);
   // Clicking a row makes it the tabbable one, so Tab returns where you were.
   panel.addEventListener('focusin', function (e) {
     var row = e.target.closest ? e.target.closest('.bm-row') : null;
@@ -19805,13 +21227,22 @@ function _bmEnsureBound() {
 }
 
 function _bmOpenRowMenu(row, x, y) {
-  if (row.classList.contains('bm-folder')) _bmFolderMenu(row.dataset.fid, x, y);
-  else if (row.classList.contains('bm-bk')) _bmBookmarkMenu(row.dataset.zim, row.dataset.path, x, y);
+  if (row.classList.contains('bm-folder')) _bmListMenu(row.dataset.fid, x, y);
+  else if (row.classList.contains('bm-hl')) _bmHlMenu(row, x, y);
+  else if (row.classList.contains('bm-bk')) _bmItemMenu(row, x, y);
+}
+
+// Continue is drawn from where you were, Liked stays first and "Not in a
+// list" last: none of those is dragged. Everything else is: an item into a
+// list or out of it, or along its list; a list along the lists.
+function _bmDraggable(row) {
+  var fid = row.dataset.fid;
+  if (row.classList.contains('bm-folder')) return fid !== _BM_CONTINUE && fid !== Saved.LIKED && fid !== _BM_ROOT && fid !== _BM_HIGHLIGHTS;
+  return fid !== _BM_CONTINUE && !row.classList.contains('bm-hl');
 }
 
 function _bmPointerDown(e) {
-  if (_getLibraryTab() !== 'bookmarks') return;
-  if (e.button && e.button !== 0) return;  // primary button only — right-click opens the menu
+  if (e.button && e.button !== 0) return;  // primary button only; right-click opens the menu
   if (e.target.closest('.bm-gear') || e.target.closest('input')) return; // let buttons/inputs work
   var row = e.target.closest('.bm-row');
   if (!row || row.classList.contains('bm-newfolder') || row.classList.contains('bm-renaming')) return;
@@ -19821,7 +21252,8 @@ function _bmPointerDown(e) {
   document.addEventListener('pointerup', _bmPointerUp);
   document.addEventListener('pointercancel', _bmPointerUp);
   if (touch) {
-    // Long-press-to-lift: hold 320ms without a scroll \u2192 drag mode + haptic.
+    // Long-press: hold 320ms without a scroll. A row that moves lifts for a
+    // drag; one that does not is released into its menu (see _bmPointerUp).
     _bmLpTimer = setTimeout(function () {
       _bmLpTimer = null;
       if (_bmPointerStart && !_bmPointerStart.moved) {
@@ -19840,7 +21272,7 @@ function _bmBeginDrag(row, x, y) {
   document.body.appendChild(ghost);
   ghost.style.left = x + 'px'; ghost.style.top = y + 'px';
   row.classList.add('bm-dragging');
-  _bmDrag = { kind: kind, row: row, ghost: ghost, liftX: x, liftY: y, movedSinceLift: false };
+  _bmDrag = { kind: kind, row: row, ghost: ghost, liftX: x, liftY: y, movedSinceLift: false, fixed: !_bmDraggable(row) };
 }
 
 function _bmPointerMove(e) {
@@ -19854,6 +21286,7 @@ function _bmPointerMove(e) {
         if (_bmLpTimer) { clearTimeout(_bmLpTimer); _bmLpTimer = null; _bmTeardownPointer(); }
         return;
       }
+      if (!_bmDraggable(_bmPointerStart.row)) { _bmTeardownPointer(); return; }
       _bmBeginDrag(_bmPointerStart.row, e.clientX, e.clientY);  // mouse: lift on move
     } else { return; }
   }
@@ -19862,13 +21295,14 @@ function _bmPointerMove(e) {
   _bmDrag.x = e.clientX; _bmDrag.y = e.clientY;
   _bmDrag.ghost.style.left = e.clientX + 'px';
   _bmDrag.ghost.style.top = e.clientY + 'px';
+  if (_bmDrag.fixed) return;
   _bmUpdateDropTarget(e.clientX, e.clientY);
   _bmEdgeScroll(e.clientY);
 }
 
 // Hold the pointer near the top or bottom edge of the panel and the tree
 // scrolls under it. Without this, a drop target more than one screen away from
-// the lift point is simply unreachable — which is every real library.
+// the lift point is simply unreachable, which is every real library.
 var _BM_EDGE = 52;          // px from a panel edge that starts the scroll
 var _BM_EDGE_STEP = 14;     // px per frame
 var _bmEdgeTimer = null, _bmEdgeDir = 0;
@@ -19899,55 +21333,53 @@ function _bmUpdateDropTarget(x, y) {
   var host = document.getElementById('bm-tree');
   if (!host) return;
   var row = el && el.closest ? el.closest('.bm-row') : null;
-  if (row && (row === _bmDrag.row)) { _bmDrag.drop = null; return; }
+  _bmDrag.drop = null;
+  if (row && (row === _bmDrag.row)) return;
   if (!row) {
-    // Over the tree but not a row \u2192 drop into root (append).
-    if (host.contains(el)) { host.classList.add('bm-drop-root'); _bmDrag.drop = { mode: 'into', fid: _BM_ROOT }; }
-    else { _bmDrag.drop = null; }
+    // Over the tree but not a row: an item comes out of its list.
+    if (host.contains(el) && _bmDrag.kind === 'bk' && _bmDrag.row.dataset.fid !== _BM_ROOT) {
+      host.classList.add('bm-drop-root'); _bmDrag.drop = { mode: 'into', fid: _BM_ROOT };
+    }
     return;
   }
   var rect = row.getBoundingClientRect();
   var rel = (y - rect.top) / rect.height;
+  var lid = row.dataset.fid;  // the list under the pointer, or the one its item row is in
+  if (lid === _BM_CONTINUE || lid === _BM_HIGHLIGHTS) return;  // nothing goes into Continue or Highlights
+  if (_bmDrag.kind === 'folder') {
+    // A list moves along the lists, before the one under the pointer (Liked
+    // stays first); over the items in no list, to the end.
+    if (lid === Saved.LIKED || lid === _bmDrag.row.dataset.fid) return;
+    if (lid === _BM_ROOT) { host.classList.add('bm-drop-root'); _bmDrag.drop = { mode: 'before-folder', fid: null }; return; }
+    var lrow = row.classList.contains('bm-folder') ? row : _bmRowByKey('f:' + lid);
+    if (!lrow) return;
+    lrow.classList.add('bm-drop-before');
+    _bmDrag.drop = { mode: 'before-folder', fid: lid };
+    return;
+  }
   if (row.classList.contains('bm-folder')) {
-    if (_bmDrag.kind === 'bk') {
-      // A bookmark can only ever go INSIDE a folder \u2014 bookmarks always sort
-      // after folders within a parent, so "before this folder" has no meaning.
-      // Show the one thing that can happen rather than a line that lies.
-      row.classList.add('bm-drop-into');
-      _bmDrag.drop = { mode: 'into', fid: row.dataset.fid };
-      return;
-    }
-    // Dropping a folder into its own descendant is illegal \u2014 treat as reorder.
-    var intoOk = !_folWouldCycle(_bmDrag.row.dataset.fid, row.dataset.fid);
-    if (rel < 0.30 || !intoOk) {
-      row.classList.add('bm-drop-before');
-      _bmDrag.drop = { mode: 'before-folder', fid: row.dataset.fid };
-    } else {
-      row.classList.add('bm-drop-into');
-      _bmDrag.drop = { mode: 'into', fid: row.dataset.fid };
-    }
-  } else if (_bmDrag.kind === 'folder') {
-    // A folder over a bookmark resolves to that bookmark's folder \u2014 otherwise
-    // every bookmark row is a dead zone that still draws a drop line.
-    var into = _folNorm(row.dataset.fid);
-    if (_folNorm(_folById(_bmDrag.row.dataset.fid).parent) === into ||
-        _folWouldCycle(_bmDrag.row.dataset.fid, into)) { _bmDrag.drop = null; return; }
-    _bmMarkFolderTarget(into);
-    _bmDrag.drop = { mode: 'into', fid: into };
-  } else {  // bookmark over bookmark \u2192 reorder within its folder (before / after)
+    // An item over a list goes into it.
+    row.classList.add('bm-drop-into');
+    _bmDrag.drop = { mode: 'into', fid: row.dataset.fid };
+  } else if (row.dataset.fid === _BM_ROOT) {
+    // Over an item in no list: out of its list.
+    if (_bmDrag.row.dataset.fid === _BM_ROOT) return;
+    _bmMarkFolderTarget(_BM_ROOT);
+    _bmDrag.drop = { mode: 'into', fid: _BM_ROOT };
+  } else {  // item over an item in a list: along that list (before / after)
     if (rel < 0.5) { row.classList.add('bm-drop-before'); _bmDrag.drop = { mode: 'before-bk', row: row }; }
     else { row.classList.add('bm-drop-after'); _bmDrag.drop = { mode: 'after-bk', row: row }; }
   }
 }
 
-// Highlight the row of the folder a drop would land in (the tree itself when
-// that folder is root), so the target is never left to inference.
+// Highlight the row of the list a drop would land in (the tree itself for
+// "no list"), so the target is never left to inference.
 function _bmMarkFolderTarget(fid) {
   var host = document.getElementById('bm-tree');
   if (!host) return;
-  if (_folNorm(fid) === _BM_ROOT) { host.classList.add('bm-drop-root'); return; }
   var row = host.querySelector('.bm-folder[data-fid="' + _cssEsc(fid) + '"]');
   if (row) row.classList.add('bm-drop-into');
+  else if (fid === _BM_ROOT) host.classList.add('bm-drop-root');
 }
 
 function _bmClearDropMarks() {
@@ -19964,59 +21396,55 @@ function _bmPointerUp(e) {
   if (_bmLpTimer) { clearTimeout(_bmLpTimer); _bmLpTimer = null; }
   var drag = _bmDrag, start = _bmPointerStart;
   _bmTeardownPointer();
-  if (!drag) return;  // was never lifted \u2192 a plain click/scroll, handled elsewhere
+  if (!drag) return;  // was never lifted: a plain click/scroll, handled elsewhere
   if (drag.ghost && drag.ghost.parentNode) drag.ghost.parentNode.removeChild(drag.ghost);
   drag.row.classList.remove('bm-dragging');
   _bmClearDropMarks();
-  // Touch lift released in place without moving \u2192 show the context menu instead.
+  // Touch lift released in place without moving: show the context menu instead.
   if (start && start.touch && !drag.movedSinceLift) {
     _bmSwallowNextClick(drag.row);
     _bmOpenRowMenu(drag.row, start.x + 2, start.y + 2);
     _bmDrag = null;
     return;
   }
-  _bmCommitDrop(drag);
   _bmDrag = null;
+  if (!drag.fixed) _bmCommitDrop(drag);
 }
 
+// An item dragged from a list to another moves (out of the one, into the
+// other); from no list, it goes in; onto the top level, it comes out of its
+// list. Along a list it moves to the place shown.
 function _bmCommitDrop(drag) {
   var d = drag.drop;
   if (!d) return;
-  if (d.mode === 'into') _folExpand(d.fid);  // never drop something into a folder that hides it
-  if (drag.kind === 'bk') {
-    var zim = drag.row.dataset.zim, path = drag.row.dataset.path;
-    if (d.mode === 'into') _bkSetFolder(zim, path, d.fid);
-    else if (d.mode === 'before-bk' || d.mode === 'after-bk') {
-      var tgt = d.row;
-      var destFid = tgt.dataset.fid;
-      var beforeKey = null;
-      if (d.mode === 'before-bk') beforeKey = tgt.dataset.zim + '\n' + tgt.dataset.path;
-      else {
-        // after \u2192 before the NEXT bookmark sibling in the same folder, if any
-        var sibs = _bkInFolder(destFid);
-        var ti = sibs.findIndex(function (b) { return b.zim === tgt.dataset.zim && b.path === tgt.dataset.path; });
-        if (ti >= 0 && ti + 1 < sibs.length) beforeKey = sibs[ti + 1].zim + '\n' + sibs[ti + 1].path;
-      }
-      _bkSetFolder(zim, path, destFid, beforeKey);
-    }
-  } else {  // folder
-    var fid = drag.row.dataset.fid;
-    if (d.mode === 'into') _folReparent(fid, d.fid);
-    else if (d.mode === 'before-folder') {
-      var tf = _folById(d.fid);
-      if (tf) {
-        // reparent to the target's parent, then order before it
-        if (_folNorm(tf.parent) !== _folNorm(_folById(fid).parent)) _folReparent(fid, tf.parent);
-        _folReorder(fid, d.fid);
-      }
-    }
+  if (drag.kind === 'folder') {
+    if (d.mode === 'before-folder') Saved.moveList(drag.row.dataset.fid, d.fid);
+    return;
   }
-  _bmRerender();
+  var key = drag.row.dataset.key, from = drag.row.dataset.fid;
+  if (d.mode === 'into') {
+    if (d.fid === from) return;
+    if (d.fid !== _BM_ROOT) { _bmExpand(d.fid); Saved.addToList(key, d.fid); }
+    if (from !== _BM_ROOT) Saved.removeFromList(key, from);
+    return;
+  }
+  var tgt = d.row, dest = tgt.dataset.fid;
+  var before = tgt.dataset.key;
+  if (d.mode === 'after-bk') {
+    // After: before the next item in that list, if any (the end if none).
+    var seq = Saved.itemsFor({ list: dest }).map(function (it) { return it.key; }).filter(function (k) { return k !== key; });
+    var at = seq.indexOf(tgt.dataset.key);
+    before = at >= 0 && at + 1 < seq.length ? seq[at + 1] : null;
+  }
+  if (before === key) return;
+  if (dest !== from && from !== _BM_ROOT) Saved.removeFromList(key, from);
+  if (Saved.inList(key, dest)) Saved.moveInList(key, dest, before);
+  else Saved.addToList(key, dest, before);
 }
 
 // A touch release fires a synthetic click a moment later. Left alone it lands on
 // the row, and the document's outside-dismiss handler shuts the menu the
-// long-press just opened — making the row menu unreachable by finger. Swallow
+// long-press just opened, making the row menu unreachable by finger. Swallow
 // that one click, but scope it to the pressed ROW: an early tap on a menu item
 // (which sits outside the row) must still reach the menu, or opening then quickly
 // choosing an action reads as flaky. Time-boxed and one-shot as a backstop.
@@ -20049,306 +21477,1270 @@ function _pushArticleHistory(zim, path) {
   if (articleHistory.length > 50) articleHistory.shift();
 }
 
-// ── Bookmarks (localStorage) ──
-var _bookmarks = null;
-var _BK_KEY = SK.BOOKMARKS;
-var _BK_MAX = 200;
+// ── Saved: one store for everything kept ────────────────────────────────────
+// Bookmarks, lists, likes and where you were, for the reader and every app
+// (1.12, docs/features/saving.md). An item is one thing kept: what it is
+// (kind), its ZIM and path, a title, the app it belongs to, where you were in
+// it, when it was added, and the lists it is in (as many as you like). Liked
+// is a list every store has. Where you are in a book (a video, later) is a
+// position, kept whether or not the thing is saved; Continue reading is drawn
+// from positions, it is not a list.
+//
+// The API, the shell's and every app page's (as window.parent.Saved):
+//   Saved.key(ref)                     an item's id: zim + '\n' + path, and for a
+//                                      place + '\n' + where.pos (one map, many places)
+//   Saved.save(item) -> key            add, or update what is given; a renamed
+//                                      title, the lists and the added time stay
+//   Saved.remove(ref)                  removed from every list and every device
+//   Saved.get(ref) / Saved.has(ref)    one item, with key and lists / is it kept
+//   Saved.all()                        every item, the latest added first
+//   Saved.rename(ref, title)           '' goes back to the page's own title
+//   Saved.snapshot(ref) -> snap        before a remove; Saved.restore(snap) puts
+//                                      it back as it was, in each list's place
+//   Saved.itemsFor({app, kind, list})  a list's items in its order (list: '' is
+//                                      the items in no list), else the latest first
+//   Saved.lists({app, kind})           [{id, name, builtin, count}], Liked first;
+//                                      filtered, count counts only what matches
+//   Saved.createList(name) -> id       Saved.renameList(id, name)
+//   Saved.deleteList(id)               its items stay saved
+//   Saved.moveList(id, beforeId)       before another list; null is the end
+//   Saved.inList(ref, listId)          Saved.removeFromList(ref, listId)
+//   Saved.addToList(ref, listId, beforeRef)  at the end, or before beforeRef;
+//                                      saves an item given whole first
+//   Saved.moveInList(ref, listId, beforeRef) along its list (null: the end)
+//   Saved.position(ref)                {key, kind, zim, path, app, title, meta,
+//                                      where, ts} or null
+//   Saved.setPosition(ref, where)      ref is item-shaped; where null notes the
+//                                      visit and keeps the place
+//   Saved.clearPosition(ref)           Saved.continued({app, kind}): positions,
+//                                      the latest first
+//   Saved.LIKED                        the Liked list's id
+//   Saved.highlight(h) -> id           add a highlight, or change one (h.id:
+//                                      its note, its colour); see highlights.js
+//   Saved.highlights(q)                a page's ({zim, path}), in the order of
+//                                      its text; else ({app, kind}) the latest first
+//   Saved.getHighlight(id)             Saved.removeHighlight(id)
+// A ref is a key or anything item-shaped ({zim, path, kind, where}). where is
+// {s} a section, {f, c} a book (share read, character), {t, d} a video,
+// {pos} a map view; meta is a few short fields an app shows (author, cover).
+// A highlight is kept apart from its page's item: highlighting saves the page
+// (the engine does), removing the page from Saved keeps its highlights.
+//
+// Sync: every record carries ts, the newest wins, and a deletion leaves a
+// tombstone in `gone` (i:item, l:list, m:membership, p:position, h:highlight) that beats
+// anything as old or older, so a delete on one device survives a merge from
+// another. Tombstones are forgotten after GONE_MS. users.py holds the same
+// rules for the account's copy (_clean_saved, _merge_saved), and the same
+// byte budget: past it the oldest tombstones go, then the oldest places, and
+// what a person saved is never dropped (a new save is refused instead).
+var Saved = (function () {
+  var LIKED = 'liked';
+  var KINDS = ['article', 'book', 'video', 'question', 'post', 'place'];
+  var APPS = ['books', 'tube', 'exchange', 'reddot', 'maps', 'wiki'];
+  // The app a kind belongs to when the one saving it did not say.
+  var KIND_APP = { book: 'books', video: 'tube', question: 'exchange', post: 'reddot', place: 'maps' };
+  var COLLS = [['items', 'i:'], ['lists', 'l:'], ['members', 'm:'], ['positions', 'p:'], ['highlights', 'h:']];
+  // How many of each a person can keep, and the store's bytes as the
+  // account's file holds it (UTF-8 JSON): past one, a new one is refused with
+  // a word (_savedFull), never an old one dropped to make room. The byte
+  // budget and how a store is trimmed to fit it (fit) are users.py's too
+  // (_SAVED_MAX_BYTES, _SAVED_POS_PER_APP, _SAVED_GONE_MAX).
+  var MAX = { items: 5000, lists: 500, members: 20000, highlights: 2000, bytes: 3 * 1024 * 1024 };
+  var POS_PER_APP = 300;     // places kept per app, the latest
+  var GONE_MAX = 10000;      // tombstones kept, the newest
+  // A highlight's colours, the first the default; its quote (the engine keeps
+  // the start and the end of a longer passage), its context, its note.
+  var HL_COLORS = ['yellow', 'green', 'blue', 'pink'];
+  var HL_QUOTE_MAX = 600, HL_CONTEXT_MAX = 64, HL_NOTE_MAX = 2000;
+  // How long a deletion is remembered. A device away for longer can bring
+  // back what was deleted while it was gone.
+  var GONE_MS = 90 * 86400000;
+  var TITLE_MAX = 500, NAME_MAX = 120, ZIM_MAX = 200, PATH_MAX = 2000;
+  var SMALL_KEYS = 16, SMALL_KEY_MAX = 32, SMALL_VAL_MAX = 1000;
+  var ORDER_GAP_MIN = 1e-9;  // two neighbours closer than this: the list is numbered again
+  var ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+  // _ns: whose store ('' signed out, an account's name, null once forgotten).
+  // _newest: the latest time the store has seen. _sizes: each key's bytes as
+  // last written (-1 not yet known). _offer: whether 1.11's bookmarks are offered.
+  var _ns = '', _s = null, _idx = null, _hidx = null, _newest = 0, _sizes = { main: -1, pos: -1 }, _offer = null;
 
-function _bkLoad() {
-  if (_bookmarks !== null) return _bookmarks;
-  try { _bookmarks = JSON.parse(localStorage.getItem(_BK_KEY)) || []; }
-  catch(e) { _bookmarks = []; }
-  return _bookmarks;
-}
-function _bkSave() {
-  if (!_bookmarks) return;
-  try { localStorage.setItem(_BK_KEY, JSON.stringify(_bookmarks)); } catch(e) {}
-}
-function _bkFind(zim, path) {
-  return _bkLoad().findIndex(function(b) { return b.zim === zim && b.path === path; });
-}
-function _bkIsBookmarked(zim, path) { return _bkFind(zim, path) >= 0; }
-function _bkAdd(zim, path, title, pos, app) {
-  var bk = _bkLoad();
-  if (_bkFind(zim, path) >= 0) return; // already bookmarked
-  var record = { zim: zim, path: path, title: title || _titleFromPath(path), timestamp: Date.now() };
-  if (app) record.app = app;
-  // An offline map is one page whose whole meaning is WHERE you are, so a
-  // bookmark of it has to carry the place. Optional and absent everywhere
-  // else, so older records and every ordinary article are unchanged.
-  if (pos) record.pos = pos;
-  bk.unshift(record);
-  if (bk.length > _BK_MAX) bk.length = _BK_MAX;
-  _bkSave();
-}
-function _bkRemove(zim, path) {
-  var idx = _bkFind(zim, path);
-  if (idx >= 0) { _bkLoad().splice(idx, 1); _bkSave(); }
-}
-// Rename a bookmark. The record's `title` stays THE display field, so every
-// consumer (tree rows, export-to-ZIM article titles, /userdata sync blob) sees
-// the custom name with no extra plumbing; the article's own title moves to
-// `origTitle` so an empty rename can restore it. Typing the original back is
-// the same revert (origTitle cleared) rather than a no-op custom name.
-function _bkRename(zim, path, name) {
-  var idx = _bkFind(zim, path);
-  if (idx < 0) return;
-  var b = _bkLoad()[idx];
-  var orig = (b.origTitle != null && b.origTitle !== '') ? b.origTitle : (b.title || _titleFromPath(b.path));
-  if (name && name !== orig) { b.origTitle = orig; b.title = name; }
-  else { delete b.origTitle; b.title = orig; }
-  _bkSave();
-}
-
-// ── Bookmark folders (v2) ──────────────────────────────────────────────────
-// Nested folders, arbitrary depth. Folders are their own records keyed by a
-// generated id; each bookmark carries a `folder` id (null/"" = root) plus an
-// `order` for intra-folder sort. Migration is implicit: a pre-v2 bookmark has
-// no `folder` (→ root) and no `order` (→ falls back to timestamp-desc). Empty
-// folders are representable (the whole reason folders are separate records).
-// The two localStorage keys ride in the same /userdata + backup blob as
-// BOOKMARKS (see _collectBrowserData). ROOT is the implicit null parent.
-var _BM_ROOT = '';               // canonical root folder id
-var _bmFolders = null;           // in-memory cache of the folders array
-
-function _folLoad() {
-  if (_bmFolders !== null) return _bmFolders;
-  try { _bmFolders = JSON.parse(localStorage.getItem(SK.BM_FOLDERS)) || []; }
-  catch (e) { _bmFolders = []; }
-  if (!Array.isArray(_bmFolders)) _bmFolders = [];
-  return _bmFolders;
-}
-function _folSave() {
-  if (!_bmFolders) return;
-  try { localStorage.setItem(SK.BM_FOLDERS, JSON.stringify(_bmFolders)); } catch (e) {}
-}
-function _folNorm(id) { return (id == null) ? _BM_ROOT : String(id); }
-function _folById(id) {
-  id = _folNorm(id);
-  if (id === _BM_ROOT) return null;
-  return _folLoad().find(function (f) { return f.id === id; }) || null;
-}
-function _folExists(id) { return _folNorm(id) === _BM_ROOT || !!_folById(id); }
-// A stable, collision-resistant id — time in base36 plus a little randomness.
-function _folNewId() {
-  return 'f_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
-}
-// Child folders of `parentId`, ordered by `order` then name (case-insensitive).
-function _folChildren(parentId) {
-  parentId = _folNorm(parentId);
-  return _folLoad().filter(function (f) { return _folNorm(f.parent) === parentId; })
-    .sort(function (a, b) {
-      var d = (a.order || 0) - (b.order || 0);
-      return d || (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
+  // Now, and never before anything the store has seen: a device whose clock
+  // is slow still dates a delete after the thing it deletes.
+  function now() {
+    _newest = Math.max(Date.now(), _newest + 1);
+    return _newest;
+  }
+  function see(s) {
+    COLLS.forEach(function (c) {
+      var m = s[c[0]];
+      Object.keys(m).forEach(function (id) { var ts = m[id] && num(m[id].ts); if (ts > _newest) _newest = ts; });
     });
-}
-// The folder a bookmark actually lives in. A reference to a folder that no
-// longer exists (a merge from a device that deleted it, or data written by a
-// build that dropped a save) resolves to root, so such a bookmark stays
-// reachable instead of disappearing from every folder at once.
-function _bkFolderOf(b) {
-  var id = _folNorm(b.folder);
-  return _folExists(id) ? id : _BM_ROOT;
-}
-// Bookmarks directly inside `folderId`, ordered by `order` then timestamp-desc
-// (so pre-v2 bookmarks — no order — keep their recency ordering).
-function _bkInFolder(folderId) {
-  folderId = _folNorm(folderId);
-  return _bkLoad().filter(function (b) { return _bkFolderOf(b) === folderId; })
-    .sort(function (a, b) {
-      var ao = (a.order == null) ? Infinity : a.order;
-      var bo = (b.order == null) ? Infinity : b.order;
-      if (ao !== bo) return ao - bo;
-      return (b.timestamp || 0) - (a.timestamp || 0);
-    });
-}
-// Every descendant folder id of `id` (not including `id`) — for delete + the
-// reparent cycle guard.
-function _folDescendants(id) {
-  var out = [], stack = _folChildren(id).map(function (f) { return f.id; });
-  while (stack.length) {
-    var cur = stack.pop();
-    out.push(cur);
-    _folChildren(cur).forEach(function (f) { stack.push(f.id); });
+    Object.keys(s.gone).forEach(function (g) { var ts = num(s.gone[g]); if (ts > _newest) _newest = ts; });
   }
-  return out;
-}
-// True if `candidate` is `id` or an ancestor of it — a folder can't be moved
-// into itself or its own subtree.
-function _folWouldCycle(id, candidateParent) {
-  candidateParent = _folNorm(candidateParent);
-  if (candidateParent === _folNorm(id)) return true;
-  return _folDescendants(id).indexOf(candidateParent) >= 0;
-}
-function _folNextOrder(parentId) {
-  var kids = _folChildren(parentId);
-  return kids.length ? (kids[kids.length - 1].order || 0) + 1 : 0;
-}
-function _bkNextOrder(folderId) {
-  var items = _bkInFolder(folderId);
-  var last = items[items.length - 1];
-  var lo = last && last.order != null ? last.order : items.length - 1;
-  return (items.length ? lo : -1) + 1;
-}
-function _folCreate(name, parentId) {
-  name = (name || '').trim() || t('bm_untitled_folder');
-  parentId = _folNorm(parentId);
-  var rec = { id: _folNewId(), name: name, parent: parentId, order: _folNextOrder(parentId) };
-  _folLoad().push(rec);
-  _folSave();
-  return rec.id;
-}
-function _folRename(id, name) {
-  var f = _folById(id);
-  if (!f) return;
-  f.name = (name || '').trim() || f.name;
-  _folSave();
-}
-// Reparent a folder. Returns false (no-op) when the move would create a cycle.
-function _folReparent(id, newParent) {
-  var f = _folById(id);
-  if (!f) return false;
-  newParent = _folNorm(newParent);
-  if (_folWouldCycle(id, newParent)) return false;
-  f.parent = newParent;
-  f.order = _folNextOrder(newParent);
-  _folSave();
-  return true;
-}
-// Delete a folder. mode 'contents' removes its bookmarks + subfolders (deep);
-// mode 'promote' lifts its bookmarks and child folders up to its own parent.
-function _folDelete(id, mode) {
-  var f = _folById(id);
-  if (!f) return;
-  var parent = _folNorm(f.parent);
-  var subtree = _folDescendants(id).concat([id]);
-  if (mode === 'promote') {
-    _bkLoad().forEach(function (b) { if (_folNorm(b.folder) === _folNorm(id)) b.folder = parent; });
-    _folChildren(id).forEach(function (c) { c.parent = parent; });
-    _bmFolders = _folLoad().filter(function (x) { return x.id !== id; });
-    _bkSave();  // the promoted bookmarks changed folder — persist, or they orphan
-  } else {  // 'contents' (default): purge everything under this folder
-    var kill = {};
-    subtree.forEach(function (sid) { kill[sid] = 1; });
-    _bookmarks = _bkLoad().filter(function (b) { return !kill[_folNorm(b.folder)]; });
-    _bmFolders = _folLoad().filter(function (x) { return !kill[x.id]; });
-    _bkSave();
+  // The bytes a string takes in UTF-8 (a JSON text: its surrogates come in pairs).
+  function utf8(str) {
+    var n = str.length;
+    for (var i = 0, len = str.length; i < len; i++) {
+      var c = str.charCodeAt(i);
+      if (c >= 0x80) n += c < 0x800 || (c >= 0xd800 && c <= 0xdfff) ? 1 : 2;
+    }
+    return n;
   }
-  _folSave();
-}
-// Move a bookmark into `folderId`. `beforeKey` (a _bookmarkKey) optionally
-// places it right before that sibling; omitted → appended to the end.
-function _bkSetFolder(zim, path, folderId, beforeKey) {
-  var idx = _bkFind(zim, path);
-  if (idx < 0) return;
-  var bk = _bkLoad();
-  var b = bk[idx];
-  folderId = _folExists(folderId) ? _folNorm(folderId) : _BM_ROOT;
-  b.folder = folderId;
-  // Reorder within the destination: rebuild the ordered sibling list with `b`
-  // inserted at the requested slot, then write back contiguous order values.
-  var sibs = _bkInFolder(folderId).filter(function (x) { return x !== b; });
-  var at = sibs.length;
-  if (beforeKey) {
-    var p = sibs.findIndex(function (x) { return _bookmarkKey(x) === beforeKey; });
-    if (p >= 0) at = p;
+  function size(x) { return utf8(JSON.stringify(x)); }
+  function empty() { return { v: 1, items: {}, lists: {}, members: {}, positions: {}, highlights: {}, gone: {}, legacy: false }; }
+  // The store is kept under two keys: where you were (a place moves every few
+  // seconds while you read) apart from the rest, so a place written does not
+  // write everything again.
+  function storeKey() { return SK.SAVED + (_ns ? ':' + _ns : ''); }
+  function posKey() { return SK.SAVED_POS + (_ns ? ':' + _ns : ''); }
+  function key(ref) {
+    if (typeof ref === 'string') return ref;
+    if (!ref || !ref.zim || !ref.path) return '';
+    var id = ref.zim + '\n' + ref.path;
+    var pos = ref.kind === 'place' && ref.where && ref.where.pos;
+    return pos && typeof pos === 'string' ? id + '\n' + pos : id;
   }
-  sibs.splice(at, 0, b);
-  sibs.forEach(function (x, i) { x.order = i; });
-  _bkSave();
-}
-// Reorder a folder among its siblings, before `beforeId` (or append).
-function _folReorder(id, beforeId) {
-  var f = _folById(id);
-  if (!f) return;
-  var sibs = _folChildren(f.parent).filter(function (x) { return x.id !== id; });
-  var at = sibs.length;
-  if (beforeId) {
-    var p = sibs.findIndex(function (x) { return x.id === beforeId; });
-    if (p >= 0) at = p;
-  }
-  sibs.splice(at, 0, f);
-  sibs.forEach(function (x, i) { x.order = i; });
-  _folSave();
-}
-// Per-device collapse state (not synced — it's UI, not data).
-function _folCollapsedSet() {
-  try { return new Set(JSON.parse(localStorage.getItem(SK.BM_COLLAPSED)) || []); }
-  catch (e) { return new Set(); }
-}
-function _folIsCollapsed(id) { return _folCollapsedSet().has(_folNorm(id)); }
-function _folSaveCollapsed(s) {
-  try { localStorage.setItem(SK.BM_COLLAPSED, JSON.stringify(Array.from(s))); } catch (e) {}
-}
-function _folToggleCollapse(id) {
-  var s = _folCollapsedSet();
-  id = _folNorm(id);
-  if (s.has(id)) s.delete(id); else s.add(id);
-  _folSaveCollapsed(s);
-}
-function _folExpand(id) {
-  var s = _folCollapsedSet();
-  if (s.delete(_folNorm(id))) _folSaveCollapsed(s);
-}
-// Recursive count of bookmarks under a folder (self + descendants) — the badge.
-function _folBookmarkCount(id) {
-  var ids = [_folNorm(id)].concat(_folDescendants(id).map(_folNorm));
-  var set = {}; ids.forEach(function (x) { set[x] = 1; });
-  return _bkLoad().filter(function (b) { return set[_bkFolderOf(b)]; }).length;
-}
+  function has(o, f) { return Object.prototype.hasOwnProperty.call(o, f); }
+  function cmp(a, b) { return a < b ? -1 : a > b ? 1 : 0; }
 
-// Export to ZIM: POST the client's bookmark list (server has no copy) and poll
-// until the export ZIM is written and rescanned into the library.
-// ── Tree export selector ─────────────────────────────────────────────────────
-// A folder-tree checkbox picker. Grouping DECISION (v1.8.2): ONE ZIM per
-// export, named by the user (the name field prefills from the selection).
-// Every selected top-level folder becomes a SECTION inside that ZIM; nested
-// selected subfolders keep their place as "Parent / Child" sections. A single
-// selected folder keeps the old shape (its own bookmarks unsectioned, its
-// subfolders as sections). An EMPTY selected folder still contributes its
-// section header — a ticked folder is never silently dropped — and a selection
-// with zero articles overall disables Export with a "nothing to export" note.
-// Each ZIM carries the real article HTML + images + styling.
-function _bmExportSelector(preFolderId) {
-  _bmCloseExport();
-  var rootBk = _bkInFolder(_BM_ROOT).length;
-  var tree = '';
-  // Opened from a folder's menu → just that subtree. Opened from the tab's
-  // "Export to ZIM" → everything, matching what that button did before the
-  // selector existed. Opening a picker with nothing ticked makes its own
-  // primary button fail on the first press.
-  var walk = function (parentId, depth) {
-    _folChildren(parentId).forEach(function (f) {
-      var checked = preFolderId
-        ? (f.id === preFolderId || _folDescendants(preFolderId).indexOf(f.id) >= 0)
-        : true;
-      tree += '<label class="bm-exp-row" style="padding-left:' + (8 + depth * 16) + 'px">' +
-        '<input type="checkbox" data-fid="' + escAttr(f.id) + '"' + (checked ? ' checked' : '') + '>' +
-        '<span class="bm-exp-ico">' + _BM_FOLDER_SVG + '</span>' +
-        '<span class="bm-exp-name">' + esc(f.name) + '</span>' +
-        '<span class="bm-exp-count">' + _folBookmarkCount(f.id) + '</span></label>';
-      walk(f.id, depth + 1);
+  // ── shape: what is accepted from anywhere (a file, the account, old keys) ──
+  function num(v) { return typeof v === 'number' && isFinite(v) ? v : null; }
+  function small(o) {
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+    var out = {}, n = 0;
+    Object.keys(o).forEach(function (f) {
+      var v = o[f];
+      if (n >= SMALL_KEYS || !f || f.length > SMALL_KEY_MAX) return;
+      if (typeof v === 'string') v = v.slice(0, SMALL_VAL_MAX);
+      else if (typeof v !== 'boolean' && num(v) === null) return;
+      out[f] = v; n++;
     });
+    return n ? out : null;
+  }
+  // An item or a position: what it is, where it is kept, when.
+  function thing(r, id) {
+    if (!r || typeof r !== 'object') return null;
+    var ts = num(r.ts);
+    if (typeof r.zim !== 'string' || !r.zim || r.zim.length > ZIM_MAX) return null;
+    if (typeof r.path !== 'string' || !r.path || r.path.length > PATH_MAX || ts === null) return null;
+    var out = { kind: KINDS.indexOf(r.kind) >= 0 ? r.kind : 'article', zim: r.zim, path: r.path,
+      title: typeof r.title === 'string' ? r.title.slice(0, TITLE_MAX) : '', ts: Math.round(ts) };
+    if (typeof r.origTitle === 'string' && r.origTitle) out.origTitle = r.origTitle.slice(0, TITLE_MAX);
+    if (APPS.indexOf(r.app) >= 0) out.app = r.app;
+    var where = small(r.where), meta = small(r.meta);
+    if (where) out.where = where;
+    if (meta) out.meta = meta;
+    return key(out) === id ? out : null;
+  }
+  // A highlight: the page, what it says and what is around it, where it
+  // starts (a share of the page's text), its colour and note.
+  function highlightRec(r, id) {
+    if (!r || typeof r !== 'object' || !ID_RE.test(id)) return null;
+    var ts = num(r.ts), pos = num(r.pos), n = num(r.n), added = num(r.added);
+    var str = function (v, max) { return typeof v === 'string' ? v.slice(0, max) : ''; };
+    if (typeof r.zim !== 'string' || !r.zim || r.zim.length > ZIM_MAX) return null;
+    if (typeof r.path !== 'string' || !r.path || r.path.length > PATH_MAX || ts === null) return null;
+    if (typeof r.exact !== 'string' || !r.exact) return null;
+    var out = { zim: r.zim, path: r.path, kind: KINDS.indexOf(r.kind) >= 0 ? r.kind : 'article', title: str(r.title, TITLE_MAX),
+      exact: str(r.exact, HL_QUOTE_MAX), prefix: str(r.prefix, HL_CONTEXT_MAX), suffix: str(r.suffix, HL_CONTEXT_MAX),
+      pos: pos === null ? 0 : Math.max(0, Math.min(1, pos)), color: HL_COLORS.indexOf(r.color) >= 0 ? r.color : HL_COLORS[0],
+      added: Math.round(added === null ? ts : added), ts: Math.round(ts) };
+    if (APPS.indexOf(r.app) >= 0) out.app = r.app;
+    if (typeof r.end === 'string' && r.end && n !== null && n > 0) { out.end = str(r.end, HL_QUOTE_MAX); out.n = Math.round(n); }
+    if (typeof r.note === 'string' && r.note) out.note = str(r.note, HL_NOTE_MAX);
+    return out;
+  }
+  function order(r) {
+    if (!r || typeof r !== 'object') return null;
+    var o = num(r.order), ts = num(r.ts);
+    return o === null || ts === null ? null : { order: o, ts: Math.round(ts) };
+  }
+  function clean(x) {
+    var s = empty();
+    if (!x || typeof x !== 'object') return s;
+    var each = function (src, fn) {
+      if (src && typeof src === 'object' && !Array.isArray(src)) Object.keys(src).forEach(function (id) { fn(id, src[id]); });
+    };
+    each(x.items, function (id, r) {
+      var it = thing(r, id), added = r && num(r.added);
+      if (it) { it.added = Math.round(added === null ? it.ts : added); s.items[id] = it; }
+    });
+    each(x.lists, function (id, r) {
+      var o = order(r);
+      if (!o || !ID_RE.test(id) || id === LIKED || typeof r.name !== 'string' || !r.name.trim()) return;
+      s.lists[id] = { name: r.name.trim().slice(0, NAME_MAX), order: o.order, ts: o.ts };
+    });
+    each(x.members, function (mk, r) {
+      var i = mk.indexOf('\t'), o = order(r);
+      if (i < 1 || !o || !ID_RE.test(mk.slice(0, i)) || mk.length - i - 1 > ZIM_MAX + PATH_MAX + 64) return;
+      s.members[mk] = o;
+    });
+    each(x.positions, function (id, r) { var p = thing(r, id); if (p) s.positions[id] = p; });
+    each(x.highlights, function (id, r) { var h = highlightRec(r, id); if (h) s.highlights[id] = h; });
+    each(x.gone, function (g, ts) {
+      if (num(ts) !== null && /^[ilmph]:./.test(g) && g.length < ZIM_MAX + PATH_MAX + 128) s.gone[g] = Math.round(ts);
+    });
+    s.legacy = x.legacy === true;
+    return s;
+  }
+
+  // ── merge: two copies of a store become one ──
+  function newestFirst(map, getTs) {
+    return function (a, b) { return getTs(map[b]) - getTs(map[a]) || cmp(a, b); };
+  }
+  function cap(map, n, getTs) {
+    var ids = Object.keys(map);
+    if (ids.length <= n) return;
+    ids.sort(newestFirst(map, getTs)).slice(n).forEach(function (id) { delete map[id]; });
+  }
+  function recTs(r) { return r.ts; }
+  function goneTs(v) { return v; }
+  // Each app keeps its latest POS_PER_APP places: Zimipedia's articles never
+  // push Bookshelf's books out of Continue.
+  function capPlaces(p) {
+    var byApp = {};
+    Object.keys(p).forEach(function (k) { var a = p[k].app || ''; (byApp[a] = byApp[a] || []).push(k); });
+    Object.keys(byApp).forEach(function (a) {
+      var ks = byApp[a];
+      if (ks.length > POS_PER_APP) ks.sort(newestFirst(p, recTs)).slice(POS_PER_APP).forEach(function (k) { delete p[k]; });
+    });
+  }
+  // Past `budget` bytes the oldest tombstones go first, then the oldest
+  // places, until the store fits; returns its size. Nothing a person saved
+  // goes: a store still over refuses new saves (room) and the account
+  // refuses it until something is let go.
+  function fit(s, budget) {
+    var n = size(s);
+    [['gone', goneTs], ['positions', recTs]].forEach(function (c) {
+      var m = s[c[0]], getTs = c[1], ks = Object.keys(m), left = ks.length;
+      ks.sort(function (a, b) { return getTs(m[a]) - getTs(m[b]) || cmp(a, b); }).forEach(function (k) {
+        if (n <= budget) return;
+        // "key":value, and the comma beside it while another is left.
+        n -= size(k) + 1 + size(m[k]) + (left > 1 ? 1 : 0);
+        left--;
+        delete m[k];
+      });
+    });
+    return n;
+  }
+  // A membership needs its item and its list; tombstones age out; each app
+  // keeps its latest places; the store fits its byte budget.
+  function normalize(s, t, budget) {
+    Object.keys(s.members).forEach(function (mk) {
+      var i = mk.indexOf('\t'), lid = mk.slice(0, i);
+      if (!has(s.items, mk.slice(i + 1)) || (lid !== LIKED && !has(s.lists, lid))) delete s.members[mk];
+    });
+    Object.keys(s.gone).forEach(function (g) { if (s.gone[g] < t - GONE_MS) delete s.gone[g]; });
+    cap(s.gone, GONE_MAX, goneTs);
+    capPlaces(s.positions);
+    fit(s, budget == null ? MAX.bytes : budget);
+    return s;
+  }
+  // Every record: the newer copy wins (a tie keeps a's). A tombstone as new
+  // as the record or newer removes it; a record newer than its tombstone
+  // (saved again after the delete) outlives it.
+  function mergeStores(a, b, t, budget) {
+    var out = empty(), gone = {};
+    out.legacy = !!(a.legacy || b.legacy);
+    [a.gone, b.gone].forEach(function (src) {
+      Object.keys(src).forEach(function (g) { if (!(has(gone, g) && gone[g] >= src[g])) gone[g] = src[g]; });
+    });
+    COLLS.forEach(function (c) {
+      var name = c[0], pre = c[1], A = a[name], B = b[name];
+      Object.keys(A).concat(Object.keys(B)).forEach(function (id) {
+        if (has(out[name], id)) return;
+        var x = has(A, id) ? A[id] : null, y = has(B, id) ? B[id] : null;
+        var r = !x ? y : !y ? x : (y.ts > x.ts ? y : x);
+        if (has(gone, pre + id)) {
+          if (gone[pre + id] >= r.ts) return;
+          delete gone[pre + id];
+        }
+        out[name][id] = r;
+      });
+    });
+    out.gone = gone;
+    return normalize(out, t, budget);
+  }
+
+  // ── what the browser kept before 1.12 ──
+  // Bookmarks v2 (items with a folder and an order, folders nested by parent)
+  // and Bookshelf's places. Each folder becomes a list named by its path
+  // ("Travel / Portugal"), in the tree's order; a bookmark keeps its order in
+  // its folder; one at the top level is saved in no list; a map's place stays
+  // a place. Deterministic, so running it twice changes nothing, and dated by
+  // the bookmark itself, so a later delete or rename always wins over it.
+  function fromLegacy(old, kindOfZim) {
+    var out = { items: {}, lists: {}, members: {}, positions: {} };
+    var bms = Array.isArray(old.bookmarks) ? old.bookmarks : [];
+    var fols = (Array.isArray(old.folders) ? old.folders : []).filter(function (f) { return f && f.id != null; });
+    var byId = {};
+    fols.forEach(function (f) { byId[String(f.id)] = f; });
+    var parentOf = function (f) { var p = f.parent == null ? '' : String(f.parent); return byId[p] && p !== String(f.id) ? p : ''; };
+    var kids = function (pid) {
+      return fols.filter(function (f) { return parentOf(f) === pid; }).sort(function (a, b) {
+        return ((a.order || 0) - (b.order || 0)) || cmp(String(a.name || '').toLowerCase(), String(b.name || '').toLowerCase());
+      });
+    };
+    var n = 0, listOf = {}, seen = {};
+    var walk = function (pid, prefix) {
+      kids(pid).forEach(function (f) {
+        var fid = String(f.id);
+        if (seen[fid]) return;
+        seen[fid] = 1;
+        var name = prefix + (String(f.name || '').trim() || '?');
+        var lid = ID_RE.test(fid) && fid !== LIKED ? fid : 'f_' + (n + 1);
+        listOf[fid] = lid;
+        out.lists[lid] = { name: name, order: n++, ts: 1 };
+        walk(fid, name + ' / ');
+      });
+    };
+    walk('', '');
+    var inFolder = {};
+    bms.forEach(function (b) {
+      if (!b || typeof b.zim !== 'string' || typeof b.path !== 'string' || !b.zim || !b.path) return;
+      var ts = num(b.timestamp) || 1;
+      var kind = b.app === 'tube' ? 'video' : b.app === 'exchange' ? 'question' : b.app === 'reddot' ? 'post'
+        : b.pos ? 'place' : (kindOfZim && kindOfZim(b.zim) === 'books' ? 'book' : 'article');
+      var it = { kind: kind, zim: b.zim, path: b.path, title: typeof b.title === 'string' ? b.title : '', added: ts, ts: ts };
+      if (b.origTitle) it.origTitle = b.origTitle;
+      var app = APPS.indexOf(b.app) >= 0 ? b.app : KIND_APP[kind];
+      if (app) it.app = app;
+      if (b.pos) it.where = { pos: String(b.pos) };
+      var id = key(it);
+      // The same page twice (two folders, or a merge that kept both): the
+      // newer record is the item, and each keeps its own folder.
+      if (!out.items[id] || out.items[id].ts < ts) out.items[id] = it;
+      var fid = b.folder == null ? '' : String(b.folder);
+      if (listOf[fid]) (inFolder[fid] = inFolder[fid] || []).push({ id: id, b: b, ts: ts });
+    });
+    Object.keys(inFolder).forEach(function (fid) {
+      // The v2 tree's own order: by order, then the newest first.
+      inFolder[fid].sort(function (x, y) {
+        var xo = x.b.order == null ? Infinity : x.b.order, yo = y.b.order == null ? Infinity : y.b.order;
+        return xo !== yo ? xo - yo : (num(y.b.timestamp) || 0) - (num(x.b.timestamp) || 0);
+      }).forEach(function (e, i) {
+        out.members[listOf[fid] + '\t' + e.id] = { order: i, ts: e.ts };
+      });
+    });
+    var places = old.places && typeof old.places === 'object' ? old.places : {};
+    Object.keys(places).forEach(function (pk) {
+      var p = places[pk] || {}, i = pk.indexOf('\n');
+      if (i < 1 || num(p.ts) === null) return;
+      var rec = { kind: 'book', app: 'books', zim: pk.slice(0, i), path: pk.slice(i + 1), title: p.title || '', ts: p.ts,
+        where: { f: num(p.f) || 0, c: num(p.c) || 0 }, meta: { id: num(p.id) || 0, author: p.author || '', cover: p.cover || '' } };
+      out.positions[key(rec)] = rec;
+    });
+    return clean(out);
+  }
+  function readLegacy() {
+    return { bookmarks: _getStorageJSON(SK.BOOKMARKS, []) || [], folders: _getStorageJSON(SK.BM_FOLDERS, []) || [],
+      places: _getStorageJSON(SK.BOOK_PLACES, {}) || {} };
+  }
+  function zimKind(zim) {
+    try { var z = typeof _zimInfo === 'function' ? _zimInfo(zim) : null; return z ? z.kind : ''; } catch (e) { return ''; }
+  }
+  // 1.11 kept bookmarks per browser, not per account. They come into the
+  // signed-out store on its first use; into an account only when its person
+  // says so, asked once in the Saved panel (a shared screen's bookmarks are
+  // not every account's that signs in on it).
+  function legacyOffered() {
+    if (!_ns) return false;
+    if (_offer === null) {
+      var old = readLegacy();
+      _offer = (_getStorageJSON(SK.SAVED_LEGACY_ASKED, []) || []).indexOf(_ns) < 0 &&
+        !!(old.bookmarks.length || old.folders.length || Object.keys(old.places).length);
+    }
+    return _offer;
+  }
+  function legacyAnswer(take) {
+    if (!legacyOffered()) return;
+    var asked = _getStorageJSON(SK.SAVED_LEGACY_ASKED, []) || [];
+    asked.push(_ns);
+    _setStorageJSON(SK.SAVED_LEGACY_ASKED, asked);
+    _offer = false;
+    if (take) merge(fromLegacy(readLegacy(), zimKind));
+    else if (typeof _savedChanged === 'function') _savedChanged(true);
+  }
+
+  // ── the store ──
+  function load() {
+    if (_s) return _s;
+    if (_ns === null) { _s = empty(); return _s; }
+    var main = _getStorageJSON(storeKey(), null), pos = _getStorageJSON(posKey(), null);
+    if (main && typeof main === 'object' && main.items) {
+      ['items', 'lists', 'members', 'positions', 'highlights', 'gone'].forEach(function (c) { if (!main[c] || typeof main[c] !== 'object') main[c] = {}; });
+      var places = clean(pos);
+      see(main); see(places);
+      // A store written before places had a key of their own moves them there.
+      var moved = Object.keys(main.positions).length > 0;
+      _s = Object.keys(places.positions).length || Object.keys(places.gone).length || moved ? mergeStores(main, places, Date.now()) : main;
+      if (moved) write();
+      return _s;
+    }
+    // This store's first use: signed out, what the browser kept before comes
+    // in (the old keys stay where they are, readable by an older Zimi); an
+    // account's starts empty and its own copy arrives from the server.
+    _s = _ns ? empty() : mergeStores(empty(), fromLegacy(readLegacy(), zimKind), Date.now());
+    see(_s);
+    write();
+    return _s;
+  }
+  // The store as its two keys hold it: where you were (places, and their
+  // tombstones), and the rest.
+  function split(s, which) {
+    var out = { gone: {} }, pos = which === 'pos';
+    if (pos) out.positions = s.positions;
+    else Object.keys(s).forEach(function (k) { if (k !== 'positions' && k !== 'gone') out[k] = s[k]; });
+    Object.keys(s.gone).forEach(function (g) { if ((g.charAt(0) === 'p') === pos) out.gone[g] = s.gone[g]; });
+    return out;
+  }
+  // part: 'main' or 'pos' alone, else both. A browser whose storage is full
+  // keeps the store in memory for this page, and the shell says so once.
+  function write(part) {
+    if (_ns === null) return;
+    ['main', 'pos'].forEach(function (p) {
+      if (part && part !== p) return;
+      var text = JSON.stringify(split(_s, p));
+      _sizes[p] = utf8(text);
+      try { localStorage.setItem(p === 'pos' ? posKey() : storeKey(), text); }
+      catch (e) { if (typeof _savedStorageFull === 'function') _savedStorageFull(); }
+    });
+  }
+  // fromSync: the change came from the account or another tab (nothing to
+  // send). often: a place moving while something is read (sent less eagerly).
+  // part: the one key the change is in.
+  function commit(fromSync, often, part) {
+    _idx = null;
+    if (!often) _hidx = null;  // a place moving while reading leaves highlights as they were
+    write(part);
+    if (typeof _savedChanged === 'function') _savedChanged(!!fromSync, !!often);
+  }
+  // Room for one more of a kind (items, lists, members, highlights): under
+  // its count and the byte budget. Otherwise the shell says so and nothing
+  // already kept makes way.
+  function room(coll) {
+    var s = load();
+    ['main', 'pos'].forEach(function (p) { if (_sizes[p] < 0) _sizes[p] = size(split(s, p)); });
+    if (Object.keys(s[coll]).length < MAX[coll] && _sizes.main + _sizes.pos < MAX.bytes) return true;
+    if (typeof _savedFull === 'function') _savedFull();
+    return false;
+  }
+  // Which lists hold what, in order; rebuilt after a change.
+  function idx() {
+    if (_idx) return _idx;
+    var s = load(), byList = {}, listsOf = {};
+    Object.keys(s.members).forEach(function (mk) {
+      var i = mk.indexOf('\t'), lid = mk.slice(0, i), id = mk.slice(i + 1);
+      (byList[lid] = byList[lid] || []).push(id);
+      (listsOf[id] = listsOf[id] || []).push(lid);
+    });
+    Object.keys(byList).forEach(function (lid) {
+      byList[lid].sort(function (a, b) { return (s.members[lid + '\t' + a].order - s.members[lid + '\t' + b].order) || cmp(a, b); });
+    });
+    var rank = {};
+    listIds(s).forEach(function (lid, i) { rank[lid] = i + 1; });
+    rank[LIKED] = 0;
+    Object.keys(listsOf).forEach(function (id) { listsOf[id].sort(function (a, b) { return rank[a] - rank[b]; }); });
+    _idx = { byList: byList, listsOf: listsOf };
+    return _idx;
+  }
+  function listIds(s) {
+    return Object.keys(s.lists).sort(function (a, b) {
+      var x = s.lists[a], y = s.lists[b];
+      return (x.order - y.order) || cmp(x.name.toLowerCase(), y.name.toLowerCase()) || cmp(a, b);
+    });
+  }
+  function copy(o) { return o ? JSON.parse(JSON.stringify(o)) : o; }
+  function pub(id, r) {
+    var o = { key: id, kind: r.kind, zim: r.zim, path: r.path, title: r.title, app: r.app || '', added: r.added, ts: r.ts,
+      lists: (idx().listsOf[id] || []).slice() };
+    if (r.origTitle) o.origTitle = r.origTitle;
+    if (r.where) o.where = copy(r.where);
+    if (r.meta) o.meta = copy(r.meta);
+    return o;
+  }
+  function matches(q, r) { return (!q.app || r.app === q.app) && (!q.kind || r.kind === q.kind); }
+  function newestAdded(s) { return function (a, b) { return (s.items[b].added - s.items[a].added) || cmp(a, b); }; }
+
+  // An order value for a new entry at index `at` of `seq` (records with an
+  // order, in order); when two neighbours have grown too close, `renumber`
+  // writes the sequence out again first.
+  function slot(seq, at, renumber) {
+    if (!seq.length) return 0;
+    if (at <= 0) return seq[0].order - 1;
+    if (at >= seq.length) return seq[seq.length - 1].order + 1;
+    var lo = seq[at - 1].order, hi = seq[at].order;
+    if (hi - lo < ORDER_GAP_MIN) { renumber(); return at - 0.5; }
+    return (lo + hi) / 2;
+  }
+  // Put item `id` in list `lid` just before `before` (null: at the end).
+  function place(s, id, lid, before, t) {
+    var mk = lid + '\t' + id;
+    var seq = (idx().byList[lid] || []).filter(function (x) { return x !== id; });
+    var at = seq.length;
+    if (before != null) { var p = seq.indexOf(key(before)); if (p >= 0) at = p; }
+    var recs = seq.map(function (x) { return s.members[lid + '\t' + x]; });
+    s.members[mk] = { order: slot(recs, at, function () { recs.forEach(function (r, i) { r.order = i; r.ts = t; }); }), ts: t };
+    delete s.gone['m:' + mk];
+    _idx = null;
+  }
+  function addMember(s, id, lid, before, t) {
+    if (!has(s.items, id) || (lid !== LIKED && !has(s.lists, lid))) return false;
+    var there = has(s.members, lid + '\t' + id);
+    if ((there && before == null) || (!there && !room('members'))) return false;
+    place(s, id, lid, before, t);
+    return true;
+  }
+  function dropMember(s, mk, t) {
+    delete s.members[mk];
+    s.gone['m:' + mk] = t;
+  }
+
+  function save(item) {
+    var id = key(item);
+    if (!id || typeof item !== 'object') return '';
+    var s = load(), cur = has(s.items, id) ? s.items[id] : null;
+    if (!cur && !room('items')) return '';
+    var t = now();
+    var kind = KINDS.indexOf(item.kind) >= 0 ? item.kind : (cur ? cur.kind : 'article');
+    var rec = { kind: kind, zim: String(item.zim), path: String(item.path), title: '', added: cur ? cur.added : t, ts: t };
+    // A title given here is the page's; a name the person chose stays.
+    if (cur && cur.origTitle) { rec.title = cur.title; rec.origTitle = cur.origTitle; }
+    else rec.title = String(item.title || (cur && cur.title) || '').slice(0, TITLE_MAX);
+    var app = APPS.indexOf(item.app) >= 0 ? item.app : (cur && cur.app) || KIND_APP[kind];
+    if (app) rec.app = app;
+    var where = small(item.where !== undefined ? item.where : cur && cur.where);
+    var meta = small(item.meta !== undefined ? item.meta : cur && cur.meta);
+    if (where) rec.where = where;
+    if (meta) rec.meta = meta;
+    s.items[id] = rec;
+    delete s.gone['i:' + id];
+    _idx = null;
+    (item.lists || []).forEach(function (lid) { addMember(s, id, lid, null, t); });
+    commit();
+    return id;
+  }
+  function remove(ref) {
+    var s = load(), id = key(ref), t = now();
+    if (!has(s.items, id)) return;
+    delete s.items[id];
+    s.gone['i:' + id] = t;
+    (idx().listsOf[id] || []).forEach(function (lid) { dropMember(s, lid + '\t' + id, t); });
+    commit();
+  }
+  // The custom name is the title (every view reads that); the page's own
+  // parks in origTitle so an empty rename, or the original typed back, reverts.
+  function rename(ref, name) {
+    var s = load(), id = key(ref);
+    if (!has(s.items, id)) return;
+    var r = s.items[id];
+    var orig = r.origTitle ? r.origTitle : r.title;
+    name = String(name || '').trim().slice(0, TITLE_MAX);
+    if (name && name !== orig) { r.origTitle = orig; r.title = name; }
+    else { delete r.origTitle; r.title = orig; }
+    r.ts = now();
+    commit();
+  }
+  function get(ref) {
+    var s = load(), id = key(ref);
+    return has(s.items, id) ? pub(id, s.items[id]) : null;
+  }
+  function itemsFor(q) {
+    q = q || {};
+    var s = load(), ix = idx(), ids;
+    if (q.list === '') ids = Object.keys(s.items).filter(function (id) { return !(ix.listsOf[id] || []).length; }).sort(newestAdded(s));
+    else if (q.list != null) ids = (ix.byList[q.list] || []).slice();
+    else ids = Object.keys(s.items).sort(newestAdded(s));
+    return ids.filter(function (id) { return has(s.items, id) && matches(q, s.items[id]); })
+      .map(function (id) { return pub(id, s.items[id]); });
+  }
+  function lists(q) {
+    q = q || {};
+    var s = load(), ix = idx();
+    var count = function (lid) {
+      return (ix.byList[lid] || []).filter(function (id) { return has(s.items, id) && matches(q, s.items[id]); }).length;
+    };
+    return [{ id: LIKED, name: '', builtin: true, count: count(LIKED) }].concat(listIds(s).map(function (lid) {
+      return { id: lid, name: s.lists[lid].name, builtin: false, count: count(lid) };
+    }));
+  }
+  function createList(name) {
+    name = String(name || '').trim().slice(0, NAME_MAX);
+    if (!name || !room('lists')) return '';
+    var s = load(), t = now(), ids = listIds(s);
+    var id = 'l_' + t.toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+    s.lists[id] = { name: name, order: ids.length ? s.lists[ids[ids.length - 1]].order + 1 : 0, ts: t };
+    commit();
+    return id;
+  }
+  function renameList(id, name) {
+    var s = load();
+    name = String(name || '').trim().slice(0, NAME_MAX);
+    if (!has(s.lists, id) || !name) return;
+    s.lists[id].name = name;
+    s.lists[id].ts = now();
+    commit();
+  }
+  function deleteList(id) {
+    var s = load(), t = now();
+    if (!has(s.lists, id)) return;
+    (idx().byList[id] || []).forEach(function (x) { dropMember(s, id + '\t' + x, t); });
+    delete s.lists[id];
+    s.gone['l:' + id] = t;
+    commit();
+  }
+  function moveList(id, beforeId) {
+    var s = load(), t = now();
+    if (!has(s.lists, id)) return;
+    var seq = listIds(s).filter(function (x) { return x !== id; });
+    var at = beforeId != null && seq.indexOf(beforeId) >= 0 ? seq.indexOf(beforeId) : seq.length;
+    var recs = seq.map(function (x) { return s.lists[x]; });
+    s.lists[id].order = slot(recs, at, function () { recs.forEach(function (r, i) { r.order = i; r.ts = t; }); });
+    s.lists[id].ts = t;
+    commit();
+  }
+  function inList(ref, lid) { return has(load().members, lid + '\t' + key(ref)); }
+  function addToList(ref, lid, before) {
+    var s = load(), id = key(ref);
+    if (!has(s.items, id) && ref && typeof ref === 'object') save(ref);
+    if (addMember(s, id, lid, before == null ? null : before, now())) commit();
+  }
+  function moveInList(ref, lid, before) {
+    var s = load(), id = key(ref);
+    if (!has(s.members, lid + '\t' + id)) return;
+    place(s, id, lid, before == null ? null : before, now());
+    commit();
+  }
+  function removeFromList(ref, lid) {
+    var s = load(), mk = lid + '\t' + key(ref);
+    if (!has(s.members, mk)) return;
+    dropMember(s, mk, now());
+    commit();
+  }
+  function pubPos(id, r) {
+    var o = { key: id, kind: r.kind, zim: r.zim, path: r.path, app: r.app || '', title: r.title || '', ts: r.ts };
+    o.where = copy(r.where) || {};
+    o.meta = copy(r.meta) || {};
+    return o;
+  }
+  function position(ref) {
+    var s = load(), id = key(ref);
+    return has(s.positions, id) ? pubPos(id, s.positions[id]) : null;
+  }
+  function setPosition(ref, where) {
+    var id = key(ref);
+    if (!id || !ref || typeof ref !== 'object') return;
+    var s = load(), t = now(), cur = has(s.positions, id) ? s.positions[id] : null;
+    var kind = KINDS.indexOf(ref.kind) >= 0 ? ref.kind : (cur ? cur.kind : 'article');
+    var rec = { kind: kind, zim: String(ref.zim), path: String(ref.path), title: String(ref.title || (cur && cur.title) || '').slice(0, TITLE_MAX), ts: t };
+    var app = APPS.indexOf(ref.app) >= 0 ? ref.app : (cur && cur.app) || KIND_APP[kind];
+    if (app) rec.app = app;
+    var meta = {};
+    [cur && cur.meta, ref.meta].forEach(function (m) {
+      if (m) Object.keys(m).forEach(function (f) { if (m[f] !== '' && m[f] != null) meta[f] = m[f]; });
+    });
+    var w = small(where != null ? where : cur && cur.where), m2 = small(meta);
+    if (w) rec.where = w;
+    if (m2) rec.meta = m2;
+    s.positions[id] = rec;
+    delete s.gone['p:' + id];
+    capPlaces(s.positions);
+    commit(false, true, 'pos');
+  }
+  function clearPosition(ref) {
+    var s = load(), id = key(ref);
+    if (!has(s.positions, id)) return;
+    delete s.positions[id];
+    s.gone['p:' + id] = now();
+    commit(false, false, 'pos');
+  }
+  function continued(q) {
+    q = q || {};
+    var s = load();
+    return Object.keys(s.positions).filter(function (id) { return matches(q, s.positions[id]); })
+      .sort(newestFirst(s.positions, recTs)).map(function (id) { return pubPos(id, s.positions[id]); });
+  }
+
+  // ── highlights ──
+  // A page's highlights by its key (zim + '\n' + path), built when first asked:
+  // a page opened with none costs one lookup.
+  function hidx() {
+    if (_hidx) return _hidx;
+    var s = load(), out = {};
+    Object.keys(s.highlights).forEach(function (id) {
+      var r = s.highlights[id], k = r.zim + '\n' + r.path;
+      (out[k] = out[k] || []).push(id);
+    });
+    _hidx = out;
+    return out;
+  }
+  function pubHl(id, r) { var o = copy(r); o.id = id; return o; }
+  // q: a page ({zim, path} or its key), in the order of its text; otherwise
+  // every highlight matching {app, kind}, the latest first.
+  function highlights(q) {
+    q = q || {};
+    var s = load(), ids, page = typeof q === 'string' ? q.split('\n').slice(0, 2).join('\n') : q.zim && q.path ? q.zim + '\n' + q.path : '';
+    if (page) {
+      ids = (hidx()[page] || []).slice().sort(function (a, b) { return (s.highlights[a].pos - s.highlights[b].pos) || cmp(a, b); });
+    } else {
+      ids = Object.keys(s.highlights).filter(function (id) { return matches(q, s.highlights[id]); })
+        .sort(function (a, b) { return (s.highlights[b].added - s.highlights[a].added) || cmp(a, b); });
+    }
+    return ids.map(function (id) { return pubHl(id, s.highlights[id]); });
+  }
+  function getHighlight(id) {
+    var s = load();
+    return has(s.highlights, id) ? pubHl(id, s.highlights[id]) : null;
+  }
+  // A new highlight (no id, or one not kept), or a change to one: the fields
+  // given replace its own (a note of '' takes the note away).
+  function highlight(h) {
+    if (!h || typeof h !== 'object') return '';
+    var s = load(), id = typeof h.id === 'string' && has(s.highlights, h.id) ? h.id : '';
+    if (!id && !room('highlights')) return '';
+    var t = now(), rec = id ? copy(s.highlights[id]) : { added: t };
+    ['zim', 'path', 'kind', 'app', 'title', 'exact', 'end', 'n', 'prefix', 'suffix', 'pos', 'color', 'note'].forEach(function (f) {
+      if (h[f] !== undefined) rec[f] = h[f];
+    });
+    if (typeof rec.note === 'string') rec.note = rec.note.trim();
+    if (!id) id = typeof h.id === 'string' && ID_RE.test(h.id) ? h.id : 'h_' + t.toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+    rec.ts = t;
+    var r = highlightRec(rec, id);
+    if (!r) return '';
+    s.highlights[id] = r;
+    delete s.gone['h:' + id];
+    commit(false, false, 'main');
+    return id;
+  }
+  // Undo of a remove: the item as it was, its date and name, and its place
+  // in each of its lists (before the item that followed it there).
+  function snapshot(ref) {
+    var s = load(), id = key(ref);
+    if (!has(s.items, id)) return null;
+    var ix = idx(), at = {};
+    (ix.listsOf[id] || []).forEach(function (lid) {
+      var seq = ix.byList[lid] || [], i = seq.indexOf(id);
+      at[lid] = i >= 0 && i + 1 < seq.length ? seq[i + 1] : null;
+    });
+    return { id: id, rec: copy(s.items[id]), at: at };
+  }
+  function restore(snap) {
+    if (!snap || !snap.rec) return;
+    var s = load(), t = now();
+    if (!has(s.items, snap.id) && !room('items')) return;
+    var rec = copy(snap.rec);
+    rec.ts = t;
+    s.items[snap.id] = rec;
+    delete s.gone['i:' + snap.id];
+    _idx = null;
+    Object.keys(snap.at).forEach(function (lid) { addMember(s, snap.id, lid, snap.at[lid], t); });
+    commit();
+  }
+  function removeHighlight(id) {
+    var s = load();
+    if (!has(s.highlights, id)) return;
+    delete s.highlights[id];
+    s.gone['h:' + id] = now();
+    commit();
+  }
+
+  // ── sync: the account's copy, a file, another device ──
+  // What a copy holds, by id: every record's time and every tombstone's.
+  function stamps(s) {
+    var out = {};
+    COLLS.forEach(function (c) { Object.keys(s[c[0]]).forEach(function (id) { out[c[1] + id] = s[c[0]][id].ts; }); });
+    Object.keys(s.gone).forEach(function (g) { out['g' + g] = s.gone[g]; });
+    return out;
+  }
+  // A store's fingerprint. Equal fingerprints hold the same records (a tie
+  // keeps one copy either way).
+  function sig(s) {
+    var st = stamps(s);
+    return Object.keys(st).sort().map(function (k) { return k + '\u0000' + st[k]; }).join('\u0001') + (s.legacy ? '+' : '');
+  }
+  // What this store holds that a copy with these stamps does not, as a store
+  // of just those records and tombstones: what goes to the account after it
+  // last answered, small enough to go while the page closes.
+  function since(st) {
+    var s = load(), out = empty();
+    out.legacy = s.legacy;
+    COLLS.forEach(function (c) {
+      var m = s[c[0]];
+      Object.keys(m).forEach(function (id) { if (!st || st[c[1] + id] !== m[id].ts) out[c[0]][id] = m[id]; });
+    });
+    Object.keys(s.gone).forEach(function (g) { if (!st || st['g' + g] !== s.gone[g]) out.gone[g] = s.gone[g]; });
+    return out;
+  }
+  // Overwrite, with other devices in it: the incoming store whole, each of
+  // its records dated now (a moment apart, in the order they were, so the
+  // latest read stays the latest) to outrank every copy of it elsewhere, and
+  // a tombstone as new for each record here it does not hold, so no copy of
+  // that one comes back with the next sync.
+  function replacing(s, inc, t) {
+    var out = copy(inc), stamp = t;
+    COLLS.forEach(function (c) {
+      var m = out[c[0]];
+      Object.keys(m).sort(function (a, b) { return m[a].ts - m[b].ts || cmp(a, b); }).forEach(function (id) {
+        m[id].ts = stamp++;
+        delete out.gone[c[1] + id];
+      });
+    });
+    COLLS.forEach(function (c) {
+      Object.keys(s[c[0]]).forEach(function (id) { if (!has(out[c[0]], id)) out.gone[c[1] + id] = stamp; });
+    });
+    _newest = Math.max(_newest, stamp);
+    return out;
+  }
+  // Merge a store in (overwrite: take it whole). Returns what came in:
+  // {added, dupes, changed, ahead}; ahead: this browser holds what the
+  // incoming copy did not. fromSync: the change is the account's, not
+  // something to send back to it.
+  function merge(incoming, opts) {
+    opts = opts || {};
+    var s = load(), inc = clean(incoming);
+    see(inc);
+    var t = opts.overwrite ? now() : Date.now(), res = { added: 0, dupes: 0, changed: false, ahead: false };
+    Object.keys(inc.items).forEach(function (id) { if (has(s.items, id)) res.dupes++; });
+    var next = opts.overwrite ? normalize(replacing(s, inc, t), t) : mergeStores(s, inc, t);
+    if (opts.legacy) next.legacy = true;
+    Object.keys(next.items).forEach(function (id) { if (!has(s.items, id)) res.added++; });
+    var after = sig(next);
+    res.changed = !!opts.overwrite || after !== sig(s);
+    res.ahead = after !== sig(normalize(inc, t));
+    if (res.changed) { _s = next; commit(opts.fromSync); }
+    return res;
+  }
+  // Bookmarks and folders in the pre-1.12 shape (a My data file, an
+  // account's copy written by an older Zimi) come in the same way.
+  function mergeLegacy(old, opts) {
+    return merge(fromLegacy(old || {}, zimKind), opts);
+  }
+  // Whose store: '' signed out, the account's name signed in. Each account
+  // keeps its own in the browser; signing out takes it away (forget).
+  function use(name) {
+    var ns = name ? String(name).toLowerCase() : '';
+    if (ns === _ns) return false;
+    _ns = ns; _s = null; _idx = null; _hidx = null; _newest = 0; _offer = null;
+    _sizes = { main: -1, pos: -1 };
+    return true;
+  }
+  // Signed out, once the account has everything: its copy leaves this
+  // browser, and nothing is kept until a store is used again.
+  function forget() {
+    if (!_ns) return;
+    try { localStorage.removeItem(storeKey()); localStorage.removeItem(posKey()); } catch (e) {}
+    use(null);
+    _ns = null;
+  }
+  function list(id) { return lists().filter(function (l) { return l.id === id; })[0] || null; }
+
+  return {
+    LIKED: LIKED, NAME_MAX: NAME_MAX, TITLE_MAX: TITLE_MAX, KIND_APP: copy(KIND_APP),
+    key: key, save: save, remove: remove, snapshot: snapshot, restore: restore, get: get, has: function (ref) { return has(load().items, key(ref)); },
+    all: function () { return itemsFor({}); }, rename: rename, itemsFor: itemsFor,
+    list: list, lists: lists, createList: createList, renameList: renameList, deleteList: deleteList, moveList: moveList,
+    inList: inList, addToList: addToList, moveInList: moveInList, removeFromList: removeFromList,
+    position: position, setPosition: setPosition, clearPosition: clearPosition, continued: continued,
+    HL_COLORS: HL_COLORS.slice(), HL_QUOTE_MAX: HL_QUOTE_MAX,
+    highlight: highlight, highlights: highlights, getHighlight: getHighlight, removeHighlight: removeHighlight,
+    data: function () { return copy(load()); }, merge: merge, mergeLegacy: mergeLegacy,
+    // stamps(copy): what a copy holds (this store's without one); since(stamps): what this store has beyond it.
+    stamps: function (x) { return stamps(x ? clean(x) : load()); }, since: since,
+    legacyOffered: legacyOffered, legacyAnswer: legacyAnswer,
+    use: use, forget: forget, account: function () { return _ns || ''; },
+    ownsKey: function (k) { return _ns !== null && (k === storeKey() || k === posKey()); },
+    // For the tests: the pure parts.
+    _merge: mergeStores, _clean: clean, _fromLegacy: fromLegacy, _normalize: normalize, _max: MAX,
   };
-  walk(_BM_ROOT, 0);
-  if (rootBk) {
-    tree += '<label class="bm-exp-row" style="padding-left:8px">' +
-      '<input type="checkbox" data-fid="__unfiled__"' + (preFolderId ? '' : ' checked') + '>' +
-      '<span class="bm-exp-ico">' + _BM_PAGE_SVG + '</span>' +
-      '<span class="bm-exp-name">' + tH('bm_export_unfiled') + '</span>' +
-      '<span class="bm-exp-count">' + rootBk + '</span></label>';
+})();
+
+// ── Saved in the shell: catching up, and following the account ─────────────
+// A change to what is kept, from anywhere (this page, an app page, the
+// account): the bookmark button, the open panel and the app on screen catch up
+// once, after the change is complete; signed in, it goes to the account.
+var _savedFlushQueued = false, _savedSyncedIn = false;
+function _savedChanged(fromSync, often) {
+  if (!fromSync) _savedPushSoon(often);
+  else _savedSyncedIn = true;
+  if (_savedFlushQueued) return;
+  _savedFlushQueued = true;
+  Promise.resolve().then(function () {
+    _savedFlushQueued = false;
+    _updateLibraryBtnIcon();
+    _savedRefreshPanel();
+    _savedTellApp();
+    if (typeof Highlights !== 'undefined') Highlights.changed();
+    // Another device's (or tab's) place in the book open here.
+    if (_savedSyncedIn) { _savedSyncedIn = false; _bookSeeRemotePlace(); }
+  });
+}
+// A new save refused: the store is at its limit (said at most every few
+// seconds, so a list moved whole says it once).
+var _SAVED_FULL_SAY_MS = 5000;
+var _savedFullSaid = 0;
+function _savedFull() {
+  if (Date.now() - _savedFullSaid < _SAVED_FULL_SAY_MS) return;
+  _savedFullSaid = Date.now();
+  _showToast(t('saved_full'), 6000);
+}
+// This browser's storage is full: the store lives in memory for this page.
+// Said once a page.
+var _savedStorageSaid = false;
+function _savedStorageFull() {
+  if (_savedStorageSaid) return;
+  _savedStorageSaid = true;
+  _showToast(t('saved_storage_full'), 8000);
+}
+// The panel draws what is saved when it opens; a change while it is open
+// redraws it (#96: a bookmark added with the list open did not appear until it
+// was reopened). An edit in progress or a drag owns the tree until it ends.
+function _savedRefreshPanel() {
+  var panel = document.getElementById('history-panel');
+  if (!panel || !panel.classList.contains('open')) return;
+  if (_bmDrag || panel.querySelector('.bm-renaming, .bm-newfolder')) return;
+  _bmRerender();
+}
+// The app page on screen reads the store itself; it is told to look again.
+function _savedTellApp() {
+  if (!_isAppPage()) return;
+  var f = document.getElementById('reader-frame');
+  try { f.contentWindow.postMessage({ zimi: 'saved' }, location.origin); } catch (e) {}
+}
+
+// Signed in, the store follows the account through /userdata, the path the
+// My data card already used: GET brings the account's copy, POST merges what
+// is sent into it (users.sync_user_data) and hands the merged copy back.
+// Nothing waits on either: the page works from the browser's copy, and the
+// account's arrives as a change like any other. What goes up is what the
+// account has not had since it last answered (Saved.since), a few records,
+// so it still goes while the tab closes.
+var _SAVED_PUSH_MS = 2000;           // a change goes up this long after it is made
+var _SAVED_PUSH_OFTEN_MS = 20000;    // a place moving while reading: at most this often
+var _SAVED_PULL_EVERY_MS = 60000;    // coming back to the tab, at most this often
+var _SAVED_KEEPALIVE_MAX = 60000;    // bytes a request sent while leaving may carry
+var _savedPushTimer = null, _savedPushDue = 0, _savedPushing = null, _savedPushAgain = false, _savedPulledAt = 0;
+// What the account held when it last answered (Saved.stamps of its copy),
+// null until it has; the body last sent while leaving; whether the account
+// refused the store as too large (sync paused until something is let go).
+var _savedBase = null, _savedLeftBody = '', _savedPaused = false;
+// Signed in, a change the account has not taken (the server did not answer):
+// the panel says the account's copy is behind, and it is sent again.
+var _savedBehind = false, _savedRetryTimer = null;
+function _savedSetBehind(on) {
+  clearTimeout(_savedRetryTimer);
+  _savedRetryTimer = on ? setTimeout(function () { _savedPush(); }, _SAVED_PUSH_OFTEN_MS) : null;
+  if (_savedBehind === on) return;
+  _savedBehind = on;
+  _savedRefreshPanel();
+}
+function _savedSignedIn() { return !!(_userSession && _userSession.name); }
+// What the account has not had: null when it has everything.
+function _savedDelta() {
+  var d = Saved.since(_savedBase), n = 0;
+  ['items', 'lists', 'members', 'positions', 'highlights', 'gone'].forEach(function (c) { n += Object.keys(d[c]).length; });
+  return n || _savedBase === null ? d : null;
+}
+function _savedSetPaused(on) {
+  if (_savedPaused === on) return;
+  _savedPaused = on;
+  if (on) _showToast(t('saved_sync_paused'), 8000);
+  _savedRefreshPanel();
+}
+// A push is due a moment after a change; one already due sooner stands, so a
+// burst of changes (or a book read for an hour) is a push every so often, not
+// one per change. Leaving the tab sends whatever is still waiting.
+function _savedPushSoon(often) {
+  if (!_savedSignedIn()) return;
+  var due = Date.now() + (often ? _SAVED_PUSH_OFTEN_MS : _SAVED_PUSH_MS);
+  if (_savedPushTimer && _savedPushDue <= due) return;
+  clearTimeout(_savedPushTimer);
+  _savedPushDue = due;
+  _savedPushTimer = setTimeout(_savedPush, due - Date.now());
+}
+// Send what the account has not had, now. Returns a promise of whether the
+// account has it (a failure: the next change tries again). leaving: the page
+// is going, so the request is one the browser finishes after it (keepalive),
+// sent beside one already on its way, which may not outlive the page.
+function _savedPush(leaving) {
+  clearTimeout(_savedPushTimer);
+  _savedPushTimer = null;
+  if (!_savedSignedIn()) return Promise.resolve(true);
+  if (_savedPushing && !leaving) { _savedPushAgain = true; return _savedPushing; }
+  var delta = _savedDelta();
+  if (!delta) return _savedPushing || Promise.resolve(true);
+  var account = Saved.account(), body = JSON.stringify({ saved: delta });
+  if (leaving) {
+    if (body === _savedLeftBody) return _savedPushing || Promise.resolve(true);
+    _savedLeftBody = body;
   }
-  if (!tree) tree = '<div class="bm-exp-empty">' + tH('no_bookmarks') + '</div>';
+  var sent = fetch('/userdata', {
+    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: body,
+    keepalive: !!leaving && new Blob([body]).size < _SAVED_KEEPALIVE_MAX,
+  }).then(function (r) {
+    // Too large: paused until something is let go (the next change sends it),
+    // not re-sent on a timer.
+    if (r.status === 413) { _savedSetPaused(true); return 'too-large'; }
+    return r.ok ? r.json() : null;
+  }).then(function (d) {
+    if (d === 'too-large') return false;
+    if (!d || !d.saved) { if (!leaving) _savedSetBehind(true); return false; }
+    _savedSetPaused(false);
+    _savedSetBehind(false);
+    if (Saved.account() === account) { _savedBase = Saved.stamps(d.saved); Saved.merge(d.saved, { fromSync: true }); }
+    return true;
+  }).catch(function () { if (!leaving) _savedSetBehind(true); return false; });
+  if (leaving && _savedPushing) return sent;
+  _savedPushing = sent.then(function (ok) {
+    _savedPushing = null;
+    if (_savedPushAgain) { _savedPushAgain = false; return _savedPush(); }
+    return ok;
+  });
+  return _savedPushing;
+}
+function _savedPull() {
+  if (!_savedSignedIn()) return;
+  _savedPulledAt = Date.now();
+  var account = Saved.account();
+  fetch('/userdata', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+    if (!d || Saved.account() !== account) return;
+    if (d.saved && typeof d.saved === 'object') _savedBase = Saved.stamps(d.saved);
+    _savedTake(d, false, true);
+  }).catch(function () {});
+}
+// Data that holds a store (the account's copy, a My data file) comes in: the
+// store merged, and bookmarks and folders in the pre-1.12 shape migrated. An
+// account's are migrated once and the store flagged, so a later pull never
+// brings back what was deleted since. What this browser has that the other
+// copy lacked goes to the account.
+function _savedTake(d, overwrite, fromAccount) {
+  var res = { added: 0, dupes: 0 }, store = !!(d.saved && typeof d.saved === 'object');
+  if (store) {
+    var r = Saved.merge(d.saved, { overwrite: overwrite, fromSync: !!fromAccount });
+    res.added = r.added; res.dupes = r.dupes;
+    if (fromAccount && r.ahead) _savedPushSoon();
+  }
+  // A file from before 1.12 is its bookmarks: overwrite takes those whole.
+  var old = (Array.isArray(d.bookmarks) && d.bookmarks.length) || (Array.isArray(d.folders) && d.folders.length);
+  if (old && !(fromAccount && store && d.saved.legacy)) {
+    var r2 = Saved.mergeLegacy({ bookmarks: d.bookmarks, folders: d.folders }, { legacy: !!fromAccount, overwrite: !!overwrite && !store });
+    res.added += r2.added; res.dupes += r2.dupes;
+  }
+  return res;
+}
+// Whose store the page shows: the account's once signed in (the browser
+// keeps a copy of each), the browser's own signed out.
+function _savedUseSession() {
+  if (Saved.use(_savedSignedIn() ? _userSession.name : '')) { _savedBase = null; _savedChanged(true); }
+  _savedPull();
+}
+// What the account has not had, sent now; the promise says whether it has it
+// all. leaving: while the page closes (or hides, which on a phone may be the
+// last it hears), in a request that outlives it.
+function _savedFlush(leaving) {
+  if (!_savedSignedIn()) return Promise.resolve(true);
+  if (!leaving && !_savedPushTimer && !_savedDelta()) return _savedPushing || Promise.resolve(true);
+  return _savedPush(leaving);
+}
+// Once the page is up: the account's copy is fetched when the browser is idle
+// (nothing waits for it), again on coming back to the tab after a while, and
+// what it has not had is sent on leaving it.
+function _savedStart() {
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) _savedFlush(true);
+    else if (Date.now() - _savedPulledAt > _SAVED_PULL_EVERY_MS) _savedPull();
+  });
+  window.addEventListener('pagehide', function () { _savedFlush(true); });
+  // Another tab of this browser wrote the store: merged in, not overwritten
+  // the next time this tab writes (the other tab sends its own change up).
+  window.addEventListener('storage', function (e) {
+    if (!Saved.ownsKey(e.key) || !e.newValue) return;
+    try { Saved.merge(JSON.parse(e.newValue), { fromSync: true }); } catch (err) {}
+  });
+  // The store is read while the page is idle, so the first app home or
+  // article that asks what is kept does not wait on reading it.
+  (window.requestIdleCallback || setTimeout)(function () { Saved.lists(); });
+  if (!_savedSignedIn()) return;
+  if (window.requestIdleCallback) requestIdleCallback(_savedPull, { timeout: 2000 });
+  else setTimeout(_savedPull, 500);
+}
+
+// ── Highlights: the shell's side ───────────────────────────────────────────
+// One engine for every reader (/static/highlights.js, docs/features/saving.md).
+// Highlights.attach(doc, ref, opts) is called once per document shown: by the
+// reader for an article, a book or an EPUB's chapters, by Zimipedia's layer
+// for its article. It hands back a handle at once and costs nothing more: the
+// engine loads only when the page has highlights, when text is selected in it,
+// or when one of them is to be shown. One handle per document
+// (doc.__zimiHighlights): a second attach adopts the later ref and options.
+var _HL_SVG = '<svg ' + _BM_SVG_ATTRS + '><path d="M9 11l-6 6v3h9l3-3"/><path d="M22 12l-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg>';
+var Highlights = (function () {
+  var engine = null, loading = null, live = [], pending = null;
+  function load() {
+    if (engine) return Promise.resolve(engine);
+    if (!loading) {
+      loading = new Promise(function (resolve, reject) {
+        var el = document.createElement('script');
+        // The version moves with the engine: /static is cached for a year.
+        el.src = '/static/highlights.js?v=3';
+        el.onload = function () {
+          engine = window.ZimiHighlightsEngine || null;
+          if (engine) return resolve(engine);
+          loading = null; // the next selection tries again
+          console.warn('highlights.js loaded without its engine');
+          reject();
+        };
+        el.onerror = function () { loading = null; reject(); };
+        document.head.appendChild(el);
+      });
+    }
+    return loading;
+  }
+  function pageOf(r) { return r && r.zim && r.path ? r.zim + '\n' + r.path : ''; }
+  function has(h) { return Saved.highlights(h.ref).length > 0; }
+  function boot(h) {
+    if (h.dead) return Promise.resolve(null);
+    if (h.eng) return Promise.resolve(h.eng);
+    return load().then(function (E) {
+      if (h.dead) return null;
+      if (!h.eng) h.eng = E.attach(h);
+      return h.eng;
+    }, function () { return null; });
+  }
+  function alive(h) {
+    try { return !h.dead && !!h.doc.defaultView; } catch (e) { return false; }
+  }
+  function prune() {
+    live = live.filter(function (h) { if (!alive(h)) h.detach(); return !h.dead; });
+  }
+  function handleFor(doc) {
+    var h = null;
+    try { h = doc && doc.__zimiHighlights; } catch (e) {}
+    return h && !h.dead ? h : null;
+  }
+  function attach(doc, ref, opts) {
+    if (!doc || !pageOf(ref)) return null;
+    prune();
+    var h = handleFor(doc);
+    if (h) {
+      h.ref = ref;
+      for (var k in (opts || {})) h.opts[k] = opts[k];
+      if (h.eng) h.eng.refresh(true);
+      else if (has(h)) boot(h);
+      return h;
+    }
+    h = { doc: doc, ref: ref, opts: {}, eng: null, dead: false };
+    for (var o in (opts || {})) h.opts[o] = opts[o];
+    // A selection before the engine is here: it is fetched, then offers its bar.
+    var onSel = function () {
+      if (h.eng || h.booting) return;
+      var sel = doc.getSelection && doc.getSelection();
+      if (!sel || sel.isCollapsed || !String(sel).trim()) return;
+      h.booting = true;
+      boot(h).then(function (e) { h.booting = false; if (e) e.offer(); });
+    };
+    h.refresh = function () { if (h.eng) h.eng.refresh(true); else if (has(h)) boot(h); };
+    h.goTo = function (id) { boot(h).then(function (e) { if (e) e.goTo(id); }); };
+    h.missing = function () { return h.eng ? h.eng.missing() : []; };
+    h.detach = function () {
+      if (h.dead) return;
+      h.dead = true;
+      try { doc.removeEventListener('selectionchange', onSel); } catch (e) {}
+      if (h.eng) h.eng.detach();
+      try { if (doc.__zimiHighlights === h) doc.__zimiHighlights = null; } catch (e) {}
+    };
+    doc.addEventListener('selectionchange', onSel);
+    doc.__zimiHighlights = h;
+    live.push(h);
+    // A highlight opened from the panel lands here once its page is shown;
+    // any other page shown first means that open was left behind.
+    var go = pending && pending.page === pageOf(ref) ? pending.id : '';
+    pending = null;
+    if (go) h.goTo(go);
+    else if (has(h)) boot(h);
+    return h;
+  }
+  // What is kept changed: each page on screen paints its own again, and one
+  // not yet painted that has highlights now (from another device) starts.
+  function changed() {
+    prune();
+    live.forEach(function (h) { if (h.eng) h.eng.changed(); else if (has(h)) boot(h); });
+  }
+  // Open a highlight at its place: the page on screen scrolls (or turns) to
+  // it; another page opens as its saved item would, then goes there.
+  function open(hl) {
+    if (!hl || !pageOf(hl)) return;
+    prune();
+    var frame = document.getElementById('reader-frame');
+    for (var i = 0; i < live.length; i++) {
+      var shown = false;
+      try { shown = readerOpen && live[i].doc.defaultView.frameElement === frame; } catch (e) {}
+      if (shown && pageOf(live[i].ref) === pageOf(hl)) { _closeLibraryPanel(); live[i].goTo(hl.id); return; }
+    }
+    pending = { page: pageOf(hl), id: hl.id };
+    var it = Saved.get(hl) || hl;
+    _savedOpen({ kind: it.kind, app: it.app, zim: hl.zim, path: hl.path, title: it.title });
+  }
+  return { attach: attach, open: open, changed: changed };
+})();
+// The reader's document and its highlights: an article (raw or in Reader
+// View), a book, an EPUB's chapters; not a map, the PDF viewer or an app's
+// own page (Zimipedia attaches its article itself).
+var _hlReader = null;
+function _hlReaderAttach(frame) {
+  var doc = null;
+  try { doc = frame.contentDocument; } catch (e) {}
+  if (_hlReader && _hlReader.doc !== doc) _hlReader.detach();
+  _hlReader = null;
+  var ref = currentArticle && !_frameIsOurOwnPage(frame) ? _savedRefOnScreen() : null;
+  if (!doc || !doc.body || !ref || ref.kind === 'place') return;
+  // Read in the book reader (an EPUB's chapters too): a book, in Bookshelf.
+  if (_bookReading && ref.kind !== 'book') { ref.kind = 'book'; ref.app = 'books'; }
+  var dc = doc.querySelector('meta[name="dc.title"]');
+  var title = ((dc && dc.getAttribute('content')) || doc.title || '').trim();
+  if (title) ref.title = title;
+  _hlReader = Highlights.attach(doc, ref);
+}
+
+// ── Export to ZIM, per list ────────────────────────────────────────────────
+// ONE ZIM per export, named by the user (the name field prefills from the
+// selection). Every ticked list becomes a section of it; a single ticked list
+// keeps the plain shape (its items unsectioned). The items in no list are one
+// more box. An item in two ticked lists goes in once, under the first. A
+// ticked list with nothing in it still gets its section header, and a
+// selection with nothing in it disables Export with a note. Each ZIM carries
+// the real article HTML, images and styling.
+var _BM_UNFILED = '__unfiled__';
+function _bmExportSelector(preListId) {
+  _bmCloseExport();
+  var rows = '';
+  Saved.lists().forEach(function (l) {
+    if (l.builtin && !l.count) return;
+    var checked = preListId ? l.id === preListId : true;
+    rows += '<label class="bm-exp-row" style="padding-left:8px">' +
+      '<input type="checkbox" data-fid="' + escAttr(l.id) + '"' + (checked ? ' checked' : '') + '>' +
+      '<span class="bm-exp-ico">' + (l.builtin ? _BM_HEART_SVG : _BM_LIST_SVG) + '</span>' +
+      '<span class="bm-exp-name">' + esc(_savedListName(l)) + '</span>' +
+      '<span class="bm-exp-count">' + l.count + '</span></label>';
+  });
+  var loose = Saved.itemsFor({ list: _BM_ROOT }).length;
+  if (loose) {
+    rows += '<label class="bm-exp-row" style="padding-left:8px">' +
+      '<input type="checkbox" data-fid="' + _BM_UNFILED + '"' + (preListId ? '' : ' checked') + '>' +
+      '<span class="bm-exp-ico">' + _BM_PAGE_SVG + '</span>' +
+      '<span class="bm-exp-name">' + tH('saved_unlisted') + '</span>' +
+      '<span class="bm-exp-count">' + loose + '</span></label>';
+  }
+  if (!rows) rows = '<div class="bm-exp-empty">' + tH('no_bookmarks') + '</div>';
   var ov = document.createElement('div');
   ov.className = 'bm-export-overlay';
   ov.id = 'bm-export-overlay';
   ov.innerHTML =
     '<div class="bm-export-modal" role="dialog" aria-modal="true" aria-label="' + escAttr(t('bm_export_title')) + '">' +
     '<div class="bm-export-head">' + tH('bm_export_title') + '</div>' +
-    '<div class="bm-export-desc">' + tH('bm_export_desc') + '</div>' +
-    '<div class="bm-export-tree" id="bm-export-tree">' + tree + '</div>' +
+    '<div class="bm-export-desc">' + tH('saved_export_desc') + '</div>' +
+    '<div class="bm-export-tree" id="bm-export-tree">' + rows + '</div>' +
     '<label class="bm-export-name-row" for="bm-export-name">' + tH('bm_export_name_label') +
-    '<input id="bm-export-name" type="text" maxlength="60" spellcheck="false" autocomplete="off"></label>' +
+    '<input id="bm-export-name" type="text" maxlength="' + Saved.NAME_MAX + '" spellcheck="false" autocomplete="off"></label>' +
     '<div class="bm-export-count" id="bm-export-count"></div>' +
     '<div class="bm-export-status" id="bm-export-status"></div>' +
     '<div class="bm-export-actions">' +
@@ -20363,18 +22755,7 @@ function _bmExportSelector(preFolderId) {
   var nameInput = ov.querySelector('#bm-export-name');
   nameInput.value = _bmExportDefaultName();
   nameInput.addEventListener('input', function () { nameInput.dataset.dirty = '1'; });
-  // Checking a folder auto-(un)checks its descendants; you can still uncheck one.
-  ov.querySelector('#bm-export-tree').addEventListener('change', function (e) {
-    var cb = e.target.closest('input[type=checkbox]');
-    if (!cb) return;
-    if (cb.dataset.fid !== '__unfiled__') {
-      _folDescendants(cb.dataset.fid).forEach(function (id) {
-        var d = ov.querySelector('input[data-fid="' + _cssEsc(id) + '"]');
-        if (d) d.checked = cb.checked;
-      });
-    }
-    _bmExportSyncUI();
-  });
+  ov.querySelector('#bm-export-tree').addEventListener('change', _bmExportSyncUI);
   ov.addEventListener('click', function (e) { if (e.target === ov) _bmCloseExport(); });
   _bmExportSyncUI();
 }
@@ -20383,7 +22764,7 @@ function _bmCloseExport() {
   var ov = document.getElementById('bm-export-overlay');
   if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
 }
-// One button for both directions — with the tree pre-ticked, a "Select all"
+// One button for both directions: with the boxes pre-ticked, a "Select all"
 // that can only ever be a no-op is a dead control.
 function _bmExportBoxes() {
   var ov = document.getElementById('bm-export-overlay');
@@ -20393,7 +22774,7 @@ function _bmExportToggleAll() {
   var boxes = _bmExportBoxes();
   var wantAll = boxes.some(function (cb) { return !cb.checked; });
   boxes.forEach(function (cb) { cb.checked = wantAll; });
-  _bmExportSyncAllBtn();
+  _bmExportSyncUI();
 }
 function _bmExportSyncAllBtn() {
   var btn = document.getElementById('bm-export-all');
@@ -20403,9 +22784,8 @@ function _bmExportSyncAllBtn() {
     ? t('select_none') : t('select_all');
 }
 // One pass that keeps the modal honest after every tick: the Select all/none
-// label, the live article count, the name prefill (until user-edited) and the
-// Export button. ZERO selected articles disables Export — an all-empty
-// selection reads "nothing to export" instead of silently writing a husk.
+// label, the live count, the name prefill (until user-edited) and the Export
+// button. Nothing selected, or nothing in what is, disables Export.
 function _bmExportSyncUI() {
   _bmExportSyncAllBtn();
   var ov = document.getElementById('bm-export-overlay');
@@ -20422,15 +22802,15 @@ function _bmExportSyncUI() {
   var status = ov.querySelector('#bm-export-status');
   if (status) {
     status.style.color = picked && !n ? 'var(--amber)' : '';
-    status.textContent = !picked ? t('bm_export_none_selected') : (!n ? t('bm_export_nothing') : '');
+    status.textContent = !picked ? t('saved_export_none_selected') : (!n ? t('saved_export_nothing') : '');
   }
 }
-// Checked folder ids in tree (DOM) order + the unfiled flag.
+// Ticked list ids in the order shown, and whether "Not in a list" is ticked.
 function _bmExportSelection() {
   var ids = [], unfiled = false;
   _bmExportBoxes().forEach(function (cb) {
     if (!cb.checked) return;
-    if (cb.dataset.fid === '__unfiled__') unfiled = true;
+    if (cb.dataset.fid === _BM_UNFILED) unfiled = true;
     else ids.push(cb.dataset.fid);
   });
   return { ids: ids, unfiled: unfiled };
@@ -20443,66 +22823,35 @@ function _bmSanitizeZimName(s) {
     .replace(/^[_.]+/, '').replace(/[_.]+$/, '');
   return s.slice(0, 60);
 }
-function _bmHasSelectedAncestor(fid, selSet) {
-  var f = _folById(fid);
-  var p = f ? _folNorm(f.parent) : _BM_ROOT;
-  while (p !== _BM_ROOT) {
-    if (selSet[p]) return true;
-    var pf = _folById(p);
-    p = pf ? _folNorm(pf.parent) : _BM_ROOT;
-  }
-  return false;
+function _bmListNameById(id) {
+  var l = Saved.list(id);
+  return l ? _savedListName(l) : '';
 }
-// The name the picker suggests: the folder's own name when exactly one
-// top-level folder is ticked, otherwise plain "Bookmarks".
+// The name the picker suggests: the list's own when exactly one is ticked,
+// otherwise the panel's own name for what is kept ("Saved"), in the
+// person's language.
 function _bmExportDefaultName() {
   var sel = _bmExportSelection();
-  var selSet = {};
-  sel.ids.forEach(function (id) { selSet[id] = 1; });
-  var roots = sel.ids.filter(function (id) {
-    return _folById(id) && !_bmHasSelectedAncestor(id, selSet);
-  });
-  if (roots.length === 1 && !sel.unfiled) return _folById(roots[0]).name;
-  return 'Bookmarks';
+  if (sel.ids.length === 1 && !sel.unfiled) return _bmListNameById(sel.ids[0]) || t('saved_tab');
+  return t('saved_tab');
 }
-// Compose THE export job (one ZIM per export — see the grouping decision
-// above). `ids` = checked folder ids in tree order, `unfiled` = loose
-// bookmarks ticked, `nameRaw` = the user's name-field text. Empty selected
-// folders still land in `sections` so the ZIM index shows them honestly.
+// Compose THE export job (one ZIM per export). `ids` = ticked list ids in
+// order, `unfiled` = the items in no list ticked, `nameRaw` = the name field.
 function _bmComposeExportJob(ids, unfiled, nameRaw) {
-  var selSet = {};
-  ids.forEach(function (id) { selSet[id] = 1; });
-  var roots = ids.filter(function (id) {
-    return _folById(id) && !_bmHasSelectedAncestor(id, selSet);
-  });
-  var single = roots.length === 1 && !unfiled;
-  var bms = [];
-  var sections = [];
-  var addSection = function (name) {
-    if (name && sections.indexOf(name) < 0) sections.push(name);
+  var single = ids.length === 1 && !unfiled;
+  var bms = [], sections = [], seen = {};
+  var add = function (it, section) {
+    if (seen[it.key]) return;
+    seen[it.key] = 1;
+    bms.push({ zim: it.zim, path: it.path, title: it.title || '', section: section });
   };
-  roots.forEach(function (rootId) {
-    var rootName = _folById(rootId).name;
-    var queue = [rootId];
-    while (queue.length) {
-      var cur = queue.shift();
-      var isSelf = (cur === rootId);
-      var secName = single
-        ? (isSelf ? '' : _folById(cur).name)
-        : (isSelf ? rootName : rootName + ' / ' + _folById(cur).name);
-      addSection(secName);
-      _bkInFolder(cur).forEach(function (b) {
-        bms.push({ zim: b.zim, path: b.path, title: b.title || '', section: secName });
-      });
-      _folChildren(cur).forEach(function (c) { if (selSet[c.id]) queue.push(c.id); });
-    }
+  ids.forEach(function (id) {
+    var section = single ? '' : _bmListNameById(id);
+    if (section && sections.indexOf(section) < 0) sections.push(section);
+    Saved.itemsFor({ list: id }).forEach(function (it) { add(it, section); });
   });
-  if (unfiled) {
-    _bkInFolder(_BM_ROOT).forEach(function (b) {
-      bms.push({ zim: b.zim, path: b.path, title: b.title || '', section: '' });
-    });
-  }
-  var title = String(nameRaw || '').trim().slice(0, 120);
+  if (unfiled) Saved.itemsFor({ list: _BM_ROOT }).forEach(function (it) { add(it, ''); });
+  var title = String(nameRaw || '').trim().slice(0, Saved.NAME_MAX);
   return {
     name: _bmSanitizeZimName(title) || null,
     title: title || null,
@@ -20510,6 +22859,7 @@ function _bmComposeExportJob(ids, unfiled, nameRaw) {
     bookmarks: bms,
   };
 }
+
 function _bmExportSubmit() {
   var sel = _bmExportSelection();
   var nameEl = document.getElementById('bm-export-name');
@@ -20517,11 +22867,11 @@ function _bmExportSubmit() {
   var status = document.getElementById('bm-export-status');
   var go = document.getElementById('bm-export-go');
   if (!sel.ids.length && !sel.unfiled) {
-    if (status) { status.textContent = t('bm_export_none_selected'); status.style.color = 'var(--amber)'; }
+    if (status) { status.textContent = t('saved_export_none_selected'); status.style.color = 'var(--amber)'; }
     return;
   }
   if (!job.bookmarks.length) {
-    if (status) { status.textContent = t('bm_export_nothing'); status.style.color = 'var(--amber)'; }
+    if (status) { status.textContent = t('saved_export_nothing'); status.style.color = 'var(--amber)'; }
     return;
   }
   if (go) go.disabled = true;
@@ -20586,77 +22936,121 @@ async function _revealExportedZim(file) {
     setTimeout(function() { card.classList.remove('zimi-just-added'); }, 2600);
   }, 120);
 }
-function toggleBookmark() {
+// What is on screen, as a saved item has it: a thing inside an app (a video,
+// a question, a post: reopened in the app), a place on a map, a book, or an
+// article. null when there is nothing to keep.
+function _savedRefOnScreen() {
   if (!currentArticle && _appItem) {
-    // A video, a question, a post: kept as the app's, reopened in the app.
-    if (_bkIsBookmarked(_appItem.zim, _appItem.path)) _bkRemove(_appItem.zim, _appItem.path);
-    else _bkAdd(_appItem.zim, _appItem.path, _appItem.title || document.title.replace(/ \u2014 .*$/, ''), null, _appItem.app);
-    _updateLibraryBtnIcon();
-    _refreshLibraryPanelIfOpen();
-    return;
+    // The page's own item when it shows this one (apps.js savedBar): kept by
+    // the header's bookmark, it has what the app's row draws from (a
+    // question's votes, a video's picture), as it would from the page's Save.
+    var own = null;
+    try { own = document.getElementById('reader-frame').contentWindow._svItem; } catch (e) {}
+    if (own && own.zim === _appItem.zim && own.path === _appItem.path) return Object.assign({}, own);
+    return { kind: _appItemKind(_appItem.app) || 'article', app: _appItem.app, zim: _appItem.zim, path: _appItem.path,
+      title: _appItem.title || document.title.replace(/ — .*$/, '') };
   }
-  if (!currentArticle) return;
+  if (!currentArticle) return null;
+  var zim = currentArticle.zim, path = _splitPathFragment(currentArticle.path).base;
+  var title = document.title.replace(/ — Zimi$/, '');
+  if (title === 'Zimi' || !title) title = _titleFromPath(path);
+  if (_isMapZim(zim)) {
+    // Where the map is: read from the map at this moment rather than from
+    // the URL, so it is right even if the debounce has not fired yet.
+    var pos = _currentMapPositionHash();
+    return { kind: 'place', app: 'maps', zim: zim, path: path, title: title, where: pos ? { pos: _normMapPos(pos) } : undefined };
+  }
+  var z = _zimInfo(zim);
+  if (z && z.kind === 'books') {
+    // A book: Bookshelf's card for it (number, author, cover), from its
+    // position when it has been read here, else its number from the page.
+    var p = Saved.position({ zim: zim, path: path }), m = path.match(/\.(\d+)$/);
+    return { kind: 'book', app: 'books', zim: zim, path: path, title: (p && p.title) || title, meta: p ? p.meta : { id: m ? Number(m[1]) : 0 } };
+  }
+  var ref = { kind: 'article', zim: zim, path: path, title: title };
+  // An article in Zimipedia's reader is Zimipedia's: its reading lists.
+  var fd = _readerFrameDoc();
+  if (fd && fd.__zimiWikiLaid) ref.app = 'wiki';
+  return ref;
+}
+// The section being read: the last heading with an id above the top third of
+// the page, or none near the top. Opening the saved article lands there.
+function _readerSectionAnchor() {
+  try {
+    var doc = _readerFrameDoc(), win = doc && doc.defaultView;
+    if (!win || (win.scrollY || 0) < win.innerHeight / 2) return '';
+    var hs = doc.querySelectorAll('h2[id],h3[id],h2 [id],h3 [id]'), line = win.innerHeight / 3, id = '';
+    for (var i = 0; i < hs.length; i++) {
+      if (hs[i].getBoundingClientRect().top > line) break;
+      id = hs[i].id;
+    }
+    return id;
+  } catch (e) { return ''; }
+}
+// The bookmark button: keep what is on screen, or let it go.
+function toggleBookmark() {
+  var ref = _savedRefOnScreen();
+  if (!ref) return;
   // The reader's own "This page wasn't captured" stand-in is not an article:
   // bookmarked, it went into a bookmarks export as a page titled exactly
   // that (seen 2026-09-03). The stand-in marks itself; nothing to save.
-  try {
-    var doc = _readerFrameDoc();
-    if (doc && doc.body && doc.body.hasAttribute('data-zimi-uncaptured')) return;
-  } catch (e) {}
-  var zim = currentArticle.zim, path = currentArticle.path;
-  var title = document.title.replace(/ — Zimi$/, '');
-  if (title === 'Zimi' || !title) title = _titleFromPath(path);
-  if (_bkIsBookmarked(zim, path)) {
-    _bkRemove(zim, path);
-  } else {
-    // Where the map is, if this is one. Read at the moment of bookmarking
-    // rather than from the URL, so it is right even if the debounce has not
-    // fired yet.
-    _bkAdd(zim, path, title, _currentMapPositionHash());
+  if (currentArticle) {
+    try {
+      var doc = _readerFrameDoc();
+      if (doc && doc.body && doc.body.hasAttribute('data-zimi-uncaptured')) return;
+    } catch (e) {}
   }
-  _updateLibraryBtnIcon();
-  _refreshLibraryPanelIfOpen();
+  if (Saved.has(ref)) { _savedRemoveUndoable(ref); return; }
+  if (ref.kind === 'article') {
+    var sec = _readerSectionAnchor();
+    if (sec) ref.where = { s: sec };
+  }
+  if (ref.kind === 'place') ref.title = _mapPlaceTitle(ref.zim, ref.where && ref.where.pos) || ref.title;
+  Saved.save(ref);
 }
+
 var _libClockSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
 var _libBookmarkSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+// Saved's opener: two bookmarks, one behind the other (what you kept), so it
+// never reads as the single bookmark that saves the page beside it.
+var _libSavedSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h9a2 2 0 0 1 2 2v13"/><path d="M15 21l-5-3.5L5 21V9a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2z"/></svg>';
 var _libBookmarkFilledSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
 function _getLibraryTab() { return localStorage.getItem(SK.LIBRARY_TAB) || 'history'; }
 function _setLibraryTab(tab) { localStorage.setItem(SK.LIBRARY_TAB, tab); }
 function _updateLibraryBtnIcon() {
   var btn = document.getElementById('library-btn');
   if (!btn) return;
-  var tab = _getLibraryTab();
-  var cur = currentArticle || _appItem;
-  if (readerOpen && cur && _bkIsBookmarked(cur.zim, cur.path)) {
-    btn.innerHTML = _libBookmarkFilledSvg;
-    btn.style.color = 'var(--amber)';
-    btn.title = t('bookmarked_remove');
-  } else if (readerOpen) {
-    btn.innerHTML = _libBookmarkSvg;
-    btn.style.color = '';
-    btn.title = t('bookmark_add');
-  } else {
-    // On the home grid the library button OPENS the panel. It carries the one
-    // library glyph — the same glyph the reader's bm-panel-btn carries — so
-    // "open the library" looks identical wherever you are (Eric: consistent
-    // icon on home and in zims). The open tab no longer changes the icon.
-    btn.innerHTML = _libClockSvg;
-    btn.style.color = '';
-    btn.title = t('library');
+  var ref = readerOpen ? _savedRefOnScreen() : null;
+  var state = !readerOpen ? 'library' : ref && Saved.has(ref) ? 'saved' : 'save';
+  // Called on every change to what is kept (a book's place moves every few
+  // seconds while it is read): the button is only rebuilt when it changes.
+  if (btn.dataset.state !== state || btn.dataset.lang !== _currentLang) {
+    btn.dataset.state = state;
+    btn.dataset.lang = _currentLang;
+    if (state === 'saved') {
+      btn.innerHTML = _libBookmarkFilledSvg;
+      btn.style.color = 'var(--amber)';
+      btn.title = t('bookmarked_remove');
+    } else if (state === 'save') {
+      btn.innerHTML = _libBookmarkSvg;
+      btn.style.color = '';
+      btn.title = t('bookmark_add');
+    } else {
+      // Off the reader the library button is the clock: it opens History,
+      // as history-btn does in the reader.
+      btn.innerHTML = _libClockSvg;
+      btn.style.color = '';
+      btn.title = t('history');
+    }
+    btn.setAttribute('aria-label', btn.title); // what it does now, read aloud too
   }
-  // Keep the reader's panel opener on the very same glyph, so it reads as
-  // "open the library" and never as a second bookmark button next to the
-  // add-bookmark toggle (library-btn) beside it.
+  // Saved's opener: its own glyph and its own name, in every view.
   var panelBtn = document.getElementById('bm-panel-btn');
-  if (panelBtn) {
-    panelBtn.innerHTML = _libClockSvg;
-    // The GLYPH is shared with library-btn on purpose (above). The name is
-    // not: this one opens the panel on the BOOKMARKS tab, under B. It used to
-    // be handed t('library') along with the icon, so its tooltip read
-    // "Library (H)" — the wrong name and a shortcut belonging to a different
-    // button — while its aria-label still said Bookmarks. Two names for one
-    // control, and neither audience got the true one.
-    panelBtn.title = t('bookmarks');
+  if (panelBtn && panelBtn.dataset.lang !== _currentLang) {
+    panelBtn.dataset.lang = _currentLang;
+    panelBtn.innerHTML = _libSavedSvg;
+    panelBtn.title = t('saved_tab');
+    panelBtn.setAttribute('aria-label', t('saved_tab'));
   }
 }
 // What a page is called when nobody said: a map is called by its name (the
@@ -20827,12 +23221,32 @@ function closeReader() {
 var _articleLangData = null; // {languages: [{lang, zim, path}], available: [{lang, catalog_name}]}
 var _articleLangKey = '';    // "zim:path" key to invalidate cache on article change
 
-function _prefetchArticleLangs() {
-  // Skip if language chooser is hidden (no dropdown to show interlang in)
-  if (_getStorageFlag(SK.HIDE_LANG_CHOOSER)) return;
+// `loaded`: the article is on screen (or asked for by a tap). A wiki's
+// article is asked about only then, through Zimipedia's lookup (its
+// languages only, unless Zimipedia's reader lays the article out and asks
+// for the whole answer anyway): nothing on the way to the article.
+function _prefetchArticleLangs(loaded) {
   if (!currentArticle) { _articleLangData = null; _articleLangKey = ''; return; }
   var key = currentArticle.zim + ':' + currentArticle.path;
   if (key === _articleLangKey) return; // already cached
+  // No language chooser, no menu to fill: nothing to ask.
+  if (_getStorageFlag(SK.HIDE_LANG_CHOOSER)) return;
+  var base = _splitPathFragment(currentArticle.path).base;
+  if (_wikiUrl(_articleUrl(currentArticle.zim, base))) {
+    if (!loaded) return;
+    _articleLangKey = key;
+    _articleLangData = null;
+    var doc = null;
+    try { doc = document.getElementById('reader-frame').contentDocument; } catch (e) {}
+    var laidOut = !!(doc && doc.__zimiWiki && _readerViewOn);
+    _wikiInfo(currentArticle.zim, base, !laidOut).then(function(d) {
+      if (_articleLangKey !== key) return;
+      _articleLangData = { languages: (d && d.languages) || [] };
+      var _dd = document.getElementById('lang-dropdown');
+      if (_dd && _dd.classList.contains('visible')) _renderLangDropdown();
+    });
+    return;
+  }
   _articleLangKey = key;
   _articleLangData = null;
   fetch('/article-languages?zim=' + encodeURIComponent(currentArticle.zim) + '&path=' + encodeURIComponent(currentArticle.path))
@@ -20854,7 +23268,10 @@ function _renderLangDropdown() {
   var h = '';
   // Map article-language data to UI language codes for quick lookup
   var switchMap = {}; // {langCode: {zim, path}} — languages where current article exists
-  if (readerOpen && _articleLangData) {
+  // Under Zimipedia's reader the article's languages are its bar's (with the
+  // section you were in kept): this menu is Zimi's language, only.
+  var articleRows = readerOpen && !_wikiReading;
+  if (articleRows && _articleLangData) {
     var langs = _articleLangData.languages || [];
     for (var ai = 0; ai < langs.length; ai++) {
       var al = langs[ai];
@@ -20870,7 +23287,7 @@ function _renderLangDropdown() {
   // When reading article in a different language than UI: show quick switch at top
   var zimInfo = inReader && _zimInfo(currentArticle.zim);
   var articleLang = zimInfo ? zimInfo.language : null;
-  if (inReader && articleLang && articleLang !== _currentLang && switchMap[_currentLang]) {
+  if (articleRows && inReader && articleLang && articleLang !== _currentLang && switchMap[_currentLang]) {
     var sl = _AVAILABLE_LANGS.find(function(ll) { return ll.code === _currentLang; });
     var sName = sl ? sl.name : _currentLang;
     var sw = switchMap[_currentLang];
@@ -20884,7 +23301,7 @@ function _renderLangDropdown() {
   }
 
   // Show loading indicator when interlang data hasn't arrived yet
-  if (inReader && !_articleLangData) {
+  if (articleRows && inReader && !_articleLangData) {
     h += '<div class="lang-dropdown-item" style="color:var(--text2);font-size:12px;justify-content:center"><span class="spinner-inline" style="width:14px;height:14px"></span></div>';
     h += '<div class="ld-divider"></div>';
   }
@@ -20946,7 +23363,7 @@ async function _selectLang(code) {
   _langDropdownLocked = true;
   // Check if we have a direct article match from prefetched data
   var directMatch = null;
-  if (readerOpen && currentArticle && _articleLangData) {
+  if (readerOpen && !_wikiReading && currentArticle && _articleLangData) {
     var langs = _articleLangData.languages || [];
     for (var ai = 0; ai < langs.length; ai++) {
       if (langs[ai].lang === code) { directMatch = langs[ai]; break; }
@@ -20967,10 +23384,10 @@ async function _selectLang(code) {
 function toggleLangDropdown(event) {
   event.stopPropagation();
   // Force a fresh prefetch if we don't have data yet
-  if (readerOpen && currentArticle && !_articleLangData) {
-    _articleLangKey = ''; // Reset key to force refetch
+  if (readerOpen && !_wikiReading) {
+    if (currentArticle && !_articleLangData) _articleLangKey = ''; // Reset key to force refetch
+    _prefetchArticleLangs(true);
   }
-  _prefetchArticleLangs();
   var dd = document.getElementById('lang-dropdown');
   if (dd.classList.contains('visible')) {
     _closeLangDropdown();
@@ -21093,8 +23510,10 @@ function _buildTopbarMenuHtml() {
     }
     // 2. Compact settings directly under the toggle when Reader View is on —
     // theme swatches + font/size only, no title labels, no AUTO (settings-only).
+    // Not under Zimipedia's reader: its Aa sheet holds the same settings (and
+    // this size step, a zoom, does nothing to a page that sets its own type).
     if (rvOn) {
-      readerGroup += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
+      if (!_wikiReading) readerGroup += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
       readerGroup += _readerActionRowsHtml();
     }
     // 3. Read aloud.
@@ -21255,29 +23674,6 @@ function _closeTopbarMenu() {
   if (_topbarMenuDetach) { _topbarMenuDetach(); _topbarMenuDetach = null; }
 }
 
-// ── Bookmark migration for renamed ZIMs ──
-
-function _migrateBookmarks() {
-  // Check if any bookmarks/history reference old ZIM names and update them
-  // This runs once on startup when ZIM names have changed (e.g. wikipedia → wikipedia_fr)
-  if (!zimsCache || zimsCache.length === 0) return;
-  var knownNames = new Set(zimsCache.map(function(z) { return z.name; }));
-  var migrated = false;
-
-  // Migrate browsing history and bookmarks
-  [[SK.BROWSE_HISTORY, 'migrated'], [SK.BOOKMARKS, 'bmMigrated']].forEach(function(pair) {
-    var items = _getStorageJSON(pair[0], []);
-    var changed = false;
-    items.forEach(function(item) {
-      if (item.zim && !knownNames.has(item.zim)) {
-        var candidates = zimsCache.filter(function(z) { return z.name.startsWith(item.zim + '_') || z.name === item.zim; });
-        if (candidates.length === 1) { item.zim = candidates[0].name; changed = true; }
-      }
-    });
-    if (changed) _setStorageJSON(pair[0], items);
-    if (pair[0] === SK.BROWSE_HISTORY && changed) migrated = true;
-  });
-}
 
 // ── Random ──
 async function randomArticle(event) {
@@ -21346,6 +23742,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     // Topmost popovers first — otherwise Escape falls through to goBack()/close
     // and dumps a keyboard user out of the reader instead of shutting the popover.
+    if (_extCur) { _extHide(); return; }
     if (_definePopover && _definePopover.classList.contains('open')) { _defineHide(); return; }
     var _rp = document.getElementById(_READER_PALETTE_ID);
     if (_rp && _rp.classList.contains('visible')) { _closeReaderPalette(); return; }
@@ -21582,7 +23979,7 @@ function _spaNav(e, fn) {
 // zim/path/title triple isn't escaped into the markup a second time.
 function _spaCardClick(e, el) {
   return _spaNav(e, function () {
-    openArticle(el.getAttribute('data-zim'), el.getAttribute('data-path'), el.getAttribute('data-title') || '');
+    _openResult(el.getAttribute('data-zim'), el.getAttribute('data-path'), el.getAttribute('data-title') || '');
   });
 }
 function _spaSourceClick(e, el) {
@@ -21605,6 +24002,433 @@ document.addEventListener('auxclick', function(e) {
   var url = '/w/' + encodeURIComponent(zim) + '/' + path.split('/').map(encodeURIComponent).join('/') + '?view=1';
   window.open(url, '_blank');
 });
+
+// ── Links that leave the library (#99) ──
+// tripplehelix: "It can be confusing as to which links take you to the web."
+// Every reader (the article, Reader View, a book, an app page showing a ZIM's
+// HTML) puts a small arrow after a link to the web, and says where it goes
+// before it goes: a mouse resting on it, or a finger tapping it, brings up
+// "Opens example.com on the web" with Open and Copy link. Offline, the same
+// sheet says the page needs the internet instead of opening a dead tab. A link
+// an installed ZIM can answer (a Wikipedia link, that Wikipedia installed) is
+// not a way out: it opens in the library.
+//
+// Settings > Reading, per person and kept with the account: mark them (the
+// default), or hide them, which leaves their words as plain text.
+//
+// Shared with the app pages, which are this origin: window.parent.zimiLinkKind
+// is the one classifier, window.parent.zimiMarkLinks the one marker.
+var EXT_LINK_MODES = ['mark', 'hide'];
+var EXT_CLASS = 'zimi-ext';        // a link to the web, marked
+var EXT_BARE = 'zimi-ext-bare';    // ...with no words to put an arrow after
+var EXT_OFF = 'zimi-ext-off';      // ...hidden: its href moved aside
+var EXT_OWN = 'zimi-ext-own';      // <html>: the page draws its own mark (MediaWiki)
+var EXT_HREF_ATTR = 'data-zimi-href';
+var EXT_STYLE_ID = 'zimi-ext-style';
+var EXT_HOVER_MS = 350;  // a mouse resting on a link, not crossing it
+var EXT_LEAVE_MS = 250;  // time to move from the link onto the sheet
+var EXT_GAP = 6;         // px between a link and its sheet
+var EXT_EDGE = 8;        // px the sheet keeps from the window's edges
+// The mark: a box with an arrow leaving it, as Wikipedia draws it. One path,
+// used as a mask in the pages (so it takes the link's colour) and inline here.
+var EXT_ICON_PATH = 'M9.5 7v3H2V2.5h3M7 1.5h3.5V5M10.5 1.5 5.5 6.5';
+var EXT_ICON = '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + EXT_ICON_PATH + '"/></svg>';
+var _EXT_SCHEME_RE = /^([a-z][a-z0-9+.-]*):/i;
+var _EXT_AUTHORITY_RE = /^(?:https?:)?[\/\\]{2}([^\/\\?#]*)/i;
+var _EXT_PLAIN_HOST_RE = /^[a-z0-9.-]+$/i;
+// Schemes another program on the device answers. Not the web: never marked.
+var _EXT_APP_SCHEMES = ['mailto', 'tel', 'sms', 'geo', 'callto', 'facetime', 'xmpp', 'magnet'];
+var _extServerOffline = false;  // ZIMI_OFFLINE, from /health
+var _extSheet = null, _extCur = null, _extShowTimer = null, _extHideTimer = null;
+
+function _extLinkMode() {
+  var v = null;
+  try { v = localStorage.getItem(SK.EXT_LINKS); } catch (e) {}
+  return v === 'hide' ? 'hide' : 'mark';
+}
+function _setExtLinkMode(mode) {
+  if (EXT_LINK_MODES.indexOf(mode) < 0) mode = 'mark';
+  try {
+    if (mode === 'mark') localStorage.removeItem(SK.EXT_LINKS);
+    else localStorage.setItem(SK.EXT_LINKS, mode);
+  } catch (e) {}
+  var seg = document.getElementById('ext-links-seg');
+  if (seg) seg.innerHTML = _extLinksSegInner();
+  _extRemarkOpen();
+}
+var _EXT_LINK_ICONS = {
+  mark: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="' + EXT_ICON_PATH + '"/></svg>',
+  hide: '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>'
+};
+function _extLinksSegInner() {
+  return _segButtonsHtml(EXT_LINK_MODES, _extLinkMode(), _EXT_LINK_ICONS, '_setExtLinkMode', 'ext_links_');
+}
+
+// The ZIM that answers for a host, or '' (the map /resolve?domains=1 serves).
+function _extHostZim(host) {
+  host = String(host || '').toLowerCase();
+  return _domainZimMap[host] || _domainZimMap[host.replace(/^www\./, '')] || '';
+}
+
+// Where a link goes, in one word. `base` is what a relative href is relative
+// to (the page it is on; this page when left out).
+//   'library'  stays in Zimi: this server, or a site an installed ZIM holds
+//   'web'      leaves the library for the open web
+//   'app'      another program's: mailto:, tel:, sms: and the like
+//   'none'     nowhere Zimi follows: javascript:, data:, empty, an #anchor
+function zimiLinkKind(href, base) {
+  var k = _extKind(href, base);
+  return k === 'site' ? 'library' : k;
+}
+// zimiLinkKind, with 'site' for a link to a site an installed ZIM holds
+// (the library, by way of /resolve) apart from this server's own.
+function _extKind(href, base) {
+  // What a browser does to an address before reading it: control characters
+  // and spaces off the ends, tabs and newlines out ("java\tscript:" runs).
+  var h = String(href == null ? '' : href).replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '').replace(/[\t\n\r]/g, '');
+  if (!h || h.charAt(0) === '#') return 'none';
+  var m = _EXT_SCHEME_RE.exec(h);
+  if (m) {
+    var s = m[1].toLowerCase();
+    if (s !== 'http' && s !== 'https') return _EXT_APP_SCHEMES.indexOf(s) >= 0 ? 'app' : 'none';
+  } else if (!/^[\/\\]{2}/.test(h) && (!base || base.charAt(0) === '/' || base.indexOf(location.origin + '/') === 0)) {
+    return 'library'; // relative, on a page this server serves: the common case, no parse
+  }
+  // An absolute link with a plain host (no user, port, brackets, escapes or
+  // letters outside ASCII) that is not this server's: read it as written.
+  // A big article has thousands of these, and a URL parse each is most of
+  // what marking one used to cost. Anything less plain is parsed.
+  var am = _EXT_AUTHORITY_RE.exec(h);
+  if (am && _EXT_PLAIN_HOST_RE.test(am[1]) && am[1].toLowerCase() !== location.hostname.toLowerCase()) {
+    return _extHostZim(am[1]) ? 'site' : 'web';
+  }
+  var u;
+  try { u = new URL(h, base || location.href); } catch (e) { return 'none'; }
+  if (u.origin === location.origin) return 'library';
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return 'none';
+  return _extHostZim(u.hostname) ? 'site' : 'web';
+}
+
+// A link's real address. A replayed capture's (wombat) href shows the address
+// it had on the web; asked with _no_rewrite it gives the one in the archive.
+function _extWombat(doc) {
+  try { return !!(doc.defaultView && doc.defaultView._wb_wombat); } catch (e) { return false; }
+}
+function _extRealUrl(a, wombat) {
+  if (wombat) {
+    try {
+      var prev = a._no_rewrite;
+      a._no_rewrite = true;
+      var h = a.href;
+      a._no_rewrite = prev;
+      return h;
+    } catch (e) {}
+  }
+  return a.href;
+}
+
+// The marks' CSS, once per document. The arrow is a mask over currentColor, so
+// it is the link's own colour in any theme (and inverts with a darkened page);
+// its alt text is what a screen reader says after the link.
+function _extStyle(doc) {
+  if (doc.getElementById(EXT_STYLE_ID)) return;
+  var svg = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' " +
+    "stroke='%23000' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='" +
+    EXT_ICON_PATH + "'/%3E%3C/svg%3E\")";
+  var alt = t('ext_link_sr').replace(/[\\"]/g, '\\$&').replace(/[\r\n]+/g, ' ');
+  var st = doc.createElement('style');
+  st.id = EXT_STYLE_ID;
+  st.textContent =
+    'a.' + EXT_CLASS + ':not(.' + EXT_BARE + ')::after{content:"";content:""/"' + alt + '";display:inline-block;' +
+      'width:.68em;height:.68em;margin-inline-start:.22em;background-color:currentColor;opacity:.65;' +
+      '-webkit-mask:' + svg + ' center/contain no-repeat;mask:' + svg + ' center/contain no-repeat}' +
+    'a.' + EXT_CLASS + ':dir(rtl)::after{transform:scaleX(-1)}' +
+    '.' + EXT_OWN + ' a.external.' + EXT_CLASS + '::after{display:none}' +
+    // Reader View themes the page, and MediaWiki's mark is a blue picture
+    // that does not follow: there, the page's mark gives way to ours.
+    '.zimi-reader a.external.' + EXT_CLASS + '{background-image:none!important;padding-left:0!important;padding-right:0!important}' +
+    // And a MediaWiki "external" link an installed ZIM answers (the licence
+    // line's Wikipedia, with that Wikipedia installed) stays in the library:
+    // no mark says it leaves, the page's or ours.
+    '.' + EXT_OWN + ' :is(a.external[href^="http"],a.external[href^="//"]):not(.' + EXT_CLASS + ')' +
+      '{background-image:none!important;padding-left:0!important;padding-right:0!important}' +
+    '.' + EXT_OWN + ' .zimi-reader a.external.' + EXT_CLASS + ':not(.' + EXT_BARE + ')::after{display:inline-block}' +
+    '.' + EXT_OFF + '{color:inherit!important;text-decoration:none!important;cursor:auto!important;border-bottom:0!important}' +
+    'a.external.' + EXT_OFF + '{background-image:none!important;padding-left:0!important;padding-right:0!important}';
+  (doc.head || doc.documentElement).appendChild(st);
+}
+
+// Whether the page marks its own external links. MediaWiki draws an icon on
+// a.external, and two arrows after one link is one too many.
+function _extPageMarksOwn(doc) {
+  var a = doc.querySelector('a.external');
+  if (!a) return false;
+  try {
+    var bg = doc.defaultView.getComputedStyle(a).backgroundImage;
+    return !!bg && bg !== 'none';
+  } catch (e) { return false; }
+}
+
+// Mark, or hide, every link to the web under `root` (a document or an
+// element), and take back any mark a link no longer earns (the domain map
+// arrived, the setting changed). Once per page; returns the web links found.
+// The common link is relative and costs a regex, never a URL parse. A
+// document's links to sites an installed ZIM holds are kept on it as
+// doc.__zimiSiteLinks ({url: [a]}): the reader's cross-ZIM underline asks
+// /resolve about those, with no second pass over the page's links.
+function _extMark(root) {
+  var doc = root && (root.nodeType === 9 ? root : root.ownerDocument);
+  if (!doc || !doc.documentElement || !root.querySelectorAll) return 0;
+  // Asked before our stylesheet goes in: the page's styles are computed
+  // already, and inserting ours first would make this one question a
+  // restyle of the whole page.
+  if (doc.__zimiExtOwn === undefined) {
+    doc.__zimiExtOwn = _extPageMarksOwn(doc);
+    if (doc.__zimiExtOwn) doc.documentElement.classList.add(EXT_OWN);
+  }
+  _extStyle(doc);
+  _extBindDoc(doc);
+  var hide = _extLinkMode() === 'hide', wombat = _extWombat(doc), base = doc.baseURI || '';
+  // Only a document marked before can have a mark to take back: the first
+  // pass (every page load) skips looking, which is most of a big page's links.
+  var again = !!doc.__zimiExtMarked;
+  doc.__zimiExtMarked = true;
+  var links = root.querySelectorAll(again ? 'a[href],a[' + EXT_HREF_ATTR + ']' : 'a[href]');
+  var n = 0, sites = {};
+  for (var i = 0; i < links.length; i++) {
+    var a = links[i], hidden = again ? a.getAttribute(EXT_HREF_ATTR) : null;
+    var href = hidden !== null ? hidden : wombat ? _extRealUrl(a, true) : a.getAttribute('href');
+    var kind = _extKind(href, base), web = kind === 'web';
+    if (kind === 'site') {
+      var url = wombat ? href : a.href;
+      (sites[url] = sites[url] || []).push(a);
+    }
+    if (web) n++;
+    if (hidden !== null && !(web && hide)) {
+      a.setAttribute('href', hidden);   // hidden before, a link again
+      a.removeAttribute(EXT_HREF_ATTR);
+      a.classList.remove(EXT_OFF);
+    }
+    if (!web) {
+      if (again && a.classList.contains(EXT_CLASS)) a.classList.remove(EXT_CLASS, EXT_BARE);
+      continue;
+    }
+    if (hide) {
+      if (hidden === null) {
+        a.setAttribute(EXT_HREF_ATTR, href);
+        a.removeAttribute('href');
+      }
+      a.classList.remove(EXT_CLASS, EXT_BARE);
+      a.classList.add(EXT_OFF);
+    } else {
+      a.classList.add(EXT_CLASS);
+      // A picture that is a link gets no arrow beside it; it still says where.
+      if (!(a.textContent || '').trim()) a.classList.add(EXT_BARE);
+    }
+  }
+  if (root === doc) doc.__zimiSiteLinks = sites;
+  return n;
+}
+
+// The page in the reader again, after something that changes what a mark means.
+function _extRemarkOpen() {
+  var doc = _readerFrameDoc();
+  if (doc && doc.getElementById && doc.getElementById(EXT_STYLE_ID)) {
+    try { _extMark(doc); } catch (e) {}
+  }
+}
+
+// For the app pages (window.parent.zimiMarkLinks): mark the ZIM HTML under
+// `root`, and send its clicks through here. The click listener waits for the
+// bubble to reach the window, so the page's own handlers speak first; what
+// they left alone and leaves this server, this handles.
+function zimiMarkLinks(root) {
+  var n = _extMark(root);
+  var doc = root && (root.nodeType === 9 ? root : root.ownerDocument);
+  var win = doc && doc.defaultView;
+  if (win && !win.__zimiExtClicks) {
+    win.__zimiExtClicks = true;
+    var onClick = function(e) {
+      if (e.defaultPrevented || e.button > 1) return;
+      var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+      if (!a) return;
+      var url = a.href;
+      if (url.indexOf(location.origin) !== 0) _extFollow(e, a, url, '');
+    };
+    win.addEventListener('click', onClick);
+    win.addEventListener('auxclick', function(e) { if (e.button === 1) onClick(e); });
+  }
+  return n;
+}
+
+// A click on a link off this server: the library, or the web. On the web,
+// a mouse opens it (the sheet has already said where, on the way in) and a
+// finger asks first; offline, everyone gets the sheet instead of a dead tab.
+// Returns whether it took the click.
+function _extFollow(e, a, url, fromZim) {
+  var kind = zimiLinkKind(url);
+  if (kind === 'library') {
+    e.preventDefault();
+    _openLibraryUrl(url, fromZim);
+    return true;
+  }
+  if (kind !== 'web') return false;
+  e.preventDefault();
+  var asked = e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1;
+  if (_extOffline() || (_extTouch(e) && !asked)) {
+    _extShow(a, url, true, e.clientY);
+    return true;
+  }
+  _extHide();
+  _openOnWeb(url);
+  return true;
+}
+function _extTouch(e) {
+  if (e.pointerType) return e.pointerType !== 'mouse';
+  try { return window.matchMedia('(hover: none)').matches; } catch (err) { return false; }
+}
+function _extOffline() {
+  return _extServerOffline || navigator.onLine === false;
+}
+
+// A link to a site an installed ZIM holds, opened in the library: the article
+// when /resolve finds it, otherwise the archive's own page for that address,
+// whose not-captured page says so and offers the live web as a stated choice.
+function _openLibraryUrl(url, fromZim) {
+  var cached = _resolveCache && _resolveCache[url];
+  if (cached && cached.found) { openArticle(cached.zim, cached.path); return; }
+  var u;
+  try { u = new URL(url); } catch (e) { return; }
+  var mapped = _extHostZim(u.hostname);
+  var stay = function() {
+    if (!mapped) return false;
+    openArticle(mapped, u.hostname + u.pathname + (u.search || ''));
+    return true;
+  };
+  fetch('/resolve?url=' + encodeURIComponent(url) + (fromZim ? '&from=' + encodeURIComponent(fromZim) : ''))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.found) openArticle(data.zim, data.path);
+      else if (!stay()) _openOnWeb(url);
+    })
+    .catch(function() { if (!stay()) _openOnWeb(url); });
+}
+
+// A document's hover, focus and dismissal, once. The sheet lives in this
+// document and is placed over the frame the link is in.
+function _extBindDoc(doc) {
+  if (doc.__zimiExtBound) return;
+  doc.__zimiExtBound = true;
+  var at = function(node) { return node && node.closest ? node.closest('a.' + EXT_CLASS) : null; };
+  doc.addEventListener('pointerover', function(e) {
+    if (e.pointerType !== 'mouse') return;
+    var a = at(e.target);
+    if (!a) return;
+    clearTimeout(_extHideTimer);
+    if (_extCur && _extCur.a === a) return;
+    clearTimeout(_extShowTimer);
+    _extShowTimer = setTimeout(function() { _extShow(a, _extRealUrl(a, _extWombat(doc)), false); }, EXT_HOVER_MS);
+  }, true);
+  doc.addEventListener('pointerout', function(e) {
+    if (e.pointerType !== 'mouse') return;
+    var a = at(e.target);
+    if (a && !(e.relatedTarget && a.contains(e.relatedTarget))) _extLeave();
+  }, true);
+  doc.addEventListener('focusin', function(e) {
+    var a = at(e.target);
+    var keyboard = false;
+    try { keyboard = !!(a && a.matches(':focus-visible')); } catch (err) {}
+    if (keyboard) _extShow(a, _extRealUrl(a, _extWombat(doc)), false);
+  });
+  doc.addEventListener('focusout', function(e) { if (at(e.target)) _extLeave(); });
+  doc.addEventListener('pointerdown', function(e) { if (_extCur && !at(e.target)) _extHide(); }, true);
+  doc.addEventListener('keydown', function(e) { if (e.key === 'Escape' && _extCur) _extHide(); });
+  try { doc.defaultView.addEventListener('scroll', function() { if (_extCur) _extHide(); }, { passive: true }); } catch (e) {}
+}
+function _extLeave() {
+  clearTimeout(_extShowTimer);
+  if (!_extCur || _extCur.pinned) return;
+  clearTimeout(_extHideTimer);
+  _extHideTimer = setTimeout(_extHide, EXT_LEAVE_MS);
+}
+
+function _extSheetEl() {
+  if (_extSheet) return _extSheet;
+  var el = document.createElement('div');
+  el.id = 'ext-sheet';
+  el.className = 'ext-sheet';
+  el.setAttribute('role', 'dialog');
+  el.addEventListener('pointerenter', function() { clearTimeout(_extHideTimer); });
+  el.addEventListener('pointerleave', function(e) { if (e.pointerType === 'mouse') _extLeave(); });
+  el.addEventListener('click', function(e) {
+    var b = e.target.closest && e.target.closest('[data-ext]');
+    if (!b || !_extCur) return;
+    var url = _extCur.url, act = b.getAttribute('data-ext');
+    _extHide();
+    if (act === 'open') _openOnWeb(url);
+    else _copyText(url, true);
+  });
+  document.addEventListener('pointerdown', function(e) { if (_extCur && !el.contains(e.target)) _extHide(); }, true);
+  window.addEventListener('resize', function() { if (_extCur) _extHide(); });
+  document.body.appendChild(el);
+  _extSheet = el;
+  return el;
+}
+
+// "Opens example.com on the web", with Open and Copy link (just Copy link,
+// and why, when offline), beside the link. `y`: where a finger landed, so a
+// link wrapped over two lines gets its sheet by the line that was tapped.
+function _extShow(a, url, pinned, y) {
+  clearTimeout(_extShowTimer);
+  clearTimeout(_extHideTimer);
+  if (!a || !a.isConnected) return;
+  var el = _extSheetEl();
+  var host = url;
+  try { host = new URL(url).hostname.replace(/^www\./, ''); } catch (e) {}
+  var off = _extOffline();
+  var parts = t('ext_link_opens', { host: '\u0001' }).split('\u0001');
+  el.innerHTML = '<div class="ext-sheet-where">' + EXT_ICON + '<span>' + esc(parts[0]) +
+      '<bdi>' + esc(host) + '</bdi>' + esc(parts[1] || '') + '</span></div>' +
+    (off ? '<div class="ext-sheet-note">' + tH('ext_link_offline') + '</div>' : '') +
+    '<div class="ext-sheet-actions">' +
+      (off ? '' : '<button type="button" class="pill active" data-ext="open">' + tH('ext_link_open') + '</button>') +
+      '<button type="button" class="pill" data-ext="copy">' + tH('copy_link') + '</button></div>';
+  el.setAttribute('aria-label', host);
+  _extCur = { a: a, url: url, pinned: !!pinned };
+  el.classList.add('open');
+  _extPlace(el, a, y);
+}
+function _extHide() {
+  clearTimeout(_extShowTimer);
+  clearTimeout(_extHideTimer);
+  _extCur = null;
+  if (_extSheet) _extSheet.classList.remove('open');
+}
+// Below the link (above it when there is no room), starting where the link's
+// text starts, kept inside the window. The link's rects are its frame's, so
+// the frame's own place is added.
+function _extPlace(el, a, y) {
+  var off = { left: 0, top: 0 };
+  var win = a.ownerDocument.defaultView;
+  try { if (win.frameElement) off = win.frameElement.getBoundingClientRect(); } catch (e) {}
+  var rects = a.getClientRects();
+  var r = rects.length ? rects[rects.length - 1] : a.getBoundingClientRect();
+  if (typeof y === 'number') {
+    for (var i = 0; i < rects.length; i++) {
+      if (y >= rects[i].top && y <= rects[i].bottom) { r = rects[i]; break; }
+    }
+  }
+  var rtl = false;
+  try { rtl = win.getComputedStyle(a).direction === 'rtl'; } catch (e) {}
+  var w = el.offsetWidth, h = el.offsetHeight;
+  var left = off.left + (rtl ? r.right - w : r.left);
+  left = Math.max(EXT_EDGE, Math.min(left, window.innerWidth - w - EXT_EDGE));
+  var top = off.top + r.bottom + EXT_GAP;
+  if (top + h > window.innerHeight - EXT_EDGE) top = Math.max(EXT_EDGE, off.top + r.top - h - EXT_GAP);
+  el.style.left = left + 'px';
+  el.style.top = top + 'px';
+}
 
 // ── Link Context Menu ──
 var _linkCtxMenu = document.getElementById('link-ctx-menu');
@@ -21652,14 +24476,14 @@ function _ctxCopyLink() {
   _hideLinkCtxMenu();
   if (!data) return;
   var url = data.url || (location.origin + '/w/' + encodeURIComponent(data.zim) + '/' + data.path.split('/').map(encodeURIComponent).join('/'));
-  navigator.clipboard.writeText(url).catch(function() {});
+  _copyText(url, true);
 }
 
 function _ctxCopyTitle() {
   var data = _linkCtxData;
   _hideLinkCtxMenu();
   if (!data) return;
-  navigator.clipboard.writeText(data.title).catch(function() {});
+  _copyText(data.title);
 }
 
 // ── Word lookup (Define) ──
@@ -21737,8 +24561,14 @@ function _defineSelRect(frame, sel) {
 function _definePosition(rect) {
   if (!rect) return;
   _definePopover.classList.add('open');
-  var w = _definePopover.offsetWidth || 200;
-  var h = _definePopover.offsetHeight || 60;
+  _popoverPlace(_definePopover, rect);
+}
+// Put a floating card (Define's, the highlight bar) by a selection whose place
+// in the shell is rect ({x, y: just below it, top}), clear of the phone's own
+// selection menu and inside the screen.
+function _popoverPlace(el, rect) {
+  var w = el.offsetWidth || 200;
+  var h = el.offsetHeight || 60;
   var vw = window.innerWidth, vh = window.innerHeight, M = 8;
   var x = rect.x, y = rect.y;
   // On touch, the OS callout normally renders ABOVE the selection (our chip
@@ -21754,8 +24584,8 @@ function _definePosition(rect) {
   // a card that grew taller/wider than the chip) must never spill off-screen.
   x = Math.max(M, Math.min(x, vw - w - M));
   y = Math.max(M, Math.min(y, vh - h - M));
-  _definePopover.style.left = x + 'px';
-  _definePopover.style.top = y + 'px';
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
 }
 
 // Re-run positioning against the anchor rect stored at trigger time. Called after
@@ -21890,6 +24720,19 @@ function _defineRenderResult(st, hit, html) {
   _defineReposition(); // final card size known — re-clamp so it can't spill off-screen
 }
 
+// Define from the highlight bar: can the selection be looked up, and look it up
+// where the bar was (rect as _defineRangeRect gives it).
+function _defineCanDefine(word, doc) {
+  return _defineIsWord(word) && !!_defineFindWiktionary(_ttsLang(doc));
+}
+function _defineWordAt(word, doc, rect) {
+  var wikt = _defineFindWiktionary(_ttsLang(doc));
+  if (!wikt || !rect || !_defineIsWord(word)) return;
+  _defineState = { word: word.trim(), zim: wikt.name, path: null, rect: rect };
+  _definePopover.classList.add('open');
+  _defineRun();
+}
+
 function _defineOpenFull() {
   var st = _defineState;
   _defineHide();
@@ -21904,6 +24747,8 @@ function _defineConsider(frame) {
   var doc, sel;
   try { doc = frame.contentDocument; sel = frame.contentWindow.getSelection(); }
   catch (e) { return; } // cross-origin ZIM — feature can't reach the selection
+  // A reader with highlights: its selection bar carries Define.
+  if (doc && doc.__zimiHighlights) return;
   if (!sel || sel.isCollapsed) { _defineHide(); return; }
   var word = sel.toString().trim();
   if (!_defineIsWord(word)) { _defineHide(); return; }
@@ -22400,10 +25245,9 @@ async function _renderDesktopLan() {
     if (cfg.lan_access || cfg.lan_access_env) addrs = await pywebview.api.lan_addresses();
   } catch (e) { return; }
   var locked = !!cfg.lan_access_env;
-  var h = '<label class="ms-toggle-row"><input type="checkbox" id="ms-lan-access"' +
-    (cfg.lan_access ? ' checked' : '') + (locked ? ' disabled' : '') +
-    ' onchange="_setDesktopLan(this)"> ' + tH('desktop_lan_access') + '</label>' +
-    '<div class="ms-hint">' + tH(locked ? 'configured_via_env' : 'desktop_lan_hint') + '</div>';
+  var h = _switchRowsHtml([{ id: 'ms-lan-access', title: tH('desktop_lan_access'),
+    desc: tH(locked ? 'configured_via_env' : 'desktop_lan_hint'), on: cfg.lan_access, disabled: locked,
+    onchange: '_setDesktopLan(this)' }]);
   if (addrs.length) {
     var port = location.port || '80';
     h += '<div class="ms-hint">' + tH('desktop_lan_open_at') + ' ' + addrs.map(function(ip) {

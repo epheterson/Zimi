@@ -20,6 +20,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 import zimi.server as _srv
+from zimi import outbound
 
 log = logging.getLogger("zimi")
 
@@ -630,6 +631,18 @@ _APP_UPDATE_CHANNEL_ALIASES = {
     "newest": "beta",
 }
 
+# Whether this server looks for new Zimi releases on its own (Eric,
+# 2026-09-28: "i'm not positive how i feel about unexpected network calls from
+# zimi"). Automatically, the default and what every install did before, checks
+# GitHub when an admin opens Server settings (at most daily) and lets the
+# desktop app's updater check at launch; Ask first checks only on "Check now";
+# Never checks nothing. ZIMI_UPDATE_CHECK wins over the saved choice and
+# ZIMI_OFFLINE forces Never.
+APP_UPDATE_CHECK_ENV = "ZIMI_UPDATE_CHECK"
+UPDATE_CHECK = outbound.FetchPolicy(
+    APP_UPDATE_CHECK_ENV, "update_check", outbound.AUTO, "Check for Zimi updates"
+)
+
 # Update delay: hold a release back until it has been public for N days, so a
 # fleet can let other people find the sharp edges first. 0 (the default, and
 # every pre-1.9 install's behavior) offers a release the moment it exists.
@@ -652,16 +665,17 @@ def _app_update_cache_path():
     return os.path.join(_srv.ZIMI_DATA_DIR, "app_update.json")
 
 
-def _app_update_prefs_path():
+def _app_update_prefs_path(data_dir=None):
     """Both app-update preferences (channel + delay) share one small file. The
     name is the one the channel-only build wrote, so an existing preference
-    survives the upgrade untouched."""
-    return os.path.join(_srv.ZIMI_DATA_DIR, "app_update_channel.json")
+    survives the upgrade untouched. ``data_dir`` is for a reader that runs
+    before this server has one (the desktop app's updater)."""
+    return os.path.join(data_dir or _srv.ZIMI_DATA_DIR, "app_update_channel.json")
 
 
-def _read_app_update_prefs():
+def _read_app_update_prefs(data_dir=None):
     try:
-        with open(_app_update_prefs_path(), "r", encoding="utf-8") as f:
+        with open(_app_update_prefs_path(data_dir), "r", encoding="utf-8") as f:
             saved = json.load(f)
     except (OSError, ValueError):
         return {}
@@ -925,11 +939,18 @@ def check_app_update(force=False, channel=None):
     reads back off instead of re-probing a dead link on every pane visit.
 
     A cached answer from the other channel is never reused: switching channel
-    is exactly when the admin wants a fresh look."""
+    is exactly when the admin wants a fresh look.
+
+    "Check for Zimi updates" decides the rest: Ask first answers a passive
+    read from the cache alone and fetches only for `force`; Never fetches
+    for nothing."""
     from zimi import p2p  # is_offline() — the single air-gap switch
 
     if p2p.is_offline():
         return dict(_read_app_update_cache(), offline=True)
+    mode = UPDATE_CHECK.mode()[0]
+    if mode == outbound.NEVER or (mode == outbound.ASK and not force):
+        return _read_app_update_cache()
     channel = normalize_update_channel(channel) or get_update_channel()
     now = time.time()
 
@@ -1005,6 +1026,7 @@ def _app_update_payload(force=False):
     held_until = (
         _update_hold_until(state.get("published_ts"), delay_days) if newer else None
     )
+    check_mode, check_locked = UPDATE_CHECK.mode()
     return {
         "current": _srv.ZIMI_VERSION,
         "latest": latest,
@@ -1025,6 +1047,11 @@ def _app_update_payload(force=False):
         "channel_locked": is_update_channel_env_locked(),
         "channel_env": APP_UPDATE_CHANNEL_ENV,
         "prerelease": bool(state.get("prerelease")),
+        # "Check for Zimi updates": ask, auto or never, and what locks it.
+        "check_mode": check_mode,
+        "check_locked": check_locked,
+        "check_modes": list(outbound.MODES),
+        "check_env": APP_UPDATE_CHECK_ENV,
     }
 
 
@@ -2107,6 +2134,9 @@ CREATE_BLOCK_ADS = True
 # would be offering a switch over nothing. Mirrors the gate in
 # renderer.RenderedSession._record_variants, pinned by a test.
 CREATE_VARIANT_ENGINES = ("alive",)
+# The engines whose pages Zimi writes, so "Remove links to other sites" can
+# reach them. alive and zimit hand back an archive another program packaged.
+CREATE_UNLINK_ENGINES = ("builtin", "rendered", "singlefile")
 # What the variant sweep does when the form says nothing. Mirrors
 # renderer.VARIANT_SWEEP_DEFAULT — checked by default, so silence means the
 # field never rendered rather than "the admin unticked it".
@@ -2946,6 +2976,11 @@ def _create_validate(data):
                 data.get("capture_variants"),
                 _create_default("capture_variants", CREATE_CAPTURE_VARIANTS),
             )
+        # "Remove links to other sites" (#99), off unless ticked. Only where
+        # Zimi writes the pages itself: an alive or zimit capture's links are
+        # rewritten at replay, so the box would promise what it cannot do.
+        if _create_unlink_engine(opts["engine"]):
+            opts["strip_links"] = _create_bool(data.get("strip_links"), False)
     if mode == "site":
         # Any number, and 0 for none: the byte budget bounds the capture. A
         # negative is a typo, not "no limit", so it falls back to the default.
@@ -3117,6 +3152,12 @@ def _create_variant_engine(engine):
     return str(engine or "").strip().lower() in CREATE_VARIANT_ENGINES
 
 
+def _create_unlink_engine(engine):
+    """Whether the chosen engine writes the pages itself, so links to other
+    sites can be left out of them. ``None`` is the fast engine, which does."""
+    return (str(engine or "").strip().lower() or "builtin") in CREATE_UNLINK_ENGINES
+
+
 def _create_bool(value, default):
     """A checkbox that is CHECKED by default, read as a real bool.
 
@@ -3180,7 +3221,7 @@ def _create_run(job, opts):
             register=True,
             progress=job.note,
             **_create_kwargs(
-                opts, "language", "engine", "block_ads", "capture_variants"
+                opts, "language", "engine", "block_ads", "capture_variants", "strip_links"
             ),
         )
     if job.mode == "site":
@@ -3211,6 +3252,7 @@ def _create_run(job, opts):
                 "engine",
                 "block_ads",
                 "capture_variants",
+                "strip_links",
             ),
         )
     if job.mode == "video":
@@ -5299,6 +5341,24 @@ def handle_manage_get(handler, parsed, params):
             {"enabled": bool(shown), "shown": [n for n in _srv.APP_NAMES if n in shown], "env_locked": _srv._apps_env() is not None},
         )
 
+    elif parsed.path == "/manage/outbound":
+        # "What Zimi fetches from the internet": every destination, what sets
+        # it off and whether it is on now. Read-only; each row names the
+        # setting that changes it.
+        return handler._json(200, outbound.inventory())
+
+    elif parsed.path == "/manage/satellites":
+        # "Satellite data from the internet" for Server settings.
+        from zimi import satellites as _sats
+
+        return handler._json(200, _sats.setting())
+
+    elif parsed.path == "/manage/books/whole":
+        # The ZIMs put on the Bookshelf as one book, or taken off it, by hand.
+        from zimi import books as _books
+
+        return handler._json(200, {"zims": _books._whole_overrides()})
+
     elif parsed.path == "/manage/catalog-streetzim":
         # StreetZim's regions, from the Internet Archive, for the toggle in
         # the Maps category. Cached and served stale while a refresh runs.
@@ -5395,7 +5455,7 @@ def handle_manage_get(handler, parsed, params):
                 # is optimistic (importable counts). The UI reads this key.
                 "sidecar_running": engine_alive,
                 "bt_port_env_locked": p2p.is_bt_port_env_locked(),
-                # Cached: the probe runs at startup and on explicit recheck
+                # Cached: reachability is asked only by /manage/nat-recheck
                 "nat": p2p_nat.last_status() or None,
             },
         )
@@ -6247,6 +6307,73 @@ def handle_manage_post(handler, parsed, data):
         log.info("Apps offered: %s", ", ".join(n for n in _srv.APP_NAMES if n in shown) or "none")
         return handler._json(200, {"enabled": enabled, "shown": [n for n in _srv.APP_NAMES if n in shown], "env_locked": False})
 
+    elif parsed.path == "/manage/satellites":
+        # "Satellite data from the internet": {"mode": "ask"|"auto"|"never"}.
+        # Same env-lock contract as the other settings: ZIMI_SATELLITE_UPDATES
+        # (or ZIMI_OFFLINE, which forces never) wins and the write is refused.
+        from zimi import satellites as _sats
+
+        _mode, err = _sats.set_update_mode(data.get("mode"))
+        if err == "invalid":
+            return handler._json(400, {"error": "mode is ask, auto or never"})
+        if err == _sats.LOCKED_OFFLINE:
+            return handler._json(403, {"error": "Zimi is offline (ZIMI_OFFLINE)"})
+        if err == _sats.LOCKED_ENV:
+            return handler._json(
+                403,
+                {"error": "Satellite data is controlled by the %s env var" % _sats.UPDATES_ENV},
+            )
+        if err:
+            return handler._json(500, {"error": "Could not save the setting"})
+        return handler._json(200, _sats.setting())
+
+    elif parsed.path == "/manage/satellites/refresh":
+        # The Earth view's "Get fresh data": one CelesTrak fetch, waited for,
+        # answered with the view's payload so it redraws from the answer.
+        from zimi import satellites as _sats
+
+        payload, err = _sats.refresh_now()
+        if err == "never":
+            return handler._json(409, {"error": "Satellite data is set to never be fetched"})
+        if err:
+            return handler._json(502, {"error": "Could not reach CelesTrak"})
+        payload["can_change"] = True
+        return handler._json(200, payload)
+
+    elif parsed.path == "/manage/books/whole":
+        # A ZIM that is one book (a textbook captured whole) onto the
+        # Bookshelf: {"zim": name, "whole": true}; false takes a ZIM off
+        # the shelf, null leaves it to what it is.
+        from zimi import books as _books
+
+        name = data.get("zim")
+        whole = data.get("whole")
+        if not isinstance(name, str) or name not in _srv.get_zim_files():
+            return handler._json(404, {"error": "No such ZIM"})
+        if whole not in (True, False, None):
+            return handler._json(400, {"error": "whole is true, false or null"})
+        reader = _books.set_whole(name, whole)
+        log.info("Bookshelf: %s set by hand to %s", name, whole)
+        return handler._json(200, {"zim": name, "whole": whole, "reader": reader})
+
+    elif parsed.path == "/manage/app-update-mode":
+        # "Check for Zimi updates": {"mode": "ask"|"auto"|"never"}. Same
+        # env-lock contract as the satellite setting: ZIMI_UPDATE_CHECK (or
+        # ZIMI_OFFLINE, which forces never) wins and the write is refused.
+        _mode, err = UPDATE_CHECK.set(data.get("mode"))
+        if err == "invalid":
+            return handler._json(400, {"error": "mode is ask, auto or never"})
+        if err == outbound.LOCKED_OFFLINE:
+            return handler._json(403, {"error": "Zimi is offline (ZIMI_OFFLINE)"})
+        if err == outbound.LOCKED_ENV:
+            return handler._json(
+                403,
+                {"error": "Update checks are controlled by the %s env var" % APP_UPDATE_CHECK_ENV},
+            )
+        if err:
+            return handler._json(500, {"error": "Could not save the setting"})
+        return handler._json(200, _app_update_payload())
+
     elif parsed.path == "/manage/app-update-channel":
         # Latest vs beta for the APP release check. Same env-lock contract
         # as the other settings endpoints: ZIMI_UPDATE_CHANNEL wins and the
@@ -6418,12 +6545,16 @@ def handle_manage_post(handler, parsed, data):
     elif parsed.path == "/manage/nat-recheck":
         # The "retry" button every real BT client has: re-map UPnP and
         # re-test reachability. Slow (SSDP + external check, a few
-        # seconds) but explicitly user-initiated.
+        # seconds) but asked for by an admin looking: the button, or the
+        # sharing settings opening with BitTorrent on. The only caller that
+        # asks portcheck.transmissionbt.com.
         from zimi import p2p, p2p_nat
 
         if not p2p.is_torrent_enabled():
             return handler._json(400, {"error": "BitTorrent is turned off"})
-        result = p2p_nat.probe(p2p.get_bt_port(), try_upnp=p2p.is_upnp_enabled())
+        result = p2p_nat.probe(
+            p2p.get_bt_port(), try_upnp=p2p.is_upnp_enabled(), check_reachable=True
+        )
         return handler._json(200, {"nat": result})
 
     elif parsed.path == "/manage/bt-settings":

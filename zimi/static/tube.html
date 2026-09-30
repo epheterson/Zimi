@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>ZimiTube</title>
 <!--@apps.css@-->
 <style>
@@ -17,6 +17,16 @@
   .thumb .dur { position: absolute; inset-inline-end: 8px; bottom: 8px; font-size: 11px; padding: 2px 6px; border-radius: 4px; background: rgba(0,0,0,0.75); color: #fff; font-variant-numeric: tabular-nums; }
   .thumb .play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; opacity: 0; transition: opacity .15s; background: rgba(0,0,0,0.18); }
   .card:hover .play { opacity: 1; }
+  /* No picture: a still in its place, what the thing is at its centre (a
+     document library's video, a folder's file, an audiobook). A picture
+     that fails to load leaves the still showing. */
+  .thumb .still { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text2); }
+  .thumb .still svg { width: 34%; max-width: 64px; height: auto; opacity: .5; }
+  .thumb img { position: relative; }
+  /* Sound: a warm panel, headphones, the tracks where a video's length goes. */
+  .audio .thumb, .stage.audio { background: linear-gradient(150deg, var(--surface2) 0%, var(--amber-glow) 100%), var(--surface2); }
+  .audio .thumb .still { color: var(--amber); }
+  .audio .thumb .still svg { opacity: .75; }
   .body { padding: 12px; display: flex; gap: 10px; }
   .body img { width: 26px; height: 26px; border-radius: 7px; flex: none; margin-top: 1px; }
   .body .letter { width: 26px; height: 26px; border-radius: 7px; flex: none; background: var(--surface2); color: var(--text2); font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center; }
@@ -48,6 +58,27 @@
   .ctl input[type=range] { flex: 1; accent-color: #fff; min-width: 0; }
   .ctl .t { min-width: 5.5em; text-align: center; }
   .stage video { width: 100%; height: 100%; display: block; background: #000; }
+  /* Sound only: its picture (or headphones) above, the track playing, the controls below. */
+  /* Sound has no picture to frame: the stage is as tall as what it holds
+     (the cover or the headphones, the track, the controls), not a 16:9
+     screen of empty gradient around a 72px glyph. */
+  .stage.audio, .player.theater .stage.audio { display: flex; flex-direction: column; color: var(--text); aspect-ratio: auto; max-height: none; }
+  .stage.audio .art { display: flex; align-items: center; justify-content: center; padding: 28px 16px 10px; color: var(--amber); }
+  .stage.audio .art img { max-width: 100%; max-height: min(320px, 40vh); object-fit: contain; border-radius: var(--radius-s); }
+  .dock .stage.audio .art { padding: 12px 12px 4px; }
+  .dock .stage.audio .art svg { width: 40px; height: 40px; }
+  .stage.audio .art svg { width: 72px; height: 72px; opacity: .8; }
+  .stage.audio .now { text-align: center; font-size: 13px; font-weight: 600; padding: 0 16px 6px; min-height: 1.3em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; unicode-bidi: plaintext; }
+  .stage.audio audio { display: block; width: calc(100% - 24px); margin: 0 12px 12px; }
+  .dock audio { display: block; width: 100%; }
+  /* An audiobook's tracks, in order, the one playing marked. */
+  .tracks-h { margin: 16px 0 4px; font-size: 12px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .04em; }
+  .tracks { list-style: none; margin: 0; padding: 0; max-width: 70ch; }
+  .tracks li { border-top: 1px solid var(--border); }
+  .tracks button { display: flex; gap: 12px; width: 100%; padding: 9px 2px; background: none; border: 0; text-align: start; cursor: pointer; font-size: 13.5px; unicode-bidi: plaintext; }
+  .tracks button .k { min-width: 1.8em; text-align: end; color: var(--text2); font-variant-numeric: tabular-nums; }
+  .tracks button.on { color: var(--amber); font-weight: 600; }
+  .tracks button.on .k { color: var(--amber); }
   .stage .nomedia { color: #ddd; padding: 32px; text-align: center; line-height: 1.8; }
   .stage .nomedia a { color: #fff; font-weight: 600; }
   .about { padding: 12px 2px 0; }
@@ -56,6 +87,22 @@
   .next .item-r .thumb { border-radius: var(--radius-s); overflow: hidden; }
   .next .item-r .t { font-weight: 600; font-size: 13px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .next .item-r .m { font-size: 11.5px; color: var(--text2); margin-top: 2px; }
+  /* Your rows (Continue watching, Watch later, Liked, your lists): smaller
+     cards, two to a phone's width, so they lead into the feed rather than
+     bury it. */
+  #mine .strip { grid-auto-columns: 200px; }
+  /* A row seen whole takes the home's place until Back. */
+  #home.row-open > :not(#mine) { display: none; }
+  @media (max-width: 480px) {
+    #mine .strip { grid-auto-columns: 42vw; }
+    #mine .grid { grid-template-columns: 1fr 1fr; }
+    #mine .body { padding: 8px 10px 10px; }
+    #mine .body > img, #mine .body > .letter { display: none; }
+    #mine .title { font-size: 13px; }
+  }
+  /* How far into it you are, along the bottom of its picture (Continue watching). */
+  .thumb .prog { position: absolute; inset-inline: 0; bottom: 0; height: 3px; background: rgba(255,255,255,0.35); }
+  .thumb .prog i { display: block; height: 100%; background: var(--amber); }
   /* Theater: the stage takes the whole width, up next moves below. */
   .player.theater { grid-template-columns: 1fr; }
   .player.theater .stage { aspect-ratio: 16 / 9; max-height: 80vh; }
@@ -70,6 +117,11 @@
   .dock button:hover { color: var(--amber); }
   /* A phone turned sideways: the picture fits the screen's height, and while it
      plays it has the screen to itself (see sideways()). */
+  /* A finger: a track and the dock's close reach 44px. */
+  @media (pointer: coarse) {
+    .tracks button { min-height: 44px; align-items: center; }
+    .dock button { min-width: 44px; min-height: 44px; }
+  }
   @media (orientation: landscape) and (max-height: 500px) {
     .player .stage, .player.theater .stage { max-height: 100vh; max-width: calc(100vh * 16 / 9); margin-inline: auto; }
   }
@@ -79,6 +131,7 @@
 <div class="page">
   <div id="home">
     <div class="chips" id="chips"></div>
+    <div id="mine" hidden></div>
     <div id="shelves"></div>
     <div id="list" hidden>
       <div class="head"><h2 id="l-title"></h2><span class="sorts" id="l-sorts"></span></div>
@@ -97,7 +150,9 @@
           <h1 id="w-title"></h1>
           <div class="who" id="w-who"></div>
           <div class="desc" id="w-desc"></div>
+          <div id="w-tracks"></div>
           <div class="actions">
+            <span class="svbar"></span>
             <button id="autoplay" onclick="toggleAutoplay()"></button>
             <a id="w-open" href="#"></a>
           </div>
@@ -124,10 +179,13 @@
 // box in Zimi's top bar drives tubeSearch(q).
 var PAGE = 60;
 var STR = strings({ title: 'ZimiTube', videos: 'videos', video: 'video', langs: {}, more: 'More', none: 'No videos match.', empty: 'No video ZIMs installed yet.',
-  up_next: 'Up next', autoplay: 'Autoplay', theater: 'Theater', pip: 'Picture in picture', open_page: 'Open the original page', all: 'All',
-  sort_top: 'Top', sort_title: 'Title', sort_newest: 'Newest', sort_longest: 'Longest', no_media: 'This video cannot be played here.', missing: 'This video isn\'t in this ZIM.', play_pause: 'Play or pause', seek: 'Seek', sound: 'Sound', full_screen: 'Full screen' });
+  up_next: 'Up next', autoplay: 'Autoplay', theater: 'Theater', pip: 'Picture in picture', open_page: 'Open the original page', all: 'All', track: 'track', tracks: 'tracks',
+  sort_top: 'Top', sort_title: 'Title', sort_newest: 'Newest', sort_longest: 'Longest', no_media: 'This video cannot be played here.', missing: 'This video isn\'t in this ZIM.', play_pause: 'Play or pause', seek: 'Seek', sound: 'Sound', full_screen: 'Full screen',
+  watch_later: 'Watch later', listen_later: 'Listen later', continue: 'Continue watching', recording: 'recording', recordings: 'recordings', sv: {} });
 var SORTS = ['top', 'title', 'newest', 'longest'];
-var _q = '', _zim = '', _sort = 'top', _all = [], _zims = [], _list = [], _shown = 0, _busy = false, _autoplay = true, _theater = false, _now = -1, _video = null;
+// _feed is the home's order (a source, a query, a sort); _list is what is
+// playing through (the feed, or a row of what you keep), Up next its rest.
+var _q = '', _zim = '', _sort = 'top', _all = [], _zims = [], _feed = [], _list = [], _shown = 0, _busy = false, _autoplay = true, _theater = false, _now = -1, _video = null;
 try { _sort = localStorage.getItem('zimitube_sort') || 'top'; if (SORTS.indexOf(_sort) < 0) _sort = 'top'; _autoplay = localStorage.getItem('zimitube_autoplay') !== '0'; _theater = localStorage.getItem('zimitube_theater') === '1'; } catch (e) {}
 
 function iconHtml(v, cls) { return v.zim_icon ? zimIcon(v.zim, cls) : '<span class="letter ' + cls + '">' + esc((v.zim_title || v.zim || '?')[0].toUpperCase()) + '</span>'; }
@@ -140,13 +198,35 @@ function langOf(z) {
   return Object.keys(langs).length > 1 && z.language ? ' <span class="n">' + esc(STR.langs[z.language] || z.language) + '</span>' : '';
 }
 
-function card(v, i) {
-  var thumb = v.thumb ? zpath(v.zim, v.thumb) : '';
+var _HEADPHONES_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>';
+var _FILM_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3z" fill="currentColor"/></svg>';
+// A card's picture, over a still that shows when there is none (or it fails).
+function thumbInner(v) {
+  var still = '<span class="still">' + (v.audio ? _HEADPHONES_SVG : _FILM_SVG) + '</span>';
+  return still + (v.thumb ? '<img src="' + esc(zpath(v.zim, v.thumb)) + '" alt="" loading="lazy" onerror="this.remove()">' : '');
+}
+// Where a video's length goes: its length, or an audiobook's tracks.
+function badge(v) { return v.tracks > 1 ? count(v.tracks, STR.track, STR.tracks) : fmtDur(v.duration); }
+// Whether what plays is the page itself (a file in a document library or a
+// folder), so "the original page" would only be the same file again.
+function isFileOnly(v, m) {
+  return !!(m && (m.media || []).some(function(src) { return src.path === v.page; }));
+}
+// How many there are: videos, or recordings when all of them are sound
+// (an audiobook library, a folder of songs).
+function countOf(list) {
+  var sound = list.length > 0 && list.every(function(v) { return v.audio; });
+  return count(list.length, sound ? STR.recording : STR.video, sound ? STR.recordings : STR.videos);
+}
+// A card plays from the list it is in: the feed ('') or a row of what you
+// keep (its id); f is how far into it you are, for Continue watching.
+function card(v, i, from, f) {
   var who = [v.speaker, v.zim_title].filter(Boolean).join(' · ');
-  return '<a class="card" href="' + esc(zpath(v.zim, v.page)) + '" data-i="' + i + '" onclick="return play(event, ' + i + ')">' +
-    '<span class="thumb">' + (thumb ? '<img src="' + esc(thumb) + '" alt="" loading="lazy" onerror="this.remove()">' : '') +
+  return '<a class="card' + (v.audio ? ' audio' : '') + '" href="' + esc(zpath(v.zim, v.page)) + '" data-i="' + i + '" onclick="return pick(event, ' + J(from || '') + ', ' + i + ')">' +
+    '<span class="thumb">' + thumbInner(v) +
       '<span class="play"><svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>' +
-      (fmtDur(v.duration) ? '<span class="dur">' + esc(fmtDur(v.duration)) + '</span>' : '') + '</span>' +
+      (badge(v) ? '<span class="dur">' + esc(badge(v)) + '</span>' : '') +
+      (f > 0 ? '<span class="prog"><i style="width:' + Math.min(100, Math.round(f * 100)) + '%"></i></span>' : '') + '</span>' +
     '<span class="body">' + iconHtml(v, '') + '<span class="txt"><span class="title">' + esc(v.title) + '</span>' +
       '<span class="meta">' + esc(who) + '</span></span></span></a>';
 }
@@ -162,6 +242,127 @@ function sorted(items) {
   return a;
 }
 
+// ── What you keep (docs/features/saving.md) ──────────────────────────────
+// Your rows first on the home: Continue watching (where you were, the
+// latest first), Watch later (every video you keep), Liked, then each of
+// your lists that holds a video. All of it from the shell's Saved, in this
+// browser: the home asks the server for nothing more.
+var CONTINUE_SHOWN = 12;
+var ROW_SHOWN = 12;        // cards in a row before All
+var POS_MIN_S = 10;        // seconds in before a place is worth keeping
+var POS_END_S = 15;        // this near the end, it has been watched
+var POS_EVERY_MS = 10000;  // while it plays, the place is written this often
+var _byKey = {}, _rows = [], _mineDirty = false, _mineOpen = '';
+// A video as Saved keeps it: what a card needs is in meta, so a row draws
+// without the feed (a source since removed still shows).
+function videoRef(v) {
+  return { kind: 'video', app: 'tube', zim: v.zim, path: v.page, title: v.title,
+    meta: { thumb: v.thumb || '', duration: v.duration || '', speaker: v.speaker || '', zim_title: v.zim_title || '', audio: !!v.audio, tracks: v.tracks || 0, icon: !!v.zim_icon } };
+}
+// What "later" means for these: an audiobook is listened to, not watched;
+// a shelf of both is what you saved.
+function laterWord(list) {
+  var n = list.filter(function(v) { return v.audio; }).length;
+  return !n ? STR.watch_later : n === list.length ? STR.listen_later : (STR.sv.saved || STR.watch_later);
+}
+function fromSaved(x) {
+  var live = _byKey[x.zim + '\n' + x.path];
+  if (live) return live;
+  var m = x.meta || {};
+  return { zim: x.zim, page: x.path, title: x.title || x.path, thumb: m.thumb || '', duration: m.duration || '', speaker: m.speaker || '',
+    zim_title: m.zim_title || x.zim, audio: !!m.audio, tracks: m.tracks || 0, zim_icon: !!m.icon };
+}
+// Where you are in a video (and an audiobook's track, k), or null before its
+// first seconds.
+function resumeOf(v) {
+  var S = saved(), p = S && S.position(videoRef(v)), w = p && p.where;
+  return w && (w.t >= POS_MIN_S || w.k > 0) ? w : null;
+}
+function savedRows() {
+  var S = saved();
+  if (!S) return [];
+  var rows = [], cont = S.continued({ app: 'tube' }).filter(function(p) { return p.where.t >= POS_MIN_S || p.where.k > 0; }).slice(0, CONTINUE_SHOWN);
+  if (cont.length) rows.push({ id: 'continue', title: STR.continue, items: cont.map(fromSaved), f: cont.map(function(p) { return p.where.f || 0; }) });
+  var mine = S.itemsFor({ app: 'tube' });
+  if (mine.length) { var later = mine.map(fromSaved); rows.push({ id: 'later', title: laterWord(later), items: later }); }
+  S.lists({ app: 'tube' }).forEach(function(l) {
+    if (l.count) rows.push({ id: l.id, title: l.builtin ? STR.sv.liked : l.name, items: S.itemsFor({ list: l.id, app: 'tube' }).map(fromSaved), list: !l.builtin });
+  });
+  return rows;
+}
+// Shown at the top of the home only: not over a source's list or a search.
+// A row shows its first dozen, and your lists are one row of their own, a
+// tile each: however much you keep, the home stays a few rows. All, or a
+// list's tile, opens it whole in place of the feed, until Back.
+function renderMine() {
+  var el = document.getElementById('mine');
+  _rows = !_q && !_zim ? savedRows() : [];
+  _mineDirty = false;
+  var open = _rows.filter(function(r) { return r.id === _mineOpen; })[0];
+  if (!open) _mineOpen = '';
+  document.getElementById('home').classList.toggle('row-open', !!open);
+  el.hidden = !_rows.length;
+  var shelf = function(r, body, all) {
+    return '<section class="shelf" data-row="' + esc(r.id) + '"><div class="shelf-h"><h2>' + esc(r.title) + '</h2>' + (all || '') + '</div>' + body + '</section>';
+  };
+  var cards = function(r, list) { return list.map(function(v, j) { return card(v, j, r.id, r.f && r.f[j]); }).join(''); };
+  if (open) { el.innerHTML = shelf(open, '<div class="grid">' + cards(open, open.items) + '</div>'); return; }
+  var lists = _rows.filter(function(r) { return r.list; });
+  el.innerHTML = _rows.filter(function(r) { return !r.list; }).map(function(r) {
+    return shelf(r, '<div class="strip">' + cards(r, r.items.slice(0, ROW_SHOWN)) + '</div>',
+      r.items.length > ROW_SHOWN ? '<button class="all" onclick="openRow(' + J(r.id) + ')">' + esc(STR.all) + ' ' + r.items.length + CHEV + '</button>' : '');
+  }).join('') + (lists.length ? shelf({ id: 'lists', title: STR.sv.lists }, '<div class="strip">' + lists.map(listTile).join('') + '</div>') : '');
+}
+// A list as a tile: its first video's picture, its name, how many.
+function listTile(r) {
+  return '<a class="card" href="#" data-list="' + esc(r.id) + '" onclick="openRow(' + J(r.id) + '); return false;"><span class="thumb">' + thumbInner(r.items[0]) +
+    '<span class="dur">' + esc(countOf(r.items)) + '</span></span><span class="body"><span class="txt"><span class="title">' + esc(r.title) + '</span></span></span></a>';
+}
+function openRow(id) {
+  keepPlace();
+  _mineOpen = id;
+  renderMine();
+  window.scrollTo(0, 0);
+  tellTop();
+}
+function closeRow() {
+  _mineOpen = '';
+  renderMine();
+  returnToPlace();
+  tellTop();
+}
+// A card's tap: the list it is in becomes what plays through.
+function pick(e, from, i) {
+  var row = from ? _rows.filter(function(r) { return r.id === from; })[0] : null;
+  if (from && !row) return false;
+  if (!(e && (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1))) _list = row ? row.items : _feed;
+  return play(e, i);
+}
+// The media element takes up where you were, once it knows its length.
+function resumeAt(el, where) {
+  if (!where || !(where.t > 0)) return;
+  var seek = function() { try { el.currentTime = where.t; } catch (e) {} };
+  if (el.readyState >= 1) seek(); else el.addEventListener('loadedmetadata', seek, { once: true });
+}
+// Where you are is kept as it plays (and on a pause), for Continue watching
+// here and in the Saved panel; watched to the end, it is let go. track() is
+// an audiobook's track playing, of tracks.
+function keepTime(v, el, track, tracks) {
+  var S = saved();
+  if (!S) return;
+  var ref = videoRef(v), last = 0;
+  var write = function() {
+    if (el !== _video) return;
+    var t = el.currentTime || 0, d = isFinite(el.duration) ? el.duration : 0, k = track ? track() : 0, n = tracks || 1;
+    if (d && t >= d - POS_END_S && k >= n - 1) { if (S.position(ref)) S.clearPosition(ref); return; }
+    if (t < POS_MIN_S && !k) return;
+    S.setPosition(ref, { t: Math.round(t), d: Math.round(d), k: k, f: Math.round((k + (d ? t / d : 0)) / n * 1000) / 1000 });
+  };
+  el.addEventListener('timeupdate', function() { var now = Date.now(); if (now - last < POS_EVERY_MS) return; last = now; write(); });
+  el.addEventListener('pause', write);
+  el.addEventListener('ended', write);
+}
+
 function renderHome() {
   var chips = document.getElementById('chips'), shelves = document.getElementById('shelves'), list = document.getElementById('list'),
       grid = document.getElementById('grid'), empty = document.getElementById('empty'), more = document.getElementById('more');
@@ -169,28 +370,32 @@ function renderHome() {
     _zims.map(function(z) { return '<button class="chip' + (_zim === z.name ? ' on' : '') + '" onclick="setZim(' + J(z.name) + ')">' +
       (z.icon ? zimIcon(z.name) : '') + esc(z.title) + langOf(z) + ' <span class="n">' + z.count + '</span></button>'; }).join('');
   chips.hidden = _zims.length < 2;
-  _list = sorted(_all.filter(function(v) { return !_zim || v.zim === _zim; }));
+  _feed = _list = sorted(_all.filter(function(v) { return !_zim || v.zim === _zim; }));
   // Browsing is shelves, one per source, its first dozen each, and nothing
   // else. A chip, a query, or a library with one source is a list: every
   // video, in an order of your choosing, a page at a time.
   var browsing = !_q && !_zim && _zims.length > 1;
   shelves.hidden = !browsing;
-  list.hidden = browsing;
+  // Nothing installed: the empty page alone, no heading and no orders over nothing.
+  list.hidden = browsing || (!_all.length && !_q);
   shelves.innerHTML = browsing ? _zims.map(function(z) {
     var mine = _all.filter(function(v) { return v.zim === z.name; }).slice(0, 12);
     return '<section class="shelf"><div class="shelf-h">' + (z.icon ? zimIcon(z.name) : '') +
       '<h2>' + esc(z.title) + langOf(z) + '</h2><button class="all" onclick="setZim(' + J(z.name) + ')">' + esc(STR.all) + ' ' + z.count + CHEV + '</button></div>' +
-      '<div class="strip">' + mine.map(function(v) { return card(v, _list.indexOf(v)); }).join('') + '</div></section>';
+      '<div class="strip">' + mine.map(function(v) { return card(v, _feed.indexOf(v)); }).join('') + '</div></section>';
   }).join('') : '';
   if (!browsing) {
     _shown = Math.min(_list.length, Math.max(_shown, PAGE));
     grid.innerHTML = _list.slice(0, _shown).map(function(v, i) { return card(v, i); }).join('');
     document.getElementById('l-title').innerHTML = esc(_q ? '“' + _q + '”' : (_zim ? zimTitle(_zim) : STR.title)) +
-      (_list.length ? ' <span class="n">' + esc(count(_list.length, STR.video, STR.videos)) + '</span>' : '');
+      (_list.length ? ' <span class="n">' + esc(countOf(_list)) + '</span>' : '');
+    // A search that found nothing has nothing to put in order.
+    document.getElementById('l-sorts').hidden = !_list.length;
     document.getElementById('l-sorts').innerHTML = SORTS.map(function(k) { return '<button class="chip' + (k === _sort ? ' on' : '') + '" onclick="setSort(' + J(k) + ')">' + esc(STR['sort_' + k]) + '</button>'; }).join('');
   } else {
     _shown = 0; grid.innerHTML = '';
   }
+  renderMine();
   empty.hidden = _list.length > 0;
   empty.innerHTML = _q ? esc(STR.none) : esc(STR.empty) + (STR.catalog ? '<br><a class="door" href="/?manage" onclick="return goCatalog()">' + esc(STR.catalog) + CHEV + '</a>' : '');
   more.hidden = browsing || _shown >= _list.length;
@@ -201,7 +406,10 @@ function load() {
   if (_busy) return; _busy = true;
   var url = '/tube?limit=5000&offset=0' + (_q ? '&q=' + encodeURIComponent(_q) : '');
   fetch(url).then(function(r) { return r.json(); }).then(function(d) {
-    _all = d.items || []; _zims = d.zims || []; _shown = 0; renderHome();
+    _all = d.items || []; _zims = d.zims || []; _shown = 0;
+    _byKey = {};
+    _all.forEach(function(v) { _byKey[v.zim + '\n' + v.page] = v; });
+    renderHome();
     // Opened at an address: play what it names, once, then it is a page like
     // any other visit here.
     if (STR.play) { var want = STR.play; STR.play = ''; var i = _list.findIndex(function(v) { return v.zim + '/' + v.page === want; }); if (i >= 0) play(null, i); }
@@ -302,10 +510,13 @@ function play(e, i) {
   document.getElementById('w-title').textContent = v.title;
   document.getElementById('w-who').innerHTML = iconHtml(v, '') + '<span>' + (v.speaker ? '<b>' + esc(v.speaker) + '</b> · ' : '') + esc(v.zim_title) + (v.date ? ' · ' + esc(v.date) : '') + '</span>';
   document.getElementById('w-desc').textContent = v.description || '';
+  document.getElementById('w-tracks').innerHTML = '';
   openLink(document.getElementById('w-open'), v.zim, v.page, STR.open_page);
+  document.getElementById('w-open').hidden = false;
+  savedBar(videoRef(v), { save: [laterWord([v])] });
   paintAutoplay(); paintTheater();
   document.getElementById('dock').hidden = true;
-  var stage = document.getElementById('stage'); stage.innerHTML = ''; _video = null;
+  var stage = document.getElementById('stage'); stage.innerHTML = ''; stage.classList.remove('audio'); _video = null;
   stageTools(stage, false);
   window.scrollTo(0, 0);
   tell({ zimi: 'tube-play', play: v.zim + '/' + v.page, title: v.title });
@@ -313,13 +524,19 @@ function play(e, i) {
   // in a shape a browser plays.
   // Two different truths: the file is not in the ZIM (the page names one
   // the scrape never got), or it is there and this browser cannot decode it.
-  var noMedia = function(missing) { stage.innerHTML = '<div class="nomedia">' + esc(missing ? STR.missing : STR.no_media) + (missing ? '' : '<br><a href="' + esc(zpath(v.zim, v.page)) + '">' + esc(STR.open_page) + CHEV + '</a>') + '</div>'; };
+  // A document library's or a folder's item has no page of its own: its
+  // "page" is the file itself, so there is no original page to offer.
+  var fileOnly = false;
+  var noMedia = function(missing) { stage.classList.remove('audio'); stage.innerHTML = '<div class="nomedia">' + esc(missing ? STR.missing : STR.no_media) + (missing || fileOnly ? '' : '<br><a href="' + esc(zpath(v.zim, v.page)) + '">' + esc(STR.open_page) + CHEV + '</a>') + '</div>'; };
   var stageEl = stage;
   fetch('/tube/play?zim=' + encodeURIComponent(v.zim) + '&page=' + encodeURIComponent(v.page)).then(function(r) { return r.ok ? r.json() : null; }).then(function(m) {
     if (_now !== i) return;
     // The feed carries a description's first lines; the player's answer has it whole.
     if (m && m.description) document.getElementById('w-desc').textContent = m.description;
+    fileOnly = isFileOnly(v, m);
+    if (fileOnly) document.getElementById('w-open').hidden = true;
     if (!m || !m.media || !m.media.length || m.missing) { noMedia(!!(m && m.missing)); return; }
+    if (m.audio && playAudio(v, m, stage, i, noMedia)) return;
     // A file the browser cannot decode (WebM on an iPhone): the ZIM's own
     // ogv.js decoder, the way the original page plays it.
     // An iPhone says it might play WebM and then cannot decode it; the
@@ -345,6 +562,7 @@ function play(e, i) {
     (m.subs || []).forEach(function(t, k) { var tr = document.createElement('track'); tr.kind = 'subtitles'; tr.src = zpath(v.zim, t.path); tr.srclang = t.lang || ''; tr.label = t.label || t.lang || 'subtitles'; if (k === 0 && /^en/.test(t.lang || '')) tr.default = true; vid.appendChild(tr); });
     vid.addEventListener('ended', function() { if (_autoplay && _now === i && _list[i + 1]) play(null, i + 1); });
     stage.appendChild(vid); _video = vid;
+    resumeAt(vid, resumeOf(v)); keepTime(v, vid);
     sideways(vid);
     stageTools(stage, pipAvailable(vid));
     var p = vid.play(); if (p && p.catch) p.catch(function() {});
@@ -355,10 +573,48 @@ function play(e, i) {
   document.getElementById('w-nexth').textContent = upcoming.length ? STR.up_next : '';
   document.getElementById('w-next').innerHTML = upcoming.map(function(w) {
     var j = _list.indexOf(w);
-    return '<div class="item-r" onclick="play(null, ' + j + ')"><span class="thumb">' + (w.thumb ? '<img src="' + esc(zpath(w.zim, w.thumb)) + '" alt="" loading="lazy" onerror="this.remove()">' : '') +
-      (fmtDur(w.duration) ? '<span class="dur">' + esc(fmtDur(w.duration)) + '</span>' : '') + '</span><div><div class="t">' + esc(w.title) + '</div><div class="m">' + esc([w.speaker, w.zim_title].filter(Boolean).join(' · ')) + '</div></div></div>';
+    return '<div class="item-r' + (w.audio ? ' audio' : '') + '" onclick="play(null, ' + j + ')"><span class="thumb">' + thumbInner(w) +
+      (badge(w) ? '<span class="dur">' + esc(badge(w)) + '</span>' : '') + '</span><div><div class="t">' + esc(w.title) + '</div><div class="m">' + esc([w.speaker, w.zim_title].filter(Boolean).join(' · ')) + '</div></div></div>';
   }).join('');
   return false;
+}
+// Sound only (an audiobook, a folder's songs, a video Zimi kept as audio):
+// its picture or headphones on the stage, the browser's own controls, and an
+// audiobook's tracks listed under the description, played in turn, on into
+// the next item when autoplay is on. The tracks go on in the dock. False
+// when this browser cannot play the file, so the caller tries the decoder.
+function playAudio(v, m, stage, i, noMedia) {
+  var aud = document.createElement('audio');
+  var type = m.media[0].type || '';
+  if (type && aud.canPlayType(type) === '' && m.ogv) return false;
+  var tracks = m.tracks && m.tracks.length ? m.tracks : [{ path: m.media[0].path, title: '' }];
+  stage.classList.add('audio');
+  stage.innerHTML = '<div class="art">' + (m.poster ? '<img src="' + esc(zpath(v.zim, m.poster)) + '" alt="">' : _HEADPHONES_SVG) + '</div><div class="now"></div>';
+  aud.controls = true; aud.preload = 'auto';
+  var list = document.getElementById('w-tracks');
+  list.innerHTML = tracks.length > 1 ? '<div class="tracks-h">' + esc(count(tracks.length, STR.track, STR.tracks)) + '</div><ol class="tracks">' +
+    tracks.map(function(t, n) { return '<li><button type="button" data-n="' + n + '"><span class="k">' + (n + 1) + '</span><span>' + esc(t.title || String(n + 1)) + '</span></button></li>'; }).join('') + '</ol>' : '';
+  var at = 0;
+  var go = function(n) {
+    at = n;
+    aud.src = zpath(v.zim, tracks[n].path);
+    stage.querySelector('.now').textContent = tracks.length > 1 ? (n + 1) + '. ' + (tracks[n].title || '') : '';
+    list.querySelectorAll('.tracks button').forEach(function(b) { b.classList.toggle('on', +b.dataset.n === n); });
+    var p = aud.play(); if (p && p.catch) p.catch(function() {});
+  };
+  list.onclick = function(e) { var b = e.target.closest('button[data-n]'); if (b && _now === i) go(+b.dataset.n); };
+  aud.addEventListener('ended', function() {
+    if (_now !== i && _docked !== i) return;
+    if (at + 1 < tracks.length) go(at + 1);
+    else if (_autoplay && _now === i && _list[i + 1]) play(null, i + 1);
+  });
+  aud.addEventListener('error', function() { if (_now === i) noMedia(); });
+  stage.appendChild(aud); _video = aud;
+  var where = resumeOf(v);
+  keepTime(v, aud, function() { return at; }, tracks.length);
+  go(where && where.k < tracks.length ? where.k : 0);
+  resumeAt(aud, where);
+  return true;
 }
 function goCatalog() { tell({ zimi: 'catalog', category: 'ted' }); return false; }
 // A phone turned sideways with a video playing: Zimi's header steps aside
@@ -388,6 +644,7 @@ function playWithOgv(v, m, stage, i) {
       p.setAttribute('playsinline', '');
       p.addEventListener('ended', function() { if (_autoplay && _now === i && _list[i + 1]) play(null, i + 1); });
       stage.innerHTML = ''; stage.appendChild(p); _video = p;
+      resumeAt(p, resumeOf(v)); keepTime(v, p);
       sideways(p);
       stageTools(stage, false);
       ogvControls(stage, p);
@@ -412,7 +669,7 @@ function closePlayer(silent) {
     document.getElementById('dock-t').textContent = (_list[_now] || {}).title || '';
     document.getElementById('dock').hidden = false;
   } else {
-    stage.innerHTML = ''; stage.classList.remove('quiet'); _video = null;
+    stage.innerHTML = ''; stage.classList.remove('quiet', 'audio'); _video = null;
     document.getElementById('dock').hidden = true;
   }
   if (_now >= 0) tell({ zimi: 'tube-home' });
@@ -421,6 +678,10 @@ function closePlayer(silent) {
   _now = -1;
   document.getElementById('watch').hidden = true;
   document.getElementById('home').hidden = false;
+  savedBar(null);
+  // What you keep changed while you watched (a place, a save): the rows are
+  // drawn again, and the way back to where you were moves with them.
+  if (_mineDirty) { var mine = document.getElementById('mine'), h0 = mine.offsetHeight; renderMine(); _place += mine.offsetHeight - h0; }
   if (!silent) returnToPlace();
 }
 var _docked = -1;
@@ -435,18 +696,18 @@ function undock() {
   document.getElementById('dock').hidden = true;
   document.getElementById('stage').appendChild(v);
   window.scrollTo(0, 0);
-  if (w) tell({ zimi: 'tube-play', play: w.zim + '/' + w.page, title: w.title });
+  if (w) { savedBar(videoRef(w), { save: [laterWord([w])] }); tell({ zimi: 'tube-play', play: w.zim + '/' + w.page, title: w.title }); }
 }
 function stopDock() {
   var v = _video; if (v) { try { v.pause(); } catch (e) {} v.remove(); }
   _video = null; _docked = -1;
   document.getElementById('dock').hidden = true;
 }
-window.tubeSearch = tubeSearch; window.tubeMore = tubeMore; window.play = play; window.closePlayer = closePlayer;
+window.tubeSearch = tubeSearch; window.tubeMore = tubeMore; window.play = play; window.pick = pick; window.openRow = openRow; window.closePlayer = closePlayer;
 window.setSort = setSort; window.setZim = setZim; window.toggleAutoplay = toggleAutoplay;
 window.toggleTheater = toggleTheater; window.enterPip = enterPip; window.undock = undock; window.stopDock = stopDock;
 // At the top: the shelves (or the one-source list with nothing chosen).
-window.__top = function() { return _now < 0 && !_q && !_zim; };
+window.__top = function() { return _now < 0 && !_q && !_zim && !_mineOpen; };
 // The dice: a video from the whole feed, played from the list it belongs to.
 window.__random = function() {
   if (!_all.length) return;
@@ -456,14 +717,25 @@ window.__random = function() {
 };
 window.__back = function() {
   if (_now >= 0) { closePlayer(); return true; }
+  if (_mineOpen) { closeRow(); return true; }
   if (!document.getElementById('list').hidden) { _q = ''; setZim(''); if (!document.getElementById('list').hidden) load(); return true; }
   return false;
 };
-window.__home = function() { if (_now >= 0) closePlayer(true); _q = ''; _zim = ''; _shown = 0; renderHome(); window.scrollTo(0, 0); };
+window.__home = function() { if (_now >= 0) closePlayer(true); _q = ''; _zim = ''; _mineOpen = ''; _shown = 0; renderHome(); window.scrollTo(0, 0); };
 window.__route = function(id) {
   if (!id) { if (_now >= 0) closePlayer(); return; }
-  var i = _list.findIndex(function(v) { return v.zim + '/' + v.page === id; });
+  var at = function(list) { return list.findIndex(function(v) { return v.zim + '/' + v.page === id; }); };
+  var i = at(_list);
+  if (i < 0 && (i = at(_feed)) >= 0) _list = _feed;
   if (i >= 0 && i !== _now) play(null, i);
+};
+// What you keep changed (here, in the Saved panel, on another device): the
+// controls on the video at once; the rows now if the home is on screen, else
+// as it comes back.
+window.__saved = function() {
+  savedPaint();
+  if (document.getElementById('home').hidden) _mineDirty = true;
+  else renderMine();
 };
 load();
 </script>

@@ -29,6 +29,9 @@ for attempt in $(seq 1 "$ATTEMPTS"); do
   TMPZIM=$(mktemp -d)
   : > "$LOG"
   echo "Attempt $attempt/$ATTEMPTS: starting $BINARY $MODE_ARGS --port 0 ..."
+  # An idle Zimi starts no BitTorrent engine (it joins no DHT until there is
+  # work), so the BT check gives it work: Mirror mode starts the engine at boot.
+  if [ "${SMOKE_EXPECT_BT:-}" = "1" ]; then export ZIMI_BT="mirror=1"; fi
   # shellcheck disable=SC2086
   "$BINARY" $MODE_ARGS --port 0 --zim-dir "$TMPZIM" > "$LOG" 2>&1 &
   PID=$!

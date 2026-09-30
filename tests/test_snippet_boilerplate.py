@@ -140,9 +140,50 @@ def test_a_wikipedia_article_without_meta_gives_its_lead_sentence():
     assert "[a]" not in snip and "<" not in snip
 
 
+# Hebrew Wikipedia as mwoffliner 1.17 writes a lead with a pronunciation
+# button (MediaWiki's Phonos): its data-ooui attribute carries the button's
+# own HTML, "<" and ">" included, and the prefix ב is glued to the linked
+# word after it. Cut down from the real smörgåsbord page (he top mini).
+HEBREW_PHONOS = (
+    '<!DOCTYPE html><html lang="he" dir="rtl"><head><title>סמרגוסבורד</title></head><body>'
+    '<p id="mwAw"><b>סְמֵרגוֹסבּורד</b> (<span typeof="mw:Transclusion">ב</span>'
+    '<a rel="mw:WikiLink" href="%D7%A9%D7%95%D7%95%D7%93%D7%99%D7%AA" title="שוודית">שוודית</a>'
+    '<span>: </span><span class="ext-phonos" typeof="mw:Extension/phonos">'
+    '<span class="noexcerpt ext-phonos-PhonosButton" data-ooui="{&quot;_&quot;:&quot;mw.Phonos.PhonosButton&quot;,'
+    "&quot;label&quot;:{&quot;html&quot;:&quot;<b><span dir=\\&quot;auto\\&quot;>sm\\u00f6rg\\u00e5sbord<\\/span><\\/b>&quot;},"
+    '&quot;classes&quot;:[&quot;noexcerpt&quot;]}"><a class="oo-ui-buttonElement-button"><b>smörgåsbord</b></a></span></span>'
+    ') היא ארוחת מזנון סקנדינבית, <a rel="mw:WikiLink" href="x" title="x">ב</a>נורווגיה היא נקראת koldtbord.</p>'
+    "</body></html>"
+)
+
+
+def test_an_attribute_holding_markup_is_not_read_as_text():
+    """Found in the Hebrew top mini: the day's article and every card of the
+    page read '"},"data":{"ipa":"",...' where its first words should be."""
+    from zimi.previews import inline_text, strip_html
+
+    snip = extract_snippet(HEBREW_PHONOS, "wikipedia_he")
+    for text in (snip, strip_html(HEBREW_PHONOS), inline_text(HEBREW_PHONOS)):
+        assert "ooui" not in text and '"}' not in text and "\\u00f6" not in text, text
+    assert snip.startswith("סְמֵרגוֹסבּורד (בשוודית: smörgåsbord"), snip
+    # A prefix and the linked word it is glued to stay one word.
+    assert "בנורווגיה" in snip, snip
+
+
+def test_a_tag_cut_off_by_the_read_still_goes():
+    """A read can end inside a tag, with a quote left open."""
+    from zimi.previews import inline_text, strip_html
+
+    cut = '<p>Albert Einstein was born in <a rel="mw:WikiLink" href="Ul'
+    assert strip_html(cut) == "Albert Einstein was born in"
+    assert inline_text(cut) == "Albert Einstein was born in"
+
+
 def test_a_tag_cut_off_at_the_end_of_the_read_is_not_left_as_text():
     """The handler reads the start of a page; a read can end inside a tag."""
-    snip = extract_snippet('<html><body><main>Born 14 March 1879 in <a rel="mw:WikiLink" href="Ulm" t', "x")
+    snip = extract_snippet(
+        '<html><body><main>Born 14 March 1879 in <a rel="mw:WikiLink" href="Ulm" t', "x"
+    )
     assert "<" not in snip and "href" not in snip, snip
 
 

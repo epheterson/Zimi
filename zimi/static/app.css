@@ -150,7 +150,21 @@
      the library instead. */
   html.manage-boot #main-view { visibility: hidden; }
 
-  html { height: 100%; overflow-y: auto; overscroll-behavior-y: none; }
+  /* Pulled past an edge, the page shows its own background, not the
+     browser's white, and does not spring: no bounce either way, no sideways
+     scroll. */
+  html { height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: none; background: var(--bg); }
+  /* Zimi does not zoom on a phone: the viewport caps the scale at 1 and
+     _blockPinch (app.js) cancels iOS's pinch, which ignores that cap.
+     A double tap is a tap, not a zoom; the text keeps its size when the
+     phone turns; and a field or menu gets 16px type on a touch screen,
+     because iOS zooms the page into any it focuses that is smaller. The
+     !important outranks the inline sizes a few controls are drawn with. */
+  html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  @media (pointer: coarse) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+    select, textarea { font-size: 16px !important; }
+  }
   body { background: var(--bg); color: var(--text); min-height: 100%; padding-top: var(--under-topbar); overflow: visible; }
 
   /* Anti-flash guard. The head bootstrap stamps .theme-boot on <html> while it
@@ -329,16 +343,21 @@
 
   .topbar-search { flex: 1; position: relative; margin-left: 4px; }
   .topbar-search input {
-    width: 100%; padding: 9px 14px 9px 36px;
+    width: 100%; padding-block: 9px; padding-inline: 36px 14px;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
     color: var(--text); font-size: 16px; outline: none;
     transition: border-color 0.2s, box-shadow 0.2s;
   }
   .topbar-search input:focus { border-color: var(--amber-border); box-shadow: 0 0 0 3px var(--amber-glow), 0 0 20px var(--amber-glow); }
   .topbar-search input::placeholder { color: var(--text2); }
-  .topbar-search .search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text2); pointer-events: none; }
+  /* What is typed reads in its own direction: "-ted" typed under a Hebrew
+     interface showed as "ted-", an operator that is not the one typed. */
+  .topbar-search input { unicode-bidi: plaintext; }
+  /* The box is written in logical sides: in a right-to-left UI the glass
+     sits at the right, where the text starts, and ×, ? and / at the left. */
+  .topbar-search .search-icon { position: absolute; inset-inline-start: 11px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text2); pointer-events: none; }
   .topbar-search .kbd {
-    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    position: absolute; inset-inline-end: 10px; top: 50%; transform: translateY(-50%);
     font-size: 11px; color: var(--text2); background: var(--surface2);
     border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px;
     font-family: inherit; pointer-events: none; opacity: 0.7; transition: opacity 0.15s;
@@ -348,7 +367,7 @@
      kbd hint gives way to it so they never overlap. Pure CSS — the value drives
      :placeholder-shown, including programmatic changes. */
   .topbar-search .search-clear {
-    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    position: absolute; inset-inline-end: 8px; top: 50%; transform: translateY(-50%);
     display: none; align-items: center; justify-content: center;
     width: 22px; height: 22px; padding: 0; border: none; border-radius: 5px;
     background: transparent; color: var(--text2); cursor: pointer;
@@ -544,13 +563,11 @@
   .ms-user-addbar { margin-top: 16px; }
   .ms-user-add { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; max-width: 420px; }
   .ms-user-add[hidden] { display: none; }  /* [hidden] must beat the display:flex above */
-  .ms-user-add input, .create-field { padding: 8px 10px; font-size: 13px; font-family: inherit; color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); box-sizing: border-box; width: 100%; }
-  /* A checkbox is not a text field: the width:100% above stretched it across
-     the row and shoved its label to the far edge. Keep it its own size, and
-     lay the grant out as [box] label so they read as one control. */
-  .ms-user-add input[type="checkbox"] { width: auto; padding: 0; accent-color: var(--amber); }
-  .ms-check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
-  .ms-user-add input:focus, .create-field:focus { outline: none; border-color: var(--amber-border); box-shadow: 0 0 0 3px var(--amber-glow); }
+  .ms-user-add input:not([role="switch"]), .create-field { padding: 8px 10px; font-size: 13px; font-family: inherit; color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); box-sizing: border-box; width: 100%; }
+  /* A checkbox (the allowlist's) is not a text field: the width:100% above
+     stretched it across the row. Keep it its own size. */
+  .ms-user-add input[type="checkbox"]:not([role="switch"]) { width: auto; padding: 0; accent-color: var(--amber); }
+  .ms-user-add input:not([role="switch"]):focus, .create-field:focus { outline: none; border-color: var(--amber-border); box-shadow: 0 0 0 3px var(--amber-glow); }
   .ms-form-label { font-size: 12px; color: var(--text2); }
   .ms-user-account { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
   /* "Your Account" now leads the pane: no top border, and a divider below it
@@ -900,13 +917,15 @@
   }
   .rv-swatch:hover { border-color: var(--amber-border); color: var(--text); }
   .rv-swatch.active { border-color: var(--amber); color: var(--text); }
-  .rv-sw-dot { width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.14); }
-  /* Auto = follows the app theme: a split dark/light disc, same language as the
-     app-theme Auto icon. Half-and-half via a hard-stop gradient. */
-  .rv-sw-auto .rv-sw-dot { background: linear-gradient(90deg, #0a0a0b 0 50%, #fbfbf9 50% 100%); border-color: rgba(127,127,127,0.4); }
+  /* One ring on every swatch, readable on a light sheet and a dark one; the
+     same as the reading sheets' .zb-dot (_READING_CSS in app.js). */
+  .rv-sw-dot { width: 22px; height: 22px; border-radius: 50%; box-sizing: border-box; border: 1.5px solid rgba(128,128,128,0.6); }
+  /* Auto shows what it paints: the Sepia swatch by day, the Dark one by night,
+     a half each (READER_AUTO_SWATCH in app.js). */
+  .rv-sw-auto .rv-sw-dot { background: linear-gradient(90deg, #f4ecd8 50%, #0a0a0b 50%); }
   .rv-sw-dark .rv-sw-dot { background: #0a0a0b; }
-  .rv-sw-light .rv-sw-dot { background: #fbfbf9; border-color: rgba(0,0,0,0.18); }
-  .rv-sw-sepia .rv-sw-dot { background: #f4ecd8; border-color: rgba(0,0,0,0.14); }
+  .rv-sw-light .rv-sw-dot { background: #fbfbf9; }
+  .rv-sw-sepia .rv-sw-dot { background: #f4ecd8; }
   .rv-swatch.active .rv-sw-dot { box-shadow: 0 0 0 2px var(--surface2), 0 0 0 3px var(--amber); }
   /* Family pills */
   .rv-pills { display: flex; gap: 6px; }
@@ -1040,6 +1059,20 @@
   .mp-link:hover { color: var(--amber); }
   .mp-wait { color: var(--text2); cursor: default; }
   .mp-busy { opacity: 0.6; pointer-events: none; }
+  /* A place kept: its name, the map it is on when not this one, and its lists. */
+  .mp-place .mp-name > span { unicode-bidi: plaintext; }
+  .mp-save { color: var(--amber); font-weight: 600; }
+  .mp-save svg { flex: none; }
+  .mp-lists {
+    display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; margin: -6px -8px -6px 0;
+    border: 0; border-radius: 8px; background: none; color: var(--text2); cursor: pointer; padding: 0;
+  }
+  [dir="rtl"] .mp-lists { margin: -6px 0 -6px -8px; }
+  .mp-lists:hover, .mp-lists:focus-visible { color: var(--amber); background: var(--amber-glow); outline: none; }
+  @media (pointer: coarse) {
+    .map-picker .mp-row { min-height: 44px; box-sizing: border-box; }
+    .mp-lists { width: 44px; height: 44px; margin-block: -12px; }
+  }
   .ld-interlang { display: flex; align-items: center; padding: 2px 6px; border-radius: 4px; cursor: pointer; opacity: 0.4; transition: all 0.15s; margin: -2px 0; }
   .ld-interlang:hover { opacity: 1; color: var(--amber); background: var(--amber-glow); }
   .lang-dropdown-item .ld-switch { display: flex; align-items: center; }
@@ -1059,10 +1092,6 @@
 
   /* ── RTL support ── */
   [dir="rtl"] .topbar { direction: rtl; }
-  [dir="rtl"] .topbar-search input { text-align: right; padding: 9px 14px 9px 36px; }
-  [dir="rtl"] .search-icon { left: 12px; right: auto; }
-  [dir="rtl"] .kbd { right: auto; left: 8px; }
-  [dir="rtl"] .topbar-search .search-clear { right: auto; left: 8px; }
   [dir="rtl"] .back-btn { transform: scaleX(-1); }
   /* Article/ZIM titles can be RTL (Arabic, Hebrew, Farsi) inside LTR
      chrome (and vice versa) — isolate so neighboring punctuation and
@@ -1071,7 +1100,12 @@
   [dir="rtl"] .bc-sep { transform: scaleX(-1); }
   [dir="rtl"] .result { direction: rtl; }
   [dir="rtl"] .result-body { text-align: right; }
-  [dir="rtl"] .result-source { flex-direction: row-reverse; }
+  /* A result's lines read in their own direction, still set from the
+     interface's side: an English snippet under a Hebrew interface ended
+     in "…" at its start. (Its source row needs no reversing: the result
+     is already right to left, and reversing it again sent the row to the
+     left, away from its title.) */
+  .result .snippet { unicode-bidi: plaintext; }
   [dir="rtl"] .result-thumb { order: 1; }
   [dir="rtl"] .footer { direction: rtl; }
   [dir="rtl"] .footer-sub { direction: ltr; } /* keep kbd hints LTR */
@@ -1176,15 +1210,56 @@
   }
   /* Zimi Maps' tile: a source among the sources, its icon a pin. */
   .apps-grid { margin-bottom: 16px; }
-  /* An app page is not an article; the bookmark buttons are for articles. A
-     map neither: its places are its own (lists across the apps are for later). */
-  body.app-page #bm-panel-btn, body.app-page.app-noitem #library-btn, body.map-page #bm-panel-btn, body.map-page #library-btn { display: none !important; }
-  .app-tile .detail { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  /* An app saves from its own page (a video's Watch later, a question's
+     Save, beside Like and Lists), so the header offers no second bookmark
+     for the same thing; its home has nothing to save at all. The Saved
+     panel's opener stays, and opens on the app's own saved things (B still
+     saves what is on screen). A map's places are the map's: saved and
+     listed in its own picker, Places and maps (map-source-btn). */
+  body.app-page #library-btn, body.map-page #bm-panel-btn, body.map-page #library-btn { display: none !important; }
+  /* An app's name and what it holds read together, beside its icon: a ZIM
+     card's detail sits at the card's foot (margin-top: auto), which left a
+     one-line app's name alone at the top and its detail a gap below. */
+  .app-tile .card-info { justify-content: center; }
+  .stat-card.app-tile .detail { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 4px; }
   .app-tile .card-icon { color: var(--amber); display: flex; align-items: center; justify-content: center; }
   /* Quiet, like any other detail line: an empty app is not an error (Eric). */
-  .app-tile.app-empty .detail { color: var(--text2); margin-top: 4px; }
-  /* Reddot's dot keeps its colour in the breadcrumb, where line marks take the text's. */
-  #bc-icon circle { fill: var(--amber); }
+  .app-tile.app-empty .detail { color: var(--text2); }
+  /* An app with nothing inside is drawn as a place still to fill: a dotted
+     outline reads "not set up yet" before the words do (Eric, 2026-09-29).
+     Hover and focus keep the dots and take the amber like any card. */
+  .stat-card.app-tile.app-empty { border: 1.5px dotted var(--text3); background: transparent; box-shadow: none; }
+  .stat-card.app-tile.app-empty:hover, .stat-card.app-tile.app-empty:focus-visible { border-color: var(--amber); background: var(--surface2); }
+  /* The Apps page: a section per app. The app is a banner, not a card shaped
+     like a ZIM: a tinted band with its mark in a larger rounded square, its
+     name set bigger, how many sources it reads, and a chevron, because it is
+     a door. Its ZIMs follow set in on a rail, so they read as what the app is
+     made of; the space between sections separates one app from the next. */
+  .app-section { margin-top: 30px; }
+  .cat-heading + .app-section { margin-top: 10px; }
+  .stat-card.app-banner { flex-direction: row; align-items: center; gap: 14px; padding: 14px 16px; border-color: var(--amber-border);
+    background: linear-gradient(to right, var(--amber-glow), transparent 80%), var(--surface); }
+  [dir="rtl"] .stat-card.app-banner { background: linear-gradient(to left, var(--amber-glow), transparent 80%), var(--surface); }
+  .app-banner .card-icon { width: 48px; height: 48px; border-radius: 14px; background: var(--amber-glow); box-shadow: inset 0 0 0 1px var(--amber-border); }
+  .app-banner .zt { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+  .stat-card.app-banner .detail { color: var(--text2); margin-top: 2px; }
+  .app-banner::after { content: '\203A'; margin-inline-start: auto; padding-inline-start: 8px; font-size: 26px; line-height: 1; color: var(--amber); }
+  /* The chevron mirrors itself in right to left (U+203A is bidi-mirrored). */
+  .stat-card.app-banner.app-empty, [dir="rtl"] .stat-card.app-banner.app-empty { background: transparent; }
+  .app-section > .stats-grid { margin: 10px 0 0; margin-inline-start: 23px; padding-inline-start: 13px; border-inline-start: 2px solid var(--border); gap: 6px; }
+  /* In the list, the ZIMs are its contents, not headliners: a name, its
+     numbers, a smaller mark. A ZIM's description is a long-press away (About
+     this ZIM). */
+  .app-section > .stats-grid:not(.tiles) .stat-card { padding: 8px 12px; gap: 12px; }
+  .app-section > .stats-grid:not(.tiles) .card-icon { width: 34px; height: 34px; border-radius: 8px; }
+  .app-section > .stats-grid:not(.tiles) .card-icon img { width: 30px; height: 30px; }
+  .app-section > .stats-grid:not(.tiles) .desc { display: none; }
+  .app-section > .stats-grid:not(.tiles) .card-info { justify-content: center; }
+  .app-section > .stats-grid:not(.tiles) .detail { margin-top: 2px; }
+  /* Reddot's dot keeps its colour in the breadcrumb, where line marks take the
+     text's. Only a filled dot: Zimipedia's globe is a line mark too, and
+     filling its circle painted a dark disc on the light header. */
+  #bc-icon circle[fill="currentColor"] { fill: var(--amber); }
   .suggest-item.sg-place .sg-title::before { content: '\25CF'; color: var(--amber); font-size: 8px; margin-right: 8px; vertical-align: middle; }
   .stat-card:hover, .stat-card:focus-visible {
     background: var(--surface2); border-color: var(--amber-border);
@@ -1371,6 +1446,22 @@
   .zimi-ctx-item { padding: 8px 14px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
   .zimi-ctx-item:hover { background: var(--hover); }
   .zimi-ctx-item .ctx-key { margin-inline-start: auto; font-size: 11px; color: var(--text2); }
+  /* ── Where a link to the web goes (#99): beside the link, over the frame ── */
+  .ext-sheet {
+    position: fixed; z-index: 10002; display: none;
+    max-width: min(320px, calc(100vw - 16px)); padding: 10px 12px;
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: var(--shadow-popup);
+    color: var(--text); font-size: 13px; line-height: 1.4;
+  }
+  .ext-sheet.open { display: block; }
+  .ext-sheet-where { display: flex; align-items: flex-start; gap: 8px; }
+  .ext-sheet-where svg { flex: none; width: 13px; height: 13px; margin-top: 3px; color: var(--text2); }
+  [dir="rtl"] .ext-sheet-where svg { transform: scaleX(-1); }
+  .ext-sheet-where bdi { font-weight: 600; overflow-wrap: anywhere; }
+  .ext-sheet-note { color: var(--text2); margin: 4px 0 0; padding-inline-start: 21px; }
+  .ext-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding-inline-start: 21px; }
+  @media (pointer: coarse) { .ext-sheet { font-size: 14px; } }
   /* ── Word lookup (Define) popover ── */
   .define-popover {
     position: fixed; z-index: 10001; display: none;
@@ -1405,6 +1496,60 @@
     color: var(--amber); cursor: pointer; text-decoration: none;
   }
   .define-card .define-open:hover { text-decoration: underline; }
+  /* ── Highlights: the selection bar and the note card (highlights.js) ──
+     The four colours are the page's own highlight colours at full strength. */
+  .hl-c-yellow { background: #ffcc00; } .hl-c-green { background: #34c759; }
+  .hl-c-blue { background: #409cff; } .hl-c-pink { background: #ff4081; }
+  .hl-bar {
+    position: fixed; z-index: 10001; display: none; align-items: center; gap: 2px; padding: 4px;
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--shadow-popup); color: var(--text); font-size: 13px;
+    max-width: calc(100vw - 16px); -webkit-user-select: none; user-select: none;
+  }
+  .hl-bar.open { display: flex; }
+  .hl-bar button {
+    display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; min-width: 38px;
+    padding: 0 10px; border: 0; border-radius: 8px; background: none; color: inherit;
+    font: inherit; font-weight: 500; cursor: pointer; white-space: nowrap; -webkit-tap-highlight-color: transparent;
+  }
+  .hl-bar button.hl-icon, .hl-bar button.hl-swatch { padding: 0; width: 38px; }
+  .hl-bar button:hover, .hl-bar button:focus-visible { color: var(--amber); background: var(--amber-glow); outline: none; }
+  .hl-bar svg { width: 17px; height: 17px; flex-shrink: 0; }
+  .hl-swatches { display: flex; }
+  .hl-swatch span { width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.18); }
+  .hl-swatch[aria-pressed="true"] span { box-shadow: 0 0 0 2px var(--card-bg), 0 0 0 4px var(--text); }
+  .hl-sep { width: 1px; align-self: stretch; margin: 6px 3px; background: var(--border); }
+  .hl-bar.hl-tight .hl-note-btn { padding: 0; }
+  .hl-bar.hl-tight .hl-note-btn > span { display: none; }
+  /* A thumb's size on a touch screen. */
+  @media (pointer: coarse) {
+    .hl-bar button { min-height: 44px; min-width: 44px; }
+    .hl-bar button.hl-icon, .hl-bar button.hl-swatch { width: 44px; }
+    .hl-note-actions .pill { min-height: 44px; }
+  }
+  /* The note card sits near the top: on a phone the keyboard takes the bottom. */
+  .hl-note {
+    position: fixed; z-index: 10002; display: none; flex-direction: column; gap: 10px;
+    top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
+    width: min(440px, calc(100vw - 24px)); padding: 14px;
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px;
+    box-shadow: var(--shadow-popup); color: var(--text);
+  }
+  .hl-note.open { display: flex; }
+  .hl-note-quote {
+    padding-inline-start: 10px; border-inline-start: 3px solid var(--hl-c, #ffcc00); color: var(--text2);
+    font-size: 13px; line-height: 1.45; overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  }
+  .hl-b-yellow { --hl-c: #ffcc00; } .hl-b-green { --hl-c: #34c759; } .hl-b-blue { --hl-c: #409cff; } .hl-b-pink { --hl-c: #ff4081; }
+  /* 16px: iOS does not zoom the page into a field this size. */
+  .hl-note-text {
+    min-height: 96px; resize: vertical; padding: 10px; font: inherit; font-size: 16px; line-height: 1.4;
+    color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 10px;
+  }
+  .hl-note-text:focus { outline: 2px solid var(--amber-border); border-color: var(--amber); }
+  .hl-note-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .hl-note-actions .pill { min-height: 36px; padding: 0 16px; }
   /* ── Library health report ── */
   .library-health:empty { display: none; }
   .library-health { margin-top: 12px; }
@@ -1493,6 +1638,10 @@
   .manage-card .mc-row, .ms-pane .mc-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--text2); padding: 4px 0; }
   .manage-card .mc-row .mc-label, .ms-pane .mc-label { color: var(--text2); }
   .manage-card .mc-row .mc-value, .ms-pane .mc-value { color: var(--text); font-weight: 500; }
+  /* What a count above is made of: indented under it, smaller and quieter. */
+  .ms-pane .mc-row.mc-sub { font-size: 12px; padding: 1px 0; padding-inline-start: 14px; }
+  .ms-pane .mc-row.mc-sub .mc-value { color: var(--text2); font-weight: 400; }
+  .ms-pane .mc-row.mc-sub:last-child { padding-bottom: 5px; }
   /* App updates (Server pane): quiet when current, amber when a release is out */
   /* The four atoms every settings section states a fact with: the notable
      value, the quiet one, an outbound link, and a command to copy. Scoped to
@@ -1539,18 +1688,23 @@
   .ms-nav-item.active { color: var(--amber); background: var(--amber-glow); }
   .ms-pane { flex: 1; padding: 16px 20px; }
   .ms-pane .ms-actions { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
-  .ms-pane .ms-check { display: flex; align-items: center; gap: 8px; padding: 6px 0; cursor: pointer; font-size: 13px; color: var(--text); }
-  .ms-pane .ms-check input { accent-color: var(--amber); }
-  /* The apps to offer, as the tiles they are: lit when on. */
-  .app-picks { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
-  .app-pick { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; font: inherit; font-size: 13px; color: var(--text2);
-    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; }
-  .app-pick svg { width: 20px; height: 20px; }
-  .app-pick.on { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
-  .app-pick[disabled] { opacity: 0.5; cursor: default; }
-  .app-pick-t { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.25; }
-  .app-pick-t small { font-size: 11px; opacity: 0.75; }
-  .app-picks-all { display: flex; gap: 6px; margin: 2px 0 8px; }
+  /* Settings' on/off rows: the sharing card's row shape, the whole row the
+     label of its switch. Apps add their icon at the start. */
+  .set-rows { margin: 10px 0 0; }
+  label.set-row { cursor: pointer; }
+  .set-row .share-row-title, .set-row .share-row-desc { display: block; }
+  .set-row .share-row-title { font-weight: 500; font-size: 14px; }
+  .set-row-icon { display: flex; flex-shrink: 0; color: var(--amber); }
+  .set-row-icon svg { width: 22px; height: 22px; }
+  .set-row.share-locked { cursor: default; }
+  /* A section header with its actions at the far end (Apps: All, None). */
+  .ms-section-head { display: flex; align-items: center; gap: 4px; }
+  .ms-section-head > span { margin-inline-start: auto; display: flex; gap: 2px; }
+  .set-head-btn {
+    font: inherit; font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: 0;
+    color: var(--amber); background: none; border: none; border-radius: 6px; padding: 4px 8px; cursor: pointer;
+  }
+  .set-head-btn:hover { background: var(--amber-glow); }
   .ms-pane .ms-field { margin-bottom: 10px; }
   /* Field labels stay mixed-case 12px — uppercase is reserved for section
      headers so the two hierarchy levels read as different levels. */
@@ -1583,6 +1737,23 @@
        otherwise pushes the row sideways on a phone. */
     .env-row { grid-template-columns: minmax(0, 1fr); }
   }
+  /* What Zimi fetches from the internet: folded to its counts, which is the
+     answer; open, a name and its state on one line, what and where under it.
+     The state is the one word that matters, so "on its own" is amber. */
+  .net-details > summary { cursor: pointer; font-size: 13px; color: var(--text); padding: 4px 0; }
+  .net-rows { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .net-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: baseline; }
+  .net-name { font-size: 13px; color: var(--text); }
+  .net-state { font-size: 12px; color: var(--text2); white-space: nowrap; }
+  .net-state-auto { color: var(--amber); }
+  .net-state-off, .net-state-unset { color: var(--text3); }
+  .net-what { grid-column: 1 / -1; font-size: 12px; line-height: 1.5; color: var(--text2); }
+  /* Where it goes on a line of its own, whole names (a host broken mid-word
+     reads as two), and the way to its switch at the far end. */
+  .net-where { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font-size: 11px; color: var(--text3); }
+  .net-where code { overflow-wrap: anywhere; }
+  .net-go { font-size: 12px; color: var(--amber); white-space: nowrap; }
+  .net-where .net-go { margin-inline-start: auto; }
   /* App-theme segmented control (Auto / Dark / Light). Three equal pills in a
      recessed track, amber-filled when active — mirrors the reader palette's
      control language so the two theme pickers feel like one family. */
@@ -1609,7 +1780,7 @@
      own box on a phone rather than pushing the pane sideways. */
   .cr-made-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
   .cr-made-chip { font-size: 12px; color: var(--text2); padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; }
-  .cr-made-chip b { color: var(--amber); font-weight: 600; margin-right: 2px; }
+  .cr-made-chip b { color: var(--amber); font-weight: 600; }
   .cr-made-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .cr-made-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
   .cr-made-table th, .cr-made-table td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
@@ -1828,13 +1999,6 @@
   .dl-item .dl-error { color: var(--error); font-weight: 600; min-width: 0; }
   .dl-item .dl-scheduled { color: var(--text2); flex-shrink: 0; font-weight: 500; white-space: nowrap; }
   /* Download-scheduling card */
-  /* 12px of air above every toggle row: keeps the checkbox off the hint text /
-     button row that precedes it (Downloads restrictor, both Overwrite rows). */
-  .ms-toggle-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--text); cursor: pointer; }
-  /* Match the app's styled checkbox (amber accent) instead of the bare native
-     square — consistent with .ms-check / .share-upnp elsewhere in the pane. */
-  .ms-toggle-row input[type="checkbox"] { accent-color: var(--amber); width: 15px; height: 15px; flex-shrink: 0; }
-  .ms-toggle-row input[disabled] { cursor: not-allowed; }
   .ms-dl-window { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 10px; }
   .ms-dl-window label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); }
   .ms-dl-window input[type="time"] {
@@ -1956,8 +2120,7 @@
   .share-inactive .switch { cursor: default; }
   .share-port-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 12px; color: var(--text2); flex-wrap: wrap; }
   .share-port-label { font-family: monospace; font-size: 11px; }
-  .share-upnp { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-size: 11px; }
-  .share-upnp input { accent-color: var(--amber); }
+  .share-upnp { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; }
   /* Icon button matching the num-input chrome beside it (6px radius,
      surface fill) — an SVG reload glyph, centered, amber on hover. */
   .share-port-retry { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text2); cursor: pointer; transition: color 0.15s, border-color 0.15s; }
@@ -2176,6 +2339,9 @@
   .share-row-title { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0.01em; }
   .share-row-desc { font-size: 12px; color: var(--text2); margin-top: 2px; line-height: 1.45; }
   .share-row-locknote { color: var(--amber); opacity: 0.8; }
+  /* Merge data: the replace warning shows only while the switch is off. */
+  .merge-row .share-row-desc { display: none; color: var(--error); }
+  .merge-row.merge-off .share-row-desc { display: block; }
   .share-locked .share-row-title, .share-locked .share-row-desc:not(.share-row-locknote) { opacity: 0.55; }
   .share-ratio { white-space: nowrap; }
   .share-ratio input {
@@ -2210,7 +2376,12 @@
   }
   .switch input:checked + .switch-slider::before { transform: translateX(18px); background: #000; }
   .switch input:focus-visible + .switch-slider { outline: 2px solid var(--amber); outline-offset: 2px; }
-  .switch input:disabled + .switch-slider { cursor: default; }
+  .switch input:disabled, .switch input:disabled + .switch-slider { cursor: default; }
+  .set-row .switch input:disabled + .switch-slider { opacity: 0.5; }
+  /* The small one, inline beside a field (UPnP by the port). */
+  .switch-sm { width: 32px; height: 18px; }
+  .switch-sm .switch-slider::before { width: 12px; height: 12px; }
+  .switch-sm input:checked + .switch-slider::before { transform: translateX(14px); }
   @media (prefers-reduced-motion: reduce) {
     .switch-slider, .switch-slider::before { transition: none; }
   }
@@ -2439,11 +2610,40 @@
   .ci-pin { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; color: var(--amber); }
   .ci-pin svg { width: 24px; height: 24px; }
   .browse-drilldown-count { font-size: 12px; color: var(--text2); margin-inline-start: auto; }
+  /* ── Search operators: chips and the "?" ──
+     A chip says what one operator did ("without ted", "French"); its ×
+     searches again without it. The same chip, minus the ×, explains each
+     example behind the "?". Logical properties, so right-to-left mirrors. */
+  .search-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+  .search-chip {
+    display: inline-flex; align-items: center; gap: 2px; box-sizing: border-box; max-width: 100%;
+    min-height: 28px; padding-block: 2px; padding-inline: 12px 2px;
+    font-size: 12px; line-height: 1.25; color: var(--text);
+    background: var(--amber-glow); border: 1px solid var(--amber-border); border-radius: 20px;
+  }
+  .search-chip.search-chip-static { padding-inline-end: 12px; }
+  .search-chip-label { min-width: 0; overflow-wrap: anywhere; }
+  .search-chip-x {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    width: 24px; height: 24px; padding: 0; border: none; border-radius: 50%;
+    background: transparent; color: var(--text2); cursor: pointer; transition: color 0.12s, background 0.12s;
+  }
+  .search-chip-x:hover, .search-chip-x:focus-visible { color: var(--amber); background: var(--amber-glow); }
+  .topbar-search .search-help {
+    display: none; position: absolute; inset-inline-end: 34px; top: 50%; transform: translateY(-50%);
+    align-items: center; justify-content: center; box-sizing: border-box;
+    width: 22px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 50%;
+    background: transparent; color: var(--text2); font: 600 12px/1 inherit; cursor: pointer;
+    transition: color 0.12s, background 0.12s, border-color 0.12s;
+  }
+  .topbar-search.has-help .search-help { display: flex; }
+  .topbar-search .search-help:hover, .topbar-search .search-help[aria-expanded="true"] { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .topbar-search.has-help input { padding-inline-end: 62px; }
+  .search-tips-head { padding: 8px 14px 4px; font-size: 12px; font-weight: 600; color: var(--text2); }
+  .search-example { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+  .search-example-q { color: var(--text); font-weight: 500; }
 
   /* ── Mobile ── */
-  /* ── Results summary ── */
-  .results-summary { text-align: center; padding: 16px 0 4px; font-size: 12px; color: var(--text2); opacity: 0.6; }
-
   /* ── Footer ── */
   .footer-sub { margin-top: 6px; font-size: 11px; opacity: 0.7; }
   /* WCAG 1.4.1: links inside text need a non-color cue. Using a 1px
@@ -2462,6 +2662,13 @@
     .browse-grid { grid-template-columns: 1fr; }
     .container { padding: 20px 12px; }
     .topbar-search .kbd { display: none; }
+    /* A phone's box is narrow, so the "?" costs it nothing: it takes the ×'s
+       place while the box is empty, sits beside the × while you type, and
+       steps aside while a search is shown, whose chips say what it did. */
+    .topbar-search.has-help input:placeholder-shown,
+    .topbar-search.has-help input:not(:focus) { padding-inline-end: 36px; }
+    .topbar-search input:placeholder-shown ~ .search-help { inset-inline-end: 8px; }
+    .topbar-search input:not(:placeholder-shown):not(:focus) ~ .search-help { display: none; }
     .kbd-hints { display: none; }
     .manage-card { padding: 16px 12px; }
     .manage-settings { flex-direction: column; min-height: auto; }
@@ -2492,10 +2699,11 @@
     .topbar.search-focused .create-btn,
     .topbar.search-focused .topbar-more,
     .topbar.search-focused .library-btn,
+    .topbar.search-focused #history-btn,
     .topbar.search-focused #bm-panel-btn { display: none !important; }
-    /* On a map the picker takes the bookmarks button's place; the history
-       panel's Bookmarks tab is where they are. */
-    body.map-page #bm-panel-btn { display: none !important; }
+    /* On a map the picker takes the panel openers' place (it keeps the
+       map's places); H and B still open History and Saved. */
+    body.map-page #bm-panel-btn, body.map-page #history-btn { display: none !important; }
     .topbar.search-focused .lang-dropdown { display: none !important; }
     /* v1.6: Language dropdown — full width on mobile */
     .lang-dropdown { min-width: 160px; }
@@ -2679,9 +2887,13 @@
      rather than let the text run out of the box. */
   .ctx-sub.fitted > .ctx-item { white-space: normal; }
   .ctx-item:hover > .ctx-sub, .ctx-item.kb-open > .ctx-sub { display: block; }
-  /* Keyboard focus reads like hover (roving tabindex, ARIA menu pattern). */
-  .ctx-item:focus, .ctx-item:focus-visible { background: var(--amber-glow); color: var(--amber); outline: none; }
-  .ctx-item.danger:focus, .ctx-item.danger:focus-visible { background: rgba(239,68,68,0.08); color: var(--error); }
+  /* Keyboard focus reads like hover (roving tabindex, ARIA menu pattern).
+     Only the keyboard's: a menu opened by a tap or a click focuses its first
+     item too, and lit up it read as already chosen (the Lists picker's first
+     list looked ticked). */
+  .ctx-item:focus { outline: none; }
+  .ctx-item:focus-visible { background: var(--amber-glow); color: var(--amber); }
+  .ctx-item.danger:focus-visible { background: rgba(239,68,68,0.08); color: var(--error); }
 
   /* ── Manage-row gear (opens the same Move to… menu) ── */
   .ci-gear {
@@ -2787,19 +2999,17 @@
     overflow-y: auto; box-shadow: -4px 0 24px rgba(0,0,0,0.4);
   }
   .history-panel.open { display: block; }
+  /* Each panel's header: its name and its close, one short band. */
   .library-panel-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 6px 8px 6px 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0;
     background: var(--surface); z-index: 1;
   }
-  .library-tabs { display: flex; gap: 0; background: var(--bg); border-radius: 8px; padding: 2px; flex: 1; }
-  .library-tab {
-    flex: 1; padding: 6px 12px; font-size: 13px; font-weight: 500; color: var(--text2);
-    background: none; border: none; border-radius: 6px; cursor: pointer; transition: all 0.15s;
-    text-align: center; white-space: nowrap;
-  }
-  .library-tab:hover { color: var(--text); }
-  .library-tab.active { background: var(--surface2); color: var(--text); font-weight: 600; }
+  [dir="rtl"] .library-panel-header { padding: 6px 16px 6px 8px; }
+  .library-panel-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--text); }
+  .library-panel-header .hp-clear { border-color: transparent; font-size: 14px; }
+  /* Continue, at the head of History: its tree sits on the day groups' edge. */
+  .bm-tree.hp-continue { padding: 6px 10px 0; }
   .hp-clear { background: none; border: 1px solid var(--border); border-radius: var(--radius); color: var(--text2); font-size: 12px; padding: 4px 10px; cursor: pointer; transition: all 0.15s; }
   .hp-clear:hover { color: var(--error); border-color: var(--error); }
   .hp-group { padding: 0 16px; }
@@ -2824,13 +3034,32 @@
   .hp-item-del:hover { opacity: 1 !important; color: var(--error); }
   .hp-empty { padding: 32px 16px; text-align: center; color: var(--text2); font-size: 13px; }
 
-  /* ── Bookmarks tab: folder tree (v2) ── */
-  .bm-actions { border-bottom: 1px solid var(--border); }
+  /* ── Saved tab: Continue, Liked and the lists, then what is in no list ── */
+  .bm-scope { display: flex; gap: 6px; padding: 10px 12px 0; flex-wrap: wrap; }
+  .bm-continue .bm-ficon, .bm-folder[data-fid="liked"] .bm-ficon { color: var(--amber); }
+  .bm-gear.bm-gear-gap { visibility: hidden; }
+  /* A title keeps its own direction (an English one under Hebrew chrome still
+     ends in its own question mark) and the list's alignment. */
+  .bm-name, .bm-sub { unicode-bidi: plaintext; text-align: left; }
+  [dir="rtl"] .bm-name, [dir="rtl"] .bm-sub { text-align: right; }
+  /* Two quiet actions over the lists, in the tree's own voice: New list
+     where a list's name starts, Export at the far end. Boxed, at a thumb's
+     height each, they outweighed the lists they act on. */
+  .bm-actions { justify-content: space-between; padding: 2px 10px 0; }
+  .bm-actions .hp-action-btn { background: none; border: 0; color: var(--text2); font-size: 13px; padding: 6px 8px; display: inline-flex; align-items: center; gap: 8px; }
+  .bm-actions .bm-new > span { width: 17px; text-align: center; font-size: 17px; line-height: 1; }
+  /* Something to say above the lists: sync paused, 1.11's bookmarks offered. */
+  /* A toast for something taken away carries its way back. */
+  .toast-undo { display: flex; align-items: center; gap: 16px; width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; }
+  .toast-undo button { border: 0; background: none; color: var(--amber); font: inherit; font-weight: 600; cursor: pointer; padding: 8px 4px; margin: -8px 0; white-space: nowrap; }
+  .bm-note { margin: 10px 12px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; line-height: 1.45; color: var(--text2); }
+  .bm-note.bm-warn { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+  .bm-note-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
   .bm-tree { padding: 6px 10px 16px; -webkit-user-select: none; user-select: none; touch-action: pan-y; }
   .bm-tree.bm-drop-root { background: var(--amber-glow); border-radius: 8px; }
   .bm-row {
     position: relative; display: flex; align-items: center; gap: 8px;
-    padding: 7px 8px 7px 6px; border-radius: 7px; cursor: pointer; min-height: 34px;
+    padding-block: 7px; padding-inline: 6px 8px; border-radius: 7px; cursor: pointer; min-height: 34px;
   }
   .bm-row:hover { background: var(--surface2); }
   .bm-row:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
@@ -2840,6 +3069,8 @@
     font-size: 10px; transition: transform 0.15s; transform: rotate(0deg);
   }
   .bm-twist.open { transform: rotate(90deg); }
+  /* Closed, it points the way the text runs. */
+  [dir="rtl"] .bm-twist:not(.open) { transform: scaleX(-1); }
   /* Empty twist column on bookmark rows — keeps a bookmark indented past the
      folder that holds it instead of hanging left of it. */
   .bm-twist-gap { visibility: hidden; }
@@ -2862,6 +3093,11 @@
   .bm-missing .bm-bicon { opacity: 0.4; }
   .bm-missing .bm-name { color: var(--text2); font-style: italic; }
   .bm-missing .bm-sub { color: var(--error); }
+  /* A highlight: its colour as a bar, its passage over two lines. */
+  .bm-hl-bar { flex-shrink: 0; width: 3px; align-self: stretch; border-radius: 2px; margin-block: 2px; margin-inline: 0 2px; }
+  .bm-hl .bm-name { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.35; }
+  .bm-hl-lost .bm-name { color: var(--text2); }
+  .bm-hl-lost .bm-sub { color: var(--amber); }
   .bm-count {
     flex-shrink: 0; font-size: 11px; color: var(--text2); background: var(--surface2);
     border-radius: 10px; padding: 1px 7px; min-width: 20px; text-align: center;
@@ -2875,12 +3111,30 @@
   /* Touch: no hover, so keep the gear always faintly visible. */
   @media (hover: none) { .bm-gear { opacity: 0.45; } }
   /* Inline new-folder / rename inputs */
-  .bm-newfolder, .bm-row.bm-renaming { display: flex; align-items: center; gap: 8px; padding: 7px 8px 7px 6px; min-height: 34px; }
+  .bm-newfolder, .bm-row.bm-renaming { display: flex; align-items: center; gap: 8px; padding-block: 7px; padding-inline: 6px 8px; min-height: 34px; }
   .bm-newfolder-input, .bm-rename-input {
     flex: 1; min-width: 0; background: var(--surface); color: var(--text); font-size: 13px;
     border: 1px solid var(--amber-border); border-radius: 6px; padding: 4px 8px; outline: none;
   }
   .bm-rename-input { font-weight: 600; }
+  /* A finger, not a pointer: a row, the ⋯ at its end and the panel's buttons
+     are each a thumb's size. The ⋯ takes the row's full height and the room
+     at its end, so its glyph stays where it was. */
+  @media (pointer: coarse) {
+    .bm-row, .bm-newfolder, .bm-row.bm-renaming { min-height: 44px; }
+    .bm-gear { align-self: stretch; min-width: 44px; margin-block: -7px; margin-inline-end: -8px; }
+    .bm-actions .hp-action-btn, .bm-note-actions .hp-action-btn,
+    .bm-export-actions .hp-action-btn, .bm-exp-row { min-height: 44px; }
+    .library-panel-header .hp-clear { min-width: 44px; min-height: 44px; }
+    /* The targets stay a thumb's size; the room around them goes, so the
+       header and the actions under it take one short band, not a third of
+       the phone. The close is a bare mark, as the sheets' are. */
+    .library-panel-header { padding: 0 0 0 16px; }
+    [dir="rtl"] .library-panel-header { padding: 0 16px 0 0; }
+    .library-panel-header .hp-clear { font-size: 15px; }
+    .bm-actions { padding-top: 0; }
+    .bm-actions + .bm-tree, .bm-actions ~ .bm-tree { padding-top: 0; }
+  }
   /* Drag feedback */
   .bm-row.bm-dragging { opacity: 0.4; }
   .bm-row.bm-drop-into { background: var(--amber-glow); box-shadow: inset 0 0 0 2px var(--amber-border); }
@@ -2896,9 +3150,14 @@
     box-shadow: 0 6px 20px rgba(0,0,0,0.28); max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .ctx-note { padding: 8px 12px; font-size: 12px; color: var(--text2); border-bottom: 1px solid var(--border); max-width: 240px; white-space: normal; line-height: 1.4; }
-  /* Folder glyph inside Move to... submenu rows. */
-  .ctx-fico { display: inline-flex; vertical-align: -3px; margin-inline-end: 6px; color: var(--text2); }
-  .ctx-fico svg { width: 14px; height: 14px; }
+  /* The tick beside each list an item is in (the Lists submenu). */
+  .ctx-check { display: inline-block; width: 1.2em; color: var(--amber); font-weight: 700; }
+  /* The list picker (savedPickLists): a new list's name typed in its row;
+     each row a thumb's height on a touch screen. */
+  .ctx-input { width: 100%; box-sizing: border-box; }
+  @media (pointer: coarse) {
+    .ctx-item[data-action="toggle-list"], .ctx-item[data-action="new-list"], .ctx-item:has(> .ctx-input) { min-height: 44px; display: flex; align-items: center; }
+  }
 
   /* Export selector modal */
   .bm-export-overlay {
@@ -3098,6 +3357,9 @@
   .dc-word-card .dc-def { font-size: 13px; color: var(--text2); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .dc-icon-thumb { width: 100%; height: 120px; display: flex; align-items: center; justify-content: center; background: var(--surface2); }
   .dc-icon-thumb img { width: 48px; height: 48px; opacity: 0.6; }
+  /* A source with no icon of its own: its letter, as everywhere else it is
+     named, not an empty box. */
+  .dc-icon-thumb .rs-letter { width: 56px; height: 56px; border-radius: 12px; background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 600; color: var(--text2); }
   .dc-dice { font-size: 12px; flex-shrink: 0; opacity: 0.7; }
   /* Video ZIMs (TED/Khan): play badge centered over the 120px thumbnail so a
      "random" pick reads as "play a video", not "read an article". */
@@ -3332,3 +3594,15 @@
   -webkit-text-fill-color: initial;
 }
 .lib-sort:hover, .lib-sort:focus-visible { color: var(--text); border-color: var(--amber-border); }
+
+/* On a touch screen the home page's and the search's small controls take a
+   finger (44px): the order and view controls grow to it, the marks that
+   close or clear keep their look and gain an invisible margin. */
+@media (pointer: coarse) {
+  .lib-sort { min-height: 44px; }
+  .lib-view-btn { width: 44px; height: 42px; }
+  .dc-dismiss, .lang-banner-dismiss, .search-chip-x { position: relative; }
+  .dc-dismiss::after, .lang-banner-dismiss::after, .search-chip-x::after, .topbar-search .search-help::after {
+    content: ''; position: absolute; inset: -12px;
+  }
+}

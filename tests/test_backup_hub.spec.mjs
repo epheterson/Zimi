@@ -48,11 +48,11 @@ test('admin Server pane renders both cards with separate controls', async ({ pag
   await freshAdminServerPane(page);
   // My-data card controls.
   await expect(page.locator('#ms-mydata-file')).toHaveCount(1);
-  await expect(page.locator('#ms-mydata-overwrite')).toHaveCount(1);
+  await expect(page.locator('#ms-mydata-merge')).toHaveCount(1);
   await expect(page.locator('#ms-mydata-status')).toHaveCount(1);
   // Server-backup card controls — distinct ids, its own import/preview slot.
   await expect(page.locator('#ms-server-file')).toHaveCount(1);
-  await expect(page.locator('#ms-server-overwrite')).toHaveCount(1);
+  await expect(page.locator('#ms-server-merge')).toHaveCount(1);
   await expect(page.locator('#ms-server-import')).toHaveCount(1);
   // Admin (no named-user session) → the My-data card is file-only, no
   // Save/Restore-to-server buttons.

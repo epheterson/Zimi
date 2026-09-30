@@ -10,7 +10,8 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const src = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.js'), 'utf8');
+// A Windows checkout carries CRLF; the patterns below are written with \n.
+const src = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'app.js'), 'utf8').replace(/\r\n/g, '\n');
 function extract(re, label) {
   const m = src.match(re);
   if (!m) throw new Error('could not extract ' + label + ' from app.js');
@@ -48,6 +49,7 @@ vm.createContext(ctx);
 vm.runInContext([
   extract(/function _newestPer\(list, key\) \{[\s\S]*?\n\}/, '_newestPer'),
   extract(/function _installedOfKind\(kind, key\) \{[\s\S]*?\n\}/, '_installedOfKind'),
+  extract(/function _installedFor\(kind, app, key\) \{[\s\S]*?\n\}/, '_installedFor'),
   extract(/function _mapName\(z\) \{[\s\S]*?\n\}/, '_mapName'),
   extract(/function _installedMaps\(\) \{[\s\S]*?\n\}/, '_installedMaps'),
   extract(/function mapPositionHash\(zoom, lat, lng\) \{[\s\S]*?\n\}/, 'mapPositionHash'),
@@ -110,9 +112,9 @@ ok('the current map is not reopened', opened === null);
 
 // The button: a map page, with somewhere else to go, and the bookmark reads
 // its position through the same helper (one way to ask where the map is).
-ok('the topbar shows the button on a map page with company only',
-  /_readingArticle && currentArticle && _isMapZim\(currentArticle\.zim\) && _installedMaps\(\)\.length > 1/.test(src));
-ok('bookmarking a map reads the position the same way', /_bkAdd\(zim, path, title, _currentMapPositionHash\(\)\)/.test(src));
+ok('the topbar shows the button on every map page: it is Places and maps, where a place is saved',
+  /var showMapSrc = !!\(_readingArticle && currentArticle && _isMapZim\(currentArticle\.zim\)\);/.test(src));
+ok('bookmarking a map reads the position the same way', /var pos = _currentMapPositionHash\(\);\n\s*return \{ kind: 'place', app: 'maps', zim: zim, path: path, title: title, where: pos \? \{ pos: _normMapPos\(pos\) \}/.test(src));
 ok('the language dropdown and this one hang from the same helper', (src.match(/_placeDropdownUnder\(dd, btn\);/g) || []).length === 2);
 
 // A shared link: the place in the hash survives the boot rewrite of the URL.

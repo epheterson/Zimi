@@ -65,7 +65,15 @@ VARS: dict[str, tuple[str, str]] = {
         "Waits this long before taking an app update",
         "App updates",
     ),
+    "ZIMI_UPDATE_CHECK": (
+        "Whether Zimi looks for its own updates: ask (only on Check now), auto or never",
+        "Check for Zimi updates",
+    ),
     "ZIMI_INSTALL_TYPE": ("How Zimi was installed, for the updater", ""),
+    "ZIMI_SATELLITE_UPDATES": (
+        "Satellite data for the Almanac's 3D Earth, from CelesTrak: ask (only when an admin asks), auto or never",
+        "Satellite data from the internet",
+    ),
     # ── downloads ─────────────────────────────────────────────────────────
     "ZIMI_MAX_CONCURRENT_DOWNLOADS": (
         "How many downloads run at once",
@@ -77,7 +85,7 @@ VARS: dict[str, tuple[str, str]] = {
     ),
     # ── sharing: BitTorrent ───────────────────────────────────────────────
     "ZIMI_OFFLINE": ("Air-gap switch: turns off everything internet-bound", "Sharing"),
-    "ZIMI_APPS": ("The apps on the home page: 0 hides them all, 1 shows them all, or a comma list of maps, tube, exchange, reddot, books keeps only those. wiki (Zimipedia, a preview) is on only when the list names it", "Apps"),
+    "ZIMI_APPS": ("The apps on the home page: 0 hides them all, 1 shows them all, or a comma list of maps, tube, exchange, reddot, books, wiki keeps only those", "Apps"),
     # ── the desktop app ────────────────────────────────────────────────────
     "ZIMI_DESKTOP_BROWSER": ("1 runs the desktop app in the system browser instead of a native window", "Desktop"),
     "ZIMI_APPCAST_URL": ("Where the Windows desktop app looks for updates", "Desktop"),

@@ -94,6 +94,8 @@
    backing disc or clip (the sprite IS the sphere; a backing circle would show
    as a hard rim behind the anti-aliased limb). */
 .almanac-moon { position: relative; width: 200px; height: 200px; }
+.almanac-moon-open { position: relative; border-radius: 50%; cursor: pointer; }
+.almanac-moon-open:focus-visible { outline: 2px solid var(--amber); outline-offset: 6px; }
 .almanac-moon-sprite { display: block; width: 100%; height: 100%; }
 .almanac-moon-glow { position: absolute; width: 280px; height: 280px; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: -1; }
 .almanac-moon-name { margin-top: 16px; font-size: 18px; font-weight: 500; color: var(--text); }
@@ -142,16 +144,64 @@
 .sunmap-flash.show { opacity: 1; transform: translate(-50%, 0); }
 .orrery-transit-wrap { display: none; align-items: center; gap: 6px; max-width: 500px; margin: 4px auto 0; padding: 0 4px; }
 .orrery-transit-end { font-size: 11px; color: var(--text3); flex-shrink: 0; min-width: 40px; }
-.orrery-transit-label { color: var(--amber); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 90px; text-align: right; font-family: 'SF Mono', 'Fira Code', monospace; }
+.orrery-transit-label { color: var(--amber); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 90px; text-align: end; }
 .orrery-now { width: auto; padding: 0 10px; font-size: 11px; color: var(--amber); border-color: var(--amber-border); }
+/* Earlier missions under the ride, in line with the controls above. */
+.orrery-missions { max-width: 500px; margin: 4px auto 0; padding: 0 4px; font-size: 11px; color: var(--text3); }
+.orrery-mission { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+.orrery-mission-pct { color: var(--amber); font-variant-numeric: tabular-nums; }
+.orrery-mission-days { font-size: 10px; font-variant-numeric: tabular-nums; }
+/* A finger needs more than a 4px track and a 14px thumb: the input grows to
+   a 28px target and paints the same 4px track across its middle. */
+@media (pointer: coarse) {
+  .orrery-slider { height: 28px; border-radius: 0; background: linear-gradient(var(--surface2), var(--surface2)) center / 100% 4px no-repeat; }
+  .orrery-slider::-webkit-slider-thumb { width: 22px; height: 22px; }
+  .orrery-slider::-moz-range-thumb { width: 22px; height: 22px; }
+  .orrery-slider::-moz-range-track { background: transparent; }
+}
 /* Orrery hover/tap tooltip: body stats with the body NAME itself as the link
-   (dotted-amber .alm-link idiom). The box takes pointer events itself (not
-   just the name link) so a hover-intent grace period can keep it open while
-   the pointer travels from the body onto the tooltip to reach the link —
-   with pointer-events:none here that traversal never registered and the tip
-   vanished before it could be clicked. */
-#orrery-tooltip { position: absolute; display: none; z-index: 10; pointer-events: auto; background: rgba(0,0,0,0.78); color: #ccc; font-size: 11px; line-height: 1.5; padding: 4px 8px; border-radius: 5px; white-space: nowrap; backdrop-filter: blur(4px); }
+   (dotted-amber .alm-link idiom). Only the link and the button take the
+   pointer: the box sits among crowded inner planets (Earth's covered Mars),
+   and a box that held the pointer kept the planets under it out of reach.
+   The canvas sees through the rest of it, and its mousemove keeps the tip
+   open while the pointer crosses the box toward the link or the button (the
+   traversal a pointer-transparent box once lost; almanac-orrery.js _overTip). */
+#orrery-tooltip { position: absolute; display: none; z-index: 10; pointer-events: none; background: rgba(0,0,0,0.78); color: #ccc; font-size: 11px; line-height: 1.5; padding: 4px 8px; border-radius: 5px; white-space: nowrap; backdrop-filter: blur(4px); }
+#orrery-tooltip .alm-link, #orrery-tooltip .orrery-tip-btn { pointer-events: auto; }
 .orrery-tip-info { display: block; }
+.orrery-tip-line { display: block; color: #bbb; white-space: normal; max-width: 230px; }
+/* The tip's one action (Fly there, See the Earth up close) is the loudest
+   thing in it: filled amber, the tip's full width. A tinted outline read as
+   one more line of text, and a phone gave no other sign a planet flies. */
+.orrery-tip-btn { display: block; width: 100%; margin-top: 6px; padding: 3px 12px; background: var(--amber); border: 1px solid var(--amber); border-radius: 999px; color: #000; font: inherit; font-weight: 600; cursor: pointer; }
+.orrery-tip-btn:focus-visible { outline: 2px solid var(--amber-border); outline-offset: 2px; }
+@media (hover: hover) { .orrery-tip-btn:hover { filter: brightness(1.1); } }
+@media (pointer: coarse) {
+  #orrery-tooltip { font-size: 12px; padding: 6px 10px; border-radius: 8px; }
+  .orrery-tip-btn { min-height: 40px; padding: 6px 16px; font-size: 14px; }
+}
+/* Under the orrery, until each has been done once: what a tap does. Touch
+   only; a pointer finds it by hovering (almanac-orrery.js _orreryRenderHint). */
+.orrery-hint { margin: 6px auto 0; max-width: 500px; text-align: center; font-size: 12px; color: var(--text2); }
+.orrery-hint[hidden] { display: none; }
+@media (hover: hover) and (pointer: fine) { .orrery-hint { display: none; } }
+/* The ride under the orrery: where the rocket is, the delay home, the twins. */
+.orrery-ride { max-width: 500px; margin: 8px auto 0; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; font-size: 12px; color: var(--text2); }
+.orrery-ride-head, .orrery-twin-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.orrery-ride-head { justify-content: space-between; }
+.orrery-ride-where { color: var(--amber); font-weight: 600; }
+.orrery-ride-dist, .orrery-ride-delay, .orrery-twin-speed, .orrery-twin-val { font-variant-numeric: tabular-nums; }
+.orrery-ride-delay { color: var(--text); font-size: 14px; margin-top: 2px; }
+.orrery-twin { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.orrery-twin-title { color: var(--text); font-weight: 600; }
+.orrery-twin-whatif { color: var(--text3); font-style: italic; }
+.orrery-twin-ctl { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.orrery-twin-speed { color: var(--amber); flex-shrink: 0; }
+.orrery-twin-clocks { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.orrery-twin-clock { display: flex; flex-direction: column; background: var(--surface2); border-radius: 8px; padding: 6px 8px; }
+.orrery-twin-lbl { font-size: 10px; color: var(--text3); letter-spacing: 0.04em; }
+.orrery-twin-val { font-size: 14px; color: var(--text); }
+.orrery-twin-note { margin-top: 8px; line-height: 1.5; }
 .almanac-sky-wrap { width: 100%; max-width: 600px; margin: 0 auto; border-radius: 12px; overflow: hidden; position: relative; }
 .almanac-sky-wrap canvas { width: 100%; display: block; }
 .almanac-location-link { color: var(--amber); cursor: pointer; text-decoration: none; font-size: 12px; }

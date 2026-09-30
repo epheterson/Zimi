@@ -48,6 +48,7 @@ for (const key of [
   'zimi_article_theme',
   'zimi_app_theme',
   'zimi_bookmarks',
+  'zimi_saved',            // 1.12: everything kept
   'zimi_history',
   'zimi_manage_pw',
   'zimi_reader_theme',

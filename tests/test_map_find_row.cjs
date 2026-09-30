@@ -40,6 +40,7 @@ vm.createContext(ctx);
 vm.runInContext([
   extract(/function _newestPer\(list, key\) \{[\s\S]*?\n\}/, '_newestPer'),
   extract(/function _installedOfKind\(kind, key\) \{[\s\S]*?\n\}/, '_installedOfKind'),
+  extract(/function _installedFor\(kind, app, key\) \{[\s\S]*?\n\}/, '_installedFor'),
   extract(/function _mapName\(z\) \{[\s\S]*?\n\}/, '_mapName'),
   extract(/function _mapSourceLabel\(z\) \{[\s\S]*?\n\}/, '_mapSourceLabel'),
   extract(/function _installedMaps\(\) \{[\s\S]*?\n\}/, '_installedMaps'),

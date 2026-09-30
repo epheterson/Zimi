@@ -300,7 +300,7 @@ def _serve(tmp_path, monkeypatch, apps):
 
     from zimi.http import ZimHandler
 
-    # Zimipedia is a preview, offered only when ZIMI_APPS names it.
+    # Zimipedia is offered unless ZIMI_APPS leaves it out.
     if apps is None:
         monkeypatch.delenv("ZIMI_APPS", raising=False)
     else:
@@ -320,10 +320,22 @@ def served(tmp_path, monkeypatch):
     httpd.shutdown()
 
 
-@pytest.mark.parametrize("apps", [None, "1", "all", "maps,tube,exchange,reddot,books"])
-def test_the_routes_are_not_there_unless_wiki_is_named(tmp_path, monkeypatch, apps):
-    """Off unless named: the default, "1" and "all" leave Zimipedia off, and
-    its endpoints answer 404 as if they did not exist."""
+@pytest.mark.parametrize("apps", [None, "1", "all"])
+def test_the_routes_are_there_by_default(tmp_path, monkeypatch, apps):
+    """On by default (1.12): the default, "1" and "all" offer Zimipedia."""
+    httpd, url = _serve(tmp_path, monkeypatch, apps)
+    try:
+        assert _get(url + "/wiki/home")[0] == 200
+    finally:
+        httpd.shutdown()
+
+
+@pytest.mark.parametrize("apps", ["0", "maps,tube,exchange,reddot,books"])
+def test_the_routes_are_not_there_when_the_server_leaves_it_out(
+    tmp_path, monkeypatch, apps
+):
+    """A server that does not offer Zimipedia answers its endpoints 404, as
+    if they did not exist."""
     httpd, url = _serve(tmp_path, monkeypatch, apps)
     try:
         assert _get(url + "/wiki/home")[0] == 404
@@ -625,6 +637,34 @@ def test_a_day_s_pick_holds_all_day_and_is_read_once(today_lib, monkeypatch):
     assert wiki.pick(name, "20260925") is first and not calls
 
 
+def test_the_home_page_card_is_the_pick_today_shows(today_lib):
+    """Discover's word and quote of the day are Zimipedia's, not a second
+    roll of the dice (Eric, 2026-09-29: different ones in each is weird)."""
+    word = wiki.daily_card(today_lib["wiktionary"], "20260925")
+    pick = wiki.pick(today_lib["wiktionary"], "20260925")
+    assert (word["zim"], word["path"], word["blurb"]) == (
+        pick["zim"],
+        pick["path"],
+        pick["blurb"],
+    )
+    quote = wiki.daily_card(today_lib["wikiquote"], "20260925")
+    assert quote["path"] == "Voltaire" and quote["attribution"] == "Candide"
+    # A day that cannot be asked for, or a ZIM that is not a wiki: the
+    # caller rolls its own dice as before.
+    assert wiki.daily_card(today_lib["wiktionary"], "20270101") is None
+    assert wiki.daily_card("gutenberg_en_all", "20260925") is None
+
+
+def test_random_with_a_day_answers_the_wiki_s_pick(served):
+    """/random?day= on a Wikipedia is On this day as Today lists it; the
+    home page's card and Zimipedia's list start from the same event."""
+    en = _get(served + "/wiki/home")[1]["wikis"][0]["name"]
+    status, card = _get(served + "/random?zim=%s&thumb=1&day=20260925" % en)
+    assert status == 200 and card["event_year"] == "1666"
+    otd = _get(served + "/wiki/onthisday?zim=%s&date=0925" % en)[1]["events"]
+    assert card["path"] == otd[0]["path"]
+
+
 def test_today_answers_for_the_wikis_named_and_home_carries_what_is_known(
     today_lib, monkeypatch
 ):
@@ -650,7 +690,10 @@ def test_today_answers_for_the_wikis_named_and_home_carries_what_is_known(
 def test_today_shows_one_language_chosen_by_the_reader_then_english_then_the_most():
     W = lambda lang: {"language": lang}  # noqa: E731
     ws = [W("he"), W("he"), W("fr"), W("en")]
-    assert wiki.languages(ws)[0] == {"code": "he", "wikis": 2}
+    assert wiki.languages(ws)[0] == {"code": "he", "wikis": 2, "name": "עברית"}
+    # Named in itself by the server where a browser cannot (the page's pills).
+    assert wiki.languages([W("yi")])[0]["name"] == "ייִדיש"
+    assert wiki.languages([W("xx")])[0]["name"] == ""
     assert wiki.choose_language(ws, "fr") == "fr"
     assert wiki.choose_language(ws, "fr-CA") == "fr"  # a region is its language
     assert wiki.choose_language(ws, "de") == "en"  # no German wiki: English

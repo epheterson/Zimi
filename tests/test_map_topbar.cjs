@@ -48,8 +48,8 @@ const menu = fn('_buildTopbarMenuHtml');
 ok('the ⋯ menu drops Reader View and Read aloud on a map', /rvAvail = _readerViewAvailable\(\) && !_isMapPage\(\)/.test(menu) &&
   /_TTS_AVAILABLE && !_isMapPage\(\)/.test(menu));
 ok('Open in browser stays', /_openInBrowser\(\)/.test(menu));
-ok('the bookmarks panel and the map switcher stay in the bar', /bmPanelBtn\.style\.display = _readingArticle \?/.test(topbar) &&
-  /showMapSrc = _readingArticle && currentArticle && _isMapZim/.test(topbar));
+ok('the bookmarks panel and the map switcher stay in the bar', /getElementById\('bm-panel-btn'\)\.style\.display = libraryChromeOff \? 'none' : 'flex'/.test(topbar) &&
+  /showMapSrc = !!\(_readingArticle && currentArticle && _isMapZim/.test(topbar));
 
 // ── the dice ─────────────────────────────────────────────────────────────
 ok('the dice say "Random place" on a map', /t\(_isMapPage\(\) \? 'random_place' : 'random_article'\)/.test(topbar));

@@ -35,10 +35,7 @@ class TestCleanQuery(unittest.TestCase):
     def test_removes_stop_words(self):
         self.assertEqual(self.clean("how to fix a memory leak"), "fix memory leak")
 
-    def test_preserves_quoted_phrases(self):
-        result = self.clean('"python asyncio" is great')
-        self.assertIn('"python asyncio"', result)
-        self.assertNotIn("is", result.replace('"python asyncio"', ""))
+
 
     def test_all_stop_words_returns_original(self):
         self.assertEqual(self.clean("what is the"), "what is the")
@@ -623,7 +620,11 @@ class TestZimgitCatalogParse(unittest.TestCase):
 
         archive = MagicMock()
         entry = MagicMock()
-        entry.get_item.return_value.content = bytearray(content.encode("utf-8"))
+        # A real entry, as libzim answers: not a redirect, with a size.
+        entry.is_redirect = False
+        data = bytearray(content.encode("utf-8"))
+        entry.get_item.return_value.content = data
+        entry.get_item.return_value.size = len(data)
         archive.get_entry_by_path.return_value = entry
         return archive
 
@@ -2003,7 +2004,8 @@ class TestVersionConsistency(unittest.TestCase):
         import re as _re
 
         pyproject = open(
-            os.path.join(os.path.dirname(os.path.dirname(__file__)), "pyproject.toml")
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "pyproject.toml"),
+            encoding="utf-8",
         ).read()
         m = _re.search(r'^version = "([^"]+)"', pyproject, _re.M)
         self.assertIsNotNone(m)

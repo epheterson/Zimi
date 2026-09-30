@@ -7,8 +7,11 @@ via UPnP; Zimi does the same with a stdlib-only implementation:
 - A SOAP AddPortMapping call maps the BT port (TCP+UDP, 24h lease,
   refreshed on every startup/recheck)
 - GetExternalIPAddress comes straight from the gateway (works offline)
-- Actual reachability is confirmed via Transmission's public port checker
-  when the internet is available; otherwise it stays "unknown"
+- Actual reachability is confirmed via Transmission's public port checker,
+  only when an admin looks: the sharing settings opening with BitTorrent on,
+  or the recheck button beside the port (both POST /manage/nat-recheck). A
+  third party learning this machine's address and port is not something the
+  startup or the 12h upkeep should do on its own. Until then it is "unknown"
 
 Everything fails soft — a router without UPnP or an offline network just
 reports what it can. No state here is trusted for security decisions.
@@ -242,8 +245,13 @@ def _port_reachable_external(port: int) -> bool | None:
         return None
 
 
-def probe(bt_port: int, *, try_upnp: bool = True) -> dict:
-    """Full NAT probe: listen state, UPnP mapping, external view.
+def probe(
+    bt_port: int, *, try_upnp: bool = True, check_reachable: bool = False
+) -> dict:
+    """NAT probe: listen state, UPnP mapping (the router, on this network)
+    and, with ``check_reachable``, the external view from Transmission's port
+    checker. Only /manage/nat-recheck asks for that; everything automatic
+    keeps the last answer for this port, or "unknown".
 
     Slow (seconds) — callers run it off the request thread except for the
     explicit recheck button.
@@ -270,7 +278,12 @@ def probe(bt_port: int, *, try_upnp: bool = True) -> dict:
             result["upnp"] = "mapped" if mapped else "unavailable"
             if mapped:
                 result["external_ip"] = get_external_ip()
-        result["reachable"] = _port_reachable_external(bt_port)
+        if check_reachable:
+            result["reachable"] = _port_reachable_external(bt_port)
+        else:
+            with _status_lock:
+                if _last_status.get("bt_port") == bt_port:
+                    result["reachable"] = _last_status.get("reachable")
     with _status_lock:
         _last_status.clear()
         _last_status.update(result)

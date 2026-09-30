@@ -1,0 +1,791 @@
+"""/almanac-satellites: the orbital elements behind the Almanac's Earth view.
+
+The view draws the GPS constellation and the ISS from elements the server
+hands it. The rules under test:
+
+  - it answers at once from what is here (the shipped snapshot, or a newer
+    cache) and never waits on the network;
+  - "Satellite data from the internet" decides whether Zimi reaches out at
+    all: Ask first (the default) and Never fetch nothing on a GET, Ask first
+    fetches once when an admin asks (POST /manage/satellites/refresh, admin
+    gated), and ZIMI_SATELLITE_UPDATES wins over the saved choice;
+  - under Automatically a stale answer starts one background refresh, never
+    more at a time, and a failed one backs off and leaves the old elements
+    in place;
+  - the answer says when a refresh is under way, so an open view asks again
+    once it can have landed;
+  - a fetch outlives a data directory that cannot be written;
+  - ZIMI_OFFLINE means Never, whatever the setting and the env var say;
+  - the upstream request carries Zimi's user agent and nothing else;
+  - a bad or partial answer from upstream is refused, field by field;
+  - the route is rate limited like the other API reads, and the service
+    worker asks the network first but keeps a copy for offline;
+  - the shipped snapshot is recent enough for an offline install to draw
+    satellites for months.
+
+Run: pytest tests/test_almanac_satellites.py -v
+"""
+
+import contextlib
+import http.client
+import json
+import math
+import os
+import re
+import sys
+import threading
+import time
+
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import zimi  # noqa: F401,E402  (module init via the package proxy)
+from zimi import http as _http  # noqa: E402
+from zimi import satellites  # noqa: E402
+from zimi import server as srv  # noqa: E402
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_EARTH_JS = os.path.join(_HERE, "..", "zimi", "static", "almanac-earth.js")
+# The view draws elements up to AE_SAT_WINDOW_DAYS (almanac-earth.js) from
+# their epoch. A machine that never goes online draws satellites only from
+# the snapshot its release shipped, for whatever of that window the snapshot
+# had left on the day the release was cut. So a release ships a snapshot at
+# most SNAPSHOT_MAX_AGE_DAYS old, and the two together must leave an offline
+# install OFFLINE_RUNWAY_DAYS of satellites: the time to the next release,
+# and the months a USB copy can sit in a drawer before it is first used.
+SNAPSHOT_MAX_AGE_DAYS = 30
+OFFLINE_RUNWAY_DAYS = 150
+
+
+def _earth_js_number(name):
+    """A constant of almanac-earth.js written as a product of integers."""
+    with open(_EARTH_JS, encoding="utf-8") as f:
+        m = re.search(r"^var " + name + r" = ([\d *]+);", f.read(), re.M)
+    assert m, f"{name} not found in almanac-earth.js"
+    return math.prod(int(x) for x in m.group(1).split("*"))
+
+
+def _omm(
+    name="GPS BIII-1  (PRN 04)", norad=43873, epoch="2026-09-26T23:09:35.513568", **over
+):
+    rec = {
+        "OBJECT_NAME": name,
+        "OBJECT_ID": "2018-109A",
+        "EPOCH": epoch,
+        "MEAN_MOTION": 2.00561234,
+        "ECCENTRICITY": 0.0021,
+        "INCLINATION": 55.1,
+        "RA_OF_ASC_NODE": 170.2,
+        "ARG_OF_PERICENTER": 190.3,
+        "MEAN_ANOMALY": 20.4,
+        "EPHEMERIS_TYPE": 0,
+        "CLASSIFICATION_TYPE": "U",
+        "NORAD_CAT_ID": norad,
+        "ELEMENT_SET_NO": 999,
+        "REV_AT_EPOCH": 5000,
+        "BSTAR": 0,
+        "MEAN_MOTION_DOT": 1e-7,
+        "MEAN_MOTION_DDOT": 0,
+    }
+    rec.update(over)
+    return rec
+
+
+def _iss(**over):
+    base = dict(
+        name="ISS (ZARYA)",
+        norad=satellites.ISS_NORAD_ID,
+        MEAN_MOTION=15.49,
+        INCLINATION=51.63,
+        BSTAR=0.00018,
+    )
+    base.update(over)
+    return _omm(**base)
+
+
+def _payload(fetched_at, marker="x"):
+    return satellites.parse_payload([_omm(OBJECT_ID=marker)], [_iss()], fetched_at)
+
+
+@pytest.fixture
+def data_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(satellites, "_offline", lambda: False)
+    monkeypatch.setattr(satellites, "SNAPSHOT_PATH", str(tmp_path / "snapshot.json"))
+    monkeypatch.delenv(satellites.UPDATES_ENV, raising=False)
+    satellites._reset_for_tests()
+    yield tmp_path
+    satellites._reset_for_tests()
+
+
+def _no_network(*a, **k):
+    raise AssertionError("the network was asked")
+
+
+def _stale_snapshot(marker="old"):
+    satellites.write_snapshot(
+        satellites.SNAPSHOT_PATH,
+        _payload(time.time() - satellites.CACHE_TTL_S - 60, marker),
+    )
+
+
+def _counting_fetch(calls, marker="live"):
+    """A fetcher that answers and remembers it was asked."""
+
+    def fetch():
+        calls.append(1)
+        return _payload(time.time(), marker)
+
+    return fetch
+
+
+# ── Answering from what is here ─────────────────────────────────────────────
+
+
+def test_the_snapshot_answers_when_nothing_newer_is_here(data_dir, monkeypatch):
+    satellites.write_snapshot(satellites.SNAPSHOT_PATH, _payload(time.time(), "snap"))
+    monkeypatch.setattr(satellites, "fetch_live", _no_network)
+    got = satellites.get()
+    assert got["source"] == "snapshot"
+    assert got["gps"][0]["OBJECT_ID"] == "snap"
+    assert got["iss"]["NORAD_CAT_ID"] == satellites.ISS_NORAD_ID
+
+
+def test_a_newer_cache_outranks_the_snapshot(data_dir, monkeypatch):
+    now = time.time()
+    satellites.write_snapshot(satellites.SNAPSHOT_PATH, _payload(now - 86400, "snap"))
+    srv._atomic_write_json(
+        os.path.join(str(data_dir), satellites.CACHE_FILENAME), _payload(now, "cache")
+    )
+    monkeypatch.setattr(satellites, "fetch_live", _no_network)
+    got = satellites.get()
+    assert got["source"] == "cache"
+    assert got["gps"][0]["OBJECT_ID"] == "cache"
+
+
+def test_a_newer_snapshot_outranks_an_old_cache(data_dir, monkeypatch):
+    """An upgrade ships fresher elements than a machine cached a year ago."""
+    now = time.time()
+    satellites.write_snapshot(satellites.SNAPSHOT_PATH, _payload(now, "snap"))
+    srv._atomic_write_json(
+        os.path.join(str(data_dir), satellites.CACHE_FILENAME),
+        _payload(now - 365 * 86400, "cache"),
+    )
+    monkeypatch.setattr(satellites, "_kick_refresh", lambda: None)
+    assert satellites.get()["gps"][0]["OBJECT_ID"] == "snap"
+
+
+def test_nothing_here_is_an_honest_empty_answer(data_dir, monkeypatch):
+    monkeypatch.setattr(satellites, "_kick_refresh", lambda: False)
+    got = satellites.get()
+    assert got == {
+        "source": "none",
+        "fetched": None,
+        "gps": [],
+        "iss": None,
+        "stale": True,
+        "refreshing": False,
+        "mode": "ask",
+        "locked": None,
+    }
+
+
+# ── The setting: Ask first, Automatically, Never ────────────────────────────
+
+
+def test_ask_first_is_the_default_and_a_stale_answer_fetches_nothing(
+    data_dir, monkeypatch
+):
+    """Eric, 2026-09-28: "i'm not positive how i feel about unexpected
+    network calls from zimi". Stale data is said, not fetched."""
+    _stale_snapshot()
+    calls = []
+    monkeypatch.setattr(satellites, "fetch_live", _counting_fetch(calls))
+    monkeypatch.setattr(threading, "Thread", _no_network)
+    got = satellites.get()
+    assert got["mode"] == "ask" and got["locked"] is None
+    assert got["stale"] is True and got["refreshing"] is False
+    assert got["gps"][0]["OBJECT_ID"] == "old"
+    assert calls == []
+
+
+def test_never_fetches_nothing(data_dir, monkeypatch):
+    _stale_snapshot()
+    assert satellites.set_update_mode("never") == ("never", None)
+    calls = []
+    monkeypatch.setattr(satellites, "fetch_live", _counting_fetch(calls))
+    monkeypatch.setattr(threading, "Thread", _no_network)
+    got = satellites.get()
+    assert got["mode"] == "never" and got["stale"] is True
+    assert got["refreshing"] is False
+    # Not even an admin's "Get fresh data".
+    assert satellites.refresh_now() == (None, "never")
+    assert calls == []
+
+
+def test_automatically_still_refreshes_behind_a_stale_answer(data_dir, monkeypatch):
+    _stale_snapshot()
+    assert satellites.set_update_mode("Auto ") == ("auto", None)
+    calls = []
+    monkeypatch.setattr(satellites, "fetch_live", _counting_fetch(calls))
+    got = satellites.get()
+    assert got["mode"] == "auto" and got["refreshing"] is True
+    for _ in range(50):
+        if satellites.read_cache():
+            break
+        time.sleep(0.05)
+    assert calls == [1]
+    assert satellites.get()["gps"][0]["OBJECT_ID"] == "live"
+
+
+def test_get_fresh_data_fetches_once_and_answers_with_it(data_dir, monkeypatch):
+    """Under Ask first the admin's button is the one way in: it fetches,
+    waits, and answers with the fresh elements. Pressed again while they
+    are fresh, it asks CelesTrak nothing."""
+    _stale_snapshot()
+    calls = []
+    monkeypatch.setattr(satellites, "fetch_live", _counting_fetch(calls, "fresh"))
+    payload, err = satellites.refresh_now()
+    assert err is None and calls == [1]
+    assert payload["gps"][0]["OBJECT_ID"] == "fresh"
+    assert payload["stale"] is False and payload["source"] == "cache"
+    payload, err = satellites.refresh_now()
+    assert err is None and calls == [1], "fresh data was fetched again"
+
+
+def test_get_fresh_data_that_fails_says_so_and_keeps_the_elements(
+    data_dir, monkeypatch
+):
+    _stale_snapshot("kept")
+
+    def boom():
+        raise OSError("no route to host")
+
+    monkeypatch.setattr(satellites, "fetch_live", boom)
+    payload, err = satellites.refresh_now()
+    assert err == "failed"
+    assert payload["gps"][0]["OBJECT_ID"] == "kept" and payload["stale"] is True
+
+
+def test_the_env_var_wins_over_the_saved_choice(data_dir, monkeypatch):
+    _stale_snapshot()
+    satellites.set_update_mode("auto")
+    monkeypatch.setenv(satellites.UPDATES_ENV, "never")
+    calls = []
+    monkeypatch.setattr(satellites, "fetch_live", _counting_fetch(calls))
+    monkeypatch.setattr(threading, "Thread", _no_network)
+    got = satellites.get()
+    assert (got["mode"], got["locked"]) == ("never", "env")
+    assert calls == []
+    # The control says why it will not move, and a write is refused.
+    assert satellites.setting()["locked"] == "env"
+    assert satellites.set_update_mode("ask") == (None, "env")
+    # The other way round: the env var turns fetching on over a saved Never.
+    monkeypatch.setenv(satellites.UPDATES_ENV, "AUTO")
+    assert satellites.update_mode() == ("auto", "env")
+
+
+def test_an_env_var_that_names_no_mode_is_ignored(data_dir, monkeypatch):
+    monkeypatch.setenv(satellites.UPDATES_ENV, "sometimes")
+    assert satellites.update_mode() == ("ask", None)
+    assert satellites.set_update_mode("never") == ("never", None)
+
+
+def test_zimi_offline_forces_never(data_dir, monkeypatch):
+    """ZIMI_OFFLINE, read where the rest of Zimi reads it, outranks the saved
+    choice and the env var both, and the control says why."""
+    _stale_snapshot()
+    satellites.set_update_mode("auto")
+    monkeypatch.setenv(satellites.UPDATES_ENV, "auto")
+    # The fixture stands _offline in for tests that want the network; this
+    # one wants the real switch.
+    from zimi import p2p
+
+    monkeypatch.setattr(satellites, "_offline", lambda: bool(p2p.is_offline()))
+    monkeypatch.setenv("ZIMI_OFFLINE", "1")
+    calls = []
+    monkeypatch.setattr(satellites, "fetch_live", _counting_fetch(calls))
+    monkeypatch.setattr(threading, "Thread", _no_network)
+    got = satellites.get()
+    assert (got["mode"], got["locked"]) == ("never", "offline")
+    assert got["refreshing"] is False
+    assert satellites.refresh_now() == (None, "never")
+    assert satellites.set_update_mode("ask") == (None, "offline")
+    assert calls == []
+
+
+def test_the_choice_keeps_the_other_server_settings_in_its_file(data_dir):
+    """Saved in the app-update prefs file, like the Apps switch: setting it
+    must never drop the update channel stored beside it."""
+    from zimi import manage
+
+    manage._write_app_update_prefs(channel="beta")
+    satellites.set_update_mode("never")
+    prefs = manage._read_app_update_prefs()
+    assert prefs == {"channel": "beta", satellites.PREFS_KEY: "never"}
+    assert satellites.set_update_mode("sometimes") == (None, "invalid")
+    assert manage._read_app_update_prefs() == prefs
+
+
+# ── Refreshing (Automatically) ──────────────────────────────────────────────
+
+
+def test_a_stale_answer_is_served_at_once_and_refreshed_behind_it(
+    data_dir, monkeypatch
+):
+    satellites.set_update_mode("auto")
+    satellites.write_snapshot(
+        satellites.SNAPSHOT_PATH,
+        _payload(time.time() - satellites.CACHE_TTL_S - 60, "old"),
+    )
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_fetch():
+        started.set()
+        release.wait(5)
+        return _payload(time.time(), "live")
+
+    monkeypatch.setattr(satellites, "fetch_live", slow_fetch)
+    t0 = time.time()
+    got = satellites.get()
+    assert time.time() - t0 < 0.5, "the answer waited on the network"
+    assert got["gps"][0]["OBJECT_ID"] == "old"
+    # The answer says fresher elements are on their way, so a view that is
+    # open asks again instead of drawing the stale ones all session.
+    assert got["refreshing"] is True
+    assert started.wait(2), "no background refresh started"
+    # A second request while that refresh is running starts no other.
+    calls = []
+    monkeypatch.setattr(
+        satellites,
+        "fetch_live",
+        lambda: calls.append(1) or _payload(time.time(), "dup"),
+    )
+    assert satellites.get()["refreshing"] is True, "the running refresh is news too"
+    time.sleep(0.2)
+    assert calls == []
+    release.set()
+    for _ in range(50):
+        if satellites.read_cache():
+            break
+        time.sleep(0.05)
+    got = satellites.get()
+    assert got["gps"][0]["OBJECT_ID"] == "live"
+    assert got["refreshing"] is False
+
+
+def test_an_open_view_asks_again_only_once_a_refresh_can_have_landed():
+    """Told a refresh is running, the Earth view asks once more after
+    AE_SATS_REFETCH_MS: long enough for both CelesTrak requests to time out."""
+    wait_s = _earth_js_number("AE_SATS_REFETCH_MS") / 1000
+    assert wait_s > 2 * satellites.FETCH_TIMEOUT_S
+
+
+def test_a_fresh_answer_asks_nothing(data_dir, monkeypatch):
+    satellites.write_snapshot(satellites.SNAPSHOT_PATH, _payload(time.time(), "fresh"))
+    monkeypatch.setattr(satellites, "fetch_live", _no_network)
+    monkeypatch.setattr(satellites, "_kick_refresh", _no_network)
+    got = satellites.get()
+    assert got["gps"][0]["OBJECT_ID"] == "fresh"
+    assert got["refreshing"] is False
+
+
+def test_offline_never_reaches_out(data_dir, monkeypatch):
+    satellites.write_snapshot(
+        satellites.SNAPSHOT_PATH, _payload(time.time() - 30 * 86400, "old")
+    )
+    # Even set to fetch automatically.
+    monkeypatch.setenv(satellites.UPDATES_ENV, "auto")
+    monkeypatch.setattr(satellites, "_offline", lambda: True)
+    monkeypatch.setattr(satellites, "fetch_live", _no_network)
+    monkeypatch.setattr(threading, "Thread", _no_network)
+    got = satellites.get()
+    assert got["gps"][0]["OBJECT_ID"] == "old"
+    assert got["refreshing"] is False, "offline, nothing fresher is coming"
+
+
+def test_zimi_offline_is_the_switch(data_dir, monkeypatch):
+    """The real switch, read where the rest of Zimi reads it."""
+    monkeypatch.undo()
+    monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("ZIMI_OFFLINE", "1")
+    assert satellites._offline() is True
+    monkeypatch.setenv("ZIMI_OFFLINE", "0")
+    assert satellites._offline() is False
+
+
+def test_a_failed_refresh_keeps_the_elements_and_backs_off(data_dir, monkeypatch):
+    satellites.set_update_mode("auto")
+    cache = os.path.join(str(data_dir), satellites.CACHE_FILENAME)
+    srv._atomic_write_json(
+        cache, _payload(time.time() - satellites.CACHE_TTL_S - 60, "kept")
+    )
+    before = open(cache, encoding="utf-8").read()
+
+    def boom():
+        raise OSError("no route to host")
+
+    monkeypatch.setattr(satellites, "fetch_live", boom)
+    assert satellites.refresh() is None
+    assert open(cache, encoding="utf-8").read() == before
+    assert satellites.get()["gps"][0]["OBJECT_ID"] == "kept"
+    # Inside the cooldown a stale answer does not try again.
+    monkeypatch.setattr(threading, "Thread", _no_network)
+    satellites.get()
+
+
+def test_a_refresh_replaces_the_cache(data_dir, monkeypatch):
+    monkeypatch.setattr(satellites, "fetch_live", lambda: _payload(time.time(), "new"))
+    assert satellites.refresh()["gps"][0]["OBJECT_ID"] == "new"
+    assert satellites.read_cache()["gps"][0]["OBJECT_ID"] == "new"
+
+
+def test_a_data_dir_that_cannot_be_written_keeps_the_fetch_in_memory(
+    data_dir, monkeypatch
+):
+    """A data directory that cannot be written used to lose every fetch (the
+    write fails with a log line), serve the stale elements, and fetch again
+    on the next request, forever."""
+    satellites.write_snapshot(
+        satellites.SNAPSHOT_PATH,
+        _payload(time.time() - satellites.CACHE_TTL_S - 60, "stale"),
+    )
+    # Set to fetch automatically (by the env var: nothing can be saved here).
+    monkeypatch.setenv(satellites.UPDATES_ENV, "auto")
+    # A data directory that is a file: no write can land, on any platform.
+    blocked = data_dir / "not-a-directory"
+    blocked.write_text("", encoding="utf-8")
+    monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(blocked))
+    monkeypatch.setattr(satellites, "fetch_live", lambda: _payload(time.time(), "live"))
+    assert satellites.refresh()["gps"][0]["OBJECT_ID"] == "live"
+    assert satellites.read_cache() is None
+    # Served from memory, fresh, so nothing more is asked of CelesTrak.
+    monkeypatch.setattr(satellites, "fetch_live", _no_network)
+    monkeypatch.setattr(threading, "Thread", _no_network)
+    got = satellites.get()
+    assert got["gps"][0]["OBJECT_ID"] == "live"
+    assert got["source"] == "cache" and got["refreshing"] is False
+
+
+class _Resp:
+    def __init__(self, body):
+        self.body = body
+
+    def read(self, n=-1):
+        return self.body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def _fake_celestrak(seen):
+    """urllib's urlopen, standing in for CelesTrak at the network boundary:
+    every outbound request lands in ``seen`` and is answered like the real
+    GP service (the GPS group, or the ISS by its catalogue number)."""
+
+    def fake_urlopen(req, timeout=None):
+        seen.append(req)
+        body = [_iss()] if "CATNR" in req.full_url else [_omm()]
+        return _Resp(json.dumps(body).encode())
+
+    return fake_urlopen
+
+
+def test_the_upstream_request_carries_nothing_about_the_viewer(data_dir, monkeypatch):
+    seen = []
+    monkeypatch.setattr(satellites.urllib.request, "urlopen", _fake_celestrak(seen))
+    payload = satellites.fetch_live()
+    assert (
+        len(payload["gps"]) == 1
+        and payload["iss"]["NORAD_CAT_ID"] == satellites.ISS_NORAD_ID
+    )
+    assert [r.host for r in seen] == ["celestrak.org", "celestrak.org"]
+    for r in seen:
+        assert {k.lower() for k, _ in r.header_items()} == {"user-agent"}
+        assert r.get_header("User-agent").startswith("Zimi/")
+        assert r.data is None
+
+
+# ── Refusing a bad answer ───────────────────────────────────────────────────
+
+
+def test_the_epoch_is_written_the_way_every_browser_parses_it():
+    rec = satellites.normalize_record(_omm(epoch="2026-09-26T23:09:35.513568"))
+    assert rec["EPOCH"] == "2026-09-26T23:09:35.513Z"
+    assert (
+        satellites.normalize_record(_omm(epoch="2026-09-26T23:09:35"))["EPOCH"]
+        == "2026-09-26T23:09:35.000Z"
+    )
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"MEAN_MOTION": 40},
+        {"ECCENTRICITY": 1.2},
+        {"INCLINATION": float("nan")},
+        {"MEAN_ANOMALY": "not a number"},
+        {"EPOCH": "yesterday"},
+        {"OBJECT_NAME": ""},
+        {"NORAD_CAT_ID": -3},
+    ],
+)
+def test_a_record_out_of_reason_is_refused(bad):
+    assert satellites.normalize_record(_omm(**bad)) is None
+
+
+def test_an_answer_without_the_iss_is_refused():
+    with pytest.raises(ValueError):
+        satellites.parse_payload([_omm()], [_omm(norad=12345)], time.time())
+    with pytest.raises(ValueError):
+        satellites.parse_payload({"error": "rate limited"}, [], time.time())
+
+
+def test_only_the_fields_the_view_reads_are_kept():
+    rec = satellites.normalize_record(_omm(EXTRA="<script>"))
+    assert "EXTRA" not in rec and "REV_AT_EPOCH" not in rec
+
+
+# ── The route ───────────────────────────────────────────────────────────────
+
+
+def test_the_route_is_rate_limited_like_the_other_api_reads():
+    limited, content = _http._rate_class("/almanac-satellites")
+    assert limited and not content
+
+
+@contextlib.contextmanager
+def _served():
+    """A real Zimi server on a free port, answering ``call(method, path,
+    body=None, token=None) -> (status, headers, json)``. The client is
+    http.client, not urllib, so a test can stand in for urllib's urlopen
+    (CelesTrak) without standing in for its own requests."""
+    from http.server import ThreadingHTTPServer
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _http.ZimHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    def call(method, path, body=None, token=None):
+        conn = http.client.HTTPConnection(
+            "127.0.0.1", server.server_address[1], timeout=30
+        )
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = "Bearer " + token
+        try:
+            conn.request(
+                method,
+                path,
+                json.dumps(body or {}) if method == "POST" else None,
+                headers,
+            )
+            resp = conn.getresponse()
+            return resp.status, resp.headers, json.loads(resp.read() or b"{}")
+        finally:
+            conn.close()
+
+    try:
+        yield call
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.fixture
+def manage_env(data_dir, monkeypatch):
+    """Management on, with no admin password (the host itself is the admin)
+    and nothing in the environment deciding for it."""
+    for name in ("ZIMI_MANAGE_OPEN", "ZIMI_MANAGE_PASSWORD", "ZIMI_MANAGE_USER"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(srv, "ZIMI_MANAGE", True)
+    return data_dir
+
+
+def _with_admin_password(monkeypatch, password):
+    from zimi import manage
+
+    stored = manage._hash_pw(password)
+    monkeypatch.setattr(manage, "_get_manage_password_hash", lambda: stored)
+
+
+def test_the_route_answers_with_the_elements(data_dir, monkeypatch):
+    """A real server: GET /almanac-satellites is the payload, at once."""
+    satellites.write_snapshot(satellites.SNAPSHOT_PATH, _payload(time.time(), "route"))
+    monkeypatch.setattr(satellites, "fetch_live", _no_network)
+    with _served() as call:
+        status, headers, body = call("GET", "/almanac-satellites")
+    assert status == 200
+    assert headers.get("Content-Type") == "application/json"
+    assert body["source"] == "snapshot"
+    assert body["gps"][0]["OBJECT_ID"] == "route"
+    assert body["iss"]["NORAD_CAT_ID"] == satellites.ISS_NORAD_ID
+
+
+@pytest.mark.parametrize("mode", ["ask", "never"])
+def test_a_get_under_ask_first_or_never_sends_nothing_out(
+    manage_env, monkeypatch, mode
+):
+    """The whole route, with CelesTrak stood in for at urllib: a stale answer
+    under Ask first or Never makes no outbound request at all."""
+    _stale_snapshot()
+    if mode != "ask":
+        satellites.set_update_mode(mode)
+    seen = []
+    monkeypatch.setattr(satellites.urllib.request, "urlopen", _fake_celestrak(seen))
+    with _served() as call:
+        status, _h, body = call("GET", "/almanac-satellites")
+        time.sleep(0.3)  # time enough for a background refresh to have gone out
+    assert status == 200
+    assert seen == [], "the GET reached CelesTrak"
+    assert (body["mode"], body["stale"], body["refreshing"]) == (mode, True, False)
+
+
+def test_a_get_under_automatically_still_refreshes(manage_env, monkeypatch):
+    _stale_snapshot()
+    satellites.set_update_mode("auto")
+    seen = []
+    monkeypatch.setattr(satellites.urllib.request, "urlopen", _fake_celestrak(seen))
+    with _served() as call:
+        _s, _h, body = call("GET", "/almanac-satellites")
+        for _ in range(50):
+            if satellites.read_cache():
+                break
+            time.sleep(0.05)
+    assert body["refreshing"] is True
+    assert len(seen) == 2, "one refresh is the GPS group and the ISS"
+
+
+def test_get_fresh_data_is_a_post_only_an_admin_makes(manage_env, monkeypatch):
+    """With an admin password: a visitor is told they may not change the
+    setting, and their POSTs are refused before anything goes out. The admin
+    fetches once, and the answer is the fresh elements."""
+    _stale_snapshot()
+    _with_admin_password(monkeypatch, "correct horse")
+    seen = []
+    monkeypatch.setattr(satellites.urllib.request, "urlopen", _fake_celestrak(seen))
+    with _served() as call:
+        _s, _h, body = call("GET", "/almanac-satellites")
+        assert body["can_change"] is False
+        status, _h, _b = call("POST", "/manage/satellites/refresh")
+        assert status == 401 and seen == []
+        status, _h, _b = call("POST", "/manage/satellites", {"mode": "auto"})
+        assert status == 401 and satellites.update_mode() == ("ask", None)
+
+        _s, _h, body = call("GET", "/almanac-satellites", token="correct horse")
+        assert body["can_change"] is True
+        status, _h, body = call(
+            "POST", "/manage/satellites/refresh", token="correct horse"
+        )
+        assert status == 200
+        assert len(seen) == 2, "one fetch: the GPS group and the ISS"
+        assert body["stale"] is False and body["source"] == "cache"
+        assert body["gps"][0]["OBJECT_ID"] == "2018-109A"
+        # Fresh now: pressed again, CelesTrak is asked nothing.
+        status, _h, _b = call(
+            "POST", "/manage/satellites/refresh", token="correct horse"
+        )
+        assert status == 200 and len(seen) == 2
+
+
+def test_with_no_admin_gate_the_host_may_ask(manage_env, monkeypatch):
+    """No password: the manage rules make the host itself the admin, as for
+    every other admin action, so the view offers it the button."""
+    _stale_snapshot()
+    seen = []
+    monkeypatch.setattr(satellites.urllib.request, "urlopen", _fake_celestrak(seen))
+    with _served() as call:
+        _s, _h, body = call("GET", "/almanac-satellites")
+        assert body["can_change"] is True
+        status, _h, body = call("POST", "/manage/satellites/refresh")
+    assert status == 200 and len(seen) == 2 and body["stale"] is False
+
+
+def test_management_off_means_nobody_may_change_it(manage_env, monkeypatch):
+    monkeypatch.setattr(srv, "ZIMI_MANAGE", False)
+    _stale_snapshot()
+    seen = []
+    monkeypatch.setattr(satellites.urllib.request, "urlopen", _fake_celestrak(seen))
+    with _served() as call:
+        _s, _h, body = call("GET", "/almanac-satellites")
+        status, _h, _b = call("POST", "/manage/satellites/refresh")
+    assert body["can_change"] is False
+    assert status == 404 and seen == []
+
+
+def test_the_setting_routes(manage_env, monkeypatch):
+    """Server settings reads and writes the same setting; a locked one is
+    refused, not silently ignored, and Never refuses the button."""
+    _stale_snapshot()
+    seen = []
+    monkeypatch.setattr(satellites.urllib.request, "urlopen", _fake_celestrak(seen))
+    with _served() as call:
+        status, _h, body = call("GET", "/manage/satellites")
+        assert status == 200 and body["mode"] == "ask" and body["locked"] is None
+        assert body["choices"] == ["ask", "auto", "never"]
+        status, _h, body = call("POST", "/manage/satellites", {"mode": "never"})
+        assert status == 200 and body["mode"] == "never"
+        status, _h, _b = call("POST", "/manage/satellites/refresh")
+        assert status == 409 and seen == []
+        status, _h, _b = call("POST", "/manage/satellites", {"mode": "hourly"})
+        assert status == 400
+        monkeypatch.setenv(satellites.UPDATES_ENV, "auto")
+        status, _h, body = call("GET", "/manage/satellites")
+        assert (body["mode"], body["locked"]) == ("auto", "env")
+        status, _h, _b = call("POST", "/manage/satellites", {"mode": "ask"})
+        assert status == 403
+
+
+def test_the_service_worker_asks_the_network_first():
+    node = __import__("shutil").which("node")
+    if not node:
+        pytest.skip("node not available")
+    sw = os.path.join(_HERE, "..", "zimi", "static", "sw.js")
+    driver = (
+        "const vm=require('vm'),fs=require('fs');const self={addEventListener(){}};"
+        "const ctx={self,URL,caches:{},fetch(){},Response:class{},console};vm.createContext(ctx);"
+        "vm.runInContext(fs.readFileSync(process.argv[1],'utf8'),ctx);"
+        "process.stdout.write(self.routeStrategy('/almanac-satellites','cors'))"
+    )
+    import subprocess
+
+    out = subprocess.run(
+        [node, "-e", driver, sw], capture_output=True, text=True, timeout=30
+    )
+    assert out.returncode == 0, out.stderr
+    assert out.stdout == "networkFirst"
+
+
+# ── What ships ──────────────────────────────────────────────────────────────
+
+
+def test_the_shipped_snapshot_is_whole_and_recent():
+    snap = satellites._read_json(
+        os.path.join(
+            os.path.dirname(satellites.__file__), "assets", "satellites-snapshot.json"
+        )
+    )
+    assert snap, "zimi/assets/satellites-snapshot.json is missing or unreadable"
+    assert len(snap["gps"]) >= 24, "fewer GPS satellites than the constellation needs"
+    assert snap["iss"]["NORAD_CAT_ID"] == satellites.ISS_NORAD_ID
+    for rec in snap["gps"] + [snap["iss"]]:
+        assert satellites.normalize_record(rec) == rec, rec["OBJECT_NAME"]
+    age_days = (time.time() - snap["fetched_at"]) / 86400
+    assert age_days < SNAPSHOT_MAX_AGE_DAYS, (
+        f"the satellite snapshot is {age_days:.0f} days old: "
+        "run python3 scripts/build_satellite_snapshot.py before the release"
+    )
+
+
+def test_the_release_gate_leaves_an_offline_install_months_of_satellites():
+    """Gating at the drawing window itself let a release ship a snapshot the
+    view would stop drawing the next day: every GPS satellite gone, offline."""
+    window = _earth_js_number("AE_SAT_WINDOW_DAYS")
+    assert window - SNAPSHOT_MAX_AGE_DAYS >= OFFLINE_RUNWAY_DAYS, (
+        f"a {SNAPSHOT_MAX_AGE_DAYS}-day-old snapshot leaves only "
+        f"{window - SNAPSHOT_MAX_AGE_DAYS} of the view's {window} days"
+    )

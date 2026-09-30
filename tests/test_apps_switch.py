@@ -1,7 +1,7 @@
 """The apps row can be turned off for everyone (ZIMI_APPS, or the switch in
 Server settings) or for one signed-in person (their account's preferences).
-Never per browser. On by default, but for Zimipedia (a preview), which is on
-only when ZIMI_APPS or a saved list names it. Eric, 2026-09-19: "If folks don't want
+Never per browser. On by default, every one of them: Zimipedia was a preview,
+on only when named, until its reader (1.12). Eric, 2026-09-19: "If folks don't want
 apps we might want some way to like limit them entirely and/or per user
 probably on by default is okay" and "Not per browser only per user or server".
 
@@ -53,51 +53,49 @@ def test_the_shell_is_stamped_only_when_off():
     some = http._index_content(frozenset(["reddot", "maps"]))
     assert some.count('<body data-zimi-apps="maps,reddot">') == 1
     assert http._index_content(srv.APPS_DEFAULT) == on
-    # Every app, Zimipedia included, is not the default: the shell names them.
-    every = http._index_content(frozenset(srv.APP_NAMES))
-    assert every.count('<body data-zimi-apps="maps,tube,exchange,reddot,wiki,books">') == 1
+    # Every app, Zimipedia included, is the default: nothing to name.
+    assert http._index_content(frozenset(srv.APP_NAMES)) == on
 
 
-# Zimipedia is a preview being redesigned: offered only when named.
-DEFAULT = set(srv.APP_NAMES) - {"wiki"}
+# Zimipedia, with its reader, is on by default like the others (1.12).
+DEFAULT = set(srv.APP_NAMES)
 
 
-def test_wiki_is_opt_in():
-    assert srv.APPS_OPT_IN == frozenset({"wiki"})
+def test_zimipedia_is_on_by_default():
+    assert srv.APPS_OPT_IN == frozenset()
     assert srv.APPS_DEFAULT == frozenset(DEFAULT)
 
 
 @pytest.mark.parametrize("value", [None, "", "1", "on", "all", "true"])
-def test_the_default_and_all_leave_wiki_off(data_dir, monkeypatch, value):
+def test_the_default_and_all_offer_zimipedia(data_dir, monkeypatch, value):
     if value is not None:
         monkeypatch.setenv("ZIMI_APPS", value)
     assert srv.apps_shown() == frozenset(DEFAULT)
-    assert "wiki" not in srv.apps_shown()
+    assert "wiki" in srv.apps_shown()
     assert srv.apps_stamp(srv.apps_shown()) is None
 
 
-def test_a_saved_all_leaves_wiki_off_and_a_saved_list_naming_it_keeps_it(data_dir):
+def test_a_saved_all_offers_zimipedia_and_a_saved_list_without_it_does_not(data_dir):
     assert srv.set_apps_enabled(True) == (True, None)
     assert manage._read_app_update_prefs()["apps"] is True
+    assert "wiki" in srv.apps_shown()
+    assert srv.set_apps_enabled(["maps", "books"]) == (True, None)
     assert "wiki" not in srv.apps_shown()
-    assert srv.set_apps_enabled(list(srv.APP_NAMES)) == (True, None)
-    assert manage._read_app_update_prefs()["apps"] == list(srv.APP_NAMES)
-    assert srv.apps_shown() == frozenset(srv.APP_NAMES)
-    assert srv.apps_stamp(srv.apps_shown()) == ",".join(srv.APP_NAMES)
+    assert srv.apps_stamp(srv.apps_shown()) == "maps,books"
 
 
 def test_a_list_naming_wiki_offers_it(data_dir, monkeypatch):
     monkeypatch.setenv("ZIMI_APPS", "maps,wiki")
     assert srv.apps_shown() == frozenset({"maps", "wiki"})
     assert srv.apps_stamp(srv.apps_shown()) == "maps,wiki"
-    # An account's "all" is everything the server offers, the opt-in app too.
+    # An account's "all" is everything the server offers.
     assert srv.user_apps_shown(True) == frozenset({"maps", "wiki"})
     assert http._prefs_reply({"apps": True}) == {"apps": True, "shown": ["maps", "wiki"]}
 
 
-def test_the_default_shell_carries_no_stamp_and_hides_wiki(data_dir):
-    """No stamp is what the client reads as the default apps, which leave
-    Zimipedia out (the client half is tests/test_apps_optin.cjs)."""
+def test_the_default_shell_carries_no_stamp(data_dir):
+    """No stamp is what the client reads as the default apps, Zimipedia
+    among them (the client half is tests/test_apps_optin.cjs)."""
     assert http._index_content(srv.apps_shown()) == http._index_content(True)
     assert "data-zimi-apps" not in http._index_content(srv.apps_shown())
 
@@ -108,11 +106,11 @@ def test_the_default_shell_carries_no_stamp_and_hides_wiki(data_dir):
         ("maps,tube", {"maps", "tube"}),
         (" Reddot , maps ", {"maps", "reddot"}),
         ("maps,bogus", {"maps"}),
-        ("all", set(srv.APP_NAMES) - {"wiki"}),
+        ("all", set(srv.APP_NAMES)),
         ("maps,tube,exchange,reddot,wiki,books", set(srv.APP_NAMES)),
         ("none", set()),
         (["exchange"], {"exchange"}),
-        (True, set(srv.APP_NAMES) - {"wiki"}),
+        (True, set(srv.APP_NAMES)),
         (False, set()),
     ],
 )
@@ -126,7 +124,7 @@ def test_each_app_can_be_offered_or_not(data_dir, monkeypatch, value, shown):
         assert srv.set_apps_enabled(value) == (bool(shown), None)
         assert srv.apps_shown() == frozenset(shown)
         saved = manage._read_app_update_prefs()["apps"]
-        assert saved is (True if shown == set(srv.APP_NAMES) - {"wiki"} else False) if isinstance(saved, bool) else saved == sorted(shown, key=srv.APP_NAMES.index)
+        assert saved is (True if shown == set(srv.APP_NAMES) else False) if isinstance(saved, bool) else saved == sorted(shown, key=srv.APP_NAMES.index)
 
 
 def test_a_saved_list_is_in_the_apps_order(data_dir):

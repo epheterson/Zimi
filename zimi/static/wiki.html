@@ -2,14 +2,30 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Zimipedia</title>
 <!--@apps.css@-->
 <style>
-  /* The languages, each in its own name; then the wikis of the one chosen. */
-  .langs { margin-bottom: 8px; }
-  .langs .chip { font-weight: 600; }
-  .chip .n { font-weight: 400; }
+  /* One row: the wikis of the language shown, which scroll, and at its end
+     the language, a short chip that stays put and opens the list of them. */
+  .filters { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
+  .filters .chips { flex: 1; min-width: 0; margin-block: 0; padding-inline-end: 20px;
+    /* The wikis that do not fit fade out under the language, not cut off. */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent); }
+  html[dir="rtl"] .filters .chips { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 22px), transparent); }
+  .lang-pick { position: relative; flex: none; margin-inline-start: auto; }
+  .lang-btn { gap: 5px; padding-inline: 10px 8px; font-weight: 600; letter-spacing: .02em; color: var(--text); }
+  .lang-btn svg { width: 15px; height: 15px; flex: none; color: var(--text2); }
+  .lang-btn .dn { width: 12px; height: 12px; }
+  .lang-btn[aria-expanded="true"] { border-color: var(--amber); }
+  .lang-menu { position: absolute; top: calc(100% + 6px); inset-inline-end: 0; z-index: 30; min-width: 210px; max-height: min(60vh, 420px); overflow-y: auto;
+    margin: 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, .18); }
+  .lang-menu button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 8px 12px; border: 0; border-radius: 8px; background: none; color: var(--text); font: inherit; font-size: 14px; cursor: pointer; text-align: start; }
+  .lang-menu button:hover, .lang-menu button:focus-visible { background: var(--surface2); outline: none; }
+  .lang-menu button[aria-checked="true"] { font-weight: 600; }
+  .lang-menu button[aria-checked="true"]::after { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); order: 3; }
+  .lang-menu .nm { flex: 1; }
+  .lang-menu .n { color: var(--text2); font-size: 12px; font-variant-numeric: tabular-nums; order: 2; }
   .chips .sep { flex: none; width: 1px; align-self: stretch; margin: 4px 2px; background: var(--border); }
   /* The head: what is shown, and (for a search) the two ways to show it. */
   .head .views { display: inline-flex; gap: 2px; margin-inline-start: auto; border: 1px solid var(--border); border-radius: 10px; padding: 2px; background: var(--surface); }
@@ -20,17 +36,17 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .serif { font-family: Georgia, "Times New Roman", "Noto Serif", "Noto Serif Hebrew", serif; }
 
-  /* Today, a front page: each part under a heading of its own. */
+  /* Today, a front page: the day's article, where you were, and the day of
+     the language's wikis. Each part under a heading of its own. */
   .sec { margin: 0 0 28px; min-width: 0; }
   .sec-h { display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
   .sec-h h2 { margin: 0; font-size: 19px; font-weight: 600; line-height: 1.25; color: var(--text); }
   .sec-h .sub { font-size: 12px; color: var(--text2); margin-inline-start: auto; text-align: end; }
-  .sec-note { font-size: 12.5px; color: var(--text2); margin: -4px 0 10px; }
   /* Two parts side by side on a wide screen: the wider first. */
   @media (min-width: 820px) {
     .duo { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 0 28px; }
     .duo.even { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-    .duo > .sec:only-child { grid-column: 1 / -1; }
+    .duo > .sec:only-of-type { grid-column: 1 / -1; }
   }
   .src { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text2); min-width: 0; }
   .src img { width: 14px; height: 14px; border-radius: 4px; flex: none; }
@@ -55,34 +71,46 @@
   }
 
   /* On this day: the year leads each line, a picture at its end. */
-  .otd-list, .dyk, .trail { list-style: none; margin: 0; padding: 0; }
+  .otd-list, .dyk { list-style: none; margin: 0; padding: 0; }
   .otd-list li + li { border-top: 1px solid var(--border); }
   .otd-list a { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; color: inherit; }
   .otd-list .yr { flex: 0 0 52px; font-size: 18px; font-weight: 700; color: var(--amber); font-variant-numeric: tabular-nums; line-height: 1.3; }
   .otd-list .tx { flex: 1; min-width: 0; font-size: 14px; line-height: 1.5; }
-  .otd-list .tx b { font-weight: 600; }
   .otd-list img { flex: none; width: 60px; height: 60px; object-fit: cover; border-radius: var(--radius-s); }
-  .otd-list a:hover .tx b { color: var(--amber); }
+  .otd-list a:hover .tx { color: var(--amber); }
   /* Did you know: a fact per line, each a door to its article. */
   .dyk li { position: relative; padding-inline-start: 16px; margin: 0 0 12px; font-size: 14px; line-height: 1.5; }
   .dyk li::before { content: ""; position: absolute; inset-inline-start: 2px; top: .62em; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); }
   .dyk a { color: inherit; }
   .dyk a b { font-weight: 600; }
   .dyk a:hover b { color: var(--amber); }
-  /* A rabbit hole: the day's article, then each page one link further in. */
-  .trail li { position: relative; padding-inline-start: 30px; padding-bottom: 14px; }
-  .trail li::before { content: attr(data-n); position: absolute; inset-inline-start: 0; top: 1px; width: 20px; height: 20px; border-radius: 50%; background: var(--surface2); border: 1px solid var(--border); font-size: 11px; font-weight: 700; text-align: center; line-height: 20px; color: var(--text2); }
-  .trail li:not(:last-child)::after { content: ""; position: absolute; inset-inline-start: 10px; top: 23px; bottom: 2px; width: 1px; background: var(--border); }
-  .trail li:last-child::before { background: var(--amber); border-color: var(--amber); color: var(--bg); }
-  .trail a { color: inherit; display: block; }
-  .trail .t { font-weight: 600; font-size: 14.5px; }
-  .trail a:hover .t { color: var(--amber); }
-  .trail .ex { color: var(--text2); font-size: 13px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   /* The picture of the day, as large as the column. */
   .potd { display: block; color: inherit; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); background: var(--surface); }
   .potd img { display: block; width: 100%; max-height: 420px; object-fit: cover; background: var(--surface2); }
   .potd .cap { padding: 10px 14px 12px; font-size: 13px; line-height: 1.5; color: var(--text2); }
   .potd .cap b { color: var(--text); font-weight: 600; }
+
+  /* Continue reading: an article you started, how far you are, a tap back in. */
+  .cont { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+  .cont a { display: flex; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: inherit; min-width: 0; }
+  .cont a:hover, .cont a:focus-visible { border-color: var(--amber); outline: none; }
+  .cont > a > img, .cont > a > .ic { flex: none; width: 52px; height: 52px; border-radius: var(--radius-s); object-fit: cover; background: var(--surface2); }
+  .cont > a > .ic { width: 28px; height: 28px; margin: 12px; background: none; }
+  .cont .bd { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+  .cont .t { font-weight: 600; font-size: 15px; line-height: 1.25; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cont .prog { height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; }
+  .cont .prog i { display: block; height: 100%; background: var(--amber); }
+  /* A trail: the articles one link at a time, each a way back in. */
+  .trails { list-style: none; margin: 0; padding: 0; }
+  .trails li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 4px; padding: 10px 0; border-top: 1px solid var(--border); font-size: 14px; line-height: 1.4; }
+  .trails li:first-child { border-top: 0; }
+  .trails a { color: inherit; font-weight: 500; }
+  .trails a:hover { color: var(--amber); }
+  .trails a:last-of-type { font-weight: 600; }
+  /* Each step of a trail is a finger's height on a touch screen. */
+  @media (pointer: coarse) { .trails a { padding: 12px 0; margin: -12px 0; } }
+  .trails .step { color: var(--text2); }
+  .trails .when { margin-inline-start: auto; font-size: 12px; color: var(--text2); white-space: nowrap; }
 
   /* Cards: a picture when the page has one, its wiki, what it is, its title, its first lines. */
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
@@ -119,19 +147,23 @@
   .dym button, .alllang button { border: 0; background: none; color: var(--amber); font: inherit; font-weight: 600; cursor: pointer; padding: 0; }
   /* The interface's words sit on the side the page is laid out from, and
      read in their own direction. */
-  html[dir="rtl"] :is(.kick, .more-l, .sec-note, .note, .alllang, .dym) { text-align: right; }
-  html:not([dir="rtl"]) :is(.kick, .more-l, .sec-note, .note, .alllang, .dym) { text-align: left; }
+  html[dir="rtl"] :is(.kick, .more-l, .note, .alllang, .dym) { text-align: right; }
+  html:not([dir="rtl"]) :is(.kick, .more-l, .note, .alllang, .dym) { text-align: left; }
   /* The way onward points the way its own words run, whatever the page's. */
   .chev:dir(ltr)::before { content: '\203A'; }
   .chev:dir(rtl)::before { content: '\2039'; }
   /* A page's words keep their own direction under the shell's. */
-  .card .bd > *, .hero .bd > *, .row .t, .row .ex, .otd-list .tx, .dyk li, .trail .t, .trail .ex, .potd .cap { unicode-bidi: plaintext; }
+  .card .bd > *, .hero .bd > *, .row .t, .row .ex, .cont .t, .trails a, .otd-list .tx, .dyk li, .potd .cap { unicode-bidi: plaintext; }
+  .trails .step:dir(ltr)::before { content: '\203A'; }
+  .trails .step:dir(rtl)::before { content: '\2039'; }
 </style>
 </head>
 <body>
 <div class="page">
-  <div class="chips langs" id="langs" role="group"></div>
-  <div class="chips" id="pills" role="group"></div>
+  <div class="filters" id="filters">
+    <div class="chips" id="pills" role="group"></div>
+    <div class="lang-pick" id="langs"></div>
+  </div>
   <div class="head">
     <h2 id="h"></h2><span class="n" id="n"></span>
     <span class="views" id="views" role="group" hidden></span>
@@ -145,30 +177,37 @@
 // Zimipedia. Every wiki in the library, one language at a time: a chip per
 // language the wikis are in (each named in itself), a pill per wiki of the
 // language chosen, and Today, a front page made of that language's wikis:
-// the day's article from its Wikipedia with its picture; On this day from
-// the Wikipedia's own date page; did-you-know facts from the leads of the
-// day's articles; a picture of the day; a rabbit hole of links followed from
-// the day's article; a word, a quote, a place, a book from the other wikis
-// of the language; and what each wiki's own front page featured when the
-// copy was made, dated so. The server works each wiki's day out once and
-// keeps it (zimi/wiki.py); the page asks for what /wiki/home did not
-// already carry, a few wikis at a time, and shows each part as it lands.
-// Search is the language's wikis (or the pills chosen), and can reach every
-// language when asked. Zimi's top bar drives wikiSearch(q).
-var STR = strings({ title: 'Zimipedia', all: 'All', today: 'Today', on_this_day: 'On this day', featured: 'From the wikis', word: 'Word of the day',
-  quote: 'Quote of the day', place: 'A place to go', article: 'Article of the day', book: 'Book of the day', text: 'Text of the day',
-  course: 'Lesson of the day', news: 'From the news', species: 'Species of the day', none: 'Nothing matches.', empty: 'No wiki installed yet.',
+// the day's article from its Wikipedia with its picture; the articles you
+// are part way through (Saved's places, Zimipedia's); On this day from the
+// Wikipedia's own date page, with pictures; did-you-know facts from the
+// leads of the day's articles; one card from each other wiki of the
+// language (a word, a quote, a place, a book); a picture of the day; the
+// trails you took (the reader keeps them, in this browser); and what each
+// wiki's own front page featured when the copy was made, dated so. The
+// server works each wiki's day out once, in the background, and keeps it
+// (zimi/wiki.py); the page asks for what /wiki/home did not already carry,
+// a few wikis at a time, and shows each part as it lands. Articles open in Zimipedia's reader (static/wiki-reader.js,
+// in the shell), which is where the rest of the app lives. Search is the
+// language's wikis (or the pills chosen), and can reach every language when
+// asked. Zimi's top bar drives wikiSearch(q).
+// Eric, 2026-09-29, on the front door alone: "Pretty useless home view...
+// Showing recently read is nice... You had better homepage ideas before".
+var STR = strings({ title: 'Zimipedia', all: 'All', today: 'Today', article: 'Article of the day', none: 'Nothing matches.', empty: 'No wiki installed yet.',
   catalog: 'Browse the catalog', cards: 'Cards', list: 'List', searching: 'Searching the full text', did_you_mean: 'Did you mean',
-  search_heading: '“{q}”', results_one: '{n} result', results_other: '{n} results', otd_unavailable: 'On this day is not available for the wikis chosen.',
+  search_heading: '“{q}”', results_one: '{n} result', results_other: '{n} results',
   load_failed: 'Zimipedia could not load its wikis.', search_failed: 'The search did not go through.', retry: 'Try again', langs: {},
-  languages: 'Languages', did_you_know: 'Did you know…', picture: 'Picture of the day', rabbit_hole: 'Down the rabbit hole',
-  rabbit_hint: 'From today\'s article, one link at a time.', front: 'From the front page', front_as_of: 'As featured on {date}, when this copy was made',
-  read_more: 'Read the article', search_all_languages: 'Search all languages', search_one_language: 'Only {lang}' });
+  languages: 'Languages', read_more: 'Read the article', search_all_languages: 'Search all languages', search_one_language: 'Only {lang}',
+  continue: 'Continue reading', trails: 'Recent trails', on_this_day: 'On this day', featured: 'From the wikis', word: 'Word of the day',
+  quote: 'Quote of the day', place: 'A place to go', book: 'Textbook of the day', text: 'Text of the day', course: 'Lesson of the day',
+  news: 'From the news', species: 'Species of the day', did_you_know: 'Did you know…', picture: 'Picture of the day',
+  front: 'From the front page', front_as_of: 'As featured on {date}, when this copy was made' });
 
 // ── pure parts (tests/test_wiki_page.cjs runs these) ──────────────────────
-var OTD_SHOWN = 6;
 var SEARCH_LIMIT = 30;
 var SNIPPETS_FETCHED = 12;
+var CONTINUE_SHOWN = 6;
+var TRAILS_SHOWN = 5;
+var OTD_SHOWN = 6;
 var FRONT_SHOWN = 6;
 // Wikis asked for in one /wiki/today request: small, so each answer lands
 // on its own and the first parts show while the rest are read.
@@ -191,11 +230,6 @@ function pillLabels(wikis) {
   return out;
 }
 
-// A language named in itself (עברית, Français, ייִדיש), which is how a
-// reader finds their own; the interface's name for it when the browser
-// cannot say, the code when neither can.
-// The languages a browser may not know how to name in themselves.
-var ENDONYMS = { yi: 'ייִדיש' };
 // The languages written right to left: the page takes the direction of
 // the language it shows.
 var RTL_LANGS = /^(ar|arc|arz|azb|ckb|dv|fa|glk|he|ks|lrc|mzn|nqo|pnb|ps|sd|skr|ug|ur|yi)$/;
@@ -206,29 +240,35 @@ function dirOf(code) { return RTL_LANGS.test(String(code || '').split('-')[0]) ?
 // ellipsis at its end.
 function ui() { var l = STR.lang || 'en'; return ' lang="' + esc(l) + '" dir="' + dirOf(l) + '"'; }
 function uiEl(el) { var l = STR.lang || 'en'; el.setAttribute('lang', l); el.setAttribute('dir', dirOf(l)); return el; }
-function capitalised(name, code) { try { return name.charAt(0).toLocaleUpperCase(code) + name.slice(1); } catch (e) { return name; } }
+// A language named in itself (עברית, Français, ייִדיש), which is how a
+// reader finds their own: the shell's _langEndonym, given the server's name
+// for it (/wiki/home's languages: it knows the ones a browser cannot name in
+// themselves) and the interface's name as the last resort.
 function endonym(code, fallback) {
-  var name = '', english = '';
-  try { name = new Intl.DisplayNames([code], { type: 'language' }).of(code) || ''; english = new Intl.DisplayNames(['en'], { type: 'language' }).of(code) || ''; } catch (e) {}
-  // A browser that does not speak the language answers in English.
-  if (!name || name === code || (code !== 'en' && name === english)) name = ENDONYMS[code] || fallback || code;
-  return capitalised(name, code);
+  var own = (_langs.filter(function(l) { return l.code === code; })[0] || {}).name;
+  try { return window.parent._langEndonym(code, own, fallback); } catch (e) { return own || fallback || code; }
 }
 
 // The wikis of one language.
 function inLanguage(wikis, lang) { return wikis.filter(function(w) { return w.language === lang; }); }
 
-// What Today shows from the wikis of one language: the biggest Wikipedia
-// leads (its article, its facts, its picture, its rabbit hole; any wiki when
-// there is no Wikipedia); every Wikipedia gives its On this day; every
-// other wiki gives a card; every wiki's front page is read.
-function todayPlan(wikis) {
+// The day's article comes from the biggest Wikipedia of the language (a full
+// build before a mini, whose articles are their introductions), or any wiki
+// when there is no Wikipedia; null when there is no wiki.
+function heroOf(wikis) {
   var wps = wikis.filter(function(w) { return w.project === 'wikipedia'; });
-  var lead = wps.slice().sort(function(a, b) { return (b.entries || 0) - (a.entries || 0); })[0] || wikis[0] || null;
+  var lead = wps.slice().sort(function(a, b) { return ((a.flavour === 'mini') - (b.flavour === 'mini')) || (b.entries || 0) - (a.entries || 0); })[0] || wikis[0] || null;
+  return lead ? lead.name : null;
+}
+// What Today shows from the wikis of one language: the day's article leads
+// (heroOf); every Wikipedia gives its On this day; every other wiki gives a
+// card; every wiki's front page is read.
+function todayPlan(wikis) {
+  var hero = heroOf(wikis);
   return {
-    hero: lead ? lead.name : null,
-    otd: wps.map(function(w) { return w.name; }),
-    cards: wikis.filter(function(w) { return !lead || w.name !== lead.name; }).map(function(w) { return w.name; }),
+    hero: hero,
+    otd: wikis.filter(function(w) { return w.project === 'wikipedia'; }).map(function(w) { return w.name; }),
+    cards: wikis.filter(function(w) { return w.name !== hero; }).map(function(w) { return w.name; }),
     front: wikis.map(function(w) { return w.name; })
   };
 }
@@ -263,6 +303,27 @@ function mergeOtd(lists, max) {
   return out.map(function(x, j) { return [yearNum(x.e.event_year), j, x]; })
     .sort(function(a, b) { return a[0] - b[0] || a[1] - b[1]; }).map(function(x) { return x[2]; });
 }
+// The articles part read, of the language shown (Saved's places, the
+// latest first): its wikis' only.
+function continuedIn(places, lang, by) {
+  return (places || []).filter(function(p) { return by[p.zim] && by[p.zim].language === lang && p.where && p.where.f > 0; });
+}
+// The recent trails of the language shown: those that started in one of
+// its wikis, each once.
+function trailsIn(kept, lang, by) {
+  return (kept || []).filter(function(tr) {
+    return tr && tr.items && tr.items.length > 1 && by[tr.items[0].zim] && by[tr.items[0].zim].language === lang;
+  });
+}
+// "2 h", "3 d": how long ago, in the interface's words.
+function ago(ts, now) {
+  var s = Math.max(0, (now - ts) / 1000), u = [['day', 86400], ['hour', 3600], ['minute', 60]];
+  for (var i = 0; i < u.length; i++) if (s >= u[i][1]) {
+    var n = Math.floor(s / u[i][1]);
+    try { return new Intl.RelativeTimeFormat(STR.lang || 'en', { numeric: 'auto', style: 'short' }).format(-n, u[i][0]); } catch (e) { return n + ' ' + u[i][0]; }
+  }
+  try { return new Intl.RelativeTimeFormat(STR.lang || 'en', { numeric: 'auto' }).format(0, 'minute'); } catch (e) { return ''; }
+}
 
 // "3 results" in the interface's language, whatever its plural forms
 // (Arabic has six, Russian three).
@@ -284,7 +345,6 @@ function asOf(date, lang) {
   try { text = d.toLocaleDateString(lang || undefined, { year: 'numeric', month: 'long', day: 'numeric' }); } catch (e) {}
   return String(STR.front_as_of).replace('{date}', text);
 }
-
 // A sentence with its article's name in bold: where the sentence names it
 // ("Water is..."), in place; where it does not ("It was merged in 2016"),
 // before it. Escaped.
@@ -293,7 +353,6 @@ function boldTitle(title, text, sep) {
   if (i < 0) return (title ? '<bdi><b>' + esc(title) + '</b></bdi>' + esc(sep) : '') + esc(text);
   return esc(text.slice(0, i)) + '<b>' + esc(text.slice(i, i + title.length)) + '</b>' + esc(text.slice(i + title.length));
 }
-
 // Quick title matches first, then the full text's, each article once.
 function mergeResults(first, second) {
   var seen = {}, out = [];
@@ -317,6 +376,7 @@ function cleanBlurb(s) {
 var VIEW_KEY = 'zimi_wiki_view';
 var TODAY_KEY = 'zimi_wiki_today';
 var LANG_KEY = 'zimi_wiki_lang';
+// The parts of a wiki's day, as /wiki/home and /wiki/today name them.
 var PARTS = ['picks', 'otd', 'extras', 'front'];
 var _wikis = [], _by = {}, _labels = {}, _langs = [], _lang = '', _sel = [], _q = '', _hits = [], _searchSeq = 0, _view = 'cards';
 var _everyLanguage = false;  // this search reaches every language
@@ -425,28 +485,9 @@ function skeletons(n) {
   var one = asRow ? '<div class="sk row-sk"></div>' : '<div class="sk"></div>';
   return asRow ? new Array(n + 1).join(one) : '<div class="grid">' + new Array(n + 1).join(one) + '</div>';
 }
-// A part of Today: a heading, a line under it, and what it holds.
-function section(id, title, inner, sub) {
-  return '<section class="sec" id="s-' + id + '"><div class="sec-h"><h2 class="serif"' + ui() + '>' + esc(title) + '</h2>' + (sub ? '<span class="sub"' + ui() + '>' + esc(sub) + '</span>' : '') +
-    '</div><div class="sb">' + inner + '</div></section>';
-}
-function fill(id, html) {
-  var s = document.getElementById('s-' + id);
-  if (s) s.querySelector('.sb').innerHTML = html;
-}
-function drop(id) { var s = document.getElementById('s-' + id); if (s) s.remove(); }
-function note(text) { return '<p class="note"' + ui() + '>' + esc(text) + '</p>'; }
 
 // ── Today ────────────────────────────────────────────────────────────────
 var _todaySeq = 0;
-// A wiki's pick as a card: its role says what it is, in the interface's words.
-function fromPick(p) {
-  var role = p.role || 'article';
-  var it = { zim: p.zim, path: p.path, title: p.title || p.path, blurb: cleanBlurb(p.blurb || ''), thumb: p.thumbnail || '', role: STR[role] || '', cls: role };
-  if (role === 'word') it.kick = p.kick || '';
-  if (role === 'quote') it.by = p.kick || p.title || '';
-  return it;
-}
 function heroHtml(p) {
   var la = langAttr(p.zim);
   return '<a class="hero' + (p.thumbnail ? ' has-pic' : '') + '"' + linkAttrs(p.zim, p.path) + '>' +
@@ -455,6 +496,42 @@ function heroHtml(p) {
     '<span class="t serif"' + la + '>' + esc(p.title || p.path) + '</span>' +
     (p.blurb ? '<span class="ex"' + la + '>' + esc(cleanBlurb(p.blurb)) + '</span>' : '') +
     '<span class="more-l"' + ui() + '>' + esc(STR.read_more) + CHEV + '</span>' + srcLine(p.zim) + '</span></a>';
+}
+// Continue reading: each at the section you were in.
+function continueHtml(list) {
+  return '<div class="cont">' + list.map(function(p) {
+    var w = _by[p.zim] || {}, m = p.meta || {};
+    var pic = m.thumb ? '<img src="' + esc(m.thumb) + '" alt="" loading="lazy">' : (w.icon ? zimIcon(w.name, 'ic') : '<span class="ic"></span>');
+    return '<a' + linkAttrs(p.zim, p.path + (p.where.s ? '#' + p.where.s : '')) + '>' + pic + '<span class="bd"><span class="t"' + langAttr(p.zim) + '>' + esc(p.title || p.path) + '</span>' +
+      '<span class="prog"><i style="width:' + Math.round(Math.min(1, p.where.f) * 100) + '%"></i></span>' + srcLine(p.zim) + '</span></a>';
+  }).join('') + '</div>';
+}
+// A trail: its articles in the order taken; a tap goes back in there, with
+// the trail as it was.
+function trailsHtml(list) {
+  var now = Date.now();
+  return '<ol class="trails">' + list.map(function(tr, k) {
+    return '<li>' + tr.items.map(function(s, i) {
+      return (i ? '<span class="step" aria-hidden="true"></span>' : '') + '<a' + linkAttrs(s.zim, s.path) + ' data-trail="' + k + '"' + langAttr(s.zim) + '>' + esc(s.title || s.path) + '</a>';
+    }).join('') + '<span class="when"' + ui() + '>' + esc(ago(tr.ts, now)) + '</span></li>';
+  }).join('') + '</ol>';
+}
+// A part of Today: a heading, and what it holds.
+function section(id, title, inner) {
+  return '<section class="sec" id="s-' + id + '"><div class="sec-h"><h2 class="serif"' + ui() + '>' + esc(title) + '</h2></div><div class="sb">' + inner + '</div></section>';
+}
+function fill(id, html) {
+  var s = document.getElementById('s-' + id);
+  if (s) s.querySelector('.sb').innerHTML = html;
+}
+function drop(id) { var s = document.getElementById('s-' + id); if (s) s.remove(); }
+// A wiki's pick as a card: its role says what it is, in the interface's words.
+function fromPick(p) {
+  var role = p.role || 'article';
+  var it = { zim: p.zim, path: p.path, title: p.title || p.path, blurb: cleanBlurb(p.blurb || ''), thumb: p.thumbnail || '', role: STR[role] || '', cls: role };
+  if (role === 'word') it.kick = p.kick || '';
+  if (role === 'quote') it.by = p.kick || p.title || '';
+  return it;
 }
 function otdHtml(evs) {
   return '<ol class="otd-list">' + evs.map(function(x) {
@@ -469,17 +546,8 @@ function dykHtml(zim, facts) {
     return '<li' + la + '><a' + linkAttrs(zim, f.path) + '>' + boldTitle(f.title, cleanBlurb(f.text), ': ') + '</a></li>';
   }).join('') + '</ul>';
 }
-function trailHtml(zim, start, trail) {
-  var la = langAttr(zim);
-  var steps = [{ path: start.path, title: start.title, blurb: '' }].concat(trail);
-  return '<p class="sec-note"' + ui() + '>' + esc(STR.rabbit_hint) + '</p><ol class="trail">' + steps.map(function(s, i) {
-    return '<li data-n="' + (i + 1) + '"><a' + linkAttrs(zim, s.path) + '><span class="t"' + la + '>' + esc(s.title) + '</span>' +
-      (s.blurb ? '<span class="ex"' + la + '>' + esc(cleanBlurb(s.blurb)) + '</span>' : '') + '</a></li>';
-  }).join('') + '</ol>';
-}
 function potdHtml(zim, p) {
-  var la = langAttr(zim);
-  return '<a class="potd"' + linkAttrs(zim, p.path) + '><img src="' + esc(p.thumbnail) + '" alt="" loading="lazy"><div class="cap"' + la + '>' +
+  return '<a class="potd"' + linkAttrs(zim, p.path) + '><img src="' + esc(p.thumbnail) + '" alt="" loading="lazy"><div class="cap"' + langAttr(zim) + '>' +
     boldTitle(p.title, cleanBlurb(p.blurb || ''), ' ') + '</div></a>';
 }
 // What the front pages featured, from every wiki of the plan, in turn.
@@ -493,6 +561,21 @@ function frontItems(names) {
   }
   return out;
 }
+// The recent trails, which Zimipedia's reader keeps in this browser: the
+// shell's (_wikiTrailsKept), none on a page open outside it.
+function keptTrails() { try { return window.parent._wikiTrailsKept() || []; } catch (e) { return []; } }
+var _trailsShown = [];
+// Where you were: Continue reading under the day's article, the trails
+// beside the picture of the day.
+function drawYours() {
+  var host = document.getElementById('yours'), th = document.getElementById('s-trails') || document.getElementById('yours-trails');
+  if (!host) return;
+  var S = saved();
+  var cont = continuedIn(S ? S.continued({ app: 'wiki' }) : [], _lang, _by).slice(0, CONTINUE_SHOWN);
+  _trailsShown = trailsIn(keptTrails(), _lang, _by).slice(0, TRAILS_SHOWN);
+  host.innerHTML = cont.length ? section('continue', STR.continue, continueHtml(cont)) : '';
+  if (th) th.outerHTML = _trailsShown.length ? section('trails', STR.trails, trailsHtml(_trailsShown)) : '<div id="yours-trails" hidden></div>';
+}
 
 function renderToday() {
   var seq = ++_todaySeq;
@@ -504,11 +587,12 @@ function renderToday() {
   renderViews();
   var host = document.getElementById('today');
   var heroWp = plan.hero && _by[plan.hero] && _by[plan.hero].project === 'wikipedia';
-  host.innerHTML = (plan.hero ? '<div id="s-hero"><div class="sb"><div class="sk hero-sk"></div></div></div>' : '') +
+  host.innerHTML = (plan.hero ? '<div id="s-hero"><div class="sk hero-sk"></div></div>' : '') + '<div id="yours"></div>' +
     '<div class="duo">' + (plan.otd.length ? section('otd', STR.on_this_day, skeletons(1)) : '') + (heroWp ? section('dyk', STR.did_you_know, skeletons(1)) : '') + '</div>' +
     (plan.cards.length ? section('wk', STR.featured, skeletons(Math.min(plan.cards.length, 3))) : '') +
-    '<div class="duo even">' + (heroWp ? section('potd', STR.picture, '<div class="sk"></div>') + section('trail', STR.rabbit_hole, skeletons(1)) : '') + '</div>' +
-    section('front', STR.front, skeletons(Math.min(plan.front.length, 3)));
+    '<div class="duo even">' + (heroWp ? section('potd', STR.picture, '<div class="sk"></div>') : '') + '<div id="yours-trails" hidden></div></div>' +
+    (plan.front.length ? section('front', STR.front, skeletons(Math.min(plan.front.length, 3))) : '');
+  drawYours();
   var stale = function() { return seq !== _todaySeq || !!_q; };
   var known = function(part, z) { return _got[part][z] !== undefined; };
 
@@ -524,10 +608,6 @@ function renderToday() {
       // A Wikipedia without date pages (a selection, a mini build) has no
       // On this day, and the page leaves the part out.
       if (evs.length) fill('otd', otdHtml(evs)); else drop('otd');
-    }
-    if (heroWp && known('extras', plan.hero)) {
-      var ex = _got.extras[plan.hero] || {};
-      if (hp && hp.path && ex.trail && ex.trail.length) fill('trail', trailHtml(plan.hero, hp, ex.trail)); else drop('trail');
     }
     // The facts and the picture: the leading Wikipedia's, else those of
     // another Wikipedia of the language (a subset with pictures beside a
@@ -567,7 +647,8 @@ function renderToday() {
   };
   draw();
   // What /wiki/home did not carry and this browser does not keep, a few
-  // wikis at a time; each answer draws what it brought.
+  // wikis at a time; each answer draws what it brought. The server worked
+  // the day out in the background, so these are reads of what it keeps.
   var need = wikis.filter(function(w) {
     var z = w.name, wp = w.project === 'wikipedia';
     return _failed[z] || !known('picks', z) || !known('front', z) || (wp && (!known('otd', z) || !known('extras', z)));
@@ -674,15 +755,44 @@ function showToday() {
 }
 
 // ── languages and pills ──────────────────────────────────────────────────
+// The language is one short chip (a globe and its code) at the end of the
+// wikis' row: the wikis are what you narrow most, the language what you set
+// once. It opens the languages, each in its own name with its wikis.
+var GLOBE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>';
+var CARET = '<svg class="dn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+function langCode(code) { return String(code || '').split('-')[0].toUpperCase(); }
 function renderLangs() {
   var host = document.getElementById('langs');
-  host.setAttribute('aria-label', STR.languages);
-  host.innerHTML = _langs.map(function(l) {
-    var on = l.code === _lang;
-    return '<button type="button" class="chip' + (on ? ' on' : '') + '" aria-pressed="' + on + '" lang="' + esc(l.code) + '" title="' + esc(langName(l.code)) +
-      '" onclick="setLang(' + J(l.code) + ')">' + esc(endonym(l.code, langName(l.code))) + ' <span class="n">' + l.wikis + '</span></button>';
-  }).join('');
+  var name = endonym(_lang, langName(_lang));
+  host.innerHTML = '<button type="button" class="chip lang-btn" id="lang-btn" aria-haspopup="true" aria-expanded="false" aria-label="' + esc(STR.languages + ': ' + name) +
+    '" title="' + esc(name) + '" onclick="toggleLangs()">' + GLOBE + '<span>' + esc(langCode(_lang)) + '</span>' + CARET + '</button>';
   host.hidden = _langs.length < 2;
+  filtersShown();
+}
+function toggleLangs(open) {
+  var btn = document.getElementById('lang-btn'), menu = document.getElementById('lang-menu');
+  if (open === undefined) open = !menu;
+  if (menu) menu.remove();
+  if (btn) btn.setAttribute('aria-expanded', String(!!open));
+  if (!open || !btn) return;
+  btn.insertAdjacentHTML('afterend', '<ul class="lang-menu" id="lang-menu" role="menu" aria-label="' + esc(STR.languages) + '"' + ui() + '>' + _langs.map(function(l) {
+    return '<li role="none"><button type="button" role="menuitemradio" aria-checked="' + (l.code === _lang) + '" lang="' + esc(l.code) + '" onclick="pickLang(' + J(l.code) + ')">' +
+      '<span class="nm">' + esc(endonym(l.code, langName(l.code))) + '</span><span class="n">' + l.wikis + '</span></button></li>';
+  }).join('') + '</ul>');
+  var on = document.querySelector('#lang-menu [aria-checked="true"]') || document.querySelector('#lang-menu button');
+  if (on) on.focus();
+}
+function pickLang(code) { toggleLangs(false); setLang(code); var b = document.getElementById('lang-btn'); if (b) b.focus(); }
+// A tap outside the list, or Escape, closes it.
+document.addEventListener('click', function(e) {
+  if (document.getElementById('lang-menu') && !(e.target.closest && e.target.closest('.lang-pick'))) toggleLangs(false);
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && document.getElementById('lang-menu')) { toggleLangs(false); var b = document.getElementById('lang-btn'); if (b) b.focus(); }
+});
+// The row is there while it holds something: wikis to choose, or languages.
+function filtersShown() {
+  document.getElementById('filters').hidden = document.getElementById('pills').hidden && document.getElementById('langs').hidden;
 }
 function renderPills() {
   var host = document.getElementById('pills');
@@ -698,6 +808,7 @@ function renderPills() {
   });
   host.innerHTML = h;
   host.hidden = ws.length < 2;
+  filtersShown();
 }
 // All on until one is tapped: the first tap narrows to that wiki, the next
 // ones add or take away, and the last one taken away is all again.
@@ -748,6 +859,10 @@ document.addEventListener('click', function(e) {
   var a = e.target.closest && e.target.closest('a[data-zim][data-path]');
   if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
   e.preventDefault();
+  // A step of a recent trail: the trail is this tab's again, so the reader
+  // goes on from there.
+  var k = a.getAttribute('data-trail');
+  if (k !== null && _trailsShown[+k]) { try { window.parent._wikiTrailResume(_trailsShown[+k].items); } catch (err) {} }
   tell({ zimi: 'open', zim: a.getAttribute('data-zim'), path: a.getAttribute('data-path') });
 });
 
@@ -783,8 +898,11 @@ document.addEventListener('visibilitychange', function() { if (!document.hidden)
 window.addEventListener('focus', checkDay);
 
 window.wikiSearch = wikiSearch; window.pill = pill; window.pillAll = pillAll; window.setView = setView; window.load = load;
-window.setLang = setLang; window.everyLanguage = everyLanguage;
+window.setLang = setLang; window.everyLanguage = everyLanguage; window.toggleLangs = toggleLangs; window.pickLang = pickLang;
 window.__top = function() { return !_q; };
+window.__saved = function() { if (!_q) drawYours(); };
+// Back from an article: where you were and the trail just taken are new.
+window.addEventListener('pageshow', function() { if (_wikis.length && !_q) drawYours(); });
 window.__back = function() { if (_q) { showToday(); return true; } return false; };
 window.__home = function() { showToday(); window.scrollTo(0, 0); };
 window.__route = function() { showToday(); };

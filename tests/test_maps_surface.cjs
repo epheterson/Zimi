@@ -37,6 +37,7 @@ vm.runInContext([
   extract(/var _MAPS_SVG = [^\n]*\n/, '_MAPS_SVG'),
   extract(/function _newestPer\(list, key\) \{[\s\S]*?\n\}/, '_newestPer'),
   extract(/function _installedOfKind\(kind, key\) \{[\s\S]*?\n\}/, '_installedOfKind'),
+  extract(/function _installedFor\(kind, app, key\) \{[\s\S]*?\n\}/, '_installedFor'),
   extract(/function _mapName\(z\) \{[\s\S]*?\n\}/, '_mapName'),
   extract(/function _mapSourceLabel\(z\) \{[\s\S]*?\n\}/, '_mapSourceLabel'),
   extract(/function _installedMaps\(\) \{[\s\S]*?\n\}/, '_installedMaps'),
@@ -49,14 +50,14 @@ ok('a stat-card like any source, named Maps, listing the maps', /^<a class="stat
 ok('it opens the door', /onclick="return _spaNav\(event, openMaps\)"/.test(tile));
 ctx.zimsCache = ctx.zimsCache.filter(z => z.kind !== 'map');
 ok('no map installed: the tile stays and opens the Maps category of the catalog', /app-empty maps-tile/.test(ctx._mapsTileHtml()) && /No map yet/.test(ctx._mapsTileHtml()) && /_openCategory\(_APP_CATEGORY\.maps\)/.test(ctx._mapsTileHtml()));
-ok('the tile sits in the apps row before favorites on the plain home only', /if \(!homeScope && !filter && !homeRecentFilter && !homeLangFilter\.size\) \{\n\s*h \+= _appsRowHtml\(\);/.test(src.replace(/\r\n/g, '\n')) && /_appShown\('maps'\) \? _mapsTileHtml\(\) : ''\) \+ \(_appShown\('tube'\) \? _tubeTileHtml\(\) : ''/.test(src));
+ok('the tile sits in the apps row before favorites on the plain home only', /if \(!homeScope && !filter && !homeRecentFilter && !homeLangFilter\.size\) \{\n\s*h \+= _appsRowHtml\(\);/.test(src.replace(/\r\n/g, '\n')) && /_APP_TILES = \{ maps: _mapsTileHtml, tube: _tubeTileHtml,/.test(src));
 
 // ── the one box ──────────────────────────────────────────────────────────
 const input = extract(/q\.addEventListener\('input', \(\) => \{[\s\S]*?\n\}\);/, 'input handler');
 ok('typing on a map page finds places, not articles or history', /if \(val && val\.length >= 1 && _isMapPage\(\)\) \{[\s\S]*fetchPlaces\(val\)/.test(input) && !/_isMapPage\(\)\) \{[\s\S]*showHistoryDropdown\(val\)[\s\S]*\} else if/.test(input.split('} else if')[0]));
 const fp = extract(/async function fetchPlaces\(query\) \{[\s\S]*?\n\}/, 'fetchPlaces');
 ok('it asks /places and makes suggest rows that carry the place', /fetch\('\/places\?q=' \+ encodeURIComponent\(query\)/.test(fp) && /_place: true, zim: g\.zim, path: g\.main_path, title: p\.name/.test(fp) && /pos: 'map=' \+ \(p\.zoom \|\| 15\) \+ '\/' \+ p\.lat \+ '\/' \+ p\.lng/.test(fp));
-ok('picking a row opens the place where it is', /openArticle\(s\.zim, s\.path, s\.title, s\.pos \? \{pos: s\.pos\} : undefined\)/.test(src));
+ok('picking a row opens the place where it is', /if \(s\.pos\) openArticle\(s\.zim, s\.path, s\.title, \{pos: s\.pos\}\);/.test(src));
 const keys = extract(/q\.addEventListener\('keydown', e => \{[\s\S]*?\n\}\);/, 'keydown');
 ok('Enter on a map takes the first place', /if \(_isMapPage\(\)\) \{\s*\r?\n\s*if \(suggestItems\.length && suggestItems\[0\]\._place\) selectSuggest\(0\);/.test(keys));
 ok('the box says what it is for', /_isMapPage\(\)\) return t\('maps_search_placeholder'\)/.test(src));

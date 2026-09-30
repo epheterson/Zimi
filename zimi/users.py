@@ -38,7 +38,9 @@ are migrated in-memory on load: an allowlist present → ``limited``, else ``use
 """
 
 import hashlib
+import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -590,10 +592,391 @@ def touch_federated_user(name, identity):
 # atomic writes, deleted with the account. Anonymous / admin-without-a-named-user
 # never reach here — their bookmarks stay in the browser (see http.py's gate).
 
-_USERDATA_VERSION = 1
-#: Hard ceiling per blob so one account can't fill the disk (server-side twin of
-#: the client cap). Comfortably above a heavy bookmarks+history set.
+#: 2 (1.12): the blob carries ``saved``, the one store for everything kept
+#: (items, lists, memberships, positions, highlights and their tombstones), merged on every
+#: write rather than replaced. bookmarks/folders stay readable for one release.
+_USERDATA_VERSION = 2
+#: Hard ceiling per blob, apart from the saved store (which has its own,
+#: _SAVED_MAX_BYTES), so one account can't fill the disk. Comfortably above a
+#: heavy bookmarks+history set. Measured as the file is written: UTF-8, compact.
 _USERDATA_MAX_BYTES = 4 * 1024 * 1024
+
+# ── Saved: the account's copy of the store (app.js's Saved is the twin) ──
+# Every record carries ts (ms); the newer copy of a record wins, a tie keeps
+# the kept one. A deletion leaves a tombstone in ``gone`` (i:item, l:list,
+# m:membership, p:position, h:highlight) that removes any copy as old or older, so a delete
+# on one device survives the next sync from another. Tombstones are forgotten
+# after _SAVED_GONE_MS. Nothing from the client is trusted: every record is
+# rebuilt from the fields it may have, and an item's key must be the one its
+# own zim and path (and a place's position) make. What a person saved (items,
+# lists, memberships, highlights) is never dropped to make room: the store has
+# a byte budget, past it the oldest tombstones go, then the oldest places, and
+# a store still over it is refused whole (the device says sync is paused).
+_SAVED_LIKED = "liked"
+_SAVED_KINDS = ("article", "book", "video", "question", "post", "place")
+_SAVED_APPS = ("books", "tube", "exchange", "reddot", "maps", "wiki")
+_SAVED_COLLS = (
+    ("items", "i:"),
+    ("lists", "l:"),
+    ("members", "m:"),
+    ("positions", "p:"),
+    ("highlights", "h:"),
+)
+#: The store as the file holds it (UTF-8 JSON, compact), at most. app.js's
+#: Saved holds the same budget and trims the same way.
+_SAVED_MAX_BYTES = 3 * 1024 * 1024
+#: Where you were: the latest this many places per app (Zimipedia's articles
+#: never push Bookshelf's books out of Continue).
+_SAVED_POS_PER_APP = 300
+#: Tombstones kept at most, the newest.
+_SAVED_GONE_MAX = 10000
+_SAVED_GONE_MS = 90 * 86400 * 1000
+#: A time from a device this far past the server's clock is taken as the
+#: server's clock plus this: a fast clock never outranks every later edit.
+_SAVED_FUTURE_MS = 5 * 60 * 1000
+_SAVED_TITLE_MAX = 500
+_SAVED_NAME_MAX = 120
+_SAVED_ZIM_MAX = 200
+_SAVED_PATH_MAX = 2000
+_SAVED_SMALL_KEYS = 16
+_SAVED_SMALL_KEY_MAX = 32
+_SAVED_SMALL_VAL_MAX = 1000
+_SAVED_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+_SAVED_GONE_RE = re.compile(r"^[ilmph]:.", re.S)
+# A highlight's colours (the first the default), its quote, context and note.
+_SAVED_HL_COLORS = ("yellow", "green", "blue", "pink")
+_SAVED_HL_QUOTE_MAX = 600
+_SAVED_HL_CONTEXT_MAX = 64
+_SAVED_HL_NOTE_MAX = 2000
+
+
+def _saved_empty():
+    return {
+        "v": 1,
+        "items": {},
+        "lists": {},
+        "members": {},
+        "positions": {},
+        "highlights": {},
+        "gone": {},
+        "legacy": False,
+    }
+
+
+def _saved_num(v):
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    return v if math.isfinite(v) else None
+
+
+def _saved_round(v):
+    """Math.round, as the client rounds (half up, not half to even)."""
+    return int(math.floor(v + 0.5))
+
+
+def _saved_key(rec):
+    zim, path = rec.get("zim"), rec.get("path")
+    if not zim or not path:
+        return ""
+    k = zim + "\n" + path
+    where = rec.get("where")
+    pos = (
+        where.get("pos")
+        if rec.get("kind") == "place" and isinstance(where, dict)
+        else None
+    )
+    return k + "\n" + pos if isinstance(pos, str) and pos else k
+
+
+def _saved_small(o):
+    """A few short scalar fields (a where, an app's meta), or None."""
+    if not isinstance(o, dict):
+        return None
+    out = {}
+    for f, v in o.items():
+        if (
+            len(out) >= _SAVED_SMALL_KEYS
+            or not isinstance(f, str)
+            or not f
+            or len(f) > _SAVED_SMALL_KEY_MAX
+        ):
+            continue
+        if isinstance(v, str):
+            v = v[:_SAVED_SMALL_VAL_MAX]
+        elif not isinstance(v, bool) and _saved_num(v) is None:
+            continue
+        out[f] = v
+    return out or None
+
+
+def _saved_thing(r, id_):
+    """An item or a position, rebuilt from what it may carry; None if it is
+    not one or its key is not its own."""
+    if not isinstance(r, dict):
+        return None
+    zim, path, ts = r.get("zim"), r.get("path"), _saved_num(r.get("ts"))
+    if not isinstance(zim, str) or not zim or len(zim) > _SAVED_ZIM_MAX:
+        return None
+    if (
+        not isinstance(path, str)
+        or not path
+        or len(path) > _SAVED_PATH_MAX
+        or ts is None
+    ):
+        return None
+    title = r.get("title")
+    out = {
+        "kind": r.get("kind") if r.get("kind") in _SAVED_KINDS else "article",
+        "zim": zim,
+        "path": path,
+        "title": title[:_SAVED_TITLE_MAX] if isinstance(title, str) else "",
+        "ts": _saved_round(ts),
+    }
+    orig = r.get("origTitle")
+    if isinstance(orig, str) and orig:
+        out["origTitle"] = orig[:_SAVED_TITLE_MAX]
+    if r.get("app") in _SAVED_APPS:
+        out["app"] = r["app"]
+    where, meta = _saved_small(r.get("where")), _saved_small(r.get("meta"))
+    if where:
+        out["where"] = where
+    if meta:
+        out["meta"] = meta
+    return out if _saved_key(out) == id_ else None
+
+
+def _saved_highlight(r, id_):
+    """A highlight rebuilt from what it may carry (the page, the quote and
+    its context, where it starts, its colour and note); None if it is not
+    one."""
+    if (
+        not isinstance(r, dict)
+        or not isinstance(id_, str)
+        or not _SAVED_ID_RE.match(id_)
+    ):
+        return None
+    ts, pos, n, added = (_saved_num(r.get(f)) for f in ("ts", "pos", "n", "added"))
+    zim, path, exact = r.get("zim"), r.get("path"), r.get("exact")
+    if not isinstance(zim, str) or not zim or len(zim) > _SAVED_ZIM_MAX:
+        return None
+    if (
+        not isinstance(path, str)
+        or not path
+        or len(path) > _SAVED_PATH_MAX
+        or ts is None
+    ):
+        return None
+    if not isinstance(exact, str) or not exact:
+        return None
+
+    def text(f, most):
+        v = r.get(f)
+        return v[:most] if isinstance(v, str) else ""
+
+    out = {
+        "zim": zim,
+        "path": path,
+        "kind": r.get("kind") if r.get("kind") in _SAVED_KINDS else "article",
+        "title": text("title", _SAVED_TITLE_MAX),
+        "exact": exact[:_SAVED_HL_QUOTE_MAX],
+        "prefix": text("prefix", _SAVED_HL_CONTEXT_MAX),
+        "suffix": text("suffix", _SAVED_HL_CONTEXT_MAX),
+        "pos": 0 if pos is None else max(0, min(1, pos)),
+        "color": (
+            r.get("color")
+            if r.get("color") in _SAVED_HL_COLORS
+            else _SAVED_HL_COLORS[0]
+        ),
+        "added": _saved_round(ts if added is None else added),
+        "ts": _saved_round(ts),
+    }
+    if r.get("app") in _SAVED_APPS:
+        out["app"] = r["app"]
+    end = r.get("end")
+    if isinstance(end, str) and end and n is not None and n > 0:
+        out["end"] = end[:_SAVED_HL_QUOTE_MAX]
+        out["n"] = _saved_round(n)
+    note = r.get("note")
+    if isinstance(note, str) and note:
+        out["note"] = note[:_SAVED_HL_NOTE_MAX]
+    return out
+
+
+def _saved_order(r):
+    if not isinstance(r, dict):
+        return None
+    o, ts = _saved_num(r.get("order")), _saved_num(r.get("ts"))
+    return None if o is None or ts is None else {"order": o, "ts": _saved_round(ts)}
+
+
+def _clean_saved(x):
+    """The store as a client may send it, keeping only well-formed records."""
+    s = _saved_empty()
+    if not isinstance(x, dict):
+        return s
+
+    def each(src):
+        return list(src.items()) if isinstance(src, dict) else []
+
+    for id_, r in each(x.get("items")):
+        it = _saved_thing(r, id_) if isinstance(id_, str) else None
+        if it:
+            added = _saved_num(r.get("added"))
+            it["added"] = _saved_round(it["ts"] if added is None else added)
+            s["items"][id_] = it
+    for id_, r in each(x.get("lists")):
+        o = _saved_order(r)
+        name = r.get("name") if isinstance(r, dict) else None
+        if (
+            not o
+            or not isinstance(id_, str)
+            or not _SAVED_ID_RE.match(id_)
+            or id_ == _SAVED_LIKED
+            or not isinstance(name, str)
+            or not name.strip()
+        ):
+            continue
+        s["lists"][id_] = {
+            "name": name.strip()[:_SAVED_NAME_MAX],
+            "order": o["order"],
+            "ts": o["ts"],
+        }
+    for mk, r in each(x.get("members")):
+        o = _saved_order(r)
+        i = mk.find("\t") if isinstance(mk, str) else -1
+        if (
+            i < 1
+            or not o
+            or not _SAVED_ID_RE.match(mk[:i])
+            or len(mk) - i - 1 > _SAVED_ZIM_MAX + _SAVED_PATH_MAX + 64
+        ):
+            continue
+        s["members"][mk] = o
+    for id_, r in each(x.get("positions")):
+        p = _saved_thing(r, id_) if isinstance(id_, str) else None
+        if p:
+            s["positions"][id_] = p
+    for id_, r in each(x.get("highlights")):
+        h = _saved_highlight(r, id_)
+        if h:
+            s["highlights"][id_] = h
+    for g, ts in each(x.get("gone")):
+        if (
+            _saved_num(ts) is not None
+            and isinstance(g, str)
+            and _SAVED_GONE_RE.match(g)
+            and len(g) < _SAVED_ZIM_MAX + _SAVED_PATH_MAX + 128
+        ):
+            s["gone"][g] = _saved_round(ts)
+    s["legacy"] = x.get("legacy") is True
+    return s
+
+
+def _saved_cap(m, n, ts_of):
+    """Past ``n`` records, the newest are kept (ties by key)."""
+    if len(m) <= n:
+        return
+    for k in sorted(m, key=lambda k: (-ts_of(m[k]), k))[n:]:
+        del m[k]
+
+
+def _saved_rec_ts(r):
+    return r["ts"]
+
+
+def _saved_gone_ts(v):
+    return v
+
+
+def _saved_bytes(x):
+    """The bytes x takes as the file holds it: UTF-8 JSON, compact."""
+    return len(
+        json.dumps(x, ensure_ascii=False, separators=(",", ":")).encode(
+            "utf-8", "surrogatepass"
+        )
+    )
+
+
+def _saved_fit(s, budget):
+    """Past ``budget`` bytes the oldest tombstones go first, then the oldest
+    places, until the store fits. Nothing a person saved is dropped here: a
+    store still over is the caller's to refuse."""
+    size = _saved_bytes(s)
+    for name, ts_of in (("gone", _saved_gone_ts), ("positions", _saved_rec_ts)):
+        m = s[name]
+        for k in sorted(m, key=lambda k: (ts_of(m[k]), k)):
+            if size <= budget:
+                return
+            # "key":value, and the comma beside it while another is left.
+            size -= _saved_bytes(k) + 1 + _saved_bytes(m[k]) + (len(m) > 1)
+            del m[k]
+
+
+def _saved_normalize(s, now_ms, budget=None):
+    """A membership needs its item and its list; tombstones age out; each app
+    keeps its latest places; the store fits its byte budget (_saved_fit)."""
+    for mk in list(s["members"]):
+        i = mk.find("\t")
+        lid = mk[:i]
+        if mk[i + 1 :] not in s["items"] or (
+            lid != _SAVED_LIKED and lid not in s["lists"]
+        ):
+            del s["members"][mk]
+    for g in [g for g, ts in s["gone"].items() if ts < now_ms - _SAVED_GONE_MS]:
+        del s["gone"][g]
+    _saved_cap(s["gone"], _SAVED_GONE_MAX, _saved_gone_ts)
+    p, by_app = s["positions"], {}
+    for k, r in p.items():
+        by_app.setdefault(r.get("app", ""), []).append(k)
+    for ks in by_app.values():
+        for k in sorted(ks, key=lambda k: (-p[k]["ts"], k))[_SAVED_POS_PER_APP:]:
+            del p[k]
+    _saved_fit(s, _SAVED_MAX_BYTES if budget is None else budget)
+    return s
+
+
+def _saved_clamp(s, most):
+    """No time in a cleaned store later than ``most`` (ms)."""
+    for name, _pre in _SAVED_COLLS:
+        for r in s[name].values():
+            r["ts"] = min(r["ts"], most)
+            if "added" in r:
+                r["added"] = min(r["added"], most)
+    for g in s["gone"]:
+        s["gone"][g] = min(s["gone"][g], most)
+    return s
+
+
+def _merge_saved(a, b, now_ms, budget=None):
+    """Two cleaned stores as one: per record the newer wins (a tie keeps
+    ``a``'s); a tombstone as new as a record or newer removes it, and a record
+    saved again after its delete outlives the tombstone."""
+    out = _saved_empty()
+    out["legacy"] = bool(a.get("legacy") or b.get("legacy"))
+    gone = {}
+    for src in (a["gone"], b["gone"]):
+        for g, ts in src.items():
+            if not (g in gone and gone[g] >= ts):
+                gone[g] = ts
+    for name, pre in _SAVED_COLLS:
+        A, B = a[name], b[name]
+        for id_ in list(A) + list(B):
+            if id_ in out[name]:
+                continue
+            x, y = A.get(id_), B.get(id_)
+            r = y if x is None else x if y is None else (y if y["ts"] > x["ts"] else x)
+            dead = gone.get(pre + id_)
+            if dead is not None:
+                if dead >= r["ts"]:
+                    continue
+                del gone[pre + id_]
+            out[name][id_] = r
+    out["gone"] = gone
+    return _saved_normalize(out, now_ms, budget)
+
+
+def _now_ms():
+    return int(time.time() * 1000)
 
 
 def _userdata_dir():
@@ -626,53 +1009,124 @@ def _empty_user_data():
         "folders": [],
         "history": [],
         "preferences": {},
+        "saved": _saved_empty(),
     }
 
 
+class UserDataUnreadable(Exception):
+    """A user's data file exists but could not be read. Nothing may be
+    written over it: the next write would replace what it holds."""
+
+
+def _read_user_data(name):
+    """A user's stored blob; fresh-empty when there is none. Raises
+    UserDataUnreadable when the file is there but cannot be read."""
+    import json
+
+    try:
+        with open(_userdata_path(name), encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return _empty_user_data()
+    except (ValueError, OSError) as e:
+        log.warning("Could not read user data for %s: %s", name, e)
+        raise UserDataUnreadable(name) from e
+    return data if isinstance(data, dict) else _empty_user_data()
+
+
 def load_user_data(name):
-    """Return a user's stored data blob, or a fresh-empty one when none exists.
-    Caller has already authorized the requester for ``name``."""
+    """Return a user's stored data blob, or a fresh-empty one when none exists
+    or it cannot be read (logged; only a read, so nothing is lost). Caller
+    has already authorized the requester for ``name``."""
     if _safe_userdata_key(name) is None:
         return _empty_user_data()
     try:
-        import json
-
-        with open(_userdata_path(name), encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, dict):
-            return data
-    except (FileNotFoundError, ValueError, OSError):
-        pass
-    return _empty_user_data()
+        return _read_user_data(name)
+    except UserDataUnreadable:
+        return _empty_user_data()
 
 
-def save_user_data(name, blob):
-    """Persist a user's data blob (bookmarks/history/preferences). Returns
-    (ok, error). Caller has already authorized the requester for ``name``."""
-    import json
-
-    if _safe_userdata_key(name) is None:
-        return False, "invalid user"
-    if not isinstance(blob, dict):
-        return False, "invalid data"
+def _user_data_doc(blob, now_ms, saved=None):
+    """The blob as it is kept: known fields only, each of its type, and the
+    saved store rebuilt record by record and normalized (``saved``: a store
+    that already is)."""
+    if saved is None:
+        saved = _saved_normalize(_clean_saved(blob.get("saved")), now_ms)
     bookmarks = blob.get("bookmarks")
     folders = blob.get("folders")
     history = blob.get("history")
     prefs = blob.get("preferences")
-    doc = {
+    return {
         "version": _USERDATA_VERSION,
         "bookmarks": bookmarks if isinstance(bookmarks, list) else [],
         "folders": folders if isinstance(folders, list) else [],
         "history": history if isinstance(history, list) else [],
         "preferences": prefs if isinstance(prefs, dict) else {},
+        "saved": saved,
         "updated": int(time.time()),
     }
-    if len(json.dumps(doc)) > _USERDATA_MAX_BYTES:
+
+
+def _write_user_data(name, doc):
+    """Write a kept doc, the store and the rest each held to its budget as
+    the file holds them. Returns (ok, error); a write that did not land is
+    a failure, not an ok."""
+    if _saved_bytes(doc["saved"]) > _SAVED_MAX_BYTES:
+        return False, "saved too large"
+    rest = {k: v for k, v in doc.items() if k != "saved"}
+    if _saved_bytes(rest) > _USERDATA_MAX_BYTES:
         return False, "data too large"
     with _lock:
         os.makedirs(_userdata_dir(), exist_ok=True)
-        _srv._atomic_write_json(_userdata_path(name), doc, indent=2)
+        if not _srv._atomic_write_json(_userdata_path(name), doc):
+            return False, "write failed"
     return True, None
+
+
+def save_user_data(name, blob):
+    """Persist a user's data blob (bookmarks/history/preferences/saved),
+    replacing what was kept. Returns (ok, error). Caller has already
+    authorized the requester for ``name``."""
+    if _safe_userdata_key(name) is None:
+        return False, "invalid user"
+    if not isinstance(blob, dict):
+        return False, "invalid data"
+    return _write_user_data(name, _user_data_doc(blob, _now_ms()))
+
+
+def sync_user_data(name, patch, now_ms=None):
+    """What POST /userdata does: each plain field given (bookmarks, folders,
+    history, preferences) replaces the kept one, a field not given is left as
+    it was, and ``saved`` is MERGED with the kept store, so two devices writing
+    in turn lose nothing and a delete on either one holds. Load, merge and
+    write happen under one lock. Returns (ok, error, doc as kept)."""
+    if _safe_userdata_key(name) is None:
+        return False, "invalid user", None
+    if not isinstance(patch, dict):
+        return False, "invalid data", None
+    now_ms = _now_ms() if now_ms is None else now_ms
+    with _lock:
+        try:
+            cur = _read_user_data(name)
+        except UserDataUnreadable:
+            # Merging into an empty blob and writing would wipe the file.
+            return False, "read failed", None
+        blob = dict(cur)
+        for field in ("bookmarks", "folders", "history", "preferences"):
+            if field in patch:
+                blob[field] = patch[field]
+        kept = _clean_saved(cur.get("saved"))
+        if "saved" in patch:
+            # A device whose clock runs ahead is held to the server's.
+            sent = _saved_clamp(
+                _clean_saved(patch.get("saved")), now_ms + _SAVED_FUTURE_MS
+            )
+            kept = _merge_saved(kept, sent, now_ms)
+        else:
+            kept = _saved_normalize(kept, now_ms)
+        doc = _user_data_doc(blob, now_ms, saved=kept)
+        ok, err = _write_user_data(name, doc)
+    return ok, err, (doc if ok else None)
 
 
 def delete_user_data(name):
@@ -716,8 +1170,11 @@ def all_user_data():
 def restore_user_data(blobs, overwrite=False):
     """Restore per-user blobs from a full-server backup. ``blobs`` is keyed by
     casefold name (as ``all_user_data`` emits). ``overwrite`` clears every
-    existing blob first; otherwise incoming wins per user, others untouched.
-    Returns the number of user blobs written."""
+    existing blob first and writes each as it was backed up; otherwise each
+    is merged the way a device's sync is (sync_user_data): the plain fields
+    it carries replace the kept ones, and its saved store is merged with the
+    kept one, so what was saved since the backup stays. Other users are
+    untouched. Returns the number of user blobs written."""
     if not isinstance(blobs, dict):
         return 0
     if overwrite:
@@ -725,9 +1182,15 @@ def restore_user_data(blobs, overwrite=False):
             delete_user_data(key)
     written = 0
     for key, blob in blobs.items():
-        ok, _ = save_user_data(key, blob)  # key is already casefold; _key is idempotent
+        # key is already casefold; _key is idempotent
+        if overwrite:
+            ok, err = save_user_data(key, blob)
+        else:
+            ok, err, _ = sync_user_data(key, blob)
         if ok:
             written += 1
+        else:
+            log.warning("Restore skipped user data for %s: %s", key, err)
     return written
 
 

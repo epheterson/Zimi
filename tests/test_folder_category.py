@@ -246,6 +246,10 @@ def test_disk_cache_record_gains_no_new_keys(zim_dir):
         "kind",
         "map_search",
         "kind_v",  # which rule decided the kind, so a new kind re-reads old records once
+        # The apps beside its kind's that read it (1.12), {} included; an
+        # older Zimi ignores it.
+        "feeds",
+        "feeds_v",  # which rules decided feeds, so a new source re-reads old records once
     }
     assert set(written) <= known
 

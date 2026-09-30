@@ -74,6 +74,7 @@ from zimi.creator import (
     DEFAULT_FETCH_TIMEOUT,
     DEFAULT_MAX_REDIRECTS,
     LANGUAGE_AUTO,
+    OtherSiteLinks,
     SPA_REFUSAL,
     _A_TAG_RE,
     _externalize_links,
@@ -744,6 +745,7 @@ def create_site_zim(
     engine=DEFAULT_ENGINE,
     block_ads=None,
     capture_variants=None,
+    strip_links=False,
     register=False,
     progress=None,
     stop=None,
@@ -760,7 +762,11 @@ def create_site_zim(
     setting its ``hit`` ends the crawl at the next page boundary and packages
     everything captured so far — exactly what SIGINT does on the CLI, and how
     the web's finish-early control reaches a crawl running on a worker thread,
-    where signal handlers do not exist."""
+    where signal handlers do not exist.
+
+    ``strip_links`` turns links to other sites into plain text as each page is
+    written (``creator.unlink_other_sites``). Links within the site stay, and
+    the alive and zimit engines never see the option."""
     from zimi.p2p import is_offline
 
     note = progress or _noop
@@ -856,6 +862,7 @@ def create_site_zim(
     )
     spool_dir = None
     blocked = {}
+    unlink = OtherSiteLinks(strip_links)
     pages, reason, asset_count = [], None, 0
     seen_mimetypes = set()
     try:
@@ -931,7 +938,10 @@ def create_site_zim(
                     # target, and that set was not final until now. Everything
                     # else about the page was finished the moment it was
                     # fetched, which is why this loop touches no network.
-                    html = _externalize_links(html, page["final_url"], resolve)
+                    html = unlink(
+                        _externalize_links(html, page["final_url"], resolve),
+                        page["final_url"],
+                    )
                     creator.add_item(
                         static_cls(page["article"], page["title"], html.encode("utf-8"))
                     )
@@ -961,7 +971,8 @@ def create_site_zim(
                         "site",
                         f"captured {_plural(len(pages), 'page')} from {seed_url}"
                         + (f"; stopped early at the {reason}" if reason else "")
-                        + blocked_phrase(blocked.get("blocked")),
+                        + blocked_phrase(blocked.get("blocked"))
+                        + unlink.phrase(),
                         counts={
                             "pages": len(pages),
                             "assets": asset_count,
@@ -969,6 +980,7 @@ def create_site_zim(
                         },
                         blocked=blocked.get("blocked"),
                         stopped=reason,
+                        links_removed=unlink.count(),
                     ),
                 )
     finally:

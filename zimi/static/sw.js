@@ -93,11 +93,16 @@ async function checkVersion() {
 // /collections too: a person's own collections and favorites, which name ZIMs
 // as /list does; left to the default stale-while-revalidate, a collection
 // created or deleted did not show until the next reload.
-const NETWORK_ONLY_PREFIXES = ['/whoami', '/login', '/logout', '/list', '/search', '/suggest', '/random', '/places', '/tube', '/exchange', '/reddot', '/me', '/collections'];
+// /userdata: an account's own saved things. Served stale, a second device
+// never saw what the first had saved, and the account's copy outlived a
+// sign-out in the cache.
+const NETWORK_ONLY_PREFIXES = ['/whoami', '/login', '/logout', '/list', '/search', '/suggest', '/random', '/places', '/tube', '/exchange', '/reddot', '/me', '/collections', '/userdata'];
 
 // Non-identity API/data (article reads, health, manage, language lists). These
 // do not expose the library index and tolerate a cached fallback when offline.
-const NETWORK_FIRST_PREFIXES = ['/read', '/health', '/manage', '/article-languages', '/languages'];
+// /almanac-satellites too: the freshest orbital elements when the server
+// answers, the last ones seen when it does not.
+const NETWORK_FIRST_PREFIXES = ['/read', '/health', '/manage', '/article-languages', '/languages', '/almanac-satellites'];
 
 function _hasPrefix(path, prefixes) {
   for (let i = 0; i < prefixes.length; i++) {

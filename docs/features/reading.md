@@ -6,11 +6,29 @@ Search across every ZIM at once, open an article, and read it — the part of Zi
 
 **Search** runs across the whole library from one box. Results are ranked by title match, then by position within the source's own results, then by source authority (a bigger ZIM's hit outranks a tiny one's, on a log scale, capped so a large source cannot flood the page). A query with no hits gets a "did you mean" from a vocabulary and trigram pass rather than nothing. Search a single source by opening it first; the box narrows to it.
 
+**Search operators.** The library search, the catalog and `GET /search` (so MCP and the CLI too) share one grammar:
+
+| Type | Means |
+|---|---|
+| `word` | every word must match |
+| `"two words"` | the words together, in that order (straight or curly quotes) |
+| `-word`, `-"two words"` | leave out anything containing it |
+| `cats OR dogs` | either one; `OR` in capitals, between two terms |
+| `in:wikipedia` or `source:wikipedia` | only sources whose name or title contains it (the catalog also matches the category) |
+| `lang:fr` | only sources in that language, two or three letters (`lang:fra`) |
+| `-in:ted`, `-lang:en` | a filter, the other way round |
+
+A hyphen inside a word (`e-mail`, `x-ray`) is part of the word, a lone `-` or a stray quote is ignored, and a lower-case `or` is an ordinary word. An exclusion matches from the start of a word, so `-ted` leaves out TED and TEDx but not United States; in Chinese, Japanese, Thai and other scripts written without spaces it matches anywhere.
+
+What each operator did shows as a chip above the results, in the UI's language, the same in the library and the catalog: `-ted` reads "without ted", `"solar panel"` "exact: solar panel", `lang:fr` the language's name (French, Français, צרפתית), `in:wikipedia` the source's title, `cats OR dogs` "cats or dogs". A chip's × searches again without that one operator (a phrase keeps its words, as words). The ? beside the search box lists a few examples written for each language, each a tap from a search.
+
+In the library, exclusions and phrases are checked against a result's title. libzim's own search treats `-`, quotes and `OR` as plain words, and reading every article to check its text would make these queries slow; the words themselves still match anywhere in the article. A query with only exclusions or filters (`-ted`) finds nothing in the library, since it asks for nothing; in the catalog it lists everything else. A query with no operators takes exactly the path it always did.
+
 **The reader** opens an article in place. Titles, history and the address stay in step, so Back does what a browser's Back does and a link you share reopens the same article. `?a=<zim>/<path>` is the deep link; `/w/<zim>/<path>` serves the raw article.
 
 **Reader View** re-renders an article as plain, readable prose — one column, your font and size, your theme (dark / light / sepia). It is per-article, and `zimi_reader_auto` opens every article straight into it.
 
-**Bookmarks and history.** Bookmarks group into folders and survive restarts. History records what you opened. Both are stored per user server-side when you are signed in as a named account; an admin without a named user keeps them in the browser, which means they are per-browser and a private window starts empty. See [Users & access](access.md).
+**Saved and history.** The bookmark button saves the article at the section you are reading; saved things go in lists (as many as you like), and the Saved panel holds them all. See [Saving](saving.md). History records what you opened. Signed in as a named account, what you save follows the account to every device; an admin without a named user keeps it in the browser, which means it is per-browser and a private window starts empty. See [Users & access](access.md).
 
 **Word lookup (Define).** Select a word — or double-tap it on a phone — and Zimi looks it up in an installed Wiktionary. It is dormant with no Wiktionary installed. There is no tooltip advertising it; it is found the way every other text gesture is found.
 
@@ -48,7 +66,7 @@ A page captured by **alive** keeps its scripts and does not need this; see [Crea
 
 ## Troubleshoot
 
-- **Bookmarks vanished / a private window shows none** — you are signed in as an admin without a named user, so they live in that browser only. Create a named account and they follow you. See [Users & access](access.md).
+- **Saved things vanished / a private window shows none**: you are signed in as an admin without a named user, so they live in that browser only. Create a named account and they follow you. See [Users & access](access.md).
 - **Selecting a word does nothing** — no Wiktionary is installed. Add one from the catalog and the gesture starts working; nothing else needs enabling.
 - **An old version of the interface keeps loading** — a hard reload clears it. The service worker takes over on the next load after a deploy; a page left open from before will still be on the old bundle.
 - **A captured page still shows a gap or a stranded header** — the settling rules run in Zimi's reader. Opening the same `.zim` in another reader will show the page as captured, gap and all.
@@ -69,13 +87,22 @@ Location is asked for once and kept **session-scoped** on purpose — the almana
 
 **Deep-links.** Almanac objects (planets, stars, and other entities) can deep-link into the installed library via a closed set of Q-IDs resolved against your ZIMs, so clicking an object opens its article when a matching source is installed.
 
+**The 3D Earth.** Tap the glow around the Earth in the orrery to drop to a 3D Earth lit by the real Sun, with the Moon, eclipses, the ISS and the GPS satellites. The Sun, the Moon and the eclipses are computed like the rest of the almanac. The satellites are drawn from orbital elements: a snapshot ships with every release, and the server can fetch fresher ones from CelesTrak (`GET /almanac-satellites` answers at once with the newest it has). Whether it does is the one almanac setting that touches the network, **Satellite data from the internet**:
+
+- **Ask first** (the default). Zimi never contacts CelesTrak on its own. When the data is more than six hours old, the view says its date ("Orbital data from 27 Sep") and offers an admin **Get fresh data**, which fetches once (`POST /manage/satellites/refresh`) and redraws the view. Anyone else sees the date.
+- **Automatically.** A stale answer has the server fetch fresh data in the background, at most once every six hours, and the open view picks it up.
+- **Never.** Nothing is fetched; the view says how old its data is.
+
+The choice sits behind a gear in the Earth view's corner (admins change it there; everyone else sees it read-only). It is not in Settings: the Almanac is an Easter egg. `ZIMI_SATELLITE_UPDATES=ask|auto|never` overrides the saved choice, and `ZIMI_OFFLINE=1` forces Never; either way the control says why it will not move.
+
 ### Configure
 
-There's nothing to configure server-side — the almanac is a client feature. Location is entered in the UI (browser geolocation, or a manual lat/lon prompt when geolocation is unavailable, e.g. the desktop app). It resets each session by design.
+Location is entered in the UI (browser geolocation, or a manual lat/lon prompt when geolocation is unavailable, e.g. the desktop app). It resets each session by design. The one server-side setting is Satellite data from the internet (above; `GET`/`POST /manage/satellites`, or `ZIMI_SATELLITE_UPDATES`).
 
 ### Troubleshoot
 
 - **It asks for location every time** — intended. The almanac is session-scoped and doesn't persist location.
 - **Geolocation does nothing (desktop app)** — GPS can fail silently in the pywebview shell; enter latitude/longitude manually when prompted.
+- **The Earth's satellite data is old and there is no Get fresh data button.** The button is for admins, under Ask first. Check the gear: Never, `ZIMI_SATELLITE_UPDATES` or `ZIMI_OFFLINE` each keep Zimi from fetching, and the panel names which.
 - **Clicking an object doesn't open an article** — deep-links resolve against a closed Q-ID set and only land when a ZIM containing that entity is installed. Install the relevant source (e.g. a Wikipedia ZIM) and retry.
 - **The scene looks "wrong" for today** — check the time machine; it may be parked on another date. Reset it to now.

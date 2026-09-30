@@ -15,12 +15,150 @@ function openLink(a, zim, page, label) {
     e.preventDefault(); tell({ zimi: 'open', zim: zim, path: page });
   };
 }
-// Where you are in each book, kept by Zimi's reader and shown by Bookshelf.
-// The shell does not load this file: app.js's SK.BOOK_PLACES is the same key,
-// and tests/test_books_page.cjs holds the two together.
-var BOOK_PLACES_KEY = 'zimi_book_places';
-// A value into an onclick attribute.
-function J(v) { return JSON.stringify(v).replace(/"/g, '&quot;'); }
+// What is kept (bookmarks, lists, Liked, where you were): the shell's Saved,
+// this browser's or, signed in, the account's. Same origin, so a page calls it
+// directly, saved().itemsFor({ app: 'books' }), saved().save(item) and the
+// rest (docs/features/saving.md); null when the page is open on its own,
+// outside the shell. Any change, from the page, the panel or another device,
+// reaches the page as window.__saved().
+function saved() { try { return (window.parent !== window && window.parent.Saved) || null; } catch (e) { return null; } }
+// Highlights in text the page draws itself: the shell's Highlights, whose
+// attach(document, ref, {root}) returns a handle (refresh, goTo, missing,
+// detach); null outside the shell. docs/features/saving.md.
+function highlights() { try { return (window.parent !== window && window.parent.Highlights) || null; } catch (e) { return null; } }
+// A ZIM's own HTML, just put on the page: its links that leave the library
+// for the web get the reader's arrow (or become plain text, as the person
+// chose), and say where they go before they go. The shell does it
+// (zimiMarkLinks); a page open on its own, outside the shell, is left as is.
+function markLinks(root) { try { return window.parent !== window ? window.parent.zimiMarkLinks(root) : 0; } catch (e) { return 0; } }
+// The thing open in an app (a video, a question, a post, a book) has three
+// controls: Like, Save and Lists, drawn from the store and drawn again by
+// savedPaint() whenever it changes (the page's window.__saved calls it).
+// item is what Saved keeps: {kind, app, zim, path, title, meta}. opts.save
+// names Save in the app's words ([off, on]: ZimiTube's "Watch later",
+// Bookshelf's "Add to my shelf"); opts.like false leaves Like out;
+// opts.thread keeps where you are in a long thread once it is saved
+// (threadRestore below). The page's markup holds the place:
+// <span class="svbar"></span> in its actions. savedBar(null) when the thing
+// closes.
+var SV_HEART = '<svg class="fill" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 5.6a5.5 5.5 0 0 0-7.8 0L12 6.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 22l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>';
+var SV_MARK = '<svg class="fill" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+var SV_LISTS = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>';
+var _svItem = null, _svOpts = {};
+function savedBar(item, opts) {
+  threadFlush();
+  _svItem = item || null; _svOpts = opts || {};
+  savedPaint();
+}
+function svButtons() {
+  var S = saved(), it = _svItem, w = STR.sv || {};
+  if (!S || !it) return '';
+  var on = S.has(it), liked = on && S.inList(it, S.LIKED), names = _svOpts.save || [w.save, w.saved];
+  var b = function(which, pressed, icon, label, extra) {
+    return '<button type="button" class="svb' + (pressed ? ' on' : '') + '" data-sv="' + which + '"' + (extra || ' aria-pressed="' + pressed + '"') +
+      ' onclick="savedDo(this, event)">' + icon + '<span>' + esc(label) + '</span></button>';
+  };
+  return (_svOpts.like === false ? '' : b('like', liked, SV_HEART, liked ? w.liked : w.like)) + b('save', on, SV_MARK, on ? names[1] || names[0] : names[0]) +
+    b('lists', false, SV_LISTS, w.lists, ' aria-haspopup="menu" title="' + esc(w.add_to_list || '') + '"');
+}
+function savedPaint() { document.querySelectorAll('.svbar').forEach(function(bar) { bar.innerHTML = svButtons(); }); }
+function savedDo(el, e) {
+  var S = saved(), it = _svItem, which = el.getAttribute('data-sv');
+  if (!S || !it) return;
+  if (which === 'lists') { pickLists(it, el, e); return; }
+  if (which === 'save') { if (S.has(it)) S.remove(it); else { S.save(it); threadWrite(); } }
+  else if (S.inList(it, S.LIKED)) S.removeFromList(it, S.LIKED);
+  else S.addToList(it, S.LIKED);
+  savedPaint();
+}
+// The shell's list picker (every list, a tick where the item is, a new one),
+// opened over the control that asked for it. e is the click: one from a
+// finger or a mouse (detail > 0), not Enter or Space, opens it with no list
+// looking chosen.
+function pickLists(item, el, e) {
+  var p = window.parent, f = window.frameElement, r = el.getBoundingClientRect();
+  if (!f || typeof p.savedPickLists !== 'function') return;
+  var o = f.getBoundingClientRect();
+  p.savedPickLists(item, { left: o.left + r.left, right: o.left + r.right, top: o.top + r.top, bottom: o.top + r.bottom }, !!(e && e.detail > 0));
+}
+// Where you are in a long thread you saved, as a share of the way down, so it
+// opens there again on any screen: written once the scroll settles, and
+// threadRestore() as the thread is drawn. A thread under two screens tall
+// has no place worth keeping.
+var THREAD_MIN_SCREENS = 2;
+var THREAD_SETTLE_MS = 700;
+var THREAD_TOP = 0.02;      // this near the top is the top: the place is let go
+var _threadTimer = null;
+function threadOf() { return _svItem && _svOpts.thread ? _svItem : null; }
+function threadRoom() { return document.documentElement.scrollHeight - window.innerHeight; }
+function threadWrite() {
+  clearTimeout(_threadTimer); _threadTimer = null;
+  var S = saved(), it = threadOf();
+  if (!S || !it || !S.has(it) || threadRoom() < window.innerHeight * (THREAD_MIN_SCREENS - 1)) return;
+  var f = Math.round(window.scrollY / threadRoom() * 1000) / 1000;
+  if (f > THREAD_TOP) S.setPosition(it, { f: f });
+  else if (S.position(it)) S.clearPosition(it);
+}
+function threadFlush() { if (_threadTimer) threadWrite(); }
+function threadRestore() {
+  var S = saved(), it = threadOf(), p = S && it && S.has(it) ? S.position(it) : null;
+  if (p && p.where && p.where.f > 0) window.scrollTo(0, Math.round(p.where.f * threadRoom()));
+}
+window.addEventListener('scroll', function() {
+  if (!threadOf()) return;
+  clearTimeout(_threadTimer);
+  _threadTimer = setTimeout(threadWrite, THREAD_SETTLE_MS);
+}, { passive: true });
+// A saved item's list chips for an app's Saved view: All, Liked and each list
+// holding something of this app's, with how many. on is the list shown ('' all).
+function savedListChips(app, on, fn) {
+  var S = saved(), w = STR.sv || {};
+  if (!S) return '';
+  var chip = function(id, name, n) {
+    return '<button type="button" class="chip tag' + (on === id ? ' on' : '') + '" aria-pressed="' + (on === id) + '" onclick="' + fn + '(' + J(id) + ')">' +
+      esc(name) + ' <span class="n">' + n + '</span></button>';
+  };
+  var lists = S.lists({ app: app }).filter(function(l) { return l.count; });
+  if (!lists.length) return '';
+  return chip('', w.all, S.itemsFor({ app: app }).length) + lists.map(function(l) { return chip(l.id, l.builtin ? w.liked : l.name, l.count); }).join('');
+}
+// An app's Saved view (ZimiExchange's, Reddot's): what the app keeps, the
+// latest first, or one list's in its order, with the lists as chips, drawn
+// from the store with no request. It draws into the page's list view: the
+// title (#l-title), the chips (the element marked data-sv-lists) and the
+// rows (#l-rows); it empties what is marked data-sv-off (a count, the sorts)
+// and hides #shelves and #more. toRow(x) is a kept item's row. .on and
+// .list say what is shown; open(list) shows it, draw() draws it again,
+// count() is how many things the app keeps. The page's openSaved(list),
+// which the chips call, closes what is open and calls open.
+function savedView(app, toRow) {
+  var v = { on: false, list: '' };
+  var el = function(id) { return document.getElementById(id); };
+  v.count = function() { var S = saved(); return S ? S.itemsFor({ app: app }).length : 0; };
+  v.draw = function() {
+    var S = saved();
+    if (!S) return;
+    var items = S.itemsFor(v.list ? { list: v.list, app: app } : { app: app });
+    var chips = document.querySelector('#list [data-sv-lists]');
+    el('shelves').hidden = true;
+    el('list').hidden = false;
+    el('l-title').textContent = STR.sv.saved;
+    document.querySelectorAll('#list [data-sv-off]').forEach(function(n) { n.innerHTML = ''; });
+    chips.innerHTML = savedListChips(app, v.list, 'openSaved');
+    chips.hidden = !chips.innerHTML;
+    el('l-rows').innerHTML = items.map(function(x) { return toRow(x); }).join('');
+    el('more').hidden = true;
+    var empty = el('empty');
+    empty.hidden = items.length > 0;
+    empty.textContent = STR.sv.none;
+  };
+  v.open = function(list) { v.on = true; v.list = list || ''; v.draw(); window.scrollTo(0, 0); };
+  return v;
+}
+// A value into an onclick attribute: its JSON, escaped as attribute text, so
+// no value (a saved path that says &quot;, a title from a file) can end the
+// string or the attribute.
+function J(v) { return esc(JSON.stringify(v)); }
 // A word to the shell (the app's address, its title, a door to the catalog).
 // Silent while the shell itself is steering (Back and Forward), or every
 // step would write the address the shell just restored.
@@ -39,6 +177,9 @@ window.addEventListener('message', function(e) {
   } else if (e.data.zimi === 'random') {
     // The dice, inside the app: a video, a question, a post by chance.
     try { if (typeof window.__random === 'function') window.__random(); } catch (err) {}
+  } else if (e.data.zimi === 'saved') {
+    // What is kept changed: the page draws its own part of it again.
+    try { if (typeof window.__saved === 'function') window.__saved(); } catch (err) {}
   } else if (e.data.zimi === 'back-request') {
     // The header's arrow: a step back inside the page (a list to the home),
     // or, at the home already, the word that lets the shell leave.
@@ -98,3 +239,8 @@ var appChrome = (function() {
 var _place = 0;
 function keepPlace() { _place = window.scrollY || 0; }
 function returnToPlace() { window.scrollTo(0, _place); _place = 0; }
+// No pinch-zoom, as in the shell: iOS Safari ignores user-scalable=no for a
+// pinch, so its gesture events are cancelled.
+['gesturestart', 'gesturechange'].forEach(function(type) {
+  document.addEventListener(type, function(e) { e.preventDefault(); }, { passive: false });
+});

@@ -511,7 +511,7 @@ At default settings a running Zimi generates this network activity:
 |---|---|---|
 | BitTorrent engine (libtorrent): tracker announces, DHT, peer traffic | internet | BT is on by default; session starts at boot and when seeding/downloading |
 | Boot-time magnet/torrent metadata fetch for seedable ZIMs | internet | rides the BT path — only when BT is enabled |
-| NAT probe: SSDP multicast + UPnP SOAP to the gateway, then `https://portcheck.transmissionbt.com/<port>` | LAN + internet | at BT engine start, on the 12h maintenance loop, and on the explicit "recheck" button — all of it torrent-gated, so it never runs with BT off |
+| NAT probe: SSDP multicast + UPnP SOAP to the gateway, then `https://portcheck.transmissionbt.com/<port>` | LAN + internet | UPnP at BT engine start and on the 12h maintenance loop; the port check only when an admin opens the sharing settings or presses "recheck". All of it torrent-gated, so it never runs with BT off |
 | Kiwix catalog refresh (`library.kiwix.org`) | internet | user-initiated browsing, Mirror mode, or auto-update — idle instances make zero standing requests |
 | Desktop appcast check (Sparkle on macOS, WinSparkle on Windows) | internet | once per launch of the desktop app |
 | mDNS LAN peer discovery (`_zimi._tcp`) | LAN multicast only | always, when Nearby sharing is on |

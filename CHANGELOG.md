@@ -5,29 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.12.0] - 2026-09-30
+
+### Added
+
+- Zimipedia: an app for every wiki in your library, with a Today page and a reader.
+- Saving in every app: bookmarks, lists, Liked and highlights with notes, synced across devices when signed in.
+- Search operators: `-word`, `"exact words"`, `OR`, `lang:`, `in:` ([#94](https://github.com/epheterson/Zimi/issues/94)).
+- Search results can open in their app.
+- Bookshelf: document libraries, textbooks, Wikisource, Wikibooks, EPUBs, and ZIMs you create from a folder of documents.
+- ZimiTube: document library videos, audiobooks, and ZIMs you create from a folder of videos or audio.
+- External links are marked in readers; Create a ZIM can remove them ([#99](https://github.com/epheterson/Zimi/issues/99)).
+- Settings > Server > Internet use: every outbound connection, each with a switch.
+
+### Changed
+
+- History and Saved are separate panels.
+- Home sort orders the apps; the Apps heading opens an Apps page ([#100](https://github.com/epheterson/Zimi/issues/100)).
+- An idle Zimi makes no internet connections; `ZIMI_OFFLINE` also blocks downloads.
+- Faster home page, search and article loading.
+
+### Fixed
+
+- Bookshelf covers overlapping ([#101](https://github.com/epheterson/Zimi/issues/101)).
+- App toggles reverting on Back ([#98](https://github.com/epheterson/Zimi/issues/98)).
+- Bookmark button not updating after removal ([#96](https://github.com/epheterson/Zimi/issues/96)).
+- ZIMs of one collection in different languages hiding each other.
+- Dark mode on pages without their own colours.
+- Text size not changing article text.
+- Copy link over http and in the iOS home-screen app.
+
 ## [1.11.0] - 2026-09-27
 
 ### Added
 
-- Bookshelf, an app for every Project Gutenberg ZIM in the library as one shelf: continue reading, most read, newest to Gutenberg, authors with their years, subjects, eras and languages, a page per book with its cover and EPUB, and search by title or author. A book opens in a reader of its own, made for a phone: a header and a footer that step aside while you read and come back on a tap or a scroll up (Zimi's header steps aside too), pages turned by a tap at either side or a swipe (a right-to-left book the other way, two side by side on a wide screen) or scrolling, contents, pages left in the chapter and a slider to anywhere in the book, and reading settings for theme, font, size, line spacing and margins. It keeps your place to the character through a change of type, a turn of the phone and reopening. A long book opens faster than a page in Reader View did (the Chekhov collection, 6.6 MB, in about 3 s rather than 7 s): pages are laid out a chapter at a time. Its name for `ZIMI_APPS` is `books`.
+- Bookshelf, a new app: every Project Gutenberg ZIM as one shelf, by author, subject, era and language, with a reader made for phones (page turns or scrolling, reading settings, your place kept).
 
 ### Changed
 
-- Create a ZIM has bigger defaults: a whole-site capture takes up to 10,000 pages, 4 GB and 10 links deep (was 200 pages, 500 MB, 5 deep), and a video capture up to 16 GB (was 4 GB). Blank fields use them; 0 still means no limit.
-- Create a ZIM, whole site: an address with a path (`https://example.org/docs/`) keeps the capture under that path; pages elsewhere on the site are left out, and the images, styles and scripts its pages use are still fetched. A bare address still captures the whole site. An address that names a page rather than a section (`https://example.org/wiki/Main_Page`) captures the pages beside it, a section the site redirects (`/docs` to `/en/docs/`) is followed, and a path with nothing else under it says so on the finished card, with a button to capture the whole site.
-- Create a ZIM: sizes in a capture's log and its stop reason use the same decimal units as the form and the card, so a 4 GB budget reads as 4 GB, not 3.7 GB.
+- Create a ZIM has bigger defaults: a whole site takes up to 10,000 pages, 4 GB and 10 links deep; a video up to 16 GB.
+- Create a ZIM, whole site: an address with a path captures only what is under that path (#93).
 
 ### Fixed
 
-- A bookmark added or removed while the Bookmarks list is open shows in the list at once; it appeared only after the list was reopened (#96).
-- A search result from a Wikivoyage page no longer shows the page's JavaScript as its snippet, and a page that loads a script with a self-closing tag (`<script src="..."/>`) no longer shows an empty snippet.
-- Discover works in every language. Each card reads the ZIM in your interface's language when one is installed, then English, then whatever is there, and reads that wiki's own pages: On this day from any Wikipedia's date page (a German, French, Hindi or Chinese Wikipedia alone had no card before), Word of the day from the section of a Wiktionary entry in that Wiktionary's language with its part of speech in the same words (every non-English Wiktionary used to fall back to a random page with no definition), and Quote of the day from however each Wikiquote lays out its quotes, with who said it. Blurbs in Hebrew, Arabic, Hindi, Russian and Chinese are shown (they were all dropped as a repeat of the title), On this day's date is written your language's way, and switching the interface language chooses the cards again.
-- A capture stopped by its page limit, size budget or link depth says so on its finished card ("Incomplete: this capture stopped at its 10,000-page limit") with a button to capture again with no limits, and its counters show the limits while it runs ("1,234 / 10,000 pages", "120 MB / 4 GB"). Capturing again lifts every limit, not only the one it hit, keeps the chosen video quality, and keeps the finished card if the server turns the new capture down.
-- A ZIM that a limit cut short says so in its info panel, at the top and in its history, with the limit it hit; the ZIM file records it, so it stays true after the job is gone. Site, video and alive captures.
-- Create a ZIM, whole site with the zimit engine: the capture runs zimit (it ran Zimi's own alive engine instead), with the page limit its counter shows, and says when that limit cut it short.
-- The library no longer reopens every ZIM and rewrites its cache on every start after an upgrade.
-- A capture with no page limit (0) shows its pages and count while it runs; since 1.10.3 they stood still, and the capture looked stuck.
-- The apps on a phone. Zimi's header slides away as you scroll down a video's page, a question, a thread or the Almanac, and comes back as you scroll up. A video playing on a phone turned sideways fills the screen, and a pause brings the header back. The round jump-to-top button no longer appears in ZimiTube, ZimiExchange or Reddot, where it covered a docked video and a thread's last lines. Back from a question, a post or a video lands where you were in the list, not at its top. Tapping a comment's line in Reddot folds it with its replies. Chips, tags and buttons are bigger on a touch screen, and an answer or a post in a left-to-right language reads left to right under a right-to-left interface (its full stops sat at the wrong end, its code ran backwards).
+- Discover's cards work in every language, reading each wiki's own pages.
+- A capture cut short by a limit says so on its card and in the ZIM's info panel, with a button to capture again without limits.
+- Whole-site captures with the zimit engine run zimit.
+- The apps on a phone: the header hides while you scroll, a video fills a sideways screen, and Back returns to your place in a list.
+- A bookmark added with the Bookmarks list open appears in it at once (#96).
+- Zimi no longer reopens every ZIM on each start after an upgrade.
+- A capture with no page limit shows its progress again.
+- Search snippets no longer show a page's scripts.
 
 ## [1.10.3] - 2026-09-24
 

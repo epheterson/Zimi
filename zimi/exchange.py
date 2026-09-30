@@ -53,16 +53,10 @@ _URLATTR_RE = re.compile(r'\b(href|src)=(["\'])([^"\']*)\2', re.I)
 
 
 def _read(archive, path):
-    try:
-        entry = archive.get_entry_by_path(path)
-        if entry.is_redirect:
-            entry = entry.get_redirect_entry()
-        item = entry.get_item()
-        if item.size > _MAX_PAGE_BYTES:
-            return None
-        return bytes(item.content).decode("utf-8", "replace")
-    except Exception:
-        return None
+    """A page's text (server.entry_bytes), or None. A page that will not
+    read raises, and is not cached as missing."""
+    data = _srv.entry_bytes(archive, path, _MAX_PAGE_BYTES)
+    return data.decode("utf-8", "replace") if data is not None else None
 
 
 def _text(s):

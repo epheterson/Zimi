@@ -86,7 +86,7 @@ def test_init_updater_noop_even_with_env_override(monkeypatch):
 
 def test_eddsa_key_matches_sparkle_spec_key():
     """WinSparkle reuses the macOS Sparkle keypair — guard against drift."""
-    spec = open(os.path.join(DESKTOP_DIR, "zimi_desktop.spec")).read()
+    spec = open(os.path.join(DESKTOP_DIR, "zimi_desktop.spec"), encoding="utf-8").read()
     m = re.search(r"'SUPublicEDKey':\s*'([^']+)'", spec)
     assert m, "SUPublicEDKey not found in zimi_desktop.spec"
     assert ws.WINSPARKLE_EDDSA_PUBLIC_KEY == m.group(1)

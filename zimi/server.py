@@ -125,7 +125,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.11.0"
+ZIMI_VERSION = "1.12.0"
 
 # Standing maintenance cadence: catalog TTL is 24h and UPnP leases are
 # 24h — run every 12h so both stay fresh at half-life.
@@ -182,17 +182,13 @@ def start_background_services(http_port):
     atexit.register(_lib_flush.note_exiting)
 
     def _init_p2p_background():
+        # The engine starts now only when it has work waiting (see
+        # bt_work_waiting); otherwise the first download starts it.
         try:
-            backend = p2p.get_backend(data_dir=ZIMI_DATA_DIR)
-            if backend:
-                # Ask the router to open the BT port + record
-                # reachability for the settings UI. Fails soft.
-                try:
-                    from zimi import p2p_nat
+            from zimi import library as _lib_bt
 
-                    p2p_nat.probe(p2p.get_bt_port(), try_upnp=p2p.is_upnp_enabled())
-                except Exception as e:
-                    log.debug("NAT probe failed: %s", e)
+            if _lib_bt.bt_work_waiting():
+                p2p.get_backend(data_dir=ZIMI_DATA_DIR)
         except Exception as e:
             log.warning("BT backend init failed (HTTP downloads unaffected): %s", e)
         try:
@@ -249,6 +245,7 @@ def start_background_services(http_port):
             ).start()
         except Exception as e:
             log.warning("Download resume failed: %s", e)
+        _nat_upkeep()
 
     threading.Thread(target=_init_p2p_background, daemon=True, name="p2p-init").start()
 
@@ -577,12 +574,11 @@ def kind_store(records):
     _update_disk_cache(_apply)
 
 
-def _maintenance_pass():
-    """One standing-maintenance sweep: renew the UPnP mapping (24h lease
-    dies silently otherwise), refresh the offline catalog inside its TTL,
-    keep magnets / mirror seeds / torrent archive current. Runs on the
-    12h loop; extracted so tests can pin it."""
-    from zimi import library as _lib
+def _nat_upkeep():
+    """Map (or renew) the running BT engine's port on the router, for the
+    settings UI and incoming peers. The router is on this network; the
+    external reachability check is the recheck button's alone. Nothing
+    without a running engine: an idle Zimi asks its router for nothing."""
     from zimi import p2p as _p2p
 
     try:
@@ -591,7 +587,17 @@ def _maintenance_pass():
 
             p2p_nat.probe(_p2p.get_bt_port(), try_upnp=_p2p.is_upnp_enabled())
     except Exception as e:
-        log.debug("maintenance: NAT renew failed: %s", e)
+        log.debug("NAT upkeep failed: %s", e)
+
+
+def _maintenance_pass():
+    """One standing-maintenance sweep: renew the UPnP mapping (24h lease
+    dies silently otherwise), refresh the offline catalog inside its TTL,
+    keep magnets / mirror seeds / torrent archive current. Runs on the
+    12h loop; extracted so tests can pin it."""
+    from zimi import library as _lib
+
+    _nat_upkeep()
     try:
         # Gated: only instances that consume the catalog (Mirror mode,
         # auto-update, recent user browsing) refresh it; idle Zimis make
@@ -1658,7 +1664,8 @@ def _atomic_write_json(path, data, indent=None):
     """Write JSON data to a file atomically via temp file + os.replace().
 
     Used for all persistent state files to prevent corruption from
-    crashes or concurrent writes. indent=None for compact output.
+    crashes or concurrent writes. indent=None for compact output. Returns
+    whether the file was written (a failure is logged, never raised).
     """
     # Unique temp name per write: a fixed "<path>.tmp" collides when two
     # threads write the same target concurrently — the second os.replace races
@@ -1676,7 +1683,7 @@ def _atomic_write_json(path, data, indent=None):
             os.fchmod(fd, 0o644)
     except OSError as e:
         log.warning("Atomic write failed for %s: %s", path, e)
-        return
+        return False
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(
@@ -1687,12 +1694,15 @@ def _atomic_write_json(path, data, indent=None):
                 separators=(",", ":") if indent is None else None,
             )
         _replace_with_retry(tmp, path)
-    except OSError as e:
+        return True
+    except (OSError, ValueError) as e:
+        # ValueError: text that is not UTF-8 (a lone surrogate) cannot be written.
         log.warning("Atomic write failed for %s: %s", path, e)
         try:
             os.unlink(tmp)
         except OSError:
             pass
+        return False
 
 
 # MIME type fallback for ZIM entries with empty mimetype
@@ -1892,9 +1902,43 @@ WIKI_PROJECTS = (
 # Books, by the scraper that made them: Kiwix builds every Project Gutenberg
 # ZIM with gutenberg2zim; one too old to carry a Scraper is known by its Name.
 _BOOK_SCRAPERS = ("gutenberg2zim",)
+# Apps that read a ZIM beside the one its kind opens it in. A ZIM can feed
+# two: Wikisource is Zimipedia's and on the Bookshelf too, a nautilus
+# library's documents are on the shelf and its videos in ZimiTube. Each is
+# named with the reader that app uses for it (``{"books": "wikisource"}``),
+# decided once here from metadata the load reads anyway (Scraper, Name, the
+# Counter of mimetypes, Zimi's creation record), so no app opens a ZIM to
+# find out whether it is one of its own.
+_NAUTILUS_SCRAPERS = ("nautiluszim",)
+_LIBRETEXTS_SCRAPERS = ("mindtouch2zim",)
+BOOK_WIKI_PROJECTS = ("wikisource", "wikibooks")
+_DOC_MIMETYPES = ("application/pdf", "application/epub+zip")
+_MEDIA_MIME_PREFIXES = ("video/", "audio/")
+# ZIMs that are one book each, by Name: a textbook or a guide captured whole
+# by zimit, with nothing in its metadata that says "book" (from the 1.12
+# coverage audit, docs/plans/2026-09-28-app-coverage.md). Any other ZIM can
+# be put on the shelf by hand (books.set_whole).
+WHOLE_BOOK_NAMES = frozenset(
+    (
+        "jeffe.cs.illinois.edu_en_all",
+        "stacks.math.columbia.edu_en_all",
+        "opendatastructures.org_en_all",
+        "openmusictheory.com_en_all",
+        "htdp.org_en_all",
+        "learningstatisticswithr.com_en_all",
+        "learningstatistics_en_all",
+        "ethanweed_en_all",
+        "mspeekenbrink_en_all",
+        "privacydefence.org_en_opsecbible",
+        "anonymousplanet.org_en_all",
+    )
+)
 # Bumped when _zim_kind learns a new kind, so a cache record decided under an
 # older rule ("" for a TED ZIM) is read once more.
 KIND_VERSION = 6
+# The same for _zim_feeds: bumped when it learns a rule, so what a cached
+# ZIM feeds is decided again, once. A record from before the stamp is 1.
+FEEDS_VERSION = 1
 
 
 def _wiki_project(meta_name, name=""):
@@ -1924,6 +1968,91 @@ def _read_wiki_project(path, name):
         log.warning("could not read the Name of %s: %s", path, e)
         return None
     return _wiki_project(meta_name.strip(), name)
+
+
+def _mimetype_counts(counter):
+    """``{mimetype: n}`` from a ZIM's Counter metadata
+    (``application/pdf=7;image/png=2``); {} when it has none."""
+    out = {}
+    for part in (counter or "").split(";"):
+        mime, sep, n = part.rpartition("=")
+        if sep and mime.strip():
+            try:
+                out[mime.strip().lower()] = int(n)
+            except ValueError:
+                continue
+    return out
+
+
+def _created_mode(history):
+    """The mode of the ZIM's creation record in ``X-Zimi-History`` (``folder``,
+    ``site``, ``video``...), "" for a ZIM Zimi did not make."""
+    from zimi import zimwriter as _zw
+
+    for record in _zw.parse_history(history or ""):
+        if record.get("op") == "created":
+            return str(record.get("mode") or "")
+    return ""
+
+
+def _zim_feeds(kind, project, scraper, meta_name, counter, history):
+    """The apps beside its kind's that read a ZIM, each with its reader:
+    ``{"books": "nautilus", "tube": "nautilus"}``, {} for most ZIMs."""
+    s = (scraper or "").lower()
+    mimes = _mimetype_counts(counter)
+    docs = any(mimes.get(m) for m in _DOC_MIMETYPES)
+    media = any(n and m.startswith(_MEDIA_MIME_PREFIXES) for m, n in mimes.items())
+    feeds = {}
+    if kind == "wiki" and project in BOOK_WIKI_PROJECTS:
+        feeds["books"] = project
+    elif s.startswith(_NAUTILUS_SCRAPERS):
+        # Its documents may be pages only (python-class-vc): a library with
+        # no video or audio is on the shelf whatever its files are.
+        if docs or not media:
+            feeds["books"] = "nautilus"
+        if media:
+            feeds["tube"] = "nautilus"
+    elif s.startswith(_LIBRETEXTS_SCRAPERS):
+        feeds["books"] = "libretexts"
+    elif _created_mode(history) == "folder":
+        if docs:
+            feeds["books"] = "folder"
+        if media:
+            feeds["tube"] = "folder"
+    elif not kind and (meta_name or "").lower() in WHOLE_BOOK_NAMES:
+        feeds["books"] = "whole"
+    return feeds
+
+
+def archive_feeds(archive, kind=None, project=None):
+    """``_zim_feeds`` from an open archive's metadata: a few small reads.
+    ``kind`` and ``project`` are what the library already knows of it, or
+    None to decide them here too (a details build in a child process,
+    which has no library)."""
+    vals = {}
+    for key in ("Scraper", "Tags", "Name", "Counter", "X-Zimi-History"):
+        try:
+            vals[key] = bytes(archive.get_metadata(key)).decode("utf-8", "replace")
+        except Exception:
+            vals[key] = ""
+    scraper, name = vals["Scraper"].strip(), vals["Name"].strip()
+    if kind is None:
+        kind = _zim_kind(scraper, vals["Tags"], name) or ""
+    if project is None:
+        project = _wiki_project(name) if kind == "wiki" else ""
+    return _zim_feeds(kind, project, scraper, name, vals["Counter"], vals["X-Zimi-History"])
+
+
+def _read_zim_feeds(path, kind, project):
+    """``_zim_feeds`` for a cache record written before it was kept. None
+    when the ZIM could not be opened, so nothing is kept and the next boot
+    reads it again."""
+    try:
+        archive = open_archive(path)
+    except Exception as e:
+        log.debug("could not read what apps %s feeds: %s", path, e)
+        return None
+    return archive_feeds(archive, kind, project)
 
 
 def _zim_kind(scraper, tags, meta_name):
@@ -2069,11 +2198,11 @@ def _read_map_facts(path):
 
 APPS_ENV = "ZIMI_APPS"
 APP_NAMES = ("maps", "tube", "exchange", "reddot", "wiki", "books")
-# Apps offered only when named: a comma list in ZIMI_APPS (or a saved list)
-# that says "wiki" turns Zimipedia on; "1", "all", the default and a saved
-# True leave it off. Zimipedia is a preview being redesigned, so nobody meets
-# it without asking for it.
-APPS_OPT_IN = frozenset({"wiki"})
+# Apps offered only when named (a preview, while it is built): a comma list
+# in ZIMI_APPS (or a saved list) that names one turns it on; "1", "all", the
+# default and a saved True leave it off. None now: Zimipedia was one until
+# its reader (1.12).
+APPS_OPT_IN = frozenset()
 APPS_ALL = frozenset(APP_NAMES)
 APPS_DEFAULT = APPS_ALL - APPS_OPT_IN
 _APPS_OFF = ("0", "false", "no", "off", "none")
@@ -2147,7 +2276,7 @@ def apps_shown():
     """The apps (Maps, ZimiTube, ZimiExchange, Reddot, Zimipedia, Bookshelf) offered on this server:
     ``ZIMI_APPS`` when set (``0``, ``1`` or a comma list of names), else the
     setting saved from Server settings, else all of them but the opt-in ones
-    (``APPS_OPT_IN``: Zimipedia, only when a list names it). A signed-in user
+    (``APPS_OPT_IN``, none now). A signed-in user
     can also hide any of them for themselves (their account's preferences).
     Never per browser (Eric: "Not per browser only per user or server")."""
     verdict = _apps_env()
@@ -2396,45 +2525,15 @@ def _save_library_layout(data):
     _atomic_write_json(_library_layout_file_path(), data, indent=2)
 
 
-_ISO639_3_TO_1 = {
-    "eng": "en",
-    "fra": "fr",
-    "deu": "de",
-    "spa": "es",
-    "por": "pt",
-    "rus": "ru",
-    "zho": "zh",
-    "jpn": "ja",
-    "kor": "ko",
-    "ara": "ar",
-    "hin": "hi",
-    "ita": "it",
-    "nld": "nl",
-    "pol": "pl",
-    "tur": "tr",
-    "vie": "vi",
-    "tha": "th",
-    "swe": "sv",
-    "nor": "no",
-    "dan": "da",
-    "fin": "fi",
-    "ces": "cs",
-    "ron": "ro",
-    "hun": "hu",
-    "ell": "el",
-    "heb": "he",
-    "yid": "yi",
-    "ukr": "uk",
-    "cat": "ca",
-    "ind": "id",
-    "msa": "ms",
-    "fas": "fa",
-    "ben": "bn",
-    "tam": "ta",
-    "tel": "te",
-    "urd": "ur",
-    "mul": "mul",  # multiple languages (keep as-is)
-}
+# ISO 639-3 (what ZIM metadata carries) to ISO 639-1, where a language has
+# one. The one table the server and the web client read: the client gets it
+# put into app.js as it is served (http._inline_lang_codes), so the
+# library's lang: and the catalog's agree on every language.
+LANG_CODES_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "assets", "lang-codes.json"
+)
+with open(LANG_CODES_PATH, encoding="utf-8") as _f:
+    _ISO639_3_TO_1 = json.load(_f)
 
 # ============================================================================
 # ZIM Loading & Title Index
@@ -2577,8 +2676,11 @@ _ASSET_EXTS = frozenset(
 # ============================================================================
 
 
-def _zim_short_name(filename):
-    """Derive short display name from a ZIM filename.
+def _zim_base_name(filename):
+    """Derive the short name a ZIM filename gets on its own.
+
+    Pure: the filename alone decides. _zim_short_name is the served name,
+    which differs only for a file _scan_zim_files gave a language name.
 
     English ZIMs strip the language code (backward-compatible):
       stackoverflow.com_en_all_2023-11.zim → stackoverflow
@@ -2625,6 +2727,50 @@ def _zim_short_name(filename):
     return name
 
 
+_LANG_SEGMENT_RE = re.compile(r"[a-z]{2,3}")
+
+
+def _zim_lang_key(filename):
+    """The language a ZIM filename declares in Kiwix's language position
+    (project_LANG_selection_flavor_date), as ISO 639-1 where one exists:
+    gutenberg_ale_all -> 'ale', wikipedia_eng_all -> 'en'. A file without a
+    two- or three-letter segment there counts as English, the language
+    _zim_base_name leaves out of a name.
+
+    Only the collision rule reads this. _zim_base_name keeps its own, older
+    reading (it takes 'top' or 'css' after the language for one, and drops a
+    code the table lacks), because changing that would rename ZIMs people
+    have saved things under."""
+    parts = os.path.basename(filename).split(".zim")[0].split("_")
+    code = parts[1] if len(parts) > 1 else ""
+    if not _LANG_SEGMENT_RE.fullmatch(code):
+        return "en"
+    return _ISO639_3_TO_1.get(code, code)
+
+
+def _zim_lang_name(filename):
+    """The name a ZIM takes when another language's build holds its base
+    name: gutenberg_ale_all_2025-09.zim -> gutenberg_ale."""
+    return _zim_base_name(filename) + "_" + _zim_lang_key(filename)
+
+
+def _zim_short_name(filename):
+    """The short name `filename` is served under: its base name, or its
+    language name when the library holds the base name for another
+    language's build (gutenberg_ale beside gutenberg_en). A file the library
+    does not hold gets its base name, so for anything not installed this is
+    _zim_base_name."""
+    filename = os.path.basename(filename)
+    name = _zim_base_name(filename)
+    files = _zim_files_cache
+    held = files.get(name) if files else None
+    if held and os.path.basename(held) != filename:
+        lang_name = _zim_lang_name(filename)
+        if os.path.basename(files.get(lang_name) or "") == filename:
+            return lang_name
+    return name
+
+
 # Subdirectories the one-level scan must never treat as library content.
 # Learned from the first real deployment, not invented: Eric's NAS carries a
 # corrupt-quarantine/ full of ZIMs the kiwix-zim updater script deliberately
@@ -2651,11 +2797,33 @@ _FLAVOR_RANKS = {"maxi": 4, None: 3, "nopic": 2, "mini": 1}
 
 def _zim_build_rank(filename):
     """Rank a build for same-name collisions in the same directory tier:
-    flavor richness first, then the trailing date token (newer wins)."""
+    flavor richness first, then English over another language, then the
+    trailing date token (newer wins).
+
+    The English step only ever separates two languages, since builds of one
+    language all agree on it. It keeps the bare name with English, the
+    language Kiwix names leave out: with dates deciding, gutenberg_ale's next
+    edition would take 'gutenberg' from the English library, and everything
+    saved under that name with it."""
     fname = filename.lower()
     m = _FLAVOR_TOKEN_RE.search(fname)
     d = _DATE_TOKEN_RE.search(fname)
-    return (_FLAVOR_RANKS[m.group(1) if m else None], d.group(1) if d else "")
+    return (
+        _FLAVOR_RANKS[m.group(1) if m else None],
+        _zim_lang_key(fname) == "en",
+        d.group(1) if d else "",
+    )
+
+
+def _zim_pick(cands):
+    """The build that holds a name among same-name candidates, (tier, path)
+    in scan order: the root tier first, then the richest by _zim_build_rank;
+    a tie keeps the earlier file."""
+    top = min(tier for tier, _path in cands)
+    return max(
+        (path for tier, path in cands if tier == top),
+        key=lambda path: _zim_build_rank(os.path.basename(path)),
+    )
 
 
 def _scan_zim_files():
@@ -2679,8 +2847,15 @@ def _scan_zim_files():
     _zim_build_rank — so a maxi is never shadowed by the mini beside it and
     two editions of the same flavor resolve to the newer one. Every
     collision is logged.
+
+    A different language is not a lesser build of the same thing. Kiwix
+    names drop English, and _zim_base_name drops any code the language table
+    lacks, so gutenberg_ale_all and gutenberg_en_all both come out
+    'gutenberg'. The build that wins keeps that name, exactly as before;
+    each other language's best build is served under its language name
+    (gutenberg_ale) instead of vanishing. A language name some file already
+    has as its own is never taken, so no ZIM with a name loses it.
     """
-    zims = {}  # name -> (path, tier)
     root_paths = sorted(glob.glob(os.path.join(ZIM_DIR, "*.zim")))
     sub_paths = []
     for sub in sorted(glob.glob(os.path.join(ZIM_DIR, "*", ""))):
@@ -2691,34 +2866,51 @@ def _scan_zim_files():
             log.info("Skipping %s (has %s marker)", base, _SCAN_IGNORE_MARKER)
             continue
         sub_paths.extend(sorted(glob.glob(os.path.join(sub, "*.zim"))))
+    groups = {}  # base name -> [(tier, path)], in scan order
     for tier, paths in ((0, root_paths), (1, sub_paths)):
         for path in paths:
-            filename = os.path.basename(path)
-            name = _zim_short_name(filename)
-            if name not in zims:
-                zims[name] = (path, tier)
+            name = _zim_base_name(os.path.basename(path))
+            groups.setdefault(name, []).append((tier, path))
+    zims = {name: _zim_pick(cands) for name, cands in groups.items()}
+    for name, cands in groups.items():
+        if len(cands) > 1:
+            _split_languages(name, cands, zims, groups)
+    return zims
+
+
+def _split_languages(name, cands, zims, groups):
+    """One name's collision, resolved and logged: builds in the keeper's
+    language stay shadowed, and each other language's best build takes its
+    language name in `zims` unless a file already has that name as its own
+    (a key of `groups`)."""
+    keeper = zims[name]
+    keeper_lang = _zim_lang_key(os.path.basename(keeper))
+    by_lang = {}
+    for tier, path in cands:
+        if path != keeper:
+            lang = _zim_lang_key(os.path.basename(path))
+            by_lang.setdefault(lang, []).append((tier, path))
+    for lang, lang_cands in by_lang.items():
+        lang_name = f"{name}_{lang}"
+        own = lang != keeper_lang and lang_name not in groups
+        if own:
+            zims[lang_name] = _zim_pick(lang_cands)
+        for _tier, path in lang_cands:
+            if own and zims[lang_name] == path:
+                log.info(
+                    "ZIM name collision '%s': keeping %s, serving %s as '%s'",
+                    name,
+                    os.path.relpath(keeper, ZIM_DIR),
+                    os.path.relpath(path, ZIM_DIR),
+                    lang_name,
+                )
                 continue
-            held_path, held_tier = zims[name]
-            # Root files were inserted first, so a cross-tier collision can
-            # only be a subfolder file arriving second — the root holds.
-            if held_tier == tier and _zim_build_rank(filename) > _zim_build_rank(
-                os.path.basename(held_path)
-            ):
-                log.info(
-                    "ZIM name collision '%s': keeping %s, ignoring %s",
-                    name,
-                    os.path.relpath(path, ZIM_DIR),
-                    os.path.relpath(held_path, ZIM_DIR),
-                )
-                zims[name] = (path, tier)
-            else:
-                log.info(
-                    "ZIM name collision '%s': keeping %s, ignoring %s",
-                    name,
-                    os.path.relpath(held_path, ZIM_DIR),
-                    os.path.relpath(path, ZIM_DIR),
-                )
-    return {name: path for name, (path, _tier) in zims.items()}
+            log.info(
+                "ZIM name collision '%s': keeping %s, ignoring %s",
+                lang_name if own else name,
+                os.path.relpath(zims[lang_name] if own else keeper, ZIM_DIR),
+                os.path.relpath(path, ZIM_DIR),
+            )
 
 
 def get_zim_files():
@@ -2755,6 +2947,56 @@ def server_zim_count():
 def open_archive(path):
     """Open a ZIM archive."""
     return Archive(path)
+
+
+def entry_item(archive, path):
+    """The item at ``path`` in ``archive``, a redirect followed; None when
+    the archive has no such entry. Only an absent entry is None: any other
+    failure (a damaged cluster, a file cut short) raises, so what a caller
+    keeps (a shelf, a feed, a details file) never takes a read that failed
+    for "nothing there". Caller holds the archive's lock, or owns it."""
+    try:
+        entry = archive.get_entry_by_path(path)
+    except KeyError:
+        return None
+    if entry.is_redirect:
+        entry = entry.get_redirect_entry()
+    return entry.get_item()
+
+
+def entry_bytes(archive, path, limit, *, head=False):
+    """The bytes at ``path`` by entry_item's rules: None when there is no
+    such entry, or it is over ``limit`` bytes (checked before it is read).
+    ``head``: the first ``limit`` bytes, whatever the entry's size."""
+    item = entry_item(archive, path)
+    if item is None:
+        return None
+    if head:
+        return bytes(item.content[:limit])
+    if item.size > limit:
+        return None
+    return bytes(item.content)
+
+
+# A bounded walk of every entry stops here: enough for a folder of files,
+# under the archive's lock (health.py's full-scan bound). A wiki's page
+# tree is walked whole, in the background.
+MAX_WALK_ENTRIES = 120_000
+
+
+def walk_entries(archive, bounded=True):
+    """``(entry, item)`` for each entry of ``archive`` that is not a
+    redirect, in the order they are stored: a dirent and its item's header,
+    never its bytes. The first MAX_WALK_ENTRIES are looked at, or every one
+    when not ``bounded``. An entry that will not read raises, as
+    entry_item's failures do: a walk that skipped it would pass for whole."""
+    n = archive.entry_count
+    if bounded:
+        n = min(n, MAX_WALK_ENTRIES)
+    for i in range(n):
+        entry = archive._get_entry_by_id(i)
+        if not entry.is_redirect:
+            yield entry, entry.get_item()
 
 
 from zimi.previews import (  # noqa: E402
@@ -2910,6 +3152,8 @@ def _extract_zim_metadata(name, path):
     map_facts = None
     meta_tags = ""
     meta_name = ""
+    meta_counter = ""
+    meta_history = ""
     has_icon = False
     main_path = ""
     archive = None
@@ -2941,6 +3185,10 @@ def _extract_zim_metadata(name, path):
                     meta_tags = val.decode("utf-8", errors="replace").strip()
                 elif key == "Name":
                     meta_name = val.decode("utf-8", errors="replace").strip()
+                elif key == "Counter":
+                    meta_counter = val.decode("utf-8", errors="replace")
+                elif key == "X-Zimi-History":
+                    meta_history = val.decode("utf-8", errors="replace")
                 elif key == "Language":
                     raw_lang = val.decode("utf-8", errors="replace").strip().lower()
                     # Handle multilingual ZIMs (comma-separated codes)
@@ -3005,6 +3253,11 @@ def _extract_zim_metadata(name, path):
         info["kind"] = kind
     if kind == "wiki":
         info["project"] = _wiki_project(meta_name, name)
+    feeds = _zim_feeds(
+        kind, info.get("project", ""), meta_scraper, meta_name, meta_counter, meta_history
+    )
+    if feeds:
+        info["feeds"] = feeds
     if map_search:
         info["map_search"] = True
     if map_facts:
@@ -3318,6 +3571,16 @@ def load_cache(force=False):
                 if project is not None:
                     cached["project"] = project
                     kind_backfilled = True
+            if "feeds" not in cached or int(cached.get("feeds_v") or 1) < FEEDS_VERSION:
+                # A record from before a ZIM could feed two apps, or from
+                # before _zim_feeds's latest rule.
+                feeds = _read_zim_feeds(
+                    path, cached.get("kind") or "", cached.get("project") or ""
+                )
+                if feeds is not None:
+                    cached["feeds"] = feeds
+                    cached["feeds_v"] = FEEDS_VERSION
+                    kind_backfilled = True
             entry = {
                 "name": name,
                 "file": filename,
@@ -3358,6 +3621,8 @@ def load_cache(force=False):
                 entry["kind"] = cached["kind"]
             if "project" in cached:
                 entry["project"] = cached["project"]
+            if cached.get("feeds"):
+                entry["feeds"] = cached["feeds"]
             if cached.get("map_search"):
                 entry["map_search"] = True
             if "map_bounds" in cached:
@@ -3437,6 +3702,9 @@ def load_cache(force=False):
             new_cached["kind_v"] = KIND_VERSION
             if "project" in entry:
                 new_cached["project"] = entry["project"]
+            # Always, {} included: a ZIM that feeds no other app is decided.
+            new_cached["feeds"] = entry.get("feeds") or {}
+            new_cached["feeds_v"] = FEEDS_VERSION
             if entry.get("map_search"):
                 new_cached["map_search"] = True
             # A map's ground and publisher, null included: a map whose config
@@ -3583,6 +3851,34 @@ def _domain_map_entries_for_zim(name, filename, source_meta, main_path=""):
     return {d: name for d in domains}
 
 
+def _zim_live_holder(name, path):
+    """The file serving `name`, when that is a different file still on disk;
+    None when the name is free or its file is gone (the new one takes over)."""
+    held = _zim_files_cache.get(name)
+    if not held or os.path.realpath(held) == os.path.realpath(path):
+        return None
+    try:
+        os.stat(held)
+    except OSError:
+        return None
+    return held
+
+
+def _zim_holder_keeps(held, path):
+    """register_zim_file's mirror of _scan_zim_files' rule: True when `held`,
+    already serving a name, keeps it against the arriving `path`. A root file
+    beats a subfolder one whatever its build; within a tier the richer build
+    (_zim_build_rank) holds, and an equal one yields to the arrival."""
+    root = os.path.realpath(ZIM_DIR)
+    held_in_root = os.path.dirname(os.path.realpath(held)) == root
+    new_in_root = os.path.dirname(os.path.realpath(path)) == root
+    if held_in_root != new_in_root:
+        return held_in_root
+    return _zim_build_rank(os.path.basename(held)) > _zim_build_rank(
+        os.path.basename(path)
+    )
+
+
 def register_zim_file(path, removed_files=()):
     """Incrementally register ONE just-downloaded ZIM into the live library.
 
@@ -3617,7 +3913,7 @@ def register_zim_file(path, removed_files=()):
         load_cache()
         return True
     filename = os.path.basename(path)
-    name = _zim_short_name(filename)
+    name = _zim_base_name(filename)
     try:
         st = os.stat(path)
     except OSError as e:
@@ -3633,38 +3929,47 @@ def register_zim_file(path, removed_files=()):
     # always yields. The routine case — an update replacing an older dated
     # file the caller just deleted — falls through because the old path no
     # longer stats.
-    existing_path = _zim_files_cache.get(name)
-    if existing_path and os.path.realpath(existing_path) != os.path.realpath(path):
-        try:
-            os.stat(existing_path)
-            existing_in_root = os.path.dirname(
-                os.path.realpath(existing_path)
-            ) == os.path.realpath(ZIM_DIR)
-            new_in_root = os.path.dirname(os.path.realpath(path)) == os.path.realpath(
-                ZIM_DIR
+    #
+    # Another language holding the name (gutenberg_ale arriving beside
+    # gutenberg_en) is not a collision to lose: as in the scan, the holder
+    # keeps the bare name and this file takes its language name.
+    existing_path = _zim_live_holder(name, path)
+    if existing_path and _zim_lang_key(
+        os.path.basename(existing_path)
+    ) != _zim_lang_key(filename):
+        if not _zim_holder_keeps(existing_path, path):
+            # The scan would give THIS file the bare name and move the holder
+            # to its language name; renaming a served ZIM is the rescan's job.
+            log.info(
+                "ZIM name collision '%s': %s outranks %s, a different language; "
+                "rescanning",
+                name,
+                filename,
+                os.path.basename(existing_path),
             )
-            if existing_in_root and not new_in_root:
-                log.info(
-                    "ZIM name collision '%s': keeping root %s, new %s stays shadowed",
-                    name,
-                    os.path.basename(existing_path),
-                    filename,
-                )
-                return True  # library correctly unchanged
-            if existing_in_root == new_in_root and _zim_build_rank(
-                os.path.basename(existing_path)
-            ) > _zim_build_rank(filename):
-                # Same tier, poorer build arriving: a freshly downloaded mini
-                # must never displace the maxi already being served.
-                log.info(
-                    "ZIM name collision '%s': keeping richer %s, new %s stays shadowed",
-                    name,
-                    os.path.basename(existing_path),
-                    filename,
-                )
-                return True  # library correctly unchanged
-        except OSError:
-            pass  # existing file is gone — the new one takes over
+            return False
+        name = _zim_lang_name(filename)
+        existing_path = _zim_live_holder(name, path)
+        if existing_path and _zim_base_name(os.path.basename(existing_path)) == name:
+            # That name is another file's own, never a language name to take.
+            log.info(
+                "ZIM name collision '%s': keeping %s, new %s stays shadowed",
+                name,
+                os.path.basename(existing_path),
+                filename,
+            )
+            return True  # library correctly unchanged
+    if existing_path and _zim_holder_keeps(existing_path, path):
+        # A root file against a subfolder one, or a richer build in the same
+        # tier: a freshly downloaded mini must never displace the maxi
+        # already being served.
+        log.info(
+            "ZIM name collision '%s': keeping %s, new %s stays shadowed",
+            name,
+            os.path.basename(existing_path),
+            filename,
+        )
+        return True  # library correctly unchanged
 
     # ---- Phase 1: metadata extraction, deliberately WITHOUT _zim_lock ----
     entry, archive = _extract_zim_metadata(name, path)

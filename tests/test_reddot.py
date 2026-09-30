@@ -133,7 +133,7 @@ def test_the_pipeline_runs_the_four_steps_and_registers(tmp_path, monkeypatch):
         assert cmd[1].endswith(reddot._LAUNCHER_NAME) and os.path.exists(cmd[1]), "ArcticZim runs through Zimi's launcher"
         ran.append(cmd[2] if cmd[2] != "-v" else cmd[3])
         if cmd[2] == "-v":
-            with open(cmd[-1], "wb") as f:
+            with open(cmd[cmd.index("build") + 2], "wb") as f:
                 f.write(b"ZIM")
         return 0
 
@@ -146,6 +146,83 @@ def test_the_pipeline_runs_the_four_steps_and_registers(tmp_path, monkeypatch):
     assert os.path.exists(info["path"]) and not os.path.exists(info["path"] + ".part")
     assert not os.path.isdir(os.path.join(str(tmp_path), "staging")) or not os.listdir(os.path.join(str(tmp_path), "staging"))
     assert any("Arctic Shift" in s for s in said)
+
+
+def test_a_subreddit_zimi_made_says_so(tmp_path, monkeypatch):
+    """ArcticZim writes the ZIM with Scraper "arcticzim" and no history, so
+    a subreddit Zimi made had no "made by Zimi" badge and was missing from
+    what Manage lists as made here. The build carries Zimi's metadata to the
+    launcher, with the posts and comments fetched."""
+    import json as _json
+
+    from zimi import http as _http
+
+    monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(reddot, "ensure_sidecar", lambda sink=None: "/fake/arcticzim")
+    seen = {}
+
+    def fake_run(cmd, sink, watch=None):
+        if "retrieve" in cmd:
+            with open(cmd[-1], "w") as f:
+                f.write('{"id": "a"}\n{"id": "b"}\n{"id": "b"}\n' if cmd[-2] == "posts" else '{"id": "c"}\n')
+        if "build" in cmd:
+            assert reddot.METADATA_FLAG in cmd, "the build is handed Zimi's metadata"
+            with open(cmd[cmd.index(reddot.METADATA_FLAG) + 1], encoding="utf-8") as f:
+                seen.update(_json.load(f))
+            with open(cmd[cmd.index("build") + 2], "wb") as f:
+                f.write(b"ZIM")
+        else:
+            assert reddot.METADATA_FLAG not in cmd, "only the build writes the ZIM"
+        return 0
+
+    monkeypatch.setattr(reddot, "_run_stream", fake_run)
+    reddot.create_reddit_zim("kiwix", out_dir=str(tmp_path))
+    assert seen["Scraper"].startswith("arcticzim ") and "+ Zimi " + srv.ZIMI_VERSION in seen["Scraper"]
+    assert srv._zim_kind(seen["Scraper"], "_category:reddit", "reddit_kiwix") == "reddit", "still a Reddit ZIM"
+    kind = _http._zimi_kind(seen)
+    assert kind and kind["mode"] == "reddit" and kind["counts"] == {"posts": 2, "comments": 1}
+    from zimi import manage
+
+    assert manage._creator_type(kind["mode"]) == "reddit"
+
+
+def test_the_launcher_lays_zimi_metadata_over_arcticzims(tmp_path, monkeypatch):
+    """The launcher, run for real over a stand-in ArcticZim with the real
+    one's metadata: the flag and its file never reach ArcticZim's parser,
+    and the metadata the build writes carries Zimi's keys over its own."""
+    import json as _json
+    import subprocess
+
+    fake = tmp_path / "site"
+    (fake / "arcticzim" / "zimbuild").mkdir(parents=True)
+    (fake / "arcticzim" / "__init__.py").write_text("", encoding="utf-8")
+    (fake / "arcticzim" / "zimbuild" / "__init__.py").write_text("", encoding="utf-8")
+    (fake / "arcticzim" / "zimbuild" / "builder.py").write_text(
+        "def config_process(name, nice=0, ionice=0):\n    pass\n\n"
+        "class BuildOptions:\n"
+        "    def get_metadata_dict(self):\n"
+        "        return {'Name': 'reddit', 'Creator': 'arcticzim', 'Tags': '_category:reddit', 'Scraper': 'arcticzim'}\n"
+    , encoding="utf-8")
+    (fake / "arcticzim" / "cli.py").write_text(
+        "import json, sys\n"
+        "from arcticzim.zimbuild.builder import BuildOptions\n"
+        "def main():\n"
+        "    print(json.dumps({'argv': sys.argv[1:], 'metadata': BuildOptions().get_metadata_dict()}))\n"
+        "    return 0\n"
+    , encoding="utf-8")
+    monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(tmp_path / "data"))
+    meta = tmp_path / "meta.json"
+    meta.write_text(_json.dumps(reddot._provenance("kiwix", {"posts": 3})), encoding="utf-8")
+    launcher = reddot._cmd("-v", "build", "sqlite:///db", "out.zim.part", metadata=str(meta))[1]
+    env = dict(os.environ, PYTHONPATH=str(fake))
+    run = lambda *args: _json.loads(subprocess.run([sys.executable, launcher, *args], env=env, capture_output=True, text=True, check=True).stdout)
+    got = run("-v", "build", "sqlite:///db", "out.zim.part", reddot.METADATA_FLAG, str(meta))
+    assert got["argv"] == ["-v", "build", "sqlite:///db", "out.zim.part"]
+    assert got["metadata"]["Scraper"].startswith("arcticzim ") and "Zimi " in got["metadata"]["Scraper"]
+    assert _json.loads(got["metadata"]["X-Zimi-History"])[0]["mode"] == "reddit"
+    assert got["metadata"]["Tags"] == "_category:reddit", "ArcticZim's own keys stay"
+    plain = run("retrieve", "posts")
+    assert plain["metadata"]["Scraper"] == "arcticzim" and "X-Zimi-History" not in plain["metadata"]
 
 
 def test_a_failed_step_leaves_nothing_behind(tmp_path, monkeypatch):
