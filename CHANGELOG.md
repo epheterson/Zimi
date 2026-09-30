@@ -18,10 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Search operators in search, the catalog and the API: `-word`, `"exact words"`, `OR`, `lang:` and `in:`, shown as chips you can remove.
 - The Almanac's orrery shows each planet's radio delay and flies you there, with the twin paradox; a glow on Earth opens a 3D Earth with real daylight, eclipses, the ISS and GPS satellites.
 - Links that leave your library are marked in every reader and say where they go ([#99](https://github.com/epheterson/Zimi/issues/99)); Create a ZIM can remove them.
-- Server settings list everything Zimi fetches from the internet, each with its switch, including new ones for update checks and satellite data.
+- Server settings list everything Zimi fetches from the internet, each with its switch, including a new one for update checks.
 
 ### Changed
 
+- History and Saved are two panels: the clock opens History, with Continue at its head; the two-bookmark button beside it opens Saved, where what is in no list is Bookmarks.
+- Every on/off in Settings is the same switch row, and a phone never zooms, pinch included.
 - The home page's sort governs the apps too, and the Apps heading opens a page of each app's ZIMs ([#100](https://github.com/epheterson/Zimi/issues/100)).
 - `ZIMI_OFFLINE` now also refuses internet downloads, and an idle Zimi asks the internet for nothing at startup.
 - The home page ships a third fewer bytes, and search asks for half as many snippets.

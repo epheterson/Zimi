@@ -201,11 +201,9 @@ def test_bookmarks_v2_come_in_as_saved_lists(served):
         pg.click("#bm-panel-btn")
         pg.wait_for_selector("#bm-tree .bm-row")
         rows = _rows(pg)
-        # Continue (Bookshelf's place), Liked, each folder a list named by
-        # its path in the tree's order with its order kept, then no list.
+        # Liked, each folder a list named by its path in the tree's order
+        # with its order kept, then the bookmarks in no list.
         assert rows == [
-            "# Continue",
-            "Liber",
             "# Liked",
             "# Travel",
             "Sun",
@@ -214,9 +212,16 @@ def test_bookmarks_v2_come_in_as_saved_lists(served):
             "Mercury",
             "# Medical",
             "Sun, renamed",
-            "# Saved",
+            "# Bookmarks",
             "A talk",
         ], rows
+        # Continue (Bookshelf's place) heads History, under the clock.
+        pg.click("#history-btn")
+        pg.wait_for_selector("#bm-tree.hp-continue .bm-row")
+        assert _rows(pg) == ["# Continue", "Liber"], _rows(pg)
+        assert pg.evaluate("() => document.querySelector('.library-panel-title').textContent") == "History"
+        pg.click("#bm-panel-btn")
+        pg.wait_for_selector("#bm-tree .bm-row")
         place = pg.evaluate(
             "() => Saved.get('osm-portugal\\nindex.html\\nmap=12.00/38.72000/-9.14000')"
         )
@@ -424,12 +429,10 @@ def test_bookshelf_continue_reading_and_my_shelf_follow_the_account(served):
         tablet.click("#bm-panel-btn")
         tablet.wait_for_selector("#bm-tree .bm-row")
         assert tablet.evaluate("() => _bmScope") == "books"
-        assert _rows(tablet) == [
-            "# Continue",
-            "Liber",
-            "# Saved",
-            "Liber",
-        ], _rows(tablet)
+        assert _rows(tablet) == ["Liber"], _rows(tablet)
+        tablet.click("#history-btn")
+        tablet.wait_for_selector("#bm-tree.hp-continue .bm-row")
+        assert _rows(tablet)[:2] == ["# Continue", "Liber"], _rows(tablet)
         tablet.evaluate("() => _closeLibraryPanel()")
         # And the book opens where the phone left it.
         tframe.locator(".bk[data-book='1']").first.click()

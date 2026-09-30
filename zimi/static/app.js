@@ -1903,13 +1903,6 @@ function updateTopbar() {
   var _readingText = _readingArticle && !_isMapPage() && !_isAppPage() && !_isPdfPage();
   var fontBtn = document.getElementById('font-btn');
   if (fontBtn) fontBtn.style.display = (_readingText && !_foldReaderExtras) ? 'flex' : 'none';
-  // Bookmarks-panel opener — reader only (#65). Everywhere else the library
-  // button already opens the panel, but while reading it becomes the
-  // save-bookmark toggle, which left the bookmark tree unreachable without
-  // leaving the article. Deliberately NOT folded into the ⋯ menu: reaching a
-  // saved article should stay one tap from the page you're on.
-  var bmPanelBtn = document.getElementById('bm-panel-btn');
-  if (bmPanelBtn) bmPanelBtn.style.display = _readingArticle ? 'flex' : 'none';
   // Places and maps: the places kept, and the same place on another map.
   var mapSrcBtn = document.getElementById('map-source-btn');
   if (mapSrcBtn) {
@@ -1956,6 +1949,13 @@ function updateTopbar() {
   // would be a second bookmark for the same article. Saved stays one tap
   // away (bm-panel-btn).
   document.getElementById('library-btn').style.display = (libraryChromeOff || (readerOpen && _wikiReading)) ? 'none' : 'flex';
+  // History and Saved are two panels with two openers (Eric: "both under the
+  // clock is weird"). The clock opens History: library-btn off the reader,
+  // history-btn in it, where library-btn is the save toggle. The bookmarks
+  // mark opens Saved, wherever the library chrome shows. Neither folds into
+  // the ⋯ menu: what you read and what you kept stay one tap away.
+  document.getElementById('history-btn').style.display = (readerOpen && !libraryChromeOff) ? 'flex' : 'none';
+  document.getElementById('bm-panel-btn').style.display = libraryChromeOff ? 'none' : 'flex';
   // Create-a-ZIM lives in the ⋯ menu at every width — creation is an
   // occasional, deliberate act, so it stays out of the primary topbar. The ⋯
   // trigger is CSS-hidden on a wide viewport at rest, so reveal it (inline
@@ -20353,18 +20353,19 @@ function _histDateGroup(ts) {
   if (d >= weekAgo) return t('this_week');
   return t('older');
 }
-// Both panel openers (the app-wide library button and the reader's bookmarks
-// button, #65) mirror the panel's open state with the same class.
+// Each panel's opener mirrors whether its panel is open. The highlight
+// belongs to the button that OPENS the panel: in the reader library-btn is
+// the save toggle, so it never lights up (Eric: tapping the bookmarks view
+// highlighted the bookmark button); history-btn is the clock there.
 function _libPanelBtnState(open) {
-  // The panel-open highlight belongs to the button that OPENS the panel. In
-  // the reader the topbar library-btn is the bookmark-this-article toggle, not
-  // the panel opener, so it must never light up when the panel opens (Eric:
-  // tapping the bookmarks view highlighted the bookmark button). bm-panel-btn
-  // is the reader's panel opener and always reflects the state.
+  var tab = _getLibraryTab();
+  var hist = open && tab === 'history';
   var bmBtn = document.getElementById('bm-panel-btn');
-  if (bmBtn) bmBtn.classList.toggle('panel-open', open);
+  if (bmBtn) bmBtn.classList.toggle('panel-open', open && tab === 'bookmarks');
+  var histBtn = document.getElementById('history-btn');
+  if (histBtn) histBtn.classList.toggle('panel-open', hist);
   var libBtn = document.getElementById('library-btn');
-  if (libBtn) libBtn.classList.toggle('panel-open', open && !readerOpen);
+  if (libBtn) libBtn.classList.toggle('panel-open', hist && !readerOpen);
 }
 function toggleLibraryPanel(forceTab) {
   var panel = document.getElementById('history-panel');
@@ -20393,37 +20394,32 @@ function _closeLibraryPanel() {
   if (panel) panel.classList.remove('open');
   _libPanelBtnState(false);
 }
-function _switchLibraryTab(tab) {
-  _setLibraryTab(tab);
-  _updateLibraryBtnIcon();
-  renderLibraryPanel();
-}
+// One panel element, two panels: History (the clock) and Saved (the
+// bookmarks mark). Each is named in a short header with its close.
 function renderLibraryPanel() {
   var panel = document.getElementById('history-panel');
-  var tab = _getLibraryTab();
-  var isHistory = (tab === 'history');
+  var isHistory = _getLibraryTab() === 'history';
+  var title = t(isHistory ? 'kbd_history' : 'saved_tab');
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', title);
   var html = '<div class="library-panel-header">' +
-    '<div class="library-tabs">' +
-    '<button class="library-tab' + (isHistory ? ' active' : '') + '" onclick="_switchLibraryTab(\'history\')">' + tH('kbd_history') + '</button>' +
-    '<button class="library-tab' + (!isHistory ? ' active' : '') + '" onclick="_switchLibraryTab(\'bookmarks\')">' + tH('saved_tab') + '</button>' +
-    '</div>' +
-    '<button class="hp-clear" style="margin-inline-start:8px" onclick="_closeLibraryPanel()" aria-label="' + escAttr(t('close')) + '" title="' + escAttr(t('close')) + '">\u2715</button>' +
+    '<h2 class="library-panel-title">' + esc(title) + '</h2>' +
+    '<button class="hp-clear" onclick="_closeLibraryPanel()" aria-label="' + escAttr(t('close')) + '" title="' + escAttr(t('close')) + '">\u2715</button>' +
     '</div>';
-  if (isHistory) {
-    html += _renderHistoryContent();
-  } else {
-    html += _renderBookmarksContent();
-  }
+  html += isHistory ? _renderHistoryContent() : _renderBookmarksContent();
   panel.innerHTML = html;
-  _bmEnsureBound();  // idempotent — attaches the bookmark-tree delegation once
-  if (!isHistory) _bmSyncRovingTabindex(false);
+  _bmEnsureBound();  // idempotent — attaches the tree delegation once
+  _bmSyncRovingTabindex(false);
 }
+// History: Continue first (the books and videos you are part-way through,
+// drawn from where you were), then what you read and searched, by day.
 function _renderHistoryContent() {
   var h = _histLoad();
+  var cont = _continueHtml();
   if (h.length === 0) {
-    return '<div class="hp-empty">' + tH('no_history_panel') + '</div>';
+    return cont + (cont ? '' : '<div class="hp-empty">' + tH('no_history_panel') + '</div>');
   }
-  var html = '';
+  var html = cont;
   var currentGroup = '';
   var firstGroup = true;
   var i = 0;
@@ -20560,15 +20556,24 @@ function _savedNotesHtml() {
   }
   return html;
 }
+// Continue, at the head of History: a tree of its own (the same rows, menu
+// and keys as Saved's), so a position is opened, or let go, the same way.
+function _continueHtml() {
+  var cont = Saved.continued({}).filter(function (p) { return p.kind === 'book' || p.kind === 'video'; }).slice(0, _BM_CONTINUE_SHOWN);
+  if (!cont.length) return '';
+  var html = '<div class="bm-tree hp-continue" id="bm-tree" data-fid="" role="tree" aria-label="' + escAttr(t('saved_continue')) + '">' +
+    _bmGroupRowHtml(_BM_CONTINUE, t('saved_continue'), _BM_CONTINUE_SVG, cont.length, false);
+  if (!_bmIsCollapsed(_BM_CONTINUE)) cont.forEach(function (p) { html += _bmItemRowHtml(p, _BM_CONTINUE, 1); });
+  return html + '</div>';
+}
 function _renderBookmarksContent() {
   // Left the app with the panel open: its slice goes with it.
   if (_bmScope && _savedCurrentApp() !== _bmScope) _bmScope = '';
   var q = _bmScopeQuery();
   var lists = Saved.lists(q).filter(function (l) { return !_bmScope || l.count; });
   var loose = Saved.itemsFor({ list: _BM_ROOT, app: q.app });
-  var cont = Saved.continued(q).filter(function (p) { return p.kind === 'book' || p.kind === 'video'; }).slice(0, _BM_CONTINUE_SHOWN);
   var hls = Saved.highlights(q);
-  var any = loose.length || cont.length || hls.length || lists.some(function (l) { return l.count || !l.builtin; });
+  var any = loose.length || hls.length || lists.some(function (l) { return l.count || !l.builtin; });
   var html = _bmScopeHtml() + _savedNotesHtml() + '<div class="hp-actions bm-actions">' +
     '<button class="hp-action-btn bm-new" onclick="_bmNewListPrompt()"><span aria-hidden="true">+</span>' + tH('saved_new_list') + '</button>' +
     (Saved.all().length ? '<button id="export-bookmarks-btn" class="hp-action-btn" onclick="_bmOpenExport()">' + tH('save_to_zim') + '</button>' : '') +
@@ -20580,10 +20585,6 @@ function _renderBookmarksContent() {
     lists = [];
   }
   html += '<div class="bm-tree" id="bm-tree" data-fid="" role="tree" aria-label="' + escAttr(t('saved_tab')) + '">';
-  if (cont.length) {
-    html += _bmGroupRowHtml(_BM_CONTINUE, t('saved_continue'), _BM_CONTINUE_SVG, cont.length, false);
-    if (!_bmIsCollapsed(_BM_CONTINUE)) cont.forEach(function (p) { html += _bmItemRowHtml(p, _BM_CONTINUE, 1); });
-  }
   lists.forEach(function (l) {
     // An empty Liked has nothing to rename, delete or export: no menu.
     html += _bmGroupRowHtml(l.id, _savedListName(l), l.builtin ? _BM_HEART_SVG : _BM_LIST_SVG, l.count, !l.builtin || l.count > 0);
@@ -20591,7 +20592,7 @@ function _renderBookmarksContent() {
   });
   // The items in no list, under a name of their own once anything is above
   // them: bare, they read as the last list's.
-  var grouped = loose.length && (lists.length || cont.length);
+  var grouped = loose.length && lists.length;
   if (grouped) html += _bmGroupRowHtml(_BM_ROOT, t('saved_unlisted'), _BM_PAGE_SVG, loose.length, false);
   if (!grouped || !_bmIsCollapsed(_BM_ROOT)) loose.forEach(function (it) { html += _bmItemWithHlHtml(it, _BM_ROOT, grouped ? 1 : 0); });
   // Every highlight on its own, the latest first, each with its page.
@@ -20846,10 +20847,12 @@ function _bmTreeKeydown(e) {
   }
 }
 
-// Re-render the Saved tab. renderLibraryPanel rebuilds the panel innerHTML;
-// the delegated listeners live on the persistent panel element so they survive.
+// Re-render the open panel (History holds Continue's tree, Saved the rest).
+// renderLibraryPanel rebuilds the panel innerHTML; the delegated listeners
+// live on the persistent panel element so they survive.
 function _bmRerender() {
-  if (_getLibraryTab() !== 'bookmarks') return;
+  var panel = document.getElementById('history-panel');
+  if (!panel || !panel.classList.contains('open')) return;
   var hadFocus = document.activeElement && document.activeElement.closest &&
     !!document.activeElement.closest('.bm-row');
   renderLibraryPanel();
@@ -21096,7 +21099,6 @@ function _bmEnsureBound() {
   _bmBound = true;
 
   panel.addEventListener('click', function (e) {
-    if (_getLibraryTab() !== 'bookmarks') return;
     var menuBtn = e.target.closest('.bm-gear');
     var row = e.target.closest('.bm-row');
     if (!row) return;
@@ -21124,7 +21126,6 @@ function _bmEnsureBound() {
   });
 
   panel.addEventListener('contextmenu', function (e) {
-    if (_getLibraryTab() !== 'bookmarks') return;
     var row = e.target.closest('.bm-row');
     if (!row) return;
     e.preventDefault();
@@ -21134,10 +21135,7 @@ function _bmEnsureBound() {
 
   // Pointer DnD + touch long-press. One handler set, both input types.
   panel.addEventListener('pointerdown', _bmPointerDown);
-  panel.addEventListener('keydown', function (e) {
-    if (_getLibraryTab() !== 'bookmarks') return;
-    _bmTreeKeydown(e);
-  });
+  panel.addEventListener('keydown', _bmTreeKeydown);
   // Clicking a row makes it the tabbable one, so Tab returns where you were.
   panel.addEventListener('focusin', function (e) {
     var row = e.target.closest ? e.target.closest('.bm-row') : null;
@@ -21161,7 +21159,6 @@ function _bmDraggable(row) {
 }
 
 function _bmPointerDown(e) {
-  if (_getLibraryTab() !== 'bookmarks') return;
   if (e.button && e.button !== 0) return;  // primary button only; right-click opens the menu
   if (e.target.closest('.bm-gear') || e.target.closest('input')) return; // let buttons/inputs work
   var row = e.target.closest('.bm-row');
@@ -22922,6 +22919,9 @@ function toggleBookmark() {
 
 var _libClockSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
 var _libBookmarkSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
+// Saved's opener: two bookmarks, one behind the other (what you kept), so it
+// never reads as the single bookmark that saves the page beside it.
+var _libSavedSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h9a2 2 0 0 1 2 2v13"/><path d="M15 21l-5-3.5L5 21V9a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2z"/></svg>';
 var _libBookmarkFilledSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
 function _getLibraryTab() { return localStorage.getItem(SK.LIBRARY_TAB) || 'history'; }
 function _setLibraryTab(tab) { localStorage.setItem(SK.LIBRARY_TAB, tab); }
@@ -22944,27 +22944,18 @@ function _updateLibraryBtnIcon() {
       btn.style.color = '';
       btn.title = t('bookmark_add');
     } else {
-      // On the home grid the library button OPENS the panel. It carries the one
-      // library glyph — the same glyph the reader's bm-panel-btn carries — so
-      // "open the library" looks identical wherever you are (Eric: consistent
-      // icon on home and in zims). The open tab no longer changes the icon.
+      // Off the reader the library button is the clock: it opens History,
+      // as history-btn does in the reader.
       btn.innerHTML = _libClockSvg;
       btn.style.color = '';
-      btn.title = t('library');
+      btn.title = t('history');
     }
   }
-  // Keep the reader's panel opener on the very same glyph, so it reads as
-  // "open the library" and never as a second bookmark button next to the
-  // add-bookmark toggle (library-btn) beside it.
+  // Saved's opener: its own glyph and its own name, in every view.
   var panelBtn = document.getElementById('bm-panel-btn');
-  if (panelBtn) {
-    panelBtn.innerHTML = _libClockSvg;
-    // The GLYPH is shared with library-btn on purpose (above). The name is
-    // not: this one opens the panel on the Saved tab, under B. It used to
-    // be handed t('library') along with the icon, so its tooltip read
-    // "Library (H)" — the wrong name and a shortcut belonging to a different
-    // button — while its aria-label still said Bookmarks. Two names for one
-    // control, and neither audience got the true one.
+  if (panelBtn && panelBtn.dataset.lang !== _currentLang) {
+    panelBtn.dataset.lang = _currentLang;
+    panelBtn.innerHTML = _libSavedSvg;
     panelBtn.title = t('saved_tab');
     panelBtn.setAttribute('aria-label', t('saved_tab'));
   }

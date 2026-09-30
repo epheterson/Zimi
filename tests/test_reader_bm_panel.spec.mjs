@@ -35,9 +35,9 @@ async function openReaderWithBookmarks(page) {
 }
 
 test.describe('Reader bookmarks panel (#65)', () => {
-  test('button shows only while reading and opens the tree over the article', async ({ page }) => {
+  test('Saved\'s opener shows at home and while reading, and opens the tree over the article', async ({ page }) => {
     await page.goto(BASE);
-    await expect(page.locator('#bm-panel-btn')).toBeHidden(); // home: library-btn already covers it
+    await expect(page.locator('#bm-panel-btn')).toBeVisible(); // home: the clock is History, this is Saved
     await openReaderWithBookmarks(page);
     await expect(page.locator('#bm-panel-btn')).toBeVisible();
     await page.click('#bm-panel-btn');

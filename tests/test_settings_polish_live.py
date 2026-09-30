@@ -12,7 +12,8 @@ polish pass), in a real browser at 390x844 touch:
   cancelled in the shell, the reader's document and the app pages.
 - The book's reading settings leave the page undimmed, and Auto's swatch is
   the sepia and dark Auto actually paints, not a white page it never gives.
-- The Saved panel's group of things in no list is called Saved.
+- History and Saved are two panels: the clock opens History (Continue at
+  its head), a bookmarks mark opens Saved (its loose items are Bookmarks).
 
 Run: pytest tests/test_settings_polish_live.py -v
 """
@@ -277,22 +278,73 @@ def test_book_settings_leave_the_page_and_auto_is_what_it_paints(served, phone):
     )
 
 
-def test_the_things_in_no_list_are_called_saved(served, phone):
+def test_history_and_saved_are_two_panels(served, phone):
+    """Eric: "continue should be under history ... while saved is everything
+    the user intentionally tapped without reusing that word and both under
+    the clock is weird". The clock opens History, Continue at its head; the
+    bookmarks mark opens Saved, whose loose items are Bookmarks, not Saved.
+    Each header is one short band."""
     pg = phone
     pg.goto(served + "/")
     pg.wait_for_function(READY, timeout=30000)
     pg.evaluate(
         """() => { var a = Saved.save({kind: 'article', zim: 'hlwiki', path: 'A/Lighthouse', title: 'Lighthouse'});
       Saved.save({kind: 'article', zim: 'hlwiki', path: 'A/Plain', title: 'Plain'});
-      Saved.addToList(a, Saved.createList('Trip')); toggleLibraryPanel('bookmarks'); }"""
+      Saved.addToList(a, Saved.createList('Trip'));
+      Saved.setPosition({kind: 'book', app: 'books', zim: 'hlwiki', path: 'A/Lighthouse', title: 'A book'}, {f: 0.4}); }"""
     )
-    pg.wait_for_selector("#bm-tree")
-    names = pg.evaluate(
-        "() => Array.from(document.querySelectorAll('#bm-tree .bm-folder .bm-name')).map(n => n.textContent)"
+    # Home: the clock (library-btn) and the bookmarks mark (bm-panel-btn).
+    assert pg.locator("#library-btn").is_visible() and pg.locator("#bm-panel-btn").is_visible()
+    pg.locator("#library-btn").tap()
+    pg.wait_for_selector("#history-panel.open")
+    got = pg.evaluate(
+        """() => ({ title: document.querySelector('.library-panel-title').textContent,
+      tabs: document.querySelectorAll('.library-tab').length,
+      first: document.querySelector('#history-panel .library-panel-header').nextElementSibling.id,
+      rows: Array.from(document.querySelectorAll('#bm-tree .bm-row .bm-name')).map(n => n.textContent),
+      head: Math.round(document.querySelector('#history-panel .library-panel-header').getBoundingClientRect().height),
+      lit: document.getElementById('library-btn').classList.contains('panel-open') })"""
     )
-    assert "Saved" in names and "Not in a list" not in names, names
-    # The header and its actions are one short band on a phone.
-    top = pg.evaluate(
-        "() => document.querySelector('#bm-tree .bm-row').getBoundingClientRect().top - document.getElementById('history-panel').getBoundingClientRect().top"
+    assert got["title"] == "History" and got["tabs"] == 0, got
+    assert got["first"] == "bm-tree" and got["rows"] == ["Continue", "A book"], got
+    assert got["head"] <= 50 and got["lit"], got
+    # The bookmarks mark: Saved, no Continue, the loose items are Bookmarks.
+    pg.locator("#bm-panel-btn").tap()
+    pg.wait_for_selector("#bm-tree .bm-folder")
+    got = pg.evaluate(
+        """() => ({ title: document.querySelector('.library-panel-title').textContent,
+      names: Array.from(document.querySelectorAll('#bm-tree .bm-folder .bm-name')).map(n => n.textContent),
+      head: Math.round(document.querySelector('#history-panel .library-panel-header').getBoundingClientRect().height),
+      top: document.querySelector('#bm-tree .bm-row').getBoundingClientRect().top - document.getElementById('history-panel').getBoundingClientRect().top,
+      lit: [document.getElementById('bm-panel-btn').classList.contains('panel-open'), document.getElementById('library-btn').classList.contains('panel-open')] })"""
     )
-    assert top <= 112, top
+    assert got["title"] == "Saved" and got["head"] <= 50, got
+    assert "Bookmarks" in got["names"] and "Saved" not in got["names"], got
+    assert "Continue" not in got["names"], got
+    assert got["top"] <= 112 and got["lit"] == [True, False], got
+    # The keyboard: H and B, Escape closes; Continue's tree takes arrows.
+    pg.keyboard.press("Escape")
+    pg.keyboard.press("h")
+    pg.wait_for_selector("#history-panel.open .hp-continue")
+    pg.focus("#bm-tree .bm-row")
+    pg.keyboard.press("ArrowDown")
+    assert pg.evaluate("() => document.activeElement.classList.contains('bm-bk')")
+    pg.keyboard.press("Escape")
+    pg.keyboard.press("b")
+    pg.wait_for_selector("#history-panel.open #bm-tree .bm-folder")
+    assert pg.evaluate("() => document.querySelector('.library-panel-title').textContent") == "Saved"
+    # In the reader: the clock is history-btn, library-btn saves the page.
+    pg.keyboard.press("Escape")
+    pg.evaluate("() => openArticle('hlwiki', 'A/Lighthouse')")
+    pg.wait_for_timeout(1200)
+    shown = pg.evaluate(
+        "() => ['history-btn', 'library-btn', 'bm-panel-btn'].map(id => getComputedStyle(document.getElementById(id)).display !== 'none')"
+    )
+    assert shown == [True, True, True], shown
+    assert pg.evaluate("() => document.getElementById('library-btn').dataset.state") == "saved"
+    pg.locator("#history-btn").tap()
+    pg.wait_for_selector("#history-panel.open .hp-continue")
+    assert pg.evaluate("() => document.getElementById('history-btn').classList.contains('panel-open')")
+    # Nothing in the header crowds the search off a phone.
+    assert pg.evaluate("() => document.getElementById('q').getBoundingClientRect().width") >= 100
+    assert not pg.errors, pg.errors

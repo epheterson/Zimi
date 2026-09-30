@@ -2692,10 +2692,11 @@
     .topbar.search-focused .create-btn,
     .topbar.search-focused .topbar-more,
     .topbar.search-focused .library-btn,
+    .topbar.search-focused #history-btn,
     .topbar.search-focused #bm-panel-btn { display: none !important; }
-    /* On a map the picker takes the bookmarks button's place; the history
-       panel's Bookmarks tab is where they are. */
-    body.map-page #bm-panel-btn { display: none !important; }
+    /* On a map the picker takes the panel openers' place (it keeps the
+       map's places); H and B still open History and Saved. */
+    body.map-page #bm-panel-btn, body.map-page #history-btn { display: none !important; }
     .topbar.search-focused .lang-dropdown { display: none !important; }
     /* v1.6: Language dropdown — full width on mobile */
     .lang-dropdown { min-width: 160px; }
@@ -2991,19 +2992,17 @@
     overflow-y: auto; box-shadow: -4px 0 24px rgba(0,0,0,0.4);
   }
   .history-panel.open { display: block; }
+  /* Each panel's header: its name and its close, one short band. */
   .library-panel-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 6px 8px 6px 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0;
     background: var(--surface); z-index: 1;
   }
-  .library-tabs { display: flex; gap: 0; background: var(--bg); border-radius: 8px; padding: 2px; flex: 1; }
-  .library-tab {
-    flex: 1; padding: 6px 12px; font-size: 13px; font-weight: 500; color: var(--text2);
-    background: none; border: none; border-radius: 6px; cursor: pointer; transition: all 0.15s;
-    text-align: center; white-space: nowrap;
-  }
-  .library-tab:hover { color: var(--text); }
-  .library-tab.active { background: var(--surface2); color: var(--text); font-weight: 600; }
+  [dir="rtl"] .library-panel-header { padding: 6px 16px 6px 8px; }
+  .library-panel-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--text); }
+  .library-panel-header .hp-clear { border-color: transparent; font-size: 14px; }
+  /* Continue, at the head of History: its tree sits on the day groups' edge. */
+  .bm-tree.hp-continue { padding: 6px 10px 0; }
   .hp-clear { background: none; border: 1px solid var(--border); border-radius: var(--radius); color: var(--text2); font-size: 12px; padding: 4px 10px; cursor: pointer; transition: all 0.15s; }
   .hp-clear:hover { color: var(--error); border-color: var(--error); }
   .hp-group { padding: 0 16px; }
@@ -3117,15 +3116,15 @@
   @media (pointer: coarse) {
     .bm-row, .bm-newfolder, .bm-row.bm-renaming { min-height: 44px; }
     .bm-gear { align-self: stretch; min-width: 44px; margin-block: -7px; margin-inline-end: -8px; }
-    .bm-actions .hp-action-btn, .bm-note-actions .hp-action-btn, .library-panel-header .library-tab,
+    .bm-actions .hp-action-btn, .bm-note-actions .hp-action-btn,
     .bm-export-actions .hp-action-btn, .bm-exp-row { min-height: 44px; }
     .library-panel-header .hp-clear { min-width: 44px; min-height: 44px; }
     /* The targets stay a thumb's size; the room around them goes, so the
        header and the actions under it take one short band, not a third of
        the phone. The close is a bare mark, as the sheets' are. */
-    .library-panel-header { padding: 4px 6px 4px 12px; }
-    [dir="rtl"] .library-panel-header { padding: 4px 12px 4px 6px; }
-    .library-panel-header .hp-clear { border-color: transparent; font-size: 15px; }
+    .library-panel-header { padding: 0 0 0 16px; }
+    [dir="rtl"] .library-panel-header { padding: 0 16px 0 0; }
+    .library-panel-header .hp-clear { font-size: 15px; }
     .bm-actions { padding-top: 0; }
     .bm-actions + .bm-tree, .bm-actions ~ .bm-tree { padding-top: 0; }
   }

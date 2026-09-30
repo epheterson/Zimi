@@ -122,7 +122,7 @@ def test_first_use_then_a_phone_sized_panel(served, browser):
     pg.evaluate("() => { Saved.createList('Empty'); _bmRerender(); }")
     # Every control a thumb's size on a touch screen.
     small = pg.evaluate(
-        "() => Array.from(document.querySelectorAll('#history-panel .library-tab, #history-panel .hp-clear, #history-panel .hp-action-btn, #bm-tree .bm-row, #bm-tree button.bm-gear'))"
+        "() => Array.from(document.querySelectorAll('#history-panel .hp-clear, #history-panel .hp-action-btn, #bm-tree .bm-row, #bm-tree button.bm-gear'))"
         ".map(e => [e.className, Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)]).filter(x => x[1] < 44 || x[2] < 44)"
     )
     assert not small, small
@@ -148,14 +148,14 @@ def test_new_list_is_typed_where_it_lands(served, browser):
     after = pg.evaluate(
         "() => { var n = document.querySelector('.bm-newfolder').nextElementSibling; return n && n.dataset.fid; }"
     )
-    assert after == "", "the box is not just above Saved: %r" % after
+    assert after == "", "the box is not just above Bookmarks: %r" % after
     pg.locator(".bm-newfolder-input").fill("Groceries")
     pg.locator(".bm-newfolder-input").press("Enter")
     pg.wait_for_timeout(200)
     order = pg.evaluate(
         "() => Array.from(document.querySelectorAll('#bm-tree .bm-folder .bm-name')).map(n => n.textContent)"
     )
-    assert order[order.index("Groceries") + 1] == "Saved", order
+    assert order[order.index("Groceries") + 1] == "Bookmarks", order
 
 
 def test_a_removal_says_so_and_can_be_undone(served, browser):
