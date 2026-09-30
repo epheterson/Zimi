@@ -5,41 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.12.0] - 2026-09-29
+## [1.12.0] - 2026-09-30
 
 ### Added
 
-- Saving: bookmarks, lists and Liked in one place, in every app (ZimiTube's Watch later, ZimiExchange and Reddot's Saved, Maps' Places, Bookshelf's My shelf); an item in many lists; each list exportable as a ZIM; undo on every removal.
+- Zimipedia, a new app for every wiki in your library (Wikipedia, Wiktionary, Wikivoyage, Wikisource and more): a Today page (article of the day, On this day, Did you know, picture of the day), and a reader with citations in place, contents that follow you, the same article in other languages side by side, everything else your library holds on the topic, and link previews. On by default; turn it off under Settings > Apps.
+- Saving in every app: bookmarks, your own lists and Liked in one place (ZimiTube's Watch later, Maps' Places, Bookshelf's My shelf and more); an item can sit in many lists; export any list as a ZIM; undo on every removal.
 - Highlights with notes in every reader: articles, books and EPUBs.
 - Signed in, what you save and where you are in each book follow you to every device.
-- Zimipedia's reader: citations in place, contents that follow you, languages by Wikidata ID (side by side on a wide screen), everything else the library holds on the topic, and link previews. Zimipedia is on by default again.
-- Bookshelf reads document libraries (zimgit and more), LibreTexts textbooks, Wikisource, Wikibooks, EPUBs and your own folders of PDFs and EPUBs.
+- Search operators in search, the Catalog and the API: `-word`, `"exact words"`, `OR`, `lang:` and `in:`, shown as chips you can remove ([#94](https://github.com/epheterson/Zimi/issues/94)).
+- A search result can open in its app: a wiki article in Zimipedia, a book in Bookshelf, a video in ZimiTube, a question in ZimiExchange, a post in Reddot (Settings > Reading, "Open articles in apps").
+- Bookshelf reads more than Gutenberg: document libraries, LibreTexts textbooks, Wikisource, Wikibooks, EPUBs and your own folders of PDFs and EPUBs.
 - ZimiTube plays the document libraries' videos and audiobooks, and your own folders of video and audio.
-- Search operators in search, the catalog and the API: `-word`, `"exact words"`, `OR`, `lang:` and `in:`, shown as chips you can remove ([#94](https://github.com/epheterson/Zimi/issues/94)).
-- The Almanac's orrery shows each planet's radio delay and flies you there, with the twin paradox; a glow on Earth opens a 3D Earth with real daylight, eclipses, the ISS and GPS satellites, and the hero Moon opens the same view on the Moon.
 - Links that leave your library are marked in every reader and say where they go ([#99](https://github.com/epheterson/Zimi/issues/99)); Create a ZIM can remove them.
-- Server settings end with Internet use: everything Zimi fetches from the internet, each with its switch, including a new one for update checks.
+- Settings > Server > Internet use lists everything Zimi fetches from the internet, each with its own switch, including a new one for update checks.
+- The Almanac: each planet's radio delay and a flight there, the twin paradox, and a 3D Earth and Moon with real daylight, eclipses, the ISS and GPS satellites.
 
 ### Changed
 
-- History and Saved are two panels: the clock opens History, with Continue at its head; the two-bookmark button beside it opens Saved, where what is in no list is Bookmarks.
-- Every on/off in Settings is the same switch row, and a phone never zooms, pinch included.
-- The home page's sort governs the apps too, and the Apps heading opens a page of each app's ZIMs ([#100](https://github.com/epheterson/Zimi/issues/100)).
-- `ZIMI_OFFLINE` now also refuses internet downloads, and an idle Zimi asks the internet for nothing at startup.
-- The home page ships a third fewer bytes, and search asks for half as many snippets.
-- A search result opens in its app: a wiki's article in Zimipedia's reader, a book in Bookshelf, a video in ZimiTube, a question in ZimiExchange, a post in Reddot (Settings > Reading, "Open articles in apps").
-- Zimipedia's Today: the day's article and Continue reading, then On this day with pictures, Did you know, the picture of the day, a card from each other wiki of the language, your trails and each wiki's front page.
-- Zimipedia's reader keeps its bar at the top on a phone too, under Zimi's header and leaving with it as you read.
+- History and Saved are two panels with their own buttons (the Library panel's two tabs before).
+- The home page's sort now orders the apps too, and the Apps heading opens a page of each app's ZIMs ([#100](https://github.com/epheterson/Zimi/issues/100)).
+- An idle Zimi contacts nothing on the internet at startup, and `ZIMI_OFFLINE` now also refuses internet downloads.
+- Settings use one kind of switch throughout, and phones no longer zoom the app.
+- Faster: the home page is a third smaller, search makes half as many requests, and articles show their text before their pictures finish.
 
 ### Fixed
 
-- Bookshelf: a book without a cover no longer spills over its neighbours ([#101](https://github.com/epheterson/Zimi/issues/101)); the shelf recovers after a Gutenberg update.
+- Bookshelf: a book without a cover no longer spills over its neighbours ([#101](https://github.com/epheterson/Zimi/issues/101)), and the shelf recovers after a Gutenberg update.
 - An app turned on or off no longer flips back when you return with Back ([#98](https://github.com/epheterson/Zimi/issues/98)).
-- The bookmark button follows removals made in the Saved panel ([#96](https://github.com/epheterson/Zimi/issues/96)).
+- The bookmark button updates when you remove a bookmark from the panel ([#96](https://github.com/epheterson/Zimi/issues/96)).
 - Two ZIMs of one collection in different languages no longer hide one another.
-- Dark mode shows pages with no colours of their own correctly.
+- Dark mode shows pages that set no colours of their own correctly.
+- Text size changes an article's text, not only its title.
 - Copy link works over plain http and in the iOS home-screen app.
-- Text size reaches an article's text, not only its title; articles open sooner, text before pictures; pulling past the top or bottom shows the page's own colour.
 
 ## [1.11.0] - 2026-09-27
 
