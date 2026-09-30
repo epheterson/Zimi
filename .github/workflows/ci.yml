@@ -224,7 +224,9 @@ jobs:
           FAKE_BROWSER_LOG: /tmp/fake-browser.log
         run: |
           ci/smoke_binary.sh "dist/Zimi/Zimi"
-          grep -q "http://127.0.0.1:" /tmp/fake-browser.log
+          cat /tmp/fake-browser.log
+          # The tab loaded the page: "<url> 200", not "<url> 000".
+          grep -qE "^http://127\.0\.0\.1:[0-9]+ 200$" /tmp/fake-browser.log
 
       # The portable zip, as a person actually gets it: every file extracted
       # from a browser download carries the mark of the web, and the .NET
