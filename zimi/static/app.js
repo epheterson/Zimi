@@ -6911,6 +6911,8 @@ async function doSearch(query, push) {
       { signal: searchController.signal });
     _throwIfRateLimited(r1);
     const d1 = await r1.json();
+    // Left for Settings or home while it ran: that page is on screen now.
+    if (mode !== 'search') return;
     const phase1Elapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
     d1._clientElapsed = phase1Elapsed;
     d1._query = query;
@@ -6955,13 +6957,14 @@ async function doSearch(query, push) {
       _throwIfRateLimited(r2);
       const d2 = await r2.json();
       clearInterval(timerInterval);
+      if (mode !== 'search') return; // the full-text pass landed after you left
       d2._clientElapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
       d2._query = query;
       allResults = mergeSearchResults(d1, d2);
       renderSearchResults(allResults, scope);
     }
   } catch(e) {
-    if (e.name === 'AbortError') return;
+    if (e.name === 'AbortError' || mode !== 'search') return;
     // "Search failed / try again" implies the server tried and something went
     // wrong there. If we never reached it, say that instead and offer Retry.
     if (_isOfflineError(e)) {

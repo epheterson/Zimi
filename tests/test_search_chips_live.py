@@ -225,3 +225,53 @@ def test_chips_and_help_fit_a_phone(served, lang):
         assert pg.evaluate(_FIT) == []
         assert errors == []
         br.close()
+
+
+def test_a_search_that_lands_after_you_open_settings_leaves_settings_alone(served):
+    """The full-text pass of a search can land seconds after the title pass.
+    Opened Settings in between, the late pass painted the search results
+    over Settings (CI, a slow runner, caught it). A search whose page you
+    have left draws nothing."""
+    import json as _json
+
+    from playwright.sync_api import sync_playwright
+
+    held = []
+
+    def search(route):
+        if "fast=1" in route.request.url:
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=_json.dumps({"results": [], "partial": True, "total": 0}),
+            )
+        else:
+            held.append(route)  # the full-text pass waits until Settings is open
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        # The service worker would answer /search itself, out of the route's reach.
+        pg = br.new_page(viewport=PHONE, service_workers="block")
+        pg.route("**/search?*", search)
+        seen = []
+        pg.on("request", lambda r: seen.append(r.url.split("/", 3)[-1]) if "search" in r.url else None)
+        pg.goto(served + "/")
+        pg.wait_for_function("() => typeof doSearch === 'function' && _manageProbed", timeout=30000)
+        pg.evaluate("() => { doSearch('water', true); }")
+        pg.wait_for_function("() => document.getElementById('fts-indicator')", timeout=15000)
+        pg.evaluate("async () => { await enterManage(); switchManageTab('browse'); }")
+        pg.wait_for_function("() => mode === 'manage' && !!document.getElementById('catalog-results')", timeout=15000)
+        for _ in range(50):
+            if held:
+                break
+            pg.wait_for_timeout(100)
+        assert held, "the full-text pass was never asked for: %r" % seen
+        held[0].fulfill(
+            status=200,
+            content_type="application/json",
+            body=_json.dumps({"results": [{"zim": "wikipedia", "path": "A/Water", "title": "Water", "score": 1}], "total": 1}),
+        )
+        pg.wait_for_timeout(800)
+        assert pg.evaluate("() => !!document.getElementById('catalog-results')"), "the late search painted over Settings"
+        assert pg.evaluate("() => !document.getElementById('fts-indicator') || !document.querySelector('#output .result')")
+        br.close()
