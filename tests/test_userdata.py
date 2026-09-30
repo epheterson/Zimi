@@ -414,14 +414,16 @@ def test_a_clock_that_runs_ahead_is_held_to_the_servers(monkeypatch, tmp_path):
 def test_a_write_that_does_not_land_is_a_failure(monkeypatch, tmp_path):
     _setup(monkeypatch, tmp_path)
     users.sync_user_data("alice", {"saved": _store(items={"w\nA/A": _item("A/A")})})
-    d = users._userdata_dir()
-    os.chmod(d, 0o500)
-    try:
+    # The rename that lands the write fails; a read-only directory would do
+    # it on POSIX but not on Windows, where the mode bit is ignored.
+    def _refuse(src, dst):
+        raise PermissionError(13, "refused", dst)
+
+    with monkeypatch.context() as m:
+        m.setattr(server.os, "replace", _refuse)
         ok, err, doc = users.sync_user_data(
             "alice", {"saved": _store(items={"w\nA/B": _item("A/B")})}
         )
-    finally:
-        os.chmod(d, 0o700)
     assert not ok and err == "write failed" and doc is None
     assert list(users.load_user_data("alice")["saved"]["items"]) == ["w\nA/A"]
 
