@@ -70,7 +70,7 @@ test.describe('Reader batch v1.8', () => {
     await expect(settings).toBeVisible();
     await expect(settings.locator('.rv-swatch')).toHaveCount(3);   // theme swatches, one row
     await expect(settings.locator('.rv-pill')).toHaveCount(2);     // font family, one row
-    await expect(settings.locator('.rv-size-btn')).toHaveCount(2); // A− / A+, one row
+    await expect(settings.locator('.tsz-btn')).toHaveCount(5); // the five text sizes
     await expect(settings.locator('.rv-action-row')).toHaveCount(1); // Print (share hidden headless)
     await expect(settings.locator('.rv-exit-row')).toHaveCount(1);   // Exit Reader View
 
@@ -87,13 +87,13 @@ test.describe('Reader batch v1.8', () => {
   });
 
   // ── Item 2: A−/A+ vertically centered
-  test('A−/A+ size buttons are vertically centered', async ({ page }) => {
+  test('the text-size A is vertically centered', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 800 });
     await page.goto(DEEP);
     await waitReaderOpen(page);
     await enableReaderView(page);
     await page.locator('.topbar-more').click();
-    const btn = page.locator('#topbar-menu.visible .rv-size-btn').first();
+    const btn = page.locator('#topbar-menu.visible .tsz-btn').nth(2);
     await expect(btn).toBeVisible();
 
     const geom = await btn.evaluate((el) => {

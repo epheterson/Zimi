@@ -934,22 +934,17 @@
     background: var(--surface2); color: var(--text2); font-size: 14px; cursor: pointer;
     transition: border-color 0.15s, color 0.15s, background 0.15s;
   }
-  .rv-pill:hover { border-color: var(--amber-border); color: var(--text); }
-  .rv-pill.active { border-color: var(--amber); color: var(--amber); background: var(--amber-glow); }
-  /* Text-size stepper */
-  .rv-size { display: flex; align-items: center; gap: 8px; }
-  .rv-size-btn {
-    display: flex; align-items: center; justify-content: center; gap: 1px; line-height: 1;
-    width: 44px; height: 34px; border: 1px solid var(--border); border-radius: 8px;
-    background: var(--surface2); color: var(--text); font-size: 15px; font-weight: 700; cursor: pointer;
-    transition: border-color 0.15s, color 0.15s;
+  .rv-pill:hover, .rv-size .tsz-btn:hover { border-color: var(--amber-border); color: var(--text); }
+  .rv-pill.active, .rv-size .tsz-btn[aria-checked="true"] { border-color: var(--amber); color: var(--amber); background: var(--amber-glow); }
+  /* Text size: five A's that grow, one per step, picked like a family pill.
+     Each A's size is inline (TEXT_SIZE_GLYPH_PX). */
+  .rv-size { display: flex; gap: 4px; }
+  .rv-size .tsz-btn {
+    flex: 1; display: flex; align-items: center; justify-content: center; min-width: 0;
+    height: 36px; padding: 0; line-height: 1; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface2); color: var(--text2); font-family: Georgia, serif; cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
   }
-  /* The ± sits smaller than the A but shares its vertical center — align-items:center
-     on the button centers both flex items, so the glyph group reads as centered. */
-  .rv-size-btn .rv-minus, .rv-size-btn .rv-plus { font-size: 10px; font-weight: 700; }
-  .rv-size-btn:hover:not([disabled]) { border-color: var(--amber-border); }
-  .rv-size-btn[disabled] { opacity: 0.35; cursor: default; }
-  .rv-size-val { flex: 1; text-align: center; font-size: 13px; color: var(--text2); }
   /* ── Compact reader controls (⋯ menu, Reader View on) ── */
   /* Label-less: theme swatches shrink to ~24px colour chips (the text label is
      hidden, aria-label carries the name), and font family + size share one row.
@@ -961,7 +956,7 @@
   .rv-compact .rv-sw-dot { width: 24px; height: 24px; }
   .rv-compact-fontrow { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
   .rv-compact-fontrow .rv-pills { flex: 1 1 108px; }
-  .rv-compact-fontrow .rv-size { flex: 1 1 132px; }
+  .rv-compact-fontrow .rv-size { flex: 1 1 170px; }
   /* Full-palette swatch keeps its stacked label. */
   .rv-swatch .rv-sw-label { line-height: 1; }
   /* Reader View row rendered as a switch inside the ⋯ menu. */
@@ -1744,16 +1739,22 @@
   .net-rows { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
   .net-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: baseline; }
   .net-name { font-size: 13px; color: var(--text); }
-  .net-state { font-size: 12px; color: var(--text2); white-space: nowrap; }
+  .net-state { justify-self: end; font-size: 12px; color: var(--text2); white-space: nowrap; }
   .net-state-auto { color: var(--amber); }
   .net-state-off, .net-state-unset { color: var(--text3); }
-  .net-what { grid-column: 1 / -1; font-size: 12px; line-height: 1.5; color: var(--text2); }
+  .net-what { font-size: 12px; line-height: 1.5; color: var(--text2); }
+  /* The way to a row's switch: the state's column, under the state, on
+     every row, so the eye finds it in one place. */
+  .net-act { justify-self: end; }
   /* Where it goes on a line of its own, whole names (a host broken mid-word
-     reads as two), and the way to its switch at the far end. */
+     reads as two). */
   .net-where { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font-size: 11px; color: var(--text3); }
   .net-where code { overflow-wrap: anywhere; }
   .net-go { font-size: 12px; color: var(--amber); white-space: nowrap; }
-  .net-where .net-go { margin-inline-start: auto; }
+  /* The environment folded to the names it sets. */
+  .env-details > summary { overflow-wrap: anywhere; }
+  .env-names { font-family: monospace; font-size: 12px; }
+  .env-details[open] > summary { margin-bottom: 10px; }
   /* App-theme segmented control (Auto / Dark / Light). Three equal pills in a
      recessed track, amber-filled when active — mirrors the reader palette's
      control language so the two theme pickers feel like one family. */

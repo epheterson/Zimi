@@ -232,7 +232,7 @@ for (const lang of fs.readdirSync(path.join(root, 'i18n'))) {
 ok('the strings are in all ten languages', fs.readdirSync(path.join(root, 'i18n')).length === 10);
 // A finger on the reader's sheet and slider, and on any app's pill.
 ok('the reading sheet\'s choices, its close and the book\'s slider reach 44px on a finger',
-  /@media \(pointer:coarse\)\{\.zb-seg button\{min-height:44px\}\.zb-step button\{height:44px\}\.zb-x\{width:44px;height:44px\}\}/.test(src) && /@media \(pointer:coarse\)\{\.zb-scrub\{height:44px;/.test(src));
+  /@media \(pointer:coarse\)\{\.zb-seg button\{min-height:44px\}\.zb-x\{width:44px;height:44px\}\}/.test(src) && /@media \(pointer:coarse\)\{\.zb-scrub\{height:44px;/.test(src));
 ok('a pill under a book or a video is border-box, so a finger\'s 44px is its height, not 60',
   /\.actions a, \.actions button \{[^}]*box-sizing: border-box;/.test(fs.readFileSync(path.join(root, 'apps.css'), 'utf8')));
 

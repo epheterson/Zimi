@@ -36,6 +36,7 @@ function extract(re, label) {
 // Grab the two module-scope constants and the two functions verbatim.
 const cLevels = extract(/var READER_FONT_LEVELS = \[[^\]]*\];/, 'READER_FONT_LEVELS');
 const cDefault = extract(/var READER_FONT_DEFAULT = \d+;/, 'READER_FONT_DEFAULT');
+const fNearest = extract(/function _nearestStep\(list, v, fallback\)\s*\{[\s\S]*?\n\}/, '_nearestStep');
 const fLevel = extract(/function _readerFontLevel\(\)\s*\{[\s\S]*?\n\}/, '_readerFontLevel');
 const fApply = extract(/function _applyReaderFont\(doc\)\s*\{[\s\S]*?\n\}/, '_applyReaderFont');
 const fBook = extract(/function _isBookDoc\(doc\)\s*\{[\s\S]*?\n\}/, '_isBookDoc');
@@ -80,7 +81,7 @@ const sandbox = {
   SK: { READER_FONT: 'zimi_reader_font_scale' },
 };
 vm.createContext(sandbox);
-vm.runInContext([cLevels, cDefault, fLevel, fApply, fBook].join('\n'), sandbox);
+vm.runInContext([cLevels, cDefault, fNearest, fLevel, fApply, fBook].join('\n'), sandbox);
 
 let failures = 0;
 function check(name, cond) {
@@ -153,6 +154,17 @@ function check(name, cond) {
   const { doc, rec } = makeDoc(true);
   vm.runInContext('_applyReaderFont(globalThis.__doc)', Object.assign(sandbox, { __doc: doc }));
   check('a book is never zoomed, and a zoom left on it is taken off', rec.zoomSet === 0 && rec.zoomRemoved === 1);
+}
+
+// Five named steps (1.12.1): a size saved on another scale lands on the
+// nearest step, so nobody's choice is lost; nothing a size could be is the
+// default.
+{
+  const level = (v) => { store['zimi_reader_font_scale'] = v; return vm.runInContext('_readerFontLevel()', sandbox); };
+  check('five steps', vm.runInContext('READER_FONT_LEVELS.length', sandbox) === 5);
+  check('every step saved before keeps its place', ['85', '100', '115', '130'].every((v) => level(v) === Number(v)));
+  check('a size between steps lands on the nearest', level('108') === 115 && level('95') === 92 && level('125') === 130);
+  check('far off the scale, or not a number, is the default', level('999') === 100 && level('abc') === 100);
 }
 
 if (failures) { console.log('\n' + failures + ' check(s) FAILED'); process.exit(1); }
