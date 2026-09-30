@@ -2335,6 +2335,9 @@
   .share-row-title { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0.01em; }
   .share-row-desc { font-size: 12px; color: var(--text2); margin-top: 2px; line-height: 1.45; }
   .share-row-locknote { color: var(--amber); opacity: 0.8; }
+  /* Merge data: the replace warning shows only while the switch is off. */
+  .merge-row .share-row-desc { display: none; color: var(--error); }
+  .merge-row.merge-off .share-row-desc { display: block; }
   .share-locked .share-row-title, .share-locked .share-row-desc:not(.share-row-locknote) { opacity: 0.55; }
   .share-ratio { white-space: nowrap; }
   .share-ratio input {

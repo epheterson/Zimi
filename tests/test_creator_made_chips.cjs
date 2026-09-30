@@ -1,4 +1,4 @@
-// Settings > Creator > Made here: each chip is its count in words, through
+// Settings > Creator > Created: each chip is its count in words, through
 // the plural helper, in every language ("5 pages", never "5 page"; Russian
 // "5 страниц", "2 страницы"). The number stays bold.
 //

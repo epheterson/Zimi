@@ -11549,7 +11549,7 @@ function _creatorHtml(d) {
     _mcRow(tH('creator_reddit'), '<span id="ms-cr-reddit">' + _creatorStateHtml(d.reddit_ready) + '</span>') +
     '<div id="ms-cr-reddit-cmd">' + _creatorInstallHtml(d.reddit_ready, _creatorSetupCmd('zimi create --setup-reddit', d)) + '</div>';
 
-  // Made here LAST — an unbounded, growing list, and the slow half to gather
+  // Created LAST: an unbounded, growing list, and the slow half to gather
   // (a provenance walk of the library), so it never blocks the pane. It fills
   // in from its own request; until then a spinner sits in its slot.
   h += sep + '<div class="ms-section-label">' + tH('creator_made') + '</div>' +
@@ -12764,15 +12764,15 @@ function _msServerHtml() {
   var envSec = '<div class="ms-section-label">' + tH('env_section') + '</div>' +
     '<div id="ms-env">' + tH('loading') + '</div>';
 
-  // Beside the two settings that decide what this server fetches on its own:
-  // everything it can fetch, and which of it happens without anyone asking.
+  // Internet use, last on the tab: everything this server can fetch, and
+  // which of it happens without anyone asking.
   var netSec = '<div class="ms-section-label">' + tH('net_section') + '</div>' +
     '<div id="' + _NET_ID + '">' + tH('loading') + '</div>';
 
   // Sharing, Downloads, Storage, My Data / Server Backups, then App Updates
-  // just before the API Token, and Hot ZIMs + cache last (Eric moved Updates
-  // down from the top on the second pass).
-  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, netSec, tokenSec, hotSec, envSec].join(sep);
+  // just before the API Token, Hot ZIMs + cache, the environment, and
+  // Internet use last (Eric's final pass for 1.12).
+  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, tokenSec, hotSec, envSec, netSec].join(sep);
   _renderEnvSection();
   _renderNetSection();
   // Async fill security
@@ -13681,9 +13681,18 @@ function _setBackupStatus(id, key) {
   if (el) el.textContent = key ? t(key) : '';
 }
 
-function _cbChecked(id) {
+// An import's Merge data switch, on by default. Turned off, the file replaces
+// everything, and the row says so in red under its title.
+function _mergeRowHtml(id) {
+  return _switchRowsHtml([{ id: id, cls: 'merge-row', title: tH('backup_merge'), on: true,
+    desc: tH('backup_replace_warn'),
+    onchange: "this.closest('.set-row').classList.toggle('merge-off', !this.checked)" }]);
+}
+// Replace only when the switch is there and turned off: an import with no
+// pane open (an account restore) always merges.
+function _replaceChosen(id) {
   var cb = document.getElementById(id);
-  return !!(cb && cb.checked);
+  return !!(cb && !cb.checked);
 }
 
 // ── Card markup ──
@@ -13707,7 +13716,7 @@ function _myDataCardHtml() {
       '<input type="file" id="ms-mydata-file" accept="application/json,.json" style="display:none" onchange="importMyDataFile(this)">' +
       '<span id="ms-mydata-status" class="ms-hint" style="margin:0;align-self:center"></span>' +
     '</div>' +
-    _switchRowsHtml([{ id: 'ms-mydata-overwrite', title: tH('backup_overwrite'), onchange: '' }]) +
+    _mergeRowHtml('ms-mydata-merge') +
     '<div id="ms-mydata-result" class="ms-backup-import"></div>';
 }
 
@@ -13720,7 +13729,7 @@ function _serverBackupCardHtml() {
       '<input type="file" id="ms-server-file" accept="application/json,.json" style="display:none" onchange="importServerBackupFile(this)">' +
       '<span id="ms-server-status" class="ms-hint" style="margin:0;align-self:center"></span>' +
     '</div>' +
-    _switchRowsHtml([{ id: 'ms-server-overwrite', title: tH('backup_overwrite'), onchange: '' }]) +
+    _mergeRowHtml('ms-server-merge') +
     '<div id="ms-server-import" class="ms-backup-import"></div>';
 }
 
@@ -13825,7 +13834,7 @@ function _applyMyDataFile(text) {
     _setBackupStatus('ms-mydata-status', 'backup_wrong_card_server');
     return;
   }
-  var res = _applyBrowserData(bundle, _cbChecked('ms-mydata-overwrite'));
+  var res = _applyBrowserData(bundle, _replaceChosen('ms-mydata-merge'));
   _setBackupStatus('ms-mydata-status', 'backup_mydata_imported');
   _showMyDataResult(res);
 }
@@ -13854,7 +13863,7 @@ async function restoreMyDataFromServer() {
     if (!res.ok) throw new Error('http ' + res.status);
     data = await res.json();
   } catch (e) { _setBackupStatus('ms-mydata-status', 'error'); return; }
-  var res2 = _applyBrowserData(data || {}, _cbChecked('ms-mydata-overwrite'), true);
+  var res2 = _applyBrowserData(data || {}, _replaceChosen('ms-mydata-merge'), true);
   _setBackupStatus('ms-mydata-status', 'backup_restored_server');
   _showMyDataResult(res2);
 }
@@ -13896,7 +13905,7 @@ async function _previewServerBackup(text) {
   }
   _pendingServerBackup = bundle;
   _setBackupStatus('ms-server-status', 'working');
-  var overwrite = _cbChecked('ms-server-overwrite');
+  var overwrite = _replaceChosen('ms-server-merge');
   var srv = {};
   try {
     var res = await manageFetch('/manage/backup', {
@@ -13949,7 +13958,7 @@ function _serverBackupCancel() {
 async function _serverBackupApply() {
   var bundle = _pendingServerBackup;
   if (!bundle) return;
-  var overwrite = _cbChecked('ms-server-overwrite');
+  var overwrite = _replaceChosen('ms-server-merge');
   _setBackupStatus('ms-server-status', 'working');
   try {
     await manageFetch('/manage/backup', {

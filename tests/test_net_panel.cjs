@@ -1,4 +1,4 @@
-// "What Zimi fetches from the internet" in Server settings, and the "Check
+// "Internet use" in Server settings, and the "Check
 // for updates" choice beside it (Eric, 2026-09-28: "i'm not positive how i
 // feel about unexpected network calls from zimi").
 //
