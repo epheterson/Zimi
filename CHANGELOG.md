@@ -16,9 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Bookshelf reads document libraries (zimgit and more), LibreTexts textbooks, Wikisource, Wikibooks, EPUBs and your own folders of PDFs and EPUBs.
 - ZimiTube plays the document libraries' videos and audiobooks, and your own folders of video and audio.
 - Search operators in search, the catalog and the API: `-word`, `"exact words"`, `OR`, `lang:` and `in:`, shown as chips you can remove.
-- The Almanac's orrery shows each planet's radio delay and flies you there, with the twin paradox; a glow on Earth opens a 3D Earth with real daylight, eclipses, the ISS and GPS satellites.
+- The Almanac's orrery shows each planet's radio delay and flies you there, with the twin paradox; a glow on Earth opens a 3D Earth with real daylight, eclipses, the ISS and GPS satellites, and the hero Moon opens the same view on the Moon.
 - Links that leave your library are marked in every reader and say where they go ([#99](https://github.com/epheterson/Zimi/issues/99)); Create a ZIM can remove them.
-- Server settings list everything Zimi fetches from the internet, each with its switch, including a new one for update checks.
+- Server settings end with Internet use: everything Zimi fetches from the internet, each with its switch, including a new one for update checks.
 
 ### Changed
 
@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Two ZIMs of one collection in different languages no longer hide one another.
 - Dark mode shows pages with no colours of their own correctly.
 - Copy link works over plain http and in the iOS home-screen app.
+- Text size reaches an article's text, not only its title; articles open sooner, text before pictures; pulling past the top or bottom shows the page's own colour.
 
 ## [1.11.0] - 2026-09-27
 
