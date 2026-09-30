@@ -340,7 +340,7 @@ def test_a_long_article_from_search_shows_its_text_before_its_pictures(
 DOTS = """(sel) => { var root = document.getElementById('reader-frame').contentDocument;
   var find = function(k) { return document.querySelector(sel.replace('KEY', k)) || root.querySelector(sel.replace('KEY', k)); };
   var out = {}; ['auto', 'light', 'sepia', 'dark'].forEach(function(k) { var e = find(k); var cs = e.ownerDocument.defaultView.getComputedStyle(e);
-    out[k] = { w: cs.width, h: cs.height, bw: cs.borderTopWidth, bc: cs.borderTopColor, bs: cs.borderTopStyle, r: cs.borderRadius, bg: cs.backgroundImage, c: cs.backgroundColor }; });
+    out[k] = { w: cs.width, h: cs.height, bw: cs.borderTopWidth, bc: cs.borderTopColor, bs: cs.borderTopStyle, r: cs.borderRadius, bg: cs.backgroundImage, c: cs.backgroundColor, clip: cs.backgroundClip }; });
   return out; }"""
 
 
@@ -349,7 +349,11 @@ def _same_ring(dots):
     for k in ("light", "sepia", "dark"):
         assert ring(dots["auto"]) == ring(dots[k]), (k, dots)
     bg = dots["auto"]["bg"]
-    assert "90deg" in bg, bg
+    assert "135deg" in bg, bg  # corner to corner
+    # Painted inside the ring: under a see-through ring the two halves showed
+    # through it, and the dot read as a square cropped by a circle.
+    for k in ("auto", "light", "sepia", "dark"):
+        assert dots[k]["clip"] == "padding-box", (k, dots[k])
     # Auto paints sepia by day and dark by night, so its swatch is those two.
     assert "rgb(244, 236, 216)" in bg and "rgb(10, 10, 11)" in bg, (
         "Auto is the Sepia swatch and the Dark one: %s" % bg

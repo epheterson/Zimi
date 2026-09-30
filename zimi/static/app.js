@@ -16125,7 +16125,10 @@ var READER_THEME_BG = { dark: '#0a0a0b', light: '#fbfbf9', sepia: '#f4ecd8' };
 // Auto's swatch shows what Auto paints (_readerTheme): the Sepia swatch by
 // day and the Dark one by night, a half each, in the same ring as every
 // swatch. app.css's .rv-sw-auto draws the same split.
-var READER_AUTO_SWATCH = 'linear-gradient(90deg,' + READER_THEME_BG.sepia + ' 50%,' + READER_THEME_BG.dark + ' 50%)';
+// Corner to corner, with a pixel of blend so the diagonal is a clean line
+// rather than a stair; painted inside the ring (background-clip), so the
+// ring is one colour all the way round.
+var READER_AUTO_SWATCH = 'linear-gradient(135deg,' + READER_THEME_BG.sepia + ' calc(50% - 0.5px),' + READER_THEME_BG.dark + ' calc(50% + 0.5px))';
 function _readerFamily() {
   var v = localStorage.getItem(SK.READER_FAMILY);
   return READER_FAMILIES.indexOf(v) >= 0 ? v : 'serif';
@@ -17822,8 +17825,8 @@ var _READING_CSS = [
   '.zb-themes button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;padding:6px 2px;min-height:0}',
   // A ring that reads on every sheet, so the sheet's own colour's dot is not
   // a hole in it (sepia's on the sepia sheet, dark's on the dark one).
-  '.zb-dot{width:24px;height:24px;border-radius:50%;border:1.5px solid rgba(128,128,128,.6);box-sizing:border-box}',
-  '.zb-dot-auto{background:' + READER_AUTO_SWATCH + '}.zb-dot-light{background:' + READER_THEME_BG.light + '}.zb-dot-sepia{background:' + READER_THEME_BG.sepia + '}.zb-dot-dark{background:' + READER_THEME_BG.dark + '}',
+  '.zb-dot{width:24px;height:24px;border-radius:50%;border:1.5px solid rgba(128,128,128,.6);box-sizing:border-box;background-clip:padding-box}',
+  '.zb-dot-auto{background-image:' + READER_AUTO_SWATCH + '}.zb-dot-light{background-color:' + READER_THEME_BG.light + '}.zb-dot-sepia{background-color:' + READER_THEME_BG.sepia + '}.zb-dot-dark{background-color:' + READER_THEME_BG.dark + '}',
   // Text size: five A's, each drawn at its own size (inline).
   '.zb-sizes button{font-family:Georgia,serif;padding:0;line-height:1}',
   '.zb-range{width:100%;accent-color:var(--rv-link);height:26px;margin:0}',

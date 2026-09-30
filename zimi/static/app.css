@@ -919,13 +919,13 @@
   .rv-swatch.active { border-color: var(--amber); color: var(--text); }
   /* One ring on every swatch, readable on a light sheet and a dark one; the
      same as the reading sheets' .zb-dot (_READING_CSS in app.js). */
-  .rv-sw-dot { width: 22px; height: 22px; border-radius: 50%; box-sizing: border-box; border: 1.5px solid rgba(128,128,128,0.6); }
+  .rv-sw-dot { width: 22px; height: 22px; border-radius: 50%; box-sizing: border-box; border: 1.5px solid rgba(128,128,128,0.6); background-clip: padding-box; }
   /* Auto shows what it paints: the Sepia swatch by day, the Dark one by night,
-     a half each (READER_AUTO_SWATCH in app.js). */
-  .rv-sw-auto .rv-sw-dot { background: linear-gradient(90deg, #f4ecd8 50%, #0a0a0b 50%); }
-  .rv-sw-dark .rv-sw-dot { background: #0a0a0b; }
-  .rv-sw-light .rv-sw-dot { background: #fbfbf9; }
-  .rv-sw-sepia .rv-sw-dot { background: #f4ecd8; }
+     split corner to corner (READER_AUTO_SWATCH in app.js). */
+  .rv-sw-auto .rv-sw-dot { background-image: linear-gradient(135deg, #f4ecd8 calc(50% - 0.5px), #0a0a0b calc(50% + 0.5px)); }
+  .rv-sw-dark .rv-sw-dot { background-color: #0a0a0b; }
+  .rv-sw-light .rv-sw-dot { background-color: #fbfbf9; }
+  .rv-sw-sepia .rv-sw-dot { background-color: #f4ecd8; }
   .rv-swatch.active .rv-sw-dot { box-shadow: 0 0 0 2px var(--surface2), 0 0 0 3px var(--amber); }
   /* Family pills */
   .rv-pills { display: flex; gap: 6px; }
