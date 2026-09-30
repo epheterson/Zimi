@@ -2131,5 +2131,6 @@
   "creator_made_reddit_many": "{n} 个子版块",
   "app_sources_few": "{n} 个来源",
   "app_sources_many": "{n} 个来源",
-  "alm_moon_open_3d": "以 3D 查看月球"
+  "alm_moon_open_3d": "以 3D 查看月球",
+  "alm_moon_north_up": "北方朝上"
 }

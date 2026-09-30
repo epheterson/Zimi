@@ -99,6 +99,8 @@
 .almanac-moon-sprite { display: block; width: 100%; height: 100%; }
 .almanac-moon-glow { position: absolute; width: 280px; height: 280px; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: -1; }
 .almanac-moon-name { margin-top: 16px; font-size: 18px; font-weight: 500; color: var(--text); }
+/* Said only when the disc stands celestial north up (no place chosen). */
+.almanac-moon-orient { margin-top: 2px; font-size: 11px; letter-spacing: .02em; color: var(--text3); }
 .almanac-moon-line { font-size: 13px; color: var(--text2); margin-top: 8px; text-align: center; }
 /* Live canvas laid over the hero moon during a time-travel sweep: it draws the
    moon at successive real instants (terminator sweeping, disc rotating) over

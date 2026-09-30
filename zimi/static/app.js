@@ -5032,10 +5032,11 @@ function _moonEqCoords(date) {
   var D  = (297.8502 + 445267.1115 * T) % 360;   // mean elongation
   var lng = L0
     + 6.289 * Math.sin(M * D2R)
-    - 1.274 * Math.sin((2 * D - M) * D2R)
-    - 0.658 * Math.sin(2 * D * D2R)
-    - 0.214 * Math.sin(2 * M * D2R)
-    - 0.186 * Math.sin(Ms * D2R);
+    + 1.274 * Math.sin((2 * D - M) * D2R)   // evection
+    + 0.658 * Math.sin(2 * D * D2R)         // variation
+    + 0.214 * Math.sin(2 * M * D2R)
+    - 0.186 * Math.sin(Ms * D2R)            // annual equation
+    - 0.114 * Math.sin(2 * F * D2R);
   var lat_ec = 5.128 * Math.sin(F * D2R)
     + 0.281 * Math.sin((M + F) * D2R)
     + 0.278 * Math.sin((F - M) * D2R);
@@ -5046,19 +5047,25 @@ function _moonEqCoords(date) {
   return { JD: JD, T: T, ra: ra, dec: dec, eps: eps, Ms: Ms };
 }
 
-// Screen tilt (degrees, CSS/canvas rotation sense) of the untilted moon sprite
-// for an observer at lat/lon: the bright limb faces the Sun as seen in that
-// sky. chi is measured from celestial north; subtracting the parallactic
-// angle q gives it from the observer's vertical; the sprite's lit limb starts
-// at 3 o'clock and CSS rotation runs opposite the position-angle sense, hence
-// -(chi - q) - 90.
-function _moonScreenTiltDeg(date, lat, lon) {
+// Where the Moon's lit limb points, in degrees, for one instant:
+//   chi  the position angle of the bright limb's midpoint, from celestial
+//        north through east (Meeus 48.5);
+//   q    the parallactic angle at the observer, the turn from celestial north
+//        to the zenith at the Moon (Meeus 14.1); 0 when lat is null;
+//   rot  chi - q: the lit limb's direction from "up" in the observer's sky,
+//        counterclockwise as they look at it (east of north is to the left).
+// Without a place (lat null) "up" is celestial north and rot = chi, which
+// is labelled "north up" wherever it is shown. The hero disc, the Today
+// card, the sky scene and the 3D view's Moon camera all turn by this answer.
+function _moonLimbAngles(date, lat, lon) {
   var eq = _moonEqCoords(date);
   var D2R = Math.PI / 180;
-  var GMST = (280.46061837 + 360.98564736629 * (eq.JD - 2451545.0)) % 360;
-  var HA = (GMST + lon) * D2R - eq.ra;
-  var latR = lat * D2R;
-  var q = Math.atan2(Math.sin(HA), Math.tan(latR) * Math.cos(eq.dec) - Math.sin(eq.dec) * Math.cos(HA));
+  var q = 0;
+  if (lat != null) {
+    var GMST = (280.46061837 + 360.98564736629 * (eq.JD - 2451545.0)) % 360;
+    var HA = (GMST + lon) * D2R - eq.ra;
+    q = Math.atan2(Math.sin(HA), Math.tan(lat * D2R) * Math.cos(eq.dec) - Math.sin(eq.dec) * Math.cos(HA));
+  }
   // Sun's equatorial position (low-precision) for the bright-limb angle chi.
   var Lsun = 280.4665 + 36000.7698 * eq.T;
   var lamSun = (Lsun + 1.915 * Math.sin(eq.Ms * D2R) + 0.020 * Math.sin(2 * eq.Ms * D2R)) * D2R;
@@ -5067,7 +5074,18 @@ function _moonScreenTiltDeg(date, lat, lon) {
   var dA = raSun - eq.ra;
   var chi = Math.atan2(Math.cos(decSun) * Math.sin(dA),
     Math.sin(decSun) * Math.cos(eq.dec) - Math.cos(decSun) * Math.sin(eq.dec) * Math.cos(dA));
-  var tilt = -((chi - q) * 180 / Math.PI) - 90;
+  var chiDeg = _normDeg360(chi / D2R), qDeg = q / D2R;
+  return { chi: chiDeg, q: qDeg, rot: _normDeg360(chiDeg - qDeg) };
+}
+function _normDeg360(d) { return ((d % 360) + 360) % 360; }
+
+// Screen tilt (degrees, CSS/canvas rotation sense) of the untilted moon sprite
+// for an observer at lat/lon (lat null: celestial north up): the bright limb
+// faces the Sun as seen in that sky. The sprite's lit limb starts at 3
+// o'clock and CSS rotation runs opposite the position-angle sense, hence
+// -rot - 90.
+function _moonScreenTiltDeg(date, lat, lon) {
+  var tilt = -_moonLimbAngles(date, lat, lon).rot - 90;
   // The sprite has ALREADY put the lit limb on the correct side: it shades
   // from a Sun vector whose sign is the waxing flag (_moonSpriteCanvas, sx).
   // chi carries that same flip, because the bright limb genuinely swaps sides
@@ -5092,12 +5110,11 @@ function _moonScreenTiltDeg(date, lat, lon) {
 // own convention (the sky scene once used <= where the hero used <).
 function _moonIsWaxing(m) { return m.phase < 0.5; }
 
-// Today-card tilt: canonical derivation at the almanac's location fallback
-// (same synthetic default as almanac.js _getLocation, which may not be loaded).
+// Today-card tilt: canonical derivation at the Almanac's chosen place, or
+// celestial north up when none was chosen (as the hero does).
 function _quickMoonTilt(date) {
   var ll = _getSessionJSON(SK.ALMANAC_LOC, null);
-  var lat = ll ? ll.lat : 34, lon = ll ? ll.lon : -date.getTimezoneOffset() / 60 * 15;
-  return _moonScreenTiltDeg(date, lat, lon);
+  return ll ? _moonScreenTiltDeg(date, ll.lat, ll.lon) : _moonScreenTiltDeg(date, null, null);
 }
 
 // Lightweight almanac teaser for the Today discover card.

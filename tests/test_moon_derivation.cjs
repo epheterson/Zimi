@@ -50,7 +50,7 @@ function extractFn(src, name) {
 
 const sandbox = { Math, Date, console };
 vm.createContext(sandbox);
-for (const name of ['_moonEqCoords', '_moonScreenTiltDeg', '_moonIsWaxing', '_moonPhase']) {
+for (const name of ['_moonEqCoords', '_moonLimbAngles', '_normDeg360', '_moonScreenTiltDeg', '_moonIsWaxing', '_moonPhase']) {
   vm.runInContext(extractFn(appSrc, name), sandbox);
 }
 vm.runInContext(extractFn(almSrc, '_heroMoonTiltDeg'), sandbox);
@@ -71,7 +71,7 @@ let worst = 0, finite = true;
 for (const t of dates) {
   for (const loc of locs) {
     const d = new Date(t);
-    const hero = vm.runInContext('_heroMoonTiltDeg(new Date(' + t + '), ' + JSON.stringify(loc) + ')', sandbox);
+    const hero = vm.runInContext('_heroMoonTiltDeg(new Date(' + t + '), ' + JSON.stringify(Object.assign({ stored: true }, loc)) + ')', sandbox);
     const canon = vm.runInContext('_moonScreenTiltDeg(new Date(' + t + '), ' + loc.lat + ', ' + loc.lon + ')', sandbox);
     if (!isFinite(hero) || !isFinite(canon)) finite = false;
     worst = Math.max(worst, Math.abs(hero - canon));
@@ -92,7 +92,7 @@ check(!/parallactic/.test(extractFn(skySrc, '_drawSkyScene')),
   'sky draw no longer rotates by the parallactic angle');
 check(/_moonIsWaxing\(m\)/.test(extractFn(skySrc, '_drawSkyScene')),
   'sky draw uses the shared waxing predicate');
-check(/_moonScreenTiltDeg\(date, lat, lon\)/.test(extractFn(appSrc, '_quickMoonTilt')),
+check(/_moonScreenTiltDeg\(date, ll\.lat, ll\.lon\)/.test(extractFn(appSrc, "_quickMoonTilt")),
   'Today card tilt (_quickMoonTilt) delegates to _moonScreenTiltDeg');
 check(/_moonIsWaxing\(m\)/.test(extractFn(appSrc, '_renderMoonHTML')),
   'hero/Today sprite HTML uses the shared waxing predicate');
@@ -156,26 +156,26 @@ for (const [label, target] of [['first quarter (waxing)', 0.25],
   }
 }
 
-// The tilt may step only where the disc carries no visible phase. The waning
-// correction turns over at new moon, on a 0%-lit disc; anywhere else a jump
-// would be a real artifact somebody would watch happen on the time machine.
-let worstJump = 0, worstIllum = 100, prevTilt = null;
+// The tilt may step only where the disc carries no visible phase: the
+// waning correction (_moonScreenTiltDeg) turns over at new moon, on a 0%-lit
+// disc, and at full, on a whole one, as its comment says. This once checked
+// only the largest step, so it passed while the full-moon step was there all
+// along and failed on a 0.8 degree change in which step was larger. Every
+// step is checked now.
+const steps = [];
+let prevTilt = null;
 for (let m = 0; m < 30 * 24 * 60; m += 5) {
   const t = Date.UTC(2026, 8, 1) + m * 60000;
   const v = vm.runInContext('_moonScreenTiltDeg(new Date(' + t + '), 51.5, -0.12)', sandbox);
   if (prevTilt !== null) {
     let d = v - prevTilt;
     d = ((d % 360) + 540) % 360 - 180;
-    if (Math.abs(d) > 5) {
-      const illum = vm.runInContext('_moonPhase(new Date(' + t + '))', sandbox).illumination;
-      if (Math.abs(d) > worstJump) { worstJump = Math.abs(d); worstIllum = illum; }
-    }
+    if (Math.abs(d) > 5) steps.push(vm.runInContext('_moonPhase(new Date(' + t + '))', sandbox).illumination);
   }
   prevTilt = v;
 }
-check(worstJump === 0 || worstIllum < 1,
-  'any tilt step lands on an unlit disc (worst ' + worstJump.toFixed(0) +
-  ' deg at ' + worstIllum + '% lit)');
+check(steps.length <= 2 && steps.every((il) => il < 1 || il > 99),
+  'every tilt step lands on an unlit or a whole disc (' + steps.length + ' steps, at ' + steps.join('%, ') + '% lit)');
 
 if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
 console.log('all moon derivation checks passed');

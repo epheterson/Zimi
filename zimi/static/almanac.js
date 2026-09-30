@@ -550,6 +550,7 @@ function _almHeadHtml(focus) {
   // The name sits in its own span inside the deep-link wrapper so travel can
   // rewrite the text without tearing out the encyclopedia link around it.
   html += '<div class="almanac-moon-name">' + _lterm('lunar_phase', '<span id="alm-hc-phase">' + _localMoonName(m.name) + '</span>') + '</div>';
+  html += _heroMoonOrientNote(loc);
   html += '</div>';
 
   // Sun cards render in the LOCATION's timezone, not the header clock's: a
@@ -1979,9 +1980,14 @@ function _cacheAlmanacHighlights(now, moon) {
 // Screen tilt (degrees) of the hero disc at a given instant: the bright limb
 // faces the Sun as the observer sees it. Delegates to the canonical
 // _moonScreenTiltDeg in app.js — the ONE derivation the hero, the sky-scene
-// moon and the Today discover card all share.
+// moon and the Today discover card all share. Only a place someone chose
+// turns it to their sky; the synthetic stand-in would be a guess, so without
+// one the disc stands celestial north up and says so (_heroMoonOrientNote).
 function _heroMoonTiltDeg(date, loc) {
-  return _moonScreenTiltDeg(date, loc.lat, loc.lon);
+  return loc.stored ? _moonScreenTiltDeg(date, loc.lat, loc.lon) : _moonScreenTiltDeg(date, null, null);
+}
+function _heroMoonOrientNote(loc) {
+  return loc.stored ? '' : '<div class="almanac-moon-orient">' + _almEsc(t('alm_moon_north_up')) + '</div>';
 }
 
 // ── Hero moon time-travel sweep ──

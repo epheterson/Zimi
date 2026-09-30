@@ -2131,5 +2131,6 @@
   "creator_made_reddit_many": "{n} subreddits",
   "app_sources_few": "{n} sources",
   "app_sources_many": "{n} sources",
-  "alm_moon_open_3d": "Ouvrir la Lune en 3D"
+  "alm_moon_open_3d": "Ouvrir la Lune en 3D",
+  "alm_moon_north_up": "Nord en haut"
 }
