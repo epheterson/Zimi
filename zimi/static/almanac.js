@@ -2362,7 +2362,7 @@ function _renderAlmanacMoon(m, view) {
   var illumFrac = m.illumination / 100;
   var glowOpacity = (illumFrac * 0.15 + 0.02).toFixed(2);
   return '<div class="almanac-moon-glow" style="background:radial-gradient(circle, rgba(232,224,208,' + glowOpacity + ') 0%, transparent 65%)"></div>' +
-    '<div class="almanac-moon-open" role="button" tabindex="0" aria-label="' + _almEsc(t('alm_moon_open_3d')) + '" title="' + _almEsc(t('alm_moon_open_3d')) + '">' +
+    '<div class="almanac-moon-open" role="button" tabindex="0" ontouchmove="_almMoonTouchMove(event)" aria-label="' + _almEsc(t('alm_moon_open_3d')) + '" title="' + _almEsc(t('alm_moon_open_3d')) + '">' +
     _renderMoonHTML(view, 'almanac-moon') + '</div>';
 }
 
@@ -2397,11 +2397,20 @@ document.addEventListener('pointermove', function (e) {
   var p = _almMoonPress;
   if (!p || e.pointerId !== p.id) return;
   if (!p.lifted && Math.hypot(e.clientX - p.x, e.clientY - p.y) > ALM_MOON_DRAG_SLOP_PX) {
+    // A finger that sets off mostly up or down is scrolling the page.
+    if (e.pointerType === 'touch' && Math.abs(e.clientY - p.y) > Math.abs(e.clientX - p.x)) {
+      _almMoonPress = null;
+      return;
+    }
     p.lifted = true;
     _almMoonLift();
   }
+  if (p.adopted) return;   // the 3D canvas has the drag now, and turns by it
   if (p.lifted && typeof _aeHandDrag === 'function') _aeHandDrag(e.clientX - p.lx, e.clientY - p.ly);
   p.lx = e.clientX; p.ly = e.clientY;
+  // As soon as the view is up, the drag is handed to it whole: the same
+  // pointer, captured by the 3D canvas, so the finger never has to lift.
+  if (p.lifted && typeof _aeAdoptPointer === 'function') p.adopted = _aeAdoptPointer(e.pointerId, e.clientX, e.clientY);
 });
 document.addEventListener('pointerup', function (e) {
   var p = _almMoonPress;
@@ -2409,6 +2418,14 @@ document.addEventListener('pointerup', function (e) {
   _almMoonPress = null;
   if (!p.lifted) _almMoonLift();
 });
+// Once lifted, the finger is turning the Moon, however it wanders: the page
+// must not take the rest of the gesture for a scroll (which would end the
+// pointer stream, and the turn with it). An attribute handler on the disc,
+// so it is not passive, and it fires even if the disc is drawn again
+// meanwhile (a touch's events stay with the node it began on).
+function _almMoonTouchMove(e) {
+  if (_almMoonPress && _almMoonPress.lifted && e.cancelable) e.preventDefault();
+}
 // The disc is a picture, and a picture dragged is a file being dragged: not here.
 document.addEventListener('dragstart', function (e) { if (_almMoonTarget(e)) e.preventDefault(); });
 // The browser took the gesture (a vertical swipe: the page scrolls).

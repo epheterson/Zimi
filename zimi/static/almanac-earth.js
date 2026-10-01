@@ -2392,6 +2392,20 @@ function _aeHandDrag(dx, dy) {
   var k = AE_DRAG_RAD_PER_PX * _aeDragScale();
   _aeTurnBy(-dx * k, dy * k);
 }
+// Take over a drag that began on the hero disc, once the view is up: the
+// pointer is captured by this canvas and becomes its own drag, so the same
+// finger keeps turning the Moon however the page under it is hidden or
+// redrawn (WebKit ends a capture held by an element that stops being drawn).
+// False while the view is not open yet (the disc forwards the drag till then).
+function _aeAdoptPointer(id, x, y) {
+  var canvas = _aeById('ae-canvas');
+  if (!_aeIsOpen || !_ae.gl || !canvas) return false;
+  try { canvas.setPointerCapture(id); } catch (e) { return false; }
+  _ae.pointers[id] = { x: x, y: y };
+  _ae.drag = { x: x, y: y, x0: x, y0: y, moved: true };
+  canvas.classList.add('ae-dragging');
+  return true;
+}
 function _aeDragScale() {
   var surface = AE_TARGETS[_ae.target].surface;
   return _aeClamp((_ae.dist - surface) / _ae.dist, AE_DRAG_MIN_SCALE, 1);
