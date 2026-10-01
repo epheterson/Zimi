@@ -491,6 +491,83 @@ const run = (code) => vm.runInContext(code, S);
     check(run('_aeIsOpen') === false, 'and the next Escape leaves the view');
   }
 
+  // ── 7. Taps on the Earth, the Moon and the Sun ────────────────────────
+  // A tap on a body flies to it, as its chip does; on empty sky, or on the
+  // body already in view, nothing flies.
+  {
+    fetches.push(answer({}));
+    await reopen();
+    run('_aeUpdate(_aeDisplayMs())');
+    // Stand the camera somewhere the body is on screen and not behind the
+    // Earth, looking at `target`; answer where the body is drawn.
+    const viewOf = (target, body, dist) => JSON.parse(run('(function () {' +
+      ' var sc = _ae.scene, pos = { earth: [0,0,0], moon: sc.moon, sun: _aeSunShown(sc) };' +
+      ' for (var k = 0; k < 720; k++) {' +
+      '  _ae.fly = null; _ae.hand = null; _ae.target = "' + target + '"; _ae.dist = ' + dist + ';' +
+      '  _ae.az = k * Math.PI / 360 * 7.3; _ae.el_ = ((k % 9) - 4) * 0.12;' +
+      '  _aePlaceCamera(); _ae.gl.camera.updateMatrixWorld();' +
+      '  var p = pos["' + body + '"];' +
+      '  if ("' + body + '" !== "earth" && _aeBehindEarth(p)) continue;' +
+      '  var s = _aeProject(p);' +
+      '  if (s && s.x > 40 && s.y > 40 && s.x < _ae.w - 40 && s.y < _ae.h - 40 && _aeBodyAt(s.x, s.y) === "' + body + '") return JSON.stringify(s);' +
+      ' } return "null"; })()'));
+    const tapAt = (s) => run('_aeTap(' + s.x + ',' + s.y + ')');
+    check(run('_ae.w') > 0 && run('_ae.h') > 0, 'the view knows its size');
+
+    let s = viewOf('earth', 'moon', 150);
+    check(!!s, 'from the Earth the Moon can be put on screen');
+    if (s) {
+      run('_ae.preset = "earth"');
+      tapAt(s);
+      check(run('_ae.target') === 'moon' && run('_ae.preset') === 'moon' && run('!!_ae.fly'),
+        'a tap on the Moon flies to it and presses its chip');
+    }
+    s = viewOf('earth', 'sun', 400);
+    check(!!s, 'from the Earth the Sun can be put on screen');
+    if (s) {
+      tapAt(s);
+      check(run('_ae.target') === 'sun' && run('_ae.preset') === 'sun', 'a tap on the Sun flies to it');
+    }
+    s = viewOf('sun', 'earth', 900);
+    check(!!s, 'from the Sun the Earth can be put on screen');
+    if (s) {
+      tapAt(s);
+      check(run('_ae.target') === 'earth' && run('_ae.preset') === 'earth', 'a tap on the Earth flies home (' + run('_ae.target') + ')');
+    }
+    // Empty sky: a corner far from every body.
+    s = viewOf('earth', 'moon', 150);
+    run('_ae.preset = "earth"');
+    run('_aeTap(2, 2)');
+    check(run('_ae.target') === 'earth' && !run('_ae.fly'), 'a tap on empty sky flies nowhere');
+    // The body in view: puts a satellite's card away, flies nowhere.
+    s = viewOf('earth', 'earth', 4);
+    run('_ae.selected = { norad: 1, tapMs: 0 }');
+    if (s) tapAt(s);
+    check(run('_ae.target') === 'earth' && !run('_ae.fly') && run('_ae.selected') === null,
+      'a tap on the Earth while at the Earth only puts a card away');
+
+    // A flight's length follows how far it goes; reduced motion arrives at once.
+    run('_ae.fly = null; _ae.target = "earth"; _ae.dist = _aeFitDist(AE_FIT_EARTH); _ae.az = 0; _ae.el_ = 0;');
+    run('_aePreset("sats")');
+    const toSats = run('_ae.fly.ms');
+    run('_ae.fly = null; _ae.target = "earth"; _ae.dist = _aeFitDist(AE_FIT_EARTH);');
+    run('_aePreset("moon")');
+    const toMoon = run('_ae.fly.ms');
+    run('_ae.fly = null; _ae.target = "earth"; _ae.dist = _aeFitDist(AE_FIT_EARTH);');
+    run('_aePreset("sun")');
+    check(run('_ae.fly.ms') === S.AE_FLY_FAR_MS, 'the crossing to the Sun is the longest flight');
+    check(toSats >= S.AE_FLY_MIN_MS && toSats < toMoon && toMoon < S.AE_FLY_FAR_MS,
+      'out to the GPS shell (' + Math.round(toSats) + ' ms) is quicker than to the Moon (' + Math.round(toMoon) + ' ms), both under the Sun\'s');
+    check(run('_aeEaseInOut(0)') === 0 && run('_aeEaseInOut(1)') === 1 && Math.abs(run('_aeEaseInOut(0.5)') - 0.5) < 1e-12 && run('_aeEaseInOut(0.1)') < 0.1,
+      'a flight eases in and out');
+    run('var _almReduceMotion = function () { return true; };');
+    s = viewOf('earth', 'moon', 150);
+    if (s) tapAt(s);
+    check(run('_ae.target') === 'moon' && !run('_ae.fly') && Math.abs(run('_ae.dist') - run('_aeClampDist(_aeFitDist(AE_FIT_MOON))')) < 1e-9,
+      'with reduced motion a tap arrives at once');
+    run('_almReduceMotion = undefined;');
+  }
+
   if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
   console.log('all passed');
 })().catch((e) => { console.error(e); process.exit(1); });
