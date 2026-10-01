@@ -914,6 +914,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("almanac-earth.js")
             + _static_hash("highlights.js")
             + _static_hash("bookmath.js")
+            + _static_hash("find.js")
             + _static_hash("tube.html")
             + _static_hash("exchange.html")
             + _static_hash("reddot.html")

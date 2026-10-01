@@ -1159,8 +1159,9 @@ function _searchPlaceholderText() {
   }
   if (_almanacOpen) return t('almanac');
   if (_appPlaceholder()) return _appPlaceholder();
-  if (currentSource) return _zimTitle(currentSource);
-  if (readerOpen && readerSource) return _zimTitle(readerSource);
+  // In one ZIM, or reading one: the box searches that ZIM, and says so.
+  var scoped = _searchScopeSource();
+  if (scoped) return t('search_in', {source: _zimTitle(scoped)});
   if (mode === 'manage') return _managePlaceholder();
   if (homeScope) return t('search_in', {source: homeScope.label});
   return t('search_placeholder');
@@ -1191,7 +1192,15 @@ function _fitSearchPlaceholderNow() {
   var ctx = _placeholderCanvas.getContext('2d');
   if (!ctx) { q.placeholder = full; return; }
   ctx.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
-  q.placeholder = ctx.measureText(full).width <= room ? full : t('search');
+  var fits = function(s) { return ctx.measureText(s).width <= room; };
+  // "Search in Wikipedia…" too long for a phone's box: the ZIM's name alone,
+  // which still says where the search goes, before the bare "Search".
+  var scoped = _searchScopeSource(), name = scoped ? _zimTitle(scoped) : '';
+  q.placeholder = fits(full) ? full : (name && full.indexOf(name) >= 0 && fits(name)) ? name : t('search');
+}
+// The one ZIM the box searches: the one open, or the one being read.
+function _searchScopeSource() {
+  return currentSource || (readerOpen && readerSource && !_isAppPage() && !_isMapPage() ? readerSource : null);
 }
 function _updateSearchPlaceholder() {
   if (!q) return;
@@ -6943,6 +6952,12 @@ q.addEventListener('keydown', e => {
       selectSuggest(suggestIndex);
       return;
     }
+    // Shift+Delete takes the chosen recent row away, as a browser's box does.
+    if (e.key === 'Delete' && e.shiftKey && suggestIndex >= 0 && suggestItems[suggestIndex] && suggestItems[suggestIndex]._hist) {
+      e.preventDefault();
+      _recentForget(suggestIndex);
+      return;
+    }
     if (e.key === 'Escape') {
       // This Escape is spent closing the dropdown. Left to bubble, the page's
       // handler saw the dropdown already shut and cleared the query too.
@@ -6950,6 +6965,12 @@ q.addEventListener('keydown', e => {
       hideSuggest();
       return;
     }
+  }
+  // Down from the box, the suggestions shut: into the results.
+  if (e.key === 'ArrowDown' && mode === 'search' && !readerOpen) {
+    const first = _resultStops()[0];
+    // Stopped here: the page's own arrow handler would take a second step.
+    if (first) { e.preventDefault(); e.stopPropagation(); first.focus(); return; }
   }
   if (e.key === 'Enter') {
     e.preventDefault();
@@ -6987,19 +7008,26 @@ function applyDidYouMean(suggestion) {
   if (!suggestion) return;
   var q = document.getElementById('q');
   if (q) q.value = suggestion;
-  doSearch(suggestion, true);
+  doSearch(suggestion, 'new');
 }
 
-async function doSearch(query, push) {
+// push: true records the search in the address (replacing a search already
+// there, so the timer while typing and Enter make one entry); 'new' makes it
+// a step of its own, so Back returns to the search it came from (a chip
+// taken off, a spelling taken). perSource: how many results each source is
+// asked for; given, it is "More results" asking again, and the cards on
+// screen stay while it does.
+async function doSearch(query, push, perSource) {
   if (push === undefined) push = true;
+  const more = !!perSource;
+  perSource = perSource || SEARCH_PER_SOURCE;
   if (!query) return;
   _currentSearchQuery = query;
   clearTimeout(suggestTimer);
   hideSuggest();
 
   // Reject all-stop-word queries (e.g. "what", "the", "is it")
-  const STOPS = new Set(['a','an','and','are','as','at','be','by','for','from','has','have','how','i','in','is','it','its','my','not','of','on','or','so','that','the','this','to','was','we','what','when','where','which','who','will','with','you']);
-  const meaningful = query.toLowerCase().split(/\s+/).filter(w => !STOPS.has(w));
+  const meaningful = query.toLowerCase().split(/\s+/).filter(w => !SEARCH_STOP_WORDS.has(w));
   if (!meaningful.length) {
     mode = 'search';
     statsBar.style.display = 'none';
@@ -7013,10 +7041,13 @@ async function doSearch(query, push) {
   if (searchController) searchController.abort();
   searchController = new AbortController();
 
-  const scope = currentSource;
+  // Reading an article, the box searches its ZIM, as its placeholder says
+  // ("Search in Wikipedia…"); the ZIM's chip in the header widens it again.
+  const scope = _searchScopeSource();
+  if (scope && !currentSource) { currentSource = scope; sourceHeaderEl.style.display = 'none'; }
   mode = 'search';
   sourceAutoReader = false; // user searched — don't auto-home on back
-  visibleResultCount = RESULTS_PER_PAGE;
+  visibleResultCount = more ? visibleResultCount + RESULTS_PER_PAGE : RESULTS_PER_PAGE;
 
   // Close reader or almanac if open
   if (readerOpen) closeReader();
@@ -7025,10 +7056,12 @@ async function doSearch(query, push) {
 
   mainView.classList.remove('hidden');
   if (!scope) sourceHeaderEl.style.display = 'none';
-  statsBar.style.display = 'none';
-  pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
-  searchMeta.style.display = 'none';
-  output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('searching_titles') + '</div>';
+  if (!more) {
+    statsBar.style.display = 'none';
+    pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
+    searchMeta.style.display = 'none';
+    output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('searching_titles') + '</div>';
+  }
   updateTopbar();
 
   let zimParam = scope ? '&zim=' + encodeURIComponent(scope) : '';
@@ -7041,7 +7074,7 @@ async function doSearch(query, push) {
   try {
     // ── Progressive two-phase search: fast title matches first, then full FTS ──
     // Phase 1: fast title search (parallel per-ZIM, no lock contention)
-    const r1 = await serverFetch('/search?q=' + encodeURIComponent(query) + '&limit=10' + zimParam + '&fast=1',
+    const r1 = await serverFetch('/search?q=' + encodeURIComponent(query) + '&limit=' + perSource + zimParam + '&fast=1',
       { signal: searchController.signal });
     _throwIfRateLimited(r1);
     const d1 = await r1.json();
@@ -7050,12 +7083,15 @@ async function doSearch(query, push) {
     const phase1Elapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
     d1._clientElapsed = phase1Elapsed;
     d1._query = query;
-    allResults = d1;
+    d1._limit = perSource;
+    // Asking again for more: the quick pass adds to what is on screen.
+    allResults = more && allResults && allResults._query === query ? mergeSearchResults(allResults, d1) : d1;
     if (push) {
       // Replace (not push) if we're already on a search page — prevents duplicate entries
       // from autosearch timer + Enter key both calling doSearch
       var hs = history.state;
-      if (hs && hs.mode === 'search') {
+      var sameSearch = hs && hs.mode === 'search' && hs.query === query && (hs.source || null) === (scope || null);
+      if (hs && hs.mode === 'search' && (push !== 'new' || sameSearch)) {
         history.replaceState({ mode: 'search', query: query, source: scope }, '', searchUrl);
       } else {
         history.pushState({ mode: 'search', query: query, source: scope }, '', searchUrl);
@@ -7086,7 +7122,7 @@ async function doSearch(query, push) {
       }, 1000);
 
       // Phase 2: full Xapian FTS (sequential under _zim_lock, searches every ZIM)
-      const r2 = await serverFetch('/search?q=' + encodeURIComponent(query) + '&limit=10' + zimParam,
+      const r2 = await serverFetch('/search?q=' + encodeURIComponent(query) + '&limit=' + perSource + zimParam,
         { signal: searchController.signal });
       _throwIfRateLimited(r2);
       const d2 = await r2.json();
@@ -7094,6 +7130,7 @@ async function doSearch(query, push) {
       if (mode !== 'search') return; // the full-text pass landed after you left
       d2._clientElapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
       d2._query = query;
+      d2._limit = perSource;
       allResults = mergeSearchResults(d1, d2);
       renderSearchResults(allResults, scope);
     }
@@ -7154,6 +7191,7 @@ function mergeSearchResults(phase1, phase2) {
     unsearched: phase2.unsearched || phase1.unsearched,
     _clientElapsed: phase2._clientElapsed,
     _query: phase2._query,
+    _limit: phase2._limit,
     // Places come only from the full phase; the keystroke phase reads no
     // shards. They are a group beside the results, not merged into them.
     places: phase2.places || phase1.places || [],
@@ -7368,32 +7406,55 @@ function renderSearchResults(data, scope) {
     }
   }
 
-  // Pagination: show only first visibleResultCount items
-  const visible = items.slice(0, visibleResultCount);
-  const remaining = items.length - visibleResultCount;
+  // The words searched for, marked as each card is drawn (and in each
+  // snippet as it arrives): nothing is asked of the server for it.
+  const hitRe = _resultsHitRe = searchHitRe(data._query);
+  const card = (r, i, sourceRow) =>
+    // Real link (#49): anchors are natively focusable and Enter-activatable,
+    // so the tabindex/role/onkeydown scaffolding a div needed goes away.
+    '<a class="result" href="' + escAttr(_articleDeepLinkPath(r.zim, r.path)) + '" data-zim="' + escAttr(r.zim) + '" data-path="' + escAttr(r.path) + '" data-title="' + escAttr(r.title || '') + '" style="animation-delay:' + (Math.min(i, 5) * 0.04) + 's" onclick="return _spaCardClick(event, this)">' +
+      '<div class="result-thumb" data-needs-thumb="1"></div>' +
+      '<div class="result-body">' + (sourceRow ? _resultSourceHtml(r.zim) : '') +
+      '<div class="title">' + searchHitsHtml(r.title, hitRe) + '</div>' +
+      (r.snippet ? '<div class="snippet">' + searchHitsHtml(r.snippet, hitRe) + '</div>' : '<div class="snippet" data-needs-snippet="1"></div>') +
+      '</div></a>';
+
+  // Pagination: the first visibleResultCount cards, ranked or in groups.
+  const groups = scope ? null : searchResultGroups(items);
+  let listHtml = '', remaining;
+  if (groups) {
+    let shown = 0, k = 0;
+    for (; k < groups.length && shown < visibleResultCount; k++) {
+      const g = groups[k], top = g.items.slice(0, SEARCH_GROUP_SIZE);
+      listHtml += '<section class="result-group"><h3 class="result-group-head">' + _resultSourceHtml(g.zim) + '</h3>' +
+        top.map((r, i) => card(r, shown + i, false)).join('') +
+        (g.items.length > SEARCH_GROUP_SIZE
+          ? '<button type="button" class="result-more" data-zim="' + escAttr(g.zim) + '" onclick="searchMoreFromSource(this.dataset.zim)">' +
+            // The name set apart: a Latin title in a Hebrew sentence keeps its place.
+            tH('search_more_from').split('{source}').join('<bdi>' + esc(_zimTitle(g.zim)) + '</bdi>') + '</button>'
+          : '') + '</section>';
+      shown += top.length;
+    }
+    remaining = groups.slice(k).reduce((n, g) => n + Math.min(g.items.length, SEARCH_GROUP_SIZE), 0);
+  } else {
+    listHtml = items.slice(0, visibleResultCount).map((r, i) => card(r, i, !scope)).join('');
+    remaining = items.length - visibleResultCount;
+  }
 
   // Real places first. The offer to type into the map's own box is for when
   // the shards had nothing, not a second row under every hit.
   const placesHtml = _mapPlaceRowsHtml(data.places || []);
   const mapFindHtml = (!scope && !placesHtml) ? _mapFindRowsHtml(data._query || '') : '';
-  let html = chipsHtml + dymHtml + zimMatchHtml + '<div class="results">' + placesHtml + mapFindHtml + visible.map((r, i) => {
-    const sourceRow = !scope
-      ? '<div class="result-source">' + _sourceIconHtml(r.zim, 20) +
-        '<span class="rs-name">' + esc(_zimTitle(r.zim)) + '</span></div>'
-      : '';
-    // Real link (#49): anchors are natively focusable and Enter-activatable,
-    // so the tabindex/role/onkeydown scaffolding a div needed goes away.
-    return '<a class="result" href="' + escAttr(_articleDeepLinkPath(r.zim, r.path)) + '" data-zim="' + escAttr(r.zim) + '" data-path="' + escAttr(r.path) + '" data-title="' + escAttr(r.title || '') + '" style="animation-delay:' + (Math.min(i, 5) * 0.04) + 's" onclick="return _spaCardClick(event, this)">' +
-      '<div class="result-thumb" data-needs-thumb="1"></div>' +
-      '<div class="result-body">' + sourceRow +
-      '<div class="title">' + esc(r.title) + '</div>' +
-      (r.snippet ? '<div class="snippet">' + esc(r.snippet) + '</div>' : '<div class="snippet" data-needs-snippet="1"></div>') +
-      '</div></a>';
-  }).join('') + '</div>';
+  let html = chipsHtml + dymHtml + zimMatchHtml + '<div class="results' + (groups ? ' grouped' : '') + '">' +
+    placesHtml + mapFindHtml + listHtml + '</div>';
 
   if (remaining > 0) {
     html += '<div class="load-more"><button onclick="showMoreResults()">' +
       tH('show_more', {n: Math.min(RESULTS_PER_PAGE, remaining)}) + '</button></div>';
+  } else if (scope && items.length >= (data._limit || SEARCH_PER_SOURCE) && (data._limit || SEARCH_PER_SOURCE) < SEARCH_PER_SOURCE_MAX) {
+    // Everything this search brought is on screen, and the source had more
+    // than it was asked for: ask it for more.
+    html += '<div class="load-more"><button onclick="searchMoreResults(this)">' + tH('search_more_results') + '</button></div>';
   }
 
   // The count and the time are said once, over the results ("Found 1
@@ -7412,6 +7473,55 @@ function showMoreResults() {
   if (savedIndicator && !document.getElementById('fts-indicator')) {
     output.prepend(savedIndicator);
   }
+}
+
+// Results a search asks each source for, and the most a source may be asked
+// for when "More results" asks again (the server's MAX_SEARCH_LIMIT).
+const SEARCH_PER_SOURCE = 10;
+const SEARCH_PER_SOURCE_MAX = 50;
+// The pattern the cards on screen mark their words with (searchHitRe).
+let _resultsHitRe = null;
+
+// Grouped or ranked, one rule: results from three or more sources that are
+// more than a screen are grouped by source, each source's best few with
+// "More from" it, the sources in the order of their best result (so an
+// exact title still leads). Anything less reads better as one ranked list,
+// and so does a list narrowed to its sources by the pills. null: ranked.
+const SEARCH_GROUP_MIN_SOURCES = 3;
+const SEARCH_GROUP_SIZE = 3;
+function searchResultGroups(items) {
+  if (items.length <= RESULTS_PER_PAGE || activeSourceFilters.size) return null;
+  const by = new Map();
+  for (const r of items) {
+    if (!by.has(r.zim)) by.set(r.zim, []);
+    by.get(r.zim).push(r);
+  }
+  if (by.size < SEARCH_GROUP_MIN_SOURCES) return null;
+  return [...by].map(([zim, list]) => ({ zim: zim, items: list }));
+}
+
+// The results the arrow keys step through, in the order shown.
+function _resultStops() {
+  return Array.from(output.querySelectorAll('.results a.result, .results .result-more, .load-more button'));
+}
+
+function _resultSourceHtml(zim) {
+  return '<span class="result-source">' + _sourceIconHtml(zim, 20) +
+    '<span class="rs-name">' + esc(_zimTitle(zim)) + '</span></span>';
+}
+
+// "More from <source>": the same search, in that source alone (the one the
+// box makes while reading it), where it can page further.
+function searchMoreFromSource(zim) {
+  if (allResults && allResults._query) _runRecentSearch(allResults._query, zim);
+}
+
+// A source's results all on screen and it had more: the same search again,
+// asking it for as many as it may give, the cards already read kept in view.
+function searchMoreResults(btn) {
+  if (!allResults || !allResults._query) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-inline"></span>'; }
+  doSearch(allResults._query, false, SEARCH_PER_SOURCE_MAX);
 }
 
 function _zimTitle(name) {
@@ -7503,7 +7613,7 @@ async function fetchSnippet(snippetEl, zim, path, signal, card) {
     // Populate snippet text if needed
     if (snippetEl && snippetEl.hasAttribute('data-needs-snippet')) {
       if (data.snippet) {
-        snippetEl.textContent = data.snippet;
+        snippetEl.innerHTML = searchHitsHtml(data.snippet, _resultsHitRe);
         snippetEl.removeAttribute('data-needs-snippet');
         snippetEl.style.opacity = '0';
         requestAnimationFrame(() => { snippetEl.style.opacity = '1'; });
@@ -7676,15 +7786,13 @@ function showHistoryDropdown(filter) {
   var seen = new Set();
   for (var i = 0; i < h.length && items.length < 8; i++) {
     var entry = h[i];
-    var label, sub, key;
+    var label, sub, key = _histRecentKey(entry);
     if (entry.type === 'search') {
       label = typeof entry.query === 'string' ? entry.query : '';
       sub = entry.zim ? _zimTitle(entry.zim) : t('all_sources').replace(/^\u2190\s*/, '');
-      key = 's:' + label.toLowerCase();
     } else {
       label = (typeof entry.title === 'string' && entry.title) || _titleFromPath(entry.path || '');
       sub = entry.zim ? _zimTitle(entry.zim) : '';
-      key = 'a:' + (entry.zim || '') + ':' + (entry.path || '');
     }
     if (!label) continue;
     if (fl && !label.toLowerCase().includes(fl) && !sub.toLowerCase().includes(fl)) continue;
@@ -7698,22 +7806,64 @@ function showHistoryDropdown(filter) {
   }
   // Merge into suggestItems for keyboard navigation
   suggestItems = items.map(function(it) {
-    return it.isSearch
+    var s = it.isSearch
       ? { _hist: true, _histSearch: true, query: it.entry.query, zim: it.entry.zim || '', label: it.label, sub: it.sub }
       : { _hist: true, zim: it.entry.zim, path: it.entry.path, title: it.label, label: it.label, sub: it.sub };
+    s._key = _histRecentKey(it.entry);
+    return s;
   });
   suggestIndex = -1;
   var icon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:0.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
   var searchIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:0.5"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>';
-  var recentHeader = (filter || !items.length) ? '' : '<div style="padding:6px 14px 2px;font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:0.06em">' + tH('suggest_recent') + '</div>';
+  // Searches are kept in this browser only (with the rest of History, which
+  // goes to an account only when My data is saved there). Each is a tap from
+  // gone, and all of them at once from the header.
+  var anySearch = items.some(function(it) { return it.isSearch; });
+  var recentHeader = (filter || !items.length) ? '' : '<div class="sg-recent-head"><span>' + tH('suggest_recent') + '</span>' +
+    (anySearch ? '<button type="button" class="sg-recent-clear" onmousedown="event.preventDefault();event.stopPropagation();_recentClearSearches()">' + tH('recent_clear_searches') + '</button>' : '') +
+    '</div>';
   suggestDropdown.innerHTML = pillsHtml + recentHeader +
     items.map(function(it, i) {
-      return '<div class="suggest-item" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')" style="display:flex;align-items:center;gap:8px">' +
+      var forget = t('remove') + ': ' + it.label;
+      return '<div class="suggest-item sg-recent" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
         (it.isSearch ? searchIcon : icon) +
-        '<div style="flex:1;min-width:0"><div class="sg-title">' + esc(it.label) + '</div>' +
-        '<div class="sg-source">' + esc(it.sub) + '</div></div></div>';
+        '<div class="sg-recent-text"><div class="sg-title">' + esc(it.label) + '</div>' +
+        '<div class="sg-source">' + esc(it.sub) + '</div></div>' +
+        '<button type="button" class="sg-forget" aria-label="' + escAttr(forget) + '" title="' + escAttr(forget) + '" onmousedown="event.preventDefault();event.stopPropagation();_recentForget(' + i + ')">' +
+        _CHIP_X_SVG + '</button></div>';
     }).join('');
   suggestDropdown.style.display = 'block';
+}
+
+// A row of the Recent list, as one thing: a search by its words, a visit by
+// its page. Taking a row away takes every copy of it, or the next one along
+// would show in its place.
+function _histRecentKey(entry) {
+  return entry.type === 'search'
+    ? 's:' + (typeof entry.query === 'string' ? entry.query : '').toLowerCase()
+    : 'a:' + (entry.zim || '') + ':' + (entry.path || '');
+}
+function _histForget(test) {
+  var h = _histLoad(), kept = h.filter(function(e) { return !test(e); });
+  if (kept.length === h.length) return;
+  _persistHist = kept;
+  _histSave();
+  _refreshLibraryPanelIfOpen();
+}
+// The dropdown drawn again as it was (typed filter and all), the box kept.
+function _recentRedraw() {
+  var val = q.value.trim();
+  showHistoryDropdown(val || undefined);
+}
+function _recentForget(i) {
+  var s = suggestItems[i];
+  if (!s || !s._hist) return;
+  _histForget(function(e) { return _histRecentKey(e) === s._key; });
+  _recentRedraw();
+}
+function _recentClearSearches() {
+  _histForget(function(e) { return e.type === 'search'; });
+  _recentRedraw();
 }
 
 function showSuggest() {
@@ -9481,6 +9631,40 @@ function searchQueryMatches(parsed, text) {
     !parsed.exclude.some(t => _searchTermRe(t.text).test(low));
 }
 
+// Words too common to search for alone, or to mark in a result.
+const SEARCH_STOP_WORDS = new Set(['a','an','and','are','as','at','be','by','for','from','has','have','how','i','in','is','it','its','my','not','of','on','or','so','that','the','this','to','was','we','what','when','where','which','who','will','with','you']);
+
+// The words a query searched for, as one pattern to mark in a result's
+// title and snippet: each word from the start of a word ("sun" marks
+// "Sunlight", not "Tsunami"), a phrase as its words together. What the
+// query excluded or filtered on was not searched, so it is never marked;
+// nor is a common word typed on its own. Longest first, so a phrase wins
+// over a word inside it. null when there is nothing to mark.
+function searchHitRe(query) {
+  const terms = [];
+  for (const g of parseSearchQuery(query || '').groups) {
+    for (const t of g) if (t.phrase || !SEARCH_STOP_WORDS.has(t.text)) terms.push(t.text);
+  }
+  if (!terms.length) return null;
+  const alts = [...new Set(terms)].sort((a, b) => b.length - a.length).map(text => {
+    const body = text.split(/\s+/).map(_reEscape).join('\\s+');
+    return (_SEARCH_UNSPACED.test(text[0]) ? '' : '(?<![\\p{L}\\p{N}_])') + body;
+  });
+  return new RegExp(alts.join('|'), 'giu');
+}
+
+// Text as HTML with what `re` finds in <mark class="hit">, every piece escaped.
+function searchHitsHtml(text, re) {
+  text = String(text || '');
+  if (!re) return esc(text);
+  let out = '', at = 0;
+  for (const m of text.matchAll(re)) {
+    out += esc(text.slice(at, m.index)) + '<mark class="hit">' + esc(m[0]) + '</mark>';
+    at = m.index + m[0].length;
+  }
+  return out + esc(text.slice(at));
+}
+
 // What a catalog filter asks of an item. source:/in: is the name, title or
 // category; lang: one of the item's languages, which the catalog lists in
 // three letters ("fra") and people type in either.
@@ -9630,7 +9814,7 @@ function _searchAgain(query) {
   hideSuggest();
   if (!query) { clearSearch(); return; }
   if (mode === 'manage') browseCatalogFilter(query);
-  else doSearch(query);
+  else doSearch(query, 'new');
 }
 
 // The "?" beside the box: examples written for each language, one operator
@@ -20240,6 +20424,10 @@ function openReader(url) {
     try { _defineAttachToDoc(frame); } catch(e) {}
     // Highlights: painted when the page has some, offered when text is selected.
     try { _hlReaderAttach(frame); } catch(e) { console.warn('Highlights:', e); }
+    // Find in page: a find open on the page before is over; Cmd/Ctrl+F with
+    // the article focused opens Zimi's, not the browser's.
+    _findClose();
+    try { _findBindDoc(frame.contentDocument); } catch(e) {}
     try { _sayMissingVideos(frame); } catch(e) {}
     // A consent wall the ARCHIVE rebuilds every time it is opened, and a
     // captured page's JS-driven chrome put back in its place. Both edit the
@@ -22906,6 +23094,68 @@ function _savedStart() {
   else setTimeout(_savedPull, 500);
 }
 
+// ── Find in page ───────────────────────────────────────────────────────────
+// The open article's words: Cmd/Ctrl+F while an article is open (in Zimi's
+// page or in the article), or Find in page in the reader's ⋯ menu. Anywhere
+// else Cmd+F is the browser's own, untouched. The bar and the finding are
+// /static/find.js, fetched the first time a find is asked for.
+var _findLoading = null;
+function _findApplies() {
+  return readerOpen && !_almanacOpen && !_createOpen && !_isMapPage() && !_isAppPage() && !_isPdfPage();
+}
+function _findIsOpen() { return !!(window.ZimiFind && window.ZimiFind.isOpen()); }
+function _findClose() { if (_findIsOpen()) window.ZimiFind.close(); }
+function _findLoad() {
+  if (window.ZimiFind) return Promise.resolve(window.ZimiFind);
+  if (!_findLoading) {
+    _findLoading = new Promise(function (resolve, reject) {
+      var el = document.createElement('script');
+      // The version moves with the file: /static is cached for a year.
+      el.src = '/static/find.js?v=1';
+      el.onload = function () { if (window.ZimiFind) resolve(window.ZimiFind); else { _findLoading = null; reject(); } };
+      el.onerror = function () { _findLoading = null; reject(); };
+      document.head.appendChild(el);
+    });
+  }
+  return _findLoading;
+}
+function openFindInPage() {
+  if (!_findApplies()) return;
+  var frame = document.getElementById('reader-frame'), doc = null;
+  try { doc = frame.contentDocument; } catch (e) {}
+  if (!doc || !doc.body) return;
+  _findLoad().then(function (F) {
+    if (!_findApplies()) return;
+    F.open({
+      host: document.getElementById('reader'),
+      doc: doc,
+      strings: {
+        find: t('find_in_page'), none: t('find_none'), prev: t('find_prev'), next: t('find_next'), close: t('close'),
+        count: function (n, total) { return t('n_of_total', { n: n.toLocaleString(_currentLang), total: total.toLocaleString(_currentLang) }); },
+      },
+      // Closed, the keys go back to the article, where they were.
+      onClose: function () { try { frame.contentWindow.focus(); } catch (e) {} },
+    });
+  }, function () {});
+}
+// Cmd/Ctrl+F, taken for Zimi's find only while there is an article to find
+// in; true when taken.
+function _findKey(e) {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || (e.key !== 'f' && e.key !== 'F')) return false;
+  if (!_findApplies()) return false;
+  e.preventDefault();
+  openFindInPage();
+  return true;
+}
+function _findBindDoc(doc) {
+  if (!doc || doc.__zimiFindBound) return;
+  doc.__zimiFindBound = true;
+  doc.addEventListener('keydown', function (e) {
+    if (_findKey(e)) return;
+    if (e.key === 'Escape' && _findIsOpen()) { e.preventDefault(); _findClose(); }
+  }, true);
+}
+
 // ── Highlights: the shell's side ───────────────────────────────────────────
 // One engine for every reader (/static/highlights.js, docs/features/saving.md).
 // Highlights.attach(doc, ref, opts) is called once per document shown: by the
@@ -23519,6 +23769,7 @@ function openArticle(zim, path, title, opts) {
 function closeReader() {
   if (!readerOpen) return;
   _appsOff();
+  _findClose();
   _ttsStop(); // stop read-aloud when leaving the reader
   // Sync the address bar back to the view the reader was covering — an
   // explicit close otherwise strands the article URL (a reload would
@@ -23788,6 +24039,7 @@ function _isNarrow() {
 }
 
 // Compact SVGs reused by the reader controls when they migrate into the ... menu.
+var _TBM_FIND_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5"/><circle cx="16.5" cy="15.5" r="3.5"/><path d="M19 18l2.5 2.5"/></svg>';
 var _TBM_TTS_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
 var _TBM_NEWTAB_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
 // The same + the inline button draws, at menu-row weight.
@@ -23858,13 +24110,18 @@ function _buildTopbarMenuHtml() {
       if (!_wikiReading) readerGroup += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
       readerGroup += _readerActionRowsHtml();
     }
-    // 3. Read aloud.
+    // 3. Find in page: on a phone there is no Cmd+F to reach for.
+    if (_findApplies()) {
+      readerGroup += '<button class="topbar-menu-item" id="tbm-find" onclick="_closeTopbarMenu();openFindInPage()">' + _TBM_FIND_ICON +
+        ' <span class="tbm-label">' + tH('find_in_page') + '</span></button>';
+    }
+    // 4. Read aloud.
     if (_TTS_AVAILABLE && !_isMapPage() && !_isAppPage() && !_isPdfPage()) {
       readerGroup += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
         '" onclick="event.stopPropagation();_ttsToggle()">' + _TBM_TTS_ICON +
         ' <span class="tbm-label">' + tH(_ttsSpeaking ? 'tts_stop' : 'tts_speak') + '</span></button>';
     }
-    // 4. Open in browser — LAST, and only where it's meaningful: the desktop app
+    // 5. Open in browser — LAST, and only where it's meaningful: the desktop app
     // or an installed/standalone PWA. In a plain browser tab you're already in a
     // browser, so it's hidden. Opens the ?a= deep link (full Zimi chrome).
     if (IS_DESKTOP || _isStandalonePWA()) {
@@ -24081,9 +24338,11 @@ async function randomArticle(event) {
 
 // ── Keyboard ──
 document.addEventListener('keydown', e => {
+  if (_findKey(e)) return;
   if (e.key === 'Escape') {
     // Topmost popovers first — otherwise Escape falls through to goBack()/close
     // and dumps a keyboard user out of the reader instead of shutting the popover.
+    if (_findIsOpen()) { _findClose(); return; }
     if (_extCur) { _extHide(); return; }
     if (_definePopover && _definePopover.classList.contains('open')) { _defineHide(); return; }
     var _rp = document.getElementById(_READER_PALETTE_ID);
@@ -24098,10 +24357,23 @@ document.addEventListener('keydown', e => {
     if (_createOpen) { closeCreate(); return; }
     if (_almanacOpen) { closeAlmanac(); return; }
     if (readerOpen) { goBack(); return; }
-    if (q.value) { q.value = ''; hideSuggest(); clearSearch(); return; }
+    // From a result reached with the arrows too: the box is where it goes on.
+    if (q.value) { clearSearchInput(); return; }
     if (mode === 'manage' && _manageSavedReader) { _manageToken = ''; history.back(); return; }
     if (mode === 'source' || mode === 'manage') { enterHome(true); return; }
     return;
+  }
+  // The arrows walk the results (Enter opens one, as a link does); up from
+  // the first is back in the box.
+  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !e.altKey && !e.metaKey && !e.ctrlKey && mode === 'search' && !readerOpen) {
+    const stops = _resultStops(), i = stops.indexOf(document.activeElement);
+    if (i >= 0) {
+      e.preventDefault();
+      const next = stops[i + (e.key === 'ArrowDown' ? 1 : -1)];
+      if (next) next.focus();
+      else if (e.key === 'ArrowUp') q.focus();
+      return;
+    }
   }
   const tag = document.activeElement && document.activeElement.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
