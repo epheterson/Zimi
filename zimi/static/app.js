@@ -13657,7 +13657,7 @@ function _shareSwitch(key, on, locked, envVar, titleKey, descHtml, inactive, und
       '<div class="share-row-dim">' +
         '<div class="share-row-title">' + tH(titleKey) + '</div>' +
         '<div class="share-row-desc">' + descHtml + '</div>' +
-        (locked ? '<div class="share-row-desc share-row-locknote">' + tH('env_controlled', {v: envVar}) + '</div>' : '') +
+        (locked && envVar ? '<div class="share-row-desc share-row-locknote">' + tH('env_controlled', {v: envVar}) + '</div>' : '') +
       '</div>' +
       (noteHtml || '') +
     '</div>' +
@@ -14066,7 +14066,9 @@ async function _renderMirrorSection() {
       (prog.phase ? _mirrorProgressText(prog) : '') + '</div>';
 
   let h = '<div class="share-rows">' +
-    _shareSwitch('torrent', btOn, m.torrent_env_locked, 'ZIMI_BT',
+    // The variable that set it, named once: off, the reason line under the
+    // row says "BitTorrent is off (ZIMI_TORRENT=0)"; on, the lock note does.
+    _shareSwitch('torrent', btOn, m.torrent_env_locked, btOn ? (m.torrent_env_var || 'ZIMI_BT') : '',
       'share_bt_title', tH('share_bt_desc'),
       // inactive, not locked: locked means an operator pinned it with an env
       // var and says so. Unavailable is the machine's answer, and the reason

@@ -5525,9 +5525,13 @@ def handle_manage_get(handler, parsed, params):
             # boot or on first download, so report ready-to-torrent.
             status = "ready"
         hint_key, hint_vars = None, {}
-        if not enabled:
+        # Off by the environment: name the variable that did it, as it is
+        # set (ZIMI_TORRENT=0, ZIMI_OFFLINE=1). Off by the switch: the switch
+        # says so, nothing to add.
+        setting = p2p.torrent_env_setting() if not enabled else ""
+        if setting:
             hint_key = "bt_why_off"
-            hint_vars = {"v": "ZIMI_BT=off"}
+            hint_vars = {"v": setting}
         elif status == "unavailable":
             import platform as _platform
             import sys as _sys

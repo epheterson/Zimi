@@ -2455,7 +2455,8 @@
      and flip the ON knob to white since the deep-amber ON track needs light ink
      (#000 knob would sink to ~3.6:1). The OFF knob stays --text2, which clears
      3:1 on the grey track (4.06:1). */
-  :root[data-theme="light"] .switch-slider {
+  :root[data-theme="light"] .switch-slider,
+  :root[data-theme="light"] .share-controls-off .switch input:checked + .switch-slider {
     background: #e0dacd; border-color: var(--border-strong);
   }
   :root[data-theme="light"] .switch input:checked + .switch-slider {
@@ -2464,6 +2465,13 @@
   :root[data-theme="light"] .switch input:checked + .switch-slider::before {
     background: var(--on-amber);
   }
+  /* A switch in a card that is off (BitTorrent's UPnP) keeps its place, what
+     it will be when the card is on, but not its amber: amber says "on now",
+     and nothing here is. It takes the OFF track and knob instead (the light
+     theme's track is in the rule above). */
+  .share-controls-off .switch input:checked + .switch-slider { background: var(--surface2); border-color: var(--border); }
+  .share-controls-off .switch input:checked + .switch-slider::before,
+  :root[data-theme="light"] .share-controls-off .switch input:checked + .switch-slider::before { background: var(--text2); }
 
   /* Long option lists (languages, hot ZIMs) hide behind a Show-list toggle.
      :not() + !important beat later same-specificity display rules
