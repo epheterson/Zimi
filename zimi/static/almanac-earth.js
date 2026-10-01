@@ -1836,7 +1836,7 @@ var AE_HAND_XFADE_MS = 200;             // reduced motion: a cross-fade instead
 var AE_HAND_EARTH_GAP = 1.5;            // the hero's camera, in Earth radii from its centre: over the air and the ISS
 var AE_HAND_UI_FROM = 0.55;             // the controls come up over the last part of the way
 var AE_HERO_SEL = '#almanac-head .almanac-moon-open';
-var AE_FOCUS_TRIES = 12;                // frames to wait for the uncovered page to take focus
+var AE_FOCUS_MS = 1500;                 // ms the uncovered page has to take focus back
 // The hero's rectangle in the view's coordinates, or null when it is not
 // on screen (scrolled away, or the head is beyond range).
 function _aeHeroFrame() {
@@ -3149,16 +3149,27 @@ function _aeFinishClose() {
   _ae.placeChanged = false;
   // Focus goes back where the view came from; its ring shows only to someone
   // who left by the keyboard (a ring round the Moon after a tap is noise).
-  var back = _ae.fromHero ? document.querySelector(AE_HERO_SEL) : _aeById(_aeFrom === 'sky' ? 'almanac-sky-canvas' : 'almanac-orrery');
+  var fromHero = _ae.fromHero, from = _aeFrom;
+  var backEl = function () { return fromHero ? document.querySelector(AE_HERO_SEL) : _aeById(from === 'sky' ? 'almanac-sky-canvas' : 'almanac-orrery'); };
   var focusOpts = { preventScroll: true, focusVisible: !!_ae.closedByKey };
   // Under reduced motion every property eases over 0.01 ms (app.css), the
   // visibility each element inherits too, one level a frame: the page
-  // uncovered this instant is hidden to focus for a few frames yet.
-  var tries = AE_FOCUS_TRIES;
+  // uncovered this instant is hidden to focus for a few frames yet. On a
+  // loaded machine that is more frames than a count covers, and the hero
+  // may be drawn again meanwhile (a new element): so it is looked up on
+  // every try, for a time rather than a number of frames, and a focus the
+  // reader has put somewhere else in the meantime is left where it is.
+  var until = performance.now() + AE_FOCUS_MS;
   (function land() {
-    if (_aeIsOpen || !back || !back.focus) return;
-    back.focus(focusOpts);
-    if (document.activeElement !== back && --tries > 0) requestAnimationFrame(land);
+    if (_aeIsOpen) return;
+    var a = document.activeElement;
+    if (a && a !== document.body && a !== document.documentElement && !_ae.el.contains(a)) {
+      var b0 = backEl();
+      if (a !== b0) return;
+    }
+    var back = backEl();
+    if (back && back.focus) back.focus(focusOpts);
+    if ((!back || document.activeElement !== back) && performance.now() < until) requestAnimationFrame(land);
   })();
   _ae.closedByKey = false;
   // Found unsupported, the orrery drops its Earth glow; a paused orrery
