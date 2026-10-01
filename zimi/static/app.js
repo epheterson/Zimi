@@ -20262,6 +20262,10 @@ function openReader(url) {
     try { _defineAttachToDoc(frame); } catch(e) {}
     // Highlights: painted when the page has some, offered when text is selected.
     try { _hlReaderAttach(frame); } catch(e) { console.warn('Highlights:', e); }
+    // Find in page: a find open on the page before is over; Cmd/Ctrl+F with
+    // the article focused opens Zimi's, not the browser's.
+    _findClose();
+    try { _findBindDoc(frame.contentDocument); } catch(e) {}
     try { _sayMissingVideos(frame); } catch(e) {}
     // A consent wall the ARCHIVE rebuilds every time it is opened, and a
     // captured page's JS-driven chrome put back in its place. Both edit the
@@ -22883,6 +22887,68 @@ function _savedStart() {
   else setTimeout(_savedPull, 500);
 }
 
+// ── Find in page ───────────────────────────────────────────────────────────
+// The open article's words: Cmd/Ctrl+F while an article is open (in Zimi's
+// page or in the article), or Find in page in the reader's ⋯ menu. Anywhere
+// else Cmd+F is the browser's own, untouched. The bar and the finding are
+// /static/find.js, fetched the first time a find is asked for.
+var _findLoading = null;
+function _findApplies() {
+  return readerOpen && !_almanacOpen && !_createOpen && !_isMapPage() && !_isAppPage() && !_isPdfPage();
+}
+function _findIsOpen() { return !!(window.ZimiFind && window.ZimiFind.isOpen()); }
+function _findClose() { if (_findIsOpen()) window.ZimiFind.close(); }
+function _findLoad() {
+  if (window.ZimiFind) return Promise.resolve(window.ZimiFind);
+  if (!_findLoading) {
+    _findLoading = new Promise(function (resolve, reject) {
+      var el = document.createElement('script');
+      // The version moves with the file: /static is cached for a year.
+      el.src = '/static/find.js?v=1';
+      el.onload = function () { if (window.ZimiFind) resolve(window.ZimiFind); else { _findLoading = null; reject(); } };
+      el.onerror = function () { _findLoading = null; reject(); };
+      document.head.appendChild(el);
+    });
+  }
+  return _findLoading;
+}
+function openFindInPage() {
+  if (!_findApplies()) return;
+  var frame = document.getElementById('reader-frame'), doc = null;
+  try { doc = frame.contentDocument; } catch (e) {}
+  if (!doc || !doc.body) return;
+  _findLoad().then(function (F) {
+    if (!_findApplies()) return;
+    F.open({
+      host: document.getElementById('reader'),
+      doc: doc,
+      strings: {
+        find: t('find_in_page'), none: t('find_none'), prev: t('find_prev'), next: t('find_next'), close: t('close'),
+        count: function (n, total) { return t('n_of_total', { n: n.toLocaleString(_currentLang), total: total.toLocaleString(_currentLang) }); },
+      },
+      // Closed, the keys go back to the article, where they were.
+      onClose: function () { try { frame.contentWindow.focus(); } catch (e) {} },
+    });
+  }, function () {});
+}
+// Cmd/Ctrl+F, taken for Zimi's find only while there is an article to find
+// in; true when taken.
+function _findKey(e) {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || (e.key !== 'f' && e.key !== 'F')) return false;
+  if (!_findApplies()) return false;
+  e.preventDefault();
+  openFindInPage();
+  return true;
+}
+function _findBindDoc(doc) {
+  if (!doc || doc.__zimiFindBound) return;
+  doc.__zimiFindBound = true;
+  doc.addEventListener('keydown', function (e) {
+    if (_findKey(e)) return;
+    if (e.key === 'Escape' && _findIsOpen()) { e.preventDefault(); _findClose(); }
+  }, true);
+}
+
 // ── Highlights: the shell's side ───────────────────────────────────────────
 // One engine for every reader (/static/highlights.js, docs/features/saving.md).
 // Highlights.attach(doc, ref, opts) is called once per document shown: by the
@@ -23496,6 +23562,7 @@ function openArticle(zim, path, title, opts) {
 function closeReader() {
   if (!readerOpen) return;
   _appsOff();
+  _findClose();
   _ttsStop(); // stop read-aloud when leaving the reader
   // Sync the address bar back to the view the reader was covering — an
   // explicit close otherwise strands the article URL (a reload would
@@ -23765,6 +23832,7 @@ function _isNarrow() {
 }
 
 // Compact SVGs reused by the reader controls when they migrate into the ... menu.
+var _TBM_FIND_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5"/><circle cx="16.5" cy="15.5" r="3.5"/><path d="M19 18l2.5 2.5"/></svg>';
 var _TBM_TTS_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
 var _TBM_NEWTAB_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
 // The same + the inline button draws, at menu-row weight.
@@ -23835,7 +23903,12 @@ function _buildTopbarMenuHtml() {
       if (!_wikiReading) readerGroup += '<div class="tbm-reader-settings">' + _readerCompactControlsHtml() + '</div>';
       readerGroup += _readerActionRowsHtml();
     }
-    // 3. Read aloud.
+    // 3. Find in page: on a phone there is no Cmd+F to reach for.
+    if (_findApplies()) {
+      readerGroup += '<button class="topbar-menu-item" id="tbm-find" onclick="_closeTopbarMenu();openFindInPage()">' + _TBM_FIND_ICON +
+        ' <span class="tbm-label">' + tH('find_in_page') + '</span></button>';
+    }
+    // 4. Read aloud.
     if (_TTS_AVAILABLE && !_isMapPage() && !_isAppPage() && !_isPdfPage()) {
       readerGroup += '<button class="topbar-menu-item" id="tbm-tts" aria-pressed="' + (_ttsSpeaking ? 'true' : 'false') +
         '" onclick="event.stopPropagation();_ttsToggle()">' + _TBM_TTS_ICON +
@@ -24058,9 +24131,11 @@ async function randomArticle(event) {
 
 // ── Keyboard ──
 document.addEventListener('keydown', e => {
+  if (_findKey(e)) return;
   if (e.key === 'Escape') {
     // Topmost popovers first — otherwise Escape falls through to goBack()/close
     // and dumps a keyboard user out of the reader instead of shutting the popover.
+    if (_findIsOpen()) { _findClose(); return; }
     if (_extCur) { _extHide(); return; }
     if (_definePopover && _definePopover.classList.contains('open')) { _defineHide(); return; }
     var _rp = document.getElementById(_READER_PALETTE_ID);

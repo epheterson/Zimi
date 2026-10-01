@@ -1427,6 +1427,30 @@
   .reader-view { position: fixed; top: var(--under-topbar); left: 0; right: 0; bottom: 0; display: none; flex-direction: column; z-index: 100; background: var(--bg); }
   .reader-view.open { display: flex; animation: fadeIn 0.15s ease; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  /* Find in page (find.js): floats over the article's top corner, the width
+     of the reader on a phone. */
+  .find-bar {
+    display: none; position: absolute; top: 8px; inset-inline-end: 12px; z-index: 5;
+    width: min(380px, calc(100% - 24px)); box-sizing: border-box;
+    align-items: center; gap: 2px; padding-block: 4px; padding-inline: 12px 4px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22);
+  }
+  .find-bar.open { display: flex; animation: fadeIn 0.12s ease; }
+  .find-input {
+    flex: 1; min-width: 0; padding: 6px 2px; border: none; outline: none; background: transparent;
+    color: var(--text); font: inherit; font-size: 15px; -webkit-appearance: none; appearance: none;
+  }
+  .find-input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+  .find-count { flex-shrink: 0; padding-inline: 6px; font-size: 12px; color: var(--text2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .find-bar.find-none .find-count { color: var(--error); }
+  .find-bar .find-step, .find-bar .find-close { width: 32px; height: 32px; }
+  .find-bar .find-step:disabled { opacity: 0.35; cursor: default; background: transparent; color: var(--text2); }
+  /* A phone: a band over the article, not a card on it, so the first lines
+     move down rather than hide under it. */
+  @media (max-width: 600px) {
+    .find-bar { position: static; order: -1; width: auto; margin: 8px 8px 0; box-shadow: none; }
+  }
   #reader-frame { flex: 1; border: none; width: 100%; background: #fff; }
   /* The header steps aside on a phone while an app or the Almanac is read
      (body.chrome-away, set by _chromeScroll in app.js): it slides up and
@@ -2641,12 +2665,13 @@
   }
   .search-chip.search-chip-static { padding-inline-end: 12px; }
   .search-chip-label { min-width: 0; overflow-wrap: anywhere; }
-  .search-chip-x, .sg-forget {
+  .search-chip-x, .sg-forget, .find-step, .find-close {
     display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
     width: 24px; height: 24px; padding: 0; border: none; border-radius: 50%;
     background: transparent; color: var(--text2); cursor: pointer; transition: color 0.12s, background 0.12s;
   }
-  .search-chip-x:hover, .search-chip-x:focus-visible, .sg-forget:hover, .sg-recent-clear:hover { color: var(--amber); background: var(--amber-glow); }
+  .search-chip-x:hover, .search-chip-x:focus-visible, .sg-forget:hover, .sg-recent-clear:hover,
+  .find-step:hover:not(:disabled), .find-step:focus-visible, .find-close:hover, .find-close:focus-visible { color: var(--amber); background: var(--amber-glow); }
   /* Recent in the empty search dropdown: each row a × away from gone, the
      searches all at once from the header. */
   .sg-recent-head {
@@ -3638,6 +3663,7 @@
   /* No hover to reveal it on a phone: the × is there in full, finger-sized. */
   .sg-forget { width: 40px; height: 40px; opacity: 1; }
   .sg-recent-clear, .result-more { min-height: 40px; }
+  .find-bar .find-step, .find-bar .find-close { width: 40px; height: 40px; }
   .dc-dismiss, .lang-banner-dismiss, .search-chip-x { position: relative; }
   .dc-dismiss::after, .lang-banner-dismiss::after, .search-chip-x::after, .topbar-search .search-help::after {
     content: ''; position: absolute; inset: -12px;
