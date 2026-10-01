@@ -14,6 +14,18 @@ Running Zimi as a service: resolving configuration, backing it up, air-gapping i
 
 **Self-update channels.** **Check for updates** in Server settings decides whether Zimi looks at all: **Automatically** (the default) asks GitHub when an admin opens Server settings, at most once a day, and lets the desktop app's own updater run; **Ask first** looks only when an admin presses Check now, and the desktop updater does not start; **Never** looks for nothing. `ZIMI_UPDATE_CHECK` (`ask`, `auto`, `never`) wins over the saved choice. Two channels: **latest** (default — only finished releases, the day they ship) and **beta** (whatever is newest, pre-release or final). An optional **delay** defers adopting a release by N days (choices 0/1/3/7/14/30, max 365) so you can let a release soak. `ZIMI_OFFLINE=1` performs no update check on any channel regardless. This is Zimi-build updating; ZIM *content* updates are in [Library & catalog](getting-and-sharing.md).
 
+**Rootless Podman.** The same image runs under Podman with two flags Docker never needed:
+
+```bash
+mkdir -p zims zimi-config
+podman run -d --name zimi --network host \
+  --userns=keep-id:uid=1000,gid=1000 \
+  -v ./zims:/zims:Z -v ./zimi-config:/config:Z \
+  docker.io/epheterson/zimi
+```
+
+`--userns=keep-id:uid=1000,gid=1000` maps the image's user to you, so the ZIMs Zimi downloads into `./zims` are yours to read and delete. `:Z` is the SELinux label Fedora and RHEL need on a bind mount, harmless elsewhere. To start it at boot, install [deploy/podman/zimi.container](../../deploy/podman/zimi.container) under `~/.config/containers/systemd/` (a Quadlet unit), then `systemctl --user daemon-reload && systemctl --user start zimi`.
+
 **Deploy manifests.** `deploy/` ships `docker-compose.yml`, `kubernetes.yaml`, and a `README.md` covering host/bridge networking and air-gap. See also [Networking & deployment modes](../deployment-networking.md).
 
 **Native desktop window.** `zimi desktop` starts the server and opens it in a native window instead of a browser tab (`zimi serve --ui` does the same thing). It needs pywebview: `pip install 'zimi[desktop]'`; the packaged macOS, Windows and Linux desktop builds bundle it. On Linux the window is WebKitGTK, taken from the distro (`libwebkit2gtk-4.1-0` or 4.0, and `python3-gi` for a pip install); a machine without it gets the same app in the system browser, which `zimi desktop --browser` or `ZIMI_DESKTOP_BROWSER=1` asks for outright. Zimi sets `WEBKIT_DISABLE_DMABUF_RENDERER=1` and `WEBKIT_DISABLE_COMPOSITING_MODE=1` unless you set them, because WebKitGTK's GPU path draws a black window on some drivers. Everything else about the instance is identical: same library, same config, same port.
