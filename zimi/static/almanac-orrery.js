@@ -378,13 +378,16 @@ function _orreryCamStep(target) {
 
 // ── The Earth glow: a way into the Earth view (almanac-earth.js) ──
 // Drawn only while that view exists, so a build without it shows no dead glow.
+// Still and quiet: the hero Moon is the main way into the 3D view, so Earth
+// keeps a faint halo and a thin ring, no breath and no beacon (Eric,
+// 2026-09-30).
 var _EARTH_GLOW_SCALE = 2.6;        // glow radius, in Earth radii
-var _EARTH_GLOW_PERIOD_MS = 3200;   // one slow breath
-var _EARTH_GLOW_ALPHA = 0.10;       // resting strength
-var _EARTH_GLOW_PULSE = 0.08;       // how much the breath adds
+var _EARTH_GLOW_ALPHA = 0.09;       // its strength
+var _EARTH_RING_AT = 0.62;          // the ring, as a share of the glow's radius
+var _EARTH_RING_ALPHA = 0.16;
 
 // Once a first open finds no WebGL (almanac-earth.js sets .unsupported), the
-// glow and the Earth tip's button go, and Earth opens its article again.
+// glow and the tips' buttons go, and Earth and the Sun open their articles again.
 function _orreryEarthViewAvailable() {
   return typeof window.openAlmanacEarth === 'function' && !window.openAlmanacEarth.unsupported;
 }
@@ -398,12 +401,9 @@ function _orreryOpenEarthView(target) {
 // ── Saying what the orrery does, until it has been done ──
 // A phone has no hover, and nothing said that a planet flies or that Earth
 // opens in 3D (Eric, 2026-09-29, found neither). Until each has been done
-// once on this device, a line under the orrery says it (on touch), and Earth
-// sends out a slow ring over its glow. Done, each goes quiet for good.
+// once on this device, a line under the orrery says it (on touch). Done,
+// each goes quiet for good.
 var _ORRERY_TRIED_KEY = 'zimi_orrery_tried';
-var _ORRERY_BEACON_PERIOD_MS = 2400;   // one ring, out and gone
-var _ORRERY_BEACON_REACH = 4.2;        // how far it goes, in Earth radii
-var _ORRERY_BEACON_ALPHA = 0.55;       // how bright it starts
 var _orreryTriedCache = null;          // read once: the draw loop asks every frame
 function _orreryTried() {
   if (!_orreryTriedCache) {
@@ -427,16 +427,6 @@ function _orreryRenderHint() {
   if (!tried.earth && _orreryEarthViewAvailable()) parts.push(t('alm_orr_hint_earth'));
   el.textContent = parts.join(' · ');
   el.hidden = !parts.length;
-}
-// The ring's radius (in Earth radii) and strength at an instant; a still
-// ring when motion is reduced.
-function _orreryBeacon(nowMs, reduced) {
-  if (reduced) return { r: _EARTH_GLOW_SCALE, a: _ORRERY_BEACON_ALPHA * 0.6 };
-  var p = (nowMs % _ORRERY_BEACON_PERIOD_MS) / _ORRERY_BEACON_PERIOD_MS;
-  return { r: 1 + (_ORRERY_BEACON_REACH - 1) * p, a: _ORRERY_BEACON_ALPHA * (1 - p) };
-}
-function _orreryEarthGlowAlpha(nowMs) {
-  return _EARTH_GLOW_ALPHA + _EARTH_GLOW_PULSE * (0.5 + 0.5 * Math.sin(2 * Math.PI * nowMs / _EARTH_GLOW_PERIOD_MS));
 }
 
 var _orreryPlanetPositions = []; // [{name, x, y, r, glowR?}] in world CSS px for hover
@@ -1088,30 +1078,20 @@ function _drawOrrery(canvas, dpr) {
       ctx.restore();
     }
 
-    // The Earth glow: a slow breath around the Earth that invites the tap into
-    // the Earth view, drawn only while that view exists.
+    // The Earth glow: a still halo that says the tap leads into the Earth
+    // view, drawn only while that view exists.
     var glowR = 0;
     if (names[i] === 'Earth' && _orreryEarthViewAvailable()) {
       glowR = pr * _EARTH_GLOW_SCALE;
-      var ga = _orreryEarthGlowAlpha(typeof performance !== 'undefined' && !_orreryReduceMotion() ? performance.now() : 0);
       var eg = ctx.createRadialGradient(px, py, pr, px, py, glowR);
       eg.addColorStop(0, _hexToRgba(p.glow, 0));
-      eg.addColorStop(0.45, _hexToRgba(p.glow, ga));
+      eg.addColorStop(0.45, _hexToRgba(p.glow, _EARTH_GLOW_ALPHA));
       eg.addColorStop(1, _hexToRgba(p.glow, 0));
       ctx.fillStyle = eg;
       ctx.beginPath(); ctx.arc(px, py, glowR, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(px, py, glowR * 0.62, 0, Math.PI * 2);
-      ctx.strokeStyle = _hexToRgba(p.glow, ga);
+      ctx.beginPath(); ctx.arc(px, py, glowR * _EARTH_RING_AT, 0, Math.PI * 2);
+      ctx.strokeStyle = _hexToRgba(p.glow, _EARTH_RING_ALPHA);
       ctx.lineWidth = 0.8 * u; ctx.stroke();
-      if (!_orreryTried().earth) {
-        // Still when motion is reduced, and when the orrery is paused: no
-        // next frame comes, and a ring caught fading out would stay unseen.
-        var reduced = _orreryReduceMotion() || !_orreryPlaying;
-        var bc = _orreryBeacon(typeof performance !== 'undefined' ? performance.now() : 0, reduced);
-        ctx.beginPath(); ctx.arc(px, py, pr * bc.r, 0, Math.PI * 2);
-        ctx.strokeStyle = _hexToRgba(p.glow, bc.a);
-        ctx.lineWidth = 1.5 * u; ctx.stroke();
-      }
     }
 
     // Record position for hover (world CSS px)

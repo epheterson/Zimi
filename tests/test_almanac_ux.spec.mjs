@@ -200,7 +200,7 @@ const phoneCtx = (browser, extra) => browser.newContext(Object.assign({ viewport
 const hintText = (page) => page.evaluate(() => { const h = document.getElementById('orrery-hint'); return h.hidden ? '' : h.textContent; });
 
 test.describe('what a tap on the orrery does', () => {
-  test('on a phone it is said, until done, and Earth rings', async ({ browser }) => {
+  test('on a phone it is said, until done, and Earth glows still', async ({ browser }) => {
     const ctx = await phoneCtx(browser);
     const page = await ctx.newPage();
     await openAlmanac(page);
@@ -214,14 +214,19 @@ test.describe('what a tap on the orrery does', () => {
     expect(hint.y).toBeGreaterThanOrEqual(orr.y + orr.height - 1);
     expect(hint.x).toBeGreaterThanOrEqual(0);
     expect(hint.x + hint.width).toBeLessThanOrEqual(PHONE.width);
-    // Earth's ring, drawn while the Earth view has not been opened: it
-    // grows and fades as it goes, and holds still when motion is reduced.
+    // Earth's glow is still: the same pixels a moment apart (no breath, no
+    // beacon; the hero Moon is the main way into the 3D view now).
     expect(await page.evaluate(() => !_orreryTried().earth)).toBe(true);
-    const ring = await page.evaluate(() => [_orreryBeacon(600, false), _orreryBeacon(1800, false), _orreryBeacon(1800, true), _orreryBeacon(600, true)]);
-    expect(ring[1].r).toBeGreaterThan(ring[0].r);
-    expect(ring[1].a).toBeLessThan(ring[0].a);
-    expect(ring[2]).toEqual(ring[3]);
-    expect(ring[2].a).toBeGreaterThan(0.2);
+    const glowAt = () => page.evaluate(() => {
+      const cv = document.getElementById('almanac-orrery'), d = _orreryDpr;
+      _drawOrrery(cv, d);
+      const p = _orreryPlanetPositions.find((x) => x.name === 'Earth');
+      const s = _orreryWorldToScreen(p.x, p.y), r = Math.ceil(p.glowR * 1.2);
+      return Array.from(cv.getContext('2d').getImageData((s.x - r) * d, (s.y - r) * d, 2 * r * d, 2 * r * d).data).join(',');
+    });
+    const glow0 = await glowAt();
+    await page.waitForTimeout(900);
+    expect(await glowAt()).toBe(glow0);
 
     // Earth opened once: that part goes, and stays gone.
     const e = await bodyAt(page, 'Earth');
