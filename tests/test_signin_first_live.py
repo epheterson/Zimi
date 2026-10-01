@@ -152,3 +152,33 @@ def test_create_still_asks_first_and_opens_after(served):
         pg.wait_for_function("() => _createOpen === true", timeout=10000)
         assert not pg.evaluate(MODAL)
         br.close()
+
+
+def test_a_manage_link_never_opens_while_the_password_answer_is_being_read(served):
+    """The boot's probe said Manage was available a moment before it read
+    whether a password is needed. A Manage link landing in that moment opened
+    Manage with no sign-in (CI's slow runner). The body is held here so the
+    moment is long."""
+    from playwright.sync_api import sync_playwright
+
+    slow = """(() => {
+      const json = Response.prototype.json;
+      Response.prototype.json = function () {
+        const r = this, f = json.bind(this);
+        if (!/\\/manage\\/has-password/.test(r.url)) return f();
+        return new Promise(res => setTimeout(() => res(f()), 1500));
+      };
+    })();"""
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = br.new_page(viewport={"width": 390, "height": 844})
+        pg.add_init_script(slow)
+        pg.goto(served + "/")
+        pg.wait_for_function("() => typeof enterManage === 'function'", timeout=10000)
+        # A Manage link tapped while the answer is still being read.
+        pg.wait_for_timeout(400)
+        pg.evaluate("() => { enterManage(); }")
+        pg.wait_for_function(MODAL, timeout=10000)
+        pg.wait_for_timeout(800)
+        assert pg.evaluate(BEHIND)["manage"] is False, pg.evaluate(BEHIND)
+        br.close()

@@ -2353,8 +2353,11 @@ async function _probeManageAuth() {
     // Public pre-auth endpoint — learns password state without a 401 probe.
     const hres = await serverFetch('/manage/has-password');
     if (!hres.ok) { manageEnabled = false; return; }  // 404 = manage disabled
-    manageEnabled = true;
+    // Enabled only once the password answer is read: in between, a Manage
+    // link saw manageEnabled with no password required and opened Manage
+    // unasked (a slow CI runner caught the gap).
     const h = await hres.json();
+    manageEnabled = true;
     const saved = _readManageToken();
     if (saved) _manageToken = saved;
     if (h.has_password && !_manageToken) {
