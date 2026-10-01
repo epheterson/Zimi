@@ -2,7 +2,7 @@
 ZimiTube, ZimiExchange, Reddot and Maps each save, reopen where you were,
 let go, and put a thing in a list with the one picker the Saved panel uses.
 
-- ZimiTube: Watch later, Like and Lists from the player; Continue watching
+- ZimiTube: Save, Like and Lists from the player; Continue watching
   from the time you left (an audiobook from its track); the home's rows.
 - ZimiExchange and Reddot: Save, Like and Lists under the title; the Saved
   tab with the lists as chips; a long thread reopens where you were.
@@ -166,7 +166,7 @@ def _shot(pg, name):
         pg.screenshot(path=os.path.join(SHOTS, name))
 
 
-def test_zimitube_watch_later_like_lists_and_continue_watching(phone):
+def test_zimitube_save_like_lists_and_continue_watching(phone):
     pg, names = phone
     pg.evaluate("() => openTube()")
     frame = pg.frame_locator("#reader-frame")
@@ -218,8 +218,8 @@ def test_zimitube_watch_later_like_lists_and_continue_watching(phone):
     pg.wait_for_timeout(400)
     assert _rows(pg) == [
         "Continue watching: " + title,
-        # An audiobook is listened to: the row says so (tube.html laterWord).
-        ("Watch later: " if video else "Listen later: ") + title,
+        # One verb in every app: a video and an audiobook are both Saved.
+        "Saved: " + title,
         "Liked: " + title,
         "Lists: Grammar",
     ], _rows(pg)
@@ -236,7 +236,7 @@ def test_zimitube_watch_later_like_lists_and_continue_watching(phone):
     frame.locator("#mine .shelf[data-row=continue] .card").first.click()
     _wait_media(pg, 20)
     assert abs(_media(pg)["t"] - 22) < 2, _media(pg)
-    # Let the save go: out of Watch later and the list; a like is apart
+    # Let the save go: out of Saved and the list; a like is apart
     # from saving (1.12.1), it stays.
     frame.locator(".svb[data-sv=save]").click()
     assert not pg.evaluate("() => Saved.all().length")
@@ -637,7 +637,7 @@ def test_an_app_home_asks_the_server_for_nothing_more(phone):
         pg.remove_listener("request", handler)
         assert seen == want, (call, seen)
         assert _in_frame(
-            pg, "(w) => /Saved|Watch later/.test(w.document.body.innerText)"
+            pg, "(w) => /Saved/.test(w.document.body.innerText)"
         ), call
         pg.evaluate("() => closeReader()")
         pg.wait_for_timeout(200)

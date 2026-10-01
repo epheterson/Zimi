@@ -7,7 +7,7 @@ where you were, kept with the account when signed in.
   what the other made reaches the first.
 - Bookshelf, the app on it end to end: a book read on the phone is under
   Continue reading on the tablet and opens there where the phone left it;
-  Add to my shelf puts it on My shelf; the Saved panel opens on Bookshelf's own.
+  Save puts it on the Saved shelf; the Saved panel opens on Bookshelf's own.
 
 Run: pytest tests/test_saved_live.py -v
 """
@@ -381,7 +381,7 @@ def test_a_delete_on_one_device_survives_the_others_sync(served):
         br.close()
 
 
-def test_bookshelf_continue_reading_and_my_shelf_follow_the_account(served):
+def test_bookshelf_continue_reading_and_saved_follow_the_account(served):
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
@@ -392,7 +392,7 @@ def test_bookshelf_continue_reading_and_my_shelf_follow_the_account(served):
         frame = phone.frame_locator("#reader-frame")
         frame.locator(".bk").first.wait_for()
         frame.locator(".bk[data-book='1']").first.click()
-        frame.locator(".svb[data-sv=save]").click()  # Add to my shelf
+        frame.locator(".svb[data-sv=save]").click()  # Save
         phone.wait_for_function(
             "() => Saved.has('gutenberg_mul\\nLiber.1')", timeout=5000
         )
@@ -423,7 +423,7 @@ def test_bookshelf_continue_reading_and_my_shelf_follow_the_account(served):
             "() => Array.from(document.getElementById('reader-frame').contentDocument.querySelectorAll('.shelf')).map(s => s.querySelector('h2').textContent + ':' + Array.from(s.querySelectorAll('.bk .t')).map(t => t.textContent).join(','))"
         )
         assert (
-            "Continue reading:Liber" in shelves and "My shelf:Liber" in shelves
+            "Continue reading:Liber" in shelves and "Saved:Liber" in shelves
         ), shelves
         # The Saved panel, opened over Bookshelf, is on Bookshelf's own.
         tablet.click("#bm-panel-btn")

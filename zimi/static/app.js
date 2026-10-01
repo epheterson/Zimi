@@ -18262,7 +18262,7 @@ function _booksStrings() {
   var lcc = {};
   _BOOKS_LCC.forEach(function(c) { lcc[c] = t('books_lcc_' + c); });
   return _appStrings('books', ['books_shelf', 'books_authors', 'books_subjects', 'books_eras', 'books_languages', 'books_popular', 'books_recent',
-    'books_continue', 'books_my_shelf', 'books_add_shelf', 'books_on_shelf', 'books_all_books', 'books_see_all', 'books_sort_popular', 'books_sort_title', 'books_sort_author', 'books_sort_recent',
+    'books_continue', 'books_all_books', 'books_see_all', 'books_sort_popular', 'books_sort_title', 'books_sort_author', 'books_sort_recent',
     'books_sort_name', 'books_sort_books', 'books_read', 'books_resume', 'books_epub', 'books_more_by', 'books_added', 'books_language',
     'books_subject', 'books_era', 'books_author', 'books_more', 'books_none', 'books_empty', 'books_book', 'books_books', 'books_bce', 'books_bce_ce',
     'books_pending', 'books_epub_only', 'books_load_failed', 'books_load_part', 'books_reading', 'books_sources', 'books_source', 'books_format',
@@ -19459,7 +19459,7 @@ function _tubeStrings(play) {
   _installedVideoZims().forEach(function(z) { if (z.language) langs[z.language] = _langDisplayName(z.language) || z.language; });
   return _appStrings('tube', ['tube_videos', 'tube_video', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay',
     'tube_theater', 'tube_pip', 'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_track', 'tube_tracks',
-    'tube_no_media', 'tube_missing', 'tube_watch_later', 'tube_listen_later', 'tube_continue', 'tube_recording', 'tube_recordings'], { play: play || '', langs: langs });
+    'tube_no_media', 'tube_missing', 'tube_continue', 'tube_recording', 'tube_recordings'], { play: play || '', langs: langs });
 }
 
 // A thing inside an app (a video, a question, a post) is a step in history
@@ -21213,6 +21213,20 @@ function _savedCurrentApp() {
   return '';
 }
 function _savedListName(l) { return l.builtin ? t('saved_liked') : l.name; }
+// What was saved, by kind, in the store's order of kinds; each kind's items
+// keep the order they came in.
+var _BM_KIND = '__kind_';   // a kind group's collapse id: _BM_KIND + kind
+var _BM_KIND_ORDER = ['article', 'book', 'video', 'question', 'post', 'place', 'word'];
+function _bmLooseByKind(items) {
+  var by = {};
+  items.forEach(function (it) { var k = it.kind || 'article'; (by[k] = by[k] || []).push(it); });
+  var order = _BM_KIND_ORDER.concat(Object.keys(by).filter(function (k) { return _BM_KIND_ORDER.indexOf(k) < 0; }));
+  return order.filter(function (k) { return by[k]; }).map(function (k) { return { kind: k, items: by[k] }; });
+}
+function _savedKindName(kind) {
+  var key = 'saved_kind_' + kind, s = t(key);
+  return s && s !== key ? s : t('saved_kind_article');
+}
 function _bmScopeQuery() { return _bmScope ? { app: _bmScope } : {}; }
 function _bmSetScope(app) { _bmScope = app || ''; _bmRerender(); }
 
@@ -21283,11 +21297,17 @@ function _renderBookmarksContent() {
     html += _bmGroupRowHtml(l.id, _savedListName(l), l.builtin ? _BM_HEART_SVG : _BM_LIST_SVG, l.count, !l.builtin || l.count > 0);
     if (!_bmIsCollapsed(l.id)) Saved.itemsFor({ list: l.id, app: q.app }).forEach(function (it) { html += _bmItemWithHlHtml(it, l.id, 1); });
   });
-  // The items in no list, under a name of their own once anything is above
-  // them: bare, they read as the last list's.
-  var grouped = loose.length && lists.length;
-  if (grouped) html += _bmGroupRowHtml(_BM_ROOT, t('saved_unlisted'), _BM_PAGE_SVG, loose.length, false);
-  if (!grouped || !_bmIsCollapsed(_BM_ROOT)) loose.forEach(function (it) { html += _bmItemWithHlHtml(it, _BM_ROOT, grouped ? 1 : 0); });
+  // The items in no list, named by what they are (Articles, Books, Videos...)
+  // once anything is above them or there is more than one kind: bare, they
+  // read as the last list's. Each group is the top level still (data-fid ''):
+  // a drop on it takes an item out of its list.
+  var kinds = _bmLooseByKind(loose);
+  var grouped = loose.length && (lists.length || kinds.length > 1);
+  kinds.forEach(function (g) {
+    var cid = _BM_KIND + g.kind;
+    if (grouped) html += _bmGroupRowHtml(_BM_ROOT, _savedKindName(g.kind), g.kind === 'place' ? _BM_PIN_SVG : _BM_PAGE_SVG, g.items.length, false, cid);
+    if (!grouped || !_bmIsCollapsed(cid)) g.items.forEach(function (it) { html += _bmItemWithHlHtml(it, _BM_ROOT, grouped ? 1 : 0); });
+  });
   // Every highlight on its own, the latest first, each with its page.
   if (hls.length) {
     html += _bmGroupRowHtml(_BM_HIGHLIGHTS, t('saved_highlights'), _HL_SVG.replace('<svg ', '<svg width="17" height="17" '), hls.length, false);
@@ -21376,9 +21396,11 @@ function _bmScopeHtml() {
 function _bmGearHtml() {
   return '<button class="bm-gear" data-role="menu" tabindex="-1" title="' + escAttr(t('more_actions')) + '" aria-label="' + escAttr(t('more_actions')) + '">⋯</button>';
 }
-function _bmGroupRowHtml(id, name, icon, count, menu) {
-  var collapsed = _bmIsCollapsed(id);
-  return '<div class="bm-row bm-folder' + (id === _BM_CONTINUE ? ' bm-continue' : '') + '" data-fid="' + escAttr(id) + '" data-depth="0"' +
+// cid: what collapses it, when not its id (a kind group: the top level, by kind).
+function _bmGroupRowHtml(id, name, icon, count, menu, cid) {
+  var collapsed = _bmIsCollapsed(cid || id);
+  return '<div class="bm-row bm-folder' + (id === _BM_CONTINUE ? ' bm-continue' : '') + '" data-fid="' + escAttr(id) + '"' +
+    (cid ? ' data-cid="' + escAttr(cid) + '"' : '') + ' data-depth="0"' +
     ' style="padding-inline-start:6px" role="treeitem" aria-level="1" aria-expanded="' + (!collapsed) + '" tabindex="-1">' +
     '<span class="bm-twist' + (collapsed ? '' : ' open') + '" data-role="twist">▸</span>' +
     '<span class="bm-ficon">' + icon + '</span>' +
@@ -21464,13 +21486,19 @@ var _bmFocusKey = null;
 function _bmRowKey(row) {
   if (!row) return null;
   if (row.classList.contains('bm-hl')) return 'h:' + row.dataset.fid + '\t' + row.dataset.hid;
-  return row.classList.contains('bm-folder') ? 'f:' + row.dataset.fid : 'b:' + row.dataset.fid + '\t' + row.dataset.key;
+  return row.classList.contains('bm-folder') ? 'f:' + _bmGroupId(row) : 'b:' + row.dataset.fid + '\t' + row.dataset.key;
 }
+// A group row's own id, for collapse and focus: a kind group's (data-cid),
+// else its list's.
+function _bmGroupId(row) { return row.dataset.cid || row.dataset.fid; }
 function _bmRowByKey(key) {
   if (!key) return null;
   var host = document.getElementById('bm-tree');
   if (!host) return null;
-  if (key.slice(0, 2) === 'f:') return host.querySelector('.bm-folder[data-fid="' + _cssEsc(key.slice(2)) + '"]');
+  if (key.slice(0, 2) === 'f:') {
+    var id = _cssEsc(key.slice(2));
+    return host.querySelector('.bm-folder[data-cid="' + id + '"]') || host.querySelector('.bm-folder[data-fid="' + id + '"]:not([data-cid])');
+  }
   var tab = key.indexOf('\t');
   if (key.slice(0, 2) === 'h:') return host.querySelector('.bm-hl[data-fid="' + _cssEsc(key.slice(2, tab)) + '"][data-hid="' + _cssEsc(key.slice(tab + 1)) + '"]');
   return host.querySelector('.bm-bk[data-fid="' + _cssEsc(key.slice(2, tab)) + '"][data-key="' + _cssEsc(key.slice(tab + 1)) + '"]');
@@ -21510,7 +21538,7 @@ function _bmTreeKeydown(e) {
   var rows = _bmRows();
   var i = rows.indexOf(row);
   var isFolder = row.classList.contains('bm-folder');
-  var expanded = isFolder && !_bmIsCollapsed(row.dataset.fid);
+  var expanded = isFolder && !_bmIsCollapsed(_bmGroupId(row));
   switch (e.key) {
     case 'ArrowDown': e.preventDefault(); _bmFocusRow(rows[Math.min(i + 1, rows.length - 1)]); break;
     case 'ArrowUp': e.preventDefault(); _bmFocusRow(rows[Math.max(i - 1, 0)]); break;
@@ -21518,12 +21546,12 @@ function _bmTreeKeydown(e) {
     case 'End': e.preventDefault(); _bmFocusRow(rows[rows.length - 1]); break;
     case 'ArrowRight':
       e.preventDefault();
-      if (isFolder && !expanded) { _bmFocusKey = _bmRowKey(row); _bmToggleCollapse(row.dataset.fid); _bmRerender(); }
+      if (isFolder && !expanded) { _bmFocusKey = _bmRowKey(row); _bmToggleCollapse(_bmGroupId(row)); _bmRerender(); }
       else if (isFolder && rows[i + 1]) _bmFocusRow(rows[i + 1]);
       break;
     case 'ArrowLeft':
       e.preventDefault();
-      if (isFolder && expanded) { _bmFocusKey = _bmRowKey(row); _bmToggleCollapse(row.dataset.fid); _bmRerender(); }
+      if (isFolder && expanded) { _bmFocusKey = _bmRowKey(row); _bmToggleCollapse(_bmGroupId(row)); _bmRerender(); }
       else _bmFocusRow(_bmParentRow(row));
       break;
     case 'Enter': case ' ':
@@ -21808,7 +21836,7 @@ function _bmEnsureBound() {
     }
     if (row.classList.contains('bm-folder')) {
       // Twist or anywhere on the group row toggles collapse.
-      _bmToggleCollapse(row.dataset.fid);
+      _bmToggleCollapse(_bmGroupId(row));
       _bmRerender();
     } else if (row.classList.contains('bm-missing')) {
       _showToast(t('bm_source_missing'));

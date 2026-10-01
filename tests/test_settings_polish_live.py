@@ -299,7 +299,7 @@ def test_history_and_saved_are_two_panels(served, phone):
     assert got["title"] == "History" and got["tabs"] == 0, got
     assert got["first"] == "bm-tree" and got["rows"] == ["Continue", "A book"], got
     assert got["head"] <= 50 and got["lit"], got
-    # The bookmarks mark: Saved, no Continue, the loose items are Bookmarks.
+    # The bookmarks mark: Saved, no Continue, the loose items named by kind (Articles).
     pg.locator("#bm-panel-btn").tap()
     pg.wait_for_selector("#bm-tree .bm-folder")
     got = pg.evaluate(
@@ -310,7 +310,7 @@ def test_history_and_saved_are_two_panels(served, phone):
       lit: [document.getElementById('bm-panel-btn').classList.contains('panel-open'), document.getElementById('library-btn').classList.contains('panel-open')] })"""
     )
     assert got["title"] == "Saved" and got["head"] <= 50, got
-    assert "Bookmarks" in got["names"] and "Saved" not in got["names"], got
+    assert "Articles" in got["names"] and "Bookmarks" not in got["names"] and "Saved" not in got["names"], got
     assert "Continue" not in got["names"], got
     assert got["top"] <= 112 and got["lit"] == [True, False], got
     # The keyboard: H and B, Escape closes; Continue's tree takes arrows.
