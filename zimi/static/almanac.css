@@ -7,6 +7,12 @@
    margins provide the flow spacing; 8px is just edge breathing for the
    footer. */
 .almanac-content { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding: 24px 16px 8px; overscroll-behavior: contain; }
+/* The Almanac keeps its own content still when a section arrives late
+   (_almKeepStill in almanac.js); the browser's anchoring would add to it. */
+.almanac-content { overflow-anchor: none; }
+/* Sections that arrive late hold their margins inside them, so the height the
+   keep-still watcher sees is the height they take. */
+#almanac-place, #almanac-rosetta { display: flow-root; }
 .almanac-inner { max-width: 600px; margin: 0 auto; }
 
 .alm-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }

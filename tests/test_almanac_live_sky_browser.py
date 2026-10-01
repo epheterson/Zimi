@@ -125,6 +125,17 @@ def _tap_body(pg, kind, name=None):
     pg.touchscreen.tap(b["x"], b["y"])
 
 
+def _wait_still(pg, sel):
+    """Until the element holds its place on screen for a few frames."""
+    pg.wait_for_function(
+        "(s) => { const y = document.querySelector(s).getBoundingClientRect().top;"
+        " const w = window.__still || (window.__still = { y: null, n: 0 });"
+        " w.n = y === w.y ? w.n + 1 : 0; w.y = y; return w.n >= 3; }",
+        arg=sel,
+        polling=150,
+    )
+
+
 def _wait_view(pg, target):
     pg.wait_for_function(
         "(t) => _aeIsOpen && _ae.preset === t",
@@ -193,7 +204,9 @@ def test_the_orrery_sun_opens_the_3d_view_on_the_sun(browser, served):
         pg.evaluate(
             "_orrerySnapToNow(); document.getElementById('almanac-orrery').scrollIntoView({ block: 'center' })"
         )
-        pg.wait_for_timeout(400)
+        # The bar above the Almanac slides away after a scroll down; tap once
+        # the orrery has stopped moving with it.
+        _wait_still(pg, "#almanac-orrery")
         sun = pg.evaluate(
             "() => { const r = document.getElementById('almanac-orrery').getBoundingClientRect();"
             " const s = _orreryWorldToScreen(_orrerySunPos.x, _orrerySunPos.y); return { x: r.left + s.x, y: r.top + s.y }; }"
