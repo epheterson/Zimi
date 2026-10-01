@@ -68,7 +68,7 @@ What reaches nothing:
 | `ZIMI_UPDATE_CHECK` | env / Server settings | `auto` | Whether Zimi looks for its own updates: `auto` (when Server settings opens, at most daily, and the desktop updater), `ask` (only on Check now) or `never` |
 | `ZIMI_SATELLITE_UPDATES` | env / Server settings / the Earth view's gear | `ask` | Satellite data for the Almanac's 3D Earth from CelesTrak: `ask` (only when an admin asks), `auto` (in the background, at most every six hours) or `never` |
 | `ZIMI_MANAGE` | env / config `manage` | `1` | `0` disables `/manage/*` (and thus the `/metrics` gate's home) |
-| `ZIMI_RATE_LIMIT` / `_TRUSTED` / `_LOGIN` | env | — | Request rate limits (frozen at startup) |
+| `ZIMI_RATE_LIMIT` / `_TRUSTED` / `_LOGIN` | env | — | Request rate limits (frozen at startup). This machine and private networks (LAN, link-local, Tailscale) reaching Zimi directly are not limited unless `ZIMI_RATE_LIMIT` is set; anything forwarded by a proxy is. |
 | `ZIMI_TRUSTED_PROXIES` | env | — | CIDR allowlist for forwarded-client-IP trust |
 | `ZIMI_INDEX_THROTTLE` | env / config | `1` | Throttle background index building |
 

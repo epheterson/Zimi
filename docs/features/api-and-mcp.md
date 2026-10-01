@@ -87,6 +87,6 @@ The web app and the JSON API with the apps off and no BitTorrent; add `ZIMI_OFFL
 - **The agent wants a tool it does not see** — `zimi mcp` serves three tools unless started with `--tools full` (or `ZIMI_MCP_TOOLS=full`).
 - **Remote Docker MCP hangs** — use `docker exec -i` (interactive) so stdio is wired through; a missing `-i` leaves the transport dead.
 - **HTTP calls 401** — a `private`-mode instance needs auth. Send the API token as a Bearer credential (`ZIMI_API_TOKEN` or the generated token file; generate one from Manage after setting a password).
-- **HTTP calls 429** — you hit a rate limit. Back off; limits are set at startup via `ZIMI_RATE_LIMIT*`.
+- **HTTP calls 429** — you hit a rate limit. Back off; limits are set at startup via `ZIMI_RATE_LIMIT*`. Calls from this machine or a private network, made directly, are not limited unless `ZIMI_RATE_LIMIT` is set.
 - **Chunk IDs changed unexpectedly** — the ZIM's content changed (its `content_rev` flipped) or you changed `size`/`overlap`. That's by design; both feed the ID hash.
 - **Building against a `/manage/*` or `/dl/*` path** — don't. Those are internal and unversioned; only the table above is stable.

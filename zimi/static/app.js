@@ -7312,7 +7312,7 @@ async function doSearch(query, push, perSource) {
     }
     // A throttled search is not an empty one: it used to read "No results".
     if (e.rateLimited) {
-      output.innerHTML = '<div class="empty"><p>' + tH('search_rate_limited', {s: e.retryAfter}) + '</p></div>';
+      output.innerHTML = '<div class="empty"><p>' + tPluralH('search_rate_limited', e.retryAfter) + '</p></div>';
       return;
     }
     output.innerHTML = '<div class="empty"><p>' + tH('search_failed') + '</p><p class="hint">' + tH('try_again') + '</p></div>';

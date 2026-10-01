@@ -116,6 +116,11 @@ def _is_trusted_net(ip):
 RATE_LIMIT = int(
     os.environ.get("ZIMI_RATE_LIMIT", "60")
 )  # API requests per minute per IP (0 = disabled)
+# This machine and the local network search unlimited (#104: "If everything
+# is local, searches shouldn't be restricted"). The budget is for anonymous
+# internet clients. An operator who sets ZIMI_RATE_LIMIT gets it everywhere,
+# private clients on the trusted tier as before.
+RATE_LIMIT_EXPLICIT = bool(os.environ.get("ZIMI_RATE_LIMIT", "").strip())
 RATE_LIMIT_CONTENT = (
     RATE_LIMIT * 20
 )  # /w/ sub-resources: icons, CSS, images (1200/min default)
@@ -4051,10 +4056,19 @@ class ZimHandler(BaseHTTPRequestHandler):
         return self._is_private_client()
 
     def _rate_limit_for_request(self):
-        """Per-minute budget for this request: RATE_LIMIT_TRUSTED for a
-        valid manage credential or a private-network client on a
-        passwordless instance; RATE_LIMIT otherwise. Credential checks
-        are cached by digest so PBKDF2 runs once per TTL, not per poll."""
+        """Per-minute budget for this request: none (0) for this machine or
+        a private-network peer that reached Zimi directly, unless the
+        operator set ZIMI_RATE_LIMIT; RATE_LIMIT_TRUSTED for a valid manage
+        credential or a private-network client on a passwordless instance;
+        RATE_LIMIT otherwise. Credential checks are cached by digest so
+        PBKDF2 runs once per TTL, not per poll.
+
+        "Directly" is _is_direct_private_client: a forwarded request never
+        counts, since behind a same-host reverse proxy every internet client
+        resolves to the proxy's private address. A LAN client behind a proxy
+        keeps the trusted tier."""
+        if not RATE_LIMIT_EXPLICIT and self._is_direct_private_client():
+            return 0
         from zimi import manage as _manage
 
         stored_pw = _manage._get_manage_password_hash()
