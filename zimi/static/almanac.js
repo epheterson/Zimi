@@ -286,16 +286,38 @@ function _reopenAlmanacFromLink() {
   // re-saved that drifted value. Instead, re-assert the offset every frame the
   // content height is still changing, then once more when it settles. Bounded to
   // ~1s so it never fights a later user scroll.
+  //
+  // The late sections (the place's tides, the Rosetta) arrive after that and
+  // may first stand at a guessed height. The offset was taken with them in
+  // place, so until they have arrived the restore holds it (_almKeepStill
+  // defers to content._almRestoreTo rather than adding their growth on top),
+  // and a hand on the page ends it at once.
   content.scrollTop = target;
-  var lastH = -1, stableFrames = 0, frames = 0;
+  content._almRestoreTo = target;
+  var lastH = -1, stableFrames = 0, frames = 0, dropped = false;
+  var drop = function () {
+    if (dropped) return;
+    dropped = true;
+    content._almRestoreTo = null;
+    _ALM_HAND_EVENTS.forEach(function (ev) { content.removeEventListener(ev, drop); });
+  };
+  _ALM_HAND_EVENTS.forEach(function (ev) { content.addEventListener(ev, drop, { passive: true }); });
   (function settle() {
+    if (dropped) return;
     var h = content.scrollHeight;
     if (h !== lastH) { lastH = h; stableFrames = 0; content.scrollTop = target; }
     else { stableFrames++; }
-    if (++frames < 60 && stableFrames < 4) requestAnimationFrame(settle);
-    else content.scrollTop = target; // final assert once the height has settled
+    var settled = stableFrames >= 4 && !_almLateArriving();
+    if (++frames < _ALM_RESTORE_MAX_FRAMES && !settled) { requestAnimationFrame(settle); return; }
+    content.scrollTop = target; // final assert once the height has settled
+    drop();
   })();
 }
+// A scroll the reader makes (not one the page makes) ends a restore.
+var _ALM_HAND_EVENTS = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
+// Frames a restore may wait for the late sections (~3s): bounded, so a
+// section that never arrives cannot hold the page.
+var _ALM_RESTORE_MAX_FRAMES = 180;
 
 // ── Timezone formatting ──
 // Cached per lang|tz: the travel clock reads this every frame, and the name
@@ -1789,6 +1811,12 @@ var _ALM_PLACE_GUESS_PX = { tide: 760, empty: 170 };   // before any is remember
 var _ALM_PLACE_GUESS_NARROW_PX = 770;                  // a phone's column wraps more
 var _ALM_NARROW_PX = 480;
 
+// The late sections being watched, and whether any is still arriving.
+var _almLate = [];
+function _almLateArriving() {
+  _almLate = _almLate.filter(function (e) { return e.isConnected; });
+  return _almLate.some(function (e) { return e._almArriving; });
+}
 function _almKeepStill(el) {
   if (!el || el._almStill || typeof ResizeObserver === 'undefined') return;
   var scroller = document.getElementById('almanac-content');
@@ -1803,12 +1831,16 @@ function _almKeepStill(el) {
   // call can come after the section has already arrived.
   var last = el.offsetHeight;
   el._almArriving = true;
+  _almLate.push(el);
   el._almStill = new ResizeObserver(function () {
     // A page drawn again (new links, a new language) replaces the element.
     if (!el.isConnected) { el._almStill.disconnect(); return; }
     var h = el.offsetHeight, delta = h - last;
     last = h;
     if (!delta || !scroller) return;
+    // Coming back to a place kept from before (_reopenAlmanacFromLink): the
+    // kept offset already has this section at its final height.
+    if (scroller._almRestoreTo != null) { scroller.scrollTop = scroller._almTop.v = scroller._almRestoreTo; return; }
     var view = scroller.getBoundingClientRect(), r = el.getBoundingClientRect();
     var oldBottom = r.top + h - delta;
     var line = el._almArriving ? view.bottom : view.top;

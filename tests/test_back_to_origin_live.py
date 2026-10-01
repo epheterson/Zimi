@@ -130,11 +130,16 @@ def test_almanac_to_an_article_and_back_to_its_place_and_date(served, lang, phon
         assert focus
         link = pg.locator("#almanac-view .alm-link:visible").last
         link.scroll_into_view_if_needed()
-        scroll = pg.evaluate(
-            "() => document.getElementById('almanac-content').scrollTop"
-        )
-        assert scroll > 0
+        # The place is where the page was when the link was tapped. Read
+        # before the tap it can be stale: the new day's deep-links and the
+        # late sections redraw the page under the reader (kept still on
+        # screen, so its offset moves), and the tap scrolls the link back in.
+        pg.evaluate("""() => { const c = document.getElementById('almanac-content');
+              document.addEventListener('pointerdown', () => { window._tapScroll = c.scrollTop; },
+                                        { capture: true, once: true }); }""")
         link.click()
+        scroll = pg.evaluate("() => window._tapScroll")
+        assert scroll and scroll > 0
         pg.wait_for_function(
             "() => readerOpen && currentArticle && currentArticle.zim === 'wikipedia_en_test'",
             timeout=15000,
