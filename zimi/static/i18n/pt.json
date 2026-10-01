@@ -2185,6 +2185,8 @@
   "app_sources_many": "{n} fontes",
   "alm_moon_open_3d": "Abrir a Lua em 3D",
   "alm_moon_north_up": "Norte para cima",
+  "alm_earth_sun_spots": "Número de manchas solares cerca de {n}, ciclo solar {c}. Manchas ilustrativas: o número e as latitudes seguem o ciclo real.",
+  "alm_earth_sun_spots_old": "Número de manchas solares cerca de {n}, antes do registo. Manchas ilustrativas: o número segue o ciclo médio.",
   "ref_section": "Para imprimir e guardar",
   "ref_section_intro": "Tudo nestas páginas é calculado aqui com a aritmética do próprio céu, para qualquer ano, sem nada da internet: papel que continua certo se as atualizações pararem.",
   "ref_group_way": "Achar o caminho",

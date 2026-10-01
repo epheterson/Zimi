@@ -2185,6 +2185,8 @@
   "app_sources_many": "{n} 个来源",
   "alm_moon_open_3d": "以 3D 查看月球",
   "alm_moon_north_up": "北方朝上",
+  "alm_earth_sun_spots": "太阳黑子数约 {n}，第 {c} 太阳周期。黑子为示意：数量和纬度遵循真实周期。",
+  "alm_earth_sun_spots_old": "太阳黑子数约 {n}，早于观测记录。黑子为示意：数量遵循平均周期。",
   "ref_section": "打印留存",
   "ref_section_intro": "这些页面上的一切都在这里由天空本身的算术算出，适用于任何年份，不需要互联网：即使不再有更新，纸上的内容依然准确。",
   "ref_group_way": "找到方位",

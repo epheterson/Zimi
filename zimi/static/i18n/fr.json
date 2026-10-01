@@ -2185,6 +2185,8 @@
   "app_sources_many": "{n} sources",
   "alm_moon_open_3d": "Ouvrir la Lune en 3D",
   "alm_moon_north_up": "Nord en haut",
+  "alm_earth_sun_spots": "Nombre de taches solaires environ {n}, cycle solaire {c}. Taches illustratives : leur nombre et leurs latitudes suivent le vrai cycle.",
+  "alm_earth_sun_spots_old": "Nombre de taches solaires environ {n}, avant les relevés. Taches illustratives : leur nombre suit le cycle moyen.",
   "ref_section": "À imprimer et à garder",
   "ref_section_intro": "Tout, sur ces pages, est calculé ici à partir de l'arithmétique du ciel, pour n'importe quelle année, sans rien demander à internet : du papier qui reste vrai si les mises à jour s'arrêtent.",
   "ref_group_way": "Trouver sa route",

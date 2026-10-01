@@ -2185,6 +2185,8 @@
   "app_sources_many": "{n} sources",
   "alm_moon_open_3d": "Open the Moon in 3D",
   "alm_moon_north_up": "North up",
+  "alm_earth_sun_spots": "Sunspot number about {n}, solar cycle {c}. Illustrative spots: their number and latitudes follow the real cycle.",
+  "alm_earth_sun_spots_old": "Sunspot number about {n}, before the record. Illustrative spots: their number follows the mean cycle.",
   "ref_section": "To print and keep",
   "ref_section_intro": "Everything on these pages is worked out here from the sky's own arithmetic, for any year, with nothing from the internet: paper that stays true if the updates stop.",
   "ref_group_way": "Find your way",

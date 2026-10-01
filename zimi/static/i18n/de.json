@@ -2185,6 +2185,8 @@
   "app_sources_many": "{n} Quellen",
   "alm_moon_open_3d": "Den Mond in 3D öffnen",
   "alm_moon_north_up": "Norden oben",
+  "alm_earth_sun_spots": "Sonnenfleckenzahl etwa {n}, Sonnenzyklus {c}. Die Flecken sind illustrativ: Anzahl und Breiten folgen dem echten Zyklus.",
+  "alm_earth_sun_spots_old": "Sonnenfleckenzahl etwa {n}, vor den Aufzeichnungen. Die Flecken sind illustrativ: ihre Anzahl folgt dem mittleren Zyklus.",
   "ref_section": "Zum Ausdrucken und Aufbewahren",
   "ref_section_intro": "Alles auf diesen Seiten wird hier aus der Arithmetik des Himmels berechnet, für jedes Jahr, ohne etwas aus dem Internet: Papier, das stimmt, auch wenn keine Updates mehr kommen.",
   "ref_group_way": "Den Weg finden",
