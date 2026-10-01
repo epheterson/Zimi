@@ -68,6 +68,7 @@ eq('a link\'s section lands on its language, by any edition\'s name', [ctx.group
 eq('a link\'s target', ctx.parseTarget('eau#French'), { w: 'eau', sec: 'French' });
 eq('a target without a section', ctx.parseTarget('liquid'), { w: 'liquid', sec: '' });
 eq('right to left by the language', ['he', 'ar', 'arz', 'en', 'fr', ''].map(ctx.dirOf), ['rtl', 'rtl', 'rtl', 'ltr', 'ltr', 'ltr']);
+eq('a cut definition ends in an ellipsis, a whole one as it is', [ctx.cutShort('its solid'), ctx.cutShort('A liquid.')], ['its solid…', 'A liquid.']);
 eq('the day asked for is the reader\'s', ctx.dayStamp(new Date(2026, 0, 5)), '20260105');
 eq('the day\'s word in the reader\'s language first', ctx.pickToday([{ w: 'ilma', lang: 'mt' }, { w: 'eau', lang: 'fr' }], ['fr', 'en']).w, 'eau');
 const g = { entries: [

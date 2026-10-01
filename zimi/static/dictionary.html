@@ -68,12 +68,12 @@
   .src-h { font-size: 11.5px; color: var(--text2); margin: 16px 0 6px; display: flex; align-items: center; gap: 6px; }
   .src-h img { width: 14px; height: 14px; border-radius: 4px; }
   .src-h:first-child { margin-top: 0; }
-  .ety { font-size: 13.5px; line-height: 1.55; color: var(--text2); margin: 0 0 12px; unicode-bidi: plaintext; overflow-wrap: anywhere; }
+  .ety { font-size: 13.5px; line-height: 1.55; color: var(--text2); margin: -4px 0 18px; unicode-bidi: plaintext; overflow-wrap: anywhere; }
   .ety .k, .sh { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); }
   .ety .k { margin-inline-end: 6px; }
   .pos { margin: 0 0 18px; }
   .pos-h { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin: 0 0 6px; }
-  .pos-h .p { font: italic 600 15px/1.3 var(--serif); color: var(--amber); }
+  .pos-h .p { font: italic 600 15px/1.3 var(--serif); color: var(--text); }
   .pos-h .hl { font-size: 13px; color: var(--text2); unicode-bidi: plaintext; overflow-wrap: anywhere; }
   ol.senses { margin: 0; padding-inline-start: 22px; }
   ol.senses > li { margin: 0 0 10px; padding-inline-start: 4px; font-size: 15px; line-height: 1.5; unicode-bidi: plaintext; overflow-wrap: anywhere; }
@@ -302,6 +302,8 @@ function firstSense(group) {
   }
   return '';
 }
+// A definition cut to fit a card ends in an ellipsis, not mid-phrase.
+function cutShort(t) { t = String(t || '').trim(); return /[.!?。।)”"]$/.test(t) ? t : t + '…'; }
 function plain(segs) { return (segs || []).map(function(s) { return typeof s === 'string' ? s : s[0]; }).join(''); }
 function fill(s, vars) { return String(s || '').replace(/\{(\w+)\}/g, function(m, k) { return vars[k] != null ? vars[k] : m; }); }
 // Today on the reader's clock, as the server asks for it.
@@ -420,7 +422,7 @@ function renderHome() {
     var src = h.wiktionaries.filter(function(x) { return x.name === w.zim; })[0];
     html += '<a class="wotd" href="' + esc(wordUrl(w.w)) + '" data-w="' + esc(w.w) + '"><div class="k">' + esc(STR.word_of_day) + '</div>' +
       '<div class="w" lang="' + esc(w.lang) + '">' + esc(w.w) + '</div>' + (w.pos ? '<div class="p">' + esc(w.pos) + '</div>' : '') +
-      (w.blurb ? '<p class="b">' + esc(w.blurb) + '</p>' : '') + (src ? '<div class="s">' + esc(fill(STR.from, { source: src.title })) + '</div>' : '') + '</a>';
+      (w.blurb ? '<p class="b">' + esc(cutShort(w.blurb)) + '</p>' : '') + (src ? '<div class="s">' + esc(fill(STR.from, { source: src.title })) + '</div>' : '') + '</a>';
   } else {
     html += '<p class="hint">' + esc(STR.hint) + '</p>';
   }
@@ -577,8 +579,9 @@ function entryHtml(e, g, k, d) {
   var html = '<div class="acct" dir="' + dirOf(e.wiki_lang) + '" lang="' + esc(e.wiki_lang || '') + '">' +
     (many || (d.sources.length > 1) ? '<div class="src-h">' + zimIcon(e.zim) + '<span>' + esc(e.zim_title) + '</span></div>' : '');
   e.groups.forEach(function(gr) {
-    if (gr.ety && gr.ety.length) html += '<p class="ety"><span class="k">' + esc(STR.etymology) + '</span>' + segHtml(gr.ety) + '</p>';
+    // What it means first; where it came from after, quieter.
     gr.parts.forEach(function(p) { html += partHtml(p, g, d); });
+    if (gr.ety && gr.ety.length) html += '<p class="ety"><span class="k">' + esc(STR.etymology) + '</span>' + segHtml(gr.ety) + '</p>';
   });
   (e.words || []).forEach(function(w) { html += wordsHtml(w.title, w.items, g.code); });
   return html + '</div>';
