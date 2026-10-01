@@ -39,5 +39,14 @@ for (const f of fs.readdirSync(dir)) {
 ok('My data is in the Preferences pane', /_myDataCardHtml\(\)/.test(body('_msPreferencesHtml')));
 ok('...and the Server pane keeps only the server\'s backup', /_serverBackupCardHtml\(\)/.test(body('_msServerHtml')) && !/_myDataCardHtml|_backupHubHtml/.test(body('_msServerHtml')));
 
+// Cut: a keyboard key in the empty Saved panel (a phone has none), and the
+// Reader View switch's subtitle that only said its title again.
+for (const f of fs.readdirSync(dir)) {
+  const d = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+  ok(f + ': the empty Saved panel names no key', !/\bB\b/.test(d.no_bookmarks || 'B'));
+  ok(f + ': no "Open articles in Reader View" under "Always use Reader View"', !('reader_auto_hint' in d));
+}
+ok('neither Reader View switch carries a subtitle', !/reader_auto_hint/.test(src));
+
 console.log(failures ? failures + ' failed' : 'all passed');
 process.exit(failures ? 1 : 0);

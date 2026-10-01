@@ -12748,7 +12748,7 @@ function _msPreferencesHtml() {
     '<div class="ms-hint">' + tH('ext_links_hint') + '</div>' +
     _switchRowsHtml([
       // The mirror of the in-article palette's AUTO switch, same key.
-      { id: 'ms-reader-auto', title: tH('reader_auto'), desc: tH('reader_auto_hint'),
+      { id: 'ms-reader-auto', title: tH('reader_auto'),
         on: _readerAuto(), onchange: '_setReaderAuto(this.checked)' },
       { id: 'ms-darken-articles', title: tH('darken_articles'), desc: tH('darken_articles_hint'),
         on: _darkenArticlesOn(), onchange: '_setDarkenArticles(this.checked)' },
@@ -17630,8 +17630,8 @@ function _readerSettingsRowsHtml() {
   // AUTO mode
   h += '<button type="button" class="rv-toggle-row" role="switch" aria-checked="' + (auto ? 'true' : 'false') +
     '" onclick="event.stopPropagation();_toggleReaderAuto()">' +
-    '<span class="rv-toggle-text"><span class="rv-toggle-title">' + tH('reader_auto') + '</span>' +
-    '<span class="rv-toggle-sub">' + tH('reader_auto_hint') + '</span></span>' +
+    // The title alone: "Open articles in Reader View" under it said it again.
+    '<span class="rv-toggle-text"><span class="rv-toggle-title">' + tH('reader_auto') + '</span></span>' +
     '<span class="rv-switch' + (auto ? ' on' : '') + '" aria-hidden="true"><span class="rv-knob"></span></span></button>';
   // Print / Save as PDF (+ native Share where supported). Only while Reader View
   // is active: printing the clean reader shell yields a beautiful page (see the
