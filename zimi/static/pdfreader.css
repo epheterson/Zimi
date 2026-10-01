@@ -1,0 +1,212 @@
+/* Zimi's PDF reader: its own chrome over pdf.js, which only draws the pages.
+   Inlined into pdfjs/web/viewer.html by the server (http._inline_apps_assets),
+   so the viewer is still one document and needs no second request.
+
+   One job: read this document. The top bar is the document (back, its name,
+   find, the rest under ⋯); the bottom bar is where you are in it (contents,
+   the page slider, the page, how it fits). Both are the book reader's
+   language (48px bars, translucent, stepping aside while you read and back
+   on a tap), drawn in Zimi's tokens, which pdfreader.js copies from the
+   shell so a theme switch reaches the open document. The values here are
+   for a viewer opened on its own, outside the shell. */
+:root {
+  --bg: #f2efe8; --surface: #fbfaf6; --surface2: #ffffff; --border: #e4dfd4;
+  --text: #26241f; --text2: #6a675e; --amber: #9d4a08; --amber-glow: rgba(180, 83, 9, 0.10); --on-amber: #fff;
+  --zp-bar: 48px;
+  --zp-sat: env(safe-area-inset-top, 0px); --zp-sab: env(safe-area-inset-bottom, 0px);
+  --zp-sal: env(safe-area-inset-left, 0px); --zp-sar: env(safe-area-inset-right, 0px);
+  --zp-font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  /* pdf.js's own: no toolbar of its own, the page well in Zimi's ground. */
+  --toolbar-height: 0px;
+  --body-bg-color: var(--bg) !important;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-zp-theme="light"]) {
+    --bg: #0a0a0b; --surface: #141416; --surface2: #1c1c20; --border: #27272b;
+    --text: #e8e8ed; --text2: #8a8a94; --amber: #f59e0b; --amber-glow: rgba(245, 158, 11, 0.08); --on-amber: #000;
+  }
+}
+@media (min-width: 700px) { :root { --zp-bar: 52px; } }
+
+/* ── pdf.js's chrome, put away: Zimi's takes its place ── */
+#outerContainer > #mainContainer > .toolbar, #viewsManager, #viewsManagerResizer, #secondaryToolbar,
+#editorUndoBar, #editorCommentsSidebar { display: none !important; }
+body { background: var(--bg) !important; }
+#viewerContainer { inset: 0 !important; }
+/* Room above and below the first and last pages for the bars. */
+#viewer.pdfViewer { padding-top: calc(var(--zp-bar) + var(--zp-sat) + 4px); padding-bottom: calc(var(--zp-foot, 100px) + var(--zp-sab)); }
+/* A page: a sheet on the ground with a soft shadow, not pdf.js's 9px
+   drop-shadow border image; 10px between pages. */
+:root { --page-border: 0 solid transparent !important; --page-margin: 0 auto 10px !important; }
+.pdfViewer .page { border-image: none !important; box-shadow: 0 1px 3px rgba(0, 0, 0, .18), 0 4px 14px rgba(0, 0, 0, .08); }
+/* Dark pages: the page's ink and paper swapped, colours kept (hue turned
+   back), and not quite black: paper a step above the ground, as a card is. */
+html.zp-dark { --page-bg-color: #151515; }
+html.zp-dark .pdfViewer .page .canvasWrapper, html.zp-dark .zp-thumb canvas { filter: invert(.92) hue-rotate(180deg); }
+html.zp-dark .pdfViewer .page { box-shadow: 0 0 0 1px var(--border); }
+
+/* ── the bars ── */
+.zp-bar {
+  position: fixed; left: 0; right: 0; z-index: 30; box-sizing: border-box;
+  display: flex; align-items: center; gap: 2px;
+  background: var(--bg); color: var(--text); font: 14px/1.25 var(--zp-font);
+  transition: transform .25s ease, opacity .25s ease, visibility 0s linear 0s;
+  -webkit-user-select: none; user-select: none;
+}
+@supports (background: color-mix(in srgb, red 50%, transparent)) {
+  .zp-bar { background: color-mix(in srgb, var(--bg) 88%, transparent); -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%); }
+}
+.zp-head {
+  top: 0; height: calc(var(--zp-bar) + var(--zp-sat));
+  padding: var(--zp-sat) calc(4px + var(--zp-sar)) 0 calc(4px + var(--zp-sal));
+  border-bottom: 1px solid var(--border);
+}
+.zp-foot {
+  bottom: 0; flex-direction: column; align-items: stretch; gap: 0;
+  padding: 2px calc(8px + var(--zp-sar)) calc(2px + var(--zp-sab)) calc(8px + var(--zp-sal));
+  border-top: 1px solid var(--border);
+}
+html.zp-away .zp-head { transform: translateY(-100%); }
+html.zp-away .zp-foot { transform: translateY(100%); }
+html.zp-away .zp-bar { opacity: 0; visibility: hidden; pointer-events: none; transition: transform .25s ease, opacity .25s ease, visibility 0s linear .25s; }
+
+.zp-bar button, .zp-sheet button, .zp-menu button {
+  border: 0; background: none; color: inherit; font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.zp-icon {
+  flex: none; min-width: 44px; height: 44px; border-radius: 22px; padding: 0 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.zp-icon svg { width: 22px; height: 22px; flex: none; }
+@media (hover: hover) {
+  .zp-icon:hover:not(:disabled), .zp-page:hover, .zp-toc button:hover, .zp-thumb:hover { background: var(--amber-glow); color: var(--amber); }
+}
+.zp-bar button:focus-visible, .zp-sheet button:focus-visible, .zp-menu button:focus-visible, .zp-bar input:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+.zp-icon:disabled { opacity: .3; cursor: default; }
+[dir="rtl"] .zp-flip svg { transform: scaleX(-1); }
+
+/* The document's name, and the library it is from. */
+.zp-title { flex: 1; min-width: 0; padding: 0 6px; line-height: 1.2; }
+.zp-title b, .zp-title span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; unicode-bidi: plaintext; }
+.zp-title b { font-weight: 600; font-size: 14.5px; }
+.zp-title span { font-size: 12px; color: var(--text2); }
+.zp-title span:empty { display: none; }
+
+/* Find, in place of the name. */
+.zp-find { flex: 1; min-width: 0; display: none; align-items: center; gap: 2px; }
+html.zp-finding .zp-find { display: flex; }
+html.zp-finding .zp-title, html.zp-finding .zp-head > .zp-hide-finding { display: none; }
+.zp-find input {
+  flex: 1; min-width: 0; height: 36px; box-sizing: border-box; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: 18px; background: var(--surface); color: var(--text);
+  font: 16px var(--zp-font); outline: none;
+}
+.zp-find input:focus, .zp-find input:focus-visible { border-color: var(--amber); outline: none; }
+.zp-count { flex: none; font-size: 12.5px; color: var(--text2); padding: 0 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.zp-count.zp-none { color: var(--amber); }
+
+/* Where you are: the slider over the page and the fit. */
+.zp-scrub { width: 100%; height: 30px; margin: 0; accent-color: var(--amber); cursor: pointer; touch-action: none; }
+.zp-row { display: flex; align-items: center; gap: 2px; }
+.zp-page {
+  flex: 1; min-width: 0; height: 44px; border-radius: 22px;
+  font-variant-numeric: tabular-nums; font-size: 13.5px; color: var(--text2); white-space: nowrap;
+}
+.zp-page b { color: var(--text); font-weight: 600; }
+.zp-page-input {
+  width: 5.5em; height: 34px; box-sizing: border-box; text-align: center; margin: 5px auto;
+  border: 1px solid var(--amber); border-radius: 10px; background: var(--surface); color: var(--text);
+  font: 16px var(--zp-font); font-variant-numeric: tabular-nums;
+}
+.zp-pagebox { flex: 1; min-width: 0; display: flex; justify-content: center; }
+.zp-zoom { display: none; }
+.zp-one .zp-scrub { display: none; }
+/* Roomier: one row. Contents at the start, how it fits at the end, and the
+   slider with the page between them, centred under the page. */
+@media (min-width: 700px) {
+  .zp-foot {
+    display: grid; align-items: center; column-gap: 2px; height: calc(var(--zp-bar) + var(--zp-sab)); padding-top: 0;
+    grid-template-columns: 44px 1fr minmax(160px, 560px) 7.5em 1fr 44px 44px 44px;
+  }
+  .zp-foot .zp-row { display: contents; }
+  .zp-foot .zp-toc-btn { grid-column: 1; grid-row: 1; }
+  .zp-foot .zp-scrub { grid-column: 3; grid-row: 1; }
+  .zp-foot .zp-pagebox { grid-column: 4; grid-row: 1; }
+  .zp-foot .zp-out { grid-column: 6; grid-row: 1; }
+  .zp-foot .zp-in { grid-column: 7; grid-row: 1; }
+  .zp-foot .zp-fit { grid-column: 8; grid-row: 1; }
+  .zp-zoom { display: inline-flex; }
+  .zp-one .zp-pagebox { grid-column: 3 / 5; }
+}
+
+/* A word in the middle of the ground: loading failed. */
+.zp-msg { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; color: var(--text2); font: 15px/1.5 var(--zp-font); z-index: 5; pointer-events: none; }
+
+/* ── the sheets: contents and pages, and the ⋯ menu ── */
+.zp-scrim { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, .28); opacity: 0; pointer-events: none; transition: opacity .2s; }
+html.zp-sheet-open .zp-scrim { opacity: 1; pointer-events: auto; }
+html.zp-menu-open .zp-scrim { background: transparent; opacity: 1; pointer-events: auto; }
+.zp-sheet, .zp-menu {
+  position: fixed; z-index: 50; box-sizing: border-box; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  font: 15px/1.35 var(--zp-font); visibility: hidden;
+}
+.zp-sheet {
+  left: 0; right: 0; bottom: 0; max-height: min(82vh, 680px);
+  padding: 0 calc(12px + var(--zp-sar)) calc(16px + var(--zp-sab)) calc(12px + var(--zp-sal));
+  border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, .25);
+  transform: translateY(105%); transition: transform .25s ease, visibility 0s linear .25s;
+}
+.zp-sheet.zp-open { transform: none; visibility: visible; transition: transform .25s ease; }
+.zp-menu {
+  top: calc(var(--zp-bar) + var(--zp-sat) - 2px); inset-inline-end: calc(8px + var(--zp-sar)); min-width: 220px; max-width: calc(100vw - 16px);
+  padding: 6px; border-radius: 14px; box-shadow: 0 8px 32px rgba(0, 0, 0, .3);
+  opacity: 0; transform: translateY(-6px); transition: opacity .15s, transform .15s, visibility 0s linear .15s;
+}
+.zp-menu.zp-open { opacity: 1; transform: none; visibility: visible; transition: opacity .15s, transform .15s; }
+@media (min-width: 700px) {
+  .zp-sheet {
+    left: auto; inset-inline-start: auto; inset-inline-end: calc(16px + var(--zp-sar)); bottom: calc(var(--zp-bar) + var(--zp-sab) + 8px);
+    width: 400px; max-height: calc(100vh - 2 * var(--zp-bar) - 32px); border-radius: 14px;
+    transform: translateY(8px); opacity: 0; transition: transform .2s, opacity .2s, visibility 0s linear .2s;
+  }
+  [dir="rtl"] .zp-sheet { right: auto; }
+  .zp-sheet.zp-open { transform: none; opacity: 1; transition: transform .2s, opacity .2s; }
+}
+.zp-sheet-head { display: flex; align-items: center; gap: 8px; position: sticky; top: 0; background: var(--surface); padding: 8px 0; z-index: 1; }
+.zp-sheet-head b { flex: 1; font-size: 16px; }
+.zp-seg { flex: 1; display: flex; gap: 4px; padding: 3px; border-radius: 12px; background: var(--surface2); border: 1px solid var(--border); }
+.zp-seg button { flex: 1; height: 36px; border-radius: 9px; font-size: 14px; color: var(--text2); }
+.zp-seg button[aria-selected="true"] { background: var(--bg); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, .15); }
+.zp-x { flex: none; width: 44px; height: 44px; border-radius: 22px; font-size: 24px !important; line-height: 1; color: var(--text2) !important; }
+
+.zp-toc { list-style: none; margin: 0; padding: 0; }
+.zp-toc button { display: block; width: 100%; text-align: start; padding: 11px 10px; border-radius: 10px; unicode-bidi: plaintext; }
+.zp-toc .zp-toc { padding-inline-start: 16px; }
+.zp-toc .zp-toc button { color: var(--text2); font-size: 14px; }
+.zp-toc li[aria-current="true"] > button { background: var(--amber-glow); color: var(--amber); font-weight: 600; }
+
+/* Pages: each one small, drawn only once it scrolls into the sheet. */
+.zp-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 14px 10px; padding: 4px 2px 8px; }
+.zp-thumb { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px; border-radius: 10px; font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; }
+.zp-thumb .zp-sheetpage { width: 100%; aspect-ratio: var(--zp-ratio, 0.773); background: #fff; border-radius: 2px; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); overflow: hidden; }
+html.zp-dark .zp-thumb .zp-sheetpage { background: #151515; }
+.zp-thumb canvas { display: block; width: 100%; height: 100%; }
+.zp-thumb[aria-current="true"] { color: var(--amber); font-weight: 600; }
+.zp-thumb[aria-current="true"] .zp-sheetpage { box-shadow: 0 0 0 2px var(--amber); }
+
+.zp-menu button { display: flex; width: 100%; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 9px; text-align: start; font-size: 15px; }
+.zp-menu button svg { width: 20px; height: 20px; flex: none; color: var(--text2); }
+.zp-menu button .zp-grow { flex: 1; }
+.zp-menu button:focus-visible { outline-offset: -2px; }
+@media (hover: hover) { .zp-menu button:hover { background: var(--amber-glow); color: var(--amber); } .zp-menu button:hover svg { color: var(--amber); } }
+.zp-menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 6px; }
+/* A switch, for the one thing in the menu that stays on. */
+.zp-switch { flex: none; width: 34px; height: 20px; border-radius: 10px; background: var(--border); position: relative; transition: background .15s; }
+.zp-switch::after { content: ''; position: absolute; top: 2px; inset-inline-start: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: inset-inline-start .15s; box-shadow: 0 1px 2px rgba(0, 0, 0, .3); }
+[aria-checked="true"] > .zp-switch { background: var(--amber); }
+[aria-checked="true"] > .zp-switch::after { inset-inline-start: 16px; }
+.zp-menu [aria-pressed="true"] svg { color: var(--amber); fill: currentColor; }
+
+@media print { .zp-bar, .zp-sheet, .zp-menu, .zp-scrim, .zp-msg { display: none !important; } }
+@media (prefers-reduced-motion: reduce) { .zp-bar, .zp-sheet, .zp-menu, .zp-scrim { transition: none !important; } }
