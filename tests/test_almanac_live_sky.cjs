@@ -183,6 +183,22 @@ check(ticks.rest === 10 && ticks.moving === 6, 'light clock at 0.8c: 10 ticks at
 check(S._lcBounce(0) === 0 && S._lcBounce(0.5) === 1 && S._lcBounce(0.25) === 0.5 && S._lcBounce(1.25) === 0.5,
   'one tick is the light\'s trip up and back');
 
+// ── 4b. The Sun's face and the air it shines through ──
+const ld = (mu) => S._sunLimb(mu);
+check(ld(1).every((x) => Math.abs(x - 1) < 1e-4), 'limb darkening is 1 at the centre of the disc in every colour');
+check(ld(0)[0] > ld(0)[1] && ld(0)[1] > ld(0)[2] && Math.abs(ld(0)[0] - 0.35) < 0.02 && Math.abs(ld(0)[2] - 0.15) < 0.02,
+  'at the limb red keeps 35%, blue 15%: the edge is darker and warmer');
+let mono = true;
+for (let mu = 0; mu < 1; mu += 0.05) for (let k = 0; k < 3; k++) if (ld(mu + 0.05)[k] < ld(mu)[k]) mono = false;
+check(mono, 'and it brightens all the way in');
+const tint = (a) => vm.runInContext('_skySunTint(' + a + ')', S);
+check(tint(60)[2] > 0.85 && tint(5)[1] < 0.75 && tint(0)[1] < 0.3 && tint(0)[2] < 0.03, 'the Sun is white high up, orange low, red on the horizon');
+const flat = (a) => vm.runInContext('_skySunFlattening(' + a + ')', S);
+// Touching the horizon (its centre 0.57 deg below it, truly) the Sun is about 27 arcminutes tall by 32 wide (Saemundsson's refraction, Meeus 16.4).
+check(flat(30) > 0.995 && flat(-0.57) > 0.78 && flat(-0.57) < 0.86, 'and flattened by refraction only near the horizon (' + flat(-0.57).toFixed(3) + ' as it sets)');
+check(/aeLimb\(mu\)/.test(read('almanac-earth.js')) && /SUN_LIMB_POLY/.test(read('almanac-earth.js')),
+  'the 3D view\'s photosphere darkens its limb by the same polynomials');
+
 // ── 5. Twilight and the faintest star ──
 const phase = (a) => vm.runInContext('_skyPhaseKey(' + a + ')', S);
 check(phase(10) === 'alm_sky_day' && phase(-0.5) === 'alm_sky_day' && phase(-3) === 'alm_sky_civil' &&

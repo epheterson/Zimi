@@ -625,7 +625,11 @@ var AE_SUN_SHOW_DIST = 3000;
 var AE_SUN_SHOW_R = 40;               // ~0.76 degrees as seen from the Earth (real: 0.27)
 var AE_SUN_SEGMENTS = [48, 24];
 var AE_SUN_GLOW_SCALE = 7;            // the glow's width, in the disc's radii
-var AE_SUN_LIMB_DARK = 0.6;           // linear limb darkening, the visible band's
+var AE_GRANULES_PER_RADIUS = 160;     // the granulation's cells (real: ~700, too fine to draw)
+var AE_GRANULE_CONTRAST = 0.3;        // bright cells against dark lanes, at the disc's centre
+var AE_GRANULE_LIFE_S = 600;          // a granule lives about ten minutes, on the page's clock
+var AE_GRANULE_CYCLE = 512;           // the pattern's time, wrapped to keep a float's precision
+var AE_SUN_EXPOSURE = [4.5, 2.5, 1.05];   // the photosphere's exposure per colour: golden centre, deep orange limb
 var AE_FIT_SUN = AE_SUN_SHOW_R * 2.2; // the disc and the glow nearest it
 var AE_MIN_DIST_SUN = AE_SUN_SHOW_R * 1.3;
 var AE_MAX_DIST_SUN = 1400;
@@ -1042,35 +1046,100 @@ var AE_MOON_FRAG = [
   '}'
 ].join('\n');
 
-// The Sun's disc: white-hot at the centre, darker and warmer toward the limb
-// (limb darkening, the one thing that makes it read as a ball of gas).
-var AE_SUN_FRAG = [
-  'precision mediump float;',
-  'uniform float fade;',
-  'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
-  'void main() {',
-  '  float mu = max(dot(normalize(vNormal), normalize(cameraPosition - vWorld)), 0.0);',
-  '  float dark = 1.0 - ' + AE_SUN_LIMB_DARK.toFixed(2) + ' * (1.0 - mu);',
-  '  vec3 col = mix(vec3(1.0, 0.62, 0.28), vec3(1.0, 0.97, 0.9), mu) * (0.35 + 0.75 * dark);',
-  '  gl_FragColor = vec4(col, fade);',
+// Hash noise for the Sun's surface and corona (no texture): smooth value
+// noise in the plane, and cellular noise (the nearest and second-nearest of
+// a jittered lattice's points, and a value for the nearest cell).
+var AE_GLSL_NOISE = [
+  'vec3 aeHash3(vec3 p) {',
+  '  p = vec3(dot(p, vec3(127.1, 311.7, 74.7)), dot(p, vec3(269.5, 183.3, 246.1)), dot(p, vec3(113.5, 271.9, 124.6)));',
+  '  return fract(sin(p) * 43758.5453);',
+  '}',
+  'vec3 aeCells(vec3 p) {',
+  '  vec3 i = floor(p), f = fract(p); float d1 = 8.0, d2 = 8.0, id = 0.0;',
+  '  for (int x = -1; x <= 1; x++) for (int y = -1; y <= 1; y++) for (int z = -1; z <= 1; z++) {',
+  '    vec3 o = vec3(float(x), float(y), float(z)), h = aeHash3(i + o);',
+  '    vec3 q = o + h - f; float d = dot(q, q);',
+  '    if (d < d1) { d2 = d1; d1 = d; id = h.x; } else if (d < d2) { d2 = d; }',
+  '  }',
+  '  return vec3(sqrt(d1), sqrt(d2), id);',
+  '}',
+  'float aeNoise2(vec2 p) {',
+  '  vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);',
+  '  float a = fract(sin(dot(i, vec2(12.9898, 78.233))) * 43758.5453);',
+  '  float b = fract(sin(dot(i + vec2(1.0, 0.0), vec2(12.9898, 78.233))) * 43758.5453);',
+  '  float c = fract(sin(dot(i + vec2(0.0, 1.0), vec2(12.9898, 78.233))) * 43758.5453);',
+  '  float d = fract(sin(dot(i + vec2(1.0, 1.0), vec2(12.9898, 78.233))) * 43758.5453);',
+  '  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);',
   '}'
 ].join('\n');
 
-// The glow round the Sun: the inside of a wider shell, added over the sky.
-// Each pixel asks how near its line of sight passes the Sun's centre, in the
-// disc's radii, so the glow is round from anywhere, inside the shell or out.
+// The limb-darkening polynomials (SUN_LIMB_POLY, almanac-orrery.js) as one
+// GLSL function, by Horner's rule.
+function _aeLimbGlsl() {
+  var k = SUN_LIMB_POLY[0].length - 1;
+  var coef = function (j) { return 'vec3(' + SUN_LIMB_POLY.map(function (ch) { return _aeGlslNum(ch[j]); }).join(', ') + ')'; };
+  var expr = coef(k);
+  while (k-- > 0) expr = coef(k) + ' + mu * (' + expr + ')';
+  return 'vec3 aeLimb(float mu) { return ' + expr + '; }';
+}
+
+// The photosphere, as a filtered camera sees it: limb darkening in each
+// colour (the same as the sky's Sun), through a soft exposure, so the centre
+// burns yellow-white and the limb falls to deep orange. Over it the
+// granulation: bright polygonal cells parted by dark lanes, each cell its own
+// brightness, faded where a cell would be smaller than a pixel (so it never
+// shimmers) and toward the limb. It turns over on the page's clock: still at
+// real time, boiling at an hour a second.
+var AE_SUN_FRAG = [
+  'precision highp float;',
+  'uniform float fade; uniform float uT;',
+  'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
+  AE_GLSL_NOISE,
+  _aeLimbGlsl(),
+  'void main() {',
+  '  vec3 n = normalize(vNormal);',
+  '  float mu = max(dot(n, normalize(cameraPosition - vWorld)), 0.0);',
+  '  vec3 q = n * ' + AE_GRANULES_PER_RADIUS.toFixed(1) + ' + vec3(0.0, 0.0, uT * 0.37);',
+  '  vec3 c = aeCells(q);',
+  '  float lane = smoothstep(0.0, 0.25, c.y - c.x);',
+  '  float cell = lane * (1.2 - 0.9 * c.x) * (0.8 + 0.4 * c.z) - 0.6;',
+  '  float fine = clamp(1.6 - 0.9 * length(fwidth(q)), 0.0, 1.0);',
+  '  float gran = 1.0 + ' + AE_GRANULE_CONTRAST.toFixed(2) + ' * fine * sqrt(mu) * cell;',
+  '  vec3 e = vec3(' + AE_SUN_EXPOSURE.map(_aeGlslNum).join(', ') + ') * aeLimb(mu) * gran;',
+  '  gl_FragColor = vec4(1.0 - exp(-e), fade);',
+  '}'
+].join('\n');
+
+// The light round the Sun, the inside of a wider shell added over the sky:
+// each pixel asks how near its line of sight passes the Sun's centre, in the
+// disc's radii (r), so it is round from anywhere. Nothing over the disc; off
+// it, a warm bloom close in, then the pearl corona falling off with r,
+// streaming out where noise round the limb says, most along the solar
+// equator; and a few faint prominences, pink, standing off the limb.
 var AE_SUN_GLOW_FRAG = [
   'precision highp float;',
-  'uniform vec3 center; uniform float radius; uniform float fade;',
+  'uniform vec3 center; uniform float radius; uniform float fade; uniform float uT;',
   'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
+  AE_GLSL_NOISE,
   'void main() {',
   '  vec3 ray = normalize(vWorld - cameraPosition);',
   '  vec3 toC = center - cameraPosition;',
   '  float r = length(cross(ray, toC)) / radius;',
   '  float edge = ' + AE_SUN_GLOW_SCALE.toFixed(1) + ';',
-  '  if (r > edge || dot(ray, toC) < 0.0) discard;',
-  '  float a = 0.6 / (1.0 + 2.5 * (r - 1.0) * (r - 1.0)) * (1.0 - r / edge);',
-  '  gl_FragColor = vec4(vec3(1.0, 0.78, 0.5) * a * fade, 0.0);',
+  '  if (r > edge || r < 0.98 || dot(ray, toC) < 0.0) discard;',
+  // Round the limb: a direction (cos, sin) in the plane of the sky, so the
+  // noise has no seam, and its height above the solar (ecliptic) equator.
+  '  vec3 off = ray * dot(ray, toC) - toC;',
+  '  vec3 side = normalize(cross(toC, vec3(0.0, 0.0, 1.0)) + vec3(1e-6));',
+  '  vec2 dir = normalize(vec2(dot(off, side), dot(off, normalize(cross(side, toC)))));',
+  '  float fall = 1.0 - r / edge;',
+  '  float bloom = 0.5 / (1.0 + 6.0 * (r - 1.0) * (r - 1.0)) * smoothstep(0.98, 1.0, r);',
+  '  float streak = aeNoise2(dir * 2.2 + 7.0) * 0.65 + aeNoise2(dir * 6.0 + 3.0) * 0.35;',
+  '  float corona = step(1.0, r) * 0.45 * pow(r, -7.0) + 0.3 * pow(r, -2.5) * mix(0.25, 1.0, streak) * mix(1.0, 0.4, dir.y * dir.y);',
+  '  float h = aeNoise2(dir * 9.0 + vec2(floor(uT * 0.05), 1.3));',
+  '  float prom = smoothstep(0.78, 0.92, h) * (1.0 - smoothstep(1.0, 1.0 + 0.05 * h, r)) * smoothstep(1.0, 1.006, r);',
+  '  vec3 col = vec3(1.0, 0.72, 0.42) * bloom + vec3(1.0, 0.95, 0.9) * corona + vec3(1.0, 0.38, 0.45) * prom * 0.6;',
+  '  gl_FragColor = vec4(col * fall * fade, 0.0);',
   '}'
 ].join('\n');
 
@@ -1230,10 +1299,11 @@ function _aeBuildGl(THREE, canvas) {
   scene.add(sky);
 
   var sun = new THREE.Group();
+  var sunT = { value: 0 };   // the granulation's time (_aeUpdate)
   sun.add(new THREE.Mesh(
     new THREE.SphereGeometry(AE_SUN_SHOW_R, AE_SUN_SEGMENTS[0], AE_SUN_SEGMENTS[1]),
-    new THREE.ShaderMaterial({ uniforms: { fade: _aeFadeU }, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_SUN_FRAG, transparent: true })));
-  var sunGlowUni = { center: { value: new THREE.Vector3() }, radius: { value: AE_SUN_SHOW_R }, fade: _aeFadeU };
+    new THREE.ShaderMaterial({ uniforms: { fade: _aeFadeU, uT: sunT }, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_SUN_FRAG, transparent: true })));
+  var sunGlowUni = { center: { value: new THREE.Vector3() }, radius: { value: AE_SUN_SHOW_R }, fade: _aeFadeU, uT: sunT };
   sun.add(new THREE.Mesh(
     new THREE.SphereGeometry(AE_SUN_SHOW_R * AE_SUN_GLOW_SCALE, AE_SUN_SEGMENTS[0], AE_SUN_SEGMENTS[1]),
     _aeAddLight(new THREE.ShaderMaterial({
@@ -1255,7 +1325,7 @@ function _aeBuildGl(THREE, canvas) {
   return {
     THREE: THREE, renderer: renderer, scene: scene, camera: camera, dpr: dpr,
     earth: earth, earthUni: earthUni, moon: moon, moonUni: moonUni, shared: shared,
-    sky: sky, sun: sun, sunGlowUni: sunGlowUni, moonPath: moonPath, moonPathCount: moonPathCount,
+    sky: sky, sun: sun, sunGlowUni: sunGlowUni, sunT: sunT, moonPath: moonPath, moonPathCount: moonPathCount,
     gpsRings: gpsRings, issRing: issRing, sats: sats,
     basis: new THREE.Matrix4(), vx: new THREE.Vector3(), vy: new THREE.Vector3(), vz: new THREE.Vector3(),
     aniso: Math.min(AE_ANISOTROPY, renderer.capabilities.getMaxAnisotropy()),
@@ -1923,6 +1993,7 @@ function _aeUpdate(ms) {
   var sd = _aeSunShown(sc);
   S.sun.position.set(sd[0], sd[1], sd[2]);
   S.sunGlowUni.center.value.set(sd[0], sd[1], sd[2]);
+  S.sunT.value = (ms / 1000 / AE_GRANULE_LIFE_S) % AE_GRANULE_CYCLE;
   _aeUpdateMoonPath(ms);
   _aeUpdateSats(ms, sc);
   _aePlaceCamera();

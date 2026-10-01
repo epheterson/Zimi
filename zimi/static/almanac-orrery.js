@@ -17,6 +17,27 @@ var _PLANETS = {
   Neptune: { a: 30.0699, e: 0.00895, I: 1.770, L: 304.223, LP: 46.682, N: 131.784, da: 0.00003, de: 0.00001, dI: 0.0001, dL: 218.460, dLP: 0.010, dN: -0.005, color: '#3868c8', glow: '#5888f0', vr: 0.016, mb: -0.00041348, mc: 0.68346318, ms: -0.10162547, mf: 7.67025 }
 };
 
+// The Sun's limb darkening, shared by every Sun the Almanac draws (the live
+// sky's disc, the 3D view's photosphere): its brightness at mu, the cosine of
+// the angle from the disc's centre, as a share of the centre's, in red, green
+// and blue, I(mu) = a0 + a1 mu + ... + a5 mu^5. Fifth-order fits to the
+// measured centre-to-limb variation near 650, 550 and 450 nm (after Neckel
+// and Labs 1994, Solar Physics 153, 91): each is 1 at the centre; at the limb
+// red keeps 35% and blue 15%, which is why the edge of the Sun is darker and
+// warmer.
+var SUN_LIMB_POLY = [
+  [0.34685, 1.37539, -2.04425, 2.70493, -1.94290, 0.55999],
+  [0.26073, 1.27428, -1.30352, 1.47085, -0.96618, 0.26384],
+  [0.15248, 1.38517, -1.49615, 1.99886, -1.48155, 0.44119]
+];
+function _sunLimb(mu) {
+  return SUN_LIMB_POLY.map(function (a) {
+    var v = 0;
+    for (var k = a.length - 1; k >= 0; k--) v = a[k] + mu * v;
+    return v;
+  });
+}
+
 var _ORRERY_MAX_ECC = 0.99;
 // A planet's elements at T (Julian centuries from J2000; JPL's approximate
 // Keplerian elements, J2000 ecliptic and equinox) and its place in its own

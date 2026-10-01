@@ -658,26 +658,73 @@ function _skyPaintPlanets(ctx, s) {
   }
 }
 
-// The Sun where it stands, its disc as large as the Moon's (as in the real
-// sky), reddened low down; the ground covers it as it sets.
+// ── The Sun in the sky ──
+// Its light comes through the air: the longer the path (the airmass), the
+// more blue is scattered out of it, so it whitens high up and reddens low
+// (Kasten & Young 1989 airmass; per-colour optical depths, Rayleigh plus a
+// little haze, at 650/550/450 nm). Near the horizon refraction lifts its
+// lower limb more than its upper and flattens it. Its face is limb-darkened
+// as the 3D view's is (_sunLimb), and it blooms against the sky.
+var SKY_SUN_DEPTH = [0.10, 0.14, 0.22];   // optical depth per airmass, red/green/blue
+var SKY_SUN_EXPOSURE = [1.6, 6];          // the face's exposure on the horizon and from 10 degrees up (dimmer through more air)
+var SKY_SUN_SEMIDIAMETER = 0.2666;        // degrees, the real disc's (refraction's flattening is the real one)
+var SKY_SUN_STOPS = [0, 0.35, 0.6, 0.8, 0.92, 0.98, 1];   // radii where the face's gradient is sampled
+
+// Airmass at an apparent altitude (degrees), Kasten & Young (1989).
+function _skyAirmass(alt) {
+  var h = Math.max(alt, -0.5);
+  return 1 / (Math.sin(h * DEG_TO_RAD) + 0.50572 * Math.pow(h + 6.07995, -1.6364));
+}
+// The sunlight's colour after the air, scaled so its brightest channel is 1.
+function _skySunTint(alt) {
+  var m = _skyAirmass(alt), t = SKY_SUN_DEPTH.map(function (k) { return Math.exp(-k * m); });
+  var top = Math.max(t[0], t[1], t[2]);
+  return t.map(function (x) { return x / top; });
+}
+// How round the disc stays (vertical over horizontal), the refraction at its
+// lower limb less that at its upper, over its diameter; alt is the centre's true altitude.
+function _skySunFlattening(alt) {
+  var lo = _skyRefract(alt - SKY_SUN_SEMIDIAMETER) - (alt - SKY_SUN_SEMIDIAMETER);
+  var hi = _skyRefract(alt + SKY_SUN_SEMIDIAMETER) - (alt + SKY_SUN_SEMIDIAMETER);
+  return _skyClamp(1 - (lo - hi) / (2 * SKY_SUN_SEMIDIAMETER), 0.6, 1);
+}
+
 function _skyPaintSun(ctx, s) {
   var sun = s.eph.sun;
   if (sun.alt < -2) return;
-  var x = _skyX(s, sun.az);
-  if (!_skyInView(s, x, _skyBodyR(s) * 6)) return;
-  var y = _skyY(s, sun.alt), R = _skyBodyR(s), low = _skyClamp(sun.alt / 12, 0, 1);
-  var glow = _skyMix([255, 170, 90], [255, 246, 220], low);
-  var sg = ctx.createRadialGradient(x, y, R * 0.5, x, y, R * 7);
-  sg.addColorStop(0, _skyRgb(glow, 0.42));
-  sg.addColorStop(0.35, _skyRgb(glow, 0.12));
-  sg.addColorStop(1, _skyRgb(glow, 0));
-  ctx.fillStyle = sg;
-  ctx.beginPath(); ctx.arc(x, y, R * 7, 0, Math.PI * 2); ctx.fill();
-  var sd = ctx.createRadialGradient(x, y, 0, x, y, R);
-  sd.addColorStop(0, _skyRgb(_skyMix([255, 200, 150], [255, 254, 245], low)));
-  sd.addColorStop(1, _skyRgb(_skyMix([236, 100, 50], [255, 226, 140], low)));
-  ctx.fillStyle = sd;
-  ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill();
+  var x = _skyX(s, sun.az), R = _skyBodyR(s);
+  if (!_skyInView(s, x, R * 8)) return;
+  var y = _skyY(s, sun.alt), tint = _skySunTint(sun.alt), flat = _skySunFlattening(s.eph.sunGeoAlt);
+  var expo = _skyLerp(SKY_SUN_EXPOSURE[0], SKY_SUN_EXPOSURE[1], _skyClamp(sun.alt / 10, 0, 1));
+  var c255 = tint.map(function (v) { return 255 * v; });
+  // The bloom: a wide soft light and a bright close halo, added to the sky.
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  var wide = ctx.createRadialGradient(x, y, R, x, y, R * 8);
+  wide.addColorStop(0, _skyRgb(c255, 0.32));
+  wide.addColorStop(0.3, _skyRgb(c255, 0.08));
+  wide.addColorStop(1, _skyRgb(c255, 0));
+  ctx.fillStyle = wide;
+  ctx.beginPath(); ctx.arc(x, y, R * 8, 0, Math.PI * 2); ctx.fill();
+  var halo = ctx.createRadialGradient(x, y, R * 0.9, x, y, R * 2.2);
+  halo.addColorStop(0, _skyRgb(c255, 0.38 - 0.16 * _skyDaylight(s.eph.sunGeoAlt)));
+  halo.addColorStop(1, _skyRgb(c255, 0));
+  ctx.fillStyle = halo;
+  ctx.beginPath(); ctx.arc(x, y, R * 2.2, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  // The face: limb-darkened in each colour, through the air's tint, flattened.
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(1, flat);
+  var face = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
+  for (var i = 0; i < SKY_SUN_STOPS.length; i++) {
+    var r = SKY_SUN_STOPS[i], ld = _sunLimb(Math.sqrt(Math.max(0, 1 - r * r)));
+    // Through a soft exposure, as a camera sees it: the centre burns to white-yellow, the limb stays warm.
+    face.addColorStop(r, _skyRgb([0, 1, 2].map(function (k) { return 255 * (1 - Math.exp(-expo * tint[k] * ld[k])); })));
+  }
+  ctx.fillStyle = face;
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
   if (sun.alt > SKY_REFRACTION_FROM_DEG) s.bodies.push({ type: 'sun', x: x / s.dpr, y: y / s.dpr, r: R / s.dpr, alt: sun.alt, az: sun.az });
 }
 
