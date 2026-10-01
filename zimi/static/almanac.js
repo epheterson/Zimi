@@ -1849,6 +1849,7 @@ function _almKeepStill(el) {
     var base = scroller.scrollTop, pulled = scroller._almTop.v - base;
     if (delta < 0 && pulled > 0 && pulled <= -delta + 1) base = scroller._almTop.v;
     scroller.scrollTop = scroller._almTop.v = base + delta;
+    if (typeof _chromeShift === 'function') _chromeShift(scroller.scrollTop - base);
   });
   el._almStill.observe(el);
 }

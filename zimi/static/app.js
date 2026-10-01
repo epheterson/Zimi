@@ -19931,6 +19931,11 @@ function _chromeScroll(y) {
   _chromeBase = y;
   _setChromeAway(away || _chromeHeld);
 }
+// A scroll the page made to keep what is on screen still (a late section
+// arriving above the reader): not the reader's, so the header stays as it is.
+// Sliding it away there changed the scroller's height, and at the page's end
+// the browser pulled the scroll up and moved what was being read.
+function _chromeShift(d) { _chromeBase += d; }
 // Held away (a video playing on a phone turned sideways, a book being read)
 // until let go.
 function _chromeImmersive(on) {
