@@ -310,3 +310,92 @@ def test_a_book_without_math_never_loads_the_math_code(served):
         br.close()
         pw.stop()
 
+
+# ── a wiki's formulas (mwoffliner: an SVG beside hidden MathML) ────────────
+
+# Wikipedia's own markup for a formula (wikipedia_en_all_maxi_2026-08), cut.
+_MML = (
+    '<span class="mwe-math-mathml-%s mwe-math-mathml-a11y" style="display: none;">'
+    '<math xmlns="http://www.w3.org/1998/Math/MathML" alttext="%s"><mi>x</mi></math></span>'
+)
+_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="12ex" height="2.8ex" viewBox="0 0 120 28">'
+    '<path d="M0 0H120V28H0Z" fill="#000"/></svg>'
+)
+
+
+def _wiki_formula(kind, tex, svg):
+    return (
+        '<span class="mwe-math-element mwe-math-element-%s" typeof="mw:Extension/math">%s'
+        '<img src="../_assets_/m/%s.svg" class="mwe-math-fallback-image-%s mw-invert skin-invert" aria-hidden="true" '
+        'style="vertical-align: -0.505ex; width:12.983ex; height:2.843ex;" alt="%s"></span>'
+        % (kind, _MML % (kind, tex), svg, kind, tex)
+    )
+
+
+def wikibook():
+    """sv Wikibooks with a book whose chapters have formulas."""
+    from test_books_sources import MWOFFLINER
+
+    chapters = ("Trianglar", "Cirklar", "Ytor")
+    entries = {
+        "Wikibooks:Huvudsida": ("text/html", "<html><body><h1>Huvudsida</h1></body></html>", "Huvudsida"),
+        "Geometri": (
+            "text/html",
+            "<html><body><h1>Geometri</h1><ul>%s</ul></body></html>"
+            % "".join('<li><a href="Geometri/%s">%s</a></li>' % (c, c) for c in chapters),
+            "Geometri",
+        ),
+        "_assets_/m/s.svg": ("image/svg+xml", _SVG, ""),
+        "_assets_/m/d.svg": ("image/svg+xml", _SVG, ""),
+    }
+    for c in chapters:
+        entries["Geometri/" + c] = (
+            "text/html",
+            '<html><body><h1>%s</h1><div class="mw-parser-output"><p>The sum %s is the side, and</p>%s%s</div></body></html>'
+            % (c, _wiki_formula("inline", "a+b", "s"), _wiki_formula("display", "a^2+b^2=c^2", "d"), FILLER),
+            "Geometri/" + c,
+        )
+    return (
+        "wikibooks_sv_all_nopic_2026-07.zim",
+        {"Scraper": MWOFFLINER, "Name": "wikibooks_sv_all", "Language": "swe"},
+        entries,
+        "Wikibooks:Huvudsida",
+    )
+
+
+_WIKI_MATH = r"""() => { var d = document.getElementById('reader-frame').contentDocument, w = d.defaultView;
+  var one = function(k) { var i = d.querySelector('img.mwe-math-fallback-image-' + k), cs = w.getComputedStyle(i), r = i.getBoundingClientRect(), p = i.closest('.zimi-reader-body').getBoundingClientRect();
+    return { display: cs.display, filter: cs.filter, centred: Math.abs((r.left + r.right) / 2 - (p.left + p.right) / 2) < 4 }; };
+  return { inline: one('inline'), display: one('display'),
+    mathml: Array.prototype.filter.call(d.querySelectorAll('.mwe-math-mathml-a11y'), function(m) { return w.getComputedStyle(m).display !== 'none'; }).length }; }"""
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_a_wikis_formulas_read_in_their_line_and_in_the_dark(served, theme):
+    """mwoffliner draws a formula as black SVG type beside hidden MathML.
+    Reader View made every picture a block (an inline formula broke its
+    line) and the e-reader's dark theme left it black on black."""
+    import zimi.renderer as renderer
+
+    if not renderer.browser_available():
+        pytest.skip("playwright + chromium are not usable here")
+    base, zim = served([wikibook()], name="wikibooks_sv_all_nopic_2026-07")
+    pw, br, pg, _loaded = _open(
+        base, zim, lambda pw: pw.devices["iPhone 13"], theme, root="_zimi_book_/Geometri"
+    )
+    try:
+        pg.wait_for_timeout(600)
+        got = pg.evaluate(_WIKI_MATH)
+        if os.environ.get("ZIMI_SHOTS"):
+            pg.screenshot(path=os.path.join(os.environ["ZIMI_SHOTS"], "wiki-math-%s.png" % theme))
+        assert got["inline"]["display"] == "inline", got
+        assert got["display"]["display"] == "block" and got["display"]["centred"], got
+        assert got["mathml"] == 0
+        if theme == "dark":
+            assert "invert" in got["inline"]["filter"] and "invert" in got["display"]["filter"], got
+        else:
+            assert got["inline"]["filter"] == "none", got
+    finally:
+        br.close()
+        pw.stop()

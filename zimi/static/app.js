@@ -16386,6 +16386,12 @@ function _readerViewInjectStyle(doc) {
     '.zimi-reader img,.zimi-reader figure,.zimi-reader video,.zimi-reader svg,.zimi-reader canvas,.zimi-reader iframe{',
       'max-width:100% !important;height:auto}',
     '.zimi-reader img{border-radius:6px;margin:0.4em 0;display:block}',
+    // A MediaWiki formula is a picture of type (mwoffliner's SVG beside its
+    // hidden MathML): in its line, or centred on its own, never a figure;
+    // black ink on nothing, so in the dark it is turned light, as the text is.
+    '.zimi-reader img.mwe-math-fallback-image-inline{display:inline;margin:0;border-radius:0}',
+    '.zimi-reader img.mwe-math-fallback-image-display{margin:0.5em auto;border-radius:0}',
+    'body.rv-theme-dark.zimi-reader-active img[class*="mwe-math-fallback"]{filter:invert(.88)}',
     // Tap-to-full-size: only images whose source is larger than the scaled-down
     // display get the affordance (class added by _readerMarkImage). zoom-in cue +
     // a subtle focus ring so keyboard users can see the target.

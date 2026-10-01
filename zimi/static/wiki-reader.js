@@ -72,8 +72,6 @@ var _WIKI_CSS = [
   // easier to hit than its digits.
   'html.zw .zimi-reader sup{line-height:0}',
   'html.zw .zimi-reader :is(sup.reference,.mw-ref) a{padding:.5em .3em;margin:-.5em -.3em}',
-  // A formula is a picture of black type: in the dark, it is turned light.
-  'body.rv-theme-dark.zimi-reader-active img[class*="mwe-math"]{filter:invert(.88)}',
   '.zw-sub{margin:0 0 1.1em;color:var(--rv-muted);font:15px/1.4 ' + _WIKI_UI_FONT + '}',
   'html.zw .zimi-reader :target{scroll-margin-top:calc(var(--zw-top) + 12px)}',
   // A section anchor lands below the bar, not under it.
