@@ -5,49 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.13.0] - 2026-10-01
 
 ### Added
 
-- Dictionary: a word across every installed Wiktionary, by the language of the word, with its meanings, pronunciation (said by a recording when the ZIM has one, else a voice for the word's language), etymology, translations and related words, each a tap to the next word. Define in the reader opens it.
-- Create a ZIM from a folder on the server, picking any part of it in a tree; pages, documents, pictures, video and audio, with optional `zimi.txt` metadata files.
-- The Almanac's Moon is live: tap or drag it to fly into the 3D view, on the same clock as the page.
-- Find in page while reading (Cmd/Ctrl+F, or the ⋯ menu).
-- PDFs: page back and forward buttons, two pages side by side on a wide screen, rotate, About this PDF, and highlights with notes kept in Saved like an article's.
-- Search results highlight the matched words and group by source when many sources match.
-- Math renders in textbooks.
-- A sharper Moon, drawn from NASA's high-resolution map.
-- Wikisource works, textbooks and single-book ZIMs open in the book reader.
-- The Sun in the Almanac's 3D view.
-- The AppImage updates itself (AppImageUpdate).
-- `zimi mcp`: the MCP server alone on stdio, no web server; three tools by default (search, read a page as Markdown, read one section), `--tools full` for every tool.
-- `pip install zimi-mcp`: the MCP server and search as their own package (280 KB, no web app), released with every version.
+- Dictionary: one word across every installed Wiktionary, spoken in its own language.
+- Create a ZIM from a folder on the server: pick any part of it, with optional `zimi.txt` metadata.
+- `zimi-mcp`: the MCP server and search as their own small package; `zimi mcp` serves three tools by default.
+- Find in page while reading.
+- Search results highlight matched words and group by source.
+- PDFs: Zimi's own reader with contents, page thumbnails, two-page spreads, rotate, About this PDF and highlights.
+- Wikisource works and textbooks open in the book reader; math renders.
+- Almanac: a live Moon and 3D view on the page's clock, a live sky, tides, the Sun with sunspots, and offline navigation, calendars and year sheets.
+- Back buttons that say where they go.
+- The AppImage updates itself.
 
 ### Changed
 
-- Signing in comes before Manage opens.
-- Recent searches can be removed one by one.
-- Like and Save are separate: liking no longer bookmarks.
-- Text size is five steps instead of a number.
-- Download file names: `Zimi-<version>-<os>-<arch>`.
-- The Apps page counts books, videos, questions and posts.
-- The Environment panel starts folded; Internet use rows line up.
-- Create's link option and the reader's setting speak of links outside the ZIM and outside your library ([#99](https://github.com/epheterson/Zimi/issues/99)).
+- Save is one verb in every app; Like is separate.
+- Searches send far fewer requests, and searches from your own network are never rate limited ([#104](https://github.com/epheterson/Zimi/issues/104)).
+- Text size is five steps.
+- Sign-in comes before Manage opens.
+- Download names: `Zimi-<version>-<os>-<arch>`.
+- Pinch zoom works again on phones.
+- Links: "outside the ZIM" and "outside your library" ([#99](https://github.com/epheterson/Zimi/issues/99)).
 
 ### Fixed
 
-- Search while reading searches the open ZIM.
-- A like and a save on different devices never undo each other.
-- Paths read correctly in right-to-left languages.
-- Wikipedia formulas in dark mode.
-- Turning Discover on or off no longer leaves Settings.
-- The Auto theme swatch draws cleanly.
-- Wide pictures on pages without a mobile layout fit once loaded.
-- The PDF toolbar fits a phone.
-- The Moon is turned as it appears in your sky.
-- On Linux, the browser fallback opens once Zimi is ready.
-- Searches from this machine and the local network are not rate limited; the wait reads "1 second" ([#104](https://github.com/epheterson/Zimi/issues/104)).
-- `-wiki` also leaves out MediaWiki: an exclusion matches word parts, accents aside, and the home and Library filters take the same operators ([#94](https://github.com/epheterson/Zimi/issues/94)).
+- `-wiki` leaves out MediaWiki ([#94](https://github.com/epheterson/Zimi/issues/94)).
+- Like and Save on different devices never undo each other.
+- Several timing bugs on slow devices: late searches, Manage opening unasked, apps reappearing after Back.
+- Right-to-left paths, dark-mode formulas, clipped wide pictures, the Auto swatch.
 
 ## [1.12.0] - 2026-09-30
 
