@@ -16,7 +16,7 @@
 //          waning gibbous 84% lit, dark limb at the upper right;
 //        2026-01-10 03:00 UTC, London, last quarter;
 //        2027-05-12 09:00 UTC, Sydney (southern sky), waxing crescent.
-//   2. The hero disc: its sprite, turned by _heroMoonTiltDeg, puts the dark
+//   2. The hero disc: its sprite, turned by _heroMoonView's tilt, puts the dark
 //      limb at the upper right for Eric's case. Without a chosen place it
 //      stands celestial north up (rot = chi) and says "north up".
 //   3. The 3D view: a camera looking at the Moon with up from _aeViewUp and
@@ -56,12 +56,12 @@ function extractFn(src, name) {
 const S = { Math, Date, Intl, Object, JSON, console, String, Number, Array, isNaN, window: {}, document: { getElementById: () => null } };
 vm.createContext(S);
 vm.runInContext(
-  'var JD_UNIX_EPOCH = 2440587.5; var JD_J2000 = 2451545.0; var MS_PER_DAY = 86400000;' +
+  'var _MOON_EQUATOR_TILT_DEG = 1.54242; var JD_UNIX_EPOCH = 2440587.5; var JD_J2000 = 2451545.0; var MS_PER_DAY = 86400000;' +
   'var JULIAN_CENTURY = 36525; var DEG_TO_RAD = Math.PI / 180;' +
   'function t(k) { return k; }', S);
-for (const fn of ['_moonEqCoords', '_moonLimbAngles', '_normDeg360', '_moonScreenTiltDeg', '_moonIsWaxing', '_moonPhase'])
+for (const fn of ['_moonEqCoords', '_moonLimbAngles', '_moonLimbAnglesOf', '_moonAxisOf', '_moonView', '_normDeg360', '_moonScreenTiltDeg', '_moonIsWaxing', '_moonPhase'])
   vm.runInContext(extractFn(appSrc, fn), S);
-for (const fn of ['_dateToJD', '_jdnToGregorian', '_cnDeltaTdays', '_almEsc', '_heroMoonTiltDeg', '_heroMoonOrientNote'])
+for (const fn of ['_dateToJD', '_jdnToGregorian', '_cnDeltaTdays', '_almEsc', '_heroMoonView', '_heroMoonTiltDeg', '_heroMoonOrientNote'])
   vm.runInContext(extractFn(almSrc, fn), S);
 vm.runInContext(extractFn(read('almanac-sky.js'), '_angleDelta'), S);
 vm.runInContext(read('almanac-orrery.js'), S);
@@ -90,12 +90,12 @@ for (const c of CASES) {
 {
   const c = CASES[0];
   const loc = { lat: c.lat, lon: c.lon, stored: true };
-  const tilt = S._heroMoonTiltDeg(new Date(c.ms), loc);
-  // The sprite is drawn lit at 3 o'clock waxing, 9 o'clock waning, and CSS
-  // rotation runs clockwise: the lit limb ends up this far counterclockwise
-  // from straight up.
+  const view = S._heroMoonView(new Date(c.ms), loc), tilt = view.tilt;
+  // The sprite is drawn lunar north up, lit at `limb` counterclockwise from
+  // the pole, and CSS rotation runs clockwise: the lit limb ends up this far
+  // counterclockwise from straight up.
   const waxing = S._moonIsWaxing(S._moonPhase(new Date(c.ms)));
-  const litFromUp = S._normDeg360((waxing ? 270 : 90) - tilt);
+  const litFromUp = S._normDeg360(view.limb - tilt);
   const darkClockwise = S._normDeg360(-(litFromUp + 180));   // dark limb, clockwise from up
   console.log('   hero: tilt ' + tilt.toFixed(2) + ', lit limb ' + litFromUp.toFixed(1) +
     ' deg counterclockwise from up, dark limb ' + darkClockwise.toFixed(1) + ' deg clockwise from up');
@@ -104,8 +104,8 @@ for (const c of CASES) {
   check(diff(litFromUp, c.rot) < TOL, 'the hero draws the lit limb at the zenith-up angle');
 
   const guess = { lat: 34, lon: -120, stored: false };
-  const northTilt = S._heroMoonTiltDeg(new Date(c.ms), guess);
-  check(diff(S._normDeg360(90 - northTilt), angles(c).chi) < 1e-9,
+  const north = S._heroMoonView(new Date(c.ms), guess);
+  check(diff(S._normDeg360(north.limb - north.tilt), angles(c).chi) < 1e-9,
     'no place chosen: the hero stands celestial north up (lit limb at chi), not at a guessed place');
   check(S._heroMoonOrientNote(guess).includes('alm_moon_north_up') && S._heroMoonOrientNote(loc) === '',
     'and says "north up" only then');

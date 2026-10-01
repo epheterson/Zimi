@@ -51,7 +51,8 @@ function _skyMoonAt(s, ts) {
       azimuth: fp.azimuth + _angleDelta(fp.azimuth, tp.azimuth) * e
     },
     tilt: (anim.from.tilt || 0) + _angleDelta(anim.from.tilt || 0, anim.to.tilt || 0) * e,
-    phase: _moonAnimPhaseAt(anim.fromTime, anim.toTime, e)
+    phase: _moonAnimPhaseAt(anim.fromTime, anim.toTime, e),
+    view: _moonAnimViewAt(anim.fromTime, anim.toTime, e)
   };
 }
 
@@ -85,9 +86,10 @@ function _skyFrame(now, lat, lon, cw, ch) {
   } else {
     labelText += ' · ' + t('alm_moon') + ' ' + t('alm_below_horizon');
   }
-  // tilt: canonical screen tilt from app.js — the SAME derivation the hero
-  // disc and the Today card rotate by, so all three moons agree.
-  return { sunPos: sunPos, moonData: { pos: moonPos0, tilt: _moonScreenTiltDeg(now, lat, lon), phase: moonM0 }, projStars: projStars, projField: projField, labelText: labelText };
+  // view: the canonical _moonView from app.js — the SAME derivation the hero
+  // disc and the Today card draw, so all three moons agree.
+  var view = _moonView(now, lat, lon);
+  return { sunPos: sunPos, moonData: { pos: moonPos0, tilt: view.tilt, phase: moonM0, view: view }, projStars: projStars, projField: projField, labelText: labelText };
 }
 
 // `animateMoon` -- true only for a repaint that reinitializes this same canvas
@@ -618,14 +620,14 @@ function _drawSkyScene(canvas, dpr, sunPos, now, lat, lon, elapsed, labelText, p
       ctx.fillStyle = mgOuter;
       ctx.beginPath(); ctx.arc(moonX, moonY, moonR * 2.5, 0, Math.PI * 2); ctx.fill();
     }
-    // The moon IS the hero's shaded sprite now — a soft terminator and a dim,
-    // visible earthshine dark side, not a black cut-out — rotated by the SAME
-    // canonical screen tilt (_moonScreenTiltDeg, app.js) as the hero disc and
-    // the Today card, so the terminator leans identically everywhere.
-    var moonTilt = (moonData && moonData.tilt != null)
-      ? moonData.tilt : _moonScreenTiltDeg(now, lat, lon);
+    // The moon IS the hero's shaded sprite — a soft terminator and a dim,
+    // visible earthshine dark side, not a black cut-out — from the SAME
+    // canonical _moonView (app.js) as the hero disc and the Today card, so
+    // the terminator and the maria lie identically everywhere.
+    var view = (moonData && moonData.view) || _moonView(now, lat, lon);
+    var moonTilt = (moonData && moonData.tilt != null) ? moonData.tilt : view.tilt;
     var spr = (typeof _moonSpriteCanvas === 'function' && _moonTexReady)
-      ? _moonSpriteCanvas(m.illumination / 100, _moonIsWaxing(m), moonR / dpr) : null;
+      ? _moonSpriteCanvas(view, moonR / dpr) : null;
     ctx.save();
     ctx.globalAlpha = moonAlpha;
     ctx.translate(moonX, moonY);

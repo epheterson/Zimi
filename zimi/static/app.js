@@ -4849,24 +4849,50 @@ var _MOON_PHASE_I18N = {
 };
 function _localMoonName(name) { return _MOON_PHASE_I18N[name] ? t(_MOON_PHASE_I18N[name]) : name; }
 
-// ── Moon rendering — the real photo, shaded per-pixel, shared everywhere ──
-// The old renderer stacked two solid half-discs under a scaled-ellipse
-// terminator: a razor-sharp edge, a hard seam at the quarters, no limb
-// darkening. This draws the full-resolution moon photo and multiplies it by a
-// physically-shaded brightness map — normal·Sun for a soft terminator, limb
-// darkening toward the rim, and an earthshine FLOOR so the shadowed side stays
-// a visible (cool, dim) sphere rather than going black. Static per phase, so
-// it's computed once and cached.
+// ── Moon rendering — the Moon as seen, drawn from the lunar map ──
+// Every disc (the Almanac hero, the Today card, the sky scene) is an
+// orthographic view of the same equirectangular LRO map the 3D view wraps its
+// sphere in. Nothing is a rotated photo: the point of the Moon facing us is
+// the optical libration (l, b), the terminator comes from the phase angle and
+// the bright limb's direction, and the brightness is normal·Sun for a soft
+// terminator, limb darkening toward the rim, and an earthshine FLOOR so the
+// shadowed side stays a visible (cool, dim) sphere rather than going black.
+// The sprite is drawn lunar north up; the pole's turn in the viewer's sky is
+// one whole-disc rotation, so a sprite depends only on the phase and the
+// libration and stays cacheable while the sky wheels around it.
+var _MOON_MAP_URL = '/static/earth/moon-v1.webp';
 var _MOON_TEX = new Image();
 var _moonTexReady = false;
 _MOON_TEX.onload = function() {
   _moonTexReady = true;
-  _moonSpriteCache = {};
+  _moonSpriteCache.clear();
+  _moonSpriteCanvasCache.clear();
   if (typeof _repaintMoons === 'function') _repaintMoons();
 };
-_MOON_TEX.src = '/static/moon.webp?v=1';
+_MOON_TEX.src = _MOON_MAP_URL;
 
-var _moonSpriteCache = {};
+// The map is LRO albedo, harsher than the eye sees the Moon (its darkest
+// maria sit near a third of its brightest highlands); this lift and gain put
+// its near-side spread where a photograph of the full Moon has it.
+var _MOON_ALBEDO_LIFT = 60;
+var _MOON_ALBEDO_GAIN = 0.8;
+var _MOON_PLAIN_GREY = 184;       // the disc's grey until the map arrives
+// Map widths read back: the Today card's 48px disc needs a quarter of the map,
+// the hero all of it. Anything drawn wider than this many device pixels reads
+// the full map.
+var _MOON_MAP_FULL_W = 1024;
+var _MOON_MAP_SMALL_W = 256;
+var _MOON_MAP_SMALL_UPTO_PX = 160;
+var _MOON_SPRITE_CACHE_MAX = 48;  // sprites kept; time travel makes new ones every frame
+
+// A Map that forgets its oldest entry past max (insertion order is age).
+function _moonCachePut(cache, key, val) {
+  cache.set(key, val);
+  if (cache.size > _MOON_SPRITE_CACHE_MAX) cache.delete(cache.keys().next().value);
+  return val;
+}
+var _moonSpriteCache = new Map();        // data URLs, for <img>
+var _moonSpriteCanvasCache = new Map();  // canvases, for the sky scene and motion
 
 // Hermite ease between two edges. Also used by the lazy-loaded almanac
 // scripts, which app.js always loads first.
@@ -4875,152 +4901,189 @@ function _smoothstep(a, b, x) {
   return t * t * (3 - 2 * t);
 }
 
-// Sprite for an illuminated fraction (0..1) and waxing flag → data URL.
-// Untilted (lit limb on the right when waxing); the caller rotates it.
-function _renderMoonSprite(illumFrac, waxing, sizePx) {
-  var key = Math.round(illumFrac * 100) + (waxing ? 'w' : 'a') + 'x' + sizePx +
-    (_moonTexReady ? 't' : '');
-  if (_moonSpriteCache[key]) return _moonSpriteCache[key];
-  var url = _moonSpriteCanvas(illumFrac, waxing, sizePx).toDataURL('image/png');
-  _moonSpriteCache[key] = url;
-  return url;
-}
-
-// The unshaded source pixels for a sprite size — the moon photo (or, before it
-// loads, a neutral grey disc) rasterized at N and read back ONCE per size.
-// _moonSpriteCanvas used to drawImage + getImageData per phase bucket; the
-// readback is a GPU sync stall (WebKit measured ~6.6ms/bucket at 128px, ~100
-// buckets on a cold fast lever throw). Shading now copies these cached pixels,
-// so a new bucket costs only the JS shading loop + one putImageData.
-var _moonTexBaseCache = {};
-function _moonTexBaseData(N) {
-  var key = N + (_moonTexReady ? 't' : '');
-  if (_moonTexBaseCache[key]) return _moonTexBaseCache[key];
+// The map as greyscale albedo at width W (W x W/2), toned, read back once per
+// width. The readback is a GPU sync, so it happens once, not per sprite.
+var _moonMapCache = {};
+function _moonMapData(W) {
+  if (_moonMapCache[W]) return _moonMapCache[W];
+  var H = W / 2;
   var cv = document.createElement('canvas');
-  cv.width = cv.height = N;
+  cv.width = W; cv.height = H;
   var ctx = cv.getContext('2d', { willReadFrequently: true });
-  // Same-origin photo, so getImageData won't taint.
-  if (_moonTexReady) {
-    ctx.drawImage(_MOON_TEX, 0, 0, N, N);
-  } else {
-    ctx.fillStyle = '#b8b4aa';
-    ctx.beginPath(); ctx.arc(N / 2, N / 2, N / 2, 0, Math.PI * 2); ctx.fill();
-  }
-  var img = ctx.getImageData(0, 0, N, N);
-  _moonTexBaseCache[key] = img;
-  return img;
+  ctx.drawImage(_MOON_TEX, 0, 0, W, H);   // same-origin, so it won't taint
+  var src = ctx.getImageData(0, 0, W, H).data;
+  var g = new Uint8Array(W * H);
+  for (var i = 0; i < g.length; i++) g[i] = Math.min(255, _MOON_ALBEDO_LIFT + _MOON_ALBEDO_GAIN * src[i * 4]);
+  return (_moonMapCache[W] = { w: W, h: H, g: g });
 }
 
-// The shaded moon as a <canvas> (cached) — the sky scene draws it directly so
-// its dark side shows the same earthshine as the hero, not a black shadow.
-var _moonSpriteCanvasCache = {};
-function _moonSpriteCanvas(illumFrac, waxing, sizePx) {
-  var key = Math.round(illumFrac * 100) + (waxing ? 'w' : 'a') + 'x' + sizePx +
-    (_moonTexReady ? 't' : '');
-  if (_moonSpriteCanvasCache[key]) return _moonSpriteCanvasCache[key];
+// A sprite's inputs, rounded to what the eye can tell apart (1% of phase, a
+// degree of angle), so the key and the drawing agree.
+function _moonSpriteKey(v, sizePx) {
+  return Math.round(v.k * 100) + ':' + Math.round(v.limb) + ':' + Math.round(v.l) + ':' +
+    Math.round(v.b) + 'x' + sizePx + (_moonTexReady ? 't' : '');
+}
 
-  // Render at the display's device resolution (2× the CSS size on retina),
-  // capped at 512, so the per-pixel shading — terminator haze, limb darkening,
-  // the edge — stays crisp when the hero moon is zoomed. The maria come from
-  // the 256px photo, so their fine detail is bounded by that source; upscaling
-  // the shading past it still sharpens every gradient the math draws.
+// Sprite for a view (see _moonView) → data URL, for an <img>.
+function _renderMoonSprite(v, sizePx) {
+  var key = _moonSpriteKey(v, sizePx);
+  return _moonSpriteCache.get(key) ||
+    _moonCachePut(_moonSpriteCache, key, _moonSpriteCanvas(v, sizePx).toDataURL('image/png'));
+}
+
+// The shaded Moon as a <canvas>, lunar north up: v.k the lit fraction, v.limb
+// the bright limb's direction counterclockwise from the lunar north pole
+// (degrees), v.l / v.b the selenographic point at the disc's centre.
+function _moonSpriteCanvas(v, sizePx) {
+  var key = _moonSpriteKey(v, sizePx);
+  var hit = _moonSpriteCanvasCache.get(key);
+  if (hit) return hit;
+
+  // Device resolution (2x the CSS size on retina), capped at 512, so the
+  // terminator haze, limb darkening and edge stay crisp on the hero.
   var dpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1;
   var N = Math.min(512, Math.max(64, Math.round(sizePx * dpr)));
   var cv = document.createElement('canvas');
   cv.width = cv.height = N;
   var ctx = cv.getContext('2d');
-  var base = _moonTexBaseData(N);
-  var img = new ImageData(new Uint8ClampedArray(base.data), N, N);
+  var img = ctx.createImageData(N, N);
   var data = img.data;
+  var map = _moonTexReady ? _moonMapData(N > _MOON_MAP_SMALL_UPTO_PX ? _MOON_MAP_FULL_W : _MOON_MAP_SMALL_W) : null;
 
-  // Sun direction: phase angle P from illuminated fraction (k = (1+cosP)/2).
-  var cosP = 2 * illumFrac - 1;
-  var sinP = Math.sqrt(Math.max(0, 1 - cosP * cosP));
-  var sx = (waxing ? 1 : -1) * sinP, sz = cosP;
+  var D2R = Math.PI / 180;
+  // The Sun: phase angle i from the lit fraction (k = (1 + cos i) / 2), in the
+  // direction of the bright limb (up = lunar north, counterclockwise).
+  var k = Math.round(v.k * 100) / 100, a = Math.round(v.limb) * D2R;
+  var cosI = 2 * k - 1, sinI = Math.sqrt(Math.max(0, 1 - cosI * cosI));
+  var sx = -Math.sin(a) * sinI, sy = Math.cos(a) * sinI, sz = cosI;
+  // The disc's axes on the Moon (x toward longitude 0, y toward 90 E, z the
+  // north pole): screen right is east, up is north, out of the screen is the
+  // point (l, b).
+  var l = Math.round(v.l) * D2R, b = Math.round(v.b) * D2R;
+  var sl = Math.sin(l), cl = Math.cos(l), sb = Math.sin(b), cb = Math.cos(b);
+  var TWO_PI = 2 * Math.PI;
   var term = 0.055;                 // terminator half-width (haze) in dot units
   // Earthshine: the shadowed side stays clearly visible (a dim, cool disc),
   // brightest near new moon when the Earth is "full" in the Moon's sky.
-  var earth = 0.16 + 0.10 * (1 - illumFrac);
+  var earth = 0.16 + 0.10 * (1 - k);
+  var edgeW = 2.4 / N;
 
   for (var py = 0; py < N; py++) {
-    var y = (py + 0.5) / N * 2 - 1;              // +1 top .. -1 bottom
+    var y = 1 - (py + 0.5) / N * 2;              // +1 top .. -1 bottom
     for (var px = 0; px < N; px++) {
       var x = (px + 0.5) / N * 2 - 1;
       var r2 = x * x + y * y;
       var o = (py * N + px) * 4;
-      if (r2 >= 1.0) { data[o + 3] = 0; continue; }
-      var z = Math.sqrt(1 - r2);                 // toward viewer
-      var lit = _smoothstep(-term, term, x * sx + z * sz);
-      var limb = Math.pow(z, 0.42);              // limb darkening
+      if (r2 >= 1.0) continue;                   // createImageData is transparent
+      var z = Math.sqrt(1 - r2);                 // toward the viewer
+      var g = _MOON_PLAIN_GREY;
+      if (map) {
+        var bx = -x * sl - y * sb * cl + z * cb * cl;
+        var by = x * cl - y * sb * sl + z * cb * sl;
+        var bz = y * cb + z * sb;
+        var fu = (_moonFastAtan2(by, bx) / TWO_PI + 0.5) * map.w - 0.5;
+        var fv = (0.5 - _moonFastAtan2(bz, Math.sqrt(bx * bx + by * by)) / Math.PI) * map.h - 0.5;
+        g = _moonMapSample(map, fu, fv);
+      }
+      var lit = _smoothstep(-term, term, x * sx + y * sy + z * sz);
+      var limb = _MOON_LIMB_LUT[(r2 * _MOON_LIMB_LUT_N) | 0];   // limb darkening
       var litI = lit * limb;                     // sunlit component
       var darkI = (1 - lit) * earth * limb;      // earthshine component
       var m = litI + darkI;
       var warm = m > 0 ? litI / m : 0;           // 1 = fully sunlit, 0 = earthshine
-      // Multiply the photo by brightness; sunlit side warm, earthshine cool.
-      var R = data[o] * m * (0.99 + 0.05 * warm);
-      var G = data[o + 1] * m;
-      var B = data[o + 2] * m * (1.18 - 0.18 * warm);
+      var gm = g * m;
+      // Sunlit side faintly warm, earthshine cool.
+      data[o] = Math.min(255, gm * (0.99 + 0.05 * warm));
+      data[o + 1] = Math.min(255, gm);
+      data[o + 2] = Math.min(255, gm * (1.18 - 0.18 * warm));
       // Antialias the limb over the outer ~1px ring.
-      var edge = _smoothstep(1.0, 1.0 - 2.4 / N, r2);
-      data[o] = Math.min(255, R);
-      data[o + 1] = Math.min(255, G);
-      data[o + 2] = Math.min(255, B);
-      data[o + 3] = 255 * edge;
+      data[o + 3] = 255 * _smoothstep(1.0, 1.0 - edgeW, r2);
     }
   }
   ctx.putImageData(img, 0, 0);
-  _moonSpriteCanvasCache[key] = cv;
-  return cv;
+  return _moonCachePut(_moonSpriteCanvasCache, key, cv);
 }
 
-// Shared moon renderer — hero (almanac) + Today card. Returns HTML embedding
-// the shaded sprite as an <img>, rotated by tiltDeg (the sprite math stays
-// untilted so it's phase-cacheable; orientation is a whole-disc rotation).
-function _renderMoonHTML(m, wrapClass, tiltDeg) {
-  var illumFrac = m.illumination / 100;
-  var waxing = _moonIsWaxing(m);
+// Limb darkening, z^0.42 with z = sqrt(1 - r^2), tabulated over r^2: the
+// shading loop's single most expensive call, the same for every sprite.
+var _MOON_LIMB_LUT_N = 4096;
+var _MOON_LIMB_LUT = (function () {
+  var t = new Float32Array(_MOON_LIMB_LUT_N + 1);
+  for (var i = 0; i <= _MOON_LIMB_LUT_N; i++) t[i] = Math.pow(Math.sqrt(Math.max(0, 1 - (i + 0.5) / _MOON_LIMB_LUT_N)), 0.42);
+  return t;
+})();
+
+// atan2 to within 0.012 degrees (a hundredth of a map pixel) at a third of
+// Math.atan2's cost; the hero calls it twice for each of 200,000 pixels.
+function _moonFastAtan2(y, x) {
+  var ax = Math.abs(x), ay = Math.abs(y);
+  var mx = ax > ay ? ax : ay, mn = ax > ay ? ay : ax;
+  if (mx === 0) return 0;
+  var a = mn / mx, s = a * a;
+  var r = ((-0.0464964749 * s + 0.15931422) * s - 0.327622764) * s * a + a;
+  if (ay > ax) r = Math.PI / 2 - r;
+  if (x < 0) r = Math.PI - r;
+  return y < 0 ? -r : r;
+}
+
+// Bilinear sample of the map at fractional pixel (fu, fv), wrapping in
+// longitude and clamping at the poles.
+// fu lies in [-0.5, W - 0.5) and fv in [-0.5, H - 0.5], so each neighbour
+// is at most one step past an edge.
+function _moonMapSample(map, fu, fv) {
+  var W = map.w, H = map.h, G = map.g;
+  var u0 = Math.floor(fu), v0 = Math.floor(fv), du = fu - u0, dv = fv - v0;
+  var u1 = u0 + 1;
+  if (u0 < 0) u0 = W - 1;
+  if (u1 >= W) u1 = 0;
+  var r0 = (v0 < 0 ? 0 : v0) * W;
+  var r1 = (v0 + 1 >= H ? H - 1 : v0 + 1) * W;
+  var top = G[r0 + u0] + (G[r0 + u1] - G[r0 + u0]) * du;
+  var bot = G[r1 + u0] + (G[r1 + u1] - G[r1 + u0]) * du;
+  return top + (bot - top) * dv;
+}
+
+// Shared moon renderer — hero (almanac) + Today card. `v` is a _moonView: the
+// sprite carries the phase and libration, the element turns by v.tilt.
+function _renderMoonHTML(v, wrapClass) {
   var isHero = wrapClass === 'almanac-moon';
   var size = isHero ? 200 : 48;
-  var url = _renderMoonSprite(illumFrac, waxing, size);
-  var tilt = (tiltDeg || 0).toFixed(1);
+  var url = _renderMoonSprite(v, size);
   var base = wrapClass === 'dc-moon-wrap' ? 'translate(-50%,-50%) ' : '';
-  var rot = tiltDeg ? 'rotate(' + tilt + 'deg)' : '';
+  var rot = v.tilt ? 'rotate(' + v.tilt.toFixed(1) + 'deg)' : '';
   var xform = (base + rot).trim();
   return '<div class="' + wrapClass + '"' + (xform ? ' style="transform:' + xform + '"' : '') + '>' +
     '<img class="' + (isHero ? 'almanac-moon-sprite' : 'dc-moon-sprite') + ' moon-sprite" ' +
-    'data-illum="' + illumFrac.toFixed(4) + '" data-waxing="' + (waxing ? 1 : 0) + '" data-size="' + size + '" ' +
+    'data-k="' + v.k.toFixed(4) + '" data-limb="' + v.limb.toFixed(1) + '" data-l="' + v.l.toFixed(1) +
+    '" data-b="' + v.b.toFixed(1) + '" data-size="' + size + '" ' +
     'src="' + url + '" alt="" width="' + size + '" height="' + size + '" />' +
     '</div>';
 }
 
-// Repaint already-rendered moon sprites in place — called when the texture
-// finishes loading so a moon drawn before the albedo was ready upgrades to
-// the textured version without a full re-render.
+// Repaint already-rendered moon sprites in place — called when the map
+// finishes loading so a disc drawn before it was ready (plain grey, but with
+// the right phase and turn) gains its maria without a full re-render.
 function _repaintMoons() {
   var imgs = document.querySelectorAll('img.moon-sprite');
   for (var i = 0; i < imgs.length; i++) {
     var el = imgs[i];
-    var url = _renderMoonSprite(
-      parseFloat(el.getAttribute('data-illum')) || 0,
-      el.getAttribute('data-waxing') === '1',
-      parseInt(el.getAttribute('data-size'), 10) || 48
-    );
+    var num = function (n) { return parseFloat(el.getAttribute('data-' + n)) || 0; };
+    var url = _renderMoonSprite({ k: num('k'), limb: num('limb'), l: num('l'), b: num('b') },
+      parseInt(el.getAttribute('data-size'), 10) || 48);
     if (el.src !== url) el.src = url;
   }
 }
 
 // ── Canonical moon orientation — ONE derivation for every renderer ──
-// The hero disc (almanac.js _heroMoonTiltDeg), the sky-scene moon
-// (almanac-sky.js) and the Today discover card (below) must all show the SAME
-// moon for the same instant and place. They all rotate the same untilted
-// sprite (lit limb at 3 o'clock when waxing) by the screen tilt computed here:
-// -(chi - q) - 90, where chi is the bright-limb position angle (Meeus 48.5)
-// and q the parallactic angle. This lives in app.js because the Today card
-// renders before almanac.js loads; almanac.js delegates to it.
+// The hero disc, the sky-scene moon, the Today discover card and the 3D view
+// must all show the SAME moon for the same instant and place. _moonView gives
+// it: the lunar-north-up sprite's inputs and the one turn that stands it in
+// the viewer's sky. This lives in app.js because the Today card renders before
+// almanac.js loads; almanac.js delegates to it.
 
-// Geocentric equatorial coordinates of the Moon — the same orbital-element
-// evaluation _moonPosition (almanac.js) starts from, hoisted here so the two
-// files cannot drift apart.
+// Geocentric coordinates of the Moon — the same orbital-element evaluation
+// _moonPosition (almanac.js) starts from, hoisted here so the two files cannot
+// drift apart. lng/lat are ecliptic (degrees), ra/dec equatorial (radians).
 function _moonEqCoords(date) {
   var JD = 2440587.5 + date.getTime() / 86400000;
   var T = (JD - 2451545.0) / 36525;
@@ -5044,7 +5107,7 @@ function _moonEqCoords(date) {
   var lngR = lng * D2R, latR = lat_ec * D2R;
   var dec = Math.asin(Math.sin(latR) * Math.cos(eps) + Math.cos(latR) * Math.sin(eps) * Math.sin(lngR));
   var ra = Math.atan2(Math.sin(lngR) * Math.cos(eps) - Math.tan(latR) * Math.sin(eps), Math.cos(lngR));
-  return { JD: JD, T: T, ra: ra, dec: dec, eps: eps, Ms: Ms };
+  return { JD: JD, T: T, ra: ra, dec: dec, eps: eps, Ms: Ms, lng: lng, lat: lat_ec, F: F };
 }
 
 // Where the Moon's lit limb points, in degrees, for one instant:
@@ -5055,10 +5118,11 @@ function _moonEqCoords(date) {
 //   rot  chi - q: the lit limb's direction from "up" in the observer's sky,
 //        counterclockwise as they look at it (east of north is to the left).
 // Without a place (lat null) "up" is celestial north and rot = chi, which
-// is labelled "north up" wherever it is shown. The hero disc, the Today
-// card, the sky scene and the 3D view's Moon camera all turn by this answer.
+// is labelled "north up" wherever it is shown.
 function _moonLimbAngles(date, lat, lon) {
-  var eq = _moonEqCoords(date);
+  return _moonLimbAnglesOf(_moonEqCoords(date), lat, lon);
+}
+function _moonLimbAnglesOf(eq, lat, lon) {
   var D2R = Math.PI / 180;
   var q = 0;
   if (lat != null) {
@@ -5079,42 +5143,82 @@ function _moonLimbAngles(date, lat, lon) {
 }
 function _normDeg360(d) { return ((d % 360) + 360) % 360; }
 
-// Screen tilt (degrees, CSS/canvas rotation sense) of the untilted moon sprite
-// for an observer at lat/lon (lat null: celestial north up): the bright limb
-// faces the Sun as seen in that sky. The sprite's lit limb starts at 3
-// o'clock and CSS rotation runs opposite the position-angle sense, hence
-// -rot - 90.
+// The lunar equator's tilt to the ecliptic (Meeus ch. 53, I).
+var _MOON_EQUATOR_TILT_DEG = 1.54242;
+
+// The Moon's axis as seen from the Earth (Meeus ch. 53, optical libration
+// only; the physical libration is under 0.04 degrees):
+//   l, b  the selenographic longitude (east +) and latitude of the point at
+//         the disc's centre;
+//   P     the position angle of the lunar north pole, from celestial north
+//         through east;
+//   node  the longitude of the Moon's ascending node, Omega (degrees).
+function _moonAxisOf(eq) {
+  var D2R = Math.PI / 180, I = _MOON_EQUATOR_TILT_DEG * D2R;
+  var node = 125.0445479 - 1934.1362891 * eq.T;
+  var W = (eq.lng - node) * D2R, beta = eq.lat * D2R;
+  var A = Math.atan2(Math.sin(W) * Math.cos(beta) * Math.cos(I) - Math.sin(beta) * Math.sin(I),
+    Math.cos(W) * Math.cos(beta));
+  var l = ((A / D2R - eq.F) % 360 + 540) % 360 - 180;
+  var b = Math.asin(-Math.sin(W) * Math.cos(beta) * Math.sin(I) - Math.sin(beta) * Math.cos(I));
+  var V = node * D2R;
+  var X = Math.sin(I) * Math.sin(V);
+  var Y = Math.sin(I) * Math.cos(V) * Math.cos(eq.eps) - Math.cos(I) * Math.sin(eq.eps);
+  var om = Math.atan2(X, Y);
+  var P = Math.asin(Math.sqrt(X * X + Y * Y) * Math.cos(eq.ra - om) / Math.cos(b));
+  return { l: l, b: b / D2R, P: _normDeg360(P / D2R), node: node };
+}
+
+// The Moon as a viewer at lat/lon sees it (lat null: celestial north up):
+//   k      the lit fraction, 0..1;
+//   limb   the bright limb's direction, counterclockwise from the lunar north
+//          pole (chi - P), degrees — with k, what the sprite's terminator is;
+//   l, b   the optical libration, the point of the Moon at the disc's centre;
+//   P, chi, q  as in _moonAxisOf and _moonLimbAngles;
+//   tilt   the CSS/canvas rotation (clockwise +) that turns the lunar-north-up
+//          sprite into this sky: the pole stands P - q counterclockwise of up.
+function _moonView(date, lat, lon) {
+  var eq = _moonEqCoords(date);
+  var ang = _moonLimbAnglesOf(eq, lat, lon), ax = _moonAxisOf(eq);
+  return {
+    k: _moonPhase(date).illumination / 100,
+    limb: _normDeg360(ang.chi - ax.P), l: ax.l, b: ax.b,
+    P: ax.P, chi: ang.chi, q: ang.q, node: ax.node,
+    tilt: ((ang.q - ax.P) % 360 + 540) % 360 - 180
+  };
+}
+
+// Screen tilt (degrees, CSS/canvas rotation sense) of the lunar-north-up
+// sprite for an observer at lat/lon (lat null: celestial north up).
 function _moonScreenTiltDeg(date, lat, lon) {
-  var tilt = -_moonLimbAngles(date, lat, lon).rot - 90;
-  // The sprite has ALREADY put the lit limb on the correct side: it shades
-  // from a Sun vector whose sign is the waxing flag (_moonSpriteCanvas, sx).
-  // chi carries that same flip, because the bright limb genuinely swaps sides
-  // between waxing and waning — so applying both turned every waning moon by
-  // a further 180 degrees. Half of every month was drawn upside down: the lit
-  // limb on the wrong side and the maria inverted, which is what a southern
-  // hemisphere moon looks like from the north (issue #60).
-  //
-  // The correction turns over at new and full, where the sprite's own flag
-  // does. At full the disc is whole and the step is invisible; at new it is
-  // 0% lit, so what turns over is the maria on an unlit disc. That is the
-  // whole cost, and it is the reason this is a step rather than the fully
-  // continuous fix: making it continuous means giving the shading loop a
-  // real terminator angle (its Sun vector is 2D today, x and z only) and
-  // keying the sprite cache on that angle as well as the phase, which is a
-  // different and much larger change than a released bug deserves.
-  if (!_moonIsWaxing(_moonPhase(date))) tilt += 180;
-  return tilt;
+  return _moonView(date, lat, lon).tilt;
+}
+
+// The sprite inputs at progress e of a jump from fromTime to toTime: the real
+// Moon at the real intermediate instant within _MOON_ANIM_MAX_CYCLES, else the
+// compressed phase sweep of _moonAnimPhaseAt with the destination's axis (its
+// bright limb flipped to the side that phase lights). Place-free: the sprite
+// never depends on the viewer, only its turn does, and callers ease that.
+function _moonAnimViewAt(fromTime, toTime, e) {
+  var span = toTime - fromTime;
+  if (Math.abs(span) <= _MOON_ANIM_MAX_CYCLES * _MOON_SYNODIC_MS) {
+    return _moonView(new Date(fromTime + span * e), null, null);
+  }
+  var to = _moonView(new Date(toTime), null, null);
+  var ph = _moonAnimPhaseAt(fromTime, toTime, e);
+  var flip = _moonIsWaxing(ph) !== _moonIsWaxing(_moonPhase(new Date(toTime)));
+  return { k: ph.illumination / 100, limb: _normDeg360(to.limb + (flip ? 180 : 0)), l: to.l, b: to.b };
 }
 
 // Waxing predicate — shared so no renderer flips the terminator side on its
 // own convention (the sky scene once used <= where the hero used <).
 function _moonIsWaxing(m) { return m.phase < 0.5; }
 
-// Today-card tilt: canonical derivation at the Almanac's chosen place, or
-// celestial north up when none was chosen (as the hero does).
-function _quickMoonTilt(date) {
+// Today-card view: at the Almanac's chosen place, or celestial north up when
+// none was chosen (as the hero does).
+function _quickMoonView(date) {
   var ll = _getSessionJSON(SK.ALMANAC_LOC, null);
-  return ll ? _moonScreenTiltDeg(date, ll.lat, ll.lon) : _moonScreenTiltDeg(date, null, null);
+  return ll ? _moonView(date, ll.lat, ll.lon) : _moonView(date, null, null);
 }
 
 // Lightweight almanac teaser for the Today discover card.
@@ -5178,7 +5282,7 @@ function _todayTeaser() {
 function _renderTodayCard() {
   var now = new Date();
   var m = _moonPhase(now);
-  var tilt = _quickMoonTilt(now);
+  var view = _quickMoonView(now);
   var stars = '';
   for (var i = 0; i < 18; i++) {
     var sx = Math.floor(Math.random() * 100);
@@ -5190,7 +5294,7 @@ function _renderTodayCard() {
   var glowOpacity = (m.illumination / 100 * 0.12 + 0.02).toFixed(2);
   return '<div class="dc-today">' + stars +
     '<div class="dc-moon-glow" style="background:radial-gradient(circle, rgba(232,224,208,' + glowOpacity + ') 0%, transparent 65%)"></div>' +
-    _renderMoonHTML(m, 'dc-moon-wrap', tilt) +
+    _renderMoonHTML(view, 'dc-moon-wrap') +
     '</div>';
 }
 
