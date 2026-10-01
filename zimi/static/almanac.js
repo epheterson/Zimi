@@ -680,6 +680,7 @@ function _almRepaintFocus() {
   // from wherever it currently is rather than snapping to the settled value.
   _almSafePanel(function () { _initSkyScene(focus, loc.lat, loc.lon, !_almReduceMotion()); }, null);
   if (typeof _aeFollowClock === 'function') _aeFollowClock();
+  if (typeof _atRepaint === 'function') _almSafePanel(_atRepaint, 'almanac-place');
 }
 
 function _almBackToToday() {
@@ -1750,6 +1751,34 @@ function _almRefOpen(name) {
   })();
 }
 
+// The tide and frost panel's module (and its stylesheet) load the first time
+// the panel comes within a screen of view. The URLs are app.js's, so they
+// carry the server's content version.
+var _almPlaceLoaded = false;
+function _almPlaceWatch() {
+  var host = document.getElementById('almanac-place');
+  if (!host) return;
+  if (_almPlaceLoaded) { if (typeof _atRender === 'function') _atRender(); return; }
+  var load = function() {
+    if (_almPlaceLoaded) return;
+    _almPlaceLoaded = true;
+    var css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = _ALM_TIDES_CSS;
+    document.head.appendChild(css);
+    var js = document.createElement('script');
+    js.src = _ALM_TIDES_JS;
+    js.onload = function() { if (typeof _atRender === 'function') _atRender(); };
+    js.onerror = function() { _almPlaceLoaded = false; };
+    document.head.appendChild(js);
+  };
+  if (!('IntersectionObserver' in window)) { load(); return; }
+  var io = new IntersectionObserver(function(entries) {
+    if (entries.some(function(e) { return e.isIntersecting; })) { io.disconnect(); load(); }
+  }, { root: document.getElementById('almanac-content'), rootMargin: '100% 0px' });
+  io.observe(host);
+}
+
 function _renderAlmanacContent() {
   var now = new Date();
   var m = _moonPhase(now);
@@ -1775,6 +1804,9 @@ function _renderAlmanacContent() {
 
   // Sun map — inline world map with day/night terminator + location picker
   html += '<div id="almanac-sunmap"></div>';
+  // Tides and frost for the chosen place (almanac-tides.js, loaded when this
+  // scrolls near: nothing of it on the first paint).
+  html += '<div id="almanac-place"></div>';
 
   // On this day — curated space & science milestones (only rendered when today has some)
   html += '<div id="almanac-onthisday"></div>';
@@ -1977,6 +2009,7 @@ function _renderAlmanacContent() {
   _startTzClock();
   _almTmInit();
   _cacheAlmanacHighlights(now, m);
+  _almPlaceWatch();
 }
 
 // Cache computed almanac highlights for the Today discover card.

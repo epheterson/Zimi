@@ -5599,6 +5599,10 @@ function _createMenuRowAvailable() {
 // -- Almanac mini-app (lazy-loaded from /static/almanac.js) --
 var _almanacOpen = false;
 var _almanacLoaded = false;
+// The Almanac's tide and frost panel, loaded by almanac.js when it scrolls
+// near; written here so the server stamps their content version on them.
+var _ALM_TIDES_JS = '/static/almanac-tides.js?v=1';
+var _ALM_TIDES_CSS = '/static/almanac-tides.css?v=1';
 
 // The Almanac's long-haul reference sheets, loaded on first use from
 // almanac.js (_almRefOpen). Listed here so their ?v= is the content hash.
