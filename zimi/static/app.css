@@ -1384,6 +1384,23 @@
   .result-source .rs-name { font-size: 12px; color: var(--text2); font-weight: 500; }
   .result .title { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 4px; }
   .result .snippet { font-size: 12px; color: var(--text2); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; transition: opacity 0.3s; }
+  /* The words searched for: underlined in amber in the title, set in the
+     text's own colour and weight in the snippet. Never a filled block, which
+     read as a selection. */
+  .result mark.hit { background: none; color: inherit; }
+  .result .title mark.hit { text-decoration: underline; text-decoration-color: var(--amber); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  .result .snippet mark.hit { color: var(--text); font-weight: 600; }
+  /* Grouped by source: each source's best, under its name, and "More from". */
+  .results.grouped { gap: 20px; }
+  .result-group { display: flex; flex-direction: column; gap: 3px; }
+  .result-group-head { margin: 0 0 4px; padding-inline: 4px; font: inherit; }
+  .result-group-head .result-source { margin-bottom: 0; }
+  .result-group-head .rs-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .result-more {
+    align-self: flex-start; margin-inline-start: 8px; padding: 6px 8px; border: none; border-radius: 8px;
+    background: transparent; color: var(--amber); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .result-more:hover, .result-more:focus-visible { background: var(--amber-glow); outline: none; }
 
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(8px); }
@@ -2624,12 +2641,28 @@
   }
   .search-chip.search-chip-static { padding-inline-end: 12px; }
   .search-chip-label { min-width: 0; overflow-wrap: anywhere; }
-  .search-chip-x {
+  .search-chip-x, .sg-forget {
     display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
     width: 24px; height: 24px; padding: 0; border: none; border-radius: 50%;
     background: transparent; color: var(--text2); cursor: pointer; transition: color 0.12s, background 0.12s;
   }
-  .search-chip-x:hover, .search-chip-x:focus-visible { color: var(--amber); background: var(--amber-glow); }
+  .search-chip-x:hover, .search-chip-x:focus-visible, .sg-forget:hover, .sg-recent-clear:hover { color: var(--amber); background: var(--amber-glow); }
+  /* Recent in the empty search dropdown: each row a × away from gone, the
+     searches all at once from the header. */
+  .sg-recent-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding-block: 6px 2px; padding-inline: 14px 8px;
+    font-size: 11px; color: var(--text2); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .sg-recent-clear {
+    padding: 2px 8px; border: none; border-radius: 10px; background: transparent; cursor: pointer;
+    font: inherit; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text2);
+    transition: color 0.12s, background 0.12s;
+  }
+  .suggest-item.sg-recent { display: flex; align-items: center; gap: 8px; padding-inline-end: 8px; }
+  .sg-recent-text { flex: 1; min-width: 0; }
+  .sg-forget { opacity: 0.55; }
+  .suggest-item:hover .sg-forget, .suggest-item.active .sg-forget { opacity: 1; }
   .topbar-search .search-help {
     display: none; position: absolute; inset-inline-end: 34px; top: 50%; transform: translateY(-50%);
     align-items: center; justify-content: center; box-sizing: border-box;
@@ -3602,6 +3635,9 @@
 @media (pointer: coarse) {
   .lib-sort { min-height: 44px; }
   .lib-view-btn { width: 44px; height: 42px; }
+  /* No hover to reveal it on a phone: the × is there in full, finger-sized. */
+  .sg-forget { width: 40px; height: 40px; opacity: 1; }
+  .sg-recent-clear, .result-more { min-height: 40px; }
   .dc-dismiss, .lang-banner-dismiss, .search-chip-x { position: relative; }
   .dc-dismiss::after, .lang-banner-dismiss::after, .search-chip-x::after, .topbar-search .search-help::after {
     content: ''; position: absolute; inset: -12px;
