@@ -27,6 +27,7 @@
   var DARK_KEY = 'zimi_pdf_dark';          // '1' / '0': chosen here; absent: follow the articles
   var POS_KEY = 'zimi_pdf_pos:';           // + the file: the page, outside the shell
   var SPREAD_KEY = 'zimi_pdf_spread';      // '1' / '2' pages side by side, chosen; absent: by the shape
+  var ROT_KEY = 'zimi_pdf_rot:';           // + the file: its pages turned, 0 / 90 / 180 / 270
   var SPREAD_MIN_PX = 1000;    // px of window wide enough for two pages side by side
   var RESIZE_MS = 150;
   var TOKENS = ['--bg', '--surface', '--surface2', '--border', '--text', '--text2', '--amber', '--amber-glow', '--on-amber'];
@@ -45,7 +46,7 @@
     find_prev: 'Previous match', find_next: 'Next match', pdf_prev_page: 'Previous page', pdf_next_page: 'Next page', close: 'Close', n_of_total: '{n} of {total}',
     books_contents: 'Contents', books_mode_pages: 'Pages', download: 'Download', save: 'Save', saved: 'Saved',
     pdf_print: 'Print', pdf_fit_width: 'Fit width', pdf_fit_page: 'Fit page', pdf_zoom_in: 'Zoom in',
-    pdf_zoom_out: 'Zoom out', pdf_dark_pages: 'Dark pages', pdf_single_page: 'Single page', pdf_two_pages: 'Two pages', pdf_page: 'Page', pdf_failed: 'This PDF could not be opened.'
+    pdf_zoom_out: 'Zoom out', pdf_dark_pages: 'Dark pages', pdf_single_page: 'Single page', pdf_two_pages: 'Two pages', pdf_rotate: 'Rotate', pdf_page: 'Page', pdf_failed: 'This PDF could not be opened.'
   };
   function t(k, vars) {
     var s = '';
@@ -117,6 +118,7 @@
     moon: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
     dl: svg('<path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/>'),
     print: svg('<path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/>'),
+    rotate: svg('<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/>'),
     one: svg('<rect x="7" y="4" width="10" height="16" rx="1.5"/>'),
     two: svg('<rect x="2.5" y="5" width="8.5" height="14" rx="1.5"/><rect x="13" y="5" width="8.5" height="14" rx="1.5"/>')
   };
@@ -214,11 +216,18 @@
       foot.classList.toggle('zp-one', pages < 2);
       scrub.max = String(Math.max(1, pages));
       measureFoot();
+      turnAsKept();
       applySpread();
       resume();
       paint();
     });
-    bus.on('spreadmodechanged', function () { paint(); });
+    bus.on('spreadmodechanged', function () { paint(); menuAgain(); });
+    // Turned (here, or by pdf.js's R key): kept for this document, and a
+    // page now wider than tall may want one at a time.
+    bus.on('rotationchanging', function (e) {
+      store(ROT_KEY + file, String(e.pagesRotation || 0));
+      applySpread();
+    });
     bus.on('pagechanging', function (e) { page = e.pageNumber; paint(); saveSoon(); });
     bus.on('scalechanging', function (e) { preset = e.presetValue || ''; paintFit(); });
     bus.on('updatefindmatchescount', function (e) { paintCount(e.matchesCount, -1); });
@@ -317,6 +326,13 @@
     if (app.pdfViewer.spreadMode !== m) app.pdfViewer.spreadMode = m;
   }
   function setSpread(two) { store(SPREAD_KEY, two ? '2' : '1'); applySpread(); }
+  // ── turned: a sideways scan, a quarter turn at a time, kept per document ──
+  function rotation() { return app && app.pdfViewer ? app.pdfViewer.pagesRotation || 0 : 0; }
+  function turnAsKept() {
+    var r = parseInt(store(ROT_KEY + file) || '0', 10);
+    if (r && r % 90 === 0) app.pdfViewer.pagesRotation = ((r % 360) + 360) % 360;
+  }
+  function turn() { if (app && pages) app.pdfViewer.pagesRotation = (rotation() + 90) % 360; }
   var resizeTimer = null;
   window.addEventListener('resize', function () { clearTimeout(resizeTimer); resizeTimer = setTimeout(applySpread, RESIZE_MS); });
   var scrubbing = false;
@@ -521,6 +537,7 @@
         '<button type="button" role="menuitemradio" data-zp="one" aria-checked="' + !two + '">' + I.one + '<span class="zp-grow">' + esc(t('pdf_single_page')) + '</span></button>' +
         '<button type="button" role="menuitemradio" data-zp="two" aria-checked="' + two + '">' + I.two + '<span class="zp-grow">' + esc(t('pdf_two_pages')) + '</span></button></div>';
     }
+    h += '<button type="button" role="menuitem" data-zp="rotate">' + I.rotate + '<span class="zp-grow">' + esc(t('pdf_rotate')) + '</span></button>';
     h += '<button type="button" role="menuitemcheckbox" data-zp="dark" aria-checked="' + darkWanted() + '">' + I.moon + '<span class="zp-grow">' + esc(t('pdf_dark_pages')) + '</span><span class="zp-switch" aria-hidden="true"></span></button>' +
       '<hr>' +
       '<button type="button" role="menuitem" data-zp="download">' + I.dl + '<span class="zp-grow">' + esc(t('download')) + '</span></button>' +
@@ -544,18 +561,27 @@
       return;   // a switch: the menu stays, showing it
     }
     if (what === 'one' || what === 'two') {
+      b.focus({ preventScroll: true });
       setSpread(what === 'two');
-      renderMenu();
-      var sel = menu.querySelector('[data-zp="' + what + '"]');
-      if (sel) sel.focus({ preventScroll: true });
+      menuAgain();
       return;   // a choice: the menu stays, showing it
     }
+    if (what === 'rotate') { turn(); return; }   // the menu stays: a half turn is two presses
     closePanel(true);
     if (what === 'save') {
       try { shell.toggleBookmark(); if (shell._updateLibraryBtnIcon) shell._updateLibraryBtnIcon(); } catch (err) {}
     } else if (what === 'download' && app) app.downloadOrSave();
     else if (what === 'print' && app) app.triggerPrinting();
   });
+  // The menu, open while what it shows changes (one page or two, after a
+  // turn): drawn again, the focus where it was.
+  function menuAgain() {
+    if (openPanel !== menu) return;
+    var at = document.activeElement && document.activeElement.getAttribute && document.activeElement.getAttribute('data-zp');
+    renderMenu();
+    var b = at && menu.querySelector('[data-zp="' + at + '"]');
+    if (b) b.focus({ preventScroll: true });
+  }
   menu.addEventListener('keydown', function (e) {
     var items = Array.prototype.slice.call(menu.querySelectorAll('button'));
     var i = items.indexOf(document.activeElement);
@@ -666,8 +692,10 @@
   function stopThumbs() { if (thumbObs) { thumbObs.disconnect(); thumbObs = null; } }
   function drawThumb(btn, n) {
     app.pdfDocument.getPage(n).then(function (pg) {
-      var v1 = pg.getViewport({ scale: 1 });
-      var vp = pg.getViewport({ scale: THUMB_PX / v1.width });
+      // As the page is shown: turned with the rest.
+      var rot = (pg.rotate + rotation()) % 360;
+      var v1 = pg.getViewport({ scale: 1, rotation: rot });
+      var vp = pg.getViewport({ scale: THUMB_PX / v1.width, rotation: rot });
       var c = document.createElement('canvas');
       c.width = Math.round(vp.width); c.height = Math.round(vp.height);
       var box = btn.querySelector('.zp-sheetpage');
@@ -705,6 +733,7 @@
   // For the shell and the tests: where the reader is.
   window.zimiPdf = {
     page: function () { return page; }, pages: function () { return pages; },
-    goPage: goPage, barsShown: barsShown, showBars: showBars, setSpread: setSpread
+    goPage: goPage, barsShown: barsShown, showBars: showBars, setSpread: setSpread,
+    rotation: rotation, turn: turn
   };
 })();

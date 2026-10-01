@@ -419,6 +419,57 @@ def test_two_pages_side_by_side_on_a_wide_screen(shell):
             ctx.browser.close()
 
 
+def test_rotate_turns_the_pages_and_is_kept_for_the_document(shell):
+    """A sideways scan: Rotate in the menu turns every page a quarter, the
+    menu staying for another; the document opens turned again."""
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    with sync_playwright() as pw:
+        pg, fr, ctx = _open(
+            pw, base, name, {"viewport": {"width": 1280, "height": 800}}
+        )
+        try:
+            fr.wait_for_function(
+                "() => PDFViewerApplication.pdfViewer.spreadMode === 1"
+            )
+            size = "() => { const r = document.querySelector('.page[data-page-number=\"1\"]').getBoundingClientRect(); return [r.width, r.height]; }"
+            w0, h0 = fr.evaluate(size)
+            assert h0 > w0
+            fr.click(".zp-more")
+            fr.click('.zp-menu [data-zp="rotate"]')
+            fr.wait_for_function("() => zimiPdf.rotation() === 90")
+            # Wider than tall now: one at a time, and the menu says so.
+            fr.wait_for_function(
+                "() => PDFViewerApplication.pdfViewer.spreadMode === 0"
+            )
+            assert fr.evaluate(
+                "() => document.querySelector('.zp-menu').classList.contains('zp-open')"
+            )
+            assert (
+                fr.evaluate(
+                    "() => document.querySelector('.zp-menu [data-zp=\"one\"]').getAttribute('aria-checked')"
+                )
+                == "true"
+            )
+            fr.wait_for_function(
+                "() => { const r = document.querySelector('.page[data-page-number=\"1\"]').getBoundingClientRect(); return r.width > r.height; }"
+            )
+            fr.click('.zp-menu [data-zp="rotate"]')
+            fr.wait_for_function("() => zimiPdf.rotation() === 180")
+            pg.close()
+            pg2, fr2, _ = _open(pw, base, name, None, ctx=ctx)
+            fr2.wait_for_function("() => zimiPdf.rotation() === 180", timeout=5000)
+            fr2.wait_for_function(
+                "() => PDFViewerApplication.pdfViewer.spreadMode === 1"
+            )
+            fr2.evaluate("() => { zimiPdf.turn(); zimiPdf.turn(); }")
+            fr2.wait_for_function("() => zimiPdf.rotation() === 0")
+        finally:
+            ctx.browser.close()
+
+
 def _single(fr):
     """One page at a time, whatever the width chose."""
     fr.evaluate("() => zimiPdf.setSpread(false)")
