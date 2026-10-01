@@ -16721,6 +16721,10 @@ function _readerViewAvailable() {
   var loc = '';
   try { loc = frame.contentWindow.location.pathname; } catch(e) { return false; }
   if (loc.indexOf('/static/') === 0) return false; // pdf.js / other static viewers
+  // Zimi's own pages under /w/ (an article the ZIM does not hold): already
+  // laid out in Zimi's own colours. Restyled, the primary button's label
+  // went brown on brown.
+  if (_docIsOurOwnPage(doc)) return false;
   // When already applied, the stash proves it was readerable — keep it offered.
   if (doc[_READER_VIEW_STASH]) return true;
   var main = _readerMainContent(doc);
@@ -25701,10 +25705,16 @@ var REPLAY_SETTLE_MS = 2500;
 // breaks the other.
 function _frameIsOurOwnPage(frame) {
   try {
-    return frame.contentWindow.location.pathname.startsWith('/static/');
+    return frame.contentWindow.location.pathname.startsWith('/static/') || _docIsOurOwnPage(frame.contentDocument);
   } catch (e) {
     return false;  // unreadable is not ours; treat it as a page, not a tool
   }
+}
+// A page Zimi wrote, served under /w/ beside the ZIM's own (http.py's
+// _UNCAPTURED_PAGE: an article the ZIM does not hold, a link it did not
+// capture): it says so in its head.
+function _docIsOurOwnPage(doc) {
+  try { return !!(doc && doc.querySelector && doc.querySelector('meta[name="zimi-page"]')); } catch (e) { return false; }
 }
 
 function _settleCapturedChrome(frame) {
