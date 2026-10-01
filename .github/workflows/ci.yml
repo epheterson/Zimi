@@ -265,6 +265,38 @@ jobs:
             smoke_*.log
           if-no-files-found: ignore
 
+  # zimi-mcp: the MCP server and search alone, built from this tree by
+  # packaging/zimi-mcp/build.py. tests/test_zimi_mcp_package.py checks its
+  # module list in the suite; this builds the real wheel, installs it where no
+  # zimi is, and drives `zimi-mcp` over stdio (lean and full: handshake, tools,
+  # search, read), then checks none of the dependencies it leaves out came in.
+  zimi-mcp:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build zimi-mcp
+        run: |
+          pip install build
+          python packaging/zimi-mcp/build.py --outdir dist-mcp
+
+      - name: Install it in a clean venv
+        run: |
+          python -m venv /tmp/zimi-mcp
+          /tmp/zimi-mcp/bin/pip install dist-mcp/zimi_mcp-*.whl
+          /tmp/zimi-mcp/bin/zimi-mcp --version
+
+      - name: Serve it over stdio, without the excluded dependencies
+        env:
+          ZIMI_TORRENT: "0"
+          ZIMI_OFFLINE: "1"
+        run: /tmp/zimi-mcp/bin/python packaging/zimi-mcp/smoke.py /tmp/zimi-mcp/bin/zimi-mcp --check-excluded
+
   # The same image under rootless Podman, the way a Fedora or RHEL self-hoster
   # runs it. Two things Docker never made us get right: the image's user must
   # map to the person (or every downloaded ZIM lands owned by a subordinate
