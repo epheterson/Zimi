@@ -4,16 +4,16 @@
 // Today discover card (app.js) once each derived the disc's orientation their
 // own way: the hero used -(chi - q) - 90, the Today card raw q, the sky scene
 // +q — three different terminator angles for the same date. All three now
-// rotate the same untilted sprite by the ONE canonical _moonScreenTiltDeg in
-// app.js. This test guards that unification two ways:
+// draw the ONE canonical _moonView in app.js: a lunar-north-up sprite (phase,
+// bright limb, libration) turned by its tilt. This test guards that
+// unification two ways:
 //
 //   1. Functional: _heroMoonTiltDeg (almanac.js) must return exactly what
 //      _moonScreenTiltDeg (app.js) returns, across a grid of dates and
 //      observer locations including polar and equatorial edge cases.
-//   2. Source-level: the sky scene and the Today card must reach their tilt
-//      through _moonScreenTiltDeg (and their waxing flag through
-//      _moonIsWaxing) — a reintroduced local derivation fails the grep even
-//      if it happens to agree numerically today.
+//   2. Source-level: the sky scene, the hero and the Today card must reach
+//      their view through _moonView — a reintroduced local derivation fails
+//      the grep even if it happens to agree numerically today.
 //
 // Pure-helper approach, matching tests/test_almanac_tz_resolution.cjs: pull
 // the functions straight out of the shipped sources by marker and eval them
@@ -50,9 +50,11 @@ function extractFn(src, name) {
 
 const sandbox = { Math, Date, console };
 vm.createContext(sandbox);
-for (const name of ['_moonEqCoords', '_moonLimbAngles', '_normDeg360', '_moonScreenTiltDeg', '_moonIsWaxing', '_moonPhase']) {
+vm.runInContext('var _MOON_EQUATOR_TILT_DEG = 1.54242;', sandbox);
+for (const name of ['_moonEqCoords', '_moonLimbAngles', '_moonLimbAnglesOf', '_moonAxisOf', '_moonView', '_normDeg360', '_moonScreenTiltDeg', '_moonIsWaxing', '_moonPhase']) {
   vm.runInContext(extractFn(appSrc, name), sandbox);
 }
+vm.runInContext(extractFn(almSrc, '_heroMoonView'), sandbox);
 vm.runInContext(extractFn(almSrc, '_heroMoonTiltDeg'), sandbox);
 
 // ── 1. Functional equality: hero delegates to the canonical derivation ──
@@ -86,18 +88,16 @@ const wax2 = vm.runInContext('_moonIsWaxing({ phase: 0.75 })', sandbox);
 check(wax1 === true && wax2 === false, '_moonIsWaxing follows the phase < 0.5 convention');
 
 // ── 2. Source-level: every renderer reaches the canonical helpers ──
-check(/_moonScreenTiltDeg\(now, lat, lon\)/.test(skySrc),
-  'sky scene derives its tilt via _moonScreenTiltDeg');
+check(/_moonView\(now, lat, lon\)/.test(extractFn(skySrc, '_skyFrame')),
+  'sky scene derives its view via _moonView');
 check(!/parallactic/.test(extractFn(skySrc, '_drawSkyScene')),
   'sky draw no longer rotates by the parallactic angle');
-check(/_moonIsWaxing\(m\)/.test(extractFn(skySrc, '_drawSkyScene')),
-  'sky draw uses the shared waxing predicate');
-check(/_moonScreenTiltDeg\(date, ll\.lat, ll\.lon\)/.test(extractFn(appSrc, "_quickMoonTilt")),
-  'Today card tilt (_quickMoonTilt) delegates to _moonScreenTiltDeg');
-check(/_moonIsWaxing\(m\)/.test(extractFn(appSrc, '_renderMoonHTML')),
-  'hero/Today sprite HTML uses the shared waxing predicate');
-check(/_moonScreenTiltDeg\(date, loc\.lat, loc\.lon\)/.test(extractFn(almSrc, '_heroMoonTiltDeg')),
-  'hero tilt (_heroMoonTiltDeg) delegates to _moonScreenTiltDeg');
+check(/_moonSpriteCanvas\(view,/.test(extractFn(skySrc, '_drawSkyScene')),
+  'sky draw shades the canonical view');
+check(/_moonView\(date, ll\.lat, ll\.lon\)/.test(extractFn(appSrc, "_quickMoonView")),
+  'Today card (_quickMoonView) delegates to _moonView');
+check(/_moonView\(date, loc\.lat, loc\.lon\)/.test(extractFn(almSrc, '_heroMoonView')),
+  'hero (_heroMoonView) delegates to _moonView');
 check(/_moonEqCoords\(date\)/.test(extractFn(almSrc, '_moonPosition')),
   '_moonPosition consumes the canonical _moonEqCoords elements');
 
@@ -120,8 +120,8 @@ check(nw.illumination < 3, 'known new moon reads < 3% (' + nw.illumination + '%)
 //
 // The invariant with a known answer: put the Moon on the observer's meridian
 // at a quarter phase. The Sun is then roughly 90 degrees away along the
-// horizon, so the lit limb lies close to horizontal and the sprite — already
-// lit on the correct side — needs almost no rotation. True at BOTH quarters.
+// horizon, so the lit limb lies close to horizontal: the sprite's limb less
+// the disc's tilt is near 90 or 270 from up. True at BOTH quarters.
 function haDeg(t, lon) {
   const eq = vm.runInContext('_moonEqCoords(new Date(' + t + '))', sandbox);
   const gmst = (280.46061837 + 360.98564736629 * (eq.JD - 2451545.0)) % 360;
@@ -146,22 +146,20 @@ for (const [label, target] of [['first quarter (waxing)', 0.25],
                                ['last quarter (waning)', 0.75]]) {
   for (const loc of [{ lat: 51.5, lon: -0.12 }, { lat: 40.7, lon: -74.0 }]) {
     const t = nearestMeridianQuarter(target, loc.lon);
-    const raw = vm.runInContext(
-      '_moonScreenTiltDeg(new Date(' + t + '), ' + loc.lat + ', ' + loc.lon + ')', sandbox);
-    let tilt = ((raw % 360) + 360) % 360;
-    if (tilt > 180) tilt -= 360;
-    check(Math.abs(tilt) < 45,
-      label + ' on the meridian at lat ' + loc.lat + ' needs little rotation (got ' +
-      tilt.toFixed(1) + ' deg; ~180 means the disc is upside down)');
+    const v = vm.runInContext(
+      '_moonView(new Date(' + t + '), ' + loc.lat + ', ' + loc.lon + ')', sandbox);
+    const lit = ((v.limb - v.tilt) % 360 + 360) % 360;
+    const want = target < 0.5 ? 270 : 90;     // waxing lit on the right (west), waning left
+    check(Math.abs(lit - want) < 45 && Math.abs(v.tilt) < 45,
+      label + ' on the meridian at lat ' + loc.lat + ': lit limb ' + lit.toFixed(1) +
+      ' from up (want ~' + want + '), lunar north near up (tilt ' + v.tilt.toFixed(1) + ')');
   }
 }
 
-// The tilt may step only where the disc carries no visible phase: the
-// waning correction (_moonScreenTiltDeg) turns over at new moon, on a 0%-lit
-// disc, and at full, on a whole one, as its comment says. This once checked
-// only the largest step, so it passed while the full-moon step was there all
-// along and failed on a 0.8 degree change in which step was larger. Every
-// step is checked now.
+// The tilt never steps: it is the pole's turn (q - P), continuous, and the
+// side the Sun lights is the sprite's own limb angle. (It once turned over by
+// 180 degrees at new and full, a waning correction for a sprite that could
+// only be lit from 3 or 9 o'clock.)
 const steps = [];
 let prevTilt = null;
 for (let m = 0; m < 30 * 24 * 60; m += 5) {
@@ -174,8 +172,8 @@ for (let m = 0; m < 30 * 24 * 60; m += 5) {
   }
   prevTilt = v;
 }
-check(steps.length <= 2 && steps.every((il) => il < 1 || il > 99),
-  'every tilt step lands on an unlit or a whole disc (' + steps.length + ' steps, at ' + steps.join('%, ') + '% lit)');
+check(steps.length === 0,
+  'the tilt is continuous through a month (' + steps.length + ' steps, at ' + steps.join('%, ') + '% lit)');
 
 if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
 console.log('all moon derivation checks passed');

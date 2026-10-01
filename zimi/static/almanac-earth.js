@@ -541,7 +541,7 @@ var AE_THREE_URL = '/static/earth/three-r186.min.js';
 var AE_SGP4_URL = '/static/earth/satellite-7.1.0.min.js';
 var AE_TEX_DAY = '/static/earth/earth-day-v1.webp';
 var AE_TEX_NIGHT = '/static/earth/earth-night-v1.webp';
-var AE_TEX_MOON = '/static/earth/moon-v1.webp';
+var AE_TEX_MOON = '/static/earth/moon-v1.webp';   // app.js _MOON_MAP_URL: the hero's map too
 var AE_SATS_URL = '/almanac-satellites';
 // When the server says it is fetching fresher elements, ask again after this:
 // its refresh is two CelesTrak requests of up to 20 s each (satellites.py
@@ -1687,16 +1687,26 @@ function _aeUpdateMoonPath(ms) {
   _ae.moonPathAt = ms;
 }
 
-// The Moon keeps one face to the Earth: its map's longitude 0 (local +x)
-// points home, its pole along the ecliptic's (the 1.5 degree tilt and the
-// librations are left out).
+// The Moon keeps one face to the Earth, give or take its libration: its pole
+// stands 1.54 degrees from the ecliptic's, on the side opposite its orbit's
+// pole (Cassini), and the map's longitude l (app.js _moonView, the optical
+// libration the hero disc is drawn with) points home, so both show the same
+// face turned the same way.
+function _aeMoonBasis(sc) {
+  var eps = _aeRad(sc.sunEq.nut.eps);
+  var v = _moonView(new Date(sc.ms), null, null);
+  var I = _aeRad(_MOON_EQUATOR_TILT_DEG), node = _aeRad(v.node);
+  var ex = -Math.sin(I) * Math.sin(node), ey = Math.sin(I) * Math.cos(node), ez = Math.cos(I);
+  var z = [ex, ey * Math.cos(eps) - ez * Math.sin(eps), ey * Math.sin(eps) + ez * Math.cos(eps)];
+  var home = _aeNorm(_aeScale(sc.moon, -1));
+  var h = _aeNorm(_aeSub(home, _aeScale(z, _aeDot(home, z))));
+  var e = _aeCross(z, h), l = _aeRad(v.l);
+  var x = _aeSub(_aeScale(h, Math.cos(l)), _aeScale(e, Math.sin(l)));
+  return { x: x, y: _aeCross(z, x), z: z };
+}
 function _aeOrientMoon(sc) {
   var S = _ae.gl;
-  var eps = _aeRad(sc.sunEq.nut.eps);
-  var z = [0, -Math.sin(eps), Math.cos(eps)];
-  var home = _aeNorm(_aeScale(sc.moon, -1));
-  var x = _aeNorm(_aeSub(home, _aeScale(z, _aeDot(home, z))));
-  var y = _aeCross(z, x);
+  var m = _aeMoonBasis(sc), x = m.x, y = m.y, z = m.z;
   S.vx.set(x[0], x[1], x[2]); S.vy.set(y[0], y[1], y[2]); S.vz.set(z[0], z[1], z[2]);
   S.basis.makeBasis(S.vx, S.vy, S.vz);
   S.basis.setPosition(sc.moon[0], sc.moon[1], sc.moon[2]);

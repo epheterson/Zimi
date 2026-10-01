@@ -542,11 +542,9 @@ function _almHeadHtml(focus) {
     (cp.live ? '' : ' <button class="alm-sc-reset" onclick="_almBackToToday()">' + _almEsc(t('alm_today')) + '</button>') + '</div>';
   html += '</div>';
 
-  // Hero moon — tilted so the bright limb faces the Sun as the observer sees
-  // it (see _heroMoonTiltDeg for the sign derivation).
-  var moonTilt = _heroMoonTiltDeg(focus, loc);
+  // Hero moon — the Moon as the observer sees it (_heroMoonView).
   html += '<div class="almanac-hero">';
-  html += _renderAlmanacMoon(m, moonTilt);
+  html += _renderAlmanacMoon(m, _heroMoonView(focus, loc));
   // The name sits in its own span inside the deep-link wrapper so travel can
   // rewrite the text without tearing out the encyclopedia link around it.
   html += '<div class="almanac-moon-name">' + _lterm('lunar_phase', '<span id="alm-hc-phase">' + _localMoonName(m.name) + '</span>') + '</div>';
@@ -1977,15 +1975,16 @@ function _cacheAlmanacHighlights(now, moon) {
 
 // ── Moon rendering ──
 
-// Screen tilt (degrees) of the hero disc at a given instant: the bright limb
-// faces the Sun as the observer sees it. Delegates to the canonical
-// _moonScreenTiltDeg in app.js — the ONE derivation the hero, the sky-scene
-// moon and the Today discover card all share. Only a place someone chose
-// turns it to their sky; the synthetic stand-in would be a guess, so without
-// one the disc stands celestial north up and says so (_heroMoonOrientNote).
-function _heroMoonTiltDeg(date, loc) {
-  return loc.stored ? _moonScreenTiltDeg(date, loc.lat, loc.lon) : _moonScreenTiltDeg(date, null, null);
+// The hero disc at a given instant: its phase, libration and turn, from the
+// canonical _moonView in app.js — the ONE derivation the hero, the sky-scene
+// moon, the Today discover card and the 3D view share. Only a place someone
+// chose turns it to their sky; the synthetic stand-in would be a guess, so
+// without one the disc stands celestial north up and says so
+// (_heroMoonOrientNote).
+function _heroMoonView(date, loc) {
+  return loc.stored ? _moonView(date, loc.lat, loc.lon) : _moonView(date, null, null);
 }
+function _heroMoonTiltDeg(date, loc) { return _heroMoonView(date, loc).tilt; }
 function _heroMoonOrientNote(loc) {
   return loc.stored ? '' : '<div class="almanac-moon-orient">' + _almEsc(t('alm_moon_north_up')) + '</div>';
 }
@@ -2003,17 +2002,13 @@ function _heroMoonOrientNote(loc) {
 // and tilt animate.
 var _HERO_MOON_ANIM_SIZE = 256;   // sprite pixels while moving (device px, dpr included)
 // Motion sprites are capped at 256 real pixels: _moonSpriteCanvas multiplies
-// its size argument by devicePixelRatio, and a cold cache shades ~50 phase
-// buckets across the first fast throw. 256 was unaffordable when every bucket
-// paid a drawImage + getImageData GPU readback (~6.6ms/bucket at 128 in
-// WebKit); with the base pixels cached once per size (_moonTexBaseData) a
-// bucket is just the shading loop, so motion quality rises from the old chunky
-// 128 while the throw stays cheaper than it was. The resting <img> still
-// renders at full 200px x dpr; only frames in motion use this.
+// its size argument by devicePixelRatio, and a fast throw shades a new sprite
+// whenever the phase moves 1% or the libration a degree. The map is read back
+// once (_moonMapData), so a sprite is just the shading loop. The resting <img>
+// still renders at full 200px x dpr; only frames in motion use this.
 function _heroMoonAnimGenSize() {
   return _HERO_MOON_ANIM_SIZE / (window.devicePixelRatio || 1);
 }
-var _HERO_MOON_PHASE_STEP = 0.02; // quantise illum to ~50 buckets so re-shades stay cached
 var _HERO_MOON_MIN_SPAN_MS = 1000;// jumps under this (e.g. a location refresh) just snap
 var _heroMoonAnim = null;         // active discrete-jump descriptor, or null
 var _heroMoonOverlay = null;      // the overlay <canvas>, or null
@@ -2044,20 +2039,21 @@ function _heroMoonRemoveOverlay() {
   _heroMoonOverlay = null;
 }
 
-// Draw the moon into the overlay. The canvas repaints only when the phase
-// BUCKET changes (a few times a second at travel speed); the per-frame tilt is
-// a CSS transform on the element, which the compositor rotates without
-// touching a pixel. The old version cleared + rotated + drawImage'd the full
-// 200px x dpr backing every frame — ~4.3ms/frame in WebKit even with a warm
-// sprite cache, a quarter of the whole frame budget.
-function _heroMoonDrawCanvas(cv, illumFrac, waxing, tiltDeg) {
-  var key = Math.round(illumFrac * 100) + (waxing ? 'w' : 'a') + (_moonTexReady ? 't' : '');
+// Draw the moon into the overlay. The canvas repaints only when the sprite's
+// key changes (a 1% phase or 1 degree libration step, a few times a second at
+// travel speed); the per-frame tilt is a CSS transform on the element, which
+// the compositor rotates without touching a pixel. The old version cleared +
+// rotated + drawImage'd the full 200px x dpr backing every frame — ~4.3ms/frame
+// in WebKit even with a warm sprite cache, a quarter of the whole frame budget.
+function _heroMoonDrawCanvas(cv, view, tiltDeg) {
+  var size = _heroMoonAnimGenSize();
+  var key = _moonSpriteKey(view, size);
   if (cv._moonBucket !== key) {
     cv._moonBucket = key;
     var ctx = cv.getContext('2d');
     var W = cv.width;
     ctx.clearRect(0, 0, W, W);
-    ctx.drawImage(_moonSpriteCanvas(illumFrac, waxing, _heroMoonAnimGenSize()), 0, 0, W, W);
+    ctx.drawImage(_moonSpriteCanvas(view, size), 0, 0, W, W);
   }
   // Compose with the stylesheet's translateX(-50%) centring (.almanac-moon-anim).
   cv.style.transform = 'translateX(-50%) rotate(' + tiltDeg.toFixed(2) + 'deg)';
@@ -2085,9 +2081,8 @@ function _almHeroMoonSweep(head, fromTime, toTime, loc) {
 // illumination beside it reads 94% — which is what happened while this hung off
 // the sky loop's own rAF: that branch only ran for the lever (never for wheel
 // or arrow-key steps) and only while a sky canvas happened to be alive.
-// Illumination is quantised to _HERO_MOON_PHASE_STEP so every frame hits the
-// sprite cache; a full-resolution re-shade per frame is what makes this
-// expensive, and 2% of a disc is far below what an eye resolves.
+// The sprite key rounds to 1% of phase and a degree of libration, so most
+// frames hit the sprite cache; a new one is a 256px re-shade.
 var _heroMoonTravelOn = false;
 
 function _heroMoonTravelDraw(focus, m) {
@@ -2095,9 +2090,8 @@ function _heroMoonTravelDraw(focus, m) {
   if (!heroEl || !heroEl.querySelector('.almanac-moon')) return;
   _heroMoonAnim = null;              // a live scrub supersedes any settle sweep
   _heroMoonTravelOn = true;
-  var illumFrac = Math.round(m.illumination / 100 / _HERO_MOON_PHASE_STEP) * _HERO_MOON_PHASE_STEP;
-  var tilt = _heroMoonTiltDeg(focus, _getLocation());
-  _heroMoonDrawCanvas(_heroMoonEnsureOverlay(heroEl), illumFrac, _moonIsWaxing(m), tilt);
+  var view = _heroMoonView(focus, _getLocation());
+  _heroMoonDrawCanvas(_heroMoonEnsureOverlay(heroEl), view, view.tilt);
 }
 
 // End travel and drop the overlay, revealing the resting <img> beneath.
@@ -2123,10 +2117,8 @@ function _heroMoonTick(ts) {
       return;
     }
     var e = _moonEaseInOut(p);
-    var ph = _moonAnimPhaseAt(a.fromTime, a.toTime, e);
-    var illumFrac = Math.round(ph.illumination / 100 / _HERO_MOON_PHASE_STEP) * _HERO_MOON_PHASE_STEP;
     var tilt = a.fromTilt + _angleDelta(a.fromTilt, a.toTilt) * e;
-    _heroMoonDrawCanvas(cv, illumFrac, _moonIsWaxing(ph), tilt);
+    _heroMoonDrawCanvas(cv, _moonAnimViewAt(a.fromTime, a.toTime, e), tilt);
     return;
   }
   // Not sweeping and not travelling: reveal the resting img.
@@ -2135,12 +2127,12 @@ function _heroMoonTick(ts) {
 
 // Almanac hero moon — delegates to _renderMoonHTML (defined in app.js)
 // Adds the almanac-specific glow wrapper
-function _renderAlmanacMoon(m, tiltDeg) {
+function _renderAlmanacMoon(m, view) {
   var illumFrac = m.illumination / 100;
   var glowOpacity = (illumFrac * 0.15 + 0.02).toFixed(2);
   return '<div class="almanac-moon-glow" style="background:radial-gradient(circle, rgba(232,224,208,' + glowOpacity + ') 0%, transparent 65%)"></div>' +
     '<div class="almanac-moon-open" role="button" tabindex="0" aria-label="' + _almEsc(t('alm_moon_open_3d')) + '" title="' + _almEsc(t('alm_moon_open_3d')) + '">' +
-    _renderMoonHTML(m, 'almanac-moon', tiltDeg) + '</div>';
+    _renderMoonHTML(view, 'almanac-moon') + '</div>';
 }
 
 // The hero moon opens the 3D view on the Moon (the orrery's Earth opens it
@@ -4934,7 +4926,7 @@ function _sunPosition(date, lat, lon) {
 // Equatorial coordinates come from the canonical _moonEqCoords in app.js (the
 // same evaluation every moon renderer derives from); this converts them to
 // horizontal coordinates (same pipeline as the sun). The disc's screen tilt is
-// NOT here — that is _moonScreenTiltDeg (app.js), shared by the hero, the
+// NOT here — that is _moonView (app.js), shared by the hero, the
 // sky-scene moon and the Today card.
 function _moonPosition(date, lat, lon) {
   var eq = _moonEqCoords(date);

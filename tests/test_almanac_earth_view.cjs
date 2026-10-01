@@ -160,7 +160,9 @@ for (const fn of ['_dateToJD', '_almEsc', '_jdnToGregorian', '_cnDeltaTdays', '_
 // The shared angle and Moon-orientation helpers the view borrows from the
 // Almanac's other files (one global scope in the browser).
 vm.runInContext(extractFn(read('almanac-sky.js'), '_angleDelta'), S);
-for (const fn of ['_moonEqCoords', '_moonLimbAngles', '_normDeg360']) vm.runInContext(extractFn(read('app.js'), fn), S);
+vm.runInContext('var _MOON_EQUATOR_TILT_DEG = 1.54242;', S);
+for (const fn of ['_moonEqCoords', '_moonLimbAngles', '_moonLimbAnglesOf', '_moonAxisOf', '_moonView', '_moonPhase', '_normDeg360'])
+  vm.runInContext(extractFn(read('app.js'), fn), S);
 vm.runInContext(read('almanac-orrery.js'), S);
 vm.runInContext(read('almanac-earth.js'), S);
 vm.runInContext(read('earth/satellite-7.1.0.min.js'), S);

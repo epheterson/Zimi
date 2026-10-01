@@ -30,7 +30,7 @@ def _first_paint_files():
     shell = _read("templates/index.html").decode()
     files = re.findall(r'(?:href|src)="/static/([\w.-]+\.(?:css|js))[?"]', shell)
     app = _read("static/app.js").decode()
-    files += re.findall(r"_MOON_TEX\.src = '/static/([\w.-]+)", app)
+    files += re.findall(r"_MOON_MAP_URL = '/static/([\w./-]+)'", app)
     return files
 
 
@@ -49,9 +49,9 @@ def test_the_home_page_first_paint_fits_its_budget():
 
 
 def test_the_moon_texture_is_a_small_picture():
-    moon = [f for f in _first_paint_files() if f.startswith("moon.")]
-    assert moon == ["moon.webp"], moon
-    assert _sent_bytes("moon.webp") <= MOON_TEXTURE_BUDGET
+    moon = [f for f in _first_paint_files() if "moon" in f]
+    assert moon == ["earth/moon-v1.webp"], moon
+    assert _sent_bytes(moon[0]) <= MOON_TEXTURE_BUDGET
 
 
 def test_a_static_body_is_compressed_once(monkeypatch):
