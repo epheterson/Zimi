@@ -108,7 +108,7 @@ The rendered and alive engines take them on the page they already have open. The
 | `--language` | flag | detected → `eng` | ISO 639-3 content language |
 | `--out` | flag | ZIM dir + register | Explicit output path |
 | `--only` | flag | the whole folder | Folder only: package just these files and subfolders |
-| `ZIMI_CREATE_ROOT` | env / config `create_root` | unset (the ZIM directory) | The directory the Create page's Folder tree and Import picker read from (subdirectories included). Unset, the ZIM directory. Nothing outside it is listed or read, Zimi's own data folder is never shown, and no path is ever typed in the browser; the CLI is unaffected. |
+| `ZIMI_CREATE_ROOT` | env / config `create_root` | unset (the ZIM directory) | The directory the Create page's Folder tree and Import picker read from (subdirectories included). Unset, the ZIM directory. It is where you keep what you might make a ZIM from; what you make always goes to the ZIM directory's `created/` folder, so keep the two apart. Nothing outside it is listed or read, Zimi's own data folder is never shown, and no path is ever typed in the browser; the CLI is unaffected. |
 
 ## Troubleshoot
 
