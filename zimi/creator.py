@@ -1844,7 +1844,7 @@ def _externalize_links(page, base_url, resolve=None):
     return _A_TAG_RE.sub(fix, page)
 
 
-# ── "Remove links to other sites" (#99) ─────────────────────────────────────
+# ── "Remove links that lead outside the ZIM" (#99) ─────────────────────────────────────
 #
 # tripplehelix: "It can be confusing as to which links take you to the web."
 # Zimi's reader marks those links on every ZIM, but a ZIM travels to readers
@@ -1922,7 +1922,7 @@ class OtherSiteLinks:
     def phrase(self):
         if not self.remove:
             return ""
-        return f", {_plural(self.removed, 'link')} to other sites removed"
+        return f", {_plural(self.removed, 'link')} leading outside the ZIM removed"
 
 
 def _strip_scripts(page):

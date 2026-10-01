@@ -367,7 +367,7 @@ var CREATE_FIELDS = {
     kind: 'bool', on: true, needsEngine: ['alive'],
     note: 'create_capture_variants_note'
   },
-  // "Remove links to other sites" (#99): links that leave the site become
+  // "Remove links that lead outside the ZIM" (#99): links that leave the site become
   // plain text in the written ZIM, for the readers that are not Zimi. Off until
   // ticked. Drawn for the engines whose pages Zimi writes itself (fast and
   // rendered); an alive capture's links are rewritten when it is replayed.

@@ -2114,7 +2114,7 @@ def history_record(
     # so and which limit, in the reader's language (Eric, 2026-09-25).
     if stopped:
         record["stopped"] = str(stopped)
-    # "Remove links to other sites" was on: how many links became plain text.
+    # "Remove links that lead outside the ZIM" was on: how many links became plain text.
     # Zero is kept (the option ran and found none); None means it was off.
     if links_removed is not None:
         record["links_removed"] = int(links_removed)

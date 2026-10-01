@@ -409,12 +409,12 @@ check(!sandbox._createFieldApplies(sandbox.CREATE_FIELDS.block_ads, ''),
 check(sandbox._createFieldApplies(sandbox.CREATE_FIELDS.language, ''),
   'a field with no engine requirement applies everywhere');
 
-// ── "Remove links to other sites" (#99) ─────────────────────────────────────
+// ── "Remove links that lead outside the ZIM" (#99) ─────────────────────────────────────
 //
 // Off until ticked, and only where Zimi writes the pages: the fast and the
 // rendered engines. An alive capture's links are rewritten when it replays.
 
-check(!sandbox.CREATE_FIELDS.strip_links.on, 'removing links to other sites starts unticked');
+check(!sandbox.CREATE_FIELDS.strip_links.on, 'removing links that lead outside the ZIM starts unticked');
 eq(_createBuildRequest('site',
   { source: 'https://e.org/', engine: '', strip_links: true }),
   { mode: 'site', source: 'https://e.org/', strip_links: true },

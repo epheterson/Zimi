@@ -2134,7 +2134,7 @@ CREATE_BLOCK_ADS = True
 # would be offering a switch over nothing. Mirrors the gate in
 # renderer.RenderedSession._record_variants, pinned by a test.
 CREATE_VARIANT_ENGINES = ("alive",)
-# The engines whose pages Zimi writes, so "Remove links to other sites" can
+# The engines whose pages Zimi writes, so "Remove links that lead outside the ZIM" can
 # reach them. alive and zimit hand back an archive another program packaged.
 CREATE_UNLINK_ENGINES = ("builtin", "rendered", "singlefile")
 # What the variant sweep does when the form says nothing. Mirrors
@@ -2975,7 +2975,7 @@ def _create_validate(data):
                 data.get("capture_variants"),
                 _create_default("capture_variants", CREATE_CAPTURE_VARIANTS),
             )
-        # "Remove links to other sites" (#99), off unless ticked. Only where
+        # "Remove links that lead outside the ZIM" (#99), off unless ticked. Only where
         # Zimi writes the pages itself: an alive or zimit capture's links are
         # rewritten at replay, so the box would promise what it cannot do.
         if _create_unlink_engine(opts["engine"]):
