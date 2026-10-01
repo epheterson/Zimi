@@ -4151,16 +4151,21 @@ var _LIBRARY_SORT_LABELS = {
   alpha: 'sort_alpha', added: 'sort_added',
   updated: 'sort_updated', entries: 'sort_entries',
 };
+// Text-sized, the order it is in beside a sort mark: a full select box
+// outweighed the APPS heading it sits on, on a phone most of all. The native
+// select lies over it unseen, so a tap still opens the system's own picker.
+var _LIB_SORT_SVG = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/></svg>';
 function _libSortHtml() {
   var cur = _librarySort();
   var opts = LIBRARY_SORTS.map(function(k) {
     return '<option value="' + k + '"' + (k === cur ? ' selected' : '') + '>' +
       esc(t(_LIBRARY_SORT_LABELS[k])) + '</option>';
   }).join('');
-  return '<select class="lib-sort" aria-label="' + escAttr(t('library_sort')) +
-    '" title="' + escAttr(t('library_sort')) +
+  return '<label class="lib-sort-wrap" title="' + escAttr(t('library_sort')) + '" onclick="event.stopPropagation()">' + _LIB_SORT_SVG +
+    '<span class="lib-sort-now">' + esc(t(_LIBRARY_SORT_LABELS[cur] || _LIBRARY_SORT_LABELS.alpha)) + '</span>' +
+    '<select class="lib-sort" aria-label="' + escAttr(t('library_sort')) +
     '" onchange="event.stopPropagation();_setLibrarySort(this.value)"' +
-    ' onclick="event.stopPropagation()">' + opts + '</select>';
+    ' onclick="event.stopPropagation()">' + opts + '</select></label>';
 }
 
 // Place the segmented view toggle on the first section header (the Apps, which

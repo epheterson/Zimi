@@ -3669,26 +3669,28 @@
 }
 
 /* The library order control, sharing the first section header's line with the
-   view toggle. Quiet until touched: it is a preference, not an action. */
-.lib-sort {
-  font-size: 12px;
-  padding: 3px 6px;
-  margin-right: 8px;
-  border-radius: 5px;
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--text2);
-  cursor: pointer;
-  vertical-align: middle;
-  -webkit-text-fill-color: initial;
+   view toggle. Quiet until touched: it is a preference, not an action. It
+   reads as text the heading's size (a sort mark and the order it is in); the
+   native select lies over it unseen and takes the tap. 16px on the select
+   keeps iOS from zooming when it opens. */
+.lib-sort-wrap {
+  position: relative; display: inline-flex; align-items: center; gap: 5px;
+  margin-inline-end: 6px; padding: 2px 4px; border-radius: 5px;
+  font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none;
+  color: var(--text2); -webkit-text-fill-color: initial; cursor: pointer; white-space: nowrap;
 }
-.lib-sort:hover, .lib-sort:focus-visible { color: var(--text); border-color: var(--amber-border); }
+.lib-sort-wrap:hover, .lib-sort-wrap:focus-within { color: var(--text); }
+.lib-sort-wrap:focus-within { outline: 2px solid var(--amber); outline-offset: 1px; }
+.lib-sort-wrap .lib-sort {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+  opacity: 0; cursor: pointer; font-size: 16px; border: 0;
+}
 
 /* On a touch screen the home page's and the search's small controls take a
    finger (44px): the order and view controls grow to it, the marks that
    close or clear keep their look and gain an invisible margin. */
 @media (pointer: coarse) {
-  .lib-sort { min-height: 44px; }
+  .lib-sort-wrap { min-height: 44px; }
   .lib-view-btn { width: 44px; height: 42px; }
   /* No hover to reveal it on a phone: the × is there in full, finger-sized. */
   .sg-forget { width: 40px; height: 40px; opacity: 1; }
