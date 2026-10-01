@@ -120,23 +120,25 @@ html.zp-finding .zp-title, html.zp-finding .zp-head > .zp-hide-finding { display
 }
 .zp-pagebox { flex: 1; min-width: 0; display: flex; justify-content: center; }
 .zp-zoom { display: none; }
-.zp-one .zp-scrub { display: none; }
+.zp-one .zp-scrub, .zp-one .zp-prev, .zp-one .zp-next { display: none; }
 /* Roomier: one row. Contents at the start, how it fits at the end, and the
    slider with the page between them, centred under the page. */
 @media (min-width: 700px) {
   .zp-foot {
     display: grid; align-items: center; column-gap: 2px; height: calc(var(--zp-bar) + var(--zp-sab)); padding-top: 0;
-    grid-template-columns: 44px 1fr minmax(160px, 560px) 7.5em 1fr 44px 44px 44px;
+    grid-template-columns: 44px 1fr minmax(160px, 560px) 44px 7.5em 44px 1fr 44px 44px 44px;
   }
   .zp-foot .zp-row { display: contents; }
   .zp-foot .zp-toc-btn { grid-column: 1; grid-row: 1; }
   .zp-foot .zp-scrub { grid-column: 3; grid-row: 1; }
-  .zp-foot .zp-pagebox { grid-column: 4; grid-row: 1; }
-  .zp-foot .zp-out { grid-column: 6; grid-row: 1; }
-  .zp-foot .zp-in { grid-column: 7; grid-row: 1; }
-  .zp-foot .zp-fit { grid-column: 8; grid-row: 1; }
+  .zp-foot .zp-prev { grid-column: 4; grid-row: 1; }
+  .zp-foot .zp-pagebox { grid-column: 5; grid-row: 1; }
+  .zp-foot .zp-next { grid-column: 6; grid-row: 1; }
+  .zp-foot .zp-out { grid-column: 8; grid-row: 1; }
+  .zp-foot .zp-in { grid-column: 9; grid-row: 1; }
+  .zp-foot .zp-fit { grid-column: 10; grid-row: 1; }
   .zp-zoom { display: inline-flex; }
-  .zp-one .zp-pagebox { grid-column: 3 / 5; }
+  .zp-one .zp-pagebox { grid-column: 3 / 7; }
 }
 
 /* A word in the middle of the ground: loading failed. */

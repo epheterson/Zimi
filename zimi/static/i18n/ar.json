@@ -2459,6 +2459,8 @@
   "pdf_dark_pages": "صفحات داكنة",
   "pdf_page": "الصفحة",
   "pdf_failed": "تعذّر فتح ملف PDF هذا.",
+  "pdf_prev_page": "الصفحة السابقة",
+  "pdf_next_page": "الصفحة التالية",
   "dictionary": "القاموس",
   "dictionary_search_placeholder": "ابحث عن كلمة",
   "dictionary_recent": "الأخيرة",

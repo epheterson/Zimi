@@ -2459,6 +2459,8 @@
   "pdf_dark_pages": "Pages sombres",
   "pdf_page": "Page",
   "pdf_failed": "Impossible d’ouvrir ce PDF.",
+  "pdf_prev_page": "Page précédente",
+  "pdf_next_page": "Page suivante",
   "dictionary": "Dictionnaire",
   "dictionary_search_placeholder": "Chercher un mot",
   "dictionary_recent": "Récents",

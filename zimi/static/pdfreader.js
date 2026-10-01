@@ -29,6 +29,7 @@
   var TOKENS = ['--bg', '--surface', '--surface2', '--border', '--text', '--text2', '--amber', '--amber-glow', '--on-amber'];
   var FIT_WIDTH = 'page-width', FIT_PAGE = 'page-fit';
   var FIND_NOT_FOUND = 1;      // pdf.js FindState.NOT_FOUND
+  var SPREAD_ODD = 1, SPREAD_EVEN = 2;     // pdf.js SpreadMode: pages side by side from the first, or after it
 
   var html = document.documentElement;
   // The shell around the viewer (same origin), when there is one.
@@ -38,7 +39,7 @@
   // ── words: the shell's, in its language; English on its own ──
   var EN = {
     go_back: 'Go back', more_actions: 'More actions', find_in_page: 'Find in page', find_none: 'No matches',
-    find_prev: 'Previous match', find_next: 'Next match', close: 'Close', n_of_total: '{n} of {total}',
+    find_prev: 'Previous match', find_next: 'Next match', pdf_prev_page: 'Previous page', pdf_next_page: 'Next page', close: 'Close', n_of_total: '{n} of {total}',
     books_contents: 'Contents', books_mode_pages: 'Pages', download: 'Download', save: 'Save', saved: 'Saved',
     pdf_print: 'Print', pdf_fit_width: 'Fit width', pdf_fit_page: 'Fit page', pdf_zoom_in: 'Zoom in',
     pdf_zoom_out: 'Zoom out', pdf_dark_pages: 'Dark pages', pdf_page: 'Page', pdf_failed: 'This PDF could not be opened.'
@@ -99,6 +100,7 @@
   function svg(d, extra) { return '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"' + (extra || '') + '>' + d + '</svg>'; }
   var I = {
     back: svg('<path d="M15 5l-7 7 7 7"/>'),
+    next: svg('<path d="M9 5l7 7-7 7"/>'),
     find: svg('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>'),
     more: svg('<circle cx="5" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="19" cy="12" r="1.2" fill="currentColor"/>'),
     toc: svg('<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".6" fill="currentColor"/><circle cx="4.5" cy="12" r=".6" fill="currentColor"/><circle cx="4.5" cy="18" r=".6" fill="currentColor"/>'),
@@ -140,7 +142,9 @@
       '<div class="zp-row">' +
         iconBtn('zp-toc-btn', I.toc, t('books_contents'), ' aria-haspopup="dialog"') +
         iconBtn('zp-zoom zp-out', I.zout, t('pdf_zoom_out')) +
+        iconBtn('zp-prev zp-flip', I.back, t('pdf_prev_page'), ' aria-keyshortcuts="ArrowLeft PageUp"') +
         '<div class="zp-pagebox"><button type="button" class="zp-page" aria-label="' + esc(t('pdf_page')) + '"></button></div>' +
+        iconBtn('zp-next zp-flip', I.next, t('pdf_next_page'), ' aria-keyshortcuts="ArrowRight PageDown"') +
         iconBtn('zp-zoom zp-in', I.zin, t('pdf_zoom_in')) +
         iconBtn('zp-fit', I.page, t('pdf_fit_page')) +
       '</div>' +
@@ -151,6 +155,7 @@
   document.body.appendChild(ui);
   var $ = function (s) { return ui.querySelector(s); };
   var head = $('.zp-head'), foot = $('.zp-foot'), scrub = $('.zp-scrub'), pageBtn = $('.zp-page');
+  var prevBtn = $('.zp-prev'), nextBtn = $('.zp-next');
   var sheet = $('.zp-sheet'), menu = $('.zp-menu'), findInput = $('.zp-find input'), count = $('.zp-count');
 
   // The name: the shell's (a catalog's title for it), else the file's, until
@@ -252,6 +257,8 @@
     pageBtn.innerHTML = esc(t('n_of_total', { n: '\u0000', total: num(pages) })).replace('\u0000', '<b>' + num(page) + '</b>');
     if (!scrubbing) scrub.value = String(page);
     scrub.setAttribute('aria-valuetext', t('n_of_total', { n: num(page), total: num(pages) }));
+    prevBtn.disabled = !stepTo(-1);
+    nextBtn.disabled = !stepTo(1);
     if (openPanel === sheet) markSheetPage();
   }
   // The foot's height, for the room below the last page.
@@ -264,6 +271,24 @@
     app.page = n;
     if (barsShown()) requestAnimationFrame(function () { container.scrollTop = Math.max(0, container.scrollTop - head.offsetHeight + 4); });
   }
+  // A step back or on: the page before or after, or in two pages side by
+  // side the spread before or after. 0 at either end.
+  function rowStart(p) {
+    var m = app && app.pdfViewer ? app.pdfViewer.spreadMode : 0;
+    if (m === SPREAD_ODD) return p - (p - 1) % 2;
+    if (m === SPREAD_EVEN) return p < 2 ? 1 : p - p % 2;
+    return p;
+  }
+  function stepTo(d) {
+    if (!pages) return 0;
+    var s = rowStart(page);
+    if (d < 0) return s > 1 ? rowStart(s - 1) : 0;
+    for (var p = page + 1; p <= pages; p++) if (rowStart(p) !== s) return p;
+    return 0;
+  }
+  function step(d) { var n = stepTo(d); if (n) goPage(n); }
+  prevBtn.addEventListener('click', function () { step(-1); });
+  nextBtn.addEventListener('click', function () { step(1); });
   var scrubbing = false;
   scrub.addEventListener('input', function () {
     scrubbing = true;
@@ -615,6 +640,18 @@
       e.preventDefault(); e.stopImmediatePropagation(); openFind(); return;
     }
     if (e.key === '/' && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); e.stopImmediatePropagation(); openFind(); return; }
+    // A page back or on: the arrows (mirrored in a right-to-left Zimi;
+    // a page zoomed past the window's width keeps them for scrolling across)
+    // and Page Up / Page Down, which pdf.js would only scroll by a screen.
+    var turn = 0;
+    if (!typing && !openPanel && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+      if (e.key === 'PageUp') turn = -1;
+      else if (e.key === 'PageDown') turn = 1;
+      else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !(container && container.scrollWidth > container.clientWidth + 1)) {
+        turn = (e.key === 'ArrowRight' ? 1 : -1) * (dir === 'rtl' ? -1 : 1);
+      }
+    }
+    if (turn) { e.preventDefault(); e.stopImmediatePropagation(); step(turn); return; }
     if (e.key === 'Escape') {
       if (openPanel) { e.preventDefault(); e.stopImmediatePropagation(); closePanel(true); }
       else if (html.classList.contains('zp-finding')) { e.preventDefault(); e.stopImmediatePropagation(); closeFind(); }

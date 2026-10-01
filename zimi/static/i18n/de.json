@@ -2459,6 +2459,8 @@
   "pdf_dark_pages": "Dunkle Seiten",
   "pdf_page": "Seite",
   "pdf_failed": "Dieses PDF ließ sich nicht öffnen.",
+  "pdf_prev_page": "Vorherige Seite",
+  "pdf_next_page": "Nächste Seite",
   "dictionary": "Wörterbuch",
   "dictionary_search_placeholder": "Ein Wort nachschlagen",
   "dictionary_recent": "Zuletzt",

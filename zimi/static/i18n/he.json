@@ -2459,6 +2459,8 @@
   "pdf_dark_pages": "עמודים כהים",
   "pdf_page": "עמוד",
   "pdf_failed": "לא ניתן לפתוח את קובץ ה־PDF הזה.",
+  "pdf_prev_page": "העמוד הקודם",
+  "pdf_next_page": "העמוד הבא",
   "dictionary": "מילון",
   "dictionary_search_placeholder": "חיפוש מילה",
   "dictionary_recent": "אחרונות",

@@ -2459,6 +2459,8 @@
   "pdf_dark_pages": "गहरे पेज",
   "pdf_page": "पेज",
   "pdf_failed": "यह PDF खोली नहीं जा सकी।",
+  "pdf_prev_page": "पिछला पेज",
+  "pdf_next_page": "अगला पेज",
   "dictionary": "शब्दकोश",
   "dictionary_search_placeholder": "कोई शब्द खोजें",
   "dictionary_recent": "हाल के",

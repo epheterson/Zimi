@@ -2459,6 +2459,8 @@
   "pdf_dark_pages": "Тёмные страницы",
   "pdf_page": "Страница",
   "pdf_failed": "Не удалось открыть этот PDF.",
+  "pdf_prev_page": "Предыдущая страница",
+  "pdf_next_page": "Следующая страница",
   "dictionary": "Словарь",
   "dictionary_search_placeholder": "Найти слово",
   "dictionary_recent": "Недавние",

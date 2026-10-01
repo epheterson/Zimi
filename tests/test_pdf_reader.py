@@ -284,3 +284,97 @@ def test_the_viewer_is_one_document_asked_for_each_time():
     branch = src[src.index("elif rel_path == PDF_VIEWER:") :]
     assert 'self.send_header("Cache-Control", "no-cache")' in branch[:200]
     assert '_static_hash("pdfreader.js")' in src
+
+
+@pytest.mark.parametrize(
+    "device", ["iPhone 13", {"viewport": {"width": 1280, "height": 800}}]
+)
+def test_a_page_back_and_on(shell, device):
+    """Either side of "n of N": a page back and a page on, not there at the
+    ends; on a wide screen the arrows and Page Up / Page Down turn too."""
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    with sync_playwright() as pw:
+        pg, fr, ctx = _open(pw, base, name, device)
+        try:
+            _single(fr)
+            assert fr.evaluate("() => document.querySelector('.zp-prev').disabled")
+            assert not fr.evaluate("() => document.querySelector('.zp-next').disabled")
+            # Beside the page: before it and after it, in the reading direction.
+            pos = fr.evaluate(
+                """() => ['.zp-prev', '.zp-page', '.zp-next'].map(s => document.querySelector(s).getBoundingClientRect())
+                .map(r => ({ l: r.left, r: r.right, t: r.top }))"""
+            )
+            assert (
+                pos[0]["r"] <= pos[1]["l"] + 1 and pos[1]["r"] <= pos[2]["l"] + 1
+            ), pos
+            assert abs(pos[0]["t"] - pos[2]["t"]) < 2, pos
+            fr.click(".zp-next")
+            fr.wait_for_function("() => zimiPdf.page() === 2", timeout=5000)
+            fr.click(".zp-next")
+            fr.wait_for_function("() => zimiPdf.page() === 3", timeout=5000)
+            fr.click(".zp-prev")
+            fr.wait_for_function("() => zimiPdf.page() === 2", timeout=5000)
+            assert (
+                fr.evaluate("() => document.querySelector('.zp-page').textContent")
+                == "2 of %d" % PAGES
+            )
+            fr.evaluate("() => zimiPdf.goPage(%d)" % PAGES)
+            fr.wait_for_function("() => zimiPdf.page() === %d" % PAGES, timeout=5000)
+            fr.wait_for_function(
+                "() => document.querySelector('.zp-next').disabled", timeout=5000
+            )
+            assert not fr.evaluate("() => document.querySelector('.zp-prev').disabled")
+            if not isinstance(device, str):
+                fr.click("#viewerContainer", position={"x": 600, "y": 300})
+                fr.evaluate("() => zimiPdf.goPage(5)")
+                fr.wait_for_function("() => zimiPdf.page() === 5", timeout=5000)
+                for key, want in (
+                    ("ArrowRight", 6),
+                    ("PageDown", 7),
+                    ("ArrowLeft", 6),
+                    ("PageUp", 5),
+                ):
+                    pg.keyboard.press(key)
+                    fr.wait_for_function(
+                        "() => zimiPdf.page() === %d" % want, timeout=5000
+                    )
+        finally:
+            ctx.browser.close()
+
+
+def _single(fr):
+    """One page at a time, whatever the width chose."""
+    fr.evaluate("() => { PDFViewerApplication.pdfViewer.spreadMode = 0; }")
+    fr.wait_for_function("() => PDFViewerApplication.pdfViewer.spreadMode === 0")
+
+
+def test_a_page_back_and_on_in_a_right_to_left_zimi(shell):
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        ctx = br.new_context(viewport={"width": 1280, "height": 800})
+        ctx.add_init_script(
+            "try { localStorage.setItem('zimi_ui_lang', 'ar'); } catch (e) {}"
+        )
+        pg, fr, _ = _open(pw, base, name, None, ctx=ctx)
+        try:
+            pg.wait_for_function("() => document.documentElement.dir === 'rtl'")
+            _single(fr)
+            # Back is on the right, on is on the left.
+            prev, nxt = fr.evaluate(
+                "() => ['.zp-prev', '.zp-next'].map(s => document.querySelector(s).getBoundingClientRect().left)"
+            )
+            assert prev > nxt
+            fr.click("#viewerContainer", position={"x": 600, "y": 300})
+            pg.keyboard.press("ArrowLeft")
+            fr.wait_for_function("() => zimiPdf.page() === 2", timeout=5000)
+            pg.keyboard.press("ArrowRight")
+            fr.wait_for_function("() => zimiPdf.page() === 1", timeout=5000)
+        finally:
+            br.close()
