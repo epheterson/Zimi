@@ -217,6 +217,7 @@ function _openAlmanacInner(replaceState) {
 function _almanacTeardown() {
   _almanacOpen = false;
   if (typeof _chromeReset === 'function') _chromeReset();
+  _almHeroLiveStop();
   document.body.classList.remove('almanac-mode');
   if (typeof _almTravelUnfreeze === 'function') _almTravelUnfreeze();
   // The 3D Earth (almanac-earth.js, loaded after this file) gives its GPU
@@ -678,6 +679,7 @@ function _almRepaintFocus() {
   // settle, wheel/key step, "Go", Back to Now) -- let the moon glide onward
   // from wherever it currently is rather than snapping to the settled value.
   _almSafePanel(function () { _initSkyScene(focus, loc.lat, loc.lon, !_almReduceMotion()); }, null);
+  if (typeof _aeFollowClock === 'function') _aeFollowClock();
 }
 
 function _almBackToToday() {
@@ -1065,6 +1067,8 @@ function _almTravelLive(focus) {
     if (typeof _orreryUpdateDate === 'function' && !_almanacOrreryRAF) _orreryUpdateDate();
   });
   _almTravelThrottled('grid', _ALM_TRAVEL_GRID_MS, _almSyncSelectedToFocus);
+  // The 3D view reads the same clock: its Sun and Moon move in this frame.
+  if (typeof _aeFollowClock === 'function') _aeFollowClock();
 }
 
 function _almIsLiveNow(d) { return Math.abs(d.getTime() - Date.now()) < _SCRUB_LIVE_EPS; }
@@ -1709,6 +1713,10 @@ function _renderAlmanacContent() {
 
   html += '<div id="almanac-head">' + _almHeadHtml(now) + '</div>';
   _almPrevFocusTime = now.getTime();   // seed the hero-moon sweep's start
+  _almHeroLiveStart();
+  // The 3D view gets ready behind the page once it has painted (on the first
+  // open its file, loading after this paint, sees to that itself).
+  if (typeof _aePrepareWhenIdle === 'function') _aePrepareWhenIdle();
 
   // Sky scene + calendar — wall calendar: art above, month grid below. Time is
   // driven by the time machine at the top; the sky animates live as you travel.
@@ -2135,17 +2143,94 @@ function _renderAlmanacMoon(m, view) {
     _renderMoonHTML(view, 'almanac-moon') + '</div>';
 }
 
-// The hero moon opens the 3D view on the Moon (the orrery's Earth opens it
-// on the Earth): one viewer, two ways in.
-function _almOpenMoon3d(e) {
-  var el = e.target && e.target.closest && e.target.closest('#almanac-head .almanac-moon-open');
-  if (!el || typeof window.openAlmanacEarth !== 'function') return;
-  if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
-  e.preventDefault();
-  window.openAlmanacEarth({ target: 'moon' });
+// ── The hero is the 3D Moon ──
+// The disc is a picture of the 3D view's Moon, seen from the Earth (one
+// clock, one ephemeris, one shading model). A tap, Enter or Space, or the
+// start of a drag lifts it into the 3D view (almanac-earth.js _aeHandIn):
+// the view's first frame stands exactly where the disc was, the drag turns
+// it, and the view opens around it. Touch keeps the page's vertical scroll
+// (touch-action: pan-y): a sideways drag or a tap lifts the Moon, an upward
+// swipe scrolls the page. Pointing at the disc or touching it gets the view
+// ready if the page has not yet (it does once idle).
+var ALM_MOON_DRAG_SLOP_PX = 6;
+var _almMoonPress = null;   // { id, x, y, lx, ly, lifted }
+function _almMoonTarget(e) {
+  return e.target && e.target.closest ? e.target.closest('#almanac-head .almanac-moon-open') : null;
 }
-document.addEventListener('click', _almOpenMoon3d);
-document.addEventListener('keydown', _almOpenMoon3d);
+function _almMoonPrepare() { if (typeof _aePrepare === 'function') _aePrepare(); }
+function _almMoonLift() {
+  if (typeof window.openAlmanacEarth === 'function') window.openAlmanacEarth({ target: 'moon', fromHero: true });
+}
+document.addEventListener('pointerover', function (e) { if (_almMoonTarget(e)) _almMoonPrepare(); });
+document.addEventListener('focusin', function (e) { if (_almMoonTarget(e)) _almMoonPrepare(); });
+document.addEventListener('pointerdown', function (e) {
+  var el = _almMoonTarget(e);
+  if (!el || (e.button != null && e.button !== 0)) return;
+  _almMoonPrepare();
+  _almMoonPress = { id: e.pointerId, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, lifted: false };
+  if (el.setPointerCapture && e.pointerId != null) { try { el.setPointerCapture(e.pointerId); } catch (err) {} }
+});
+document.addEventListener('pointermove', function (e) {
+  var p = _almMoonPress;
+  if (!p || e.pointerId !== p.id) return;
+  if (!p.lifted && Math.hypot(e.clientX - p.x, e.clientY - p.y) > ALM_MOON_DRAG_SLOP_PX) {
+    p.lifted = true;
+    _almMoonLift();
+  }
+  if (p.lifted && typeof _aeHandDrag === 'function') _aeHandDrag(e.clientX - p.lx, e.clientY - p.ly);
+  p.lx = e.clientX; p.ly = e.clientY;
+});
+document.addEventListener('pointerup', function (e) {
+  var p = _almMoonPress;
+  if (!p || e.pointerId !== p.id) return;
+  _almMoonPress = null;
+  if (!p.lifted) _almMoonLift();
+});
+// The disc is a picture, and a picture dragged is a file being dragged: not here.
+document.addEventListener('dragstart', function (e) { if (_almMoonTarget(e)) e.preventDefault(); });
+// The browser took the gesture (a vertical swipe: the page scrolls).
+document.addEventListener('pointercancel', function (e) {
+  if (_almMoonPress && e.pointerId === _almMoonPress.id) _almMoonPress = null;
+});
+document.addEventListener('keydown', function (e) {
+  if (!_almMoonTarget(e) || (e.key !== 'Enter' && e.key !== ' ')) return;
+  e.preventDefault();
+  _almMoonLift();
+});
+
+// ── The hero, alive ──
+// Live, the hero is now, and now moves: the terminator creeps, and with a
+// place chosen the disc turns with the sky (the parallactic angle, up to
+// ~15 degrees an hour near the meridian), while the clock and the cards
+// under it count on. A timer at each minute's turn, not a frame loop: it
+// redraws only what changed by what the eye can tell (a new sprite at 1% of
+// phase or a degree of libration, a tenth of a degree of turn), and sleeps
+// while the tab is hidden, the 3D view covers the page, or the clock is set
+// away from now.
+var ALM_MINUTE_MS = 60000;
+var _almHeroLiveTimer = 0;
+function _almHeroLiveStart() {
+  clearTimeout(_almHeroLiveTimer);
+  _almHeroLiveTimer = setTimeout(_almHeroLiveTick, ALM_MINUTE_MS - Date.now() % ALM_MINUTE_MS);
+}
+function _almHeroLiveStop() { clearTimeout(_almHeroLiveTimer); _almHeroLiveTimer = 0; }
+function _almHeroLiveTick() {
+  _almHeroLiveTimer = 0;
+  if (!_almanacOpen) return;
+  var covered = typeof _aeIsOpen !== 'undefined' && _aeIsOpen;
+  if (!document.hidden && !_almFocus && !covered) _almHeroLiveUpdate(new Date());
+  _almHeroLiveStart();
+}
+function _almHeroLiveUpdate(now) {
+  var img = document.querySelector('#almanac-head .almanac-moon-sprite');
+  if (!img || _heroMoonOverlay) return;
+  var view = _heroMoonView(now, _getLocation());
+  _setMoonSprite(img, view);
+  var turn = view.tilt ? 'rotate(' + view.tilt.toFixed(1) + 'deg)' : '';
+  if (img.parentNode.style.transform !== turn) img.parentNode.style.transform = turn;
+  _almScrubClock(now);
+  _almLiveHeadCards(now);
+}
 
 // Next full moon after fromDate, with its distance and whether it's a
 // "supermoon" (full within ~90% of perigee ≈ ≤ 361,500 km).

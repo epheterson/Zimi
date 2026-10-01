@@ -4765,6 +4765,8 @@ var _discoverLoading = false;
 var DISCOVER_RETRY_MS = 10000;  // a cold start's partial row asks again once, this much later
 var _discoverRetried = {};      // the day's cache keys already asked again in this page
 
+// The Moon's mean distance over the Sun's, for the phase angle (Meeus 48.3).
+var _MOON_SUN_DIST_RATIO = 385000.56 / 149597870.7;
 function _moonPhase(date) {
   // True phase from the Moon–Sun elongation (Meeus, main periodic terms).
   // The old linear-synodic model drifted the age and quarter dates up to
@@ -4773,27 +4775,20 @@ function _moonPhase(date) {
   var rad = Math.PI / 180;
   var JD = date.getTime() / 86400000 + 2440587.5;
   var T = (JD - 2451545.0) / 36525.0;
-  var D  = 297.8501921 + 445267.1114034 * T - 0.0018819 * T * T;   // elongation
-  var M  = 357.5291092 + 35999.0502909 * T - 0.0001536 * T * T;    // sun anomaly
-  var Mp = 134.9633964 + 477198.8675055 * T + 0.0087414 * T * T;   // moon anomaly
-  var F  = 93.2720950 + 483202.0175233 * T - 0.0036539 * T * T;    // moon arg. of lat.
-  var Lp = 218.3164477 + 481267.88123421 * T;                      // moon mean longitude
+  var moon = _moonEcliptic(T);
+  var M = moon.Ms;
   var Ls = 280.4664567 + 36000.76982779 * T;                       // sun mean longitude
-  var lambdaMoon = Lp
-    + 6.289 * Math.sin(Mp * rad)
-    + 1.274 * Math.sin((2 * D - Mp) * rad)
-    + 0.658 * Math.sin(2 * D * rad)
-    + 0.214 * Math.sin(2 * Mp * rad)
-    - 0.186 * Math.sin(M * rad)
-    - 0.114 * Math.sin(2 * F * rad)
-    + 0.059 * Math.sin((2 * D - 2 * Mp) * rad)
-    + 0.057 * Math.sin((2 * D - M - Mp) * rad);
   var lambdaSun = Ls
     + (1.9146 - 0.004817 * T) * Math.sin(M * rad)
     + 0.019993 * Math.sin(2 * M * rad);
-  var elong = (((lambdaMoon - lambdaSun) % 360) + 360) % 360; // 0=new, 180=full
+  var elong = (((moon.lng - lambdaSun) % 360) + 360) % 360; // 0=new, 180=full
   var phase = elong / 360;
-  var illumExact = (1 - Math.cos(elong * rad)) / 2 * 100;
+  // The lit fraction is the phase angle's, Sun-Moon-Earth (Meeus 48.2-48.3):
+  // the true elongation counts the Moon's latitude, which keeps a new Moon
+  // off the Sun's line by up to 5 degrees, and the Sun's finite distance.
+  var psi = Math.acos(Math.cos(moon.lat * rad) * Math.cos(elong * rad));
+  var i = Math.atan2(Math.sin(psi), _MOON_SUN_DIST_RATIO - Math.cos(psi));
+  var illumExact = (1 + Math.cos(i)) / 2 * 100;
   var illum = Math.round(illumExact * 10) / 10;
   // Name by NARROW windows around the principal phases (±0.6 day), so the
   // crescent/gibbous ranges get their fair share and quarters read ~50%.
@@ -4891,6 +4886,11 @@ _MOON_TEX.src = _MOON_MAP_URL;
 var _MOON_ALBEDO_LIFT = 60;
 var _MOON_ALBEDO_GAIN = 0.8;
 var _MOON_PLAIN_GREY = 184;       // the disc's grey until the map arrives
+// Sunlight a touch warm, earthshine cool: red and blue gain [base, per unit
+// of the light's sunlit share] (green is 1). The 3D Moon's shader reads the
+// same numbers, so the two Moons are one picture.
+var _MOON_TINT_R = [0.99, 0.05];
+var _MOON_TINT_B = [1.18, -0.18];
 // Map widths read back: the Today card's 48px disc needs a quarter of the
 // small map; a wider disc reads one map pixel per disc pixel at its centre
 // (a disc N wide spans pi * N map pixels round the whole Moon), doubling from
@@ -4915,21 +4915,24 @@ var _moonSpriteCanvasCache = new Map();  // canvases, for the sky scene and moti
 // then idle), so it never competes with the first paint for the network or
 // the main thread. It is decoded off the main thread (decode()), and the
 // discs it sharpens are redrawn when the page is next idle: on a phone the
-// hero's redraw (a 2048 readback and a 600 px sprite) is ~70 ms.
+// hero's redraw (a 2048 readback and a 600 px sprite) is ~70 ms. The 3D
+// Moon (almanac-earth.js) is drawn from the same decoded picture: one fetch,
+// one decode. Resolves with the Image, or null if it could not be had.
 var _MOON_IDLE_TIMEOUT_MS = 3000;
-var _moonHiAsked = false;
+var _moonHiLoad = null;
 function _moonIdle(fn) {
   (window.requestIdleCallback || function (f) { return setTimeout(f, 1); })(fn, { timeout: _MOON_IDLE_TIMEOUT_MS });
 }
 function _moonLoadHiMap() {
-  if (_moonHiAsked) return;
-  _moonHiAsked = true;
+  if (_moonHiLoad) return _moonHiLoad;
   var im = new Image();
   im.src = _MOON_MAP_HI_URL;
-  im.decode().then(function () {
+  _moonHiLoad = im.decode().then(function () {
     _MOON_TEX_HI = im;
     _moonIdle(function () { if (typeof _repaintMoons === 'function') _repaintMoons(); });
-  }, function () {});   // without it every disc keeps the 1024 map
+    return im;
+  }, function () { return null; });   // without it every disc keeps the 1024 map
+  return _moonHiLoad;
 }
 function _moonAfterFirstPaint(fn) {
   var go = function () {
@@ -5098,6 +5101,7 @@ function _moonSpriteCanvas(v, sizePx) {
   var earth = _moonEarthshine(cosI);   // the Earth is where we are: it lights the disc evenly
   var edgeW = 2.4 / N;
   var lut = _moonDisplayLut(), lutK = _MOON_DISPLAY_LUT_N / Math.sqrt(_MOON_DISPLAY_LUT_MAX);
+  var r0 = _MOON_TINT_R[0], r1 = _MOON_TINT_R[1], b0 = _MOON_TINT_B[0], b1 = _MOON_TINT_B[1];
 
   for (var py = 0; py < N; py++) {
     var y = 1 - (py + 0.5) / N * 2;              // +1 top .. -1 bottom
@@ -5122,9 +5126,9 @@ function _moonSpriteCanvas(v, sizePx) {
       var li = Math.sqrt(lin) * lutK;
       var gm = g * lut[li < _MOON_DISPLAY_LUT_N ? li | 0 : _MOON_DISPLAY_LUT_N];
       // Sunlit side faintly warm, earthshine cool.
-      data[o] = Math.min(255, gm * (0.99 + 0.05 * warm));
+      data[o] = Math.min(255, gm * (r0 + r1 * warm));
       data[o + 1] = Math.min(255, gm);
-      data[o + 2] = Math.min(255, gm * (1.18 - 0.18 * warm));
+      data[o + 2] = Math.min(255, gm * (b0 + b1 * warm));
       // Antialias the limb over the outer ~1px ring.
       data[o + 3] = 255 * _smoothstep(1.0, 1.0 - edgeW, r2);
     }
@@ -5172,12 +5176,24 @@ function _renderMoonHTML(v, wrapClass) {
   var base = wrapClass === 'dc-moon-wrap' ? 'translate(-50%,-50%) ' : '';
   var rot = v.tilt ? 'rotate(' + v.tilt.toFixed(1) + 'deg)' : '';
   var xform = (base + rot).trim();
+  var data = _moonSpriteData(v), dataAttrs = '';
+  for (var n in data) dataAttrs += 'data-' + n + '="' + data[n] + '" ';
   return '<div class="' + wrapClass + '"' + (xform ? ' style="transform:' + xform + '"' : '') + '>' +
     '<img class="' + (isHero ? 'almanac-moon-sprite' : 'dc-moon-sprite') + ' moon-sprite" ' +
-    'data-k="' + v.k.toFixed(4) + '" data-limb="' + v.limb.toFixed(1) + '" data-l="' + v.l.toFixed(1) +
-    '" data-b="' + v.b.toFixed(1) + '" data-size="' + size + '" ' +
+    dataAttrs + 'data-size="' + size + '" ' +
     'src="' + url + '" alt="" width="' + size + '" height="' + size + '" />' +
     '</div>';
+}
+// What a moon <img> carries of its view, for _repaintMoons to draw it again.
+function _moonSpriteData(v) {
+  return { k: v.k.toFixed(4), limb: v.limb.toFixed(1), l: v.l.toFixed(1), b: v.b.toFixed(1) };
+}
+// Point a rendered moon <img> at view v (the Almanac's live hero).
+function _setMoonSprite(img, v) {
+  var data = _moonSpriteData(v);
+  for (var n in data) img.setAttribute('data-' + n, data[n]);
+  var url = _renderMoonSprite(v, parseInt(img.getAttribute('data-size'), 10) || 48);
+  if (img.getAttribute('src') !== url) img.src = url;
 }
 
 // Repaint already-rendered moon sprites in place — called when the map
@@ -5204,26 +5220,59 @@ function _repaintMoons() {
 // Geocentric coordinates of the Moon — the same orbital-element evaluation
 // _moonPosition (almanac.js) starts from, hoisted here so the two files cannot
 // drift apart. lng/lat are ecliptic (degrees), ra/dec equatorial (radians).
+// The largest terms of Meeus's Moon (Astronomical Algorithms ch. 47, tables
+// 47.A and 47.B): [D, M, M', F, degrees], every term over 0.0035 degree. With
+// them the Moon stands within ~0.05 degree of JPL's ephemeris
+// (tests/test_moon_sun_horizons.cjs); the six terms it had were 0.5 off, one
+// of them (M' - F) with its sign turned. Terms in M carry the Earth orbit's
+// shrinking eccentricity, E.
+var _MOON_LON_TERMS = [
+  [0, 0, 1, 0, 6.288774], [2, 0, -1, 0, 1.274027], [2, 0, 0, 0, 0.658314], [0, 0, 2, 0, 0.213618],
+  [0, 1, 0, 0, -0.185116], [0, 0, 0, 2, -0.114332], [2, 0, -2, 0, 0.058793], [2, -1, -1, 0, 0.057066],
+  [2, 0, 1, 0, 0.053322], [2, -1, 0, 0, 0.045758], [0, 1, -1, 0, -0.040923], [1, 0, 0, 0, -0.034720],
+  [0, 1, 1, 0, -0.030383], [2, 0, 0, -2, 0.015327], [0, 0, 1, 2, -0.012528], [0, 0, 1, -2, 0.010980],
+  [4, 0, -1, 0, 0.010675], [0, 0, 3, 0, 0.010034], [4, 0, -2, 0, 0.008548], [2, 1, -1, 0, -0.007888],
+  [2, 1, 0, 0, -0.006766], [1, 0, -1, 0, -0.005163], [1, 1, 0, 0, 0.004987], [2, -1, 1, 0, 0.004036],
+  [2, 0, 2, 0, 0.003994], [4, 0, 0, 0, 0.003861], [2, 0, -3, 0, 0.003665]
+];
+var _MOON_LAT_TERMS = [
+  [0, 0, 0, 1, 5.128122], [0, 0, 1, 1, 0.280602], [0, 0, 1, -1, 0.277693], [2, 0, 0, -1, 0.173237],
+  [2, 0, -1, 1, 0.055413], [2, 0, -1, -1, 0.046271], [2, 0, 0, 1, 0.032573], [0, 0, 2, 1, 0.017198],
+  [2, 0, 1, -1, 0.009266], [0, 0, 2, -1, 0.008822], [2, -1, 0, -1, 0.008216], [2, 0, -2, -1, 0.004324],
+  [2, 0, 1, 1, 0.004200]
+];
+function _moonSeries(terms, D, M, Mp, F, E) {
+  var D2R = Math.PI / 180, s = 0;
+  for (var i = 0; i < terms.length; i++) {
+    var t = terms[i], c = t[4];
+    if (t[1]) c *= t[1] === 1 || t[1] === -1 ? E : E * E;
+    s += c * Math.sin((t[0] * D + t[1] * M + t[2] * Mp + t[3] * F) * D2R);
+  }
+  return s;
+}
+// The Moon's geocentric ecliptic longitude and latitude (degrees) at T,
+// Julian centuries from J2000, and the arguments they come from.
+function _moonEcliptic(T) {
+  var L0 = 218.3164477 + 481267.88123421 * T;   // mean longitude
+  var D = 297.8501921 + 445267.1114034 * T;     // mean elongation
+  var Ms = 357.5291092 + 35999.0502909 * T;     // the Sun's mean anomaly
+  var M = 134.9633964 + 477198.8675055 * T;     // the Moon's mean anomaly
+  var F = 93.2720950 + 483202.0175233 * T;      // argument of latitude
+  var E = 1 - 0.002516 * T;
+  return {
+    lng: ((L0 + _moonSeries(_MOON_LON_TERMS, D, Ms, M, F, E)) % 360 + 360) % 360,
+    lat: _moonSeries(_MOON_LAT_TERMS, D, Ms, M, F, E),
+    D: D, Ms: Ms % 360, M: M, F: F % 360
+  };
+}
+
 function _moonEqCoords(date) {
   var JD = 2440587.5 + date.getTime() / 86400000;
   var T = (JD - 2451545.0) / 36525;
   var D2R = Math.PI / 180;
-  var L0 = (218.3165 + 481267.8813 * T) % 360;   // mean longitude
-  var M  = (134.9634 + 477198.8676 * T) % 360;   // mean anomaly
-  var Ms = (357.5291 +  35999.0503 * T) % 360;   // sun mean anomaly
-  var F  = (93.2720  + 483202.0175 * T) % 360;   // argument of latitude
-  var D  = (297.8502 + 445267.1115 * T) % 360;   // mean elongation
-  var lng = L0
-    + 6.289 * Math.sin(M * D2R)
-    + 1.274 * Math.sin((2 * D - M) * D2R)   // evection
-    + 0.658 * Math.sin(2 * D * D2R)         // variation
-    + 0.214 * Math.sin(2 * M * D2R)
-    - 0.186 * Math.sin(Ms * D2R)            // annual equation
-    - 0.114 * Math.sin(2 * F * D2R);
-  var lat_ec = 5.128 * Math.sin(F * D2R)
-    + 0.281 * Math.sin((M + F) * D2R)
-    + 0.278 * Math.sin((F - M) * D2R);
-  var eps = 23.44 * D2R;
+  var ec = _moonEcliptic(T);
+  var Ms = ec.Ms, F = ec.F, lng = ec.lng, lat_ec = ec.lat;
+  var eps = (23.439291 - 0.0130042 * T) * D2R;
   var lngR = lng * D2R, latR = lat_ec * D2R;
   var dec = Math.asin(Math.sin(latR) * Math.cos(eps) + Math.cos(latR) * Math.sin(eps) * Math.sin(lngR));
   var ra = Math.atan2(Math.sin(lngR) * Math.cos(eps) - Math.tan(latR) * Math.sin(eps), Math.cos(lngR));
