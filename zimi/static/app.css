@@ -2059,6 +2059,8 @@
   .flavor-option-check { width: 16px; color: var(--amber); font-weight: bold; text-align: center; flex-shrink: 0; }
   .flavor-popup-backdrop { position: fixed; inset: 0; z-index: 999; }
   .ci-section-label { padding: 16px 0 8px; }
+  /* The count after a label: quiet, as the apps' .n and the home's pill-count. */
+  .label-n { color: var(--text3); font-weight: 400; font-variant-numeric: tabular-nums; margin-inline-start: 2px; }
   /* min-width:0 — a grid item defaults to min-width:auto, so a wide action row
      used to stretch its column and push the whole page into horizontal scroll. */
   .dl-item { padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; font-size: 13px; }

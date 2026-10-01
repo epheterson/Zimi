@@ -3939,6 +3939,12 @@ function filterHomeRecent(kind) {
 // One language filter pill for the home library. Multi-select toggle; the
 // native language name matches the search-results lang pills (reusing the
 // existing _NATIVE_LANG_NAMES map, with _langDisplayName as fallback).
+// A label and how many: one form everywhere (home pills, the Library's
+// groups, the apps' chips): the label, then the number, quieter. Never
+// "(1)", never "· 1".
+function _countedLabelHtml(label, n) {
+  return esc(label) + ' <span class="label-n">' + n + '</span>';
+}
 function _homeLangPill(code, count, active) {
   var name = _NATIVE_LANG_NAMES[code] || _langDisplayName(code) || code.toUpperCase();
   return '<button class="pill' + (active ? ' active' : '') + '"' +
@@ -10606,7 +10612,7 @@ async function renderCollectionsTab() {
       h += '<div class="coll-picker" onclick="event.stopPropagation()">';
       for (const cat of Object.keys(catMap).sort()) {
         const catZims = catMap[cat].slice().sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name));
-        h += '<div class="manage-installed-group"><div class="ci-section-label">' + esc(_catDisplayName(cat)) + ' (' + catZims.length + ')</div>';
+        h += '<div class="manage-installed-group"><div class="ci-section-label">' + _countedLabelHtml(_catDisplayName(cat), catZims.length) + '</div>';
         for (const z of catZims) {
           const inColl = collZims.includes(z.name);
           const meta = [];
@@ -14817,7 +14823,7 @@ function renderInstalled(filterText) {
     // Real-category headers are drop targets for the row DnD (#37) — data-cat
     // names the destination; the Updates pseudo-group is never a target.
     const dropAttr = cat === '__updates__' ? '' : ' data-cat="' + escAttr(cat) + '"';
-    items_h += '<div class="ci-section-label"' + dropAttr + '>' + esc(groupLabel) + ' (' + items.length + ')</div>';
+    items_h += '<div class="ci-section-label"' + dropAttr + '>' + _countedLabelHtml(groupLabel, items.length) + '</div>';
     for (const z of items) {
       const meta = [];
       const countHtml = _zimCountHtml(z);
