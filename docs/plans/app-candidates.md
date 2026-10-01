@@ -35,6 +35,14 @@ An app earns a place when the library already holds the data, in a shape Zimi ca
 - **Arcade:** "someday".
 - **Zimi Earth** (new): "maybe we need Zimi Earth like Google earth that has a bunch of the stuff mixed?" The Almanac's 3D Earth (1.12) is the seed: the globe you can drag, with maps, Wikipedia places, satellites, day and night, and travel on it. Nearby and Travel may belong inside it.
 
+## Eric's reactions (2026-10-01)
+
+- **Dictionary:** building in 1.13: "seeing the same word in all is nice. Can it speak the word!? Properly!?"
+- **Travel in Maps:** "interesting".
+- **Zimi Earth:** "when we get whole solar system maybe, and more features" (with 2.0's flown solar system).
+- **Labs and School:** "would be cool to like follow through lesson plans and keep track or something": lesson paths through the simulations and courses, with progress kept like Bookshelf's places.
+- **The rest:** "a lil hairy".
+
 ## Folded into existing apps (not separate apps)
 
 - Audiobooks and document-library videos: ZimiTube (1.12).
