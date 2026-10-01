@@ -7237,70 +7237,98 @@ async function doSearch(query, push, perSource) {
   const searchT0 = performance.now();
   const searchUrl = scope ? '/w/' + encodeURIComponent(scope) + '?q=' + encodeURIComponent(query) : '/?q=' + encodeURIComponent(query);
 
-  try {
-    // ── Progressive two-phase search: fast title matches first, then full FTS ──
-    // Phase 1: fast title search (parallel per-ZIM, no lock contention)
-    const r1 = await serverFetch('/search?q=' + encodeURIComponent(query) + '&limit=' + perSource + zimParam + '&fast=1',
-      { signal: searchController.signal });
-    _throwIfRateLimited(r1);
-    const d1 = await r1.json();
-    // Left for Settings or home while it ran: that page is on screen now.
-    if (mode !== 'search' || searchSeq !== _searchSeq) return;
-    const phase1Elapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
-    d1._clientElapsed = phase1Elapsed;
-    d1._query = query;
-    d1._limit = perSource;
-    // Asking again for more: the quick pass adds to what is on screen.
-    allResults = more && allResults && allResults._query === query ? mergeSearchResults(allResults, d1) : d1;
-    if (push) {
-      // Replace (not push) if we're already on a search page — prevents duplicate entries
-      // from autosearch timer + Enter key both calling doSearch
-      var hs = history.state;
-      var sameSearch = hs && hs.mode === 'search' && hs.query === query && (hs.source || null) === (scope || null);
-      if (hs && hs.mode === 'search' && (push !== 'new' || sameSearch)) {
-        history.replaceState({ mode: 'search', query: query, source: scope }, '', searchUrl);
-      } else {
-        history.pushState({ mode: 'search', query: query, source: scope }, '', searchUrl);
-      }
+  // The address and the recent list, once the search has results to show.
+  const pushSearchState = function() {
+    if (!push) return;
+    // Replace (not push) if we're already on a search page — prevents duplicate entries
+    // from autosearch timer + Enter key both calling doSearch
+    var hs = history.state;
+    var sameSearch = hs && hs.mode === 'search' && hs.query === query && (hs.source || null) === (scope || null);
+    if (hs && hs.mode === 'search' && (push !== 'new' || sameSearch)) {
+      history.replaceState({ mode: 'search', query: query, source: scope }, '', searchUrl);
+    } else {
+      history.pushState({ mode: 'search', query: query, source: scope }, '', searchUrl);
     }
+  };
+
+  // Asked before (Back, Forward, the same words again): drawn from what came
+  // then, nothing asked of the server.
+  const keptKey = _searchKeptKey(query, zimParam, perSource);
+  const kept = _searchKeptGet(keptKey);
+  if (kept) {
+    allResults = kept;
+    pushSearchState();
     renderSearchResults(allResults, scope);
-    // Persist search to browse history
-    _histPushSearch(query, scope, (d1.results || []).length);
+    _histPushSearch(query, scope, (kept.results || []).length);
+    return;
+  }
 
-    if (d1.partial) {
-      // Show honest progress: "N title matches (Xs) — searching content..."
-      const titleCount = (d1.results || []).length;
-      const indicator = document.createElement('div');
-      indicator.className = 'content-search-indicator';
-      indicator.id = 'fts-indicator';
-      const msg = titleCount > 0
-        ? titleCount + ' title match' + (titleCount !== 1 ? 'es' : '') + ' (' + phase1Elapsed + 's) \u2014 '
-        : '';
-      indicator.innerHTML = '<span class="spinner-inline"></span>' + msg + tH('searching_content');
-      output.prepend(indicator);
-
-      // Live elapsed timer
-      const timerInterval = setInterval(() => {
-        const el = document.getElementById('fts-indicator');
-        if (!el) { clearInterval(timerInterval); return; }
-        const now = ((performance.now() - searchT0) / 1000).toFixed(0);
-        el.innerHTML = '<span class="spinner-inline"></span>' + msg + tH('searching_content_time', {time: now});
-      }, 1000);
-
-      // Phase 2: full Xapian FTS (sequential under _zim_lock, searches every ZIM)
-      const r2 = await serverFetch('/search?q=' + encodeURIComponent(query) + '&limit=' + perSource + zimParam,
-        { signal: searchController.signal });
-      _throwIfRateLimited(r2);
-      const d2 = await r2.json();
+  let d1 = null, gotFull = false, timerInterval = null;
+  try {
+    // ── One request, both passes: the server sends the title matches, the
+    // snippets of the cards they draw, the full-text results, then theirs,
+    // a line of JSON each as it is ready (_searchStream in http.py).
+    const res = await serverFetch('/search?q=' + encodeURIComponent(query) + '&limit=' + perSource + zimParam + '&stream=1',
+      { signal: searchController.signal });
+    _throwIfRateLimited(res);
+    _snippetsStreamSeq = searchSeq;
+    await _readSearchLines(res, function(line) {
+      // Left for Settings or home while it ran, or a newer search began:
+      // that page is on screen now.
+      if (mode !== 'search' || searchSeq !== _searchSeq) throw _SEARCH_STALE;
+      if (line.phase === 'snippets') {
+        _snippetKeepAll(line.snippets);
+        loadSnippets();
+        return;
+      }
+      const d = line.result || {};
+      d._query = query;
+      d._limit = perSource;
+      if (line.phase === 'fast') {
+        const phase1Elapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
+        d._clientElapsed = phase1Elapsed;
+        d1 = d;
+        // Asking again for more: the quick pass adds to what is on screen.
+        allResults = more && allResults && allResults._query === query ? mergeSearchResults(allResults, d1) : d1;
+        pushSearchState();
+        renderSearchResults(allResults, scope);
+        // Persist search to browse history
+        _histPushSearch(query, scope, (d1.results || []).length);
+        if (!d1.partial) return;
+        // Show honest progress: "N title matches (Xs) — searching content..."
+        const titleCount = (d1.results || []).length;
+        const indicator = document.createElement('div');
+        indicator.className = 'content-search-indicator';
+        indicator.id = 'fts-indicator';
+        const msg = titleCount > 0
+          ? titleCount + ' title match' + (titleCount !== 1 ? 'es' : '') + ' (' + phase1Elapsed + 's) — '
+          : '';
+        indicator.innerHTML = '<span class="spinner-inline"></span>' + msg + tH('searching_content');
+        output.prepend(indicator);
+        // Live elapsed timer
+        timerInterval = setInterval(() => {
+          const el = document.getElementById('fts-indicator');
+          if (!el) { clearInterval(timerInterval); return; }
+          const now = ((performance.now() - searchT0) / 1000).toFixed(0);
+          el.innerHTML = '<span class="spinner-inline"></span>' + msg + tH('searching_content_time', {time: now});
+        }, 1000);
+        return;
+      }
       clearInterval(timerInterval);
-      if (mode !== 'search' || searchSeq !== _searchSeq) return; // landed after you left, or a newer search began
-      d2._clientElapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
-      d2._query = query;
-      d2._limit = perSource;
-      allResults = mergeSearchResults(d1, d2);
+      d._clientElapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
+      allResults = d1 ? mergeSearchResults(d1, d) : d;
+      gotFull = true;
       renderSearchResults(allResults, scope);
-    }
+    });
+    clearInterval(timerInterval);
+    if (searchSeq !== _searchSeq) return;
+    _snippetsStreamSeq = 0;
+    if (gotFull) _searchKeptPut(keptKey, allResults);
+    // Any card the answer brought no snippet for asks on its own.
+    if (mode === 'search') loadSnippets();
   } catch(e) {
+    clearInterval(timerInterval);
+    if (searchSeq === _searchSeq) _snippetsStreamSeq = 0;
     if (e.name === 'AbortError' || mode !== 'search' || searchSeq !== _searchSeq) return;
     // "Search failed / try again" implies the server tried and something went
     // wrong there. If we never reached it, say that instead and offer Retry.
@@ -7317,6 +7345,67 @@ async function doSearch(query, push, perSource) {
     }
     output.innerHTML = '<div class="empty"><p>' + tH('search_failed') + '</p><p class="hint">' + tH('try_again') + '</p></div>';
   }
+}
+
+// Read a search's answer a line at a time as it arrives, each line handed to
+// onLine. A plain JSON answer (a ZIM not found, an empty language) is the
+// whole result in one: the quick pass, with nothing after it. onLine throwing
+// stops the reading and lets the rest of the answer go.
+const _SEARCH_STALE = new Error('search_stale');
+_SEARCH_STALE.name = 'AbortError';
+async function _readSearchLines(res, onLine) {
+  if ((res.headers.get('Content-Type') || '').indexOf('ndjson') < 0) {
+    onLine({ phase: 'fast', result: await res.json() });
+    return;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  try {
+    for (;;) {
+      const step = await reader.read();
+      buf += decoder.decode(step.value || new Uint8Array(0), { stream: !step.done });
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (line) onLine(JSON.parse(line));
+      }
+      if (step.done) return;
+    }
+  } catch (e) {
+    try { reader.cancel(); } catch (e2) {}
+    throw e;
+  }
+}
+
+// Searches already answered, kept for Back, Forward and the same words asked
+// again: the merged results (their snippets are in _snippetKept). Keyed by
+// the words as the server's cache knows them (_query_key in search.py), the
+// sources asked and the library, so a ZIM added or taken away asks again.
+const SEARCH_KEPT_MAX = 30;
+const SEARCH_KEPT_MS = 10 * 60 * 1000;
+var _searchKept = new Map();
+function _searchQueryKey(query) {
+  return String(query).replace(/[“”„]/g, '"').split(/\s+/).filter(Boolean)
+    .map(function(w) { return w === 'OR' ? w : w.toLowerCase(); }).join(' ');
+}
+function _searchKeptKey(query, zimParam, perSource) {
+  var library = (zimsCache || []).map(function(z) { return z.name + ':' + (z.entries || ''); }).join(',');
+  return [_searchQueryKey(query), zimParam, perSource, library].join('\n');
+}
+function _searchKeptGet(key) {
+  var kept = _searchKept.get(key);
+  if (!kept) return null;
+  _searchKept.delete(key);
+  if (Date.now() - kept.at > SEARCH_KEPT_MS) return null;
+  _searchKept.set(key, kept);  // most recently used last
+  return kept.result;
+}
+function _searchKeptPut(key, result) {
+  _searchKept.delete(key);
+  if (_searchKept.size >= SEARCH_KEPT_MAX) _searchKept.delete(_searchKept.keys().next().value);
+  _searchKept.set(key, { result: result, at: Date.now() });
 }
 
 function mergeSearchResults(phase1, phase2) {
@@ -7575,6 +7664,14 @@ function renderSearchResults(data, scope) {
   // The words searched for, marked as each card is drawn (and in each
   // snippet as it arrives): nothing is asked of the server for it.
   const hitRe = _resultsHitRe = searchHitRe(data._query);
+  // A snippet already here (the search's answer brought it, or an earlier
+  // draw read it) is drawn with its card; "" is a page with none to show.
+  const snippetHtml = (r) => {
+    const kept = r.snippet ? null : _snippetKept.get(r.zim + '\n' + r.path);
+    const text = r.snippet || (kept && kept.snippet);
+    if (text) return '<div class="snippet">' + searchHitsHtml(text, hitRe) + '</div>';
+    return kept ? '' : '<div class="snippet" data-needs-snippet="1"></div>';
+  };
   const card = (r, i, sourceRow) =>
     // Real link (#49): anchors are natively focusable and Enter-activatable,
     // so the tabindex/role/onkeydown scaffolding a div needed goes away.
@@ -7582,7 +7679,7 @@ function renderSearchResults(data, scope) {
       '<div class="result-thumb" data-needs-thumb="1"></div>' +
       '<div class="result-body">' + (sourceRow ? _resultSourceHtml(r.zim) : '') +
       '<div class="title">' + searchHitsHtml(r.title, hitRe) + '</div>' +
-      (r.snippet ? '<div class="snippet">' + searchHitsHtml(r.snippet, hitRe) + '</div>' : '<div class="snippet" data-needs-snippet="1"></div>') +
+      snippetHtml(r) +
       '</div></a>';
 
   // Pagination: the first visibleResultCount cards, ranked or in groups.
@@ -7717,10 +7814,12 @@ async function loadSnippets() {
 
   // Collect all result cards that need either snippets or thumbnails
   const cards = document.querySelectorAll('.result[data-zim][data-path]');
+  const keptOnly = _snippetsStreamSeq && _snippetsStreamSeq === _searchSeq;
   const queue = [];
   cards.forEach(function(card) {
     const needsSnippet = card.querySelector('[data-needs-snippet="1"]');
     const needsThumb = card.querySelector('[data-needs-thumb]');
+    if (keptOnly && !_snippetKept.has(card.dataset.zim + '\n' + card.dataset.path)) return;
     if (needsSnippet || needsThumb) queue.push(card);
   });
   if (!queue.length) return;
@@ -7752,6 +7851,18 @@ async function loadSnippets() {
 var _snippetKept = new Map();
 var _snippetPending = new Map();
 var SNIPPET_KEPT_MAX = 500;
+// The search whose answer is still arriving, its snippets with it: until it
+// ends, its cards take what came and ask for nothing themselves. 0: none.
+var _snippetsStreamSeq = 0;
+function _snippetKeep(key, data) {
+  _snippetKept.delete(key);
+  if (_snippetKept.size >= SNIPPET_KEPT_MAX) _snippetKept.delete(_snippetKept.keys().next().value);
+  _snippetKept.set(key, data);
+}
+// The snippets a search's answer brought, by "zim\npath".
+function _snippetKeepAll(byKey) {
+  Object.keys(byKey || {}).forEach(function(k) { _snippetKeep(k, byKey[k]); });
+}
 function _snippetData(zim, path) {
   var key = zim + '\n' + path;
   if (_snippetKept.has(key)) return Promise.resolve(_snippetKept.get(key));
@@ -7759,10 +7870,7 @@ function _snippetData(zim, path) {
   var asked = fetch('/snippet?zim=' + encodeURIComponent(zim) + '&path=' + encodeURIComponent(path))
     .then(function(res) {
       return res.json().then(function(data) {
-        if (res.ok) {
-          if (_snippetKept.size >= SNIPPET_KEPT_MAX) _snippetKept.delete(_snippetKept.keys().next().value);
-          _snippetKept.set(key, data);
-        }
+        if (res.ok) _snippetKeep(key, data);
         return data;
       });
     })
@@ -7851,6 +7959,10 @@ function clearSearch() {
 // ── Suggest / Autocomplete ──
 let suggestController = null;
 let _suggestSeq = 0; // sequence counter to discard stale responses
+// Suggestions already asked for this page's life, by the words, the source
+// and the library (_searchKeptKey); the oldest go first.
+const SUGGEST_KEPT_MAX = 200;
+const _suggestKept = new Map();
 
 async function fetchSuggestions(query) {
   // Cancel any in-flight suggest request
@@ -7859,10 +7971,20 @@ async function fetchSuggestions(query) {
   const seq = ++_suggestSeq;
 
   const zimParam = currentSource ? '&zim=' + encodeURIComponent(currentSource) : '';
+  // Typed, taken back and typed again (a typo, Backspace): the words asked
+  // before are answered from here.
+  const keptKey = _searchKeptKey(query, zimParam, 'suggest');
   try {
-    const res = await fetch('/suggest?q=' + encodeURIComponent(query) + '&limit=6' + zimParam,
-      { signal: suggestController.signal });
-    const data = await res.json();
+    let data = _suggestKept.get(keptKey);
+    if (!data) {
+      const res = await fetch('/suggest?q=' + encodeURIComponent(query) + '&limit=6' + zimParam,
+        { signal: suggestController.signal });
+      data = await res.json();
+      if (res.ok) {
+        if (_suggestKept.size >= SUGGEST_KEPT_MAX) _suggestKept.delete(_suggestKept.keys().next().value);
+        _suggestKept.set(keptKey, data);
+      }
+    }
     // Discard if a newer request has been issued or input lost focus
     if (seq !== _suggestSeq || document.activeElement !== q) return;
     // data is {zim_name: [{path, title}, ...], ...}
@@ -24594,6 +24716,15 @@ function _historyOnLanding(target) {
 // meant every jump to a saved place rebuilt the map and threw you back to the
 // region's default view.
 
+// A source's page under something Back returns to, without its main article
+// opening over it. Awaited with the flag held: renderSource consults the flag
+// again after its own fetch, and an unawaited call had it reset by then, so
+// the ZIM's main page opened over the search (or article) Back returned to.
+async function _enterSourceNoReader(name) {
+  _popstateNoAutoReader = true;
+  try { await enterSource(name, false); } finally { _popstateNoAutoReader = false; }
+}
+
 window.addEventListener('popstate', async (e) => {
   // Same page, different place on the same map: only the hash changed. The
   // hashchange handler moves the map; there is nothing here to route. Judged
@@ -24628,11 +24759,7 @@ window.addEventListener('popstate', async (e) => {
   ) {
     _historyOnLanding(target);
     if (!readerOpen) {
-      // Awaited with the flag held: renderSource consults the flag again
-      // after its own fetch, and an unawaited call had it reset by then, so
-      // the ZIM's main page auto-opened over the article just restored.
-      _popstateNoAutoReader = true;
-      try { await enterSource(target.zim, false); } finally { _popstateNoAutoReader = false; }
+      await _enterSourceNoReader(target.zim);
     }
     _stepBackToArticle({zim: target.zim, path: target.path}, false);
     return;
@@ -24670,9 +24797,8 @@ window.addEventListener('popstate', async (e) => {
   } else if (s && s.mode === 'search' && s.query) {
     // Going back to search results — restore cached results instantly if available
     if (s.source) {
-      _popstateNoAutoReader = true;
-      enterSource(s.source, false);
-      _popstateNoAutoReader = false;
+      await _enterSourceNoReader(s.source);
+      mode = 'search';
     } else {
       mode = 'search'; currentSource = null; sourceAutoReader = false;
       sourceHeaderEl.style.display = 'none';
@@ -24698,14 +24824,10 @@ window.addEventListener('popstate', async (e) => {
     if (!_appFrameRoute(_tubeOpen, s.play)) openTube(true, s.play || '');
   } else if (s && s.mode === 'reader' && s.zim) {
     // Going back to a reader state — show the source page, don't re-open reader
-    _popstateNoAutoReader = true;
-    enterSource(s.zim, false);
-    _popstateNoAutoReader = false;
+    await _enterSourceNoReader(s.zim);
   } else if (s && s.mode === 'source' && s.source) {
     // Going back to source — show source page, don't auto-open reader
-    _popstateNoAutoReader = true;
-    enterSource(s.source, false);
-    _popstateNoAutoReader = false;
+    await _enterSourceNoReader(s.source);
   } else if (s && s.mode === 'almanac') {
     // Back from an almanac-originated article — reopen the almanac at its spot.
     if (typeof _reopenAlmanacFromLink === 'function') _reopenAlmanacFromLink();
