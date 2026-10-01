@@ -555,33 +555,54 @@ function _skyPaintGalaxy(ctx, s, dark) {
   ctx.restore();
 }
 
+// How a star of a magnitude looks to the eye: a point. The eye cannot resolve
+// any star's disc, so brightness is carried by intensity; only the brightest
+// few (Sirius, Vega, Rigel...) bloom a little wider, as they do on a dark
+// night and in any unretouched photo. Radius in CSS pixels; drawn never
+// smaller than about a device pixel across, so a 3x phone gets crisp points, not
+// CSS pixels tripled.
+var SKY_STAR_R_FAINT = 0.5;       // the faintest stars shown (CSS px radius)
+var SKY_STAR_R_BRIGHT = 0.8;      // a first-magnitude star
+var SKY_STAR_BLOOM_MAG = 0.5;     // brighter than this, a star blooms
+var SKY_STAR_BLOOM_PER_MAG = 0.18; // extra radius per magnitude past the bloom
+var SKY_STAR_R_MAX = 1.15;        // Sirius, the brightest, stays under this
+var SKY_STAR_FAINT_MAG = 4.5;     // where the radius reaches its floor
+var SKY_STAR_DIM = 0.42;          // intensity of the faintest, against 1 for the brightest
+var SKY_PLANET_R_X = 1.3;        // a planet against a star of its magnitude
+var SKY_STAR_GLOW_X = 5;          // the bloom's halo, in star radii
+function _skyStarLook(mag) {
+  var r;
+  if (mag < SKY_STAR_BLOOM_MAG) r = Math.min(SKY_STAR_R_MAX, SKY_STAR_R_BRIGHT + (SKY_STAR_BLOOM_MAG - mag) * SKY_STAR_BLOOM_PER_MAG);
+  else r = SKY_STAR_R_BRIGHT - (SKY_STAR_R_BRIGHT - SKY_STAR_R_FAINT) * _skyClamp((mag - SKY_STAR_BLOOM_MAG) / (SKY_STAR_FAINT_MAG - SKY_STAR_BLOOM_MAG), 0, 1);
+  var k = 1 - (1 - SKY_STAR_DIM) * _skyClamp((mag - SKY_STAR_BLOOM_MAG) / (SKY_STAR_FAINT_MAG - SKY_STAR_BLOOM_MAG), 0, 1);
+  return { r: r, k: k, bloom: mag < SKY_STAR_BLOOM_MAG };
+}
+// A star's radius in device pixels: never so small that antialiasing on a 1x
+// screen greys it away.
+var SKY_STAR_MIN_DEV_R = 0.65;
+function _skyStarDevR(rCss, dpr) { return Math.max(SKY_STAR_MIN_DEV_R, rCss * dpr); }
+
 // The stars: size and brightness from magnitude, washed out by the Sun and a
 // bright Moon, dimmer low down where the air is thick; a slow twinkle (more
 // near the horizon) unless motion is reduced. The named stars become tap targets.
 function _skyPaintStars(ctx, s) {
   var e = s.eph, g = e.sunGeoAlt, dpr = s.dpr;
   var lm = _skyLimitingMag(g) - _skyMoonGlare(e.moon.altitude, s.moonData.phase.illumination);
-  var tw = s.twinkle > 0, scale = s.scale * dpr;
+  var tw = s.twinkle > 0;
   var drawn = {};
   for (var i = 0; i < e.stars.length; i++) {
-    var st = e.stars[i];
-    var a = _skyClamp((lm - st.mag + 0.4) / 1.4, 0, 1) * _skyClamp(st.alt / 6, 0.3, 1);
+    var st = e.stars[i], look = _skyStarLook(st.mag);
+    var a = _skyClamp((lm - st.mag + 0.4) / 1.4, 0, 1) * _skyClamp(st.alt / 6, 0.3, 1) * look.k;
     if (a < 0.02) continue;
     var x = _skyX(s, st.az);
     if (!_skyInView(s, x, 4)) continue;
     var y = _skyY(s, st.alt);
     if (tw) a *= 1 + (0.06 + 0.18 * (1 - Math.min(st.alt, 45) / 45)) * Math.sin(st.phase + s.twinkle * 2.39996);
     a = _skyClamp(a, 0, 1);
-    var r = Math.max(0.45, 1.9 - 0.32 * st.mag) * scale;
+    var r = _skyStarDevR(look.r, dpr);
+    if (look.bloom && a > 0.4) _skyStarBloom(ctx, x, y, r, st.tint, a);
     ctx.fillStyle = 'rgba(' + st.tint + ',' + a.toFixed(3) + ')';
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-    if (st.mag < 1 && a > 0.4) {
-      var gg = ctx.createRadialGradient(x, y, r, x, y, r * 4);
-      gg.addColorStop(0, 'rgba(' + st.tint + ',' + (0.12 * a).toFixed(3) + ')');
-      gg.addColorStop(1, 'rgba(' + st.tint + ',0)');
-      ctx.fillStyle = gg;
-      ctx.beginPath(); ctx.arc(x, y, r * 4, 0, Math.PI * 2); ctx.fill();
-    }
     if (st.idx >= 0) {
       drawn[st.idx] = { x: x, y: y };
       if (_STAR_NAMES[st.idx] && a > 0.3) s.bodies.push({ type: 'star', idx: st.idx, x: x / dpr, y: y / dpr, r: r / dpr, alt: st.alt, az: st.az, mag: st.mag });
@@ -645,7 +666,9 @@ function _skyPaintPlanets(ctx, s) {
     if (!_skyInView(s, x, 0)) continue;
     var a = _skyClamp((lm - p.mag + 0.6) / 1.4, 0, 1) * _skyClamp(p.alt / 4, 0.4, 1);
     if (a < 0.05) continue;
-    var y = _skyY(s, p.alt), r = _skyClamp(2.3 - 0.28 * p.mag, 1.2, 3.4) * s.scale * s.dpr;
+    // A planet is a point too, a little fuller than a star of its brightness
+    // (it does not twinkle, and its steady light reads as a touch larger).
+    var y = _skyY(s, p.alt), r = _skyStarDevR(_skyStarLook(p.mag).r * SKY_PLANET_R_X, s.dpr);
     var col = _PLANETS[p.name].glow;
     var gg = ctx.createRadialGradient(x, y, 0, x, y, r * 3.2);
     gg.addColorStop(0, _hexToRgba(col, 0.35 * a));
@@ -1384,6 +1407,16 @@ function _renderStarChart(baseNow) {
   _drawStarChart(baseNow);
 }
 
+// The soft halo a bright star throws: faint, a few radii wide, under its point.
+function _skyStarBloom(ctx, x, y, r, tint, a) {
+  var R = r * SKY_STAR_GLOW_X;
+  var gg = ctx.createRadialGradient(x, y, 0, x, y, R);
+  gg.addColorStop(0, 'rgba(' + tint + ',' + (0.22 * a).toFixed(3) + ')');
+  gg.addColorStop(1, 'rgba(' + tint + ',0)');
+  ctx.fillStyle = gg;
+  ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill();
+}
+
 // Decorative dim background starfield for the planisphere disc — a cached,
 // deterministic field (not astronomically real, not linkable) so the schematic
 // chart disc reads as a dense night sky rather than the ~25-35 catalog stars
@@ -1520,12 +1553,13 @@ function _drawStarChart(now) {
   for (var i = 0; i < _STARS.length; i++) {
     var p = proj[i]; if (!p) continue;
     starCount++;
-    var mag = _STARS[i][2];
-    var rad = Math.max(0.8, 2.6 - mag * 0.42);
-    ctx.fillStyle = _WARM_STARS[i] ? '#ffd0a0' : '#eef2ff';
-    ctx.globalAlpha = Math.max(0.5, 1 - mag * 0.13);
+    var mag = _STARS[i][2], look = _skyStarLook(mag);
+    // The chart is drawn in CSS pixels (its context is scaled by dpr).
+    var rad = _skyStarDevR(look.r, dpr) / dpr;
+    var tint = _WARM_STARS[i] ? '255,208,160' : '238,242,255';
+    if (look.bloom) _skyStarBloom(ctx, p.x, p.y, rad, tint, 1);
+    ctx.fillStyle = 'rgba(' + tint + ',' + look.k.toFixed(3) + ')';
     ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 1;
     if (_STAR_NAMES[i] && mag < 1.6) {
       ctx.fillStyle = 'rgba(200,210,235,0.7)';
       ctx.font = '9px system-ui, sans-serif';
