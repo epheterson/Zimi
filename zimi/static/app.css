@@ -664,6 +664,29 @@
   .create-address { display: flex; flex-direction: column; gap: 6px; }
   .create-address[hidden] { display: none; }
   .create-address textarea.create-field { resize: vertical; min-height: 40px; }
+  /* Folder mode's picker: the create root as a tree, one level per request.
+     Rows are 40px for a finger; the indent is logical (inline-start), so RTL
+     indents from the right. Not .create-tree: that is the run view's. */
+  .create-ftree { max-height: 360px; overflow-y: auto; overscroll-behavior: contain; padding: 4px 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); }
+  .create-ftree[hidden] { display: none; }
+  .create-ftree-row { display: flex; align-items: center; gap: 8px; min-height: 40px; padding-inline: calc(6px + var(--depth, 0) * 18px) 12px; font-size: 14px; color: var(--text); cursor: pointer; }
+  .create-ftree-row:hover { background: var(--amber-glow); }
+  .create-ftree-row:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+  .create-ftree-row.is-off { color: var(--text3); cursor: default; }
+  .create-ftree-row.is-off:hover { background: none; }
+  .create-ftree-row.is-note { color: var(--text3); font-size: 13px; cursor: default; min-height: 34px; }
+  .create-ftree-row.is-note:hover { background: none; }
+  .create-ftree-twist { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 24px; width: 24px; height: 24px; padding: 0; color: var(--text2); background: none; border: 0; border-radius: 6px; cursor: pointer; }
+  .create-ftree-twist svg { transition: transform 0.15s; }
+  .create-ftree-row[aria-expanded="true"] > .create-ftree-twist svg { transform: rotate(90deg); }
+  [dir="rtl"] .create-ftree-row[aria-expanded="false"] > .create-ftree-twist svg { transform: scaleX(-1); }
+  .create-ftree-check { flex: 0 0 18px; width: 18px; height: 18px; margin: 0; accent-color: var(--amber); }
+  .create-ftree-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .create-ftree-what { flex: 0 1 auto; max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text3); }
+  .create-ftree-more { padding: 6px 0; font: inherit; font-size: 13px; color: var(--amber); background: none; border: 0; cursor: pointer; }
+  .create-ftree-summary { padding: 8px 12px 4px; }
+  .create-left-out { margin: 6px 0 0; padding-inline-start: 18px; font-size: 13px; color: var(--text2); }
+  @media (prefers-reduced-motion: reduce) { .create-ftree-twist svg { transition: none; } }
   .create-chip { display: flex; align-items: center; gap: 7px; padding: 7px 12px; font-family: inherit; font-size: 13px; color: var(--text2); background: none; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; transition: all 0.15s; }
   .create-chip:hover { color: var(--text); border-color: var(--amber-border); background: var(--amber-glow); }
   .create-chip.active { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
