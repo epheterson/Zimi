@@ -39,6 +39,8 @@ import time
 import urllib.parse
 import zlib
 
+from zimi.previews import jpeg_size
+
 # Every mimetype Zimi writes into a ZIM comes from here, and deliberately not
 # from mimetypes.guess_type. That module's table is seeded from the OS: on
 # Windows mimetypes.init() reads HKEY_CLASSES_ROOT, so the answer for .zip or
@@ -2165,32 +2167,6 @@ def append_history(records, record, limit=MAX_HISTORY_RECORDS):
 # catching, and it is the only claim a pair of heights can honestly support.
 SHOT_SHORT_RATIO = 0.4
 SHOT_DIMS_METADATA_KEY = "X-Zimi-Screenshot-Dims"
-
-
-def jpeg_size(data):
-    """``(width, height)`` of a JPEG, or None. Reads the SOF marker; no
-    decoding, no dependency."""
-    if not data or data[:2] != b"\xff\xd8":
-        return None
-    i, n = 2, len(data)
-    try:
-        while i + 9 < n:
-            if data[i] != 0xFF:
-                i += 1
-                continue
-            marker = data[i + 1]
-            # SOF0..SOF15, excluding the four that are not frame headers.
-            if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
-                height = int.from_bytes(data[i + 5 : i + 7], "big")
-                width = int.from_bytes(data[i + 7 : i + 9], "big")
-                return (width, height) if width and height else None
-            if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
-                i += 2
-                continue
-            i += 2 + int.from_bytes(data[i + 2 : i + 4], "big")
-    except Exception:
-        return None
-    return None
 
 
 def shot_verdict(live, packaged):

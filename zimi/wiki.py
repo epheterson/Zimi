@@ -502,9 +502,9 @@ def _work_pick(name, day):
         if role not in _TEXT_ROLES:
             with _srv._zim_lock:
                 thumb = _extract_preview_thumbnail(html[:80000], archive, name, path)
-            if thumb:
-                pick["thumbnail"] = thumb
-                good = True
+                if thumb:
+                    pick.update(thumbnail=thumb, **_picture_size(archive, name, thumb))
+                    good = True
         if good:
             return pick
         fallback = fallback or pick
@@ -513,8 +513,9 @@ def _work_pick(name, day):
 
 def pick(name, day):
     """A wiki's pick for the day YYYYMMDD: ``{zim, role, path, title, lang,
-    blurb, thumbnail?, kick?}``, {} when it has nothing to offer, None when
-    it could not be read (not kept, so asked again next time)."""
+    blurb, thumbnail?, width?, height?, kick?}``, {} when it has nothing to
+    offer, None when it could not be read (not kept, so asked again next
+    time)."""
     return _kept(_pick_cache, _key(name, day), lambda: _work_pick(name, day))
 
 
@@ -608,6 +609,23 @@ def _thumbnail(archive, name, path):
         return _extract_preview_thumbnail(page[2][:80000], archive, name, page[0]) or ""
 
 
+def _picture_size(archive, name, url):
+    """``{width, height}`` of one of the wiki's pictures (a ``/w/<name>/``
+    URL), or {}: the page gives the picture its shape before it loads. Read
+    while the day is worked out, never on the way to the page. Call with the
+    library lock held."""
+    from zimi.previews import image_size
+
+    prefix = "/w/%s/" % name
+    if not url.startswith(prefix):
+        return {}
+    try:
+        size = image_size(archive.get_entry_by_path(url[len(prefix) :]).get_item().content)
+    except Exception:
+        return {}
+    return {"width": size[0], "height": size[1]} if size else {}
+
+
 def _sentences(text):
     return [t.strip() for t in _SENTENCE_RE.split(text or "") if t.strip()]
 
@@ -692,8 +710,8 @@ def _trail(archive, start, seen, rng):
 
 def _work_extras(name, day, start):
     """A Wikipedia's day beyond its article: ``{facts: [{path, title, text}],
-    picture: {path, title, thumbnail, blurb} or None, trail: [{path, title,
-    blurb}]}``. Random pages in an order seeded by the wiki and the day
+    picture: {path, title, thumbnail, width?, height?, blurb} or None,
+    trail: [{path, title, blurb}]}``. Random pages in an order seeded by the wiki and the day
     (another order than the pick's), and the rabbit hole from ``start``, the
     day's article."""
     from zimi.search import _meta_title_re, random_entry
@@ -720,6 +738,8 @@ def _work_extras(name, day, start):
         path, title, lead, thumb = page
         if thumb:
             got = {"path": path, "title": title, "thumbnail": thumb, "blurb": lead}
+            with _srv._zim_lock:
+                got.update(_picture_size(archive, name, thumb))
             # A photograph makes the picture of the day; a diagram, a map or
             # a logo (drawn, so a PNG or a GIF) only when there is no photo.
             if _PHOTO_RE.search(thumb):
