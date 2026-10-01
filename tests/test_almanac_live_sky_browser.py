@@ -325,6 +325,12 @@ def test_life_on_the_horizon(browser, served):
     ctx, pg, errors = _almanac(browser, served)
     try:
         _settle(pg, DAY)
+        # Nothing spawns on its own during this test: each thing is put there.
+        pg.evaluate(
+            "() => { Object.keys(SKY_SPAWNERS).forEach((k) => { clearTimeout(_skyTimers[k]); SKY_FIRST_SPAWN_MS[k] = 1e9; });"
+            " [SKY_PLANE_GAP_S, SKY_BIRD_GAP_S, SKY_MUON_GAP_MS].forEach((g) => { g[0] = g[1] = 1e9; });"
+            " clearTimeout(_skyTimers.muon); _skyState.muons = []; _skyState.actors = []; _skyKick(); }"
+        )
         pg.wait_for_function("() => !!_skyState.sea", polling=POLL_MS, timeout=60000)
         sea = pg.evaluate("_skyState.sea")
         assert 0 <= sea["frac"] <= 1
@@ -369,7 +375,7 @@ def test_life_on_the_horizon(browser, served):
         assert pg.evaluate("_skyState.actors.length") == 0
         # Birds by day, named on a tap.
         pg.evaluate(
-            "() => { const b = _skyCrossing(_skyState, 'birds', [600, 600], [20, 20]); b.n = 5; b.start -= 300000; _skyState.actors = [b]; _skyHideTip(); _skyKick(); }"
+            "() => { const b = _skyCrossing(_skyState, 'birds', [600, 600], [45, 45]); b.n = 5; b.az0 = b.az1 = _skyState.center + 50; b.alt1 = 45; _skyState.actors = [b]; _skyHideTip(); _skyKick(); }"
         )
         pg.wait_for_function(
             "() => _skyState.bodies.some((b) => b.type === 'birds')", polling=POLL_MS

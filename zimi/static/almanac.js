@@ -1708,32 +1708,37 @@ function _almTmInit() {
 // method the code uses and a precision it has been checked against.
 var _ALM_ABOUT_ROWS = ['moon', 'seasons', 'sun', 'eclipses', 'planets', 'hebrew', 'islamic',
   'persian', 'chinese', 'deeptime', 'timezones'];
+// The data's sources and ages, folded away at the page's end, with what stops
+// being true without updates (a reference sheet) one tap inside it.
 function _almAboutDataHtml() {
   return '<details class="almanac-section alm-about">' +
     '<summary class="almanac-section-title">' + _almEsc(t('alm_about_data')) + '</summary>' +
     '<p class="alm-about-intro">' + _almEsc(t('alm_about_intro')) + '</p><ul class="alm-about-list">' +
     _ALM_ABOUT_ROWS.map(function(k) { return '<li>' + _almEsc(t('alm_about_' + k)) + '</li>'; }).join('') +
-    '</ul></details>';
+    '</ul><button type="button" class="alm-ref-decay-link" onclick="_almRefOpen(\'decay\')">' + _almEsc(t('ref_decay_link')) + '</button></details>';
 }
 
-// To print and keep: reference sheets for a world with no new data
-// (almanac-reference.js, with its data and styles, loaded on first use: none
-// of it is on the Almanac's first paint). Why it exists comes first (what
-// stops being true without updates), then the sheets as one list, grouped by
-// what the paper is for.
-var _ALM_REF_GROUPS = [['way', ['daily', 'sight']], ['time', ['year', 'suntime', 'stars']], ['dates', ['calendars']]];
-function _almRefSectionHtml() {
-  var html = '<div class="almanac-section alm-ref-entry"><div class="almanac-section-title">' + _almEsc(t('ref_section')) + '</div>' +
-    '<p class="alm-about-intro">' + _almEsc(t('ref_section_intro')) + '</p>' +
-    '<button type="button" class="alm-ref-decay-link" onclick="_almRefOpen(\'decay\')">' + _almEsc(t('ref_decay_link')) + '</button>';
-  _ALM_REF_GROUPS.forEach(function (g) {
-    html += '<div class="alm-ref-group"><div class="alm-ref-group-name">' + _almEsc(t('ref_group_' + g[0])) + '</div><ul class="alm-ref-list">' +
-      g[1].map(function (k) {
-        return '<li><button type="button" class="alm-ref-row" onclick="_almRefOpen(\'' + k + '\')"><span class="alm-ref-row-text"><span class="alm-ref-row-name">' +
-          _almEsc(t('ref_' + k)) + '</span><span class="alm-ref-row-sub">' + _almEsc(t('ref_' + k + '_sub')) + '</span></span><span class="alm-ref-row-go" aria-hidden="true">›</span></button></li>';
-      }).join('') + '</ul></div>';
-  });
-  return html + '</div>';
+// The page's parts: a group (the sky now, here, this month, this year, deep
+// time) under one heading, and a titled section inside it.
+function _almGroupOpen(key) {
+  return '<section class="alm-group" id="alm-group-' + key + '" aria-labelledby="alm-group-' + key + '-t">' +
+    '<h2 class="alm-group-title" id="alm-group-' + key + '-t">' + _almEsc(t('alm_group_' + key)) + '</h2>';
+}
+function _almSec(titleHtml, bodyHtml) {
+  return '<div class="almanac-section"><div class="almanac-section-title">' + titleHtml + '</div>' + bodyHtml + '</div>';
+}
+
+// The sheets to print (almanac-reference.js, with its data and styles, loaded
+// on first use: none of it is on the Almanac's first paint), each offered
+// beside what it is about: the star calendar, the daily pages and sight
+// reduction under the star chart; the year and sun time under the place; the
+// calendars under the month.
+var ALM_PRINT_SVG = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg>';
+function _almSheetsHtml(names) {
+  return '<div class="alm-sheets">' + names.map(function (k) {
+    return '<button type="button" class="alm-sheet" onclick="_almRefOpen(\'' + k + '\')" title="' + _almEsc(t('ref_' + k + '_sub')) + '">' +
+      ALM_PRINT_SVG + '<span>' + _almEsc(t('ref_' + k)) + '</span></button>';
+  }).join('') + '</div>';
 }
 var _almRefLoading = false;
 var _ALM_REF_LOAD_TIMEOUT_MS = 15000, _ALM_REF_POLL_MS = 50;
@@ -1904,8 +1909,12 @@ function _renderAlmanacContent() {
   // open its file, loading after this paint, sees to that itself).
   if (typeof _aePrepareWhenIdle === 'function') _aePrepareWhenIdle();
 
-  // The live sky + calendar — wall calendar: the sky above, the month below.
-  // Its clock is the page's (the time machine at the top); almanac-sky.js.
+  // The page reads outward in time from the moment at the top: the sky now,
+  // here (the place, its clocks, its tide), this month, this year, deep time.
+  // The sheets to print sit beside what they are about.
+  //
+  // The sky now. Its clock is the page's (the time machine); almanac-sky.js.
+  html += _almGroupOpen('now');
   html += '<div class="almanac-sky-wrap">' +
     '<canvas id="almanac-sky-canvas" aria-describedby="almanac-sky-desc" role="img" tabindex="0"></canvas>' +
     '<div id="almanac-sky-cap" class="alm-sky-cap"></div>' +
@@ -1916,18 +1925,38 @@ function _renderAlmanacContent() {
     '</div>';
   // Drawn with the page, not when the sky's sums land: nothing moves under it.
   html += '<div id="almanac-sky-invite">' + (_getLocation().stored ? '' : _almPlaceInviteHtml()) + '</div>';
-  html += '<div id="almanac-calendar"></div>';
+  html += _almSec(t('alm_tonights_sky'), '<div id="almanac-tonight"></div>');
+  // Star chart — a circular planisphere of the sky above the chosen location
+  // now: drag it to stand elsewhere on Earth, tap a body to identify it.
+  html += _almSec(t('alm_star_chart'),
+    '<div class="alm-starchart-wrap"><canvas id="almanac-starchart" onclick="_starChartClick(event)"></canvas></div>' +
+    '<div id="alm-sc-info" class="alm-sc-info"></div>' +
+    '<div id="almanac-starchart-caption" class="alm-starchart-caption"></div>' +
+    _almSheetsHtml(['stars', 'daily', 'sight']));
+  html += '</section>';
 
-  // Sun map — inline world map with day/night terminator + location picker
+  // Here: the place (the map, the way to choose it), its clocks, its tide
+  // (almanac-tides.js, loaded after the first paint), the Sun's year there.
+  html += _almGroupOpen('here');
   html += '<div id="almanac-sunmap"></div>';
-  // The tide for the chosen place (almanac-tides.js, loaded when this
-  // scrolls near: nothing of it on the first paint).
   html += '<div id="almanac-place"></div>';
+  html += _almSheetsHtml(['year', 'suntime']);
+  html += '</section>';
 
+  // This month: the calendar (and every other calendar's day), the showers,
+  // the planets' meetings, this day in history.
+  html += _almGroupOpen('month');
+  html += '<div id="almanac-calendar"></div>';
+  html += _almSheetsHtml(['calendars']);
+  html += _almSec(_lterm('meteor_shower', t('alm_meteor_showers')), '<div id="almanac-meteors"></div>');
+  html += _almSec(t('alm_celestial_events'), '<div id="almanac-events"></div>');
   // On this day — curated space & science milestones (only rendered when today has some)
   html += '<div id="almanac-onthisday"></div>';
+  html += '</section>';
 
-  // Orrery
+  // This year: the planets round the Sun, the Sun's figure of eight, the
+  // eclipses and the numbers of the Earth's year.
+  html += _almGroupOpen('year');
   html += '<div class="almanac-section">';
   html += '<div class="almanac-section-title">' + _lterm('solar_system', t('alm_solar_system')) + '</div>';
   html += '<div class="almanac-orrery-wrap"><canvas id="almanac-orrery"></canvas></div>';
@@ -1955,60 +1984,18 @@ function _renderAlmanacContent() {
   // Voyager detail card — appears on click
   html += '<div id="voyager-card" style="display:none"></div>';
   html += '</div>';
-
-  // Tonight's sky — planet visibility
-  html += '<div class="almanac-section">';
-  html += '<div class="almanac-section-title">' + t('alm_tonights_sky') + '</div>';
-  html += '<div id="almanac-tonight"></div>';
-  html += '</div>';
-
-  // Star chart — a circular planisphere of the sky above the chosen location now
-  html += '<div class="almanac-section">';
-  html += '<div class="almanac-section-title">' + t('alm_star_chart') + '</div>';
-  html += '<div class="alm-starchart-wrap"><canvas id="almanac-starchart" onclick="_starChartClick(event)"></canvas></div>';
-  // Time is driven by the pinned scrubber at the top now; drag the chart to
-  // stand elsewhere on Earth, tap a body to identify it.
-  html += '<div id="alm-sc-info" class="alm-sc-info"></div>';
-  html += '<div id="almanac-starchart-caption" class="alm-starchart-caption"></div>';
-  html += '</div>';
-
   // The Analemma — the Sun's yearly figure-8 (equation of time × declination)
-  html += '<div class="almanac-section">';
-  html += '<div class="almanac-section-title">' + _lterm('analemma', t('alm_analemma')) + '</div>';
-  html += '<div class="alm-analemma-wrap"><canvas id="almanac-analemma"></canvas></div>';
-  html += '<div id="almanac-analemma-caption" class="alm-analemma-caption"></div>';
-  html += '</div>';
+  html += _almSec(_lterm('analemma', t('alm_analemma')),
+    '<div class="alm-analemma-wrap"><canvas id="almanac-analemma"></canvas></div>' +
+    '<div id="almanac-analemma-caption" class="alm-analemma-caption"></div>');
+  html += _almSec(t('alm_astro_data'), '<div id="almanac-astro"></div>');
+  html += '</section>';
 
-  // Meteor showers
-  html += '<div class="almanac-section">';
-  html += '<div class="almanac-section-title">' + _lterm('meteor_shower', t('alm_meteor_showers')) + '</div>';
-  html += '<div id="almanac-meteors"></div>';
-  html += '</div>';
-
-  // Celestial events — conjunctions, oppositions
-  html += '<div class="almanac-section">';
-  html += '<div class="almanac-section-title">' + t('alm_celestial_events') + '</div>';
-  html += '<div id="almanac-events"></div>';
-  html += '</div>';
-
-  // Astro data
-  html += '<div class="almanac-section">';
-  html += '<div class="almanac-section-title">' + t('alm_astro_data') + '</div>';
-  html += '<div id="almanac-astro"></div>';
-  html += '</div>';
-
-  // Deep time
-  html += '<div class="almanac-section">';
-  html += '<div class="almanac-section-title">' + t('alm_deep_time') + '</div>';
+  // Deep time, and what people wrote to last through it.
+  html += _almGroupOpen('deep');
   html += '<div id="almanac-deeptime"></div>';
-  html += '</div>';
-
-  // Messages Across Time — enduring inscriptions in every language
-  html += '<div class="almanac-section">';
-  html += '<div class="almanac-section-title">' + t('alm_messages_across_time') + '</div>';
-  html += '<div id="almanac-rosetta"></div>';
-  html += '</div>';
-  html += _almRefSectionHtml();
+  html += _almSec(t('alm_messages_across_time'), '<div id="almanac-rosetta"></div>');
+  html += '</section>';
   html += _almAboutDataHtml();
 
 
@@ -3851,24 +3838,14 @@ function _initTzClock(now) {
   var pillsEl = document.getElementById('almanac-tz-pills');
   if (!pillsEl) return;
 
-  // Highlight the card for the user's (or selected) timezone.
-  var targetTz = _almSelectedTz || Intl.DateTimeFormat().resolvedOptions().timeZone;
-  var localMatch = _almTzCardMatch(targetTz, now);
-
-  var cards = _TZ_CITIES.map(function(c, i) {
-    return { tz: c.tz, label: t('alm_city_' + c.key), idx: i };
-  });
-  // Off the tour entirely: it gets a card of its own. Inserted where its clock
-  // belongs rather than shoved to the front — the row reads west to east, and a
-  // +8:45 card sitting to the left of Honolulu makes the whole line nonsense
-  // (Eric: "when we pop the custom one in be sure to put it in the right
-  // position"). See _almTzCardMatch for why -1 happens at all.
-  if (localMatch === -1) {
-    localMatch = _almTzInsertAt(targetTz, now);
-    cards.splice(localMatch, 0, {
-      tz: targetTz, label: _almTzCardLabel(targetTz), idx: -1,
-    });
-  }
+  // The clocks are the reader's own: the place's (lit), this device's when it
+  // differs, and the ones they added, west to east ("when we pop the custom
+  // one in be sure to put it in the right position", Eric). The curated
+  // cities are offered to add, not all shown at once.
+  var targetTz = _almSelectedTz || _almDisplayTz();
+  var cards = _almClockCards(targetTz, now);
+  var localMatch = -1;
+  for (var ci = 0; ci < cards.length; ci++) if (cards[ci].tz === targetTz) { localMatch = ci; break; }
 
   // Render city cards with times
   var html = '';
@@ -3905,12 +3882,28 @@ function _initTzClock(now) {
     var glyphHtml = phase === 'night'
       ? '<span class="alm-tz-glyph alm-glyph-moon" aria-hidden="true"></span>'
       : '<span class="alm-tz-glyph" aria-hidden="true">\u2600\ufe0e</span>';
-    html += '<div class="alm-tz-city-card alm-tz-' + phase + (isActive ? ' alm-tz-city-active' : '') + '" onclick="_almSelectTz(\'' + tzc.tz + '\',' + tzc.idx + ')">';
+    var pick = '_almSelectTz(\'' + tzc.tz + '\')';
+    html += '<div class="alm-tz-city-card alm-tz-' + phase + (isActive ? ' alm-tz-city-active' : '') + '" role="button" tabindex="0"' +
+      ' onclick="' + pick + '" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();' + pick + '}">';
     html += glyphHtml;
     html += '<span class="alm-tz-city-name">' + _almEsc(tzc.label) + '</span>';
     html += '<span class="alm-tz-city-time">' + tzTime + '</span>';
     html += '<span class="alm-tz-city-offset">' + utcOff + '</span>';
+    if (tzc.added) {
+      html += '<button type="button" class="alm-tz-remove" onclick="event.stopPropagation();_almClockRemove(\'' + tzc.tz + '\')"' +
+        ' aria-label="' + _almEsc(t('alm_clock_remove', { city: tzc.label })) + '" title="' + _almEsc(t('alm_clock_remove', { city: tzc.label })) + '">×</button>';
+    }
     html += '</div>';
+  }
+  // Add a clock: the curated cities not already shown.
+  var shown = {};
+  cards.forEach(function (c) { shown[c.tz] = 1; });
+  var opts = _TZ_CITIES.filter(function (c) { return !shown[c.tz]; }).map(function (c) {
+    return '<option value="' + c.tz + '">' + _almEsc(t('alm_city_' + c.key)) + '</option>';
+  }).join('');
+  if (opts) {
+    html += '<label class="alm-tz-add"><span>+ ' + _almEsc(t('alm_clock_add')) + '</span>' +
+      '<select onchange="_almClockAdd(this.value)" aria-label="' + _almEsc(t('alm_clock_add')) + '"><option value=""></option>' + opts + '</select></label>';
   }
   pillsEl.innerHTML = html;
 
@@ -3918,49 +3911,43 @@ function _initTzClock(now) {
   _drawTzClock(now);
 }
 
-// Which of the curated world-clock cards a zone lights, or -1 for none.
-//
-// The exact IANA zone first; failing that, the first card sharing its current
-// UTC offset — a resolved zone like Europe/Berlin is not a grid city, but it
-// lines up with the +2 column (Paris), so the right column still lights.
-//
-// -1 is a real answer, not a failure. The 28 cards are a curated world tour,
-// not a list of every zone, and the offset fallback only covers zones that
-// share an offset with one of them. A fractional zone shares its offset with
-// nothing here: click Eucla (+8:45) or Chatham (+12:45) on the map and every
-// card used to stay dark, which reads as "the click did nothing". The caller
-// answers -1 by giving that zone a card of its own.
-function _almTzCardMatch(targetTz, now) {
-  for (var i = 0; i < _TZ_CITIES.length; i++) {
-    if (_TZ_CITIES[i].tz === targetTz) return i;
-  }
-  var targetOff = null;
-  try { targetOff = _tzUtcOffsetMin(targetTz, now); } catch (e) { return -1; }
-  if (targetOff === null) return -1;
-  for (var i = 0; i < _TZ_CITIES.length; i++) {
-    try { if (_tzUtcOffsetMin(_TZ_CITIES[i].tz, now) === targetOff) return i; } catch (e) {}
-  }
-  return -1;
+// The reader's clocks, kept on this device: zone names, in the order added.
+var _ALM_CLOCKS_KEY = 'zimi_almanac_clocks';
+var ALM_TZ_NAME_RE = /^[A-Za-z0-9_+\/-]+$/;   // an IANA zone name, and nothing that could leave an attribute
+function _almClocks() {
+  try { var v = JSON.parse(localStorage.getItem(_ALM_CLOCKS_KEY)); return Array.isArray(v) ? v.filter(function (z) { return typeof z === 'string' && ALM_TZ_NAME_RE.test(z); }) : []; }
+  catch (e) { return []; }
 }
-
-// Where an off-tour zone's card goes in the row: before the first curated city
-// whose clock is ahead of it, or last when nothing is.
-//
-// By measured offset, not by guessing from the table's order, because the two
-// can disagree — the row is written west to east but DST moves cities past each
-// other twice a year, and a fractional zone sits BETWEEN two of them by
-// definition. A zone whose offset cannot be read goes last rather than
-// somewhere wrong.
-function _almTzInsertAt(tz, now) {
-  var mine = null;
-  try { mine = _tzUtcOffsetMin(tz, now); } catch (e) { return _TZ_CITIES.length; }
-  if (mine === null) return _TZ_CITIES.length;
-  for (var i = 0; i < _TZ_CITIES.length; i++) {
-    var other = null;
-    try { other = _tzUtcOffsetMin(_TZ_CITIES[i].tz, now); } catch (e) { continue; }
-    if (other !== null && other > mine) return i;
+function _almSetClocks(list) {
+  try { localStorage.setItem(_ALM_CLOCKS_KEY, JSON.stringify(list)); } catch (e) {}
+  _initTzClock(new Date());
+}
+function _almClockAdd(tz) {
+  if (!tz) return;
+  var list = _almClocks();
+  if (list.indexOf(tz) < 0) list.push(tz);
+  _almSetClocks(list);
+}
+function _almClockRemove(tz) { _almSetClocks(_almClocks().filter(function (z) { return z !== tz; })); }
+// The cards: the place's zone (or the one selected), the device's when it
+// differs, the added ones; one each, sorted west to east by offset now.
+function _almClockCards(targetTz, now) {
+  var out = [], seen = {}, home = _almDisplayTz(), named = _getLocation().stored;
+  function add(tz, added) {
+    if (!tz || seen[tz]) return;
+    seen[tz] = 1;
+    var idx = -1;
+    for (var i = 0; i < _TZ_CITIES.length; i++) if (_TZ_CITIES[i].tz === tz) { idx = i; break; }
+    var off = 0;
+    try { off = _tzUtcOffsetMin(tz, now); } catch (e) { return; }
+    out.push({ tz: tz, idx: idx, added: added, off: off,
+      label: tz === home && named ? _almTzCardLabel(tz) : idx >= 0 ? t('alm_city_' + _TZ_CITIES[idx].key) : String(tz).split('/').pop().replace(/_/g, ' ') });
   }
-  return _TZ_CITIES.length;
+  add(home, false);
+  add(targetTz, false);
+  add(_almDeviceTz(), false);
+  _almClocks().forEach(function (tz) { add(tz, true); });
+  return out.sort(function (a, b) { return a.off - b.off; });
 }
 
 // The name on a card for a zone that is not one of the curated cities: the
@@ -3974,21 +3961,13 @@ function _almTzCardLabel(tz) {
   return seg.replace(/_/g, ' ');
 }
 
-function _almSelectTz(tz, idx) {
-  // Clicking a world-clock city re-homes the almanac there: it drives the
-  // analog preview clock AND sets the page location through the same setter the
-  // sun-map picker uses, so the header clock, sun times, holidays and sky all
-  // follow to that city.
+// A clock tapped is shown on the big clock face and its zone on the map. The
+// place stays where it was chosen: the clocks are the reader's friends and
+// family elsewhere, not a way to move house (the map and the search are).
+function _almSelectTz(tz) {
   _almSelectedTz = tz;
-  // idx -1 is the card for the already-chosen place: it is where we are, so
-  // there is nothing to re-home to.
-  var city = idx >= 0 ? _TZ_CITIES[idx] : null;
-  if (city) {
-    _saveLocation(city.lat, city.lon, t('alm_city_' + city.key));
-    _almRepaintFocus();   // location-only refresh, preserves scroll
-  }
   _initTzClock(new Date());
-  _drawTzClock(new Date());
+  if (typeof _drawSunMap === 'function') _drawSunMap();
 }
 
 function _drawTzClock(now) {

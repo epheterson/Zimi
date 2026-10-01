@@ -100,7 +100,7 @@ def _open(ctx, served):
     pg.on("pageerror", lambda e: errors.append(str(e)))
     pg.goto(served + "/#almanac", wait_until="load")
     pg.wait_for_function(
-        "() => document.getElementById('almanac-place') && document.querySelector('.alm-ref-entry')",
+        "() => document.getElementById('almanac-place') && document.querySelector('.alm-about')",
         polling=POLL_MS,
     )
     return pg, errors
@@ -122,7 +122,7 @@ def _top(pg, sel):
         ("#almanac-orrery", DRAWN, "**/almanac-place?*"),
         # The long-haul sheets, under the inscriptions, at the page's end.
         (
-            ".alm-ref-entry",
+            ".alm-about",
             "() => document.getElementById('almanac-rosetta').children.length > 0",
             "**/static/rosetta/manifest.json",
         ),
