@@ -42,32 +42,45 @@
   .sec-h { display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
   .sec-h h2 { margin: 0; font-size: 19px; font-weight: 600; line-height: 1.25; color: var(--text); }
   .sec-h .sub { font-size: 12px; color: var(--text2); margin-inline-start: auto; text-align: end; }
-  /* Two parts side by side on a wide screen: the wider first. */
+  /* The day's two columns on a wide screen: On this day, the wider, and
+     beside it the picture of the day over Did you know (and your trails).
+     Either alone takes the width. */
   @media (min-width: 820px) {
     .duo { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 0 28px; }
-    .duo.even { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-    .duo > .sec:only-of-type { grid-column: 1 / -1; }
+    .duo > :only-child, .duo:not(:has(> .side > .sec)) > .sec { grid-column: 1 / -1; }
   }
   .src { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text2); min-width: 0; }
   .src img { width: 14px; height: 14px; border-radius: 4px; flex: none; }
   .src span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .src .lg { font-size: 9.5px; font-weight: 700; padding: 0 4px; border-radius: 3px; background: var(--surface2); text-transform: uppercase; flex: none; }
 
-  /* The day's article: the page's lead, its picture beside it. */
-  .hero { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; color: inherit; margin: 0 0 28px; }
+  /* A picture at its own shape, never cut: its frame takes the picture's
+     proportions (--ar, set on the part that holds it: the server's measure,
+     else the picture's own once it loads) and is no taller than --cap,
+     narrowing to keep the shape. */
+  .fit { display: block; aspect-ratio: var(--ar, 1.5); width: min(100%, calc(var(--cap, 100vh) * var(--ar, 1.5))); margin-inline: auto; }
+  .fit img { display: block; width: 100%; height: 100%; object-fit: contain; }
+
+  /* The day's article: its picture at its own shape, a third of the screen
+     at most, and its lead beside it at a reading width. The door to reading,
+     not the page: the rest of the day shows under it on the first screen. */
+  .hero { --cap: calc(100vh / 3); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; color: inherit; margin: 0 0 28px; }
   .hero:hover, .hero:focus-visible { border-color: var(--amber); outline: none; }
-  .hero .pic { aspect-ratio: 16 / 9; background: var(--surface2); overflow: hidden; }
-  .hero .pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .hero .bd { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .hero .pic { display: block; background: var(--surface2); }
+  .hero .bd { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .hero .bd > * { max-width: 64ch; }
   .kick { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
-  .hero .t { font-size: 27px; line-height: 1.15; font-weight: 600; color: var(--text); }
-  .hero .ex { font-size: 15px; line-height: 1.55; color: var(--text); display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+  .hero .t { font-size: 26px; line-height: 1.15; font-weight: 600; color: var(--text); }
+  .hero .ex { font-size: 15px; line-height: 1.55; color: var(--text); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
   .hero .more-l { font-size: 13px; font-weight: 600; color: var(--amber); margin-top: 4px; }
+  @media (max-width: 759px) { .hero .ex { -webkit-line-clamp: 3; } }
   @media (min-width: 760px) {
-    .hero.has-pic { flex-direction: row; }
-    .hero.has-pic .pic { flex: 0 0 46%; aspect-ratio: auto; min-height: 300px; }
-    .hero .bd { justify-content: center; padding: 24px 28px; }
-    .hero .t { font-size: 34px; }
+    .hero.has-pic { flex-direction: row; align-items: center; }
+    /* Beside the text the picture is as tall as its cap, as wide as its
+       shape makes it, and never more than half the card. */
+    .hero .pic { flex: 0 0 min(50%, calc(var(--cap) * var(--ar, 1.5))); align-self: stretch; display: flex; align-items: center; }
+    .hero .bd { flex: 1; justify-content: center; padding: 20px 28px; }
+    .hero .t { font-size: 32px; }
   }
 
   /* On this day: the year leads each line, a picture at its end. */
@@ -84,11 +97,21 @@
   .dyk a { color: inherit; }
   .dyk a b { font-weight: 600; }
   .dyk a:hover b { color: var(--amber); }
-  /* The picture of the day, as large as the column. */
-  .potd { display: block; color: inherit; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); background: var(--surface); }
-  .potd img { display: block; width: 100%; max-height: 420px; object-fit: cover; background: var(--surface2); }
-  .potd .cap { padding: 10px 14px 12px; font-size: 13px; line-height: 1.5; color: var(--text2); }
+  /* The picture of the day, whole: the column's width, at most half the
+     screen tall, on a calm ground where its shape leaves room. A tap shows
+     it large; the caption opens its article. */
+  .potd { margin: 0; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); background: var(--surface); }
+  .potd .stage { --cap: calc(100vh / 2); display: block; width: 100%; padding: 0; border: 0; background: var(--surface2); cursor: zoom-in; }
+  .potd .stage:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+  .potd .cap { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin: 10px 14px 12px; font-size: 13px; line-height: 1.5; color: var(--text2); }
   .potd .cap b { color: var(--text); font-weight: 600; }
+  .potd a.cap:hover b { color: var(--amber); }
+  /* Large: the picture as big as the screen allows, whole, its caption
+     under it, on black over the page. */
+  .big[open] { display: flex; flex-direction: column; width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 12px 0 0; border: 0; background: #000; color: #d6d6d6; cursor: zoom-out; }
+  .big::backdrop { background: none; }
+  .big img { flex: 1 1 0; min-height: 0; width: 100%; object-fit: contain; }
+  .big p { flex: none; margin: 0 auto; padding: 10px 16px 14px; max-width: 72ch; font-size: 13px; line-height: 1.5; text-align: center; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
   /* Continue reading: an article you started, how far you are, a tap back in. */
   .cont { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
@@ -142,7 +165,7 @@
   /* Waiting for a part. */
   .sk { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-height: 150px; }
   .sk.row-sk { min-height: 64px; border-radius: var(--radius-s); }
-  .sk.hero-sk { min-height: 260px; margin: 0 0 28px; }
+  .sk.hero-sk { min-height: calc(100vh / 3); margin: 0 0 28px; }
   .dym, .alllang { margin: 0 0 10px; color: var(--text2); font-size: 13px; }
   .dym button, .alllang button { border: 0; background: none; color: var(--amber); font: inherit; font-weight: 600; cursor: pointer; padding: 0; }
   /* The interface's words sit on the side the page is laid out from, and
@@ -172,6 +195,7 @@
   <div id="results" hidden></div>
   <div class="empty" id="empty" hidden></div>
 </div>
+<dialog class="big" id="big"><img alt=""><p dir="auto"></p></dialog>
 <!--@apps.js@-->
 <script>
 // Zimipedia. Every wiki in the library, one language at a time: a chip per
@@ -488,10 +512,27 @@ function skeletons(n) {
 
 // ── Today ────────────────────────────────────────────────────────────────
 var _todaySeq = 0;
+// A picture's shape for the part that holds it: --ar from the size the
+// server read, so the space is right before the picture arrives; without
+// one, the picture's own once it loads (onPictureLoad).
+function shapeAttrs(p) {
+  var w = +p.width, h = +p.height;
+  return w > 0 && h > 0 ? ' style="--ar:' + (w / h).toFixed(4) + '"' : ' data-measure';
+}
+function fitHtml(p) {
+  var w = +p.width, h = +p.height;
+  return '<span class="fit"><img src="' + esc(p.thumbnail) + '" alt=""' + (w > 0 && h > 0 ? ' width="' + w + '" height="' + h + '"' : '') + '></span>';
+}
+document.addEventListener('load', function(e) {
+  var img = e.target, host = img.tagName === 'IMG' && img.closest('[data-measure]');
+  if (!host || !img.naturalWidth || !img.naturalHeight) return;
+  host.style.setProperty('--ar', (img.naturalWidth / img.naturalHeight).toFixed(4));
+  host.removeAttribute('data-measure');
+}, true);
 function heroHtml(p) {
   var la = langAttr(p.zim);
-  return '<a class="hero' + (p.thumbnail ? ' has-pic' : '') + '"' + linkAttrs(p.zim, p.path) + '>' +
-    (p.thumbnail ? '<span class="pic"><img src="' + esc(p.thumbnail) + '" alt=""></span>' : '') +
+  return '<a class="hero' + (p.thumbnail ? ' has-pic' : '') + '"' + linkAttrs(p.zim, p.path) + (p.thumbnail ? shapeAttrs(p) : '') + '>' +
+    (p.thumbnail ? '<span class="pic">' + fitHtml(p) + '</span>' : '') +
     '<span class="bd"><span class="kick"' + ui() + '>' + esc(STR[p.role || 'article'] || STR.article) + '</span>' +
     '<span class="t serif"' + la + '>' + esc(p.title || p.path) + '</span>' +
     (p.blurb ? '<span class="ex"' + la + '>' + esc(cleanBlurb(p.blurb)) + '</span>' : '') +
@@ -546,9 +587,21 @@ function dykHtml(zim, facts) {
     return '<li' + la + '><a' + linkAttrs(zim, f.path) + '>' + boldTitle(f.title, cleanBlurb(f.text), ': ') + '</a></li>';
   }).join('') + '</ul>';
 }
+// The picture of the day: the picture, which a tap shows large, and its
+// caption, which opens its article.
 function potdHtml(zim, p) {
-  return '<a class="potd"' + linkAttrs(zim, p.path) + '><img src="' + esc(p.thumbnail) + '" alt="" loading="lazy"><div class="cap"' + langAttr(zim) + '>' +
-    boldTitle(p.title, cleanBlurb(p.blurb || ''), ' ') + '</div></a>';
+  return '<figure class="potd"' + shapeAttrs(p) + '><button type="button" class="stage" aria-label="' + esc(p.title || STR.picture) + '">' + fitHtml(p) + '</button>' +
+    '<a class="cap"' + linkAttrs(zim, p.path) + langAttr(zim) + '>' + boldTitle(p.title, cleanBlurb(p.blurb || ''), ' ') + '</a></figure>';
+}
+// Large: the picture as big as the screen allows over the page, its caption
+// under it; a tap anywhere or Escape puts it back.
+function showLarge(fig) {
+  var d = document.getElementById('big'), img = fig.querySelector('img'), cap = fig.querySelector('.cap');
+  d.querySelector('img').src = img.currentSrc || img.src;
+  var p = d.querySelector('p');
+  p.textContent = cap ? cap.textContent : '';
+  p.setAttribute('lang', cap && cap.getAttribute('lang') || '');
+  d.showModal();
 }
 // What the front pages featured, from every wiki of the plan, in turn.
 function frontItems(names) {
@@ -565,8 +618,8 @@ function frontItems(names) {
 // shell's (_wikiTrailsKept), none on a page open outside it.
 function keptTrails() { try { return window.parent._wikiTrailsKept() || []; } catch (e) { return []; } }
 var _trailsShown = [];
-// Where you were: Continue reading under the day's article, the trails
-// beside the picture of the day.
+// Where you were: Continue reading under the day's article, the trails at
+// the foot of the day's side column.
 function drawYours() {
   var host = document.getElementById('yours'), th = document.getElementById('s-trails') || document.getElementById('yours-trails');
   if (!host) return;
@@ -588,9 +641,9 @@ function renderToday() {
   var host = document.getElementById('today');
   var heroWp = plan.hero && _by[plan.hero] && _by[plan.hero].project === 'wikipedia';
   host.innerHTML = (plan.hero ? '<div id="s-hero"><div class="sk hero-sk"></div></div>' : '') + '<div id="yours"></div>' +
-    '<div class="duo">' + (plan.otd.length ? section('otd', STR.on_this_day, skeletons(1)) : '') + (heroWp ? section('dyk', STR.did_you_know, skeletons(1)) : '') + '</div>' +
+    '<div class="duo">' + (plan.otd.length ? section('otd', STR.on_this_day, skeletons(1)) : '') +
+    '<div class="side">' + (heroWp ? section('potd', STR.picture, '<div class="sk"></div>') + section('dyk', STR.did_you_know, skeletons(1)) : '') + '<div id="yours-trails" hidden></div></div></div>' +
     (plan.cards.length ? section('wk', STR.featured, skeletons(Math.min(plan.cards.length, 3))) : '') +
-    '<div class="duo even">' + (heroWp ? section('potd', STR.picture, '<div class="sk"></div>') : '') + '<div id="yours-trails" hidden></div></div>' +
     (plan.front.length ? section('front', STR.front, skeletons(Math.min(plan.front.length, 3))) : '');
   drawYours();
   var stale = function() { return seq !== _todaySeq || !!_q; };
@@ -856,6 +909,9 @@ function goCatalog() { tell({ zimi: 'catalog', category: 'wikipedia' }); return 
 // An article opens in Zimi's reader, with Zimipedia as the step behind it.
 // A modified click keeps the link's own address for a new tab.
 document.addEventListener('click', function(e) {
+  var stage = e.target.closest && e.target.closest('.potd .stage');
+  if (stage) { showLarge(stage.parentNode); return; }
+  if (e.target.closest && e.target.closest('#big')) { document.getElementById('big').close(); return; }
   var a = e.target.closest && e.target.closest('a[data-zim][data-path]');
   if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
   e.preventDefault();
