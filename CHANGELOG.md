@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Dictionary: a word across every installed Wiktionary, by the language of the word, with its meanings, pronunciation (said by a recording when the ZIM has one, else a voice for the word's language), etymology, translations and related words, each a tap to the next word. Define in the reader opens it.
 - Create a ZIM from a folder on the server, picking any part of it in a tree; pages, documents, pictures, video and audio, with optional `zimi.txt` metadata files.
 - The Almanac's Moon is live: tap or drag it to fly into the 3D view, on the same clock as the page.
 - Find in page while reading (Cmd/Ctrl+F, or the ⋯ menu).
