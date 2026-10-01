@@ -307,6 +307,18 @@
       "a": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}}},
       "b": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "Mine", "added": 2000, "ts": 2500, "origTitle": "X", "likeOnly": true, "sv": 0}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 2000}}},
       "expect": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "Mine", "added": 2000, "ts": 2500, "origTitle": "X", "sv": 1000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 2000}}}
+    },
+    {
+      "name": "a PDF's highlight keeps the page it is on; a page that is no page number is dropped, the highlight kept",
+      "now": 3000,
+      "a": {"highlights": {"h_pdf": {"zim": "w", "path": "f/D.pdf", "kind": "article", "title": "D", "exact": "the well", "prefix": "", "suffix": "", "pos": 0.5, "color": "yellow", "added": 1000, "ts": 1000, "pg": 7}}},
+      "b": {"highlights": {"h_zero": {"zim": "w", "path": "f/D.pdf", "kind": "article", "title": "D", "exact": "a", "prefix": "", "suffix": "", "pos": 0, "color": "yellow", "added": 1000, "ts": 1000, "pg": 0},
+        "h_str": {"zim": "w", "path": "f/D.pdf", "kind": "article", "title": "D", "exact": "b", "prefix": "", "suffix": "", "pos": 0, "color": "yellow", "added": 1000, "ts": 1000, "pg": "3"},
+        "h_frac": {"zim": "w", "path": "f/D.pdf", "kind": "article", "title": "D", "exact": "c", "prefix": "", "suffix": "", "pos": 0, "color": "yellow", "added": 1000, "ts": 1000, "pg": 4.6}}},
+      "expect": {"highlights": {"h_pdf": {"zim": "w", "path": "f/D.pdf", "kind": "article", "title": "D", "exact": "the well", "prefix": "", "suffix": "", "pos": 0.5, "color": "yellow", "added": 1000, "ts": 1000, "pg": 7},
+        "h_zero": {"zim": "w", "path": "f/D.pdf", "kind": "article", "title": "D", "exact": "a", "prefix": "", "suffix": "", "pos": 0, "color": "yellow", "added": 1000, "ts": 1000},
+        "h_str": {"zim": "w", "path": "f/D.pdf", "kind": "article", "title": "D", "exact": "b", "prefix": "", "suffix": "", "pos": 0, "color": "yellow", "added": 1000, "ts": 1000},
+        "h_frac": {"zim": "w", "path": "f/D.pdf", "kind": "article", "title": "D", "exact": "c", "prefix": "", "suffix": "", "pos": 0, "color": "yellow", "added": 1000, "ts": 1000, "pg": 4}}}
     }
   ]
 }

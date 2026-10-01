@@ -655,6 +655,7 @@ _SAVED_HL_COLORS = ("yellow", "green", "blue", "pink")
 _SAVED_HL_QUOTE_MAX = 600
 _SAVED_HL_CONTEXT_MAX = 64
 _SAVED_HL_NOTE_MAX = 2000
+_SAVED_HL_PAGE_MAX = 1_000_000
 
 
 def _saved_empty():
@@ -762,7 +763,9 @@ def _saved_highlight(r, id_):
         or not _SAVED_ID_RE.match(id_)
     ):
         return None
-    ts, pos, n, added = (_saved_num(r.get(f)) for f in ("ts", "pos", "n", "added"))
+    ts, pos, n, added, pg = (
+        _saved_num(r.get(f)) for f in ("ts", "pos", "n", "added", "pg")
+    )
     zim, path, exact = r.get("zim"), r.get("path"), r.get("exact")
     if not isinstance(zim, str) or not zim or len(zim) > _SAVED_ZIM_MAX:
         return None
@@ -806,6 +809,9 @@ def _saved_highlight(r, id_):
     note = r.get("note")
     if isinstance(note, str) and note:
         out["note"] = note[:_SAVED_HL_NOTE_MAX]
+    # In a PDF, the page of the document the highlight is on.
+    if pg is not None and 1 <= pg <= _SAVED_HL_PAGE_MAX:
+        out["pg"] = int(pg)
     return out
 
 

@@ -284,3 +284,375 @@ def test_the_viewer_is_one_document_asked_for_each_time():
     branch = src[src.index("elif rel_path == PDF_VIEWER:") :]
     assert 'self.send_header("Cache-Control", "no-cache")' in branch[:200]
     assert '_static_hash("pdfreader.js")' in src
+
+
+@pytest.mark.parametrize(
+    "device", ["iPhone 13", {"viewport": {"width": 1280, "height": 800}}]
+)
+def test_a_page_back_and_on(shell, device):
+    """Either side of "n of N": a page back and a page on, not there at the
+    ends; on a wide screen the arrows and Page Up / Page Down turn too."""
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    with sync_playwright() as pw:
+        pg, fr, ctx = _open(pw, base, name, device)
+        try:
+            _single(fr)
+            assert fr.evaluate("() => document.querySelector('.zp-prev').disabled")
+            assert not fr.evaluate("() => document.querySelector('.zp-next').disabled")
+            # Beside the page: before it and after it, in the reading direction.
+            pos = fr.evaluate(
+                """() => ['.zp-prev', '.zp-page', '.zp-next'].map(s => document.querySelector(s).getBoundingClientRect())
+                .map(r => ({ l: r.left, r: r.right, t: r.top }))"""
+            )
+            assert (
+                pos[0]["r"] <= pos[1]["l"] + 1 and pos[1]["r"] <= pos[2]["l"] + 1
+            ), pos
+            assert abs(pos[0]["t"] - pos[2]["t"]) < 2, pos
+            fr.click(".zp-next")
+            fr.wait_for_function("() => zimiPdf.page() === 2", timeout=5000)
+            fr.click(".zp-next")
+            fr.wait_for_function("() => zimiPdf.page() === 3", timeout=5000)
+            fr.click(".zp-prev")
+            fr.wait_for_function("() => zimiPdf.page() === 2", timeout=5000)
+            assert (
+                fr.evaluate("() => document.querySelector('.zp-page').textContent")
+                == "2 of %d" % PAGES
+            )
+            fr.evaluate("() => zimiPdf.goPage(%d)" % PAGES)
+            fr.wait_for_function("() => zimiPdf.page() === %d" % PAGES, timeout=5000)
+            fr.wait_for_function(
+                "() => document.querySelector('.zp-next').disabled", timeout=5000
+            )
+            assert not fr.evaluate("() => document.querySelector('.zp-prev').disabled")
+            if not isinstance(device, str):
+                fr.click("#viewerContainer", position={"x": 600, "y": 300})
+                fr.evaluate("() => zimiPdf.goPage(5)")
+                fr.wait_for_function("() => zimiPdf.page() === 5", timeout=5000)
+                for key, want in (
+                    ("ArrowRight", 6),
+                    ("PageDown", 7),
+                    ("ArrowLeft", 6),
+                    ("PageUp", 5),
+                ):
+                    pg.keyboard.press(key)
+                    fr.wait_for_function(
+                        "() => zimiPdf.page() === %d" % want, timeout=5000
+                    )
+        finally:
+            ctx.browser.close()
+
+
+def test_two_pages_side_by_side_on_a_wide_screen(shell):
+    """A wide window and pages taller than wide: two at a time, stepping by
+    the spread; the menu chooses one or two, and the choice is kept."""
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    with sync_playwright() as pw:
+        pg, fr, ctx = _open(
+            pw, base, name, {"viewport": {"width": 1280, "height": 800}}
+        )
+        try:
+            fr.wait_for_function(
+                "() => PDFViewerApplication.pdfViewer.spreadMode === 1"
+            )
+            # Pages 1 and 2 side by side, nothing running off the side.
+            got = fr.evaluate(
+                """() => { const r = n => document.querySelector('.page[data-page-number="' + n + '"]').getBoundingClientRect();
+                const c = document.getElementById('viewerContainer');
+                return { a: r(1), b: r(2), c: r(3), sw: c.scrollWidth, cw: c.clientWidth }; }"""
+            )
+            assert abs(got["a"]["top"] - got["b"]["top"]) < 1, got
+            assert got["b"]["left"] > got["a"]["right"], got
+            assert got["c"]["top"] > got["a"]["bottom"], got
+            assert got["sw"] <= got["cw"], got
+            # A step is a spread; the count and the slider say the page.
+            fr.click(".zp-next")
+            fr.wait_for_function("() => zimiPdf.page() === 3", timeout=5000)
+            assert (
+                fr.evaluate("() => document.querySelector('.zp-page').textContent")
+                == "3 of %d" % PAGES
+            )
+            assert fr.evaluate("() => document.querySelector('.zp-scrub').value") == "3"
+            fr.click(".zp-prev")
+            fr.wait_for_function("() => zimiPdf.page() === 1", timeout=5000)
+            fr.evaluate("() => zimiPdf.goPage(11)")
+            fr.wait_for_function("() => zimiPdf.page() === 11", timeout=5000)
+            fr.wait_for_function("() => document.querySelector('.zp-next').disabled")
+            # One page, chosen in the menu, and kept for the next document.
+            fr.click(".zp-more")
+            fr.click('.zp-menu [data-zp="one"]')
+            fr.wait_for_function(
+                "() => PDFViewerApplication.pdfViewer.spreadMode === 0"
+            )
+            assert (
+                fr.evaluate(
+                    "() => document.querySelector('.zp-menu [data-zp=\"one\"]').getAttribute('aria-checked')"
+                )
+                == "true"
+            )
+            pg.close()
+            pg2, fr2, _ = _open(pw, base, name, None, ctx=ctx)
+            fr2.wait_for_timeout(500)
+            assert fr2.evaluate("() => PDFViewerApplication.pdfViewer.spreadMode") == 0
+            fr2.click(".zp-more")
+            fr2.click('.zp-menu [data-zp="two"]')
+            fr2.wait_for_function(
+                "() => PDFViewerApplication.pdfViewer.spreadMode === 1"
+            )
+        finally:
+            ctx.browser.close()
+    # A phone: one page, and no such choice.
+    with sync_playwright() as pw:
+        pg, fr, ctx = _open(pw, base, name, "iPhone 13")
+        try:
+            assert fr.evaluate("() => PDFViewerApplication.pdfViewer.spreadMode") == 0
+            fr.click(".zp-more")
+            assert fr.evaluate(
+                "() => !document.querySelector('.zp-menu [data-zp=\"two\"]')"
+            )
+        finally:
+            ctx.browser.close()
+
+
+def test_rotate_turns_the_pages_and_is_kept_for_the_document(shell):
+    """A sideways scan: Rotate in the menu turns every page a quarter, the
+    menu staying for another; the document opens turned again."""
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    with sync_playwright() as pw:
+        pg, fr, ctx = _open(
+            pw, base, name, {"viewport": {"width": 1280, "height": 800}}
+        )
+        try:
+            fr.wait_for_function(
+                "() => PDFViewerApplication.pdfViewer.spreadMode === 1"
+            )
+            size = "() => { const r = document.querySelector('.page[data-page-number=\"1\"]').getBoundingClientRect(); return [r.width, r.height]; }"
+            w0, h0 = fr.evaluate(size)
+            assert h0 > w0
+            fr.click(".zp-more")
+            fr.click('.zp-menu [data-zp="rotate"]')
+            fr.wait_for_function("() => zimiPdf.rotation() === 90")
+            # Wider than tall now: one at a time, and the menu says so.
+            fr.wait_for_function(
+                "() => PDFViewerApplication.pdfViewer.spreadMode === 0"
+            )
+            assert fr.evaluate(
+                "() => document.querySelector('.zp-menu').classList.contains('zp-open')"
+            )
+            assert (
+                fr.evaluate(
+                    "() => document.querySelector('.zp-menu [data-zp=\"one\"]').getAttribute('aria-checked')"
+                )
+                == "true"
+            )
+            fr.wait_for_function(
+                "() => { const r = document.querySelector('.page[data-page-number=\"1\"]').getBoundingClientRect(); return r.width > r.height; }"
+            )
+            fr.click('.zp-menu [data-zp="rotate"]')
+            fr.wait_for_function("() => zimiPdf.rotation() === 180")
+            pg.close()
+            pg2, fr2, _ = _open(pw, base, name, None, ctx=ctx)
+            fr2.wait_for_function("() => zimiPdf.rotation() === 180", timeout=5000)
+            fr2.wait_for_function(
+                "() => PDFViewerApplication.pdfViewer.spreadMode === 1"
+            )
+            fr2.evaluate("() => { zimiPdf.turn(); zimiPdf.turn(); }")
+            fr2.wait_for_function("() => zimiPdf.rotation() === 0")
+        finally:
+            ctx.browser.close()
+
+
+def test_about_this_pdf_says_what_the_file_says(shell):
+    """About this PDF: the fixture's own Info fields, what pdf.js knows of the
+    file, and where it lives in Zimi; nothing empty shown."""
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    with sync_playwright() as pw:
+        pg, fr, ctx = _open(pw, base, name, "iPhone 13")
+        try:
+            fr.click(".zp-more")
+            fr.click('.zp-menu [data-zp="about"]')
+            fr.wait_for_selector(".zp-sheet.zp-open .zp-about")
+            got = fr.evaluate("""() => { const s = document.querySelector('.zp-sheet');
+                const rows = {}; s.querySelectorAll('.zp-row-kv').forEach(r => { rows[r.querySelector('.zp-k').textContent] = r.querySelector('.zp-v').textContent; });
+                return { head: s.querySelector('.zp-sheet-head b').textContent, title: s.querySelector('.zp-about-id b').textContent,
+                  author: s.querySelector('.zp-about-id span').textContent, rows: rows,
+                  focus: document.activeElement === s.querySelector('.zp-x') }; }""")
+            assert got["head"] == "About this PDF"
+            assert got["title"] == "Water Treatment Handbook"
+            assert got["author"] == "Ada Waters"
+            rows = got["rows"]
+            assert rows["Subject"] == "Treating water at home"
+            assert rows["Keywords"] == "water, filters, boiling"
+            assert rows["Pages"] == str(PAGES)
+            assert rows["Page size"] == "8.5 × 11 in (Letter)"
+            assert rows["Size"].endswith("KB"), rows
+            assert "2024" in rows["Created"] and "Aug" in rows["Created"], rows
+            assert "2024" in rows["Modified"] and "Sep" in rows["Modified"], rows
+            assert rows["Application"] == "Zimi Test Writer"
+            assert rows["PDF producer"] == "pdf_fixture.py"
+            assert rows["PDF version"] == "1.4"
+            assert rows["Library"] == "Water Treatment Library"
+            assert rows["File"] == DOC
+            assert all(v.strip() for v in rows.values()), rows
+            assert got["focus"]
+            # Nothing runs off the side of a phone.
+            assert fr.evaluate(
+                "() => { const s = document.querySelector('.zp-sheet'); return s.scrollWidth <= s.clientWidth; }"
+            )
+            pg.keyboard.press("Escape")
+            fr.wait_for_function("() => !document.querySelector('.zp-sheet.zp-open')")
+            # Contents still opens as contents after it.
+            fr.click(".zp-toc-btn")
+            fr.wait_for_selector(".zp-sheet.zp-open .zp-toc")
+        finally:
+            ctx.browser.close()
+
+
+SELECT = """(w) => { const sp = [...document.querySelectorAll('.page[data-page-number="' + w.p + '"] .textLayer span')]
+  .find(s => s.textContent.includes(w.t)); const n = sp.firstChild, i = n.nodeValue.indexOf(w.t);
+  const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + w.t.length);
+  const s = getSelection(); s.removeAllRanges(); s.addRange(r); }"""
+# The passage painted on the page: its text, its colour, and the page it is on.
+PAINTED = """() => { const out = [];
+  for (const c of ['yellow', 'green', 'blue', 'pink']) { const h = CSS.highlights.get('zimi-hl-' + c); if (!h) continue;
+    for (const r of h) { const b = r.getBoundingClientRect(); const p = r.startContainer.parentNode.closest('.page');
+      out.push({ text: r.toString(), color: c, pg: p && Number(p.dataset.pageNumber), h: b.height,
+        inside: !!p && (() => { const q = p.getBoundingClientRect(); return b.left >= q.left - 1 && b.right <= q.right + 1 && b.top >= q.top - 1 && b.bottom <= q.bottom + 1; })() }); } }
+  return out; }"""
+PASSAGE = "distillation leaves"
+
+
+def test_a_highlight_on_a_pdf_page_is_zimis_and_kept(shell):
+    """Selecting text on a page gives the same bar as an article; the
+    highlight is kept in Saved on its page, painted there through a zoom, a
+    turn and two pages side by side, after the document is opened again, and
+    opened from the Saved panel on a page far from it."""
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    ref = "{zim: %r, path: %r}" % (name, DOC)
+    with sync_playwright() as pw:
+        pg, fr, ctx = _open(
+            pw, base, name, {"viewport": {"width": 1280, "height": 800}}
+        )
+        try:
+            fr.evaluate("() => zimiPdf.goPage(3)")
+            fr.wait_for_selector('.page[data-page-number="3"] .textLayer span')
+            fr.evaluate(SELECT, {"p": 3, "t": PASSAGE})
+            # The shell's bar: Highlight, Note, Copy.
+            pg.wait_for_selector("#hl-bar.open [data-a=add]", timeout=5000)
+            pg.click("#hl-bar [data-a=add]")
+            pg.wait_for_function("() => Saved.highlights(%s).length === 1" % ref)
+            h = pg.evaluate("() => Saved.highlights(%s)[0]" % ref)
+            assert h["exact"] == PASSAGE and h["pg"] == 3 and h["color"] == "yellow", h
+            assert pg.evaluate(
+                "() => Saved.has(%s)" % ref
+            ), "a highlighted page is saved"
+            fr.wait_for_function("() => (%s)().length === 1" % PAINTED)
+            got = fr.evaluate(PAINTED)[0]
+            assert got["text"] == PASSAGE and got["pg"] == 3 and got["inside"], got
+            # Green, from the bar shown on it now.
+            pg.click('#hl-bar [data-c="green"]')
+            fr.wait_for_function("() => (%s)()[0].color === 'green'" % PAINTED)
+            # A zoom, a turn and one page at a time: still on its page, its words.
+            for step in (
+                "() => document.querySelector('.zp-in').click()",
+                "() => zimiPdf.turn()",
+                "() => zimiPdf.setSpread(false)",
+            ):
+                fr.evaluate(step)
+                fr.evaluate("() => zimiPdf.goPage(3)")
+                fr.wait_for_function(
+                    """() => { const p = (%s)(); return p.length === 1 && p[0].text === %r && p[0].pg === 3 && p[0].inside && p[0].h > 0; }"""
+                    % (PAINTED, PASSAGE),
+                    timeout=10000,
+                )
+            fr.evaluate("() => { zimiPdf.turn(); zimiPdf.turn(); zimiPdf.turn(); }")
+            pg.close()
+
+            # Opened again: painted when its page is drawn.
+            pg2, fr2, _ = _open(pw, base, name, None, ctx=ctx)
+            fr2.evaluate("() => zimiPdf.goPage(3)")
+            fr2.wait_for_function(
+                "() => { const p = (%s)(); return p.length === 1 && p[0].text === %r && p[0].pg === 3; }"
+                % (PAINTED, PASSAGE),
+                timeout=10000,
+            )
+            # In Saved, under Highlights; opened from there with the document
+            # on its last page, it goes back to page 3 and stands out.
+            fr2.evaluate("() => zimiPdf.goPage(%d)" % PAGES)
+            fr2.wait_for_function("() => zimiPdf.page() >= %d" % (PAGES - 1))
+            pg2.evaluate("() => toggleLibraryPanel('bookmarks')")
+            pg2.wait_for_selector('#bm-tree .bm-hl[data-fid="__highlights"]')
+            assert (
+                pg2.evaluate(
+                    "() => document.querySelector('#bm-tree .bm-hl[data-fid=\"__highlights\"] .bm-name').textContent"
+                )
+                == PASSAGE
+            )
+            pg2.click('#bm-tree .bm-hl[data-fid="__highlights"]')
+            fr2.wait_for_function(
+                "() => CSS.highlights.has('zimi-hl-on')", timeout=10000
+            )
+            assert fr2.evaluate("() => zimiPdf.page()") in (3, 4)
+            onscreen = fr2.evaluate(
+                "() => { const r = [...CSS.highlights.get('zimi-hl-on')][0].getBoundingClientRect(); return r.height > 0 && r.top > 0 && r.bottom < innerHeight; }"
+            )
+            assert onscreen
+            # A tap on it gives its bar, not the reader's bars going away.
+            fr2.evaluate("() => zimiPdf.showBars(true)")
+            box = fr2.evaluate(
+                "() => { const r = [...CSS.highlights.get('zimi-hl-green')][0].getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }"
+            )
+            pg2.mouse.click(box[0], box[1])
+            pg2.wait_for_selector("#hl-bar.open [data-a=remove]", timeout=5000)
+            assert fr2.evaluate("() => zimiPdf.barsShown()")
+        finally:
+            ctx.browser.close()
+
+
+def _single(fr):
+    """One page at a time, whatever the width chose."""
+    fr.evaluate("() => zimiPdf.setSpread(false)")
+    fr.wait_for_function("() => PDFViewerApplication.pdfViewer.spreadMode === 0")
+
+
+def test_a_page_back_and_on_in_a_right_to_left_zimi(shell):
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        ctx = br.new_context(viewport={"width": 1280, "height": 800})
+        ctx.add_init_script(
+            "try { localStorage.setItem('zimi_ui_lang', 'ar'); } catch (e) {}"
+        )
+        pg, fr, _ = _open(pw, base, name, None, ctx=ctx)
+        try:
+            pg.wait_for_function("() => document.documentElement.dir === 'rtl'")
+            _single(fr)
+            # Back is on the right, on is on the left.
+            prev, nxt = fr.evaluate(
+                "() => ['.zp-prev', '.zp-next'].map(s => document.querySelector(s).getBoundingClientRect().left)"
+            )
+            assert prev > nxt
+            fr.click("#viewerContainer", position={"x": 600, "y": 300})
+            pg.keyboard.press("ArrowLeft")
+            fr.wait_for_function("() => zimiPdf.page() === 2", timeout=5000)
+            pg.keyboard.press("ArrowRight")
+            fr.wait_for_function("() => zimiPdf.page() === 1", timeout=5000)
+        finally:
+            br.close()

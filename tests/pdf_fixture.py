@@ -57,7 +57,13 @@ def multipage_pdf(pages=12, title="Water Treatment Handbook"):
         outline_ids[-1],
         pages,
     )
-    objs[5] = b"<</Title(%s)>>" % title.encode("latin-1")
+    # Everything About this PDF shows, so its test knows what to expect.
+    objs[5] = (
+        b"<</Title(%s)/Author(Ada Waters)/Subject(Treating water at home)"
+        b"/Keywords(water, filters, boiling)/Creator(Zimi Test Writer)"
+        b"/Producer(pdf_fixture.py)/CreationDate(D:20240815093000Z)"
+        b"/ModDate(D:20240901120000Z)>>" % title.encode("latin-1")
+    )
     for i, pid in enumerate(page_ids):
         stream = _page_stream(i + 1)
         objs[pid] = (

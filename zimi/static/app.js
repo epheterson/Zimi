@@ -22566,7 +22566,7 @@ var Saved = (function () {
   // A highlight's colours, the first the default; its quote (the engine keeps
   // the start and the end of a longer passage), its context, its note.
   var HL_COLORS = ['yellow', 'green', 'blue', 'pink'];
-  var HL_QUOTE_MAX = 600, HL_CONTEXT_MAX = 64, HL_NOTE_MAX = 2000;
+  var HL_QUOTE_MAX = 600, HL_CONTEXT_MAX = 64, HL_NOTE_MAX = 2000, HL_PAGE_MAX = 1000000;
   // How long a deletion is remembered. A device away for longer can bring
   // back what was deleted while it was gone.
   var GONE_MS = 90 * 86400000;
@@ -22648,10 +22648,11 @@ var Saved = (function () {
     return key(out) === id ? out : null;
   }
   // A highlight: the page, what it says and what is around it, where it
-  // starts (a share of the page's text), its colour and note.
+  // starts (a share of the page's text), its colour and note; in a PDF, the
+  // page of the document it is on (pg).
   function highlightRec(r, id) {
     if (!r || typeof r !== 'object' || !ID_RE.test(id)) return null;
-    var ts = num(r.ts), pos = num(r.pos), n = num(r.n), added = num(r.added);
+    var ts = num(r.ts), pos = num(r.pos), n = num(r.n), added = num(r.added), pg = num(r.pg);
     var str = function (v, max) { return typeof v === 'string' ? v.slice(0, max) : ''; };
     if (typeof r.zim !== 'string' || !r.zim || r.zim.length > ZIM_MAX) return null;
     if (typeof r.path !== 'string' || !r.path || r.path.length > PATH_MAX || ts === null) return null;
@@ -22663,6 +22664,7 @@ var Saved = (function () {
     if (APPS.indexOf(r.app) >= 0) out.app = r.app;
     if (typeof r.end === 'string' && r.end && n !== null && n > 0) { out.end = str(r.end, HL_QUOTE_MAX); out.n = Math.round(n); }
     if (typeof r.note === 'string' && r.note) out.note = str(r.note, HL_NOTE_MAX);
+    if (pg !== null && pg >= 1 && pg <= HL_PAGE_MAX) out.pg = Math.floor(pg);
     return out;
   }
   function order(r) {
@@ -23278,7 +23280,11 @@ var Saved = (function () {
     q = q || {};
     var s = load(), ids, page = typeof q === 'string' ? q.split('\n').slice(0, 2).join('\n') : q.zim && q.path ? q.zim + '\n' + q.path : '';
     if (page) {
-      ids = (hidx()[page] || []).slice().sort(function (a, b) { return (s.highlights[a].pos - s.highlights[b].pos) || cmp(a, b); });
+      // A PDF's by its pages first (pos is a share of its page's text).
+      ids = (hidx()[page] || []).slice().sort(function (a, b) {
+        var x = s.highlights[a], y = s.highlights[b];
+        return ((x.pg || 0) - (y.pg || 0)) || (x.pos - y.pos) || cmp(a, b);
+      });
     } else {
       ids = Object.keys(s.highlights).filter(function (id) { return matches(q, s.highlights[id]); })
         .sort(function (a, b) { return (s.highlights[b].added - s.highlights[a].added) || cmp(a, b); });
@@ -23296,7 +23302,7 @@ var Saved = (function () {
     var s = load(), id = typeof h.id === 'string' && has(s.highlights, h.id) ? h.id : '';
     if (!id && !room('highlights')) return '';
     var t = now(), rec = id ? copy(s.highlights[id]) : { added: t };
-    ['zim', 'path', 'kind', 'app', 'title', 'exact', 'end', 'n', 'prefix', 'suffix', 'pos', 'color', 'note'].forEach(function (f) {
+    ['zim', 'path', 'kind', 'app', 'title', 'exact', 'end', 'n', 'prefix', 'suffix', 'pos', 'pg', 'color', 'note'].forEach(function (f) {
       if (h[f] !== undefined) rec[f] = h[f];
     });
     if (typeof rec.note === 'string') rec.note = rec.note.trim();
@@ -23744,7 +23750,7 @@ var Highlights = (function () {
       loading = new Promise(function (resolve, reject) {
         var el = document.createElement('script');
         // The version moves with the engine: /static is cached for a year.
-        el.src = '/static/highlights.js?v=3';
+        el.src = '/static/highlights.js?v=4';
         el.onload = function () {
           engine = window.ZimiHighlightsEngine || null;
           if (engine) return resolve(engine);
