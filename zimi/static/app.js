@@ -4065,6 +4065,9 @@ function _setLibrarySort(mode) {
   // (Eric: "don't like how it all flashes when I change the sort type, can it
   // flow to the new position nicely like in iOS"). Falls back to a full render
   // if anything about the page is not the shape this expects.
+  // The cards move in place, so the control's own label is told too: it
+  // kept naming the old order until the page was drawn again.
+  document.querySelectorAll('.lib-sort-now').forEach(function (el) { el.textContent = t(_LIBRARY_SORT_LABELS[mode]); });
   if (!_reorderLibraryInPlace()) renderHome();
 }
 
