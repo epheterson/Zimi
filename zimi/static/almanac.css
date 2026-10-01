@@ -132,16 +132,21 @@
 .alm-about-intro { color: var(--text2); font-size: 13px; margin: 0 0 10px; }
 .alm-about-list { margin: 0; padding-inline-start: 18px; display: grid; gap: 8px; color: var(--text2); font-size: 13px; line-height: 1.5; max-width: 68ch; }
 /* For the long haul: the reference sheets' index (the sheets' own styles load with them). */
-.alm-ref-group { margin-top: 14px; }
-.alm-ref-group-name { font-size: 12px; color: var(--text2); margin-bottom: 6px; }
-.alm-ref-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
-.alm-ref-tile { display: flex; flex-direction: column; gap: 3px; text-align: start; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
-.alm-ref-tile:hover, .alm-ref-tile:focus-visible { border-color: var(--amber-border); background: var(--amber-glow); }
-.alm-ref-tile:focus-visible, .alm-ref-decay-link:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
-.alm-ref-tile-name { font-size: 14px; font-weight: 600; }
-.alm-ref-tile-sub { font-size: 12px; color: var(--text2); line-height: 1.4; }
-.alm-ref-decay-link { margin-top: 14px; padding: 6px 0; background: none; border: 0; color: var(--text2); font: inherit; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-.alm-ref-decay-link:hover { color: var(--amber); }
+.alm-ref-group { margin-top: 18px; }
+.alm-ref-group-name { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3); margin-bottom: 6px; }
+.alm-ref-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.alm-ref-list li + li { border-top: 1px solid var(--border); }
+.alm-ref-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: start; padding: 11px 14px; background: none; border: 0; color: var(--text); font: inherit; cursor: pointer; }
+.alm-ref-row:hover, .alm-ref-row:focus-visible { background: var(--amber-glow); }
+.alm-ref-row:focus-visible, .alm-ref-decay-link:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+.alm-ref-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.alm-ref-row-name { font-size: 14px; font-weight: 600; }
+.alm-ref-row-sub { font-size: 12px; color: var(--text2); line-height: 1.4; }
+.alm-ref-row-go { color: var(--text3); font-size: 18px; line-height: 1; }
+.alm-ref-row:hover .alm-ref-row-go { color: var(--amber); }
+[dir="rtl"] .alm-ref-row-go { transform: scaleX(-1); }
+.alm-ref-decay-link { padding: 4px 0; background: none; border: 0; color: var(--text2); font: inherit; font-size: 13px; text-align: start; text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 3px; cursor: pointer; }
+.alm-ref-decay-link:hover { color: var(--amber); text-decoration-color: var(--amber-border); }
 .almanac-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .almanac-info-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
 .almanac-info-val { font-size: 16px; font-weight: 600; color: var(--text); }
