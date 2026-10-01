@@ -1751,7 +1751,7 @@ function _almRefOpen(name) {
   })();
 }
 
-// The tide and frost panel's module (and its stylesheet) load the first time
+// The tide section's module (and its stylesheet) load the first time
 // the panel comes within a screen of view. The URLs are app.js's, so they
 // carry the server's content version.
 var _almPlaceLoaded = false;
@@ -1806,7 +1806,7 @@ function _renderAlmanacContent() {
 
   // Sun map — inline world map with day/night terminator + location picker
   html += '<div id="almanac-sunmap"></div>';
-  // Tides and frost for the chosen place (almanac-tides.js, loaded when this
+  // The tide for the chosen place (almanac-tides.js, loaded when this
   // scrolls near: nothing of it on the first paint).
   html += '<div id="almanac-place"></div>';
 

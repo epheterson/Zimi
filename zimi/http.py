@@ -2272,7 +2272,7 @@ class ZimHandler(BaseHTTPRequestHandler):
             elif parsed.path == "/almanac-ages":
                 return self._json(200, _almanac_ages())
             elif parsed.path == "/almanac-place":
-                # Tide and frost stations for the Almanac (zimi/placedata.py):
+                # Tide stations for the Almanac (zimi/placedata.py):
                 # the nearest to ?lat=&lon=, or those named like ?q=. Only
                 # shipped data; nothing is fetched.
                 from zimi import placedata as _place

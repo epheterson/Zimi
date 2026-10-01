@@ -1,16 +1,13 @@
-// ── Almanac: the tide and the frost, here ──
-// Loaded only when the Almanac's place panel scrolls near (almanac.js
-// _almPlaceWatch); nothing here runs on the Almanac's first paint. Two answers
-// for the chosen place, both from data that ships with Zimi:
+// ── Almanac: the tide, here ──
+// Loaded only when the Almanac's tide section scrolls near (almanac.js
+// _almPlaceWatch); nothing here runs on the Almanac's first paint.
 //
-//   Tides   NOAA CO-OPS harmonic constants (zimi/assets/tides-snapshot.json.gz),
-//           predicted here for any date by harmonic synthesis, the method NOAA
-//           itself uses (Schureman 1958; Parker 2007): 37 constituents, nodal
-//           factors f and u for the year, equilibrium arguments V0 at its start.
-//           Subordinate stations take NOAA's published time and height offsets
-//           from their reference station's highs and lows.
-//   Frost   NOAA NCEI 1991-2020 climate normals: last spring and first fall
-//           freeze at 32 F and 28 F, at 10, 50 and 90 percent.
+// NOAA CO-OPS harmonic constants (zimi/assets/tides-snapshot.json.gz),
+// predicted here for any date by harmonic synthesis, the method NOAA itself
+// uses (Schureman 1958; Parker 2007): 37 constituents, nodal factors f and u
+// for the year, equilibrium arguments V0 at its start. Subordinate stations
+// take NOAA's published time and height offsets from their reference
+// station's highs and lows.
 //
 // The place comes from the Almanac (_getLocation): known only once someone
 // picked one; nothing here asks. The server answers /almanac-place with the
@@ -385,9 +382,6 @@ var AT_NEXT_WINDOW_MS = 26 * AT_MS_HOUR; // the next turn is always within a day
 // Past this, a tide station describes some other water: say how far the
 // nearest is instead of drawing it as this place's tide.
 var AT_TIDE_NEAR_KM = 80;
-// Past this, freeze dates describe another climate (a few hundred metres of
-// elevation already moves them a week or more).
-var AT_FROST_NEAR_KM = 150;
 // Within this, an inland place is offered its nearest coast; past it (Denver's
 // nearest is on the Gulf of California) the line would only be noise.
 var AT_TIDE_FAR_KM = 300;
@@ -395,11 +389,7 @@ var AT_KM_PER_MI = 1.609344;
 var AT_TIDE_YEARS = 200;   // how far from today a tide prediction is offered
 var AT_UNITS_KEY = 'zimi_almanac_units';
 var AT_LTR = '⁦', AT_POP = '⁩';   // left-to-right isolate, and its end
-var AT_FROST_32F = 32, AT_FROST_28F = 28;
-// Days before each month in a non-leap year: NCEI writes dates as month/day.
-var AT_DAYS_BEFORE = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
 var AT_CURVE_H = 168, AT_CURVE_PAD_T = 18, AT_CURVE_PAD_B = 22;
-var AT_STRIP_H = 46;
 var AT_DEFAULT_W = 568;   // the Almanac's column, before it has been measured
 
 var _at = {
@@ -407,8 +397,7 @@ var _at = {
   data: null,       // /almanac-place answer for it
   loading: false,
   tideId: null,     // a station picked over the nearest, for this place
-  frostId: null,
-  picking: null,    // 'tide' | 'frost' while a station list is open
+  picking: null,    // 'tide' while the station list is open
   query: '',
   results: null,
   sheetMonth: null  // {y, m} while the month table is open
@@ -447,9 +436,6 @@ function _atDistance(km) {
   var ft = _atUnits() === 'ft', v = ft ? km / AT_KM_PER_MI : km;
   return t(ft ? 'alm_dist_mi' : 'alm_dist_km', { n: _atNum(v, v < 10 ? 1 : 0) });
 }
-function _atTemp(f) {
-  return _atUnits() === 'ft' ? f + '°F' : _atNum((f - 32) * 5 / 9, 0) + '°C';
-}
 // "SAN FRANCISCO (Golden Gate)" -> "San Francisco (Golden Gate)". Only words
 // written wholly in capitals change; state codes and mixed case stay.
 function _atTitle(name) {
@@ -484,7 +470,7 @@ function _atEnsureData(loc) {
   var key = _atPlaceKey(loc);
   if (_at.key === key && (_at.data || _at.loading)) return;
   _at.key = key; _at.data = null; _at.loading = true;
-  _at.tideId = _at.frostId = null; _at.picking = null;
+  _at.tideId = null; _at.picking = null;
   _atFetch('/almanac-place?lat=' + loc.lat + '&lon=' + loc.lon).then(function(d) {
     if (_at.key !== key) return;
     _at.data = d; _at.loading = false; _atRender();
@@ -498,12 +484,6 @@ function _atTideStation() {
   var list = (_at.data && _at.data.tides && _at.data.tides.stations) || [];
   if (_at.tideId) for (var i = 0; i < list.length; i++) if (list[i].id === _at.tideId) return list[i];
   if (_at.tidePicked && _at.tidePicked.id === _at.tideId) return _at.tidePicked;
-  return list[0] || null;
-}
-function _atFrostStation() {
-  var list = (_at.data && _at.data.frost && _at.data.frost.stations) || [];
-  if (_at.frostId) for (var i = 0; i < list.length; i++) if (list[i].id === _at.frostId) return list[i];
-  if (_at.frostPicked && _at.frostPicked.id === _at.frostId) return _at.frostPicked;
   return list[0] || null;
 }
 
@@ -527,19 +507,17 @@ function _atRender() {
   _atEnsureData(loc);
   if (_at.loading || !_at.data) { host.innerHTML = ''; return; }
   if (_at.data.failed) { host.innerHTML = ''; return; }
-  var tide = _atTideStation(), frost = _atFrostStation();
+  var tide = _atTideStation();
   var tideNear = tide && (_at.tideId || tide.km <= AT_TIDE_NEAR_KM);
-  var frostNear = frost && (_at.frostId || frost.km <= AT_FROST_NEAR_KM);
   var html = '';
   if (tideNear) html += _atTideHtml(tide);
-  if (frostNear) html += _atFrostHtml(frost, tideNear);
-  if (!tideNear && !frostNear) {
-    html += _atSection(t('alm_place_title'), '<p class="at-quiet">' + _almEsc(t('alm_place_none')) + '</p>' + _atSearchHtml());
-  } else if (!tideNear && tide && tide.km <= AT_TIDE_FAR_KM) {
+  else if (tide && tide.km <= AT_TIDE_FAR_KM) {
     // Inland: one quiet line, and the way to the coast if wanted.
     html += '<p class="at-quiet at-far"><button type="button" class="at-link" onclick="_atPick(\'tide\')">' +
       _almEsc(t('alm_tide_far', { name: _atTideName(tide), d: _atDistance(tide.km) })) + '</button></p>';
     if (_at.picking === 'tide') html += _atPickerHtml('tide');
+  } else {
+    html += _atSection(t('alm_tide_title'), '<p class="at-quiet">' + _almEsc(t('alm_place_none')) + '</p>' + _atSearchHtml());
   }
   host.innerHTML = html;
   _atBindCurve();
@@ -554,15 +532,14 @@ function _atSection(title, body, cls) {
 }
 
 function _atEmptyHtml() {
-  return _atSection(t('alm_place_title'),
+  return _atSection(t('alm_tide_title'),
     '<p class="at-quiet">' + _almEsc(t('alm_place_empty')) + '</p>' + _atSearchHtml());
 }
 
 function _atSearchHtml() {
   var res = '';
   if (_at.results) {
-    var rows = _at.results.tides.stations.map(function(s) { return _atRowHtml('tide', s, _atTideName(s)); })
-      .concat(_at.results.frost.stations.map(function(s) { return _atRowHtml('frost', s, s.name); }));
+    var rows = _at.results.tides.stations.map(function(s) { return _atRowHtml('tide', s, _atTideName(s)); });
     res = rows.length ? '<ul class="at-list">' + rows.join('') + '</ul>'
       : '<p class="at-quiet">' + _almEsc(t('alm_place_no_match')) + '</p>';
   }
@@ -574,9 +551,8 @@ function _atSearchHtml() {
 
 function _atRowHtml(kind, s, name) {
   var dist = s.km != null ? '<span class="at-row-km">' + _almEsc(_atDistance(s.km)) + '</span>' : '';
-  var tag = '<span class="at-row-kind">' + _almEsc(t(kind === 'tide' ? 'alm_tide_title' : 'alm_frost_kind')) + '</span>';
   return '<li><button type="button" class="at-row" onclick="_atChoose(\'' + kind + '\',\'' + _almEsc(s.id) + '\')">' +
-    '<span class="at-row-name">' + _almEsc(name) + '</span>' + (_at.picking ? '' : tag) + dist + '</button></li>';
+    '<span class="at-row-name">' + _almEsc(name) + '</span>' + dist + '</button></li>';
 }
 
 var _atSearchTimer = 0, _atSearchSeq = 0;
@@ -589,10 +565,6 @@ function _atSearch(q) {
     var loc = _getLocation(), near = loc.stored ? '&lat=' + loc.lat + '&lon=' + loc.lon : '';
     _atFetch('/almanac-place?q=' + encodeURIComponent(q) + near).then(function(d) {
       if (seq !== _atSearchSeq) return;
-      if (_at.picking) {
-        // Inside a station list: only that kind.
-        d = { tides: { stations: _at.picking === 'tide' ? d.tides.stations : [] }, frost: { stations: _at.picking === 'frost' ? d.frost.stations : [] } };
-      }
       _at.results = d; _atPaintResults();
     }).catch(function() {});
   }, 160);
@@ -610,21 +582,20 @@ function _atPaintResults() {
 // A station chosen from a search, or from the list of nearby ones.
 function _atChoose(kind, id) {
   var pool = [];
-  if (_at.results) pool = kind === 'tide' ? _at.results.tides.stations : _at.results.frost.stations;
-  if (_at.data && !_at.data.failed) pool = pool.concat(kind === 'tide' ? _at.data.tides.stations : _at.data.frost.stations);
+  if (_at.results) pool = _at.results.tides.stations;
+  if (_at.data && !_at.data.failed) pool = pool.concat(_at.data.tides.stations);
   var st = null;
   for (var i = 0; i < pool.length; i++) if (pool[i].id === id) { st = pool[i]; break; }
   if (!st) return;
   if (!_getLocation().stored) {
     // No place yet: a station chosen by name IS the place. One place, one
     // clock: the whole Almanac follows it.
-    var lat = kind === 'tide' ? st.la : st.lat, lon = kind === 'tide' ? st.lo : st.lon;
     _at.query = ''; _at.results = null;
-    _saveLocation(lat, lon, kind === 'tide' ? _atTitle(st.n) : st.name);
+    _saveLocation(st.la, st.lo, _atTitle(st.n));
     _almRepaintFocus();
     return;
   }
-  if (kind === 'tide') { _at.tideId = id; _at.tidePicked = st; } else { _at.frostId = id; _at.frostPicked = st; }
+  _at.tideId = id; _at.tidePicked = st;
   _at.picking = null; _at.query = ''; _at.results = null;
   _atRender();
 }
@@ -638,9 +609,8 @@ function _atPick(kind) {
 }
 
 function _atPickerListHtml(kind) {
-  var near = kind === 'tide' ? _at.data.tides.stations : _at.data.frost.stations;
-  var list = _at.results ? (kind === 'tide' ? _at.results.tides.stations : _at.results.frost.stations) : near;
-  var rows = list.map(function(s) { return _atRowHtml(kind, s, kind === 'tide' ? _atTideName(s) : s.name); });
+  var list = _at.results ? _at.results.tides.stations : _at.data.tides.stations;
+  var rows = list.map(function(s) { return _atRowHtml(kind, s, _atTideName(s)); });
   return '<div id="at-results">' + (rows.length ? '<ul class="at-list">' + rows.join('') + '</ul>'
     : '<p class="at-quiet">' + _almEsc(t('alm_place_no_match')) + '</p>') + '</div>';
 }
@@ -866,122 +836,4 @@ function _atSheetRender() {
       '<p class="at-sheet-note">' + _almEsc(st.refrec ? t('alm_tide_note_sub', { ref: _atTitle(st.refrec.n) }) : t('alm_tide_note')) + ' ' +
       _almEsc(t('alm_tide_sheet_source', { lat: st.la.toFixed(3), lon: st.lo.toFixed(3), id: st.id })) + '</p>' +
     '</div>';
-}
-
-// ── Frost ────────────────────────────────────────────────────────────────────
-// Day of a non-leap year for a date in the focused year (Feb 29 reads as Feb 28).
-function _atDoy(ms, tz) {
-  var parts = _tzFmt(tz, { month: 'numeric', day: 'numeric' }, 'en-US').formatToParts(new Date(ms));
-  var p = {};
-  parts.forEach(function(x) { p[x.type] = +x.value; });
-  return AT_DAYS_BEFORE[p.month - 1] + Math.min(p.day, p.month === 2 ? 28 : 31);
-}
-function _atDoyDate(doy) {
-  var m = 0;
-  while (m < 11 && AT_DAYS_BEFORE[m + 1] < doy) m++;
-  var d = new Date(Date.UTC(2001, m, doy - AT_DAYS_BEFORE[m]));
-  return _tzFmt('UTC', { month: 'short', day: 'numeric' }).format(d);
-}
-function _atPct(p) { return new Intl.NumberFormat(_atLang(), { style: 'percent' }).format(Math.round(p * 20) / 20); }
-
-// Chance of a frost still to come in spring (or already come in fall), from
-// the three dates NCEI gives (10, 50, 90 percent), linear between them.
-function _atOdds(doy, d10, d50, d90, spring) {
-  var pts = spring ? [[d90, 0.9], [d50, 0.5], [d10, 0.1]] : [[d10, 0.1], [d50, 0.5], [d90, 0.9]];
-  if (doy <= pts[0][0]) return pts[0][1];
-  if (doy >= pts[2][0]) return pts[2][1];
-  var i = doy <= pts[1][0] ? 0 : 1, a = pts[i], b = pts[i + 1];
-  return a[1] + (b[1] - a[1]) * (doy - a[0]) / Math.max(1, b[0] - a[0]);
-}
-
-// Days on the frost year: 0 = 1 July. Every station's first fall frost falls
-// before its last spring frost on it, wherever New Year lands between them.
-var AT_FROST_YEAR_START = 182;
-function _atFy(doy) { return (doy - AT_FROST_YEAR_START + 365) % 365; }
-
-function _atFrostStatus(f, doy) {
-  var d = _atFy(doy);
-  if (d < _atFy(f.f32_10)) return ['safe', t('alm_frost_safe')];
-  if (d <= _atFy(f.f32_90)) return ['odds', t('alm_frost_odds_fall', { p: _atPct(_atOdds(d, _atFy(f.f32_10), _atFy(f.f32_50), _atFy(f.f32_90), false)) })];
-  if (d < _atFy(f.l32_90)) return ['wait', t('alm_frost_still')];
-  if (d <= _atFy(f.l32_10)) return ['odds', t('alm_frost_odds_spring', { p: _atPct(_atOdds(d, _atFy(f.l32_10), _atFy(f.l32_50), _atFy(f.l32_90), true)) })];
-  return ['safe', t('alm_frost_safe')];
-}
-
-function _atFrostHtml(f, withUnits) {
-  var loc = _getLocation(), tz = _almDisplayTz(loc);
-  var doy = _atDoy(_almFocusInstant().getTime(), tz);
-  var hasDates = f.l32_50 > 0 && f.f32_50 > 0;
-  var AT_RARE = 500;   // occ32 is per mille: under half the years freeze
-  var body;
-  if (hasDates && f.occ32 >= 0 && f.occ32 < AT_RARE) {
-    body = '<p class="at-frost-none">' + _almEsc(t('alm_frost_rare', { p: _atPct(f.occ32 / 1000) })) + '</p>' +
-      '<p class="at-frost-more">' + _almEsc(t('alm_frost_rare_when', { a: _atDoyDate(f.f32_10), b: _atDoyDate(f.l32_10) })) + '</p>';
-  } else if (!hasDates) {
-    // No average dates: either it hardly ever freezes, or it can freeze in
-    // any month. NCEI's "percent of years with a freeze" tells which.
-    var occ = f.occ32 / 1000;
-    var msg = occ <= 0 ? t('alm_frost_never')
-      : occ >= 0.9 ? t('alm_frost_any')
-      : t('alm_frost_rare', { p: _atPct(occ) });
-    body = '<p class="at-frost-none">' + _almEsc(msg) + '</p>';
-  } else {
-    var status = _atFrostStatus(f, doy);
-    // As the tide card: what is true on the day shown, then the year it
-    // sits in, then the dates that year turns on.
-    body =
-      '<p class="at-status ' + status[0] + '">' + _almEsc(status[1]) + '</p>' +
-      '<div class="at-strip">' + _atStripSvg(f, doy, tz) + '</div>' +
-      '<div class="at-frost-pair">' +
-        _atFrostFact(t('alm_frost_last'), f.l32_50, f.l32_90, f.l32_10) +
-        _atFrostFact(t('alm_frost_first'), f.f32_50, f.f32_10, f.f32_90) +
-      '</div>' +
-      '<p class="at-frost-more">' +
-        (f.gsl32 > 0 ? _almEsc(tPlural('alm_frost_season', f.gsl32)) : '') +
-        (f.l28_50 > 0 && f.f28_50 > 0 ? '<span>' + _almEsc(t('alm_frost_hard', { temp: _atTemp(AT_FROST_28F), a: _atDoyDate(f.l28_50), b: _atDoyDate(f.f28_50) })) + '</span>' : '') +
-      '</p>';
-  }
-  body += _atStationLine('frost', f.name, f.km, !withUnits) +
-    (_at.picking === 'frost' ? _atPickerHtml('frost') : '') +
-    '<p class="at-note">' + _almEsc(t('alm_frost_note', { temp: _atTemp(AT_FROST_32F) })) + '</p>';
-  return _atSection(t('alm_frost_title'), body, 'at-frost');
-}
-
-function _atFrostFact(label, d50, a, b) {
-  return '<div class="at-fact"><div class="at-fact-l">' + _almEsc(label) + '</div>' +
-    '<div class="at-fact-v">' + _almEsc(_atDoyDate(d50)) + '</div>' +
-    '<div class="at-fact-r">' + _almEsc(t('alm_frost_range', { a: _atDoyDate(a), b: _atDoyDate(b) })) + '</div></div>';
-}
-
-// The year as a strip: the growing season solid between the average dates,
-// fading in and out across the 10 to 90 percent spread (so the uncertainty is
-// the gradient, not a number), the focused day as the amber mark.
-function _atStripSvg(f, doy, tz) {
-  var W = _atWidth(), H = AT_STRIP_H, bandY = 8, bandH = 18;
-  function X(d) { return (d - 1) / 365 * W; }
-  // l90 <= l10 <= f10 <= f90 along the year, each pushed a year on if it
-  // would fall before the one it follows.
-  var seq = [f.l32_90, f.l32_10, f.f32_10, f.f32_90];
-  for (var i = 1; i < seq.length; i++) while (seq[i] < seq[i - 1]) seq[i] += 365;
-  var a = X(seq[0]), b = X(seq[1]), c = X(seq[2]), d = X(seq[3]);
-  var g = '<defs>' +
-    '<linearGradient id="at-sp" x1="' + a + '" x2="' + b + '" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="var(--at-grow)" stop-opacity="0"/><stop offset="1" stop-color="var(--at-grow)" stop-opacity="0.85"/></linearGradient>' +
-    '<linearGradient id="at-fa" x1="' + c + '" x2="' + d + '" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="var(--at-grow)" stop-opacity="0.85"/><stop offset="1" stop-color="var(--at-grow)" stop-opacity="0"/></linearGradient>' +
-    '<clipPath id="at-year"><rect x="0" y="0" width="' + W + '" height="' + H + '" rx="4"/></clipPath>' +
-    '</defs>';
-  var grow = '<g id="at-grow">' +
-    '<rect x="' + a + '" y="' + bandY + '" width="' + Math.max(0, b - a) + '" height="' + bandH + '" fill="url(#at-sp)"/>' +
-    '<rect class="at-strip-grow" x="' + b + '" y="' + bandY + '" width="' + Math.max(0, c - b) + '" height="' + bandH + '"/>' +
-    '<rect x="' + c + '" y="' + bandY + '" width="' + Math.max(0, d - c) + '" height="' + bandH + '" fill="url(#at-fa)"/></g>';
-  var band = '<rect class="at-strip-bg" x="0" y="' + bandY + '" width="' + W + '" height="' + bandH + '" rx="4"/>' +
-    '<g clip-path="url(#at-year)">' + grow + (d > W ? '<use href="#at-grow" transform="translate(' + (-W) + ' 0)"/>' : '') + '</g>';
-  var months = '';
-  for (var m = 0; m < 12; m++) {
-    var x0 = X(AT_DAYS_BEFORE[m] + 1);
-    if (m) months += '<line class="at-strip-tick" x1="' + x0 + '" x2="' + x0 + '" y1="' + bandY + '" y2="' + (bandY + bandH) + '"/>';
-    var mid = X(AT_DAYS_BEFORE[m] + 15);
-    months += '<text class="at-strip-m" x="' + mid + '" y="' + (H - 4) + '">' + _almEsc(_tzFmt('UTC', { month: 'narrow' }).format(new Date(Date.UTC(2001, m, 15)))) + '</text>';
-  }
-  var mark = '<line class="at-strip-now" x1="' + X(doy) + '" x2="' + X(doy) + '" y1="2" y2="' + (bandY + bandH + 4) + '"/>';
-  return '<svg viewBox="0 0 ' + W + ' ' + H + '" aria-hidden="true">' + g + band + months + mark + '</svg>';
 }

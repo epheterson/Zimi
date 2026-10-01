@@ -1,10 +1,9 @@
-/* ── Almanac: tides and frost (almanac-tides.js), loaded with the panel ── */
+/* ── Almanac: tides (almanac-tides.js), loaded with the section ── */
 #almanac-place {
-  /* Water and growing things in their own colours; the Almanac's amber stays
-     the mark of the moment being shown. */
+  /* Water in its own colour; the Almanac's amber stays the mark of the
+     moment being shown. */
   --at-water: #6fb3d6;
   --at-water-line: #8cc7e6;
-  --at-grow: #8fb573;
   --at-night: rgba(0, 0, 0, 0.28);
 }
 .at-quiet { font-size: 13px; color: var(--text2); line-height: 1.5; margin: 0 0 12px; }
@@ -24,7 +23,7 @@
 .at-lead-now { font-size: 12px; color: var(--text3); font-variant-numeric: tabular-nums; }
 
 .at-curve { margin: 0 -2px; }
-.at-curve svg, .at-strip svg { display: block; width: 100%; height: auto; overflow: visible; }
+.at-curve svg { display: block; width: 100%; height: auto; overflow: visible; }
 .at-night { fill: var(--at-night); }
 .at-line { fill: none; stroke: var(--at-water-line); stroke-width: 2; stroke-linejoin: round; }
 .at-datum { stroke: var(--border); stroke-dasharray: 3 4; }
@@ -69,22 +68,6 @@
 .at-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .at-row-kind { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3); }
 .at-row-km { font-size: 12px; color: var(--text3); font-variant-numeric: tabular-nums; }
-
-/* Frost: two dates, the year between them, and what that means today. */
-.at-frost-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 10px; }
-.at-fact-l { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3); }
-.at-fact-v { font-size: 17px; font-weight: 600; color: var(--text); margin: 2px 0; }
-.at-fact-r { font-size: 11px; color: var(--text3); line-height: 1.4; }
-.at-strip-bg { fill: var(--surface); stroke: var(--border); }
-.at-strip-grow { fill: var(--at-grow); fill-opacity: 0.85; }
-.at-strip-tick { stroke: var(--bg); stroke-opacity: 0.6; }
-.at-strip-m { fill: var(--text3); font-size: 10px; text-anchor: middle; }
-.at-strip-now { stroke: var(--amber); stroke-width: 2; }
-.at-status { font-size: 22px; font-weight: 600; color: var(--text); margin: 0 0 12px; display: flex; align-items: center; gap: 10px; line-height: 1.25; }
-.at-status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--amber); flex: none; }
-.at-status.safe::before { background: var(--at-grow); }
-.at-frost-more { font-size: 12px; color: var(--text2); margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 4px 14px; }
-.at-frost-none { font-size: 15px; color: var(--text); margin: 0 0 12px; }
 
 /* The month table: a sheet over the Almanac on screen, the only thing on paper. */
 #at-sheet { position: fixed; inset: 0; z-index: 260; background: var(--bg); overflow-y: auto; -webkit-overflow-scrolling: touch; }
