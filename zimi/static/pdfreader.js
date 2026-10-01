@@ -46,7 +46,10 @@
     find_prev: 'Previous match', find_next: 'Next match', pdf_prev_page: 'Previous page', pdf_next_page: 'Next page', close: 'Close', n_of_total: '{n} of {total}',
     books_contents: 'Contents', books_mode_pages: 'Pages', download: 'Download', save: 'Save', saved: 'Saved',
     pdf_print: 'Print', pdf_fit_width: 'Fit width', pdf_fit_page: 'Fit page', pdf_zoom_in: 'Zoom in',
-    pdf_zoom_out: 'Zoom out', pdf_dark_pages: 'Dark pages', pdf_single_page: 'Single page', pdf_two_pages: 'Two pages', pdf_rotate: 'Rotate', pdf_page: 'Page', pdf_failed: 'This PDF could not be opened.'
+    pdf_zoom_out: 'Zoom out', pdf_dark_pages: 'Dark pages', pdf_single_page: 'Single page', pdf_two_pages: 'Two pages', pdf_rotate: 'Rotate',
+    pdf_about: 'About this PDF', pdf_keywords: 'Keywords', pdf_created: 'Created', pdf_modified: 'Modified',
+    pdf_application: 'Application', pdf_producer: 'PDF producer', pdf_version: 'PDF version', pdf_page_size: 'Page size',
+    pdf_library: 'Library', books_author: 'Author', books_subject: 'Subject', zi_size: 'Size', zi_file: 'File', pdf_page: 'Page', pdf_failed: 'This PDF could not be opened.'
   };
   function t(k, vars) {
     var s = '';
@@ -58,8 +61,11 @@
   }
   function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} return null; }
+  // The shell's language (its <html lang>), for numbers and dates.
+  var lang;
+  try { lang = shell && shell.document.documentElement.lang || undefined; } catch (e) { lang = undefined; }
   var fmt = null;
-  try { fmt = new Intl.NumberFormat(shell && shell._currentLang || undefined); } catch (e) { fmt = null; }
+  try { fmt = new Intl.NumberFormat(lang); } catch (e) { fmt = null; }
   function num(n) { return fmt ? fmt.format(n) : String(n); }
 
   // ── the document: its ZIM and path, from the address ──
@@ -118,6 +124,7 @@
     moon: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
     dl: svg('<path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/>'),
     print: svg('<path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/>'),
+    info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r=".6" fill="currentColor"/>'),
     rotate: svg('<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/>'),
     one: svg('<rect x="7" y="4" width="10" height="16" rx="1.5"/>'),
     two: svg('<rect x="2.5" y="5" width="8.5" height="14" rx="1.5"/><rect x="13" y="5" width="8.5" height="14" rx="1.5"/>')
@@ -541,7 +548,9 @@
     h += '<button type="button" role="menuitemcheckbox" data-zp="dark" aria-checked="' + darkWanted() + '">' + I.moon + '<span class="zp-grow">' + esc(t('pdf_dark_pages')) + '</span><span class="zp-switch" aria-hidden="true"></span></button>' +
       '<hr>' +
       '<button type="button" role="menuitem" data-zp="download">' + I.dl + '<span class="zp-grow">' + esc(t('download')) + '</span></button>' +
-      '<button type="button" role="menuitem" data-zp="print">' + I.print + '<span class="zp-grow">' + esc(t('pdf_print')) + '</span></button>';
+      '<button type="button" role="menuitem" data-zp="print">' + I.print + '<span class="zp-grow">' + esc(t('pdf_print')) + '</span></button>' +
+      '<hr>' +
+      '<button type="button" role="menuitem" data-zp="about" aria-haspopup="dialog">' + I.info + '<span class="zp-grow">' + esc(t('pdf_about')) + '</span></button>';
     menu.innerHTML = h;
   }
   $('.zp-more').addEventListener('click', function (e) {
@@ -572,6 +581,7 @@
       try { shell.toggleBookmark(); if (shell._updateLibraryBtnIcon) shell._updateLibraryBtnIcon(); } catch (err) {}
     } else if (what === 'download' && app) app.downloadOrSave();
     else if (what === 'print' && app) app.triggerPrinting();
+    else if (what === 'about') openAbout($('.zp-more'));
   });
   // The menu, open while what it shows changes (one page or two, after a
   // turn): drawn again, the focus where it was.
@@ -599,6 +609,8 @@
     }).join('') + '</ul>';
   }
   function renderSheet() {
+    aboutOpen = false;
+    sheet.setAttribute('aria-label', t('books_contents'));
     var hasToc = outline && outline.length;
     if (!hasToc) view = 'pages';
     var head = '<div class="zp-sheet-head">' + (hasToc
@@ -617,6 +629,7 @@
   // The page or the chapter you are on, marked in the sheet: the last
   // chapter that starts at or before the page.
   function markSheetPage() {
+    if (aboutOpen) return null;
     var on = sheet.querySelector('[aria-current="true"]');
     if (on) on.removeAttribute('aria-current');
     if (view === 'toc') {
@@ -663,7 +676,7 @@
     }).then(go, function () { outline = outline || []; go(); });
   }
   $('.zp-toc-btn').addEventListener('click', function (e) {
-    if (openPanel === sheet) { closePanel(true); return; }
+    if (openPanel === sheet && !aboutOpen) { closePanel(true); return; }
     openSheet(e.currentTarget);
   });
   sheet.addEventListener('click', function (e) {
@@ -676,6 +689,82 @@
     // An entry that points at the web, not into the document, goes nowhere.
     if (it && it.dest && app) { closePanel(); app.pdfLinkService.goToDestination(it.dest); showBars(false); }
   });
+  // ── about this PDF: what the file says of itself (its Info and XMP),
+  // what it is (pages, size, version), and where it lives in Zimi. A field
+  // the file leaves empty is left out, as About this ZIM leaves its own. ──
+  var aboutOpen = false;
+  // Paper sizes by name, in points (portrait); a size within 2pt is that size.
+  var PAPER = [['A3', 842, 1191], ['A4', 595, 842], ['A5', 420, 595], ['Letter', 612, 792, 1], ['Legal', 612, 1008, 1], ['Tabloid', 792, 1224, 1]];
+  var PT_MM = 25.4 / 72, PT_IN = 1 / 72, PAPER_SLACK = 2;
+  function pageSize(view) {
+    var w = Math.abs(view[2] - view[0]), h = Math.abs(view[3] - view[1]);
+    var lo = Math.min(w, h), hi = Math.max(w, h), named = null;
+    PAPER.forEach(function (p) { if (Math.abs(p[1] - lo) <= PAPER_SLACK && Math.abs(p[2] - hi) <= PAPER_SLACK) named = p; });
+    var r = function (x, d) { return fmtN(Math.round(x * d) / d); };
+    var dims = named && named[3] ? r(w * PT_IN, 10) + ' × ' + r(h * PT_IN, 10) + ' in' : r(w * PT_MM, 1) + ' × ' + r(h * PT_MM, 1) + ' mm';
+    return named ? dims + ' (' + named[0] + ')' : dims;
+  }
+  function fmtN(n) { try { return new Intl.NumberFormat(lang, { maximumFractionDigits: 1 }).format(n); } catch (e) { return String(n); } }
+  function pdfDate(s) {
+    var d = null;
+    try { d = s && window.pdfjsLib && pdfjsLib.PDFDateString.toDateObject(s); } catch (e) { d = null; }
+    if (!d || isNaN(d)) return '';
+    try { return d.toLocaleString(lang, { dateStyle: 'medium', timeStyle: 'short' }); } catch (e) { return d.toLocaleString(); }
+  }
+  function bytes(n) {
+    if (!n) return '';
+    try { if (shell && shell._fmtBytes) return shell._fmtBytes(n); } catch (e) {}
+    var u = ['B', 'KB', 'MB', 'GB'], i = 0;
+    while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+    return fmtN(n) + ' ' + u[i];
+  }
+  function xmp(md, k) {
+    var v = null;
+    try { v = md && md.metadata ? md.metadata.get(k) : null; } catch (e) { v = null; }
+    return Array.isArray(v) ? v.join(', ') : (v || '');
+  }
+  function aboutRow(k, v) { v = String(v == null ? '' : v).trim(); return v ? '<div class="zp-row-kv"><span class="zp-k">' + esc(t(k)) + '</span><span class="zp-v">' + esc(v) + '</span></div>' : ''; }
+  // Its name and author are put in as text once this is drawn.
+  function aboutHtml(md, first, dl) {
+    var info = md && md.info || {};
+    var author = info.Author || xmp(md, 'dc:creator');
+    var lib = '';
+    try { var z = shell && shell._zimInfo(zim); lib = z && z.title || zim; } catch (e) { lib = zim; }
+    return '<div class="zp-about">' +
+      '<div class="zp-about-id"><b></b>' + (author ? '<span></span>' : '') + '</div>' +
+      '<div class="zp-rows">' +
+        aboutRow('books_subject', info.Subject || xmp(md, 'dc:description')) +
+        aboutRow('pdf_keywords', info.Keywords || xmp(md, 'pdf:keywords')) +
+        aboutRow('books_mode_pages', pages ? num(pages) : '') +
+        aboutRow('pdf_page_size', first ? pageSize(first.view) : '') +
+        aboutRow('zi_size', bytes(md && md.contentLength || dl && dl.length)) +
+        aboutRow('pdf_created', pdfDate(info.CreationDate)) +
+        aboutRow('pdf_modified', pdfDate(info.ModDate)) +
+        aboutRow('pdf_application', info.Creator || xmp(md, 'xmp:creatortool')) +
+        aboutRow('pdf_producer', info.Producer || xmp(md, 'pdf:producer')) +
+        aboutRow('pdf_version', info.PDFFormatVersion) +
+      '</div>' +
+      (zim ? '<hr><div class="zp-rows">' + aboutRow('pdf_library', lib) + aboutRow('zi_file', path) + '</div>' : '') +
+    '</div>';
+  }
+  function openAbout(from) {
+    if (!app || !app.pdfDocument) return;
+    var doc = app.pdfDocument, soft = function (p) { return p.then(null, function () { return null; }); };
+    Promise.all([soft(doc.getMetadata()), soft(doc.getPage(1)), soft(doc.getDownloadInfo())]).then(function (r) {
+      var md = r[0], info = md && md.info || {};
+      aboutOpen = true;
+      sheet.setAttribute('aria-label', t('pdf_about'));
+      sheet.innerHTML = '<div class="zp-sheet-head"><b>' + esc(t('pdf_about')) + '</b>' +
+        '<button type="button" class="zp-x" aria-label="' + esc(t('close')) + '">×</button></div>' + aboutHtml(md, r[1], r[2]);
+      sheet.querySelector('.zp-about-id b').textContent = info.Title || xmp(md, 'dc:title') || head.querySelector('.zp-title b').textContent;
+      var au = sheet.querySelector('.zp-about-id span');
+      if (au) au.textContent = info.Author || xmp(md, 'dc:creator');
+      openAs(sheet, from);
+      sheet.scrollTop = 0;
+      sheet.querySelector('.zp-x').focus({ preventScroll: true });
+    });
+  }
+
   // A page drawn small once it is in view in the sheet, never before.
   var thumbObs = null;
   function startThumbs() {

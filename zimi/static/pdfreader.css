@@ -216,5 +216,20 @@ html.zp-dark .zp-thumb .zp-sheetpage { background: #151515; }
 /* Two pages side by side: pdf.js's spread, with the same 10px between them as between rows. */
 .pdfViewer .spread .page { margin-inline: 5px !important; }
 
+/* About this PDF: About this ZIM's look. The document's name and author,
+   then label and value in two columns, the labels small capitals. */
+.zp-about { padding: 4px 4px 4px; }
+.zp-about-id { margin: 2px 0 14px; }
+/* What the file says reads in its own direction, at the start of Zimi's. */
+.zp-about-id b, .zp-about-id span, .zp-v { unicode-bidi: plaintext; text-align: left; }
+[dir="rtl"] .zp-about-id b, [dir="rtl"] .zp-about-id span, [dir="rtl"] .zp-v { text-align: right; }
+.zp-about-id b { display: block; font-size: 17px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.zp-about-id span { display: block; margin-top: 3px; font-size: 13.5px; color: var(--text2); }
+.zp-rows { display: flex; flex-direction: column; gap: 8px; }
+.zp-row-kv { display: flex; gap: 12px; align-items: baseline; font-size: 13.5px; }
+.zp-k { flex: 0 0 104px; color: var(--text2); text-transform: uppercase; letter-spacing: .05em; font-size: 10.5px; font-weight: 600; }
+.zp-v { flex: 1; min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.zp-about hr { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
+
 @media print { .zp-bar, .zp-sheet, .zp-menu, .zp-scrim, .zp-msg { display: none !important; } }
 @media (prefers-reduced-motion: reduce) { .zp-bar, .zp-sheet, .zp-menu, .zp-scrim { transition: none !important; } }

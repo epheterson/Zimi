@@ -470,6 +470,55 @@ def test_rotate_turns_the_pages_and_is_kept_for_the_document(shell):
             ctx.browser.close()
 
 
+def test_about_this_pdf_says_what_the_file_says(shell):
+    """About this PDF: the fixture's own Info fields, what pdf.js knows of the
+    file, and where it lives in Zimi; nothing empty shown."""
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    with sync_playwright() as pw:
+        pg, fr, ctx = _open(pw, base, name, "iPhone 13")
+        try:
+            fr.click(".zp-more")
+            fr.click('.zp-menu [data-zp="about"]')
+            fr.wait_for_selector(".zp-sheet.zp-open .zp-about")
+            got = fr.evaluate("""() => { const s = document.querySelector('.zp-sheet');
+                const rows = {}; s.querySelectorAll('.zp-row-kv').forEach(r => { rows[r.querySelector('.zp-k').textContent] = r.querySelector('.zp-v').textContent; });
+                return { head: s.querySelector('.zp-sheet-head b').textContent, title: s.querySelector('.zp-about-id b').textContent,
+                  author: s.querySelector('.zp-about-id span').textContent, rows: rows,
+                  focus: document.activeElement === s.querySelector('.zp-x') }; }""")
+            assert got["head"] == "About this PDF"
+            assert got["title"] == "Water Treatment Handbook"
+            assert got["author"] == "Ada Waters"
+            rows = got["rows"]
+            assert rows["Subject"] == "Treating water at home"
+            assert rows["Keywords"] == "water, filters, boiling"
+            assert rows["Pages"] == str(PAGES)
+            assert rows["Page size"] == "8.5 × 11 in (Letter)"
+            assert rows["Size"].endswith("KB"), rows
+            assert "2024" in rows["Created"] and "Aug" in rows["Created"], rows
+            assert "2024" in rows["Modified"] and "Sep" in rows["Modified"], rows
+            assert rows["Application"] == "Zimi Test Writer"
+            assert rows["PDF producer"] == "pdf_fixture.py"
+            assert rows["PDF version"] == "1.4"
+            assert rows["Library"] == "Water Treatment Library"
+            assert rows["File"] == DOC
+            assert all(v.strip() for v in rows.values()), rows
+            assert got["focus"]
+            # Nothing runs off the side of a phone.
+            assert fr.evaluate(
+                "() => { const s = document.querySelector('.zp-sheet'); return s.scrollWidth <= s.clientWidth; }"
+            )
+            pg.keyboard.press("Escape")
+            fr.wait_for_function("() => !document.querySelector('.zp-sheet.zp-open')")
+            # Contents still opens as contents after it.
+            fr.click(".zp-toc-btn")
+            fr.wait_for_selector(".zp-sheet.zp-open .zp-toc")
+        finally:
+            ctx.browser.close()
+
+
 def _single(fr):
     """One page at a time, whatever the width chose."""
     fr.evaluate("() => zimiPdf.setSpread(false)")
