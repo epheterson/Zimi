@@ -1808,8 +1808,11 @@ function _backLabel() {
   if (prev && !prev.app) {
     return currentArticle && prev.zim !== currentArticle.zim ? _zimTitle(prev.zim) : null;
   }
+  // Home is not named: the logo beside the arrow already is the way there,
+  // and on a phone "← Home" took the room the search box needs. Back and
+  // Escape still return to Discover as it was left (history.state.from).
   var from = (history.state || {}).from;
-  return from ? t(from) : null;
+  return from && from !== 'home' ? t(from) : null;
 }
 
 // ── Topbar ──
