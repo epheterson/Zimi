@@ -90,19 +90,20 @@ Most people configure nothing. Everything is in Settings; `zimi config` prints e
 
 ## MCP server
 
+```bash
+pip install "zimi[mcp]"
+zimi mcp /path/to/zims
+```
+
 ```json
 {
   "mcpServers": {
-    "zimi": {
-      "command": "python3",
-      "args": ["-m", "zimi.mcp_server"],
-      "env": { "ZIM_DIR": "/path/to/zims" }
-    }
+    "zimi": { "command": "zimi", "args": ["mcp", "/path/to/zims"] }
   }
 }
 ```
 
-For Docker on another machine, run `docker exec -i zimi python3 -m zimi.mcp_server` over ssh. See [API & MCP](docs/features/api-and-mcp.md) for the tools, and the [SearXNG](docs/integrations/searxng.md) and [OpenWebUI](docs/integrations/openwebui.md) guides.
+Three tools by default (search, read a page as Markdown, read one section), about 330 tokens of schema, sized for small local models; `--tools full` serves every tool. No web server is started. For Docker on another machine, run `docker exec -i zimi python3 -m zimi mcp` over ssh. See [API & MCP](docs/features/api-and-mcp.md#just-the-basics) for the tools and measured numbers, and the [SearXNG](docs/integrations/searxng.md) and [OpenWebUI](docs/integrations/openwebui.md) guides.
 
 ## Contributing
 

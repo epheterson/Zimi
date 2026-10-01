@@ -442,3 +442,24 @@ def test_zimi_mcp_serves_the_full_set_when_asked(library):
         finally:
             proc.kill()
             proc.wait(timeout=10)
+
+
+@needs_mcp
+def test_zimi_mcp_on_an_empty_library_keeps_stdout_clean(tmp_path):
+    """The first run is usually before any ZIM is in place. Every line on
+    stdout is still JSON-RPC, and a search says there is nothing yet."""
+    proc = _start(["mcp", str(tmp_path / "no-zims-yet")])
+    try:
+        deadline = time.time() + STARTUP_BOUND
+        assert "result" in _handshake(proc, deadline)
+        found = _rpc(
+            proc,
+            deadline,
+            2,
+            "tools/call",
+            {"name": "search", "arguments": {"query": "water"}},
+        )["result"]["content"][0]["text"]
+        assert found == "No results for 'water'."
+    finally:
+        proc.kill()
+        proc.wait(timeout=10)

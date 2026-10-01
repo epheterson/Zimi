@@ -146,11 +146,24 @@ def test_every_documented_tool_is_actually_offered(server):
     doc = pathlib.Path(ROOT, "docs", "integrations", "openwebui.md").read_text(
         encoding="utf-8"
     )
-    promised = set(re.findall(r"\*\*`(\w+)`\*\*", doc))
-    missing = sorted(promised - offered)
+    # The guide lists `zimi mcp`'s default (lean) tools, then the full set
+    # this server (`python -m zimi.mcp_server`) offers.
+    lean_doc, _, full_doc = doc.partition("With `--tools full`")
+    assert full_doc, "the guide no longer says how to get the full set"
+    tool_re = r"\*\*`(\w+)`\*\*"
+    missing = sorted(set(re.findall(tool_re, full_doc)) - offered)
     assert (
         not missing
     ), f"the OpenWebUI guide promises tools that do not exist: {missing}"
+
+    import asyncio
+
+    import zimi.mcp_server as mcp_server
+
+    lean = {t.name for t in asyncio.run(mcp_server.build("lean").list_tools())}
+    promised = set(re.findall(tool_re, lean_doc))
+    assert promised, "the guide lists no default tools"
+    assert promised == lean, f"the guide's default tools {promised} are not {lean}"
 
 
 def test_a_tool_call_answers_on_an_empty_library(server):
