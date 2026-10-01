@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Create a ZIM from a folder on the server, picking any part of it in a tree; pages, documents, pictures, video and audio, with optional `zimi.txt` metadata files.
+- The Almanac's Moon is live: tap or drag it to fly into the 3D view, on the same clock as the page.
 - Find in page while reading (Cmd/Ctrl+F, or the ⋯ menu).
 - Search results highlight the matched words and group by source when many sources match.
 - Math renders in textbooks.
