@@ -16685,8 +16685,10 @@ function _readerTextLen(doc, main) {
   return (main === doc.body || doc.__zimiWiki ? main.textContent : (main.innerText || main.textContent || '')).trim().length;
 }
 // A wiki's article in Zimipedia's reader is an article however short (a
-// stub is still one): the floor is for pages that may not be articles.
-function _readerMinChars(doc) { return doc.__zimiWiki ? 1 : READER_VIEW_MIN_CHARS; }
+// stub is still one), and a book is a book however short (a poem; a short
+// Gutenberg page fell through to its raw HTML, Bookshelf's Read with no
+// e-reader): the floor is for pages that may not be articles.
+function _readerMinChars(doc) { return doc.__zimiWiki || _isBookDoc(doc) ? 1 : READER_VIEW_MIN_CHARS; }
 function _readerViewAvailable() {
   if (!readerOpen || _almanacOpen) return false;
   var frame = document.getElementById('reader-frame');
@@ -18647,6 +18649,13 @@ function _bookSplitLong(doc, sec, len) {
   sec.parentNode.removeChild(sec);
   return parts;
 }
+// Is there no text before the first chapter but the reader's title?
+function _bookFrontEmpty(article, first, range) {
+  range.setStart(article, 0); range.setEndBefore(first);
+  var title = article.querySelector('.zimi-reader-title');
+  var text = range.toString().replace(/\s+/g, '');
+  return !text || (!!title && text === title.textContent.replace(/\s+/g, ''));
+}
 // The title page: no stacked line breaks, no empty paragraphs, so its title
 // blocks sit together (Gutenberg spaces them with <br>s and empty <p>s).
 function _bookTidyFront(sec) {
@@ -18774,11 +18783,16 @@ function _bookLay(frame) {
     chapters = Array.prototype.slice.call(chapters, 1);
   }
   if (chapters.length < _BOOK_CHAPTERS_MIN) chapters = [];
+  // Nothing before the first chapter but the book's name (a Wikisource work
+  // whose first page is its contents, taken out): no page of its own, the
+  // name heads the first chapter, so the book opens on its first text and
+  // not on a name alone over "Last page in chapter".
+  var titleOnly = chapters.length > 0 && _bookFrontEmpty(article, chapters[0], pre);
   var secs = [];
-  _bookSections(doc, article, chapters).forEach(function(s) {
+  _bookSections(doc, article, titleOnly ? chapters.slice(1) : chapters).forEach(function(s) {
     secs.push.apply(secs, _bookSplitLong(doc, s, s.textContent.length));
   });
-  if (chapters.length && secs.length) _bookTidyFront(secs[0]);
+  if (chapters.length && secs.length && !titleOnly) _bookTidyFront(secs[0]);
   var lens = [], cum = [], total = 0;
   secs.forEach(function(s, i) { s.__zbI = i; cum.push(total); lens.push(s.textContent.length); total += lens[i]; });
   total = Math.max(1, total);

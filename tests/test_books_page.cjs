@@ -236,6 +236,19 @@ ok('the reading sheet\'s choices, its close and the book\'s slider reach 44px on
 ok('a pill under a book or a video is border-box, so a finger\'s 44px is its height, not 60',
   /\.actions a, \.actions button \{[^}]*box-sizing: border-box;/.test(fs.readFileSync(path.join(root, 'apps.css'), 'utf8')));
 
+// ── Read always opens the e-reader: a short book is still a book ─────────
+{
+  const rv = { READER_VIEW_MIN_CHARS: 200 };
+  vm.createContext(rv);
+  vm.runInContext(extract(src, /function _isBookDoc\(doc\) \{[\s\S]*?\n\}/, '_isBookDoc') + '\n' +
+    extract(src, /function _readerMinChars\(doc\) \{[^\n]*\}/, '_readerMinChars'), rv);
+  const gutenberg = { querySelector: (q) => (/dcterms\.isFormatOf/.test(q) ? {} : null) };
+  const article = { querySelector: () => null };
+  ok('a Gutenberg page of a few lines (the Aeneid as LIBER I, LIBER II) still reads in the e-reader, not as raw HTML',
+    rv._readerMinChars(gutenberg) === 1);
+  ok('...while a page that may not be an article keeps the floor', rv._readerMinChars(article) === 200);
+}
+
 console.log(failures ? '\n' + failures + ' FAILED' : '\nall books-page checks passed');
 const css = fs.readFileSync(path.join(root, 'apps.css'), 'utf8');
 ok('a chosen small chip (a sort) reads as chosen: .chip.on comes after .chip.tag', css.indexOf('.chip.on {') > css.indexOf('.chip.tag {'));
