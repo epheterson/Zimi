@@ -44,7 +44,7 @@ needs_mcp = pytest.mark.skipif(mcp_server is None, reason="needs the mcp package
 # Startup is a second or two on a quiet machine; the bound is for a loaded
 # CI runner, and still fails a server that hangs or builds indexes first.
 STARTUP_BOUND = 60.0
-# The lean schemas, serialized: about 330 tokens. The full set is ~3,300.
+# The lean schemas, serialized: about 360 tokens. The full set is ~3,500.
 LEAN_SCHEMA_CHARS_MAX = 2000
 FULL_TOOL_NAMES = [
     "search",
@@ -64,6 +64,8 @@ FULL_TOOL_NAMES = [
     "read_question",
     "list_posts",
     "read_post",
+    "index_status",
+    "build_index",
 ]
 
 
@@ -248,7 +250,7 @@ def test_lean_is_three_small_tools():
     assert size <= LEAN_SCHEMA_CHARS_MAX, size
     params = {t["name"]: sorted(t["inputSchema"]["properties"]) for t in tools}
     assert params == {
-        "search": ["limit", "query", "zim"],
+        "search": ["limit", "query", "wait", "zim"],
         "read": ["path", "references", "zim"],
         "read_section": ["path", "section", "zim"],
     }

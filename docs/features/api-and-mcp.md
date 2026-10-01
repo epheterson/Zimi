@@ -6,19 +6,19 @@ Two ways for machines to use a Zimi library: the MCP server (for AI agents) and 
 
 **MCP server.** `zimi mcp [ZIM_DIR]` runs a FastMCP server over **stdio** and nothing else: no web server, no port, no BitTorrent, mDNS, catalog or index builds. The ZIM directory is the argument, or `ZIM_DIR`, or the config file, or found the way `zimi serve` finds it. Point any MCP client at it (locally, or `ssh ... docker exec -i zimi python3 -m zimi mcp` for a remote Docker instance).
 
-By default it serves three tools, about 330 tokens of schema, sized for small local models:
+By default it serves three tools, about 360 tokens of schema, sized for small local models:
 
-- `search`: one source, several (comma-separated) or all; a source can be named by part (`wikipedia`). Each hit is a title, its source, its path and a short snippet. Supports `"exact phrase"`, `-word`, `a OR b`.
+- `search`: one source, several (comma-separated) or all; a source can be named by part (`wikipedia`). Each hit is a title, its source, its path and a short snippet. Supports `"exact phrase"`, `-word`, `a OR b`. When a searched source's title index is still building, or a source has no full-text index (it matches titles only), the answer opens with one line naming them (`Incomplete: wikipedia_en: title index building 40%`); nothing when every index is ready. `wait` (seconds, up to 60) holds the answer until the building indexes finish, and says so if they did not.
 - `read`: the page as Markdown with its headings, lists, pipe tables, the infobox as `key: value` lines and math as TeX; no navigation, footnote marks or images, references only with `references: true`. A page over about 10,000 characters comes back as its intro and a numbered outline with each section's size. A Stack Exchange question reads as the question with one section per answer, accepted first.
 - `read_section`: one section by number, heading or anchor, with its subsections.
 
-`--tools full` (or `ZIMI_MCP_TOOLS=full`) serves every tool instead, about 3,300 tokens: `search` (with collection and `language` filters), `read` (plain text), `get_chunks`, `suggest`, `list_sources`, `random`, `article_languages`, `read_with_links`, `deep_search`, `list_collections`, `manage_collection`, `manage_favorites`, and for the apps `list_videos`, `list_questions`, `read_question`, `list_posts`, `read_post`: the same readers ZimiTube, ZimiExchange and Reddot draw from, as text (a question's answers with the accepted one first, a post's replies indented under their parents). `python3 -m zimi.mcp_server` serves the full set unless told `--tools lean`, so a config written for it before keeps working; it warms search indexes in the background as it always has.
+`--tools full` (or `ZIMI_MCP_TOOLS=full`) serves every tool instead, about 3,500 tokens: `search` (with collection and `language` filters), `read` (plain text), `get_chunks`, `suggest`, `list_sources`, `random`, `article_languages`, `read_with_links`, `deep_search`, `list_collections`, `manage_collection`, `manage_favorites`, and for the apps `list_videos`, `list_questions`, `read_question`, `list_posts`, `read_post`, and `index_status` (each source's title index: ready, building with its progress, stale or missing; and whether it has a full-text index) with `build_index` (starts the title index builds for sources missing one, in the background): the same readers ZimiTube, ZimiExchange and Reddot draw from, as text (a question's answers with the accepted one first, a post's replies indented under their parents). `python3 -m zimi.mcp_server` serves the full set unless told `--tools lean`, so a config written for it before keeps working; it warms search indexes in the background as it always has.
 
 **HTTP JSON API.** The stable, integrate-against-it surface (contract in [API stability](../api-stability.md)):
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /search` | Full-text search across ZIM sources (cross-ZIM or scoped with `zim=`) |
+| `GET /search` | Full-text search across ZIM sources (cross-ZIM or scoped with `zim=`); `incomplete` lists searched sources whose title index is building or that have no full-text index |
 | `GET /suggest` | Title autocomplete |
 | `GET /read` | Article as stripped plain text |
 | `GET /chunks` | Deterministic, embedding-free RAG chunking |
@@ -54,7 +54,7 @@ zimi mcp ~/zims
 | Start to first search answer | about 2 s, most of it importing the MCP library |
 | Memory (RSS) | about 100 MB after a search and a read |
 | Ports opened | none |
-| Tool schemas | 334 tokens for the three default tools; 3,264 with `--tools full` |
+| Tool schemas | 361 tokens for the three default tools; 3,540 with `--tools full` |
 | A read | Wikipedia's "Ant" (700 KB of HTML) in about 0.3 s, 4.5k chars back: the intro, the infobox and an outline of 30 sections |
 
 Client config: `{"command": "zimi", "args": ["mcp", "/path/to/zims"]}`. See the [OpenWebUI guide](../integrations/openwebui.md) for Open WebUI and remote Docker.
@@ -84,6 +84,7 @@ The web app and the JSON API with the apps off and no BitTorrent; add `ZIMI_OFFL
 ## Troubleshoot
 
 - **MCP client sees no tools / won't connect** — the server speaks stdio only; the client must launch it as a subprocess, not connect to a socket. Verify the ZIM directory is in its `args` (`zimi mcp /path`) or `ZIM_DIR` in its `env`.
+- **Search results look thin**: the answer's `Incomplete:` line names sources still building a title index or with no full-text index. Pass `wait` to search, or (full set) check `index_status`. `zimi mcp` builds no indexes itself; `zimi serve` or the full set builds them, and a ZIM without a full-text index never gets one (the ZIM ships it).
 - **The agent wants a tool it does not see** — `zimi mcp` serves three tools unless started with `--tools full` (or `ZIMI_MCP_TOOLS=full`).
 - **Remote Docker MCP hangs** — use `docker exec -i` (interactive) so stdio is wired through; a missing `-i` leaves the transport dead.
 - **HTTP calls 401** — a `private`-mode instance needs auth. Send the API token as a Bearer credential (`ZIMI_API_TOKEN` or the generated token file; generate one from Manage after setting a password).

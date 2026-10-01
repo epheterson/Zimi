@@ -55,6 +55,7 @@ except ModuleNotFoundError:
 
 import os
 import threading
+import time
 from typing import Annotated
 
 from pydantic import Field
@@ -79,6 +80,42 @@ _SOURCES_LISTED = 30
 # Lean search's snippet, cut at a word: enough to tell two pages apart.
 _SNIPPET_CHARS = 160
 LEAN_LIMIT_MAX = 20
+# The longest a search waits for indexes still building, and how often it looks.
+WAIT_MAX_S = 60
+_WAIT_POLL_S = 0.5
+
+
+def _gap_text(gap):
+    if gap["state"] == "titles_only":
+        return f"{gap['zim']}: titles only (no full-text index)"
+    pct = f" {gap['progress']}%" if "progress" in gap else ""
+    return f"{gap['zim']}: title index building{pct}"
+
+
+def _gaps_note(names, items, waited=0):
+    """One line naming the searched sources whose indexes may leave the
+    answer partial, or "" when there are none (no tokens spent then)."""
+    from zimi.search import index_gaps
+
+    gaps = index_gaps(names, {r["zim"] for r in items})
+    if not gaps:
+        return ""
+    head = f"Still incomplete after {waited}s" if waited else "Incomplete"
+    return f"{head}: " + "; ".join(map(_gap_text, gaps))
+
+
+def _wait_for_indexes(names, seconds):
+    """Wait up to ``seconds`` for the title indexes of ``names`` (None: all)
+    still building to finish; True when none is left building."""
+    from zimi.search import index_status
+
+    deadline = time.monotonic() + seconds
+    while True:
+        if not any(s["title"] == "building" for s in index_status(names)):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(_WAIT_POLL_S)
 
 
 def search(
@@ -141,6 +178,10 @@ def search(
         return msg
 
     lines = [f"Found {result['total']} results in {result.get('elapsed', '?')}s:\n"]
+    scope = [filter_zim] if isinstance(filter_zim, str) else filter_zim
+    note = _gaps_note(scope, items[:limit])
+    if note:
+        lines.append(note + "\n")
     if suggestion:
         lines.append(f"Did you mean '{suggestion}'?\n")
     for r in items[:limit]:
@@ -722,6 +763,57 @@ def _each(comments):
         yield from _each(c.get("children"))
 
 
+def index_status(zim: str = "") -> str:
+    """Search index state per source: title index (ready, building N%,
+    stale or missing) and whether it has a full-text index. A source without
+    one matches titles only; Zimi cannot add one.
+
+    Args:
+        zim: Optional: source(s), comma-separated. Empty: every source.
+    """
+    from zimi.search import index_status as status
+
+    names = None
+    if zim.strip():
+        names, err = _resolve(zim)
+        if err:
+            return err
+    lines = []
+    for s in status(names, check_current=True):
+        title = s["title"]
+        if title == "building" and s["progress"] is not None:
+            title += f" {s['progress']}%"
+        text = {True: "full text", False: "titles only (no full-text index)",
+                None: "full text unknown"}[s["fulltext"]]
+        lines.append(f"- {s['zim']}: title index {title}; {text}")
+    return "\n".join(lines) or "No sources installed."
+
+
+def build_index(zim: str) -> str:
+    """Start building the title index of a source whose index is missing or
+    stale, in the background (every such source is built). Check progress
+    with index_status. Full-text indexes come inside the ZIM and cannot be built.
+
+    Args:
+        zim: Source name (e.g. "wikipedia")
+    """
+    from zimi.search import _build_all_title_lock, index_status as status
+
+    names, err = _resolve(zim)
+    if err:
+        return err
+    states = status(names, check_current=True)
+    building = [s["zim"] for s in states if s["title"] == "building"]
+    if building:
+        return f"Already building: {', '.join(building)}. Check index_status."
+    todo = [s["zim"] for s in states if s["title"] in ("missing", "stale")]
+    if not todo:
+        return f"Title index ready: {', '.join(names)}."
+    if not _build_all_title_lock.locked():
+        threading.Thread(target=zimi._build_all_title_indexes, daemon=True).start()
+    return f"Started: {', '.join(todo)}. Check index_status for progress."
+
+
 # ── lean: three tools, Markdown out ──────────────────────────────────────
 #
 # For small local models (szmcp's point: Gemma 12B, Granite 8B, even 3B):
@@ -797,6 +889,7 @@ def lean_search(
         str, Field(description="Source name(s), comma-separated. Empty: all")
     ] = "",
     limit: Annotated[int, Field(description="Results, 1-20")] = 5,
+    wait: Annotated[int, Field(description="Seconds to wait for indexing, max 60")] = 0,
 ) -> str:
     """Search the offline library. Each hit: title, zim, path, snippet."""
     limit = max(1, min(int(limit), LEAN_LIMIT_MAX))
@@ -805,6 +898,9 @@ def lean_search(
         names, err = _resolve(zim)
         if err:
             return err
+    wait = max(0, min(int(wait), WAIT_MAX_S))
+    if wait and _wait_for_indexes(names, wait):
+        wait = 0  # finished in time: nothing left to say about the wait
     with zimi._zim_lock:
         result = zimi.search_all(query, limit=limit, filter_zim=names)
         items = result.get("results", [])[:limit]
@@ -814,6 +910,9 @@ def lean_search(
     if result.get("error"):
         return f"Search failed: {result['error']}"
     lines = []
+    note = _gaps_note(names, items, wait)
+    if note:
+        lines.append(note)
     if result.get("did_you_mean"):
         lines.append(f"Did you mean: {result['did_you_mean']}")
     if not items:
@@ -906,6 +1005,8 @@ FULL_TOOLS = tuple(
         read_question,
         list_posts,
         read_post,
+        index_status,
+        build_index,
     )
 )
 LEAN_TOOLS = (

@@ -4,13 +4,13 @@ Zimi ships with an MCP (Model Context Protocol) server that any AI client can ca
 
 ## What an AI gets
 
-`zimi mcp` serves three tools by default, sized for small local models (a 3B to 27B model handles them well; the three schemas together are about 330 tokens):
+`zimi mcp` serves three tools by default, sized for small local models (a 3B to 27B model handles them well; the three schemas together are about 360 tokens):
 
 - **`search`**: search one source, several, or all of them. Each hit is a title, its source, its path and a short snippet. Supports `"exact phrase"`, `-word` and `a OR b`. A source can be named by part (`wikipedia`, `stackexchange`).
 - **`read`**: a page as Markdown with its headings, lists, tables, infobox and math (as TeX). No navigation, footnote marks or images; references only when asked for. A long page comes back as its intro and a numbered outline.
 - **`read_section`**: one section of a page by number or heading, with its subsections.
 
-With `--tools full` (or `ZIMI_MCP_TOOLS=full`) it serves every tool instead, about 3,300 tokens of schema:
+With `--tools full` (or `ZIMI_MCP_TOOLS=full`) it serves every tool instead, about 3,500 tokens of schema:
 
 - **`search`** with collection and language filters, and **`read`** as plain text
 - **`get_chunks`**: deterministic, embedding-free RAG chunking of an article with stable chunk IDs
