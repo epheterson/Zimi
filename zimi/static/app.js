@@ -3868,13 +3868,30 @@ function _markZimOpened(name) {
 // Returns null, or {label:'new'|'updated'}. A ZIM is fresh when its newest
 // event (first install or last update) is more recent than the user's last open
 // of it, and within the backstop window.
+// NEW is for what came after the library's first day: on a library set up
+// this week every ZIM arrived together, and a NEW on every card and every
+// app's child said nothing. Updated is always news.
 function _zimBadge(z) {
   if (!z) return null;
   var fresh = Math.max(z.first_seen || 0, z.updated_at || 0);
   if (!fresh) return null;
   if ((Date.now() / 1000 - fresh) >= _ZIM_BADGE_BACKSTOP_DAYS * 86400) return null;
   if ((_getZimOpenedMap()[z.name] || 0) >= fresh) return null;
-  return { label: (z.updated_at || 0) > (z.first_seen || 0) ? 'updated' : 'new' };
+  var updated = (z.updated_at || 0) > (z.first_seen || 0);
+  if (!updated && (z.first_seen || 0) < _libraryFirstSeen() + _LIBRARY_FIRST_DAY_S) return null;
+  return { label: updated ? 'updated' : 'new' };
+}
+// When the library began: its earliest first_seen, worked out once per list.
+var _LIBRARY_FIRST_DAY_S = 86400;
+var _libStart = { list: null, at: 0 };
+function _libraryFirstSeen() {
+  var list = zimsCache || [];
+  if (_libStart.list !== list) {
+    var at = 0;
+    for (var i = 0; i < list.length; i++) { var f = list[i].first_seen || 0; if (f && (!at || f < at)) at = f; }
+    _libStart = { list: list, at: at };
+  }
+  return _libStart.at;
 }
 
 // ── #34 library filter pills: "Recently added" / "Recently updated" ──
