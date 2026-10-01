@@ -21566,7 +21566,10 @@ function _pushArticleHistory(zim, path) {
 // it, when it was added, and the lists it is in (as many as you like). Liked
 // is a list every store has, apart from saving (1.12.1): a like never saves.
 // A thing liked and not saved is an item marked likeOnly, in Liked and in
-// nothing else; saving it clears the mark, letting it go keeps the like. Where you are in a book (a video, later) is a
+// nothing else; saving it clears the mark, letting it go keeps the like.
+// Whether an item is saved has its own time, sv (svOf), apart from ts (its
+// fields): a like alone makes no claim on it (sv 0), so a like on one device
+// never clears a save on another, and an unsave never clears a like. Where you are in a book (a video, later) is a
 // position, kept whether or not the thing is saved; Continue reading is drawn
 // from positions, it is not a list.
 //
@@ -21754,7 +21757,11 @@ var Saved = (function () {
     };
     each(x.items, function (id, r) {
       var it = thing(r, id), added = r && num(r.added);
-      if (it) { it.added = Math.round(added === null ? it.ts : added); if (r.likeOnly === true) it.likeOnly = true; s.items[id] = it; }
+      if (!it) return;
+      it.added = Math.round(added === null ? it.ts : added);
+      if (r.likeOnly === true) it.likeOnly = true;
+      var sv = num(r.sv);
+      s.items[id] = setSv(it, sv === null ? svOf(it) : Math.max(0, Math.round(sv)));
     });
     each(x.lists, function (id, r) {
       var o = order(r);
@@ -21786,6 +21793,21 @@ var Saved = (function () {
     });
     Object.keys(liked).forEach(function (id) { if (has(s.items, id) && !listed[id]) s.items[id].likeOnly = true; });
     s.v = VERSION;
+  }
+
+  // When an item's saved state was last set: sv, or before sv was kept
+  // (1.12.0, and 1.12.1's first builds) ts, except a thing only liked and
+  // never touched since (added is ts): the heart made it, nothing chose.
+  function svOf(r) { return has(r, 'sv') ? r.sv : r.likeOnly && r.added === r.ts ? 0 : r.ts; }
+  // sv is written only where it says more than svOf would without it.
+  function setSv(r, v) { delete r.sv; if (v !== svOf(r)) r.sv = v; return r; }
+  // A thing only liked, its like gone: not kept. Its unsave stays as a
+  // tombstone dated when it was let go (none if it never was saved), so an
+  // older save elsewhere does not come back and a newer one stays saved.
+  function letGo(s, id) {
+    var sv = svOf(s.items[id]);
+    delete s.items[id];
+    if (sv > 0 && !(s.gone['i:' + id] >= sv)) s.gone['i:' + id] = sv;
   }
 
   // ── merge: two copies of a store become one ──
@@ -21837,12 +21859,26 @@ var Saved = (function () {
       if (!it || (lid !== LIKED && (!has(s.lists, lid) || it.likeOnly))) delete s.members[mk];
       else if (lid === LIKED) liked[id] = 1;
     });
-    Object.keys(s.items).forEach(function (id) { if (s.items[id].likeOnly && !liked[id]) delete s.items[id]; });
+    Object.keys(s.items).forEach(function (id) { if (s.items[id].likeOnly && !liked[id]) letGo(s, id); });
     Object.keys(s.gone).forEach(function (g) { if (s.gone[g] < t - GONE_MS) delete s.gone[g]; });
     cap(s.gone, GONE_MAX, goneTs);
     capPlaces(s.positions);
     fit(s, budget == null ? MAX.bytes : budget);
     return s;
+  }
+  // An item holds two things apart: what it is, from the newer copy (r), and
+  // whether it is saved, from the newer of the copies' sv and its tombstone
+  // (a tie keeps a's, a tombstone as new wins). Not saved, it stays for its
+  // like, as likeOnly; normalize lets it go when there is none.
+  function mergeItem(r, x, y, gone, g) {
+    var w = !x ? y : !y ? x : (svOf(y) > svOf(x) ? y : x), sv = svOf(w), saved = !w.likeOnly;
+    if (has(gone, g)) {
+      if (gone[g] >= sv) { saved = false; sv = gone[g]; }
+      else delete gone[g];
+    }
+    var out = Object.assign({}, r);
+    if (saved) delete out.likeOnly; else out.likeOnly = true;
+    return setSv(out, sv);
   }
   // Every record: the newer copy wins (a tie keeps a's). A tombstone as new
   // as the record or newer removes it; a record newer than its tombstone
@@ -21859,6 +21895,7 @@ var Saved = (function () {
         if (has(out[name], id)) return;
         var x = has(A, id) ? A[id] : null, y = has(B, id) ? B[id] : null;
         var r = !x ? y : !y ? x : (y.ts > x.ts ? y : x);
+        if (name === 'items') { out.items[id] = mergeItem(r, x, y, gone, pre + id); return; }
         if (has(gone, pre + id)) {
           if (gone[pre + id] >= r.ts) return;
           delete gone[pre + id];
@@ -22127,7 +22164,8 @@ var Saved = (function () {
     if (where) rec.where = where;
     if (meta) rec.meta = meta;
     if (likeOnly && (!cur || cur.likeOnly)) rec.likeOnly = true;
-    s.items[id] = rec;
+    // A like leaves the saved state as it was; a save sets it now.
+    s.items[id] = setSv(rec, !likeOnly ? t : cur ? svOf(cur) : 0);
     delete s.gone['i:' + id];
     _idx = null;
     (item.lists || []).forEach(function (lid) { addMember(s, id, lid, null, t); });
@@ -22150,6 +22188,7 @@ var Saved = (function () {
     (idx().listsOf[id] || []).forEach(function (lid) { if (lid !== LIKED) dropMember(s, lid + '\t' + id, t); });
     s.items[id].likeOnly = true;
     s.items[id].ts = t;
+    setSv(s.items[id], t);
     commit();
   }
   // The custom name is the title (every view reads that); the page's own
@@ -22162,7 +22201,9 @@ var Saved = (function () {
     name = String(name || '').trim().slice(0, TITLE_MAX);
     if (name && name !== orig) { r.origTitle = orig; r.title = name; }
     else { delete r.origTitle; r.title = orig; }
+    var sv = svOf(r);
     r.ts = now();
+    setSv(r, sv);
     commit();
   }
   function get(ref) {
@@ -22233,6 +22274,7 @@ var Saved = (function () {
       // Into a list of your own: saved now.
       delete s.items[id].likeOnly;
       s.items[id].ts = now();
+      setSv(s.items[id], s.items[id].ts);
       _idx = null;
     }
     if (addMember(s, id, lid, before == null ? null : before, now())) commit();
@@ -22247,7 +22289,7 @@ var Saved = (function () {
     var s = load(), id = key(ref), mk = lid + '\t' + id;
     if (!has(s.members, mk)) return;
     // Unliked, a thing only liked is not kept at all.
-    if (lid === LIKED && s.items[id] && s.items[id].likeOnly) { remove(id); return; }
+    if (lid === LIKED && s.items[id] && s.items[id].likeOnly) letGo(s, id);
     dropMember(s, mk, now());
     commit();
   }
@@ -22362,9 +22404,9 @@ var Saved = (function () {
     if (!snap || !snap.rec) return;
     var s = load(), t = now();
     if (!has(s.items, snap.id) && !room('items')) return;
-    var rec = copy(snap.rec);
+    var rec = copy(snap.rec), sv = svOf(rec);
     rec.ts = t;
-    s.items[snap.id] = rec;
+    s.items[snap.id] = setSv(rec, rec.likeOnly ? sv : t);
     delete s.gone['i:' + snap.id];
     _idx = null;
     Object.keys(snap.at).forEach(function (lid) { addMember(s, snap.id, lid, snap.at[lid], t); });
@@ -22380,9 +22422,12 @@ var Saved = (function () {
 
   // ── sync: the account's copy, a file, another device ──
   // What a copy holds, by id: every record's time and every tombstone's.
+  // A record's stamp: its ts, and an item's saved state beside it (that
+  // changes in a merge while ts does not).
+  function stamp(name, r) { return name === 'items' ? r.ts + (r.likeOnly ? '~' : ':') + svOf(r) : r.ts; }
   function stamps(s) {
     var out = {};
-    COLLS.forEach(function (c) { Object.keys(s[c[0]]).forEach(function (id) { out[c[1] + id] = s[c[0]][id].ts; }); });
+    COLLS.forEach(function (c) { Object.keys(s[c[0]]).forEach(function (id) { out[c[1] + id] = stamp(c[0], s[c[0]][id]); }); });
     Object.keys(s.gone).forEach(function (g) { out['g' + g] = s.gone[g]; });
     return out;
   }
@@ -22400,7 +22445,7 @@ var Saved = (function () {
     out.legacy = s.legacy;
     COLLS.forEach(function (c) {
       var m = s[c[0]];
-      Object.keys(m).forEach(function (id) { if (!st || st[c[1] + id] !== m[id].ts) out[c[0]][id] = m[id]; });
+      Object.keys(m).forEach(function (id) { if (!st || st[c[1] + id] !== stamp(c[0], m[id])) out[c[0]][id] = m[id]; });
     });
     Object.keys(s.gone).forEach(function (g) { if (!st || st['g' + g] !== s.gone[g]) out.gone[g] = s.gone[g]; });
     return out;

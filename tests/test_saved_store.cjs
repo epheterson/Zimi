@@ -495,7 +495,8 @@ const LEGACY = {
   ok('...an app\'s "All" shows it when asked', S.itemsFor({ app: 'tube', withLiked: true }).length === 1 && S.get(v).likeOnly === true);
   d.clock += 1;
   S.removeFromList(v, S.LIKED);
-  ok('unliked, a thing only liked is not kept at all', !S.get(v) && S.data().gone['i:ted\nv/1'] > 0);
+  ok('unliked, a thing only liked is not kept at all, and no save of it is undone elsewhere',
+    !S.get(v) && S.data().gone['m:liked\tted\nv/1'] > 0 && !('i:ted\nv/1' in S.data().gone));
   d.clock += 1;
   S.addToList(v, S.LIKED);
   d.clock += 1;
@@ -520,6 +521,53 @@ const LEGACY = {
   ok('a saved thing unliked stays saved', S.has(w) && !S.inList(w, S.LIKED));
   S.unsave(w);
   ok('a thing never liked, unsaved, is gone', !S.get(w));
+}
+// Like and Save never stomp each other across devices: each has its own time.
+{
+  const X = { kind: 'article', zim: 'w', path: 'A/X', title: 'X' };
+  const pair = () => [device({}, { clock: 1000 }), device({}, { clock: 1000 })];
+  const both = (p, t) => { p.Saved.merge(t.Saved.data()); t.Saved.merge(p.Saved.data()); };
+  const state = (d) => (d.Saved.has(X) ? 'saved' : '-') + '+' + (d.Saved.inList(X, d.Saved.LIKED) ? 'liked' : '-');
+  let [p, t] = pair();
+  p.Saved.save(X);
+  t.clock = 2000; t.Saved.addToList(X, t.Saved.LIKED);
+  both(p, t);
+  ok('saved on one device, liked later on one that never had it: saved and liked on both', state(p) === 'saved+liked' && state(t) === 'saved+liked', state(p) + ' ' + state(t));
+  [p, t] = pair();
+  p.Saved.addToList(X, p.Saved.LIKED);
+  t.clock = 2000; t.Saved.save(X);
+  both(p, t);
+  ok('liked on one, saved later on the other: saved and liked on both', state(p) === 'saved+liked' && state(t) === 'saved+liked', state(p) + ' ' + state(t));
+  [p, t] = pair();
+  p.Saved.addToList(X, p.Saved.LIKED);
+  both(p, t);
+  t.clock = 1500; t.Saved.save(X);
+  p.clock = 2000; p.Saved.removeFromList(X, p.Saved.LIKED);
+  both(p, t);
+  ok('liked on both, saved on one, unliked later on the other: saved, not liked', state(p) === 'saved+-' && state(t) === 'saved+-', state(p) + ' ' + state(t));
+  [p, t] = pair();
+  p.Saved.save(X);
+  both(p, t);
+  p.clock = 2000; p.Saved.unsave(X);
+  t.clock = 2500; t.Saved.addToList(X, t.Saved.LIKED);
+  both(p, t);
+  ok('saved on both, unsaved on one, liked later on the other: liked, not saved', state(p) === '-+liked' && state(t) === '-+liked', state(p) + ' ' + state(t));
+  [p, t] = pair();
+  p.Saved.save(X);
+  p.Saved.addToList(X, p.Saved.LIKED);
+  both(p, t);
+  p.clock = 2000; p.Saved.unsave(X);
+  t.clock = 2500; t.Saved.removeFromList(X, t.Saved.LIKED);
+  both(p, t);
+  ok('let go on one, unliked later on the other: neither', state(p) === '-+-' && state(t) === '-+-' && !p.Saved.get(X), state(p) + ' ' + state(t));
+  [p, t] = pair();
+  p.Saved.save(X);
+  p.Saved.addToList(X, p.Saved.LIKED);
+  both(p, t);
+  p.clock = 2000; p.Saved.unsave(X);
+  p.clock = 2100; p.Saved.removeFromList(X, p.Saved.LIKED);
+  both(p, t);
+  ok('let go then unliked on one: the other\'s older save does not come back', state(p) === '-+-' && state(t) === '-+-', state(p) + ' ' + state(t));
 }
 // A 1.12.0 browser's store: what is only in Liked was liked, not saved.
 {
