@@ -198,6 +198,7 @@ _RATE_LIMITED_API_PATHS = (
     "/openapi.json",
     "/almanac-links",
     "/almanac-satellites",
+    "/almanac-place",
 )
 
 # The apps' routes below their bare path (/exchange/question, /reddot/post):
@@ -912,6 +913,8 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("almanac-orrery.js")
             + _static_hash("almanac-sky.js")
             + _static_hash("almanac-earth.js")
+            + _static_hash("almanac-tides.js")
+            + _static_hash("almanac-tides.css")
             + _static_hash("highlights.js")
             + _static_hash("bookmath.js")
             + _static_hash("find.js")
@@ -2204,6 +2207,23 @@ class ZimHandler(BaseHTTPRequestHandler):
                     _srv.ZIMI_MANAGE and _users._request_is_admin(self)
                 )
                 return self._json(200, payload)
+
+            elif parsed.path == "/almanac-place":
+                # Tide and frost stations for the Almanac (zimi/placedata.py):
+                # the nearest to ?lat=&lon=, or those named like ?q=. Only
+                # shipped data; nothing is fetched.
+                from zimi import placedata as _place
+
+                lat = _place.parse_coord(param("lat"), -90, 90)
+                lon = _place.parse_coord(param("lon"), -180, 180)
+                if lat is None or lon is None:
+                    lat = lon = None
+                q = (param("q") or "").strip()
+                if q:
+                    return self._json(200, _place.search(q, lat, lon))
+                if lat is None:
+                    return self._json(400, {"error": "lat and lon, or q"})
+                return self._json(200, _place.near(lat, lon))
 
             elif parsed.path == "/list":
                 result = _srv.list_zims()
