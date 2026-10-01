@@ -3929,13 +3929,30 @@ function _markZimOpened(name) {
 // Returns null, or {label:'new'|'updated'}. A ZIM is fresh when its newest
 // event (first install or last update) is more recent than the user's last open
 // of it, and within the backstop window.
+// NEW is for what came after the library's first day: on a library set up
+// this week every ZIM arrived together, and a NEW on every card and every
+// app's child said nothing. Updated is always news.
 function _zimBadge(z) {
   if (!z) return null;
   var fresh = Math.max(z.first_seen || 0, z.updated_at || 0);
   if (!fresh) return null;
   if ((Date.now() / 1000 - fresh) >= _ZIM_BADGE_BACKSTOP_DAYS * 86400) return null;
   if ((_getZimOpenedMap()[z.name] || 0) >= fresh) return null;
-  return { label: (z.updated_at || 0) > (z.first_seen || 0) ? 'updated' : 'new' };
+  var updated = (z.updated_at || 0) > (z.first_seen || 0);
+  if (!updated && (z.first_seen || 0) < _libraryFirstSeen() + _LIBRARY_FIRST_DAY_S) return null;
+  return { label: updated ? 'updated' : 'new' };
+}
+// When the library began: its earliest first_seen, worked out once per list.
+var _LIBRARY_FIRST_DAY_S = 86400;
+var _libStart = { list: null, at: 0 };
+function _libraryFirstSeen() {
+  var list = zimsCache || [];
+  if (_libStart.list !== list) {
+    var at = 0;
+    for (var i = 0; i < list.length; i++) { var f = list[i].first_seen || 0; if (f && (!at || f < at)) at = f; }
+    _libStart = { list: list, at: at };
+  }
+  return _libStart.at;
 }
 
 // ── #34 library filter pills: "Recently added" / "Recently updated" ──
@@ -3983,6 +4000,12 @@ function filterHomeRecent(kind) {
 // One language filter pill for the home library. Multi-select toggle; the
 // native language name matches the search-results lang pills (reusing the
 // existing _NATIVE_LANG_NAMES map, with _langDisplayName as fallback).
+// A label and how many: one form everywhere (home pills, the Library's
+// groups, the apps' chips): the label, then the number, quieter. Never
+// "(1)", never "· 1".
+function _countedLabelHtml(label, n) {
+  return esc(label) + ' <span class="label-n">' + n + '</span>';
+}
 function _homeLangPill(code, count, active) {
   var name = _NATIVE_LANG_NAMES[code] || _langDisplayName(code) || code.toUpperCase();
   return '<button class="pill' + (active ? ' active' : '') + '"' +
@@ -4195,16 +4218,21 @@ var _LIBRARY_SORT_LABELS = {
   alpha: 'sort_alpha', added: 'sort_added',
   updated: 'sort_updated', entries: 'sort_entries',
 };
+// Text-sized, the order it is in beside a sort mark: a full select box
+// outweighed the APPS heading it sits on, on a phone most of all. The native
+// select lies over it unseen, so a tap still opens the system's own picker.
+var _LIB_SORT_SVG = '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/></svg>';
 function _libSortHtml() {
   var cur = _librarySort();
   var opts = LIBRARY_SORTS.map(function(k) {
     return '<option value="' + k + '"' + (k === cur ? ' selected' : '') + '>' +
       esc(t(_LIBRARY_SORT_LABELS[k])) + '</option>';
   }).join('');
-  return '<select class="lib-sort" aria-label="' + escAttr(t('library_sort')) +
-    '" title="' + escAttr(t('library_sort')) +
+  return '<label class="lib-sort-wrap" title="' + escAttr(t('library_sort')) + '" onclick="event.stopPropagation()">' + _LIB_SORT_SVG +
+    '<span class="lib-sort-now">' + esc(t(_LIBRARY_SORT_LABELS[cur] || _LIBRARY_SORT_LABELS.alpha)) + '</span>' +
+    '<select class="lib-sort" aria-label="' + escAttr(t('library_sort')) +
     '" onchange="event.stopPropagation();_setLibrarySort(this.value)"' +
-    ' onclick="event.stopPropagation()">' + opts + '</select>';
+    ' onclick="event.stopPropagation()">' + opts + '</select></label>';
 }
 
 // Place the segmented view toggle on the first section header (the Apps, which
@@ -10791,7 +10819,7 @@ async function renderCollectionsTab() {
       h += '<div class="coll-picker" onclick="event.stopPropagation()">';
       for (const cat of Object.keys(catMap).sort()) {
         const catZims = catMap[cat].slice().sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name));
-        h += '<div class="manage-installed-group"><div class="ci-section-label">' + esc(_catDisplayName(cat)) + ' (' + catZims.length + ')</div>';
+        h += '<div class="manage-installed-group"><div class="ci-section-label">' + _countedLabelHtml(_catDisplayName(cat), catZims.length) + '</div>';
         for (const z of catZims) {
           const inColl = collZims.includes(z.name);
           const meta = [];
@@ -12927,7 +12955,7 @@ function _msPreferencesHtml() {
     '<div class="ms-hint">' + tH('ext_links_hint') + '</div>' +
     _switchRowsHtml([
       // The mirror of the in-article palette's AUTO switch, same key.
-      { id: 'ms-reader-auto', title: tH('reader_auto'), desc: tH('reader_auto_hint'),
+      { id: 'ms-reader-auto', title: tH('reader_auto'),
         on: _readerAuto(), onchange: '_setReaderAuto(this.checked)' },
       { id: 'ms-darken-articles', title: tH('darken_articles'), desc: tH('darken_articles_hint'),
         on: _darkenArticlesOn(), onchange: '_setDarkenArticles(this.checked)' },
@@ -12952,6 +12980,9 @@ function _msPreferencesHtml() {
     '<div class="ms-hint" style="margin-top:12px">' + tH('catalog_languages_hint_short') + '</div>' +
     '<button class="pill" onclick="_msToggleCollapse(\'ms-lang-pills\', this)">' + tH('show_list') + '</button>' +
     '<div class="ms-lang-pills ms-collapsed-list" id="ms-lang-pills">' + _renderLangPrefPills() + '</div>';
+  // My data is this browser's (bookmarks, history, these preferences): it
+  // lives with the preferences, not with the server's settings.
+  h += '<div class="ms-mydata" style="margin-top:24px">' + _myDataCardHtml() + '</div>';
   // Security (password + logout) lives in the Users pane ("Your account").
   return h;
 }
@@ -13485,8 +13516,8 @@ function _msServerHtml() {
       '<div class="ms-hint">' + tH('configured_via_env') + '</div>';
   }
 
-  // My data + Server backups — two self-titled cards, no extra heading.
-  var backupSec = '<div id="ms-backup" class="ms-backup">' + _backupHubHtml() + '</div>';
+  // The server's backup; My data, this browser's, is under Preferences.
+  var backupSec = '<div id="ms-backup" class="ms-backup">' + _serverBackupCardHtml() + '</div>';
 
   var tokenSec = '<div id="ms-security">' + tH('loading') + '</div>';
 
@@ -13861,7 +13892,7 @@ function _shareSwitch(key, on, locked, envVar, titleKey, descHtml, inactive, und
       '<div class="share-row-dim">' +
         '<div class="share-row-title">' + tH(titleKey) + '</div>' +
         '<div class="share-row-desc">' + descHtml + '</div>' +
-        (locked ? '<div class="share-row-desc share-row-locknote">' + tH('env_controlled', {v: envVar}) + '</div>' : '') +
+        (locked && envVar ? '<div class="share-row-desc share-row-locknote">' + tH('env_controlled', {v: envVar}) + '</div>' : '') +
       '</div>' +
       (noteHtml || '') +
     '</div>' +
@@ -14270,7 +14301,9 @@ async function _renderMirrorSection() {
       (prog.phase ? _mirrorProgressText(prog) : '') + '</div>';
 
   let h = '<div class="share-rows">' +
-    _shareSwitch('torrent', btOn, m.torrent_env_locked, 'ZIMI_BT',
+    // The variable that set it, named once: off, the reason line under the
+    // row says "BitTorrent is off (ZIMI_TORRENT=0)"; on, the lock note does.
+    _shareSwitch('torrent', btOn, m.torrent_env_locked, btOn ? (m.torrent_env_var || 'ZIMI_BT') : '',
       'share_bt_title', tH('share_bt_desc'),
       // inactive, not locked: locked means an operator pinned it with an env
       // var and says so. Unavailable is the machine's answer, and the reason
@@ -14438,7 +14471,8 @@ function _replaceChosen(id) {
 
 // ── Card markup ──
 // "My data" is the only card a signed-in non-admin sees (rendered standalone by
-// _renderUserManage); the admin Server pane shows both via _backupHubHtml.
+// _renderUserManage); an admin finds it under Preferences (it is this
+// browser's), the server's backup under Server.
 function _myDataCardHtml() {
   var signedIn = !!(_userSession && _userSession.name);
   var serverBtns = signedIn
@@ -14462,7 +14496,7 @@ function _myDataCardHtml() {
 }
 
 function _serverBackupCardHtml() {
-  return '<div class="ms-section-label" style="margin-top:22px">' + tH('backup_server_title') + '</div>' +
+  return '<div class="ms-section-label">' + tH('backup_server_title') + '</div>' +
     '<div class="ms-hint">' + tH('backup_server_intro') + '</div>' +
     '<div class="ms-backup-actions">' +
       '<button class="pill" onclick="exportServerBackup()">' + tH('backup_export_file') + '</button>' +
@@ -14472,10 +14506,6 @@ function _serverBackupCardHtml() {
     '</div>' +
     _mergeRowHtml('ms-server-merge') +
     '<div id="ms-server-import" class="ms-backup-import"></div>';
-}
-
-function _backupHubHtml() {
-  return _myDataCardHtml() + _serverBackupCardHtml();
 }
 
 function _downloadJson(filename, obj) {
@@ -15000,7 +15030,7 @@ function renderInstalled(filterText) {
     // Real-category headers are drop targets for the row DnD (#37) — data-cat
     // names the destination; the Updates pseudo-group is never a target.
     const dropAttr = cat === '__updates__' ? '' : ' data-cat="' + escAttr(cat) + '"';
-    items_h += '<div class="ci-section-label"' + dropAttr + '>' + esc(groupLabel) + ' (' + items.length + ')</div>';
+    items_h += '<div class="ci-section-label"' + dropAttr + '>' + _countedLabelHtml(groupLabel, items.length) + '</div>';
     for (const z of items) {
       const meta = [];
       const countHtml = _zimCountHtml(z);
@@ -16892,8 +16922,10 @@ function _readerTextLen(doc, main) {
   return (main === doc.body || doc.__zimiWiki ? main.textContent : (main.innerText || main.textContent || '')).trim().length;
 }
 // A wiki's article in Zimipedia's reader is an article however short (a
-// stub is still one): the floor is for pages that may not be articles.
-function _readerMinChars(doc) { return doc.__zimiWiki ? 1 : READER_VIEW_MIN_CHARS; }
+// stub is still one), and a book is a book however short (a poem; a short
+// Gutenberg page fell through to its raw HTML, Bookshelf's Read with no
+// e-reader): the floor is for pages that may not be articles.
+function _readerMinChars(doc) { return doc.__zimiWiki || _isBookDoc(doc) ? 1 : READER_VIEW_MIN_CHARS; }
 function _readerViewAvailable() {
   if (!readerOpen || _almanacOpen) return false;
   var frame = document.getElementById('reader-frame');
@@ -16902,6 +16934,10 @@ function _readerViewAvailable() {
   var loc = '';
   try { loc = frame.contentWindow.location.pathname; } catch(e) { return false; }
   if (loc.indexOf('/static/') === 0) return false; // pdf.js / other static viewers
+  // Zimi's own pages under /w/ (an article the ZIM does not hold): already
+  // laid out in Zimi's own colours. Restyled, the primary button's label
+  // went brown on brown.
+  if (_docIsOurOwnPage(doc)) return false;
   // When already applied, the stash proves it was readerable — keep it offered.
   if (doc[_READER_VIEW_STASH]) return true;
   var main = _readerMainContent(doc);
@@ -17801,8 +17837,8 @@ function _readerSettingsRowsHtml() {
   // AUTO mode
   h += '<button type="button" class="rv-toggle-row" role="switch" aria-checked="' + (auto ? 'true' : 'false') +
     '" onclick="event.stopPropagation();_toggleReaderAuto()">' +
-    '<span class="rv-toggle-text"><span class="rv-toggle-title">' + tH('reader_auto') + '</span>' +
-    '<span class="rv-toggle-sub">' + tH('reader_auto_hint') + '</span></span>' +
+    // The title alone: "Open articles in Reader View" under it said it again.
+    '<span class="rv-toggle-text"><span class="rv-toggle-title">' + tH('reader_auto') + '</span></span>' +
     '<span class="rv-switch' + (auto ? ' on' : '') + '" aria-hidden="true"><span class="rv-knob"></span></span></button>';
   // Print / Save as PDF (+ native Share where supported). Only while Reader View
   // is active: printing the clean reader shell yields a beautiful page (see the
@@ -18469,7 +18505,7 @@ function _booksStrings() {
   var lcc = {};
   _BOOKS_LCC.forEach(function(c) { lcc[c] = t('books_lcc_' + c); });
   return _appStrings('books', ['books_shelf', 'books_authors', 'books_subjects', 'books_eras', 'books_languages', 'books_popular', 'books_recent',
-    'books_continue', 'books_my_shelf', 'books_add_shelf', 'books_on_shelf', 'books_all_books', 'books_see_all', 'books_sort_popular', 'books_sort_title', 'books_sort_author', 'books_sort_recent',
+    'books_continue', 'books_all_books', 'books_see_all', 'books_sort_popular', 'books_sort_title', 'books_sort_author', 'books_sort_recent',
     'books_sort_name', 'books_sort_books', 'books_read', 'books_resume', 'books_epub', 'books_more_by', 'books_added', 'books_language',
     'books_subject', 'books_era', 'books_author', 'books_more', 'books_none', 'books_empty', 'books_book', 'books_books', 'books_bce', 'books_bce_ce',
     'books_pending', 'books_epub_only', 'books_load_failed', 'books_load_part', 'books_reading', 'books_sources', 'books_source', 'books_format',
@@ -18923,6 +18959,13 @@ function _bookSplitLong(doc, sec, len) {
   sec.parentNode.removeChild(sec);
   return parts;
 }
+// Is there no text before the first chapter but the reader's title?
+function _bookFrontEmpty(article, first, range) {
+  range.setStart(article, 0); range.setEndBefore(first);
+  var title = article.querySelector('.zimi-reader-title');
+  var text = range.toString().replace(/\s+/g, '');
+  return !text || (!!title && text === title.textContent.replace(/\s+/g, ''));
+}
 // The title page: no stacked line breaks, no empty paragraphs, so its title
 // blocks sit together (Gutenberg spaces them with <br>s and empty <p>s).
 function _bookTidyFront(sec) {
@@ -19050,11 +19093,16 @@ function _bookLay(frame) {
     chapters = Array.prototype.slice.call(chapters, 1);
   }
   if (chapters.length < _BOOK_CHAPTERS_MIN) chapters = [];
+  // Nothing before the first chapter but the book's name (a Wikisource work
+  // whose first page is its contents, taken out): no page of its own, the
+  // name heads the first chapter, so the book opens on its first text and
+  // not on a name alone over "Last page in chapter".
+  var titleOnly = chapters.length > 0 && _bookFrontEmpty(article, chapters[0], pre);
   var secs = [];
-  _bookSections(doc, article, chapters).forEach(function(s) {
+  _bookSections(doc, article, titleOnly ? chapters.slice(1) : chapters).forEach(function(s) {
     secs.push.apply(secs, _bookSplitLong(doc, s, s.textContent.length));
   });
-  if (chapters.length && secs.length) _bookTidyFront(secs[0]);
+  if (chapters.length && secs.length && !titleOnly) _bookTidyFront(secs[0]);
   var lens = [], cum = [], total = 0;
   secs.forEach(function(s, i) { s.__zbI = i; cum.push(total); lens.push(s.textContent.length); total += lens[i]; });
   total = Math.max(1, total);
@@ -19740,7 +19788,7 @@ function _tubeStrings(play) {
   _installedVideoZims().forEach(function(z) { if (z.language) langs[z.language] = _langDisplayName(z.language) || z.language; });
   return _appStrings('tube', ['tube_videos', 'tube_video', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay',
     'tube_theater', 'tube_pip', 'tube_open_page', 'tube_all', 'tube_sort_top', 'tube_sort_title', 'tube_sort_newest', 'tube_sort_longest', 'tube_track', 'tube_tracks',
-    'tube_no_media', 'tube_missing', 'tube_watch_later', 'tube_listen_later', 'tube_continue', 'tube_recording', 'tube_recordings'], { play: play || '', langs: langs });
+    'tube_no_media', 'tube_missing', 'tube_continue', 'tube_recording', 'tube_recordings'], { play: play || '', langs: langs });
 }
 
 // A thing inside an app (a video, a question, a post) is a step in history
@@ -21522,6 +21570,20 @@ function _savedListName(l) { return l.builtin ? t('saved_liked') : l.name; }
 // A slice of Saved named by what is in it where the app's name says less:
 // Dictionary keeps words.
 function _savedSliceName(app) { return app === 'dictionary' ? t('saved_words') : _appTitle(app); }
+// What was saved, by kind, in the store's order of kinds; each kind's items
+// keep the order they came in.
+var _BM_KIND = '__kind_';   // a kind group's collapse id: _BM_KIND + kind
+var _BM_KIND_ORDER = ['article', 'book', 'video', 'question', 'post', 'place', 'word'];
+function _bmLooseByKind(items) {
+  var by = {};
+  items.forEach(function (it) { var k = it.kind || 'article'; (by[k] = by[k] || []).push(it); });
+  var order = _BM_KIND_ORDER.concat(Object.keys(by).filter(function (k) { return _BM_KIND_ORDER.indexOf(k) < 0; }));
+  return order.filter(function (k) { return by[k]; }).map(function (k) { return { kind: k, items: by[k] }; });
+}
+function _savedKindName(kind) {
+  var key = 'saved_kind_' + kind, s = t(key);
+  return s && s !== key ? s : t('saved_kind_article');
+}
 function _bmScopeQuery() { return _bmScope ? { app: _bmScope } : {}; }
 function _bmSetScope(app) { _bmScope = app || ''; _bmRerender(); }
 
@@ -21592,11 +21654,17 @@ function _renderBookmarksContent() {
     html += _bmGroupRowHtml(l.id, _savedListName(l), l.builtin ? _BM_HEART_SVG : _BM_LIST_SVG, l.count, !l.builtin || l.count > 0);
     if (!_bmIsCollapsed(l.id)) Saved.itemsFor({ list: l.id, app: q.app }).forEach(function (it) { html += _bmItemWithHlHtml(it, l.id, 1); });
   });
-  // The items in no list, under a name of their own once anything is above
-  // them: bare, they read as the last list's.
-  var grouped = loose.length && lists.length;
-  if (grouped) html += _bmGroupRowHtml(_BM_ROOT, t('saved_unlisted'), _BM_PAGE_SVG, loose.length, false);
-  if (!grouped || !_bmIsCollapsed(_BM_ROOT)) loose.forEach(function (it) { html += _bmItemWithHlHtml(it, _BM_ROOT, grouped ? 1 : 0); });
+  // The items in no list, named by what they are (Articles, Books, Videos...)
+  // once anything is above them or there is more than one kind: bare, they
+  // read as the last list's. Each group is the top level still (data-fid ''):
+  // a drop on it takes an item out of its list.
+  var kinds = _bmLooseByKind(loose);
+  var grouped = loose.length && (lists.length || kinds.length > 1);
+  kinds.forEach(function (g) {
+    var cid = _BM_KIND + g.kind;
+    if (grouped) html += _bmGroupRowHtml(_BM_ROOT, _savedKindName(g.kind), g.kind === 'place' ? _BM_PIN_SVG : _BM_PAGE_SVG, g.items.length, false, cid);
+    if (!grouped || !_bmIsCollapsed(cid)) g.items.forEach(function (it) { html += _bmItemWithHlHtml(it, _BM_ROOT, grouped ? 1 : 0); });
+  });
   // Every highlight on its own, the latest first, each with its page.
   if (hls.length) {
     html += _bmGroupRowHtml(_BM_HIGHLIGHTS, t('saved_highlights'), _HL_SVG.replace('<svg ', '<svg width="17" height="17" '), hls.length, false);
@@ -21685,9 +21753,11 @@ function _bmScopeHtml() {
 function _bmGearHtml() {
   return '<button class="bm-gear" data-role="menu" tabindex="-1" title="' + escAttr(t('more_actions')) + '" aria-label="' + escAttr(t('more_actions')) + '">⋯</button>';
 }
-function _bmGroupRowHtml(id, name, icon, count, menu) {
-  var collapsed = _bmIsCollapsed(id);
-  return '<div class="bm-row bm-folder' + (id === _BM_CONTINUE ? ' bm-continue' : '') + '" data-fid="' + escAttr(id) + '" data-depth="0"' +
+// cid: what collapses it, when not its id (a kind group: the top level, by kind).
+function _bmGroupRowHtml(id, name, icon, count, menu, cid) {
+  var collapsed = _bmIsCollapsed(cid || id);
+  return '<div class="bm-row bm-folder' + (id === _BM_CONTINUE ? ' bm-continue' : '') + '" data-fid="' + escAttr(id) + '"' +
+    (cid ? ' data-cid="' + escAttr(cid) + '"' : '') + ' data-depth="0"' +
     ' style="padding-inline-start:6px" role="treeitem" aria-level="1" aria-expanded="' + (!collapsed) + '" tabindex="-1">' +
     '<span class="bm-twist' + (collapsed ? '' : ' open') + '" data-role="twist">▸</span>' +
     '<span class="bm-ficon">' + icon + '</span>' +
@@ -21773,13 +21843,19 @@ var _bmFocusKey = null;
 function _bmRowKey(row) {
   if (!row) return null;
   if (row.classList.contains('bm-hl')) return 'h:' + row.dataset.fid + '\t' + row.dataset.hid;
-  return row.classList.contains('bm-folder') ? 'f:' + row.dataset.fid : 'b:' + row.dataset.fid + '\t' + row.dataset.key;
+  return row.classList.contains('bm-folder') ? 'f:' + _bmGroupId(row) : 'b:' + row.dataset.fid + '\t' + row.dataset.key;
 }
+// A group row's own id, for collapse and focus: a kind group's (data-cid),
+// else its list's.
+function _bmGroupId(row) { return row.dataset.cid || row.dataset.fid; }
 function _bmRowByKey(key) {
   if (!key) return null;
   var host = document.getElementById('bm-tree');
   if (!host) return null;
-  if (key.slice(0, 2) === 'f:') return host.querySelector('.bm-folder[data-fid="' + _cssEsc(key.slice(2)) + '"]');
+  if (key.slice(0, 2) === 'f:') {
+    var id = _cssEsc(key.slice(2));
+    return host.querySelector('.bm-folder[data-cid="' + id + '"]') || host.querySelector('.bm-folder[data-fid="' + id + '"]:not([data-cid])');
+  }
   var tab = key.indexOf('\t');
   if (key.slice(0, 2) === 'h:') return host.querySelector('.bm-hl[data-fid="' + _cssEsc(key.slice(2, tab)) + '"][data-hid="' + _cssEsc(key.slice(tab + 1)) + '"]');
   return host.querySelector('.bm-bk[data-fid="' + _cssEsc(key.slice(2, tab)) + '"][data-key="' + _cssEsc(key.slice(tab + 1)) + '"]');
@@ -21819,7 +21895,7 @@ function _bmTreeKeydown(e) {
   var rows = _bmRows();
   var i = rows.indexOf(row);
   var isFolder = row.classList.contains('bm-folder');
-  var expanded = isFolder && !_bmIsCollapsed(row.dataset.fid);
+  var expanded = isFolder && !_bmIsCollapsed(_bmGroupId(row));
   switch (e.key) {
     case 'ArrowDown': e.preventDefault(); _bmFocusRow(rows[Math.min(i + 1, rows.length - 1)]); break;
     case 'ArrowUp': e.preventDefault(); _bmFocusRow(rows[Math.max(i - 1, 0)]); break;
@@ -21827,12 +21903,12 @@ function _bmTreeKeydown(e) {
     case 'End': e.preventDefault(); _bmFocusRow(rows[rows.length - 1]); break;
     case 'ArrowRight':
       e.preventDefault();
-      if (isFolder && !expanded) { _bmFocusKey = _bmRowKey(row); _bmToggleCollapse(row.dataset.fid); _bmRerender(); }
+      if (isFolder && !expanded) { _bmFocusKey = _bmRowKey(row); _bmToggleCollapse(_bmGroupId(row)); _bmRerender(); }
       else if (isFolder && rows[i + 1]) _bmFocusRow(rows[i + 1]);
       break;
     case 'ArrowLeft':
       e.preventDefault();
-      if (isFolder && expanded) { _bmFocusKey = _bmRowKey(row); _bmToggleCollapse(row.dataset.fid); _bmRerender(); }
+      if (isFolder && expanded) { _bmFocusKey = _bmRowKey(row); _bmToggleCollapse(_bmGroupId(row)); _bmRerender(); }
       else _bmFocusRow(_bmParentRow(row));
       break;
     case 'Enter': case ' ':
@@ -22117,7 +22193,7 @@ function _bmEnsureBound() {
     }
     if (row.classList.contains('bm-folder')) {
       // Twist or anywhere on the group row toggles collapse.
-      _bmToggleCollapse(row.dataset.fid);
+      _bmToggleCollapse(_bmGroupId(row));
       _bmRerender();
     } else if (row.classList.contains('bm-missing')) {
       _showToast(t('bm_source_missing'));
@@ -24092,9 +24168,11 @@ function toggleBookmark() {
 
 var _libClockSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
 var _libBookmarkSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
-// Saved's opener: two bookmarks, one behind the other (what you kept), so it
-// never reads as the single bookmark that saves the page beside it.
-var _libSavedSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h9a2 2 0 0 1 2 2v13"/><path d="M15 21l-5-3.5L5 21V9a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2z"/></svg>';
+// Saved's opener: lines of a list with a ribbon on them (your lists, what you
+// kept). Not a bookmark: two bookmarks stacked read as the single bookmark
+// that saves the page beside it. The bookmark is the verb (Save, here and in
+// every app); this is the place, in the family of the apps' Lists glyph.
+var _libSavedSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h8M3 12h8M3 18h18"/><path d="M15 3v10l3-2.5 3 2.5V3z"/></svg>';
 var _libBookmarkFilledSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
 function _getLibraryTab() { return localStorage.getItem(SK.LIBRARY_TAB) || 'history'; }
 function _setLibraryTab(tab) { localStorage.setItem(SK.LIBRARY_TAB, tab); }
@@ -25955,10 +26033,16 @@ var REPLAY_SETTLE_MS = 2500;
 // breaks the other.
 function _frameIsOurOwnPage(frame) {
   try {
-    return frame.contentWindow.location.pathname.startsWith('/static/');
+    return frame.contentWindow.location.pathname.startsWith('/static/') || _docIsOurOwnPage(frame.contentDocument);
   } catch (e) {
     return false;  // unreadable is not ours; treat it as a page, not a tool
   }
+}
+// A page Zimi wrote, served under /w/ beside the ZIM's own (http.py's
+// _UNCAPTURED_PAGE: an article the ZIM does not hold, a link it did not
+// capture): it says so in its head.
+function _docIsOurOwnPage(doc) {
+  try { return !!(doc && doc.querySelector && doc.querySelector('meta[name="zimi-page"]')); } catch (e) { return false; }
 }
 
 function _settleCapturedChrome(frame) {

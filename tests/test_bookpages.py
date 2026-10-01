@@ -304,3 +304,30 @@ def test_a_wikisource_work_reads_in_the_e_reader(served, phone, tmp_path):
     finally:
         br.close()
         pw.stop()
+
+
+def test_a_work_whose_first_page_is_only_its_name_opens_on_its_first_text(served):
+    """A work whose own page holds nothing once its contents are taken out
+    opened on its name alone over "Last page in chapter · 2%". Its name heads
+    the first chapter instead: the book opens on text."""
+    import zimi.renderer as renderer
+
+    if not renderer.browser_available():
+        pytest.skip("playwright + chromium are not usable here")
+    filename, meta, entries, main = _work()
+    entries[WORK] = ("text/html", _page(WORK, ""), WORK)
+    base, names = served([(filename, meta, entries, main)])
+    zim = names["wikisource_eo_all_nopic_2026-07"]
+    pw, br, pg = _open(base, _card(zim, "Adjuvilo"), lambda pw: pw.devices["iPhone 13"])
+    try:
+        got = pg.evaluate(
+            """() => { var d = document.getElementById('reader-frame').contentDocument;
+          var sec = d.querySelector('.zb-sec.zb-cur') || d.querySelector('.zb-sec');
+          return { title: !!sec.querySelector('.zimi-reader-title'), text: sec.textContent,
+            ch: d.querySelector('.zb-ch').textContent, left: d.querySelector('.zb-left').textContent }; }"""
+        )
+        assert got["title"] and "Enkonduka teksto" in got["text"], got
+        assert got["ch"] == "Enkonduko" and "Last page" not in got["left"], got
+    finally:
+        br.close()
+        pw.stop()

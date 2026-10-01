@@ -1579,6 +1579,7 @@ _MISSING_ENTRY_STRINGS = {
 # it lands on learns nothing about where it came from.
 _UNCAPTURED_PAGE = """<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
+<meta name="zimi-page" content="zimi">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title} — {zim}</title>
 <style>

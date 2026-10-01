@@ -691,6 +691,14 @@
   .create-ftree-check { flex: 0 0 18px; width: 18px; height: 18px; margin: 0; accent-color: var(--amber); }
   .create-ftree-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .create-ftree-what { flex: 0 1 auto; max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text3); }
+  /* A file left out says why under its name, in full: the line wraps, it is
+     never cut, and it lines up with the names (twist 24 + gap 8 + check 18 + gap 8). */
+  .create-ftree-row.is-off { flex-wrap: wrap; align-content: center; row-gap: 2px; padding-block: 6px; }
+  .create-ftree-why { flex: 1 0 100%; padding-inline-start: 58px; font-size: 12px; line-height: 1.35; color: var(--text3); white-space: normal; }
+  .create-where { font-size: 12px; color: var(--text2); }
+  .create-where[hidden] { display: none; }
+  .create-where summary { cursor: pointer; width: max-content; }
+  .create-where .create-caption { margin-top: 4px; overflow-wrap: anywhere; }
   .create-ftree-more { padding: 6px 0; font: inherit; font-size: 13px; color: var(--amber); background: none; border: 0; cursor: pointer; }
   .create-ftree-summary { padding: 8px 12px 4px; }
   .create-left-out { margin: 6px 0 0; padding-inline-start: 18px; font-size: 13px; color: var(--text2); }
@@ -1000,7 +1008,6 @@
   .rv-toggle-row:hover { background: var(--surface2); }
   .rv-toggle-text { flex: 1; display: flex; flex-direction: column; gap: 1px; }
   .rv-toggle-title { font-size: 13px; color: var(--text); }
-  .rv-toggle-sub { font-size: 11px; color: var(--text2); }
   .rv-switch {
     flex-shrink: 0; width: 38px; height: 22px; border-radius: 11px; background: var(--surface2);
     border: 1px solid var(--border); position: relative; transition: background 0.15s, border-color 0.15s;
@@ -2060,6 +2067,8 @@
   .flavor-option-check { width: 16px; color: var(--amber); font-weight: bold; text-align: center; flex-shrink: 0; }
   .flavor-popup-backdrop { position: fixed; inset: 0; z-index: 999; }
   .ci-section-label { padding: 16px 0 8px; }
+  /* The count after a label: quiet, as the apps' .n and the home's pill-count. */
+  .label-n { color: var(--text3); font-weight: 400; font-variant-numeric: tabular-nums; margin-inline-start: 2px; }
   /* min-width:0 — a grid item defaults to min-width:auto, so a wide action row
      used to stretch its column and push the whole page into horizontal scroll. */
   .dl-item { padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; font-size: 13px; }
@@ -2464,7 +2473,8 @@
      and flip the ON knob to white since the deep-amber ON track needs light ink
      (#000 knob would sink to ~3.6:1). The OFF knob stays --text2, which clears
      3:1 on the grey track (4.06:1). */
-  :root[data-theme="light"] .switch-slider {
+  :root[data-theme="light"] .switch-slider,
+  :root[data-theme="light"] .share-controls-off .switch input:checked + .switch-slider {
     background: #e0dacd; border-color: var(--border-strong);
   }
   :root[data-theme="light"] .switch input:checked + .switch-slider {
@@ -2473,6 +2483,13 @@
   :root[data-theme="light"] .switch input:checked + .switch-slider::before {
     background: var(--on-amber);
   }
+  /* A switch in a card that is off (BitTorrent's UPnP) keeps its place, what
+     it will be when the card is on, but not its amber: amber says "on now",
+     and nothing here is. It takes the OFF track and knob instead (the light
+     theme's track is in the rule above). */
+  .share-controls-off .switch input:checked + .switch-slider { background: var(--surface2); border-color: var(--border); }
+  .share-controls-off .switch input:checked + .switch-slider::before,
+  :root[data-theme="light"] .share-controls-off .switch input:checked + .switch-slider::before { background: var(--text2); }
 
   /* Long option lists (languages, hot ZIMs) hide behind a Show-list toggle.
      :not() + !important beat later same-specificity display rules
@@ -3670,26 +3687,28 @@
 }
 
 /* The library order control, sharing the first section header's line with the
-   view toggle. Quiet until touched: it is a preference, not an action. */
-.lib-sort {
-  font-size: 12px;
-  padding: 3px 6px;
-  margin-right: 8px;
-  border-radius: 5px;
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--text2);
-  cursor: pointer;
-  vertical-align: middle;
-  -webkit-text-fill-color: initial;
+   view toggle. Quiet until touched: it is a preference, not an action. It
+   reads as text the heading's size (a sort mark and the order it is in); the
+   native select lies over it unseen and takes the tap. 16px on the select
+   keeps iOS from zooming when it opens. */
+.lib-sort-wrap {
+  position: relative; display: inline-flex; align-items: center; gap: 5px;
+  margin-inline-end: 6px; padding: 2px 4px; border-radius: 5px;
+  font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none;
+  color: var(--text2); -webkit-text-fill-color: initial; cursor: pointer; white-space: nowrap;
 }
-.lib-sort:hover, .lib-sort:focus-visible { color: var(--text); border-color: var(--amber-border); }
+.lib-sort-wrap:hover, .lib-sort-wrap:focus-within { color: var(--text); }
+.lib-sort-wrap:focus-within { outline: 2px solid var(--amber); outline-offset: 1px; }
+.lib-sort-wrap .lib-sort {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+  opacity: 0; cursor: pointer; font-size: 16px; border: 0;
+}
 
 /* On a touch screen the home page's and the search's small controls take a
    finger (44px): the order and view controls grow to it, the marks that
    close or clear keep their look and gain an invisible margin. */
 @media (pointer: coarse) {
-  .lib-sort { min-height: 44px; }
+  .lib-sort-wrap { min-height: 44px; }
   .lib-view-btn { width: 44px; height: 42px; }
   /* No hover to reveal it on a phone: the × is there in full, finger-sized. */
   .sg-forget { width: 40px; height: 40px; opacity: 1; }

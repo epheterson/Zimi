@@ -223,6 +223,31 @@ def is_torrent_enabled() -> bool:
     return bool(_read_pref("torrent", True))
 
 
+def torrent_env_var() -> str:
+    """The variable that decides BitTorrent, in the order is_torrent_enabled
+    reads them: ZIMI_OFFLINE, ZIMI_BT, the legacy ZIMI_TORRENT; "" when
+    the switch is the person's own."""
+    if is_offline():
+        return "ZIMI_OFFLINE"
+    if "enabled" in _bt_conf():
+        return "ZIMI_BT"
+    if _env_explicitly_set("ZIMI_TORRENT"):
+        return "ZIMI_TORRENT"
+    return ""
+
+
+_ENV_SETTING_SHOWN = 16  # a longer value (a whole ZIMI_BT blob) is named, not quoted
+
+
+def torrent_env_setting() -> str:
+    """torrent_env_var as it is set ("ZIMI_TORRENT=0"), or "" when none is."""
+    name = torrent_env_var()
+    if not name:
+        return ""
+    raw = (os.environ.get(name) or "").strip()
+    return f"{name}={raw}" if raw and len(raw) <= _ENV_SETTING_SHOWN else name
+
+
 def is_torrent_env_locked() -> bool:
     # Offline counts as an env lock: the UI toggle would otherwise look
     # flippable while ZIMI_OFFLINE silently vetoes it on every read.
@@ -563,6 +588,7 @@ def get_mirror_status() -> dict:
         "seed_env_locked": is_seed_env_locked(),
         "torrent_enabled": is_torrent_enabled(),
         "torrent_env_locked": is_torrent_env_locked(),
+        "torrent_env_var": torrent_env_var(),
         "peer_share": _disc.is_share_enabled(),
         "peer_share_env_locked": _disc.is_share_env_locked(),
         "peer_name_env_locked": _disc.is_name_env_locked(),

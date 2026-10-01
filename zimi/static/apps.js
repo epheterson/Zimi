@@ -34,9 +34,9 @@ function markLinks(root) { try { return window.parent !== window ? window.parent
 // The thing open in an app (a video, a question, a post, a book) has three
 // controls: Like, Save and Lists, each on its own (a like never saves), drawn from the store and drawn again by
 // savedPaint() whenever it changes (the page's window.__saved calls it).
-// item is what Saved keeps: {kind, app, zim, path, title, meta}. opts.save
-// names Save in the app's words ([off, on]: ZimiTube's "Watch later",
-// Bookshelf's "Add to my shelf"); opts.like false leaves Like out;
+// item is what Saved keeps: {kind, app, zim, path, title, meta}. Save is
+// one word and one mark in every app (Save, Saved; never an app's own verb
+// such as Watch later or Add to my shelf); opts.like false leaves Like out;
 // opts.thread keeps where you are in a long thread once it is saved
 // (threadRestore below). The page's markup holds the place:
 // <span class="svbar"></span> in its actions. savedBar(null) when the thing
@@ -53,12 +53,12 @@ function savedBar(item, opts) {
 function svButtons() {
   var S = saved(), it = _svItem, w = STR.sv || {};
   if (!S || !it) return '';
-  var on = S.has(it), liked = S.inList(it, S.LIKED), names = _svOpts.save || [w.save, w.saved];
+  var on = S.has(it), liked = S.inList(it, S.LIKED);
   var b = function(which, pressed, icon, label, extra) {
     return '<button type="button" class="svb' + (pressed ? ' on' : '') + '" data-sv="' + which + '"' + (extra || ' aria-pressed="' + pressed + '"') +
       ' onclick="savedDo(this, event)">' + icon + '<span>' + esc(label) + '</span></button>';
   };
-  return (_svOpts.like === false ? '' : b('like', liked, SV_HEART, liked ? w.liked : w.like)) + b('save', on, SV_MARK, on ? names[1] || names[0] : names[0]) +
+  return (_svOpts.like === false ? '' : b('like', liked, SV_HEART, liked ? w.liked : w.like)) + b('save', on, SV_MARK, on ? w.saved : w.save) +
     b('lists', false, SV_LISTS, w.lists, ' aria-haspopup="menu" title="' + esc(w.add_to_list || '') + '"');
 }
 function savedPaint() { document.querySelectorAll('.svbar').forEach(function(bar) { bar.innerHTML = svButtons(); }); }

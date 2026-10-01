@@ -46,7 +46,7 @@ function page(extra) {
     clock: 1790000000000,
     _savedChanged: () => {},
     STR: { sv: { save: 'Save', saved: 'Saved', like: 'Like', liked: 'Liked', lists: 'Lists', add_to_list: 'Add to a list', all: 'All', none: 'Nothing saved.' },
-      watch_later: 'Watch later', listen_later: 'Listen later', continue: 'Continue watching' },
+      continue: 'Continue watching' },
     document: { querySelectorAll: () => bars, documentElement: { scrollHeight: 4000 } },
     bars, scrolled: 0, clearTimeout: () => {}, setTimeout: () => 0,
   }, extra || {});
@@ -94,10 +94,11 @@ function page(extra) {
     /data-sv="save" aria-pressed="false"/.test(liked.bars[0].innerHTML) && /class="svb on" data-sv="like"/.test(liked.bars[0].innerHTML) &&
     liked.Saved.all().length === 0 && liked.Saved.itemsFor({ list: '' }).length === 0);
   const tubeBar = page();
+  // One verb in every app: an app's own word for it (opts.save) is gone.
   tubeBar.savedBar({ kind: 'video', app: 'tube', zim: 'ted', path: 'talks/1', title: 'A talk' }, { save: ['Watch later'] });
-  ok('ZimiTube calls Save Watch later, pressed or not', /<span>Watch later<\/span>/.test(tubeBar.bars[0].innerHTML));
+  ok('ZimiTube says Save like every app, never an app verb of its own', /<span>Save<\/span>/.test(tubeBar.bars[0].innerHTML) && !/Watch later/.test(tubeBar.bars[0].innerHTML));
   tubeBar.savedDo({ getAttribute: () => 'save' });
-  ok('...and pressed it still says so', /class="svb on" data-sv="save"[^>]*>[\s\S]*<span>Watch later<\/span>/.test(tubeBar.bars[0].innerHTML));
+  ok('...and pressed it says Saved', /class="svb on" data-sv="save"[^>]*>[\s\S]*<span>Saved<\/span>/.test(tubeBar.bars[0].innerHTML));
 }
 
 // ── where you are in a long thread ────────────────────────────────────────
@@ -212,21 +213,21 @@ function page(extra) {
   p.Saved.addToList(p.videoRef(vid(4)), trip);
   p.Saved.save({ kind: 'question', app: 'exchange', zim: 'c', path: 'q/1', title: 'Not a video' });
   const rows = p.savedRows();
-  ok('Continue watching, Watch later, Liked, then each list with a video', rows.map((r) => r.title).join(' | ') === 'Continue watching | Watch later | Liked | Trip', rows.map((r) => r.title).join(' | '));
+  ok('Continue watching, Saved, Liked, then each list with a video', rows.map((r) => r.title).join(' | ') === 'Continue watching | Saved | Liked | Trip', rows.map((r) => r.title).join(' | '));
   ok('Continue watching: the latest first, past its first seconds or into a later track, with how far',
     rows[0].items.map((v) => v.page).join(',') === 'talks/3,talks/1' && rows[0].f.join(',') === '0.34,0.5');
-  ok('Watch later is every video saved, not one only liked', rows[1].items.map((v) => v.page).join(',') === 'talks/4' && rows[2].items.map((v) => v.page).join(',') === 'talks/5',
+  ok('Saved is every video saved, not one only liked', rows[1].items.map((v) => v.page).join(',') === 'talks/4' && rows[2].items.map((v) => v.page).join(',') === 'talks/5',
     rows[1].items.map((v) => v.page).join(','));
   ok('a card draws from what was kept when the feed does not have it', rows[1].items[0].thumb === 'thumbs/4.jpg' && rows[1].items[0].speaker === 'S4' && rows[1].items[0].zim_title === 'TED');
   p._byKey['ted\ntalks/4'] = vid(4, { title: 'Talk 4, as the feed has it' });
   ok('...and from the feed when it does', p.savedRows()[1].items[0].title === 'Talk 4, as the feed has it');
-  // An audiobook is listened to: a shelf of them says so, one of both is what you saved.
+  // Audiobooks are saved like videos: the row is Saved whatever it holds.
   p.Saved.save(p.videoRef(vid(6, { audio: true, tracks: 2 })));
-  ok('a shelf of videos and audiobooks is what you saved', p.savedRows()[1].title === 'Saved', p.savedRows()[1].title);
+  ok('a shelf of videos and audiobooks is Saved', p.savedRows()[1].title === 'Saved', p.savedRows()[1].title);
   p.Saved.remove(p.videoRef(vid(4)));
   p.Saved.remove(p.videoRef(vid(5)));
-  ok('a shelf of audiobooks is Listen later', p.savedRows()[1].title === 'Listen later', p.savedRows()[1].title);
-  ok('the save button says Listen later for an audiobook, Watch later for a video', p.laterWord([vid(6, { audio: true })]) === 'Listen later' && p.laterWord([vid(1)]) === 'Watch later');
+  ok('a shelf of audiobooks is Saved too', p.savedRows()[1].title === 'Saved', p.savedRows()[1].title);
+  ok('no app verb of its own is left for Save', typeof p.laterWord === 'undefined');
   p.Saved.save(p.videoRef(vid(4)));
   p.Saved.addToList(p.videoRef(vid(5)), p.Saved.LIKED);
   p.Saved.remove(p.videoRef(vid(6)));
@@ -271,9 +272,33 @@ function page(extra) {
   ok('moved off it, it is not', ctx._mapPlaceTitle('maps_en_testland', 'map=14.00/38.80000/-9.14000') === '');
 }
 
+// ── the Saved panel: what is in no list, named by what it is ──────────────
+{
+  const ctx = { t: (k) => ({ saved_kind_article: 'Articles', saved_kind_video: 'Videos', saved_kind_place: 'Places' })[k] || k };
+  vm.createContext(ctx);
+  vm.runInContext(extract(src, /var _BM_KIND = [\s\S]*?\nfunction _savedKindName\(kind\) \{[\s\S]*?\n\}/, 'the kind groups'), ctx);
+  const g = ctx._bmLooseByKind([{ kind: 'video', key: 'v1' }, { kind: 'article', key: 'a1' }, { kind: 'place', key: 'p1' }, { kind: 'article', key: 'a2' }, { key: 'x' }]);
+  ok('items in no list are grouped by kind, in the store\'s order, each in its own order',
+    g.map((x) => x.kind + ':' + x.items.map((i) => i.key).join(',')).join(' | ') === 'article:a1,a2,x | video:v1 | place:p1', JSON.stringify(g));
+  ok('each group is named by what was saved: Articles, Videos, Places', ['article', 'video', 'place'].map(ctx._savedKindName).join(',') === 'Articles,Videos,Places');
+  ok('a kind without a name of its own reads as Articles, never a raw key', ctx._savedKindName('zine') === 'Articles');
+  ok('the panel names the groups by kind, not Bookmarks', /_bmGroupRowHtml\(_BM_ROOT, _savedKindName\(g\.kind\)/.test(src) && !/_bmGroupRowHtml\(_BM_ROOT, t\('saved_unlisted'\)/.test(src));
+}
+
+// ── the top bar: Save (a bookmark) and Saved (a place) never look alike ──
+{
+  const svg = (name) => (src.match(new RegExp('var ' + name + " = '([^']*)'")) || [])[1] || '';
+  const mark = svg('_libBookmarkSvg'), place = svg('_libSavedSvg');
+  const markPath = (mark.match(/d="([^"]+)"/) || [])[1];
+  ok('the Saved opener is not a bookmark: no bookmark outline in it, a list with a ribbon instead',
+    !!markPath && !!place && place.indexOf(markPath) < 0 && !/M15 21l-5-3\.5L5 21V9/.test(place) && /M3 6h8M3 12h8/.test(place));
+  const shell = fs.readFileSync(path.join(root, 'templates', 'index.html'), 'utf8');
+  ok('...and the page ships with the same glyph it is redrawn with', shell.indexOf((place.match(/<path[\s\S]*<\/svg>/) || [''])[0].replace('</svg>', '')) > 0);
+}
+
 // ── the pages and the shell ───────────────────────────────────────────────
 ok('every app page is handed the words for what is kept', /sv: _savedAppWords\(app\) \};/.test(src) && /function _savedAppWords\(app\) \{/.test(src));
-ok('ZimiTube is handed Watch later, Listen later and Continue watching', /'tube_watch_later', 'tube_listen_later', 'tube_continue'[,\]]/.test(src));
+ok('ZimiTube is handed Continue watching, and no Save word of its own', /'tube_missing', 'tube_continue'[,\]]/.test(src) && !/tube_watch_later|tube_listen_later|books_add_shelf|books_on_shelf|books_my_shelf/.test(src));
 ok('one list picker, the panel\'s own lists, for every app', /function savedPickLists\(ref, rect, byPointer\) \{[\s\S]*?_bmListsSubmenuHtml\(key\)/.test(src) && /p\.savedPickLists\(item, /.test(shared) &&
   /savedPickLists\(place, at\)/.test(src) && /savedBar\(bookRef\(b\), /.test(books) && !/savedPickLists|_bmListsSubmenuHtml|pickLists\(/.test(tube + exchange + reddot + books));
 ok('the controls sit in each app\'s own actions, a thread\'s under its title', /<span class="svbar"><\/span>\s*<button id="autoplay"/.test(tube) &&
@@ -287,12 +312,15 @@ ok('Places and maps is on every map page, and saves the view on screen', /aria-l
   /if \(ref\.kind === 'place'\) ref\.title = _mapPlaceTitle\(ref\.zim, ref\.where && ref\.where\.pos\) \|\| ref\.title;/.test(src));
 ok('a tap in the page under the picker closes it', /window\._closeMenu = closeCtx;/.test(src) && /window\.addEventListener\('blur', function \(\) \{[\s\S]*?window\._closeMenu\(\);\s*\}, \{ once: true \}\);/.test(src));
 
-const KEYS = ['saved_save', 'saved_like', 'saved_add_to_list', 'tube_watch_later', 'tube_listen_later', 'tube_continue', 'saved_removed', 'hl_removed', 'saved_sync_behind', 'map_places', 'map_places_and_maps', 'map_place_save'];
+const KEYS = ['saved_save', 'saved_like', 'saved_add_to_list', 'tube_continue', 'saved_unlisted', 'saved_removed', 'hl_removed', 'saved_sync_behind', 'map_places', 'map_places_and_maps', 'map_place_save'];
 const en = JSON.parse(fs.readFileSync(path.join(root, 'static', 'i18n', 'en.json'), 'utf8'));
 for (const lang of fs.readdirSync(path.join(root, 'static', 'i18n'))) {
   const d = JSON.parse(fs.readFileSync(path.join(root, 'static', 'i18n', lang), 'utf8'));
   const missing = KEYS.filter((k) => !d[k] || /\u2014/.test(d[k]) || (lang !== 'en.json' && d[k] === en[k]));
   ok(lang + ' says it in its own words', !missing.length, missing.join(', '));
+  // What was saved, by kind (Videos is Videos in German too: present is enough).
+  const kinds = ['article', 'book', 'video', 'question', 'post', 'place', 'word'].filter((k) => !d['saved_kind_' + k]);
+  ok(lang + ' names every kind the Saved panel groups by', !kinds.length, kinds.join(', '));
 }
 
 console.log(failures ? failures + ' failed' : 'all passed');

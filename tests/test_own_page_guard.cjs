@@ -47,7 +47,7 @@ function grab(name) {
 
 const sandbox = {};
 vm.createContext(sandbox);
-vm.runInContext(grab('_frameIsOurOwnPage'), sandbox);
+vm.runInContext(grab('_frameIsOurOwnPage') + '\n' + grab('_docIsOurOwnPage'), sandbox);
 const isOurs = sandbox._frameIsOurOwnPage;
 
 let failures = 0;
@@ -81,6 +81,23 @@ check(isOurs(frameAt('/w/somesite/static/app.js')) === false,
 check(isOurs({ get contentWindow() { throw new Error('cross-origin'); } }) === false,
       'an unreadable frame is treated as a page, not as one of our tools');
 check(isOurs({}) === false, 'and so is a frame with no window at all');
+
+// ── a page Zimi wrote, served under /w/ ─────────────────────────────────────
+// An article the ZIM does not hold is answered at its own /w/ address with a
+// page of Zimi's, in Zimi's colours. Reader View restyled it, and its primary
+// button's label went brown on brown (1.13 design review): it is ours too.
+const withMeta = (pathname, meta) => ({ contentWindow: { location: { pathname } },
+  contentDocument: { querySelector: (q) => (meta && q === 'meta[name="zimi-page"]' ? {} : null) } });
+check(isOurs(withMeta('/w/wikipedia_en/A/Nowhere', true)) === true,
+      'a page Zimi wrote under /w/ (it says so in its head) is ours');
+check(isOurs(withMeta('/w/wikipedia_en/A/Whale', false)) === false,
+      'an article without that mark is not');
+const http = fs.readFileSync(path.join(__dirname, '..', 'zimi', 'http.py'), 'utf8');
+const page = http.slice(http.indexOf('_UNCAPTURED_PAGE = '), http.indexOf('</head>', http.indexOf('_UNCAPTURED_PAGE = ')));
+check(page.indexOf('<meta name="zimi-page" content="zimi">') > 0,
+      'the missing-article and uncaptured-link page carries the mark');
+check(/if \(_docIsOurOwnPage\(doc\)\) return false;/.test(grab('_readerViewAvailable')),
+      'Reader View is neither offered on it nor applied to it');
 
 // ── the guard is actually wired to the passes ──────────────────────────────
 // Reading the source rather than the behaviour, because the call site lives
