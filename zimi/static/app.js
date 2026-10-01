@@ -12,19 +12,10 @@ window.addEventListener('unhandledrejection', function(e) {
   if (window.__zimiErrors.length > 20) window.__zimiErrors.shift();
 });
 
-// No zooming on a phone, not even a pinch (Eric: "I can still zoom and
-// don't want to"). The viewport says maximum-scale=1, user-scalable=no, but
-// iOS Safari ignores that for pinch, so its gesture events are cancelled here,
-// and in each document the reader frame loads (a pinch over an article is
-// the article's). A map's own pinch rides touch events and still works.
-function _blockPinch(doc) {
-  if (!doc || doc.__zimiNoPinch) return;
-  doc.__zimiNoPinch = true;
-  ['gesturestart', 'gesturechange'].forEach(function(type) {
-    doc.addEventListener(type, function(e) { e.preventDefault(); }, { passive: false });
-  });
-}
-_blockPinch(document);
+// A pinch zooms; nothing else does (Eric, 2026-10-01: "Maybe I still did want
+// pinch to zoom just not text or any auto"): no double-tap zoom
+// (touch-action: manipulation) and no zoom into a focused field (16px fields
+// on touch screens), both in app.css.
 
 // Storage that is always there. WebKitGTK hands a private-mode window a
 // null localStorage, and one unguarded read of it at load killed the whole
@@ -20547,7 +20538,6 @@ function openReader(url) {
     clearTimeout(_readerTimeout);
     if (!readerOpen) { loading.classList.add('hidden'); return; } // reader was closed — don't update title
     _ttsStop(); // stop any in-progress speech when the article changes
-    try { _blockPinch(frame.contentDocument); } catch (e) {}
     // Links out of the library, marked (or made plain text) before anything
     // is shown or copied: Reader View and the book reader clone the marks.
     _extHide();

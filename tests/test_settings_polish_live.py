@@ -8,8 +8,7 @@ polish pass), in a real browser at 390x844 touch:
   quieter, not under Auto-update.
 - Nothing zooms by accident: a double tap is a tap, and every field and
   menu on a touch screen is 16px (iOS zooms into any smaller one it focuses).
-  No pinch-zoom either: the viewport caps the scale and iOS's pinch is
-  cancelled in the shell, the reader's document and the app pages.
+  A pinch zooms; nothing zooms on its own.
 - The book's reading settings leave the page undimmed, and Auto's swatch is
   the sepia and dark Auto actually paints, not a white page it never gives.
 - History and Saved are two panels: the clock opens History (Continue at
@@ -213,6 +212,9 @@ def test_library_split_sits_under_the_count(served, phone):
 
 
 def test_nothing_zooms_by_accident(served, phone):
+    """A pinch zooms (Eric, 2026-10-01: "Maybe I still did want pinch to zoom
+    just not text or any auto"); nothing zooms on its own: no double-tap
+    zoom, and no zoom into a focused field."""
     pg = phone
     pg.goto(served + "/")
     pg.wait_for_function(READY, timeout=30000)
@@ -221,24 +223,13 @@ def test_nothing_zooms_by_accident(served, phone):
       vp: document.querySelector('meta[name=viewport]').content })"""
     )
     assert got["ta"] == "manipulation", got
-    # No zoom at all: the viewport caps it, and iOS's pinch (which ignores
-    # the cap) is cancelled in the shell and in the reader's document.
-    assert "maximum-scale=1" in got["vp"] and "user-scalable=no" in got["vp"], got
-    assert pg.evaluate("(" + PINCH_CANCELLED + ")(document)") is True
+    assert "user-scalable=no" not in got["vp"] and "maximum-scale" not in got["vp"], got
+    assert pg.evaluate("(" + PINCH_CANCELLED + ")(document)") is False
     assert pg.evaluate(SMALL_FIELDS) == []
-    # An article in the reader, and an app page on its own.
-    pg.evaluate("() => openArticle('hlwiki', 'A/Lighthouse')")
-    pg.wait_for_function(
-        "() => { var d = document.getElementById('reader-frame').contentDocument; return d && d.__zimiNoPinch; }",
-        timeout=15000,
-    )
-    assert pg.evaluate(
-        "(" + PINCH_CANCELLED + ")(document.getElementById('reader-frame').contentDocument)"
-    )
     pg.goto(served + "/static/tube.html")
     vp = pg.evaluate("() => document.querySelector('meta[name=viewport]').content")
-    assert "user-scalable=no" in vp, vp
-    assert pg.evaluate("(" + PINCH_CANCELLED + ")(document)") is True
+    assert "user-scalable=no" not in vp, vp
+    assert pg.evaluate("(" + PINCH_CANCELLED + ")(document)") is False
     pg.goto(served + "/?manage=server")
     pg.wait_for_timeout(1500)
     assert pg.evaluate(SMALL_FIELDS) == []

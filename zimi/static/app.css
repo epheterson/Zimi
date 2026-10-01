@@ -154,9 +154,8 @@
      browser's white, and does not spring: no bounce either way, no sideways
      scroll. */
   html { height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: none; background: var(--bg); }
-  /* Zimi does not zoom on a phone: the viewport caps the scale at 1 and
-     _blockPinch (app.js) cancels iOS's pinch, which ignores that cap.
-     A double tap is a tap, not a zoom; the text keeps its size when the
+  /* A pinch zooms; nothing zooms on its own. A double tap is a tap, not a
+     zoom; the text keeps its size when the
      phone turns; and a field or menu gets 16px type on a touch screen,
      because iOS zooms the page into any it focuses that is smaller. The
      !important outranks the inline sizes a few controls are drawn with. */

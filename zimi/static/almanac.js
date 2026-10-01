@@ -157,7 +157,7 @@ function _almEsc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'
 function _cancelAllRAF() {
   if (_almanacOrreryRAF) { cancelAnimationFrame(_almanacOrreryRAF); _almanacOrreryRAF = null; }
   _skyPause();
-  if (_tzClockRAF) { cancelAnimationFrame(_tzClockRAF); _tzClockRAF = null; }
+  if (_tzClockRAF) { clearTimeout(_tzClockRAF); _tzClockRAF = null; }
 }
 function _resumeAllRAF() {
   _orreryLastFrame = performance.now();  // prevent time-jump after tab was hidden
@@ -3857,7 +3857,7 @@ function _drawTzClock(now) {
     if (cityOnly) tzLabel = cityOnly;
   }
 
-  // Get time in selected timezone — use fractional seconds for smooth hand
+  // Get time in selected timezone (the clock ticks on the second; see _startTzClock)
   var h24 = 0, mins = 0, secs = 0;
   try {
     h24 = parseInt(_tzFmt(tz, { hour: 'numeric', hour12: false }).format(now));
@@ -4089,8 +4089,15 @@ function _tzFmt(tz, opts, lang) {
 var _tzClockRAF = null;
 var _tzClockColors = null;
 var _tzGridMinute = -1;
+// The world clock ticks once a second, on the second, like a quartz watch:
+// a sweeping hand redrew it every frame, the largest idle cost left on a
+// phone once the sky stopped animating.
+var _TZ_CLOCK_TICK_MS = 1000;
 function _startTzClock() {
-  if (_tzClockRAF) cancelAnimationFrame(_tzClockRAF);
+  if (_tzClockRAF) clearTimeout(_tzClockRAF);
+  function next() {
+    _tzClockRAF = setTimeout(function () { requestAnimationFrame(tick); }, _TZ_CLOCK_TICK_MS - Date.now() % _TZ_CLOCK_TICK_MS);
+  }
   function tick() {
     if (!_almanacOpen) { _tzClockRAF = null; return; }
     var now = new Date();
@@ -4106,9 +4113,9 @@ function _startTzClock() {
       _almTmSetCells('alm-tm-now', now);
       _almTmSetDelta('alm-tm-delta', _almFocusInstant());
     }
-    _tzClockRAF = requestAnimationFrame(tick);
+    next();
   }
-  _tzClockRAF = requestAnimationFrame(tick);
+  tick();
 }
 
 // tzOffsetMin: the LOCATION's UTC offset in minutes. Passed by the Sun Map
