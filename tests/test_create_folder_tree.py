@@ -286,12 +286,23 @@ def test_a_picked_file_brings_its_sidecar_and_cover_but_nothing_else(tmp_path):
 # ── the build ───────────────────────────────────────────────────────────────
 
 
-def _png(color):
-    from PIL import Image
+def _png(color, size=64):
+    """A solid-colour PNG, written by hand: Pillow is optional for Zimi and
+    not installed in CI's test job."""
+    import struct
+    import zlib
 
-    out = io.BytesIO()
-    Image.new("RGB", (64, 64), color).save(out, "PNG")
-    return out.getvalue()
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    color = {"red": (220, 40, 40), "blue": (40, 80, 220), "yellow": (240, 210, 40), "green": (40, 170, 70)}.get(color, color)
+    row = b"\x00" + bytes(color) * size
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(row * size))
+        + chunk(b"IEND", b"")
+    )
 
 
 def _mixed_folder(at):

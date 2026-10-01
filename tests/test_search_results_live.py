@@ -160,9 +160,12 @@ def test_results_marked_grouped_and_walked(served, lang, phone):
 
         # "More from": the same search in that source alone.
         src = groups.nth(1).locator(".result-more").get_attribute("data-zim")
+        # The results on screen before the click already say 'water' and
+        # finished: wait for the scoped search's own, not those.
+        pg.evaluate("() => { window.__before = allResults; }")
         groups.nth(1).locator(".result-more").click()
         pg.wait_for_function(
-            "(z) => currentSource === z && allResults && allResults._query === 'water' && !allResults.partial",
+            "(z) => currentSource === z && allResults && allResults !== window.__before && allResults._query === 'water' && !allResults.partial",
             arg=src,
             timeout=30000,
         )
