@@ -2045,7 +2045,7 @@
   "bg_starting": "Comprobando los índices…",
   "create_again_no_limit": "Capturar de nuevo sin límites",
   "create_again_whole_site": "Capturar el sitio completo",
-  "alm_earth_hint": "Arrastra para girar, pellizca o desplaza para acercar",
+  "alm_earth_hint": "Arrastra para girar, pellizca o desplaza para acercar, toca la Tierra, la Luna o el Sol para ir allí",
   "alm_earth_view_sats": "Satélites",
   "alm_earth_rate_real": "Tiempo real",
   "alm_earth_rate_min": "1 min/s",

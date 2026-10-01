@@ -2045,7 +2045,7 @@
   "bg_starting": "Checking the indexes…",
   "create_again_no_limit": "Capture again with no limits",
   "create_again_whole_site": "Capture the whole site",
-  "alm_earth_hint": "Drag to turn, pinch or scroll to zoom",
+  "alm_earth_hint": "Drag to turn, pinch or scroll to zoom, tap the Earth, Moon or Sun to go there",
   "alm_earth_view_sats": "Satellites",
   "alm_earth_rate_real": "Real time",
   "alm_earth_rate_min": "1 min/s",
