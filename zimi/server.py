@@ -2293,7 +2293,7 @@ def _read_map_facts(path):
 
 
 APPS_ENV = "ZIMI_APPS"
-APP_NAMES = ("maps", "tube", "exchange", "reddot", "wiki", "books")
+APP_NAMES = ("maps", "tube", "exchange", "reddot", "wiki", "books", "dictionary")
 # Apps offered only when named (a preview, while it is built): a comma list
 # in ZIMI_APPS (or a saved list) that names one turns it on; "1", "all", the
 # default and a saved True leave it off. None now: Zimipedia was one until

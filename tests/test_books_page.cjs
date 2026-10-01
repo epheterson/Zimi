@@ -207,15 +207,15 @@ ok('places are capped per app, the oldest dropped first (a Zimipedia article nev
 }
 
 // ── the shell ───────────────────────────────────────────────────────────
-ok('the tile is one line in the apps row, like the others', /function _booksTileHtml\(\) \{\n\s*return _appTileHtml\('books', t\('books'\), _BOOKS_SVG, _installedBookZims\(\)/.test(src) && /_APP_TILES = \{[^}\n]*\bbooks: _booksTileHtml \}/.test(src));
-ok('an app like the others: switched per server and per account by its name', /var APP_NAMES = \[[^\]]*'books'\];/.test(src));
+ok('the tile is one line in the apps row, like the others', /function _booksTileHtml\(\) \{\n\s*return _appTileHtml\('books', t\('books'\), _BOOKS_SVG, _installedBookZims\(\)/.test(src) && /_APP_TILES = \{[^}\n]*\bbooks: _booksTileHtml[,} ]/.test(src));
+ok('an app like the others: switched per server and per account by its name', /var APP_NAMES = \[[^\]]*'books'[^\]]*\];/.test(src));
 ok('it is the page Zimi owns, in the reader, at /#books', /_openHashApp\('books', replaceState, function\(\) \{ _booksOpen = true; return _BOOKS_PAGE \+ '#' \+ _booksStrings\(\); \}\)/.test(src) && /if \(location\.hash === '#books'\) \{ enterHome\(false\); openBooks\(true\); return; \}/.test(src));
 ok('the shell hands the page its strings and the shelves\' names', /_appStrings\('books', \['books_shelf'/.test(src) && /lcc\[c\] = t\('books_lcc_' \+ c\);/.test(src));
 ok('typing and Enter in the box search inside the page', /\(_isWikiPage\(\) \? _wikiSearch : _booksSearch\)\(val\)/.test(src) && /if \(_isBooksPage\(\)\) \{ _booksSearch\(q\.value\.trim\(\)\); return; \}/.test(src) && /_appFrameCall\('booksSearch', val\)/.test(src));
 ok('the box says what it is for', /if \(_isBooksPage\(\)\) return t\('books_search_placeholder'\);/.test(src));
-ok('an app page: no reading controls, and the arrow asks the page first', /function _isAppPage\(\) \{\n\s*return [^\n]*_isBooksPage\(\);/.test(src));
-ok('Back from a book returns to Bookshelf', /s\.mode === 'reader' && s\.books\) \{\n\s*if \(!_appFrameRoute\(_booksOpen, ''\)\) openBooks\(true\);/.test(src) && /\|\| app\.books\);/.test(src));
-ok('the catalog door is allowed', /_APP_CATEGORY_KEYS = \[[^\]]*'gutenberg'\]/.test(src) && /books: 'gutenberg' \}/.test(src));
+ok('an app page: no reading controls, and the arrow asks the page first', /function _isAppPage\(\) \{\n\s*return [^\n]*_isBooksPage\(\)[^\n]*;/.test(src));
+ok('Back from a book returns to Bookshelf', /s\.mode === 'reader' && s\.books\) \{\n\s*if \(!_appFrameRoute\(_booksOpen, ''\)\) openBooks\(true\);/.test(src) && /\|\| app\.books[ )|]/.test(src));
+ok('the catalog door is allowed', /_APP_CATEGORY_KEYS = \[[^\]]*'gutenberg'\]/.test(src) && /books: 'gutenberg'[,}]/.test(src));
 ok('its background work has a name in Manage', /books: 'bg_books'/.test(src));
 
 const need = ['books', 'books_view_unavailable', 'books_search_placeholder', 'books_prev_chapter', 'books_next_chapter', 'books_contents', 'books_settings',
