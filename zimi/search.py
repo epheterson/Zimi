@@ -4,6 +4,7 @@ Handles search caching, SQLite title indexes, full-text search via Xapian,
 suggestion search, and article content reading.
 """
 
+import collections
 import hashlib as _hashlib
 import itertools
 import json
@@ -79,11 +80,36 @@ def _ensure_server_refs():
 # Search & Suggest Caches (was section 5)
 # ---------------------------------------------------------------------------
 
-_search_cache = {}  # {key: {"result": ..., "created": float, "accesses": int}}
+# What a search found is kept by what it asks, not how it was typed (see
+# _query_key), for whoever asks it next. Bounded by count, the least recently
+# used out first. Kept an hour, two once asked again: the library changing
+# clears it all (_search_cache_clear, and the library's generation is in
+# every key besides), so the time only bounds how long a search nobody
+# repeats takes up room.
+_search_cache = collections.OrderedDict()  # {key: {"result", "created", "accesses"}}
 _search_cache_lock = threading.Lock()
-SEARCH_CACHE_MAX = 100
-SEARCH_CACHE_TTL = 900  # 15 minutes base
-SEARCH_CACHE_TTL_ACTIVE = 1800  # 30 minutes if re-accessed
+SEARCH_CACHE_MAX = 256
+SEARCH_CACHE_TTL = 3600
+SEARCH_CACHE_TTL_ACTIVE = 7200
+# Bumped by every clear: a search that began before the library changed
+# does not put its answer in the cache after it.
+_search_cache_epoch = 0
+# The same search asked again while it is still running waits for that one
+# (two tabs, two people, a Back as it lands) rather than run twice. Past
+# this wait it runs its own.
+_search_inflight = {}
+SEARCH_COALESCE_WAIT = 30.0
+_QUOTE_CHARS = str.maketrans({"“": '"', "”": '"', "„": '"'})
+
+
+def _query_key(q):
+    """The query as the cache knows it: what the grammar reads the same is one
+    entry. Case and spacing do not matter, nor which quotes a keyboard typed;
+    OR keeps its capitals, since "cats or dogs" is three words and "cats OR
+    dogs" is a choice."""
+    return " ".join(
+        w if w == "OR" else w.lower() for w in q.translate(_QUOTE_CHARS).split()
+    )
 
 
 def _search_cache_key(q, zim_scope_str, limit, fast):
@@ -96,10 +122,19 @@ def _search_cache_key(q, zim_scope_str, limit, fast):
     they just get them from their OWN partition. ``allow`` is None for
     admin/anonymous/all-access (allow_key None); a restricted allowlist becomes a
     sorted tuple, so two users with identical allowlists correctly share entries.
+    The library's generation is in it too: a library loaded again never answers
+    from the one before.
     """
     allow = _srv.current_allow()
     allow_key = None if allow is None else tuple(sorted(allow))
-    return (q.lower().strip(), zim_scope_str, limit, fast, allow_key)
+    return (
+        _query_key(q),
+        zim_scope_str,
+        limit,
+        fast,
+        getattr(_srv, "_cache_generation", 0),
+        allow_key,
+    )
 
 
 def _search_cache_get(key):
@@ -111,25 +146,181 @@ def _search_cache_get(key):
         ttl = SEARCH_CACHE_TTL_ACTIVE if entry["accesses"] > 0 else SEARCH_CACHE_TTL
         if time.time() - entry["created"] < ttl:
             entry["accesses"] += 1
+            _search_cache.move_to_end(key)
             return entry["result"]
         del _search_cache[key]
     return None
 
 
-def _search_cache_put(key, result):
-    """Store search result in cache, evicting oldest if full."""
+def _search_cache_put(key, result, epoch=None):
+    """Store a search result, the least recently used going when full.
+    ``epoch``: the cache's epoch when the search began; cleared since, the
+    answer is the old library's and is not kept."""
     now = time.time()
     with _search_cache_lock:
-        if len(_search_cache) >= SEARCH_CACHE_MAX:
-            oldest_key = min(_search_cache, key=lambda k: _search_cache[k]["created"])
-            del _search_cache[oldest_key]
+        if epoch is not None and epoch != _search_cache_epoch:
+            return
+        _search_cache.pop(key, None)
+        while len(_search_cache) >= SEARCH_CACHE_MAX:
+            _search_cache.popitem(last=False)
         _search_cache[key] = {"result": result, "created": now, "accesses": 0}
 
 
 def _search_cache_clear():
-    """Clear all cached search results (e.g. after library changes)."""
+    """Clear every kept search result and snippet (e.g. after library changes)."""
+    global _search_cache_epoch
     with _search_cache_lock:
         _search_cache.clear()
+        _search_cache_epoch += 1
+    with _snippet_cache_lock:
+        _snippet_cache.clear()
+
+
+def search_cached(key, compute):
+    """(result, from_cache): the kept answer for ``key``, the one a search
+    already running for it brings back, or ``compute()``'s, then kept."""
+    hit = _search_cache_get(key)
+    if hit is not None:
+        return hit, True
+    with _search_cache_lock:
+        epoch = _search_cache_epoch
+        slot = _search_inflight.get(key)
+        owner = slot is None
+        if owner:
+            slot = _search_inflight[key] = {"done": threading.Event(), "result": None}
+    if not owner:
+        slot["done"].wait(SEARCH_COALESCE_WAIT)
+        if slot["result"] is not None:
+            return slot["result"], True
+        return compute(), False
+    try:
+        result = compute()
+        slot["result"] = result
+        _search_cache_put(key, result, epoch)
+        return result, False
+    finally:
+        with _search_cache_lock:
+            if _search_inflight.get(key) is slot:
+                del _search_inflight[key]
+        slot["done"].set()
+
+
+# A result card's snippet and picture, by ZIM and path: the same pages come
+# back search after search. Cleared with the search cache.
+_snippet_cache = collections.OrderedDict()
+_snippet_cache_lock = threading.Lock()
+SNIPPET_CACHE_MAX = 4000
+_SNIPPET_IMG_META = [
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        r'<meta\s+property=["\']og:image["\']\s+content=["\']([^"\']+)["\']',
+        r'<meta\s+content=["\']([^"\']+)["\']\s+property=["\']og:image["\']',
+        r'<meta\s+name=["\']twitter:image["\']\s+content=["\']([^"\']+)["\']',
+        r'<meta\s+content=["\']([^"\']+)["\']\s+name=["\']twitter:image["\']',
+    )
+]
+_SNIPPET_IMG_SKIP = re.compile(
+    r"icon|badge|logo|arrow|button|sprite|spacer|1x1|pixel|emoji|flag.*\.svg",
+    re.IGNORECASE,
+)
+
+
+def _snippet_thumbnail(archive, zim, path, text):
+    """The page's picture for its result card: og:image / twitter:image from
+    <head>, else the best-sized <img> near the top that is not an icon."""
+    for pat in _SNIPPET_IMG_META:
+        m = pat.search(text[:8000])
+        if m:
+            src = m.group(1)
+            if not src.startswith(("http", "//", "data:")) and not src.lower().endswith(
+                ".svg"
+            ):
+                resolved = _srv._resolve_img_path(archive, path, src)
+                if resolved:
+                    return f"/w/{zim}/{resolved}"
+    best_img, best_area = None, 0
+    for m in re.finditer(r"<img\b([^>]*)>", text[:15000], re.IGNORECASE):
+        attrs = m.group(1)
+        src_m = re.search(r'src=["\']([^"\']+)["\']', attrs)
+        if not src_m:
+            continue
+        src = src_m.group(1)
+        if src.startswith(("data:", "http", "//")) or src.lower().endswith(".svg"):
+            continue
+        if _SNIPPET_IMG_SKIP.search(src) or _SNIPPET_IMG_SKIP.search(attrs):
+            continue
+        w_m = re.search(r'width=["\']?(\d+)', attrs)
+        h_m = re.search(r'height=["\']?(\d+)', attrs)
+        w = int(w_m.group(1)) if w_m else 0
+        h = int(h_m.group(1)) if h_m else 0
+        if (w > 0 and w < 60) or (h > 0 and h < 40):
+            continue  # explicitly tiny
+        area = (w or 200) * (h or 150)
+        if area > best_area:
+            resolved = _srv._resolve_img_path(archive, path, src)
+            if resolved:
+                best_img, best_area = f"/w/{zim}/{resolved}", area
+                if area >= 200 * 150:
+                    break  # good enough
+    return best_img
+
+
+def result_snippet(zim, path):
+    """{"snippet", "thumbnail"?} for a result card, or None when the ZIM is not
+    there (or not this user's). Read once, then kept."""
+    from zimi.previews import lead_text
+
+    _ensure_server_refs()
+    key = (zim, path)
+    with _zim_lock:
+        archive = _srv.get_archive(zim)
+        if archive is None:
+            return None
+        with _snippet_cache_lock:
+            kept = _snippet_cache.get(key)
+            if kept is not None:
+                _snippet_cache.move_to_end(key)
+                return kept
+        out = {"snippet": ""}
+        try:
+            item = archive.get_entry_by_path(path).get_item()
+            if item.size <= _srv.MAX_CONTENT_BYTES:
+                text = lead_text(item)
+                # The page's own summary, then its meta description, then body
+                # prose, past boilerplate some ZIMs put on every page.
+                out["snippet"] = _srv.extract_snippet(text, zim)
+                thumb = _snippet_thumbnail(archive, zim, path, text)
+                if thumb:
+                    out["thumbnail"] = thumb
+        except Exception:
+            pass
+    with _snippet_cache_lock:
+        _snippet_cache[key] = out
+        while len(_snippet_cache) > SNIPPET_CACHE_MAX:
+            _snippet_cache.popitem(last=False)
+    return out
+
+
+# The cards a first screen of results draws, for their snippets to come with
+# the results: each source's first few (the grouped view) and the first page
+# (the ranked one). The client's RESULTS_PER_PAGE and SEARCH_GROUP_SIZE.
+FIRST_SCREEN_RESULTS = 20
+FIRST_SCREEN_PER_SOURCE = 3
+
+
+def first_screen(results):
+    """(zim, path) of the results a first screen shows, ranked or grouped by
+    source (sources in the order of their best result), once each."""
+    keys = [(r["zim"], r["path"]) for r in results]
+    by_source = {}
+    for k in keys:
+        by_source.setdefault(k[0], []).append(k)
+    grouped = []
+    for group in by_source.values():
+        if len(grouped) >= FIRST_SCREEN_RESULTS:
+            break
+        grouped += group[:FIRST_SCREEN_PER_SOURCE]
+    return list(dict.fromkeys(keys[:FIRST_SCREEN_RESULTS] + grouped))
 
 
 _suggest_cache = {}  # {(query_lower, zim_name): {"results": [...], "ts": float}}
