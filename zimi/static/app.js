@@ -3452,7 +3452,7 @@ function renderHome(filter) {
     pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
     output.innerHTML = '<div id="discover-row"></div>'
       + '<div class="empty"><p>' + tH('no_sources_found') + '</p><p class="hint">' + tH('add_zims') + '</p>'
-      + (manageEnabled ? '<a href="/?manage" onclick="event.preventDefault();enterManage();setTimeout(function(){switchManageTab(\'browse\')},50)" style="display:inline-block;margin-top:16px;color:var(--amber);font-weight:500;font-size:14px;text-decoration:none;border-bottom:1px solid var(--amber-border)">' + tH('catalog_link') + '</a>' : '')
+      + (manageEnabled ? '<a href="/?manage" onclick="event.preventDefault();enterManage().then(function(ok){if(ok)switchManageTab(\'browse\')})" style="display:inline-block;margin-top:16px;color:var(--amber);font-weight:500;font-size:14px;text-decoration:none;border-bottom:1px solid var(--amber-border)">' + tH('catalog_link') + '</a>' : '')
       + '</div>'
       // The apps on a fresh install too, each tile saying what it needs and
       // opening its catalog category (docs/features/apps.md). The empty
@@ -5203,6 +5203,26 @@ var _createLoaded = false;
 
 // ``replaceState`` true means "this history entry IS Create" (a cold load of
 // /#create), false means "Create is a step forward from where we were".
+// A protected server and no token yet: the sign-in comes first, over the
+// page you are on, and what you asked for opens after (Create, Manage).
+function _needsSignIn() { return _managePwRequired && !_manageToken; }
+// Resolves true once signed in as an admin, false if cancelled. Through
+// /login, so what is kept is a session token, not the password typed.
+function _signInFirst() {
+  return new Promise(function(resolve) {
+    _pwResolve = function(tok) {
+      _manageToken = tok; _saveManageToken(tok, document.getElementById('pw-remember').checked);
+      _msPrefetch = {};  // whatever was fetched before the password is stale
+      _pwReject = null;
+      closePwModal();
+      resolve(true);
+    };
+    _pwReject = function() { resolve(false); };
+    _pwLoginMode = true;
+    openPwModal(t('sign_in'));
+  });
+}
+
 function openCreate(replaceState) {
   // Modifier-click: open Create in a new browser tab, like the Almanac.
   if (_isModClick()) {
@@ -5214,17 +5234,8 @@ function openCreate(replaceState) {
   // A protected server asks for the password here, before the page opens,
   // as Manage does: the page used to open and its first request came back
   // as a red "unauthorized" under the Create button (Eric, desktop app).
-  if (_managePwRequired && !_manageToken && !(_userSession && _userSession.can_create) && typeof openPwModal === 'function' && !_pwResolve) {
-    var _afterPw = function(tok) {
-      _manageToken = tok; _saveManageToken(tok, true);
-      closePwModal();
-      openCreate(replaceState);
-    };
-    _pwResolve = _afterPw; _pwReject = function() {};
-    // Through /login, so what _afterPw keeps is a session token, not the
-    // password that was typed.
-    _pwLoginMode = true;
-    openPwModal();
+  if (_needsSignIn() && !(_userSession && _userSession.can_create) && !_pwResolve) {
+    _signInFirst().then(function(ok) { if (ok) openCreate(replaceState); });
     return;
   }
   if (_createLoaded) { _openCreateInner(replaceState); return; }
@@ -7684,7 +7695,7 @@ async function enterManage(e, section) {
     // manage-auth probe has set manageEnabled we must not leave the button
     // dead (#44). Resolve the probe on demand (cheap, lock-free endpoint) and
     // only bail if management is genuinely disabled.
-    if (_manageProbed) { _dropManageBoot(); return; }   // probe finished: disabled
+    if (_manageProbed) { _dropManageBoot(); return false; }   // probe finished: disabled
     if (!_manageProbe) _manageProbe = _probeManageAuth();
     // The gear turns while the answer is on its way: on a busy server (a
     // library warming after a restart) that can be seconds, and a tap that
@@ -7692,7 +7703,16 @@ async function enterManage(e, section) {
     var gear = document.getElementById('manage-btn');
     if (gear) gear.classList.add('busy');
     try { await _manageProbe; } finally { if (gear) gear.classList.remove('busy'); }
-    if (!manageEnabled) { _dropManageBoot(); return; }  // resolved to disabled
+    if (!manageEnabled) { _dropManageBoot(); return false; }  // resolved to disabled
+  }
+  // Signed in first, over the page you are on: Manage painted under the
+  // modal said "Loading catalog..." while it waited for the password (Eric,
+  // 2026-09-21). Create's way. A cold /?manage shows the library behind it;
+  // a second call while the sign-in is up (the boot's re-check) waits on it.
+  if (_needsSignIn()) {
+    if (_pwResolve) return false;
+    _dropManageBoot();
+    if (!(await _signInFirst())) return false;
   }
   // Decide which settings section to land on: an explicit arg (deep link /
   // ?manage=<section>) wins, else a section a caller already staged in
@@ -7752,6 +7772,7 @@ async function enterManage(e, section) {
   // (#47). _creatorLoadInventory caches for the session and its DOM fill no-ops
   // until the Creator pane is actually on screen.
   if (typeof _creatorLoadInventory === 'function') _creatorLoadInventory();
+  return true;
 }
 
 // Reveal the library after a cold boot into ?manage that resolved to "you may
@@ -19620,7 +19641,7 @@ async function _openMapsCatalog() {
 // the door, the category is what fills it.
 async function _openCategory(key) {
   if (readerOpen) closeReader();
-  await enterManage(null);
+  if (!(await enterManage(null))) return;
   switchManageTab('browse');
   drillCategory(key);
 }
@@ -25523,7 +25544,8 @@ function _openDownloadsView(e) {
   _closeTopbarMenu();
   if (mode !== 'manage') {
     if (!manageEnabled) return;
-    enterManage();
+    enterManage().then(function(ok) { if (ok) switchManageTab('downloads'); });
+    return;
   }
   switchManageTab('downloads');
 }
