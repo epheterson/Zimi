@@ -11,14 +11,17 @@ var _PLANETS = {
   Venus:   { a: 0.72333, e: 0.00677, I: 3.395, L: 181.980, LP: 131.564, N: 76.680, da: 0, de: -0.00005, dI: -0.0008, dL: 58517.816, dLP: 0.013, dN: -0.278, color: '#e8c87a', glow: '#f0d890', vr: 0.014 },
   Earth:   { a: 1.00000, e: 0.01671, I: 0.000, L: 100.464, LP: 102.937, N: 0, da: 0, de: -0.00004, dI: -0.0131, dL: 35999.373, dLP: 0.323, dN: 0, color: '#4a90d9', glow: '#6ab0ff', vr: 0.015 },
   Mars:    { a: 1.52368, e: 0.09340, I: 1.850, L: 355.453, LP: 336.060, N: 49.558, da: 0, de: 0.00008, dI: -0.0013, dL: 19140.300, dLP: 0.444, dN: -0.293, color: '#c46040', glow: '#e07050', vr: 0.011 },
-  Jupiter: { a: 5.20260, e: 0.04849, I: 1.303, L: 34.351, LP: 14.331, N: 100.464, da: -0.00002, de: 0.00018, dI: -0.0055, dL: 3034.906, dLP: 0.215, dN: 0.177, color: '#c49868', glow: '#e0b888', vr: 0.032 },
-  Saturn:  { a: 9.55491, e: 0.05551, I: 2.489, L: 50.077, LP: 93.057, N: 113.665, da: -0.00003, de: -0.00035, dI: 0.0033, dL: 1222.114, dLP: 0.752, dN: -0.250, color: '#d4b878', glow: '#f0da98', vr: 0.026, rings: true },
-  Uranus:  { a: 19.1884, e: 0.04638, I: 0.773, L: 314.055, LP: 173.005, N: 74.006, da: -0.00002, de: -0.00002, dI: -0.0023, dL: 428.467, dLP: 0.009, dN: 0.074, color: '#78c8c8', glow: '#a0e8e8', vr: 0.018 },
-  Neptune: { a: 30.0699, e: 0.00895, I: 1.770, L: 304.223, LP: 46.682, N: 131.784, da: 0.00003, de: 0.00001, dI: 0.0001, dL: 218.460, dLP: 0.010, dN: -0.005, color: '#3868c8', glow: '#5888f0', vr: 0.016 }
+  Jupiter: { a: 5.20260, e: 0.04849, I: 1.303, L: 34.351, LP: 14.331, N: 100.464, da: -0.00002, de: 0.00018, dI: -0.0055, dL: 3034.906, dLP: 0.215, dN: 0.177, color: '#c49868', glow: '#e0b888', vr: 0.032, mb: -0.00012452, mc: 0.06064060, ms: -0.35635438, mf: 38.35125 },
+  Saturn:  { a: 9.55491, e: 0.05551, I: 2.489, L: 50.077, LP: 93.057, N: 113.665, da: -0.00003, de: -0.00035, dI: 0.0033, dL: 1222.114, dLP: 0.752, dN: -0.250, color: '#d4b878', glow: '#f0da98', vr: 0.026, rings: true, mb: 0.00025899, mc: -0.13434469, ms: 0.87320147, mf: 38.35125 },
+  Uranus:  { a: 19.1884, e: 0.04638, I: 0.773, L: 314.055, LP: 173.005, N: 74.006, da: -0.00002, de: -0.00002, dI: -0.0023, dL: 428.467, dLP: 0.009, dN: 0.074, color: '#78c8c8', glow: '#a0e8e8', vr: 0.018, mb: 0.00058331, mc: -0.97731848, ms: 0.17689245, mf: 7.67025 },
+  Neptune: { a: 30.0699, e: 0.00895, I: 1.770, L: 304.223, LP: 46.682, N: 131.784, da: 0.00003, de: 0.00001, dI: 0.0001, dL: 218.460, dLP: 0.010, dN: -0.005, color: '#3868c8', glow: '#5888f0', vr: 0.016, mb: -0.00041348, mc: 0.68346318, ms: -0.10162547, mf: 7.67025 }
 };
 
 var _ORRERY_MAX_ECC = 0.99;
-function _planetPosition(name, T) {
+// A planet's elements at T (Julian centuries from J2000; JPL's approximate
+// Keplerian elements, J2000 ecliptic and equinox) and its place in its own
+// orbit plane: xp toward perihelion, yp a quarter turn on, the way it moves.
+function _planetOrbit(name, T) {
   var p = _PLANETS[name];
   var a = p.a + p.da * T;
   // The element rates are linear fits for a few thousand years. Hundreds of
@@ -27,15 +30,41 @@ function _planetPosition(name, T) {
   var e = Math.min(Math.max(p.e + p.de * T, 0), _ORRERY_MAX_ECC);
   var L = (p.L + p.dL * T) % 360;
   var LP = (p.LP + p.dLP * T) % 360;
-  var M = ((L - LP) % 360 + 360) % 360;
-  var Mrad = M * DEG_TO_RAD;
-  var E = _solveKepler(Mrad, e);
-  var xp = a * (Math.cos(E) - e);
-  var yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
-  var LPrad = LP * DEG_TO_RAD;
-  var x = xp * Math.cos(LPrad) - yp * Math.sin(LPrad);
-  var y = xp * Math.sin(LPrad) + yp * Math.cos(LPrad);
+  var M = L - LP;
+  // Jupiter to Neptune pull on each other; JPL's Table 2b terms put that into
+  // the mean anomaly (b T^2 + c cos fT + s sin fT, degrees).
+  if (p.mf) M += p.mb * T * T + p.mc * Math.cos(p.mf * T * DEG_TO_RAD) + p.ms * Math.sin(p.mf * T * DEG_TO_RAD);
+  M = (M % 360 + 360) % 360;
+  var E = _solveKepler(M * DEG_TO_RAD, e);
+  return {
+    xp: a * (Math.cos(E) - e), yp: a * Math.sqrt(1 - e * e) * Math.sin(E),
+    LP: LP, N: p.N + p.dN * T, I: p.I + p.dI * T
+  };
+}
+
+// The orrery's flat solar system: the orbit turned to its perihelion in the
+// ecliptic plane (the drawing has no up or down).
+function _planetPosition(name, T) {
+  var o = _planetOrbit(name, T);
+  var LPrad = o.LP * DEG_TO_RAD;
+  var x = o.xp * Math.cos(LPrad) - o.yp * Math.sin(LPrad);
+  var y = o.xp * Math.sin(LPrad) + o.yp * Math.cos(LPrad);
   return { x: x, y: y, r: Math.sqrt(x * x + y * y) };
+}
+
+// The same orbit in three dimensions (AU, heliocentric, J2000 ecliptic), its
+// node and inclination too, which the sky needs: Venus stands up to 8 degrees
+// off the ecliptic seen from here. JPL, "Keplerian Elements for Approximate
+// Positions of the Major Planets" (Standish), eq. 8.
+function _planetHelio3D(name, T) {
+  var o = _planetOrbit(name, T);
+  var w = (o.LP - o.N) * DEG_TO_RAD, N = o.N * DEG_TO_RAD, I = o.I * DEG_TO_RAD;
+  var cw = Math.cos(w), sw = Math.sin(w), cN = Math.cos(N), sN = Math.sin(N), cI = Math.cos(I), sI = Math.sin(I);
+  return {
+    x: (cw * cN - sw * sN * cI) * o.xp + (-sw * cN - cw * sN * cI) * o.yp,
+    y: (cw * sN + sw * cN * cI) * o.xp + (-sw * sN + cw * cN * cI) * o.yp,
+    z: sw * sI * o.xp + cw * sI * o.yp
+  };
 }
 
 // ── Light and relativity: the numbers behind the hover delay, the ride and the twins ──
@@ -1531,9 +1560,8 @@ function _orreryUpdateRide() {
   _orrSetText('orrery-ride-dist', t('alm_orr_au_from_earth', { d: _orrFmtAU(st.au) }));
   _orrSetText('orrery-ride-delay', t(arrived ? 'alm_orr_msg_home_now' : 'alm_orr_msg_home', { t: span }));
   var tw = _orreryTwinClocks(rk, _orreryTwinBeta, st.frac);
-  _orrSetText('orrery-twin-speed', _orreryTwinBeta > 0
-    ? t('alm_orr_twin_whatif_at', { v: _orrFmtBeta(_orreryTwinBeta) })
-    : t('alm_orr_twin_real', { v: _orrNum(_orreryRealSpeedKmS(rk), 'kilometer-per-second') }));
+  var speed = _orreryTwinBeta > 0 ? _orrFmtBeta(_orreryTwinBeta) : _orrNum(_orreryRealSpeedKmS(rk), 'kilometer-per-second');
+  _orrSetText('orrery-twin-speed', t(_orreryTwinBeta > 0 ? 'alm_orr_twin_whatif_at' : 'alm_orr_twin_real', { v: speed }));
   _orrSetText('orrery-twin-earth', _orrFmtSpan(tw.earth));
   _orrSetText('orrery-twin-ship', _orrFmtSpan(tw.ship));
   _orrSetText('orrery-twin-note', t('alm_orr_twin_explain', { g: _orrFmtGamma(tw.gamma), lag: _orrFmtSpan(_orreryShownLag(tw)) }));
@@ -1719,5 +1747,17 @@ function _orreryLaunchRocket(targetName) {
 }
 
 var _PLANET_V0 = { Mercury: -0.61, Venus: -4.40, Mars: -1.60, Jupiter: -9.40, Saturn: -8.88, Uranus: -7.19, Neptune: -6.87 };
+
+// A planet's apparent magnitude from its distances in AU: to the Sun r, to
+// the Earth delta, and the Earth's own from the Sun R. Mercury and Venus,
+// whose phase changes most, dim by the share of the disc that is lit (rough).
+function _planetMagnitude(name, r, delta, R) {
+  var mag = _PLANET_V0[name] + 5 * Math.log10(r * delta);
+  if (name === 'Venus' || name === 'Mercury') {
+    var cosPA = Math.max(-1, Math.min(1, (r * r + delta * delta - R * R) / (2 * r * delta)));
+    mag += -2.5 * Math.log10(Math.max(0.01, (1 + cosPA) / 2));
+  }
+  return mag;
+}
 
 var _VISIBLE_PLANETS = ['Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune'];
