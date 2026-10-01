@@ -193,6 +193,7 @@ _RATE_LIMITED_API_PATHS = (
     "/reddot",
     "/wiki",
     "/books",
+    "/dictionary",
     "/map-home",
     "/read",
     "/suggest",
@@ -207,7 +208,7 @@ _RATE_LIMITED_API_PATHS = (
 
 # The apps' routes below their bare path (/exchange/question, /reddot/post):
 # matched exactly, they answered without limit.
-_RATE_LIMITED_API_PREFIXES = ("/exchange/", "/reddot/", "/tube/", "/wiki/", "/books/")
+_RATE_LIMITED_API_PREFIXES = ("/exchange/", "/reddot/", "/tube/", "/wiki/", "/books/", "/dictionary/")
 
 # High-frequency read-only manage polls. While a download runs the manage UI
 # keeps three independent timers alive — downloads+seeding every 2s, activity
@@ -1003,6 +1004,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("wiki.html")
             + _static_hash("wiki-reader.js")
             + _static_hash("books.html")
+            + _static_hash("dictionary.html")
             + _static_hash("apps.css")
             + _static_hash("apps.js")
             + _i18n_hash
@@ -1757,7 +1759,7 @@ def _reconstruct_source_url(archive, entry_path):
 # ============================================================================
 
 
-APP_PAGES = ("tube.html", "exchange.html", "reddot.html", "wiki.html", "books.html")
+APP_PAGES = ("tube.html", "exchange.html", "reddot.html", "wiki.html", "books.html", "dictionary.html")
 # Pages that show a ZIM's own HTML may load only from Zimi: inline styles and
 # scripts run (ZIM content uses them), anything on another host is refused,
 # and nothing outside Zimi may frame them. A ZIM's article and an app page
@@ -2656,6 +2658,27 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if sub == "book":
                     got = _books.book(param("zim") or "", param("id"))
                     return self._json(200, got) if got else self._json(404, {"error": "not found"})
+                return self._json(404, {"error": "not found"})
+            elif parsed.path == "/dictionary" or parsed.path.startswith("/dictionary/"):
+                # Dictionary: one word across every Wiktionary in the library.
+                from zimi import dictionary as _dict
+
+                if "dictionary" not in _srv.apps_shown():
+                    return self._json(404, {"error": "not found"})
+                sub = parsed.path[len("/dictionary"):].strip("/")
+                if sub in ("", "home"):
+                    return self._json(200, _dict.home())
+                if sub == "today":
+                    return self._json(200, _dict.today(param("day") or ""))
+                if sub == "suggest":
+                    return self._json(200, _dict.suggest(param("q") or ""))
+                if sub == "word":
+                    def split(v):
+                        return [x for x in (v or "").split(",") if x][:8]
+
+                    return self._json(200, _dict.lookup(
+                        param("w") or "", langs=split(param("langs")), names=split(param("names")),
+                        every=param("tr") == "all"))
                 return self._json(404, {"error": "not found"})
             elif parsed.path == "/exchange" or parsed.path.startswith("/exchange/"):
                 # ZimiExchange: every Stack Exchange site in the library.

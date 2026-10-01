@@ -107,7 +107,7 @@ def test_the_default_shell_carries_no_stamp(data_dir):
         (" Reddot , maps ", {"maps", "reddot"}),
         ("maps,bogus", {"maps"}),
         ("all", set(srv.APP_NAMES)),
-        ("maps,tube,exchange,reddot,wiki,books", set(srv.APP_NAMES)),
+        ("maps,tube,exchange,reddot,wiki,books,dictionary", set(srv.APP_NAMES)),
         ("none", set()),
         (["exchange"], {"exchange"}),
         (True, set(srv.APP_NAMES)),

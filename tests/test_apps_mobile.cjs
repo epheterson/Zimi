@@ -48,7 +48,7 @@ ok('leaving the page resets it', !away() && ctx._chromeBase === 0);
 ok('only an app page can move it, by the two words apps.js speaks',
   /d\.zimi === 'scroll' && typeof d\.y === 'number' && _isAppPage\(\)/.test(app) && /d\.zimi === 'immersive' && _isAppPage\(\)/.test(app));
 ok('closing an app, opening a page and leaving the Almanac put it back',
-  /_booksOpen = false;\n  _chromeReset\(\);/.test(app) && /function openReader\(url\) \{\n  _chromeReset\(\);/.test(app) && /_almanacOpen = false;\n  if \(typeof _chromeReset === 'function'\) _chromeReset\(\);/.test(almanac));
+  /_booksOpen = false;[^\n]*\n  _chromeReset\(\);/.test(app) && /function openReader\(url\) \{\n  _chromeReset\(\);/.test(app) && /_almanacOpen = false;\n  if \(typeof _chromeReset === 'function'\) _chromeReset\(\);/.test(almanac));
 ok('the Almanac scrolls it away too', /content\.addEventListener\('scroll', function\(\) \{ if \(_almanacOpen\) _chromeScroll\(content\.scrollTop\); \}/.test(almanac));
 ok('the hiding is a phone thing, and moves the page into the room it leaves',
   /@media \(max-width: 900px\), \(max-height: 500px\) \{[\s\S]*?body\.chrome-away \{ --under-topbar: var\(--conn-h\); \}[\s\S]*?body\.chrome-away \.topbar:not\(:focus-within\) \{ transform: translateY\(-100%\); \}/.test(appCss));

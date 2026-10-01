@@ -620,8 +620,8 @@ _SAVED_LIKED = "liked"
 #: no claim on it (sv 0), so a like never clears a save and an unsave never
 #: clears a like.
 _SAVED_VERSION = 2
-_SAVED_KINDS = ("article", "book", "video", "question", "post", "place")
-_SAVED_APPS = ("books", "tube", "exchange", "reddot", "maps", "wiki")
+_SAVED_KINDS = ("article", "book", "video", "question", "post", "place", "word")
+_SAVED_APPS = ("books", "tube", "exchange", "reddot", "maps", "wiki", "dictionary")
 _SAVED_COLLS = (
     ("items", "i:"),
     ("lists", "l:"),

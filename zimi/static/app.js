@@ -1120,6 +1120,7 @@ function _applyI18nToDOM() {
 function _appPlaceholder() {
   if (_isWikiPage()) return t('wiki_search_placeholder');
   if (_isBooksPage()) return t('books_search_placeholder');
+  if (_isDictPage()) return t('dictionary_search_placeholder');
   if (_isReddotPage()) return t('reddot_search_placeholder');
   if (_isExchangePage()) return t('exchange_search_placeholder');
   if (_isTubePage()) return t('tube_search_placeholder');
@@ -1793,8 +1794,8 @@ function updateTopbar() {
     bcIcon.innerHTML = _ALMANAC_BC_ICON;
     // Identity only — no destination behind it, so no link affordance either.
     bcIcon.removeAttribute('href');
-  } else if (_isWikiPage() || _isBooksPage()) {
-    var hashApp = _isWikiPage() ? 'wiki' : 'books';
+  } else if (_isWikiPage() || _isBooksPage() || _isDictPage()) {
+    var hashApp = _isWikiPage() ? 'wiki' : _isBooksPage() ? 'books' : 'dictionary';
     bcSep.style.display = 'inline';
     bcIcon.style.display = 'inline-flex';
     bcIcon.title = t(hashApp);
@@ -2461,8 +2462,10 @@ function route(push) {
   if (params.get('tube') !== null) { enterHome(false); openTube(true, params.get('tube') || ''); return; }
   if (params.get('exchange') !== null) { enterHome(false); openExchange(true, params.get('exchange') || ''); return; }
   if (params.get('reddot') !== null) { enterHome(false); openReddot(true, params.get('reddot') || ''); return; }
+  if (params.get('dictionary') !== null) { enterHome(false); openDictionary(true, params.get('dictionary') || ''); return; }
   if (location.hash === '#wiki') { enterHome(false); openWiki(true); return; }
   if (location.hash === '#books') { enterHome(false); openBooks(true); return; }
+  if (location.hash === '#dictionary') { enterHome(false); openDictionary(true, ''); return; }
   if (location.hash === '#reddot' || location.hash.indexOf('#reddot?') === 0) {
     enterHome(false);
     var rdQ = new URLSearchParams(location.hash.slice(location.hash.indexOf('?') + 1));
@@ -2733,7 +2736,7 @@ function goHome(e) {
 }
 
 function _isAppPage() {
-  return _isTubePage() || _isExchangePage() || _isReddotPage() || _isWikiPage() || _isBooksPage();
+  return _isTubePage() || _isExchangePage() || _isReddotPage() || _isWikiPage() || _isBooksPage() || _isDictPage();
 }
 // The reader is on the PDF viewer: nothing to read aloud, no type size.
 function _isPdfPage() {
@@ -2744,7 +2747,7 @@ function _isPdfPage() {
 // The app's home, in place of the item a shared link landed on.
 function _appEntryHome() {
   var app = _tubeOpen ? ['tube', 'play', _tubeUrl('')] : _exchangeOpen ? ['exchange', 'q', _exchangeUrl('')]
-    : _wikiOpen ? ['wiki', 'q', '/#wiki'] : _booksOpen ? ['books', 'q', '/#books'] : ['reddot', 'p', _reddotUrl('')];
+    : _wikiOpen ? ['wiki', 'q', '/#wiki'] : _booksOpen ? ['books', 'q', '/#books'] : _dictOpen ? ['dictionary', 'w', _dictUrl('')] : ['reddot', 'p', _reddotUrl('')];
   var st = { mode: 'reader' }; st[app[0]] = true; st[app[1]] = '';
   _appHome(st, app[2], app[1]);
   // "home", not a route to nothing: a route only closes the thing on
@@ -7047,6 +7050,10 @@ q.addEventListener('input', () => {
   if (_isWikiPage() || _isBooksPage()) {
     hideSuggest();
     suggestTimer = setTimeout(function() { (_isWikiPage() ? _wikiSearch : _booksSearch)(val); }, 250);
+  } else if (_isDictPage()) {
+    // Dictionary: the words the Wiktionaries have, as you type; Enter opens one.
+    hideSuggest();
+    suggestTimer = setTimeout(function() { _appFrameCall('dictSearch', val); }, 200);
   } else if (_isReddotPage()) {
     hideSuggest();
     suggestTimer = setTimeout(function() { _reddotSearch(val); }, 250);
@@ -7146,6 +7153,7 @@ q.addEventListener('keydown', e => {
     if (_isReddotPage()) { _reddotSearch(q.value.trim()); return; }
     if (_isWikiPage()) { _wikiSearch(q.value.trim()); return; }
     if (_isBooksPage()) { _booksSearch(q.value.trim()); return; }
+    if (_isDictPage()) { _appFrameCall('dictGo', q.value.trim()); return; }
     if (_isMapPage()) {
       if (suggestItems.length && suggestItems[0]._place) selectSuggest(0);
       else if (q.value.trim().length >= 2) fetchPlaces(q.value.trim());
@@ -18226,11 +18234,11 @@ function _appFrameCall(fn, val) {
 // No app is on screen: an article, the home page, or another app about to
 // say it is.
 function _appsOff() {
-  _tubeOpen = false; _exchangeOpen = false; _reddotOpen = false; _wikiOpen = false; _booksOpen = false;
+  _tubeOpen = false; _exchangeOpen = false; _reddotOpen = false; _wikiOpen = false; _booksOpen = false; _dictOpen = false;
   _chromeReset();
 }
 function _anyAppOpen() {
-  return _tubeOpen || _exchangeOpen || _reddotOpen || _wikiOpen || _booksOpen;
+  return _tubeOpen || _exchangeOpen || _reddotOpen || _wikiOpen || _booksOpen || _dictOpen;
 }
 
 // ── Bookshelf ──
@@ -18272,6 +18280,60 @@ function openBooks(replaceState) {
   _openHashApp('books', replaceState, function() { _booksOpen = true; return _BOOKS_PAGE + '#' + _booksStrings(); });
 }
 function _booksSearch(val) { _appFrameCall('booksSearch', val); }
+
+// ── Dictionary ──
+// One word across every Wiktionary in the library (/static/dictionary.html,
+// zimi/dictionary.py), shown in the reader like the other apps, each word a
+// step to the next. Eric, 2026-09-28: "done really well might be nice,
+// especially if it's like a nice down the wormhole experience." A word has
+// an address of its own (/?dictionary=water); the front is /#dictionary.
+var _dictOpen = false;
+var _DICT_PAGE = '/static/dictionary.html?v=1';
+var _DICT_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"/><path d="M9.5 12.5l2.5-6 2.5 6M10.4 10.5h3.2"/></svg>';
+// The Wiktionaries: Zimipedia reads them as wikis; Dictionary reads their words.
+function _installedDictZims() {
+  return (zimsCache || []).filter(function(z) { return z.main_path && z.kind === 'wiki' && z.project === 'wiktionary'; })
+    .sort(function(a, b) { return (a.title || a.name).localeCompare(b.title || b.name); });
+}
+function _isDictPage() {
+  return !!(_dictOpen && readerOpen && !_almanacOpen && !_createOpen);
+}
+function _dictionaryTileHtml() {
+  return _appTileHtml('dictionary', t('dictionary'), _DICT_SVG, _installedDictZims().map(function(z) { return z.title || z.name; }), 'openDictionary');
+}
+function _dictUrl(w) {
+  return w ? '/?dictionary=' + encodeURIComponent(w) : '/#dictionary';
+}
+function _dictStrings(w) {
+  return _appStrings('dictionary', ['dictionary_recent', 'dictionary_saved_words', 'dictionary_sources', 'dictionary_etymology', 'dictionary_translations',
+    'dictionary_all_translations', 'dictionary_fewer_translations', 'dictionary_synonyms', 'dictionary_antonyms', 'dictionary_homophones', 'dictionary_rhymes',
+    'dictionary_hyphenation', 'dictionary_other_languages', 'dictionary_from', 'dictionary_say', 'dictionary_say_word', 'dictionary_recording', 'dictionary_no_voice',
+    'dictionary_not_found', 'dictionary_near', 'dictionary_empty', 'dictionary_more', 'dictionary_load_failed', 'dictionary_also', 'dictionary_hint', 'dictionary_entries'],
+    { w: w || '', word_of_day: t('word_of_day'), retry: t('retry'), catalog: t('app_browse_catalog') });
+}
+// A word (or the front, w ''), as Reddot opens a post.
+function openDictionary(replaceState, w) {
+  w = typeof w === 'string' ? w : '';
+  if (_isModClick()) { _lastMouseEvent = null; window.open(_dictUrl(w), '_blank'); return; }
+  if (_createOpen) closeCreate();
+  if (_almanacOpen) closeAlmanac();
+  if (mode === 'manage') { mode = 'home'; updateTopbar(); }
+  if (_mapWatched) { _mapWatched = null; clearTimeout(_mapHashTimer); }
+  if (currentArticle) _pushArticleHistory(currentArticle.zim, currentArticle.path);
+  currentArticle = null;
+  readerSource = null;
+  _appsOff();
+  _dictOpen = true;
+  _appTop = !w;
+  var st = { mode: 'reader', dictionary: true, w: w };
+  if (replaceState && w) st.entry = true;
+  if (replaceState) history.replaceState(st, '', _dictUrl(w));
+  else history.pushState(st, '', _dictUrl(w));
+  openReader(_DICT_PAGE + '#' + _dictStrings(w));
+  document.title = (w ? w + ' — ' : '') + t('dictionary') + (w ? '' : ' — Zimi');
+  _setWindowTitle(document.title);
+  updateTopbar();
+}
 
 // ── Reading settings: the book reader's and Zimipedia's ──
 // One sheet (theme, font, text size, line spacing, margins, and for a book
@@ -19398,7 +19460,12 @@ function _appItemOpened(app, id, title) {
 function _appItemClosed() { _appItem = null; _updateLibraryBtnIcon(); updateTopbar(); }
 function _openAppItem(app, zim, path) {
   var id = zim + '/' + path;
-  if (app === 'tube') openTube(false, id); else if (app === 'exchange') openExchange(false, id); else openReddot(false, id);
+  if (app === 'dictionary') openDictionary(false, _dictWordOfPath(path));
+  else if (app === 'tube') openTube(false, id); else if (app === 'exchange') openExchange(false, id); else openReddot(false, id);
+}
+// A Wiktionary page's word: the old A/ namespace off, underscores as spaces.
+function _dictWordOfPath(path) {
+  return String(path || '').replace(/^A\//, '').replace(/_/g, ' ');
 }
 
 // A search result (or a Discover card) opens in the app made for its kind,
@@ -19431,7 +19498,7 @@ function _openResult(zim, path, title) {
 }
 // The apps whose things (a video, a question, a post) open in the app, not
 // the reader; each thing's kind is the one Saved.KIND_APP gives the app.
-var _APP_ITEM_APPS = ['tube', 'exchange', 'reddot'];
+var _APP_ITEM_APPS = ['tube', 'exchange', 'reddot', 'dictionary'];
 function _appItemKind(app) {
   if (_APP_ITEM_APPS.indexOf(app) < 0) return '';
   for (var k in Saved.KIND_APP) if (Saved.KIND_APP[k] === app) return k;
@@ -19503,7 +19570,7 @@ window.addEventListener('message', function(e) {
     _setWindowTitle(document.title);
   } else if (d.zimi === 'back') {
     // The page's own back arrow: the step the shell took for it.
-    if (history.state && (history.state.play || history.state.q || history.state.p)) history.back();
+    if (history.state && (history.state.play || history.state.q || history.state.p || history.state.w)) history.back();
   } else if (d.zimi === 'open' && typeof d.zim === 'string' && typeof d.path === 'string' && d.zim && d.path) {
     // "Open the original page" from an app: an article with the app as the
     // step behind it, so the header's arrow returns to the video, the
@@ -19546,6 +19613,19 @@ window.addEventListener('message', function(e) {
     _appHome({ mode: 'reader', exchange: true, q: '' }, _exchangeUrl(''), 'q');
     _appItemClosed();
     document.title = t('exchange') + ' \u2014 Zimi';
+    _setWindowTitle(document.title);
+  } else if (d.zimi === 'dictionary-w' && _dictOpen && typeof d.w === 'string' && d.w) {
+    // A word: its own address, a step from the front, and from one word to
+    // the next the same step rewritten (the page's trail walks back them).
+    _appStep({ mode: 'reader', dictionary: true, w: d.w }, _dictUrl(d.w), 'w');
+    document.title = d.w + ' \u2014 ' + t('dictionary');
+    _setWindowTitle(document.title);
+    if (typeof d.zim === 'string' && typeof d.path === 'string' && d.zim && d.path) _appItemOpened('dictionary', d.zim + '/' + d.path, d.w);
+    else _appItemClosed();
+  } else if (d.zimi === 'dictionary-home' && _dictOpen) {
+    _appHome({ mode: 'reader', dictionary: true, w: '' }, _dictUrl(''), 'w');
+    _appItemClosed();
+    document.title = t('dictionary') + ' \u2014 Zimi';
     _setWindowTitle(document.title);
   } else if (d.zimi === 'catalog' && typeof d.category === 'string' && _APP_CATEGORY_KEYS.indexOf(d.category) >= 0) {
     _openCategory(d.category);
@@ -19630,7 +19710,7 @@ function openTube(replaceState, play) {
 // can exist on a fresh install and suggest which zims to add or pop to
 // relevant catalog categories." An app with data opens; one without opens
 // the catalog category that feeds it, and its tile says so.
-var _APP_CATEGORY = { maps: 'maps', tube: 'ted', exchange: 'stack_exchange', wiki: 'wikipedia', books: 'gutenberg' };  // reddot: made, not downloaded
+var _APP_CATEGORY = { maps: 'maps', tube: 'ted', exchange: 'stack_exchange', wiki: 'wikipedia', books: 'gutenberg', dictionary: 'wikipedia' };  // reddot: made, not downloaded
 // A mode the Create page should open on, set by whoever sends someone there.
 var _createRememberMode = '';
 var _createRememberSource = '';
@@ -19644,7 +19724,7 @@ var _REDDIT_ADDRESS_START = 'https://www.reddit.com/r/Kiwix';
 // (ZIMI_APPS, or the switch in Server settings; stamped on the shell) or
 // this signed-in person turned it off for their account. Never per
 // browser (Eric: "Not per browser only per user or server").
-var APP_NAMES = ['maps', 'tube', 'exchange', 'reddot', 'wiki', 'books'];
+var APP_NAMES = ['maps', 'tube', 'exchange', 'reddot', 'wiki', 'books', 'dictionary'];
 // Offered only when the server names them (a preview, while it is built):
 // none now, Zimipedia was one until its reader. Mirrors server.APPS_OPT_IN.
 var APPS_OPT_IN = [];
@@ -19707,7 +19787,7 @@ function _setUserApp(app, on) {
 // and a name, lit when offered (Eric: "the lil app tiles with icons and i
 // can select or deselect which to show").
 function _appIcon(app) {
-  return app === 'maps' ? _MAPS_SVG : app === 'tube' ? _TUBE_PLAY_SVG : app === 'exchange' ? _EXCHANGE_SVG : app === 'wiki' ? _WIKI_SVG : app === 'books' ? _BOOKS_SVG : _REDDOT_SVG;
+  return app === 'maps' ? _MAPS_SVG : app === 'tube' ? _TUBE_PLAY_SVG : app === 'exchange' ? _EXCHANGE_SVG : app === 'wiki' ? _WIKI_SVG : app === 'books' ? _BOOKS_SVG : app === 'dictionary' ? _DICT_SVG : _REDDOT_SVG;
 }
 // The ZIMs inside each app: the ones its tile names and its page reads.
 function _appZims(app) {
@@ -19716,6 +19796,7 @@ function _appZims(app) {
     : app === 'exchange' ? _installedQaZims()
     : app === 'wiki' ? _installedWikiZims()
     : app === 'books' ? _installedBookZims()
+    : app === 'dictionary' ? _installedDictZims()
     : _installedRedditZims();
 }
 // What the library holds for each app, in a line under its name.
@@ -19738,7 +19819,7 @@ function _appPicksHtml(apps, checked, onchange, disabled) {
 
 // Each app's tile and its door, by name, so the row and the Apps page can
 // take the apps in any order.
-var _APP_TILES = { maps: _mapsTileHtml, tube: _tubeTileHtml, exchange: _exchangeTileHtml, reddot: _reddotTileHtml, wiki: _wikiTileHtml, books: _booksTileHtml };
+var _APP_TILES = { maps: _mapsTileHtml, tube: _tubeTileHtml, exchange: _exchangeTileHtml, reddot: _reddotTileHtml, wiki: _wikiTileHtml, books: _booksTileHtml, dictionary: _dictionaryTileHtml };
 
 // The apps follow the library's order, as the sources do (#100). Eric: "sort
 // the apps by recently updated (i.e. contains zims that were recently
@@ -19831,7 +19912,7 @@ function _appItemsCount(app, z) {
   var items = z.items || {};
   if (items[app]) return items[app];
   if (app === 'books' && z.feeds && z.feeds.books === 'whole') return 1;
-  if (app === 'wiki') return typeof z.article_count === 'number' ? z.article_count : undefined;
+  if (app === 'wiki' || app === 'dictionary') return typeof z.article_count === 'number' ? z.article_count : undefined;
   if (app === 'tube' && z.shape && z.shape.breakdown) {
     var n = 0;
     z.shape.breakdown.forEach(function(b) { if (b.key === 'video' || b.key === 'audio') n += b.count || 0; });
@@ -21209,10 +21290,14 @@ function _savedCurrentApp() {
   if (_isExchangePage()) return 'exchange';
   if (_isReddotPage()) return 'reddot';
   if (_isWikiPage()) return 'wiki';
+  if (_isDictPage()) return 'dictionary';
   if (_isMapPage()) return 'maps';
   return '';
 }
 function _savedListName(l) { return l.builtin ? t('saved_liked') : l.name; }
+// A slice of Saved named by what is in it where the app's name says less:
+// Dictionary keeps words.
+function _savedSliceName(app) { return app === 'dictionary' ? t('saved_words') : _appTitle(app); }
 function _bmScopeQuery() { return _bmScope ? { app: _bmScope } : {}; }
 function _bmSetScope(app) { _bmScope = app || ''; _bmRerender(); }
 
@@ -21367,7 +21452,7 @@ function _bmScopeHtml() {
     var on = _bmScope === value;
     return '<button type="button" class="pill' + (on ? ' active' : '') + '" aria-pressed="' + on + '" onclick="_bmSetScope(\'' + value + '\')">' + esc(label) + '</button>';
   };
-  return '<div class="bm-scope" role="group">' + chip(app, _appTitle(app)) + chip('', t('saved_all')) + '</div>';
+  return '<div class="bm-scope" role="group">' + chip(app, _savedSliceName(app)) + chip('', t('saved_all')) + '</div>';
 }
 
 // A row's ⋯: its menu. Out of the Tab order, so Tab leaves the tree in one
@@ -22159,10 +22244,10 @@ var Saved = (function () {
   var LIKED = 'liked';
   // The store's shape. 1: 1.12.0, where a like saved the thing too (see likesFromV1).
   var VERSION = 2;
-  var KINDS = ['article', 'book', 'video', 'question', 'post', 'place'];
-  var APPS = ['books', 'tube', 'exchange', 'reddot', 'maps', 'wiki'];
+  var KINDS = ['article', 'book', 'video', 'question', 'post', 'place', 'word'];
+  var APPS = ['books', 'tube', 'exchange', 'reddot', 'maps', 'wiki', 'dictionary'];
   // The app a kind belongs to when the one saving it did not say.
-  var KIND_APP = { book: 'books', video: 'tube', question: 'exchange', post: 'reddot', place: 'maps' };
+  var KIND_APP = { book: 'books', video: 'tube', question: 'exchange', post: 'reddot', place: 'maps', word: 'dictionary' };
   var COLLS = [['items', 'i:'], ['lists', 'l:'], ['members', 'm:'], ['positions', 'p:'], ['highlights', 'h:']];
   // How many of each a person can keep, and the store's bytes as the
   // account's file holds it (UTF-8 JSON): past one, a new one is refused with
@@ -24646,11 +24731,12 @@ window.addEventListener('popstate', async (e) => {
     if (app.reddot && _appFrameRoute(_reddotOpen, app.p)) return;
     if (app.wiki && _appFrameRoute(_wikiOpen, '')) return;
     if (app.books && _appFrameRoute(_booksOpen, '')) return;
+    if (app.dictionary && _appFrameRoute(_dictOpen, app.w)) return;
   }
   // Landing on an app's address from the article opened out of it: the app
   // is reopened below, not stepped past. (The article history's own copy of
   // that step would otherwise take a second step back.)
-  var toApp = app && app.mode === 'reader' && (app.tube || app.exchange || app.reddot || app.wiki || app.books);
+  var toApp = app && app.mode === 'reader' && (app.tube || app.exchange || app.reddot || app.wiki || app.books || app.dictionary);
   // Step through article history when reader is open (mirrors in-app back button)
   if (readerOpen && articleHistory.length > 0 && !toApp) {
     _stepBackToArticle(articleHistory.pop(), false);
@@ -24690,6 +24776,8 @@ window.addEventListener('popstate', async (e) => {
     if (!_appFrameRoute(_wikiOpen, '')) openWiki(true);
   } else if (s && s.mode === 'reader' && s.books) {
     if (!_appFrameRoute(_booksOpen, '')) openBooks(true);
+  } else if (s && s.mode === 'reader' && s.dictionary) {
+    if (!_appFrameRoute(_dictOpen, s.w)) openDictionary(true, s.w || '');
   } else if (s && s.mode === 'reader' && s.reddot) {
     if (!_appFrameRoute(_reddotOpen, s.p)) openReddot(true, s.p || '');
   } else if (s && s.mode === 'reader' && s.exchange) {
@@ -25510,7 +25598,7 @@ function _defineRenderResult(st, hit, html) {
     ? '<div class="define-body">' + body + '</div>'
     : '<div class="define-status">' + tH('define_no_results') + '</div>';
   _definePopover.innerHTML = '<div class="define-card">' + head + content +
-    '<a class="define-open" onclick="_defineOpenFull()">' + tH('define_open_full') + '</a></div>';
+    '<a class="define-open" onclick="_defineOpenFull()">' + tH(_appShown('dictionary') ? 'define_in_dictionary' : 'define_open_full') + '</a></div>';
   _defineReposition(); // final card size known — re-clamp so it can't spill off-screen
 }
 
@@ -25527,10 +25615,14 @@ function _defineWordAt(word, doc, rect) {
   _defineRun();
 }
 
+// The whole word: in Dictionary, where every Wiktionary says it and it can
+// be heard, when Dictionary is offered; else the entry in its ZIM.
 function _defineOpenFull() {
   var st = _defineState;
   _defineHide();
-  if (st && st.zim && st.path) openArticle(st.zim, st.path);
+  if (!st) return;
+  if (_appShown('dictionary')) openDictionary(false, st.word);
+  else if (st.zim && st.path) openArticle(st.zim, st.path);
 }
 
 // Consider the current selection inside the reader iframe; show or hide the
