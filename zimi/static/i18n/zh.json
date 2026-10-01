@@ -2461,6 +2461,8 @@
   "pdf_failed": "无法打开此 PDF。",
   "pdf_prev_page": "上一页",
   "pdf_next_page": "下一页",
+  "pdf_single_page": "单页",
+  "pdf_two_pages": "双页",
   "dictionary": "词典",
   "dictionary_search_placeholder": "查一个词",
   "dictionary_recent": "最近",

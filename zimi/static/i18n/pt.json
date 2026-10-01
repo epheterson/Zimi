@@ -2461,6 +2461,8 @@
   "pdf_failed": "Não foi possível abrir este PDF.",
   "pdf_prev_page": "Página anterior",
   "pdf_next_page": "Próxima página",
+  "pdf_single_page": "Página única",
+  "pdf_two_pages": "Duas páginas",
   "dictionary": "Dicionário",
   "dictionary_search_placeholder": "Procurar uma palavra",
   "dictionary_recent": "Recentes",

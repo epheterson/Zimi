@@ -345,9 +345,83 @@ def test_a_page_back_and_on(shell, device):
             ctx.browser.close()
 
 
+def test_two_pages_side_by_side_on_a_wide_screen(shell):
+    """A wide window and pages taller than wide: two at a time, stepping by
+    the spread; the menu chooses one or two, and the choice is kept."""
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    with sync_playwright() as pw:
+        pg, fr, ctx = _open(
+            pw, base, name, {"viewport": {"width": 1280, "height": 800}}
+        )
+        try:
+            fr.wait_for_function(
+                "() => PDFViewerApplication.pdfViewer.spreadMode === 1"
+            )
+            # Pages 1 and 2 side by side, nothing running off the side.
+            got = fr.evaluate(
+                """() => { const r = n => document.querySelector('.page[data-page-number="' + n + '"]').getBoundingClientRect();
+                const c = document.getElementById('viewerContainer');
+                return { a: r(1), b: r(2), c: r(3), sw: c.scrollWidth, cw: c.clientWidth }; }"""
+            )
+            assert abs(got["a"]["top"] - got["b"]["top"]) < 1, got
+            assert got["b"]["left"] > got["a"]["right"], got
+            assert got["c"]["top"] > got["a"]["bottom"], got
+            assert got["sw"] <= got["cw"], got
+            # A step is a spread; the count and the slider say the page.
+            fr.click(".zp-next")
+            fr.wait_for_function("() => zimiPdf.page() === 3", timeout=5000)
+            assert (
+                fr.evaluate("() => document.querySelector('.zp-page').textContent")
+                == "3 of %d" % PAGES
+            )
+            assert fr.evaluate("() => document.querySelector('.zp-scrub').value") == "3"
+            fr.click(".zp-prev")
+            fr.wait_for_function("() => zimiPdf.page() === 1", timeout=5000)
+            fr.evaluate("() => zimiPdf.goPage(11)")
+            fr.wait_for_function("() => zimiPdf.page() === 11", timeout=5000)
+            fr.wait_for_function("() => document.querySelector('.zp-next').disabled")
+            # One page, chosen in the menu, and kept for the next document.
+            fr.click(".zp-more")
+            fr.click('.zp-menu [data-zp="one"]')
+            fr.wait_for_function(
+                "() => PDFViewerApplication.pdfViewer.spreadMode === 0"
+            )
+            assert (
+                fr.evaluate(
+                    "() => document.querySelector('.zp-menu [data-zp=\"one\"]').getAttribute('aria-checked')"
+                )
+                == "true"
+            )
+            pg.close()
+            pg2, fr2, _ = _open(pw, base, name, None, ctx=ctx)
+            fr2.wait_for_timeout(500)
+            assert fr2.evaluate("() => PDFViewerApplication.pdfViewer.spreadMode") == 0
+            fr2.click(".zp-more")
+            fr2.click('.zp-menu [data-zp="two"]')
+            fr2.wait_for_function(
+                "() => PDFViewerApplication.pdfViewer.spreadMode === 1"
+            )
+        finally:
+            ctx.browser.close()
+    # A phone: one page, and no such choice.
+    with sync_playwright() as pw:
+        pg, fr, ctx = _open(pw, base, name, "iPhone 13")
+        try:
+            assert fr.evaluate("() => PDFViewerApplication.pdfViewer.spreadMode") == 0
+            fr.click(".zp-more")
+            assert fr.evaluate(
+                "() => !document.querySelector('.zp-menu [data-zp=\"two\"]')"
+            )
+        finally:
+            ctx.browser.close()
+
+
 def _single(fr):
     """One page at a time, whatever the width chose."""
-    fr.evaluate("() => { PDFViewerApplication.pdfViewer.spreadMode = 0; }")
+    fr.evaluate("() => zimiPdf.setSpread(false)")
     fr.wait_for_function("() => PDFViewerApplication.pdfViewer.spreadMode === 0")
 
 

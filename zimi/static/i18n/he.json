@@ -2461,6 +2461,8 @@
   "pdf_failed": "לא ניתן לפתוח את קובץ ה־PDF הזה.",
   "pdf_prev_page": "העמוד הקודם",
   "pdf_next_page": "העמוד הבא",
+  "pdf_single_page": "עמוד יחיד",
+  "pdf_two_pages": "שני עמודים",
   "dictionary": "מילון",
   "dictionary_search_placeholder": "חיפוש מילה",
   "dictionary_recent": "אחרונות",
