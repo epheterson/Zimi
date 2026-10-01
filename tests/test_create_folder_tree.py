@@ -379,6 +379,11 @@ def test_a_mixed_folder_becomes_one_zim_each_app_reads(tmp_path):
     assert "photos/beach.png" in gallery and "At the beach" in gallery
     assert "covers/book.png" not in gallery and "icon.png" not in gallery
     assert "gallery" in text(arc.main_entry.get_item().path)
+    # The Bookshelf shows the sidecar's cover, a picture of the ZIM's own.
+    from zimi import booksources
+
+    shelf = booksources.folder_books(arc)
+    assert [(b["title"], b["author"], b.get("cover")) for b in shelf] == [("The Attic Book", "Ann Lee", "covers/book.png")]
     for sidecar in ("zimi.txt", "book.txt", "home.txt", "photos/beach.json"):
         assert not arc.has_entry_by_path(sidecar), sidecar
 
@@ -425,3 +430,23 @@ def test_cli_only_flag(tmp_path):
     assert arc.has_entry_by_path("notes.md") and arc.has_entry_by_path("letter.txt")
     assert not arc.has_entry_by_path("book.pdf")
     assert bytes(arc.get_metadata("Title")).decode() == "Family Archive"
+
+
+def test_a_subfolders_own_zimi_txt_is_never_content(tmp_path):
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "zimi.txt").write_text("Title: Sub\n")
+    (tmp_path / "sub" / "a.md").write_text("# a")
+    (tmp_path / "zimi.txt").write_text("Just some prose, no keys at all")
+    plan = folderfiles.plan(str(tmp_path))
+    assert sorted(rel for _f, rel, _fam in plan["items"]) == ["sub/a.md", "zimi.txt"]
+    rows = {e["name"]: e for e in folderfiles.list_level(str(tmp_path), "sub")["entries"]}
+    assert (rows["zimi.txt"]["family"], rows["zimi.txt"]["sidecar"]) == ("sidecar", "")
+
+
+def test_the_preview_counts_covers_and_icons_with_what_they_belong_to(root):
+    attic = _mixed_folder(root / "attic")
+    assert attic.exists()
+    b = _post("/manage/create/probe", {"mode": "folder", "source": "attic"}).body
+    # beach.png only: the cover and the icon are carried, not gallery pictures.
+    assert b["families"]["image"] == 1, b["families"]
+    assert b["families"]["asset"] == 2, b["families"]

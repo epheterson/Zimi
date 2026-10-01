@@ -176,8 +176,11 @@ def _documents(archive, items, base):
             book["description"] = str(item["dsc"]).strip()
         if item.get("dt"):
             book["date"] = str(item["dt"])[:10]
-        if item.get("cv") and _epub.split(str(item["cv"])):
-            book["cover"] = str(item["cv"])
+        cover = str(item.get("cv") or "")
+        # Inside an EPUB, or (a Zimi folder's sidecar Cover) a picture of
+        # its own in the ZIM.
+        if cover and (_epub.split(cover) or archive.has_entry_by_path(cover)):
+            book["cover"] = cover
         if ext == ".epub":
             book["path"] = _epub.book_path(doc)
             # What the listing left out, from the book's own package.

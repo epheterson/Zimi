@@ -1080,30 +1080,22 @@ def create_folder_zim(
     mimetypes = set()  # evidence for the _pictures:/_videos: tags
     main_path = _pick_main(rel for _f, rel in files)
     taken = {rel for _f, rel in files}
-    # Pictures on a page of their own, unless the folder is a site whose
-    # pages already show them. A cover, poster or icon is part of what it
-    # belongs to, not a picture in its own right.
-    from zimi.tube import thumb_beside
-
-    is_site = any(
-        posixpath.splitext(rel)[1].lower() in _folderfiles.PAGE_EXTS for rel in taken
+    # Pictures on a page of their own, unless the folder is a site (its own
+    # index.html is the main page) whose pages already show them. A cover,
+    # poster or icon is part of what it belongs to, not a picture in its own
+    # right.
+    is_site = main_path is not None and (
+        posixpath.splitext(main_path)[1].lower() in _folderfiles.PAGE_EXTS
     )
-    belongs = {
-        _folderfiles.cover_path(rel, m.get("cover")) for rel, m in sidecars.items()
-    }
-    belongs |= {
-        thumb_beside(rel, taken.__contains__)
-        for _f, rel, fam in items
-        if fam in ("video", "audio")
-    }
-    if meta.get("icon"):
-        belongs.add(_folderfiles.cover_path("", meta["icon"]))
+    belongs = plan["belongs"]
     gallery_images = (
         []
         if is_site
         else [rel for _f, rel, fam in items if fam == "image" and rel not in belongs]
     )
     if progress:
+        # The run pane names the job by this (manage's "title:" line).
+        progress(f"title: {zim_title}")
         progress(f"packaging {len(items)} files")
         for rel, reason in plan["unsupported"]:
             progress(f"left out {rel}: {_folderfiles.REASONS[reason]}")
@@ -1251,6 +1243,7 @@ def create_folder_zim(
         "language": language,
         "language_source": language_source,
         "families": families,
+        "title": zim_title,
         "unsupported": [
             {"path": rel, "reason": reason} for rel, reason in plan["unsupported"]
         ],

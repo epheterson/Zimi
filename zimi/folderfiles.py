@@ -340,7 +340,7 @@ def list_level(root, rel="", offset=0, limit=LIST_PAGE, exclude=()):
     offset = max(0, int(offset or 0))
     page = rows[offset : offset + max(1, int(limit))]
     names = {r["name"] for r in rows if r["kind"] == "file"}
-    sidecar_of = _sidecars_in(fs_dir, names, at_root=(rel == ""))
+    sidecar_of = _sidecars_in(fs_dir, names)
     for r in page:
         if r["kind"] != "file":
             continue
@@ -364,15 +364,15 @@ def list_level(root, rel="", offset=0, limit=LIST_PAGE, exclude=()):
     }
 
 
-def _sidecars_in(fs_dir, names, at_root=False):
+def _sidecars_in(fs_dir, names):
     """``{sidecar name: what it describes}`` for one directory's files:
-    "" for the folder's own zimi.txt at the root, else the neighbour's name.
-    Reads only text files that sit beside a file of their stem."""
+    "" for the folder's own zimi.txt (any folder may become a ZIM's root),
+    else the neighbour's name. Reads only text files that sit beside a file
+    of their stem."""
     out = {}
-    if at_root:
-        for n in FOLDER_SIDECARS:
-            if n in names and read_sidecar(os.path.join(fs_dir, n), FOLDER_KEYS):
-                out[n] = ""
+    for n in FOLDER_SIDECARS:
+        if n in names and read_sidecar(os.path.join(fs_dir, n), FOLDER_KEYS):
+            out[n] = ""
     for n in names:
         if n in out or posixpath.splitext(n)[1].lower() in SIDECAR_EXTS:
             continue
@@ -459,7 +459,9 @@ def _walk_dir(fs_dir, prefix, exclude=()):
 def plan(root, only=None, files=None, exclude=()):
     """What a build of this selection holds, without writing anything:
     ``{items: [(fs, rel, family)], sidecars: {rel: dict}, folder: dict,
-    folder_sidecar: rel|None, unsupported: [(rel, reason)], covers: [(fs, rel)]}``.
+    folder_sidecar: rel|None, unsupported: [(rel, reason)], covers: [(fs, rel)],
+    belongs: {rel}}``, where belongs is the pictures that are part of
+    something else (a cover, the icon, a poster beside a video).
 
     ``files`` is the walk, when the caller has one already (a bounded preview
     passes a truncated one). Sidecars beside a picked file are found by name
@@ -476,6 +478,12 @@ def plan(root, only=None, files=None, exclude=()):
             folder, folder_sidecar = meta, n
             break
     consumed = {folder_sidecar} if folder_sidecar else set()
+    # A subfolder's own zimi.txt describes that subfolder, for the day it is
+    # packaged on its own; inside a bigger ZIM it is still not content.
+    for _fs, rel in files:
+        if posixpath.basename(rel) in FOLDER_SIDECARS and rel not in consumed:
+            if read_sidecar(_fs, FOLDER_KEYS):
+                consumed.add(rel)
     # A file picked on its own was not walked with its neighbours, so its
     # sidecar is looked for on disk; everything else by name in the walk.
     lone = set(only or ())
@@ -522,6 +530,22 @@ def plan(root, only=None, files=None, exclude=()):
         if os.path.isfile(fs) and family(cover)[0] == "image":
             covers.append((fs, cover))
             have.add(cover)
+    # Pictures that are part of something else: a cover, the icon, a poster
+    # beside a video. Packaged, but not a picture in their own right.
+    from zimi.tube import thumb_beside
+
+    names = have | {rel for _fs, rel in covers}
+    belongs = {cover_path(rel, m.get("cover")) for rel, m in sidecars.items()}
+    belongs |= {rel for _fs, rel in covers}
+    if folder.get("icon"):
+        belongs.add(cover_path("", folder["icon"]))
+    belongs |= {
+        thumb_beside(rel, names.__contains__)
+        for _fs, rel, fam in items
+        if fam in ("video", "audio")
+    }
+    belongs.discard(None)
+    belongs.discard("")
     return {
         "items": items,
         "sidecars": sidecars,
@@ -529,6 +553,7 @@ def plan(root, only=None, files=None, exclude=()):
         "folder_sidecar": folder_sidecar,
         "unsupported": unsupported,
         "covers": covers,
+        "belongs": belongs,
     }
 
 

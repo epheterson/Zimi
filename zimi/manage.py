@@ -4010,6 +4010,10 @@ def _probe_folder(source, only):
     size = 0
     plays_some = 0
     for fs, rel, fam in plan["items"]:
+        # A cover or an icon is carried along with what it belongs to; it is
+        # not one of the gallery's pictures.
+        if fam == "image" and rel in plan["belongs"]:
+            fam = "asset"
         families[fam] = families.get(fam, 0) + 1
         try:
             size += os.path.getsize(fs)
