@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Download file names: `Zimi-<version>-<os>-<arch>`.
 - The Apps page counts books, videos, questions and posts.
 - The Environment panel starts folded; Internet use rows line up.
+- Create's link option and the reader's setting speak of links outside the ZIM and outside your library ([#99](https://github.com/epheterson/Zimi/issues/99)).
 
 ### Fixed
 
@@ -42,6 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The PDF toolbar fits a phone.
 - The Moon is turned as it appears in your sky.
 - On Linux, the browser fallback opens once Zimi is ready.
+- Searches from this machine and the local network are not rate limited; the wait reads "1 second" ([#104](https://github.com/epheterson/Zimi/issues/104)).
+- `-wiki` also leaves out MediaWiki: an exclusion matches word parts, accents aside, and the home and Library filters take the same operators ([#94](https://github.com/epheterson/Zimi/issues/94)).
 
 ## [1.12.0] - 2026-09-30
 
