@@ -1,22 +1,23 @@
-"""Tide stations and frost dates near a place, for the Almanac.
+"""Tide stations near a place, for the Almanac.
 
-Two datasets ship under ``zimi/assets/``, both from NOAA and in the public
-domain, both built once by a script and never fetched at runtime:
+One dataset ships under ``zimi/assets/``, from NOAA and in the public domain,
+built once by a script and never fetched at runtime:
 
     tides-snapshot.json.gz   every NOAA tide prediction station: harmonic
                              constants, or offsets from a reference station
                              (scripts/build_tide_snapshot.py)
-    frost-normals.json.gz    1991-2020 climate normals: freeze dates and the
-                             growing season, per station
-                             (scripts/build_frost_snapshot.py)
+
+Harmonic constants describe the Moon, the Sun and a harbour's shape, and hold
+for decades. The Almanac ships nothing that goes stale within one (climate
+normals such as frost dates do, and were dropped for it).
 
 The browser (static/almanac-tides.js) does the predicting; this module only
 chooses which stations it gets, so a phone downloads a few kilobytes for its
 place instead of the whole set. ``GET /almanac-place?lat=..&lon=..`` answers
 the nearest stations; ``?q=..`` finds them by name.
 
-Both files are optional: a checkout before the build scripts have run answers
-with empty lists, and the Almanac says it has no stations.
+The file is optional: a checkout before the build script has run answers with
+an empty list, and the Almanac says it has no station.
 """
 
 import gzip
@@ -31,17 +32,14 @@ log = logging.getLogger("zimi")
 
 _ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 TIDES_PATH = os.path.join(_ASSETS, "tides-snapshot.json.gz")
-FROST_PATH = os.path.join(_ASSETS, "frost-normals.json.gz")
 
 EARTH_RADIUS_KM = 6371.0
 NEAR_TIDES = 6
-NEAR_FROST = 3
 SEARCH_LIMIT = 8
 MAX_QUERY = 80
 
 _lock = threading.Lock()
 _tides = None  # {"meta": {...}, "stations": [...], "by_id": {...}}
-_frost = None  # {"meta": {...}, "stations": [dict, ...]}
 
 
 def _fold(s):
@@ -60,7 +58,7 @@ def _read(path):
 
 
 def _load():
-    global _tides, _frost
+    global _tides
     with _lock:
         if _tides is None:
             raw = _read(TIDES_PATH) or {}
@@ -72,14 +70,7 @@ def _load():
                 "stations": stations,
                 "by_id": {s["id"]: s for s in stations},
             }
-        if _frost is None:
-            raw = _read(FROST_PATH) or {}
-            cols = raw.get("columns") or []
-            rows = [dict(zip(cols, r)) for r in raw.pop("stations", [])]
-            for st in rows:
-                st["_k"] = _fold(st.get("name", ""))
-            _frost = {"meta": raw, "stations": rows}
-    return _tides, _frost
+    return _tides
 
 
 def _km(lat1, lon1, lat2, lon2):
@@ -107,18 +98,9 @@ def _tide_out(tides, st, lat=None, lon=None):
     return _public(st, extra)
 
 
-def _frost_out(st, lat=None, lon=None):
-    extra = (
-        {"km": round(_km(lat, lon, st["lat"], st["lon"]), 1)}
-        if lat is not None
-        else None
-    )
-    return _public(st, extra)
-
-
 def _nearest(items, lat, lon, key, n):
-    # A flat scan: 3,500 and 7,300 stations, well under a millisecond each
-    # with the cheap equirectangular pre-sort; the haversine is for the few.
+    # A flat scan: 3,500 stations, well under a millisecond with the cheap
+    # equirectangular pre-sort; the haversine is for the few.
     coslat = math.cos(math.radians(lat))
 
     def rough(st):
@@ -129,30 +111,23 @@ def _nearest(items, lat, lon, key, n):
     return sorted(items, key=rough)[:n]
 
 
-def _meta(tides, frost):
+def _meta(tides):
     return {
         "tides": {
             k: tides["meta"].get(k)
             for k in ("constituents", "fetched", "source", "datum")
-        },
-        "frost": {k: frost["meta"].get(k) for k in ("normals", "fetched", "source")},
+        }
     }
 
 
 def near(lat, lon):
-    """The nearest tide stations and frost stations to a place."""
-    tides, frost = _load()
-    out = _meta(tides, frost)
+    """The nearest tide stations to a place."""
+    tides = _load()
+    out = _meta(tides)
     out["tides"]["stations"] = [
         _tide_out(tides, s, lat, lon)
         for s in _nearest(
             tides["stations"], lat, lon, lambda s: (s["la"], s["lo"]), NEAR_TIDES
-        )
-    ]
-    out["frost"]["stations"] = [
-        _frost_out(s, lat, lon)
-        for s in _nearest(
-            frost["stations"], lat, lon, lambda s: (s["lat"], s["lon"]), NEAR_FROST
         )
     ]
     return out
@@ -161,11 +136,11 @@ def near(lat, lon):
 def search(q, lat=None, lon=None):
     """Stations whose name holds every word typed, best first: names that
     start with the query, then the nearest (when a place is known)."""
-    tides, frost = _load()
+    tides = _load()
     words = _fold(q)[:MAX_QUERY].split()
-    out = _meta(tides, frost)
+    out = _meta(tides)
     if not words:
-        out["tides"]["stations"], out["frost"]["stations"] = [], []
+        out["tides"]["stations"] = []
         return out
 
     def hits(items, coords):
@@ -183,10 +158,6 @@ def search(q, lat=None, lon=None):
     out["tides"]["stations"] = [
         _tide_out(tides, s, lat, lon)
         for s in hits(tides["stations"], lambda s: (s["la"], s["lo"]))
-    ]
-    out["frost"]["stations"] = [
-        _frost_out(s, lat, lon)
-        for s in hits(frost["stations"], lambda s: (s["lat"], s["lon"]))
     ]
     return out
 

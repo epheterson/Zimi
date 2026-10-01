@@ -22,7 +22,7 @@ const ROOT = path.join(__dirname, '..');
 const src = fs.readFileSync(path.join(ROOT, 'zimi', 'static', 'almanac-tides.js'), 'utf8');
 // In this context, not a fresh one: a contextified global makes every Math
 // call inside the synthesis loop many times slower.
-const S = vm.runInThisContext('(function () {\n' + src + '\nreturn { TideMath: TideMath, _atOdds: _atOdds };\n})')();
+const S = vm.runInThisContext('(function () {\n' + src + '\nreturn { TideMath: TideMath };\n})')();
 const TM = S.TideMath;
 const snap = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(ROOT, 'zimi', 'assets', 'tides-snapshot.json.gz'))));
 const byId = {};
@@ -92,11 +92,5 @@ snap.stations.forEach(s => {
   if (!turns.length || turns.some(e => !isFinite(e.h))) bad++;
 });
 check(bad === 0, `all ${snap.stations.length} stations predict a day (${bad} without)`);
-
-// Frost odds between NCEI's three dates: Boulder, CO (USC00050848) has its
-// last spring freeze at 32 F on days 114 / 126 / 138 for 90 / 50 / 10 percent.
-const odds = (d) => S._atOdds(d, 138, 126, 114, true);
-const near = (a, b) => Math.abs(a - b) < 1e-9;
-check(near(odds(100), 0.9) && near(odds(126), 0.5) && near(odds(150), 0.1) && near(odds(120), 0.7), 'spring frost odds interpolate between the 10/50/90 dates');
 
 if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }

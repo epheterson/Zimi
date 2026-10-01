@@ -581,7 +581,12 @@ var AE_DRAG_MIN_SCALE = 0.15;         // up close a drag turns the globe more ge
 var AE_WHEEL_ZOOM = 0.0015;           // log-distance per wheel unit
 var AE_KEY_TURN = _aeRad(5);
 var AE_KEY_ZOOM = 1.15;
-var AE_FLY_MS = 900;
+// A flight's length grows with how far it goes, as a multiple of the scale
+// it leaves or arrives at (log, so the Moon is not ten times the trip to the
+// GPS shell): a nudge between framings is quick, a crossing to the Sun is
+// the longest, and nothing takes longer than AE_FLY_FAR_MS.
+var AE_FLY_MIN_MS = 500;
+var AE_FLY_MS_PER_LOG = 300;
 var AE_FLY_START_DIST = 40;           // the zoom in from the orrery starts this far out
 var AE_TAP_SLOP_PX = 6;               // a pointer that moved less than this was a tap
 var AE_TAP_RADIUS_PX = 22;            // how near a tap must land to pick something
@@ -633,7 +638,7 @@ var AE_SUN_EXPOSURE = [4.5, 2.5, 1.05];   // the photosphere's exposure per colo
 var AE_FIT_SUN = AE_SUN_SHOW_R * 2.2; // the disc and the glow nearest it
 var AE_MIN_DIST_SUN = AE_SUN_SHOW_R * 1.3;
 var AE_MAX_DIST_SUN = 1400;
-var AE_FLY_FAR_MS = 1600;             // flights to or from the Sun cross 3,000 Earth radii
+var AE_FLY_FAR_MS = 1600;             // the longest flight: to or from the Sun, 3,000 Earth radii
 var AE_HINT_MS = 4500;
 // Show where I am: a crosshair, the mark every map uses for "locate me".
 var AE_LOCATE_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
@@ -664,6 +669,8 @@ function _aeLink(key, html) { return window.AlmanacLinks ? window.AlmanacLinks.w
 function _aeLinked(key) { return !!(window.AlmanacLinks && window.AlmanacLinks.linkFor(key)); }
 function _aeClamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
 function _aeEaseOut(p) { return 1 - Math.pow(1 - p, 3); }
+// A flight speeds up, cruises and slows to arrive: cubic in and out.
+function _aeEaseInOut(p) { return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2; }
 // Isolated left-to-right (U+2066 ... U+2069): inside a right-to-left
 // sentence the bidi algorithm otherwise reorders its runs ("S, 48.5° W 31.3°").
 var AE_LTR_ISOLATE = '\u2066', AE_POP_ISOLATE = '\u2069';
@@ -1514,7 +1521,6 @@ function _aeAzElOf(v) {
 
 function _aeFlyTo(target, dist, azel) {
   var from = { pos: _aeTargetPos(), dist: _ae.dist, az: _ae.az, el: _ae.el_, roll: _ae.roll || 0 };
-  var far = target === 'sun' || _ae.target === 'sun';
   _ae.target = target;
   if (azel) { _ae.az = azel.az; _ae.el_ = azel.el; }
   var to = { dist: _aeClampDist(dist) };
@@ -1522,21 +1528,31 @@ function _aeFlyTo(target, dist, azel) {
   else {
     // Turn the short way round.
     var daz = ((_ae.az - from.az + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
-    _ae.fly = { start: performance.now(), ms: far ? AE_FLY_FAR_MS : AE_FLY_MS, from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_ };
+    var ms = _aeFlyMs(from, _aeTargetPos(), to.dist, _ae.az, _ae.el_);
+    _ae.fly = { start: performance.now(), ms: ms, from: from, toDist: to.dist, toAz: from.az + daz, toEl: _ae.el_ };
     _ae.az = from.az; _ae.el_ = from.el;
   }
   _aeMarkViews();
   _aeKick();
 }
+// How long a flight takes: the camera's path, end to end, against the
+// nearer of the two distances it stands from what it looks at.
+function _aeFlyMs(from, toPos, toDist, toAz, toEl) {
+  var a = _aeCameraOffset(from.az, from.el, from.dist), b = _aeCameraOffset(toAz, toEl, toDist);
+  var pa = [from.pos[0] + a[0], from.pos[1] + a[1], from.pos[2] + a[2]];
+  var pb = [toPos[0] + b[0], toPos[1] + b[1], toPos[2] + b[2]];
+  var travel = _aeLen(_aeSub(pb, pa)) / Math.max(1e-6, Math.min(from.dist, toDist));
+  return _aeClamp(AE_FLY_MIN_MS + AE_FLY_MS_PER_LOG * Math.log(1 + travel), AE_FLY_MIN_MS, AE_FLY_FAR_MS);
+}
 // How far along the flight is, eased (1 when there is none).
 function _aeFlyEase(now) {
   var f = _ae.fly;
-  return f ? _aeEaseOut(_aeClamp((now - f.start) / f.ms, 0, 1)) : 1;
+  return f ? _aeEaseInOut(_aeClamp((now - f.start) / f.ms, 0, 1)) : 1;
 }
 function _aeStepFly(now) {
   var f = _ae.fly;
   if (!f) return false;
-  var p = _aeClamp((now - f.start) / f.ms, 0, 1), e = _aeEaseOut(p);
+  var p = _aeClamp((now - f.start) / f.ms, 0, 1), e = _aeEaseInOut(p);
   _ae.dist = Math.exp(Math.log(f.from.dist) + (Math.log(f.toDist) - Math.log(f.from.dist)) * e);
   _ae.az = f.from.az + (f.toAz - f.from.az) * e;
   _ae.el_ = f.from.el + (f.toEl - f.from.el) * e;
@@ -2095,7 +2111,10 @@ function _aeSatShortName(s) {
 // ── Taps ──
 function _aeTap(x, y) {
   var best = null, bestD = AE_TAP_RADIUS_PX;
-  for (var i = 0; i < _ae.positions.length; i++) {
+  // Satellites are picked at the Earth; from the Moon or the Sun they are a
+  // speck on it, and a tap there means the Earth.
+  var n = _ae.target === 'earth' ? _ae.positions.length : 0;
+  for (var i = 0; i < n; i++) {
     var p = _ae.positions[i];
     if (_aeBehindEarth(p.pos)) continue;
     var s = _aeProject(p.pos);
@@ -2110,12 +2129,34 @@ function _aeTap(x, y) {
     _aeKick();
     return;
   }
-  var sc = _ae.scene;
-  if (sc && _ae.target !== 'moon' && !_aeBehindEarth(sc.moon)) {
-    var m = _aeProject(sc.moon);
-    if (m && Math.hypot(m.x - x, m.y - y) < AE_TAP_RADIUS_PX * 1.5) { _aePreset('moon'); return; }
-  }
+  // The Earth, the Moon or the Sun: fly to it, as its chip does. A tap on
+  // the one already in view falls through (it puts a satellite's card away).
+  var body = _aeBodyAt(x, y);
+  if (body && body !== _ae.target) { _aePreset(body); return; }
   if (_ae.selected) { _ae.selected = null; _aeRenderCard(); _ae.dirty = true; _aeKick(); }
+}
+
+// The body under a point on the screen: its disc, or a finger's width
+// around a small one; the nearest to the camera where one covers another
+// (the Moon before the Sun in an eclipse). Null for none.
+var AE_TAP_BODY_PX = AE_TAP_RADIUS_PX * 1.5;
+function _aeBodyAt(x, y) {
+  var sc = _ae.scene;
+  if (!sc || !_ae.h) return null;
+  var cam = _ae.gl.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
+  var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
+  var bodies = [['earth', [0, 0, 0], 1], ['moon', sc.moon, AE_MOON_RADIUS_RE], ['sun', _aeSunShown(sc), AE_SUN_SHOW_R]];
+  var best = null, bestD = Infinity;
+  for (var i = 0; i < bodies.length; i++) {
+    var b = bodies[i];
+    if (b[0] !== 'earth' && _aeBehindEarth(b[1])) continue;
+    var s = _aeProject(b[1]);
+    if (!s) continue;
+    var d = _aeLen(_aeSub(b[1], eye));
+    var reach = Math.max(b[2] / d * pxPerRad, AE_TAP_BODY_PX);
+    if (Math.hypot(s.x - x, s.y - y) <= reach && d < bestD) { bestD = d; best = b[0]; }
+  }
+  return best;
 }
 
 // ── The card for a tapped satellite ──

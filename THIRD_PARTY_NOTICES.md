@@ -20,13 +20,6 @@ Harmonic constants, tidal datums and subordinate-station offsets for every NOAA 
 - Source: NOAA Center for Operational Oceanographic Products and Services, https://tidesandcurrents.noaa.gov/
 - Terms: work of the U.S. Government, public domain in the United States (17 U.S.C. 105). NOAA asks that it be credited as the source and that its data not be presented as an official NOAA product; Zimi's predictions are its own computation and say so.
 
-## NOAA NCEI U.S. Climate Normals 1991-2020 (`zimi/assets/frost-normals.json.gz`)
-
-Freeze-date probabilities (32 F and 28 F, at 10, 50 and 90 percent) and growing-season lengths per station, from the annual/seasonal normals. Built by `scripts/build_frost_snapshot.py`.
-
-- Source: NOAA National Centers for Environmental Information, https://www.ncei.noaa.gov/products/land-based-station/us-climate-normals
-- Terms: work of the U.S. Government, public domain in the United States.
-
 ## Checked and not shipped
 
 Tides outside the United States, recorded so the next look starts here (2026-10-01):

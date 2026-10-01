@@ -1070,6 +1070,8 @@ function _almTravelLive(focus) {
   _almTravelThrottled('grid', _ALM_TRAVEL_GRID_MS, _almSyncSelectedToFocus);
   // The 3D view reads the same clock: its Sun and Moon move in this frame.
   if (typeof _aeFollowClock === 'function') _aeFollowClock();
+  // So does the tide: its Moon, its bulges, its harbour and the day's line.
+  if (typeof _atTravel === 'function') _atTravel(focus);
 }
 
 function _almIsLiveNow(d) { return Math.abs(d.getTime() - Date.now()) < _SCRUB_LIVE_EPS; }
@@ -1706,21 +1708,24 @@ function _almAboutDataHtml() {
     '</ul></details>';
 }
 
-// For the long haul: printable reference sheets for a world with no new data
+// To print and keep: reference sheets for a world with no new data
 // (almanac-reference.js, with its data and styles, loaded on first use: none
-// of it is on the Almanac's first paint). Grouped by what the paper is for.
+// of it is on the Almanac's first paint). Why it exists comes first (what
+// stops being true without updates), then the sheets as one list, grouped by
+// what the paper is for.
 var _ALM_REF_GROUPS = [['way', ['daily', 'sight']], ['time', ['year', 'suntime', 'stars']], ['dates', ['calendars']]];
 function _almRefSectionHtml() {
   var html = '<div class="almanac-section alm-ref-entry"><div class="almanac-section-title">' + _almEsc(t('ref_section')) + '</div>' +
-    '<p class="alm-about-intro">' + _almEsc(t('ref_section_intro')) + '</p>';
+    '<p class="alm-about-intro">' + _almEsc(t('ref_section_intro')) + '</p>' +
+    '<button type="button" class="alm-ref-decay-link" onclick="_almRefOpen(\'decay\')">' + _almEsc(t('ref_decay_link')) + '</button>';
   _ALM_REF_GROUPS.forEach(function (g) {
-    html += '<div class="alm-ref-group"><div class="alm-ref-group-name">' + _almEsc(t('ref_group_' + g[0])) + '</div><div class="alm-ref-tiles">' +
+    html += '<div class="alm-ref-group"><div class="alm-ref-group-name">' + _almEsc(t('ref_group_' + g[0])) + '</div><ul class="alm-ref-list">' +
       g[1].map(function (k) {
-        return '<button type="button" class="alm-ref-tile" onclick="_almRefOpen(\'' + k + '\')"><span class="alm-ref-tile-name">' +
-          _almEsc(t('ref_' + k)) + '</span><span class="alm-ref-tile-sub">' + _almEsc(t('ref_' + k + '_sub')) + '</span></button>';
-      }).join('') + '</div></div>';
+        return '<li><button type="button" class="alm-ref-row" onclick="_almRefOpen(\'' + k + '\')"><span class="alm-ref-row-text"><span class="alm-ref-row-name">' +
+          _almEsc(t('ref_' + k)) + '</span><span class="alm-ref-row-sub">' + _almEsc(t('ref_' + k + '_sub')) + '</span></span><span class="alm-ref-row-go" aria-hidden="true">›</span></button></li>';
+      }).join('') + '</ul></div>';
   });
-  return html + '<button type="button" class="alm-ref-decay-link" onclick="_almRefOpen(\'decay\')">' + _almEsc(t('ref_decay_link')) + '</button></div>';
+  return html + '</div>';
 }
 var _almRefLoading = false;
 var _ALM_REF_LOAD_TIMEOUT_MS = 15000, _ALM_REF_POLL_MS = 50;
@@ -1751,32 +1756,131 @@ function _almRefOpen(name) {
   })();
 }
 
-// The tide and frost panel's module (and its stylesheet) load the first time
-// the panel comes within a screen of view. The URLs are app.js's, so they
-// carry the server's content version.
+// ── Sections that arrive after the first paint ──
+// The tide section (almanac-tides.js and its stylesheet, plus its stations
+// from the server) and the inscriptions (fetched) are drawn after the page.
+// Neither may move what someone is reading:
+//   - the tide section holds the height it had last time on this device for
+//     the same place, width and language (a fair guess the first time), so
+//     content below it is already where it will be;
+//   - while either is arriving, any change of its height with something of
+//     the page showing below it is taken out of the scroll (_almKeepStill):
+//     nobody is reading a section that is not there yet, so what is under
+//     the reader's finger stays there. The browser's own scroll
+//     anchoring is off for the Almanac (almanac.css) so the two never add up.
+// After arrival, only a section wholly above the view is compensated: a
+// station list opening under the reader's own tap grows where they look.
+var _ALM_PLACE_H_KEY = 'zimi_almanac_place_h';
+var _ALM_PLACE_H_MAX = 24;                             // remembered heights kept
+var _ALM_PLACE_GUESS_PX = { tide: 760, empty: 170 };   // before any is remembered
+var _ALM_PLACE_GUESS_NARROW_PX = 770;                  // a phone's column wraps more
+var _ALM_NARROW_PX = 480;
+
+function _almKeepStill(el) {
+  if (!el || el._almStill || typeof ResizeObserver === 'undefined') return;
+  var scroller = document.getElementById('almanac-content');
+  // Where the reader was before this frame's layout: a section that shrinks
+  // at the page's end has the browser pull the scroll up first (it cannot
+  // stay past the end), and compensating from there would count it twice.
+  if (scroller && !scroller._almTop) {
+    scroller._almTop = { v: scroller.scrollTop };
+    scroller.addEventListener('scroll', function () { scroller._almTop.v = scroller.scrollTop; }, { passive: true });
+  }
+  // Measured now, not at the observer's first call: on a busy first load that
+  // call can come after the section has already arrived.
+  var last = el.offsetHeight;
+  el._almArriving = true;
+  el._almStill = new ResizeObserver(function () {
+    // A page drawn again (new links, a new language) replaces the element.
+    if (!el.isConnected) { el._almStill.disconnect(); return; }
+    var h = el.offsetHeight, delta = h - last;
+    last = h;
+    if (!delta || !scroller) return;
+    var view = scroller.getBoundingClientRect(), r = el.getBoundingClientRect();
+    var oldBottom = r.top + h - delta;
+    var line = el._almArriving ? view.bottom : view.top;
+    if (oldBottom > line) return;
+    // Pulled up by at most what was lost: that was the browser, not the reader.
+    var base = scroller.scrollTop, pulled = scroller._almTop.v - base;
+    if (delta < 0 && pulled > 0 && pulled <= -delta + 1) base = scroller._almTop.v;
+    scroller.scrollTop = scroller._almTop.v = base + delta;
+  });
+  el._almStill.observe(el);
+}
+function _almArrived(el) {
+  if (!el) return;
+  // Arrived once it has been laid out and the fonts its text asked for have
+  // come (scripts like Devanagari or Hebrew load on first use and reflow it).
+  var done = function () { requestAnimationFrame(function () { el._almArriving = false; }); };
+  requestAnimationFrame(function () {
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(done, done);
+    else done();
+  });
+}
+
+function _almPlaceHKey(host) {
+  var loc = _getLocation();
+  return (loc.stored ? loc.lat.toFixed(2) + ',' + loc.lon.toFixed(2) : '-') + '|' +
+    Math.round(host.clientWidth) + '|' + ((typeof _currentLang !== 'undefined' && _currentLang) || 'en');
+}
+function _almPlaceHeights() {
+  try { return JSON.parse(localStorage.getItem(_ALM_PLACE_H_KEY)) || {}; } catch (e) { return {}; }
+}
+function _almPlaceReserve(host) {
+  var known = _almPlaceHeights()[_almPlaceHKey(host)];
+  var guess = !_getLocation().stored ? _ALM_PLACE_GUESS_PX.empty
+    : host.clientWidth < _ALM_NARROW_PX ? _ALM_PLACE_GUESS_NARROW_PX : _ALM_PLACE_GUESS_PX.tide;
+  host.style.minHeight = (known || guess) + 'px';
+}
+// Called by almanac-tides.js each time it has drawn its answer: remember the
+// height for next time, and let the section be its own height from now on.
+function _almPlaceDrawn() {
+  var host = document.getElementById('almanac-place');
+  if (!host) return;
+  host.style.minHeight = '';
+  var h = host.offsetHeight;
+  if (h) {
+    var all = _almPlaceHeights(), k = _almPlaceHKey(host);
+    delete all[k];
+    all[k] = h;
+    var keys = Object.keys(all);
+    while (keys.length > _ALM_PLACE_H_MAX) delete all[keys.shift()];
+    try { localStorage.setItem(_ALM_PLACE_H_KEY, JSON.stringify(all)); } catch (e) {}
+  }
+  _almArrived(host);
+}
+
+// The module loads once the Almanac has painted, in idle time, so it is in
+// place before anyone scrolls to it; nothing of it is on the first paint. The
+// URLs are app.js's, so they carry the server's content version.
 var _almPlaceLoaded = false;
+var _ALM_PLACE_IDLE_TIMEOUT_MS = 1500;
 function _almPlaceWatch() {
   var host = document.getElementById('almanac-place');
   if (!host) return;
-  if (_almPlaceLoaded) { if (typeof _atRender === 'function') _atRender(); return; }
+  _almKeepStill(document.getElementById('almanac-rosetta'));
+  if (typeof _atRender === 'function') { _almKeepStill(host); _atRender(); return; }
+  _almPlaceReserve(host);
+  _almKeepStill(host);
+  if (_almPlaceLoaded) return;   // on its way: it draws when it lands
   var load = function() {
-    if (_almPlaceLoaded) return;
+    if (_almPlaceLoaded || (typeof _almanacOpen !== 'undefined' && !_almanacOpen)) return;
     _almPlaceLoaded = true;
+    var pending = 2;
+    var done = function() { if (--pending === 0 && typeof _atRender === 'function') _atRender(); };
     var css = document.createElement('link');
     css.rel = 'stylesheet';
     css.href = _ALM_TIDES_CSS;
+    css.onload = css.onerror = done;
     document.head.appendChild(css);
     var js = document.createElement('script');
     js.src = _ALM_TIDES_JS;
-    js.onload = function() { if (typeof _atRender === 'function') _atRender(); };
-    js.onerror = function() { _almPlaceLoaded = false; };
+    js.onload = done;
+    js.onerror = function() { _almPlaceLoaded = false; host.style.minHeight = ''; };
     document.head.appendChild(js);
   };
-  if (!('IntersectionObserver' in window)) { load(); return; }
-  var io = new IntersectionObserver(function(entries) {
-    if (entries.some(function(e) { return e.isIntersecting; })) { io.disconnect(); load(); }
-  }, { root: document.getElementById('almanac-content'), rootMargin: '100% 0px' });
-  io.observe(host);
+  var idle = window.requestIdleCallback || function (f) { return setTimeout(f, 1); };
+  requestAnimationFrame(function () { idle(load, { timeout: _ALM_PLACE_IDLE_TIMEOUT_MS }); });
 }
 
 function _renderAlmanacContent() {
@@ -1806,7 +1910,7 @@ function _renderAlmanacContent() {
 
   // Sun map — inline world map with day/night terminator + location picker
   html += '<div id="almanac-sunmap"></div>';
-  // Tides and frost for the chosen place (almanac-tides.js, loaded when this
+  // The tide for the chosen place (almanac-tides.js, loaded when this
   // scrolls near: nothing of it on the first paint).
   html += '<div id="almanac-place"></div>';
 
@@ -1990,6 +2094,7 @@ function _renderAlmanacContent() {
     '</div>';
 
   html += '</div>';
+  var anchor = _almRedrawAnchor();
   document.getElementById('almanac-content').innerHTML = html;
 
   _renderAlmanacCalendar(now);
@@ -2012,6 +2117,32 @@ function _renderAlmanacContent() {
   _almTmInit();
   _cacheAlmanacHighlights(now, m);
   _almPlaceWatch();
+  _almRedrawRestore(anchor);
+}
+
+// The page drawn again over itself (its deep-links arriving, a new language)
+// keeps the reader where they were: the section across the middle of the view
+// lands at the same place on screen, and the old height is held for a moment
+// so panels that fill in a little later cannot pull the scroll up.
+function _almRedrawAnchor() {
+  var sc = document.getElementById('almanac-content');
+  var inner = sc && sc.querySelector('.almanac-inner');
+  if (!inner || !sc.scrollTop) return null;
+  var mid = sc.getBoundingClientRect().top + sc.clientHeight / 2;
+  for (var i = 0; i < inner.children.length; i++) {
+    var r = inner.children[i].getBoundingClientRect();
+    if (r.bottom > mid) return { i: i, top: r.top, h: inner.offsetHeight };
+  }
+  return null;
+}
+function _almRedrawRestore(a) {
+  var sc = document.getElementById('almanac-content');
+  var inner = sc && sc.querySelector('.almanac-inner');
+  if (!a || !inner) return;
+  inner.style.minHeight = a.h + 'px';
+  var k = inner.children[a.i];
+  if (k) sc.scrollTop += k.getBoundingClientRect().top - a.top;
+  requestAnimationFrame(function () { requestAnimationFrame(function () { inner.style.minHeight = ''; }); });
 }
 
 // Cache computed almanac highlights for the Today discover card.
@@ -4938,7 +5069,7 @@ function _promptAlmanacLocation() {
   overlay.innerHTML = '<div style="color:var(--text);font-size:16px;font-weight:600;margin-bottom:4px">' + t('alm_set_location_title') + '</div>' +
     '<div style="color:var(--text3);font-size:12px;margin-bottom:12px">' + t('alm_tap_city') + '</div>' +
     '<div id="almanac-map-wrap" style="position:relative;max-width:560px;width:100%;border-radius:10px;overflow:hidden;border:1px solid var(--border);cursor:crosshair">' +
-      '<img src="/static/world-map.svg?v=1" style="display:block;width:100%;height:auto" draggable="false" alt="World map">' +
+      '<img src="/static/world-map.svg?v=1" width="800" height="400" style="display:block;width:100%;height:auto" draggable="false" alt="World map">' +
       '<div id="almanac-map-marker" style="display:none;position:absolute;pointer-events:none">' +
         '<div style="width:20px;height:20px;border:2px solid rgba(210,170,100,0.7);border-radius:50%;position:absolute;left:-10px;top:-10px"></div>' +
         '<div style="width:6px;height:6px;background:#d4aa64;border-radius:50%;position:absolute;left:-3px;top:-3px"></div>' +
@@ -7283,7 +7414,7 @@ async function _renderRosettaStone(now) {
   if (!el) return;
 
   var manifest = await _loadRosettaManifest();
-  if (!manifest.length) { el.innerHTML = ''; return; }
+  if (!manifest.length) { el.innerHTML = ''; _almArrived(el); return; }
 
   var entry = manifest[_rosettaTextIdx] || manifest[0];
   var data = await _loadInscription(entry.id);
@@ -7326,6 +7457,7 @@ async function _renderRosettaStone(now) {
   }
 
   el.innerHTML = html;
+  _almArrived(el);
 }
 
 // Language pill row (bottom) — active state reflects the chosen language(s).
