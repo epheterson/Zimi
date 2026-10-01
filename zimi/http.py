@@ -198,6 +198,7 @@ _RATE_LIMITED_API_PATHS = (
     "/openapi.json",
     "/almanac-links",
     "/almanac-satellites",
+    "/almanac-ages",
 )
 
 # The apps' routes below their bare path (/exchange/question, /reddot/post):
@@ -313,6 +314,63 @@ def _check_rate_limit(ip, content=False, limit=None, buckets=None):
         if len(buckets) > 10000:
             buckets.clear()
     return 0
+
+
+# The Almanac's "What stops being true" sheet: how old each piece of outside
+# data on this machine is. Every answer is a file read here; nothing is
+# fetched, and asking never starts a refresh.
+_TZDATA_FILES = ("/usr/share/zoneinfo/tzdata.zi", "/usr/share/zoneinfo/+VERSION")
+_tz_map_source = None
+
+
+def _tzdata_version():
+    """The IANA time zone database version this machine's Python sees."""
+    try:
+        import tzdata  # the pip package, when installed (Windows, slim images)
+
+        return tzdata.IANA_VERSION
+    except (ImportError, AttributeError):
+        pass
+    for path in _TZDATA_FILES:
+        try:
+            with open(path, encoding="ascii", errors="replace") as f:
+                head = f.readline().strip()
+        except OSError:
+            continue
+        m = re.search(r"(\d{4}[a-z])", head)
+        if m:
+            return m.group(1)
+    return None
+
+
+def _almanac_ages():
+    global _tz_map_source
+    from zimi import catalog_snapshot as _snap
+    from zimi import library as _lib
+    from zimi import satellites as _sats
+
+    if _tz_map_source is None:
+        try:
+            with open(os.path.join(_STATIC_DIR, "tz-borders.json"), encoding="utf-8") as f:
+                m = re.search(r'"source":"[^"]*?(\d{4}[a-z])', f.read(512))
+            _tz_map_source = m.group(1) if m else ""
+        except OSError:
+            _tz_map_source = ""
+    sats = _sats.get(allow_refresh=False)
+    cache = _lib._full_catalog_path()
+    if os.path.exists(cache):
+        catalog = {
+            "source": "cache",
+            "as_of": time.strftime("%Y-%m-%d", time.gmtime(os.path.getmtime(cache))),
+        }
+    else:
+        catalog = {"source": "snapshot", "as_of": _snap.built_at() or None}
+    return {
+        "tzdata": _tzdata_version(),
+        "tz_map": _tz_map_source or None,
+        "satellites": {"fetched": sats.get("fetched"), "source": sats.get("source")},
+        "catalog": catalog,
+    }
 
 
 def _almanac_links_response(handler, qids, langs, titles=None):
@@ -912,6 +970,9 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("almanac-orrery.js")
             + _static_hash("almanac-sky.js")
             + _static_hash("almanac-earth.js")
+            + _static_hash("almanac-reference.js")
+            + _static_hash("almanac-reference.css")
+            + _static_hash("almanac-navdata.js")
             + _static_hash("highlights.js")
             + _static_hash("bookmath.js")
             + _static_hash("find.js")
@@ -2204,6 +2265,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                     _srv.ZIMI_MANAGE and _users._request_is_admin(self)
                 )
                 return self._json(200, payload)
+
+            elif parsed.path == "/almanac-ages":
+                return self._json(200, _almanac_ages())
 
             elif parsed.path == "/list":
                 result = _srv.list_zims()

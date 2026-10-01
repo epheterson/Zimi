@@ -1705,6 +1705,51 @@ function _almAboutDataHtml() {
     '</ul></details>';
 }
 
+// For the long haul: printable reference sheets for a world with no new data
+// (almanac-reference.js, with its data and styles, loaded on first use: none
+// of it is on the Almanac's first paint). Grouped by what the paper is for.
+var _ALM_REF_GROUPS = [['way', ['daily', 'sight']], ['time', ['year', 'suntime', 'stars']], ['dates', ['calendars']]];
+function _almRefSectionHtml() {
+  var html = '<div class="almanac-section alm-ref-entry"><div class="almanac-section-title">' + _almEsc(t('ref_section')) + '</div>' +
+    '<p class="alm-about-intro">' + _almEsc(t('ref_section_intro')) + '</p>';
+  _ALM_REF_GROUPS.forEach(function (g) {
+    html += '<div class="alm-ref-group"><div class="alm-ref-group-name">' + _almEsc(t('ref_group_' + g[0])) + '</div><div class="alm-ref-tiles">' +
+      g[1].map(function (k) {
+        return '<button type="button" class="alm-ref-tile" onclick="_almRefOpen(\'' + k + '\')"><span class="alm-ref-tile-name">' +
+          _almEsc(t('ref_' + k)) + '</span><span class="alm-ref-tile-sub">' + _almEsc(t('ref_' + k + '_sub')) + '</span></button>';
+      }).join('') + '</div></div>';
+  });
+  return html + '<button type="button" class="alm-ref-decay-link" onclick="_almRefOpen(\'decay\')">' + _almEsc(t('ref_decay_link')) + '</button></div>';
+}
+var _almRefLoading = false;
+var _ALM_REF_LOAD_TIMEOUT_MS = 15000, _ALM_REF_POLL_MS = 50;
+var _almRefCss = false;
+function _almRefOpen(name) {
+  // The sheets also need the Earth view's Sun and Moon (almanac-earth.js),
+  // which loads just after the Almanac opens.
+  function ready() { return _almRefCss && window.AlmanacRef && typeof _aeSun === 'function'; }
+  if (ready()) return window.AlmanacRef.open(name);
+  if (_almRefLoading) return;
+  _almRefLoading = true;
+  var failed = false;
+  if (!window.AlmanacRef) {
+    (typeof _ALMANAC_REF_ASSETS !== 'undefined' ? _ALMANAC_REF_ASSETS : []).forEach(function (src) {
+      var el;
+      if (/\.css(\?|$)/.test(src)) { el = document.createElement('link'); el.rel = 'stylesheet'; el.href = src; el.onload = function () { _almRefCss = true; }; }
+      else { el = document.createElement('script'); el.src = src; el.async = false; }
+      el.onerror = function () { failed = true; };
+      document.head.appendChild(el);
+    });
+  }
+  var waited = 0;
+  (function poll() {
+    if (ready()) { _almRefLoading = false; window.AlmanacRef.open(name); return; }
+    waited += _ALM_REF_POLL_MS;
+    if (failed || waited > _ALM_REF_LOAD_TIMEOUT_MS) { _almRefLoading = false; _showToast(t('almanac_unavailable_offline')); return; }
+    setTimeout(poll, _ALM_REF_POLL_MS);
+  })();
+}
+
 function _renderAlmanacContent() {
   var now = new Date();
   var m = _moonPhase(now);
@@ -1815,6 +1860,7 @@ function _renderAlmanacContent() {
   html += '<div class="almanac-section-title">' + t('alm_messages_across_time') + '</div>';
   html += '<div id="almanac-rosetta"></div>';
   html += '</div>';
+  html += _almRefSectionHtml();
   html += _almAboutDataHtml();
 
 

@@ -5600,6 +5600,14 @@ function _createMenuRowAvailable() {
 var _almanacOpen = false;
 var _almanacLoaded = false;
 
+// The Almanac's long-haul reference sheets, loaded on first use from
+// almanac.js (_almRefOpen). Listed here so their ?v= is the content hash.
+var _ALMANAC_REF_ASSETS = [
+  '/static/almanac-reference.css?v=1',
+  '/static/almanac-navdata.js?v=1',
+  '/static/almanac-reference.js?v=1'
+];
+
 function openAlmanac(replaceState) {
   // Modifier-click: open Almanac in new browser tab
   if (_isModClick()) {
