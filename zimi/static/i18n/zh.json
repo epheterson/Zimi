@@ -1375,6 +1375,7 @@
   "generate": "生成",
   "get_started": "开始使用",
   "go_back": "返回",
+  "back_to": "返回{place}",
   "gr_cap_0": "唱片封面 · 给发现者的播放说明",
   "gr_cap_1": "校准圆",
   "gr_cap_10": "木星",

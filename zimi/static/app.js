@@ -1306,6 +1306,7 @@ const sourceHeaderEl = document.getElementById('source-header');
 const searchMeta = document.getElementById('search-meta');
 const logoEl = document.getElementById('logo');
 const backBtn = document.getElementById('back-btn');
+const backLabel = backBtn.querySelector('.back-label');
 const bcSep = document.getElementById('bc-sep');
 const bcIcon = document.getElementById('bc-icon');
 const randomBtn = document.getElementById('random-btn');
@@ -1760,6 +1761,50 @@ var _ALMANAC_BC_ICON = '<svg width="22" height="22" viewBox="0 0 24 24" fill="no
 // through as if you were still in it.
 var _CREATE_BC_ICON = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M12 8.5v7M8.5 12h7"/></svg>';
 
+// Where a page was opened from, when that is a place of its own rather than
+// a step through the reader: the Almanac, a search, the home page (Discover),
+// or an app. Stamped on the page's history entry as it is pushed, so the
+// header's arrow and the browser's Back go to the same place, and named on
+// the arrow ("Almanac", "Search"). Read from the entry being left.
+var _FROM_APPS = ['tube', 'exchange', 'reddot', 'wiki', 'books'];
+function _openedFrom() {
+  var s = history.state || {};
+  if (s.mode === 'almanac' || s.mode === 'search') return s.mode;
+  if (s.mode === 'home' && !s.scope) return 'home';
+  if (s.mode === 'reader') {
+    for (var i = 0; i < _FROM_APPS.length; i++) if (s[_FROM_APPS[i]]) return _FROM_APPS[i];
+  }
+  return null;
+}
+// `st`, about to be pushed, marked with where it was opened from (not an
+// app's own step: Zimipedia to Zimipedia is the app's business).
+function _stampFrom(st) {
+  var from = _openedFrom();
+  if (from && !st[from]) st.from = from;
+  return st;
+}
+// `st`, about to replace the entry on screen with the same page (Back or
+// Forward landing on it, a reload), keeping where that page was opened from.
+function _keepFrom(st) {
+  var s = history.state || {};
+  var same = s.mode === st.mode && (st.zim ? s.zim === st.zim && s.path === st.path
+    : _FROM_APPS.some(function(k) { return st[k] && s[k]; }));
+  if (same && s.from) st.from = s.from;
+  return st;
+}
+// What the arrow returns to, named: the place the page was opened from, or
+// the source of the page before it when that was another ZIM. null for a
+// step back through the reader's own pages, which the arrow takes unnamed.
+function _backLabel() {
+  if (!readerOpen) return null;
+  var prev = articleHistory[articleHistory.length - 1];
+  if (prev && !prev.app) {
+    return currentArticle && prev.zim !== currentArticle.zim ? _zimTitle(prev.zim) : null;
+  }
+  var from = (history.state || {}).from;
+  return from ? t(from) : null;
+}
+
 // ── Topbar ──
 function updateTopbar() {
   const activeSource = currentSource || readerSource;
@@ -1770,8 +1815,13 @@ function updateTopbar() {
   // (back = click source icon or Escape).
   // On an app page the arrow is always there: a step back inside the app
   // (a video, a question, a post, a list), and from its home, out.
-  const showBack = articleHistory.length > 0 || mode === 'search' || homeScope || (_isAppPage() && !_appTop);
+  const backTo = _backLabel();
+  const showBack = !!backTo || articleHistory.length > 0 || mode === 'search' || homeScope || (_isAppPage() && !_appTop);
   backBtn.style.display = showBack ? 'flex' : 'none';
+  backLabel.textContent = backTo || '';
+  backLabel.hidden = !backTo;
+  backBtn.setAttribute('aria-label', backTo ? t('back_to', {place: backTo}) : t('go_back'));
+  backBtn.title = backTo ? t('back_to', {place: backTo}) : '';
 
   // Breadcrumb: Zimi / [icon] — search bar shows source name as placeholder.
   // The Almanac opens as an overlay over the home/ZIM view but is its own
@@ -2762,7 +2812,9 @@ function goBack() {
   if (_isAppPage()) {
     // A thing inside the app is a history step: take it back. Otherwise ask
     // the page (a list goes to the app's home); at the home, leave the app.
+    // Opened from somewhere else (a search), it goes back there.
     var st = history.state;
+    if (st && st.from && !st.entry) { history.back(); return; }
     if (st && (st.play || st.q || st.p)) { if (st.entry) _appEntryHome(); else history.back(); return; }
     var f = document.getElementById('reader-frame');
     if (f && f.contentWindow) { try { f.contentWindow.postMessage({ zimi: 'back-request' }, location.origin); return; } catch (e) {} }
@@ -2773,6 +2825,12 @@ function goBack() {
     // Step back through article history before closing reader
     if (articleHistory.length > 0) {
       _stepBackToArticle(articleHistory.pop(), true);
+      return;
+    }
+    // Opened from a place of its own (the Almanac, a search, Discover, an
+    // app): the entry behind this one is that place, as it was left.
+    if (history.state && history.state.from) {
+      history.back();
       return;
     }
     // Article was opened from the almanac — drive Back through history so the
@@ -18169,8 +18227,8 @@ function openReddot(replaceState, p) {
   // Arrived at the thing itself (a shared link): there is no home beneath
   // it in history, so the arrow makes one in place instead of stepping out.
   if (replaceState && p) st.entry = true;
-  if (replaceState) history.replaceState(st, '', _reddotUrl(p));
-  else history.pushState(st, '', _reddotUrl(p));
+  if (replaceState) history.replaceState(_keepFrom(st), '', _reddotUrl(p));
+  else history.pushState(_stampFrom(st), '', _reddotUrl(p));
   openReader(_REDDOT_PAGE + '#' + _reddotStrings(p));
   document.title = t('reddot') + ' \u2014 Zimi';
   _setWindowTitle(document.title);
@@ -18330,8 +18388,8 @@ function _openHashApp(app, replaceState, show) {
   _appTop = true;
   var st = { mode: 'reader' };
   st[app] = true;
-  if (replaceState === true) history.replaceState(st, '', '/#' + app);
-  else history.pushState(st, '', '/#' + app);
+  if (replaceState === true) history.replaceState(_keepFrom(st), '', '/#' + app);
+  else history.pushState(_stampFrom(st), '', '/#' + app);
   openReader(page);
   document.title = t(app) + ' — Zimi';
   _setWindowTitle(document.title);
@@ -19476,8 +19534,8 @@ function openExchange(replaceState, q) {
   // Arrived at the thing itself (a shared link): there is no home beneath
   // it in history, so the arrow makes one in place instead of stepping out.
   if (replaceState && q) st.entry = true;
-  if (replaceState) history.replaceState(st, '', _exchangeUrl(q));
-  else history.pushState(st, '', _exchangeUrl(q));
+  if (replaceState) history.replaceState(_keepFrom(st), '', _exchangeUrl(q));
+  else history.pushState(_stampFrom(st), '', _exchangeUrl(q));
   openReader(_EXCHANGE_PAGE + '#' + _exchangeStrings(q));
   document.title = t('exchange') + ' \u2014 Zimi';
   _setWindowTitle(document.title);
@@ -19592,10 +19650,16 @@ function _tubeStrings(play) {
 function _appStep(state, url, key) {
   var s = history.state || {};
   // Item to item is one entry; the way in (a shared link) stays the way in.
-  if (s.mode === 'reader' && s[key]) { if (s.entry) state.entry = true; history.replaceState(state, '', url); }
+  if (s.mode === 'reader' && s[key]) {
+    if (s.entry) state.entry = true;
+    if (s.from) state.from = s.from;
+    history.replaceState(state, '', url);
+  }
   else history.pushState(state, '', url);
 }
 function _appHome(state, url, key) {
+  var s = history.state || {};
+  if (s.from) state.from = s.from;
   history.replaceState(state, '', url);
 }
 // Back or Forward landed on an app address while that app is open: steer
@@ -19740,8 +19804,8 @@ function openTube(replaceState, play) {
   // Arrived at the thing itself (a shared link): there is no home beneath
   // it in history, so the arrow makes one in place instead of stepping out.
   if (replaceState && play) st.entry = true;
-  if (replaceState) history.replaceState(st, '', _tubeUrl(play));
-  else history.pushState(st, '', _tubeUrl(play));
+  if (replaceState) history.replaceState(_keepFrom(st), '', _tubeUrl(play));
+  else history.pushState(_stampFrom(st), '', _tubeUrl(play));
   openReader(_TUBE_PAGE + '#' + _tubeStrings(play));
   document.title = t('tube') + ' \u2014 Zimi';
   _setWindowTitle(document.title);
@@ -24051,8 +24115,8 @@ function openArticle(zim, path, title, opts) {
   // Deep-link boot replaces the boot entry so the history stack is exactly
   // [article] — browser Back then leaves the site instead of surfacing a phantom
   // home the user never visited.
-  if (opts && opts.replace) history.replaceState(st, '', canonUrl);
-  else history.pushState(st, '', canonUrl);
+  if (opts && opts.replace) history.replaceState(_keepFrom(st), '', canonUrl);
+  else history.pushState(_stampFrom(st), '', canonUrl);
   // PDF: route through pdf.js viewer (renders in reader iframe like any article)
   if (lurl.endsWith('.pdf')) {
     url = _pdfViewerUrl(url);
@@ -24735,8 +24799,13 @@ window.addEventListener('popstate', async (e) => {
   hideSuggest();
   _hideHistoryTrail();
   if (_createOpen) { closeCreate(); return; }
-  // Close Space if open
-  if (_almanacOpen) { closeAlmanac(); return; }
+  // Close the Almanac if open. Forward to a page opened from it: the Almanac
+  // steps aside as it did when the link was followed (its entry and its
+  // place kept for the Back after), and the page opens below.
+  if (_almanacOpen) {
+    if (!(e.state && e.state.from === 'almanac')) { closeAlmanac(); return; }
+    _almReturnScroll = _suspendAlmanacForLink();
+  }
   // Restore reader when navigating back from manage view
   if (mode === 'manage' && _manageSavedReader) {
     _manageToken = '';

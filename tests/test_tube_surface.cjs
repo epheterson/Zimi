@@ -103,7 +103,7 @@ ok('the home page draws the row before favorites', /h \+= _appsRowHtml\(\);/.tes
 
 // ── opening it ───────────────────────────────────────────────────────────
 const open = extract(/function openTube\(replaceState, play\) \{[\s\S]*?\n\}/, 'openTube');
-ok('ZimiTube is the page Zimi owns, in the reader, with its own history entry', /openReader\(_TUBE_PAGE \+ '#' \+ _tubeStrings\(play\)\)/.test(open) && /history\.pushState\(st, '', _tubeUrl\(play\)\)/.test(open) && /_tubeOpen = true;/.test(open));
+ok('ZimiTube is the page Zimi owns, in the reader, with its own history entry', /openReader\(_TUBE_PAGE \+ '#' \+ _tubeStrings\(play\)\)/.test(open) && /history\.pushState\(_stampFrom\(st\), '', _tubeUrl\(play\)\)/.test(open) && /_tubeOpen = true;/.test(open));
 ok('a playing video has an address (/?tube=<zim>/<page>): a step from the shelves, the same step from one video to the next', /d\.zimi === 'tube-play' && _tubeOpen[\s\S]*_appStep\(\{ mode: 'reader', tube: true, play: d\.play \}, _tubeUrl\(d\.play\), 'play'\)/.test(src) && /tell\(\{ zimi: 'tube-play', play: v\.zim \+ '\/' \+ v\.page, title: v\.title \}\)/.test(page) && /return play \? '\/\?tube=' \+ encodeURIComponent\(play\) : '\/#tube';/.test(src));
 ok('opened at that address, the page plays it', /if \(STR\.play\) \{ var want = STR\.play;/.test(page) && /tubeQ\.get\('play'\)/.test(src));
 ok('messages from the page are checked for origin and shape', /e\.origin !== location\.origin/.test(src) && /_APP_CATEGORY_KEYS\.indexOf\(d\.category\) >= 0/.test(src));

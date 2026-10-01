@@ -1375,6 +1375,7 @@
   "generate": "Générer",
   "get_started": "Commencer",
   "go_back": "Retour",
+  "back_to": "Retour à {place}",
   "gr_cap_0": "Pochette du disque · instructions de lecture pour les découvreurs",
   "gr_cap_1": "Cercle de calibration",
   "gr_cap_10": "Jupiter",

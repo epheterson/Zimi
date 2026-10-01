@@ -1375,6 +1375,7 @@
   "generate": "Generieren",
   "get_started": "Loslegen",
   "go_back": "Zurück",
+  "back_to": "Zurück zu {place}",
   "gr_cap_0": "Schallplattenhülle · Abspielanleitung für die Finder",
   "gr_cap_1": "Kalibrierungskreis",
   "gr_cap_10": "Jupiter",

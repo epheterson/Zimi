@@ -268,6 +268,15 @@
     color: var(--text2); font-size: 16px; padding: 4px 6px; cursor: pointer;
     flex-shrink: 0; transition: all 0.15s; line-height: 1;
   }
+  /* Where the arrow returns to, when that is somewhere of its own (the
+     Almanac, a search, an app): named beside it. Short, never wrapping, cut
+     with an ellipsis before it can crowd the search box on a phone. */
+  .back-btn .back-label {
+    margin-inline-start: 5px; font-size: 13px; white-space: nowrap;
+    max-width: 9em; overflow: hidden; text-overflow: ellipsis;
+  }
+  .back-btn .back-label[hidden] { display: none; }
+  @media (max-width: 600px) { .back-btn .back-label { max-width: 6.5em; } }
   .back-btn:hover,
   .random-btn:hover, .manage-btn:hover, .newtab-btn:hover, .library-btn:hover,
   .create-btn:hover,
@@ -1109,7 +1118,7 @@
 
   /* ── RTL support ── */
   [dir="rtl"] .topbar { direction: rtl; }
-  [dir="rtl"] .back-btn { transform: scaleX(-1); }
+  [dir="rtl"] .back-btn .back-arrow { display: inline-block; transform: scaleX(-1); }
   /* Article/ZIM titles can be RTL (Arabic, Hebrew, Farsi) inside LTR
      chrome (and vice versa) — isolate so neighboring punctuation and
      counts don't reshuffle around them. */

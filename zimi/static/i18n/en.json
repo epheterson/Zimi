@@ -1375,6 +1375,7 @@
   "generate": "Generate",
   "get_started": "Get Started",
   "go_back": "Go back",
+  "back_to": "Back to {place}",
   "gr_cap_0": "Record Cover · playback instructions for finders",
   "gr_cap_1": "Calibration Circle",
   "gr_cap_10": "Jupiter",
