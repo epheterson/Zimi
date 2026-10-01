@@ -4885,6 +4885,11 @@ _MOON_TEX.src = _MOON_MAP_URL;
 var _MOON_ALBEDO_LIFT = 60;
 var _MOON_ALBEDO_GAIN = 0.8;
 var _MOON_PLAIN_GREY = 184;       // the disc's grey until the map arrives
+// Sunlight a touch warm, earthshine cool: red and blue gain [base, per unit
+// of the light's sunlit share] (green is 1). The 3D Moon's shader reads the
+// same numbers, so the two Moons are one picture.
+var _MOON_TINT_R = [0.99, 0.05];
+var _MOON_TINT_B = [1.18, -0.18];
 // Map widths read back: the Today card's 48px disc needs a quarter of the
 // small map; a wider disc reads one map pixel per disc pixel at its centre
 // (a disc N wide spans pi * N map pixels round the whole Moon), doubling from
@@ -5092,6 +5097,7 @@ function _moonSpriteCanvas(v, sizePx) {
   var earth = _moonEarthshine(cosI);   // the Earth is where we are: it lights the disc evenly
   var edgeW = 2.4 / N;
   var lut = _moonDisplayLut(), lutK = _MOON_DISPLAY_LUT_N / Math.sqrt(_MOON_DISPLAY_LUT_MAX);
+  var r0 = _MOON_TINT_R[0], r1 = _MOON_TINT_R[1], b0 = _MOON_TINT_B[0], b1 = _MOON_TINT_B[1];
 
   for (var py = 0; py < N; py++) {
     var y = 1 - (py + 0.5) / N * 2;              // +1 top .. -1 bottom
@@ -5116,9 +5122,9 @@ function _moonSpriteCanvas(v, sizePx) {
       var li = Math.sqrt(lin) * lutK;
       var gm = g * lut[li < _MOON_DISPLAY_LUT_N ? li | 0 : _MOON_DISPLAY_LUT_N];
       // Sunlit side faintly warm, earthshine cool.
-      data[o] = Math.min(255, gm * (0.99 + 0.05 * warm));
+      data[o] = Math.min(255, gm * (r0 + r1 * warm));
       data[o + 1] = Math.min(255, gm);
-      data[o + 2] = Math.min(255, gm * (1.18 - 0.18 * warm));
+      data[o + 2] = Math.min(255, gm * (b0 + b1 * warm));
       // Antialias the limb over the outer ~1px ring.
       data[o + 3] = 255 * _smoothstep(1.0, 1.0 - edgeW, r2);
     }

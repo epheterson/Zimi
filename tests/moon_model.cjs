@@ -12,7 +12,7 @@ const path = require('path');
 
 const VARS = ['_MOON_MAP_URL', '_MOON_MAP_HI_URL', '_MOON_LUNAR_L', '_MOON_DISPLAY_GAMMA', '_MOON_ROUGH_MU',
   '_MOON_EARTHSHINE_MAX', '_MOON_EARTHSHINE_FLOOR', '_MOON_LON_TERMS', '_MOON_LAT_TERMS', '_MOON_SUN_DIST_RATIO',
-  '_MOON_ALBEDO_LIFT', '_MOON_ALBEDO_GAIN'];
+  '_MOON_ALBEDO_LIFT', '_MOON_ALBEDO_GAIN', '_MOON_PLAIN_GREY', '_MOON_TINT_R', '_MOON_TINT_B'];
 const FNS = ['_smoothstep', '_moonLunarL', '_moonLunarLambert', '_moonEarthshine', '_moonDisplay', '_moonSeries', '_moonEcliptic'];
 
 function extractFn(src, name) {

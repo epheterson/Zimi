@@ -988,17 +988,19 @@ var AE_GLSL_MOONLIGHT = [
   'vec3 aeMoonDisplay(vec3 lin) { return pow(max(lin, vec3(0.0)), vec3(' + _aeGlslNum(1 / _MOON_DISPLAY_GAMMA) + ')); }'
 ].join('\n');
 
-// The Moon: sunlight and earthshine as the 2D Moons have them, the Earth's
-// shadow (with the dim copper light the Earth's atmosphere bends into it),
-// all in linear light and then encoded as the 2D Moons are. The earthshine
-// (app.js _moonEarthshine, set each frame for the Earth's phase) lights the
-// hemisphere facing the Earth. Until its map is in (or if it never comes) the
-// Moon is a plain grey of about the map's mean brightness, so it still shows
-// its phase instead of black on black.
-var AE_MOON_PLAIN_ALBEDO = 0.5;
-var AE_MOON_EXPOSURE = 1.15;
+// The Moon: the 2D Moons' picture (app.js _moonSpriteCanvas) in GLSL, from
+// the same constants: the map toned as they tone it, sunlight by lunar-
+// Lambert, earthshine (app.js _moonEarthshine, set each frame for the
+// Earth's phase) over the hemisphere facing the Earth, encoded for the
+// screen, sunlight a touch warm and earthshine cool. Seen from the Earth the
+// hero disc and this Moon are the same pixels (the handoff between them is
+// tests/test_moon_handoff_live.py). The Earth's shadow adds what the 2D Moons
+// do not draw: an eclipse, with the dim copper light the Earth's atmosphere
+// bends into it. Until its map is in (or if it never comes) the Moon is the
+// 2D Moons' plain grey, so it still shows its phase instead of black on black.
 // The umbra's copper, linear: (0.62, 0.24, 0.10) x 0.75 on the screen.
 var AE_MOON_UMBRA_LIN = [0.62, 0.24, 0.10].map(function (c) { return Math.pow(0.75 * c, _MOON_DISPLAY_GAMMA); });
+var AE_BYTE = 255;
 var AE_MOON_FRAG = [
   'precision highp float;',
   'uniform sampler2D moonMap; uniform float moonMapped;',
@@ -1013,12 +1015,20 @@ var AE_MOON_FRAG = [
   '  vec3 E = normalize(-vWorld);',
   '  float mu = dot(N, V);',
   '  float light = aeSunlight(vWorld, sunPos, sunR, vec3(0.0), earthR);',
-  '  float albedo = mix(' + AE_MOON_PLAIN_ALBEDO.toFixed(2) + ', texture2D(moonMap, vUv).r, moonMapped);',
+  '  float toned = min(1.0, ' + _aeGlslNum(_MOON_ALBEDO_LIFT / AE_BYTE) + ' + ' + _aeGlslNum(_MOON_ALBEDO_GAIN) + ' * texture2D(moonMap, vUv).r);',
+  '  float albedo = mix(' + _aeGlslNum(_MOON_PLAIN_GREY / AE_BYTE) + ', toned, moonMapped);',
   '  float sun = aeLunarLambert(dot(N, L), mu, aeLunarL(dot(L, V)));',
-  '  float es = earthshine * aeLunarLambert(dot(N, E), mu, aeLunarL(dot(E, V)));',
+  // Earthshine as the 2D Moons light it: seen from the Earth, even across
+  // the disc (lunar-Lambert with the light behind the eye is 1 everywhere).
+  '  float mu0e = dot(N, E), Le = aeLunarL(dot(E, V));',
+  '  float es = mu0e > 0.0 ? earthshine * (2.0 * Le * mu0e / (mu0e + max(mu, 0.0)) + (1.0 - Le) * mu0e) : 0.0;',
+  '  float lit = sun * light;',
   '  vec3 umbra = vec3(' + AE_MOON_UMBRA_LIN.map(_aeGlslNum).join(', ') + ');',
-  '  vec3 lin = vec3(sun * light + es) + umbra * sun * (1.0 - light);',
-  '  gl_FragColor = vec4(albedo * ' + AE_MOON_EXPOSURE.toFixed(2) + ' * aeMoonDisplay(lin), 1.0);',
+  '  vec3 lin = vec3(lit + es) + umbra * sun * (1.0 - light);',
+  '  float warm = lit / max(lit + es, 1e-6);',
+  '  vec3 tint = vec3(' + _aeGlslNum(_MOON_TINT_R[0]) + ' + ' + _aeGlslNum(_MOON_TINT_R[1]) + ' * warm, 1.0, ' +
+    _aeGlslNum(_MOON_TINT_B[0]) + ' + ' + _aeGlslNum(_MOON_TINT_B[1]) + ' * warm);',
+  '  gl_FragColor = vec4(min(vec3(1.0), albedo * aeMoonDisplay(lin) * tint), 1.0);',
   '}'
 ].join('\n');
 
