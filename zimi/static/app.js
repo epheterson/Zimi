@@ -7350,9 +7350,8 @@ async function doSearch(query, push, perSource) {
         allResults = more && allResults && allResults._query === query ? mergeSearchResults(allResults, d1) : d1;
         pushSearchState();
         renderSearchResults(allResults, scope);
-        // Persist search to browse history
-        _histPushSearch(query, scope, (d1.results || []).length);
-        if (!d1.partial) return;
+        // A plain answer is the whole search: it goes in the recent list now.
+        if (!d1.partial) { _histPushSearch(query, scope, (d1.results || []).length); return; }
         // Show honest progress: "N title matches (Xs) — searching content..."
         const titleCount = (d1.results || []).length;
         const indicator = document.createElement('div');
@@ -7377,6 +7376,7 @@ async function doSearch(query, push, perSource) {
       allResults = d1 ? mergeSearchResults(d1, d) : d;
       gotFull = true;
       renderSearchResults(allResults, scope);
+      _histPushSearch(query, scope, (allResults.results || []).length);
     });
     clearInterval(timerInterval);
     if (searchSeq !== _searchSeq) return;
@@ -7579,12 +7579,27 @@ function _allResetPill(active, handler) {
     active + '" onclick="' + handler + '">' + tH('filter_all') + '</button>';
 }
 
+// How many results each source and each language pill would show: the
+// results themselves counted, so the pills add up to All.
+function searchResultCounts(items, zims) {
+  var lang = {};
+  (zims || []).forEach(function(z) { lang[z.name] = z.language || ''; });
+  var bySource = {}, byLanguage = {};
+  items.forEach(function(r) {
+    bySource[r.zim] = (bySource[r.zim] || 0) + 1;
+    var l = lang[r.zim] || '';
+    if (l) byLanguage[l] = (byLanguage[l] || 0) + 1;
+  });
+  return { bySource: bySource, byLanguage: byLanguage };
+}
+
 function renderSearchResults(data, scope) {
   if (snippetController) { snippetController.abort(); snippetController = null; }
   let items = data.results || [];
-  const bySource = data.by_source || {};
-  const byLanguage = data.by_language || {};
-  const totalCount = data.total || items.length;
+  const counts = searchResultCounts(items, zimsCache);
+  const bySource = counts.bySource;
+  const byLanguage = counts.byLanguage;
+  const totalCount = items.length;
 
   // Build cross-reference: which languages per source, which sources per language
   var cache_lang_map = {};
@@ -8135,7 +8150,10 @@ function showHistoryDropdown(filter) {
     var label, sub, key = _histRecentKey(entry);
     if (entry.type === 'search') {
       label = typeof entry.query === 'string' ? entry.query : '';
-      sub = entry.zim ? _zimTitle(entry.zim) : t('all_sources').replace(/^\u2190\s*/, '');
+      // Found nothing (kept before 1.12.1 left those out): not offered.
+      if (entry.resultCount === 0) continue;
+      // Every source is the usual: named only when the search was in one.
+      sub = entry.zim ? _zimTitle(entry.zim) : '';
     } else {
       label = (typeof entry.title === 'string' && entry.title) || _titleFromPath(entry.path || '');
       sub = entry.zim ? _zimTitle(entry.zim) : '';
@@ -8168,16 +8186,17 @@ function showHistoryDropdown(filter) {
   var recentHeader = (filter || !items.length) ? '' : '<div class="sg-recent-head"><span>' + tH('suggest_recent') + '</span>' +
     (anySearch ? '<button type="button" class="sg-recent-clear" onmousedown="event.preventDefault();event.stopPropagation();_recentClearSearches()">' + tH('recent_clear_searches') + '</button>' : '') +
     '</div>';
-  suggestDropdown.innerHTML = pillsHtml + recentHeader +
+  // What you searched and read first; the library's filter rows under it.
+  suggestDropdown.innerHTML = recentHeader +
     items.map(function(it, i) {
       var forget = t('remove') + ': ' + it.label;
       return '<div class="suggest-item sg-recent" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
         (it.isSearch ? searchIcon : icon) +
         '<div class="sg-recent-text"><div class="sg-title">' + esc(it.label) + '</div>' +
-        '<div class="sg-source">' + esc(it.sub) + '</div></div>' +
+        (it.sub ? '<div class="sg-source">' + esc(it.sub) + '</div>' : '') + '</div>' +
         '<button type="button" class="sg-forget" aria-label="' + escAttr(forget) + '" title="' + escAttr(forget) + '" onmousedown="event.preventDefault();event.stopPropagation();_recentForget(' + i + ')">' +
         _CHIP_X_SVG + '</button></div>';
-    }).join('');
+    }).join('') + pillsHtml;
   suggestDropdown.style.display = 'block';
 }
 
@@ -21201,6 +21220,8 @@ function _histFindPlace(zim, pos) {
   return null;
 }
 function _histPushSearch(query, zimName, resultCount) {
+  // A search that found nothing is not one to go back to.
+  if (!resultCount) return;
   var h = _histLoad();
   // Deduplicate recent identical searches
   if (h.length > 0 && h[0].type === 'search' && h[0].query === query && h[0].zim === (zimName || '')) return;
