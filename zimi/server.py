@@ -77,6 +77,7 @@ import argparse
 import collections
 import glob
 import hashlib
+import importlib.util
 import json
 import logging
 import os
@@ -126,6 +127,18 @@ except ImportError:
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
 ZIMI_VERSION = "1.12.0"
+
+
+def bundled(module):
+    """Whether ``zimi.<module>`` is part of this install.
+
+    The zimi package has every module. zimi-mcp (packaging/zimi-mcp) is built
+    from the same tree with only the search-and-read core: no web app, no
+    downloads, no capture. The few places the core reaches for the rest ask
+    here first, so a missing module is a decision, not a caught ImportError
+    that would also hide a real one."""
+    return importlib.util.find_spec(f"zimi.{module}") is not None
+
 
 # Standing maintenance cadence: catalog TTL is 24h and UPnP leases are
 # 24h — run every 12h so both stay fresh at half-life.
@@ -1471,8 +1484,9 @@ def _init():
     except OSError:
         pass  # ZIM_DIR may not exist yet (e.g. during import in tests)
     _migrate_data_files()
-    global _auto_update_enabled, _auto_update_freq
-    _auto_update_enabled, _auto_update_freq = _load_auto_update_config()
+    if bundled("library"):  # auto-update is downloads; zimi-mcp has none
+        global _auto_update_enabled, _auto_update_freq
+        _auto_update_enabled, _auto_update_freq = _load_auto_update_config()
 
 
 def _migrate_data_files():
@@ -4523,6 +4537,132 @@ def _make_stdio_resilient():
             pass
 
 
+def _add_mcp_args(p):
+    """The flags of `zimi mcp`, which `zimi-mcp` takes as its own."""
+    p.add_argument(
+        "zim_dir",
+        nargs="?",
+        default=None,
+        help="Directory containing *.zim files (overrides ZIM_DIR; default: found as serve finds it)",
+    )
+    p.add_argument(
+        "--tools",
+        default=None,
+        help="lean: search, read, read_section (default); full: every tool (overrides ZIMI_MCP_TOOLS)",
+    )
+    p.add_argument("--data-dir", default=None, help="Directory for Zimi's own state")
+    p.add_argument("--config", default=None, help="Path to a JSON config file")
+
+
+def _resolve_boot(args):
+    """Fold the flags, the env and the config file into the globals, as every
+    subcommand needs before it reads a path. Returns (settings, config_path,
+    data_dir_problem); the problem is set only for `zimi config`, which
+    reports it instead of exiting."""
+    # Before anything can read a path: argparse runs long after the module-level
+    # env read, so the flags (and the config file, which only argparse can point
+    # us at) have to be folded back into the globals here. Done for every
+    # subcommand, not just `serve`, so one file describes the whole instance —
+    # with no config file present this resolves to exactly today's values.
+    # getattr with a default: only `serve` and `config` carry these flags, and
+    # the rest of the subcommands still want the file's zim_dir/data_dir.
+    flags = {
+        k: getattr(args, k, None)
+        for k in ("zim_dir", "data_dir", "host", "port", "config")
+    }
+    # The one impure discovery probe, shared by every resolution below so all
+    # of them agree on the same answer. Cheap (a few globs), and inert unless
+    # zim_dir would otherwise fall to the hardcoded default.
+    discovered = discover_zim_dir()
+    try:
+        config, config_path = load_config(
+            flags["zim_dir"],
+            flags["data_dir"],
+            flags["config"],
+            discovered_zim_dir=discovered,
+        )
+        settings = resolve_settings(
+            zim_dir_flag=flags["zim_dir"],
+            data_dir_flag=flags["data_dir"],
+            host_flag=flags["host"],
+            port_flag=flags["port"],
+            config=config,
+            config_path=config_path,
+            discovered_zim_dir=discovered,
+        )
+    except ConfigError as e:
+        print(f"zimi: {e}", file=sys.stderr)
+        sys.exit(2)
+    # Hand the file's answer to the modules that own each setting, before any of
+    # them is asked for it. Done for every subcommand: `backup` and `restore`
+    # have to see the same instance `serve` would.
+    apply_env_settings(settings)
+    apply_data_paths(
+        flags["zim_dir"],
+        flags["data_dir"],
+        config=config,
+        discovered_zim_dir=discovered,
+    )
+    # Read-only media check, up front for every subcommand: an explicitly
+    # configured unwritable data dir is an operator mistake (one line, exit 2,
+    # same convention as ConfigError), while an unwritable DERIVED default
+    # reroutes to the per-library cache dir — and `zimi config` must report
+    # the reroute as the provenance of the value actually in effect.
+    #
+    # EXCEPT `zimi config` itself: it is the diagnostic you reach for to debug
+    # exactly this misconfiguration, so it must never refuse to print. It
+    # reports the problem beneath the table instead of dying above it.
+    data_dir_problem = None
+    try:
+        _ensure_writable_data_dir()
+    except DataDirError as e:
+        if args.command == "config":
+            data_dir_problem = str(e)
+        else:
+            print(f"zimi: {e}", file=sys.stderr)
+            sys.exit(2)
+    if _data_dir_fallback_from:
+        settings["data_dir"] = (
+            ZIMI_DATA_DIR,
+            f"fallback: {_data_dir_fallback_from} not writable",
+        )
+    return settings, config_path, data_dir_problem
+
+
+def _run_mcp(args, settings):
+    """Serve MCP on stdio: `zimi mcp` and `zimi-mcp`."""
+    try:
+        from zimi import mcp_server as _mcp_server
+    except SystemExit:
+        print(
+            "zimi mcp needs the MCP package: pip install 'zimi[mcp]'",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    _mcp_server.run(
+        _mcp_server.tools_setting(args.tools or settings["mcp_tools"][0], "lean")
+    )
+
+
+def mcp_main(argv=None):
+    """`zimi-mcp [ZIM_DIR] [--tools lean|full]`: `zimi mcp` as a command of
+    its own, the entry point of the zimi-mcp package. It builds no other
+    subcommand's parser, so nothing outside the search-and-read core loads."""
+    _make_stdio_resilient()
+    parser = argparse.ArgumentParser(
+        prog="zimi-mcp",
+        description="Zimi's MCP server on stdio: search and read ZIM files offline.",
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"zimi-mcp {ZIMI_VERSION}"
+    )
+    _add_mcp_args(parser)
+    args = parser.parse_args(argv)
+    args.command = "mcp"
+    settings, _config_path, _problem = _resolve_boot(args)
+    _run_mcp(args, settings)
+
+
 def main():
     _make_stdio_resilient()
     parser = argparse.ArgumentParser(description="ZIM Knowledge Base Reader")
@@ -4552,19 +4692,7 @@ def main():
     p_mcp = sub.add_parser(
         "mcp", help="Serve MCP on stdio for AI agents (no web server)"
     )
-    p_mcp.add_argument(
-        "zim_dir",
-        nargs="?",
-        default=None,
-        help="Directory containing *.zim files (overrides ZIM_DIR; default: found as serve finds it)",
-    )
-    p_mcp.add_argument(
-        "--tools",
-        default=None,
-        help="lean: search, read, read_section (default); full: every tool (overrides ZIMI_MCP_TOOLS)",
-    )
-    p_mcp.add_argument("--data-dir", default=None, help="Directory for Zimi's own state")
-    p_mcp.add_argument("--config", default=None, help="Path to a JSON config file")
+    _add_mcp_args(p_mcp)
 
     # Every path/bind flag defaults to None, not to its real default: that is
     # how resolve_settings tells "flag omitted" (fall through to env, then the
@@ -4837,73 +4965,7 @@ def main():
 
     args = parser.parse_args()
 
-    # Before anything can read a path: argparse runs long after the module-level
-    # env read, so the flags (and the config file, which only argparse can point
-    # us at) have to be folded back into the globals here. Done for every
-    # subcommand, not just `serve`, so one file describes the whole instance —
-    # with no config file present this resolves to exactly today's values.
-    # getattr with a default: only `serve` and `config` carry these flags, and
-    # the rest of the subcommands still want the file's zim_dir/data_dir.
-    flags = {
-        k: getattr(args, k, None)
-        for k in ("zim_dir", "data_dir", "host", "port", "config")
-    }
-    # The one impure discovery probe, shared by every resolution below so all
-    # of them agree on the same answer. Cheap (a few globs), and inert unless
-    # zim_dir would otherwise fall to the hardcoded default.
-    discovered = discover_zim_dir()
-    try:
-        config, config_path = load_config(
-            flags["zim_dir"],
-            flags["data_dir"],
-            flags["config"],
-            discovered_zim_dir=discovered,
-        )
-        settings = resolve_settings(
-            zim_dir_flag=flags["zim_dir"],
-            data_dir_flag=flags["data_dir"],
-            host_flag=flags["host"],
-            port_flag=flags["port"],
-            config=config,
-            config_path=config_path,
-            discovered_zim_dir=discovered,
-        )
-    except ConfigError as e:
-        print(f"zimi: {e}", file=sys.stderr)
-        sys.exit(2)
-    # Hand the file's answer to the modules that own each setting, before any of
-    # them is asked for it. Done for every subcommand: `backup` and `restore`
-    # have to see the same instance `serve` would.
-    apply_env_settings(settings)
-    apply_data_paths(
-        flags["zim_dir"],
-        flags["data_dir"],
-        config=config,
-        discovered_zim_dir=discovered,
-    )
-    # Read-only media check, up front for every subcommand: an explicitly
-    # configured unwritable data dir is an operator mistake (one line, exit 2,
-    # same convention as ConfigError), while an unwritable DERIVED default
-    # reroutes to the per-library cache dir — and `zimi config` must report
-    # the reroute as the provenance of the value actually in effect.
-    #
-    # EXCEPT `zimi config` itself: it is the diagnostic you reach for to debug
-    # exactly this misconfiguration, so it must never refuse to print. It
-    # reports the problem beneath the table instead of dying above it.
-    data_dir_problem = None
-    try:
-        _ensure_writable_data_dir()
-    except DataDirError as e:
-        if args.command == "config":
-            data_dir_problem = str(e)
-        else:
-            print(f"zimi: {e}", file=sys.stderr)
-            sys.exit(2)
-    if _data_dir_fallback_from:
-        settings["data_dir"] = (
-            ZIMI_DATA_DIR,
-            f"fallback: {_data_dir_fallback_from} not writable",
-        )
+    settings, config_path, data_dir_problem = _resolve_boot(args)
     host = settings["host"][0]
     port = settings["port"][0]
 
@@ -4943,17 +5005,7 @@ def main():
         print(json.dumps(results, indent=2, ensure_ascii=False))
 
     elif args.command == "mcp":
-        try:
-            from zimi import mcp_server as _mcp_server
-        except SystemExit:
-            print(
-                "zimi mcp needs the MCP package: pip install 'zimi[mcp]'",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        _mcp_server.run(
-            _mcp_server.tools_setting(args.tools or settings["mcp_tools"][0], "lean")
-        )
+        _run_mcp(args, settings)
 
     elif args.command == "list":
         load_cache()
@@ -5258,9 +5310,10 @@ def warm_indexes():
         # an hour for all of English Gutenberg on a NAS; the shelf opens
         # without them and gains eras and subjects when they are there.
         try:
-            from zimi import books as _books
+            if bundled("books"):
+                from zimi import books as _books
 
-            _books.build_all_details()
+                _books.build_all_details()
         except Exception as e:
             log.warning("Bookshelf details phase failed: %s", e)
 
@@ -5503,83 +5556,88 @@ from zimi.interlang import (  # noqa: E402, F401
     _find_article_in_lang_zims,
 )
 
-from zimi.library import (  # noqa: E402, F401
-    # Auto-update
-    _auto_update_config_path,
-    _auto_update_env_locked,
-    _load_auto_update_config,
-    _save_auto_update_config,
-    _auto_update_enabled,
-    _auto_update_freq,
-    _auto_update_last_check,
-    _auto_update_thread,
-    _auto_update_loop,
-    _FREQ_SECONDS,
-    # Downloads & catalog
-    _active_downloads,
-    _download_lock,
-    # _download_counter is rebind-class — see _REBOUND_ALIASES
-    _opds_cache,
-    _OPDS_CACHE_TTL,
-    _start_download,
-    _start_peer_download,
-    _start_import,
-    _get_downloads,
-    _fetch_kiwix_catalog,
-    maintenance_catalog_refresh,
-    USER_AGENT,
-    _check_updates,
-    _fetch_thumb,
-    _clear_thumb_cache,
-    _thumb_dir,
-    _download_thread,
-    _fetch_mirrors,
-    _download_from_url,
-    _title_from_filename,
-    KIWIX_OPDS_BASE,
-)
+# The web app's halves, re-exported like the rest. zimi-mcp ships none of
+# them; see bundled().
+if bundled("library"):
+    from zimi.library import (  # noqa: E402, F401
+        # Auto-update
+        _auto_update_config_path,
+        _auto_update_env_locked,
+        _load_auto_update_config,
+        _save_auto_update_config,
+        _auto_update_enabled,
+        _auto_update_freq,
+        _auto_update_last_check,
+        _auto_update_thread,
+        _auto_update_loop,
+        _FREQ_SECONDS,
+        # Downloads & catalog
+        _active_downloads,
+        _download_lock,
+        # _download_counter is rebind-class — see _REBOUND_ALIASES
+        _opds_cache,
+        _OPDS_CACHE_TTL,
+        _start_download,
+        _start_peer_download,
+        _start_import,
+        _get_downloads,
+        _fetch_kiwix_catalog,
+        maintenance_catalog_refresh,
+        USER_AGENT,
+        _check_updates,
+        _fetch_thumb,
+        _clear_thumb_cache,
+        _thumb_dir,
+        _download_thread,
+        _fetch_mirrors,
+        _download_from_url,
+        _title_from_filename,
+        KIWIX_OPDS_BASE,
+    )
 
-from zimi.manage import (  # noqa: E402, F401
-    # Password & authentication
-    _hash_pw,
-    _PW_ITERATIONS,
-    # _env_pw_hash_cache is rebind-class — see _REBOUND_ALIASES
-    _get_manage_password_hash,
-    _api_token_file,
-    _get_api_token,
-    _generate_api_token,
-    _revoke_api_token,
-    _check_manage_auth,
-    # Manage route handlers
-    handle_manage_get,
-    handle_manage_post,
-)
+if bundled("manage"):
+    from zimi.manage import (  # noqa: E402, F401
+        # Password & authentication
+        _hash_pw,
+        _PW_ITERATIONS,
+        # _env_pw_hash_cache is rebind-class — see _REBOUND_ALIASES
+        _get_manage_password_hash,
+        _api_token_file,
+        _get_api_token,
+        _generate_api_token,
+        _revoke_api_token,
+        _check_manage_auth,
+        # Manage route handlers
+        handle_manage_get,
+        handle_manage_post,
+    )
 
-from zimi.http import (  # noqa: E402, F401
-    # Rate limiting
-    RATE_LIMIT,
-    RATE_LIMIT_CONTENT,
-    _rate_buckets,
-    _rate_buckets_content,
-    _rate_lock,
-    _check_rate_limit,
-    # Metrics
-    _metrics,
-    _metrics_lock,
-    _record_metric,
-    _get_metrics,
-    # Usage stats
-    _usage_stats,
-    _usage_lock,
-    _record_usage,
-    _get_usage_stats,
-    _get_disk_usage,
-    # UI templates
-    COMPRESSIBLE_TYPES,
-    SEARCH_UI_HTML,
-    # HTTP handler
-    ZimHandler,
-)
+if bundled("http"):
+    from zimi.http import (  # noqa: E402, F401
+        # Rate limiting
+        RATE_LIMIT,
+        RATE_LIMIT_CONTENT,
+        _rate_buckets,
+        _rate_buckets_content,
+        _rate_lock,
+        _check_rate_limit,
+        # Metrics
+        _metrics,
+        _metrics_lock,
+        _record_metric,
+        _get_metrics,
+        # Usage stats
+        _usage_stats,
+        _usage_lock,
+        _record_usage,
+        _get_usage_stats,
+        _get_disk_usage,
+        # UI templates
+        COMPRESSIBLE_TYPES,
+        SEARCH_UI_HTML,
+        # HTTP handler
+        ZimHandler,
+    )
 
 if __name__ == "__main__":
     main()

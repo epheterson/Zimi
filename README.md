@@ -75,6 +75,8 @@ pip install zimi
 ZIM_DIR=./zims zimi serve --port 8899
 ```
 
+Two packages: `pip install zimi` is the complete experience; `pip install zimi-mcp` is only the [MCP server](#mcp-server) and search, for AI agents (280 KB, no web app).
+
 Most people configure nothing. Everything is in Settings; `zimi config` prints every effective value and where it came from, and each `ZIMI_*` variable is documented in the guides below.
 
 ## Documentation
@@ -91,19 +93,19 @@ Most people configure nothing. Everything is in Settings; `zimi config` prints e
 ## MCP server
 
 ```bash
-pip install "zimi[mcp]"
-zimi mcp /path/to/zims
+pip install zimi-mcp
+zimi-mcp /path/to/zims
 ```
 
 ```json
 {
   "mcpServers": {
-    "zimi": { "command": "zimi", "args": ["mcp", "/path/to/zims"] }
+    "zimi": { "command": "zimi-mcp", "args": ["/path/to/zims"] }
   }
 }
 ```
 
-Three tools by default (search, read a page as Markdown, read one section), about 330 tokens of schema, sized for small local models; `--tools full` serves every tool. No web server is started. For Docker on another machine, run `docker exec -i zimi python3 -m zimi mcp` over ssh. See [API & MCP](docs/features/api-and-mcp.md#just-the-basics) for the tools and measured numbers, and the [SearXNG](docs/integrations/searxng.md) and [OpenWebUI](docs/integrations/openwebui.md) guides.
+`zimi-mcp` is the MCP server and search alone, built from this repository and released with it. `pip install "zimi[mcp]"` gives the full install the same command, and `zimi mcp`. Three tools by default (search, read a page as Markdown, read one section), about 360 tokens of schema, sized for small local models; `--tools full` serves every tool. No web server is started. For Docker on another machine, run `docker exec -i zimi python3 -m zimi mcp` over ssh. See [API & MCP](docs/features/api-and-mcp.md#just-the-basics) for the tools and measured numbers, and the [SearXNG](docs/integrations/searxng.md) and [OpenWebUI](docs/integrations/openwebui.md) guides.
 
 ## Contributing
 

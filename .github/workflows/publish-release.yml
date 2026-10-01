@@ -24,6 +24,35 @@ jobs:
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}
 
+  # zimi-mcp, the MCP server and search alone, built from the same tree at
+  # the same tag (packaging/zimi-mcp). A job of its own, so a failure here
+  # never holds back zimi's upload above.
+  #
+  # Trusted publishing, no token: PyPI must list this workflow as a publisher
+  # of zimi-mcp. Before the project exists that is a "pending publisher"
+  # (pypi.org, Account settings, Publishing): project zimi-mcp, owner
+  # epheterson, repository Zimi, workflow publish-release.yml, no environment.
+  publish-pypi-mcp:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install build
+      - run: python packaging/zimi-mcp/build.py --outdir dist-mcp
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist-mcp/
+      - name: Say what to set up
+        if: failure()
+        run: |
+          echo "::error title=zimi-mcp was not published::If the log above says invalid-publisher, add a trusted publisher for zimi-mcp on pypi.org (owner epheterson, repository Zimi, workflow publish-release.yml, no environment) and re-run this job. zimi itself is unaffected."
+          exit 1
+
   # NOTE: Appcast signing + Homebrew cask update are handled in desktop-release.yml
   # (which has RELEASE_TOKEN to bypass branch protection). Removed from here to avoid
   # duplicate pushes and branch protection failures.

@@ -1,0 +1,48 @@
+# zimi-mcp: staged and built by build.py beside this file, never in place.
+# The version is the main package's, written over @VERSION@ at build time.
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zimi-mcp"
+version = "@VERSION@"
+description = "Zimi's MCP server and search alone: search and read Wikipedia, Stack Overflow and other ZIM files offline, for AI agents"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10,<3.15"
+authors = [{name = "Eric Pheterson"}]
+keywords = ["zim", "kiwix", "offline", "wikipedia", "search", "mcp", "rag", "llm"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Text Processing :: Indexing",
+]
+# Pinned as the main package pins them (mcp<2.0: see its pyproject).
+dependencies = [
+    "libzim>=3.1.0",
+    "mcp>=1.0,<2.0",
+    "certifi>=2024.1.1",
+]
+
+[project.optional-dependencies]
+# Text out of the PDFs in zimgit ZIMs. Without it a PDF reads as one line
+# saying PyMuPDF would extract its text.
+pdf = ["PyMuPDF>=1.23.0"]
+
+[project.scripts]
+zimi-mcp = "zimi.server:mcp_main"
+
+[project.urls]
+Homepage = "https://github.com/epheterson/Zimi"
+Documentation = "https://github.com/epheterson/Zimi/blob/main/docs/features/api-and-mcp.md"
+Issues = "https://github.com/epheterson/Zimi/issues"
+
+[tool.setuptools]
+packages = ["zimi"]
+
+[tool.setuptools.package-data]
+zimi = ["assets/lang-codes.json"]
