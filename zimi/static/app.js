@@ -4854,19 +4854,23 @@ function _localMoonName(name) { return _MOON_PHASE_I18N[name] ? t(_MOON_PHASE_I1
 // orthographic view of the same equirectangular LRO map the 3D view wraps its
 // sphere in. Nothing is a rotated photo: the point of the Moon facing us is
 // the optical libration (l, b), the terminator comes from the phase angle and
-// the bright limb's direction, and the brightness is normal·Sun for a soft
-// terminator, limb darkening toward the rim, and an earthshine FLOOR so the
-// shadowed side stays a visible (cool, dim) sphere rather than going black.
+// the bright limb's direction, and the light is _moonLunarLambert's, the model
+// the 3D view's shader is written from too.
 // The sprite is drawn lunar north up; the pole's turn in the viewer's sky is
 // one whole-disc rotation, so a sprite depends only on the phase and the
 // libration and stays cacheable while the sky wheels around it.
+//
+// Two maps. The 1024 one (54 KB) comes with app.js and paints the first disc.
+// The 4096 one (730 KB) is asked for only once the page has painted and gone
+// idle (_moonAfterFirstPaint), and from then on every disc wide enough to
+// show it is drawn from it; the Today card's disc is too small to.
 var _MOON_MAP_URL = '/static/earth/moon-v1.webp';
+var _MOON_MAP_HI_URL = '/static/earth/moon-4k-v1.webp';
 var _MOON_TEX = new Image();
+var _MOON_TEX_HI = null;          // the 4096 map's Image, once it has loaded
 var _moonTexReady = false;
 _MOON_TEX.onload = function() {
   _moonTexReady = true;
-  _moonSpriteCache.clear();
-  _moonSpriteCanvasCache.clear();
   if (typeof _repaintMoons === 'function') _repaintMoons();
 };
 _MOON_TEX.src = _MOON_MAP_URL;
@@ -4877,12 +4881,15 @@ _MOON_TEX.src = _MOON_MAP_URL;
 var _MOON_ALBEDO_LIFT = 60;
 var _MOON_ALBEDO_GAIN = 0.8;
 var _MOON_PLAIN_GREY = 184;       // the disc's grey until the map arrives
-// Map widths read back: the Today card's 48px disc needs a quarter of the map,
-// the hero all of it. Anything drawn wider than this many device pixels reads
-// the full map.
+// Map widths read back: the Today card's 48px disc needs a quarter of the
+// small map; a wider disc reads one map pixel per disc pixel at its centre
+// (a disc N wide spans pi * N map pixels round the whole Moon), doubling from
+// the small map's width up to the 4096 one's once that is in.
 var _MOON_MAP_FULL_W = 1024;
+var _MOON_MAP_HI_W = 4096;
 var _MOON_MAP_SMALL_W = 256;
 var _MOON_MAP_SMALL_UPTO_PX = 160;
+var _MOON_SPRITE_MAX_PX = 768;    // the hero's 200 CSS px at 3x is 600
 var _MOON_SPRITE_CACHE_MAX = 48;  // sprites kept; time travel makes new ones every frame
 
 // A Map that forgets its oldest entry past max (insertion order is age).
@@ -4894,6 +4901,37 @@ function _moonCachePut(cache, key, val) {
 var _moonSpriteCache = new Map();        // data URLs, for <img>
 var _moonSpriteCanvasCache = new Map();  // canvases, for the sky scene and motion
 
+// The 4096 map, asked for once the page has painted (two frames after load,
+// then idle), so it never competes with the first paint for the network or
+// the main thread. It is decoded off the main thread (decode()), and the
+// discs it sharpens are redrawn when the page is next idle: on a phone the
+// hero's redraw (a 2048 readback and a 600 px sprite) is ~70 ms.
+var _MOON_IDLE_TIMEOUT_MS = 3000;
+var _moonHiAsked = false;
+function _moonIdle(fn) {
+  (window.requestIdleCallback || function (f) { return setTimeout(f, 1); })(fn, { timeout: _MOON_IDLE_TIMEOUT_MS });
+}
+function _moonLoadHiMap() {
+  if (_moonHiAsked) return;
+  _moonHiAsked = true;
+  var im = new Image();
+  im.src = _MOON_MAP_HI_URL;
+  im.decode().then(function () {
+    _MOON_TEX_HI = im;
+    _moonIdle(function () { if (typeof _repaintMoons === 'function') _repaintMoons(); });
+  }, function () {});   // without it every disc keeps the 1024 map
+}
+function _moonAfterFirstPaint(fn) {
+  var go = function () {
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () { _moonIdle(fn); });
+    });
+  };
+  if (document.readyState === 'complete') go();
+  else window.addEventListener('load', go, { once: true });
+}
+_moonAfterFirstPaint(_moonLoadHiMap);
+
 // Hermite ease between two edges. Also used by the lazy-loaded almanac
 // scripts, which app.js always loads first.
 function _smoothstep(a, b, x) {
@@ -4901,8 +4939,92 @@ function _smoothstep(a, b, x) {
   return t * t * (3 - 2 * t);
 }
 
+// ── The Moon's light — one model, for the 2D discs and the 3D view ──
+// The Moon is not a Lambert ball: its dusty surface scatters light back the
+// way it came, so the full Moon is a flat disc, not one darkening to its rim.
+// McEwen's lunar-Lambert function (1991) says how, between Lommel-Seeliger
+// (the full Moon's flat disc) and Lambert (the crescent's falloff), weighted
+// by L, a cubic in the phase angle fitted to the Moon's photometry:
+//   r = 2L mu0 / (mu0 + mu) + (1 - L) mu0
+// mu0, mu the cosines of the Sun's and the viewer's angle from the surface
+// normal; 1 at the disc's centre at full Moon, where the map is shown as it is.
+// Toward the terminator the ground is rough: craters and hills shadow more of
+// it the lower the Sun stands (Hapke's macroscopic roughness), too small to
+// draw but seen together as the light dying away over the last ~15 degrees of
+// sunlight, which is what turns the terminator into the gradual fade a phone
+// photo of the Moon shows rather than a line.
+// The light then goes to the screen as a camera takes it, encoded
+// (_moonDisplay), not linearly.
+var _MOON_LUNAR_L = [1, -0.019, 2.42e-4, -1.46e-6];   // L(alpha), alpha in degrees
+var _MOON_ROUGH_MU = 0.25;                            // mu0 under which the rough ground shadows itself
+var _MOON_DISPLAY_GAMMA = 2.2;
+// Earthshine: sunlight off the Earth, which from the Moon is full when the
+// Moon is new. Its strength follows the Earth's phase as seen from the Moon
+// (a Lambert sphere's phase function), as a camera sees it: a faint dark
+// side beside a crescent, gone at full Moon, where only a trace of the dark
+// limb shows against the sky.
+var _MOON_EARTHSHINE_MAX = 0.01;     // linear, against the full Moon's 1
+var _MOON_EARTHSHINE_FLOOR = 0.0015; // linear; the dark limb's outline
+
+function _moonLunarL(cosAlpha) {
+  var a = Math.acos(Math.max(-1, Math.min(1, cosAlpha))) * 180 / Math.PI;
+  var c = _MOON_LUNAR_L;
+  return Math.max(0, Math.min(1, c[0] + a * (c[1] + a * (c[2] + a * c[3]))));
+}
+
+// Radiance (linear, 1 = the full Moon's centre) for mu0, mu and L.
+function _moonLunarLambert(mu0, mu, L) {
+  if (mu0 <= 0) return 0;
+  return (2 * L * mu0 / (mu0 + Math.max(mu, 0)) + (1 - L) * mu0) * _smoothstep(0, _MOON_ROUGH_MU, mu0);
+}
+
+// Earthshine (linear) for the Moon's phase angle: the Earth's phase angle
+// seen from the Moon is its supplement.
+function _moonEarthshine(cosAlpha) {
+  var beta = Math.PI - Math.acos(Math.max(-1, Math.min(1, cosAlpha)));
+  var phi = (Math.sin(beta) + (Math.PI - beta) * Math.cos(beta)) / Math.PI;
+  return _MOON_EARTHSHINE_FLOOR + _MOON_EARTHSHINE_MAX * Math.max(0, phi);
+}
+
+// Linear light to the screen's brightness.
+function _moonDisplay(lin) { return lin > 0 ? Math.pow(lin, 1 / _MOON_DISPLAY_GAMMA) : 0; }
+
+// _moonDisplay tabulated for the sprite loop (a pow per pixel was a third of
+// the hero's cost), indexed by the square root of the light so the steep dark
+// end, where the terminator fades out, is finely spaced.
+var _MOON_DISPLAY_LUT_N = 4096;
+var _MOON_DISPLAY_LUT_MAX = 2;     // lunar-Lambert peaks under 2, at the bright limb
+var _MOON_DISPLAY_LUT = null;
+function _moonDisplayLut() {
+  if (_MOON_DISPLAY_LUT) return _MOON_DISPLAY_LUT;
+  var t = new Float32Array(_MOON_DISPLAY_LUT_N + 1);
+  for (var i = 0; i <= _MOON_DISPLAY_LUT_N; i++) {
+    var r = i / _MOON_DISPLAY_LUT_N;
+    t[i] = _moonDisplay(r * r * _MOON_DISPLAY_LUT_MAX);
+  }
+  return (_MOON_DISPLAY_LUT = t);
+}
+
+// The disc's device-pixel size for a CSS size: the display's resolution, so
+// the terminator's fade and the limb stay smooth on the hero.
+function _moonSpriteN(sizePx) {
+  var dpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1;
+  return Math.min(_MOON_SPRITE_MAX_PX, Math.max(64, Math.round(sizePx * dpr)));
+}
+
+// The map width a disc N device pixels wide is drawn from, 0 before any map.
+function _moonMapWidthFor(N) {
+  if (!_moonTexReady) return 0;
+  if (N <= _MOON_MAP_SMALL_UPTO_PX) return _MOON_MAP_SMALL_W;
+  if (!_MOON_TEX_HI) return _MOON_MAP_FULL_W;
+  var W = _MOON_MAP_FULL_W;
+  while (W < Math.PI * N && W < _MOON_MAP_HI_W) W *= 2;
+  return W;
+}
+
 // The map as greyscale albedo at width W (W x W/2), toned, read back once per
 // width. The readback is a GPU sync, so it happens once, not per sprite.
+// Widths past the small map's come from the 4096 one.
 var _moonMapCache = {};
 function _moonMapData(W) {
   if (_moonMapCache[W]) return _moonMapCache[W];
@@ -4910,7 +5032,8 @@ function _moonMapData(W) {
   var cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
   var ctx = cv.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(_MOON_TEX, 0, 0, W, H);   // same-origin, so it won't taint
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(W > _MOON_MAP_FULL_W ? _MOON_TEX_HI : _MOON_TEX, 0, 0, W, H);   // same-origin, so it won't taint
   var src = ctx.getImageData(0, 0, W, H).data;
   var g = new Uint8Array(W * H);
   for (var i = 0; i < g.length; i++) g[i] = Math.min(255, _MOON_ALBEDO_LIFT + _MOON_ALBEDO_GAIN * src[i * 4]);
@@ -4918,10 +5041,11 @@ function _moonMapData(W) {
 }
 
 // A sprite's inputs, rounded to what the eye can tell apart (1% of phase, a
-// degree of angle), so the key and the drawing agree.
+// degree of angle), and the map it is drawn from, so the key and the drawing
+// agree. A disc the 4096 map does not change keeps its key, and its sprite.
 function _moonSpriteKey(v, sizePx) {
   return Math.round(v.k * 100) + ':' + Math.round(v.limb) + ':' + Math.round(v.l) + ':' +
-    Math.round(v.b) + 'x' + sizePx + (_moonTexReady ? 't' : '');
+    Math.round(v.b) + 'x' + sizePx + 'm' + _moonMapWidthFor(_moonSpriteN(sizePx));
 }
 
 // Sprite for a view (see _moonView) → data URL, for an <img>.
@@ -4939,16 +5063,14 @@ function _moonSpriteCanvas(v, sizePx) {
   var hit = _moonSpriteCanvasCache.get(key);
   if (hit) return hit;
 
-  // Device resolution (2x the CSS size on retina), capped at 512, so the
-  // terminator haze, limb darkening and edge stay crisp on the hero.
-  var dpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1;
-  var N = Math.min(512, Math.max(64, Math.round(sizePx * dpr)));
+  var N = _moonSpriteN(sizePx);
   var cv = document.createElement('canvas');
   cv.width = cv.height = N;
   var ctx = cv.getContext('2d');
   var img = ctx.createImageData(N, N);
   var data = img.data;
-  var map = _moonTexReady ? _moonMapData(N > _MOON_MAP_SMALL_UPTO_PX ? _MOON_MAP_FULL_W : _MOON_MAP_SMALL_W) : null;
+  var mapW = _moonMapWidthFor(N);
+  var map = mapW ? _moonMapData(mapW) : null;
 
   var D2R = Math.PI / 180;
   // The Sun: phase angle i from the lit fraction (k = (1 + cos i) / 2), in the
@@ -4962,11 +5084,10 @@ function _moonSpriteCanvas(v, sizePx) {
   var l = Math.round(v.l) * D2R, b = Math.round(v.b) * D2R;
   var sl = Math.sin(l), cl = Math.cos(l), sb = Math.sin(b), cb = Math.cos(b);
   var TWO_PI = 2 * Math.PI;
-  var term = 0.055;                 // terminator half-width (haze) in dot units
-  // Earthshine: the shadowed side stays clearly visible (a dim, cool disc),
-  // brightest near new moon when the Earth is "full" in the Moon's sky.
-  var earth = 0.16 + 0.10 * (1 - k);
+  var L = _moonLunarL(cosI);
+  var earth = _moonEarthshine(cosI);   // the Earth is where we are: it lights the disc evenly
   var edgeW = 2.4 / N;
+  var lut = _moonDisplayLut(), lutK = _MOON_DISPLAY_LUT_N / Math.sqrt(_MOON_DISPLAY_LUT_MAX);
 
   for (var py = 0; py < N; py++) {
     var y = 1 - (py + 0.5) / N * 2;              // +1 top .. -1 bottom
@@ -4975,7 +5096,7 @@ function _moonSpriteCanvas(v, sizePx) {
       var r2 = x * x + y * y;
       var o = (py * N + px) * 4;
       if (r2 >= 1.0) continue;                   // createImageData is transparent
-      var z = Math.sqrt(1 - r2);                 // toward the viewer
+      var z = Math.sqrt(1 - r2);                 // toward the viewer: mu
       var g = _MOON_PLAIN_GREY;
       if (map) {
         var bx = -x * sl - y * sb * cl + z * cb * cl;
@@ -4985,13 +5106,11 @@ function _moonSpriteCanvas(v, sizePx) {
         var fv = (0.5 - _moonFastAtan2(bz, Math.sqrt(bx * bx + by * by)) / Math.PI) * map.h - 0.5;
         g = _moonMapSample(map, fu, fv);
       }
-      var lit = _smoothstep(-term, term, x * sx + y * sy + z * sz);
-      var limb = _MOON_LIMB_LUT[(r2 * _MOON_LIMB_LUT_N) | 0];   // limb darkening
-      var litI = lit * limb;                     // sunlit component
-      var darkI = (1 - lit) * earth * limb;      // earthshine component
-      var m = litI + darkI;
-      var warm = m > 0 ? litI / m : 0;           // 1 = fully sunlit, 0 = earthshine
-      var gm = g * m;
+      var sun = _moonLunarLambert(x * sx + y * sy + z * sz, z, L);
+      var lin = sun + earth;
+      var warm = sun / lin;                      // 1 = all sunlight, 0 = all earthshine
+      var li = Math.sqrt(lin) * lutK;
+      var gm = g * lut[li < _MOON_DISPLAY_LUT_N ? li | 0 : _MOON_DISPLAY_LUT_N];
       // Sunlit side faintly warm, earthshine cool.
       data[o] = Math.min(255, gm * (0.99 + 0.05 * warm));
       data[o + 1] = Math.min(255, gm);
@@ -5003,15 +5122,6 @@ function _moonSpriteCanvas(v, sizePx) {
   ctx.putImageData(img, 0, 0);
   return _moonCachePut(_moonSpriteCanvasCache, key, cv);
 }
-
-// Limb darkening, z^0.42 with z = sqrt(1 - r^2), tabulated over r^2: the
-// shading loop's single most expensive call, the same for every sprite.
-var _MOON_LIMB_LUT_N = 4096;
-var _MOON_LIMB_LUT = (function () {
-  var t = new Float32Array(_MOON_LIMB_LUT_N + 1);
-  for (var i = 0; i <= _MOON_LIMB_LUT_N; i++) t[i] = Math.pow(Math.sqrt(Math.max(0, 1 - (i + 0.5) / _MOON_LIMB_LUT_N)), 0.42);
-  return t;
-})();
 
 // atan2 to within 0.012 degrees (a hundredth of a map pixel) at a third of
 // Math.atan2's cost; the hero calls it twice for each of 200,000 pixels.

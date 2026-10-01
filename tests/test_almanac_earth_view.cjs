@@ -163,6 +163,7 @@ vm.runInContext(extractFn(read('almanac-sky.js'), '_angleDelta'), S);
 vm.runInContext('var _MOON_EQUATOR_TILT_DEG = 1.54242;', S);
 for (const fn of ['_moonEqCoords', '_moonLimbAngles', '_moonLimbAnglesOf', '_moonAxisOf', '_moonView', '_moonPhase', '_normDeg360'])
   vm.runInContext(extractFn(read('app.js'), fn), S);
+vm.runInContext(require('./moon_model.cjs')(), S);
 vm.runInContext(read('almanac-orrery.js'), S);
 vm.runInContext(read('almanac-earth.js'), S);
 vm.runInContext(read('earth/satellite-7.1.0.min.js'), S);
@@ -316,6 +317,8 @@ const run = (code) => vm.runInContext(code, S);
     check(run('_ae.gl') === null, 'and lets the scene go');
     check(held.size > 10 && disposed === held.size, 'every geometry and material is disposed (' + disposed + ' of ' + held.size + ')');
     check(maps.length === 3 && maps.every((x) => x.disposed), 'every map is disposed');
+    check(textures.some((x) => x.url === S.AE_TEX_MOON_HI) && textures.filter((x) => x.url === S.AE_TEX_MOON).every((x) => x.disposed),
+      'the Moon\'s 4096 map replaced its 1024 one, which was given back then');
     check(r1.did('dispose') && r1.did('forceContextLoss'), 'the renderer is disposed and its context given back');
     const fresh = document.getElementById('ae-canvas');
     check(fresh !== oldCanvas && oldCanvas.parentNode === null, 'a fresh canvas replaces the one whose context is lost');

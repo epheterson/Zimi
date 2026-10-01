@@ -64,6 +64,7 @@ for (const fn of ['_dateToJD', '_jdnToGregorian', '_cnDeltaTdays', '_computeEcli
 // The orrery owns the constants the Earth view shares (the AU, the speed of
 // light, the day in seconds) and the formatter cache; it loads first in the app.
 vm.runInContext(fs.readFileSync(path.join(STATIC, 'almanac-orrery.js'), 'utf8'), S);
+vm.runInContext(require('./moon_model.cjs')(), S);   // app.js's, which loads before every Almanac file
 vm.runInContext(fs.readFileSync(path.join(STATIC, 'almanac-earth.js'), 'utf8'), S);
 vm.runInContext(fs.readFileSync(path.join(STATIC, 'earth', 'satellite-7.1.0.min.js'), 'utf8'), S);
 
