@@ -682,6 +682,14 @@
   .create-ftree-check { flex: 0 0 18px; width: 18px; height: 18px; margin: 0; accent-color: var(--amber); }
   .create-ftree-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .create-ftree-what { flex: 0 1 auto; max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text3); }
+  /* A file left out says why under its name, in full: the line wraps, it is
+     never cut, and it lines up with the names (twist 24 + gap 8 + check 18 + gap 8). */
+  .create-ftree-row.is-off { flex-wrap: wrap; align-content: center; row-gap: 2px; padding-block: 6px; }
+  .create-ftree-why { flex: 1 0 100%; padding-inline-start: 58px; font-size: 12px; line-height: 1.35; color: var(--text3); white-space: normal; }
+  .create-where { font-size: 12px; color: var(--text2); }
+  .create-where[hidden] { display: none; }
+  .create-where summary { cursor: pointer; width: max-content; }
+  .create-where .create-caption { margin-top: 4px; overflow-wrap: anywhere; }
   .create-ftree-more { padding: 6px 0; font: inherit; font-size: 13px; color: var(--amber); background: none; border: 0; cursor: pointer; }
   .create-ftree-summary { padding: 8px 12px 4px; }
   .create-left-out { margin: 6px 0 0; padding-inline-start: 18px; font-size: 13px; color: var(--text2); }

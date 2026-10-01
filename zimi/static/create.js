@@ -1690,6 +1690,11 @@ function _renderCreate() {
         // steadier anchor; the address still decides the mode when it can.
         '<div class="create-modes" id="create-modes" role="tablist"' +
           ' aria-label="' + escAttr(t('create_zim')) + '"></div>' +
+        // Why a chip is greyed out, said where a phone can read it (a
+        // tooltip is no answer on a touch screen); then what the lit mode
+        // makes, above whatever it asks for (a folder's tree, an address).
+        '<div class="create-caption create-modes-why" id="create-modes-why" hidden></div>' +
+        '<div class="create-panel-desc create-mode-desc" id="create-mode-desc"></div>' +
         '<div class="create-address" id="create-address">' +
           '<label class="ms-form-label" for="create-source" id="create-address-label"></label>' +
           '<textarea rows="1" class="create-field" id="create-source" spellcheck="false"' +
@@ -1697,6 +1702,8 @@ function _renderCreate() {
           '<select class="create-field" id="create-archive" hidden></select>' +
           '<div class="create-ftree" id="create-folder-tree" role="tree" hidden></div>' +
           '<div class="create-caption" id="create-address-note" hidden></div>' +
+          // Where the folder is on the server: an admin's detail, asked for.
+          '<details class="create-where" id="create-folder-where" hidden><summary></summary><div class="create-caption"></div></details>' +
         '</div>' +
         '<div id="create-panel"></div>' +
       '</div>' +
@@ -1761,6 +1768,24 @@ function _renderCreateModes() {
       '</button>';
   }
   host.innerHTML = html;
+  _renderCreateModesWhy(visible);
+}
+
+// The greyed-out chips, named, and why: "Offline mode is on: Web page, Whole
+// site, Video or playlist need an internet connection." The import helper's
+// absence is its own sentence.
+function _renderCreateModesWhy(visible) {
+  var el = document.getElementById('create-modes-why');
+  if (!el) return;
+  var net = [], helper = '';
+  visible.forEach(function(def) {
+    if (_createModeAvailable(def, _createOffline, _createImportReady)) return;
+    if (def.sidecar) helper = t('create_mode_' + def.id); else net.push(t('create_mode_' + def.id));
+  });
+  var text = net.length ? t('create_offline_modes', { modes: net.join(', ') }) : '';
+  if (helper) text += net.length ? ' ' + t('create_offline_helper', { mode: helper }) : t('create_offline_sidecar_note');
+  el.textContent = text;
+  el.hidden = !text;
 }
 
 function _createVisibleModes() {
@@ -1791,11 +1816,19 @@ function _createModeInList(list, id) {
 // The chip that is lit when the page opens. A picker with nothing picked is a
 // panel with nothing in it, so something is always selected — the first mode
 // that can actually run, which on an offline server is not "Web page".
+// Bookmarks with nothing saved is a panel that says "0": it is lit only when
+// nothing else can run.
 function _createDefaultMode(list) {
+  var empty = null;
   for (var i = 0; i < list.length; i++) {
-    if (_createModeAvailable(list[i], _createOffline, _createImportReady)) return list[i].id;
+    if (!_createModeAvailable(list[i], _createOffline, _createImportReady)) continue;
+    if (list[i].client && !_createSavedCount()) { empty = empty || list[i].id; continue; }
+    return list[i].id;
   }
-  return list.length ? list[0].id : null;
+  return empty || (list.length ? list[0].id : null);
+}
+function _createSavedCount() {
+  return (typeof Saved !== 'undefined' && Saved && Saved.all) ? Saved.all().length : 0;
 }
 
 // What the chips are drawn FROM. Re-drawing them on every poll would mean
@@ -2120,6 +2153,7 @@ function _renderCreateAddress() {
   if (label) label.textContent = t(def.label);
   var pick = document.getElementById('create-archive');
   var tree = document.getElementById('create-folder-tree');
+  var where = document.getElementById('create-folder-where');
   if (tree) tree.hidden = !def.tree;
   if (def.tree) {
     // The folder tree: nothing typed, nothing picked from a flat list.
@@ -2128,11 +2162,17 @@ function _renderCreateAddress() {
     if (label) label.removeAttribute('for');
     _createTreeMount();
     if (note) {
-      note.textContent = t('create_folder_note', {dir: _createArchivesDir || t('create_import_dir_unknown')});
+      note.textContent = t('create_folder_note');
       note.hidden = false;
+    }
+    if (where) {
+      where.querySelector('summary').textContent = t('create_folder_where_summary');
+      where.querySelector('.create-caption').textContent = t('create_folder_where', {dir: _createArchivesDir || t('create_import_dir_unknown')});
+      where.hidden = false;
     }
     return;
   }
+  if (where) where.hidden = true;
   if (label) label.setAttribute('for', 'create-source');
   if (def.picker) {
     // A list, not a field: the archives the server found, newest first.
@@ -2278,6 +2318,9 @@ function _createTreeRowHtml(path, depth) {
   if (what) meta.push(what);
   if (info.kind === 'file' && typeof info.size === 'number') meta.push(fmtBytes(info.size));
   if (meta.length) html += '<span class="create-ftree-what">' + esc(meta.join(' · ')) + '</span>';
+  // Left out, and why, in full under its name (a tooltip a phone never shows
+  // was the only place the reason was).
+  if (why) html += '<span class="create-ftree-why">' + esc(why) + '</span>';
   html += '</div>';
   if (open) {
     // In the server's order: folders first, then by name.
@@ -2423,20 +2466,20 @@ function _renderCreatePanel() {
   // (no engine, no crawl limits; the maker is ArcticZim), and says so.
   if (_createRedditPanel && (def.id === 'page' || def.id === 'site')) def = CREATE_REDDIT_DEF;
   var live = _createModeAvailable(def, _createOffline, _createImportReady);
-  var desc = '<div class="create-panel-desc">' + tH('create_mode_' + def.id + '_desc') + '</div>';
+  var descEl = document.getElementById('create-mode-desc');
+  if (descEl) descEl.textContent = t('create_mode_' + def.id + '_desc');
   _renderCreateAddress();
   if (!live) {
-    host.innerHTML = '<div class="create-panel">' + desc +
+    host.innerHTML = '<div class="create-panel">' +
       '<div class="create-panel-blocked">' +
         tH(def.sidecar ? 'create_offline_sidecar_note' : 'create_offline_note') +
       '</div></div>';
     return;
   }
-  if (def.client) { host.innerHTML = '<div class="create-panel">' + desc + _createBookmarksBodyHtml() + '</div>'; return; }
+  if (def.client) { host.innerHTML = '<div class="create-panel">' + _createBookmarksBodyHtml() + '</div>'; return; }
   var advanced = _createFieldsHtml(def.advanced || [], def);
   host.innerHTML =
     '<div class="create-panel">' +
-      desc +
       '<div id="create-preview"></div>' +
       '<label class="ms-form-label" for="create-title">' + tH('create_label_title') + '</label>' +
       '<input type="text" class="create-field" id="create-title" placeholder="' + escAttr(t('create_ph_title')) + '">' +
