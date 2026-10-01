@@ -4653,6 +4653,14 @@ def main():
         "--creator", default="Zimi", help="Creator metadata (default: Zimi)"
     )
     p_create.add_argument(
+        "--only",
+        nargs="+",
+        default=None,
+        metavar="PATH",
+        help="Folder only: package just these files and subfolders (paths "
+        "inside the folder) rather than all of it",
+    )
+    p_create.add_argument(
         "--out",
         default=None,
         help="Explicit output .zim path (default: the ZIM directory, with "
