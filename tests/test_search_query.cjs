@@ -31,7 +31,7 @@ function grab(name, kind) {
 
 const sandbox = { console, tH: (k) => k };
 vm.createContext(sandbox);
-for (const c of ['SEARCH_QUOTES', '_SEARCH_UNSPACED', 'SEARCH_FILTERS', '_reEscape', '_LANG3TO2', '_catalogLang', '_CATALOG_FILTER_TESTS', '_CATALOG_ENTITIES']) {
+for (const c of ['SEARCH_QUOTES', '_SEARCH_UNSPACED', '_searchUnaccent', '_searchFold', '_SEARCH_PARTS', 'SEARCH_FILTERS', '_reEscape', '_LANG3TO2', '_catalogLang', '_CATALOG_FILTER_TESTS', '_CATALOG_ENTITIES']) {
   vm.runInContext(grab(c, 'const').replace(/^const /, 'var '), sandbox);
 }
 for (const f of ['_searchTokens', 'parseSearchQuery', '_searchTermRe', 'searchQueryMatches', '_catalogText', 'catalogItemMatches']) {
@@ -58,6 +58,13 @@ for (const c of cases.parse) {
 for (const c of cases.match) {
   const got = sandbox.searchQueryMatches(sandbox.parseSearchQuery(c.q), c.text);
   check(got === c.match, 'match ' + JSON.stringify(c.q) + ' vs ' + JSON.stringify(c.text));
+}
+// #94: "-wiki doesn't seem to work". The same exclusion cases query.excluded
+// is held to: MediaWiki goes, Sabdkosh ("Wiktionary in Fiji Hindi Language")
+// stays because wik-tionary does not contain "wiki", -ted keeps United.
+for (const c of cases.exclude) {
+  const got = !sandbox.searchQueryMatches(sandbox.parseSearchQuery('-' + c.term), c.text);
+  check(got === c.excluded, 'exclude -' + c.term + ' vs ' + JSON.stringify(c.text));
 }
 // lang: as the library means it (search._filter_sources, the same cases).
 for (const c of cases.lang) {
@@ -87,6 +94,16 @@ check(same(find('culture OR lessons'), ['ted_fr_culture', 'khanacademy_en_scienc
 check(same(find('"talks about"'), ['ted_en_science']), 'catalog: a phrase');
 check(same(find('"science talks"'), []), 'catalog: a phrase is in order');
 check(same(find('"science wikipedia"'), []), 'catalog: a phrase does not run across fields');
+
+// The Wikis category as tripplehelix saw it (#94).
+const wikis = [
+  { name: 'mediawiki_en_all', title: 'MediaWiki', summary: 'The MediaWiki documentation', language: 'eng', category: 'wikipedia' },
+  { name: 'wiktionary_hif_all', title: 'Sabdkosh', summary: 'Wiktionary in Fiji Hindi Language', language: 'hif', category: 'wiktionary' },
+  { name: 'wikipedia_en_all', title: 'Wikipedia', summary: 'The free encyclopedia', language: 'eng', category: 'wikipedia' },
+  { name: 'appropedia_en_all', title: 'Appropedia', summary: 'Sustainability', language: 'eng', category: 'other' },
+];
+const wikiLeft = wikis.filter(item => sandbox.catalogItemMatches(sandbox.parseSearchQuery('-wiki', sandbox.SEARCH_FILTERS), item)).map(i => i.name);
+check(same(wikiLeft, ['wiktionary_hif_all', 'appropedia_en_all']), 'catalog: -wiki drops MediaWiki, keeps Sabdkosh (Wiktionary has no "wiki" in it) got ' + JSON.stringify(wikiLeft));
 
 // The old filter was one substring of the whole query: the first two of
 // these found nothing, the third found every TED ZIM.

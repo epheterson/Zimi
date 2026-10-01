@@ -1,5 +1,5 @@
 {
-  "_about": "The search grammar's cases, read by both parsers: zimi/query.py (tests/test_search_query.py) and parseSearchQuery in zimi/static/app.js (tests/test_search_query.cjs). A term written \"like this\" is a phrase. groups: every group must match, any one term inside a group does. plain (nothing in the query was syntax) is the server's only. lang: a lang:value filter against a source's language field, the same in the library (search._filter_sources) and the catalog (_CATALOG_FILTER_TESTS), over the one table in zimi/assets/lang-codes.json.",
+  "_about": "The search grammar's cases, read by both parsers: zimi/query.py (tests/test_search_query.py) and parseSearchQuery in zimi/static/app.js (tests/test_search_query.cjs). A term written \"like this\" is a phrase. groups: every group must match, any one term inside a group does. plain (nothing in the query was syntax) is the server's only. lang: a lang:value filter against a source's language field, the same in the library (search._filter_sources) and the catalog (_CATALOG_FILTER_TESTS), over the one table in zimi/assets/lang-codes.json. exclude: one -term against one text (#94), the same in query.excluded and the client's searchQueryMatches: from the start of a word or of a word part (MediaWiki is Media + Wiki, fr_wiki is fr + wiki), case and accents aside, never from just anywhere (-ted keeps United). Inclusions are unchanged: a word anywhere, a phrase from the start of a word.",
   "parse": [
     {"q": "water filter", "groups": [["water"], ["filter"]], "exclude": [], "filters": [], "plain": true},
     {"q": "Water  Filter ", "groups": [["water"], ["filter"]], "exclude": [], "filters": [], "plain": true},
@@ -54,6 +54,23 @@
     {"q": "東京 -大阪", "text": "東京の歴史", "match": true},
     {"q": "Москва -Петербург", "text": "Москва и Петербург", "match": false},
     {"q": "-", "text": "anything", "match": true}
+  ],
+  "exclude": [
+    {"term": "wiki", "text": "MediaWiki", "excluded": true, "why": "#94: MediaWiki in the Wikis category"},
+    {"term": "wiki", "text": "Wiktionary in Fiji Hindi Language", "excluded": false, "why": "#94: Sabdkosh's description. Wiktionary is wik-tionary, it does not contain wiki, so it stays"},
+    {"term": "wiki", "text": "Wikipedia", "excluded": true},
+    {"term": "wiki", "text": "Wikipédia en français", "excluded": true},
+    {"term": "wikipedia", "text": "Wikipédia", "excluded": true, "why": "accents aside"},
+    {"term": "wikipédia", "text": "Wikipedia", "excluded": true, "why": "accents aside, either way"},
+    {"term": "wiki", "text": "fr_wiki_all", "excluded": true},
+    {"term": "wiki", "text": "mediawiki_en_all", "excluded": false, "why": "all lower case, no part starts at wiki; the title MediaWiki is what drops it"},
+    {"term": "ted", "text": "United States", "excluded": false, "why": "the first #94 case: never from just anywhere"},
+    {"term": "ted", "text": "TEDx Berlin", "excluded": true},
+    {"term": "ted", "text": "WatchTED", "excluded": true},
+    {"term": "\"common law\"", "text": "The Common Law", "excluded": true},
+    {"term": "ete", "text": "ÉTÉ", "excluded": true},
+    {"term": "大阪", "text": "東京と大阪の歴史", "excluded": true},
+    {"term": "петербург", "text": "Москва и Петербург", "excluded": true}
   ],
   "lang": [
     {"value": "en", "language": "en,fr", "match": true},

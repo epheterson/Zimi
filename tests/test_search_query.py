@@ -48,11 +48,22 @@ class TestParser(unittest.TestCase):
                 )
                 self.assertEqual(got["plain"], case["plain"])
 
+    def test_exclude_cases(self):
+        # #94: "-wiki doesn't seem to work". MediaWiki goes; Sabdkosh
+        # ("Wiktionary in Fiji Hindi Language") stays, since wik-tionary
+        # does not contain "wiki"; and -ted still keeps "United States".
+        for case in self.cases["exclude"]:
+            with self.subTest(term=case["term"], text=case["text"]):
+                parsed = Q.parse_query("-" + case["term"])
+                self.assertEqual(Q.excluded(parsed, case["text"]), case["excluded"])
+
     def test_alternatives_add_up_so_every_word_is_searched(self):
         def words(q, cap=Q.MAX_SEARCHES):
             return [Q.term_words(a) for a in Q.alternatives(Q.parse_query(q), cap)]
 
-        self.assertEqual(words("pet cats OR dogs food"), ["pet cats food", "pet dogs food"])
+        self.assertEqual(
+            words("pet cats OR dogs food"), ["pet cats food", "pet dogs food"]
+        )
         # Five alternatives are five searches: the fifth was never searched
         # while the chip listed it.
         self.assertEqual(words("a OR b OR c OR d OR e"), ["a", "b", "c", "d", "e"])
@@ -62,14 +73,14 @@ class TestParser(unittest.TestCase):
             ["cats food", "dogs food", "cats toys", "dogs toys"],
         )
         many = words("a OR b OR c c2 d OR e OR f")
-        self.assertEqual(
-            many[:5], ["a c2 d", "b c2 d", "c c2 d", "a c2 e", "a c2 f"]
-        )
+        self.assertEqual(many[:5], ["a c2 d", "b c2 d", "c c2 d", "a c2 e", "a c2 f"])
         self.assertLessEqual(len(many), Q.MAX_SEARCHES)
         self.assertEqual(Q.alternatives(Q.parse_query("-ted")), [])
 
     def test_past_the_budget_the_alternatives_left_out_are_named(self):
-        parsed = Q.parse_query(" OR ".join("w%d" % i for i in range(Q.MAX_SEARCHES + 2)))
+        parsed = Q.parse_query(
+            " OR ".join("w%d" % i for i in range(Q.MAX_SEARCHES + 2))
+        )
         alts = Q.alternatives(parsed)
         self.assertEqual(len(alts), Q.MAX_SEARCHES)
         self.assertEqual(
@@ -107,8 +118,9 @@ class TestLangFilter(unittest.TestCase):
         for case in cases:
             zims = [{"name": "z", "language": case["language"]}]
             for neg in (False, True):
-                with self.subTest(case=case, negate=neg), patch.object(
-                    S, "_zim_list_cache", zims
+                with (
+                    self.subTest(case=case, negate=neg),
+                    patch.object(S, "_zim_list_cache", zims),
                 ):
                     parsed = {
                         "filters": [
@@ -130,7 +142,10 @@ class TestLangFilter(unittest.TestCase):
         # file itself carries none of its own.
         served = json.dumps(table, separators=(",", ":"), sort_keys=True)
         self.assertIn("const _LANG3TO2 = %s;" % served, H.APP_JS_REWRITTEN)
-        with open(os.path.join(os.path.dirname(H.__file__), "static", "app.js"), encoding="utf-8") as f:
+        with open(
+            os.path.join(os.path.dirname(H.__file__), "static", "app.js"),
+            encoding="utf-8",
+        ) as f:
             src = f.read()
         self.assertIn("const _LANG3TO2 = " + H._LANG_CODES_MARK + ";", src)
         self.assertNotIn("bul:'bg'", src)
@@ -272,13 +287,25 @@ class TestLibraryOperators(unittest.TestCase):
             with self.subTest(fast=fast):
                 got = set(self.titles(q, fast))
                 self.assertLessEqual(
-                    {"Whale", "Dolphin", "Martial law", "Contract law", "Common law"}, got
+                    {"Whale", "Dolphin", "Martial law", "Contract law", "Common law"},
+                    got,
                 )
 
     def test_an_or_past_the_budget_says_what_it_left_out(self):
-        words = ["whale", "dolphin", "martial", "contract", "sea", "common", "ted", "talks", "law", "zebra"]
+        words = [
+            "whale",
+            "dolphin",
+            "martial",
+            "contract",
+            "sea",
+            "common",
+            "ted",
+            "talks",
+            "law",
+            "zebra",
+        ]
         out = self.S.search_all(" OR ".join(words), limit=10, fast=False)
-        self.assertEqual(out["unsearched"], words[Q.MAX_SEARCHES:])
+        self.assertEqual(out["unsearched"], words[Q.MAX_SEARCHES :])
         self.assertNotIn("unsearched", self.S.search_all("whale OR dolphin", limit=10))
 
     def test_hyphenated_word_is_not_an_exclusion(self):
@@ -320,7 +347,15 @@ class TestPlacesAndSuggestions(unittest.TestCase):
             patch.object(
                 S,
                 "_zim_list_cache",
-                [{"name": "osm", "title": "Map", "entries": 9, "language": "en", "map_search": True}],
+                [
+                    {
+                        "name": "osm",
+                        "title": "Map",
+                        "entries": 9,
+                        "language": "en",
+                        "map_search": True,
+                    }
+                ],
             ),
             patch.object(Sr, "_get_fts_archive", return_value=(object(), lock)),
             patch.object(Sr, "search_zim", return_value=[]),
@@ -334,7 +369,9 @@ class TestPlacesAndSuggestions(unittest.TestCase):
             # A sparse search asks for a suggestion: from this vocabulary,
             # not one built in the background from the machine's own data.
             patch.object(
-                Sr, "_ensure_vocab", return_value={"python": 10, "asyncio": 2, "cafe": 4}
+                Sr,
+                "_ensure_vocab",
+                return_value={"python": 10, "asyncio": 2, "cafe": 4},
             ),
         ]
         for p in self.patches:
@@ -353,8 +390,12 @@ class TestPlacesAndSuggestions(unittest.TestCase):
         self.assertEqual(names, ["Paris"], "an exclusion leaves its place out")
 
     def test_a_sparse_operator_search_suggests_the_same_search_mended(self):
-        out = self.Sr.search_all('pyhton -javascrpt "asynico" OR cafee lang:en', fast=False)
-        self.assertEqual(out.get("did_you_mean"), 'python -javascrpt "asyncio" OR cafe lang:en')
+        out = self.Sr.search_all(
+            'pyhton -javascrpt "asynico" OR cafee lang:en', fast=False
+        )
+        self.assertEqual(
+            out.get("did_you_mean"), 'python -javascrpt "asyncio" OR cafe lang:en'
+        )
 
 
 if __name__ == "__main__":

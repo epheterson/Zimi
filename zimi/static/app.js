@@ -3479,12 +3479,9 @@ function renderHome(filter) {
   // Filter ZIMs by title/name/description when filter text provided
   let zims = baseZims;
   if (filter) {
-    const fl = filter.toLowerCase();
-    const words = fl.split(/\s+/).filter(Boolean);
-    zims = baseZims.filter(z => {
-      const t = ((z.title || '') + ' ' + z.name + ' ' + (z.description || '')).toLowerCase();
-      return words.every(w => t.includes(w));
-    });
+    // The search grammar, as the catalog has it: "-wiki" leaves the wikis out (#94).
+    const parsed = parseSearchQuery(filter);
+    zims = baseZims.filter(z => searchQueryMatches(parsed, _libraryFilterText(z)));
   }
 
   // The recency + language pills also make sense scoped to a section (#37) —
@@ -7555,7 +7552,7 @@ function renderSearchResults(data, scope) {
   if (!scope && zimsCache && data._query) {
     const parsed = parseSearchQuery(data._query);
     const matches = parsed.groups.length ? zimsCache.filter(z =>
-      searchQueryMatches(parsed, (z.title || '') + '\u0001' + z.name + '\u0001' + (z.description || ''))) : [];
+      searchQueryMatches(parsed, _libraryFilterText(z))) : [];
     if (matches.length > 0 && matches.length <= 8) {
       zimMatchHtml = '<div class="stats-grid" style="margin-bottom:16px">' + matches.map(z => {
         const icon = z.has_icon
@@ -9791,13 +9788,25 @@ function _searchTermRe(text) {
   return new RegExp((_SEARCH_UNSPACED.test(text[0]) ? '' : '(?<![\\p{L}\\p{N}_])') + body, 'u');
 }
 
-// The whole query against one text: a word anywhere (so "wiki" still finds
-// Wikipedia, as the catalog always did), phrases and exclusions as above.
+// Latin, Greek and Cyrillic accents only (query._ACCENTS): a Devanagari vowel
+// sign or an Arabic haraka is part of the word, not an accent on it.
+const _searchUnaccent = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').normalize('NFC');
+const _searchFold = s => _searchUnaccent(s).toLowerCase();
+// Where a word part starts inside a word (query._PARTS): MediaWiki, fr_wiki.
+const _SEARCH_PARTS = /(?<=[a-z])(?=[A-Z])|_/g;
+
+// The whole query against one text, case and accents aside: a word anywhere
+// (so "wiki" still finds Wikipedia, as the catalog always did), a phrase from
+// the start of a word, an exclusion from the start of a word or a word part
+// (#94: -wiki drops MediaWiki; -ted still keeps United). query.excluded is the
+// server's half; tests/fixtures/search_query_cases.json holds both to it.
 function searchQueryMatches(parsed, text) {
-  const low = (text || '').toLowerCase();
-  const hit = t => t.phrase ? _searchTermRe(t.text).test(low) : low.includes(t.text);
-  return parsed.groups.every(g => g.some(hit)) &&
-    !parsed.exclude.some(t => _searchTermRe(t.text).test(low));
+  const bare = _searchUnaccent(text), low = bare.toLowerCase();
+  const hit = t => t.phrase ? _searchTermRe(_searchFold(t.text)).test(low) : low.includes(_searchFold(t.text));
+  if (!parsed.groups.every(g => g.some(hit))) return false;
+  if (!parsed.exclude.length) return true;
+  const parts = bare.replace(_SEARCH_PARTS, ' ').toLowerCase();
+  return !parsed.exclude.some(t => { const re = _searchTermRe(_searchFold(t.text)); return re.test(low) || re.test(parts); });
 }
 
 // Words too common to search for alone, or to mark in a result.
@@ -9849,6 +9858,12 @@ const _CATALOG_FILTER_TESTS = {
 const _CATALOG_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#39': "'" };
 function _catalogText(s) {
   return String(s || '').replace(/&(amp|lt|gt|quot|apos|#39);/g, (m, k) => _CATALOG_ENTITIES[k]);
+}
+
+// An installed ZIM's text for the library filters (home, Settings > Library,
+// the sources a search matched): fields apart, so a phrase cannot run across.
+function _libraryFilterText(z) {
+  return (z.title || '') + '\u0001' + z.name + '\u0001' + (z.description || '');
 }
 
 function catalogItemMatches(parsed, item) {
@@ -14741,16 +14756,13 @@ function renderInstalled(filterText) {
   // "Updates available" pseudo-group rendered first so they're easy to spot.
   const groups = {};
   const pendingUpdates = [];
+  // The search grammar, as the catalog has it: "-wiki" leaves the wikis out (#94).
+  const installedParsed = filterText ? parseSearchQuery(filterText) : null;
   for (const z of zims) {
     const cat = _zimCat(z);  // real category or OTHER_CAT — matches the home grouping
     if (manageCategoryFilter && cat !== manageCategoryFilter) continue;
     if (manageLangFilter && !_zimMatchesLang(z, manageLangFilter)) continue;
-    if (filterText) {
-      const ft = filterText.toLowerCase();
-      const title = (z.title || z.name).toLowerCase();
-      const catLower = cat.toLowerCase();
-      if (!title.includes(ft) && !catLower.includes(ft) && !z.name.toLowerCase().includes(ft)) continue;
-    }
+    if (installedParsed && !searchQueryMatches(installedParsed, _libraryFilterText(z) + '\u0001' + cat)) continue;
     if (_availableUpdates[z.file]) {
       pendingUpdates.push(z);
       continue;

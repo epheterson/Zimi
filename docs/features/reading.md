@@ -22,7 +22,7 @@ Search across every ZIM at once, open an article, and read it — the part of Zi
 | `lang:fr` | only sources in that language, two or three letters (`lang:fra`) |
 | `-in:ted`, `-lang:en` | a filter, the other way round |
 
-A hyphen inside a word (`e-mail`, `x-ray`) is part of the word, a lone `-` or a stray quote is ignored, and a lower-case `or` is an ordinary word. An exclusion matches from the start of a word, so `-ted` leaves out TED and TEDx but not United States; in Chinese, Japanese, Thai and other scripts written without spaces it matches anywhere.
+A hyphen inside a word (`e-mail`, `x-ray`) is part of the word, a lone `-` or a stray quote is ignored, and a lower-case `or` is an ordinary word. An exclusion matches from the start of a word or of a word part, case and accents aside, so `-wiki` leaves out Wikipedia, Wikipédia and MediaWiki, and `-ted` leaves out TED and TEDx but not United States (Wiktionary stays too: it does not contain "wiki"); in Chinese, Japanese, Thai and other scripts written without spaces it matches anywhere. The same operators filter the home page and Settings > Library.
 
 What each operator did shows as a chip above the results, in the UI's language, the same in the library and the catalog: `-ted` reads "without ted", `"solar panel"` "exact: solar panel", `lang:fr` the language's name (French, Français, צרפתית), `in:wikipedia` the source's title, `cats OR dogs` "cats or dogs". A chip's × searches again without that one operator (a phrase keeps its words, as words). The ? beside the search box lists a few examples written for each language, each a tap from a search.
 

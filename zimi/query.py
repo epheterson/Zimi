@@ -23,6 +23,7 @@ them; each caller decides what a filter means for what it searches.
 
 import itertools
 import re
+import unicodedata
 
 # Straight and typographic quotes: a phone keyboard types the latter.
 _QUOTES = '"“”„'
@@ -184,6 +185,26 @@ def term_words(terms):
     return " ".join(t["text"] for t in terms)
 
 
+# Latin, Greek and Cyrillic accents (the Combining Diacritical Marks block):
+# what folding drops, so "-wikipedia" also drops "Wikipédia". Only this block:
+# a Devanagari vowel sign or an Arabic haraka is part of the word, not an
+# accent on it.
+_ACCENTS = re.compile("[\u0300-\u036f]")
+# Where a word part starts inside a word: "MediaWiki" is Media + Wiki, and
+# "devdocs_en_react" is devdocs + en + react.
+_PARTS = re.compile(r"(?<=[a-z])(?=[A-Z])|_")
+
+
+def _unaccent(text):
+    nfd = unicodedata.normalize("NFD", text or "")
+    return unicodedata.normalize("NFC", _ACCENTS.sub("", nfd))
+
+
+def fold(text):
+    """``text`` lower-cased with its accents dropped, for matching."""
+    return _unaccent(text).lower()
+
+
 def _pattern(text):
     """A term as a regex: from the start of a word, so -ted drops "TED" and
     "TEDx" but not "United"; anywhere in a script without spaces."""
@@ -194,15 +215,24 @@ def _pattern(text):
 
 
 def excluded(parsed, text):
-    """Whether ``text`` holds any excluded term."""
-    low = (text or "").lower()
-    return any(_pattern(t["text"]).search(low) for t in parsed["exclude"])
+    """Whether ``text`` holds any excluded term (#94).
+
+    An exclusion matches from the start of a word or of a word part, case and
+    accents aside: -wiki drops "Wikipedia", "MediaWiki" (Media + Wiki) and
+    "en_wiki", and keeps "Wiktionary", which does not contain "wiki". It does
+    not match from just anywhere, or -ted would drop "United States"."""
+    if not parsed["exclude"]:
+        return False
+    bare = _unaccent(text)
+    texts = (bare.lower(), _PARTS.sub(" ", bare).lower())
+    terms = [_pattern(fold(t["text"])) for t in parsed["exclude"]]
+    return any(p.search(low) for p in terms for low in texts)
 
 
 def phrases_in(terms, text):
     """Whether every phrase among ``terms`` is in ``text``."""
-    low = (text or "").lower()
-    return all(_pattern(t["text"]).search(low) for t in terms if t["phrase"])
+    low = fold(text)
+    return all(_pattern(fold(t["text"])).search(low) for t in terms if t["phrase"])
 
 
 
