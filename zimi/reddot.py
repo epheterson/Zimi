@@ -882,22 +882,33 @@ def random_post(rng=None):
     return None
 
 
+def note_count(z):
+    """Once per build: its posts, every subreddit's, for the Apps page."""
+    if _srv.app_items_known(z["name"], "reddot"):
+        return
+    _srv.note_app_items(
+        z["name"],
+        "reddot",
+        sum(
+            _srv.paged_count(
+                listing(z["name"], sub, "top", 1),
+                lambda p, sub=sub: listing(z["name"], sub, "top", p),
+            )
+            for sub in z["subreddits"]
+        ),
+    )
+
+
+def note_counts():
+    """Every subreddit ZIM's posts, for the Apps page (the background worker's)."""
+    for z in zims():
+        note_count(z)
+
+
 def home():
     out = []
     for z in zims():
-        if not _srv.app_items_known(z["name"], "reddot"):
-            # Once per build: its posts, every subreddit's, for the Apps page.
-            _srv.note_app_items(
-                z["name"],
-                "reddot",
-                sum(
-                    _srv.paged_count(
-                        listing(z["name"], sub, "top", 1),
-                        lambda p, sub=sub: listing(z["name"], sub, "top", p),
-                    )
-                    for sub in z["subreddits"]
-                ),
-            )
+        note_count(z)
         subs = []
         for sub in z["subreddits"][:12]:
             first = listing(z["name"], sub, "top", 1)
