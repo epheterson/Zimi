@@ -19,6 +19,15 @@ moon-v1.webp
   Almanac hero, the Today card, the sky scene; app.js _MOON_MAP_URL).
   https://svs.gsfc.nasa.gov/4720
 
+moon-4k-v1.webp
+  NASA Scientific Visualization Studio, CGI Moon Kit (lroc_color_poles_4k.tif),
+  from the Lunar Reconnaissance Orbiter Camera's Wide Angle Camera mosaic.
+  Public domain. Greyscale, 4096x2048, WebP quality 75 (cwebp 1.6.0). Fetched
+  after the first paint and drawn wherever a Moon is wide enough to show it
+  (the hero, the 3D view; app.js _MOON_MAP_HI_URL). Credited with the other
+  NASA images in the 3D view ("Images: NASA").
+  https://svs.gsfc.nasa.gov/4720
+
 three-r186.min.js (three-LICENSE.txt)
   three.js r186, MIT License. Tree-shaken and minified; the build line is in
   the file's first comment.

@@ -112,6 +112,7 @@ for (const v of ['_VOYAGERS', '_HELIO_TERMINATION_AU', '_HELIOPAUSE_AU', '_KUIPE
 const auToVis = extractFn(almSrc, '_auToVis');
 vm.runInContext(almSrc.slice(almSrc.indexOf('var _AU_VIS_X'), almSrc.indexOf(auToVis) + auToVis.length), S);
 vm.runInContext(read('almanac-orrery.js'), S);
+vm.runInContext(require('./moon_model.cjs')(), S);   // app.js's Moon model, which the shader is written from
 vm.runInContext(read('almanac-earth.js'), S);
 const run = (code) => vm.runInContext(code, S);
 

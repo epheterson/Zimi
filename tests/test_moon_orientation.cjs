@@ -65,6 +65,7 @@ for (const fn of ['_dateToJD', '_jdnToGregorian', '_cnDeltaTdays', '_almEsc', '_
   vm.runInContext(extractFn(almSrc, fn), S);
 vm.runInContext(extractFn(read('almanac-sky.js'), '_angleDelta'), S);
 vm.runInContext(read('almanac-orrery.js'), S);
+vm.runInContext(require('./moon_model.cjs')(), S);   // app.js's Moon model, which the shader is written from
 vm.runInContext(read('almanac-earth.js'), S);
 
 const diff = (a, b) => Math.abs(((a - b) % 360 + 540) % 360 - 180);

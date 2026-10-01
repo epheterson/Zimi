@@ -541,7 +541,11 @@ var AE_THREE_URL = '/static/earth/three-r186.min.js';
 var AE_SGP4_URL = '/static/earth/satellite-7.1.0.min.js';
 var AE_TEX_DAY = '/static/earth/earth-day-v1.webp';
 var AE_TEX_NIGHT = '/static/earth/earth-night-v1.webp';
-var AE_TEX_MOON = '/static/earth/moon-v1.webp';   // app.js _MOON_MAP_URL: the hero's map too
+var AE_TEX_MOON = _MOON_MAP_URL;        // app.js: the 2D Moons' maps, the 1024 one first
+var AE_TEX_MOON_HI = _MOON_MAP_HI_URL;
+// The 4096 map goes to the GPU as one channel (8 MB, not 32): three's
+// RedFormat, which the tree-shaken build does not export by name.
+var AE_THREE_RED_FORMAT = 1028;
 var AE_SATS_URL = '/almanac-satellites';
 // When the server says it is fetching fresher elements, ask again after this:
 // its refresh is two CelesTrak requests of up to 20 s each (satellites.py
@@ -968,27 +972,53 @@ var AE_ATMO_FRAG = [
   '}'
 ].join('\n');
 
-// The Moon: sunlight, the Earth's shadow (with the dim copper light the
-// Earth's atmosphere bends into it), and a little earthshine. Until its map
-// is in (or if it never comes) the Moon is a plain grey of about the map's
-// mean brightness, so it still shows its phase instead of black on black.
+// The Moon's light: app.js _moonLunarL, _moonLunarLambert and _moonDisplay,
+// the model every 2D Moon is drawn with, in GLSL from the same constants.
+function _aeGlslNum(x) { return x.toExponential(6); }
+var AE_GLSL_MOONLIGHT = [
+  'float aeLunarL(float cosA) {',
+  '  float a = degrees(acos(clamp(cosA, -1.0, 1.0)));',
+  '  return clamp(' + _aeGlslNum(_MOON_LUNAR_L[0]) + ' + a * (' + _aeGlslNum(_MOON_LUNAR_L[1]) + ' + a * (' +
+    _aeGlslNum(_MOON_LUNAR_L[2]) + ' + a * ' + _aeGlslNum(_MOON_LUNAR_L[3]) + ')), 0.0, 1.0);',
+  '}',
+  'float aeLunarLambert(float mu0, float mu, float L) {',
+  '  if (mu0 <= 0.0) return 0.0;',
+  '  return (2.0 * L * mu0 / (mu0 + max(mu, 0.0)) + (1.0 - L) * mu0) * smoothstep(0.0, ' + _aeGlslNum(_MOON_ROUGH_MU) + ', mu0);',
+  '}',
+  'vec3 aeMoonDisplay(vec3 lin) { return pow(max(lin, vec3(0.0)), vec3(' + _aeGlslNum(1 / _MOON_DISPLAY_GAMMA) + ')); }'
+].join('\n');
+
+// The Moon: sunlight and earthshine as the 2D Moons have them, the Earth's
+// shadow (with the dim copper light the Earth's atmosphere bends into it),
+// all in linear light and then encoded as the 2D Moons are. The earthshine
+// (app.js _moonEarthshine, set each frame for the Earth's phase) lights the
+// hemisphere facing the Earth. Until its map is in (or if it never comes) the
+// Moon is a plain grey of about the map's mean brightness, so it still shows
+// its phase instead of black on black.
 var AE_MOON_PLAIN_ALBEDO = 0.5;
+var AE_MOON_EXPOSURE = 1.15;
+// The umbra's copper, linear: (0.62, 0.24, 0.10) x 0.75 on the screen.
+var AE_MOON_UMBRA_LIN = [0.62, 0.24, 0.10].map(function (c) { return Math.pow(0.75 * c, _MOON_DISPLAY_GAMMA); });
 var AE_MOON_FRAG = [
   'precision highp float;',
   'uniform sampler2D moonMap; uniform float moonMapped;',
-  'uniform vec3 sunPos; uniform float sunR; uniform float earthR;',
+  'uniform vec3 sunPos; uniform float sunR; uniform float earthR; uniform float earthshine;',
   'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
   AE_GLSL_OVERLAP,
+  AE_GLSL_MOONLIGHT,
   'void main() {',
   '  vec3 N = normalize(vNormal);',
   '  vec3 L = normalize(sunPos - vWorld);',
-  '  float mu = max(dot(N, L), 0.0);',
+  '  vec3 V = normalize(cameraPosition - vWorld);',
+  '  vec3 E = normalize(-vWorld);',
+  '  float mu = dot(N, V);',
   '  float light = aeSunlight(vWorld, sunPos, sunR, vec3(0.0), earthR);',
   '  float albedo = mix(' + AE_MOON_PLAIN_ALBEDO.toFixed(2) + ', texture2D(moonMap, vUv).r, moonMapped);',
-  '  vec3 sunlit = vec3(albedo) * 1.15 * mu * light;',
-  '  vec3 umbral = vec3(albedo) * vec3(0.62, 0.24, 0.10) * 0.75 * mu * (1.0 - light);',
-  '  float earthshine = 0.025 * (1.0 - mu);',
-  '  gl_FragColor = vec4(sunlit + umbral + vec3(albedo) * earthshine, 1.0);',
+  '  float sun = aeLunarLambert(dot(N, L), mu, aeLunarL(dot(L, V)));',
+  '  float es = earthshine * aeLunarLambert(dot(N, E), mu, aeLunarL(dot(E, V)));',
+  '  vec3 umbra = vec3(' + AE_MOON_UMBRA_LIN.map(_aeGlslNum).join(', ') + ');',
+  '  vec3 lin = vec3(sun * light + es) + umbra * sun * (1.0 - light);',
+  '  gl_FragColor = vec4(albedo * ' + AE_MOON_EXPOSURE.toFixed(2) + ' * aeMoonDisplay(lin), 1.0);',
   '}'
 ].join('\n');
 
@@ -1153,7 +1183,8 @@ function _aeBuildGl(THREE, canvas) {
   moonGeo.rotateX(Math.PI / 2);
   var moonUni = {
     moonMap: { value: null }, moonMapped: { value: 0 },
-    sunPos: shared.sunPos, sunR: shared.sunR, earthR: { value: AE_SHADOW_ENLARGE }
+    sunPos: shared.sunPos, sunR: shared.sunR, earthR: { value: AE_SHADOW_ENLARGE },
+    earthshine: { value: 0 }
   };
   var moon = new THREE.Mesh(moonGeo, new THREE.ShaderMaterial({
     uniforms: moonUni, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_MOON_FRAG
@@ -1205,10 +1236,12 @@ function _aeBuildGl(THREE, canvas) {
 // open starts over). The city lights and the Moon's face are drawn without
 // when they fail (no lights; the Moon plain grey), the note says so, and the
 // next open asks for them again.
-function _aeLoadMap(S, uni, url) {
+function _aeLoadMap(S, uni, url, format) {
   if (!S.maps[url]) {
     S.maps[url] = _aeLoadTexture(S.THREE, url).then(function (tx) {
       tx.anisotropy = S.aniso;
+      if (format) tx.format = format;
+      if (uni.value) uni.value.dispose();   // a map it replaces (the Moon's 1024 one)
       uni.value = tx;
       return true;
     }, function () {
@@ -1226,7 +1259,13 @@ function _aeLoadMap(S, uni, url) {
 // Loads whatever maps are not in yet; resolves with whether the day map is.
 function _aeLoadMaps(S) {
   _aeLoadMap(S, S.earthUni.nightMap, AE_TEX_NIGHT);
-  _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON).then(function (ok) { if (ok) S.moonUni.moonMapped.value = 1; });
+  // The Moon's 1024 map first, then the 4096 one over it (the 2D Moons have
+  // usually fetched it by now); without the first the second is not asked.
+  _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON).then(function (ok) {
+    if (!ok) return;
+    S.moonUni.moonMapped.value = 1;
+    _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON_HI, AE_THREE_RED_FORMAT);
+  });
   return _aeLoadMap(S, S.earthUni.dayMap, AE_TEX_DAY);
 }
 
@@ -1721,6 +1760,8 @@ function _aeUpdate(ms) {
   S.earth.rotation.z = sc.gast;
   S.shared.sunPos.value.set(sc.sun[0], sc.sun[1], sc.sun[2]);
   S.earthUni.moonPos.value.set(sc.moon[0], sc.moon[1], sc.moon[2]);
+  // The Moon's phase angle, Sun-Moon-Earth, sets the earthshine.
+  S.moonUni.earthshine.value = _moonEarthshine(_aeDot(_aeNorm(_aeSub(sc.sun, sc.moon)), _aeNorm(_aeScale(sc.moon, -1))));
   _aeOrientMoon(sc);
   var sd = _aeSunShown(sc);
   S.sun.position.set(sd[0], sd[1], sd[2]);
