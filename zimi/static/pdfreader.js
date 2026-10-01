@@ -303,6 +303,11 @@
     n = Math.max(1, Math.min(pages, n | 0));
     if (!app || !pages) return;
     app.page = n;
+    // pdf.js learns where the view is only on its next frame (update(), on
+    // scroll); until then a re-scale (a resize, its own initial view) puts
+    // back the page it last saw. Told now, so a jump (a highlight opened from
+    // Saved) wins over the remembered place instead of racing it.
+    try { app.pdfViewer.update(); } catch (e) {}
     if (barsShown()) requestAnimationFrame(function () { container.scrollTop = Math.max(0, container.scrollTop - head.offsetHeight + 4); });
   }
   // A step back or on: the page before or after, or in two pages side by
