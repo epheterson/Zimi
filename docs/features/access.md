@@ -14,7 +14,7 @@ The mode lives in Zimi's state and is set from Manage or by `ZIMI_PUBLIC_ACCESS`
 
 **Named accounts & per-ZIM allowlists.** Beyond the single admin, Zimi supports multiple user accounts (`zimi/users.py`), each with a per-ZIM allowlist so different people see different slices of the library. Sessions are cookie-based.
 
-**Creator role.** An account can carry `can_create`, letting it drive the web Create page's URL modes (single page, `--site`, video) without full admin credentials. The server-disk modes stay with the **primary admin**: folder capture is CLI-only, and web-archive import is the CLI or the Create page's Import picker over the import directory (see [Creating ZIMs](making-zims.md)).
+**Creator role.** An account can carry `can_create`, letting it drive the web Create page's URL modes (single page, `--site`, video) without full admin credentials. The server-disk modes stay with the **primary admin**: a folder or a web archive is packaged from the CLI, or on the Create page from the Folder tree or the Import picker over the create directory (see [Creating ZIMs](making-zims.md)).
 
 **Secure first-run bootstrap (GHSA-5mw2-53vv-9pw6).** Setting the first admin password used to be "any private-tier client sets it" — on a LAN, a Docker bridge, or a tailnet, too many hands: an adjacent device could race the owner to claim admin. The fix splits the bootstrap door in two:
 
