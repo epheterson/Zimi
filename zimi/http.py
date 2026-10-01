@@ -27,6 +27,7 @@ import zimi.server as _srv
 from zimi import bookpages as _bookpages
 from zimi import sso as _sso
 from zimi import users as _users
+from zimi.previews import lead_text
 from zimi.manage import (
     _manage_auth_challenge,
     handle_manage_get,
@@ -168,9 +169,6 @@ def _with_reopen_in_shell(text):
     at = m.end() if m else 0
     return text[:at] + _REOPEN_IN_SHELL_SCRIPT + text[at:]
 
-
-# How much of a page /snippet reads (see the handler).
-_SNIPPET_READ_BYTES = 64 * 1024
 
 # "Remember me" user-session cookie lifetime (seconds). 30 days — long enough
 # for a kid's device to stay logged in, short enough to age out abandoned tokens.
@@ -2409,12 +2407,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                         if item.size > _srv.MAX_CONTENT_BYTES:
                             _record_metric("/snippet", time.time() - t0)
                             return self._json(200, {"snippet": ""})
-                        # The start of the page: <head> meta, and far enough in to
-                        # reach an encyclopedia article's lead past its infobox
-                        # (Einstein's is 34KB in). item.content is whole already,
-                        # so reading more costs nothing.
-                        raw = bytes(item.content)[:_SNIPPET_READ_BYTES]
-                        text = raw.decode("UTF-8", errors="replace")
+                        text = lead_text(item)
                         # Prefer the page's own summary, then meta description,
                         # then body prose — skipping boilerplate some ZIMs bake
                         # into every page (iFixit device pages, #snippet QA).

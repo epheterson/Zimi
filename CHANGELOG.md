@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Wikisource works, textbooks and single-book ZIMs open in the book reader.
 - The Sun in the Almanac's 3D view.
 - The AppImage updates itself (AppImageUpdate).
+- `zimi mcp`: the MCP server alone on stdio, no web server; three tools by default (search, read a page as Markdown, read one section), `--tools full` for every tool.
 
 ### Changed
 

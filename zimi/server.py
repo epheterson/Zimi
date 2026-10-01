@@ -852,6 +852,10 @@ CONFIG_ENV_SETTINGS = (
     ConfigSetting("api_token", "ZIMI_API_TOKEN", "str", "", "token file", True),
     ConfigSetting("offline", "ZIMI_OFFLINE", "bool", "0", None, False),
     ConfigSetting("hot_zims", "ZIMI_HOT_ZIMS", "csv", "", "hot.json", False),
+    # The MCP tool set: lean (search, read, read_section) or full (every tool).
+    # Unset means lean under `zimi mcp` and full under `python -m
+    # zimi.mcp_server`, which kept the full set for configs written before.
+    ConfigSetting("mcp_tools", "ZIMI_MCP_TOOLS", "str", "", "lean", False),
     ConfigSetting("index_throttle", "ZIMI_INDEX_THROTTLE", "bool", "1", None, False),
     # The one directory tree the WEB may package a ZIM from (zimi.manage's
     # folder and import modes, and the directory picker that feeds them).
@@ -4541,6 +4545,27 @@ def main():
 
     sub.add_parser("list", help="List available ZIM files")
 
+    # MCP over stdio and nothing else: no web server, no port, no BitTorrent,
+    # mDNS, catalog or index builds. The ZIM directory is the one argument
+    # most people need, so it is positional; everything else resolves the way
+    # `serve` resolves it (env, config file, discovery).
+    p_mcp = sub.add_parser(
+        "mcp", help="Serve MCP on stdio for AI agents (no web server)"
+    )
+    p_mcp.add_argument(
+        "zim_dir",
+        nargs="?",
+        default=None,
+        help="Directory containing *.zim files (overrides ZIM_DIR; default: found as serve finds it)",
+    )
+    p_mcp.add_argument(
+        "--tools",
+        default=None,
+        help="lean: search, read, read_section (default); full: every tool (overrides ZIMI_MCP_TOOLS)",
+    )
+    p_mcp.add_argument("--data-dir", default=None, help="Directory for Zimi's own state")
+    p_mcp.add_argument("--config", default=None, help="Path to a JSON config file")
+
     # Every path/bind flag defaults to None, not to its real default: that is
     # how resolve_settings tells "flag omitted" (fall through to env, then the
     # config file) from "flag given". Shared by `serve` and `config` so the
@@ -4916,6 +4941,19 @@ def main():
     elif args.command == "suggest":
         results = suggest(args.query, zim_name=args.zim, limit=args.limit)
         print(json.dumps(results, indent=2, ensure_ascii=False))
+
+    elif args.command == "mcp":
+        try:
+            from zimi import mcp_server as _mcp_server
+        except SystemExit:
+            print(
+                "zimi mcp needs the MCP package: pip install 'zimi[mcp]'",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        _mcp_server.run(
+            _mcp_server.tools_setting(args.tools or settings["mcp_tools"][0], "lean")
+        )
 
     elif args.command == "list":
         load_cache()

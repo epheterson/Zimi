@@ -3008,6 +3008,27 @@ def unglue_zim_path(archive, zim_name, path):
     return path
 
 
+def _article_entry(zim_name, article_path):
+    """(archive, path, entry, item) for an article of an installed ZIM.
+
+    The path an agent sends is forgiven twice: a "<zim>/" glued in front
+    (openzim/Zimi#54), and a single-page doc's "index#anchor" (devdocs),
+    which is the entry "index". Raises KeyError when there is no such
+    entry. The caller holds the lock and has checked the ZIM is installed."""
+    archive = _srv.get_archive(zim_name) or _srv.open_archive(
+        _srv.get_zim_files()[zim_name]
+    )
+    article_path = unglue_zim_path(archive, zim_name, article_path)
+    try:
+        entry = archive.get_entry_by_path(article_path)
+    except KeyError:
+        base_path, fragment = _srv.split_entry_fragment(article_path)
+        if not fragment:
+            raise
+        entry = archive.get_entry_by_path(base_path)
+    return archive, article_path, entry, entry.get_item()
+
+
 def read_article(zim_name, article_path, max_length=None):
     """Read a specific article from a ZIM file. Returns plain text. Handles HTML and PDF."""
     if max_length is None:
@@ -3016,18 +3037,8 @@ def read_article(zim_name, article_path, max_length=None):
     if zim_name not in zims:
         return {"error": f"ZIM '{zim_name}' not found. Available: {list(zims.keys())}"}
 
-    archive = _srv.get_archive(zim_name) or _srv.open_archive(zims[zim_name])
-    article_path = unglue_zim_path(archive, zim_name, article_path)
     try:
-        try:
-            entry = archive.get_entry_by_path(article_path)
-        except KeyError:
-            # Single-page docs (devdocs): 'index#anchor' → serve base entry 'index'.
-            base_path, fragment = _srv.split_entry_fragment(article_path)
-            if not fragment:
-                raise
-            entry = archive.get_entry_by_path(base_path)
-        item = entry.get_item()
+        archive, article_path, entry, item = _article_entry(zim_name, article_path)
         raw = bytes(item.content)
 
         title = entry.title
@@ -3058,6 +3069,131 @@ def read_article(zim_name, article_path, max_length=None):
         }
     except KeyError:
         return {"error": f"Article '{article_path}' not found in {zim_name}"}
+
+
+# ---------------------------------------------------------------------------
+# An article as Markdown, in sections (the MCP read and read_section tools)
+# ---------------------------------------------------------------------------
+# A read is usually followed by a read_section of the same page, so the last
+# few pages stay parsed: a long article is parsed once, not once per call.
+_MD_CACHE = {}
+_MD_CACHE_MAX = 8
+_md_cache_lock = threading.Lock()
+
+
+def _question_doc(q):
+    """A Stack Exchange question as a Document: the question is the intro,
+    each answer a section, the accepted one first (exchange's order)."""
+    from zimi import htmlmd
+
+    facts = [f"{q['votes']} votes"]
+    if q.get("author"):
+        facts.append(f"asked by {q['author']}")
+    if q.get("tags"):
+        facts.append("tags: " + ", ".join(q["tags"]))
+    parts = [(1, "", " · ".join(facts)), (1, "", htmlmd.to_markdown(q["body"]).text())]
+    for i, a in enumerate(q.get("answers") or [], 1):
+        head = f"Answer {i}: {a['score']} points"
+        if a.get("accepted"):
+            head += ", accepted"
+        if a.get("author"):
+            head += f", by {a['author']}"
+        parts.append((2, head, htmlmd.to_markdown(a["body"]).text()))
+    return htmlmd.from_blocks(q["title"], parts)
+
+
+# mwoffliner writes a redirect that lands inside another page ("Giant ant" is
+# Ant's "In culture") as a tiny page with a meta refresh, not a ZIM redirect.
+_REFRESH_RE = re.compile(
+    r"""<meta\s[^>]*http-equiv=["']?refresh["']?[^>]*content=["']?\d*\s*;\s*url=['"]?([^'">]+)""",
+    re.I,
+)
+_REFRESH_PAGE_MAX = 2048
+_REFRESH_HOPS = 3
+
+
+def refresh_target(html, path):
+    """(path, fragment) a meta-refresh stub sends its reader to, or None.
+    Only a small page counts: a real page with a refresh tag is a page."""
+    if len(html) > _REFRESH_PAGE_MAX:
+        return None
+    m = _REFRESH_RE.search(html)
+    if not m:
+        return None
+    url = m.group(1).strip()
+    if url.startswith(("http:", "https:", "//", "#")):
+        return None
+    import posixpath
+    from urllib.parse import unquote
+
+    target, _, fragment = url.partition("#")
+    target = posixpath.normpath(posixpath.join(posixpath.dirname(path), unquote(target)))
+    return target.lstrip("/"), unquote(fragment)
+
+
+def article_markdown(zim_name, path, references=False):
+    """An article as an htmlmd.Document, in its sections.
+
+    Returns {"zim", "path", "title", "doc", "section"}, or {"error":
+    "unknown_zim" | "not_found" | "not_text"}. ``path`` comes back as the
+    entry the page really is (a redirect followed, or a refresh stub's
+    target), so a read_section after a read finds the same page; ``section``
+    is the anchor a stub pointed into, else "". The caller holds _zim_lock."""
+    from zimi import exchange, htmlmd
+
+    zims = _srv.get_zim_files()
+    if zim_name not in zims:
+        return {"error": "unknown_zim"}
+    try:
+        archive, path, entry, item = _article_entry(zim_name, path)
+    except KeyError:
+        return {"error": "not_found"}
+    section = ""
+    for _hop in range(_REFRESH_HOPS):
+        if entry.is_redirect:
+            path = item.path
+            entry = archive.get_entry_by_path(path)
+        if item.size > _REFRESH_PAGE_MAX or "html" not in (item.mimetype or ""):
+            break
+        hop = refresh_target(bytes(item.content).decode("UTF-8", "replace"), path)
+        if hop is None:
+            break
+        try:
+            entry = archive.get_entry_by_path(hop[0])
+        except KeyError:
+            break
+        path, section, item = hop[0], hop[1], entry.get_item()
+    key = (zims[zim_name], path, bool(references))
+    with _md_cache_lock:
+        got = _MD_CACHE.get(key)
+    if got is not None:
+        return dict(got, section=section)
+    mime = item.mimetype or ""
+    raw = bytes(item.content)
+    title = entry.title or path
+    if mime == "application/pdf":
+        text = extract_pdf_text(raw, max_length=CHUNK_MAX_TEXT)
+        paras = (b.strip() for b in text.split("\n\n"))
+        doc = htmlmd.from_blocks(title, [(1, "", p) for p in paras if p])
+    elif mime.startswith(("text/html", "application/xhtml")):
+        html = raw.decode("UTF-8", errors="replace")
+        q = (
+            exchange.question_from_page(html, path, zim_name)
+            if path.startswith("questions/")
+            else None
+        )
+        doc = _question_doc(q) if q else htmlmd.to_markdown(html, title, references)
+    elif mime.startswith("text/"):
+        text = raw.decode("UTF-8", errors="replace")
+        doc = htmlmd.from_blocks(title, [(1, "", text)])
+    else:
+        return {"error": "not_text", "mimetype": mime}
+    got = {"zim": zim_name, "path": path, "title": doc.title or title, "doc": doc}
+    with _md_cache_lock:
+        if len(_MD_CACHE) >= _MD_CACHE_MAX:
+            _MD_CACHE.pop(next(iter(_MD_CACHE)))
+        _MD_CACHE[key] = got
+    return dict(got, section=section)
 
 
 # ---------------------------------------------------------------------------
@@ -3142,18 +3278,8 @@ def chunk_article(
     if zim_name not in zims:
         return {"error": "not_found"}
 
-    archive = _srv.get_archive(zim_name) or _srv.open_archive(zims[zim_name])
-    path = unglue_zim_path(archive, zim_name, path)
     try:
-        try:
-            entry = archive.get_entry_by_path(path)
-        except KeyError:
-            # Single-page docs (devdocs): 'index#anchor' → chunk base entry 'index'.
-            base_path, fragment = _srv.split_entry_fragment(path)
-            if not fragment:
-                raise
-            entry = archive.get_entry_by_path(base_path)
-        item = entry.get_item()
+        archive, path, entry, item = _article_entry(zim_name, path)
         raw = bytes(item.content)
         title = entry.title
         if item.mimetype == "application/pdf":
