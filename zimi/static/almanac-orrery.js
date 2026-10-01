@@ -388,10 +388,11 @@ var _EARTH_GLOW_PULSE = 0.08;       // how much the breath adds
 function _orreryEarthViewAvailable() {
   return typeof window.openAlmanacEarth === 'function' && !window.openAlmanacEarth.unsupported;
 }
-function _orreryOpenEarthView() {
+// Into the 3D view: over the Earth, or on the Sun.
+function _orreryOpenEarthView(target) {
   if (!_orreryEarthViewAvailable()) return;
   _orreryMarkTried('earth');
-  window.openAlmanacEarth();
+  window.openAlmanacEarth(target ? { target: target } : undefined);
 }
 
 // ── Saying what the orrery does, until it has been done ──
@@ -527,6 +528,23 @@ function _orreryLinkFor(hit) {
 
 function _orreryOpenLink(key) { if (key && window.AlmanacLinks) window.AlmanacLinks.open(key); }
 
+// The live sky's way here (almanac-sky.js): a planet tapped in the sky is
+// shown where the planets are drawn, the orrery brought into view and the
+// planet's tip open, its Fly button and its article one tap on.
+var _orreryShowTipFn = null;   // _initOrrery's tip, for that
+function _orreryShowBody(name) {
+  if (!_orreryCanvas) return;
+  // At once: a smooth scroll is cut short while the 3D view readies itself behind the page.
+  _orreryCanvas.scrollIntoView({ block: 'center' });
+  for (var i = 0; i < _orreryPlanetPositions.length; i++) {
+    var rec = _orreryPlanetPositions[i];
+    if (rec.name !== name) continue;
+    _orrerySelectedKey = 'planet:' + name.toLowerCase();
+    if (_orreryShowTipFn) _orreryShowTipFn({ type: 'planet', data: rec });
+    return;
+  }
+}
+
 // A launchable planet: every planet but the one the rockets leave from.
 function _orreryIsDestination(hit) { return hit.type === 'planet' && hit.data.name !== 'Earth'; }
 
@@ -537,6 +555,7 @@ function _orreryInfoFirst(hit) { return hit.type === 'sun' || _orreryIsDestinati
 function _orreryAct(hit) {
   if (_orreryIsDestination(hit)) { _orreryLaunchRocket(hit.data.name); return 'fly'; }
   if (hit.type === 'planet' && _orreryEarthViewAvailable()) { _orreryOpenEarthView(); return 'earth'; }
+  if (hit.type === 'sun' && _orreryEarthViewAvailable()) { _orreryOpenEarthView('sun'); return 'earth'; }
   if (hit.type === 'voyager') { _showVoyagerCard(hit.data.idx); return 'card'; }
   _orreryOpenLink(_orreryLinkKey(hit));   // Earth without its view, the Sun, a belt: the article
   return 'link';
@@ -637,7 +656,7 @@ function _initOrrery() {
       var fly = el.getAttribute('data-orr-fly');
       if (key) { e.stopPropagation(); _orreryOpenLink(key); }
       else if (fly) { e.stopPropagation(); tooltip.style.display = 'none'; _orrerySelectedKey = null; _orreryLaunchRocket(fly); }
-      else if (el.hasAttribute('data-orr-earth')) { e.stopPropagation(); tooltip.style.display = 'none'; _orreryOpenEarthView(); }
+      else if (el.hasAttribute('data-orr-earth')) { e.stopPropagation(); tooltip.style.display = 'none'; _orreryOpenEarthView(el.getAttribute('data-orr-earth') === 'sun' ? 'sun' : null); }
     });
   }
   var _tipHideTimer = null;
@@ -678,6 +697,9 @@ function _initOrrery() {
     }
     if (hit.type === 'planet' && hit.data.name === 'Earth' && _orreryEarthViewAvailable()) {
       return '<button type="button" class="orrery-tip-btn" data-orr-earth="1">' + _almEsc(t('alm_orr_earth_view')) + '</button>';
+    }
+    if (hit.type === 'sun' && _orreryEarthViewAvailable()) {
+      return '<button type="button" class="orrery-tip-btn" data-orr-earth="sun">' + _almEsc(t('alm_orr_sun_view')) + '</button>';
     }
     return '';
   }
@@ -807,6 +829,8 @@ function _initOrrery() {
       (res.action !== 'fly' && res.action !== 'earth' && _orreryLinkFor(res.hit)));
     if (keep) _showTip(res.hit); else _hideTip();
   });
+
+  _orreryShowTipFn = _showTip;
 
   // Initial sync, not just the date: a re-init mid-travel (deep-link return,
   // panel rebuild) must restore the controls' overridden state too.

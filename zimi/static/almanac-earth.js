@@ -2671,7 +2671,7 @@ function _aeEnter() {
   _ae.target = 'earth';
   _ae.az = azel.az; _ae.el_ = azel.el;
   _ae.dist = _aeReduceMotion() ? _aeFitDist(AE_FIT_EARTH) : AE_FLY_START_DIST;
-  _aePreset(_aeOpenTarget === 'moon' ? 'moon' : 'earth');
+  _aePreset(_aeOpenTarget);
   if (!_ae.hinted) { _ae.hinted = true; _aeShowHint(); }
 }
 
@@ -2710,15 +2710,19 @@ function _aeLocateMe() {
   }, fail, { timeout: AE_LOCATE_TIMEOUT_MS, maximumAge: 60000 });
 }
 
-// Open the view. `opts.target` 'moon' opens on the Moon, else the Earth (the
-// orrery's way in, flying down to it). `opts.fromHero`: the hero disc was
-// tapped or dragged, and its Moon becomes this one (_aeHandIn); if the view
-// is not ready yet the disc waits, breathing, until it is.
+// Open the view. `opts.target` 'moon' or 'sun' opens on that body, else the
+// Earth (the orrery's way in, flying down to it). `opts.fromHero`: the hero
+// disc was tapped or dragged, and its Moon becomes this one (_aeHandIn); if
+// the view is not ready yet the disc waits, breathing, until it is.
+// `opts.from` 'sky': the live sky's Sun or Moon was tapped; the view keeps
+// the page's clock and Back says Almanac. Otherwise it came from the orrery.
 var _aeOpenTarget = 'earth';
+var _aeFrom = 'orrery';
 function openAlmanacEarth(opts) {
   if (_aeIsOpen || !_aeEnsure()) return;
-  _aeOpenTarget = opts && opts.target === 'moon' ? 'moon' : 'earth';
+  _aeOpenTarget = opts && AE_TARGETS[opts.target] ? opts.target : 'earth';
   var fromHero = !!(opts && opts.fromHero);
+  _aeFrom = fromHero ? 'hero' : (opts && opts.from === 'sky' ? 'sky' : 'orrery');
   if (!fromHero || _aeReady() || _ae.failed) { _aeShow(fromHero); return; }
   var hero = document.querySelector(AE_HERO_SEL);
   if (hero) hero.classList.add('alm-moon-waking');
@@ -2732,8 +2736,9 @@ function openAlmanacEarth(opts) {
   });
 }
 function _aeShow(fromHero) {
-  // From the orrery, its chosen moment; from the hero, the moment it shows.
-  if (!fromHero) _aeAdoptOrreryClock();
+  // From the orrery, its chosen moment; from the hero or the sky, the moment
+  // they show.
+  if (_aeFrom === 'orrery') _aeAdoptOrreryClock();
   _aeIsOpen = true;
   _ae.fromHero = fromHero;
   _ae.el.classList.add('open');
@@ -2745,10 +2750,10 @@ function _aeShow(fromHero) {
   _aeEclipseButton(true);
   _aeSetSpeed(1);
   _aePauseAlmanac();
-  // Back goes where the view was opened from: the Almanac's page (the hero)
-  // or its solar system (the orrery).
+  // Back goes where the view was opened from: the Almanac's page (the hero,
+  // the sky) or its solar system (the orrery).
   var back = _aeById('ae-back'), backText = _aeById('ae-back-text');
-  if (backText) _aeSetText(backText, _aeT(fromHero ? 'almanac' : 'alm_solar_system'));
+  if (backText) _aeSetText(backText, _aeT(_aeFrom === 'orrery' ? 'alm_solar_system' : 'almanac'));
   if (back) back.focus({ preventScroll: true });
   _aeLoadSats();
   if (_aeReady()) { _aeLoadMaps(_ae.gl); _aeResize(); _aeEnter(); _aeKick(); return; }
@@ -2799,7 +2804,7 @@ function _aeFinishClose() {
   if (typeof _almanacOpen === 'undefined' || _almanacOpen) _aeResumeAlmanac();
   // Focus goes back where the view came from; its ring shows only to someone
   // who left by the keyboard (a ring round the Moon after a tap is noise).
-  var back = _ae.fromHero ? document.querySelector(AE_HERO_SEL) : _aeById('almanac-orrery');
+  var back = _ae.fromHero ? document.querySelector(AE_HERO_SEL) : _aeById(_aeFrom === 'sky' ? 'almanac-sky-canvas' : 'almanac-orrery');
   var focusOpts = { preventScroll: true, focusVisible: !!_ae.closedByKey };
   // Under reduced motion every property eases over 0.01 ms (app.css), the
   // visibility each element inherits too, one level a frame: the page

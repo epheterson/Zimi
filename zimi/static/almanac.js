@@ -156,13 +156,13 @@ function _almEsc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'
 
 function _cancelAllRAF() {
   if (_almanacOrreryRAF) { cancelAnimationFrame(_almanacOrreryRAF); _almanacOrreryRAF = null; }
-  if (_almanacSkyRAF) { cancelAnimationFrame(_almanacSkyRAF); _almanacSkyRAF = null; }
+  _skyPause();
   if (_tzClockRAF) { cancelAnimationFrame(_tzClockRAF); _tzClockRAF = null; }
 }
 function _resumeAllRAF() {
   _orreryLastFrame = performance.now();  // prevent time-jump after tab was hidden
   if (typeof _orreryAnimate === 'function') _orreryAnimate();
-  if (_activeSkyLoop) _almanacSkyRAF = requestAnimationFrame(_activeSkyLoop);
+  _skyResume();
   if (typeof _startTzClock === 'function') _startTzClock();
 }
 // Pause all animation loops when tab is backgrounded
@@ -224,7 +224,7 @@ function _almanacTeardown() {
   // memory back: a phone keeps a tab that holds less.
   if (typeof _aeRelease === 'function') _aeRelease();
   _cancelAllRAF();
-  _activeSkyLoop = null;
+  if (typeof _skyStop === 'function') _skyStop();
   _almSelectedTz = null;
   // Reset orrery state
   _orreryPlaying = true;
@@ -1718,10 +1718,12 @@ function _renderAlmanacContent() {
   // open its file, loading after this paint, sees to that itself).
   if (typeof _aePrepareWhenIdle === 'function') _aePrepareWhenIdle();
 
-  // Sky scene + calendar — wall calendar: art above, month grid below. Time is
-  // driven by the time machine at the top; the sky animates live as you travel.
+  // The live sky + calendar — wall calendar: the sky above, the month below.
+  // Its clock is the page's (the time machine at the top); almanac-sky.js.
   html += '<div class="almanac-sky-wrap">' +
     '<canvas id="almanac-sky-canvas" aria-describedby="almanac-sky-desc" role="img"></canvas>' +
+    '<div id="almanac-sky-cap" class="alm-sky-cap"></div>' +
+    '<div id="almanac-sky-tip" class="alm-sky-tip" hidden></div>' +
     // Inline styles duplicate .sr-only so a stale cached app.css can never
     // expose this text visually (issue #25).
     '<div id="almanac-sky-desc" class="sr-only" style="position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0"></div>' +
@@ -2001,8 +2003,8 @@ function _heroMoonOrientNote(loc) {
 // When the focus jumps, the big hero disc doesn't cut to the new phase: a live
 // <canvas> overlay draws the moon at successive REAL instants between the two
 // times, so the terminator sweeps its true path and the disc rotates from the
-// old tilt to the new one -- as if a camera stayed on it. Driven by the sky
-// scene's existing rAF (via _heroMoonTick), so there is no second loop. The
+// old tilt to the new one -- as if a camera stayed on it. Driven by the sky's
+// frame loop (via _heroMoonTick; the sweep starts it), so there is no second loop. The
 // overlay's opaque disc fully covers the crisp resting <img> beneath it, which
 // already shows the destination phase; on completion the overlay is removed and
 // that img is revealed with no visible seam. Reduced motion snaps (caller +
@@ -2081,6 +2083,7 @@ function _almHeroMoonSweep(head, fromTime, toTime, loc) {
     start: performance.now(),
     dur: _moonAnimDurMs(fromTime, toTime)
   };
+  _skyKick();   // the sky's frame loop carries the sweep (_heroMoonTick)
 }
 
 // ── Hero moon during live travel ──
@@ -5036,7 +5039,7 @@ function _moonPosition(date, lat, lon) {
   // down (up to ~1° at the horizon), then refraction lifts the apparent disc.
   var hp = Math.asin(6378.14 / _moonDistance(date)) * 180 / Math.PI; // horizontal parallax
   altitude = altitude - hp * Math.cos(altitude * DEG_TO_RAD);
-  if (altitude > -1) altitude += (1 / Math.tan((altitude + 7.31 / (altitude + 4.4)) * DEG_TO_RAD)) / 60; // Bennett refraction, deg
+  altitude = _skyRefract(altitude);
   return { altitude: altitude, azimuth: azimuth };
 }
 
@@ -5071,15 +5074,7 @@ function _planetVisibility(now) {
     var geoLon = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
     var elong = ((geoLon - sunLon) + 540) % 360 - 180; // signed, -180 to +180
     var elongAbs = Math.abs(elong);
-    var mag = _PLANET_V0[name] + 5 * Math.log10(pos.r * delta);
-    // Phase angle correction for inner planets (rough)
-    if (name === 'Venus' || name === 'Mercury') {
-      var cosPA = (pos.r * pos.r + delta * delta - earth.r * earth.r) / (2 * pos.r * delta);
-      cosPA = Math.max(-1, Math.min(1, cosPA));
-      var phaseAngle = Math.acos(cosPA);
-      var phaseFrac = (1 + Math.cos(phaseAngle)) / 2;
-      mag += -2.5 * Math.log10(Math.max(0.01, phaseFrac));
-    }
+    var mag = _planetMagnitude(name, pos.r, delta, earth.r);
     var visible = mag < 5.5 && elongAbs > 12;
     var sky = elong > 0 ? t('alm_evening') : t('alm_morning');
     var dir = elong > 0 ? (elongAbs > 120 ? t('alm_east') : elongAbs > 60 ? t('alm_south') : t('alm_west')) :
