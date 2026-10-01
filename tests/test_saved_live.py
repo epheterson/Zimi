@@ -202,7 +202,8 @@ def test_bookmarks_v2_come_in_as_saved_lists(served):
         pg.wait_for_selector("#bm-tree .bm-row")
         rows = _rows(pg)
         # Liked, each folder a list named by its path in the tree's order
-        # with its order kept, then the bookmarks in no list.
+        # with its order kept, then the bookmarks in no list, named by what
+        # they are (a talk: Videos).
         assert rows == [
             "# Liked",
             "# Travel",
@@ -212,7 +213,7 @@ def test_bookmarks_v2_come_in_as_saved_lists(served):
             "Mercury",
             "# Medical",
             "Sun, renamed",
-            "# Bookmarks",
+            "# Videos",
             "A talk",
         ], rows
         # Continue (Bookshelf's place) heads History, under the clock.
