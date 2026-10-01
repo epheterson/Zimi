@@ -4,7 +4,7 @@ Zimi ships with an MCP (Model Context Protocol) server that any AI client can ca
 
 ## What an AI gets
 
-`zimi mcp` serves three tools by default, sized for small local models (a 3B to 27B model handles them well; the three schemas together are about 330 tokens):
+`zimi-mcp` serves three tools by default, sized for small local models (a 3B to 27B model handles them well; the three schemas together are about 330 tokens):
 
 - **`search`**: search one source, several, or all of them. Each hit is a title, its source, its path and a short snippet. Supports `"exact phrase"`, `-word` and `a OR b`. A source can be named by part (`wikipedia`, `stackexchange`).
 - **`read`**: a page as Markdown with its headings, lists, tables, infobox and math (as TeX). No navigation, footnote marks or images; references only when asked for. A long page comes back as its intro and a numbered outline.
@@ -27,13 +27,13 @@ Full tool signatures: see `zimi/mcp_server.py`.
 
 ## Installing
 
-The MCP server needs one extra dependency, which a plain `pip install zimi` does not pull in:
+The MCP server and search alone, without the web app:
 
 ```bash
-pip install "zimi[mcp]"
+pip install zimi-mcp
 ```
 
-The Docker image already has it. To check any install, run `zimi mcp /path/to/your/zims`: it should sit there waiting on stdin rather than exiting with an error.
+Already running full Zimi? `pip install "zimi[mcp]"` gives that install the same `zimi-mcp` command; the Docker image serves it as `python3 -m zimi mcp` (below). To check any install, run `zimi-mcp /path/to/your/zims`: it should sit there waiting on stdin rather than exiting with an error.
 
 ### Direct subprocess (same machine)
 
@@ -41,8 +41,8 @@ The Docker image already has it. To check any install, run `zimi mcp /path/to/yo
 {
   "mcpServers": {
     "zimi": {
-      "command": "zimi",
-      "args": ["mcp", "/path/to/your/zims"]
+      "command": "zimi-mcp",
+      "args": ["/path/to/your/zims"]
     }
   }
 }
@@ -73,7 +73,7 @@ The container must already be running; it sets `ZIM_DIR`, so no directory is nee
 Open WebUI doesn't read `mcpServers` JSON, and its native MCP support (v0.6.31+) speaks Streamable HTTP only — it can't launch a stdio server like Zimi's itself. Bridge it with [mcpo](https://github.com/open-webui/mcpo), Open WebUI's own MCP-to-OpenAPI proxy:
 
 ```bash
-uvx mcpo --port 8000 -- zimi mcp /path/to/your/zims
+uvx mcpo --port 8000 -- zimi-mcp /path/to/your/zims
 ```
 
 Then add `http://localhost:8000` as a tool server in Open WebUI (**Settings → Tools** for yourself, or **Admin Settings → Tools** for everyone); the model will see the Zimi tools alongside whatever else you've configured. The `mcpServers` JSON above is for clients that launch stdio servers directly (Claude Code, Claude Desktop, LM Studio, and friends).
@@ -106,4 +106,4 @@ With the default tools the agent reads the Apollo program page, gets its intro a
 
 - **Prefer the MCP path over scraping the HTTP API.** MCP gives the agent typed tool definitions; HTTP has the agent guessing at endpoint shapes.
 - **Set `ZIMI_HOT_ZIMS`** if the agent will hammer a small set of sources (full set). The hot list is pre-warmed at startup so first-call latency stays low.
-- **Watch the logs.** `zimi mcp` writes its logs to stderr, useful to see which tools the agent actually called for a given prompt.
+- **Watch the logs.** `zimi-mcp` writes its logs to stderr, useful to see which tools the agent actually called for a given prompt.

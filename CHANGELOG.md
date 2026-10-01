@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The Sun in the Almanac's 3D view.
 - The AppImage updates itself (AppImageUpdate).
 - `zimi mcp`: the MCP server alone on stdio, no web server; three tools by default (search, read a page as Markdown, read one section), `--tools full` for every tool.
+- `pip install zimi-mcp`: the MCP server and search as their own package (280 KB, no web app), released with every version.
 
 ### Changed
 
