@@ -5175,12 +5175,24 @@ function _renderMoonHTML(v, wrapClass) {
   var base = wrapClass === 'dc-moon-wrap' ? 'translate(-50%,-50%) ' : '';
   var rot = v.tilt ? 'rotate(' + v.tilt.toFixed(1) + 'deg)' : '';
   var xform = (base + rot).trim();
+  var data = _moonSpriteData(v), dataAttrs = '';
+  for (var n in data) dataAttrs += 'data-' + n + '="' + data[n] + '" ';
   return '<div class="' + wrapClass + '"' + (xform ? ' style="transform:' + xform + '"' : '') + '>' +
     '<img class="' + (isHero ? 'almanac-moon-sprite' : 'dc-moon-sprite') + ' moon-sprite" ' +
-    'data-k="' + v.k.toFixed(4) + '" data-limb="' + v.limb.toFixed(1) + '" data-l="' + v.l.toFixed(1) +
-    '" data-b="' + v.b.toFixed(1) + '" data-size="' + size + '" ' +
+    dataAttrs + 'data-size="' + size + '" ' +
     'src="' + url + '" alt="" width="' + size + '" height="' + size + '" />' +
     '</div>';
+}
+// What a moon <img> carries of its view, for _repaintMoons to draw it again.
+function _moonSpriteData(v) {
+  return { k: v.k.toFixed(4), limb: v.limb.toFixed(1), l: v.l.toFixed(1), b: v.b.toFixed(1) };
+}
+// Point a rendered moon <img> at view v (the Almanac's live hero).
+function _setMoonSprite(img, v) {
+  var data = _moonSpriteData(v);
+  for (var n in data) img.setAttribute('data-' + n, data[n]);
+  var url = _renderMoonSprite(v, parseInt(img.getAttribute('data-size'), 10) || 48);
+  if (img.getAttribute('src') !== url) img.src = url;
 }
 
 // Repaint already-rendered moon sprites in place — called when the map
