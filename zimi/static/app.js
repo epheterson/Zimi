@@ -12745,6 +12745,9 @@ function _msPreferencesHtml() {
     '<div class="ms-hint" style="margin-top:12px">' + tH('catalog_languages_hint_short') + '</div>' +
     '<button class="pill" onclick="_msToggleCollapse(\'ms-lang-pills\', this)">' + tH('show_list') + '</button>' +
     '<div class="ms-lang-pills ms-collapsed-list" id="ms-lang-pills">' + _renderLangPrefPills() + '</div>';
+  // My data is this browser's (bookmarks, history, these preferences): it
+  // lives with the preferences, not with the server's settings.
+  h += '<div class="ms-mydata" style="margin-top:24px">' + _myDataCardHtml() + '</div>';
   // Security (password + logout) lives in the Users pane ("Your account").
   return h;
 }
@@ -13278,8 +13281,8 @@ function _msServerHtml() {
       '<div class="ms-hint">' + tH('configured_via_env') + '</div>';
   }
 
-  // My data + Server backups — two self-titled cards, no extra heading.
-  var backupSec = '<div id="ms-backup" class="ms-backup">' + _backupHubHtml() + '</div>';
+  // The server's backup; My data, this browser's, is under Preferences.
+  var backupSec = '<div id="ms-backup" class="ms-backup">' + _serverBackupCardHtml() + '</div>';
 
   var tokenSec = '<div id="ms-security">' + tH('loading') + '</div>';
 
@@ -14231,7 +14234,8 @@ function _replaceChosen(id) {
 
 // ── Card markup ──
 // "My data" is the only card a signed-in non-admin sees (rendered standalone by
-// _renderUserManage); the admin Server pane shows both via _backupHubHtml.
+// _renderUserManage); an admin finds it under Preferences (it is this
+// browser's), the server's backup under Server.
 function _myDataCardHtml() {
   var signedIn = !!(_userSession && _userSession.name);
   var serverBtns = signedIn
@@ -14255,7 +14259,7 @@ function _myDataCardHtml() {
 }
 
 function _serverBackupCardHtml() {
-  return '<div class="ms-section-label" style="margin-top:22px">' + tH('backup_server_title') + '</div>' +
+  return '<div class="ms-section-label">' + tH('backup_server_title') + '</div>' +
     '<div class="ms-hint">' + tH('backup_server_intro') + '</div>' +
     '<div class="ms-backup-actions">' +
       '<button class="pill" onclick="exportServerBackup()">' + tH('backup_export_file') + '</button>' +
@@ -14265,10 +14269,6 @@ function _serverBackupCardHtml() {
     '</div>' +
     _mergeRowHtml('ms-server-merge') +
     '<div id="ms-server-import" class="ms-backup-import"></div>';
-}
-
-function _backupHubHtml() {
-  return _myDataCardHtml() + _serverBackupCardHtml();
 }
 
 function _downloadJson(filename, obj) {
