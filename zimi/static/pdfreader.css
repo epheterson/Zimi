@@ -216,6 +216,12 @@ html.zp-dark .zp-thumb .zp-sheetpage { background: #151515; }
 /* Two pages side by side: pdf.js's spread, with the same 10px between them as between rows. */
 .pdfViewer .spread .page { margin-inline: 5px !important; }
 
+/* Zimi's highlights on a page: the engine paints them over pdf.js's text,
+   which is drawn transparent over the picture of the page; a note's dotted
+   underline takes the ink's colour, not the text's (none). */
+:root ::highlight(zimi-hl-note), .textLayer mark.zimi-hl-note { text-decoration-color: rgba(0, 0, 0, .65); }
+html.zp-dark ::highlight(zimi-hl-note), html.zp-dark .textLayer mark.zimi-hl-note { text-decoration-color: rgba(255, 255, 255, .7); }
+
 /* About this PDF: About this ZIM's look. The document's name and author,
    then label and value in two columns, the labels small capitals. */
 .zp-about { padding: 4px 4px 4px; }

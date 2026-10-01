@@ -519,6 +519,110 @@ def test_about_this_pdf_says_what_the_file_says(shell):
             ctx.browser.close()
 
 
+SELECT = """(w) => { const sp = [...document.querySelectorAll('.page[data-page-number="' + w.p + '"] .textLayer span')]
+  .find(s => s.textContent.includes(w.t)); const n = sp.firstChild, i = n.nodeValue.indexOf(w.t);
+  const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + w.t.length);
+  const s = getSelection(); s.removeAllRanges(); s.addRange(r); }"""
+# The passage painted on the page: its text, its colour, and the page it is on.
+PAINTED = """() => { const out = [];
+  for (const c of ['yellow', 'green', 'blue', 'pink']) { const h = CSS.highlights.get('zimi-hl-' + c); if (!h) continue;
+    for (const r of h) { const b = r.getBoundingClientRect(); const p = r.startContainer.parentNode.closest('.page');
+      out.push({ text: r.toString(), color: c, pg: p && Number(p.dataset.pageNumber), h: b.height,
+        inside: !!p && (() => { const q = p.getBoundingClientRect(); return b.left >= q.left - 1 && b.right <= q.right + 1 && b.top >= q.top - 1 && b.bottom <= q.bottom + 1; })() }); } }
+  return out; }"""
+PASSAGE = "distillation leaves"
+
+
+def test_a_highlight_on_a_pdf_page_is_zimis_and_kept(shell):
+    """Selecting text on a page gives the same bar as an article; the
+    highlight is kept in Saved on its page, painted there through a zoom, a
+    turn and two pages side by side, after the document is opened again, and
+    opened from the Saved panel on a page far from it."""
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    ref = "{zim: %r, path: %r}" % (name, DOC)
+    with sync_playwright() as pw:
+        pg, fr, ctx = _open(
+            pw, base, name, {"viewport": {"width": 1280, "height": 800}}
+        )
+        try:
+            fr.evaluate("() => zimiPdf.goPage(3)")
+            fr.wait_for_selector('.page[data-page-number="3"] .textLayer span')
+            fr.evaluate(SELECT, {"p": 3, "t": PASSAGE})
+            # The shell's bar: Highlight, Note, Copy.
+            pg.wait_for_selector("#hl-bar.open [data-a=add]", timeout=5000)
+            pg.click("#hl-bar [data-a=add]")
+            pg.wait_for_function("() => Saved.highlights(%s).length === 1" % ref)
+            h = pg.evaluate("() => Saved.highlights(%s)[0]" % ref)
+            assert h["exact"] == PASSAGE and h["pg"] == 3 and h["color"] == "yellow", h
+            assert pg.evaluate(
+                "() => Saved.has(%s)" % ref
+            ), "a highlighted page is saved"
+            fr.wait_for_function("() => (%s)().length === 1" % PAINTED)
+            got = fr.evaluate(PAINTED)[0]
+            assert got["text"] == PASSAGE and got["pg"] == 3 and got["inside"], got
+            # Green, from the bar shown on it now.
+            pg.click('#hl-bar [data-c="green"]')
+            fr.wait_for_function("() => (%s)()[0].color === 'green'" % PAINTED)
+            # A zoom, a turn and one page at a time: still on its page, its words.
+            for step in (
+                "() => document.querySelector('.zp-in').click()",
+                "() => zimiPdf.turn()",
+                "() => zimiPdf.setSpread(false)",
+            ):
+                fr.evaluate(step)
+                fr.evaluate("() => zimiPdf.goPage(3)")
+                fr.wait_for_function(
+                    """() => { const p = (%s)(); return p.length === 1 && p[0].text === %r && p[0].pg === 3 && p[0].inside && p[0].h > 0; }"""
+                    % (PAINTED, PASSAGE),
+                    timeout=10000,
+                )
+            fr.evaluate("() => { zimiPdf.turn(); zimiPdf.turn(); zimiPdf.turn(); }")
+            pg.close()
+
+            # Opened again: painted when its page is drawn.
+            pg2, fr2, _ = _open(pw, base, name, None, ctx=ctx)
+            fr2.evaluate("() => zimiPdf.goPage(3)")
+            fr2.wait_for_function(
+                "() => { const p = (%s)(); return p.length === 1 && p[0].text === %r && p[0].pg === 3; }"
+                % (PAINTED, PASSAGE),
+                timeout=10000,
+            )
+            # In Saved, under Highlights; opened from there with the document
+            # on its last page, it goes back to page 3 and stands out.
+            fr2.evaluate("() => zimiPdf.goPage(%d)" % PAGES)
+            fr2.wait_for_function("() => zimiPdf.page() >= %d" % (PAGES - 1))
+            pg2.evaluate("() => toggleLibraryPanel('bookmarks')")
+            pg2.wait_for_selector('#bm-tree .bm-hl[data-fid="__highlights"]')
+            assert (
+                pg2.evaluate(
+                    "() => document.querySelector('#bm-tree .bm-hl[data-fid=\"__highlights\"] .bm-name').textContent"
+                )
+                == PASSAGE
+            )
+            pg2.click('#bm-tree .bm-hl[data-fid="__highlights"]')
+            fr2.wait_for_function(
+                "() => CSS.highlights.has('zimi-hl-on')", timeout=10000
+            )
+            assert fr2.evaluate("() => zimiPdf.page()") in (3, 4)
+            onscreen = fr2.evaluate(
+                "() => { const r = [...CSS.highlights.get('zimi-hl-on')][0].getBoundingClientRect(); return r.height > 0 && r.top > 0 && r.bottom < innerHeight; }"
+            )
+            assert onscreen
+            # A tap on it gives its bar, not the reader's bars going away.
+            fr2.evaluate("() => zimiPdf.showBars(true)")
+            box = fr2.evaluate(
+                "() => { const r = [...CSS.highlights.get('zimi-hl-green')][0].getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }"
+            )
+            pg2.mouse.click(box[0], box[1])
+            pg2.wait_for_selector("#hl-bar.open [data-a=remove]", timeout=5000)
+            assert fr2.evaluate("() => zimiPdf.barsShown()")
+        finally:
+            ctx.browser.close()
+
+
 def _single(fr):
     """One page at a time, whatever the width chose."""
     fr.evaluate("() => zimiPdf.setSpread(false)")

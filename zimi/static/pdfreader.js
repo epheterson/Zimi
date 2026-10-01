@@ -28,8 +28,10 @@
   var POS_KEY = 'zimi_pdf_pos:';           // + the file: the page, outside the shell
   var SPREAD_KEY = 'zimi_pdf_spread';      // '1' / '2' pages side by side, chosen; absent: by the shape
   var ROT_KEY = 'zimi_pdf_rot:';           // + the file: its pages turned, 0 / 90 / 180 / 270
+  var REACH_MS = 4000;         // ms a page brought in for a highlight has to draw its text
   var SPREAD_MIN_PX = 1000;    // px of window wide enough for two pages side by side
   var RESIZE_MS = 150;
+  var SHOW_AT = 1 / 3;         // a highlight opened from Saved lands a third of the way down
   var TOKENS = ['--bg', '--surface', '--surface2', '--border', '--text', '--text2', '--amber', '--amber-glow', '--on-amber'];
   var FIT_WIDTH = 'page-width', FIT_PAGE = 'page-fit';
   var FIND_NOT_FOUND = 1;      // pdf.js FindState.NOT_FOUND
@@ -227,6 +229,15 @@
       applySpread();
       resume();
       paint();
+      highlightsOn();
+    });
+    // A page's text drawn (opened, scrolled to, zoomed, turned): its
+    // highlights painted on it, once a frame however many pages drew.
+    bus.on('textlayerrendered', function (e) {
+      if (e && e.error) return;
+      drawn[e.pageNumber] = true;
+      reached.forEach(function (w) { if (w.p === e.pageNumber) w.done(); });
+      if (!hlFrame) hlFrame = requestAnimationFrame(function () { hlFrame = 0; if (hl) hl.refresh(); });
     });
     bus.on('spreadmodechanged', function () { paint(); menuAgain(); });
     // Turned (here, or by pdf.js's R key): kept for this document, and a
@@ -437,6 +448,7 @@
     else if (lastY - y > BARS_HIDE) { showBars(true); lastY = y; }
   }
   function onTap(e) {
+    if (e.defaultPrevented) return;   // a tap on a highlight: its bar, not the reader's
     if (Date.now() - pinchAt < PINCH_TAP_MS) return;
     if (e.target.closest && e.target.closest('a,button,input,select,textarea,.annotationLayer section')) return;
     var sel = window.getSelection && window.getSelection();
@@ -689,6 +701,57 @@
     // An entry that points at the web, not into the document, goes nowhere.
     if (it && it.dest && app) { closePanel(); app.pdfLinkService.goToDestination(it.dest); showBars(false); }
   });
+  // ── highlights: Zimi's, as in an article or a book, not pdf.js's own
+  // editors. Select text on a page and the shell's bar offers Highlight,
+  // Note, Copy (and Define); kept in Saved with this document, synced as the
+  // rest are, listed in the Saved panel. Each is found again on its own page
+  // (pg) by what it says, in the text pdf.js draws over the page: so it
+  // holds through zoom, a turn and two pages side by side, and is painted
+  // as each page's text is drawn (pdf.js draws pages as they come near). ──
+  var hl = null, hlFrame = 0, drawn = {}, reached = [];
+  function textOfPage(n) {
+    var el = n ? document.querySelector('#viewer .page[data-page-number="' + n + '"] .textLayer') : null;
+    return el && drawn[n] && el.firstChild ? el : null;
+  }
+  function pageOfNode(n) {
+    var el = n && (n.nodeType === 1 ? n : n.parentNode);
+    var p = el && el.closest ? el.closest('.page[data-page-number]') : null;
+    return p ? Number(p.getAttribute('data-page-number')) : 0;
+  }
+  function highlightsOn() {
+    var r = ref();
+    if (hl || !r || !shell || !shell.Highlights) return;
+    hl = shell.Highlights.attach(document, r, {
+      root: document.getElementById('viewer'),
+      // A passage: the page it starts on. A highlight: its page, if drawn.
+      scope: function (x) {
+        if (x && x.startContainer) {
+          var el = x.startContainer.nodeType === 1 ? x.startContainer : x.startContainer.parentNode;
+          return el && el.closest ? el.closest('.textLayer') : null;
+        }
+        return x && x.pg ? textOfPage(x.pg) : document.getElementById('viewer');
+      },
+      fields: function (range) { var p = pageOfNode(range.startContainer); return p ? { pg: p } : null; },
+      reach: reach,
+      show: function (range) {
+        var b = range.getBoundingClientRect();
+        container.scrollTop += b.top - container.clientHeight * SHOW_AT;
+        showBars(false);
+      }
+    });
+  }
+  // A highlight on a page far from here: go to its page and wait for its text.
+  function reach(h) {
+    return new Promise(function (resolve) {
+      if (!h.pg || h.pg > pages) { resolve(); return; }
+      goPage(h.pg);
+      if (textOfPage(h.pg)) { resolve(); return; }
+      var w = { p: h.pg, done: null }, timer = setTimeout(function () { w.done(); }, REACH_MS);
+      w.done = function () { clearTimeout(timer); reached = reached.filter(function (x) { return x !== w; }); resolve(); };
+      reached.push(w);
+    });
+  }
+
   // ── about this PDF: what the file says of itself (its Info and XMP),
   // what it is (pages, size, version), and where it lives in Zimi. A field
   // the file leaves empty is left out, as About this ZIM leaves its own. ──

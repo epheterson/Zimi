@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Create a ZIM from a folder on the server, picking any part of it in a tree; pages, documents, pictures, video and audio, with optional `zimi.txt` metadata files.
 - The Almanac's Moon is live: tap or drag it to fly into the 3D view, on the same clock as the page.
 - Find in page while reading (Cmd/Ctrl+F, or the ⋯ menu).
+- PDFs: page back and forward buttons, two pages side by side on a wide screen, rotate, About this PDF, and highlights with notes kept in Saved like an article's.
 - Search results highlight the matched words and group by source when many sources match.
 - Math renders in textbooks.
 - A sharper Moon, drawn from NASA's high-resolution map.
