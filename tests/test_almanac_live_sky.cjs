@@ -243,15 +243,15 @@ delete S.window.openAlmanacEarth.unsupported;
 vm.runInContext('var _almFocus = null; var _heroMoonAnim = null; var __reduce = false; function _almReduceMotion() { return __reduce; }' +
   'var __painted = 0; _skyPaint = function () { __painted++; };' +
   '_skyState = { inView: true, eph: { sunGeoAlt: -30 }, muons: [], actors: [], bodies: [], moonAnim: null, nowTime: Date.now() };', S);
-const SPAWNERS = '_skySpawnBirds,_skySpawnMeteor,_skySpawnPlane';
+const MOVING = '_skySpawnBirds,_skySpawnMeteor,_skySpawnPlane,_skySpawnWhale,_skySwayTick';   // the spawners and the palms' breeze
 const armed = () => { timers.length = 0; vm.runInContext('_skyArm()', S); return timers.map((x) => x.fn.name).sort().join(','); };
-check(armed() === '_skyLiveTick,_skyMuonTick,' + SPAWNERS + ',_skyTwinkleTick', 'live at night: the clock\'s drift, the twinkle, the muons, the planes, birds and meteors');
+check(armed() === '_skyLiveTick,_skyMuonTick,' + MOVING + ',_skyTwinkleTick', 'live at night: the clock\'s drift, the twinkle, the muons, the planes, birds and meteors');
 vm.runInContext('_almFocus = new Date(0)', S);
-check(armed() === '_skyMuonTick,' + SPAWNERS + ',_skyTwinkleTick', 'scrubbed: no live timer, the sky holds the focused instant');
+check(armed() === '_skyMuonTick,' + MOVING + ',_skyTwinkleTick', 'scrubbed: no live timer, the sky holds the focused instant');
 vm.runInContext('_almFocus = null; _skyState.eph.sunGeoAlt = 20', S);
-check(armed() === '_skyLiveTick,_skyMuonTick,' + SPAWNERS, 'by day no twinkle (no stars out)');
+check(armed() === '_skyLiveTick,_skyMuonTick,' + MOVING, 'by day no twinkle (no stars out)');
 vm.runInContext('__reduce = true', S);
-check(armed() === '_skyLiveTick', 'motion reduced: neither twinkle nor muons');
+check(armed() === '_skyLiveTick', 'motion reduced: no twinkle, muons or breeze (the palms stand still)');
 vm.runInContext('__reduce = false; _skyState.inView = false', S);
 check(armed() === '', 'scrolled out of sight: nothing runs');
 vm.runInContext('_skyState.inView = true; document.hidden = true', S);

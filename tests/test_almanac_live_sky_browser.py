@@ -263,8 +263,10 @@ def test_one_clock(browser, served):
           window.requestAnimationFrame = (f) => { if (f === _skyLoop) n++; return r.call(window, f); };
           setTimeout(() => { window.requestAnimationFrame = r; done(n); }, 1000);
         })""")
-        # A twinkle (every 1.5 s) or a muon's fall may ask for a frame or two; a loop would ask ~60.
-        assert frames <= 3, frames
+        # The palms' breeze asks for a frame every SKY_SWAY_MS (twelve a
+        # second); a twinkle or a muon's fall a frame or two more; a loop
+        # would ask ~60.
+        assert frames <= 1000 / pg.evaluate("SKY_SWAY_MS") + 3, frames
         assert not errors, errors
     finally:
         ctx.close()
@@ -385,7 +387,7 @@ def test_life_on_the_horizon(browser, served):
         assert not errors, errors
     finally:
         ctx.close()
-    # Inland: the land, no sea, no boats.
+    # Inland: the same beach and palms, the sea at half tide, and no tide claimed.
     ctx, pg, errors = _almanac(browser, served, place=DENVER)
     try:
         _settle(pg, DAY)
@@ -397,9 +399,8 @@ def test_life_on_the_horizon(browser, served):
         pg.evaluate("_skyKick()")
         pg.wait_for_timeout(300)
         assert pg.evaluate("_skyState.sea") is None
-        assert not pg.evaluate(
-            "_skyState.bodies.some((b) => b.type === 'boat' || b.type === 'sea')"
-        )
+        assert not pg.evaluate("_skyState.bodies.some((b) => b.type === 'sea')")
+        assert pg.evaluate("(_skyState.palmCache || []).some(Boolean)")
         assert not errors, errors
     finally:
         ctx.close()
@@ -447,8 +448,10 @@ def test_reduced_motion_keeps_the_sky_still(browser, served):
         _settle(pg, NIGHT)
         assert pg.evaluate("!_skyTimers.twinkle && !_skyTimers.muon")
         assert pg.evaluate(
-            "!_skyTimers.plane && !_skyTimers.birds && !_skyTimers.meteor"
+            "!_skyTimers.plane && !_skyTimers.birds && !_skyTimers.meteor && !_skyTimers.whale"
         )
+        # The palms stand still: no breeze timer, and no frames asked for.
+        assert pg.evaluate("!_skyTimers.sway")
         still = pg.evaluate("_skyState.muons.filter((m) => m.still).length")
         assert still == 1
         _tap_body(pg, "muon")
