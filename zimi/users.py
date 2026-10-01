@@ -615,7 +615,10 @@ _USERDATA_MAX_BYTES = 4 * 1024 * 1024
 _SAVED_LIKED = "liked"
 #: The store's shape. 1: 1.12.0, where a like saved the thing too
 #: (_saved_likes_from_v1). A thing liked and not saved is an item marked
-#: likeOnly, in Liked and in nothing else.
+#: likeOnly, in Liked and in nothing else. Whether an item is saved has its
+#: own time, sv (_saved_sv_of), apart from ts (its fields): a like alone makes
+#: no claim on it (sv 0), so a like never clears a save and an unsave never
+#: clears a like.
 _SAVED_VERSION = 2
 _SAVED_KINDS = ("article", "book", "video", "question", "post", "place")
 _SAVED_APPS = ("books", "tube", "exchange", "reddot", "maps", "wiki")
@@ -829,7 +832,10 @@ def _clean_saved(x):
             it["added"] = _saved_round(it["ts"] if added is None else added)
             if r.get("likeOnly") is True:
                 it["likeOnly"] = True
-            s["items"][id_] = it
+            sv = _saved_num(r.get("sv"))
+            s["items"][id_] = _saved_set_sv(
+                it, _saved_sv_of(it) if sv is None else max(0, _saved_round(sv))
+            )
     for id_, r in each(x.get("lists")):
         o = _saved_order(r)
         name = r.get("name") if isinstance(r, dict) else None
@@ -894,6 +900,53 @@ def _saved_likes_from_v1(s):
             s["items"][id_]["likeOnly"] = True
 
 
+def _saved_sv_of(r):
+    """When an item's saved state was last set: sv, or before sv was kept
+    (1.12.0, and 1.12.1's first builds) ts, except a thing only liked and
+    never touched since (added is ts): the heart made it, nothing chose."""
+    if "sv" in r:
+        return r["sv"]
+    return 0 if r.get("likeOnly") and r["added"] == r["ts"] else r["ts"]
+
+
+def _saved_set_sv(r, v):
+    """sv is written only where it says more than _saved_sv_of would without it."""
+    r.pop("sv", None)
+    if v != _saved_sv_of(r):
+        r["sv"] = v
+    return r
+
+
+def _saved_let_go(s, id_):
+    """A thing only liked, its like gone: not kept. Its unsave stays as a
+    tombstone dated when it was let go (none if it never was saved), so an
+    older save elsewhere does not come back and a newer one stays saved."""
+    sv = _saved_sv_of(s["items"].pop(id_))
+    g = "i:" + id_
+    if sv > 0 and not s["gone"].get(g, -1) >= sv:
+        s["gone"][g] = sv
+
+
+def _saved_merge_item(r, x, y, gone, g):
+    """What the item is comes from the newer copy (``r``); whether it is saved
+    from the newer of the copies' sv and its tombstone (a tie keeps ``x``'s, a
+    tombstone as new wins). Not saved, it stays for its like, as likeOnly;
+    _saved_normalize lets it go when there is none."""
+    w = y if x is None else x if y is None else (y if _saved_sv_of(y) > _saved_sv_of(x) else x)
+    sv, saved = _saved_sv_of(w), not w.get("likeOnly")
+    if g in gone:
+        if gone[g] >= sv:
+            saved, sv = False, gone[g]
+        else:
+            del gone[g]
+    out = dict(r)
+    if saved:
+        out.pop("likeOnly", None)
+    else:
+        out["likeOnly"] = True
+    return _saved_set_sv(out, sv)
+
+
 def _saved_cap(m, n, ts_of):
     """Past ``n`` records, the newest are kept (ties by key)."""
     if len(m) <= n:
@@ -952,7 +1005,7 @@ def _saved_normalize(s, now_ms, budget=None):
             liked.add(id_)
     for id_ in [k for k, it in s["items"].items() if it.get("likeOnly")]:
         if id_ not in liked:
-            del s["items"][id_]
+            _saved_let_go(s, id_)
     for g in [g for g, ts in s["gone"].items() if ts < now_ms - _SAVED_GONE_MS]:
         del s["gone"][g]
     _saved_cap(s["gone"], _SAVED_GONE_MAX, _saved_gone_ts)
@@ -973,6 +1026,8 @@ def _saved_clamp(s, most):
             r["ts"] = min(r["ts"], most)
             if "added" in r:
                 r["added"] = min(r["added"], most)
+            if "sv" in r:
+                r["sv"] = min(r["sv"], most)
     for g in s["gone"]:
         s["gone"][g] = min(s["gone"][g], most)
     return s
@@ -996,6 +1051,9 @@ def _merge_saved(a, b, now_ms, budget=None):
                 continue
             x, y = A.get(id_), B.get(id_)
             r = y if x is None else x if y is None else (y if y["ts"] > x["ts"] else x)
+            if name == "items":
+                out[name][id_] = _saved_merge_item(r, x, y, gone, pre + id_)
+                continue
             dead = gone.get(pre + id_)
             if dead is not None:
                 if dead >= r["ts"]:

@@ -3452,7 +3452,7 @@ function renderHome(filter) {
     pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
     output.innerHTML = '<div id="discover-row"></div>'
       + '<div class="empty"><p>' + tH('no_sources_found') + '</p><p class="hint">' + tH('add_zims') + '</p>'
-      + (manageEnabled ? '<a href="/?manage" onclick="event.preventDefault();enterManage();setTimeout(function(){switchManageTab(\'browse\')},50)" style="display:inline-block;margin-top:16px;color:var(--amber);font-weight:500;font-size:14px;text-decoration:none;border-bottom:1px solid var(--amber-border)">' + tH('catalog_link') + '</a>' : '')
+      + (manageEnabled ? '<a href="/?manage" onclick="event.preventDefault();enterManage().then(function(ok){if(ok)switchManageTab(\'browse\')})" style="display:inline-block;margin-top:16px;color:var(--amber);font-weight:500;font-size:14px;text-decoration:none;border-bottom:1px solid var(--amber-border)">' + tH('catalog_link') + '</a>' : '')
       + '</div>'
       // The apps on a fresh install too, each tile saying what it needs and
       // opening its catalog category (docs/features/apps.md). The empty
@@ -5307,6 +5307,26 @@ var _createLoaded = false;
 
 // ``replaceState`` true means "this history entry IS Create" (a cold load of
 // /#create), false means "Create is a step forward from where we were".
+// A protected server and no token yet: the sign-in comes first, over the
+// page you are on, and what you asked for opens after (Create, Manage).
+function _needsSignIn() { return _managePwRequired && !_manageToken; }
+// Resolves true once signed in as an admin, false if cancelled. Through
+// /login, so what is kept is a session token, not the password typed.
+function _signInFirst() {
+  return new Promise(function(resolve) {
+    _pwResolve = function(tok) {
+      _manageToken = tok; _saveManageToken(tok, document.getElementById('pw-remember').checked);
+      _msPrefetch = {};  // whatever was fetched before the password is stale
+      _pwReject = null;
+      closePwModal();
+      resolve(true);
+    };
+    _pwReject = function() { resolve(false); };
+    _pwLoginMode = true;
+    openPwModal(t('sign_in'));
+  });
+}
+
 function openCreate(replaceState) {
   // Modifier-click: open Create in a new browser tab, like the Almanac.
   if (_isModClick()) {
@@ -5318,17 +5338,8 @@ function openCreate(replaceState) {
   // A protected server asks for the password here, before the page opens,
   // as Manage does: the page used to open and its first request came back
   // as a red "unauthorized" under the Create button (Eric, desktop app).
-  if (_managePwRequired && !_manageToken && !(_userSession && _userSession.can_create) && typeof openPwModal === 'function' && !_pwResolve) {
-    var _afterPw = function(tok) {
-      _manageToken = tok; _saveManageToken(tok, true);
-      closePwModal();
-      openCreate(replaceState);
-    };
-    _pwResolve = _afterPw; _pwReject = function() {};
-    // Through /login, so what _afterPw keeps is a session token, not the
-    // password that was typed.
-    _pwLoginMode = true;
-    openPwModal();
+  if (_needsSignIn() && !(_userSession && _userSession.can_create) && !_pwResolve) {
+    _signInFirst().then(function(ok) { if (ok) openCreate(replaceState); });
     return;
   }
   if (_createLoaded) { _openCreateInner(replaceState); return; }
@@ -7788,7 +7799,7 @@ async function enterManage(e, section) {
     // manage-auth probe has set manageEnabled we must not leave the button
     // dead (#44). Resolve the probe on demand (cheap, lock-free endpoint) and
     // only bail if management is genuinely disabled.
-    if (_manageProbed) { _dropManageBoot(); return; }   // probe finished: disabled
+    if (_manageProbed) { _dropManageBoot(); return false; }   // probe finished: disabled
     if (!_manageProbe) _manageProbe = _probeManageAuth();
     // The gear turns while the answer is on its way: on a busy server (a
     // library warming after a restart) that can be seconds, and a tap that
@@ -7796,7 +7807,16 @@ async function enterManage(e, section) {
     var gear = document.getElementById('manage-btn');
     if (gear) gear.classList.add('busy');
     try { await _manageProbe; } finally { if (gear) gear.classList.remove('busy'); }
-    if (!manageEnabled) { _dropManageBoot(); return; }  // resolved to disabled
+    if (!manageEnabled) { _dropManageBoot(); return false; }  // resolved to disabled
+  }
+  // Signed in first, over the page you are on: Manage painted under the
+  // modal said "Loading catalog..." while it waited for the password (Eric,
+  // 2026-09-21). Create's way. A cold /?manage shows the library behind it;
+  // a second call while the sign-in is up (the boot's re-check) waits on it.
+  if (_needsSignIn()) {
+    if (_pwResolve) return false;
+    _dropManageBoot();
+    if (!(await _signInFirst())) return false;
   }
   // Decide which settings section to land on: an explicit arg (deep link /
   // ?manage=<section>) wins, else a section a caller already staged in
@@ -7856,6 +7876,7 @@ async function enterManage(e, section) {
   // (#47). _creatorLoadInventory caches for the session and its DOM fill no-ops
   // until the Creator pane is actually on screen.
   if (typeof _creatorLoadInventory === 'function') _creatorLoadInventory();
+  return true;
 }
 
 // Reveal the library after a cold boot into ?manage that resolved to "you may
@@ -11423,7 +11444,7 @@ function _publicAccessCard() {
     '<button class="ms-btn ms-btn-primary ms-pa-save" onclick="_savePublicAccessLimited()">' + tH('save') + '</button>' +
   '</div>';
   var envNote = envLocked
-    ? '<div class="ms-pa-env">' + tH('users_pa_env') + ' <code>ZIMI_PUBLIC_ACCESS=' + esc(pa.env_mode || '') + '</code></div>'
+    ? '<div class="ms-pa-env">' + tH('users_pa_env') + ' <code dir="ltr">ZIMI_PUBLIC_ACCESS=' + esc(pa.env_mode || '') + '</code></div>'
     : '';
   return '<div class="ms-pa-card">' +
     '<div class="ms-section-label">' + tH('users_pa_title') + '</div>' +
@@ -11590,7 +11611,7 @@ function _creatorStateHtml(ready, hint) {
 // finding out, or the pane offers an install for something already installed.
 function _creatorInstallHtml(ready, cmd) {
   if (ready === null || ready === undefined) return '';
-  return ready ? '' : '<code class="app-update-cmd">' + esc(cmd) + '</code>';
+  return ready ? '' : '<code class="app-update-cmd" dir="ltr">' + esc(cmd) + '</code>';
 }
 
 // The last /manage/creator payload, for the life of the page. The pane paints
@@ -12383,7 +12404,7 @@ function _appUpdateHowHtml(d) {
     var hintKey = type === 'docker' ? 'app_update_how_docker'
       : type === 'homebrew' ? 'app_update_how_brew' : 'app_update_how_pip';
     return '<div class="ms-hint">' + tH(hintKey) + '</div>' +
-      '<code class="app-update-cmd">' + esc(cmd) + '</code>';
+      '<code class="app-update-cmd" dir="ltr">' + esc(cmd) + '</code>';
   }
   if (type === 'snap') return '<div class="ms-hint">' + tH('app_update_how_snap') + '</div>';
   if (type === 'desktop-mac' || type === 'desktop-windows') {
@@ -12794,6 +12815,11 @@ function _postServerApps(shown) {
 
 // The environment panel. Read-only, and usually empty: the common install
 // overrides nothing, and saying so plainly is the useful answer.
+// A path, a URL, an env name: left to right in a right-to-left page, so
+// /zims keeps its slash at the start in Hebrew. Isolated, so it never
+// reorders the words around it. ``html`` is already escaped.
+function _ltr(html) { return '<bdi dir="ltr">' + html + '</bdi>'; }
+
 async function _renderEnvSection() {
   var rows;
   var fetched;
@@ -12828,12 +12854,12 @@ async function _renderEnvSection() {
     rows.map(function(r) { return esc(r.name); }).join(', ') + '</span></summary>' +
   '<div class="env-rows">' + rows.map(function(r) {
     return '<div class="env-row">' +
-      '<code class="env-name">' + esc(r.name) + '</code>' +
+      '<code class="env-name">' + _ltr(esc(r.name)) + '</code>' +
       '<code class="env-value' + (r.secret ? ' env-secret' : '') + '">' +
-        (r.value === '' ? tH('env_empty') : esc(r.value)) + '</code>' +
+        (r.value === '' ? tH('env_empty') : _ltr(esc(r.value))) + '</code>' +
       '<div class="env-what">' + esc(r.description) +
         (r.locks ? ' <span class="env-locks">' + tH('env_locks', {v: r.locks}) + '</span>' : '') +
-        (r.source === 'config' ? ' <span class="env-locks">' + tH('env_from_config', {path: esc(r.path)}) + '</span>' : '') +
+        (r.source === 'config' ? ' <span class="env-locks">' + tH('env_from_config', {path: _ltr(esc(r.path))}) + '</span>' : '') +
       '</div></div>';
   }).join('') + '</div>' +
   '<div class="ms-hint">' + tH('env_hint') + '</div></details>';
@@ -12865,10 +12891,10 @@ function _msServerHtml() {
   if (IS_DESKTOP) {
     storageSec +=
       '<div class="ms-field"><label>' + tH('zim_folder') + '</label>' +
-      '<div style="display:flex;gap:8px"><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
+      '<div style="display:flex;gap:8px"><input type="text" id="ms-zim-dir" dir="ltr" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
       '<button class="manage-btn-action" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="msChooseZimFolder()">' + tH('choose_folder') + '</button></div></div>' +
       '<div class="ms-field"><label>' + tH('data_folder') + '</label>' +
-      '<div style="display:flex;gap:8px"><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
+      '<div style="display:flex;gap:8px"><input type="text" id="ms-data-dir" dir="ltr" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
       '<button class="manage-btn-action" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="msChooseDataFolder()">' + tH('choose_folder') + '</button></div></div>' +
       '<div class="ms-hint">' + tH('data_folder_hint') + '</div>' +
       '<div class="ms-field" style="display:flex;align-items:center;gap:8px"><label style="margin:0">' + tH('port') + '</label><input type="number" id="ms-port" min="1024" max="65535" value="8899" style="width:90px">' +
@@ -12879,8 +12905,8 @@ function _msServerHtml() {
     setTimeout(_renderDesktopLan, 0);
   } else {
     storageSec +=
-      '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
-      '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
+      '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" dir="ltr" readonly value="' + escAttr(t('loading')) + '"></div>' +
+      '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" dir="ltr" readonly value="' + escAttr(t('loading')) + '"></div>' +
       '<div class="ms-hint">' + tH('configured_via_env') + '</div>';
   }
 
@@ -19755,7 +19781,7 @@ async function _openMapsCatalog() {
 // the door, the category is what fills it.
 async function _openCategory(key) {
   if (readerOpen) closeReader();
-  await enterManage(null);
+  if (!(await enterManage(null))) return;
   switchManageTab('browse');
   drillCategory(key);
 }
@@ -21702,7 +21728,10 @@ function _pushArticleHistory(zim, path) {
 // it, when it was added, and the lists it is in (as many as you like). Liked
 // is a list every store has, apart from saving (1.12.1): a like never saves.
 // A thing liked and not saved is an item marked likeOnly, in Liked and in
-// nothing else; saving it clears the mark, letting it go keeps the like. Where you are in a book (a video, later) is a
+// nothing else; saving it clears the mark, letting it go keeps the like.
+// Whether an item is saved has its own time, sv (svOf), apart from ts (its
+// fields): a like alone makes no claim on it (sv 0), so a like on one device
+// never clears a save on another, and an unsave never clears a like. Where you are in a book (a video, later) is a
 // position, kept whether or not the thing is saved; Continue reading is drawn
 // from positions, it is not a list.
 //
@@ -21890,7 +21919,11 @@ var Saved = (function () {
     };
     each(x.items, function (id, r) {
       var it = thing(r, id), added = r && num(r.added);
-      if (it) { it.added = Math.round(added === null ? it.ts : added); if (r.likeOnly === true) it.likeOnly = true; s.items[id] = it; }
+      if (!it) return;
+      it.added = Math.round(added === null ? it.ts : added);
+      if (r.likeOnly === true) it.likeOnly = true;
+      var sv = num(r.sv);
+      s.items[id] = setSv(it, sv === null ? svOf(it) : Math.max(0, Math.round(sv)));
     });
     each(x.lists, function (id, r) {
       var o = order(r);
@@ -21922,6 +21955,21 @@ var Saved = (function () {
     });
     Object.keys(liked).forEach(function (id) { if (has(s.items, id) && !listed[id]) s.items[id].likeOnly = true; });
     s.v = VERSION;
+  }
+
+  // When an item's saved state was last set: sv, or before sv was kept
+  // (1.12.0, and 1.12.1's first builds) ts, except a thing only liked and
+  // never touched since (added is ts): the heart made it, nothing chose.
+  function svOf(r) { return has(r, 'sv') ? r.sv : r.likeOnly && r.added === r.ts ? 0 : r.ts; }
+  // sv is written only where it says more than svOf would without it.
+  function setSv(r, v) { delete r.sv; if (v !== svOf(r)) r.sv = v; return r; }
+  // A thing only liked, its like gone: not kept. Its unsave stays as a
+  // tombstone dated when it was let go (none if it never was saved), so an
+  // older save elsewhere does not come back and a newer one stays saved.
+  function letGo(s, id) {
+    var sv = svOf(s.items[id]);
+    delete s.items[id];
+    if (sv > 0 && !(s.gone['i:' + id] >= sv)) s.gone['i:' + id] = sv;
   }
 
   // ── merge: two copies of a store become one ──
@@ -21973,12 +22021,26 @@ var Saved = (function () {
       if (!it || (lid !== LIKED && (!has(s.lists, lid) || it.likeOnly))) delete s.members[mk];
       else if (lid === LIKED) liked[id] = 1;
     });
-    Object.keys(s.items).forEach(function (id) { if (s.items[id].likeOnly && !liked[id]) delete s.items[id]; });
+    Object.keys(s.items).forEach(function (id) { if (s.items[id].likeOnly && !liked[id]) letGo(s, id); });
     Object.keys(s.gone).forEach(function (g) { if (s.gone[g] < t - GONE_MS) delete s.gone[g]; });
     cap(s.gone, GONE_MAX, goneTs);
     capPlaces(s.positions);
     fit(s, budget == null ? MAX.bytes : budget);
     return s;
+  }
+  // An item holds two things apart: what it is, from the newer copy (r), and
+  // whether it is saved, from the newer of the copies' sv and its tombstone
+  // (a tie keeps a's, a tombstone as new wins). Not saved, it stays for its
+  // like, as likeOnly; normalize lets it go when there is none.
+  function mergeItem(r, x, y, gone, g) {
+    var w = !x ? y : !y ? x : (svOf(y) > svOf(x) ? y : x), sv = svOf(w), saved = !w.likeOnly;
+    if (has(gone, g)) {
+      if (gone[g] >= sv) { saved = false; sv = gone[g]; }
+      else delete gone[g];
+    }
+    var out = Object.assign({}, r);
+    if (saved) delete out.likeOnly; else out.likeOnly = true;
+    return setSv(out, sv);
   }
   // Every record: the newer copy wins (a tie keeps a's). A tombstone as new
   // as the record or newer removes it; a record newer than its tombstone
@@ -21995,6 +22057,7 @@ var Saved = (function () {
         if (has(out[name], id)) return;
         var x = has(A, id) ? A[id] : null, y = has(B, id) ? B[id] : null;
         var r = !x ? y : !y ? x : (y.ts > x.ts ? y : x);
+        if (name === 'items') { out.items[id] = mergeItem(r, x, y, gone, pre + id); return; }
         if (has(gone, pre + id)) {
           if (gone[pre + id] >= r.ts) return;
           delete gone[pre + id];
@@ -22263,7 +22326,8 @@ var Saved = (function () {
     if (where) rec.where = where;
     if (meta) rec.meta = meta;
     if (likeOnly && (!cur || cur.likeOnly)) rec.likeOnly = true;
-    s.items[id] = rec;
+    // A like leaves the saved state as it was; a save sets it now.
+    s.items[id] = setSv(rec, !likeOnly ? t : cur ? svOf(cur) : 0);
     delete s.gone['i:' + id];
     _idx = null;
     (item.lists || []).forEach(function (lid) { addMember(s, id, lid, null, t); });
@@ -22286,6 +22350,7 @@ var Saved = (function () {
     (idx().listsOf[id] || []).forEach(function (lid) { if (lid !== LIKED) dropMember(s, lid + '\t' + id, t); });
     s.items[id].likeOnly = true;
     s.items[id].ts = t;
+    setSv(s.items[id], t);
     commit();
   }
   // The custom name is the title (every view reads that); the page's own
@@ -22298,7 +22363,9 @@ var Saved = (function () {
     name = String(name || '').trim().slice(0, TITLE_MAX);
     if (name && name !== orig) { r.origTitle = orig; r.title = name; }
     else { delete r.origTitle; r.title = orig; }
+    var sv = svOf(r);
     r.ts = now();
+    setSv(r, sv);
     commit();
   }
   function get(ref) {
@@ -22369,6 +22436,7 @@ var Saved = (function () {
       // Into a list of your own: saved now.
       delete s.items[id].likeOnly;
       s.items[id].ts = now();
+      setSv(s.items[id], s.items[id].ts);
       _idx = null;
     }
     if (addMember(s, id, lid, before == null ? null : before, now())) commit();
@@ -22383,7 +22451,7 @@ var Saved = (function () {
     var s = load(), id = key(ref), mk = lid + '\t' + id;
     if (!has(s.members, mk)) return;
     // Unliked, a thing only liked is not kept at all.
-    if (lid === LIKED && s.items[id] && s.items[id].likeOnly) { remove(id); return; }
+    if (lid === LIKED && s.items[id] && s.items[id].likeOnly) letGo(s, id);
     dropMember(s, mk, now());
     commit();
   }
@@ -22498,9 +22566,9 @@ var Saved = (function () {
     if (!snap || !snap.rec) return;
     var s = load(), t = now();
     if (!has(s.items, snap.id) && !room('items')) return;
-    var rec = copy(snap.rec);
+    var rec = copy(snap.rec), sv = svOf(rec);
     rec.ts = t;
-    s.items[snap.id] = rec;
+    s.items[snap.id] = setSv(rec, rec.likeOnly ? sv : t);
     delete s.gone['i:' + snap.id];
     _idx = null;
     Object.keys(snap.at).forEach(function (lid) { addMember(s, snap.id, lid, snap.at[lid], t); });
@@ -22516,9 +22584,12 @@ var Saved = (function () {
 
   // ── sync: the account's copy, a file, another device ──
   // What a copy holds, by id: every record's time and every tombstone's.
+  // A record's stamp: its ts, and an item's saved state beside it (that
+  // changes in a merge while ts does not).
+  function stamp(name, r) { return name === 'items' ? r.ts + (r.likeOnly ? '~' : ':') + svOf(r) : r.ts; }
   function stamps(s) {
     var out = {};
-    COLLS.forEach(function (c) { Object.keys(s[c[0]]).forEach(function (id) { out[c[1] + id] = s[c[0]][id].ts; }); });
+    COLLS.forEach(function (c) { Object.keys(s[c[0]]).forEach(function (id) { out[c[1] + id] = stamp(c[0], s[c[0]][id]); }); });
     Object.keys(s.gone).forEach(function (g) { out['g' + g] = s.gone[g]; });
     return out;
   }
@@ -22536,7 +22607,7 @@ var Saved = (function () {
     out.legacy = s.legacy;
     COLLS.forEach(function (c) {
       var m = s[c[0]];
-      Object.keys(m).forEach(function (id) { if (!st || st[c[1] + id] !== m[id].ts) out[c[0]][id] = m[id]; });
+      Object.keys(m).forEach(function (id) { if (!st || st[c[1] + id] !== stamp(c[0], m[id])) out[c[0]][id] = m[id]; });
     });
     Object.keys(s.gone).forEach(function (g) { if (!st || st['g' + g] !== s.gone[g]) out.gone[g] = s.gone[g]; });
     return out;
@@ -25614,7 +25685,8 @@ function _openDownloadsView(e) {
   _closeTopbarMenu();
   if (mode !== 'manage') {
     if (!manageEnabled) return;
-    enterManage();
+    enterManage().then(function(ok) { if (ok) switchManageTab('downloads'); });
+    return;
   }
   switchManageTab('downloads');
 }

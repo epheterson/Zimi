@@ -316,18 +316,28 @@ def random_question(rng=None):
     return None
 
 
+def note_count(name, first=None):
+    """Once per build of a site: its questions, for the Apps page."""
+    if _srv.app_items_known(name, "exchange"):
+        return
+    first = first or listing(name, 1)
+    _srv.note_app_items(
+        name, "exchange", _srv.paged_count(first, lambda p: listing(name, p))
+    )
+
+
+def note_counts():
+    """Every site's questions, for the Apps page (the background worker's)."""
+    for s in sites():
+        note_count(s["name"])
+
+
 def home():
     """Every site with its first page and its top tags: the shelves."""
     out = []
     for s in sites():
         first = listing(s["name"], 1)
-        if not _srv.app_items_known(s["name"], "exchange"):
-            # Once per build of the site: its questions, for the Apps page.
-            _srv.note_app_items(
-                s["name"],
-                "exchange",
-                _srv.paged_count(first, lambda p: listing(s["name"], p)),
-            )
+        note_count(s["name"], first)
         out.append(
             dict(
                 s,

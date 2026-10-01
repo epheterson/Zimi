@@ -1,5 +1,5 @@
 {
-  "_about": "Merge cases for the saved store, run by both twins: app.js's Saved._merge (tests/test_saved_store.cjs) and users.py's _merge_saved (tests/test_userdata.py). Each: two stores a and b, now in ms, the byte budget when it is not the default, the store expected.",
+  "_about": "Merge cases for the saved store, run by both twins: app.js's Saved._merge (tests/test_saved_store.cjs) and users.py's _merge_saved (tests/test_userdata.py). Each: two stores a and b, now in ms, the byte budget when it is not the default, the store expected. An item holds two things apart: what it is (the fields of the copy with the newer ts) and whether it is saved (the newest of the copies' sv and its i: tombstone); a like alone makes no claim on saving (sv 0).",
   "cases": [
     {
       "name": "a delete on one device survives the other device's copy",
@@ -237,6 +237,76 @@
       "a": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 2000, "likeOnly": true}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}}},
       "b": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}}, "lists": {"trip": {"name": "Trip", "order": 0, "ts": 1000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}, "trip\tw\nA/X": {"order": 0, "ts": 1000}}},
       "expect": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 2000, "likeOnly": true}}, "lists": {"trip": {"name": "Trip", "order": 0, "ts": 1000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}}}
+    },
+    {
+      "name": "saved on one device, liked later on one that never had it: saved and liked (a like never clears a save)",
+      "now": 3000,
+      "a": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}}},
+      "b": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 2000, "ts": 2000, "likeOnly": true}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 2000}}},
+      "expect": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 2000, "ts": 2000, "sv": 1000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 2000}}}
+    },
+    {
+      "name": "and the other way round",
+      "now": 3000,
+      "a": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 2000, "ts": 2000, "likeOnly": true}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 2000}}},
+      "b": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}}},
+      "expect": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 2000, "ts": 2000, "sv": 1000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 2000}}}
+    },
+    {
+      "name": "liked on one device, saved later on one that never had it: saved and liked",
+      "now": 3000,
+      "a": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000, "likeOnly": true}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}}},
+      "b": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 2000, "ts": 2000}}},
+      "expect": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 2000, "ts": 2000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}}}
+    },
+    {
+      "name": "unsaved on one device, liked later on another: liked, not saved (a save's delete never clears a like)",
+      "now": 3000,
+      "a": {"gone": {"i:w\nA/X": 2000}},
+      "b": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 2500}}},
+      "expect": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000, "likeOnly": true, "sv": 2000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 2500}}, "gone": {"i:w\nA/X": 2000}}
+    },
+    {
+      "name": "and the other way round",
+      "now": 3000,
+      "a": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 2500}}},
+      "b": {"gone": {"i:w\nA/X": 2000}},
+      "expect": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000, "likeOnly": true, "sv": 2000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 2500}}, "gone": {"i:w\nA/X": 2000}}
+    },
+    {
+      "name": "liked on one device, let go (only liked now) later on another: liked, not saved",
+      "now": 3000,
+      "a": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1500}}},
+      "b": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 2000, "likeOnly": true}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}}},
+      "expect": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 2000, "likeOnly": true}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1500}}}
+    },
+    {
+      "name": "unliked (only liked there) on one device, saved later on another: saved, not liked",
+      "now": 3000,
+      "a": {"gone": {"m:liked\tw\nA/X": 2000}},
+      "b": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1500}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}}},
+      "expect": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1500}}, "gone": {"m:liked\tw\nA/X": 2000}}
+    },
+    {
+      "name": "saved on one device, unliked later on another: saved, not liked",
+      "now": 3000,
+      "a": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 2000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}}},
+      "b": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}}, "gone": {"m:liked\tw\nA/X": 2500}},
+      "expect": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 2000}}, "gone": {"m:liked\tw\nA/X": 2500}}
+    },
+    {
+      "name": "let go, then unliked, on one device: its unsave still beats an older save elsewhere",
+      "now": 3000,
+      "a": {"gone": {"i:w\nA/X": 1800, "m:liked\tw\nA/X": 2000}},
+      "b": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 1000}}},
+      "expect": {"gone": {"i:w\nA/X": 1800, "m:liked\tw\nA/X": 2000}}
+    },
+    {
+      "name": "a thing only liked and renamed since makes no claim on saving (sv 0)",
+      "now": 3000,
+      "a": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "X", "added": 1000, "ts": 1000}}},
+      "b": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "Mine", "added": 2000, "ts": 2500, "origTitle": "X", "likeOnly": true, "sv": 0}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 2000}}},
+      "expect": {"items": {"w\nA/X": {"kind": "article", "zim": "w", "path": "A/X", "title": "Mine", "added": 2000, "ts": 2500, "origTitle": "X", "sv": 1000}}, "members": {"liked\tw\nA/X": {"order": 0, "ts": 2000}}}
     }
   ]
 }

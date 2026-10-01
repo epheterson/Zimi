@@ -401,6 +401,9 @@ def _shape_backfill():
     from zimi import zimwriter as _zw
 
     time.sleep(_SHAPE_SETTLE_SECONDS)
+    # The Apps page's counts first: a few listing pages, where the
+    # provenance walk opens every archive.
+    _app_items_warm()
     _provenance_warm()
     while True:
         try:
@@ -408,6 +411,7 @@ def _shape_backfill():
         except Exception:
             log.debug("ZIM shape backfill pass failed", exc_info=True)
         time.sleep(_SHAPE_RETRY_SECONDS)
+        _app_items_warm()
 
 
 def _provenance_warm():
@@ -427,6 +431,25 @@ def _provenance_warm():
         _http._zim_kinds()
     except Exception:
         log.debug("provenance warm failed", exc_info=True)
+
+
+def _app_items_warm():
+    """Count ZimiExchange's questions and Reddot's posts for the Apps page here.
+
+    Books and videos are counted by their details builders; these two were
+    counted only by the app reading its listing, so a fresh server's Apps
+    page showed a size until each app had been opened once. A site already
+    counted costs a dict lookup (app_items_known), so every pass runs this
+    and a ZIM added later is counted at the next one. The listing pages it
+    reads are the ones the app reads first, and stay in its page cache."""
+    from zimi import exchange, reddot
+
+    for app in (exchange, reddot):
+        _wait_until_idle()
+        try:
+            app.note_counts()
+        except Exception:
+            log.debug("%s count failed", app.__name__, exc_info=True)
 
 
 def _shape_backfill_pass(_zw):

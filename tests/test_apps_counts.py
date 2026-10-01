@@ -120,3 +120,68 @@ def test_exchange_and_reddot_count_questions_and_posts(tmp_path, monkeypatch):
     )
     assert want and _entry(name)["items"] == {"reddot": want}
     srv.release_zim_handles(list(srv.get_zim_files()))
+
+
+def test_the_worker_counts_them_first_after_it_settles(monkeypatch):
+    """The background worker that already reads ZIMs after start counts
+    them, before the provenance walk opens every archive."""
+    order = []
+    monkeypatch.setattr(srv, "_SHAPE_SETTLE_SECONDS", 0)
+    monkeypatch.setattr(srv, "_app_items_warm", lambda: order.append("counts"))
+
+    def _stop():
+        order.append("provenance")
+        raise StopIteration
+
+    monkeypatch.setattr(srv, "_provenance_warm", _stop)
+    try:
+        srv._shape_backfill()
+    except StopIteration:
+        pass
+    assert order == ["counts", "provenance"]
+
+
+def test_a_fresh_server_counts_questions_and_posts_without_the_apps_opening(
+    tmp_path, monkeypatch
+):
+    """A fresh server's Apps page shows ZimiExchange's questions and Reddot's
+    posts before either app has been opened; counted once, nothing is read
+    again, and the Apps page's own read (the library's list) reads no listing."""
+    import test_exchange
+    import test_reddot
+    from conftest_zim import build_fixture_zim
+    from zimi import exchange, reddot
+
+    zdir = tmp_path / "zims"
+    zdir.mkdir()
+    build_fixture_zim(
+        str(zdir / "cooking.stackexchange.com_en_all_2026-07.zim"),
+        {"Scraper": "sotoki v3.1.1", "Name": "cooking.stackexchange.com_en_all"},
+        files=test_exchange.FILES,
+    )
+    build_fixture_zim(
+        str(zdir / "reddit_kiwix.zim"),
+        {"Scraper": "arcticzim", "Name": "reddit_kiwix", "Tags": "_category:reddit"},
+        files=test_reddot.FILES,
+    )
+    monkeypatch.setattr(srv, "ZIM_DIR", str(zdir))
+    monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(tmp_path / "data"))
+    os.makedirs(str(tmp_path / "data"), exist_ok=True)
+    exchange._reset_for_tests()
+    reddot._reset_for_tests()
+    srv.load_cache(force=True)
+    site = srv._zim_short_name("cooking.stackexchange.com_en_all_2026-07.zim")
+    sub = srv._zim_short_name("reddit_kiwix.zim")
+    assert "items" not in _entry(site) and "items" not in _entry(sub)
+
+    srv._app_items_warm()
+    assert _entry(site)["items"]["exchange"] > 0
+    assert _entry(sub)["items"]["reddot"] > 0
+    reads = []
+    monkeypatch.setattr(exchange, "listing", lambda *a, **k: reads.append(a))
+    monkeypatch.setattr(reddot, "listing", lambda *a, **k: reads.append(a))
+    srv._app_items_warm()
+    assert _reloaded(site)["items"]["exchange"] > 0
+    assert _reloaded(sub)["items"]["reddot"] > 0
+    assert reads == []
+    srv.release_zim_handles(list(srv.get_zim_files()))
