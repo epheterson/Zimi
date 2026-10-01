@@ -20753,6 +20753,41 @@ function _fitWidePictures(d, w, sheet) {
   }
 }
 
+// A wiki scraped with its desktop skin (Vector legacy, MonoBook and their
+// kin: explainxkcd, the OpenStreetMap wiki, RationalWiki) keeps, on a phone,
+// the content column's margin for a sidebar the ZIM no longer has: the left
+// half of explainxkcd's main page was empty grey, its "Go to this
+// explanation" link (placed absolutely, beside the heading) sat on "Latest
+// comic", and the comic's box ran off the right edge (2026-10-01). Below the
+// width a sidebar can have, the column takes the whole frame, what is left of
+// the chrome goes, and a template's absolutely placed links fall back into
+// the flow. A responsive skin (Vector 2022, Minerva, mwoffliner's own pages)
+// is not matched; nor is any page on a desktop.
+var MW_DESKTOP_SKIN_MAX_W = 720;
+var MW_DESKTOP_SKIN_CSS = (function () {
+  var skin = ':is(body.skin-vector-legacy,body.skin-monobook,body.skin-modern,body.skin-cologneblue):not(.skin--responsive) ';
+  var sel = function (list) { return list.split(',').map(function (s) { return skin + s; }).join(','); };
+  return '@media (max-width:' + MW_DESKTOP_SKIN_MAX_W + 'px){' +
+    sel('#content,#column-content,.mw-body,#mw-head-base,#left-navigation,#footer,.mw-footer,#mw-data-after-content') +
+      '{margin-left:0!important;margin-right:0!important;border-left:0!important;border-right:0!important}' +
+    sel('.mw-body,#content') + '{padding-left:12px!important;padding-right:12px!important}' +
+    sel('#column-one,#mw-panel,#mw-head,#mw-navigation,#p-logo,#mw-page-base') + '{display:none!important}' +
+    sel('.mw-parser-output [style*="absolute"]') + '{position:static!important}' +
+    // A box with a width and a side margin (the comic's table: 98% and 1em)
+    // is wider than the column once the column is the frame.
+    sel('.mw-parser-output table') + '{margin-left:0!important;margin-right:0!important}' +
+    // A one-column table framing a picture (that comic box again) is laid
+    // out to the column's width, so the picture's max-width:100% has a width
+    // to resolve against; scrolled inside its box, half the comic was hidden.
+    // A real table, two cells a row, keeps its own width and scrolls.
+    sel('.mw-parser-output table:has(img):not(:has(td+td,th+th,td+th,th+td))') +
+      '{display:table!important;table-layout:fixed;width:100%!important}' +
+    // A template's row of buttons, list items set inline: each wraps whole
+    // to the next line instead of breaking in two across it.
+    sel('.mw-parser-output li[style*="inline"]') + '{display:inline-block!important;margin-bottom:4px!important}' +
+  '}';
+})();
+
 // ── Reader ──
 // Calls fn once the frame holds a new document whose DOM is parsed
 // (DOMContentLoaded), before its images load. Gives up when the frame's
@@ -21053,7 +21088,8 @@ function openReader(url) {
         // floated infoboxes) that carry an inline pixel width wider than a phone —
         // rein them into the column so they don't force page-level overflow.
         '.thumb,.thumbinner,figure,.gallery,.mw-kartographer-map,.mw-kartographer-maplink,' +
-          '.floatright,.floatleft,.tright,.tleft{max-width:100%!important}'
+          '.floatright,.floatleft,.tright,.tleft{max-width:100%!important}',
+        MW_DESKTOP_SKIN_CSS
       ]).concat([
         // No bounce past the top or an edge: it showed white under a dark page.
         'html{overscroll-behavior:none}',
