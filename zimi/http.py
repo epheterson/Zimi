@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 import traceback
+import zlib
 from html import escape
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote, quote
@@ -27,7 +28,6 @@ import zimi.server as _srv
 from zimi import bookpages as _bookpages
 from zimi import sso as _sso
 from zimi import users as _users
-from zimi.previews import lead_text
 from zimi.manage import (
     _manage_auth_challenge,
     handle_manage_get,
@@ -2140,44 +2140,43 @@ class ZimHandler(BaseHTTPRequestHandler):
                     if isinstance(filter_zim, list)
                     else (filter_zim or "")
                 )
-                # Key includes the request's allowlist identity (see
-                # _search_cache_key) so a restricted user never receives another
-                # session's broader results.
-                cache_key = _srv._search_cache_key(q, zim_scope_str, limit, fast)
-                cached = _srv._search_cache_get(cache_key)
-                if cached is not None:
-                    _record_metric("/search", 0)
-                    _record_usage("search", query=q)
-                    return self._json(
-                        404 if cached.get("error") else 200,
-                        _search_answer(cached, filter_zim, fast),
-                    )
-                t0 = time.time()
-                if fast:
-                    # Fast path uses _suggest_pool internally, no _zim_lock needed
-                    result = _srv.search_all(
-                        q, limit=limit, filter_zim=filter_zim, fast=True
-                    )
-                else:
-                    # FTS path uses _fts_pool (per-ZIM locks), no _zim_lock needed
-                    result = _srv.search_all(q, limit=limit, filter_zim=filter_zim)
-                dt = time.time() - t0
-                _srv._search_cache_put(cache_key, result)
-                _record_metric("/search", dt)
-                _record_usage("search", query=q)
                 zim_label = (
                     ",".join(filter_zim)
                     if isinstance(filter_zim, list)
                     else (filter_zim or "all")
                 )
-                log.info(
-                    "search q=%r limit=%d zim=%s fast=%s %.1fs",
-                    q,
-                    limit,
-                    zim_label,
-                    fast,
-                    dt,
-                )
+
+                def run(fast_pass):
+                    # Key includes the request's allowlist identity (see
+                    # _search_cache_key) so a restricted user never receives
+                    # another session's broader results. Neither pass takes
+                    # _zim_lock: the quick one reads title indexes and
+                    # _suggest_pool, the full one _fts_pool's per-ZIM locks.
+                    key = _srv._search_cache_key(q, zim_scope_str, limit, fast_pass)
+                    t0 = time.time()
+                    result, hit = _srv.search_cached(
+                        key,
+                        lambda: _srv.search_all(
+                            q, limit=limit, filter_zim=filter_zim, fast=fast_pass
+                        ),
+                    )
+                    dt = 0 if hit else time.time() - t0
+                    _record_metric("/search", dt)
+                    if not hit:
+                        log.info(
+                            "search q=%r limit=%d zim=%s fast=%s %.1fs",
+                            q,
+                            limit,
+                            zim_label,
+                            fast_pass,
+                            dt,
+                        )
+                    return result
+
+                _record_usage("search", query=q)
+                if param("stream") == "1":
+                    return self._search_stream(run)
+                result = run(fast)
                 # Scoped to a ZIM that is not here: 404, as /read and /chunks.
                 return self._json(
                     404 if result.get("error") else 200,
@@ -2421,89 +2420,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                         400, {"error": "missing ?zim= and ?path= parameters"}
                     )
                 t0 = time.time()
-                snippet = ""
-                thumbnail = None
-                with _srv._zim_lock:
-                    archive = _srv.get_archive(zim)
-                    if archive is None:
-                        return self._json(404, {"error": f"ZIM '{zim}' not found"})
-                    try:
-                        entry = archive.get_entry_by_path(path)
-                        item = entry.get_item()
-                        if item.size > _srv.MAX_CONTENT_BYTES:
-                            _record_metric("/snippet", time.time() - t0)
-                            return self._json(200, {"snippet": ""})
-                        text = lead_text(item)
-                        # Prefer the page's own summary, then meta description,
-                        # then body prose — skipping boilerplate some ZIMs bake
-                        # into every page (iFixit device pages, #snippet QA).
-                        snippet = _srv.extract_snippet(text, zim)
-                        # Lightweight thumbnail: og:image / twitter:image from <head>
-                        for img_pat in [
-                            r'<meta\s+property=["\']og:image["\']\s+content=["\']([^"\']+)["\']',
-                            r'<meta\s+content=["\']([^"\']+)["\']\s+property=["\']og:image["\']',
-                            r'<meta\s+name=["\']twitter:image["\']\s+content=["\']([^"\']+)["\']',
-                            r'<meta\s+content=["\']([^"\']+)["\']\s+name=["\']twitter:image["\']',
-                        ]:
-                            img_m = re.search(img_pat, text[:8000], re.IGNORECASE)
-                            if img_m:
-                                src = img_m.group(1)
-                                if not src.startswith(
-                                    ("http", "//", "data:")
-                                ) and not src.lower().endswith(".svg"):
-                                    resolved = _srv._resolve_img_path(
-                                        archive, path, src
-                                    )
-                                    if resolved:
-                                        thumbnail = f"/w/{zim}/{resolved}"
-                                        break
-                        # Fallback: best <img> in content — skip icons/badges, prefer larger images
-                        if not thumbnail:
-                            _skip_img = re.compile(
-                                r"icon|badge|logo|arrow|button|sprite|spacer|1x1|pixel|emoji|flag.*\.svg",
-                                re.IGNORECASE,
-                            )
-                            best_img = None
-                            best_area = 0
-                            for img_m2 in re.finditer(
-                                r"<img\b([^>]*)>", text[:15000], re.IGNORECASE
-                            ):
-                                attrs = img_m2.group(1)
-                                src_m = re.search(r'src=["\']([^"\']+)["\']', attrs)
-                                if not src_m:
-                                    continue
-                                src = src_m.group(1)
-                                if src.startswith(
-                                    ("data:", "http", "//")
-                                ) or src.lower().endswith(".svg"):
-                                    continue
-                                if _skip_img.search(src) or _skip_img.search(attrs):
-                                    continue
-                                w_m = re.search(r'width=["\']?(\d+)', attrs)
-                                h_m = re.search(r'height=["\']?(\d+)', attrs)
-                                w = int(w_m.group(1)) if w_m else 0
-                                h = int(h_m.group(1)) if h_m else 0
-                                # Skip explicitly tiny images
-                                if (w > 0 and w < 60) or (h > 0 and h < 40):
-                                    continue
-                                area = (w or 200) * (h or 150)
-                                if area > best_area:
-                                    resolved = _srv._resolve_img_path(
-                                        archive, path, src
-                                    )
-                                    if resolved:
-                                        best_img = f"/w/{zim}/{resolved}"
-                                        best_area = area
-                                        if area >= 200 * 150:
-                                            break  # Good enough — stop scanning
-                            if best_img:
-                                thumbnail = best_img
-                    except (KeyError, Exception):
-                        pass
+                result = _srv.result_snippet(zim, path)
                 _record_metric("/snippet", time.time() - t0)
-                result = {"snippet": snippet}
-                if thumbnail:
-                    result["thumbnail"] = thumbnail
+                if result is None:
+                    return self._json(404, {"error": f"ZIM '{zim}' not found"})
                 return self._json(200, result)
 
             elif parsed.path == "/collections":
@@ -4533,6 +4453,91 @@ class ZimHandler(BaseHTTPRequestHandler):
             json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode(),
             "application/json",
         )
+
+    def _ndjson_stream(self):
+        """Start a response of JSON lines, each sent the moment it is written:
+        (send(obj), end()). Chunked, gzipped line by line when the client
+        takes it, and marked for proxies (nginx, Cloudflare) not to hold it
+        back until the end."""
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "same-origin")
+        self.send_header("Cache-Control", "no-store, no-transform")
+        self.send_header("X-Accel-Buffering", "no")
+        self.send_header("Transfer-Encoding", "chunked")
+        gz = None
+        if self._accepts_gzip():
+            gz = zlib.compressobj(GZIP_LEVEL, zlib.DEFLATED, 31)
+            self.send_header("Content-Encoding", "gzip")
+        self.end_headers()
+
+        def chunk(data):
+            if data:
+                self.wfile.write(b"%x\r\n%s\r\n" % (len(data), data))
+                self.wfile.flush()
+
+        def send(obj):
+            line = json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode()
+            line += b"\n"
+            chunk(gz.compress(line) + gz.flush(zlib.Z_SYNC_FLUSH) if gz else line)
+
+        def end():
+            if gz:
+                chunk(gz.flush())
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+
+        return send, end
+
+    def _search_stream(self, run):
+        """A search's two passes in one response, a line each as it is ready:
+        the quick title matches, the snippets of the cards they put on the
+        first screen, the full-text results, then the snippets those add.
+        One request where a search took two and a /snippet per card; the
+        full-text pass runs while the first snippets are read."""
+        quick = run(True)
+        if quick.get("error"):
+            return self._json(404, quick)
+        allow = _srv.current_allow()
+        full = {}
+
+        def full_pass():
+            _srv.set_request_allow(allow)
+            try:
+                full["result"] = run(False)
+            except Exception:
+                log.exception("full-text search pass failed")
+            finally:
+                _srv.clear_request_allow()
+
+        worker = threading.Thread(target=full_pass, daemon=True)
+        worker.start()
+        sent = set()
+
+        def snippets(result):
+            out = {}
+            for zim, path in _srv.first_screen(result.get("results") or []):
+                if (zim, path) not in sent:
+                    sent.add((zim, path))
+                    found = _srv.result_snippet(zim, path)
+                    if found is not None:
+                        out[zim + "\n" + path] = found
+            return {"phase": "snippets", "snippets": out}
+
+        send, end = self._ndjson_stream()
+        try:
+            send({"phase": "fast", "result": quick})
+            send(snippets(quick))
+            worker.join()
+            result = full.get("result") or dict(quick, partial=False)
+            send({"phase": "full", "result": result})
+            send(snippets(result))
+            end()
+        except (BrokenPipeError, ConnectionResetError):
+            # The client moved on; the passes are kept for the next ask.
+            self.close_connection = True
 
     def _json_rate_limited(self, retry_after):
         """429 body for the POST/DELETE write paths."""

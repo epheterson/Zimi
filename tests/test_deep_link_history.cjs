@@ -97,8 +97,13 @@ check(/currentArticle\.zim === target\.zim/.test(pop),
       'landing on the article already shown is not a navigation');
 check(/_historyOnLanding\(target\)/.test(pop),
       'and the in-app stack is settled by _historyOnLanding, not by pushing on every landing');
-check(/await enterSource\(target\.zim, false\)/.test(pop) && /addEventListener\('popstate', async/.test(src),
+check(/await _enterSourceNoReader\(target\.zim\)/.test(pop) && /addEventListener\('popstate', async/.test(src) &&
+      /_popstateNoAutoReader = true;\s*try \{ await enterSource\(name, false\); \} finally \{ _popstateNoAutoReader = false; \}/.test(fn('_enterSourceNoReader')),
       'a Forward with the reader closed AWAITS enterSource with the auto-open flag held, or the ZIM home page overwrites the article');
+// Back to a search in one source, or to a source: the same, or its main
+// page opened over the search the person came back to.
+check(!/_popstateNoAutoReader = true;\s*enterSource\(/.test(pop),
+      'no route back to a source leaves enterSource unawaited');
 
 // ── the stack itself, driven ───────────────────────────────────────────────
 // popstate cannot say which way it went; the stack's top can. Home, A, B:

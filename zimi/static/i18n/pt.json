@@ -1375,6 +1375,7 @@
   "generate": "Gerar",
   "get_started": "Começar",
   "go_back": "Voltar",
+  "back_to": "Voltar para {place}",
   "gr_cap_0": "Capa do disco · instruções de reprodução para quem encontrar",
   "gr_cap_1": "Círculo de calibração",
   "gr_cap_10": "Júpiter",
