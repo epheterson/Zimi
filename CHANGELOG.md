@@ -9,12 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Find in page while reading (Cmd/Ctrl+F, or the ⋯ menu).
+- Search results highlight the matched words and group by source when many sources match.
+- Math renders in textbooks.
+- A sharper Moon, drawn from NASA's high-resolution map.
 - Wikisource works, textbooks and single-book ZIMs open in the book reader.
 - The Sun in the Almanac's 3D view.
 - The AppImage updates itself (AppImageUpdate).
 
 ### Changed
 
+- Signing in comes before Manage opens.
+- Recent searches can be removed one by one.
 - Like and Save are separate: liking no longer bookmarks.
 - Text size is five steps instead of a number.
 - Download file names: `Zimi-<version>-<os>-<arch>`.
@@ -23,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Search while reading searches the open ZIM.
+- A like and a save on different devices never undo each other.
+- Paths read correctly in right-to-left languages.
+- Wikipedia formulas in dark mode.
 - Turning Discover on or off no longer leaves Settings.
 - The Auto theme swatch draws cleanly.
 - Wide pictures on pages without a mobile layout fit once loaded.
