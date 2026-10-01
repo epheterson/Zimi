@@ -134,6 +134,17 @@ _SNIPPET_SPACE_BEFORE_PUNCT_RE = re.compile(r"\s+([.,;:!?)\]。、，；：])|([
 _SNIPPET_MIN_PARAGRAPH = 60
 
 
+# How much of a page a snippet reads: the <head> meta, and far enough in to
+# reach an encyclopedia article's lead past its infobox (Einstein's is 34KB
+# in). item.content is whole already, so reading more costs nothing.
+SNIPPET_READ_BYTES = 64 * 1024
+
+
+def lead_text(item):
+    """The start of a ZIM item, decoded: what extract_snippet reads."""
+    return bytes(item.content)[:SNIPPET_READ_BYTES].decode("UTF-8", errors="replace")
+
+
 def extract_snippet(text, zim_name=""):
     """Best short text snippet for the /snippet endpoint.
 
