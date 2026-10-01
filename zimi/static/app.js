@@ -4914,21 +4914,24 @@ var _moonSpriteCanvasCache = new Map();  // canvases, for the sky scene and moti
 // then idle), so it never competes with the first paint for the network or
 // the main thread. It is decoded off the main thread (decode()), and the
 // discs it sharpens are redrawn when the page is next idle: on a phone the
-// hero's redraw (a 2048 readback and a 600 px sprite) is ~70 ms.
+// hero's redraw (a 2048 readback and a 600 px sprite) is ~70 ms. The 3D
+// Moon (almanac-earth.js) is drawn from the same decoded picture: one fetch,
+// one decode. Resolves with the Image, or null if it could not be had.
 var _MOON_IDLE_TIMEOUT_MS = 3000;
-var _moonHiAsked = false;
+var _moonHiLoad = null;
 function _moonIdle(fn) {
   (window.requestIdleCallback || function (f) { return setTimeout(f, 1); })(fn, { timeout: _MOON_IDLE_TIMEOUT_MS });
 }
 function _moonLoadHiMap() {
-  if (_moonHiAsked) return;
-  _moonHiAsked = true;
+  if (_moonHiLoad) return _moonHiLoad;
   var im = new Image();
   im.src = _MOON_MAP_HI_URL;
-  im.decode().then(function () {
+  _moonHiLoad = im.decode().then(function () {
     _MOON_TEX_HI = im;
     _moonIdle(function () { if (typeof _repaintMoons === 'function') _repaintMoons(); });
-  }, function () {});   // without it every disc keeps the 1024 map
+    return im;
+  }, function () { return null; });   // without it every disc keeps the 1024 map
+  return _moonHiLoad;
 }
 function _moonAfterFirstPaint(fn) {
   var go = function () {
