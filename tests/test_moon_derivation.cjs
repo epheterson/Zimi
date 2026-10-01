@@ -51,6 +51,7 @@ function extractFn(src, name) {
 const sandbox = { Math, Date, console };
 vm.createContext(sandbox);
 vm.runInContext('var _MOON_EQUATOR_TILT_DEG = 1.54242;', sandbox);
+vm.runInContext(require('./moon_model.cjs')(), sandbox);   // the series _moonPhase and _moonEqCoords call
 for (const name of ['_moonEqCoords', '_moonLimbAngles', '_moonLimbAnglesOf', '_moonAxisOf', '_moonView', '_normDeg360', '_moonScreenTiltDeg', '_moonIsWaxing', '_moonPhase']) {
   vm.runInContext(extractFn(appSrc, name), sandbox);
 }
