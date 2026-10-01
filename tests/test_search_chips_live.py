@@ -275,3 +275,51 @@ def test_a_search_that_lands_after_you_open_settings_leaves_settings_alone(serve
         assert pg.evaluate("() => !!document.getElementById('catalog-results')"), "the late search painted over Settings"
         assert pg.evaluate("() => !document.getElementById('fts-indicator') || !document.querySelector('#output .result')")
         br.close()
+
+
+def test_an_older_search_landing_late_never_replaces_a_newer_one(served):
+    """'More from <source>' starts a scoped search while the all-sources
+    search's full-text pass may still be on its way. Landing after, that pass
+    replaced the scoped results with every source's (CI, a slow runner)."""
+    import json as _json
+
+    from playwright.sync_api import sync_playwright
+
+    held = []
+
+    def search(route):
+        url = route.request.url
+        if "fast=1" in url:
+            route.fulfill(status=200, content_type="application/json",
+                          body=_json.dumps({"results": [], "partial": True, "total": 0}))
+        elif "zim=" not in url:
+            held.append(route)  # the all-sources full-text pass, held
+        else:
+            route.fulfill(status=200, content_type="application/json", body=_json.dumps({
+                "results": [{"zim": "wikipedia_en_test", "path": "A/Water", "title": "Water", "score": 1}],
+                "total": 1}))
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = br.new_page(viewport=PHONE, service_workers="block")
+        pg.route("**/search?*", search)
+        pg.goto(served + "/")
+        pg.wait_for_function("() => typeof doSearch === 'function' && _manageProbed", timeout=30000)
+        # On the slow runner the older response was already arriving, so
+        # cancelling it did nothing; cancelling is switched off to say the same.
+        pg.evaluate("() => { AbortController.prototype.abort = function () {}; doSearch('water', true); }")
+        for _ in range(50):
+            if held:
+                break
+            pg.wait_for_timeout(100)
+        assert held, "the all-sources pass was never asked for"
+        # A newer search, scoped to one source, runs to the end.
+        pg.evaluate("() => { currentSource = 'wikipedia_en_test'; doSearch('water', true); }")
+        pg.wait_for_function("() => allResults && !allResults.partial && allResults.results.length === 1", timeout=15000)
+        held[0].fulfill(status=200, content_type="application/json", body=_json.dumps({
+            "results": [{"zim": z, "path": "A/W", "title": "W " + z, "score": 1}
+                        for z in ("wikipedia_en_test", "survival_en_test", "a", "b")],
+            "total": 4}))
+        pg.wait_for_timeout(800)
+        assert pg.evaluate("new Set(allResults.results.map(r => r.zim)).size") == 1, "the older search landed over the newer one"
+        br.close()

@@ -826,6 +826,7 @@ let activeCategories = new Set();
 let activeSourceFilters = new Set();
 let allResults = {};
 let searchController = null;
+let _searchSeq = 0; // doSearch calls, newest last
 let searchTimer = null;
 let suggestTimer = null;
 let suggestItems = [];
@@ -7149,6 +7150,9 @@ async function doSearch(query, push, perSource) {
   }
 
   if (searchController) searchController.abort();
+  // This search's number: one started after it ("More from", a chip) wins,
+  // even when this one's response is already in hand.
+  const searchSeq = ++_searchSeq;
   searchController = new AbortController();
 
   // Reading an article, the box searches its ZIM, as its placeholder says
@@ -7189,7 +7193,7 @@ async function doSearch(query, push, perSource) {
     _throwIfRateLimited(r1);
     const d1 = await r1.json();
     // Left for Settings or home while it ran: that page is on screen now.
-    if (mode !== 'search') return;
+    if (mode !== 'search' || searchSeq !== _searchSeq) return;
     const phase1Elapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
     d1._clientElapsed = phase1Elapsed;
     d1._query = query;
@@ -7237,7 +7241,7 @@ async function doSearch(query, push, perSource) {
       _throwIfRateLimited(r2);
       const d2 = await r2.json();
       clearInterval(timerInterval);
-      if (mode !== 'search') return; // the full-text pass landed after you left
+      if (mode !== 'search' || searchSeq !== _searchSeq) return; // landed after you left, or a newer search began
       d2._clientElapsed = ((performance.now() - searchT0) / 1000).toFixed(1);
       d2._query = query;
       d2._limit = perSource;
@@ -7245,7 +7249,7 @@ async function doSearch(query, push, perSource) {
       renderSearchResults(allResults, scope);
     }
   } catch(e) {
-    if (e.name === 'AbortError' || mode !== 'search') return;
+    if (e.name === 'AbortError' || mode !== 'search' || searchSeq !== _searchSeq) return;
     // "Search failed / try again" implies the server tried and something went
     // wrong there. If we never reached it, say that instead and offer Retry.
     if (_isOfflineError(e)) {
