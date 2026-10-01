@@ -243,7 +243,9 @@ def _capture_pictures(capture, html, final_url):
 
 
 OTHER_FACE_PATH = "A/index~other"
-FACES_METADATA_KEY = "X-Zimi-Faces"
+# The metadata key is read by the core (server._read_faces), which zimi-mcp
+# ships without this module, so it is defined there.
+FACES_METADATA_KEY = _srv.FACES_METADATA_KEY
 
 
 def _store_other_face(creator, static_cls, capture, title, final_url, note, unlink=None):
