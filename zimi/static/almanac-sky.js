@@ -1093,9 +1093,12 @@ function _skyCaption(s) {
   var phase = _almEsc(t(key));
   if (key !== 'alm_sky_day' && key !== 'alm_sky_night') phase = _lterm('twilight', phase);
   var sunAlt = t('alm_sky_sun_alt', { a: _skyDeg(s.eph.sun.alt) });
-  var place = s.stored ? (s.name || _skyCoords(s.lat, s.lon)) : t('alm_sky_assumed', { place: _skyCoords(s.lat, s.lon) });
-  var html = '<span>' + phase + ' · ' + _almEsc(sunAlt) + '</span><span class="alm-sky-place">' + _almEsc(place) + '</span>';
+  var html = '<span>' + phase + ' · ' + _almEsc(sunAlt) + '</span>' +
+    (s.stored ? '<span class="alm-sky-place">' + _almEsc(s.name || _skyCoords(s.lat, s.lon)) + '</span>' : '');
   if (el._html !== html) { el.innerHTML = html; el._html = html; }
+  // No place chosen: under the sky, the one line asking for it.
+  var inv = document.getElementById('almanac-sky-invite');
+  if (inv && inv._stored !== s.stored) { inv.innerHTML = s.stored ? '' : _almPlaceInviteHtml(); inv._stored = s.stored; }
 }
 
 // ══ Taps ═════════════════════════════════════════════════════════════════

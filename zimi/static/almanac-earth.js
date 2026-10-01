@@ -640,8 +640,7 @@ var AE_MIN_DIST_SUN = AE_SUN_SHOW_R * 1.3;
 var AE_MAX_DIST_SUN = 1400;
 var AE_FLY_FAR_MS = 1600;             // the longest flight: to or from the Sun, 3,000 Earth radii
 var AE_HINT_MS = 4500;
-// Show where I am: a crosshair, the mark every map uses for "locate me".
-var AE_LOCATE_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
+var AE_LOCATE_SVG = typeof ALM_LOCATE_SVG === 'string' ? ALM_LOCATE_SVG : '';   // almanac.js
 var AE_LOCATE_TIMEOUT_MS = 15000;
 var AE_SPEEDS = [1, 60, 3600];        // real time, a minute a second, an hour a second
 var AE_SPEED_KEYS = ['alm_earth_rate_real', 'alm_earth_rate_min', 'alm_earth_rate_hour'];
@@ -2815,6 +2814,9 @@ function _aeLocateMe() {
     var lat = pos.coords.latitude, lon = pos.coords.longitude;
     if (!_almValidLatLon(lat, lon)) { fail(); return; }
     _ae.you = { lat: lat, lon: lon };
+    // Where I am is the place the Almanac follows from now on: its tides,
+    // sky and times take it up when the view closes.
+    if (typeof _saveLocation === 'function') { _saveLocation(lat, lon, ''); _ae.placeChanged = true; }
     btn.setAttribute('aria-pressed', 'true');
     var sc = _ae.scene || _aeSceneAt(_aeDisplayMs());
     _ae.preset = 'earth';
@@ -2913,7 +2915,11 @@ function _aeFinishClose() {
   }
   _aeLiftHero(false);
   _aeCoverAlmanac(false);
-  if (typeof _almanacOpen === 'undefined' || _almanacOpen) _aeResumeAlmanac();
+  if (typeof _almanacOpen === 'undefined' || _almanacOpen) {
+    _aeResumeAlmanac();
+    if (_ae.placeChanged && typeof _almRepaintFocus === 'function') _almRepaintFocus();
+  }
+  _ae.placeChanged = false;
   // Focus goes back where the view came from; its ring shows only to someone
   // who left by the keyboard (a ring round the Moon after a tap is noise).
   var back = _ae.fromHero ? document.querySelector(AE_HERO_SEL) : _aeById(_aeFrom === 'sky' ? 'almanac-sky-canvas' : 'almanac-orrery');

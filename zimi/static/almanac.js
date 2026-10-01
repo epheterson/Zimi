@@ -11,12 +11,14 @@ var DEG_TO_RAD = Math.PI / 180;
 function _dateToJD(ms) { return JD_UNIX_EPOCH + ms / MS_PER_DAY; }
 function _jdToJulianCentury(JD) { return (JD - JD_J2000) / JULIAN_CENTURY; }
 
-var _ALM_LOC_KEY = 'zimi_almanac_location';
-
-// The almanac is EPHEMERAL: a chosen location lives for the session only, never
-// across a refresh. Purge any location persisted by an older build on load —
-// this also permanently retires the corrupted-longitude value the v1.7 hero-time
-// bug could have written to localStorage.
+// The place chosen for the Almanac (a map pick, a city, a station, the 3D
+// view's crosshair) stays chosen on this device: tides, the sky and the
+// times follow it on every visit. It lives under its own key; the key the
+// session-only builds used is read once, as a fallback, and carried over.
+// Under that old key localStorage may still hold the corrupted longitude the
+// v1.7 hero-time bug could write, so that copy is never read, only removed.
+var _ALM_PLACE_KEY = 'zimi_almanac_place';     // app.js SK.ALMANAC_PLACE
+var _ALM_LOC_KEY = 'zimi_almanac_location';   // app.js SK.ALMANAC_LOC
 try { localStorage.removeItem(_ALM_LOC_KEY); } catch (e) {}
 
 // A finite lat/lon inside its real range. A click-math slip or a legacy
@@ -28,7 +30,11 @@ function _almValidLatLon(lat, lon) {
 
 function _getLocation() {
   var stored = null;
-  try { stored = sessionStorage.getItem(_ALM_LOC_KEY); } catch (e) {}
+  try { stored = localStorage.getItem(_ALM_PLACE_KEY); } catch (e) {}
+  if (!stored) {
+    try { stored = sessionStorage.getItem(_ALM_LOC_KEY); } catch (e) {}
+    if (stored) { try { localStorage.setItem(_ALM_PLACE_KEY, stored); } catch (e) {} }
+  }
   if (stored) {
     try {
       var loc = JSON.parse(stored);
@@ -69,8 +75,10 @@ function _saveLocation(lat, lon, name) {
   if (!_almValidLatLon(lat, lon)) return; // reject a bad click/geolocate outright
   var data = { lat: lat, lon: lon };
   if (name) data.name = name;
-  // Session-only: a chosen location never survives a refresh (see _ALM_LOC_KEY).
-  try { sessionStorage.setItem(_ALM_LOC_KEY, JSON.stringify(data)); } catch (e) {}
+  // Kept on this device (see _ALM_PLACE_KEY); the session copy goes, so an
+  // older value can never come back through the fallback.
+  try { localStorage.setItem(_ALM_PLACE_KEY, JSON.stringify(data)); } catch (e) {}
+  try { sessionStorage.removeItem(_ALM_LOC_KEY); } catch (e) {}
   // Keep the timezone city list in sync with the new location — otherwise a
   // map click changes the sun/moon math while a stale city stays highlighted.
   _almSelectedTz = _almTzForLocation(lat, lon);
@@ -1906,6 +1914,8 @@ function _renderAlmanacContent() {
     // expose this text visually (issue #25).
     '<div id="almanac-sky-desc" class="sr-only" style="position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0"></div>' +
     '</div>';
+  // Drawn with the page, not when the sky's sums land: nothing moves under it.
+  html += '<div id="almanac-sky-invite">' + (_getLocation().stored ? '' : _almPlaceInviteHtml()) + '</div>';
   html += '<div id="almanac-calendar"></div>';
 
   // Sun map — inline world map with day/night terminator + location picker
@@ -4438,6 +4448,26 @@ function _almShowCitySearch() {
     var input = document.getElementById('almanac-city-search');
     if (input) { input.value = ''; input.focus(); }
   }
+}
+
+// Show where I am: a crosshair, the mark every map uses for "locate me"
+// (the 3D view's button too).
+var ALM_LOCATE_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
+
+// No place chosen yet: one line asking for it, with the two ways to give it
+// (where I am, or a search on the map). The sky and the tides both say it;
+// nothing pretends to stand somewhere.
+function _almPlaceInviteHtml() {
+  return '<p class="alm-place-invite"><span>' + _almEsc(t('alm_place_invite')) + '</span> ' +
+    '<button type="button" class="alm-invite-btn" onclick="_shareAlmanacLocation()">' + ALM_LOCATE_SVG +
+    '<span>' + _almEsc(t('alm_place_here')) + '</span></button> ' +
+    '<button type="button" class="alm-invite-btn" onclick="_almPlaceFind()">' + _almEsc(t('alm_place_find')) + '</button></p>';
+}
+// The search on the map, brought into view.
+function _almPlaceFind() {
+  var map = document.getElementById('almanac-sunmap');
+  if (map) map.scrollIntoView({ block: 'center', behavior: _almReduceMotion() ? 'auto' : 'smooth' });
+  _almShowCitySearch();
 }
 
 function _shareAlmanacLocation() {

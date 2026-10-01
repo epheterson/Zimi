@@ -379,12 +379,10 @@ var AT_MS_HOUR = 3600000;
 var AT_MS_DAY = 86400000;
 var AT_CURVE_STEP_MS = 10 * 60000;       // one sample every ten minutes
 var AT_NEXT_WINDOW_MS = 26 * AT_MS_HOUR; // the next turn is always within a day
-// Past this, a tide station describes some other water: say how far the
-// nearest is instead of drawing it as this place's tide.
+// Past this, a tide station describes some other water: its tide is shown
+// as the nearest station's, with how far it is. Within it the place is on
+// the coast (the live sky draws the sea, at this tide's level).
 var AT_TIDE_NEAR_KM = 80;
-// Within this, an inland place is offered its nearest coast; past it (Denver's
-// nearest is on the Gulf of California) the line would only be noise.
-var AT_TIDE_FAR_KM = 300;
 var AT_KM_PER_MI = 1.609344;
 var AT_TIDE_YEARS = 200;   // how far from today a tide prediction is offered
 var AT_UNITS_KEY = 'zimi_almanac_units';
@@ -513,19 +511,10 @@ function _atRender() {
     return;
   }
   if (_at.data.failed) { _atDraw(host, ''); return; }
+  // Far from any station (inland, or a coast NOAA does not cover) the nearest
+  // station's tide is still shown, saying whose water it is and how far.
   var tide = _atTideStation();
-  var tideNear = tide && (_at.tideId || tide.km <= AT_TIDE_NEAR_KM);
-  var html = '';
-  if (tideNear) html += _atTideHtml(tide);
-  else if (tide && tide.km <= AT_TIDE_FAR_KM) {
-    // Inland: one quiet line, and the way to the coast if wanted.
-    html += '<p class="at-quiet at-far"><button type="button" class="at-link" onclick="_atPick(\'tide\')">' +
-      _almEsc(t('alm_tide_far', { name: _atTideName(tide), d: _atDistance(tide.km) })) + '</button></p>';
-    if (_at.picking === 'tide') html += _atPickerHtml('tide');
-  } else {
-    html += _atSection(t('alm_tide_title'), '<p class="at-quiet">' + _almEsc(t('alm_place_none')) + '</p>' + _atSearchHtml());
-  }
-  _atDraw(host, html);
+  _atDraw(host, tide ? _atTideHtml(tide, !_at.tideId && tide.km > AT_TIDE_NEAR_KM) : '');
   _atBindCurve();
 }
 
@@ -544,7 +533,7 @@ function _atSection(title, body, cls) {
 
 function _atEmptyHtml() {
   return _atSection(t('alm_tide_title'),
-    '<p class="at-quiet">' + _almEsc(t('alm_place_empty')) + '</p>' + _atSearchHtml());
+    _almPlaceInviteHtml() + _atSearchHtml());
 }
 
 function _atSearchHtml() {
@@ -664,8 +653,9 @@ function _atBeyond(focus) {
   return Math.abs(new Date(focus).getUTCFullYear() - new Date().getUTCFullYear()) > AT_TIDE_YEARS;
 }
 
-function _atTideHtml(st) {
+function _atTideHtml(st, far) {
   var focus = _almFocusInstant().getTime();
+  var farHtml = far ? '<p class="at-quiet at-far">' + _almEsc(t('alm_tide_nearest', { name: _atTideName(st), d: _atDistance(st.km) })) + '</p>' : '';
   if (_atBeyond(focus)) {
     return _atSection(t('alm_tide_title'), '<p class="at-quiet">' + _almEsc(t('alm_tide_beyond', { n: AT_TIDE_YEARS })) + '</p>', 'at-tides');
   }
@@ -682,7 +672,7 @@ function _atTideHtml(st) {
   }
   lead += '</div>';
   var note = st.refrec ? t('alm_tide_note_sub', { ref: _atTitle(st.refrec.n) }) : t('alm_tide_note');
-  var body = lead +
+  var body = farHtml + lead +
     '<div class="at-curve" id="at-curve">' + _atCurveSvg(st, day, focus) + '</div>' +
     _atMonthHtml(st, focus) +
     _atWhyHtml(st, focus) +

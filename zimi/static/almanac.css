@@ -1149,3 +1149,8 @@
   /* Month changes repaint in place — no glide (#75). */
   .alm-grid.alm-glide-next, .alm-grid.alm-glide-prev { animation: none; }
 }
+/* No place chosen yet: one line asking for it, under the sky and in the tides. */
+.alm-place-invite { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; margin: 8px 0 0; font-size: 12px; color: var(--text2); text-align: center; }
+.alm-invite-btn { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
+.alm-invite-btn:hover, .alm-invite-btn:focus-visible { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+.alm-invite-btn svg { width: 14px; height: 14px; }
