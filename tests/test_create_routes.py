@@ -173,16 +173,23 @@ def test_unknown_mode_and_missing_source_are_refused():
     assert _post("/manage/create", {}).status == 400
 
 
-def test_folder_mode_is_cli_only_and_the_refusal_says_so(tmp_path):
-    """Round 3, Eric: "do remove folder I said that would be CLI only." The
-    refusal names the door that is still open, and it does not depend on the
-    directory existing — the mode is gone, not misconfigured."""
-    (tmp_path / "src").mkdir()
-    for source in (str(tmp_path / "src"), str(tmp_path / "nope")):
+def test_folder_mode_takes_only_a_path_inside_the_create_root(tmp_path, monkeypatch, stub_engine):
+    """Folder mode is back (2026-09-30) as a picker under the create root. A
+    typed absolute path, a walk out of the root, or a folder that is not there
+    is refused; a relative folder, with a subset inside it, runs."""
+    lib = tmp_path / "zims"
+    (lib / "src" / "sub").mkdir(parents=True)
+    (lib / "src" / "a.md").write_text("# A")
+    (lib / "src" / "sub" / "b.md").write_text("# B")
+    monkeypatch.setattr(server, "ZIM_DIR", str(lib))
+    monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: True)
+    for source in (str(lib / "src"), "../zims/src", "nope", "src/a.md", "/etc"):
         h = _post("/manage/create", {"mode": "folder", "source": source})
         assert h.status == 400, source
-        assert "CLI-only" in h.body["error"], source
-        assert "zimi create" in h.body["error"], source
+    h = _post("/manage/create", {"mode": "folder", "source": "src", "only": ["sub", "a.md"]})
+    assert h.status == 200, h.body
+    _wait_done()
+    assert stub_engine["opts"]["only"] == ["a.md", "sub"]
 
 
 def test_import_picks_from_the_library_folder_and_never_a_typed_path(tmp_path, monkeypatch, stub_engine):
@@ -700,18 +707,18 @@ def test_every_mode_with_a_progress_callback_is_cancellable(monkeypatch, tmp_pat
     _wait_done()
 
 
-def test_no_web_mode_reads_a_server_path(monkeypatch, tmp_path):
-    """The server-path modes both left the web. There is no primary-admin gate
-    to pass any more: folder and import are refused with the CLI pointer for
-    everyone, primary admin or not, and the URL modes reach validation as
-    before."""
+def test_no_web_mode_reads_a_typed_server_path(monkeypatch, tmp_path):
+    """The modes that read the server's disk (folder, import) are the
+    primary admin's, and even there take a name from a listing, never a
+    typed path; the URL modes reach validation as before."""
     f = tmp_path / "a.wacz"
     f.write_bytes(b"x")
+    monkeypatch.setattr(server, "ZIM_DIR", str(tmp_path))
     for primary in (False, True):
         monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: primary)
         r = _post("/manage/create", {"mode": "folder", "source": str(tmp_path)})
-        assert r.status == 400, primary
-        assert "CLI-only" in r.body["error"], primary
+        assert r.status == (400 if primary else 403), primary
+        assert ("inside the folder" if primary else "primary admin") in r.body["error"], primary
         # Import is back, as a picker, and it is the primary admin's: a creator
         # account is refused before the archive is even looked for; the
         # primary admin with a typed path is told to pick from the list.

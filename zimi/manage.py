@@ -2104,10 +2104,10 @@ def activity_payload(type_filter=None, actor_filter=None):
 # read costs one event, never a crash.
 # ============================================================================
 
-# "folder" stays in the tuple although the web REFUSES it (Eric: "remove
-# folder, I said that would be CLI only") — recognising the mode is what lets
-# the refusal point at `zimi create <folder>` instead of shrugging "unknown
-# creation mode" at someone who read about it in the docs.
+# "folder" is back on the web (Eric, 2026-09-30: "let's actually offer
+# folder ... show the whole tree and allow selecting any subset"), as a
+# picker over the create root like import's: no path is ever typed, and
+# every path the page sends is a relative one checked to stay inside.
 CREATE_MODES = ("folder", "page", "site", "video", "import", "reddit")
 # Which engine captures a web page. Mirrors creator.OFFERED_ENGINES — every
 # name a person may ASK for, which is a wider set than the ones that build a
@@ -2192,11 +2192,11 @@ CREATE_MAX_PAGE_URLS = 20
 
 # Which jobs can actually be interrupted. Cancellation is cooperative — it
 # raises out of the engine's progress callback — so a mode belongs here exactly
-# when its engine takes one. Every mode the web still runs qualifies (folder,
-# the one engine with no progress callback, is CLI-only now), but the list and
-# the `cancellable` field stay: the client's button should keep answering to
-# the server's word rather than to an assumption a future mode could break.
-CREATE_CANCELLABLE_MODES = ("page", "site", "video", "import", "reddit")
+# when its engine takes one. Every mode the web runs qualifies (folder gained
+# its progress callback when it came back), but the list and the `cancellable`
+# field stay: the client's button should keep answering to the server's word
+# rather than to an assumption a future mode could break.
+CREATE_CANCELLABLE_MODES = ("page", "site", "video", "import", "reddit", "folder")
 # Which jobs can FINISH EARLY — stop fetching at the next page boundary and
 # package everything captured so far, exactly what SIGINT does to a CLI crawl.
 # Site capture alone: it is the one mode whose work is an open-ended frontier
@@ -2266,6 +2266,7 @@ CREATE_PHASES = ("probe", "fetch", "assets", "package", "convert", "register", "
 # fetch, it goes straight to writing a ZIM.
 CREATE_START_PHASE = {
     "import": "package",
+    "folder": "package",
     "page": "fetch",
     "site": "fetch",
     "video": "fetch",
@@ -2906,16 +2907,12 @@ def _create_validate(data):
         if looks_like_subreddit(source):
             mode = "reddit"
 
+    only = []
     if mode == "folder":
-        # CLI-only, by decree (Eric, round 3: "remove folder, I said that
-        # would be CLI only"). The engine (creator.create_folder_zim) is
-        # untouched — someone at a shell already has the filesystem this mode
-        # reads. What is gone is the web door, and the refusal names the one
-        # that is still open.
-        raise ValueError(
-            "folder capture is CLI-only — run `zimi create <folder>` "
-            "on the server itself"
-        )
+        # A folder under the create root, by its path from there ("." is the
+        # root itself), and optionally a subset inside it. Both are checked
+        # by real path to stay inside; nothing typed reaches the disk.
+        source, only = _create_folder_selection(source, data.get("only"))
     elif mode == "reddit":
         # A subreddit, by name or address. The maker (ArcticZim) is fetched
         # into a sidecar on first use, like warc2zim.
@@ -2951,6 +2948,8 @@ def _create_validate(data):
     opts = {}
     if mode == "page":
         opts["urls"] = page_urls
+    if mode == "folder":
+        opts["only"] = only
     if mode in ("folder", "page", "site", "video"):
         opts["language"] = _create_language(data.get("language"))
     if mode in ("page", "site"):
@@ -3282,6 +3281,19 @@ def _create_run(job, opts):
             progress=job.note,
             stop=stop,
         )
+    if job.mode == "folder":
+        from zimi.creator import create_folder_zim
+
+        return create_folder_zim(
+            job.source,
+            title=job.title or None,
+            out_dir=_create_out_dir(),
+            register=True,
+            progress=job.note,
+            only=opts.get("only") or None,
+            exclude=_create_folder_exclude(),
+            **_create_kwargs(opts, "language"),
+        )
     if job.mode == "import":
         from zimi.importer import import_archive
 
@@ -3292,9 +3304,8 @@ def _create_run(job, opts):
             register=True,
             sink=job.note,
         )
-    # Only these reach here; validation refuses everything else (folder
-    # capture is CLI-only). A job that arrived with any other mode is a bug in
-    # the caller, not an input to run.
+    # Only these reach here; validation refuses everything else. A job that
+    # arrived with any other mode is a bug in the caller, not an input to run.
     raise ValueError(f"no web engine for mode {job.mode!r}")
 
 
@@ -3832,17 +3843,9 @@ def _is_offline_mode():
 
 # ── the server-path root, now a reported fact only ──────────────────────────
 #
-# There is no web create mode that reads a path off the server's disk any more.
-# Folder capture went to the CLI in round 3, and archive import followed it
-# ("remove archive as well only in cli") — both are refused outright in
-# ``_create_validate`` before anything touches the filesystem. So the gate,
-# the containment check and the closed-by-default door that guarded that
-# surface are all gone with the modes they guarded.
-#
-# ``ZIMI_CREATE_ROOT`` is where the import picker looks for archives (the
-# library folder when unset), and a fact the create page reports
-# (``create_root`` in the poll and the Creator payload): the server no longer
-# acts on it, but the client reads it to describe the instance.
+# ``ZIMI_CREATE_ROOT`` is where the import and folder pickers look (the
+# library folder when unset). Both modes take a name from a listing under it,
+# never a typed path, and both are the primary admin's alone.
 
 CREATE_ROOT_ENV = "ZIMI_CREATE_ROOT"
 
@@ -3851,8 +3854,7 @@ def _create_root():
     """The ``ZIMI_CREATE_ROOT`` directory, resolved, or "" when unset. Read at
     call time, like every other environment-backed setting, so a config file
     published into the environment at startup is picked up without a second
-    resolution path. Nothing on the server acts on it any more — it is reported
-    to the create page as a fact about the instance, nothing more."""
+    resolution path. The pickers list under it (_create_archives_root)."""
     raw = os.environ.get(CREATE_ROOT_ENV, "").strip()
     if not raw:
         return ""
@@ -3926,6 +3928,115 @@ def _create_archive_path(name):
     if not name or name not in {a["name"] for a in _create_archives()}:
         raise ValueError("choose an archive from the list")
     return os.path.join(_create_archives_root(), *name.split("/"))
+
+
+# ── Folder mode: the tree picker and the selection it sends ────────────────
+#
+# The tree is listed one level per request (never a recursive walk, which on
+# a NAS share would be the expensive thing), under the same root import uses.
+# Every path in and out is RELATIVE to that root; folderfiles.resolve refuses
+# absolute paths, "..", hidden parts and any symlink on the way, then checks
+# the real path is still inside. Zimi's own data folder is never shown.
+
+CREATE_DISK_MODES = ("import", "folder")
+CREATE_FOLDER_PROBE_ENTRIES = 5000
+CREATE_FOLDER_PROBE_SECONDS = 3.0
+CREATE_FOLDER_PROBE_EXAMPLES = 6
+
+
+def _create_folder_exclude():
+    """What the picker and a build never read: Zimi's data folder (its
+    sidecars and caches live in it)."""
+    return [p for p in (getattr(_srv, "ZIMI_DATA_DIR", None),) if p]
+
+
+def _create_tree(rel, offset):
+    """``(payload, status)`` for one level of the create root."""
+    from zimi import folderfiles
+
+    root = _create_archives_root()
+    try:
+        listing = folderfiles.list_level(root, rel, offset=offset, exclude=_create_folder_exclude())
+    except folderfiles.OutsideRoot as e:
+        return {"error": str(e)}, 400
+    except FileNotFoundError:
+        return {"error": "that folder is not there any more"}, 404
+    except OSError:
+        log.exception("create tree listing failed")
+        return {"error": "that folder cannot be read"}, 500
+    # The root's own name, so the picker can label its top row; the path
+    # itself is already on the page (archives_dir) for the same viewer.
+    listing["root_name"] = os.path.basename(os.path.realpath(root).rstrip(os.sep)) or root
+    return listing, 200
+
+
+def _create_folder_selection(source, only):
+    """``(folder fs path, [relative paths])`` for a folder request, or
+    ValueError with a sentence for the page."""
+    from zimi import folderfiles
+
+    if only is not None and not isinstance(only, list):
+        raise ValueError("choose files from the tree")
+    root = _create_archives_root()
+    exclude = folderfiles.real_paths(_create_folder_exclude())
+    try:
+        fs, _rel = folderfiles.resolve(root, "" if source == "." else source, exclude)
+        if not os.path.isdir(fs):
+            raise ValueError("choose a folder from the tree")
+        picked = folderfiles.normalize_only(fs, [str(p) for p in (only or [])], exclude)
+    except folderfiles.OutsideRoot as e:
+        raise ValueError(str(e))
+    except FileNotFoundError:
+        raise ValueError("that is no longer in the folder; refresh the tree")
+    return fs, picked
+
+
+def _probe_folder(source, only):
+    """What a build of this selection would hold, bounded by an entry count
+    and a clock: families, bytes, what is left out and why, and the
+    metadata the sidecars name."""
+    from zimi import folderfiles
+
+    exclude = folderfiles.real_paths(_create_folder_exclude())
+    deadline = time.monotonic() + CREATE_FOLDER_PROBE_SECONDS
+    files, truncated = [], False
+    for pair in folderfiles.walk(source, only or None, exclude):
+        if len(files) >= CREATE_FOLDER_PROBE_ENTRIES or time.monotonic() > deadline:
+            truncated = True
+            break
+        files.append(pair)
+    plan = folderfiles.plan(source, only or None, files=files, exclude=exclude)
+    families = {}
+    size = 0
+    plays_some = 0
+    for fs, rel, fam in plan["items"]:
+        families[fam] = families.get(fam, 0) + 1
+        try:
+            size += os.path.getsize(fs)
+        except OSError:
+            pass
+        if fam == "video" and not folderfiles.plays_everywhere(rel):
+            plays_some += 1
+    meta = plan["folder"]
+    return {
+        "ok": bool(plan["items"]),
+        "final_url": "",
+        "title": meta.get("title") or os.path.basename(source.rstrip(os.sep)),
+        "content_type": "",
+        "files": len(plan["items"]),
+        "bytes": size,
+        "families": families,
+        "unsupported": len(plan["unsupported"]),
+        "unsupported_examples": [
+            {"path": rel, "reason": reason} for rel, reason in plan["unsupported"][:CREATE_FOLDER_PROBE_EXAMPLES]
+        ],
+        "plays_some": plays_some,
+        "metadata": meta,
+        "metadata_file": plan["folder_sidecar"],
+        "described": len(plan["sidecars"]),
+        "truncated": truncated,
+        "warning_key": None if plan["items"] else "create_warn_folder_empty",
+    }
 
 
 def _create_reddot_ready():
@@ -4372,7 +4483,7 @@ def _create_kill_browsers():
 # an hour on whatever it got. The probe runs the half of each job that only
 # LOOKS — count a folder, fetch one page, list a playlist — and hands back what
 # the real run would find, so the answer arrives before the commitment.
-# (Folder probing left with folder mode itself — CLI-only now.)
+# (A folder's probe counts what the selection holds: _probe_folder.)
 #
 # It writes nothing, downloads no media, and crawls no links. Every mode is
 # bounded by both a count and a clock, because a preview that outlasts your
@@ -4562,10 +4673,9 @@ def _probe_video(source, limit):
     }
 
 
-# The folder picker (`/manage/create/browse`, `_create_browse`) lived here
-# until folder mode left the web. The route remains and refuses with the CLI
-# pointer — see handle_manage_get — because a lister whose only customer was
-# that form is a directory-disclosure surface with no purpose left on screen.
+# The old folder picker (`/manage/create/browse`, which took a server path)
+# stays a 410; the tree picker (`/manage/create/tree`, `_create_tree`) takes
+# only paths relative to the create root.
 
 
 def _probe_claims_video(source):
@@ -4628,6 +4738,8 @@ def _create_probe(data):
                 "warning_key": None,
                 "reddot_ready": bool(sidecar_status().get("installed")),
             }
+        elif mode == "folder":
+            result = _probe_folder(source, opts.get("only"))
         elif mode == "import":
             # The archive is on disk and validation already found it; the
             # preview is its size and whether the helper is here.
@@ -4783,23 +4895,27 @@ def handle_manage_get(handler, parsed, params):
         handler.wfile.write(shot)
         return
     if parsed.path == "/manage/create/browse":
-        # The folder picker's feed, and folder mode left the web (CLI-only, by
-        # decree) — so the lister that existed solely to make it discoverable
-        # refuses cleanly rather than keeping a directory-disclosure surface
-        # alive for a form that no longer exists. 410: it was here, it is gone,
-        # and the refusal names the door that still opens.
+        # The old folder picker's feed, which took a server path. It stays
+        # gone (410); its successor is /manage/create/tree, which takes only
+        # paths relative to the create root.
         denial = _creator_denial(handler)
         if denial:
             return handler._json(*denial)
         return handler._json(
             410,
-            {
-                "error": (
-                    "the folder picker is gone — folder capture is CLI-only "
-                    "now. Run `zimi create <folder>` on the server itself."
-                )
-            },
+            {"error": "this folder picker is gone; the Create page's Folder mode uses /manage/create/tree"},
         )
+    if parsed.path == "/manage/create/tree":
+        # One level of the create root, for the Folder picker. Gated exactly
+        # as import is: an admin or creator session first, then the primary
+        # admin alone, because it lists the server's disk.
+        denial = _creator_denial(handler)
+        if denial:
+            return handler._json(*denial)
+        if not _primary_admin_authorized(handler):
+            return handler._json(403, {"error": "reading the server's disk is for the primary admin"})
+        payload, status = _create_tree(param("path", ""), _create_int(param("offset"), 0, 2**31) or 0)
+        return handler._json(status, payload)
     challenge = _manage_auth_challenge(handler)
     if challenge:
         return handler._json(*challenge)
@@ -5731,9 +5847,8 @@ def handle_manage_post(handler, parsed, data):
 
     # ZIM creation — a creator account (can_create) may drive these routes
     # without admin credentials, so they gate themselves ahead of the generic
-    # admin challenge below. Folder capture is refused outright in
-    # ``_create_validate`` (CLI-only); archive import, the one web mode that
-    # reads the server's disk, is held to the primary admin just below.
+    # admin challenge below. Folder and archive import, the web modes that
+    # read the server's disk, are held to the primary admin just below.
     if parsed.path in (
         "/manage/create",
         "/manage/create/cancel",
@@ -5743,15 +5858,15 @@ def handle_manage_post(handler, parsed, data):
         denial = _creator_denial(handler)
         if denial:
             return handler._json(*denial)
-        # Import reads the server's disk (the library folder, by listing), so
-        # it stays with the primary admin; a creator account captures the web
-        # and packages its own bookmarks, nothing more.
+        # Import and folder read the server's disk (under the create root, by
+        # listing), so they stay with the primary admin; a creator account
+        # captures the web and packages its own bookmarks, nothing more.
         if (
             parsed.path in ("/manage/create", "/manage/create/probe")
-            and data.get("mode") == "import"
+            and data.get("mode") in CREATE_DISK_MODES
             and not _primary_admin_authorized(handler)
         ):
-            return handler._json(403, {"error": "archive import is for the primary admin"})
+            return handler._json(403, {"error": "reading the server's disk is for the primary admin"})
         if parsed.path == "/manage/create/cancel":
             # With an id: that job, wherever it is — the running one or one
             # still waiting. Without: whatever is running.
