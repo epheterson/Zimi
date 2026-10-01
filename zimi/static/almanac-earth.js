@@ -1171,10 +1171,10 @@ function _aeSunspotNumber(year) {
   }
   return { r: total, parts: parts };
 }
-// A small seeded generator: the same day, the same spots.
+// The orrery's seeded generator (_lcgRand) from any number: the same day,
+// the same spots.
 function _aeSeeded(seed) {
-  var s = (Math.floor(seed) % 2147483646 + 2147483646) % 2147483646 + 1;
-  return function () { s = s * 16807 % 2147483647; return (s - 1) / 2147483646; };
+  return _lcgRand((Math.floor(seed) % 2147483646 + 2147483646) % 2147483646 + 1);
 }
 // Sidereal rotation (deg/day) at a heliographic latitude (degrees).
 function _aeSunRotation(latDeg) {

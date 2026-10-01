@@ -73,7 +73,7 @@ def browser(served):
         br.close()
 
 
-def _almanac(browser, served, reduced=False):
+def _almanac(browser, served, reduced=False, place=PLACE):
     ctx = browser.new_context(
         viewport=VIEW,
         device_scale_factor=2,
@@ -83,8 +83,8 @@ def _almanac(browser, served, reduced=False):
         reduced_motion="reduce" if reduced else "no-preference",
     )
     ctx.add_init_script(
-        "sessionStorage.setItem('zimi_almanac_location', %s);"
-        % json.dumps(json.dumps(PLACE))
+        "localStorage.setItem('zimi_almanac_place', %s);"
+        % json.dumps(json.dumps(place))
     )
     pg = ctx.new_page()
     errors = []
@@ -251,6 +251,12 @@ def test_one_clock(browser, served):
         pg.wait_for_function(
             "() => !_skyState.moonAnim && !_heroMoonAnim", polling=POLL_MS
         )
+        # Nothing crossing the sky either (planes, birds, meteors run their
+        # own light loop while on screen: test_life_on_the_horizon).
+        pg.evaluate(
+            "() => { Object.keys(SKY_SPAWNERS).forEach((k) => clearTimeout(_skyTimers[k]));"
+            " _skyState.actors = []; _skyState.issUp = false; }"
+        )
         pg.wait_for_timeout(300)
         frames = pg.evaluate("""() => new Promise((done) => {
           let n = 0; const r = window.requestAnimationFrame;
@@ -264,11 +270,179 @@ def test_one_clock(browser, served):
         ctx.close()
 
 
+DENVER = {"lat": 39.74, "lon": -104.99, "name": "Denver"}
+TROMSO = {"lat": 69.65, "lon": 18.96, "name": "Tromso"}
+TROMSO_NIGHT = "2026-10-01T22:00:00Z"
+
+
+def _drag(pg, dx, dy, steps=8):
+    pg.locator("#almanac-sky-canvas").scroll_into_view_if_needed()
+    pg.wait_for_timeout(200)
+    r = pg.evaluate(
+        "() => { const r = _skyState.canvas.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 3 }; }"
+    )
+    pg.mouse.move(r["x"], r["y"])
+    pg.mouse.down()
+    for i in range(1, steps + 1):
+        pg.mouse.move(r["x"] + dx * i / steps, r["y"] + dy * i / steps)
+    pg.mouse.up()
+
+
+def test_dragging_looks_round_the_whole_horizon(browser, served):
+    ctx, pg, errors = _almanac(browser, served)
+    try:
+        _settle(pg, NIGHT)
+        c0 = pg.evaluate("_skyState.center")
+        assert c0 == 180  # facing the equator to begin with
+        assert "facing S" in pg.inner_text("#almanac-sky-cap")
+        width = pg.evaluate("_skyState.cssW")
+        span = pg.evaluate("SKY_SPAN_DEG")
+        _drag(pg, -width / 2, 0)  # drag left: the view turns right (west)
+        c1 = pg.evaluate("_skyState.center")
+        turned = ((c1 - c0) + 540) % 360 - 180
+        assert abs(turned - span / 2) < span * 0.08, turned
+        # 180 + 120 = 300 degrees: the compass word follows (no fixed heading).
+        assert "facing NW" in pg.inner_text("#almanac-sky-cap")
+        # The south point has moved left by what was turned.
+        x = pg.evaluate("_skyX(_skyState, 180) / _skyState.dpr")
+        assert abs(x - (width / 2 - turned / span * width)) < 2, x
+        # A drag is not a tap: no tip opened.
+        assert not pg.locator("#almanac-sky-tip").is_visible()
+        # The keyboard turns it too.
+        pg.focus("#almanac-sky-canvas")
+        pg.keyboard.press("ArrowRight")
+        assert (
+            abs(((pg.evaluate("_skyState.center") - c1) + 540) % 360 - 180 - 15) < 1e-6
+        )
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_life_on_the_horizon(browser, served):
+    """The coast has the sea at its tide, inland the land; the moving things
+    run a light loop only while one is on screen, and each says what it is."""
+    ctx, pg, errors = _almanac(browser, served)
+    try:
+        _settle(pg, DAY)
+        pg.wait_for_function("() => !!_skyState.sea", polling=POLL_MS, timeout=60000)
+        sea = pg.evaluate("_skyState.sea")
+        assert 0 <= sea["frac"] <= 1
+        # Its level is the tide's: a later instant at the other end of the day's range.
+        assert sea["name"]
+        assert pg.evaluate("_skyState.bodies.some((b) => b.type === 'boat')")
+        # Tap the sea: the tide there.
+        pg.locator("#almanac-sky-canvas").scroll_into_view_if_needed()
+        pg.wait_for_timeout(200)
+        box = pg.evaluate(
+            "() => { const b = _skyState.bodies.find((x) => x.type === 'sea'); const r = _skyState.canvas.getBoundingClientRect();"
+            " return { x: r.left + (b.box[0] + b.box[2]) / 2 + 40, y: r.top + (b.box[1] + b.box[3]) / 2 }; }"
+        )
+        pg.touchscreen.tap(box["x"], box["y"])
+        tip = pg.locator("#almanac-sky-tip")
+        assert tip.is_visible()
+        assert pg.evaluate("t('alm_sky_sea')") in tip.inner_text()
+        # A plane: frames while it crosses, none once it has gone.
+        pg.evaluate(
+            "() => { Object.keys(SKY_SPAWNERS).forEach((k) => { clearTimeout(_skyTimers[k]); SKY_FIRST_SPAWN_MS[k] = 1e9; });"
+            " [SKY_PLANE_GAP_S, SKY_BIRD_GAP_S, SKY_MUON_GAP_MS].forEach((g) => { g[0] = g[1] = 1e9; }); clearTimeout(_skyTimers.muon); _skyState.muons = [];"
+            " const a = _skyCrossing(_skyState, 'plane', [6, 6], [30, 30]); _skyState.actors = [a]; _skyKick(); }"
+        )
+        moving = pg.evaluate("""() => new Promise((done) => {
+          const n0 = _skyState.paints || 0;
+          setTimeout(() => done({ painted: (_skyState.paints || 0) - n0, loop: !!_almanacSkyRAF }), 1000);
+        })""")
+        # It moves frame by frame while on screen (a loaded test machine draws
+        # few frames a second; the thirty-a-second cap is held in
+        # test_almanac_live_sky.cjs).
+        assert moving["painted"] >= 1 and moving["loop"], moving
+        pg.wait_for_function(
+            "() => _skyState.actors.length === 0", polling=POLL_MS, timeout=30000
+        )
+        pg.wait_for_timeout(200)
+        after = pg.evaluate("""() => new Promise((done) => {
+          let n = 0; const r = window.requestAnimationFrame;
+          window.requestAnimationFrame = (f) => { if (f === _skyLoop) n++; return r.call(window, f); };
+          setTimeout(() => { window.requestAnimationFrame = r; done(n); }, 700);
+        })""")
+        assert after <= 2, after
+        assert pg.evaluate("_skyState.actors.length") == 0
+        # Birds by day, named on a tap.
+        pg.evaluate(
+            "() => { const b = _skyCrossing(_skyState, 'birds', [600, 600], [20, 20]); b.n = 5; b.start -= 300000; _skyState.actors = [b]; _skyHideTip(); _skyKick(); }"
+        )
+        pg.wait_for_function(
+            "() => _skyState.bodies.some((b) => b.type === 'birds')", polling=POLL_MS
+        )
+        _tap_body(pg, "birds")
+        assert pg.evaluate("t('alm_sky_birds')") in tip.inner_text()
+        assert not errors, errors
+    finally:
+        ctx.close()
+    # Inland: the land, no sea, no boats.
+    ctx, pg, errors = _almanac(browser, served, place=DENVER)
+    try:
+        _settle(pg, DAY)
+        pg.wait_for_function(
+            "() => !!document.querySelector('#almanac-place .at-tides')",
+            polling=POLL_MS,
+            timeout=60000,
+        )
+        pg.evaluate("_skyKick()")
+        pg.wait_for_timeout(300)
+        assert pg.evaluate("_skyState.sea") is None
+        assert not pg.evaluate(
+            "_skyState.bodies.some((b) => b.type === 'boat' || b.type === 'sea')"
+        )
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_the_aurora_where_it_is_seen(browser, served):
+    ctx, pg, errors = _almanac(browser, served, place=TROMSO)
+    try:
+        _settle(pg, TROMSO_NIGHT)
+        au = pg.evaluate("_skyState.aurora")
+        assert au and au["k"] > 0.3, au
+        assert abs(au["mag"]) > 60
+        assert not errors, errors
+    finally:
+        ctx.close()
+    ctx, pg, errors = _almanac(browser, served)
+    try:
+        _settle(pg, NIGHT)
+        assert pg.evaluate("_skyState.aurora") is None  # San Francisco: too far south
+        # Meteors by night, with the rate said and the speed-up owned up to.
+        pg.evaluate(
+            "() => { const m = _skyMeteor(_skyState); m.dur = 60000; m.az0 = _skyState.center; m.az1 = _skyState.center + 4;"
+            " m.alt0 = 40; m.alt1 = 30; m.start -= 30000; _skyState.actors = [m]; _skyKick(); }"
+        )
+        pg.locator("#almanac-sky-canvas").scroll_into_view_if_needed()
+        pg.wait_for_function(
+            "() => _skyState.bodies.some((b) => b.type === 'meteor')", polling=POLL_MS
+        )
+        pg.wait_for_timeout(200)
+        b = pg.evaluate(
+            "() => { const b = _skyState.bodies.find((x) => x.type === 'meteor'); const r = _skyState.canvas.getBoundingClientRect();"
+            " return { x: r.left + (b.x0 + b.x1) / 2, y: r.top + (b.y0 + b.y1) / 2 }; }"
+        )
+        pg.touchscreen.tap(b["x"], b["y"])
+        tip = pg.inner_text("#almanac-sky-tip")
+        assert "an hour" in tip and "10 times" in tip, tip
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
 def test_reduced_motion_keeps_the_sky_still(browser, served):
     ctx, pg, errors = _almanac(browser, served, reduced=True)
     try:
         _settle(pg, NIGHT)
         assert pg.evaluate("!_skyTimers.twinkle && !_skyTimers.muon")
+        assert pg.evaluate(
+            "!_skyTimers.plane && !_skyTimers.birds && !_skyTimers.meteor"
+        )
         still = pg.evaluate("_skyState.muons.filter((m) => m.still).length")
         assert still == 1
         _tap_body(pg, "muon")
@@ -291,7 +465,12 @@ def test_the_light_clock_on_a_ride(browser, served):
             polling=POLL_MS,
         )
         gamma = pg.evaluate("document.getElementById('orrery-lc-gamma').textContent")
-        assert gamma == "\u2066\u03b3 = " + pg.evaluate("_orrFmtGamma(_lorentzFactor(0.8))") + "\u2069"
+        assert (
+            gamma
+            == "\u2066\u03b3 = "
+            + pg.evaluate("_orrFmtGamma(_lorentzFactor(0.8))")
+            + "\u2069"
+        )
         assert pg.evaluate("document.getElementById('orrery-lc').clientWidth") > 200
         assert pg.evaluate(
             "t('alm_lc_moving', { v: _orrFmtBeta(0.8) })"

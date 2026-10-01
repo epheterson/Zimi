@@ -1907,7 +1907,7 @@ function _renderAlmanacContent() {
   // The live sky + calendar — wall calendar: the sky above, the month below.
   // Its clock is the page's (the time machine at the top); almanac-sky.js.
   html += '<div class="almanac-sky-wrap">' +
-    '<canvas id="almanac-sky-canvas" aria-describedby="almanac-sky-desc" role="img"></canvas>' +
+    '<canvas id="almanac-sky-canvas" aria-describedby="almanac-sky-desc" role="img" tabindex="0"></canvas>' +
     '<div id="almanac-sky-cap" class="alm-sky-cap"></div>' +
     '<div id="almanac-sky-tip" class="alm-sky-tip" hidden></div>' +
     // Inline styles duplicate .sr-only so a stale cached app.css can never

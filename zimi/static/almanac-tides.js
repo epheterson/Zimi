@@ -521,6 +521,44 @@ function _atRender() {
 function _atDraw(host, html) {
   host.innerHTML = html;
   if (typeof _almPlaceDrawn === 'function') _almPlaceDrawn();
+  // The live sky's sea follows this tide: tell it there is one now.
+  if (typeof _skySeaChanged === 'function') _skySeaChanged();
+}
+
+// The sea for the live sky (almanac-sky.js): at a place on the coast (a
+// station within AT_TIDE_NEAR_KM), the water's height at ms as a share of
+// the day's range around it (0 low water, 1 high), with what is next.
+// Null inland, before the stations have come, or beyond the tide's years.
+var AT_SEA_WINDOW_MS = 13 * AT_MS_HOUR;   // a low and a high either side, anywhere
+var AT_SEA_STEP_MS = 10 * 60000;          // the sea's level, to the ten minutes (the scrub asks every frame)
+var _atSeaMemo = { key: null, v: null };
+function _atSkySea(ms) {
+  if (!_at.data || _at.data.failed || _atBeyond(ms)) return null;
+  var st = _atTideStation();
+  if (!st || st.km > AT_TIDE_NEAR_KM) return null;
+  var key = st.id + '@' + Math.round(ms / AT_SEA_STEP_MS);
+  if (_atSeaMemo.key !== key) _atSeaMemo = { key: key, v: _atSkySeaAt(st, Math.round(ms / AT_SEA_STEP_MS) * AT_SEA_STEP_MS) };
+  return _atSeaMemo.v;
+}
+function _atSkySeaAt(st, ms) {
+  var p = _atPredictor(st), h = p.height(ms);
+  var turns = p.extremes(ms - AT_SEA_WINDOW_MS, ms + AT_SEA_WINDOW_MS);
+  if (!isFinite(h) || !turns.length) return null;
+  var lo = h, hi = h, next = null;
+  for (var i = 0; i < turns.length; i++) {
+    lo = Math.min(lo, turns[i].h); hi = Math.max(hi, turns[i].h);
+    if (!next && turns[i].t > ms) next = turns[i];
+  }
+  return {
+    frac: hi > lo ? (h - lo) / (hi - lo) : 0.5, h: h, next: next,
+    rising: next ? next.high : false, name: _atTideName(st), tz: _atTideTz(st)
+  };
+}
+// The sea's words for a tap on it in the sky.
+function _atSkySeaLines(sea) {
+  var lines = [_atTitle(sea.name), t('alm_tide_now', { h: _atHeight(sea.h) })];
+  if (sea.next) lines.push(t(sea.next.high ? 'alm_tide_next_high' : 'alm_tide_next_low', { time: _atTime(sea.next.t, sea.tz) }) + ' · ' + _atHeight(sea.next.h));
+  return lines;
 }
 
 // Re-render for a new focus instant or place (almanac.js _almRepaintFocus).

@@ -493,11 +493,6 @@ function _skyPhaseKey(alt) {
 function _skyX(s, az) { return s.W / 2 + (((az - s.center) % 360 + 540) % 360 - 180) / SKY_SPAN_DEG * s.W; }
 function _skyY(s, alt) { var yh = s.H * SKY_HORIZON_Y; return yh - alt * (yh - s.H * SKY_ZENITH_Y) / 90; }
 function _skyInView(s, x, margin) { return x >= -margin && x <= s.W + margin; }
-// The hills along the horizon, a fixed profile (device px above the horizon at x).
-function _skyHillAt(s, x) {
-  var f = x / s.W;
-  return s.H * SKY_HILLS * (0.55 + 0.25 * Math.sin(f * 9.1 + 1.3) + 0.15 * Math.sin(f * 23.7 + 0.4) + 0.05 * Math.sin(f * 61.3));
-}
 
 // The sky's own light: the gradient, the glow on the Sun's side, the Milky Way.
 function _skyPaintSky(ctx, s) {
@@ -619,37 +614,6 @@ function _skyPaintStars(ctx, s) {
       if (p && q && Math.abs(p.x - q.x) < s.W / 2) { ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); }
     }
     ctx.stroke();
-  }
-}
-
-// The ground: dark hills along the horizon, lit a little by day, and the
-// compass points along them.
-function _skyPaintGround(ctx, s) {
-  var light = _skyDaylight(s.eph.sunGeoAlt);
-  var W = s.W, H = s.H, yh = H * SKY_HORIZON_Y, dpr = s.dpr;
-  var top = _skyMix([10, 13, 20], [40, 52, 44], light), bottom = _skyMix([5, 7, 11], [24, 31, 27], light);
-  var grad = ctx.createLinearGradient(0, yh - H * SKY_HILLS, 0, H);
-  grad.addColorStop(0, _skyRgb(top));
-  grad.addColorStop(1, _skyRgb(bottom));
-  ctx.fillStyle = grad;
-  ctx.beginPath();
-  ctx.moveTo(0, H);
-  for (var x = 0; x <= W; x += 3 * dpr) ctx.lineTo(x, yh - _skyHillAt(s, x));
-  ctx.lineTo(W, yh - _skyHillAt(s, W));
-  ctx.lineTo(W, H);
-  ctx.closePath();
-  ctx.fill();
-  // The compass along the horizon, every 45 degrees in view.
-  ctx.font = '600 ' + Math.round(10 * dpr) + 'px -apple-system, system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  var ink = light > 0.5 ? 'rgba(235,240,232,0.62)' : 'rgba(200,210,230,0.5)';
-  for (var az = 0; az < 360; az += 45) {
-    var cx = _skyX(s, az);
-    if (!_skyInView(s, cx, -6 * dpr)) continue;
-    ctx.fillStyle = ink;
-    ctx.fillRect(cx - 0.5 * dpr, yh + 1 * dpr, 1 * dpr, 3 * dpr);
-    ctx.fillText(_azCompass(az), cx, yh + 6 * dpr);
   }
 }
 
@@ -845,23 +809,458 @@ function _skyPaintMuons(ctx, s, ts) {
   s.muons = keep;
 }
 
+// ══ Life on the horizon ══════════════════════════════════════════════════
+// What a person standing there would see besides the sky: the sea when the
+// place is on the coast (its shore where today's tide has it), else the
+// land; boats on the sea's edge, lit at night; airliners crossing with their
+// navigation lights; birds by day; meteors by night, more on a shower's
+// peak; the aurora where it is seen; the ISS on its real track when it is
+// overhead and lit. Each is tapped to say what it is. Boats, the sea and the
+// aurora belong to the still picture; planes, birds, meteors, muons and the
+// ISS move, and only while one of them is on screen does a light loop run.
+
+var SKY_EYE_KM = 3.57;            // the sea's edge, km, times the square root of eye height in metres
+var SKY_EYE_M = 1.7;
+var SKY_SHORE = [0.2, 0.62];      // the beach's share of the ground band, high water and low
+var SKY_SEA_ROWS = 16;            // the swell's lines, nearer ones further apart
+var SKY_BOATS = [[23, 3.2, 1, 'sail'], [151, 2.1, -1, 'ship'], [277, 4.4, 1, 'fish']];   // azimuth seed, deg/hour, way, kind
+var SKY_ACTOR_FRAME_MS = 33;      // the moving things' frames: thirty a second is smooth at this size
+var SKY_PLANE_GAP_S = [25, 70], SKY_PLANE_S = [22, 34], SKY_PLANE_ALT = [12, 48];
+var SKY_BIRD_GAP_S = [30, 80], SKY_BIRD_S = [14, 22], SKY_BIRD_ALT = [4, 14];
+var SKY_METEOR_SPORADIC_HR = 6;   // sporadic meteors an hour, any dark night
+var SKY_METEOR_SHOWER_DAYS = 1.5; // a shower's rate falls by e every this many days from its peak
+var SKY_METEOR_SPEEDUP = 10;      // meteors fall here this many times as often as in the real sky
+var SKY_METEOR_MS = [450, 900];
+var SKY_MAG_POLE = [80.8, -72.6]; // the geomagnetic north pole (IGRF, 2025), degrees
+var SKY_AURORA_LAT = 66, SKY_AURORA_REACH = 4;   // where the oval stands quietly (geomagnetic), how far equatorward an active Sun pushes it
+var SKY_ISS_MIN_ALT = 8;          // the ISS is drawn above this altitude, lit, in a dark enough sky
+var SKY_SPAN_HALF = SKY_SPAN_DEG / 2;
+
+function _skyRandIn(r, pair) { return pair[0] + (pair[1] - pair[0]) * r(); }
+var _skyRand = Math.random;       // the moving things are not seeded: each is new
+
+// The sea's state at the scene's instant (almanac-tides.js), or null.
+function _skySea(s) { return typeof _atSkySea === 'function' ? _atSkySea(s.nowTime) : null; }
+// The tides module has stations now: the coast may have appeared.
+function _skySeaChanged() {
+  var s = _skyState;
+  if (!s || !s.eph) return;
+  var sea = _skySea(s);
+  if (!!sea === !!s.sea && (!sea || Math.abs(sea.frac - s.sea.frac) < 0.01)) return;
+  s.sea = sea;
+  s.baseDirty = true;
+  _skyKick();
+}
+
+// The land: two ridges, the far one paler, tied to azimuth so they turn as
+// the view turns. Heights in device px above the horizon.
+function _skyRidge(s, az, far) {
+  var a = az * DEG_TO_RAD;
+  var k = far ? [4, 11, 29] : [7, 17, 43];
+  return s.H * SKY_HILLS * (far ? 1.6 : 1) * (0.55 + 0.25 * Math.sin(k[0] * a + (far ? 2.1 : 1.3)) +
+    0.15 * Math.sin(k[1] * a + 0.4) + 0.05 * Math.sin(k[2] * a));
+}
+function _skyAzAt(s, x) { return s.center + (x / s.W - 0.5) * SKY_SPAN_DEG; }
+function _skyHillAt(s, x) { return _skyRidge(s, _skyAzAt(s, x), false); }
+function _skyPaintLand(ctx, s, light) {
+  var W = s.W, H = s.H, yh = H * SKY_HORIZON_Y, step = 3 * s.dpr;
+  var tone = _skyTone(s.eph.sunGeoAlt).hor;
+  // The far ridge, hazed toward the sky's own horizon colour.
+  ctx.fillStyle = _skyRgb(_skyMix(_skyMix([14, 18, 26], [70, 86, 82], light), tone, 0.45));
+  ctx.beginPath(); ctx.moveTo(0, H);
+  for (var x = 0; x <= W + step; x += step) ctx.lineTo(x, yh - _skyRidge(s, _skyAzAt(s, x), true));
+  ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+  var top = _skyMix([10, 13, 20], [40, 52, 44], light), bottom = _skyMix([5, 7, 11], [24, 31, 27], light);
+  var grad = ctx.createLinearGradient(0, yh - H * SKY_HILLS, 0, H);
+  grad.addColorStop(0, _skyRgb(top));
+  grad.addColorStop(1, _skyRgb(bottom));
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.moveTo(0, H);
+  for (x = 0; x <= W + step; x += step) ctx.lineTo(x, yh - _skyHillAt(s, x));
+  ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+  // A few trees on the near ridge, at fixed bearings.
+  ctx.fillStyle = _skyRgb(_skyMix(top, [0, 0, 0], 0.35));
+  for (var az = 3; az < 360; az += 17 + (az % 7)) {
+    var tx = _skyX(s, az);
+    if (!_skyInView(s, tx, 6 * s.dpr)) continue;
+    var th = (5 + (az % 5)) * s.dpr * s.scale, ty = yh - _skyHillAt(s, tx) + 1;
+    ctx.beginPath(); ctx.moveTo(tx, ty - th); ctx.lineTo(tx - th * 0.32, ty); ctx.lineTo(tx + th * 0.32, ty); ctx.closePath(); ctx.fill();
+  }
+}
+
+// The sea: the sky's horizon colour carried down and darkened, swell lines
+// closer together toward the edge, a path of light under the Sun or the
+// Moon, and the shore where the tide has it (more beach at low water).
+function _skyPaintSea(ctx, s, light, ts) {
+  var W = s.W, H = s.H, yh = H * SKY_HORIZON_Y, dpr = s.dpr, e = s.eph;
+  var tone = _skyTone(e.sunGeoAlt).hor;
+  var far = _skyMix(_skyMix(tone, [8, 26, 46], 0.5), [0, 0, 0], 0.25), near = _skyMix(far, [2, 6, 12], 0.6);
+  var shore = yh + (H - yh) * (1 - _skyLerp(SKY_SHORE[0], SKY_SHORE[1], 1 - s.sea.frac));
+  var g = ctx.createLinearGradient(0, yh, 0, H);
+  g.addColorStop(0, _skyRgb(far)); g.addColorStop(1, _skyRgb(near));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, yh, W, H - yh);
+  // The swell: short strokes, their places fixed to bearings so they turn
+  // with the view; a slow shimmer on the twinkle's clock.
+  var r = _lcgRand(97), ink = _skyMix(tone, [255, 255, 255], 0.3);
+  ctx.lineWidth = Math.max(1, 0.8 * dpr);
+  for (var row = 1; row <= SKY_SEA_ROWS; row++) {
+    var f = Math.pow(row / SKY_SEA_ROWS, 1.8), y = yh + (shore - yh) * f;
+    if (y >= shore - dpr) break;
+    ctx.strokeStyle = _skyRgb(ink, 0.05 + 0.1 * light);
+    ctx.beginPath();
+    for (var k = 0; k < 9; k++) {
+      var az = r() * 360 + (s.twinkle % 7) * 0.3 * (row % 2 ? 1 : -1), x = _skyX(s, az), len = (6 + 18 * f) * dpr * r();
+      if (_skyInView(s, x, len)) { ctx.moveTo(x - len / 2, y); ctx.lineTo(x + len / 2, y); }
+    }
+    ctx.stroke();
+  }
+  // The light's path on the water, under the Sun or else the Moon.
+  var md = s.moonData, body = e.sun.alt > -1 ? { alt: e.sun.alt, az: e.sun.az, k: 0.55, c: _skySunTint(e.sun.alt).map(function (v) { return 255 * v; }) }
+    : md.pos.altitude > 0 ? { alt: md.pos.altitude, az: md.pos.azimuth, k: 0.45 * md.phase.illumination / 100, c: [230, 225, 205] } : null;
+  if (body && body.alt < 55) {
+    var bx = _skyX(s, body.az);
+    if (_skyInView(s, bx, W * 0.1)) {
+      var rr = _lcgRand(31 + (s.twinkle % 5));
+      for (var i = 0; i < 46; i++) {
+        var q = Math.pow(rr(), 0.7), gy = yh + (shore - yh) * q;
+        var spread = (2 + 26 * q) * dpr * (1 - body.alt / 70), gw = (2 + 9 * q) * dpr * rr();
+        ctx.fillStyle = _skyRgb(body.c, body.k * (0.35 + 0.65 * rr()) * (1 - 0.5 * q));
+        ctx.fillRect(bx + (rr() - 0.5) * 2 * spread - gw / 2, gy, gw, Math.max(1, 0.7 * dpr));
+      }
+    }
+  }
+  // The shore: wet sand, a line of foam, dry sand.
+  var sand = _skyMix([24, 24, 28], [196, 178, 140], light), wet = _skyMix(sand, near, 0.45);
+  ctx.beginPath(); ctx.moveTo(0, H);
+  var step = 4 * dpr;
+  for (var sx = 0; sx <= W + step; sx += step) {
+    var sa = _skyAzAt(s, sx) * DEG_TO_RAD;
+    ctx.lineTo(sx, shore + dpr * (1.6 * Math.sin(sa * 9) + 0.7 * Math.sin(sa * 21 + 1)));
+  }
+  ctx.lineTo(W, H); ctx.closePath();
+  var sg = ctx.createLinearGradient(0, shore, 0, H);
+  sg.addColorStop(0, _skyRgb(wet)); sg.addColorStop(0.35, _skyRgb(sand)); sg.addColorStop(1, _skyRgb(_skyMix(sand, [0, 0, 0], 0.3)));
+  ctx.fillStyle = sg;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(240,244,248,' + (0.18 + 0.32 * light).toFixed(3) + ')';
+  ctx.lineWidth = 1.2 * dpr;
+  ctx.stroke();
+  s.bodies.push({ type: 'sea', box: [0, yh / dpr + 2, W / dpr, shore / dpr] });
+  _skyPaintBoats(ctx, s, light);
+}
+
+// The boats, on the sea's edge, each on its own slow course by the page's
+// clock. By day a shape against the light; by night only their lights:
+// white at the masthead, red to port and green to starboard (a boat going
+// right shows its starboard side to the shore).
+function _skyPaintBoats(ctx, s, light) {
+  var yh = s.H * SKY_HORIZON_Y, dpr = s.dpr, hours = s.nowTime / 3600000, night = 1 - light;
+  for (var i = 0; i < SKY_BOATS.length; i++) {
+    var b = SKY_BOATS[i], az = ((b[0] + b[1] * b[2] * hours) % 360 + 360) % 360, x = _skyX(s, az);
+    var u = s.scale * dpr;
+    if (!_skyInView(s, x, 20 * u)) continue;
+    var len = (b[3] === 'ship' ? 16 : b[3] === 'sail' ? 7 : 9) * u, hull = (b[3] === 'ship' ? 2.6 : 1.8) * u;
+    if (light > 0.05) {
+      ctx.fillStyle = _skyRgb(_skyMix([30, 34, 44], [16, 20, 28], night), Math.min(1, light * 1.4));
+      ctx.beginPath(); ctx.moveTo(x - len / 2, yh - hull); ctx.lineTo(x + len / 2, yh - hull); ctx.lineTo(x + len * 0.4, yh); ctx.lineTo(x - len * 0.4, yh); ctx.closePath(); ctx.fill();
+      if (b[3] === 'sail') {
+        ctx.fillStyle = _skyRgb([236, 236, 230], Math.min(1, light * 1.4));
+        ctx.beginPath(); ctx.moveTo(x, yh - hull - 9 * u); ctx.lineTo(x + 4 * u * b[2], yh - hull - 0.5 * u); ctx.lineTo(x, yh - hull - 0.5 * u); ctx.closePath(); ctx.fill();
+      } else if (b[3] === 'ship') {
+        ctx.fillRect(x - len * 0.35 * b[2] - 2 * u, yh - hull - 3 * u, 4 * u, 3 * u);
+      } else {
+        ctx.fillRect(x - 1 * u, yh - hull - 3.5 * u, 3 * u, 3.5 * u);
+      }
+    }
+    if (night > 0.3) {
+      var a = (night - 0.3) / 0.7, mast = yh - hull - (b[3] === 'sail' ? 9 : 4) * u;
+      _skyLight(ctx, x, mast, 1.1 * dpr, [255, 250, 230], a);
+      _skyLight(ctx, x + b[2] * len * 0.3, yh - hull - 0.6 * u, 0.9 * dpr, b[2] > 0 ? [80, 255, 120] : [255, 70, 60], a);
+    }
+    s.bodies.push({ type: 'boat', kind: b[3], x: x / dpr, y: (yh - hull) / dpr, r: Math.max(4, len / dpr / 2) });
+  }
+}
+
+// A point of light with a little bloom.
+function _skyLight(ctx, x, y, r, c, a) {
+  var g = ctx.createRadialGradient(x, y, 0, x, y, r * 4);
+  g.addColorStop(0, _skyRgb(c, 0.55 * a)); g.addColorStop(1, _skyRgb(c, 0));
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, r * 4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = _skyRgb(c, a);
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+}
+
+// The ground (land or sea) and the compass along the horizon.
+function _skyPaintGround(ctx, s, ts) {
+  var light = _skyDaylight(s.eph.sunGeoAlt);
+  if (s.sea) _skyPaintSea(ctx, s, light, ts); else _skyPaintLand(ctx, s, light);
+  var yh = s.H * SKY_HORIZON_Y, dpr = s.dpr;
+  ctx.font = '600 ' + Math.round(10 * dpr) + 'px -apple-system, system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  var ink = light > 0.5 ? 'rgba(235,240,232,0.62)' : 'rgba(200,210,230,0.5)';
+  if (s.sea && light > 0.5) ink = 'rgba(20,28,40,0.55)';
+  for (var az = 0; az < 360; az += 45) {
+    var cx = _skyX(s, az);
+    if (!_skyInView(s, cx, -6 * dpr)) continue;
+    ctx.fillStyle = ink;
+    ctx.fillRect(cx - 0.5 * dpr, yh + 1 * dpr, 1 * dpr, 3 * dpr);
+    ctx.fillText(_azCompass(az), cx, yh + 6 * dpr);
+  }
+}
+
+// ── The aurora ──
+// Seen where the auroral oval passes overhead or near: by geomagnetic
+// latitude (a tilted dipole), farther toward the equator when the Sun is
+// active (the sunspot number the 3D Sun shows). Only in a dark sky. The
+// curtain is illustrative: how bright, and when, no one can say offline.
+function _skyMagLat(lat, lon) {
+  var p = SKY_MAG_POLE[0] * DEG_TO_RAD, la = lat * DEG_TO_RAD, dl = (lon - SKY_MAG_POLE[1]) * DEG_TO_RAD;
+  return Math.asin(Math.sin(la) * Math.sin(p) + Math.cos(la) * Math.cos(p) * Math.cos(dl)) / DEG_TO_RAD;
+}
+function _skySunActivity(ms) {
+  if (typeof _aeSunspotNumber !== 'function') return 0.5;
+  return _skyClamp(_aeSunspotNumber(_aeDecimalYear(ms)).r / 180, 0, 1.5);
+}
+// The oval stands about 110 km up: from under it, overhead; from a few
+// degrees of latitude either side, low toward it (on the pole's side from
+// equatorward of it, on the equator's side from poleward), gone past ~10.
+var SKY_AURORA_SEEN_DEG = 10, SKY_AURORA_ALT_PER_DEG = 9;
+function _skyAurora(s) {
+  var m = _skyMagLat(s.lat, s.lon), act = _skySunActivity(s.nowTime);
+  var dist = Math.abs(m) - (SKY_AURORA_LAT - SKY_AURORA_REACH * act);
+  var k = _skyClamp(1 - Math.abs(dist) / SKY_AURORA_SEEN_DEG, 0, 1) * _skyDarkness(s.eph.sunGeoAlt);
+  if (k <= 0.02) return null;
+  var poleward = m >= 0 ? 0 : 180;
+  return { k: k, mag: m, act: act, toward: dist < 0 ? poleward : (poleward + 180) % 360,
+    alt: _skyClamp(90 - Math.abs(dist) * SKY_AURORA_ALT_PER_DEG, 2, 70) };
+}
+function _skyPaintAurora(ctx, s) {
+  var au = s.aurora;
+  if (!au) return;
+  var dpr = s.dpr, yh = s.H * SKY_HORIZON_Y, step = 1.5;
+  var drift = s.twinkle * 0.07, reach = 80 + au.alt * 1.4;   // overhead, it spans the sky
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (var d = -reach; d <= reach; d += step) {
+    var az = au.toward + d, x = _skyX(s, az);
+    if (!_skyInView(s, x, 4 * dpr)) continue;
+    var a = d * DEG_TO_RAD * 3 + drift;
+    var curtain = 0.5 + 0.5 * Math.sin(a) * Math.sin(a * 2.7 + 1.3) + 0.25 * Math.sin(a * 7.1 + drift * 3);
+    var fall = Math.exp(-Math.pow(d / (reach * 0.7), 2));
+    var k = au.k * fall * _skyClamp(curtain, 0, 1.2);
+    if (k < 0.02) continue;
+    var top = 14 + 16 * au.k * (0.6 + 0.4 * Math.sin(a * 1.7)), base = Math.max(1, au.alt * Math.cos(d / reach * Math.PI / 2)) + 2 + 3 * Math.sin(a * 0.9 + 2);
+    var y0 = _skyY(s, base), y1 = _skyY(s, top + base);
+    var g = ctx.createLinearGradient(0, y0, 0, y1);
+    g.addColorStop(0, 'rgba(90,255,160,0)');
+    g.addColorStop(0.12, 'rgba(90,255,160,' + (0.3 * k).toFixed(3) + ')');
+    g.addColorStop(0.55, 'rgba(70,230,150,' + (0.14 * k).toFixed(3) + ')');
+    g.addColorStop(1, 'rgba(220,70,120,' + (0.05 * k).toFixed(3) + ')');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - step / SKY_SPAN_DEG * s.W, y1, step / SKY_SPAN_DEG * s.W * 1.6, Math.min(y0, yh) - y1);
+  }
+  ctx.restore();
+  // Its tap: the band where it is brightest, when that is in view.
+  var cx = _skyX(s, au.toward) / dpr, half = s.cssW * 0.2;
+  if (cx > -half && cx < s.cssW + half) {
+    s.bodies.push({ type: 'aurora', mag: au.mag,
+      box: [Math.max(0, cx - half), _skyY(s, au.alt + 28) / dpr, Math.min(s.cssW, cx + half), _skyY(s, Math.max(1, au.alt - 2)) / dpr] });
+  }
+}
+
+// ── The ISS ──
+// From the satellites the 3D view has loaded (none until it has, and none
+// once its elements are only approximate): where it stands in this sky, and
+// whether the Sun lights it while the observer's sky is dark enough to see it.
+function _skyIss(s, ms) {
+  if (typeof _ae === 'undefined' || !_ae || !_ae.sats || typeof _aeSceneAt !== 'function') return null;
+  var iss = null, list = _ae.sats.list;
+  for (var i = 0; i < list.length; i++) if (list[i].iss) { iss = list[i]; break; }
+  if (!iss || _aeSatStanding((ms - iss.epochMs) / MS_PER_DAY, true) !== 'exact') return null;
+  var st = _aeSatAt(iss, ms, 0), sc = _aeSceneAt(ms);
+  if (!st) return null;
+  var sat = _aeTemeToScene(st.posKm, _aeEqEq(sc));
+  var obs = _aeFixedToScene(_aeGeodeticToFixed(s.lat, s.lon), sc.gast);
+  var up = _aeNorm(obs), d = _aeSub(sat, obs), dist = _aeLen(d), dn = _aeScale(d, 1 / dist);
+  var alt = Math.asin(_aeDot(dn, up)) / DEG_TO_RAD;
+  if (alt < SKY_ISS_MIN_ALT) return null;
+  var east = _aeNorm(_aeCross([0, 0, 1], up)), north = _aeCross(up, east);
+  var az = (Math.atan2(_aeDot(dn, east), _aeDot(dn, north)) / DEG_TO_RAD + 360) % 360;
+  // In the Earth's shadow (a cylinder behind it, away from the Sun): unseen.
+  var sun = _aeNorm(sc.sun), along = _aeDot(sat, sun);
+  if (along < 0 && _aeLen(_aeSub(sat, _aeScale(sun, along))) < 1) return null;
+  return { alt: alt, az: az, km: (_aeLen(sat) - 1) * AE_EARTH_RADIUS_KM };
+}
+
+// ── The moving things ──
+// Each is {type, start, dur, az0, az1, alt0, alt1, ...}: a path across the
+// sky in azimuth and altitude, so it stays put when the view turns.
+function _skyActorAt(a, ts) { return _skyClamp((ts - a.start) / a.dur, 0, 1); }
+function _skyCrossing(s, type, durS, altPair) {
+  var dir = _skyRand() < 0.5 ? 1 : -1, alt = _skyRandIn(_skyRand, altPair);
+  var from = s.center - dir * (SKY_SPAN_HALF + 6), to = s.center + dir * (SKY_SPAN_HALF + 6);
+  return { type: type, start: performance.now(), dur: _skyRandIn(_skyRand, durS) * 1000, dir: dir,
+    az0: from, az1: to, alt0: alt, alt1: alt + (_skyRand() - 0.5) * 8 };
+}
+// Meteors an hour at the scene's instant: the sporadic background and the
+// showers near their peaks (almanac.js _METEOR_SHOWERS); and the busiest.
+function _skyMeteorRate(s) {
+  var rate = SKY_METEOR_SPORADIC_HR, best = null, d = new Date(s.nowTime);
+  if (typeof _METEOR_SHOWERS !== 'undefined') {
+    for (var i = 0; i < _METEOR_SHOWERS.length; i++) {
+      var sh = _METEOR_SHOWERS[i], days = Infinity;
+      for (var y = d.getUTCFullYear() - 1; y <= d.getUTCFullYear() + 1; y++) {
+        days = Math.min(days, Math.abs(s.nowTime - Date.UTC(y, sh.peak[0] - 1, sh.peak[1])) / MS_PER_DAY);
+      }
+      var r = sh.zhr * Math.exp(-days / SKY_METEOR_SHOWER_DAYS);
+      rate += r;
+      if (r >= 2 && (!best || r > best.r)) best = { sh: sh, r: r };
+    }
+  }
+  return { perHour: rate, shower: best };
+}
+function _skyMeteor(s) {
+  var az = s.center + (_skyRand() - 0.5) * SKY_SPAN_DEG * 0.9, alt = 35 + 40 * _skyRand();
+  var ang = (200 + 140 * _skyRand()) * DEG_TO_RAD, len = 6 + 10 * _skyRand();
+  return { type: 'meteor', start: performance.now(), dur: _skyRandIn(_skyRand, SKY_METEOR_MS),
+    az0: az, alt0: alt, az1: az + Math.cos(ang) * len, alt1: alt + Math.sin(ang) * len * 0.6 - len * 0.4 };
+}
+function _skyPaintActor(ctx, s, a, ts) {
+  var p = _skyActorAt(a, ts), dpr = s.dpr;
+  var az = a.az0 + (a.az1 - a.az0) * p, alt = a.alt0 + (a.alt1 - a.alt0) * p;
+  var x = _skyX(s, az), y = _skyY(s, alt), u = s.scale * dpr, light = _skyDaylight(s.eph.sunGeoAlt);
+  if (!_skyInView(s, x, 30 * dpr)) return;
+  if (a.type === 'plane') {
+    if (light > 0.15) {
+      // A contrail, and the plane a dark speck at its head.
+      var tx = _skyX(s, az - a.dir * 16);
+      if (Math.abs(tx - x) < s.W / 2) {
+        var cg = ctx.createLinearGradient(x, y, tx, y);
+        cg.addColorStop(0, 'rgba(255,255,255,' + (0.5 * light).toFixed(3) + ')'); cg.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.strokeStyle = cg; ctx.lineWidth = 1.4 * dpr;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(tx, y + (a.alt1 - a.alt0) * 0.5); ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(40,46,58,' + (0.85 * light).toFixed(3) + ')';
+      ctx.fillRect(x - 3 * u, y - 0.5 * u, 6 * u, 1.2 * u);
+      ctx.fillRect(x - 0.6 * u, y - 2.4 * u, 1.4 * u, 5 * u);
+    }
+    if (light < 0.8) {
+      var on = 1 - light, t = ts - a.start;
+      _skyLight(ctx, x - a.dir * 3 * u, y, 0.8 * dpr, a.dir > 0 ? [255, 60, 50] : [70, 255, 110], 0.9 * on);
+      _skyLight(ctx, x + a.dir * 3 * u, y, 0.8 * dpr, a.dir > 0 ? [70, 255, 110] : [255, 60, 50], 0.9 * on);
+      if (t % 1000 < 60 || (t % 1000 > 160 && t % 1000 < 220)) _skyLight(ctx, x, y, 1.2 * dpr, [255, 255, 255], on);
+      if (t % 1300 < 120) _skyLight(ctx, x, y - 1.2 * u, 1 * dpr, [255, 40, 30], on);
+    }
+    s.bodies.push({ type: 'plane', x: x / dpr, y: y / dpr, r: 6 });
+  } else if (a.type === 'birds') {
+    ctx.strokeStyle = 'rgba(30,34,42,' + (0.75 * light + 0.1).toFixed(3) + ')';
+    ctx.lineWidth = 1.1 * dpr;
+    ctx.beginPath();
+    for (var i = 0; i < a.n; i++) {
+      var row = Math.ceil(i / 2), side = i % 2 ? 1 : -1;
+      var bx = x - a.dir * row * 7 * u, by = y + side * row * 4 * u;
+      var flap = Math.sin(ts * 0.012 + i * 1.7) * 2.2 * u, w = 3.2 * u;
+      ctx.moveTo(bx - w, by - flap); ctx.quadraticCurveTo(bx - w / 2, by - flap / 2 - u, bx, by);
+      ctx.quadraticCurveTo(bx + w / 2, by - flap / 2 - u, bx + w, by - flap);
+    }
+    ctx.stroke();
+    s.bodies.push({ type: 'birds', x: x / dpr, y: y / dpr, r: 14 });
+  } else if (a.type === 'meteor') {
+    var hx = _skyX(s, a.az0 + (a.az1 - a.az0) * Math.max(0, p - 0.45)), hy = _skyY(s, a.alt0 + (a.alt1 - a.alt0) * Math.max(0, p - 0.45));
+    var fade = p < 0.8 ? 1 : (1 - p) / 0.2;
+    var mg = ctx.createLinearGradient(hx, hy, x, y);
+    mg.addColorStop(0, 'rgba(220,235,255,0)'); mg.addColorStop(1, 'rgba(240,248,255,' + (0.9 * fade).toFixed(3) + ')');
+    ctx.strokeStyle = mg; ctx.lineWidth = 1.3 * dpr;
+    ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(x, y); ctx.stroke();
+    s.bodies.push({ type: 'meteor', x0: hx / dpr, y0: hy / dpr, x1: x / dpr, y1: y / dpr });
+  }
+}
+function _skyPaintActors(ctx, s, ts) {
+  var keep = [];
+  for (var i = 0; i < s.actors.length; i++) {
+    var a = s.actors[i];
+    if (ts - a.start > a.dur) { if (a.type === 'meteor') s.lastMeteor = a; continue; }
+    keep.push(a);
+    _skyPaintActor(ctx, s, a, ts);
+  }
+  s.actors = keep;
+  // The ISS, on the page's clock (live: now, this frame).
+  var iss = _skyIss(s, _skyLive() ? Date.now() : s.nowTime);
+  s.issUp = !!iss && _skyLive();
+  if (iss && s.eph.sunGeoAlt < SKY_CIVIL_ALT + 2) {
+    var x = _skyX(s, iss.az);
+    if (_skyInView(s, x, 4)) {
+      var y = _skyY(s, iss.alt);
+      _skyLight(ctx, x, y, 1.4 * s.dpr, [255, 246, 222], 1);
+      s.bodies.push({ type: 'iss', x: x / s.dpr, y: y / s.dpr, r: 3, alt: iss.alt, az: iss.az, km: iss.km });
+    }
+  }
+}
+// Spawning: each timer adds one and sets the next; nothing while unseen.
+function _skySpawnPlane() { _skySpawn('plane'); }
+function _skySpawnBirds() { _skySpawn('birds'); }
+function _skySpawnMeteor() { _skySpawn('meteor'); }
+var SKY_SPAWNERS = { plane: _skySpawnPlane, birds: _skySpawnBirds, meteor: _skySpawnMeteor };
+function _skySpawn(kind) {
+  var s = _skyState;
+  _skyTimers[kind] = 0;
+  if (!_skyAwake(s) || _skyReduceMotion() || !s.eph) return;
+  var g = s.eph.sunGeoAlt, gap;
+  if (kind === 'plane') {
+    s.actors.push(_skyCrossing(s, 'plane', SKY_PLANE_S, SKY_PLANE_ALT));
+    gap = _skyRandIn(_skyRand, SKY_PLANE_GAP_S) * 1000;
+  } else if (kind === 'birds') {
+    if (g > 2) { var b = _skyCrossing(s, 'birds', SKY_BIRD_S, SKY_BIRD_ALT); b.n = 3 + Math.floor(_skyRand() * 5); s.actors.push(b); }
+    gap = _skyRandIn(_skyRand, SKY_BIRD_GAP_S) * 1000;
+  } else {
+    if (g < SKY_NAUTICAL_ALT + 2) s.actors.push(_skyMeteor(s));
+    // Exponential gaps at the shown rate (sped up; the tap says by how much).
+    gap = -Math.log(Math.max(1e-6, _skyRand())) * 3600000 / (_skyMeteorRate(s).perHour * SKY_METEOR_SPEEDUP);
+  }
+  _skyKick();
+  _skyTimers[kind] = setTimeout(SKY_SPAWNERS[kind], Math.max(400, gap));
+}
+
 // ══ Painting and the clock ═══════════════════════════════════════════════
 
-// One frame, straight onto the canvas: the sky, the stars, the bodies, the
-// muons, the ground. A paint is a few thousand canvas calls (about 2 ms on a
-// 4x-slowed phone); it happens on a change, a twinkle or a moving frame.
-function _skyPaint(ts) {
-  var s = _skyState;
-  if (!s || !s.eph || !s.canvas.isConnected) return;
-  var ctx = s.canvas.getContext('2d');
+// The still picture (sky, stars, bodies, aurora, ground and boats) is
+// painted into its own canvas when something in it changes: the instant, a
+// twinkle, the view turned, the Moon gliding. A frame is that picture and
+// the moving things over it, so a plane crossing costs one copy and a few
+// strokes, not a whole sky (a few thousand canvas calls, ~2-4 ms on a
+// 4x-slowed phone).
+function _skyPaintBase(s, ts) {
+  if (!s.base) s.base = document.createElement('canvas');
+  if (s.base.width !== s.W || s.base.height !== s.H) { s.base.width = s.W; s.base.height = s.H; }
+  var ctx = s.base.getContext('2d');
   s.bodies = [];
   _skyPaintSky(ctx, s);
+  _skyPaintAurora(ctx, s);
   _skyPaintStars(ctx, s);
   _skyPaintPlanets(ctx, s);
   _skyPaintSun(ctx, s);
   _skyPaintMoon(ctx, s, _skyMoonAt(s, ts));
+  _skyPaintGround(ctx, s, ts);
+  s.baseBodies = s.bodies;
+  s.baseDirty = !!s.moonAnim;
+}
+function _skyPaint(ts) {
+  var s = _skyState;
+  if (!s || !s.eph || !s.canvas.isConnected) return;
+  if (s.baseDirty || !s.base || s.moonAnim) _skyPaintBase(s, ts);
+  var ctx = s.canvas.getContext('2d');
+  ctx.clearRect(0, 0, s.W, s.H);
+  ctx.drawImage(s.base, 0, 0);
+  s.bodies = s.baseBodies.slice();
+  // The moving things stay in the sky, never over the ground.
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, 0, s.W, s.H * SKY_HORIZON_Y - _skyRidge(s, s.center, false) * 0.3); ctx.clip();
+  _skyPaintActors(ctx, s, ts);
   _skyPaintMuons(ctx, s, ts);
-  _skyPaintGround(ctx, s);
+  ctx.restore();
 }
 
 function _skyReduceMotion() { return typeof _almReduceMotion === 'function' && _almReduceMotion(); }
@@ -875,6 +1274,8 @@ function _skyAnimating(s, ts) {
   if (typeof _heroMoonAnim !== 'undefined' && _heroMoonAnim) return true;
   return _skyMuonsIn(s, ts, 0, SKY_MUON_FALL_MS);
 }
+// A plane, birds, a meteor or the ISS on screen: frames at SKY_ACTOR_FRAME_MS.
+function _skyActorsMoving(s) { return s.actors.length > 0 || s.issUp; }
 // Any moving muon whose age lies in [from, to) ms.
 function _skyMuonsIn(s, ts, from, to) {
   for (var i = 0; i < s.muons.length; i++) {
@@ -888,10 +1289,12 @@ function _skyLoop(ts) {
   var s = _skyState;
   if (!s) return;
   if (s.pending) { _skyCompute(s, s.pending); _skyArm(); }
-  if (_skyAwake(s)) _skyPaint(ts);
+  // With only the moving things moving, every other frame is enough.
+  var onlyActors = !_skyAnimating(s, ts) && !s.baseDirty;
+  if (_skyAwake(s) && !(onlyActors && ts - (s.paintedAt || 0) < SKY_ACTOR_FRAME_MS)) { _skyPaint(ts); s.paintedAt = ts; s.paints = (s.paints || 0) + 1; }
   // The hero's time-travel sweep rides this same loop (almanac.js).
   if (typeof _heroMoonTick === 'function') _heroMoonTick(ts);
-  if (_skyAnimating(s, ts)) { _almanacSkyRAF = requestAnimationFrame(_skyLoop); return; }
+  if (_skyAnimating(s, ts) || (_skyAwake(s) && _skyActorsMoving(s))) { _almanacSkyRAF = requestAnimationFrame(_skyLoop); return; }
   // A landed muon's trace fades in a few steps, not frame by frame.
   if (_skyMuonsIn(s, ts, 0, SKY_MUON_FALL_MS + SKY_MUON_FADE_MS)) {
     clearTimeout(_skyTimers.fade);
@@ -903,7 +1306,8 @@ function _skyKick() {
   if (!_almanacSkyRAF && _skyState) _almanacSkyRAF = requestAnimationFrame(_skyLoop);
 }
 
-var _skyTimers = { live: 0, twinkle: 0, muon: 0, fade: 0 };
+var _skyTimers = { live: 0, twinkle: 0, muon: 0, fade: 0, plane: 0, birds: 0, meteor: 0 };
+var SKY_FIRST_SPAWN_MS = { plane: 4000, birds: 9000, meteor: 2500 };
 function _skyDisarm() {
   for (var k in _skyTimers) { clearTimeout(_skyTimers[k]); _skyTimers[k] = 0; }
 }
@@ -918,6 +1322,9 @@ function _skyArm() {
   if (s.eph.sunGeoAlt < -3) _skyTimers.twinkle = setTimeout(_skyTwinkleTick, SKY_TWINKLE_MS);
   var gap = s.muonCount ? SKY_MUON_GAP_MS[0] + Math.random() * (SKY_MUON_GAP_MS[1] - SKY_MUON_GAP_MS[0]) : SKY_MUON_FIRST_MS;
   _skyTimers.muon = setTimeout(_skyMuonTick, gap);
+  Object.keys(SKY_FIRST_SPAWN_MS).forEach(function (kind) {
+    _skyTimers[kind] = setTimeout(SKY_SPAWNERS[kind], SKY_FIRST_SPAWN_MS[kind] * (0.6 + 0.8 * Math.random()));
+  });
 }
 function _skyLiveTick() {
   _skyTimers.live = 0;
@@ -932,6 +1339,7 @@ function _skyTwinkleTick() {
   var s = _skyState;
   if (!_skyAwake(s) || _skyReduceMotion() || s.eph.sunGeoAlt >= -3) return;
   s.twinkle++;
+  s.baseDirty = true;
   _skyKick();
   _skyTimers.twinkle = setTimeout(_skyTwinkleTick, SKY_TWINKLE_MS);
 }
@@ -972,9 +1380,16 @@ function _skyCompute(s, now) {
   var f = _skyFrame(now, s.lat, s.lon);
   s.now = now; s.nowTime = now.getTime();
   s.eph = f.eph; s.moonData = f.moonData;
+  _skyGroundAt(s);
   _skyUpdateDesc(s);
   _skyCaption(s);
   return f;
+}
+// What stands on the horizon at the instant: the sea's level, the aurora.
+function _skyGroundAt(s) {
+  s.sea = _skySea(s);
+  s.aurora = _skyAurora(s);
+  s.baseDirty = true;
 }
 
 // `animateMoon` -- true only for a repaint that reinitializes this same canvas
@@ -1002,9 +1417,10 @@ function _initSkyScene(now, lat, lon, animateMoon) {
   var loc = _getLocation();
   var s = {
     canvas: canvas, dpr: dpr, W: canvas.width, H: canvas.height, cssW: w, scale: _skyClamp(w / 600, 0.85, 1.15),
-    lat: lat, lon: lon, center: lat >= 0 ? 180 : 0,
+    lat: lat, lon: lon, center: _skyHeading != null ? _skyHeading : (lat >= 0 ? 180 : 0),
     stored: loc.stored && loc.lat === lat && loc.lon === lon, name: loc.name || '',
-    moonAnim: null, twinkle: 0, muons: [], bodies: [],
+    moonAnim: null, twinkle: 0, muons: [], bodies: [], baseBodies: [],
+    actors: prev ? prev.actors : [], base: prev ? prev.base : null, baseDirty: true,
     muonCount: prev ? prev.muonCount : 0, inView: prev ? prev.inView : true,
     observer: prev && prev.observer
   };
@@ -1041,6 +1457,7 @@ function _skySetInstant(now) {
   s.now = now;
   s.eph = f.eph;
   _skyMoonRetarget(s, f.moonData, performance.now(), fromTime, now.getTime());
+  _skyGroundAt(s);
   _skyKick();
 }
 
@@ -1093,7 +1510,8 @@ function _skyCaption(s) {
   var phase = _almEsc(t(key));
   if (key !== 'alm_sky_day' && key !== 'alm_sky_night') phase = _lterm('twilight', phase);
   var sunAlt = t('alm_sky_sun_alt', { a: _skyDeg(s.eph.sun.alt) });
-  var html = '<span>' + phase + ' · ' + _almEsc(sunAlt) + '</span>' +
+  var facing = t('alm_sky_facing', { dir: _azCompass(s.center) });
+  var html = '<span>' + phase + ' · ' + _almEsc(sunAlt) + ' · ' + _almEsc(facing) + '</span>' +
     (s.stored ? '<span class="alm-sky-place">' + _almEsc(s.name || _skyCoords(s.lat, s.lon)) + '</span>' : '');
   if (el._html !== html) { el.innerHTML = html; el._html = html; }
   // No place chosen: under the sky, the one line asking for it.
@@ -1118,14 +1536,16 @@ function _skySegDist(px, py, x0, y0, x1, y1) {
 }
 // What a tap at (x, y) CSS px lands on: the nearest body within reach of its
 // edge, the Sun, Moon and planets before the stars, then a muon's streak.
-var SKY_TAP_RANK = { sun: 0, moon: 0, planet: 0, star: 1, muon: 2 };
+var SKY_TAP_RANK = { sun: 0, moon: 0, planet: 0, iss: 0, plane: 1, birds: 1, meteor: 1, boat: 1, star: 2, muon: 3, aurora: 4, sea: 5 };
 function _skyHitTest(x, y) {
   var s = _skyState;
   if (!s) return null;
-  var best = null, bestRank = 9, bestGap = Infinity;
+  var best = null, bestRank = 99, bestGap = Infinity;
   for (var i = 0; i < s.bodies.length; i++) {
-    var b = s.bodies[i];
-    var gap = b.type === 'muon' ? _skySegDist(x, y, b.x0, b.y0, b.x1, b.y1) : Math.sqrt((b.x - x) * (b.x - x) + (b.y - y) * (b.y - y)) - b.r;
+    var b = s.bodies[i], gap;
+    if (b.box) gap = x >= b.box[0] && x <= b.box[2] && y >= b.box[1] && y <= b.box[3] ? 0 : Infinity;
+    else if (b.x0 != null) gap = _skySegDist(x, y, b.x0, b.y0, b.x1, b.y1);
+    else gap = Math.sqrt((b.x - x) * (b.x - x) + (b.y - y) * (b.y - y)) - b.r;
     if (gap > SKY_TAP_PX) continue;
     var rank = SKY_TAP_RANK[b.type];
     if (rank < bestRank || (rank === bestRank && gap < bestGap)) { best = b; bestRank = rank; bestGap = gap; }
@@ -1139,17 +1559,40 @@ function _skyBodyKey(b) {
   if (b.type === 'planet') return 'planet:' + b.name.toLowerCase();
   if (b.type === 'star') return _starLinkKey(b.idx);
   if (b.type === 'muon') return 'term:muon';
+  if (b.type === 'iss') return 'term:iss';
+  if (b.type === 'meteor') return 'term:meteor_shower';
   return null;
 }
+var SKY_NAME_KEYS = { sun: 'alm_sun', moon: 'alm_the_moon', muon: 'alm_sky_muon', iss: 'alm_earth_iss_name', sea: 'alm_sky_sea',
+  boat: 'alm_sky_boat', plane: 'alm_sky_plane', birds: 'alm_sky_birds', meteor: 'alm_sky_meteor', aurora: 'alm_sky_aurora' };
 function _skyBodyName(b) {
-  if (b.type === 'sun') return t('alm_sun');
-  if (b.type === 'moon') return t('alm_the_moon');
   if (b.type === 'planet') return _tp(b.name);
   if (b.type === 'star') return _STAR_NAMES[b.idx];
-  return t('alm_sky_muon');
+  return t(SKY_NAME_KEYS[b.type]);
+}
+// The lines under the name for what lives on the horizon, or null.
+function _skyLifeLines(b) {
+  var s = _skyState;
+  if (b.type === 'sea') return s.sea && typeof _atSkySeaLines === 'function' ? _atSkySeaLines(s.sea) : [];
+  if (b.type === 'boat') {
+    var km = SKY_EYE_KM * Math.sqrt(SKY_EYE_M);
+    return [t('alm_sky_boat_line', { d: _orrNum(km, 'kilometer', 0) }), t('alm_sky_boat_lights')];
+  }
+  if (b.type === 'plane') return [t('alm_sky_plane_line')];
+  if (b.type === 'birds') return [t('alm_sky_birds_line')];
+  if (b.type === 'meteor') {
+    var r = _skyMeteorRate(s), n = _orrNum(Math.round(r.perHour), null, 0);
+    return [r.shower ? t('alm_sky_meteor_shower', { name: _showerName(r.shower.sh), n: n }) : t('alm_sky_meteor_line', { n: n }),
+      t('alm_sky_meteor_fast', { k: _orrNum(SKY_METEOR_SPEEDUP, null, 0) })];
+  }
+  if (b.type === 'aurora') return [t('alm_sky_aurora_line', { g: _skyDeg(Math.abs(b.mag)) })];
+  if (b.type === 'iss') return [t('alm_sky_iss_line', { km: _orrNum(Math.round(b.km), 'kilometer', 0), where: _skyDeg(b.alt) + ' ' + _azCompass(b.az) })];
+  return null;
 }
 // The lines under a body's name.
 function _skyBodyLines(b) {
+  var life = _skyLifeLines(b);
+  if (life) return life;
   if (b.type === 'muon') {
     var f = _muonFacts();
     return [
@@ -1175,7 +1618,7 @@ function _skyShowTip(b) {
   var html = '<span class="alm-sky-tip-name">' + name + '</span>';
   var lines = _skyBodyLines(b);
   for (var i = 0; i < lines.length; i++) {
-    var src = b.type === 'muon' && i === lines.length - 1;   // the source, small
+    var src = (b.type === 'muon' || b.type === 'meteor') && i === lines.length - 1;   // the source or the footnote, small
     html += '<span class="alm-sky-tip-line' + (src ? ' alm-sky-tip-src' : '') + '">' + _almEsc(lines[i]) + '</span>';
   }
   if (b.type === 'planet' && typeof _orreryShowBody === 'function') {
@@ -1186,7 +1629,8 @@ function _skyShowTip(b) {
   tip._sky = b;
   // Beside the body, above it when there is room, inside the scene.
   var W = wrap.clientWidth, H = wrap.clientHeight, tw = tip.offsetWidth, th = tip.offsetHeight;
-  var ax = b.type === 'muon' ? b.x1 : b.x, ay = b.type === 'muon' ? (b.y0 + b.y1) / 2 : b.y, gap = (b.r || 4) + 8;
+  var at = b.box ? { x: b.tapX, y: b.tapY } : b.x0 != null ? { x: b.x1, y: (b.y0 + b.y1) / 2 } : b;
+  var ax = at.x, ay = at.y, gap = (b.r || 4) + 8;
   var top = ay - gap - th >= 2 ? ay - gap - th : ay + gap;
   tip.style.top = _skyClamp(top, 2, Math.max(2, H - th - 2)) + 'px';
   tip.style.left = _skyClamp(ax - tw / 2, 2, Math.max(2, W - tw - 2)) + 'px';
@@ -1213,16 +1657,72 @@ function _skyTapAt(clientX, clientY) {
   var r = s.canvas.getBoundingClientRect();
   var hit = _skyHitTest(clientX - r.left, clientY - r.top);
   if (!hit) { _skyHideTip(); return null; }
+  hit.tapX = clientX - r.left; hit.tapY = clientY - r.top;
   return _skyAct(hit);
+}
+
+// Looking round: a sideways drag turns the view the whole way round (the
+// compass on the horizon turns with it); an up or down swipe still scrolls
+// the page (touch-action: pan-y). The bearing faced is kept while the
+// Almanac is open. Arrow keys turn it from the keyboard.
+var _skyHeading = null;
+var SKY_DRAG_SLOP_PX = 6, SKY_KEY_TURN_DEG = 15, SKY_CLICK_AFTER_TURN_MS = 400;
+function _skyTurn(dDeg) {
+  var s = _skyState;
+  if (!s) return;
+  s.center = _skyHeading = ((s.center + dDeg) % 360 + 360) % 360;
+  s.baseDirty = true;
+  _skyHideTip();
+  _skyCaption(s);
+  _skyKick();
+}
+function _skyBindLook(canvas) {
+  var press = null;
+  canvas.addEventListener('pointerdown', function (e) {
+    if (e.button != null && e.button !== 0) return;
+    press = { id: e.pointerId, x: e.clientX, y: e.clientY, lx: e.clientX, turning: false };
+  });
+  canvas.addEventListener('pointermove', function (e) {
+    if (!press || e.pointerId !== press.id) return;
+    var dx = e.clientX - press.x, dy = e.clientY - press.y;
+    if (!press.turning) {
+      if (Math.hypot(dx, dy) < SKY_DRAG_SLOP_PX) return;
+      if (Math.abs(dy) > Math.abs(dx)) { press = null; return; }   // the page's scroll
+      press.turning = true;
+      canvas.classList.add('alm-sky-turning');
+      try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+    }
+    var s = _skyState;
+    if (s) _skyTurn(-(e.clientX - press.lx) / s.cssW * SKY_SPAN_DEG);
+    press.lx = e.clientX;
+  });
+  function end(e) {
+    if (!press || e.pointerId !== press.id) return;
+    // A turn is not a tap: the click that follows it is not one either.
+    if (press.turning) canvas._skyTurnedAt = performance.now();
+    canvas.classList.remove('alm-sky-turning');
+    press = null;
+  }
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener('keydown', function (e) {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    _skyTurn(e.key === 'ArrowLeft' ? -SKY_KEY_TURN_DEG : SKY_KEY_TURN_DEG);
+  });
 }
 
 function _skyBindTaps(canvas) {
   if (canvas._skyTaps) return;
   canvas._skyTaps = true;
-  canvas.addEventListener('click', function (e) { _skyTapAt(e.clientX, e.clientY); });
+  _skyBindLook(canvas);
+  canvas.addEventListener('click', function (e) {
+    if (performance.now() - (canvas._skyTurnedAt || -1e9) < SKY_CLICK_AFTER_TURN_MS) return;
+    _skyTapAt(e.clientX, e.clientY);
+  });
   canvas.addEventListener('mousemove', function (e) {
     var r = canvas.getBoundingClientRect(), hit = _skyHitTest(e.clientX - r.left, e.clientY - r.top);
-    canvas.style.cursor = hit ? 'pointer' : '';
+    canvas.style.cursor = hit ? 'pointer' : 'grab';
   });
   var tip = document.getElementById('almanac-sky-tip');
   if (tip && !tip._skyBound) {
