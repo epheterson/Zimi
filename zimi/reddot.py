@@ -29,8 +29,12 @@ import threading
 import time
 
 from zimi import server as _srv
-from zimi.creator import CreateError, _finish_output, _try_register
-from zimi.importer import _run_capture, _run_stream, _venv_bin
+
+# Making a subreddit ZIM is capture. zimi-mcp only reads one, and ships
+# without the capture modules (server.bundled).
+if _srv.bundled("creator") and _srv.bundled("importer"):
+    from zimi.creator import CreateError, _finish_output, _try_register
+    from zimi.importer import _run_capture, _run_stream, _venv_bin
 
 log = logging.getLogger("zimi")
 

@@ -7,7 +7,8 @@ one as its intro and an outline) and read_section. full: every tool,
 collections, chunks, translations and the apps included.
 
 Usage:
-  zimi mcp [ZIM_DIR] [--tools lean|full]     lean unless told otherwise
+  zimi-mcp [ZIM_DIR] [--tools lean|full]     lean unless told otherwise
+  zimi mcp [ZIM_DIR] [--tools lean|full]     the same, in the full install
   python3 -m zimi.mcp_server [--tools ...]   full unless told otherwise
 
 Configuration:
@@ -17,7 +18,7 @@ Configuration:
 Claude Code config (local):
   {
     "mcpServers": {
-      "zimi": { "command": "zimi", "args": ["mcp", "/path/to/zims"] }
+      "zimi": { "command": "zimi-mcp", "args": ["/path/to/zims"] }
     }
   }
 
