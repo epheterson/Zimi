@@ -177,6 +177,12 @@ check(Math.abs(mu.fall * 1e6 - 50.13) < 0.01, 'a 15 km fall at 0.998c takes 50.1
 check(Math.abs(mu.own * 1e6 - 3.17) < 0.01, 'and 3.17 us by the muon\'s (' + (mu.own * 1e6).toFixed(3) + ')');
 check(Math.abs(mu.reach - 658) < 1, 'without the slow clock a muon goes 658 m in a lifetime (' + mu.reach.toFixed(1) + ')');
 check(mu.survive > 0.2 && mu.survive < 0.3 && mu.surviveNaive < 1e-9, 'about a quarter arrive; without it, almost none (' + mu.survive.toFixed(3) + ', ' + mu.surviveNaive.toExponential(2) + ')');
+const g = S._lorentzFactor(0.8);
+const ticks = S._lcTicks(16001, g);
+check(ticks.rest === 10 && ticks.moving === 6, 'light clock at 0.8c: 10 ticks at rest, 6 moving (gamma 5/3)');
+check(S._lcBounce(0) === 0 && S._lcBounce(0.5) === 1 && S._lcBounce(0.25) === 0.5 && S._lcBounce(1.25) === 0.5,
+  'one tick is the light\'s trip up and back');
+
 // ── 5. Twilight and the faintest star ──
 const phase = (a) => vm.runInContext('_skyPhaseKey(' + a + ')', S);
 check(phase(10) === 'alm_sky_day' && phase(-0.5) === 'alm_sky_day' && phase(-3) === 'alm_sky_civil' &&

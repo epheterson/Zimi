@@ -1558,7 +1558,99 @@ function _orreryRidePanelHtml() {
         '<div class="orrery-twin-clock"><span class="orrery-twin-lbl">' + _almEsc(t('alm_orr_twin_ship')) + '</span><span id="orrery-twin-ship" class="orrery-twin-val"></span></div>' +
       '</div>' +
       '<div id="orrery-twin-note" class="orrery-twin-note"></div>' +
+      '<div class="orrery-lc">' +
+        '<div class="orrery-twin-head"><span class="orrery-twin-title">' + _lterm('time_dilation', _almEsc(t('alm_lc_title'))) + '</span>' +
+          '<span id="orrery-lc-gamma" class="orrery-twin-speed"></span></div>' +
+        '<div class="orrery-lc-labels"><span id="orrery-lc-rest"></span><span id="orrery-lc-moving"></span></div>' +
+        '<canvas id="orrery-lc" class="orrery-lc-canvas" aria-hidden="true"></canvas>' +
+        '<div id="orrery-lc-note" class="orrery-twin-note"></div>' +
+      '</div>' +
     '</div>';
+}
+
+// ── The light clock, under the twins ──
+// Two mirrors and a pulse of light between them: one tick is the light's trip
+// up and back. Beside the clock at rest, the same clock flying at the twin
+// slider's speed: its light must cover the longer, slanted path at the same
+// speed c, so each tick takes gamma times as long. The gap between the mirrors
+// is the same for both, and short enough that a whole moving tick fits.
+var _LC_TICK_MS = 1600;      // one tick of the clock at rest, as drawn
+var _LC_HEIGHT_PX = 84;
+var _LC_PAD_PX = 12;
+var _LC_MIRROR_PX = 9;       // half a mirror's width
+var _LC_TRAIL_STEPS = 48;
+var _orreryLcStart = 0;
+
+// The photon's height (0 at the lower mirror, 1 at the upper) at a share p of a tick.
+function _lcBounce(p) { p = p - Math.floor(p); return p < 0.5 ? p * 2 : 2 - p * 2; }
+
+// Ticks each clock has made since the panel opened: the moving one's are gamma times as long.
+function _lcTicks(ms, gamma) {
+  return { rest: Math.floor(ms / _LC_TICK_MS), moving: Math.floor(ms / (_LC_TICK_MS * gamma)) };
+}
+
+function _orreryLightClock(beta, speedText, nowMs) {
+  var cv = document.getElementById('orrery-lc');
+  if (!cv || !cv.clientWidth) return;
+  var dpr = window.devicePixelRatio || 1, w = cv.clientWidth, H = _LC_HEIGHT_PX;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(H * dpr); }
+  var ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, H);
+  var gamma = _lorentzFactor(beta), still = _orreryReduceMotion();
+  if (!_orreryLcStart) _orreryLcStart = nowMs;
+  var tickM = _LC_TICK_MS * gamma;
+  // Motion reduced: one whole moving tick, drawn still.
+  var el = still ? tickM : nowMs - _orreryLcStart;
+  var rtl = document.documentElement.dir === 'rtl';
+  var half = w / 2, areaW = half - 2 * _LC_PAD_PX;
+  var L = Math.min(H - 2 * _LC_PAD_PX, areaW * 0.45 / Math.max(beta * gamma, 1e-12));
+  var yLo = H / 2 + L / 2, yHi = H / 2 - L / 2;
+  var restX0 = rtl ? half : 0, moveX0 = rtl ? 0 : half;
+  var amber = (getComputedStyle(document.documentElement).getPropertyValue('--amber') || '#e0a030').trim();
+  function mirrors(x) {
+    ctx.strokeStyle = 'rgba(200,210,230,0.8)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - _LC_MIRROR_PX, yHi); ctx.lineTo(x + _LC_MIRROR_PX, yHi);
+    ctx.moveTo(x - _LC_MIRROR_PX, yLo); ctx.lineTo(x + _LC_MIRROR_PX, yLo);
+    ctx.stroke();
+  }
+  function photon(x, y) {
+    ctx.fillStyle = amber;
+    ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+  }
+  // At rest: straight up and down.
+  var rx = restX0 + half / 2;
+  ctx.strokeStyle = 'rgba(224,160,48,0.25)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(rx, yHi); ctx.lineTo(rx, yLo); ctx.stroke();
+  mirrors(rx);
+  photon(rx, yLo - L * _lcBounce(still ? 0.25 : el / _LC_TICK_MS));
+  // Moving at beta: the clock slides on at beta c, where c is the photon's
+  // speed as drawn (2L a tick), and the light's path is the slanted one.
+  var vx = beta * 2 * L / _LC_TICK_MS;
+  var left = moveX0 + _LC_PAD_PX;
+  function xAt(ms) { return left + ((vx * ms) % areaW + areaW) % areaW; }
+  ctx.strokeStyle = 'rgba(224,160,48,0.45)';
+  ctx.beginPath();
+  var prev = null;
+  for (var i = 0; i <= _LC_TRAIL_STEPS; i++) {
+    var ms = el - tickM + tickM * i / _LC_TRAIL_STEPS;
+    if (ms < 0) { prev = null; continue; }
+    var px = xAt(ms), py = yLo - L * _lcBounce(ms / tickM);
+    if (prev === null || px < prev) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    prev = px;
+  }
+  ctx.stroke();
+  var mx = xAt(el);
+  mirrors(mx);
+  photon(mx, yLo - L * _lcBounce(el / tickM));
+  var n = _lcTicks(el, gamma);
+  // An equation reads left to right in any language (isolated from the page's direction).
+  _orrSetText('orrery-lc-gamma', '\u2066\u03b3 = ' + _orrFmtGamma(gamma) + '\u2069');
+  _orrSetText('orrery-lc-rest', t('alm_lc_rest') + (still ? '' : ' \u00b7 ' + t('alm_lc_ticks', { n: n.rest })));
+  _orrSetText('orrery-lc-moving', t('alm_lc_moving', { v: speedText }) + (still ? '' : ' \u00b7 ' + t('alm_lc_ticks', { n: n.moving })));
+  _orrSetText('orrery-lc-note', t('alm_lc_explain', { g: _orrFmtGamma(gamma) }));
 }
 
 function _orrSetText(id, s) {
@@ -1572,9 +1664,10 @@ function _orreryUpdateRide() {
   var rk = _orreryRide();
   if (!rk) {
     if (el.style.display !== 'none') { el.style.display = 'none'; el.innerHTML = ''; }
+    _orreryLcStart = 0;
     return;
   }
-  if (!el.firstChild) el.innerHTML = _orreryRidePanelHtml();
+  if (!el.firstChild) { el.innerHTML = _orreryRidePanelHtml(); _orreryLcStart = 0; }
   el.style.display = 'block';
   var st = _orreryRideStatus(rk);
   var arrived = st.frac >= 1;
@@ -1589,6 +1682,7 @@ function _orreryUpdateRide() {
   _orrSetText('orrery-twin-earth', _orrFmtSpan(tw.earth));
   _orrSetText('orrery-twin-ship', _orrFmtSpan(tw.ship));
   _orrSetText('orrery-twin-note', t('alm_orr_twin_explain', { g: _orrFmtGamma(tw.gamma), lag: _orrFmtSpan(_orreryShownLag(tw)) }));
+  _orreryLightClock(tw.beta, speed, performance.now());
 }
 
 function _orreryUpdateDate() {

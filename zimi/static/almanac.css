@@ -215,6 +215,10 @@
 .orrery-twin-lbl { font-size: 10px; color: var(--text3); letter-spacing: 0.04em; }
 .orrery-twin-val { font-size: 14px; color: var(--text); }
 .orrery-twin-note { margin-top: 8px; line-height: 1.5; }
+/* The light clock under the twins: the clock at rest beside the moving one. */
+.orrery-lc { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.orrery-lc-labels { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; font-size: 11px; color: var(--text3); font-variant-numeric: tabular-nums; }
+.orrery-lc-canvas { display: block; width: 100%; height: 84px; margin-top: 4px; background: var(--surface2); border-radius: 8px; }
 .almanac-sky-wrap { width: 100%; max-width: 600px; margin: 0 auto; border-radius: 12px; overflow: hidden; position: relative; }
 .almanac-sky-wrap canvas { width: 100%; display: block; }
 /* The live sky's line on the ground: the light of the hour, the place. On the
