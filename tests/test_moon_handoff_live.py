@@ -227,14 +227,20 @@ def test_one_clock_moves_both_views(browser, served):
         # A speed in the view runs the page's clock; the header follows.
         before = pg.evaluate("() => _almFocusInstant().getTime()")
         pg.click("#ae-time [data-ae-speed='3600']")
-        pg.wait_for_function("(t) => _almFocusInstant().getTime() - t > 2 * 3600000", arg=before,
-                             timeout=20000, polling=POLL_MS)
+        pg.wait_for_function(
+            "(t) => _almFocusInstant().getTime() - t > 2 * 3600000",
+            arg=before,
+            timeout=20000,
+            polling=POLL_MS,
+        )
         state = pg.evaluate(
             """() => ({ page: _almFocusInstant().getTime(), scene: _ae.scene.ms,
           head: document.getElementById('almanac-head-date').textContent, want: _almClockParts(_almFocusInstant()).date })"""
         )
         # The scene drew the instant the frame ran the clock to.
-        assert state["page"] - before > 2 * 3600 * 1000 and state["scene"] == state["page"], state
+        assert (
+            state["page"] - before > 2 * 3600 * 1000 and state["scene"] == state["page"]
+        ), state
         assert state["head"] == state["want"], state
         pg.click("#ae-time [data-ae-speed='1']")
         landed = pg.evaluate("() => _almFocusInstant().getTime()")
@@ -291,6 +297,98 @@ def test_leaving_restores_the_page(browser, served, reduced):
             assert after[k] == before[k], (k, before[k], after[k])
         assert after["html"] == before["html"]
         assert "almanac-moon-open" in (after["active"] or "")
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def _touch_drag_turns(pg, cdp, x, y, steps, dx, dy):
+    for i in range(1, steps + 1):
+        cdp.send(
+            "Input.dispatchTouchEvent",
+            {"type": "touchMove", "touchPoints": [{"x": x + i * dx, "y": y + i * dy}]},
+        )
+        pg.wait_for_timeout(16)
+    return x + steps * dx, y + steps * dy
+
+
+@pytest.mark.parametrize("pointer", ["touch", "mouse"])
+def test_one_finger_lifts_and_keeps_turning(browser, served, pointer):
+    """A drag that starts on the hero Moon opens the 3D view and the same
+    finger, never lifted, goes on turning the Moon there. On a phone the
+    drag may wander up and down: the page must not take it for a scroll."""
+    if pointer == "touch":
+        ctx = browser.new_context(
+            viewport=VIEW, device_scale_factor=DPR, has_touch=True, is_mobile=True
+        )
+        pg = ctx.new_page()
+        errors = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.goto(served + "/#almanac", wait_until="load")
+        pg.wait_for_function(
+            "() => typeof _aeReady === 'function' && _aeReady()",
+            timeout=60000,
+            polling=POLL_MS,
+        )
+    else:
+        ctx, pg, errors = _almanac(browser, served)
+    try:
+        r = _rect(pg)
+        x, y = r["x"] + r["width"] / 2, r["y"] + r["height"] / 2
+        scroll0 = pg.evaluate("document.getElementById('almanac-content').scrollTop")
+        if pointer == "touch":
+            cdp = ctx.new_cdp_session(pg)
+            cdp.send(
+                "Input.dispatchTouchEvent",
+                {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]},
+            )
+            # Off on a diagonal (more across than down), then mostly down.
+            x, y = _touch_drag_turns(pg, cdp, x, y, 6, 4, 3)
+        else:
+            pg.mouse.move(x, y)
+            pg.mouse.down()
+            for i in range(1, 7):
+                pg.mouse.move(x + i * 4, y + i)
+            x, y = x + 24, y + 6
+        pg.wait_for_function(
+            "() => _aeIsOpen && !_ae.hand", timeout=10000, polling=POLL_MS
+        )
+        az0, el0 = pg.evaluate("[_ae.az, _ae.el_]")
+        if pointer == "touch":
+            x, y = _touch_drag_turns(pg, cdp, x, y, 10, 3, 6)
+        else:
+            for i in range(1, 11):
+                pg.mouse.move(x + i * 3, y + i * 6)
+        az1, el1 = pg.evaluate("[_ae.az, _ae.el_]")
+        # Still the same gesture: nothing has been lifted yet.
+        assert abs(az1 - az0) > 0.01 and abs(el1 - el0) > 0.01, (az0, az1, el0, el1)
+        # And the 3D canvas owns it: the pointer is its drag, not a stream
+        # forwarded from the hidden page (which WebKit cuts when the page
+        # under the view stops being drawn).
+        assert pg.evaluate(
+            "Object.keys(_ae.pointers).length === 1 &&"
+            " document.getElementById('ae-canvas').classList.contains('ae-dragging')"
+        )
+        # Each move turns the Moon once, not twice (the page no longer forwards).
+        k = pg.evaluate("AE_DRAG_RAD_PER_PX * _aeDragScale()")
+        az2 = pg.evaluate("_ae.az")
+        if pointer == "touch":
+            _touch_drag_turns(pg, cdp, x, y, 5, 4, 0)
+        else:
+            for i in range(1, 6):
+                pg.mouse.move(x + 30 + i * 4, y + 60)
+        turned = pg.evaluate("_ae.az") - az2
+        assert abs(abs(turned) - 20 * k) < 0.35 * 20 * k, (turned, 20 * k)
+        if pointer == "touch":
+            cdp.send(
+                "Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []}
+            )
+        else:
+            pg.mouse.up()
+        assert (
+            pg.evaluate("document.getElementById('almanac-content').scrollTop")
+            == scroll0
+        )
         assert not errors, errors
     finally:
         ctx.close()

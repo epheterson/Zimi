@@ -242,13 +242,14 @@ delete S.window.openAlmanacEarth.unsupported;
 // ── 7. One clock ──
 vm.runInContext('var _almFocus = null; var _heroMoonAnim = null; var __reduce = false; function _almReduceMotion() { return __reduce; }' +
   'var __painted = 0; _skyPaint = function () { __painted++; };' +
-  '_skyState = { inView: true, eph: { sunGeoAlt: -30 }, muons: [], bodies: [], moonAnim: null, nowTime: Date.now() };', S);
+  '_skyState = { inView: true, eph: { sunGeoAlt: -30 }, muons: [], actors: [], bodies: [], moonAnim: null, nowTime: Date.now() };', S);
+const SPAWNERS = '_skySpawnBirds,_skySpawnMeteor,_skySpawnPlane';
 const armed = () => { timers.length = 0; vm.runInContext('_skyArm()', S); return timers.map((x) => x.fn.name).sort().join(','); };
-check(armed() === '_skyLiveTick,_skyMuonTick,_skyTwinkleTick', 'live at night: the clock\'s drift, the twinkle, the muons');
+check(armed() === '_skyLiveTick,_skyMuonTick,' + SPAWNERS + ',_skyTwinkleTick', 'live at night: the clock\'s drift, the twinkle, the muons, the planes, birds and meteors');
 vm.runInContext('_almFocus = new Date(0)', S);
-check(armed() === '_skyMuonTick,_skyTwinkleTick', 'scrubbed: no live timer, the sky holds the focused instant');
+check(armed() === '_skyMuonTick,' + SPAWNERS + ',_skyTwinkleTick', 'scrubbed: no live timer, the sky holds the focused instant');
 vm.runInContext('_almFocus = null; _skyState.eph.sunGeoAlt = 20', S);
-check(armed() === '_skyLiveTick,_skyMuonTick', 'by day no twinkle (no stars out)');
+check(armed() === '_skyLiveTick,_skyMuonTick,' + SPAWNERS, 'by day no twinkle (no stars out)');
 vm.runInContext('__reduce = true', S);
 check(armed() === '_skyLiveTick', 'motion reduced: neither twinkle nor muons');
 vm.runInContext('__reduce = false; _skyState.inView = false', S);
@@ -276,6 +277,21 @@ vm.runInContext('_almanacSkyRAF = null', S);
 timers.length = 0;
 vm.runInContext('_skyLoop(' + (1990 + vm.runInContext('SKY_MUON_FALL_MS + SKY_MUON_FADE_MS', S) + 1) + ')', S);
 check(frames.length === 3 && timers.length === 0, 'and once it has faded nothing is left running');
+// A plane crossing: the loop runs while it is on screen, painting at most
+// every SKY_ACTOR_FRAME_MS (thirty a second, not sixty), and stops once it has gone.
+frames.length = 0;
+vm.runInContext('_almanacSkyRAF = null; __painted = 0; _skyState.muons = []; _skyState.baseDirty = false; _skyState.paintedAt = 0;' +
+  '_skyState.actors = [{ type: "plane", start: 0, dur: 1000 }];', S);
+const step = vm.runInContext('SKY_ACTOR_FRAME_MS', S);
+// _skyPaint is the counter here; a real paint drops the plane once its time is up.
+vm.runInContext('_skyPaint = function (ts) { __painted++; _skyState.actors = _skyState.actors.filter((a) => ts - a.start <= a.dur); };', S);
+for (const ts of [100, 100 + step / 2, 100 + step + 1, 100 + step * 1.5 + 1, 100 + step * 2 + 2]) {
+  vm.runInContext('_almanacSkyRAF = null; _skyLoop(' + ts + ')', S);
+}
+check(vm.runInContext('__painted', S) === 3 && frames.length === 5, 'a plane: a frame each vsync, a paint every other one (' + vm.runInContext('__painted', S) + ' of 5)');
+frames.length = 0;
+vm.runInContext('_almanacSkyRAF = null; _skyLoop(1200)', S);
+check(frames.length === 0 && vm.runInContext('_skyState.actors.length', S) === 0, 'gone from the sky, the loop stops');
 // The time machine's frames move the instant without a new loop.
 frames.length = 0;
 vm.runInContext('_almanacSkyRAF = null; _skyState.moonData = null; _skySetInstant(new Date("2026-10-01T06:00:00Z"))', S);

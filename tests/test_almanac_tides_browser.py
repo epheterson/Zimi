@@ -83,10 +83,14 @@ def _context(browser, place=SF):
         service_workers="block",
         locale="en-US",
     )
-    ctx.add_init_script(
-        "sessionStorage.setItem('zimi_almanac_location', %s);"
-        % json.dumps(json.dumps(place))
-    )
+    if place:
+        # The session key older builds wrote: read as a fallback and carried
+        # over into the kept place (test_a_chosen_place_is_kept).
+        ctx.add_init_script(
+            "if (!localStorage.getItem('zimi_almanac_place'))"
+            " sessionStorage.setItem('zimi_almanac_location', %s);"
+            % json.dumps(json.dumps(place))
+        )
     return ctx
 
 
@@ -96,7 +100,7 @@ def _open(ctx, served):
     pg.on("pageerror", lambda e: errors.append(str(e)))
     pg.goto(served + "/#almanac", wait_until="load")
     pg.wait_for_function(
-        "() => document.getElementById('almanac-place') && document.querySelector('.alm-ref-entry')",
+        "() => document.getElementById('almanac-place') && document.querySelector('.alm-about')",
         polling=POLL_MS,
     )
     return pg, errors
@@ -118,7 +122,7 @@ def _top(pg, sel):
         ("#almanac-orrery", DRAWN, "**/almanac-place?*"),
         # The long-haul sheets, under the inscriptions, at the page's end.
         (
-            ".alm-ref-entry",
+            ".alm-about",
             "() => document.getElementById('almanac-rosetta').children.length > 0",
             "**/static/rosetta/manifest.json",
         ),
@@ -218,7 +222,9 @@ def test_the_tide_follows_the_one_clock(browser, served):
         # The day's line hides once the frame leaves the day drawn.
         assert pg.evaluate("document.getElementById('at-now').style.display") == "none"
         # The frames drew nothing new: the same section element.
-        assert pg.evaluate("document.querySelector('#almanac-place .at-section')._mark === 1")
+        assert pg.evaluate(
+            "document.querySelector('#almanac-place .at-section')._mark === 1"
+        )
         # A bar is a day to go to: three days on, the same time of day.
         pg.evaluate("_almScrubSettle(new Date('2026-10-01T19:00:00Z'))")
         pg.locator(".at-m-day").nth(14 + 3).click()
@@ -267,6 +273,72 @@ def test_a_once_a_day_tide_follows_the_moons_declination(browser, served):
         st = pg.evaluate("_atWhyState(_atTideStation(), Date.now())")
         assert st["desc"] == "alm_tide_why_diurnal_desc"
         assert st["kind"] in ("tropic", "equatorial", "growing", "easing")
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+PARIS = {"lat": 48.8566, "lon": 2.3522, "name": "Paris"}
+
+
+def test_a_chosen_place_is_kept_across_visits(browser, served):
+    """The place lives on this device: a new visit (the session gone) still
+    has it, and the old session copy is carried over once."""
+    ctx = _context(browser)
+    try:
+        pg, errors = _open(ctx, served)
+        kept = pg.evaluate("JSON.parse(localStorage.getItem('zimi_almanac_place'))")
+        assert kept["name"] == "San Francisco", kept
+        pg.evaluate("_saveLocation(30.4044, -87.2112, 'Pensacola')")
+        assert pg.evaluate("sessionStorage.getItem('zimi_almanac_location')") is None
+        pg.close()
+        pg, errors2 = _open(ctx, served)
+        pg.evaluate("sessionStorage.clear()")
+        assert pg.evaluate("_getLocation().name") == "Pensacola"
+        pg.wait_for_function(DRAWN, polling=POLL_MS, timeout=60000)
+        assert "Pensacola" in pg.inner_text("#almanac-place .at-station-name")
+        assert not errors and not errors2, errors + errors2
+    finally:
+        ctx.close()
+
+
+def test_far_from_any_station_the_nearest_is_still_shown(browser, served):
+    ctx = _context(browser, PARIS)
+    try:
+        pg, errors = _open(ctx, served)
+        pg.wait_for_function(
+            "() => !!document.querySelector('#almanac-place .at-tides #at-curve')",
+            polling=POLL_MS,
+            timeout=60000,
+        )
+        far = pg.inner_text("#almanac-place .at-far")
+        assert far.startswith("No tide station near here. Shown: the nearest,"), far
+        assert " away." in far and ("km" in far or "mi" in far), far
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_without_a_place_one_line_invites_one(browser, served):
+    ctx = _context(browser, None)
+    try:
+        pg, errors = _open(ctx, served)
+        assert pg.evaluate("_getLocation().stored") is False
+        invite = pg.locator("#almanac-sky-invite .alm-place-invite")
+        assert invite.is_visible()
+        assert "Choose your place" in invite.inner_text()
+        # The sky says nothing of a place it was not given.
+        pg.wait_for_function("() => _skyState && _skyState.eph", polling=POLL_MS)
+        cap = pg.inner_text("#almanac-sky-cap")
+        assert "°N" not in cap and "°S" not in cap, cap
+        pg.wait_for_function(
+            "() => !!document.querySelector('#almanac-place .alm-place-invite')",
+            polling=POLL_MS,
+            timeout=60000,
+        )
+        # Searching from the invite shows the map's search.
+        invite.locator("button").nth(1).click()
+        assert pg.locator("#almanac-city-search").is_visible()
         assert not errors, errors
     finally:
         ctx.close()

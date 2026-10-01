@@ -641,7 +641,7 @@ var AE_MAX_DIST_SUN = 1400;
 var AE_FLY_FAR_MS = 1600;             // the longest flight: to or from the Sun, 3,000 Earth radii
 var AE_HINT_MS = 4500;
 // Show where I am: a crosshair, the mark every map uses for "locate me".
-var AE_LOCATE_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
+var AE_LOCATE_SVG = typeof ALM_LOCATE_SVG === 'string' ? ALM_LOCATE_SVG : '';   // almanac.js
 var AE_LOCATE_TIMEOUT_MS = 15000;
 var AE_SPEEDS = [1, 60, 3600];        // real time, a minute a second, an hour a second
 var AE_SPEED_KEYS = ['alm_earth_rate_real', 'alm_earth_rate_min', 'alm_earth_rate_hour'];
@@ -786,7 +786,7 @@ var AE_CSS = [
   '.ae-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--text2);font-size:14px;pointer-events:none}',
   '.ae-msg[hidden]{display:none}',
   '.ae-view.ae-blank .ae-bottom,.ae-view.ae-blank .ae-status{display:none}',
-  '.ae-hint{position:absolute;left:50%;bottom:calc(100% - 18px);transform:translateX(-50%);padding:8px 14px;border-radius:999px;background:rgba(0,0,0,.6);color:var(--text2);font-size:12px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .6s}',
+  '.ae-hint{position:absolute;left:50%;bottom:calc(100% - 18px);transform:translateX(-50%);box-sizing:border-box;width:max-content;max-width:calc(100% - 32px);padding:8px 14px;border-radius:16px;background:rgba(0,0,0,.6);color:var(--text2);font-size:12px;line-height:1.4;text-align:center;pointer-events:none;opacity:0;transition:opacity .6s}',
   '.ae-hint.ae-show{opacity:1}',
   '@media (prefers-reduced-motion: reduce){.ae-hint{transition:none}}',
   '@media (max-width:420px){.ae-btn{font-size:12px;padding:7px 10px;min-height:32px}.ae-status{top:60px;font-size:12px}}'
@@ -850,6 +850,7 @@ function _aeBuildDom() {
       '<div class="ae-hint" id="ae-hint">' + _almEsc(_aeT('alm_earth_hint')) + '</div>' +
       '<div class="ae-card" id="ae-card" hidden></div>' +
       '<div class="ae-orient" id="ae-orient" hidden>' + _almEsc(_aeT('alm_moon_north_up')) + '</div>' +
+      '<div class="ae-orient" id="ae-sunnote" hidden></div>' +
       '<div class="ae-row" role="group" id="ae-views">' +
         // Outward from home: the Earth, its satellites, the Moon, the Sun.
         '<button type="button" class="ae-btn" data-ae-view="earth" aria-pressed="true">' + _almEsc(_tp('Earth')) + '</button>' +
@@ -1090,6 +1091,181 @@ function _aeLimbGlsl() {
   return 'vec3 aeLimb(float mu) { return ' + expr + '; }';
 }
 
+// ── Sunspots: illustrative spots, the real cycle ──
+// No one can say offline where a spot will be, so the spots are made up, but
+// made up by the Sun's own rules, and the same date always shows the same Sun:
+//   - how many: the sunspot number of the date's place in the solar cycle,
+//     from each cycle's minimum and peak (SILSO, sunspot number v2, cycles
+//     1 to 25) on one cycle shape; before 1755 and after Cycle 25 the cycles
+//     repeat at the mean length and peak, quiet through the Maunder minimum;
+//   - where: Sporer's law, each cycle's spots born near 30 degrees and
+//     lower as it ages (the butterfly diagram), never near the poles; a pair
+//     per group, the follower a little poleward (Joy's law);
+//   - how they move: the Sun's differential rotation (Snodgrass and Ulrich
+//     1990, sidereal), 24.5 days at the equator, slower toward the poles,
+//     from the IAU prime meridian (W = 84.176 + 14.1844 d), on the page's clock;
+//   - how long: each group grows in a day or two and fades over one to three
+//     weeks, born on a day seeded by that day, so time running shows them
+//     form, turn and decay.
+var AE_CYCLE_MINIMA = [1755.2, 1766.5, 1775.5, 1784.7, 1798.3, 1810.6, 1823.3, 1833.9, 1843.5, 1855.9, 1867.2, 1878.9, 1890.2,
+  1902.0, 1913.6, 1923.6, 1933.8, 1944.2, 1954.3, 1964.9, 1976.5, 1986.8, 1996.4, 2008.9, 2019.9];
+var AE_CYCLE_PEAKS = [144.1, 193.0, 264.3, 235.3, 82.0, 81.2, 119.2, 244.9, 219.9, 186.2, 234.0, 124.4, 146.5,
+  107.1, 175.7, 130.2, 198.6, 218.7, 285.0, 156.6, 232.9, 212.5, 180.3, 116.4, 160.9];
+var AE_CYCLE_YEARS = 11.0;           // the mean cycle, for cycles outside the record
+var AE_CYCLE_MEAN_PEAK = 179;        // the record's mean peak
+var AE_CYCLE_RISE_YEARS = 4.6;       // minimum to peak
+var AE_CYCLE_SPAN_YEARS = 16;        // a cycle's spots, from its minimum (cycles overlap)
+var AE_MAUNDER = [1645, 1715, 8];    // years, and the peak through them
+var AE_SPOT_LAT0_DEG = 30, AE_SPOT_LAT_DECAY_YEARS = 8, AE_SPOT_LAT_SPREAD_DEG = 5;
+var AE_SPOT_LAT_RANGE_DEG = [3, 42];
+var AE_SPOT_GROUP_PER_R = 0.1;       // groups on the whole Sun per unit of sunspot number
+var AE_SPOT_LIFE_DAYS = [4, 26];     // a group's life, shortest to longest
+var AE_SPOT_GROW_DAYS = 1.5;
+var AE_SPOT_R_DEG = [2.2, 5.5];      // a leader's radius (penumbra), heliographic degrees: drawn larger than life, to be seen
+var AE_SPOT_PAIR_DEG = [7, 13];       // leader to follower, in longitude
+var AE_SPOT_JOY_DEG = 32;            // Joy's law: a pair's tilt, this times sin(latitude), follower poleward
+var AE_SPOT_MAX = 40;                // spots drawn at once (the shader's array)
+var AE_SUN_POLE_RA_DEG = 286.13, AE_SUN_POLE_DEC_DEG = 63.87;   // IAU
+var AE_SUN_W0_DEG = 84.176, AE_SUN_CARRINGTON_DEG_DAY = 14.1844;
+var AE_SNODGRASS = [14.713, -2.396, -1.787];   // deg/day: A + B sin^2 + C sin^4 of latitude
+
+// Cycle j (0 is Cycle 1): its minimum and peak, the record's, else the mean's.
+function _aeCycle(j) {
+  var n = AE_CYCLE_MINIMA.length, m, peak = AE_CYCLE_MEAN_PEAK;
+  if (j < 0) m = AE_CYCLE_MINIMA[0] + j * AE_CYCLE_YEARS;
+  else if (j >= n) m = AE_CYCLE_MINIMA[n - 1] + (j - n + 1) * AE_CYCLE_YEARS;
+  else { m = AE_CYCLE_MINIMA[j]; peak = AE_CYCLE_PEAKS[j]; }
+  if (m + AE_CYCLE_RISE_YEARS > AE_MAUNDER[0] && m < AE_MAUNDER[1]) peak = AE_MAUNDER[2];
+  return { min: m, peak: peak };
+}
+// The cycles with spots in a year: the one it is in, and the one before.
+// The index of the cycle a year is in (0 is Cycle 1; negative before it).
+function _aeCycleIndex(year) {
+  var n = AE_CYCLE_MINIMA.length, j;
+  if (year < AE_CYCLE_MINIMA[0]) return Math.floor((year - AE_CYCLE_MINIMA[0]) / AE_CYCLE_YEARS);
+  if (year >= AE_CYCLE_MINIMA[n - 1]) return n - 1 + Math.floor((year - AE_CYCLE_MINIMA[n - 1]) / AE_CYCLE_YEARS);
+  j = 0;
+  while (AE_CYCLE_MINIMA[j + 1] <= year) j++;
+  return j;
+}
+function _aeCyclesNear(year) {
+  var j = _aeCycleIndex(year);
+  return [_aeCycle(j - 1), _aeCycle(j)];
+}
+// One cycle's shape, 1 at its peak: (x/tr)^4 e^(4(1 - x/tr)), x years from
+// its minimum, its tail eased out across the next minimum (real minima fall
+// to a sunspot number of a few).
+var AE_CYCLE_TAIL_YEARS = [9, 14];
+function _aeCycleShape(x) {
+  if (x <= 0 || x > AE_CYCLE_SPAN_YEARS) return 0;
+  var u = x / AE_CYCLE_RISE_YEARS, u2 = u * u;
+  var tail = Math.max(0, Math.min(1, (x - AE_CYCLE_TAIL_YEARS[0]) / (AE_CYCLE_TAIL_YEARS[1] - AE_CYCLE_TAIL_YEARS[0])));
+  return u2 * u2 * Math.exp(4 * (1 - u)) * (1 - tail * tail * (3 - 2 * tail));
+}
+// The sunspot number at a decimal year, and each cycle's share of it.
+function _aeSunspotNumber(year) {
+  var cs = _aeCyclesNear(year), total = 0, parts = [];
+  for (var i = 0; i < cs.length; i++) {
+    var x = year - cs[i].min, r = cs[i].peak * _aeCycleShape(x);
+    if (r > 0) { parts.push({ age: x, r: r }); total += r; }
+  }
+  return { r: total, parts: parts };
+}
+// The orrery's seeded generator (_lcgRand) from any number: the same day,
+// the same spots.
+function _aeSeeded(seed) {
+  return _lcgRand((Math.floor(seed) % 2147483646 + 2147483646) % 2147483646 + 1);
+}
+// Sidereal rotation (deg/day) at a heliographic latitude (degrees).
+function _aeSunRotation(latDeg) {
+  var s2 = Math.pow(Math.sin(latDeg * DEG_TO_RAD), 2);
+  return AE_SNODGRASS[0] + AE_SNODGRASS[1] * s2 + AE_SNODGRASS[2] * s2 * s2;
+}
+var AE_MS_PER_YEAR = 365.25 * MS_PER_DAY;
+function _aeDecimalYear(ms) { return 2000 + (ms - Date.UTC(2000, 0, 1, 12)) / AE_MS_PER_YEAR; }
+// The groups alive at ms: [{lat, lon (inertial, degrees from the solar
+// equator's node), r (degrees), born, life}], each a leader and a follower.
+function _aeSunSpots(ms) {
+  var day = Math.floor(ms / MS_PER_DAY), out = [];
+  for (var d = day - AE_SPOT_LIFE_DAYS[1]; d <= day; d++) {
+    var rnd = _aeSeeded(d * 7919 + 13);
+    var ssn = _aeSunspotNumber(_aeDecimalYear(d * MS_PER_DAY));
+    // Births enough to keep R x AE_SPOT_GROUP_PER_R groups alive at once
+    // (lives are min + span x u x u: a quarter of the span on average).
+    var rate = ssn.r * AE_SPOT_GROUP_PER_R / (AE_SPOT_LIFE_DAYS[0] + (AE_SPOT_LIFE_DAYS[1] - AE_SPOT_LIFE_DAYS[0]) / 4);
+    // Births that day: Poisson by Knuth's product of uniforms.
+    var L = Math.exp(-rate), p = rnd(), n = 0;
+    while (p > L && n < 12) { p *= rnd(); n++; }
+    for (var b = 0; b < n; b++) {
+      // Which cycle it belongs to, by each cycle's share that day.
+      var pick = rnd() * ssn.r, part = ssn.parts[0];
+      for (var c = 0; c < ssn.parts.length; c++) { part = ssn.parts[c]; if ((pick -= part.r) <= 0) break; }
+      var u1 = Math.max(rnd(), 1e-9), u2 = rnd();
+      var gauss = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+      var lat = AE_SPOT_LAT0_DEG * Math.exp(-part.age / AE_SPOT_LAT_DECAY_YEARS) + AE_SPOT_LAT_SPREAD_DEG * gauss;
+      lat = Math.max(AE_SPOT_LAT_RANGE_DEG[0], Math.min(AE_SPOT_LAT_RANGE_DEG[1], Math.abs(lat))) * (rnd() < 0.5 ? -1 : 1);
+      var born = (d + rnd()) * MS_PER_DAY;
+      var life = AE_SPOT_LIFE_DAYS[0] + (AE_SPOT_LIFE_DAYS[1] - AE_SPOT_LIFE_DAYS[0]) * rnd() * rnd();
+      var carr = rnd() * 360, size = AE_SPOT_R_DEG[0] + (AE_SPOT_R_DEG[1] - AE_SPOT_R_DEG[0]) * Math.pow(rnd(), 1.5);
+      var sep = AE_SPOT_PAIR_DEG[0] + (AE_SPOT_PAIR_DEG[1] - AE_SPOT_PAIR_DEG[0]) * rnd();
+      var age = (ms - born) / MS_PER_DAY;
+      if (age < 0 || age > life) continue;
+      var grow = Math.min(1, age / AE_SPOT_GROW_DAYS) * (1 - age / life);
+      // Born at a Carrington longitude, then carried round at its own latitude's rate.
+      var bornDays = (born - Date.UTC(2000, 0, 1, 12)) / MS_PER_DAY;
+      var lon0 = AE_SUN_W0_DEG + AE_SUN_CARRINGTON_DEG_DAY * bornDays + carr;
+      out.push({ lat: lat, lon: (lon0 + _aeSunRotation(lat) * age) % 360, r: size * Math.sqrt(grow), born: born, life: life,
+        sep: sep, followerLat: lat + Math.sign(lat) * sep * Math.tan(AE_SPOT_JOY_DEG * Math.abs(Math.sin(lat * DEG_TO_RAD)) * DEG_TO_RAD) });
+    }
+  }
+  return out;
+}
+// The spots as the shader takes them: unit vectors in the scene's equatorial
+// frame and a radius (radians), leaders and followers, the largest first.
+var _aeSpotPole = null;
+function _aeSpotVectors(ms) {
+  if (!_aeSpotPole) {
+    var ra = AE_SUN_POLE_RA_DEG * DEG_TO_RAD, dec = AE_SUN_POLE_DEC_DEG * DEG_TO_RAD;
+    var P = [Math.cos(dec) * Math.cos(ra), Math.cos(dec) * Math.sin(ra), Math.sin(dec)];
+    var Q = _aeNorm(_aeCross([0, 0, 1], P));                 // the solar equator's ascending node
+    _aeSpotPole = { P: P, Q: Q, R: _aeCross(P, Q) };
+  }
+  var F = _aeSpotPole, groups = _aeSunSpots(ms), spots = [];
+  function vec(latDeg, lonDeg, rDeg) {
+    var la = latDeg * DEG_TO_RAD, lo = lonDeg * DEG_TO_RAD, cl = Math.cos(la);
+    return [cl * Math.cos(lo) * F.Q[0] + cl * Math.sin(lo) * F.R[0] + Math.sin(la) * F.P[0],
+      cl * Math.cos(lo) * F.Q[1] + cl * Math.sin(lo) * F.R[1] + Math.sin(la) * F.P[1],
+      cl * Math.cos(lo) * F.Q[2] + cl * Math.sin(lo) * F.R[2] + Math.sin(la) * F.P[2], rDeg * DEG_TO_RAD];
+  }
+  groups.sort(function (a, b) { return b.r - a.r; });
+  for (var i = 0; i < groups.length && spots.length < AE_SPOT_MAX; i++) {
+    var g = groups[i];
+    if (g.r <= 0) continue;
+    spots.push(vec(g.lat, g.lon, g.r));
+    // The follower trails (rotation carries spots toward increasing longitude).
+    if (spots.length < AE_SPOT_MAX) spots.push(vec(g.followerLat, g.lon - g.sep, g.r * 0.7));
+    // Between them, a few small pores, as a group has.
+    var rnd = _aeSeeded(g.born / 1000), pores = Math.floor(rnd() * 3);
+    for (var k = 0; k < pores && spots.length < AE_SPOT_MAX; k++) {
+      var f = 0.3 + 0.4 * rnd();
+      spots.push(vec(g.lat + (g.followerLat - g.lat) * f + (rnd() - 0.5) * 2, g.lon - g.sep * f, g.r * (0.25 + 0.2 * rnd())));
+    }
+  }
+  return spots;
+}
+
+// Into the Sun's shader: again whenever the shown time has moved on by more
+// than a spot turns in a fraction of a pixel (a few minutes), so real time
+// costs nothing and an hour a second turns them smoothly.
+var AE_SPOT_STEP_MS = 5 * 60000;
+function _aeUpdateSpots(S, ms) {
+  if (S.spotsAt != null && Math.abs(ms - S.spotsAt) < AE_SPOT_STEP_MS) return;
+  S.spotsAt = ms;
+  var v = _aeSpotVectors(ms), u = S.sunSpots.value;
+  u.fill(0);
+  for (var i = 0; i < v.length; i++) u.set(v[i], i * 4);
+}
+
 // The photosphere, as a filtered camera sees it: limb darkening in each
 // colour (the same as the sky's Sun), through a soft exposure, so the centre
 // burns yellow-white and the limb falls to deep orange. Over it the
@@ -1100,6 +1276,7 @@ function _aeLimbGlsl() {
 var AE_SUN_FRAG = [
   'precision highp float;',
   'uniform float fade; uniform float uT;',
+  'uniform vec4 uSpots[' + AE_SPOT_MAX + '];',
   'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
   AE_GLSL_NOISE,
   _aeLimbGlsl(),
@@ -1111,7 +1288,23 @@ var AE_SUN_FRAG = [
   '  float lane = smoothstep(0.0, 0.25, c.y - c.x);',
   '  float cell = lane * (1.2 - 0.9 * c.x) * (0.8 + 0.4 * c.z) - 0.6;',
   '  float fine = clamp(1.6 - 0.9 * length(fwidth(q)), 0.0, 1.0);',
-  '  float gran = 1.0 + ' + AE_GRANULE_CONTRAST.toFixed(2) + ' * fine * sqrt(mu) * cell;',
+  // The spots: a dark umbra in a grey penumbra, its edge frayed by noise;
+  // round them the faculae, bright only toward the limb (as they are seen).
+  '  float spot = 1.0, fac = 0.0, quiet = 1.0;',
+  '  for (int i = 0; i < ' + AE_SPOT_MAX + '; i++) {',
+  '    vec4 s = uSpots[i];',
+  '    if (s.w <= 0.0) continue;',
+  '    float d = length(n - s.xyz) / s.w;',
+  '    if (d > 3.2) continue;',
+  '    float fray = 0.12 * (aeNoise2(vec2(atan(n.y - s.y, n.x - s.x) * 3.0, float(i))) - 0.5);',
+  '    float pen = 1.0 - smoothstep(0.85, 1.0, d + fray);',
+  '    float umb = 1.0 - smoothstep(0.32, 0.42, d + fray);',
+  '    spot = min(spot, 1.0 - 0.5 * pen - 0.42 * umb);',
+  '    quiet = min(quiet, 1.0 - pen);',
+  '    fac = max(fac, (1.0 - smoothstep(1.2, 3.2, d)) * (1.0 - pen));',
+  '  }',
+  '  float gran = 1.0 + ' + AE_GRANULE_CONTRAST.toFixed(2) + ' * fine * sqrt(mu) * cell * (0.3 + 0.7 * quiet);',
+  '  gran *= spot * (1.0 + 0.9 * fac * pow(1.0 - mu, 1.5));',
   '  vec3 e = vec3(' + AE_SUN_EXPOSURE.map(_aeGlslNum).join(', ') + ') * aeLimb(mu) * gran;',
   '  gl_FragColor = vec4(1.0 - exp(-e), fade);',
   '}'
@@ -1307,9 +1500,10 @@ function _aeBuildGl(THREE, canvas) {
 
   var sun = new THREE.Group();
   var sunT = { value: 0 };   // the granulation's time (_aeUpdate)
+  var sunSpots = { value: new Float32Array(AE_SPOT_MAX * 4) };   // the spots, four floats each (_aeUpdateSpots)
   sun.add(new THREE.Mesh(
     new THREE.SphereGeometry(AE_SUN_SHOW_R, AE_SUN_SEGMENTS[0], AE_SUN_SEGMENTS[1]),
-    new THREE.ShaderMaterial({ uniforms: { fade: _aeFadeU, uT: sunT }, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_SUN_FRAG, transparent: true })));
+    new THREE.ShaderMaterial({ uniforms: { fade: _aeFadeU, uT: sunT, uSpots: sunSpots }, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_SUN_FRAG, transparent: true })));
   var sunGlowUni = { center: { value: new THREE.Vector3() }, radius: { value: AE_SUN_SHOW_R }, fade: _aeFadeU, uT: sunT };
   sun.add(new THREE.Mesh(
     new THREE.SphereGeometry(AE_SUN_SHOW_R * AE_SUN_GLOW_SCALE, AE_SUN_SEGMENTS[0], AE_SUN_SEGMENTS[1]),
@@ -1332,7 +1526,7 @@ function _aeBuildGl(THREE, canvas) {
   return {
     THREE: THREE, renderer: renderer, scene: scene, camera: camera, dpr: dpr,
     earth: earth, earthUni: earthUni, moon: moon, moonUni: moonUni, shared: shared,
-    sky: sky, sun: sun, sunGlowUni: sunGlowUni, sunT: sunT, moonPath: moonPath, moonPathCount: moonPathCount,
+    sky: sky, sun: sun, sunGlowUni: sunGlowUni, sunT: sunT, sunSpots: sunSpots, spotsAt: null, moonPath: moonPath, moonPathCount: moonPathCount,
     gpsRings: gpsRings, issRing: issRing, sats: sats,
     basis: new THREE.Matrix4(), vx: new THREE.Vector3(), vy: new THREE.Vector3(), vz: new THREE.Vector3(),
     aniso: Math.min(AE_ANISOTROPY, renderer.capabilities.getMaxAnisotropy()),
@@ -2010,6 +2204,7 @@ function _aeUpdate(ms) {
   S.sun.position.set(sd[0], sd[1], sd[2]);
   S.sunGlowUni.center.value.set(sd[0], sd[1], sd[2]);
   S.sunT.value = (ms / 1000 / AE_GRANULE_LIFE_S) % AE_GRANULE_CYCLE;
+  _aeUpdateSpots(S, ms);
   _aeUpdateMoonPath(ms);
   _aeUpdateSats(ms, sc);
   _aePlaceCamera();
@@ -2307,6 +2502,17 @@ function _aeUpdateText(ms) {
   var orient = _aeById('ae-orient');
   var northUp = _ae.target === 'moon' && !_aeObserver();
   if (orient && orient.hidden === northUp) orient.hidden = !northUp;
+  // On the Sun, its line: the cycle's real sunspot number, the spots' honesty.
+  var sunNote = _aeById('ae-sunnote');
+  if (sunNote) {
+    var onSun = _ae.target === 'sun';
+    if (sunNote.hidden === onSun) sunNote.hidden = !onSun;
+    if (onSun) {
+      var yr = _aeDecimalYear(ms), cyc = _aeCycleIndex(yr) + 1;
+      _aeSetText(sunNote, _aeT(cyc >= 1 ? 'alm_earth_sun_spots' : 'alm_earth_sun_spots_old',
+        { n: _orrNum(Math.round(_aeSunspotNumber(yr).r), null, 0), c: _orrNum(cyc, null, 0) }));
+    }
+  }
   var note = _aeNoteParts();
   _aeRenderAsk(note.ask);
   _aeSetText(_aeById('ae-note'), note.note);
@@ -2393,6 +2599,20 @@ function _aeHandDrag(dx, dy) {
   var k = AE_DRAG_RAD_PER_PX * _aeDragScale();
   _aeTurnBy(-dx * k, dy * k);
 }
+// Take over a drag that began on the hero disc, once the view is up: the
+// pointer is captured by this canvas and becomes its own drag, so the same
+// finger keeps turning the Moon however the page under it is hidden or
+// redrawn (WebKit ends a capture held by an element that stops being drawn).
+// False while the view is not open yet (the disc forwards the drag till then).
+function _aeAdoptPointer(id, x, y) {
+  var canvas = _aeById('ae-canvas');
+  if (!_aeIsOpen || !_ae.gl || !canvas) return false;
+  try { canvas.setPointerCapture(id); } catch (e) { return false; }
+  _ae.pointers[id] = { x: x, y: y };
+  _ae.drag = { x: x, y: y, x0: x, y0: y, moved: true };
+  canvas.classList.add('ae-dragging');
+  return true;
+}
 function _aeDragScale() {
   var surface = AE_TARGETS[_ae.target].surface;
   return _aeClamp((_ae.dist - surface) / _ae.dist, AE_DRAG_MIN_SCALE, 1);
@@ -2402,6 +2622,7 @@ function _aeDragScale() {
 function _aeBindCanvas(canvas) {
   canvas.addEventListener('pointerdown', function (e) {
     if (_ae.setOpen) _aeShowSettings(false);   // a touch on the globe puts the panel away
+    _aeHideHint();                              // and the hint has done its job
     canvas.setPointerCapture(e.pointerId);
     _ae.pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
     var ids = Object.keys(_ae.pointers);
@@ -2787,6 +3008,11 @@ function _aeEnter() {
   if (!_ae.hinted) { _ae.hinted = true; _aeShowHint(); }
 }
 
+function _aeHideHint() {
+  var hint = _aeById('ae-hint');
+  if (hint) hint.classList.remove('ae-show');
+  clearTimeout(_ae.hintTimer);
+}
 // The hint over the controls, for a moment: the first open's, or `text`.
 function _aeShowHint(text) {
   var hint = _aeById('ae-hint');
@@ -2815,6 +3041,9 @@ function _aeLocateMe() {
     var lat = pos.coords.latitude, lon = pos.coords.longitude;
     if (!_almValidLatLon(lat, lon)) { fail(); return; }
     _ae.you = { lat: lat, lon: lon };
+    // Where I am is the place the Almanac follows from now on: its tides,
+    // sky and times take it up when the view closes.
+    if (typeof _saveLocation === 'function') { _saveLocation(lat, lon, ''); _ae.placeChanged = true; }
     btn.setAttribute('aria-pressed', 'true');
     var sc = _ae.scene || _aeSceneAt(_aeDisplayMs());
     _ae.preset = 'earth';
@@ -2913,7 +3142,11 @@ function _aeFinishClose() {
   }
   _aeLiftHero(false);
   _aeCoverAlmanac(false);
-  if (typeof _almanacOpen === 'undefined' || _almanacOpen) _aeResumeAlmanac();
+  if (typeof _almanacOpen === 'undefined' || _almanacOpen) {
+    _aeResumeAlmanac();
+    if (_ae.placeChanged && typeof _almRepaintFocus === 'function') _almRepaintFocus();
+  }
+  _ae.placeChanged = false;
   // Focus goes back where the view came from; its ring shows only to someone
   // who left by the keyboard (a ring round the Moon after a tap is noise).
   var back = _ae.fromHero ? document.querySelector(AE_HERO_SEL) : _aeById(_aeFrom === 'sky' ? 'almanac-sky-canvas' : 'almanac-orrery');
