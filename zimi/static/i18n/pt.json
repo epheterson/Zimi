@@ -2450,5 +2450,13 @@
   "alm_lc_rest": "Em repouso",
   "alm_lc_moving": "Em movimento a {v}",
   "alm_lc_ticks": "Tiques: {n}",
-  "alm_lc_explain": "A luz tem a mesma velocidade nos dois, então no relógio em movimento ela percorre o caminho inclinado, mais longo, e cada tique dura {g} vezes mais."
+  "alm_lc_explain": "A luz tem a mesma velocidade nos dois, então no relógio em movimento ela percorre o caminho inclinado, mais longo, e cada tique dura {g} vezes mais.",
+  "pdf_print": "Imprimir",
+  "pdf_fit_width": "Ajustar à largura",
+  "pdf_fit_page": "Página inteira",
+  "pdf_zoom_in": "Aumentar zoom",
+  "pdf_zoom_out": "Diminuir zoom",
+  "pdf_dark_pages": "Páginas escuras",
+  "pdf_page": "Página",
+  "pdf_failed": "Não foi possível abrir este PDF."
 }

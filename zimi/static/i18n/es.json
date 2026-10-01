@@ -2450,5 +2450,13 @@
   "alm_lc_rest": "En reposo",
   "alm_lc_moving": "En movimiento a {v}",
   "alm_lc_ticks": "Tics: {n}",
-  "alm_lc_explain": "La luz va a la misma velocidad en ambos, así que en el reloj en movimiento recorre el camino inclinado, más largo, y cada tic dura {g} veces más."
+  "alm_lc_explain": "La luz va a la misma velocidad en ambos, así que en el reloj en movimiento recorre el camino inclinado, más largo, y cada tic dura {g} veces más.",
+  "pdf_print": "Imprimir",
+  "pdf_fit_width": "Ajustar al ancho",
+  "pdf_fit_page": "Página completa",
+  "pdf_zoom_in": "Acercar",
+  "pdf_zoom_out": "Alejar",
+  "pdf_dark_pages": "Páginas oscuras",
+  "pdf_page": "Página",
+  "pdf_failed": "No se pudo abrir este PDF."
 }

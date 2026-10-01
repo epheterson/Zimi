@@ -290,10 +290,15 @@ class TestServerEndpoints(unittest.TestCase):
         self.assertEqual(status, 200)
 
     def test_static_cache_headers(self):
+        # pdf.js's own files are immutable; the viewer page, which carries
+        # Zimi's reader inlined and is loaded at its bare address, is asked
+        # for each time, so a fix reaches a phone that opened it before.
+        url = f"{self._base}/static/pdfjs/build/pdf.mjs"
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            self.assertIn("immutable", resp.headers.get("Cache-Control", ""))
         url = f"{self._base}/static/pdfjs/web/viewer.html"
         with urllib.request.urlopen(url, timeout=10) as resp:
-            cc = resp.headers.get("Cache-Control", "")
-            self.assertIn("immutable", cc)
+            self.assertEqual(resp.headers.get("Cache-Control", ""), "no-cache")
 
     def test_static_path_traversal_blocked(self):
         status = self._get_status("/static/../zimi.py")

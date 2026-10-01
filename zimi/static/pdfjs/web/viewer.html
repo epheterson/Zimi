@@ -32,22 +32,9 @@ See https://github.com/adobe-type-tools/cmap-resources
 <script src="../build/pdf.mjs" type="module"></script>
 
     <link rel="stylesheet" href="viewer.css" />
-    <!-- Zimi: hide "Open file" button and its trailing separator -->
-    <style>#secondaryOpenFile, #secondaryOpenFile + .visibleMediumView + .horizontalToolbarSeparator { display: none !important; }</style>
-    <!-- Zimi: a phone's toolbar. At 390px the stock one packed ten 28px
-         buttons edge to edge. A finger gets pdf.js's own touch density
-         (44px buttons); on a narrow screen the annotation tools, which have
-         no place in the overflow menu, step aside, and print and download
-         are already in it (pdf.js's hiddenMediumView). Desktop is unchanged. -->
-    <style>
-      @media (pointer: coarse), (max-width: 690px) {
-        html:root { --toolbar-height: 44px; }
-        #pageNumber { height: 32px; font-size: 16px; }
-      }
-      @media (max-width: 690px) {
-        #editorModeButtons, #editorModeSeparator { display: none !important; }
-      }
-    </style>
+    <!-- Zimi: its own reading chrome over pdf.js (zimi/static/pdfreader.css
+         and pdfreader.js, inlined here by the server at the two marks). -->
+    <!--@pdfreader.css@-->
 
   <script src="viewer.mjs?v=2" type="module"></script>
   </head>
@@ -1231,5 +1218,6 @@ See https://github.com/adobe-type-tools/cmap-resources
     </div>
     <!-- outerContainer -->
     <div id="printContainer"></div>
+    <!--@pdfreader.js@-->
   </body>
 </html>

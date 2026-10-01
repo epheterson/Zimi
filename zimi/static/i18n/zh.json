@@ -2450,5 +2450,13 @@
   "alm_lc_rest": "静止",
   "alm_lc_moving": "以 {v} 运动",
   "alm_lc_ticks": "滴答：{n}",
-  "alm_lc_explain": "光在两个钟里速度相同，所以在运动的钟里它要走更长的斜线，每次滴答要多用 {g} 倍的时间。"
+  "alm_lc_explain": "光在两个钟里速度相同，所以在运动的钟里它要走更长的斜线，每次滴答要多用 {g} 倍的时间。",
+  "pdf_print": "打印",
+  "pdf_fit_width": "适合宽度",
+  "pdf_fit_page": "适合页面",
+  "pdf_zoom_in": "放大",
+  "pdf_zoom_out": "缩小",
+  "pdf_dark_pages": "深色页面",
+  "pdf_page": "页",
+  "pdf_failed": "无法打开此 PDF。"
 }

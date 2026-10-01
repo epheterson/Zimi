@@ -2450,5 +2450,13 @@
   "alm_lc_rest": "At rest",
   "alm_lc_moving": "Moving at {v}",
   "alm_lc_ticks": "Ticks: {n}",
-  "alm_lc_explain": "Light moves at the same speed in both, so in the moving clock it runs the longer, slanted path and each tick takes {g} times as long."
+  "alm_lc_explain": "Light moves at the same speed in both, so in the moving clock it runs the longer, slanted path and each tick takes {g} times as long.",
+  "pdf_print": "Print",
+  "pdf_fit_width": "Fit width",
+  "pdf_fit_page": "Fit page",
+  "pdf_zoom_in": "Zoom in",
+  "pdf_zoom_out": "Zoom out",
+  "pdf_dark_pages": "Dark pages",
+  "pdf_page": "Page",
+  "pdf_failed": "This PDF could not be opened."
 }

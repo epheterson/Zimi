@@ -2450,5 +2450,13 @@
   "alm_lc_rest": "Au repos",
   "alm_lc_moving": "En mouvement à {v}",
   "alm_lc_ticks": "Tics : {n}",
-  "alm_lc_explain": "La lumière va à la même vitesse dans les deux : dans l’horloge en mouvement, elle suit le chemin oblique, plus long, et chaque tic dure {g} fois plus."
+  "alm_lc_explain": "La lumière va à la même vitesse dans les deux : dans l’horloge en mouvement, elle suit le chemin oblique, plus long, et chaque tic dure {g} fois plus.",
+  "pdf_print": "Imprimer",
+  "pdf_fit_width": "Pleine largeur",
+  "pdf_fit_page": "Page entière",
+  "pdf_zoom_in": "Zoom avant",
+  "pdf_zoom_out": "Zoom arrière",
+  "pdf_dark_pages": "Pages sombres",
+  "pdf_page": "Page",
+  "pdf_failed": "Impossible d’ouvrir ce PDF."
 }

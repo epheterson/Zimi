@@ -1005,6 +1005,10 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("books.html")
             + _static_hash("apps.css")
             + _static_hash("apps.js")
+            # The PDF viewer and Zimi's reader inlined into it.
+            + _static_hash("pdfjs/web/viewer.html")
+            + _static_hash("pdfreader.css")
+            + _static_hash("pdfreader.js")
             + _i18n_hash
         ).encode()
     ).hexdigest()[:8]
@@ -1774,12 +1778,25 @@ _APP_ASSETS = (
     (_APPS_CSS_MARK, "apps.css", b"<style>\n", b"</style>"),
     (_APPS_JS_MARK, "apps.js", b"<script>\n", b"</script>"),
 )
+# The PDF viewer (pdf.js's page) with Zimi's own reading chrome, inlined the
+# same way: no second request before the first page, and like an app page it
+# is loaded at its bare address, so it is asked for each time (no-cache)
+# rather than kept a year on a phone that then never sees a fix.
+PDF_VIEWER = "pdfjs/web/viewer.html"
+_PDF_ASSETS = (
+    (b"<!--@pdfreader.css@-->", "pdfreader.css", b"<style>\n", b"</style>"),
+    (b"<!--@pdfreader.js@-->", "pdfreader.js", b"<script>\n", b"</script>"),
+)
+# Pages whose shared parts are put in as they are served: never from the
+# in-memory cache, always revalidated by the browser.
+_INLINED_PAGES = {name: _APP_ASSETS for name in APP_PAGES}
+_INLINED_PAGES[PDF_VIEWER] = _PDF_ASSETS
 
 
-def _inline_apps_assets(body):
-    """The apps' shared stylesheet and script, inlined at their marks, so an
-    app page is still one document."""
-    for mark, name, open_tag, close_tag in _APP_ASSETS:
+def _inline_apps_assets(body, assets=_APP_ASSETS):
+    """The shared stylesheet and script, inlined at their marks, so an app
+    page (or the PDF viewer, with its own) is still one document."""
+    for mark, name, open_tag, close_tag in assets:
         try:
             with open(os.path.join(_STATIC_DIR, name), "rb") as f:
                 body = body.replace(mark, open_tag + f.read() + close_tag, 1)
@@ -4233,7 +4250,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 current_mtime = None
             with ZimHandler._static_cache_lock:
                 cached = ZimHandler._static_cache.get(rel_path)
-            if cached and current_mtime is not None and cached[2] == current_mtime and rel_path not in APP_PAGES:
+            if cached and current_mtime is not None and cached[2] == current_mtime and rel_path not in _INLINED_PAGES:
                 body, content_type = cached[0], cached[1]
             else:
                 file_path = probe_path
@@ -4254,8 +4271,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # The app pages share one stylesheet, inlined here so each
                 # page stays one document and a change to the sheet reaches
                 # every app without a second request or a stale cache.
-                if rel_path in APP_PAGES:
-                    body = _inline_apps_assets(body)
+                if rel_path in _INLINED_PAGES:
+                    body = _inline_apps_assets(body, _INLINED_PAGES[rel_path])
                 if rel_path == "sw.js":
                     # Key the cache on version + content hash so same-version
                     # deploys still produce new sw.js bytes → the browser
@@ -4294,6 +4311,8 @@ class ZimHandler(BaseHTTPRequestHandler):
             # and inlined at serve time: ask each time.
             self.send_header("Cache-Control", "no-cache")
             self.send_header("Content-Security-Policy", ZIM_HTML_CSP)
+        elif rel_path == PDF_VIEWER:
+            self.send_header("Cache-Control", "no-cache")
         elif rel_path.startswith("i18n/"):
             self.send_header("Cache-Control", "public, max-age=86400")
         else:

@@ -2450,5 +2450,13 @@
   "alm_lc_rest": "In Ruhe",
   "alm_lc_moving": "Bewegt mit {v}",
   "alm_lc_ticks": "Ticks: {n}",
-  "alm_lc_explain": "Licht ist in beiden gleich schnell, also legt es in der bewegten Uhr den längeren, schrägen Weg zurück, und jeder Tick dauert {g}-mal so lang."
+  "alm_lc_explain": "Licht ist in beiden gleich schnell, also legt es in der bewegten Uhr den längeren, schrägen Weg zurück, und jeder Tick dauert {g}-mal so lang.",
+  "pdf_print": "Drucken",
+  "pdf_fit_width": "An Breite anpassen",
+  "pdf_fit_page": "Ganze Seite",
+  "pdf_zoom_in": "Vergrößern",
+  "pdf_zoom_out": "Verkleinern",
+  "pdf_dark_pages": "Dunkle Seiten",
+  "pdf_page": "Seite",
+  "pdf_failed": "Dieses PDF ließ sich nicht öffnen."
 }
