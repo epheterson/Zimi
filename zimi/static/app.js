@@ -18756,9 +18756,24 @@ function _bookUrl(url) {
 // header does, at every size: the book has a header of its own).
 var _bookReading = false;
 function _bookChrome(on) {
-  on = !!on;
-  if (on !== _chromeHeld) _chromeImmersive(on);
-  _bookReading = on;
+  _bookReading = !!on;
+  _ownChromeSync();
+}
+// So does it while a PDF is read: the viewer draws Zimi's PDF reader
+// (static/pdfreader.js), its own bars in Zimi's look.
+var _pdfReading = false;
+function _pdfChrome(on) {
+  _pdfReading = !!on;
+  _ownChromeSync();
+}
+function _ownChromeSync() {
+  var held = _bookReading || _pdfReading;
+  if (held === _chromeHeld) return;
+  // The header stays while focus is in it (app.css :focus-within): the
+  // search box focused as the page opened would keep it over the reader's.
+  var a = document.activeElement;
+  if (held && a && a.closest && a.closest('.topbar')) a.blur();
+  _chromeImmersive(held);
 }
 // The screen's safe-area insets (a notch, the home indicator). A page in a
 // frame is not told them, so the shell measures and hands them in.
@@ -20696,6 +20711,7 @@ function openReader(url) {
   // A book: Zimi's header steps aside for the book's before it loads.
   var _bookLoading = _bookUrl(url);
   _bookChrome(_bookLoading);
+  _pdfChrome(url.startsWith('/static/pdfjs/'));
   // Tint the iframe + loading overlay to the reader theme when Reader View is
   // sticky or AUTO is armed, so the load gap shows theme bg (never ZIM-white).
   _tintReaderChrome();
@@ -20788,6 +20804,7 @@ function openReader(url) {
       try { _bookOn = _bookAttach(frame); } catch (e) { console.warn('Book reader:', e); _showToast(t('books_view_unavailable')); }
     }
     _bookChrome(_bookOn);
+    _pdfChrome(_isPdfPage());
     if (_bookDoc && _readerViewOn) _bookMath(frame);
     var _wikiOn = _wikiDoc && _readerViewOn;
     if (_wikiOn) _wikiReaderAttach(frame); else _wikiChrome(false);
@@ -24183,6 +24200,7 @@ function closeReader() {
   _manageSavedReader = null; // discard saved state when reader is explicitly closed
   document.getElementById('reader').classList.remove('open');
   _bookChrome(false);
+  _pdfChrome(false);
   // Use location.replace to avoid adding a history entry (iframe.src pollutes back button)
   var f = document.getElementById('reader-frame');
   try { f.contentWindow.location.replace('about:blank'); } catch(e) { f.src = 'about:blank'; }
