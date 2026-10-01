@@ -1,4 +1,4 @@
-"""A book whose chapters are pages of its ZIM, as one page the e-reader opens.
+r"""A book whose chapters are pages of its ZIM, as one page the e-reader opens.
 
 Eric, 2026-09-30: Wikisource works, LibreTexts textbooks and whole-ZIM books
 open in the e-reader (contents, place kept, sync) as Gutenberg's do, not as
@@ -23,7 +23,17 @@ The chapters of each family (zimi.booksources has where its books are):
 
 The page carries ``<meta name="zimi-book" content="pages">`` and the book's
 Dublin Core, as an EPUB's does, and answers under the same CSP: nothing of
-the ZIM's runs in it. Read with the search pool's archive and lock, never
+the ZIM's runs in it.
+
+Math: a LibreTexts page writes its formulas as TeX (``\(..\)``, ``\[..\]``,
+``$$..$$``) for the MathJax its ZIM ships (``mathjax/es5/tex-svg.js``),
+which cannot run in this page. When the ZIM has one and the book has TeX,
+each formula is marked (``<span class="zb-tex">``) and the page names the
+ZIM's MathJax (``<meta name="zimi-math">``); the reader renders the marked
+formulas with it as they come into view (static/bookmath.js). A book with
+no TeX, or a ZIM with no MathJax, gets not a byte of this.
+
+Read with the search pool's archive and lock, never
 the library's, so a long book does not stall every other request.
 """
 
@@ -69,6 +79,31 @@ _LT_ROUTE_RE = re.compile(
     r"""(\shref\s*=\s*)(["'])#/([^"'?]*)(?:\?anchor=([^"']*))?\2""", re.I
 )
 _LT_MATTER_RE = re.compile(r"/(?:00|zz):_(?:Front|Back)_Matter(?:/|$)", re.I)
+# The macros a LibreTexts page defines for its formulas: a block at its head
+# (a paragraph of \newcommand each) that its own site hides. Kept for the
+# formulas, out of sight.
+_LT_PREAMBLE_RE = re.compile(
+    r"""(<div\b[^>]*?\sclass\s*=\s*["'][^"']*\bHeadertext\b[^"']*["'][^>]*?)(/?>)""",
+    re.I,
+)
+# "Example \(\PageIndex{2}\)": the page's number before the example's
+# (mindtouch2zim's zimui defines the macro per page, from its title).
+_LT_PAGEINDEX_RE = re.compile(r"\\PageIndex\s*\{\s*([^{}]*?)\s*\}")
+
+# ── math ──
+# Where a ZIM keeps the MathJax its own pages load (mindtouch2zim's zimui).
+MATHJAX_PATHS = ("mathjax/es5/tex-svg.js", "mathjax/es5/tex-mml-svg.js")
+MATH_CLASS = "zb-tex"
+# A formula as MathJax finds one in text: \(..\) inline, \[..\] or $$..$$
+# on a line of its own. Never across a tag: a formula is one run of text.
+_TEX_RE = re.compile(
+    r"\\\((?:(?!\\\)).)+?\\\)|\\\[(?:(?!\\\]).)+?\\\]|\$\$(?:(?!\$\$).)+?\$\$", re.S
+)
+# A tag (never the "< b" of "a < b" in a formula), and the elements whose
+# text is not prose, where TeX is shown as written.
+_TAG_RE = re.compile(r"(<[a-z/!?][^>]*>)", re.I)
+_TAG_NAME_RE = re.compile(r"<(/?)([a-z][a-z0-9]*)", re.I)
+_VERBATIM = frozenset(("pre", "code", "kbd", "samp", "textarea", "script", "style"))
 
 
 def address(root):
@@ -122,6 +157,53 @@ def chapter_html(body):
     body = _drop_elements(body, _NOEXPORT_RE)
     body = _H1_RE.sub("", body, count=1)
     return _HEADING_RE.sub(_demote, body)
+
+
+def mark_tex(body):
+    """``(body, n)``: ``body`` with each TeX formula in its text wrapped in
+    ``<span class="zb-tex">``, and how many there were. Text inside <pre>,
+    <code> and their like is left as written."""
+    if "\\" not in body and "$$" not in body:
+        return body, 0
+    out, n, verbatim = [], 0, 0
+    for i, part in enumerate(_TAG_RE.split(body)):
+        if i % 2:  # a tag
+            m = _TAG_NAME_RE.match(part)
+            if m and m.group(2).lower() in _VERBATIM and not part.endswith("/>"):
+                verbatim = max(0, verbatim + (-1 if m.group(1) else 1))
+        elif part and not verbatim:
+            part, k = _TEX_RE.subn(
+                lambda t: f'<span class="{MATH_CLASS}">{t.group(0)}</span>', part
+            )
+            n += k
+        out.append(part)
+    return "".join(out), n
+
+
+def _lt_front(title):
+    """What \\PageIndex puts before an example's number on the page titled
+    ``title``: "1.2." for "1.02: Sets", as mindtouch2zim's zimui has it."""
+    if ":" not in title:
+        return ""
+    parts = title.split(":", 1)[0].strip().split(".")
+    return ".".join(str(int(p)) if p.isdigit() else p for p in parts) + "."
+
+
+def _lt_math(body, title):
+    """A LibreTexts page's TeX as its site shows it: its block of macros
+    out of sight, \\PageIndex the page's number."""
+    body = _LT_PREAMBLE_RE.sub(lambda m: m.group(1) + " hidden" + m.group(2), body)
+    front = _lt_front(title)
+    return _LT_PAGEINDEX_RE.sub(lambda m: front + m.group(1), body)
+
+
+def math_src(archive):
+    """The ZIM path of the MathJax the ZIM ships, or None."""
+    for p in MATHJAX_PATHS:
+        item = _srv.entry_item(archive, p)
+        if item is not None and item.size:
+            return p
+    return None
 
 
 def _links(body, base_dir):
@@ -332,6 +414,8 @@ def build(zim, archive, reader, root, meta):
         return None
     index = {c["key"]: i for i, c in enumerate(chapters)}
     base = f"/w/{urllib.parse.quote(zim)}/"
+    mathjax = math_src(archive)
+    formulas = 0
 
     def outside(member, frag):
         return (
@@ -343,6 +427,10 @@ def build(zim, archive, reader, root, meta):
         body = chapter_html(c["body"])
         if ids:
             body = _lt_routes(body, zim, index, ids)
+            body = _lt_math(body, c["title"])
+        if mathjax:
+            body, k = mark_tex(body)
+            formulas += k
         body = _epub._rewrite_urls(body, c["base"], index, outside, prefix="zb-p")
         total += len(body)
         if total > MAX_BOOK_BYTES:
@@ -360,6 +448,10 @@ def build(zim, archive, reader, root, meta):
     title = _html.escape(meta.get("title") or chapters[0]["title"] or root, quote=True)
     creator = _html.escape(meta.get("author") or "", quote=True)
     lang = _html.escape(meta.get("lang") or "", quote=True)
+    math = ""
+    if formulas:
+        src = _html.escape(base + urllib.parse.quote(mathjax), quote=True)
+        math = f'<meta name="zimi-math" content="{src}">'
     head = (
         f'<!DOCTYPE html><html lang="{lang}"><head><meta charset="utf-8">'
         f'<meta name="viewport" content="width=device-width, initial-scale=1">'
@@ -367,7 +459,7 @@ def build(zim, archive, reader, root, meta):
         f'<meta name="dc.title" content="{title}">'
         f'<meta name="dc.creator" content="{creator}">'
         f'<meta name="dc.language" content="{lang}">'
-        '<meta name="zimi-book" content="pages"></head><body>'
+        f'<meta name="zimi-book" content="pages">{math}</head><body>'
     )
     return (head + "".join(parts) + "</body></html>").encode("utf-8")
 

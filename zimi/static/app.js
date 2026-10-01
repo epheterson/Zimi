@@ -16386,6 +16386,12 @@ function _readerViewInjectStyle(doc) {
     '.zimi-reader img,.zimi-reader figure,.zimi-reader video,.zimi-reader svg,.zimi-reader canvas,.zimi-reader iframe{',
       'max-width:100% !important;height:auto}',
     '.zimi-reader img{border-radius:6px;margin:0.4em 0;display:block}',
+    // A MediaWiki formula is a picture of type (mwoffliner's SVG beside its
+    // hidden MathML): in its line, or centred on its own, never a figure;
+    // black ink on nothing, so in the dark it is turned light, as the text is.
+    '.zimi-reader img.mwe-math-fallback-image-inline{display:inline;margin:0;border-radius:0}',
+    '.zimi-reader img.mwe-math-fallback-image-display{margin:0.5em auto;border-radius:0}',
+    'body.rv-theme-dark.zimi-reader-active img[class*="mwe-math-fallback"]{filter:invert(.88)}',
     // Tap-to-full-size: only images whose source is larger than the scaled-down
     // display get the affordance (class added by _readerMarkImage). zoom-in cue +
     // a subtle focus ring so keyboard users can see the target.
@@ -18208,6 +18214,28 @@ function _bookAttach(frame) {
   if (ok) doc.__zimiBook = true;
   return ok;
 }
+// A book whose formulas are TeX for its ZIM's MathJax (zimi/bookpages.py
+// names it in the page's head): drawn by /static/bookmath.js, which loads
+// only for such a page.
+var _BOOK_MATH_JS = '/static/bookmath.js?v=1', _bookMathLoading = null;
+function _bookMath(frame) {
+  var doc = frame.contentDocument;
+  var m = doc && doc.querySelector('head > meta[name="zimi-math"]');
+  var src = m && m.getAttribute('content') || '';
+  if (src.indexOf('/w/') !== 0) return;
+  if (!_bookMathLoading) {
+    _bookMathLoading = new Promise(function(resolve, reject) {
+      var el = document.createElement('script');
+      el.src = _BOOK_MATH_JS;
+      el.onload = function() { window.ZimiBookMath ? resolve(window.ZimiBookMath) : reject(); };
+      el.onerror = function() { _bookMathLoading = null; reject(); };
+      document.head.appendChild(el);
+    });
+  }
+  _bookMathLoading.then(function(M) {
+    M.attach(doc, src, function() { if (typeof doc.__zbReflow === 'function') doc.__zbReflow(); });
+  }, function() {});
+}
 function _bookUndo(doc) {
   try {
     doc.documentElement.classList.remove('zb-book', 'zb-paged', 'zb-away', 'zb-sheet-open', 'zb-set-open');
@@ -18744,6 +18772,9 @@ function _bookLay(frame) {
       if (paged || widthChanged) relayout(anchor);
     });
   });
+  // Something in the page changed size (its formulas drawn): pages are
+  // counted again, the passage held. Scrolling keeps its place by itself.
+  doc.__zbReflow = function() { if (paged) relayout(anchor); };
   // Leaving: the place as last read (the frame may already be hidden, with
   // nothing on screen to read it from).
   win.addEventListener('pagehide', function() { clearTimeout(settleTimer); save(); });
@@ -20058,6 +20089,7 @@ function openReader(url) {
       try { _bookOn = _bookAttach(frame); } catch (e) { console.warn('Book reader:', e); _showToast(t('books_view_unavailable')); }
     }
     _bookChrome(_bookOn);
+    if (_bookDoc && _readerViewOn) _bookMath(frame);
     var _wikiOn = _wikiDoc && _readerViewOn;
     if (_wikiOn) _wikiReaderAttach(frame); else _wikiChrome(false);
     _tintReaderChrome(); // reset frame bg to #fff if reader ended up off
