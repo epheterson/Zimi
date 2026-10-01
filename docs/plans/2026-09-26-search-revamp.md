@@ -19,21 +19,21 @@ Grammar and filters
 - [ ] Catalog: filter by language, category, size, date, with/without pictures (nopic/mini/maxi), installed or not; sort by relevance, newest, size, popularity
 
 Results
-- [ ] Matched words highlighted in titles and snippets
-- [ ] Grouped by source with "more from this source"; paging past the first screen
+- [x] Matched words highlighted in titles and snippets
+- [x] Grouped by source with "more from this source"; paging past the first screen
 - [ ] Exact title match first (already scored; keep it)
 - [ ] Search inside PDFs of zimgit ZIMs and, where cheap, image captions
 
 Within a ZIM and a page
-- [ ] A clear "search in this ZIM" from the reader, scoped by default while reading
-- [ ] Find in page (the open article), with next/previous and a count, on phone and desktop
+- [x] A clear "search in this ZIM" from the reader, scoped by default while reading
+- [x] Find in page (the open article), with next/previous and a count, on phone and desktop
 
 Getting to an answer
 - [ ] Nothing found: say why (a filter, a missing language), offer to drop it, and offer ZIMs from the catalog that would have it ("download a ZIM that has this")
-- [ ] Did you mean (exists; extend to operators and filters)
-- [ ] Recent searches, per user or browser
-- [ ] The query and filters live in the URL, so a search can be shared and Back works
-- [ ] Keyboard: arrows through results, Enter opens, Esc clears
+- [x] Did you mean (exists; extend to operators and filters)
+- [x] Recent searches, per user or browser
+- [x] The query and filters live in the URL, so a search can be shared and Back works
+- [x] Keyboard: arrows through results, Enter opens, Esc clears
 
 Agents and API
 - [ ] The grammar works in `/search`, `/suggest` and the MCP `search` tool; documented in api-and-mcp.md
@@ -44,5 +44,5 @@ Agents and API
 - All 10 languages; operators work with non-Latin words.
 
 ## Open questions for Eric
-- Recent searches: per browser or per account? (Apps are per user or server, never per browser.)
+- Recent searches: per browser or per account? (Apps are per user or server, never per browser.) Decided 2026-09-30: per browser, with History; they reach an account only when My data is saved there. No new server storage.
 - "Download a ZIM that has this": show catalog matches inline, or a link to the Catalog pre-filled?
