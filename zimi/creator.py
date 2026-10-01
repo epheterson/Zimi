@@ -47,6 +47,7 @@ import urllib.request
 from typing import Any
 
 import zimi.server as _srv
+from zimi import folderfiles as _folderfiles
 from zimi import nautilus as _nautilus
 from zimi.blocklist import blocked_phrase
 from zimi.zimwriter import (
@@ -149,7 +150,7 @@ MAX_PAGE_URLS = 20
 
 _MD_EXTS = {".md", ".markdown"}
 _HTML_EXTS = _nautilus.PAGE_EXTS
-_JUNK_NAMES = {"thumbs.db", "desktop.ini", "__pycache__"}
+_JUNK_NAMES = _folderfiles.JUNK_NAMES
 # A BARE mimetype, deliberately: libzim aggregates entry mimetypes verbatim
 # into the Counter metadata, whose spec regex admits no ";" or "=" — a
 # "text/html;charset=utf-8" entry makes every ZIM fail `zimcheck -M`. The
@@ -702,24 +703,10 @@ def _zim_file_item_class():
 def _scan_folder(root):
     """Yield ``(fs_path, zim_path)`` for every packagable file under root,
     depth-first and sorted for a deterministic build. Hidden files/dirs,
-    junk, and symlinks are skipped — a symlink could point outside the
-    folder, and 'package this folder' must never read beyond it."""
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        dirnames[:] = sorted(
-            d
-            for d in dirnames
-            if not d.startswith(".")
-            and d.lower() not in _JUNK_NAMES
-            and not os.path.islink(os.path.join(dirpath, d))
-        )
-        for name in sorted(filenames):
-            if name.startswith(".") or name.lower() in _JUNK_NAMES:
-                continue
-            fs_path = os.path.join(dirpath, name)
-            if os.path.islink(fs_path):
-                continue
-            zim_path = os.path.relpath(fs_path, root).replace(os.sep, "/")
-            yield fs_path, zim_path
+    junk, and symlinks are skipped (zimi.folderfiles.walk): a symlink could
+    point outside the folder, and 'package this folder' must never read
+    beyond it."""
+    yield from _folderfiles.walk(root)
 
 
 # Root-level entry-point candidates, best first. Extensionless README is
@@ -786,29 +773,52 @@ def folder_language(requested, files):
     return max(set(codes), key=lambda c: (codes.count(c), -codes.index(c))), "html-lang"
 
 
-def _folder_videos_json(assets):
+def _cover_in(owner, meta, have):
+    """The cover a sidecar names, as a ZIM path, when it was packaged."""
+    cover = _folderfiles.cover_path(owner, (meta or {}).get("cover"))
+    return cover if cover and cover in have else ""
+
+
+def _folder_videos_json(assets, sidecars=None):
     """The ``videos.json`` ZimiTube reads for a folder's video and audio
     files (the shape of ``zimi create <video URL>``'s, a row each by
     tube.media_file_row, a picture of the same name beside a file as its
     poster); None when there are none, or the folder has a videos.json of
-    its own, which is kept as it is."""
+    its own, which is kept as it is. A file's sidecar names its title,
+    description, author (where a channel would stand), date and poster."""
     from zimi.tube import VIDEOS_JSON, media_file_row, thumb_beside
 
     if VIDEOS_JSON in assets:
         return None
+    sidecars = sidecars or {}
     have = set(assets)
     rows = []
     for path in assets:
         # By extension, as a document library's files are (zimi.nautilus):
         # what ZimiTube plays, not whatever else calls itself video.
-        if _nautilus.ext_kind(path) in ("video", "audio"):
-            rows.append(media_file_row(path, _guess_mime(path), thumb_beside(path, have.__contains__)))
+        if _nautilus.ext_kind(path) not in ("video", "audio"):
+            continue
+        row = media_file_row(
+            path, _guess_mime(path), thumb_beside(path, have.__contains__)
+        )
+        meta = sidecars.get(path) or {}
+        for key, field in (
+            ("title", "title"),
+            ("description", "description"),
+            ("author", "speaker"),
+            ("date", "date"),
+        ):
+            if meta.get(key):
+                row[field] = meta[key]
+        row["thumb"] = _cover_in(path, meta, have) or row["thumb"]
+        rows.append(row)
     return json.dumps(rows, ensure_ascii=False).encode("utf-8") if rows else None
 
 
-def _index_tree_html(title, pages, assets):
+def _index_tree_html(title, pages, assets, gallery=None):
     """The generated main page: the content tree as nested lists, pages
-    first (with their real titles), assets after."""
+    first (with their real titles), assets after; the pictures' gallery
+    first of all when there is one."""
     tree = {}
     for zim_path, page_title in pages:
         tree.setdefault(posixpath.dirname(zim_path), []).append(
@@ -826,6 +836,12 @@ def _index_tree_html(title, pages, assets):
         + _plural(len(assets), "file")
         + " packaged by Zimi</p>"
     )
+    if gallery:
+        path, count = gallery
+        body.append(
+            f"<p><a href='{_html.escape(path)}'>Pictures</a> "
+            f"<span style='color:#666'>({_plural(count, 'picture')})</span></p>"
+        )
     for folder in sorted(tree):
         if folder:
             body.append(f"<h2 class='zimi-section'>{_html.escape(folder)}/</h2>")
@@ -841,6 +857,50 @@ def _index_tree_html(title, pages, assets):
     return (
         _page_head(_html.escape(title)) + "<body>" + "".join(body) + "</body></html>"
     ).encode("utf-8")
+
+
+_GALLERY_CSS = (
+    ".zimi-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));"
+    "gap:12px;padding:0;margin:0;list-style:none}"
+    ".zimi-gallery figure{margin:0}"
+    ".zimi-gallery img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;background:#8882}"
+    ".zimi-gallery figcaption{font-size:.85em;color:#666;margin-top:4px;overflow-wrap:anywhere}"
+)
+
+
+def _gallery_html(title, images, sidecars):
+    """A page of a folder's pictures, each linking to itself at full size,
+    captioned by its sidecar's title (and description) or its file name."""
+    cells = []
+    for path in images:
+        meta = sidecars.get(path) or {}
+        caption = meta.get("title") or _nautilus.title_from_name(path)
+        alt = meta.get("description") or caption
+        src = _html.escape(path)
+        cells.append(
+            f"<li><figure><a href='{src}'><img src='{src}' loading='lazy' alt='{_html.escape(alt)}'></a>"
+            f"<figcaption>{_html.escape(caption)}</figcaption></figure></li>"
+        )
+    return (
+        _page_head(_html.escape(title), _GALLERY_CSS)
+        + f"<body><main><h1>{_html.escape(title)}</h1><ul class='zimi-gallery'>"
+        + "".join(cells)
+        + "</ul></main></body></html>"
+    ).encode("utf-8")
+
+
+_TEXT_CSS = "pre.zimi-text{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.55}"
+
+
+def _render_text_page(text, title):
+    """A plain text file as a page: its words exactly, wrapped to the screen."""
+    doc = (
+        _page_head(_html.escape(title), _TEXT_CSS)
+        + "<body><main><pre class='zimi-text'>"
+        + _html.escape(text)
+        + "</pre></main></body></html>"
+    )
+    return doc.encode("utf-8")
 
 
 # A PDF's Info date: "D:20190304..." (PDF 1.7, 7.9.4).
@@ -868,37 +928,93 @@ def _pdf_facts(fs_path):
     }
 
 
-def _folder_documents(files):
+def _folder_documents(files, sidecars=None, have=None):
     """The folder's PDFs and EPUBs as a listing in nautilus's database.js
     shape (zimi.nautilus), which the Bookshelf reads as it reads Kiwix's
     document libraries: ``ti`` the title, ``aut`` the author, ``dsc`` a
     description, ``fp`` the file (from the ZIM's root, as the folder's
     files keep their paths), and two keys of Zimi's own, ``dt`` a date and
-    ``cv`` a cover picture. An EPUB says all of it in its package; a PDF its
-    Info when PyMuPDF is there; else the file's name is the title."""
+    ``cv`` a cover picture. A sidecar beside the file says it first; then an
+    EPUB's package, a PDF's Info when PyMuPDF is there; else the file's name
+    is the title."""
     from zimi import epub as _epub
 
+    sidecars = sidecars or {}
     rows = []
     for fs_path, zim_path in files:
         # What opens in the reader: PDF.js, and EPUBs chapter by chapter.
         ext = posixpath.splitext(zim_path)[1].lower()
         if ext not in _nautilus.BOOK_EXTS:
             continue
-        facts = (_epub.facts_of_file(fs_path) if ext == ".epub" else _pdf_facts(fs_path)) or {}
+        facts = (
+            _epub.facts_of_file(fs_path) if ext == ".epub" else _pdf_facts(fs_path)
+        ) or {}
+        meta = sidecars.get(zim_path) or {}
         row = {
             "_id": "%05d" % len(rows),
-            "ti": facts.get("title") or _nautilus.title_from_name(zim_path),
-            "dsc": facts.get("description") or "",
-            "aut": " & ".join(facts.get("creators") or []),
+            "ti": meta.get("title")
+            or facts.get("title")
+            or _nautilus.title_from_name(zim_path),
+            "dsc": meta.get("description") or facts.get("description") or "",
+            "aut": meta.get("author") or " & ".join(facts.get("creators") or []),
             "fp": [zim_path],
         }
-        if facts.get("date"):
-            row["dt"] = facts["date"]
-        if facts.get("cover"):
+        date = meta.get("date") or facts.get("date")
+        if date:
+            row["dt"] = date
+        cover = _cover_in(zim_path, meta, have or set())
+        if cover:
+            row["cv"] = cover
+        elif facts.get("cover"):
             # Inside the EPUB: served from the book's own address.
             row["cv"] = _epub.book_path(zim_path) + facts["cover"]
         rows.append(row)
     return rows
+
+
+# How often a long build says where it is: every file up to this many, then
+# about this many lines in all, so a 100,000-file folder logs a progress bar
+# rather than a phone book.
+FOLDER_PROGRESS_LINES = 500
+
+
+def _folder_progress(progress, n_done, n_total, zim_path):
+    if progress is None:
+        return
+    step = max(1, n_total // FOLDER_PROGRESS_LINES)
+    if n_done == n_total or n_done % step == 0:
+        progress(f"packaged {n_done}/{n_total} {zim_path}")
+
+
+def _folder_language_of(language, files, meta):
+    """The language: named by the caller, else the sidecar, else read off
+    the HTML (folder_language)."""
+    if requested_language(language):
+        return folder_language(language, files)
+    if meta.get("language"):
+        try:
+            return normalize_language(meta["language"].strip().lower()), "sidecar"
+        except ValueError:
+            log.info(
+                "zimi.txt names a language Zimi does not know: %r", meta["language"]
+            )
+    return folder_language(language, files)
+
+
+def _folder_icon(root, meta):
+    """The 48x48 illustration from the picture the sidecar's Icon names, or
+    None (a generated one is used) when there is none or no Pillow."""
+    rel = _folderfiles.cover_path("", meta.get("icon"))
+    if not rel:
+        return None
+    try:
+        fs, _rel = _folderfiles.resolve(root, rel)
+        if os.path.getsize(fs) > MAX_SOURCE_FILE_BYTES:
+            return None
+        with open(fs, "rb") as fh:
+            return illustration_from_image(fh.read())
+    except (OSError, ValueError):
+        return None
 
 
 def create_folder_zim(
@@ -909,13 +1025,23 @@ def create_folder_zim(
     title=None,
     description=None,
     language=LANGUAGE_AUTO,
-    creator_name="Zimi",
+    creator_name=None,
     register=False,
+    only=None,
+    progress=None,
+    exclude=(),
 ):
     """Package a folder of files into one ZIM. Returns a summary dict:
     ``{"path", "pages", "assets", "main", "registered", "language",
-    "language_source"}``. Raises ``CreateError`` for anything the user must fix
-    (missing folder, size caps, unwritable output)."""
+    "language_source", "families", "unsupported", "metadata"}``. Raises
+    ``CreateError`` for anything the user must fix (missing folder, size
+    caps, unwritable output, a selection that leaves the folder).
+
+    ``only`` is a subset: paths relative to the folder, files or folders,
+    and nothing else is read. The folder's ``zimi.txt`` and each file's
+    sidecar (zimi.folderfiles) fill in what the arguments leave unsaid:
+    an explicit title, description, language or creator wins. ``exclude``
+    is folders never read (the web passes Zimi's own data folder)."""
     folder = os.path.abspath(folder)
     if not os.path.isdir(folder):
         raise CreateError(
@@ -923,13 +1049,26 @@ def create_folder_zim(
             if os.path.exists(folder)
             else f"folder not found: {folder}"
         )
-    files = list(_scan_folder(folder))
-    if not files:
+    try:
+        exclude = _folderfiles.real_paths(exclude)
+        only = _folderfiles.normalize_only(folder, only, exclude)
+    except _folderfiles.OutsideRoot as e:
+        raise CreateError(str(e))
+    except FileNotFoundError as e:
+        raise CreateError(f"not in the folder: {e}")
+    plan = _folderfiles.plan(folder, only, exclude=exclude)
+    items = [(fs, rel, fam) for fs, rel, fam in plan["items"]] + [
+        (fs, rel, "image") for fs, rel in plan["covers"]
+    ]
+    if not items:
         raise CreateError(f"nothing to package — no files found in {folder}")
+    meta = plan["folder"]
+    sidecars = plan["sidecars"]
+    files = [(fs, rel) for fs, rel, _fam in items]
 
-    language, language_source = folder_language(language, files)
+    language, language_source = _folder_language_of(language, files, meta)
     base_name = os.path.basename(folder.rstrip(os.sep)) or "folder"
-    zim_title = title or base_name
+    zim_title = title or meta.get("title") or base_name
     out = _finish_output(out_dir or _srv.ZIM_DIR, out_path, _slug(base_name, "folder"))
 
     static_cls = zim_static_item_class()
@@ -937,18 +1076,38 @@ def create_folder_zim(
     total_bytes = 0
     pages = []  # (zim_path, title) — front articles for the generated index
     assets = []  # zim_path
+    families = {}
     mimetypes = set()  # evidence for the _pictures:/_videos: tags
-    main_path = _pick_main(p for _f, p in files)
+    main_path = _pick_main(rel for _f, rel in files)
+    taken = {rel for _f, rel in files}
+    # Pictures on a page of their own, unless the folder is a site (its own
+    # index.html is the main page) whose pages already show them. A cover,
+    # poster or icon is part of what it belongs to, not a picture in its own
+    # right.
+    is_site = main_path is not None and (
+        posixpath.splitext(main_path)[1].lower() in _folderfiles.PAGE_EXTS
+    )
+    belongs = plan["belongs"]
+    gallery_images = (
+        []
+        if is_site
+        else [rel for _f, rel, fam in items if fam == "image" and rel not in belongs]
+    )
+    if progress:
+        # The run pane names the job by this (manage's "title:" line).
+        progress(f"title: {zim_title}")
+        progress(f"packaging {len(items)} files")
+        for rel, reason in plan["unsupported"]:
+            progress(f"left out {rel}: {_folderfiles.REASONS[reason]}")
+        for _f, rel, fam in items:
+            if fam == "video" and not _folderfiles.plays_everywhere(rel):
+                progress(f"note: {rel} may not play in Safari or on an iPhone")
 
     with atomic_zim_creator(out, language) as creator:
-        for fs_path, zim_path in files:
+        for n, (fs_path, zim_path, fam) in enumerate(items, 1):
             size = os.path.getsize(fs_path)
             ext = os.path.splitext(zim_path)[1].lower()
-            is_text = (
-                ext in _MD_EXTS
-                or ext in _HTML_EXTS
-                or (zim_path == main_path and ext == "")
-            )
+            is_text = fam == "page" or (zim_path == main_path and ext == "")
             cap = MAX_TEXT_SOURCE_BYTES if is_text else MAX_SOURCE_FILE_BYTES
             if size > cap:
                 raise CreateError(
@@ -961,41 +1120,45 @@ def create_folder_zim(
                     f"folder exceeds the {_fmt_bytes(MAX_TOTAL_SOURCE_BYTES)} "
                     f"total cap at {zim_path} — split it into smaller ZIMs"
                 )
+            families[fam] = families.get(fam, 0) + 1
             stem = posixpath.basename(zim_path)
+            named = (sidecars.get(zim_path) or {}).get("title")
             if is_text:
                 try:
                     with open(fs_path, encoding="utf-8", errors="replace") as f:
                         text = f.read()
                 except OSError as e:
                     raise CreateError(f"cannot read {zim_path}: {e.strerror or e}")
-                if ext in _HTML_EXTS:
+                fallback = posixpath.splitext(stem)[0]
+                if ext in _folderfiles.PAGE_EXTS:
                     # Otherwise untouched — relative links resolve because the
                     # whole folder ships at its original paths. Only the
                     # charset declaration is rewritten, because the file was
                     # just read as UTF-8 and is stored as UTF-8, and the ZIM
                     # entry's bare text/html mimetype no longer says so.
-                    page_title = _page_title_from_html(
-                        text, posixpath.splitext(stem)[0]
-                    )
+                    page_title = named or _page_title_from_html(text, fallback)
                     content = _normalize_charset(text).encode("utf-8")
+                elif ext in _folderfiles.TEXT_EXTS:
+                    page_title = named or fallback
+                    content = _render_text_page(text, page_title)
                 else:
-                    content, page_title = _render_markdown_page(
-                        text, posixpath.splitext(stem)[0]
-                    )
+                    content, page_title = _render_markdown_page(text, fallback)
+                    page_title = named or page_title
                 creator.add_item(
                     static_cls(zim_path, page_title, content, mimetype=_HTML_MIME)
                 )
                 pages.append((zim_path, page_title))
             else:
                 mime = _guess_mime(zim_path)
-                creator.add_item(file_cls(zim_path, stem, fs_path, mime))
+                creator.add_item(file_cls(zim_path, named or stem, fs_path, mime))
                 assets.append(zim_path)
                 mimetypes.add(mime)
+            _folder_progress(progress, n, len(items), zim_path)
 
         # The documents, listed for the Bookshelf, unless the folder has a
         # file of that name itself.
-        documents = _folder_documents(files)
-        if documents and _nautilus.ZIMI_DATABASE_PATH not in {p for _f, p in files}:
+        documents = _folder_documents(files, sidecars, taken)
+        if documents and _nautilus.ZIMI_DATABASE_PATH not in taken:
             creator.add_item(
                 static_cls(
                     _nautilus.ZIMI_DATABASE_PATH,
@@ -1006,40 +1169,62 @@ def create_folder_zim(
                 )
             )
 
+        gallery = None
+        if gallery_images:
+            gallery_path = next(
+                p
+                for p in ("gallery", "zimi-gallery", "zimi-gallery-1")
+                if p not in taken
+            )
+            creator.add_item(
+                static_cls(
+                    gallery_path,
+                    zim_title,
+                    _gallery_html(zim_title, gallery_images, sidecars),
+                )
+            )
+            gallery = (gallery_path, len(gallery_images))
+
         if main_path is None:
-            taken = {p for _f, p in files}
             main_path = "index" if "index" not in taken else "zimi-index"
             creator.add_item(
                 static_cls(
-                    main_path, zim_title, _index_tree_html(zim_title, pages, assets)
+                    main_path,
+                    zim_title,
+                    _index_tree_html(zim_title, pages, assets, gallery),
                 )
             )
         creator.set_mainpath(main_path)
         # A folder of videos or audio plays in ZimiTube, from this list.
-        videos = _folder_videos_json(assets)
+        videos = _folder_videos_json(assets, sidecars)
         if videos:
-            creator.add_item(static_cls("videos.json", zim_title, videos, "application/json", front=False))
+            creator.add_item(
+                static_cls(
+                    "videos.json", zim_title, videos, "application/json", front=False
+                )
+            )
+        summary = f"{_plural(len(pages), 'page')} and {_plural(len(assets), 'file')}"
         add_standard_metadata(
             creator,
             title=zim_title,
             description=description
-            or f"{_plural(len(pages), 'page')} and "
-            f"{_plural(len(assets), 'file')} packaged by Zimi",
+            or meta.get("description")
+            or f"{summary} packaged by Zimi",
             language=language,
-            creator_name=creator_name,
+            creator_name=creator_name or meta.get("creator") or "Zimi",
+            publisher=meta.get("publisher"),
             # The folder's NAME, never its path — see the privacy rule in
             # zimwriter's provenance block.
             source=base_name,
             # Repackaging the same folder next month is a new EDITION of this
             # ZIM, so the Name comes from the folder, never from the date.
             name=zim_name(base_name, language),
-            tags=media_tags(mimetypes),
+            tags=media_tags(mimetypes) + _folderfiles.tags_of(meta.get("tags")),
+            illustration=_folder_icon(folder, meta),
             history=history_record(
                 "created",
                 "folder",
-                f'packaged the folder "{base_name}" — '
-                f"{_plural(len(pages), 'page')} and "
-                f"{_plural(len(assets), 'file')}",
+                f'packaged the folder "{base_name}" — {summary}',
                 counts={
                     "pages": len(pages),
                     "assets": len(assets),
@@ -1057,6 +1242,12 @@ def create_folder_zim(
         "registered": registered,
         "language": language,
         "language_source": language_source,
+        "families": families,
+        "title": zim_title,
+        "unsupported": [
+            {"path": rel, "reason": reason} for rel, reason in plan["unsupported"]
+        ],
+        "metadata": meta,
     }
 
 
@@ -3253,6 +3444,8 @@ def _build_from_args(args, src, is_url):
         if named:
             raise CreateError(f"{', '.join(named)} {because}")
 
+    if is_url and getattr(args, "only", None):
+        raise CreateError("--only picks files inside a folder — give a folder to use it")
     if not is_url:
         refuse(crawl_flags, f"only applies to a URL capture — {src} is a folder")
         return create_folder_zim(
@@ -3260,9 +3453,13 @@ def _build_from_args(args, src, is_url):
             title=args.title,
             description=args.description,
             language=args.language,
-            creator_name=args.creator,
+            # The flag's default is "Zimi"; leaving it there lets a zimi.txt
+            # name the creator, and anything typed wins over the file.
+            creator_name=None if args.creator in (None, "Zimi") else args.creator,
             out_path=args.out,
             register=not args.out,
+            only=getattr(args, "only", None),
+            progress=_note,
         )
 
     from zimi import crawler
@@ -3453,6 +3650,8 @@ def cli_create(args):
             f"  {_plural(info['pages'], 'page')}, "
             f"{_plural(info['assets'], 'file')}; main page: {info['main']}"
         )
+        if info.get("unsupported"):
+            print(f"  left out: {_plural(len(info['unsupported']), 'file')} (listed above)")
     if info["registered"]:
         print("  registered in the library — no rescan needed")
     elif not args.out:

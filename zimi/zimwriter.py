@@ -2295,6 +2295,7 @@ def add_standard_metadata(
     long_description=None,
     license=None,
     relation=None,
+    publisher=None,
 ):
     """The full openZIM metadata block — every mandatory key, conforming — plus
     the Zimi provenance block. One chokepoint, so no engine can forget a key.
@@ -2307,7 +2308,8 @@ def add_standard_metadata(
     extras folded in beside the defaults. ``illustration`` is PNG bytes for
     the mandatory 48x48 icon — omit it and a generated identicon is used.
     ``license`` and ``relation`` are written only when the caller actually
-    knows them; nothing here invents a licence claim.
+    knows them; nothing here invents a licence claim. ``publisher`` defaults
+    to Zimi, which is who wrote the file, unless the source names one.
 
     ``source`` is where the content came from. A URL is written to BOTH the
     standard ``Source`` field (whose openZIM meaning is a URL) and
@@ -2334,7 +2336,7 @@ def add_standard_metadata(
     if len(long_text) > len(short_description):
         creator.add_metadata("LongDescription", long_text)
     creator.add_metadata("Creator", creator_name)
-    creator.add_metadata("Publisher", "Zimi")
+    creator.add_metadata("Publisher", publisher or "Zimi")
     creator.add_metadata("Date", date_str or datetime.date.today().isoformat())
     creator.add_metadata("Tags", tags_string(tags))
     if flavour:

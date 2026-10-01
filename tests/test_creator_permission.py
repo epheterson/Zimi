@@ -264,13 +264,19 @@ class TestRouteMatrix(_RouteBase):
         self.assertIn("active", body)
 
     def test_no_server_path_picker_for_creators(self):
-        # The server-path modes (folder, import) are CLI-only, so their web
-        # door — the directory picker — is gone for everyone who may create.
-        # A clean 410 naming the CLI, never a listing. (The mode refusals
-        # themselves live at validation; see test_create_routes.py.)
+        # The old picker that took a server path is a 410 for everyone. The
+        # folder tree that replaced it reads the server's disk, so like
+        # import it is the primary admin's alone: a creator is refused
+        # before anything is listed, and so is the folder mode itself.
         status, body = self._get("/manage/create/browse", self.creator)
         self.assertEqual(status, 410)
-        self.assertIn("CLI-only", body["error"])
+        self.assertNotIn("entries", body)
+        status, body = self._get("/manage/create/tree", self.creator)
+        self.assertEqual(status, 403)
+        self.assertNotIn("entries", body)
+        for path in ("/manage/create", "/manage/create/probe"):
+            status, _ = self._post(path, {"mode": "folder", "source": "."}, self.creator)
+            self.assertEqual(status, 403, path)
 
     def test_revoking_the_flag_closes_the_door(self):
         users.set_can_create("Maker", False)
@@ -280,19 +286,24 @@ class TestRouteMatrix(_RouteBase):
     def test_primary_admin_is_unchanged(self):
         status, body = self._post("/manage/create", dict(URL_BODY), self.primary)
         self.assertEqual((status, body["sentinel"]), (200, "start"))
-        # The folder picker is gone for the primary admin too — CLI-only.
+        # The old picker is gone for the primary admin too; the tree is theirs.
         status, body = self._get("/manage/create/browse", self.primary)
         self.assertEqual(status, 410)
+        status, body = self._get("/manage/create/tree", self.primary)
+        self.assertEqual(status, 200, body)
+        self.assertIn("entries", body)
         status, _ = self._get("/manage/create/status", self.primary)
         self.assertEqual(status, 200)
 
     def test_secondary_admin_keeps_url_modes(self):
-        # URL modes go through for the secondary admin; the server-path
-        # picker is gone (folder + import are CLI-only for everyone).
+        # URL modes go through for the secondary admin; the disk-reading
+        # modes and their tree are the primary admin's.
         status, body = self._post("/manage/create", dict(URL_BODY), self.secondary)
         self.assertEqual((status, body["sentinel"]), (200, "start"))
         status, _ = self._get("/manage/create/browse", self.secondary)
         self.assertEqual(status, 410)
+        status, _ = self._get("/manage/create/tree", self.secondary)
+        self.assertEqual(status, 403)
 
 
 # ── Granting through /manage/users ──────────────────────────────────────────
