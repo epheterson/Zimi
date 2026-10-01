@@ -432,6 +432,21 @@ _metrics_lock = threading.Lock()
 _METRIC_ENDPOINT_CAP = 64
 
 
+def _search_answer(result, filter_zim, fast):
+    """A full /search answer with `incomplete`: the searched sources whose
+    title index is still building or that have no full-text index (see
+    search.index_gaps). Read at answer time, so a cached result never carries
+    a stale state; a copy, so the cache keeps none. The fast path, titles by
+    design and run on every keystroke, does not ask."""
+    if fast or result.get("error"):
+        return result
+    from zimi.search import index_gaps
+
+    scope = [filter_zim] if isinstance(filter_zim, str) else filter_zim
+    gaps = index_gaps(scope, {r["zim"] for r in result.get("results", [])})
+    return dict(result, incomplete=gaps) if gaps else result
+
+
 def _record_metric(endpoint, latency, error=False):
     """Record a request metric."""
     # When somebody last wanted something. Read by the shape worker, which will
@@ -2133,7 +2148,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if cached is not None:
                     _record_metric("/search", 0)
                     _record_usage("search", query=q)
-                    return self._json(404 if cached.get("error") else 200, cached)
+                    return self._json(
+                        404 if cached.get("error") else 200,
+                        _search_answer(cached, filter_zim, fast),
+                    )
                 t0 = time.time()
                 if fast:
                     # Fast path uses _suggest_pool internally, no _zim_lock needed
@@ -2161,7 +2179,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                     dt,
                 )
                 # Scoped to a ZIM that is not here: 404, as /read and /chunks.
-                return self._json(404 if result.get("error") else 200, result)
+                return self._json(
+                    404 if result.get("error") else 200,
+                    _search_answer(result, filter_zim, fast),
+                )
 
             elif parsed.path == "/read":
                 zim = param("zim")

@@ -145,6 +145,29 @@ def build_openapi():
                                         "Optional."
                                     ),
                                 },
+                                "incomplete": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "zim": {"type": "string"},
+                                            "state": {
+                                                "type": "string",
+                                                "enum": ["building", "titles_only"],
+                                            },
+                                            "progress": {"type": "integer"},
+                                        },
+                                    },
+                                    "description": (
+                                        "Searched sources that may leave the "
+                                        "results partial: a title index still "
+                                        "building (progress in percent when "
+                                        "known), or no full-text index (matches "
+                                        "titles only; listed when the search named "
+                                        "the source or it answered). Not on "
+                                        "fast=1. Optional."
+                                    ),
+                                },
                             },
                         },
                     ),

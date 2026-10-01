@@ -557,6 +557,11 @@ def _build_title_index(zim_name, zim_path):
                     conn.executemany(
                         "INSERT OR IGNORE INTO titles VALUES (?,?,?,?)", batch
                     )
+                    # How far through, for index_status in any process.
+                    conn.execute(
+                        "INSERT OR REPLACE INTO meta VALUES ('progress', ?)",
+                        (str(i * 100 // total_entries),),
+                    )
                     conn.commit()
                     count += len(batch)
                     batch.clear()
@@ -594,6 +599,7 @@ def _build_title_index(zim_name, zim_path):
                 count,
                 _FTS5_ENTRY_THRESHOLD,
             )
+        conn.execute("DELETE FROM meta WHERE key='progress'")
         _write_index_meta(conn, archive, zim_path, _TITLE_INDEX_VERSION, count)
         conn.execute("INSERT INTO meta VALUES ('has_fts', ?)", (has_fts,))
         conn.commit()
@@ -879,6 +885,107 @@ def background_work():
          "seconds": int(now - j["started"])}
         for j in jobs
     ]
+
+
+# A title index's .tmp untouched this long is not a build in progress but an
+# orphan of a killed one (it is swept at the next build). Another process's
+# build (the server's, or the child it isolates a big ZIM in) is seen only
+# through its tmp, which a build commits to every 10,000 titles.
+_BUILD_FRESH_S = 900
+# Whether a ZIM ships a Xapian full-text index, by ZIM path: fixed per file.
+_fulltext_known = {}
+
+
+def _tmp_build_progress(db_path):
+    """(building, percent or None) from a build's tmp beside ``db_path``."""
+    tmp = db_path + ".tmp"
+    try:
+        touched = max(
+            os.path.getmtime(p) for p in (tmp, tmp + "-wal") if os.path.exists(p)
+        )
+    except ValueError:
+        return False, None
+    if time.time() - touched > _BUILD_FRESH_S:
+        return False, None
+    try:
+        conn = sqlite3.connect(f"file:{tmp}?mode=ro", uri=True, timeout=0.2)
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key='progress'").fetchone()
+        finally:
+            conn.close()
+        return True, int(row[0]) if row else None
+    except Exception:
+        return True, None
+
+
+def _has_fulltext(name, path):
+    """True or False when this ZIM does or does not ship a full-text index,
+    None when its archive cannot be read right now."""
+    if path in _fulltext_known:
+        return _fulltext_known[path]
+    archive, lock = _get_fts_archive(name)
+    if archive is None or not lock.acquire(timeout=1):
+        return None
+    try:
+        known = bool(getattr(archive, "has_fulltext_index", True))
+    except Exception:
+        return None
+    finally:
+        lock.release()
+    _fulltext_known[path] = known
+    return known
+
+
+def index_status(names=None, check_current=False):
+    """Per installed ZIM (all, or ``names``) the state of what search reads:
+    [{"zim", "title": ready|stale|building|missing, "progress": percent or
+    None, "fulltext": bool or None}]. Reads no index unless one is building;
+    ``check_current`` also tells a stale index from a ready one (opens each)."""
+    zims = _srv.get_zim_files()
+    path_fn = getattr(_srv, "_title_index_path", _title_index_path)
+    with _title_index_status_lock:
+        here = _title_index_status["building_now"]
+    out = []
+    for name in sorted(zims) if names is None else names:
+        if name not in zims:
+            continue
+        db = path_fn(name)
+        building, progress = _tmp_build_progress(db)
+        if building or name == here:
+            title = "building"
+        elif not os.path.exists(db):
+            title = "missing"
+        elif check_current and not _title_index_is_current(name, zims[name]):
+            title = "stale"
+        else:
+            title = "ready"
+        out.append(
+            {
+                "zim": name,
+                "title": title,
+                "progress": progress,
+                "fulltext": _has_fulltext(name, zims[name]),
+            }
+        )
+    return out
+
+
+def index_gaps(names=None, hit_zims=()):
+    """What may leave a full search over ``names`` (None: all) partial:
+    [{"zim", "state": "building"|"titles_only", "progress"?}]. A title index
+    building is listed wherever it is; a source with no full-text index (it
+    only ever matches titles) when the search named it or it answered."""
+    named = set(names or ()) | set(hit_zims)
+    gaps = []
+    for s in index_status(names):
+        if s["title"] == "building":
+            gap = {"zim": s["zim"], "state": "building"}
+            if s["progress"] is not None:
+                gap["progress"] = s["progress"]
+            gaps.append(gap)
+        elif s["fulltext"] is False and s["zim"] in named:
+            gaps.append({"zim": s["zim"], "state": "titles_only"})
+    return gaps
 
 
 def _get_title_index_stats():
