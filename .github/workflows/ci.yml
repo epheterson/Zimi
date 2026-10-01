@@ -1,12 +1,25 @@
 name: CI
 
+# Pull requests that are ready for review, main, and by hand. A draft PR runs
+# nothing: CI is run deliberately (mark it ready, or Actions > CI > Run
+# workflow on the branch) at the end or at a review, not on every push
+# (Eric, 2026-10-01: "lets stick to PR only I don't mind doing it at the end
+# or during intentional reviews").
 on:
   push:
-    branches: [main, "v*"]
+    branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+# A newer push to the same PR cancels the run it supersedes.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -125,6 +138,7 @@ jobs:
       matrix:
         os: [ubuntu-22.04, macos-15-intel, macos-latest, windows-latest]
 
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -257,6 +271,7 @@ jobs:
   # UID they cannot read), and the Quadlet unit we ship must be one systemd
   # accepts. Both are checked here rather than promised in the README.
   podman:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -314,6 +329,7 @@ jobs:
           echo "the Quadlet unit renders to a service with the userns mapping intact"
 
   docker:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

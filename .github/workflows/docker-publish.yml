@@ -2,10 +2,12 @@ name: Docker Build & Publish
 
 on:
   push:
-    # main → :latest + semver tags from the version
-    # v1.7.0 (and other v*-prefixed branches) → :dev for early adopters
-    branches: [main, 'v*']
+    # main → :latest + semver tags from the version. A v*-prefixed branch
+    # gets :dev only when run by hand (Actions > Docker Build & Publish >
+    # Run workflow), not on every push.
+    branches: [main]
     tags: ['v*.*.*']
+  workflow_dispatch:
 
 env:
   DOCKERHUB_IMAGE: epheterson/zimi
