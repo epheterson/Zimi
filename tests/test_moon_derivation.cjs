@@ -91,9 +91,9 @@ check(wax1 === true && wax2 === false, '_moonIsWaxing follows the phase < 0.5 co
 // ── 2. Source-level: every renderer reaches the canonical helpers ──
 check(/_moonView\(now, lat, lon\)/.test(extractFn(skySrc, '_skyFrame')),
   'sky scene derives its view via _moonView');
-check(!/parallactic/.test(extractFn(skySrc, '_drawSkyScene')),
+check(!/parallactic/.test(extractFn(skySrc, '_skyPaintMoon')),
   'sky draw no longer rotates by the parallactic angle');
-check(/_moonSpriteCanvas\(view,/.test(extractFn(skySrc, '_drawSkyScene')),
+check(/_moonSpriteCanvas\(view,/.test(extractFn(skySrc, '_skyPaintMoon')),
   'sky draw shades the canonical view');
 check(/_moonView\(date, ll\.lat, ll\.lon\)/.test(extractFn(appSrc, "_quickMoonView")),
   'Today card (_quickMoonView) delegates to _moonView');

@@ -11,14 +11,38 @@ var _PLANETS = {
   Venus:   { a: 0.72333, e: 0.00677, I: 3.395, L: 181.980, LP: 131.564, N: 76.680, da: 0, de: -0.00005, dI: -0.0008, dL: 58517.816, dLP: 0.013, dN: -0.278, color: '#e8c87a', glow: '#f0d890', vr: 0.014 },
   Earth:   { a: 1.00000, e: 0.01671, I: 0.000, L: 100.464, LP: 102.937, N: 0, da: 0, de: -0.00004, dI: -0.0131, dL: 35999.373, dLP: 0.323, dN: 0, color: '#4a90d9', glow: '#6ab0ff', vr: 0.015 },
   Mars:    { a: 1.52368, e: 0.09340, I: 1.850, L: 355.453, LP: 336.060, N: 49.558, da: 0, de: 0.00008, dI: -0.0013, dL: 19140.300, dLP: 0.444, dN: -0.293, color: '#c46040', glow: '#e07050', vr: 0.011 },
-  Jupiter: { a: 5.20260, e: 0.04849, I: 1.303, L: 34.351, LP: 14.331, N: 100.464, da: -0.00002, de: 0.00018, dI: -0.0055, dL: 3034.906, dLP: 0.215, dN: 0.177, color: '#c49868', glow: '#e0b888', vr: 0.032 },
-  Saturn:  { a: 9.55491, e: 0.05551, I: 2.489, L: 50.077, LP: 93.057, N: 113.665, da: -0.00003, de: -0.00035, dI: 0.0033, dL: 1222.114, dLP: 0.752, dN: -0.250, color: '#d4b878', glow: '#f0da98', vr: 0.026, rings: true },
-  Uranus:  { a: 19.1884, e: 0.04638, I: 0.773, L: 314.055, LP: 173.005, N: 74.006, da: -0.00002, de: -0.00002, dI: -0.0023, dL: 428.467, dLP: 0.009, dN: 0.074, color: '#78c8c8', glow: '#a0e8e8', vr: 0.018 },
-  Neptune: { a: 30.0699, e: 0.00895, I: 1.770, L: 304.223, LP: 46.682, N: 131.784, da: 0.00003, de: 0.00001, dI: 0.0001, dL: 218.460, dLP: 0.010, dN: -0.005, color: '#3868c8', glow: '#5888f0', vr: 0.016 }
+  Jupiter: { a: 5.20260, e: 0.04849, I: 1.303, L: 34.351, LP: 14.331, N: 100.464, da: -0.00002, de: 0.00018, dI: -0.0055, dL: 3034.906, dLP: 0.215, dN: 0.177, color: '#c49868', glow: '#e0b888', vr: 0.032, mb: -0.00012452, mc: 0.06064060, ms: -0.35635438, mf: 38.35125 },
+  Saturn:  { a: 9.55491, e: 0.05551, I: 2.489, L: 50.077, LP: 93.057, N: 113.665, da: -0.00003, de: -0.00035, dI: 0.0033, dL: 1222.114, dLP: 0.752, dN: -0.250, color: '#d4b878', glow: '#f0da98', vr: 0.026, rings: true, mb: 0.00025899, mc: -0.13434469, ms: 0.87320147, mf: 38.35125 },
+  Uranus:  { a: 19.1884, e: 0.04638, I: 0.773, L: 314.055, LP: 173.005, N: 74.006, da: -0.00002, de: -0.00002, dI: -0.0023, dL: 428.467, dLP: 0.009, dN: 0.074, color: '#78c8c8', glow: '#a0e8e8', vr: 0.018, mb: 0.00058331, mc: -0.97731848, ms: 0.17689245, mf: 7.67025 },
+  Neptune: { a: 30.0699, e: 0.00895, I: 1.770, L: 304.223, LP: 46.682, N: 131.784, da: 0.00003, de: 0.00001, dI: 0.0001, dL: 218.460, dLP: 0.010, dN: -0.005, color: '#3868c8', glow: '#5888f0', vr: 0.016, mb: -0.00041348, mc: 0.68346318, ms: -0.10162547, mf: 7.67025 }
 };
 
+// The Sun's limb darkening, shared by every Sun the Almanac draws (the live
+// sky's disc, the 3D view's photosphere): its brightness at mu, the cosine of
+// the angle from the disc's centre, as a share of the centre's, in red, green
+// and blue, I(mu) = a0 + a1 mu + ... + a5 mu^5. Fifth-order fits to the
+// measured centre-to-limb variation near 650, 550 and 450 nm (after Neckel
+// and Labs 1994, Solar Physics 153, 91): each is 1 at the centre; at the limb
+// red keeps 35% and blue 15%, which is why the edge of the Sun is darker and
+// warmer.
+var SUN_LIMB_POLY = [
+  [0.34685, 1.37539, -2.04425, 2.70493, -1.94290, 0.55999],
+  [0.26073, 1.27428, -1.30352, 1.47085, -0.96618, 0.26384],
+  [0.15248, 1.38517, -1.49615, 1.99886, -1.48155, 0.44119]
+];
+function _sunLimb(mu) {
+  return SUN_LIMB_POLY.map(function (a) {
+    var v = 0;
+    for (var k = a.length - 1; k >= 0; k--) v = a[k] + mu * v;
+    return v;
+  });
+}
+
 var _ORRERY_MAX_ECC = 0.99;
-function _planetPosition(name, T) {
+// A planet's elements at T (Julian centuries from J2000; JPL's approximate
+// Keplerian elements, J2000 ecliptic and equinox) and its place in its own
+// orbit plane: xp toward perihelion, yp a quarter turn on, the way it moves.
+function _planetOrbit(name, T) {
   var p = _PLANETS[name];
   var a = p.a + p.da * T;
   // The element rates are linear fits for a few thousand years. Hundreds of
@@ -27,15 +51,41 @@ function _planetPosition(name, T) {
   var e = Math.min(Math.max(p.e + p.de * T, 0), _ORRERY_MAX_ECC);
   var L = (p.L + p.dL * T) % 360;
   var LP = (p.LP + p.dLP * T) % 360;
-  var M = ((L - LP) % 360 + 360) % 360;
-  var Mrad = M * DEG_TO_RAD;
-  var E = _solveKepler(Mrad, e);
-  var xp = a * (Math.cos(E) - e);
-  var yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
-  var LPrad = LP * DEG_TO_RAD;
-  var x = xp * Math.cos(LPrad) - yp * Math.sin(LPrad);
-  var y = xp * Math.sin(LPrad) + yp * Math.cos(LPrad);
+  var M = L - LP;
+  // Jupiter to Neptune pull on each other; JPL's Table 2b terms put that into
+  // the mean anomaly (b T^2 + c cos fT + s sin fT, degrees).
+  if (p.mf) M += p.mb * T * T + p.mc * Math.cos(p.mf * T * DEG_TO_RAD) + p.ms * Math.sin(p.mf * T * DEG_TO_RAD);
+  M = (M % 360 + 360) % 360;
+  var E = _solveKepler(M * DEG_TO_RAD, e);
+  return {
+    xp: a * (Math.cos(E) - e), yp: a * Math.sqrt(1 - e * e) * Math.sin(E),
+    LP: LP, N: p.N + p.dN * T, I: p.I + p.dI * T
+  };
+}
+
+// The orrery's flat solar system: the orbit turned to its perihelion in the
+// ecliptic plane (the drawing has no up or down).
+function _planetPosition(name, T) {
+  var o = _planetOrbit(name, T);
+  var LPrad = o.LP * DEG_TO_RAD;
+  var x = o.xp * Math.cos(LPrad) - o.yp * Math.sin(LPrad);
+  var y = o.xp * Math.sin(LPrad) + o.yp * Math.cos(LPrad);
   return { x: x, y: y, r: Math.sqrt(x * x + y * y) };
+}
+
+// The same orbit in three dimensions (AU, heliocentric, J2000 ecliptic), its
+// node and inclination too, which the sky needs: Venus stands up to 8 degrees
+// off the ecliptic seen from here. JPL, "Keplerian Elements for Approximate
+// Positions of the Major Planets" (Standish), eq. 8.
+function _planetHelio3D(name, T) {
+  var o = _planetOrbit(name, T);
+  var w = (o.LP - o.N) * DEG_TO_RAD, N = o.N * DEG_TO_RAD, I = o.I * DEG_TO_RAD;
+  var cw = Math.cos(w), sw = Math.sin(w), cN = Math.cos(N), sN = Math.sin(N), cI = Math.cos(I), sI = Math.sin(I);
+  return {
+    x: (cw * cN - sw * sN * cI) * o.xp + (-sw * cN - cw * sN * cI) * o.yp,
+    y: (cw * sN + sw * cN * cI) * o.xp + (-sw * sN + cw * cN * cI) * o.yp,
+    z: sw * sI * o.xp + cw * sI * o.yp
+  };
 }
 
 // ── Light and relativity: the numbers behind the hover delay, the ride and the twins ──
@@ -349,31 +399,32 @@ function _orreryCamStep(target) {
 
 // ── The Earth glow: a way into the Earth view (almanac-earth.js) ──
 // Drawn only while that view exists, so a build without it shows no dead glow.
+// Still and quiet: the hero Moon is the main way into the 3D view, so Earth
+// keeps a faint halo and a thin ring, no breath and no beacon (Eric,
+// 2026-09-30).
 var _EARTH_GLOW_SCALE = 2.6;        // glow radius, in Earth radii
-var _EARTH_GLOW_PERIOD_MS = 3200;   // one slow breath
-var _EARTH_GLOW_ALPHA = 0.10;       // resting strength
-var _EARTH_GLOW_PULSE = 0.08;       // how much the breath adds
+var _EARTH_GLOW_ALPHA = 0.09;       // its strength
+var _EARTH_RING_AT = 0.62;          // the ring, as a share of the glow's radius
+var _EARTH_RING_ALPHA = 0.16;
 
 // Once a first open finds no WebGL (almanac-earth.js sets .unsupported), the
-// glow and the Earth tip's button go, and Earth opens its article again.
+// glow and the tips' buttons go, and Earth and the Sun open their articles again.
 function _orreryEarthViewAvailable() {
   return typeof window.openAlmanacEarth === 'function' && !window.openAlmanacEarth.unsupported;
 }
-function _orreryOpenEarthView() {
+// Into the 3D view: over the Earth, or on the Sun.
+function _orreryOpenEarthView(target) {
   if (!_orreryEarthViewAvailable()) return;
   _orreryMarkTried('earth');
-  window.openAlmanacEarth();
+  window.openAlmanacEarth(target ? { target: target } : undefined);
 }
 
 // ── Saying what the orrery does, until it has been done ──
 // A phone has no hover, and nothing said that a planet flies or that Earth
 // opens in 3D (Eric, 2026-09-29, found neither). Until each has been done
-// once on this device, a line under the orrery says it (on touch), and Earth
-// sends out a slow ring over its glow. Done, each goes quiet for good.
+// once on this device, a line under the orrery says it (on touch). Done,
+// each goes quiet for good.
 var _ORRERY_TRIED_KEY = 'zimi_orrery_tried';
-var _ORRERY_BEACON_PERIOD_MS = 2400;   // one ring, out and gone
-var _ORRERY_BEACON_REACH = 4.2;        // how far it goes, in Earth radii
-var _ORRERY_BEACON_ALPHA = 0.55;       // how bright it starts
 var _orreryTriedCache = null;          // read once: the draw loop asks every frame
 function _orreryTried() {
   if (!_orreryTriedCache) {
@@ -397,16 +448,6 @@ function _orreryRenderHint() {
   if (!tried.earth && _orreryEarthViewAvailable()) parts.push(t('alm_orr_hint_earth'));
   el.textContent = parts.join(' · ');
   el.hidden = !parts.length;
-}
-// The ring's radius (in Earth radii) and strength at an instant; a still
-// ring when motion is reduced.
-function _orreryBeacon(nowMs, reduced) {
-  if (reduced) return { r: _EARTH_GLOW_SCALE, a: _ORRERY_BEACON_ALPHA * 0.6 };
-  var p = (nowMs % _ORRERY_BEACON_PERIOD_MS) / _ORRERY_BEACON_PERIOD_MS;
-  return { r: 1 + (_ORRERY_BEACON_REACH - 1) * p, a: _ORRERY_BEACON_ALPHA * (1 - p) };
-}
-function _orreryEarthGlowAlpha(nowMs) {
-  return _EARTH_GLOW_ALPHA + _EARTH_GLOW_PULSE * (0.5 + 0.5 * Math.sin(2 * Math.PI * nowMs / _EARTH_GLOW_PERIOD_MS));
 }
 
 var _orreryPlanetPositions = []; // [{name, x, y, r, glowR?}] in world CSS px for hover
@@ -498,6 +539,23 @@ function _orreryLinkFor(hit) {
 
 function _orreryOpenLink(key) { if (key && window.AlmanacLinks) window.AlmanacLinks.open(key); }
 
+// The live sky's way here (almanac-sky.js): a planet tapped in the sky is
+// shown where the planets are drawn, the orrery brought into view and the
+// planet's tip open, its Fly button and its article one tap on.
+var _orreryShowTipFn = null;   // _initOrrery's tip, for that
+function _orreryShowBody(name) {
+  if (!_orreryCanvas) return;
+  // At once: a smooth scroll is cut short while the 3D view readies itself behind the page.
+  _orreryCanvas.scrollIntoView({ block: 'center' });
+  for (var i = 0; i < _orreryPlanetPositions.length; i++) {
+    var rec = _orreryPlanetPositions[i];
+    if (rec.name !== name) continue;
+    _orrerySelectedKey = 'planet:' + name.toLowerCase();
+    if (_orreryShowTipFn) _orreryShowTipFn({ type: 'planet', data: rec });
+    return;
+  }
+}
+
 // A launchable planet: every planet but the one the rockets leave from.
 function _orreryIsDestination(hit) { return hit.type === 'planet' && hit.data.name !== 'Earth'; }
 
@@ -508,6 +566,7 @@ function _orreryInfoFirst(hit) { return hit.type === 'sun' || _orreryIsDestinati
 function _orreryAct(hit) {
   if (_orreryIsDestination(hit)) { _orreryLaunchRocket(hit.data.name); return 'fly'; }
   if (hit.type === 'planet' && _orreryEarthViewAvailable()) { _orreryOpenEarthView(); return 'earth'; }
+  if (hit.type === 'sun' && _orreryEarthViewAvailable()) { _orreryOpenEarthView('sun'); return 'earth'; }
   if (hit.type === 'voyager') { _showVoyagerCard(hit.data.idx); return 'card'; }
   _orreryOpenLink(_orreryLinkKey(hit));   // Earth without its view, the Sun, a belt: the article
   return 'link';
@@ -608,7 +667,7 @@ function _initOrrery() {
       var fly = el.getAttribute('data-orr-fly');
       if (key) { e.stopPropagation(); _orreryOpenLink(key); }
       else if (fly) { e.stopPropagation(); tooltip.style.display = 'none'; _orrerySelectedKey = null; _orreryLaunchRocket(fly); }
-      else if (el.hasAttribute('data-orr-earth')) { e.stopPropagation(); tooltip.style.display = 'none'; _orreryOpenEarthView(); }
+      else if (el.hasAttribute('data-orr-earth')) { e.stopPropagation(); tooltip.style.display = 'none'; _orreryOpenEarthView(el.getAttribute('data-orr-earth') === 'sun' ? 'sun' : null); }
     });
   }
   var _tipHideTimer = null;
@@ -649,6 +708,9 @@ function _initOrrery() {
     }
     if (hit.type === 'planet' && hit.data.name === 'Earth' && _orreryEarthViewAvailable()) {
       return '<button type="button" class="orrery-tip-btn" data-orr-earth="1">' + _almEsc(t('alm_orr_earth_view')) + '</button>';
+    }
+    if (hit.type === 'sun' && _orreryEarthViewAvailable()) {
+      return '<button type="button" class="orrery-tip-btn" data-orr-earth="sun">' + _almEsc(t('alm_orr_sun_view')) + '</button>';
     }
     return '';
   }
@@ -778,6 +840,8 @@ function _initOrrery() {
       (res.action !== 'fly' && res.action !== 'earth' && _orreryLinkFor(res.hit)));
     if (keep) _showTip(res.hit); else _hideTip();
   });
+
+  _orreryShowTipFn = _showTip;
 
   // Initial sync, not just the date: a re-init mid-travel (deep-link return,
   // panel rebuild) must restore the controls' overridden state too.
@@ -1035,30 +1099,20 @@ function _drawOrrery(canvas, dpr) {
       ctx.restore();
     }
 
-    // The Earth glow: a slow breath around the Earth that invites the tap into
-    // the Earth view, drawn only while that view exists.
+    // The Earth glow: a still halo that says the tap leads into the Earth
+    // view, drawn only while that view exists.
     var glowR = 0;
     if (names[i] === 'Earth' && _orreryEarthViewAvailable()) {
       glowR = pr * _EARTH_GLOW_SCALE;
-      var ga = _orreryEarthGlowAlpha(typeof performance !== 'undefined' && !_orreryReduceMotion() ? performance.now() : 0);
       var eg = ctx.createRadialGradient(px, py, pr, px, py, glowR);
       eg.addColorStop(0, _hexToRgba(p.glow, 0));
-      eg.addColorStop(0.45, _hexToRgba(p.glow, ga));
+      eg.addColorStop(0.45, _hexToRgba(p.glow, _EARTH_GLOW_ALPHA));
       eg.addColorStop(1, _hexToRgba(p.glow, 0));
       ctx.fillStyle = eg;
       ctx.beginPath(); ctx.arc(px, py, glowR, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(px, py, glowR * 0.62, 0, Math.PI * 2);
-      ctx.strokeStyle = _hexToRgba(p.glow, ga);
+      ctx.beginPath(); ctx.arc(px, py, glowR * _EARTH_RING_AT, 0, Math.PI * 2);
+      ctx.strokeStyle = _hexToRgba(p.glow, _EARTH_RING_ALPHA);
       ctx.lineWidth = 0.8 * u; ctx.stroke();
-      if (!_orreryTried().earth) {
-        // Still when motion is reduced, and when the orrery is paused: no
-        // next frame comes, and a ring caught fading out would stay unseen.
-        var reduced = _orreryReduceMotion() || !_orreryPlaying;
-        var bc = _orreryBeacon(typeof performance !== 'undefined' ? performance.now() : 0, reduced);
-        ctx.beginPath(); ctx.arc(px, py, pr * bc.r, 0, Math.PI * 2);
-        ctx.strokeStyle = _hexToRgba(p.glow, bc.a);
-        ctx.lineWidth = 1.5 * u; ctx.stroke();
-      }
     }
 
     // Record position for hover (world CSS px)
@@ -1505,7 +1559,99 @@ function _orreryRidePanelHtml() {
         '<div class="orrery-twin-clock"><span class="orrery-twin-lbl">' + _almEsc(t('alm_orr_twin_ship')) + '</span><span id="orrery-twin-ship" class="orrery-twin-val"></span></div>' +
       '</div>' +
       '<div id="orrery-twin-note" class="orrery-twin-note"></div>' +
+      '<div class="orrery-lc">' +
+        '<div class="orrery-twin-head"><span class="orrery-twin-title">' + _lterm('time_dilation', _almEsc(t('alm_lc_title'))) + '</span>' +
+          '<span id="orrery-lc-gamma" class="orrery-twin-speed"></span></div>' +
+        '<div class="orrery-lc-labels"><span id="orrery-lc-rest"></span><span id="orrery-lc-moving"></span></div>' +
+        '<canvas id="orrery-lc" class="orrery-lc-canvas" aria-hidden="true"></canvas>' +
+        '<div id="orrery-lc-note" class="orrery-twin-note"></div>' +
+      '</div>' +
     '</div>';
+}
+
+// ── The light clock, under the twins ──
+// Two mirrors and a pulse of light between them: one tick is the light's trip
+// up and back. Beside the clock at rest, the same clock flying at the twin
+// slider's speed: its light must cover the longer, slanted path at the same
+// speed c, so each tick takes gamma times as long. The gap between the mirrors
+// is the same for both, and short enough that a whole moving tick fits.
+var _LC_TICK_MS = 1600;      // one tick of the clock at rest, as drawn
+var _LC_HEIGHT_PX = 84;
+var _LC_PAD_PX = 12;
+var _LC_MIRROR_PX = 9;       // half a mirror's width
+var _LC_TRAIL_STEPS = 48;
+var _orreryLcStart = 0;
+
+// The photon's height (0 at the lower mirror, 1 at the upper) at a share p of a tick.
+function _lcBounce(p) { p = p - Math.floor(p); return p < 0.5 ? p * 2 : 2 - p * 2; }
+
+// Ticks each clock has made since the panel opened: the moving one's are gamma times as long.
+function _lcTicks(ms, gamma) {
+  return { rest: Math.floor(ms / _LC_TICK_MS), moving: Math.floor(ms / (_LC_TICK_MS * gamma)) };
+}
+
+function _orreryLightClock(beta, speedText, nowMs) {
+  var cv = document.getElementById('orrery-lc');
+  if (!cv || !cv.clientWidth) return;
+  var dpr = window.devicePixelRatio || 1, w = cv.clientWidth, H = _LC_HEIGHT_PX;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(H * dpr); }
+  var ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, H);
+  var gamma = _lorentzFactor(beta), still = _orreryReduceMotion();
+  if (!_orreryLcStart) _orreryLcStart = nowMs;
+  var tickM = _LC_TICK_MS * gamma;
+  // Motion reduced: one whole moving tick, drawn still.
+  var el = still ? tickM : nowMs - _orreryLcStart;
+  var rtl = document.documentElement.dir === 'rtl';
+  var half = w / 2, areaW = half - 2 * _LC_PAD_PX;
+  var L = Math.min(H - 2 * _LC_PAD_PX, areaW * 0.45 / Math.max(beta * gamma, 1e-12));
+  var yLo = H / 2 + L / 2, yHi = H / 2 - L / 2;
+  var restX0 = rtl ? half : 0, moveX0 = rtl ? 0 : half;
+  var amber = (getComputedStyle(document.documentElement).getPropertyValue('--amber') || '#e0a030').trim();
+  function mirrors(x) {
+    ctx.strokeStyle = 'rgba(200,210,230,0.8)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - _LC_MIRROR_PX, yHi); ctx.lineTo(x + _LC_MIRROR_PX, yHi);
+    ctx.moveTo(x - _LC_MIRROR_PX, yLo); ctx.lineTo(x + _LC_MIRROR_PX, yLo);
+    ctx.stroke();
+  }
+  function photon(x, y) {
+    ctx.fillStyle = amber;
+    ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+  }
+  // At rest: straight up and down.
+  var rx = restX0 + half / 2;
+  ctx.strokeStyle = 'rgba(224,160,48,0.25)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(rx, yHi); ctx.lineTo(rx, yLo); ctx.stroke();
+  mirrors(rx);
+  photon(rx, yLo - L * _lcBounce(still ? 0.25 : el / _LC_TICK_MS));
+  // Moving at beta: the clock slides on at beta c, where c is the photon's
+  // speed as drawn (2L a tick), and the light's path is the slanted one.
+  var vx = beta * 2 * L / _LC_TICK_MS;
+  var left = moveX0 + _LC_PAD_PX;
+  function xAt(ms) { return left + ((vx * ms) % areaW + areaW) % areaW; }
+  ctx.strokeStyle = 'rgba(224,160,48,0.45)';
+  ctx.beginPath();
+  var prev = null;
+  for (var i = 0; i <= _LC_TRAIL_STEPS; i++) {
+    var ms = el - tickM + tickM * i / _LC_TRAIL_STEPS;
+    if (ms < 0) { prev = null; continue; }
+    var px = xAt(ms), py = yLo - L * _lcBounce(ms / tickM);
+    if (prev === null || px < prev) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    prev = px;
+  }
+  ctx.stroke();
+  var mx = xAt(el);
+  mirrors(mx);
+  photon(mx, yLo - L * _lcBounce(el / tickM));
+  var n = _lcTicks(el, gamma);
+  // An equation reads left to right in any language (isolated from the page's direction).
+  _orrSetText('orrery-lc-gamma', '\u2066\u03b3 = ' + _orrFmtGamma(gamma) + '\u2069');
+  _orrSetText('orrery-lc-rest', t('alm_lc_rest') + (still ? '' : ' \u00b7 ' + t('alm_lc_ticks', { n: n.rest })));
+  _orrSetText('orrery-lc-moving', t('alm_lc_moving', { v: speedText }) + (still ? '' : ' \u00b7 ' + t('alm_lc_ticks', { n: n.moving })));
+  _orrSetText('orrery-lc-note', t('alm_lc_explain', { g: _orrFmtGamma(gamma) }));
 }
 
 function _orrSetText(id, s) {
@@ -1519,9 +1665,10 @@ function _orreryUpdateRide() {
   var rk = _orreryRide();
   if (!rk) {
     if (el.style.display !== 'none') { el.style.display = 'none'; el.innerHTML = ''; }
+    _orreryLcStart = 0;
     return;
   }
-  if (!el.firstChild) el.innerHTML = _orreryRidePanelHtml();
+  if (!el.firstChild) { el.innerHTML = _orreryRidePanelHtml(); _orreryLcStart = 0; }
   el.style.display = 'block';
   var st = _orreryRideStatus(rk);
   var arrived = st.frac >= 1;
@@ -1531,12 +1678,12 @@ function _orreryUpdateRide() {
   _orrSetText('orrery-ride-dist', t('alm_orr_au_from_earth', { d: _orrFmtAU(st.au) }));
   _orrSetText('orrery-ride-delay', t(arrived ? 'alm_orr_msg_home_now' : 'alm_orr_msg_home', { t: span }));
   var tw = _orreryTwinClocks(rk, _orreryTwinBeta, st.frac);
-  _orrSetText('orrery-twin-speed', _orreryTwinBeta > 0
-    ? t('alm_orr_twin_whatif_at', { v: _orrFmtBeta(_orreryTwinBeta) })
-    : t('alm_orr_twin_real', { v: _orrNum(_orreryRealSpeedKmS(rk), 'kilometer-per-second') }));
+  var speed = _orreryTwinBeta > 0 ? _orrFmtBeta(_orreryTwinBeta) : _orrNum(_orreryRealSpeedKmS(rk), 'kilometer-per-second');
+  _orrSetText('orrery-twin-speed', t(_orreryTwinBeta > 0 ? 'alm_orr_twin_whatif_at' : 'alm_orr_twin_real', { v: speed }));
   _orrSetText('orrery-twin-earth', _orrFmtSpan(tw.earth));
   _orrSetText('orrery-twin-ship', _orrFmtSpan(tw.ship));
   _orrSetText('orrery-twin-note', t('alm_orr_twin_explain', { g: _orrFmtGamma(tw.gamma), lag: _orrFmtSpan(_orreryShownLag(tw)) }));
+  _orreryLightClock(tw.beta, speed, performance.now());
 }
 
 function _orreryUpdateDate() {
@@ -1719,5 +1866,17 @@ function _orreryLaunchRocket(targetName) {
 }
 
 var _PLANET_V0 = { Mercury: -0.61, Venus: -4.40, Mars: -1.60, Jupiter: -9.40, Saturn: -8.88, Uranus: -7.19, Neptune: -6.87 };
+
+// A planet's apparent magnitude from its distances in AU: to the Sun r, to
+// the Earth delta, and the Earth's own from the Sun R. Mercury and Venus,
+// whose phase changes most, dim by the share of the disc that is lit (rough).
+function _planetMagnitude(name, r, delta, R) {
+  var mag = _PLANET_V0[name] + 5 * Math.log10(r * delta);
+  if (name === 'Venus' || name === 'Mercury') {
+    var cosPA = Math.max(-1, Math.min(1, (r * r + delta * delta - R * R) / (2 * r * delta)));
+    mag += -2.5 * Math.log10(Math.max(0.01, (1 + cosPA) / 2));
+  }
+  return mag;
+}
 
 var _VISIBLE_PLANETS = ['Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune'];
