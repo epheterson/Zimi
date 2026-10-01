@@ -11340,7 +11340,7 @@ function _publicAccessCard() {
     '<button class="ms-btn ms-btn-primary ms-pa-save" onclick="_savePublicAccessLimited()">' + tH('save') + '</button>' +
   '</div>';
   var envNote = envLocked
-    ? '<div class="ms-pa-env">' + tH('users_pa_env') + ' <code>ZIMI_PUBLIC_ACCESS=' + esc(pa.env_mode || '') + '</code></div>'
+    ? '<div class="ms-pa-env">' + tH('users_pa_env') + ' <code dir="ltr">ZIMI_PUBLIC_ACCESS=' + esc(pa.env_mode || '') + '</code></div>'
     : '';
   return '<div class="ms-pa-card">' +
     '<div class="ms-section-label">' + tH('users_pa_title') + '</div>' +
@@ -11507,7 +11507,7 @@ function _creatorStateHtml(ready, hint) {
 // finding out, or the pane offers an install for something already installed.
 function _creatorInstallHtml(ready, cmd) {
   if (ready === null || ready === undefined) return '';
-  return ready ? '' : '<code class="app-update-cmd">' + esc(cmd) + '</code>';
+  return ready ? '' : '<code class="app-update-cmd" dir="ltr">' + esc(cmd) + '</code>';
 }
 
 // The last /manage/creator payload, for the life of the page. The pane paints
@@ -12300,7 +12300,7 @@ function _appUpdateHowHtml(d) {
     var hintKey = type === 'docker' ? 'app_update_how_docker'
       : type === 'homebrew' ? 'app_update_how_brew' : 'app_update_how_pip';
     return '<div class="ms-hint">' + tH(hintKey) + '</div>' +
-      '<code class="app-update-cmd">' + esc(cmd) + '</code>';
+      '<code class="app-update-cmd" dir="ltr">' + esc(cmd) + '</code>';
   }
   if (type === 'snap') return '<div class="ms-hint">' + tH('app_update_how_snap') + '</div>';
   if (type === 'desktop-mac' || type === 'desktop-windows') {
@@ -12711,6 +12711,11 @@ function _postServerApps(shown) {
 
 // The environment panel. Read-only, and usually empty: the common install
 // overrides nothing, and saying so plainly is the useful answer.
+// A path, a URL, an env name: left to right in a right-to-left page, so
+// /zims keeps its slash at the start in Hebrew. Isolated, so it never
+// reorders the words around it. ``html`` is already escaped.
+function _ltr(html) { return '<bdi dir="ltr">' + html + '</bdi>'; }
+
 async function _renderEnvSection() {
   var rows;
   var fetched;
@@ -12745,12 +12750,12 @@ async function _renderEnvSection() {
     rows.map(function(r) { return esc(r.name); }).join(', ') + '</span></summary>' +
   '<div class="env-rows">' + rows.map(function(r) {
     return '<div class="env-row">' +
-      '<code class="env-name">' + esc(r.name) + '</code>' +
+      '<code class="env-name">' + _ltr(esc(r.name)) + '</code>' +
       '<code class="env-value' + (r.secret ? ' env-secret' : '') + '">' +
-        (r.value === '' ? tH('env_empty') : esc(r.value)) + '</code>' +
+        (r.value === '' ? tH('env_empty') : _ltr(esc(r.value))) + '</code>' +
       '<div class="env-what">' + esc(r.description) +
         (r.locks ? ' <span class="env-locks">' + tH('env_locks', {v: r.locks}) + '</span>' : '') +
-        (r.source === 'config' ? ' <span class="env-locks">' + tH('env_from_config', {path: esc(r.path)}) + '</span>' : '') +
+        (r.source === 'config' ? ' <span class="env-locks">' + tH('env_from_config', {path: _ltr(esc(r.path))}) + '</span>' : '') +
       '</div></div>';
   }).join('') + '</div>' +
   '<div class="ms-hint">' + tH('env_hint') + '</div></details>';
@@ -12782,10 +12787,10 @@ function _msServerHtml() {
   if (IS_DESKTOP) {
     storageSec +=
       '<div class="ms-field"><label>' + tH('zim_folder') + '</label>' +
-      '<div style="display:flex;gap:8px"><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
+      '<div style="display:flex;gap:8px"><input type="text" id="ms-zim-dir" dir="ltr" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
       '<button class="manage-btn-action" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="msChooseZimFolder()">' + tH('choose_folder') + '</button></div></div>' +
       '<div class="ms-field"><label>' + tH('data_folder') + '</label>' +
-      '<div style="display:flex;gap:8px"><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
+      '<div style="display:flex;gap:8px"><input type="text" id="ms-data-dir" dir="ltr" readonly value="' + escAttr(t('loading')) + '" style="flex:1">' +
       '<button class="manage-btn-action" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="msChooseDataFolder()">' + tH('choose_folder') + '</button></div></div>' +
       '<div class="ms-hint">' + tH('data_folder_hint') + '</div>' +
       '<div class="ms-field" style="display:flex;align-items:center;gap:8px"><label style="margin:0">' + tH('port') + '</label><input type="number" id="ms-port" min="1024" max="65535" value="8899" style="width:90px">' +
@@ -12796,8 +12801,8 @@ function _msServerHtml() {
     setTimeout(_renderDesktopLan, 0);
   } else {
     storageSec +=
-      '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
-      '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" readonly value="' + escAttr(t('loading')) + '"></div>' +
+      '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" dir="ltr" readonly value="' + escAttr(t('loading')) + '"></div>' +
+      '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" dir="ltr" readonly value="' + escAttr(t('loading')) + '"></div>' +
       '<div class="ms-hint">' + tH('configured_via_env') + '</div>';
   }
 
