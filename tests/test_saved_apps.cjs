@@ -285,6 +285,17 @@ function page(extra) {
   ok('the panel names the groups by kind, not Bookmarks', /_bmGroupRowHtml\(_BM_ROOT, _savedKindName\(g\.kind\)/.test(src) && !/_bmGroupRowHtml\(_BM_ROOT, t\('saved_unlisted'\)/.test(src));
 }
 
+// ── the top bar: Save (a bookmark) and Saved (a place) never look alike ──
+{
+  const svg = (name) => (src.match(new RegExp('var ' + name + " = '([^']*)'")) || [])[1] || '';
+  const mark = svg('_libBookmarkSvg'), place = svg('_libSavedSvg');
+  const markPath = (mark.match(/d="([^"]+)"/) || [])[1];
+  ok('the Saved opener is not a bookmark: no bookmark outline in it, a list with a ribbon instead',
+    !!markPath && !!place && place.indexOf(markPath) < 0 && !/M15 21l-5-3\.5L5 21V9/.test(place) && /M3 6h8M3 12h8/.test(place));
+  const shell = fs.readFileSync(path.join(root, 'templates', 'index.html'), 'utf8');
+  ok('...and the page ships with the same glyph it is redrawn with', shell.indexOf((place.match(/<path[\s\S]*<\/svg>/) || [''])[0].replace('</svg>', '')) > 0);
+}
+
 // ── the pages and the shell ───────────────────────────────────────────────
 ok('every app page is handed the words for what is kept', /sv: _savedAppWords\(app\) \};/.test(src) && /function _savedAppWords\(app\) \{/.test(src));
 ok('ZimiTube is handed Continue watching, and no Save word of its own', /'tube_missing', 'tube_continue'[,\]]/.test(src) && !/tube_watch_later|tube_listen_later|books_add_shelf|books_on_shelf|books_my_shelf/.test(src));

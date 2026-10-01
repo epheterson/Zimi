@@ -23811,9 +23811,11 @@ function toggleBookmark() {
 
 var _libClockSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
 var _libBookmarkSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
-// Saved's opener: two bookmarks, one behind the other (what you kept), so it
-// never reads as the single bookmark that saves the page beside it.
-var _libSavedSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h9a2 2 0 0 1 2 2v13"/><path d="M15 21l-5-3.5L5 21V9a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2z"/></svg>';
+// Saved's opener: lines of a list with a ribbon on them (your lists, what you
+// kept). Not a bookmark: two bookmarks stacked read as the single bookmark
+// that saves the page beside it. The bookmark is the verb (Save, here and in
+// every app); this is the place, in the family of the apps' Lists glyph.
+var _libSavedSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h8M3 12h8M3 18h18"/><path d="M15 3v10l3-2.5 3 2.5V3z"/></svg>';
 var _libBookmarkFilledSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
 function _getLibraryTab() { return localStorage.getItem(SK.LIBRARY_TAB) || 'history'; }
 function _setLibraryTab(tab) { localStorage.setItem(SK.LIBRARY_TAB, tab); }
