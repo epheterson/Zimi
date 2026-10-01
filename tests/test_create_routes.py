@@ -179,8 +179,8 @@ def test_folder_mode_takes_only_a_path_inside_the_create_root(tmp_path, monkeypa
     is refused; a relative folder, with a subset inside it, runs."""
     lib = tmp_path / "zims"
     (lib / "src" / "sub").mkdir(parents=True)
-    (lib / "src" / "a.md").write_text("# A")
-    (lib / "src" / "sub" / "b.md").write_text("# B")
+    (lib / "src" / "a.md").write_text("# A", encoding="utf-8")
+    (lib / "src" / "sub" / "b.md").write_text("# B", encoding="utf-8")
     monkeypatch.setattr(server, "ZIM_DIR", str(lib))
     monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: True)
     for source in (str(lib / "src"), "../zims/src", "nope", "src/a.md", "/etc"):

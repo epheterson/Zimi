@@ -58,18 +58,18 @@ def root(tmp_path, monkeypatch):
     r = tmp_path / "root"
     (r / "box" / "deep").mkdir(parents=True)
     (r / ".hidden").mkdir()
-    (r / ".hidden" / "x.md").write_text("# hidden")
-    (r / "box" / "a.md").write_text("# A")
-    (r / "box" / "deep" / "b.md").write_text("# B")
+    (r / ".hidden" / "x.md").write_text("# hidden", encoding="utf-8")
+    (r / "box" / "a.md").write_text("# A", encoding="utf-8")
+    (r / "box" / "deep" / "b.md").write_text("# B", encoding="utf-8")
     outside = tmp_path / "outside"
     outside.mkdir()
-    (outside / "secret.md").write_text("# secret")
+    (outside / "secret.md").write_text("# secret", encoding="utf-8")
     os.symlink(str(outside), str(r / "outlink"))
     os.symlink(str(outside / "secret.md"), str(r / "box" / "secret.md"))
     os.symlink(str(r / "box"), str(r / "inlink"))  # inside, but a link all the same
     data = r / "zimidata"
     data.mkdir()
-    (data / "cache.json").write_text("{}")
+    (data / "cache.json").write_text("{}", encoding="utf-8")
     monkeypatch.setenv(manage.CREATE_ROOT_ENV, str(r))
     monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(data))
     monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: True)
@@ -170,7 +170,7 @@ def test_a_big_folder_pages(root):
     big = root / "big"
     big.mkdir()
     for i in range(folderfiles.LIST_PAGE + 50):
-        (big / f"f{i:04d}.md").write_text("x")
+        (big / f"f{i:04d}.md").write_text("x", encoding="utf-8")
     first = _get("/manage/create/tree", {"path": "big"}).body
     assert len(first["entries"]) == folderfiles.LIST_PAGE
     assert first["more"] == 50 and first["total"] == folderfiles.LIST_PAGE + 50
@@ -198,7 +198,7 @@ def test_each_file_says_what_it_becomes(root):
         "o.avi",
     ):
         (box / name).write_bytes(b"x")
-    (box / "v.txt").write_text("Title: A video\n")
+    (box / "v.txt").write_text("Title: A video\n", encoding="utf-8")
     rows = {
         e["name"]: e
         for e in _get("/manage/create/tree", {"path": "box"}).body["entries"]
@@ -253,9 +253,9 @@ def test_sidecar_json_takes_lists_and_ignores_the_rest():
 
 def test_prose_beside_a_file_stays_a_page_and_a_description_is_folded_in(tmp_path):
     (tmp_path / "notes.pdf").write_bytes(b"%PDF")
-    (tmp_path / "notes.txt").write_text("These are my notes about the PDF.")
+    (tmp_path / "notes.txt").write_text("These are my notes about the PDF.", encoding="utf-8")
     (tmp_path / "talk.mp4").write_bytes(b"x")
-    (tmp_path / "talk.mp4.json").write_text('{"title": "The talk"}')
+    (tmp_path / "talk.mp4.json").write_text('{"title": "The talk"}', encoding="utf-8")
     plan = folderfiles.plan(str(tmp_path))
     assert ("notes.txt", "page") in [(rel, fam) for _f, rel, fam in plan["items"]]
     assert plan["sidecars"] == {"talk.mp4": {"title": "The talk"}}
@@ -266,16 +266,16 @@ def test_a_cover_that_leaves_the_folder_is_ignored(tmp_path):
     (tmp_path / "in").mkdir()
     (tmp_path / "secret.png").write_bytes(b"x")
     (tmp_path / "in" / "b.pdf").write_bytes(b"%PDF")
-    (tmp_path / "in" / "b.txt").write_text("Cover: ../secret.png\n")
+    (tmp_path / "in" / "b.txt").write_text("Cover: ../secret.png\n", encoding="utf-8")
     plan = folderfiles.plan(str(tmp_path / "in"))
     assert plan["covers"] == []
 
 
 def test_a_picked_file_brings_its_sidecar_and_cover_but_nothing_else(tmp_path):
     (tmp_path / "other").mkdir()
-    (tmp_path / "other" / "x.md").write_text("# x")
+    (tmp_path / "other" / "x.md").write_text("# x", encoding="utf-8")
     (tmp_path / "b.pdf").write_bytes(b"%PDF")
-    (tmp_path / "b.txt").write_text("Title: Book\nCover: b.jpg\n")
+    (tmp_path / "b.txt").write_text("Title: Book\nCover: b.jpg\n", encoding="utf-8")
     (tmp_path / "b.jpg").write_bytes(b"x")
     plan = folderfiles.plan(str(tmp_path), ["b.pdf"])
     assert [rel for _f, rel, _fam in plan["items"]] == ["b.pdf"]
@@ -299,23 +299,23 @@ def _mixed_folder(at):
     (at / "zimi.txt").write_text(
         "Title: Family Archive\nDescription: Everything from the attic\nLanguage: fra\n"
         "Creator: The Lees\nPublisher: Lee Press\nTags: family; photos\nIcon: icon.png\n"
-    )
+    , encoding="utf-8")
     (at / "icon.png").write_bytes(_png("red"))
-    (at / "letter.txt").write_text("Dear all,\n\n  the attic is full.")
-    (at / "notes.md").write_text("# Notes\n\nSome notes.")
+    (at / "letter.txt").write_text("Dear all,\n\n  the attic is full.", encoding="utf-8")
+    (at / "notes.md").write_text("# Notes\n\nSome notes.", encoding="utf-8")
     (at / "book.pdf").write_bytes(b"%PDF-1.4\n%%EOF")
     (at / "book.txt").write_text(
         "Title: The Attic Book\nAuthor: Ann Lee\nDate: 1950\nCover: covers/book.png\n"
-    )
+    , encoding="utf-8")
     (at / "covers").mkdir()
     (at / "covers" / "book.png").write_bytes(_png("blue"))
     (at / "photos").mkdir()
     (at / "photos" / "beach.png").write_bytes(_png("yellow"))
-    (at / "photos" / "beach.json").write_text('{"title": "At the beach"}')
+    (at / "photos" / "beach.json").write_text('{"title": "At the beach"}', encoding="utf-8")
     (at / "home.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
     (at / "home.txt").write_text(
         "Title: Home movie\nAuthor: Grandpa\nDescription: 1962\n"
-    )
+    , encoding="utf-8")
     (at / "song.mp3").write_bytes(b"ID3")
     (at / "old.zim").write_bytes(b"ZIM")
     (at / "budget.xlsx").write_bytes(b"PK")
@@ -434,9 +434,9 @@ def test_cli_only_flag(tmp_path):
 
 def test_a_subfolders_own_zimi_txt_is_never_content(tmp_path):
     (tmp_path / "sub").mkdir()
-    (tmp_path / "sub" / "zimi.txt").write_text("Title: Sub\n")
-    (tmp_path / "sub" / "a.md").write_text("# a")
-    (tmp_path / "zimi.txt").write_text("Just some prose, no keys at all")
+    (tmp_path / "sub" / "zimi.txt").write_text("Title: Sub\n", encoding="utf-8")
+    (tmp_path / "sub" / "a.md").write_text("# a", encoding="utf-8")
+    (tmp_path / "zimi.txt").write_text("Just some prose, no keys at all", encoding="utf-8")
     plan = folderfiles.plan(str(tmp_path))
     assert sorted(rel for _f, rel, _fam in plan["items"]) == ["sub/a.md", "zimi.txt"]
     rows = {e["name"]: e for e in folderfiles.list_level(str(tmp_path), "sub")["entries"]}

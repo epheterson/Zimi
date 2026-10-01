@@ -150,10 +150,10 @@ def test_folder_mode_refuses_a_typed_path_through_both_doors(tmp_path, monkeypat
 def test_folder_probe_counts_families_and_reads_the_sidecar(tmp_path, monkeypatch):
     lib = tmp_path  # the create root (the create_root fixture)
     (lib / "box").mkdir(parents=True)
-    (lib / "box" / "zimi.txt").write_text("Title: The Box\nPublisher: Me\n")
-    (lib / "box" / "a.md").write_text("# A")
+    (lib / "box" / "zimi.txt").write_text("Title: The Box\nPublisher: Me\n", encoding="utf-8")
+    (lib / "box" / "a.md").write_text("# A", encoding="utf-8")
     (lib / "box" / "b.pdf").write_bytes(b"%PDF-1.4")
-    (lib / "box" / "b.txt").write_text("Author: Someone\n")
+    (lib / "box" / "b.txt").write_text("Author: Someone\n", encoding="utf-8")
     (lib / "box" / "c.mkv").write_bytes(b"x")
     (lib / "box" / "d.zip").write_bytes(b"x")
     monkeypatch.setattr(manage, "_primary_admin_authorized", lambda h: True)
