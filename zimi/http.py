@@ -2329,7 +2329,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._json(200, info)
 
             elif parsed.path == "/whoami":
-                return self._handle_whoami()
+                return self._uncached(self._handle_whoami)
 
             elif parsed.path == "/me/prefs":
                 # A signed-in user's own preferences that live with the
@@ -2339,9 +2339,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if not name:
                     return self._json(401, {"error": "sign in required"})
                 prefs = _users.load_user_data(name).get("preferences") or {}
-                return self._json(200, _prefs_reply(prefs))
+                return self._uncached(lambda: self._json(200, _prefs_reply(prefs)))
             elif parsed.path == "/userdata":
-                return self._handle_userdata_get()
+                return self._uncached(self._handle_userdata_get)
 
             elif parsed.path == "/languages":
                 # Installed language summary with native names and ZIM counts
@@ -4207,7 +4207,15 @@ class ZimHandler(BaseHTTPRequestHandler):
             return None, None
         return start, end
 
+    # Set for the length of one request whose answer describes the person or
+    # the server's current settings (/whoami, /me/prefs, /userdata): never
+    # stored. Chrome's Back reuses stored answers without asking, so a kept
+    # /whoami put back apps the admin had just turned off.
+    _no_store = False
+
     def _send(self, code, body_bytes, content_type, vary=None, cache=None, etag=None):
+        if cache is None and self._no_store:
+            cache = "no-store"
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -4483,6 +4491,13 @@ class ZimHandler(BaseHTTPRequestHandler):
             cache=cache,
             etag=etag,
         )
+
+    def _uncached(self, respond):
+        self._no_store = True
+        try:
+            return respond()
+        finally:
+            self._no_store = False
 
     def _json(self, code, data):
         self._send(
