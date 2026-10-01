@@ -244,3 +244,21 @@ def build_media_fixture_zim(path: str) -> str:
         creator.add_metadata("Description", "media fixture")
     assert os.path.exists(path)
     return path
+
+
+def solid_png(width, height, color=(70, 120, 180)):
+    """A solid-colour PNG of any size, written by hand: Pillow is optional
+    for Zimi and not installed in CI's test job."""
+    import struct
+    import zlib
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    row = b"\x00" + bytes(color) * width
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(row * height))
+        + chunk(b"IEND", b"")
+    )

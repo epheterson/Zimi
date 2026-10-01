@@ -69,9 +69,19 @@ def _server_apps(base, shown):
         assert r.status == 200
 
 
-def _bookshelf_on_home(pg):
+def _bookshelf_on_home(pg, expect=True):
+    """Whether the Bookshelf tile is on home, given time to become what the
+    test expects: coming back, the page asks the server which apps are on,
+    and a slow runner answers after any fixed pause (CI did, after 300 ms)."""
     pg.wait_for_function(HOME, timeout=15000)
-    pg.wait_for_timeout(300)
+    try:
+        pg.wait_for_function(
+            "(n) => document.querySelectorAll('.books-tile').length === n",
+            arg=1 if expect else 0,
+            timeout=5000,
+        )
+    except Exception:
+        pass
     return pg.locator(".books-tile").count() == 1
 
 
@@ -92,7 +102,7 @@ def test_bookshelf_switched_in_server_settings_holds_after_leaving(served, on):
         br = pw.chromium.launch()
         pg = br.new_page(viewport={"width": 1280, "height": 900})
         pg.goto(served + "/")
-        assert _bookshelf_on_home(pg) is not on
+        assert _bookshelf_on_home(pg, expect=not on) is not on
         # 1. enable (or disable) Bookshelf, in Server settings
         pg.goto(served + "/?manage=preferences")
         pick = pg.locator("#ms-apps .app-pick", has_text="Bookshelf")
@@ -107,7 +117,7 @@ def test_bookshelf_switched_in_server_settings_holds_after_leaving(served, on):
         )
         # 2. leave, 3. come back
         _leave_and_come_back(pg)
-        assert _bookshelf_on_home(pg) is on, "Bookshelf %s after coming back" % (
+        assert _bookshelf_on_home(pg, expect=on) is on, "Bookshelf %s after coming back" % (
             "gone" if on else "back"
         )
         br.close()
@@ -133,7 +143,7 @@ def test_signed_in_the_server_switch_and_the_accounts_hold_after_leaving(served)
         pg = br.new_page(viewport={"width": 1280, "height": 900})
         pg.goto(served + "/")
         _sign_in(pg)
-        assert not _bookshelf_on_home(pg)
+        assert not _bookshelf_on_home(pg, expect=False)
         # The server offers Bookshelf again (the admin, on another device)...
         _server_apps(served, ["books"])
         # ...and this page, left and come back to, is told.
@@ -151,6 +161,6 @@ def test_signed_in_the_server_switch_and_the_accounts_hold_after_leaving(served)
             )
             _leave_and_come_back(pg)
             assert (
-                _bookshelf_on_home(pg) is on
+                _bookshelf_on_home(pg, expect=on) is on
             ), "the account's choice lost after coming back"
         br.close()

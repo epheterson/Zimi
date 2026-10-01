@@ -12,7 +12,6 @@ for an answer kept from before it did, from the picture once it loads.
 Run: pytest tests/test_wiki_today_live.py -v
 """
 
-import io
 import json
 import os
 import sys
@@ -29,12 +28,10 @@ DESKTOP = {"width": 1280, "height": 800}
 PHONE = {"width": 390, "height": 844}
 
 
-def _jpeg(w, h):
-    from PIL import Image
+def _picture(w, h):
+    from conftest_zim import solid_png
 
-    b = io.BytesIO()
-    Image.new("RGB", (w, h), (70, 120, 180)).save(b, "JPEG")
-    return b.getvalue()
+    return solid_png(w, h)
 
 
 def _library(zdir, shape):
@@ -51,7 +48,7 @@ def _library(zdir, shape):
             "and a second sentence of it.</p></section>" % (img, title, title, 1000 + i)
         )
         items.append((path, title, page(title, body), "text/html"))
-        items.append((img, "", _jpeg(w, h), "image/jpeg"))
+        items.append((img, "", _picture(w, h), "image/png"))
     _zim(
         os.path.join(zdir, "wikipedia_en_all_maxi_2026-08.zim"),
         "wikipedia_en_all",
@@ -213,5 +210,5 @@ def test_server_reads_the_size():
     from zimi.previews import image_size
 
     for w, h in SHAPES.values():
-        assert image_size(_jpeg(w, h)) == (w, h)
+        assert image_size(_picture(w, h)) == (w, h)
     assert json.dumps(image_size(b"not a picture")) == "null"
