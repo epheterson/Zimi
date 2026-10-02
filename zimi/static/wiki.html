@@ -835,7 +835,9 @@ function toggleLangs(open) {
   var on = document.querySelector('#lang-menu [aria-checked="true"]') || document.querySelector('#lang-menu button');
   if (on) on.focus();
 }
-function pickLang(code) { toggleLangs(false); setLang(code); var b = document.getElementById('lang-btn'); if (b) b.focus(); }
+// A language picked here is Zimi's too, where Zimi speaks it (Eric,
+// 2026-10-02: "when I switch languages also change Zimi language to match").
+function pickLang(code) { toggleLangs(false); setLang(code); tell({ zimi: 'ui-lang', lang: code }); var b = document.getElementById('lang-btn'); if (b) b.focus(); }
 // A tap outside the list, or Escape, closes it.
 document.addEventListener('click', function(e) {
   if (document.getElementById('lang-menu') && !(e.target.closest && e.target.closest('.lang-pick'))) toggleLangs(false);

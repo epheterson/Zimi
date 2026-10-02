@@ -19897,6 +19897,16 @@ window.addEventListener('message', function(e) {
     _appItemClosed();
     document.title = t('tube') + ' \u2014 Zimi';
     _setWindowTitle(document.title);
+  } else if (d.zimi === 'ui-lang' && _wikiOpen && typeof d.lang === 'string') {
+    // Zimipedia's language picked: Zimi's follows when it has one by that
+    // name, and the page opens again in its words (they ride in its '#').
+    if (d.lang === _currentLang || !_AVAILABLE_LANGS.some(function(l) { return l.code === d.lang; })) return;
+    setLanguage(d.lang).then(function() {
+      if (!_isWikiPage() || _currentLang !== d.lang) return;
+      var win = document.getElementById('reader-frame').contentWindow;
+      openWiki(true);
+      try { win.location.reload(); } catch (e) {}
+    });
   } else if (d.zimi === 'back') {
     // The page's own back arrow: the step the shell took for it.
     if (history.state && (history.state.play || history.state.q || history.state.p || history.state.w)) history.back();
