@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - PDFs: Zimi's own reader with contents, page thumbnails, two-page spreads, rotate, About this PDF and highlights.
 - Wikisource works and textbooks open in the book reader; math renders.
 - Almanac: a live Moon and 3D view on the page's clock, a live sky, tides, the Sun with sunspots, and offline navigation, calendars and year sheets.
-- Back buttons that say where they go.
+- Back returns to where you came from: the Almanac, a search, an app.
 - The AppImage updates itself.
 
 ### Changed

@@ -1312,7 +1312,6 @@ const sourceHeaderEl = document.getElementById('source-header');
 const searchMeta = document.getElementById('search-meta');
 const logoEl = document.getElementById('logo');
 const backBtn = document.getElementById('back-btn');
-const backLabel = backBtn.querySelector('.back-label');
 const bcSep = document.getElementById('bc-sep');
 const bcIcon = document.getElementById('bc-icon');
 const randomBtn = document.getElementById('random-btn');
@@ -1798,9 +1797,10 @@ function _keepFrom(st) {
   if (same && s.from) st.from = s.from;
   return st;
 }
-// What the arrow returns to, named: the place the page was opened from, or
-// the source of the page before it when that was another ZIM. null for a
-// step back through the reader's own pages, which the arrow takes unnamed.
+// What the arrow returns to, named for screen readers and the tooltip (the
+// arrow itself carries no text): the place the page was opened from, or the
+// source of the page before it when that was another ZIM. null for a step
+// back through the reader's own pages.
 function _backLabel() {
   if (!readerOpen) return null;
   var prev = articleHistory[articleHistory.length - 1];
@@ -1827,8 +1827,6 @@ function updateTopbar() {
   const backTo = _backLabel();
   const showBack = !!backTo || articleHistory.length > 0 || mode === 'search' || homeScope || (_isAppPage() && !_appTop);
   backBtn.style.display = showBack ? 'flex' : 'none';
-  backLabel.textContent = backTo || '';
-  backLabel.hidden = !backTo;
   backBtn.setAttribute('aria-label', backTo ? t('back_to', {place: backTo}) : t('go_back'));
   backBtn.title = backTo ? t('back_to', {place: backTo}) : '';
 

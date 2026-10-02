@@ -268,15 +268,6 @@
     color: var(--text2); font-size: 16px; padding: 4px 6px; cursor: pointer;
     flex-shrink: 0; transition: all 0.15s; line-height: 1;
   }
-  /* Where the arrow returns to, when that is somewhere of its own (the
-     Almanac, a search, an app): named beside it. Short, never wrapping, cut
-     with an ellipsis before it can crowd the search box on a phone. */
-  .back-btn .back-label {
-    margin-inline-start: 5px; font-size: 13px; white-space: nowrap;
-    max-width: 9em; overflow: hidden; text-overflow: ellipsis;
-  }
-  .back-btn .back-label[hidden] { display: none; }
-  @media (max-width: 600px) { .back-btn .back-label { max-width: 6.5em; } }
   .back-btn:hover,
   .random-btn:hover, .manage-btn:hover, .newtab-btn:hover, .library-btn:hover,
   .create-btn:hover,

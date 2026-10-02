@@ -93,22 +93,21 @@ def _page(pw, base, lang, phone):
 
 
 def _arrow(pg):
-    """(shown, label, aria-label) of the header's back arrow."""
+    """(shown, visible text, aria-label) of the header's back arrow: the
+    arrow carries no words; where it goes is in its name."""
     return pg.evaluate(
-        """() => { const b = document.getElementById('back-btn'), l = b.querySelector('.back-label');
-          return [getComputedStyle(b).display !== 'none', l.hidden ? '' : l.textContent, b.getAttribute('aria-label')]; }"""
+        """() => { const b = document.getElementById('back-btn');
+          return [getComputedStyle(b).display !== 'none', b.innerText.replace('\u2190', '').trim(), b.getAttribute('aria-label')]; }"""
     )
 
 
 def _arrow_fits(pg):
-    """The arrow and its name inside the screen, the arrow mirrored in RTL
-    and the name not."""
+    """The arrow inside the screen, mirrored in RTL."""
     return pg.evaluate(
         """() => { const b = document.getElementById('back-btn'), r = b.getBoundingClientRect();
           const vw = document.documentElement.clientWidth;
           const arrow = getComputedStyle(b.querySelector('.back-arrow')).transform;
-          const label = getComputedStyle(b.querySelector('.back-label')).transform;
-          return { inside: r.left >= 0 && r.right <= vw, arrow, label,
+          return { inside: r.left >= 0 && r.right <= vw, arrow,
                    sideways: document.documentElement.scrollWidth > vw }; }"""
     )
 
@@ -145,13 +144,12 @@ def test_almanac_to_an_article_and_back_to_its_place_and_date(served, lang, phon
             timeout=15000,
         )
         shown, label, aria = _arrow(pg)
-        almanac = pg.evaluate("t('almanac')")
-        assert shown and label == almanac, (shown, label)
+        assert shown and label == "", (shown, label)
         assert aria == pg.evaluate("t('back_to', {place: t('almanac')})")
         fits = _arrow_fits(pg)
         assert fits["inside"] and not fits["sideways"], fits
         if lang == "he":
-            assert fits["arrow"] != "none" and fits["label"] == "none", fits
+            assert fits["arrow"] != "none", fits
 
         # The header's arrow: the Almanac, where it was, on the day it was on.
         pg.locator("#back-btn").click()
@@ -171,7 +169,7 @@ def test_almanac_to_an_article_and_back_to_its_place_and_date(served, lang, phon
         # Forward to the article, and the browser's Back: the same place.
         pg.go_forward()
         pg.wait_for_function("() => readerOpen", timeout=15000)
-        assert _arrow(pg)[1] == almanac
+        assert _arrow(pg)[2] == pg.evaluate("t('back_to', {place: t('almanac')})")
         pg.go_back()
         pg.wait_for_function("() => _almanacOpen && !readerOpen", timeout=15000)
         pg.wait_for_timeout(1200)
@@ -213,8 +211,9 @@ def test_search_to_an_app_and_back_to_the_results(served, lang, phone):
         )
         card.click()
         pg.wait_for_function("() => _isExchangePage()", timeout=15000)
-        shown, label, _ = _arrow(pg)
-        assert shown and label == pg.evaluate("t('search')"), (shown, label)
+        shown, label, aria = _arrow(pg)
+        assert shown and label == "", (shown, label)
+        assert aria == pg.evaluate("t('back_to', {place: t('search')})")
         assert _arrow_fits(pg)["inside"]
 
         # The arrow: the results, as they were, nothing asked again.
@@ -232,7 +231,7 @@ def test_search_to_an_app_and_back_to_the_results(served, lang, phone):
         # Forward into the question, the browser's Back: the same.
         pg.go_forward()
         pg.wait_for_function("() => _isExchangePage()", timeout=15000)
-        assert _arrow(pg)[1] == pg.evaluate("t('search')")
+        assert _arrow(pg)[2] == pg.evaluate("t('back_to', {place: t('search')})")
         pg.go_back()
         pg.wait_for_function(
             "() => !readerOpen && mode === 'search' && document.querySelector('a.result')",
