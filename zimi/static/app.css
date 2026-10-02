@@ -1249,7 +1249,9 @@
      panel's opener stays, and opens on the app's own saved things (B still
      saves what is on screen). A map's places are the map's: saved and
      listed in its own picker, Places and maps (map-source-btn). */
-  body.app-page #library-btn, body.own-page #library-btn, body.map-page #bm-panel-btn, body.map-page #library-btn { display: none !important; }
+  body.app-page #library-btn, body.map-page #bm-panel-btn, body.map-page #library-btn { display: none !important; }
+  /* Zimi's own stand-in (an article the ZIM does not hold): nothing to save. */
+  body.own-page #library-btn { display: none !important; }
   /* An app's name and what it holds read together, beside its icon: a ZIM
      card's detail sits at the card's foot (margin-top: auto), which left a
      one-line app's name alone at the top and its detail a gap below. */
