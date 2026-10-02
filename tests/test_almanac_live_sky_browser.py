@@ -436,7 +436,9 @@ def test_the_aurora_where_it_is_seen(browser, served):
         pg.wait_for_function(
             "() => _skyState.bodies.some((b) => b.type === 'meteor')", polling=POLL_MS
         )
-        pg.wait_for_timeout(200)
+        # Read the meteor's place once the page has stopped settling after the
+        # scroll, as the other taps do: a stale read missed it under load.
+        _wait_still(pg, "#almanac-sky-canvas")
         b = pg.evaluate(
             "() => { const b = _skyState.bodies.find((x) => x.type === 'meteor'); const r = _skyState.canvas.getBoundingClientRect();"
             " return { x: r.left + (b.x0 + b.x1) / 2, y: r.top + (b.y0 + b.y1) / 2 }; }"
