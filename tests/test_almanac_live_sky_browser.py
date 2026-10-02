@@ -373,7 +373,8 @@ def test_life_on_the_horizon(browser, served):
           window.requestAnimationFrame = (f) => { if (f === _skyLoop) n++; return r.call(window, f); };
           setTimeout(() => { window.requestAnimationFrame = r; done(n); }, 700);
         })""")
-        assert after <= 2, after
+        # Only the palms' breeze still asks (every SKY_SWAY_MS), not a loop.
+        assert after <= 700 / pg.evaluate("SKY_SWAY_MS") + 2, after
         assert pg.evaluate("_skyState.actors.length") == 0
         # Birds by day, named on a tap.
         pg.evaluate(
