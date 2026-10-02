@@ -146,6 +146,61 @@ def test_the_bars_are_zimis_and_step_aside_while_reading(shell, device):
             ctx.browser.close()
 
 
+# A phone's notch and home indicator, as the shell would measure them in an
+# installed app (Chromium has none, so the shell's measuring box is told).
+NOTCH, HOME = 47, 34
+
+
+def test_the_bars_and_sheets_keep_clear_of_the_notch_and_home_indicator(shell):
+    """Eric, 2026-10-01: "The PWA is rendering the bottom pdf controls in
+    safe area home". A framed page is told no safe-area insets (env() is 0
+    in a frame), so the shell measures them, with the page run to the
+    screen's edges while a reader draws its own bars, and hands them in."""
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    with sync_playwright() as pw:
+        pg, fr, ctx = _open(pw, base, name, "iPhone 13")
+        try:
+            # The page runs to the edges only while the reader's bars are up.
+            assert "viewport-fit=cover" in pg.evaluate(
+                "() => document.querySelector('meta[name=viewport]').content"
+            )
+            pg.add_style_tag(
+                content="#zb-insets{padding:%dpx 0 %dpx 0 !important}" % (NOTCH, HOME)
+            )
+            pg.evaluate("() => window.dispatchEvent(new Event('resize'))")
+            fr.wait_for_function(
+                "() => getComputedStyle(document.documentElement).getPropertyValue('--zp-sab').trim() === '%dpx'"
+                % HOME,
+                timeout=5000,
+            )
+            got = fr.evaluate(
+                """() => { const vis = s => [...document.querySelectorAll(s)].filter(e => e.getClientRects().length);
+              const head = document.querySelector('.zp-head'), foot = document.querySelector('.zp-foot');
+              return { vh: innerHeight, headPad: parseFloat(getComputedStyle(head).paddingTop),
+                headTop: Math.min(...vis('.zp-head button').map(b => b.getBoundingClientRect().top)),
+                footBottom: Math.max(...vis('.zp-foot button, .zp-foot input').map(b => b.getBoundingClientRect().bottom)),
+                footEdge: foot.getBoundingClientRect().bottom }; }"""
+            )
+            # The bars still reach the edges (their ground under the notch and
+            # the indicator); what you touch stays clear of both.
+            assert got["headPad"] == NOTCH and got["headTop"] >= NOTCH, got
+            assert abs(got["footEdge"] - got["vh"]) < 1, got
+            assert got["footBottom"] <= got["vh"] - HOME, got
+            pg.screenshot(path=os.path.join(os.environ.get("ZIMI_SHOTS", "/tmp"), "pdf-safe-area-390.png"))
+            # A sheet's last row clears the indicator too.
+            fr.click(".zp-toc-btn")
+            fr.wait_for_selector(".zp-sheet.zp-open")
+            pad = fr.evaluate(
+                "() => parseFloat(getComputedStyle(document.querySelector('.zp-sheet')).paddingBottom)"
+            )
+            assert pad >= HOME + 16, pad
+        finally:
+            ctx.browser.close()
+
+
 def test_the_slider_moves_through_the_pages(shell):
     _skip_without_browser()
     from playwright.sync_api import sync_playwright

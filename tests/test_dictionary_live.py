@@ -77,12 +77,47 @@ def _frame(pg):
     raise AssertionError("the Dictionary page never opened")
 
 
+STATE = """() => ({ h1: (document.querySelector('.hw h1') || {}).textContent || null,
+  loading: !!document.querySelector('.sk'), page: location.href.split('#')[0], shell: parent.location.href })"""
+
+
 def _word(f, w):
-    f.wait_for_function(
-        "w => { const h = document.querySelector('.hw h1'); return h && h.textContent === w && !document.querySelector('.sk'); }",
-        arg=w,
-        timeout=20000,
+    """The word on the page, drawn: first its heading (the page took the
+    step), then its entries (the lookup answered). A timeout says which of
+    the two never came, and what the page showed instead."""
+    for cond, what in (
+        ("w => { const h = document.querySelector('.hw h1'); return h && h.textContent === w; }", "the page never went to it"),
+        (
+            "w => { const h = document.querySelector('.hw h1'); return h && h.textContent === w && !document.querySelector('.sk'); }",
+            "the lookup never answered",
+        ),
+    ):
+        try:
+            f.wait_for_function(cond, arg=w, timeout=20000)
+        except Exception as e:
+            raise AssertionError("%r: %s; the page: %r" % (w, what, f.evaluate(STATE))) from e
+
+
+def _still(pg):
+    """Until the reader's frame holds its place for a few looks. Scrolling
+    the page slides Zimi's header away (or back), and the whole frame with
+    it, over 0.2s; a click in that slide pressed a link and let go over the
+    line above it, so nothing opened (a slow runner, 2026-10-02)."""
+    pg.evaluate("() => { window.__still = null; }")
+    pg.wait_for_function(
+        "() => { const v = document.getElementById('reader-frame').getBoundingClientRect();"
+        " const w = window.__still || (window.__still = { y: null, n: 0 });"
+        " w.n = v.top === w.y ? w.n + 1 : 0; w.y = v.top; return w.n >= 3; }",
+        polling=150,
+        timeout=10000,
     )
+
+
+def _tap(f, sel):
+    """Tap as a reader does: brought into view, then tapped once still."""
+    f.eval_on_selector(sel, "e => e.scrollIntoView({ block: 'center' })")
+    _still(f.page)
+    f.click(sel)
 
 
 def _shot(pg, name):
@@ -127,7 +162,7 @@ def test_a_word_heard_followed_and_kept_at_390px(served, scheme):
             assert got["audio"] == ["/w/wiktionary_en_simple/-/En-us-water.ogg"]
             assert got["wide"] <= 0
             # A translation is a tap away: French "eau".
-            f.click("a[data-w='eau#French']")
+            _tap(f, "a[data-w='eau#French']")
             _word(f, "eau")
             pg.wait_for_url("**/?dictionary=eau", timeout=5000)
             trail = f.evaluate(
@@ -139,19 +174,20 @@ def test_a_word_heard_followed_and_kept_at_390px(served, scheme):
                 "() => { const i = Array.from(document.querySelectorAll('.lang')).findIndex(s => s.querySelector('h2').textContent === 'French'); const s = document.querySelectorAll('.lang')[i]; return { open: s.tagName === 'SECTION' || s.open, say: !!s.querySelector('[data-say]:not([hidden])') }; }"
             )
             assert fr == {"open": True, "say": True}
-            f.click("[data-say][data-code='fr']:not([hidden])")
-            pg.wait_for_timeout(200)
+            _tap(f, "[data-say][data-code='fr']:not([hidden])")
+            f.wait_for_function("() => window.__said.length > 0")
             said = f.evaluate("() => window.__said")
-            assert said and said[-1] == ["eau", "Thomas", "fr-FR"]
+            assert said[-1] == ["eau", "Thomas", "fr-FR"]
             _shot(pg, "eau-" + scheme)
             # Zimi's arrow walks the trail back (its header back in view at the top).
             f.evaluate("() => window.scrollTo(0, 0)")
-            pg.wait_for_timeout(400)
+            pg.wait_for_function("() => !document.body.classList.contains('chrome-away')")
+            _still(pg)
             pg.click("#back-btn")
             _word(f, "water")
             assert f.evaluate("() => document.getElementById('trail').hidden")
             # Save keeps the word as a word of Dictionary.
-            f.click(".svbar [data-sv='save']")
+            _tap(f, ".svbar [data-sv='save']")
             kept = pg.evaluate(
                 "() => Saved.itemsFor({ app: 'dictionary' }).map(x => [x.kind, x.title])"
             )

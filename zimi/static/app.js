@@ -18909,6 +18909,7 @@ function _pdfChrome(on) {
 }
 function _ownChromeSync() {
   var held = _bookReading || _pdfReading;
+  _viewportCover(held);
   if (held === _chromeHeld) return;
   // The header stays while focus is in it (app.css :focus-within): the
   // search box focused as the page opened would keep it over the reader's.
@@ -18916,9 +18917,21 @@ function _ownChromeSync() {
   if (held && a && a.closest && a.closest('.topbar')) a.blur();
   _chromeImmersive(held);
 }
+// While a reader draws its own bars (a book, a PDF) the page runs to the
+// screen's edges (viewport-fit=cover): only then does the browser report the
+// notch and the home indicator as insets, which the reader keeps its bars
+// clear of. The rest of Zimi keeps the browser's own safe layout.
+var _VIEWPORT_COVER = ', viewport-fit=cover';
+function _viewportCover(on) {
+  var m = document.querySelector('meta[name="viewport"]');
+  if (!m) return;
+  var c = (m.getAttribute('content') || '').split(_VIEWPORT_COVER).join('');
+  m.setAttribute('content', on ? c + _VIEWPORT_COVER : c);
+}
 // The screen's safe-area insets (a notch, the home indicator). A page in a
-// frame is not told them, so the shell measures and hands them in.
-function _bookInsets() {
+// frame is not told them, so the shell measures and hands them in (the book
+// reader and the PDF reader).
+function _safeInsets() {
   var el = document.getElementById('zb-insets');
   if (!el) {
     el = document.createElement('div');
@@ -19196,7 +19209,7 @@ function _bookLay(frame) {
   // the passage stays the one you were reading until you move, rather than
   // becoming whatever now tops the page, which would drift back a page a time.
   var held = false;
-  var insets = _bookInsets();
+  var insets = _safeInsets();
   var applyVars = function() {
     var s = html.style;
     s.setProperty('--zb-size', prefs.size + 'px');
@@ -19630,7 +19643,7 @@ function _bookLay(frame) {
       if (size === sizeAt) return;
       var widthChanged = size.split('x')[0] !== sizeAt.split('x')[0];
       sizeAt = size;
-      insets = _bookInsets();
+      insets = _safeInsets();
       if (paged || widthChanged) relayout(anchor);
     });
   });
@@ -24233,18 +24246,17 @@ function _readerSectionAnchor() {
   } catch (e) { return ''; }
 }
 // The bookmark button: keep what is on screen, or let it go.
+// The reader on one of Zimi's own stand-ins under /w/ ("This article isn't
+// in this ZIM", a page that wasn't captured): not an article, nothing to
+// save. Bookmarked, it went into a bookmarks export as a page titled exactly
+// that (seen 2026-09-03). The page marks itself, as Reader View reads it.
+function _onOwnPage() {
+  return !!(readerOpen && currentArticle && _docIsOurOwnPage(_readerFrameDoc()));
+}
 function toggleBookmark() {
   var ref = _savedRefOnScreen();
   if (!ref) return;
-  // The reader's own "This page wasn't captured" stand-in is not an article:
-  // bookmarked, it went into a bookmarks export as a page titled exactly
-  // that (seen 2026-09-03). The stand-in marks itself; nothing to save.
-  if (currentArticle) {
-    try {
-      var doc = _readerFrameDoc();
-      if (doc && doc.body && doc.body.hasAttribute('data-zimi-uncaptured')) return;
-    } catch (e) {}
-  }
+  if (_onOwnPage()) return;
   if (Saved.has(ref)) { _savedRemoveUndoable(ref); return; }
   if (ref.kind === 'article') {
     var sec = _readerSectionAnchor();
@@ -24267,6 +24279,7 @@ function _setLibraryTab(tab) { localStorage.setItem(SK.LIBRARY_TAB, tab); }
 function _updateLibraryBtnIcon() {
   var btn = document.getElementById('library-btn');
   if (!btn) return;
+  document.body.classList.toggle('own-page', _onOwnPage());
   var ref = readerOpen ? _savedRefOnScreen() : null;
   var state = !readerOpen ? 'library' : ref && Saved.has(ref) ? 'saved' : 'save';
   // Called on every change to what is kept (a book's place moves every few
