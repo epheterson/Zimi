@@ -29,7 +29,7 @@
 var TB_TABLES = ALM_TB_TABLES;     // almanac.js: the tiles' order is the tabs'
 var TB_CALCS = ALM_TB_CALCS;
 // The window a table opens on: the span its data is naturally read over.
-var TB_DEFAULT_WIN = { sunmoon: 'month', twilight: 'month', phases: 'year', tides: 'week', nav: 'day',
+var TB_DEFAULT_WIN = { sunmoon: 'month', twilight: 'month', phases: 'month', tides: 'week', nav: 'day',
   stars: 'year', seasons: 'year', eclipses: 'year', calendars: 'month', suntime: 'month' };
 var TB_WINDOWS = ['day', 'week', 'month', 'year', 'range'];
 // The most rows of days one table draws at once (three years), and of years
@@ -410,14 +410,35 @@ function _tkPopOpen(anchor, html, cls, onBuild) {
     pop.style.top = top + 'px';
   }
   _tk.pop = { el: pop, anchor: anchor };
+  if (narrow) _tkSheetAboveKeyboard(pop);
   if (onBuild) onBuild(pop);
   _tkPaint(pop);
   var first = pop.querySelector('input, [data-tk], button');
   if (first) first.focus({ preventScroll: true });
   return pop;
 }
+// A sheet stands on the bottom of the layout viewport, which an iPhone's
+// keyboard covers: it would type into a box nobody can see ("text box is
+// stuck to bottom of page and I don't see it", Eric). While the keyboard is
+// up, the sheet stands on the top of the keyboard instead, and fits above it.
+var TK_SHEET_GAP_PX = 8;
+function _tkSheetAboveKeyboard(pop) {
+  var vv = window.visualViewport;
+  if (!vv) return;
+  function fit() {
+    if (!pop.isConnected) return;
+    var covered = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height));
+    pop.style.bottom = covered ? covered + 'px' : '';
+    pop.style.maxHeight = covered ? (vv.height - TK_SHEET_GAP_PX) + 'px' : '';
+  }
+  vv.addEventListener('resize', fit);
+  vv.addEventListener('scroll', fit);
+  pop._tkUnfit = function () { vv.removeEventListener('resize', fit); vv.removeEventListener('scroll', fit); };
+  fit();
+}
 function _tkPopClose(quiet) {
   if (!_tk.pop) return;
+  if (_tk.pop.el._tkUnfit) _tk.pop.el._tkUnfit();
   var a = _tk.pop.anchor;
   _tk.pop.el.remove();
   if (_tk.scrim) { _tk.scrim.remove(); _tk.scrim = null; }
@@ -536,7 +557,15 @@ function _tkOpenPlace(btn) {
 }
 
 // ── Gestures and keys, delegated from the view ──
+// A field typed into on the page itself (a number, a search): once the
+// keyboard has come up, bring it into the part of the view that is left.
+var TK_KEYBOARD_SETTLE_MS = 350;
 function _tkBind(root) {
+  root.addEventListener('focusin', function (e) {
+    var el = e.target;
+    if (!el || !/^(INPUT|TEXTAREA)$/.test(el.tagName) || el.type === 'date' || el.closest('.tk-sheet')) return;
+    setTimeout(function () { if (document.activeElement === el && el.scrollIntoView) el.scrollIntoView({ block: 'center' }); }, TK_KEYBOARD_SETTLE_MS);
+  });
   root.addEventListener('pointerdown', function (e) {
     var el = e.target.closest('.tk-num');
     if (!el || el.classList.contains('tk-typing') || e.button > 0) return;
@@ -685,14 +714,19 @@ function _tbOpen(id) {
     '<div class="tb-bar">' +
       '<button type="button" class="tb-back" data-tb-close aria-label="' + _almEsc(t('back_to', { place: t('almanac') })) + '" title="' + _almEsc(t('back_to', { place: t('almanac') })) + '">' + TB_BACK_SVG + '</button>' +
       '<h2 id="alm-ref-title" tabindex="-1">' + _almEsc(_tbName(id)) + '</h2>' +
-      '<button type="button" class="tb-print" data-tb-print>' + ALM_PRINT_SVG + '<span>' + _almEsc(t('ref_print')) + '</span></button>' +
+      '<span class="tb-bar-end">' +
+        (kind === 'decay' ? '' : '<button type="button" class="tb-iconbtn" data-tb-reset aria-label="' + _tbH('reset') + '" title="' + _tbH('reset') + '">' + TB_RESET_SVG + '</button>') +
+        '<button type="button" class="tb-print" data-tb-print>' + ALM_PRINT_SVG + '<span>' + _almEsc(t('ref_print')) + '</span></button>' +
+      '</span>' +
     '</div>' +
     (list.length ? '<nav class="tb-tabs" aria-label="' + _tbH(kind === 'calc' ? 'calcs' : 'tables') + '">' + list.map(function (k) {
       return '<button type="button" class="tb-tab" data-tb-go="' + k + '"' + (k === id ? ' aria-current="page"' : '') + '>' + _almEsc(_tbName(k)) + '</button>';
     }).join('') + '</nav>' : '') +
     '</div><div class="tb-body" id="tb-body"></div>';
   el.querySelector('[data-tb-close]').addEventListener('click', function () { _tbClose(); });
-  el.querySelector('[data-tb-print]').addEventListener('click', function () { _tkPopClose(true); window.print(); });
+  el.querySelector('[data-tb-print]').addEventListener('click', _tbPrint);
+  var reset = el.querySelector('[data-tb-reset]');
+  if (reset) reset.addEventListener('click', _tbReset);
   el.querySelectorAll('[data-tb-go]').forEach(function (b) {
     b.addEventListener('click', function () { _tbOpen(b.getAttribute('data-tb-go')); var n = _tbEl('alm-ref').querySelector('[data-tb-go="' + b.getAttribute('data-tb-go') + '"]'); if (n) n.focus({ preventScroll: true }); });
   });
@@ -705,6 +739,23 @@ function _tbOpen(id) {
   else _arRenderDecay(body);
   el.style.setProperty('--tb-head-h', el.querySelector('.tb-head').offsetHeight + 'px');
   if (!el.contains(document.activeElement)) el.querySelector('#alm-ref-title').focus({ preventScroll: true });
+}
+// Start again: back to the Almanac's day and place (a table), or to a
+// calculation's own starting values. An icon beside Print, so it fits every
+// page ("Start again from now and here doesn't fit each page", Eric).
+var TB_RESET_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4.5h4.5"/></svg>';
+function _tbReset() {
+  var id = _tb.id, body = _tbEl('tb-body');
+  if (!id || !body) return;
+  _tkPopClose(true);
+  if (_tb.kind === 'table') {
+    _tb.place = _tbAlmanacPlace();
+    delete _tb.win[id];
+    _tbRenderTable(body);
+  } else if (_tb.kind === 'calc') {
+    _tb.calc[id] = TB_CALC[id].init();
+    _tbCalcFields();
+  }
 }
 var TB_BACK_SVG = '<svg class="tb-chev" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
 
@@ -735,11 +786,27 @@ window.addEventListener('keydown', function (e) {
   e.preventDefault();
   if (_tk.pop) _tkPopClose(); else _tbClose();
 }, true);
-// Print the view alone, and only while it is showing.
-window.addEventListener('beforeprint', function () {
-  if (_tbEl('alm-ref') && typeof _almanacOpen !== 'undefined' && _almanacOpen) document.documentElement.classList.add('alm-ref-print');
-});
-window.addEventListener('afterprint', function () { document.documentElement.classList.remove('alm-ref-print'); });
+// Print the view alone, and only while it is showing. Print sets it up
+// itself before asking for the dialog: iOS does not always send beforeprint,
+// and without it the whole app went to paper, which is the Almanac's fixed
+// frame and a blank page. The page's own Print (a browser menu, a key) still
+// comes through beforeprint.
+var TB_PRINT_CLASS = 'alm-ref-print';
+var TB_PRINT_UNDO_MS = 60000;   // afterprint can be late or missing on a phone
+function _tbPrintOn() {
+  if (_tbEl('alm-ref') && typeof _almanacOpen !== 'undefined' && _almanacOpen) document.documentElement.classList.add(TB_PRINT_CLASS);
+}
+function _tbPrintOff() { document.documentElement.classList.remove(TB_PRINT_CLASS); }
+function _tbPrint() {
+  _tkPopClose(true);
+  if (typeof window.print !== 'function') return;
+  _tbPrintOn();
+  clearTimeout(_tb.printUndo);
+  _tb.printUndo = setTimeout(_tbPrintOff, TB_PRINT_UNDO_MS);
+  try { window.print(); } catch (e) { _tbPrintOff(); }
+}
+window.addEventListener('beforeprint', _tbPrintOn);
+window.addEventListener('afterprint', function () { clearTimeout(_tb.printUndo); _tbPrintOff(); });
 
 // The heading only paper carries: what, where, when, and when worked out.
 function _tbPrintHead(lines) {
@@ -808,7 +875,10 @@ function _tbRenderTable(body) {
       (w.win === 'range'
         ? '<span class="tb-range">' + _tkDate('from', _tbDayDate(w, 'from', _tbT('from'))) + '<span class="tb-dash" aria-hidden="true">–</span>' + _tkDate('to', _tbDayDate(w, 'to', _tbT('to'))) + '</span>'
         : '<span class="tb-stepper"><button type="button" class="tb-stepbtn" data-tb-step="-1" aria-label="' + _tbH('earlier') + '">' + TB_BACK_SVG + '</button>' +
-          '<button type="button" class="tb-span" data-tb-today title="' + _tbH('to_focus') + '"></button>' +
+          // The day shown, over a date input: a tap opens the device's own
+          // calendar ("tapping date should bring up calendar chooser", Eric).
+          '<span class="tb-span-pick"><span class="tb-span" data-tb-today aria-hidden="true"></span>' +
+          '<input type="date" class="tb-span-in" data-tb-date-in aria-label="' + _tbH('date') + '" title="' + _tbH('date') + '"></span>' +
           '<button type="button" class="tb-stepbtn tb-fwd" data-tb-step="1" aria-label="' + _tbH('later') + '">' + TB_BACK_SVG + '</button></span>') +
       (fixedPlace ? '' : _tkPlace('place', { label: _tbT('place'), get: function () { return _tb.place; }, set: function (p) { _tb.place = p; } })) +
     '</div></div>' +
@@ -817,11 +887,32 @@ function _tbRenderTable(body) {
   body.querySelectorAll('[data-tb-step]').forEach(function (b) {
     b.addEventListener('click', function () { _tbStep(w, +b.getAttribute('data-tb-step')); _tbDrawTable(); });
   });
-  var today = body.querySelector('[data-tb-today]');
-  if (today) today.addEventListener('click', function () { w.anchor = _tbDayIn(_almFocusInstant().getTime(), _tb.place.tz); _tbDrawTable(); });
+  var pick = body.querySelector('[data-tb-date-in]');
+  if (pick) {
+    pick.addEventListener('click', function () { try { if (pick.showPicker) pick.showPicker(); } catch (e) {} });
+    pick.addEventListener('change', function () {
+      var k = _tbIsoDay(pick.value);
+      if (!k) return;
+      w.anchor = k;
+      _tbDrawTable();
+    });
+  }
   _tb.changed = function () { _tbDrawTable(); };
   _tkPaint(body);
   _tbDrawTable();
+}
+// A day as a date input holds it (yyyy-mm-dd, years 1 to 9999 only), and back.
+var TB_ISO_YEARS = [1, 9999];
+function _tbIsoText(k) {
+  if (!k || k.y < TB_ISO_YEARS[0] || k.y > TB_ISO_YEARS[1]) return '';
+  function pad(n, w) { n = String(n); while (n.length < w) n = '0' + n; return n; }
+  return pad(k.y, 4) + '-' + pad(k.m, 2) + '-' + pad(k.d, 2);
+}
+function _tbIsoDay(v) {
+  var m = /^(\d{4,})-(\d{2})-(\d{2})$/.exec(v || '');
+  if (!m) return null;
+  var k = { y: +m[1], m: +m[2], d: +m[3] };
+  return k.m >= 1 && k.m <= 12 && k.d >= 1 && k.d <= _tbDim(k.y, k.m) ? k : null;
 }
 // The range's ends as date pills: a day, kept at noon in the place's zone.
 function _tbDayDate(w, end, label) {
@@ -838,6 +929,8 @@ function _tbDrawTable() {
   var id = _tb.id, w = _tbWinState(id), span = _tbSpan(w);
   var lbl = document.querySelector('[data-tb-today]');
   if (lbl) lbl.textContent = span.label;
+  var pickIn = document.querySelector('[data-tb-date-in]');
+  if (pickIn) pickIn.value = _tbIsoText(w.anchor);
   var seq = ++_tb.seq;
   out.classList.add('tb-busy');
   if (!out.firstChild) out.innerHTML = '<p class="tb-wait" role="status">' + _almEsc(t('ref_working')) + '</p>';
@@ -908,6 +1001,23 @@ function _tbSunMoonDays(span, p) {
 function _tbPhaseGlyph(q) {
   return '<span class="tb-ph" title="' + _almEsc(t('ref_' + AR_PHASE_KEYS[q])) + '">' + _moonGlyphSVG(q / 4, 14) + '</span>';
 }
+// The Moon on a day, at its noon there: the principal phase's glyph when one
+// falls that day, otherwise the day's own. With words: its name (the
+// principal phase's, with its time, when `principal` is given) and how much
+// is lit.
+function _tbDayPhase(r, tz, words, principal) {
+  var noon = r.noon || _tkFromParts({ y: r.y, m: r.m, d: r.d, h: 12, mi: 0 }, tz);
+  var ph = _moonPhase(new Date(noon));
+  // Between the principal phases a day is a crescent or a gibbous Moon: the
+  // broad names (New Moon, First Quarter...) belong to the principal days.
+  var between = _localMoonName((ph.phase < 0.5 ? 'Waxing ' : 'Waning ') + (ph.illumination < 50 ? 'Crescent' : 'Gibbous'));
+  var glyph = r.phase != null ? _tbPhaseGlyph(r.phase)
+    : '<span class="tb-ph" title="' + _almEsc(between) + '">' + _moonGlyphSVG(ph.phase, 14) + '</span>';
+  if (!words) return glyph;
+  var name = principal ? '<span class="tb-hi">' + _arTH(AR_PHASE_KEYS[principal.q]) + ' ' + _tbTime(principal.ms, tz) + '</span>'
+    : _almEsc(between);
+  return glyph + ' ' + name + ' <span class="tb-dim">' + _tbH('lit', { n: _arNum(ph.illumination, 0) }) + '</span>';
+}
 function _tbTime(ms, tz) { return '<span dir="ltr">' + _almEsc(_arTime(ms, tz)) + '</span>'; }
 
 var TB_RENDER = {
@@ -920,7 +1030,7 @@ var TB_RENDER = {
       return [null, rise, _tbTime(r.noon, tz), r.polar ? '' : _tbTime(r.set, tz),
         r.polar === 'up' ? '24:00' : (r.polar === 'down' ? '0:00' : _arDuration(r.length)),
         r.noonAlt != null ? _arNum(r.noonAlt, 1) + '°' : '–',
-        _tbTime(r.moonrise, tz), _tbTime(r.moonset, tz), r.phase != null ? _tbPhaseGlyph(r.phase) : ''];
+        _tbTime(r.moonrise, tz), _tbTime(r.moonset, tz), _tbDayPhase(r, tz, false)];
     });
     return { html: _arDeltaTNote(span.from.y) + _tbTable(head, rows) + _tbCapNote(span) + _tbNote(_tbH('sunmoon_note')) };
   },
@@ -939,19 +1049,17 @@ var TB_RENDER = {
     });
     return { html: _arDeltaTNote(span.from.y) + _tbTable(head, rows) + _tbCapNote(span) + _tbNote(_tbH('twilight_note')) };
   },
+  // Every day's Moon, its principal phases picked out with their times
+  // ("why not show the phase per day instead of empty sometimes", Eric).
   phases: function (span, p) {
     span = _tbCapDays(span, TB_MAX_DAYS);
-    var S = _tbSunMoonDays(span, p), tz = p.tz;
-    if (!S.phases.length) return { html: _tbEmpty('no_phase') };
-    var lastY = null, rows = '';
-    S.phases.forEach(function (ph) {
-      var k = _tbDayIn(ph.ms, tz);
-      if (span.years && k.y !== lastY) rows += _tbGroupRow(String(k.y), 3);
-      lastY = k.y;
-      rows += _tbRow(['<span dir="ltr">' + _almEsc(_tbWhen(ph.ms, tz, false)) + '</span>', _tbPhaseGlyph(ph.q) + ' ' + _arTH(AR_PHASE_KEYS[ph.q]),
-        _almEsc(_tbDate(k, { weekday: 'long' }))], ph.q === 2 ? 'tb-full' : '');
+    var S = _tbSunMoonDays(span, p), tz = p.tz, at = {};
+    S.phases.forEach(function (ph) { at[_arKeyNum(_tbDayIn(ph.ms, tz))] = ph; });
+    var rows = _tbDayRows(S.rows, span, function (r) {
+      var ph = at[_arKeyNum(r)];
+      return [null, _tbDayPhase(r, tz, true, ph)];
     });
-    return { html: _tbTable(_tbHead([_tbH('when'), _arTH('phase'), _arTH('weekday')]), rows) + _tbCapNote(span) };
+    return { html: _tbTable(_tbHead([_arTH('day'), _arTH('phase')]), rows, 'tb-phases') + _tbCapNote(span) };
   },
   tides: function (span) {
     var st = typeof _atTideStation === 'function' && _at.data && !_at.data.failed ? _atTideStation() : null;
@@ -1549,9 +1657,7 @@ function _tbRenderCalc(body) {
   body.innerHTML = '<div id="tb-print-head"></div>' +
     '<div class="tk-answer" id="tk-answer" aria-live="polite"></div>' +
     '<div class="tk-fields" id="tk-fields"></div>' +
-    '<div id="tk-working"></div>' +
-    '<p class="tb-reset"><button type="button" class="tb-link" data-tb-reset>' + _tbH('reset') + '</button></p>';
-  body.querySelector('[data-tb-reset]').addEventListener('click', function () { _tb.calc[id] = calc.init(); _tbCalcFields(); });
+    '<div id="tk-working"></div>';
   body.addEventListener('click', function (e) {
     if (!e.target.closest('[data-tb-swap]')) return;
     var u = _tb.calc[_tb.id], x = u.from;
