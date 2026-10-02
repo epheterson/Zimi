@@ -1740,8 +1740,8 @@ function _almAboutDataHtml() {
     '</ul><button type="button" class="alm-ref-decay-link" onclick="_almRefOpen(\'decay\')">' + _almEsc(t('ref_decay_link')) + '</button></details>';
 }
 
-// The page's parts: a group (the sky now, here, this month, this year, deep
-// time) under one heading, and a titled section inside it.
+// The back matter's group under one heading (the tables and calculations),
+// and a titled section of the page.
 function _almGroupOpen(key) {
   return '<section class="alm-group" id="alm-group-' + key + '" aria-labelledby="alm-group-' + key + '-t">' +
     '<h2 class="alm-group-title" id="alm-group-' + key + '-t">' + _almEsc(t('alm_group_' + key)) + '</h2>';
@@ -1981,12 +1981,11 @@ function _renderAlmanacContent() {
   // open its file, loading after this paint, sees to that itself).
   if (typeof _aePrepareWhenIdle === 'function') _aePrepareWhenIdle();
 
-  // The page reads outward in time from the moment at the top: the sky now,
-  // here (the place, its clocks, its tide), this month, this year, deep time,
-  // and then any time: the tables and calculations.
-  //
-  // The sky now. Its clock is the page's (the time machine); almanac-sky.js.
-  html += _almGroupOpen('now');
+  // The order 1.12 had, and Eric's way of reading it (2026-10-02): the
+  // live sky above the month like a wall calendar flipped open, then the
+  // place (the map, its clocks, its tide), the solar system, tonight's
+  // planets and the star chart, the year's figures, deep time.
+  // Its clock is the page's (the time machine); almanac-sky.js.
   html += '<div class="almanac-sky-wrap">' +
     '<canvas id="almanac-sky-canvas" aria-describedby="almanac-sky-desc" role="img" tabindex="0"></canvas>' +
     '<div id="almanac-sky-cap" class="alm-sky-cap"></div>' +
@@ -1995,37 +1994,17 @@ function _renderAlmanacContent() {
     // expose this text visually (issue #25).
     '<div id="almanac-sky-desc" class="sr-only" style="position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0"></div>' +
     '</div>';
-  // Drawn with the page, not when the sky's sums land: nothing moves under it.
   html += '<div id="almanac-sky-invite">' + (_getLocation().stored ? '' : _almPlaceInviteHtml()) + '</div>';
-  html += _almSec(t('alm_tonights_sky'), '<div id="almanac-tonight"></div>');
-  // Star chart — a circular planisphere of the sky above the chosen location
-  // now: drag it to stand elsewhere on Earth, tap a body to identify it.
-  html += _almSec(t('alm_star_chart'),
-    '<div class="alm-starchart-wrap"><canvas id="almanac-starchart" onclick="_starChartClick(event)"></canvas></div>' +
-    '<div id="alm-sc-info" class="alm-sc-info"></div>' +
-    '<div id="almanac-starchart-caption" class="alm-starchart-caption"></div>');
-  html += '</section>';
+  html += '<div id="almanac-calendar"></div>';
 
-  // Here: the place (the map, the way to choose it), its clocks, its tide
+  // The place: the map, the way to choose it, its clocks, its tide
   // (almanac-tides.js, loaded after the first paint), the Sun's year there.
-  html += _almGroupOpen('here');
   html += '<div id="almanac-sunmap"></div>';
   html += '<div id="almanac-place"></div>';
-  html += '</section>';
-
-  // This month: the calendar (and every other calendar's day), the showers,
-  // the planets' meetings, this day in history.
-  html += _almGroupOpen('month');
-  html += '<div id="almanac-calendar"></div>';
-  html += _almSec(_lterm('meteor_shower', t('alm_meteor_showers')), '<div id="almanac-meteors"></div>');
-  html += _almSec(t('alm_celestial_events'), '<div id="almanac-events"></div>');
   // On this day — curated space & science milestones (only rendered when today has some)
   html += '<div id="almanac-onthisday"></div>';
-  html += '</section>';
 
-  // This year: the planets round the Sun, the Sun's figure of eight, the
-  // eclipses and the numbers of the Earth's year.
-  html += _almGroupOpen('year');
+  // The solar system (almanac-orrery.js).
   html += '<div class="almanac-section">';
   html += '<div class="almanac-section-title">' + _lterm('solar_system', t('alm_solar_system')) + '</div>';
   html += '<div class="almanac-orrery-wrap"><canvas id="almanac-orrery"></canvas></div>';
@@ -2053,18 +2032,22 @@ function _renderAlmanacContent() {
   // Voyager detail card — appears on click
   html += '<div id="voyager-card" style="display:none"></div>';
   html += '</div>';
+  html += _almSec(t('alm_tonights_sky'), '<div id="almanac-tonight"></div>');
+  // Star chart — a circular planisphere of the sky above the chosen location
+  // now: drag it to stand elsewhere on Earth, tap a body to identify it.
+  html += _almSec(t('alm_star_chart'),
+    '<div class="alm-starchart-wrap"><canvas id="almanac-starchart" onclick="_starChartClick(event)"></canvas></div>' +
+    '<div id="alm-sc-info" class="alm-sc-info"></div>' +
+    '<div id="almanac-starchart-caption" class="alm-starchart-caption"></div>');
   // The Analemma — the Sun's yearly figure-8 (equation of time × declination)
   html += _almSec(_lterm('analemma', t('alm_analemma')),
     '<div class="alm-analemma-wrap"><canvas id="almanac-analemma"></canvas></div>' +
     '<div id="almanac-analemma-caption" class="alm-analemma-caption"></div>');
+  html += _almSec(_lterm('meteor_shower', t('alm_meteor_showers')), '<div id="almanac-meteors"></div>');
+  html += _almSec(t('alm_celestial_events'), '<div id="almanac-events"></div>');
   html += _almSec(t('alm_astro_data'), '<div id="almanac-astro"></div>');
-  html += '</section>';
-
-  // Deep time, and what people wrote to last through it.
-  html += _almGroupOpen('deep');
-  html += '<div id="almanac-deeptime"></div>';
+  html += _almSec(t('alm_deep_time'), '<div id="almanac-deeptime"></div>');
   html += _almSec(t('alm_messages_across_time'), '<div id="almanac-rosetta"></div>');
-  html += '</section>';
   // Any time: the tables and the sums, the almanac's back matter.
   html += _almTablesHtml();
   html += _almAboutDataHtml();
