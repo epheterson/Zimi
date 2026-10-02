@@ -1,114 +1,308 @@
-/* The Almanac's long-haul reference sheets (almanac-reference.js), loaded with
-   them. The entry section's few rules live in almanac.css; everything a sheet
-   draws is here, and so is the print that turns a sheet into paper. */
+/* The Almanac's Tables and Calculations (almanac-tables.js), loaded with them.
+   The tiles that open them live in almanac.css; everything the view draws is
+   here: the head with its tabs, a table's window and place, the tables, a
+   calculation's answer, inputs and working, the input kit and its popovers,
+   and the print that turns what is on screen into paper. */
 
 .alm-ref {
   position: absolute; inset: 0; z-index: 40; overflow-y: auto; overflow-x: hidden;
   background: var(--bg); color: var(--text); overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  --ref-mono: 'SF Mono', 'Fira Code', ui-monospace, Menlo, monospace;
-  --ref-rule: var(--border);
+  --tb-mono: 'SF Mono', 'Fira Code', ui-monospace, Menlo, monospace;
+  --tb-rule: var(--border);
+  --tb-gutter: 16px;
 }
-.alm-ref-bar {
-  position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px;
-  padding: 10px 16px; background: var(--bg); border-bottom: 1px solid var(--border);
+
+/* ── The head: back to the Almanac, the name, Print; then the tabs ── */
+.tb-head { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--border); }
+.tb-bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 6px 8px; min-height: 48px; }
+.tb-bar h2:focus { outline: none; }
+.tb-bar h2 { margin: 0; font-size: 16px; font-weight: 600; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 52vw; }
+.tb-back, .tb-print {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 10px;
+  border: 0; border-radius: 10px; background: none; color: var(--text2); font: inherit; font-size: 14px; cursor: pointer;
 }
-.alm-ref-bar h2 { flex: 1; min-width: 0; margin: 0; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.alm-ref-btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 12px;
-  border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text);
-  font: inherit; font-size: 13px; cursor: pointer;
+.tb-back { justify-self: start; }
+.tb-print { justify-self: end; color: var(--text); }
+.tb-back:hover, .tb-print:hover, .tb-back:focus-visible, .tb-print:focus-visible { color: var(--amber); background: var(--amber-glow); }
+.tb-back:focus-visible, .tb-print:focus-visible, .tb-tab:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+[dir="rtl"] .tb-chev { transform: scaleX(-1); }
+.tb-tabs {
+  display: flex; gap: 2px; overflow-x: auto; padding: 0 var(--tb-gutter); scrollbar-width: none;
+  -webkit-overflow-scrolling: touch; scroll-padding-inline: var(--tb-gutter);
 }
-.alm-ref-btn:hover, .alm-ref-btn:focus-visible { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
-.alm-ref-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
-.alm-ref-icon { width: 36px; padding: 0; font-size: 18px; }
-/* Back and forward chevrons point the way the page reads. */
-[dir="rtl"] [data-ar-year], [dir="rtl"] [data-ar-day] { transform: scaleX(-1); }
-.alm-ref-body { max-width: 760px; margin: 0 auto; padding: 16px 16px 48px; }
-.alm-ref-lede { color: var(--text2); font-size: 14px; line-height: 1.5; margin: 0 0 16px; max-width: 68ch; }
-.alm-ref-where { font-size: 13px; color: var(--text2); margin: 0 0 16px; }
-.alm-ref-where strong { color: var(--text); font-weight: 600; }
-.alm-ref-note { font-size: 12.5px; color: var(--text2); line-height: 1.5; margin: 8px 0 0; max-width: 68ch; }
-.alm-ref-note.alm-ref-warn { color: var(--amber); }
-
-.alm-ref-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 16px; }
-.alm-ref-controls input, .alm-ref-controls select, .alm-ref-form input, .alm-ref-form select {
-  min-height: 36px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--border);
-  background: var(--surface); color: var(--text); font: inherit; font-size: 14px;
+.tb-tabs::-webkit-scrollbar { display: none; }
+.tb-tab {
+  flex: none; min-height: 40px; padding: 0 10px; border: 0; border-bottom: 2px solid transparent; background: none;
+  color: var(--text2); font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer;
 }
-.alm-ref-controls input:focus-visible, .alm-ref-form input:focus-visible, .alm-ref-form select:focus-visible,
-.alm-ref-controls select:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
-.alm-ref-year-input { width: 6.5em; text-align: center; font-variant-numeric: tabular-nums; }
+.tb-tab:hover { color: var(--text); }
+.tb-tab[aria-current] { color: var(--text); border-bottom-color: var(--amber); font-weight: 600; }
 
-.alm-ref h3 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin: 28px 0 10px; color: var(--text); }
-.alm-ref h3:first-child { margin-top: 0; }
-.alm-ref-block { margin: 0 0 8px; }
+.tb-body { position: relative; max-width: 920px; margin: 0 auto; padding: 14px var(--tb-gutter) 56px; }
 
-/* Tables: numbers line up, rules are hairlines, a wide table scrolls inside
-   its own frame so the page itself never scrolls sideways. */
-.alm-ref-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--ref-rule); border-radius: 8px; }
-.alm-ref-table { border-collapse: collapse; width: 100%; font-size: 12.5px; font-variant-numeric: tabular-nums; }
-.alm-ref-table th, .alm-ref-table td { padding: 4px 8px; text-align: end; white-space: nowrap; border-bottom: 1px solid var(--ref-rule); }
-.alm-ref-table th { font-weight: 600; color: var(--text2); font-size: 11px; background: var(--surface); }
-.alm-ref-table th[scope="colgroup"] { text-align: center; }
-.alm-ref-table tbody tr:last-child td { border-bottom: 0; }
-.alm-ref-table td:first-child, .alm-ref-table th:first-child { text-align: start; }
-/* The row's name stays in view while a wide table scrolls under it. */
-.alm-ref-table td:first-child { position: sticky; inset-inline-start: 0; background: var(--bg); z-index: 1; }
-.alm-ref-table th:first-child { position: sticky; inset-inline-start: 0; z-index: 1; }
-.alm-ref-table td:has(> .alm-ref-txt) { text-align: start; white-space: normal; }
-.alm-ref-table .alm-ref-dim { color: var(--text3); }
-.alm-ref-table .alm-ref-sep { border-inline-start: 1px solid var(--ref-rule); }
-.alm-ref-table tr.alm-ref-six td { border-bottom-color: var(--text3); }
-.alm-ref-table tr.alm-ref-today td { background: var(--amber-glow); }
-.alm-ref-nav { font-family: var(--ref-mono); font-size: 12px; }
-.alm-ref-nav td, .alm-ref-nav th { padding: 3px 7px; }
-.alm-ref-foot td { color: var(--text2); font-size: 11.5px; }
-.alm-ref-ph { display: inline-block; width: 1.2em; text-align: center; }
+/* ── A table's two controls: the window, and the place ── */
+.tb-controls { display: grid; gap: 10px; margin: 0 0 14px; }
+.tb-controls-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.tb-stepper { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
+.tb-stepbtn {
+  display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0;
+  border: 0; border-radius: 10px; background: none; color: var(--text2); cursor: pointer;
+}
+.tb-stepbtn:hover, .tb-stepbtn:focus-visible { color: var(--amber); background: var(--amber-glow); }
+.tb-stepbtn:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+.tb-fwd svg { transform: scaleX(-1); }
+[dir="rtl"] .tb-fwd svg { transform: none; }
+[dir="rtl"] .tb-stepbtn:not(.tb-fwd) svg { transform: scaleX(-1); }
+.tb-span {
+  min-height: 40px; padding: 0 6px; border: 0; background: none; color: var(--text); font: inherit;
+  font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; cursor: pointer; border-radius: 8px; min-width: 0; text-align: center;
+}
+.tb-span:hover { color: var(--amber); }
+.tb-range { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tb-dash { color: var(--text3); }
 
-.alm-ref-kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 16px; margin: 0; }
-.alm-ref-kv div { display: flex; flex-direction: column; gap: 2px; }
-.alm-ref-kv dt { font-size: 11px; color: var(--text2); }
-.alm-ref-kv dd { margin: 0; font-size: 14px; font-variant-numeric: tabular-nums; }
+.tb-out { transition: opacity .15s; min-height: 120px; }
+.tb-out.tb-busy { opacity: 0.45; }
+.tb-wait, .alm-ref-busy { color: var(--text2); font-size: 13px; padding: 24px 0; }
+.tb-lede, .alm-ref-lede { color: var(--text2); font-size: 14px; line-height: 1.5; margin: 0 0 12px; max-width: 70ch; }
+.tb-note { font-size: 12.5px; color: var(--text2); line-height: 1.55; margin: 10px 0 0; max-width: 70ch; }
+.tb-warn, .alm-ref-warn { color: var(--amber); }
+.tb-empty { color: var(--text2); font-size: 14px; padding: 28px 0; text-align: center; margin: 0; border: 1px dashed var(--border); border-radius: 12px; }
+.tb-h3, .alm-ref h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin: 24px 0 8px; color: var(--text2); }
 
-/* The section's index of sheets, and the sight form. */
-.alm-ref-form { display: grid; gap: 16px; margin: 0 0 20px; }
-.alm-ref-fieldset { border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin: 0; display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; }
-.alm-ref-fieldset legend { padding: 0 6px; font-size: 12px; color: var(--text2); }
-.alm-ref-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text2); }
-.alm-ref-field .alm-ref-pair { display: flex; align-items: center; gap: 4px; color: var(--text); font-size: 14px; }
-.alm-ref-num { width: 4.2em; text-align: end; font-variant-numeric: tabular-nums; }
-.alm-ref-num.alm-ref-wide { width: 5.4em; }
-.alm-ref-result { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
-.alm-ref-result .alm-ref-scroll { flex: 1 1 280px; }
-.alm-ref-plot { flex: 0 1 260px; max-width: 100%; }
-.alm-ref-plot svg { display: block; width: 100%; height: auto; }
-.alm-ref-answer { font-size: 15px; line-height: 1.5; margin: 12px 0 0; }
-.alm-ref-answer strong { color: var(--amber); font-weight: 600; }
-.alm-ref-total td { font-weight: 600; color: var(--text); border-top: 1px solid var(--text3); }
+/* ── Tables: the head stays at the top, the day at the start, the rest
+   scrolls inside the frame (never the page sideways) ── */
+.tb-frame {
+  position: relative; overflow: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  max-height: max(320px, calc(100dvh - var(--tb-head-h, 96px) - 200px));
+  border: 1px solid var(--tb-rule); border-radius: 12px; background: var(--bg);
+}
+.tb-frame-flat { max-height: none; }
+.tb-table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+.tb-table th, .tb-table td { padding: 6px 10px; text-align: end; white-space: nowrap; border-bottom: 1px solid var(--tb-rule); }
+.tb-table thead th {
+  position: sticky; top: 0; z-index: 2; background: var(--surface); color: var(--text2);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+}
+.tb-table thead tr:nth-child(2) th { top: var(--tb-h1, 29px); }
+.tb-table thead th[scope="colgroup"] { text-align: center; }
+.tb-table tbody th {
+  position: sticky; inset-inline-start: 0; z-index: 1; background: var(--bg);
+  text-align: start; font-weight: 500; color: var(--text);
+}
+.tb-table thead th:first-child { inset-inline-start: 0; z-index: 3; text-align: start; }
+.tb-table tbody tr:last-child > * { border-bottom: 0; }
+.tb-table .tb-sep { border-inline-start: 1px solid var(--tb-rule); }
+.tb-table tr.tb-six > * { border-bottom-color: var(--text3); }
+.tb-table tr.tb-today > * { background: var(--amber-glow); }
+.tb-table tr.tb-today th { box-shadow: inset 3px 0 0 var(--amber); }
+[dir="rtl"] .tb-table tr.tb-today th { box-shadow: inset -3px 0 0 var(--amber); }
+.tb-table tr.tb-grp th {
+  position: static; background: var(--surface); color: var(--text2); font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em; padding-top: 10px;
+}
+.tb-table tr.tb-grp th > span { position: sticky; inset-inline-start: 10px; }
+.tb-table tr.tb-foot > * { color: var(--text2); font-size: 11.5px; }
+.tb-table .tb-dim { color: var(--text3); }
+.tb-table .tb-hi { font-weight: 600; }
+.tb-table .tb-lo { color: var(--text2); }
+.tb-table .tb-h { color: var(--text3); }
+.tb-table .tb-feast { color: var(--amber); white-space: normal; display: inline-block; min-width: 10em; text-align: start; }
+.tb-table tr.tb-feastrow th { color: var(--amber); }
+.tb-table tr.tb-seen > * { background: var(--amber-glow); }
+.tb-table .tb-txt { white-space: normal; display: inline-block; min-width: 16em; max-width: 34em; text-align: start; }
+.tb-wrap td { text-align: start; }
+.tb-table td:has(> .tb-txt) { text-align: start; }
+.tb-mono { font-family: var(--tb-mono); font-size: 12px; }
+.tb-mono th, .tb-mono td { padding: 5px 8px; }
+.tb-ph { display: inline-flex; vertical-align: -3px; }
+.tb-ph svg { width: 14px; height: 14px; }
+.tb-tides td { text-align: start; }
+.tb-kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 16px; margin: 0; }
+.tb-kv div { display: flex; flex-direction: column; gap: 2px; }
+.tb-kv dt { font-size: 11px; color: var(--text2); }
+.tb-kv dd { margin: 0; font-size: 14px; font-variant-numeric: tabular-nums; }
+.tb-figure { margin: 20px 0 0; }
+.tb-figure svg { display: block; width: 100%; max-width: 300px; height: auto; margin: 0 auto; }
+.tb-figure figcaption { font-size: 12px; color: var(--text2); text-align: center; margin-top: 6px; }
+.tb-printhead { display: none; }
 
+/* ── A calculation: the answer, the inputs, the working ── */
+.tk-answer {
+  position: sticky; top: var(--tb-head-h, 96px); z-index: 4; display: flex; align-items: center; gap: 14px;
+  margin: -14px calc(-1 * var(--tb-gutter)) 16px; padding: 16px var(--tb-gutter) 14px;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+}
+.tk-answer-glyph svg { display: block; width: 40px; height: 40px; }
+.tk-answer-text { min-width: 0; }
+.tk-big { font-size: 30px; line-height: 1.15; font-weight: 600; letter-spacing: -0.01em; color: var(--amber); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.tk-sub { margin-top: 4px; font-size: 14px; line-height: 1.4; color: var(--text2); }
+.tk-fields { display: grid; gap: 14px; }
+.tk-group-h { margin: 0 0 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text2); }
+.tk-rows { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.tk-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 6px 8px 6px 14px; }
+[dir="rtl"] .tk-row { padding: 6px 14px 6px 8px; }
+.tk-row + .tk-row { border-top: 1px solid var(--border); }
+.tk-label { font-size: 14px; color: var(--text); min-width: 0; }
+.tk-ctl { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.tb-working { margin-top: 8px; }
+.tb-steps th { font-weight: 400; color: var(--text2); white-space: normal; }
+.tb-steps td { font-family: var(--tb-mono); font-size: 13px; }
+.tb-steps tr.tb-total > * { font-weight: 600; color: var(--text); border-top: 1px solid var(--text3); }
+.tb-steps tbody th { position: static; }
+.tb-plot { max-width: 260px; margin: 18px auto 0; }
+.tb-plot svg { display: block; width: 100%; height: auto; }
+.tb-cal-list { display: grid; gap: 0; border: 1px solid var(--border); border-radius: 12px; margin: 16px 0 0; }
+.tb-cal-line { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; font-size: 14px; }
+.tb-cal-line + .tb-cal-line { border-top: 1px solid var(--border); }
+.tb-cal-sys { color: var(--text2); }
+.tb-cal-date { text-align: end; font-weight: 500; }
+.tb-reset { margin: 24px 0 0; }
+.tb-link { padding: 4px 0; border: 0; background: none; color: var(--text2); font: inherit; font-size: 13px; text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 3px; cursor: pointer; }
+.tb-link:hover, .tb-link:focus-visible { color: var(--amber); }
+
+/* ── The input kit ── */
+/* A number you drag sideways, or tap to type: it reads as a value, with a
+   faint rule beneath to say it moves. */
+.tk-num {
+  display: inline-flex; align-items: baseline; gap: 3px; min-height: 40px; padding: 0 10px; align-items: center;
+  border-radius: 10px; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  font-size: 16px; font-weight: 500; font-variant-numeric: tabular-nums; cursor: ew-resize;
+  touch-action: pan-y; user-select: none; -webkit-user-select: none; transition: border-color .12s, background .12s;
+}
+.tk-num:hover { border-color: var(--amber-border); }
+.tk-num:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+.tk-num.tk-dragging { border-color: var(--amber); background: var(--amber-glow); color: var(--amber); }
+.tk-num.tk-typing { cursor: text; border-color: var(--amber); }
+.tk-num.tk-bad { border-color: #d14b4b; animation: tk-shake .3s; }
+@keyframes tk-shake { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+.tk-u { font-size: 13px; color: var(--text2); font-weight: 400; }
+.tk-in {
+  width: auto; min-width: 3ch; padding: 0; border: 0; outline: 0; background: none; color: inherit;
+  font: inherit; font-size: 16px; text-align: center;
+}
+.tk-hemi {
+  min-width: 40px; min-height: 40px; padding: 0 8px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg); color: var(--text); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.tk-hemi:hover, .tk-hemi:focus-visible { color: var(--amber); border-color: var(--amber-border); }
+.tk-stepper { display: inline-flex; align-items: center; gap: 4px; }
+.tk-step {
+  width: 40px; height: 40px; padding: 0; border: 0; border-radius: 10px; background: none;
+  color: var(--text2); font: inherit; font-size: 20px; line-height: 1; cursor: pointer;
+}
+.tk-step:hover, .tk-step:focus-visible { color: var(--amber); background: var(--amber-glow); }
+/* Segments: one of a few, the chosen one lifted. */
+.tk-seg {
+  display: inline-flex; padding: 3px; gap: 2px; border-radius: 11px; background: var(--surface); border: 1px solid var(--border);
+  max-width: 100%; overflow-x: auto; scrollbar-width: none;
+}
+.tk-seg::-webkit-scrollbar { display: none; }
+.tb-controls > .tk-seg { display: flex; }
+.tb-controls > .tk-seg button { flex: 1 1 0; }
+.tk-seg button {
+  min-height: 34px; padding: 0 12px; border: 0; border-radius: 8px; background: none; color: var(--text2);
+  font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer;
+}
+.tk-seg button:hover { color: var(--text); }
+.tk-seg button[aria-checked="true"] { background: var(--bg); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.18), 0 0 0 1px var(--border); }
+.tk-seg button:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+/* Pills: a date, a place, a choice from a list. */
+.tk-pill {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 40px; max-width: 100%; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: 20px; background: var(--bg); color: var(--text);
+  font: inherit; font-size: 14px; cursor: pointer;
+}
+.tk-pill .tk-pill-v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tk-pill svg { flex: none; color: var(--text2); }
+.tk-pill:hover, .tk-pill:focus-visible, .tk-pill[aria-expanded="true"] { border-color: var(--amber-border); background: var(--amber-glow); }
+.tk-pill:hover svg, .tk-pill:focus-visible svg { color: var(--amber); }
+.tk-pill:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+.tb-controls .tk-place { background: var(--surface); }
+.tk-swap {
+  width: 40px; height: 40px; border: 0; border-radius: 10px; background: none; color: var(--text2); font-size: 18px; cursor: pointer;
+}
+.tk-swap:hover, .tk-swap:focus-visible { color: var(--amber); background: var(--amber-glow); }
+
+/* ── Popovers: under the pill on a wide screen, a sheet from the bottom on a phone ── */
+.tk-pop {
+  position: absolute; z-index: 30; width: min(340px, calc(100% - 16px)); max-height: 420px; overflow: auto;
+  padding: 10px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface2);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+}
+.tk-pop.tk-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; max-height: 72dvh;
+  border-radius: 16px 16px 0 0; padding: 14px 14px max(14px, env(safe-area-inset-bottom));
+}
+.tk-scrim { position: fixed; inset: 0; z-index: 29; background: rgba(0,0,0,0.35); }
+.tk-search {
+  width: 100%; min-height: 42px; padding: 0 12px; margin: 0 0 8px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg); color: var(--text); font: inherit; font-size: 16px; box-sizing: border-box;
+}
+.tk-search:focus { outline: 2px solid var(--amber); outline-offset: 0; }
+.tk-list { display: grid; }
+.tk-list-h { padding: 10px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text3); }
+.tk-opt {
+  display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 10px; border: 0; border-radius: 9px;
+  background: none; color: var(--text); font: inherit; font-size: 15px; text-align: start; cursor: pointer;
+}
+.tk-opt:hover, .tk-opt:focus-visible { background: var(--amber-glow); outline: none; }
+.tk-opt[aria-selected="true"] { color: var(--amber); font-weight: 600; }
+.tk-opt-sub { margin-inline-start: auto; font-size: 12px; color: var(--text2); font-weight: 400; text-align: end; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.tk-opt-here { color: var(--amber); }
+.tk-pop-hint { margin: 8px 2px 0; font-size: 12px; color: var(--text2); text-align: center; }
+.tk-pop-row { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.tk-btn {
+  min-height: 40px; padding: 0 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg);
+  color: var(--text); font: inherit; font-size: 14px; cursor: pointer;
+}
+.tk-btn:hover, .tk-btn:focus-visible { border-color: var(--amber-border); color: var(--amber); }
+.tk-btn-go { background: var(--amber); border-color: var(--amber); color: var(--on-amber, #111); font-weight: 600; }
+.tk-btn-go:hover, .tk-btn-go:focus-visible { color: var(--on-amber, #111); filter: brightness(1.08); }
+/* The date: the time machine's lit window, its drums the same spinbuttons. */
+.tk-glass {
+  display: flex; align-items: flex-end; justify-content: center; gap: 4px; padding: 10px 8px 12px; border-radius: 10px;
+  background: radial-gradient(125% 150% at 50% 122%, rgba(245,158,11,0.32), rgba(245,158,11,0.08) 46%, transparent 72%), linear-gradient(180deg, #17110a, #090705);
+  box-shadow: inset 0 2px 5px rgba(0,0,0,0.9), 0 0 0 1px rgba(202,160,80,0.5);
+}
+.tk-drum { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.tk-drum-cap { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,236,196,0.5); }
+.tk-glass .tk-num {
+  min-height: 44px; padding: 0 6px; background: none; border-color: transparent; color: #ffd489;
+  font-family: var(--tm-digit-font, var(--tb-mono)); font-size: 22px; font-weight: 700; letter-spacing: 0.04em;
+  text-shadow: 0 0 5px rgba(245,158,11,0.8), 0 0 14px rgba(245,158,11,0.35);
+}
+.tk-glass .tk-num:hover, .tk-glass .tk-num:focus-visible { border-color: rgba(255,212,137,0.5); outline: none; }
+.tk-glass .tk-num.tk-dragging { background: rgba(245,158,11,0.12); color: #ffe2a8; }
+.tk-glass .tk-in { color: #ffd489; font-size: 22px; }
+.tk-colon { color: #ffd489; font-size: 22px; font-weight: 700; padding-bottom: 10px; opacity: 0.7; }
+
+/* ── What stops being true (drawn by almanac-reference.js) ── */
 .alm-ref-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-.alm-ref-list li { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.alm-ref-list li { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
 .alm-ref-list h4 { margin: 0 0 4px; font-size: 14px; font-weight: 600; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
 .alm-ref-age { font-size: 12px; font-weight: 500; color: var(--amber); font-variant-numeric: tabular-nums; }
 .alm-ref-list p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text2); }
 .alm-ref-list.alm-ref-holds li { border-style: dashed; }
-
-.alm-ref-month { break-inside: avoid; margin-top: 28px; }
-.alm-ref-figure { margin: 0 0 8px; }
-.alm-ref-figure svg { display: block; width: 100%; max-width: 360px; height: auto; margin: 0 auto; }
-.alm-ref-figure figcaption { font-size: 12px; color: var(--text2); text-align: center; margin-top: 4px; }
-.alm-ref-busy { color: var(--text2); font-size: 13px; padding: 24px 0; }
+.alm-ref-note { font-size: 12.5px; color: var(--text2); line-height: 1.5; margin: 8px 0 0; max-width: 70ch; }
 
 @media (max-width: 480px) {
-  .alm-ref-body { padding: 12px 12px 40px; }
-  .alm-ref-table { font-size: 12px; }
-  .alm-ref-table th, .alm-ref-table td { padding: 4px 6px; }
+  .alm-ref { --tb-gutter: 12px; }
+  .tb-table { font-size: 12.5px; }
+  .tb-table th, .tb-table td { padding: 6px 8px; }
+  .tb-mono { font-size: 11.5px; }
+  .tb-print span { display: none; }
+  .tb-back span { max-width: 22vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tk-big { font-size: 26px; }
+  .tk-row { flex-wrap: wrap; }
+  .tk-seg button { padding: 0 8px; }
 }
 
-/* Paper. The sheet becomes the whole document: everything else in the page
-   is set aside, the sheet flows (no scroller, no sticky bar), black on
-   white, each month or table kept whole, the controls hidden. */
+/* Paper. The view becomes the whole document: everything else in the page
+   is set aside, it flows (no frames, nothing sticky), black on white, with a
+   heading saying what, where, which days and when it was worked out; the
+   controls go, the values they hold stay as text. */
 @media print {
   @page { margin: 12mm 10mm; }
   html.alm-ref-print, html.alm-ref-print body { background: #fff !important; color: #000 !important; height: auto !important; overflow: visible !important; }
@@ -119,22 +313,34 @@
   html.alm-ref-print #almanac-content > *:not(#alm-ref) { display: none !important; }
   html.alm-ref-print .alm-ref {
     position: static !important; overflow: visible !important; background: #fff; color: #000;
-    --text: #000; --text2: #333; --text3: #666; --border: #999; --ref-rule: #bbb; --surface: #fff; --bg: #fff;
+    --text: #000; --text2: #333; --text3: #666; --border: #999; --tb-rule: #bbb; --surface: #fff; --surface2: #fff; --bg: #fff;
     --amber: #000; --amber-glow: #eee; --amber-border: #000;
   }
-  .alm-ref-bar { position: static; border-bottom: 1.5pt solid #000; padding: 0 0 4pt; }
-  .alm-ref-bar .alm-ref-btn, .alm-ref-controls, .alm-ref-noprint { display: none !important; }
-  .alm-ref-body { max-width: none; padding: 6pt 0 0; }
-  .alm-ref-scroll { overflow: visible; border: 0; border-radius: 0; }
-  .alm-ref-table { font-size: 8pt; }
-  .alm-ref-table th { position: static; background: none; color: #000; border-bottom: 1pt solid #000; }
-  .alm-ref-table td:first-child, .alm-ref-table th:first-child { position: static; background: none; }
-  .alm-ref-table th, .alm-ref-table td { padding: 1.5pt 4pt; }
-  .alm-ref-table tr.alm-ref-today td { background: none; }
-  .alm-ref-month, .alm-ref-block, figure, .alm-ref-list li { break-inside: avoid; }
-  .alm-ref-month + .alm-ref-month { break-before: page; }
-  .alm-ref-pagebreak { break-before: page; }
-  .alm-ref-form input, .alm-ref-form select { border: 0; border-bottom: 0.75pt solid #000; border-radius: 0; background: none; color: #000; appearance: none; -webkit-appearance: none; }
-  .alm-ref-answer strong { color: #000; }
-  .alm-ref h3 { margin-top: 12pt; }
+  .tb-head, .tb-controls, .tb-reset, .tk-pop, .tk-scrim, .tk-step, .tk-swap, .tk-caret { display: none !important; }
+  .tb-printhead { display: block; border-bottom: 1.5pt solid #000; padding: 0 0 4pt; margin: 0 0 8pt; }
+  .tb-printhead h1 { margin: 0 0 2pt; font-size: 15pt; }
+  .tb-printhead p { margin: 0; font-size: 9pt; }
+  .tb-printhead .tb-made { color: #444; font-style: italic; }
+  .tb-body { max-width: none; padding: 0; }
+  .tb-out { opacity: 1 !important; }
+  .tb-frame { max-height: none; overflow: visible; border: 0; border-radius: 0; }
+  .tb-table { font-size: 8pt; }
+  .tb-table thead { display: table-header-group; }
+  .tb-table thead th, .tb-table tbody th { position: static; background: none; color: #000; }
+  .tb-table thead th { border-bottom: 1pt solid #000; }
+  .tb-table th, .tb-table td { padding: 1.5pt 4pt; }
+  .tb-table tr { break-inside: avoid; }
+  .tb-table tr.tb-today > *, .tb-table tr.tb-seen > * { background: none; box-shadow: none; }
+  .tb-table tr.tb-grp th { background: none; border-bottom: 1pt solid #000; padding-top: 6pt; }
+  .tb-pagebreak { break-before: page; }
+  .tk-answer { position: static; margin: 0 0 8pt; padding: 0 0 6pt; border-bottom: 1pt solid #000; }
+  .tk-big { color: #000; font-size: 18pt; }
+  .tk-rows { border: 0; background: none; }
+  .tk-row { min-height: 0; padding: 1pt 0; border: 0 !important; }
+  .tk-num, .tk-pill, .tk-hemi, .tk-seg { border: 0; background: none; padding: 0; min-height: 0; box-shadow: none; }
+  .tk-seg { overflow: visible; }
+  .tk-seg button:not([aria-checked="true"]) { display: none; }
+  .tk-seg button { padding: 0; min-height: 0; box-shadow: none !important; }
+  .tk-pill svg { display: none; }
+  .tb-plot, .tb-figure, .tb-working, .alm-ref-list li { break-inside: avoid; }
 }

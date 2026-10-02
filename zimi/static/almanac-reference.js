@@ -2,17 +2,13 @@
 // Eric, 2026-09-30: "What can/should be documented offline for folks that may
 // never get new data again ever? Tables seasons conversions i dunno?"
 //
-// Four printable sheets, opened from the Almanac's "For the long haul"
-// section (almanac.js _almRefOpen) and loaded only then, after almanac.js,
-// almanac-earth.js and almanac-navdata.js:
-//   nav       the Nautical Almanac's daily pages for any date, and sight
-//             reduction from a sextant altitude to a line of position;
-//   year      a year of sunrise, twilight, moonrise, phases, eclipses and
-//             seasons for one place;
-//   calendars converting between six calendars, and the great movable
-//             holidays for any run of years;
-//   decay     what stops being true without updates, with each thing's age,
-//             and what holds forever.
+// The sums behind the Almanac's Tables and Calculations (almanac-tables.js,
+// which draws them): loaded with it on first use, after almanac.js,
+// almanac-earth.js and almanac-navdata.js. Here: the Nautical Almanac's
+// places and sight reduction; any run of days for one place (rise, set,
+// twilight, transit, the Moon); the equation of time; the star calendar;
+// six calendars and the movable feasts; and "what stops being true", the
+// one page drawn here, with each thing's age.
 //
 // Borrowed, not copied: the Sun (VSOP87D), the Moon (Meeus 47, full tables),
 // nutation and sidereal time come from almanac-earth.js; delta T, the
@@ -441,21 +437,25 @@ function _arYearEclipses(year, lat, lon) {
   return out;
 }
 
-// Everything the year sheet prints, for one place and time zone: a row per
-// local day, the phases, the seasons and the eclipses. tz is an IANA zone
-// (or null for the device's own).
-function _arYear(year, lat, lon, tz) {
-  var start = new Date(0); start.setUTCFullYear(year, 0, 1);
-  var end = new Date(0); end.setUTCFullYear(year + 1, 0, 1);
+// A calendar day {y, m, d} as a sortable number, and the UT midnight it starts.
+function _arKeyNum(k) { return k.y * 10000 + k.m * 100 + k.d; }
+function _arDayMs(k) { var d = new Date(0); d.setUTCFullYear(k.y, k.m - 1, k.d); return d.getTime(); }
+
+// Every local day from one calendar day to another (inclusive), for one place
+// and time zone: rise, set, twilights, transit, moonrise and moonset, and the
+// Moon's principal phases among them. tz is an IANA zone (or null for the
+// device's own). The tables draw any span from it; a year is one span.
+function _arSpan(from, to, lat, lon, tz) {
+  var a = _arDayMs(from), b = _arDayMs(to) + MS_PER_DAY;
+  var lo = _arKeyNum(from), hi = _arKeyNum(to);
   // A day's margin each side: local days begin up to 14 hours from UT's.
-  var t0 = start.getTime() - MS_PER_DAY, t1 = end.getTime() + MS_PER_DAY;
-  var samples = _arSampleSky(t0, t1);
+  var samples = _arSampleSky(a - MS_PER_DAY, b + MS_PER_DAY);
   var dayKey = _arLocalDayKeyer(tz);
-  var days = {}, order = [];
+  var days = {};
   function day(ms) {
-    var k = dayKey(ms);
-    if (k.y !== year) return null;
-    if (!days[k.key]) { days[k.key] = { y: k.y, m: k.m, d: k.d }; order.push(k.key); }
+    var k = dayKey(ms), n = _arKeyNum(k);
+    if (n < lo || n > hi) return null;
+    if (!days[k.key]) days[k.key] = { y: k.y, m: k.m, d: k.d };
     return days[k.key];
   }
   function note(list, upName, downName) {
@@ -480,14 +480,14 @@ function _arYear(year, lat, lon, tz) {
     if (r) r.phase = p.q;
     return !!r;
   });
-  // Every calendar day of the year, in order, even one with no event.
+  // Every calendar day of the span, in order, even one with no event.
   var rows = [];
   // Noon UT steps through every local day for any offset (-12 to +14 h);
-  // starting a day early catches the 1 January of zones ahead of UT.
-  for (var ms = start.getTime() - MS_PER_DAY / 2; ; ms += MS_PER_DAY) {
-    var k = dayKey(ms);
-    if (k.y > year) break;
-    if (k.y < year) continue;
+  // starting a day early catches the first day of zones ahead of UT.
+  for (var ms = a - MS_PER_DAY / 2; ; ms += MS_PER_DAY) {
+    var k = dayKey(ms), n = _arKeyNum(k);
+    if (n > hi) break;
+    if (n < lo) continue;
     var r = days[k.key] || { y: k.y, m: k.m, d: k.d };
     if (rows.length && rows[rows.length - 1] === r) continue;
     // Neither rise nor set: up all day or down all day, by the noon altitude.
@@ -495,12 +495,22 @@ function _arYear(year, lat, lon, tz) {
     if (r.rise != null && r.set != null && r.set > r.rise) r.length = r.set - r.rise;
     rows.push(r);
   }
-  var seasons = [];
+  return { rows: rows, phases: phases };
+}
+// The year's four season instants (UT ms): March equinox, June solstice,
+// September equinox, December solstice.
+function _arSeasons(year) {
+  var out = [];
   for (var s = 0; s < 4; s++) {
     var jde = _seasonInstantJDE(year, s);
-    seasons.push((jde - _cnDeltaTdays(jde) - JD_UNIX_EPOCH) * MS_PER_DAY);
+    out.push((jde - _cnDeltaTdays(jde) - JD_UNIX_EPOCH) * MS_PER_DAY);
   }
-  return { rows: rows, phases: phases, seasons: seasons, eclipses: _arYearEclipses(year, lat, lon) };
+  return out;
+}
+// A whole year for one place: its days, phases, seasons and eclipses.
+function _arYear(year, lat, lon, tz) {
+  var span = _arSpan({ y: year, m: 1, d: 1 }, { y: year, m: 12, d: 31 }, lat, lon, tz);
+  return { rows: span.rows, phases: span.phases, seasons: _arSeasons(year), eclipses: _arYearEclipses(year, lat, lon) };
 }
 // A function from an instant to its calendar day in time zone tz: {y, m, d, key}.
 function _arLocalDayKeyer(tz) {
@@ -536,22 +546,24 @@ function _arEquationOfTime(ms) {
 // the equation of time and declination there, and - for a sundial - how
 // many minutes its clock (zone tz, daylight saving included) reads past
 // 12:00 at that moment: add it to sundial time to get clock time.
-function _arSunTimeYear(year, lon, tz) {
-  var start = new Date(0); start.setUTCFullYear(year, 0, 1);
+function _arSunTimeSpan(from, to, lon, tz) {
+  var lo = _arKeyNum(from), hi = _arKeyNum(to);
   var clock = _arClockMinutes(tz), out = [];
-  for (var ms = start.getTime() - MS_PER_DAY; out.length < 367; ms += MS_PER_DAY) {
+  for (var ms = _arDayMs(from) - MS_PER_DAY; ; ms += MS_PER_DAY) {
     // Local mean noon, then the equation of time there twice: it moves 30 s a day at most.
-    var noon = ms + (12 - lon * AR_HOURS_PER_DEG) * AR_MS_PER_HOUR;
-    var e = _arEquationOfTime(noon);
-    noon = noon - e.eot * 60000;
-    e = _arEquationOfTime(noon);
-    noon = ms + (12 - lon * AR_HOURS_PER_DEG) * AR_MS_PER_HOUR - e.eot * 60000;
-    var c = clock(noon);
-    if (c.y !== year) { if (c.y > year) break; continue; }
-    out.push({ m: c.m, d: c.d, noon: noon, eot: e.eot, dec: e.dec, correction: c.minutes - 12 * 60 });
+    var mean = ms + (12 - lon * AR_HOURS_PER_DEG) * AR_MS_PER_HOUR;
+    var e = _arEquationOfTime(mean);
+    e = _arEquationOfTime(mean - e.eot * 60000);
+    var noon = mean - e.eot * 60000;
+    var c = clock(noon), n = _arKeyNum(c);
+    if (n > hi) break;
+    if (n < lo) continue;
+    if (out.length && out[out.length - 1].d === c.d && out[out.length - 1].m === c.m) continue;
+    out.push({ y: c.y, m: c.m, d: c.d, noon: noon, eot: e.eot, dec: e.dec, correction: c.minutes - 12 * 60 });
   }
   return out;
 }
+function _arSunTimeYear(year, lon, tz) { return _arSunTimeSpan({ y: year, m: 1, d: 1 }, { y: year, m: 12, d: 31 }, lon, tz); }
 // A function from an instant to its clock reading in zone tz: {y, m, d, minutes}.
 function _arClockMinutes(tz) {
   var fmt;
@@ -756,13 +768,8 @@ function _arHebrewDay(hy, monthName, day) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// The sheets
+// Words and numbers, as the tables print them
 // ═══════════════════════════════════════════════════════════════════════
-// One sheet at a time, over the Almanac, inside #almanac-content so that a
-// re-render of the Almanac takes it away with everything else. Each sheet
-// opens on the Almanac's own focus date and chosen place, and states which.
-
-var _ar = { name: null, state: {}, returnFocus: null };
 
 function _arT(k, vars) { return t('ref_' + k, vars); }
 function _arTH(k, vars) { return _almEsc(_arT(k, vars)); }
@@ -850,52 +857,9 @@ function _arDuration(ms) {
   return Math.floor(m / 60) + ':' + (m % 60 < 10 ? '0' : '') + (m % 60);
 }
 
-// The place the place's own sheets use: the Almanac's chosen place. Until
-// one is chosen the Almanac only has a stand-in, and a year of sunrises for
-// a made-up point is not worth printing, so those sheets ask for a place.
-function _arPlace() {
-  var loc = _getLocation();
-  return { lat: loc.lat, lon: loc.lon, chosen: loc.stored, tz: _almDisplayTz(loc),
-    name: loc.name || (_arLatText(loc.lat) + ' ' + _arLonText(loc.lon)) };
-}
-function _arPlaceHtml(p) {
-  return '<p class="alm-ref-where">' + _arTH('for_place', { place: p.name }).replace(_almEsc(p.name), '<strong>' + _almEsc(p.name) + '</strong>') +
-    ' · ' + _almEsc(p.tz || 'UTC') + '</p>';
-}
-// The sheet without a place: what it is for, and the way to choose one (the
-// Almanac's map, which closes this sheet to show).
-function _arNeedsPlace(body, ledeKey) {
-  body.innerHTML = '<p class="alm-ref-lede">' + _arTH(ledeKey) + '</p>' +
-    '<p class="alm-ref-note">' + _arTH('no_place') + '</p>' +
-    '<div class="alm-ref-controls" style="margin-top:16px"><button class="alm-ref-btn" type="button" data-ar-choose>' + _arTH('choose_place') + '</button></div>';
-  body.querySelector('[data-ar-choose]').addEventListener('click', function () {
-    _arClose(true);
-    var map = document.getElementById('almanac-sunmap');
-    if (map) map.scrollIntoView({ behavior: _almReduceMotion() ? 'auto' : 'smooth', block: 'start' });
-  });
-}
-// The focus instant's year, and its UT day (ms at 0h).
-function _arFocusYear() { return _almFocusInstant().getFullYear(); }
+// The UT day (ms at 0h) holding an instant.
 function _arUtDay(ms) { return Math.floor(ms / MS_PER_DAY) * MS_PER_DAY; }
 
-// A year stepper, the same on every sheet that has one.
-function _arYearControls(year) {
-  return '<div class="alm-ref-controls">' +
-    '<button class="alm-ref-btn alm-ref-icon" type="button" data-ar-year="-1" aria-label="' + _arTH('prev_year') + '">‹</button>' +
-    '<input class="alm-ref-year-input" type="number" inputmode="numeric" step="1" value="' + year + '" data-ar-yearinput aria-label="' + _arTH('year_label') + '">' +
-    '<button class="alm-ref-btn alm-ref-icon" type="button" data-ar-year="1" aria-label="' + _arTH('next_year') + '">›</button>' +
-    '</div>';
-}
-function _arBindYear(body, apply) {
-  body.querySelectorAll('[data-ar-year]').forEach(function (b) {
-    b.addEventListener('click', function () { apply((_ar.state.year || _arFocusYear()) + +b.getAttribute('data-ar-year')); });
-  });
-  var inp = body.querySelector('[data-ar-yearinput]');
-  if (inp) inp.addEventListener('change', function () {
-    var y = parseInt(inp.value, 10);
-    if (isFinite(y) && y >= _AR_MIN_YEAR && y <= _AR_MAX_YEAR) apply(y); else inp.value = _ar.state.year;
-  });
-}
 // The span the sheets accept. The maths runs further; this is where delta T
 // (the Earth's unpredictable spin) has stopped being a matter of seconds.
 var _AR_MIN_YEAR = -2000, _AR_MAX_YEAR = 4000;
@@ -911,157 +875,9 @@ function _arTable(head, rows, cls) {
 function _arTh(cells) { return '<tr>' + cells.map(function (c) { return '<th scope="col">' + c + '</th>'; }).join('') + '</tr>'; }
 function _arTr(cells, cls) { return '<tr' + (cls ? ' class="' + cls + '"' : '') + '>' + cells.map(function (c) { return '<td>' + c + '</td>'; }).join('') + '</tr>'; }
 
-// ── Opening, closing, printing ──
-var AR_SHEETS = {
-  daily: function (b) { _arRenderDaily(b); },
-  sight: function (b) { _arRenderSight(b); },
-  year: function (b) { _arRenderYear(b); },
-  suntime: function (b) { _arRenderSunTime(b); },
-  stars: function (b) { _arRenderStars(b); },
-  calendars: function (b) { _arRenderCalendars(b); },
-  decay: function (b) { _arRenderDecay(b); }
-};
-
-function _arOpen(name) {
-  if (!AR_SHEETS[name]) return;
-  var host = document.getElementById('almanac-content');
-  if (!host) return;
-  _arClose(true);
-  _ar.name = name;
-  _ar.state = {};
-  _ar.returnFocus = document.activeElement;
-  var el = document.createElement('div');
-  el.id = 'alm-ref';
-  el.className = 'alm-ref';
-  el.setAttribute('role', 'dialog');
-  el.setAttribute('aria-modal', 'true');
-  el.setAttribute('aria-labelledby', 'alm-ref-title');
-  el.innerHTML = '<div class="alm-ref-bar">' +
-    '<button class="alm-ref-btn alm-ref-icon" type="button" data-ar-close aria-label="' + _arTH('close') + '">✕</button>' +
-    '<h2 id="alm-ref-title">' + _arTH(name) + '</h2>' +
-    '<button class="alm-ref-btn" type="button" data-ar-print>' + _arTH('print') + '</button>' +
-    '</div><div class="alm-ref-body" id="alm-ref-body"></div>';
-  host.appendChild(el);
-  el.querySelector('[data-ar-close]').addEventListener('click', function () { _arClose(); });
-  el.querySelector('[data-ar-print]').addEventListener('click', function () { window.print(); });
-  el.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.stopPropagation(); _arClose(); } });
-  AR_SHEETS[name](document.getElementById('alm-ref-body'));
-  el.querySelector('[data-ar-close]').focus();
-}
-function _arClose(quiet) {
-  var el = document.getElementById('alm-ref');
-  if (el) el.remove();
-  _ar.name = null;
-  if (!quiet && _ar.returnFocus && _ar.returnFocus.focus) _ar.returnFocus.focus();
-}
-// Print the sheet alone (and only while it is showing): the print rules in
-// almanac-reference.css key on this class, set for the print and no longer.
-window.addEventListener('beforeprint', function () {
-  var el = document.getElementById('alm-ref');
-  if (el && typeof _almanacOpen !== 'undefined' && _almanacOpen) document.documentElement.classList.add('alm-ref-print');
-});
-window.addEventListener('afterprint', function () { document.documentElement.classList.remove('alm-ref-print'); });
-
-// Heavy sheets show a line, then compute after the browser has painted it.
-function _arLater(body, fn) {
-  body.innerHTML = '<p class="alm-ref-busy" role="status">' + _arTH('working') + '</p>';
-  requestAnimationFrame(function () { setTimeout(function () { if (body.isConnected) fn(); }, 0); });
-}
-
-// ── 1. Daily pages ──
+// ── The Nautical Almanac's day ──
 var AR_MOON_V_BASE_ARCMIN = 14 * 60 + 19.0;   // the Moon's tabulated hourly GHA step, 14 19.0
 var AR_SUN_V_BASE_ARCMIN = 15 * 60;            // the Sun's and planets', 15 00.0
-function _arRenderDaily(body) {
-  var day = _ar.state.day != null ? _ar.state.day : _arUtDay(_almFocusInstant().getTime());
-  _ar.state.day = day;
-  var rows = [];
-  for (var h = 0; h <= AR_HOURS; h++) rows.push(_arNavAt(day + h * AR_MS_PER_HOUR, h === 12 ? { stars: true } : null));
-  var iso = new Date(day).toISOString().slice(0, 10);
-  var html = '<div class="alm-ref-controls">' +
-    '<button class="alm-ref-btn alm-ref-icon" type="button" data-ar-day="-1" aria-label="' + _arTH('prev_day') + '">‹</button>' +
-    '<input type="date" value="' + (/^\d{4}-/.test(iso) ? iso : '') + '" data-ar-date aria-label="' + _arTH('date_ut') + '">' +
-    '<button class="alm-ref-btn alm-ref-icon" type="button" data-ar-day="1" aria-label="' + _arTH('next_day') + '">›</button>' +
-    '</div>';
-  html += '<p class="alm-ref-lede"><strong>' + _almEsc(_arLongDate(day, 'UTC')) + '</strong> · ' + _arTH('daily_lede') + '</p>';
-  html += _arDeltaTNote(new Date(day).getUTCFullYear());
-
-  function step(a, b) { return _arDeltaDeg(b, a); }
-  // Sun and Moon.
-  var head = '<tr><th scope="col" rowspan="2">UT</th><th scope="colgroup" colspan="2" class="alm-ref-sep">' + _arTH('sun') + '</th><th scope="colgroup" colspan="5" class="alm-ref-sep">' + _arTH('moon') + '</th></tr>' +
-    '<tr><th scope="col" class="alm-ref-sep">GHA</th><th scope="col">Dec</th><th scope="col" class="alm-ref-sep">GHA</th>' +
-    '<th scope="col">v</th><th scope="col">Dec</th><th scope="col">d</th><th scope="col">HP</th></tr>';
-  var body1 = '';
-  for (h = 0; h < AR_HOURS; h++) {
-    var r = rows[h], n = rows[h + 1];
-    // v: how far the hour's GHA step exceeds the table's standard 14 19.0.
-    var v = step(r.moon.gha, n.moon.gha) * 60 - AR_MOON_V_BASE_ARCMIN;
-    body1 += _arTr([String(h).padStart(2, '0'), _arNavGha(r.sun.gha), _arNavDec(r.sun.dec), _arNavGha(r.moon.gha),
-      v.toFixed(1), _arNavDec(r.moon.dec), ((n.moon.dec - r.moon.dec) * 60).toFixed(1), r.moon.hp.toFixed(1)], h % 6 === 5 ? 'alm-ref-six' : '');
-  }
-  var sunD = (rows[AR_HOURS].sun.dec - rows[0].sun.dec) * 60 / AR_HOURS;
-  body1 += _arTr(['', 'SD ' + rows[12].sun.sd.toFixed(1), 'd ' + sunD.toFixed(1), 'SD ' + rows[12].moon.sd.toFixed(1), '', '', '', ''], 'alm-ref-foot');
-  html += '<h3>' + _arTH('sun_moon') + '</h3>' + _arTable(head, body1, 'alm-ref-nav');
-
-  // Aries and the planets.
-  var head2 = '<tr><th scope="col" rowspan="2">UT</th><th scope="col" class="alm-ref-sep">' + _arTH('aries') + '</th>' +
-    AR_PLANETS.map(function (p) { return '<th scope="colgroup" colspan="2" class="alm-ref-sep">' + _almEsc(_tp(p.charAt(0).toUpperCase() + p.slice(1))) + '</th>'; }).join('') + '</tr>' +
-    '<tr><th scope="col" class="alm-ref-sep">GHA</th>' + AR_PLANETS.map(function () { return '<th scope="col" class="alm-ref-sep">GHA</th><th scope="col">Dec</th>'; }).join('') + '</tr>';
-  var body2 = '';
-  for (h = 0; h < AR_HOURS; h++) {
-    var cells = [String(h).padStart(2, '0'), _arNavGha(rows[h].aries)];
-    AR_PLANETS.forEach(function (p) { cells.push(_arNavGha(rows[h][p].gha), _arNavDec(rows[h][p].dec)); });
-    body2 += _arTr(cells, h % 6 === 5 ? 'alm-ref-six' : '');
-  }
-  var foot = ['', ''];
-  AR_PLANETS.forEach(function (p) {
-    var total = 0;
-    for (var k = 0; k < AR_HOURS; k++) total += step(rows[k][p].gha, rows[k + 1][p].gha);
-    var vv = (total / AR_HOURS) * 60 - AR_SUN_V_BASE_ARCMIN;
-    foot.push('v ' + vv.toFixed(1), 'd ' + ((rows[AR_HOURS][p].dec - rows[0][p].dec) * 60 / AR_HOURS).toFixed(1));
-  });
-  body2 += _arTr(foot, 'alm-ref-foot');
-  html += '<h3>' + _arTH('aries_planets') + '</h3>' + _arTable(head2, body2, 'alm-ref-nav');
-
-  // The day's figures: meridian passages, equation of time, the Moon's age.
-  var eot0 = _arEquationOfTime(day).eot, eot12 = _arEquationOfTime(day + 12 * AR_MS_PER_HOUR).eot;
-  var mp = function (key, target) { return _arMerPass(rows, key, target || 0); };
-  var ph = _moonPhase(new Date(day + 12 * AR_MS_PER_HOUR));
-  var kv = [
-    [_arT('eot') + ' 00h', _arMinSec(eot0)], [_arT('eot') + ' 12h', _arMinSec(eot12)],
-    [_arT('sun') + ' · ' + _arT('mer_pass'), mp('sun')],
-    [_arT('moon') + ' · ' + _arT('mer_pass_upper'), mp('moon')], [_arT('moon') + ' · ' + _arT('mer_pass_lower'), mp('moon', 180)],
-    [_arT('moon_age'), _arT('days_n', { n: _arNum(ph.phase * _CN_SYN, 1) })], [_arT('moon_lit'), _arNum(ph.illumination, 0) + '%'],
-    [_arT('aries') + ' · ' + _arT('mer_pass'), mp('aries')]
-  ];
-  AR_PLANETS.forEach(function (p) {
-    var sha = _arNorm360(rows[12][p].gha - rows[12].aries);
-    kv.push([_tp(p.charAt(0).toUpperCase() + p.slice(1)) + ' · SHA / ' + _arT('mer_pass'), _arNavGha(sha).trim() + ' / ' + mp(p)]);
-  });
-  html += '<h3>' + _arTH('day_figures') + '</h3><dl class="alm-ref-kv">' + kv.map(function (x) {
-    return '<div><dt>' + _almEsc(x[0]) + '</dt><dd dir="ltr">' + _almEsc(x[1]) + '</dd></div>';
-  }).join('') + '</dl>';
-
-  // The stars, for 12h UT: their SHA changes a few tenths in a month.
-  var stars = rows[12].stars.filter(function (s) { return s.num > 0; });
-  var polaris = rows[12].stars.filter(function (s) { return s.num === 0; })[0];
-  var body3 = stars.map(function (s) {
-    return _arTr([String(s.num), '<span class="alm-ref-txt">' + _almEsc(s.name) + '</span>', _arNavGha(s.sha), _arNavDec(s.dec), _arMag(s.mag)]);
-  }).join('') + _arTr(['', _almEsc(polaris.name), _arNavGha(polaris.sha), _arNavDec(polaris.dec), _arMag(polaris.mag)], 'alm-ref-foot');
-  html += '<h3 class="alm-ref-pagebreak">' + _arTH('stars_h') + '</h3>' +
-    _arTable(_arTh(['No.', _arTH('star'), 'SHA', 'Dec', _arTH('mag')]), body3, 'alm-ref-nav');
-
-  html += '<h3>' + _arTH('how_to_use') + '</h3><p class="alm-ref-note">' + _arTH('daily_how') + '</p>' +
-    '<p class="alm-ref-note">' + _arTH('daily_accuracy') + '</p>';
-  body.innerHTML = html;
-  body.querySelectorAll('[data-ar-day]').forEach(function (b) {
-    b.addEventListener('click', function () { _ar.state.day += +b.getAttribute('data-ar-day') * MS_PER_DAY; _arRenderDaily(body); });
-  });
-  body.querySelector('[data-ar-date]').addEventListener('change', function () {
-    var v = this.value;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) { _ar.state.day = Date.parse(v + 'T00:00:00Z'); _arRenderDaily(body); }
-  });
-  body.querySelectorAll('table').forEach(function (tb) { tb.setAttribute('dir', 'ltr'); });
-}
 // The UT (hh:mm) a body's GHA passes target degrees during the day, from the
 // hourly rows; '–' when it does not that day.
 function _arMerPass(rows, key, target) {
@@ -1084,10 +900,10 @@ var AR_EXAMPLE_HOURS_BEFORE_NOON = 2, AR_EXAMPLE_MIN_ALT = 10;
 var AR_PLOT_SPAN_NM = 10;   // the plotting sheet's half-width
 var AR_NOON_LHA_DEG = 2;    // a sight within 8 minutes of the meridian is a noon sight
 
-function _arSightDefaults() {
-  var p = _arPlace();
-  var day = _arUtDay(_almFocusInstant().getTime());
-  // A worked example, so the sheet teaches from its first second: the Sun two
+// p: the place ({lat, lon}); dayMs: an instant on the day to use.
+function _arSightDefaults(p, dayMs) {
+  var day = _arUtDay(dayMs);
+  // A worked example, so the page teaches from its first second: the Sun two
   // hours before local noon at the place, measured 1.5 miles toward it; at a
   // polar winter's noon, the brightest navigational star that is well up.
   var noon = day + (12 - p.lon * AR_HOURS_PER_DEG) * AR_MS_PER_HOUR;
@@ -1112,127 +928,6 @@ function _arSightDefaults() {
   }
   s.hs = Math.round(s.hs * 600) / 600;
   return s;
-}
-function _arSightFormHtml(s) {
-  var d = new Date(s.ms), iso = d.toISOString();
-  function num(id, val, cls, label) {
-    return '<input class="alm-ref-num ' + (cls || '') + '" id="ar-' + id + '" type="text" inputmode="decimal" value="' + val + '" aria-label="' + _almEsc(label) + '" autocomplete="off">';
-  }
-  function dm(id, deg, label) {
-    var a = Math.abs(deg), dd = Math.floor(a + 1e-9), mm = Math.round((a - dd) * 600) / 10;
-    if (mm >= 60) { dd++; mm = 0; }
-    return '<span class="alm-ref-pair" dir="ltr">' + num(id + '-d', dd, '', label + ' °') + '°' + num(id + '-m', mm.toFixed(1), '', label + ' ′') + '′</span>';
-  }
-  function hemi(id, pos, a, b, val) {
-    return '<select id="ar-' + id + '" aria-label="' + _almEsc(_arT(pos)) + '"><option value="1"' + (val >= 0 ? ' selected' : '') + '>' + a + '</option><option value="-1"' + (val < 0 ? ' selected' : '') + '>' + b + '</option></select>';
-  }
-  var bodies = '<option value="sun">' + _arTH('sun') + '</option><option value="moon">' + _arTH('moon') + '</option>' +
-    AR_PLANETS.map(function (p) { return '<option value="' + p + '">' + _almEsc(_tp(p.charAt(0).toUpperCase() + p.slice(1))) + '</option>'; }).join('') +
-    '<optgroup label="' + _arTH('stars_h') + '">' + AR_NAV_STARS.slice().sort(function (a, b) { return a[1] < b[1] ? -1 : 1; }).map(function (st) {
-      return '<option value="star:' + _almEsc(st[1]) + '">' + _almEsc(st[1]) + '</option>';
-    }).join('') + '</optgroup>';
-  var eye = s.unit === 'ft' ? Math.round(s.heightM * AR_FT_PER_M * 10) / 10 : s.heightM;
-  return '<form class="alm-ref-form" onsubmit="return false">' +
-    '<fieldset class="alm-ref-fieldset"><legend>' + _arTH('the_sight') + '</legend>' +
-      '<label class="alm-ref-field">' + _arTH('body') + '<select id="ar-body">' + bodies.replace('value="' + _almEsc(s.body) + '"', 'value="' + _almEsc(s.body) + '" selected') + '</select></label>' +
-      '<label class="alm-ref-field" id="ar-limb-wrap">' + _arTH('limb') + '<select id="ar-limb"><option value="lower"' + (s.limb === 'lower' ? ' selected' : '') + '>' + _arTH('limb_lower') + '</option><option value="upper"' + (s.limb === 'upper' ? ' selected' : '') + '>' + _arTH('limb_upper') + '</option></select></label>' +
-      '<label class="alm-ref-field">' + _arTH('date_ut') + '<input id="ar-date" type="date" value="' + iso.slice(0, 10) + '"></label>' +
-      '<label class="alm-ref-field">' + _arTH('time_ut') + '<input id="ar-time" type="time" step="1" value="' + iso.slice(11, 19) + '"></label>' +
-      '<div class="alm-ref-field">' + _arTH('hs') + dm('hs', s.hs, 'Hs') + '</div>' +
-    '</fieldset>' +
-    '<fieldset class="alm-ref-fieldset"><legend>' + _arTH('instrument') + '</legend>' +
-      '<label class="alm-ref-field">' + _arTH('index_error') + '<span class="alm-ref-pair" dir="ltr">' + num('ie', s.ie, '', _arT('index_error')) + '′</span></label>' +
-      '<label class="alm-ref-field">' + _arTH('eye_height') + '<span class="alm-ref-pair">' + num('eye', eye, '', _arT('eye_height')) +
-        '<select id="ar-unit" aria-label="' + _arTH('unit') + '"><option value="m"' + (s.unit === 'm' ? ' selected' : '') + '>m</option><option value="ft"' + (s.unit === 'ft' ? ' selected' : '') + '>ft</option></select></span></label>' +
-      '<label class="alm-ref-field">' + _arTH('temperature') + '<span class="alm-ref-pair" dir="ltr">' + num('temp', s.tempC, '', _arT('temperature')) + '°C</span></label>' +
-      '<label class="alm-ref-field">' + _arTH('pressure') + '<span class="alm-ref-pair" dir="ltr">' + num('hpa', s.hPa, 'alm-ref-wide', _arT('pressure')) + 'hPa</span></label>' +
-    '</fieldset>' +
-    '<fieldset class="alm-ref-fieldset"><legend>' + _arTH('assumed_position') + '</legend>' +
-      '<div class="alm-ref-field">' + _arTH('latitude') + '<span class="alm-ref-pair">' + dm('lat', s.lat, _arT('latitude')) + hemi('lat-h', 'latitude', 'N', 'S', s.lat) + '</span></div>' +
-      '<div class="alm-ref-field">' + _arTH('longitude') + '<span class="alm-ref-pair">' + dm('lon', s.lon, _arT('longitude')) + hemi('lon-h', 'longitude', 'E', 'W', s.lon) + '</span></div>' +
-    '</fieldset></form>';
-}
-function _arReadSight(body) {
-  function v(id) { var el = body.querySelector('#ar-' + id); return el ? el.value : ''; }
-  function n(id) { var x = parseFloat(String(v(id)).replace(',', '.')); return isFinite(x) ? x : NaN; }
-  var unit = v('unit');
-  var s = { body: v('body'), limb: v('limb'), unit: unit,
-    hs: n('hs-d') + n('hs-m') / 60, ie: n('ie') || 0,
-    heightM: unit === 'ft' ? n('eye') / AR_FT_PER_M : n('eye'),
-    tempC: n('temp'), hPa: n('hpa'),
-    lat: (n('lat-d') + n('lat-m') / 60) * +v('lat-h'), lon: (n('lon-d') + n('lon-m') / 60) * +v('lon-h'),
-    ms: Date.parse(v('date') + 'T' + (v('time').length === 5 ? v('time') + ':00' : v('time')) + 'Z') };
-  if (!isFinite(s.heightM) || s.heightM < 0) s.heightM = 0;
-  s.ok = isFinite(s.hs) && s.hs > 0 && s.hs < 90 && isFinite(s.lat) && Math.abs(s.lat) < 90 && isFinite(s.lon) && Math.abs(s.lon) <= 180 && isFinite(s.ms);
-  return s;
-}
-function _arRenderSight(body) {
-  var s = _ar.state.sight || (_ar.state.sight = _arSightDefaults());
-  body.innerHTML = '<p class="alm-ref-lede">' + _arTH('sight_lede') + '</p>' +
-    '<p class="alm-ref-note alm-ref-noprint">' + _arTH('sight_example') + '</p>' +
-    _arSightFormHtml(s) + '<div id="ar-sight-out" aria-live="polite"></div>' +
-    '<h3>' + _arTH('how_to_use') + '</h3><p class="alm-ref-note">' + _arTH('sight_how') + '</p>';
-  var update = function () {
-    var cur = _arReadSight(body);
-    var limbed = cur.body === 'sun' || cur.body === 'moon';
-    body.querySelector('#ar-limb-wrap').style.display = limbed ? '' : 'none';
-    _ar.state.sight = cur.ok ? cur : _ar.state.sight;
-    document.getElementById('ar-sight-out').innerHTML = cur.ok ? _arSightResultHtml(cur) : '<p class="alm-ref-note alm-ref-warn">' + _arTH('sight_incomplete') + '</p>';
-  };
-  body.querySelector('form').addEventListener('input', update);
-  body.querySelector('form').addEventListener('change', function (e) {
-    // A change of unit converts the height in place rather than reinterpreting it.
-    if (e.target.id === 'ar-unit') {
-      var eye = body.querySelector('#ar-eye'), x = parseFloat(eye.value);
-      if (isFinite(x)) eye.value = Math.round((e.target.value === 'ft' ? x * AR_FT_PER_M : x / AR_FT_PER_M) * 10) / 10;
-    }
-    update();
-  });
-  update();
-}
-function _arSightResultHtml(s) {
-  var r = _arReduceSight(s);
-  if (!r) return '';
-  var st = r.steps, limbed = s.body === 'sun' || s.body === 'moon';
-  function row(label, val, cls) { return _arTr(['<span class="alm-ref-txt">' + label + '</span>', '<span dir="ltr">' + val + '</span>'], cls); }
-  var rows = row(_arTH('hs'), _arDegMin(st.hs)) +
-    row(_arTH('index_corr'), _arArcmin(st.ie * 60)) +
-    row(_arTH('dip'), _arArcmin(st.dip * 60)) +
-    row(_arTH('ha'), _arDegMin(st.ha), 'alm-ref-total') +
-    row(_arTH('refraction'), _arArcmin(st.refr * 60)) +
-    (limbed ? row(_arTH('semi_diameter'), _arArcmin(st.sd * 60)) : '') +
-    row(_arTH('parallax'), _arArcmin(st.pa * 60)) +
-    row(_arTH('ho'), _arDegMin(r.ho), 'alm-ref-total');
-  var rows2 = row('GHA', _arNavGha(r.body.gha).trim()) +
-    row('Dec', _arNavDec(r.body.dec)) +
-    row('LHA', _arNavGha(r.lha).trim()) +
-    row('Hc', _arDegMin(r.hc)) +
-    row('Zn', Math.round(r.zn) + '°') +
-    row(_arTH('intercept'), _arNum(Math.abs(r.intercept), 1) + ' ' + _arTH('nm') + ' ' + _arTH(r.intercept >= 0 ? 'toward' : 'away'), 'alm-ref-total');
-  var warn = st.ha < AR_EXAMPLE_MIN_ALT / 2 ? '<p class="alm-ref-note alm-ref-warn">' + _arTH('low_altitude') + '</p>' : '';
-  if (r.hc < 0) warn += '<p class="alm-ref-note alm-ref-warn">' + _arTH('below_horizon') + '</p>';
-  var lopA = Math.round(_arNorm360(r.zn + 90)), lopB = Math.round(_arNorm360(r.zn - 90));
-  // The answer first, then the working that led to it.
-  var html = warn + '<h3>' + _arTH('lop') + '</h3><div class="alm-ref-result"><div class="alm-ref-plot">' + _arPlotSvg(s, r) + '</div>' +
-    '<p class="alm-ref-answer">' + _arTH('lop_answer', {
-      a: String(Math.min(lopA, lopB)).padStart(3, '0'), b: String(Math.max(lopA, lopB)).padStart(3, '0'),
-      pos: _arLatText(r.foot.lat) + ' ' + _arLonText(r.foot.lon) }).replace(/(\d{3}°?[^0-9]{1,3}\d{3}°?)/, '<strong>$1</strong>') + '</p></div>' +
-    '<h3>' + _arTH('corrections') + '</h3><div class="alm-ref-result">' +
-    _arTable(_arTh([_arTH('step'), _arTH('value')]), rows) +
-    _arTable(_arTh([_arTH('step'), _arTH('value')]), rows2) + '</div>';
-  // The noon sight: at the body's highest, latitude falls straight out.
-  var bearing = Math.abs(_arDeltaDeg(r.zn, 180)) < 90 ? 'S' : 'N';
-  var noonLat = _arNoonLatitude(r.ho, r.body.dec, bearing);
-  var noonMs = _arUtDay(s.ms) + (12 - s.lon * AR_HOURS_PER_DEG) * AR_MS_PER_HOUR;
-  noonMs -= _arEquationOfTime(noonMs).eot * 60000;
-  // Only a sight taken on the meridian gives latitude this way; any other
-  // says when to take one rather than print a number that means nothing.
-  var onMeridian = Math.abs(_arDeltaDeg(r.lha, 0)) < AR_NOON_LHA_DEG;
-  var noonTime = new Date(noonMs).toISOString().slice(11, 19);
-  html += '<h3>' + _arTH('noon_sight') + '</h3><p class="alm-ref-note">' + (onMeridian
-    ? _arTH('noon_sight_text', { lat: _arLatText(noonLat), bearing: bearing, time: noonTime })
-    : _arTH('noon_sight_when', { time: noonTime })) + '</p>';
-  return html;
 }
 // A plotting sheet: north up, the assumed position at the centre, the
 // azimuth line, the intercept, and the line of position square across it.
@@ -1259,98 +954,10 @@ function _arPlotSvg(s, r) {
     '<rect x="4" y="4" width="64" height="14" fill="var(--bg)"/><text x="6" y="14" class="t">' + _arTH('grid_nm') + '</text></svg>';
 }
 
-// ── 3. Your year on paper ──
+// ── The Sun and Moon over days ──
 var AR_PHASE_GLYPHS = ['●', '◑', '○', '◐'];   // new, first quarter, full, last quarter
 var AR_PHASE_KEYS = ['new_moon', 'first_quarter', 'full_moon', 'last_quarter'];
-function _arRenderYear(body) {
-  var year = _ar.state.year || (_ar.state.year = _arFocusYear());
-  var p = _arPlace();
-  if (!p.chosen) return _arNeedsPlace(body, 'year_lede');
-  _arLater(body, function () {
-    var Y = _arYear(year, p.lat, p.lon, p.tz);
-    var tz = p.tz;
-    var html = _arYearControls(year) + '<p class="alm-ref-lede">' + _arTH('year_lede') + '</p>' + _arPlaceHtml(p) + _arDeltaTNote(year);
-    // The year's frame: seasons, then eclipses, then the phases.
-    var south = p.lat < 0;
-    var seasonKeys = south ? ['autumn_eq', 'winter_sol', 'spring_eq', 'summer_sol'] : ['spring_eq', 'summer_sol', 'autumn_eq', 'winter_sol'];
-    html += '<h3>' + _arTH('seasons') + '</h3><dl class="alm-ref-kv">' + Y.seasons.map(function (ms, i) {
-      return '<div><dt>' + _arTH(seasonKeys[i]) + '</dt><dd>' + _almEsc(_arDateTime(ms, tz)) + '</dd></div>';
-    }).join('') + '</dl>';
-    html += '<h3>' + _arTH('eclipses') + '</h3>';
-    if (!Y.eclipses.length) html += '<p class="alm-ref-note">' + _arTH('no_eclipses') + '</p>';
-    else html += '<ul class="alm-ref-list">' + Y.eclipses.map(function (e) {
-      var here = e.here
-        ? _arT(e.solar ? 'eclipse_seen_solar' : 'eclipse_seen_lunar', { kind: _arT('ecl_' + e.here.kind), pct: _arNum(Math.max(0, e.here.mag) * 100, 0), mag: _arNum(Math.max(0, e.here.mag), 2), time: _arTime(e.here.ms, tz), from: _arTime(e.here.start, tz), to: _arTime(e.here.end, tz) })
-        : _arT('eclipse_not_seen');
-      return '<li><h4>' + _almEsc(e.type) + '<span class="alm-ref-age">' + _almEsc(_arDateTime(e.ms, tz)) + '</span></h4><p>' + _almEsc(here) + '</p></li>';
-    }).join('') + '</ul>';
-    // The phases as a lunation table: one row per new moon.
-    var lun = [], cur = null;
-    Y.phases.forEach(function (ph) {
-      if (ph.q === 0 || !cur) { cur = [null, null, null, null]; lun.push(cur); }
-      cur[ph.q] = ph.ms;
-    });
-    html += '<h3>' + _arTH('moon_phases') + '</h3>' + _arTable(_arTh(AR_PHASE_KEYS.map(function (k, i) { return AR_PHASE_GLYPHS[i] + ' ' + _arTH(k); })),
-      lun.map(function (r) { return _arTr(r.map(function (ms) { return ms == null ? '' : _almEsc(_arDateTime(ms, tz)); })); }).join(''));
-    // A month to a page.
-    var today = _almFocusInstant(), todayKey = _arLocalDayKeyer(tz)(today.getTime());
-    var head = '<tr><th scope="col" rowspan="2">' + _arTH('day') + '</th><th scope="colgroup" colspan="3" class="alm-ref-sep">' + _arTH('dawn') + '</th>' +
-      '<th scope="colgroup" colspan="5" class="alm-ref-sep">' + _arTH('sun') + '</th><th scope="colgroup" colspan="3" class="alm-ref-sep">' + _arTH('dusk') + '</th>' +
-      '<th scope="colgroup" colspan="3" class="alm-ref-sep">' + _arTH('moon') + '</th></tr>' +
-      _arTh([_arTH('astro'), _arTH('nautical'), _arTH('civil'), _arTH('rise'), _arTH('noon'), _arTH('height'), _arTH('set'), _arTH('length'),
-        _arTH('civil'), _arTH('nautical'), _arTH('astro'), _arTH('rise'), _arTH('set'), _arTH('phase')]);
-    for (var m = 1; m <= 12; m++) {
-      var rows = Y.rows.filter(function (r) { return r.m === m; });
-      var trs = rows.map(function (r) {
-        var rise = r.polar ? _arTH(r.polar === 'up' ? 'up_all_day' : 'down_all_day') : _arTime(r.rise, tz);
-        var phase = r.phase != null ? '<span class="alm-ref-ph" title="' + _arTH(AR_PHASE_KEYS[r.phase]) + '">' + AR_PHASE_GLYPHS[r.phase] + '</span>' : '';
-        var cls = (r.y === todayKey.y && r.m === todayKey.m && r.d === todayKey.d) ? 'alm-ref-today' : '';
-        return _arTr([String(r.d), _arTime(r.astronomicalDawn, tz), _arTime(r.nauticalDawn, tz), _arTime(r.civilDawn, tz), rise,
-          _arTime(r.noon, tz), r.noonAlt != null ? r.noonAlt.toFixed(1) + '°' : '–', r.polar ? '' : _arTime(r.set, tz),
-          r.polar === 'up' ? '24:00' : (r.polar === 'down' ? '0:00' : _arDuration(r.length)),
-          _arTime(r.civilDusk, tz), _arTime(r.nauticalDusk, tz), _arTime(r.astronomicalDusk, tz),
-          _arTime(r.moonrise, tz), _arTime(r.moonset, tz), phase], cls);
-      }).join('');
-      html += '<section class="alm-ref-month"><h3>' + _almEsc(_arMonthName(m)) + ' ' + year + '</h3>' + _arTable(head, trs) + '</section>';
-    }
-    html += '<p class="alm-ref-note">' + _arTH('year_notes') + '</p>';
-    body.innerHTML = html;
-    _arBindYear(body, function (y) { _ar.state.year = y; _arRenderYear(body); });
-  });
-}
 
-// ── 4. Sun time ──
-function _arRenderSunTime(body) {
-  var year = _ar.state.year || (_ar.state.year = _arFocusYear());
-  var p = _arPlace();
-  if (!p.chosen) return _arNeedsPlace(body, 'suntime_lede');
-  var rows = _arSunTimeYear(year, p.lon, p.tz);
-  var focus = _almFocusInstant(), fk = _arLocalDayKeyer(p.tz)(focus.getTime());
-  var today = rows.filter(function (r) { return r.m === fk.m && r.d === fk.d; })[0] || rows[0];
-  var html = _arYearControls(year) + '<p class="alm-ref-lede">' + _arTH('suntime_lede') + '</p>' + _arPlaceHtml(p);
-  html += '<dl class="alm-ref-kv"><div><dt>' + _almEsc(_arLongDate(today.noon, p.tz)) + ' · ' + _arTH('eot') + '</dt><dd dir="ltr">' + _arMinSec(today.eot) + '</dd></div>' +
-    '<div><dt>' + _arTH('sundial_noon') + '</dt><dd>' + _almEsc(_arTime(today.noon, p.tz)) + '</dd></div>' +
-    '<div><dt>' + _arTH('correction') + '</dt><dd dir="ltr">' + _arMinSec(today.correction) + '</dd></div></dl>';
-  html += '<h3>' + _arTH('analemma') + '</h3><figure class="alm-ref-figure">' + _arAnalemmaSvg(rows) + '<figcaption>' + _arTH('analemma_caption') + '</figcaption></figure>';
-  // The correction for every day: rows are days, columns months, the way a
-  // sundial's plate has always carried it.
-  var head = _arTh([_arTH('day')].concat([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(function (m) { return _almEsc(_arMonthShort(m)); })));
-  var grid = '';
-  for (var d = 1; d <= 31; d++) {
-    var cells = [String(d)];
-    for (var m = 1; m <= 12; m++) {
-      var r = null;
-      for (var i = 0; i < rows.length; i++) if (rows[i].m === m && rows[i].d === d) { r = rows[i]; break; }
-      cells.push(r ? _arMinSec(r.correction) : '');
-    }
-    grid += _arTr(cells, d % 5 === 0 ? 'alm-ref-six' : '');
-  }
-  html += '<h3 class="alm-ref-pagebreak">' + _arTH('correction_table') + '</h3>' + _arTable(head, grid, 'alm-ref-nav') +
-    '<p class="alm-ref-note">' + _arTH('correction_how') + '</p>';
-  body.innerHTML = html;
-  body.querySelectorAll('table').forEach(function (tb) { tb.setAttribute('dir', 'ltr'); });
-  _arBindYear(body, function (y) { _ar.state.year = y; _arRenderSunTime(body); });
-}
 // The analemma: the equation of time across, the declination up, one dot a
 // day and the first of each month marked. Its scales come from the data.
 function _arAnalemmaSvg(rows) {
@@ -1373,36 +980,7 @@ function _arAnalemmaSvg(rows) {
     '<text x="' + (W / 2 + 4) + '" y="' + (pad / 2 + 8) + '" class="t">' + Math.round(dMax * 10) / 10 + '°</text></svg>';
 }
 
-// ── 5. The star calendar ──
-function _arRenderStars(body) {
-  var year = _ar.state.year || (_ar.state.year = _arFocusYear());
-  var p = _arPlace();
-  if (!p.chosen) return _arNeedsPlace(body, 'stars_lede');
-  var list = _arStarCalendar(year, p.lat, p.lon);
-  var html = _arYearControls(year) + '<p class="alm-ref-lede">' + _arTH('stars_lede') + '</p>' + _arPlaceHtml(p);
-  var seen = list.filter(function (s) { return !s.none; }), other = list.filter(function (s) { return s.none; });
-  var rows = seen.map(function (s) {
-    var gap = s.rising != null && s.setting != null ? Math.round(_floorMod((s.rising - s.setting) / MS_PER_DAY, 365.25)) : null;
-    return _arTr(['<span class="alm-ref-txt">' + _almEsc(s.name) + '</span>', _arMag(s.mag),
-      s.rising != null ? _almEsc(_arShortDate(s.rising, p.tz)) : '–',
-      s.setting != null ? _almEsc(_arShortDate(s.setting, p.tz)) : '–',
-      gap != null && gap < 300 ? _arTH('days_n', { n: gap }) : _arTH('never_hidden')]);
-  }).join('');
-  html += _arTable(_arTh([_arTH('star'), _arTH('mag'), _arTH('first_dawn'), _arTH('last_dusk'), _arTH('hidden_for')]), rows);
-  if (other.length) {
-    // One line per reason, naming the stars it holds for.
-    ['never', 'always', 'seen'].forEach(function (why) {
-      var names = other.filter(function (s) { return s.none === why; }).map(function (s) { return s.name; });
-      if (names.length) html += '<p class="alm-ref-note">' + _arTH('star_' + why, { names: names.join(', ') }) + '</p>';
-    });
-  }
-  html += '<h3>' + _arTH('how_to_use') + '</h3><p class="alm-ref-note">' + _arTH('stars_how') + '</p>';
-  body.innerHTML = html;
-  _arBindYear(body, function (y) { _ar.state.year = y; _arRenderStars(body); });
-}
-
-// ── 6. Calendars ──
-var AR_HOLIDAY_YEARS = 10;
+// ── Calendars ──
 var AR_HOLIDAY_COLS = ['easter', 'orthodox', 'passover', 'roshHashanah', 'ramadan', 'eidFitr', 'eidAdha', 'cny', 'nowruz'];
 function _arCalDateText(sys, c) {
   var months = _arCalMonths(sys, c.year);
@@ -1410,85 +988,9 @@ function _arCalDateText(sys, c) {
   var yr = sys === 'chinese' ? c.year + ' (' + _chineseZodiac(c.year - 2697).cycle + ')' : String(c.year) + _calYearSuffix(sys);
   return c.day + ' ' + name + ' ' + yr;
 }
-function _arRenderCalendars(body) {
-  var st = _ar.state;
-  if (!st.conv) {
-    var f = _almFocusInstant();
-    st.conv = { sys: 'gregorian', jdn: _gregorianToJDN(f.getFullYear(), f.getMonth() + 1, f.getDate()) };
-    st.hyear = f.getFullYear();
-  }
-  var c = _arCalFromJDN(st.conv.sys, st.conv.jdn);
-  var months = _arCalMonths(st.conv.sys, c.year);
-  var sysOpts = AR_CAL_SYSTEMS.map(function (s) { return '<option value="' + s + '"' + (s === st.conv.sys ? ' selected' : '') + '>' + _almEsc(_arCalLabel(s)) + '</option>'; }).join('');
-  var monOpts = months.map(function (m, i) { return '<option value="' + (i + 1) + '"' + (i + 1 === c.month ? ' selected' : '') + '>' + _almEsc(st.conv.sys === 'gregorian' || st.conv.sys === 'julian' ? _arMonthName(i + 1) : m.name) + '</option>'; }).join('');
-  var days = (months[c.month - 1] || { days: 30 }).days, dayOpts = '';
-  for (var d = 1; d <= days; d++) dayOpts += '<option' + (d === c.day ? ' selected' : '') + '>' + d + '</option>';
-  var html = '<p class="alm-ref-lede">' + _arTH('cal_lede') + '</p><h3>' + _arTH('convert') + '</h3>' +
-    '<div class="alm-ref-controls"><select id="ar-cs" aria-label="' + _arTH('calendar') + '">' + sysOpts + '</select>' +
-    '<select id="ar-cd" aria-label="' + _arTH('day') + '">' + dayOpts + '</select>' +
-    '<select id="ar-cm" aria-label="' + _arTH('month') + '">' + monOpts + '</select>' +
-    '<input id="ar-cy" class="alm-ref-year-input" type="number" step="1" value="' + c.year + '" aria-label="' + _arTH('year_label') + '"></div>';
-  var weekday = _arFmt('wd', { timeZone: 'UTC', weekday: 'long' }).format(new Date(_arJdnMs(st.conv.jdn)));
-  html += _arTable(_arTh([_arTH('calendar'), _arTH('date')]), AR_CAL_SYSTEMS.map(function (s) {
-    var label = _almEsc(_arCalLabel(s)) + (s === 'islamic' ? ' <span class="alm-ref-dim">(' + _arTH('tabular') + ')</span>' : '');
-    return _arTr(['<span class="alm-ref-txt">' + label + '</span>', '<span class="alm-ref-txt">' + _almEsc(_arCalDateText(s, _arCalFromJDN(s, st.conv.jdn))) + '</span>'], s === st.conv.sys ? 'alm-ref-today' : '');
-  }).join('') + _arTr([_arTH('weekday'), _almEsc(weekday)], 'alm-ref-foot') + _arTr([_arTH('jdn'), String(st.conv.jdn)], 'alm-ref-foot'));
-
-  // The movable feasts, ten years to a sheet.
-  var y0 = st.hyear;
-  var hrows = '';
-  for (var y = y0; y < y0 + AR_HOLIDAY_YEARS; y++) {
-    var h = _arHolidays(y);
-    hrows += _arTr([String(y)].concat(AR_HOLIDAY_COLS.map(function (k) {
-      var v = h[k];
-      if (Array.isArray(v)) return v.length ? v.map(function (j) { return _almEsc(_arJdnDate(j)); }).join(', ') : '–';
-      return v != null ? _almEsc(_arJdnDate(v)) : '–';
-    })));
-  }
-  html += '<h3 class="alm-ref-pagebreak">' + _arTH('feasts') + '</h3>' + _arYearControls(y0).replace('data-ar-yearinput', 'data-ar-yearinput id="ar-hy"') +
-    _arTable(_arTh([_arTH('year_label')].concat(AR_HOLIDAY_COLS.map(function (k) { return _arTH('h_' + k) + (/ramadan|eid/i.test(k) ? '*' : ''); }))), hrows) +
-    '<p class="alm-ref-note">' + _arTH('feasts_notes') + '</p>';
-
-  // The computus: the working behind Easter for the first year of the table.
-  var cg = _arComputusGregorian(y0), cj = _arComputusJulian(y0);
-  var jl = _jdnToJulian(cj.easter), jpf = _jdnToJulian(cj.pfm);
-  html += '<h3>' + _arTH('computus', { year: y0 }) + '</h3><div class="alm-ref-result">' +
-    _arTable(_arTh([_arTH('western'), '']), [
-      [_arTH('golden_number'), cg.golden], [_arTH('epact'), cg.epact], [_arTH('sunday_letter'), cg.letters],
-      [_arTH('paschal_moon'), _almEsc(_arJdnDate(cg.pfm))], [_arTH('h_easter'), _almEsc(_arJdnDate(cg.easter))]
-    ].map(function (r) { return _arTr(['<span class="alm-ref-txt">' + r[0] + '</span>', r[1]]); }).join('')) +
-    _arTable(_arTh([_arTH('orthodox'), '']), [
-      [_arTH('golden_number'), cj.golden], [_arTH('sunday_letter'), cj.letters + ' ' + _arTH('julian_cal')],
-      [_arTH('paschal_moon'), _almEsc(jpf.day + ' ' + _arMonthName(jpf.month)) + ' ' + _arTH('julian_cal')],
-      [_arTH('h_orthodox'), _almEsc(jl.day + ' ' + _arMonthName(jl.month)) + ' ' + _arTH('julian_cal') + ' = ' + _almEsc(_arJdnDate(cj.easter))]
-    ].map(function (r) { return _arTr(['<span class="alm-ref-txt">' + r[0] + '</span>', r[1]]); }).join('')) + '</div>' +
-    '<p class="alm-ref-note">' + _arTH('computus_how') + '</p>';
-  body.innerHTML = html;
-
-  function convFrom() {
-    var sys = body.querySelector('#ar-cs').value, yy = parseInt(body.querySelector('#ar-cy').value, 10);
-    var mm = +body.querySelector('#ar-cm').value, dd = +body.querySelector('#ar-cd').value;
-    if (!isFinite(yy)) return;
-    var ms = _arCalMonths(sys, yy);
-    mm = Math.min(mm, ms.length);
-    dd = Math.min(dd, ms[mm - 1].days);
-    st.conv.jdn = _arCalToJDN(sys, yy, mm, dd);
-    _arRenderCalendars(body);
-    var el = body.querySelector('#ar-cy'); if (el) el.focus();
-  }
-  body.querySelector('#ar-cs').addEventListener('change', function () { st.conv.sys = this.value; _arRenderCalendars(body); });
-  ['#ar-cd', '#ar-cm', '#ar-cy'].forEach(function (sel) { body.querySelector(sel).addEventListener('change', convFrom); });
-  body.querySelectorAll('[data-ar-year]').forEach(function (b) {
-    b.addEventListener('click', function () { st.hyear += +b.getAttribute('data-ar-year') * AR_HOLIDAY_YEARS; _arRenderCalendars(body); });
-  });
-  body.querySelector('#ar-hy').addEventListener('change', function () {
-    var v = parseInt(this.value, 10);
-    if (isFinite(v) && v >= _AR_MIN_YEAR && v <= _AR_MAX_YEAR) { st.hyear = v; _arRenderCalendars(body); }
-  });
-}
 function _arCalLabel(sys) { return _calLabel(sys); }
 
-// ── 7. What stops being true ──
+// ── What stops being true ──
 // Each thing that decays, with its age read from this machine; then what
 // holds forever. Ages come from /almanac-ages, which reads files here and
 // asks nothing of the internet.
@@ -1529,4 +1031,3 @@ function _arRenderDecay(body) {
     .then(done, function () { done(null); });
 }
 
-window.AlmanacRef = { open: _arOpen, close: _arClose };
