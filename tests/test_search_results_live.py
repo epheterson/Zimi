@@ -230,14 +230,16 @@ def test_chip_back_and_recent_searches(served):
 
 
 def _open_article(pg, path):
+    # The article asked for, not the one before it: until the new document
+    # commits, the frame still holds the previous article, complete and bound,
+    # and its load closes a find opened on the old one (CI, a slower server).
     pg.evaluate("(p) => openArticle('alpha_en_test', p, '')", path)
     pg.wait_for_function(
-        "() => { const d = document.getElementById('reader-frame').contentDocument;"
-        " return readerOpen && d && d.readyState === 'complete' && d.body && d.body.textContent.length > 5; }",
+        "(p) => { const f = document.getElementById('reader-frame'), d = f.contentDocument;"
+        " return readerOpen && d && decodeURIComponent(f.contentWindow.location.pathname).endsWith('/' + p)"
+        " && d.readyState === 'complete' && d.body && d.body.textContent.length > 5 && !!d.__zimiFindBound; }",
+        arg=path,
         timeout=30000,
-    )
-    pg.wait_for_function(
-        "() => !!document.getElementById('reader-frame').contentDocument.__zimiFindBound"
     )
 
 
