@@ -1148,21 +1148,22 @@ function _skyPaintWhale(ctx, s, a, ts) {
   s.bodies.push({ type: 'whale', x: x / dpr, y: (wy - 4 * k) / dpr, r: 10 });
 }
 
-// The sea and the beach, and the compass along the horizon.
+// The sea and the beach, and the compass along the foot of the scene: small,
+// in the sand, out of the view (Eric: "Move the compass under or something
+// it's ugly"; it sat on the sea).
+var SKY_COMPASS_FOOT_PX = 4;   // css px from the bottom edge to the letters' baseline
 function _skyPaintGround(ctx, s) {
   var light = _skyDaylight(s.eph.sunGeoAlt);
   _skyPaintSea(ctx, s, light, s.sea ? s.sea.frac : SKY_CALM_FRAC);
-  var yh = s.H * SKY_HORIZON_Y, dpr = s.dpr;
-  ctx.font = '600 ' + Math.round(10 * dpr) + 'px -apple-system, system-ui, sans-serif';
+  var dpr = s.dpr, y = s.H - SKY_COMPASS_FOOT_PX * dpr;
+  ctx.font = '600 ' + Math.round(9 * dpr) + 'px -apple-system, system-ui, sans-serif';
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  var ink = light > 0.5 ? 'rgba(20,28,40,0.55)' : 'rgba(200,210,230,0.5)';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = light > 0.5 ? 'rgba(60,45,25,0.42)' : 'rgba(210,215,230,0.32)';
   for (var az = 0; az < 360; az += 45) {
     var cx = _skyX(s, az);
     if (!_skyInView(s, cx, -6 * dpr)) continue;
-    ctx.fillStyle = ink;
-    ctx.fillRect(cx - 0.5 * dpr, yh + 1 * dpr, 1 * dpr, 3 * dpr);
-    ctx.fillText(_azCompass(az), cx, yh + 6 * dpr);
+    ctx.fillText(_azCompass(az), cx, y);
   }
 }
 
