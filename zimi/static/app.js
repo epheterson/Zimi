@@ -16982,6 +16982,14 @@ function _readerViewClean(root, doc) {
       if (head && head === sec.lastElementChild && head.matches('h2,h3,h4,h5,h6,.mw-heading') &&
           sec.textContent.trim() === head.textContent.trim()) sec.remove();
     });
+    // A Wiktionary audio row whose recording the ZIM left out (every nopic
+    // one) is a label beside an empty box; with it goes the bullet it stood in.
+    Array.prototype.forEach.call(root.querySelectorAll('table.audiotable'), function(t) {
+      if (t.querySelector('audio,video,source')) return;
+      var li = t.closest('li');
+      t.remove();
+      if (li && !li.textContent.trim() && !li.querySelector('img,svg,audio,video')) li.remove();
+    });
   } catch(e) {}
   // Neutralize INLINE layout constraints that would make the clone a fixed-height
   // inner scroller inside the reader column (the devdocs-class bug: a main element
@@ -17184,6 +17192,14 @@ function _readerViewInjectStyle(doc) {
     '.zimi-reader table{border-collapse:collapse;font-family:-apple-system,sans-serif;font-size:0.84em}',
     '.zimi-reader th,.zimi-reader td{border:1px solid var(--rv-border);padding:6px 10px;text-align:left;vertical-align:top}',
     '.zimi-reader th{background:var(--rv-th);color:var(--rv-head);font-weight:600}',
+    // Wiktionary's furniture. An inflection table is two pale boxes
+    // (bgcolor="#e2e2ff", which no theme reaches) with empty spacer cells
+    // between; in the reader the boxes take the theme's table fill and the
+    // spacers go. An audio row keeps its line, without cell borders.
+    '.zimi-reader table.inflection-table{border-collapse:separate;border-spacing:8px 0;margin-inline:-8px}',
+    '.zimi-reader .inflection-table td{border:0;background:var(--rv-th)!important;border-radius:8px;padding:8px 14px!important}',
+    '.zimi-reader .inflection-table td:empty{display:none}',
+    '.zimi-reader .audiotable td{border:0;padding:0 8px 0 0}',
     // ── Print / Save as PDF ──
     // The palette's Print row calls frame.contentWindow.print(), so only THIS
     // iframe document prints. Force a clean sheet independent of the on-screen
