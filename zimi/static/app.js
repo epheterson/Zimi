@@ -1808,8 +1808,11 @@ function _backLabel() {
   if (prev && !prev.app) {
     return currentArticle && prev.zim !== currentArticle.zim ? _zimTitle(prev.zim) : null;
   }
+  // Home is not named: the logo beside the arrow already is the way there,
+  // and on a phone "← Home" took the room the search box needs. Back and
+  // Escape still return to Discover as it was left (history.state.from).
   var from = (history.state || {}).from;
-  return from ? t(from) : null;
+  return from && from !== 'home' ? t(from) : null;
 }
 
 // ── Topbar ──
@@ -19931,6 +19934,11 @@ function _chromeScroll(y) {
   _chromeBase = y;
   _setChromeAway(away || _chromeHeld);
 }
+// A scroll the page made to keep what is on screen still (a late section
+// arriving above the reader): not the reader's, so the header stays as it is.
+// Sliding it away there changed the scroller's height, and at the page's end
+// the browser pulled the scroll up and moved what was being read.
+function _chromeShift(d) { _chromeBase += d; }
 // Held away (a video playing on a phone turned sideways, a book being read)
 // until let go.
 function _chromeImmersive(on) {

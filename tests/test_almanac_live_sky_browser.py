@@ -115,18 +115,24 @@ def _ms(iso):
 def _tap_body(pg, kind, name=None):
     """Tap the canvas where the sky drew a body (CSS px from its record)."""
     pg.locator("#almanac-sky-canvas").scroll_into_view_if_needed()
-    pg.wait_for_timeout(200)
+    # Not a fixed pause: a scroll slides the bar above the Almanac away, and
+    # on a slow runner the canvas was still moving with it when the body's
+    # place was read, so the tap landed beside it.
+    _wait_still(pg, "#almanac-sky-canvas")
     b = pg.evaluate(
         "([k, n]) => { const b = _skyState.bodies.find((x) => x.type === k && (!n || x.name === n));"
         " const r = _skyState.canvas.getBoundingClientRect(); if (!b) return null; const x = b.type === 'muon' ? (b.x0 + b.x1) / 2 : b.x, y = b.type === 'muon' ? (b.y0 + b.y1) / 2 : b.y; return { x: r.left + x, y: r.top + y }; }",
         [kind, name],
     )
     assert b, "%s %s is drawn" % (kind, name or "")
+    # In the part of the turning sky that is on screen, not off its edge.
+    assert 0 <= b["x"] <= VIEW["width"] and 0 <= b["y"] <= VIEW["height"], b
     pg.touchscreen.tap(b["x"], b["y"])
 
 
 def _wait_still(pg, sel):
     """Until the element holds its place on screen for a few frames."""
+    pg.evaluate("() => { window.__still = null; }")
     pg.wait_for_function(
         "(s) => { const y = document.querySelector(s).getBoundingClientRect().top;"
         " const w = window.__still || (window.__still = { y: null, n: 0 });"

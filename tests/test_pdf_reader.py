@@ -656,3 +656,31 @@ def test_a_page_back_and_on_in_a_right_to_left_zimi(shell):
             fr.wait_for_function("() => zimiPdf.page() === 1", timeout=5000)
         finally:
             br.close()
+
+
+
+def test_a_jump_is_not_undone_by_a_rescale_in_the_same_moment(shell):
+    """A page jumped to (a highlight opened from Saved) stays put when pdf.js
+    re-scales before its next frame (the panel closing resizes the frame; on
+    a reload its initial view lands late). pdf.js re-scales around the place
+    it last saw, so a jump it had not seen yet went back to the old page:
+    CI opened a page-3 highlight and stayed on page 12."""
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    with sync_playwright() as pw:
+        pg, fr, _ = _open(pw, base, name, {"viewport": {"width": 1280, "height": 800}})
+        fr.evaluate("() => zimiPdf.goPage(%d)" % PAGES)
+        fr.wait_for_function(
+            "() => zimiPdf.page() >= %d && PDFViewerApplication.pdfViewer._location"
+            " && PDFViewerApplication.pdfViewer._location.pageNumber > 5" % (PAGES - 1)
+        )
+        fr.evaluate(
+            """() => { zimiPdf.goPage(3);
+              const v = PDFViewerApplication.pdfViewer; v.currentScale = v.currentScale * 1.1; }"""
+        )
+        fr.evaluate(
+            "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))"
+        )
+        assert fr.evaluate("() => zimiPdf.page()") in (3, 4)

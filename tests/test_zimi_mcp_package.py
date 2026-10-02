@@ -102,11 +102,21 @@ def test_zimi_mcp_version_flag():
 
 
 # Runs in a child whose only zimi is the staged one. PyMuPDF is made
-# unimportable, as it is in a zimi-mcp install without the pdf extra.
+# unimportable, as it is in a zimi-mcp install without the pdf extra. The
+# finder at the end of sys.meta_path stands in for CI's `pip install -e .`,
+# whose finder resolves any unstaged zimi.<module> to the source tree: a stray
+# import then shows up in _modules here too, not only on CI.
 _PROBE = textwrap.dedent("""
-    import json, os, sys
+    import importlib.machinery, json, os, sys
     sys.modules["pymupdf"] = None
     sys.modules["fitz"] = None
+    _SRC = os.path.join(os.path.dirname(sys.argv[2]), "zimi")
+    class _EditableTree:
+        def find_spec(self, name, path=None, target=None):
+            if name.startswith("zimi."):
+                return importlib.machinery.PathFinder.find_spec(name, [_SRC])
+            return None
+    sys.meta_path.append(_EditableTree())
     sys.path.insert(0, sys.argv[2])
     import mcp_lean_fixture as fx
     lib = fx.build(os.path.join(sys.argv[3], "zims"))

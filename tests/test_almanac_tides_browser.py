@@ -148,8 +148,20 @@ def test_a_late_section_does_not_move_what_is_below_it(
             "(s) => document.querySelector(s).scrollIntoView({ block: 'center' })",
             below,
         )
-        # The bar above the Almanac slides away on a scroll; let it settle.
-        pg.wait_for_timeout(2000)
+        # The bar above the Almanac slides away on a scroll, which changes the
+        # scroller's height and, near the page's end, its offset: read the
+        # place once it has held still (a fixed pause read it mid-slide on a
+        # loaded machine, and the "move" was the slide).
+        pg.wait_for_function(
+            """(s) => { const c = document.getElementById('almanac-content');
+              const y = document.querySelector(s).getBoundingClientRect().top - c.getBoundingClientRect().top;
+              const k = y + '|' + c.clientHeight + '|' + c.scrollTop;
+              const w = window.__held || (window.__held = { k: null, n: 0 });
+              w.n = k === w.k ? w.n + 1 : 0; w.k = k; return w.n >= 5; }""",
+            arg=below,
+            polling=150,
+            timeout=30000,
+        )
         before = _top(pg, below)
         assert 0 <= before < VIEW["height"], "%s is in view" % below
         for i in range(600):

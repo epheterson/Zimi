@@ -136,8 +136,16 @@ def bundled(module):
     from the same tree with only the search-and-read core: no web app, no
     downloads, no capture. The few places the core reaches for the rest ask
     here first, so a missing module is a decision, not a caught ImportError
-    that would also hide a real one."""
-    return importlib.util.find_spec(f"zimi.{module}") is not None
+    that would also hide a real one.
+
+    Asked of the package's own directory, not of sys.meta_path: an editable
+    install of the full zimi (CI's) adds a finder that maps every
+    ``zimi.<module>`` to the source tree, so a staged zimi-mcp beside it
+    answered "bundled" for the web app and then imported it."""
+    import importlib.machinery
+
+    here = [os.path.dirname(os.path.abspath(__file__))]
+    return importlib.machinery.PathFinder.find_spec(f"zimi.{module}", here) is not None
 
 
 # Standing maintenance cadence: catalog TTL is 24h and UPnP leases are
@@ -3231,14 +3239,17 @@ def _extract_zim_date(filename):
     return filename.replace(".zim", ""), None
 
 
+# Where a capture that kept both of a site's faces records them (creator writes
+# it). Here, not in creator, so the core can read it without the capture code.
+FACES_METADATA_KEY = "X-Zimi-Faces"
+
+
 def _read_faces(archive):
     """``{"main": scheme, "other": {...}}`` when a capture kept both of the
     site's faces, else None. Never raises: a ZIM without it is every ZIM."""
     if archive is None:
         return None
     try:
-        from zimi.creator import FACES_METADATA_KEY
-
         raw = bytes(archive.get_metadata(FACES_METADATA_KEY))
     except Exception:
         return None

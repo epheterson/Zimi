@@ -1,15 +1,16 @@
 """Making a ZIM from the web: point Zimi at a page and get a served source.
 
-Folder capture left the web by decree (it is `zimi create <folder>` on the
-server itself now), so the gate's creation journey rides the page mode: a
-tiny fixture site served over local HTTP, captured with the builtin engine.
-The journeys are unchanged — probe first, create, find it after the fact,
-queue a second, read the event stream, check the provenance — and the
-folder door is checked to be closed, not merely hidden.
+The gate's creation journey rides the page mode: a tiny fixture site served
+over local HTTP, captured with the builtin engine. The journeys are probe
+first, create, find it after the fact, queue a second, read the event stream,
+check the provenance. Folder mode is on the web again (1.13) for the primary
+admin only, under one root (ZIMI_CREATE_ROOT, else the library folder): its
+boundary is checked from both sides, who may reach it and how far it reaches.
 """
 
 import http.server
 import os
+import shutil
 import threading
 
 import pytest
@@ -34,8 +35,8 @@ def gate_server(gate_library, tmp_path_factory):
     offline switch page capture correctly refuses to fetch (that refusal is
     itself gate-checked in the offline feature). The capture target is the
     loopback fixture site, so the gate still runs on a machine with no
-    internet. No ZIMI_CREATE_ROOT: the two modes that once read a server path
-    (folder, archive import) are both CLI-only now, so nothing here needs one."""
+    internet. No ZIMI_CREATE_ROOT: the disk modes (folder, archive import) are
+    rooted at the library folder, which the folder checks use."""
     import shutil
 
     from conftest import boot, clean_env
@@ -84,15 +85,68 @@ def test_probe_describes_the_page_before_committing(gate_server, source_site):
     assert body["title"] == "Field notes", f"probe misread the page: {body}"
 
 
-def test_folder_mode_is_a_closed_door_not_a_hidden_one(gate_server, source_folder):
-    """The web refuses folder capture outright and names the CLI. A client
-    that no longer shows the tile is not the boundary — this is."""
-    for endpoint in ("/manage/create/probe", "/manage/create"):
-        status, body = gate_server.post_json(
-            endpoint, {"mode": "folder", "source": source_folder}
-        )
-        assert status == 400, f"{endpoint} accepted folder mode: {body}"
-        assert "CLI" in body.get("error", ""), body
+def _tree(server, rel="", headers=None):
+    return server.get_json("/manage/create/tree?path=" + quote(rel), headers=headers)
+
+
+def _listed(server, rel="", headers=None):
+    status, body = _tree(server, rel, headers)
+    assert status == 200, body
+    return {e["name"] for e in body["entries"]}
+
+
+def test_folder_mode_stays_inside_its_root(gate_server):
+    """Folder mode is back on the web (1.13), for the primary admin, and only
+    under one root: ZIMI_CREATE_ROOT, else the library folder. The tree and
+    both create doors refuse a way out (an absolute path, "..", a symlink, a
+    hidden folder) and never show hidden files or Zimi's own data. A client
+    that only hides the way is not the boundary; this is."""
+    root = gate_server.zim_dir  # this module's server has no ZIMI_CREATE_ROOT
+    outside = os.path.dirname(os.path.realpath(root))
+    inside = os.path.join(root, "gate-folder")
+    os.makedirs(inside, exist_ok=True)
+    with open(os.path.join(inside, "index.html"), "w", encoding="utf-8") as f:
+        f.write("<html><head><title>Gate folder</title></head><body>Inside.</body></html>")
+    os.makedirs(os.path.join(root, ".hidden-folder"), exist_ok=True)
+    escape = os.path.join(root, "gate-escape")
+    if not os.path.lexists(escape):
+        os.symlink(outside, escape)
+    try:
+        _check_folder_root(gate_server, root, outside)
+    finally:
+        # The library's scan must not meet them in the checks after this one.
+        os.unlink(escape)
+        shutil.rmtree(inside, ignore_errors=True)
+        shutil.rmtree(os.path.join(root, ".hidden-folder"), ignore_errors=True)
+
+
+def _check_folder_root(gate_server, root, outside):
+    # The tree: the library folder's own visible entries, nothing else.
+    names = _listed(gate_server)
+    visible = {n for n in os.listdir(root) if not n.startswith(".")} - {"gate-escape"}
+    assert names == visible, (names, visible)
+    assert "gate-escape" not in names and ".hidden-folder" not in names
+    assert "gate-folder" in names
+    # "/" is the root it was given, never the filesystem's.
+    assert _listed(gate_server, "/") == names
+    for rel in ("..", "../data", outside, "gate-escape", ".hidden-folder", "gate-folder/../.."):
+        status, body = _tree(gate_server, rel)
+        assert status == 400, f"the tree listed {rel!r}: {body}"
+
+    # Both doors: a folder inside is described; a way out is refused.
+    status, body = gate_server.post_json(
+        "/manage/create/probe", {"mode": "folder", "source": "gate-folder"}
+    )
+    assert status == 200 and body.get("ok") is True, body
+    for source in ("..", outside, "gate-escape", ".hidden-folder", "gate-folder/../.."):
+        for endpoint in ("/manage/create/probe", "/manage/create"):
+            status, body = gate_server.post_json(
+                endpoint, {"mode": "folder", "source": source}
+            )
+            assert status == 400, f"{endpoint} took folder {source!r}: {body}"
+    # The old picker, which took any server path, stays gone.
+    status, body = gate_server.get_json("/manage/create/browse?path=/")
+    assert status == 410, body
 
 
 def test_import_takes_only_an_archive_the_picker_listed(gate_server):
@@ -148,48 +202,87 @@ def test_a_page_becomes_a_zim_that_serves(gate_server, source_site):
     assert results["results"], f"nothing searchable in the created ZIM: {results}"
 
 
-def test_without_a_configured_root_the_web_cannot_reach_the_filesystem(
+def test_folder_mode_is_the_primary_admins_and_rooted_at_the_library(
     gate_library, tmp_path_factory
 ):
-    """The default posture, booted for real. Eric's objection to the round-2
-    folder flow was that it showed him the whole file system; the answer today
-    is total: no web mode reads a path off the server's disk. Folder and archive
-    import both refuse from the web no matter what and name their CLI door, the
-    directory picker is gone, and the URL modes — which read nothing local — are
-    untouched. Checked against a server that never had a ZIMI_CREATE_ROOT."""
+    """The default posture, booted for real with a password and a second
+    account: with no ZIMI_CREATE_ROOT the disk modes see the library folder
+    and nothing above it, and only the primary admin reaches them. A creator
+    account (allowed to capture the web) and a secondary admin get 403 on the
+    tree and on folder and import through both doors; nobody signed in gets
+    401. The URL modes, which read nothing local, are untouched."""
     import shutil
 
     from conftest import boot, clean_env
 
+    password = "gate-create-primary-password"
     root = tmp_path_factory.mktemp("gate-noroot")
     zim_dir = os.path.join(str(root), "zims")
     shutil.copytree(gate_library, zim_dir)
-    env = clean_env()
+    env = clean_env(ZIMI_MANAGE_PASSWORD=password)
     env.pop("ZIMI_CREATE_ROOT", None)
     with boot(
         zim_dir=zim_dir, data_dir=os.path.join(str(root), "data"), env=env
     ) as server:
-        status, body = server.get_json("/manage/create/browse?path=/")
-        assert status == 410, f"the retired picker endpoint answered: {body}"
-        # Folder capture is CLI-only, and import takes only a listed archive:
-        # neither lets the web name a path on the server.
+        primary = {"Authorization": f"Bearer {password}"}
+
+        def account(name, role=None, can_create=False):
+            body = {"action": "create", "name": name, "password": name + "-pw"}
+            if role:
+                body["role"] = role
+            status, out = server.post_json("/manage/users", body, headers=primary)
+            assert status == 200, out
+            if can_create:
+                status, out = server.post_json(
+                    "/manage/users",
+                    {"action": "set-can-create", "name": name, "can_create": True},
+                    headers=primary,
+                )
+                assert status == 200, out
+            status, out = server.post_json(
+                "/login", {"username": name, "password": name + "-pw"}
+            )
+            assert status == 200 and out.get("token"), out
+            return {"Cookie": "zimi_session=" + out["token"]}
+
+        creator = account("gate-creator", can_create=True)
+        second = account("gate-second-admin", role="admin")
+
+        # The primary admin: the library folder, "/" included, and no higher.
+        names = _listed(server, "", primary)
+        assert names == {n for n in os.listdir(zim_dir) if not n.startswith(".")}, names
+        assert _listed(server, "/", primary) == names
+        status, body = _tree(server, "..", primary)
+        assert status == 400, body
+
+        # Everyone else: refused, the signed-in with 403, the anonymous 401.
+        for who, headers, expected in (
+            ("creator", creator, 403),
+            ("secondary admin", second, 403),
+            ("anonymous", None, 401),
+        ):
+            status, body = _tree(server, "", headers)
+            assert status == expected, f"{who} read the tree: {status} {body}"
+            for endpoint in ("/manage/create/probe", "/manage/create"):
+                for mode, source in (("folder", "."), ("import", "x.warc")):
+                    status, body = server.post_json(
+                        endpoint, {"mode": mode, "source": source}, headers=headers
+                    )
+                    assert status == expected, (
+                        f"{who} reached {mode} at {endpoint}: {status} {body}"
+                    )
+        # The creator still captures the web: the URL modes are theirs.
+        status, body = server.post_json(
+            "/manage/create/probe", {"mode": "page", "source": "nonsense"}, headers=creator
+        )
+        assert status == 400 and "disk" not in body.get("error", ""), body
+        # Import takes only a listed archive, even from the primary admin.
         for endpoint in ("/manage/create", "/manage/create/probe"):
             status, body = server.post_json(
-                endpoint, {"mode": "folder", "source": __file__}
+                endpoint, {"mode": "import", "source": __file__}, headers=primary
             )
-            assert status == 400, f"{endpoint} took folder with no root: {body}"
-            assert "CLI" in body.get("error", ""), body
-            assert "zimi create" in body.get("error", ""), body
-            status, body = server.post_json(
-                endpoint, {"mode": "import", "source": __file__}
-            )
-            assert status == 400, f"{endpoint} took import with no root: {body}"
+            assert status == 400, f"{endpoint} took import of {__file__}: {body}"
             assert body.get("error") == "choose an archive from the list", body
-        # …and the URL modes, which read nothing local, are unaffected.
-        status, body = server.post_json(
-            "/manage/create/probe", {"mode": "page", "source": "nonsense"}
-        )
-        assert status == 400, body
 
 
 def test_a_finished_job_is_findable_after_the_fact(gate_server):

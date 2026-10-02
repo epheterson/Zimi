@@ -291,7 +291,13 @@ def test_leaving_restores_the_page(browser, served, reduced):
         assert pg.evaluate("() => _ae.target === 'moon'")
         pg.keyboard.press("Escape")
         pg.wait_for_function("() => !_aeIsOpen", timeout=10000, polling=POLL_MS)
-        pg.wait_for_timeout(300)
+        # Focus is handed back once the uncovered page can take it (a few
+        # frames under reduced motion, more on a loaded machine).
+        pg.wait_for_function(
+            "() => document.activeElement && document.activeElement.classList.contains('almanac-moon-open')",
+            timeout=5000,
+            polling=POLL_MS,
+        )
         after = pg.evaluate(SNAPSHOT)
         for k in ("scroll", "focus", "view", "tm"):
             assert after[k] == before[k], (k, before[k], after[k])
