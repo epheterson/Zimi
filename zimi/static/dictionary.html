@@ -163,6 +163,7 @@ var RECENT_SHOWN = 16;
 var SAVED_SHOWN = 30;
 var VOICE_WAIT_MS = 1200; // a browser that lists its voices late (Chrome) is given this long
 var SPEECH_RATE = 0.9;    // a word said a little slowly is a word you can hear
+var SPEECH_AFTER_CANCEL_MS = 60; // iOS ignores a speak() in the same turn as cancel()
 
 // A Wiktionary's code for a language as a speech engine knows it. English
 // Wiktionary names Mandarin cmn and Cantonese yue; voices are zh-CN and
@@ -669,18 +670,28 @@ var _voiceWaiting = true;
   if (s && 'onvoiceschanged' in s) s.addEventListener('voiceschanged', function() { _voiceWaiting = false; wireSpeech(); });
   setTimeout(function() { _voiceWaiting = false; wireSpeech(); }, VOICE_WAIT_MS);
 })();
-var _playing = null;
+var _playing = null, _utterance = null;
+// iPhone: the ring switch on silent mutes a page's sound unless the page
+// asks for playback, as a media player does (Safari 16.4+; elsewhere a no-op).
+function wantPlayback() { try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {} }
 function say(b) {
   var s = synth(), c = pickVoice(voices(), b.getAttribute('data-code'), b.getAttribute('data-accent'));
   if (!s || !c) { wireSpeech(); return; }
-  s.cancel();
+  wantPlayback();
   var u = new SpeechSynthesisUtterance(b.getAttribute('data-say'));
   u.voice = c.voice; u.lang = c.voice.lang; u.rate = SPEECH_RATE;
   b.classList.add('on');
-  u.onend = u.onerror = function() { b.classList.remove('on'); };
-  s.speak(u);
+  u.onend = u.onerror = function() { b.classList.remove('on'); if (_utterance === u) _utterance = null; };
+  // Held until it ends: Safari lets an unreferenced utterance be collected
+  // mid-word, and its end never comes.
+  _utterance = u;
+  // iOS drops a speak() that follows cancel() in the same moment: cancel only
+  // what is still talking, and speak on the next turn when it was.
+  if (s.speaking || s.pending) { s.cancel(); setTimeout(function() { s.speak(u); }, SPEECH_AFTER_CANCEL_MS); }
+  else s.speak(u);
 }
 function play(b) {
+  wantPlayback();
   if (_playing) { try { _playing.pause(); } catch (e) {} }
   var a = new Audio(b.getAttribute('data-audio'));
   _playing = a;
