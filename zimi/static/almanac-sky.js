@@ -436,7 +436,6 @@ var SKY_ASPECT = 1.8;
 var SKY_SPAN_DEG = 240;
 var SKY_HORIZON_Y = 0.8;          // the horizon, as a share of the height
 var SKY_ZENITH_Y = 0.05;          // where 90 degrees of altitude would stand
-var SKY_HILLS = 0.016;            // the hills' height, as a share of the height
 var SKY_LIVE_MS = 30000;          // live, the sky is recomputed this often (it turns 0.125 deg)
 var SKY_TWINKLE_MS = 1500;        // a still sky's slow twinkle
 var SKY_TAP_PX = 22;              // a fingertip's reach beyond a body's edge (CSS px)
@@ -516,7 +515,7 @@ function _skyPaintSky(ctx, s) {
     rg.addColorStop(0.45, _skyRgb(warm, 0.16 * gs));
     rg.addColorStop(1, _skyRgb(warm, 0));
     ctx.fillStyle = rg;
-    ctx.fillRect(0, 0, W, yh + H * SKY_HILLS);
+    ctx.fillRect(0, 0, W, yh);
   }
   var dark = _skyDarkness(g) * (1 - 0.7 * _skyClamp(glare, 0, 1));
   if (dark > 0) _skyPaintGalaxy(ctx, s, dark);
@@ -810,18 +809,36 @@ function _skyPaintMuons(ctx, s, ts) {
 }
 
 // ══ Life on the horizon ══════════════════════════════════════════════════
-// What a person standing there would see besides the sky: the sea when the
-// place is on the coast (its shore where today's tide has it), else the
-// land; boats on the sea's edge, lit at night; airliners crossing with their
-// navigation lights; birds by day; meteors by night, more on a shower's
-// peak; the aurora where it is seen; the ISS on its real track when it is
-// overhead and lit. Each is tapped to say what it is. Boats, the sea and the
-// aurora belong to the still picture; planes, birds, meteors, muons and the
-// ISS move, and only while one of them is on screen does a light loop run.
+// One scene everywhere, a window on the sky: a beach with palms, looking out
+// to sea. Where a tide station is near, the water stands where today's tide
+// has it (more sand at low water); elsewhere at half tide, and claims no
+// tide. Boats on the sea's edge, lit at night; now and then a whale; airliners
+// crossing with their navigation lights; birds by day; meteors by night, more
+// on a shower's peak; the aurora where it is seen; the ISS on its real track
+// when it is overhead and lit. Each is tapped to say what it is. The sea,
+// the boats and the aurora belong to the still picture; the palms are drawn
+// over each frame from cached sprites, swaying on a light timer while seen
+// (still when motion is reduced); planes, birds, whales, meteors, muons and
+// the ISS move, and only while one of them is on screen does a frame loop run.
 
 var SKY_EYE_KM = 3.57;            // the sea's edge, km, times the square root of eye height in metres
 var SKY_EYE_M = 1.7;
-var SKY_SHORE = [0.2, 0.62];      // the beach's share of the ground band, high water and low
+var SKY_SHORE = [0.3, 0.66];      // the beach's share of the ground band, high water and low
+var SKY_CALM_FRAC = 0.5;          // the sea's level where no tide station is near: half tide
+// The palms: azimuth, height (share of the scene's height), lean, and how far
+// their feet stand above the bottom (share of the ground band). Two groups
+// about 170 degrees apart, so every view has one and either way the
+// hemisphere faces (south or north) they frame it from the sides.
+var SKY_PALMS = [[89, 0.4, -0.12, 0.05], [99, 0.29, 0.08, 0.15], [257, 0.37, 0.12, 0.07], [271, 0.25, -0.06, 0.17]];
+// A palm's fronds: angle from the crown (0 to the right, negative up),
+// length and droop (shares of the height), width (share of the length).
+// Each rises from the crown and arches over.
+var SKY_FRONDS = [[-2.95, 0.6, 0.36, 0.07], [-2.45, 0.58, 0.16, 0.075], [-1.95, 0.48, 0.02, 0.075], [-1.2, 0.46, 0.0, 0.075],
+  [-0.65, 0.58, 0.14, 0.075], [-0.2, 0.6, 0.34, 0.07], [2.75, 0.46, 0.5, 0.065], [0.4, 0.46, 0.5, 0.065]];
+var SKY_SWAY_MS = 80;             // the breeze's frames: twelve a second, only while seen and motion is not reduced
+var SKY_SWAY_RAD = 0.045;         // how far a crown swings; the trunk bends a quarter of that
+var SKY_RIM_PX = 1;               // the rim light's width, CSS px
+var SKY_WHALE_GAP_S = [60, 180], SKY_WHALE_S = [2.6, 3.4];
 var SKY_SEA_ROWS = 16;            // the swell's lines, nearer ones further apart
 var SKY_BOATS = [[23, 3.2, 1, 'sail'], [151, 2.1, -1, 'ship'], [277, 4.4, 1, 'fish']];   // azimuth seed, deg/hour, way, kind
 var SKY_ACTOR_FRAME_MS = 33;      // the moving things' frames: thirty a second is smooth at this size
@@ -852,50 +869,17 @@ function _skySeaChanged() {
   _skyKick();
 }
 
-// The land: two ridges, the far one paler, tied to azimuth so they turn as
-// the view turns. Heights in device px above the horizon.
-function _skyRidge(s, az, far) {
-  var a = az * DEG_TO_RAD;
-  var k = far ? [4, 11, 29] : [7, 17, 43];
-  return s.H * SKY_HILLS * (far ? 1.6 : 1) * (0.55 + 0.25 * Math.sin(k[0] * a + (far ? 2.1 : 1.3)) +
-    0.15 * Math.sin(k[1] * a + 0.4) + 0.05 * Math.sin(k[2] * a));
-}
 function _skyAzAt(s, x) { return s.center + (x / s.W - 0.5) * SKY_SPAN_DEG; }
-function _skyHillAt(s, x) { return _skyRidge(s, _skyAzAt(s, x), false); }
-function _skyPaintLand(ctx, s, light) {
-  var W = s.W, H = s.H, yh = H * SKY_HORIZON_Y, step = 3 * s.dpr;
-  var tone = _skyTone(s.eph.sunGeoAlt).hor;
-  // The far ridge, hazed toward the sky's own horizon colour.
-  ctx.fillStyle = _skyRgb(_skyMix(_skyMix([14, 18, 26], [70, 86, 82], light), tone, 0.45));
-  ctx.beginPath(); ctx.moveTo(0, H);
-  for (var x = 0; x <= W + step; x += step) ctx.lineTo(x, yh - _skyRidge(s, _skyAzAt(s, x), true));
-  ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
-  var top = _skyMix([10, 13, 20], [40, 52, 44], light), bottom = _skyMix([5, 7, 11], [24, 31, 27], light);
-  var grad = ctx.createLinearGradient(0, yh - H * SKY_HILLS, 0, H);
-  grad.addColorStop(0, _skyRgb(top));
-  grad.addColorStop(1, _skyRgb(bottom));
-  ctx.fillStyle = grad;
-  ctx.beginPath(); ctx.moveTo(0, H);
-  for (x = 0; x <= W + step; x += step) ctx.lineTo(x, yh - _skyHillAt(s, x));
-  ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
-  // A few trees on the near ridge, at fixed bearings.
-  ctx.fillStyle = _skyRgb(_skyMix(top, [0, 0, 0], 0.35));
-  for (var az = 3; az < 360; az += 17 + (az % 7)) {
-    var tx = _skyX(s, az);
-    if (!_skyInView(s, tx, 6 * s.dpr)) continue;
-    var th = (5 + (az % 5)) * s.dpr * s.scale, ty = yh - _skyHillAt(s, tx) + 1;
-    ctx.beginPath(); ctx.moveTo(tx, ty - th); ctx.lineTo(tx - th * 0.32, ty); ctx.lineTo(tx + th * 0.32, ty); ctx.closePath(); ctx.fill();
-  }
-}
 
 // The sea: the sky's horizon colour carried down and darkened, swell lines
 // closer together toward the edge, a path of light under the Sun or the
 // Moon, and the shore where the tide has it (more beach at low water).
-function _skyPaintSea(ctx, s, light, ts) {
+function _skyPaintSea(ctx, s, light, frac) {
   var W = s.W, H = s.H, yh = H * SKY_HORIZON_Y, dpr = s.dpr, e = s.eph;
   var tone = _skyTone(e.sunGeoAlt).hor;
   var far = _skyMix(_skyMix(tone, [8, 26, 46], 0.5), [0, 0, 0], 0.25), near = _skyMix(far, [2, 6, 12], 0.6);
-  var shore = yh + (H - yh) * (1 - _skyLerp(SKY_SHORE[0], SKY_SHORE[1], 1 - s.sea.frac));
+  var shore = yh + (H - yh) * (1 - _skyLerp(SKY_SHORE[0], SKY_SHORE[1], 1 - frac));
+  s.shoreY = shore;
   var g = ctx.createLinearGradient(0, yh, 0, H);
   g.addColorStop(0, _skyRgb(far)); g.addColorStop(1, _skyRgb(near));
   ctx.fillStyle = g;
@@ -930,23 +914,27 @@ function _skyPaintSea(ctx, s, light, ts) {
       }
     }
   }
-  // The shore: wet sand, a line of foam, dry sand.
-  var sand = _skyMix([24, 24, 28], [196, 178, 140], light), wet = _skyMix(sand, near, 0.45);
+  // The beach: one long soft curve of sand (tied to bearings, so it turns
+  // with the view), wet and holding the sky's light at the water, a thin
+  // line of foam, dry sand toward the feet, the sky's colour in all of it.
+  var sand = _skyMix(_skyMix([22, 22, 28], [206, 186, 146], light), tone, 0.18);
+  var wet = _skyMix(sand, _skyMix(near, tone, 0.5), 0.5);
   ctx.beginPath(); ctx.moveTo(0, H);
-  var step = 4 * dpr;
+  var step = 6 * dpr;
   for (var sx = 0; sx <= W + step; sx += step) {
     var sa = _skyAzAt(s, sx) * DEG_TO_RAD;
-    ctx.lineTo(sx, shore + dpr * (1.6 * Math.sin(sa * 9) + 0.7 * Math.sin(sa * 21 + 1)));
+    ctx.lineTo(sx, shore + dpr * (2.4 * Math.sin(sa * 3 + 0.7) + 0.8 * Math.sin(sa * 7 + 2)));
   }
   ctx.lineTo(W, H); ctx.closePath();
-  var sg = ctx.createLinearGradient(0, shore, 0, H);
-  sg.addColorStop(0, _skyRgb(wet)); sg.addColorStop(0.35, _skyRgb(sand)); sg.addColorStop(1, _skyRgb(_skyMix(sand, [0, 0, 0], 0.3)));
+  var sg = ctx.createLinearGradient(0, shore - 3 * dpr, 0, H);
+  sg.addColorStop(0, _skyRgb(wet)); sg.addColorStop(0.3, _skyRgb(sand)); sg.addColorStop(1, _skyRgb(_skyMix(sand, [0, 0, 0], 0.22)));
   ctx.fillStyle = sg;
   ctx.fill();
-  ctx.strokeStyle = 'rgba(240,244,248,' + (0.18 + 0.32 * light).toFixed(3) + ')';
-  ctx.lineWidth = 1.2 * dpr;
+  ctx.strokeStyle = 'rgba(240,244,248,' + (0.1 + 0.26 * light).toFixed(3) + ')';
+  ctx.lineWidth = 1.4 * dpr;
   ctx.stroke();
-  s.bodies.push({ type: 'sea', box: [0, yh / dpr + 2, W / dpr, shore / dpr] });
+  // Only a near station's tide is the sea's to tell.
+  if (s.sea) s.bodies.push({ type: 'sea', box: [0, yh / dpr + 2, W / dpr, shore / dpr] });
   _skyPaintBoats(ctx, s, light);
 }
 
@@ -992,16 +980,183 @@ function _skyLight(ctx, x, y, r, c, a) {
   ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
 }
 
-// The ground (land or sea) and the compass along the horizon.
-function _skyPaintGround(ctx, s, ts) {
+// ── The palms ──
+// Each palm is two sprites, trunk and crown, painted once for the light they
+// stand in and redrawn each frame with the breeze's small turn: dark
+// against a night sky, their edges lit warm on the side the Sun truly is when
+// it is low, faintly silver under a bright Moon, their own colours by day.
+
+// One palm's outline, in its own units: the trunk from its foot (0, 0) to the
+// crown, or the fronds about the crown (0, 0), filled with `col`.
+function _skyPalmTrunk(g, h, lean, col) {
+  var tx = lean * h, w0 = 0.042 * h, w1 = 0.017 * h, n = 12, left = [], right = [];
+  for (var i = 0; i <= n; i++) {
+    var u = i / n, m = 1 - u;
+    // A cubic from the foot to the crown, bowing with the lean.
+    var x = 3 * m * m * u * tx * 0.1 + 3 * m * u * u * tx * 0.85 + u * u * u * tx, y = -h * u;
+    var w = (w0 + (w1 - w0) * u) / 2;
+    left.push([x - w, y]); right.push([x + w, y]);
+  }
+  g.fillStyle = col;
+  g.beginPath(); g.moveTo(left[0][0], left[0][1]);
+  for (i = 1; i <= n; i++) g.lineTo(left[i][0], left[i][1]);
+  for (i = n; i >= 0; i--) g.lineTo(right[i][0], right[i][1]);
+  g.closePath(); g.fill();
+}
+function _skyPalmCrown(g, h, lean, col) {
+  g.fillStyle = col;
+  for (var i = 0; i < SKY_FRONDS.length; i++) {
+    var f = SKY_FRONDS[i], len = f[1] * h, ang = f[0] + lean * 0.5;
+    var tipX = Math.cos(ang) * len, tipY = Math.sin(ang) * len * 0.5 + f[2] * len;
+    var midX = tipX / 2, midY = tipY / 2 - len * 0.2;
+    var n = 14, side = [], other = [];
+    for (var k = 0; k <= n; k++) {
+      var u = k / n, m = 1 - u;
+      var x = 2 * m * u * midX + u * u * tipX, y = 2 * m * u * midY + u * u * tipY;
+      var dx = 2 * m * midX + 2 * u * (tipX - midX), dy = 2 * m * midY + 2 * u * (tipY - midY), d = Math.sqrt(dx * dx + dy * dy) || 1;
+      // Widest a third of the way out, ragged where the leaflets part.
+      var w = f[3] * len * Math.sin(u * Math.PI) * (1 - 0.3 * u) * (k % 2 ? 0.6 : 1);
+      side.push([x - dy / d * w, y + dx / d * w]); other.push([x + dy / d * w, y - dx / d * w]);
+    }
+    g.beginPath(); g.moveTo(0, 0);
+    for (k = 0; k <= n; k++) g.lineTo(side[k][0], side[k][1]);
+    for (k = n; k >= 0; k--) g.lineTo(other[k][0], other[k][1]);
+    g.closePath(); g.fill();
+  }
+  g.beginPath(); g.arc(0, 0, 0.03 * h, 0, Math.PI * 2); g.fill();
+}
+
+// The light a palm at azimuth `az` stands in: its colours, and the rim's
+// colour, strength and offset (device px, toward the light).
+function _skyPalmLook(s, az, light) {
+  var e = s.eph, md = s.moonData, hor = _skyTone(e.sunGeoAlt).hor, day = light * light;
+  var dark = _skyMix(hor, [4, 6, 10], 0.86);
+  var look = { trunk: _skyMix(dark, [96, 80, 62], day), frond: _skyMix(dark, [44, 90, 50], day), k: 0, dx: 0, dy: 0, rim: null };
+  var src = null;
+  if (e.sun.alt > -3) {
+    var c = _skySunTint(Math.max(0, e.sun.alt)).map(function (v) { return 255 * v; });
+    var low = _skyClamp(1 - (e.sun.alt - 2) / 14, 0, 1);
+    src = { alt: e.sun.alt, az: e.sun.az, c: _skyMix([250, 236, 180], c, low), k: 0.3 + 0.45 * low * _skyClamp((e.sun.alt + 3) / 4, 0, 1) };
+  } else if (md.pos.altitude > 0 && e.sunGeoAlt < SKY_CIVIL_ALT) {
+    src = { alt: md.pos.altitude, az: md.pos.azimuth, c: [196, 206, 226], k: 0.4 * md.phase.illumination / 100 };
+  }
+  if (src) {
+    var d = _angleDelta(az, src.az), px = SKY_RIM_PX * s.dpr;
+    // A light behind the viewer lights the palm's face, not its edge.
+    if (Math.abs(d) > 100) {
+      look.trunk = _skyMix(look.trunk, src.c, 0.12 * src.k); look.frond = _skyMix(look.frond, src.c, 0.12 * src.k);
+    } else {
+      var up = _skyClamp(src.alt / 35, 0, 1);
+      look.k = src.k; look.rim = src.c;
+      look.dx = (d >= 0 ? 1 : -1) * px * (1 - 0.6 * up); look.dy = -px * (0.3 + 0.7 * up);
+    }
+  }
+  return look;
+}
+function _skyPalmKey(look) {
+  return [look.trunk, look.frond, look.rim || [0, 0, 0]].map(function (c) { return c.map(Math.round).join(','); }).join('|')
+    + '|' + look.k.toFixed(2) + '|' + Math.round(look.dx) + ',' + Math.round(look.dy);
+}
+// One sprite: the outline drawn whole in the rim's colour, then in its own
+// colour over it, shifted away from the light and kept inside: what is
+// left of the first is the lit edge.
+function _skyPalmSprite(w, h, ox, oy, draw, own, look, k) {
+  var c = document.createElement('canvas');
+  c.width = Math.ceil(w); c.height = Math.ceil(h);
+  var g = c.getContext('2d');
+  g.translate(ox, oy);
+  if (look.rim) {
+    draw(g, _skyRgb(_skyMix(own, look.rim, k)));
+    g.globalCompositeOperation = 'source-atop';
+    g.translate(-look.dx, -look.dy);
+  }
+  draw(g, _skyRgb(own));
+  return c;
+}
+// A palm's sprites for the light it stands in, made only when that changes.
+function _skyPalmSprites(s, i, light) {
+  var p = SKY_PALMS[i], h = p[1] * s.H, lean = p[2], look = _skyPalmLook(s, p[0], light);
+  var key = _skyPalmKey(look) + '|' + s.H;
+  s.palmCache = s.palmCache || [];
+  var hit = s.palmCache[i];
+  if (hit && hit.key === key) return hit;
+  var pad = 4 * s.dpr, R = 0.72 * h, tox = (lean < 0 ? -lean * h : 0) + 0.025 * h + pad;
+  hit = {
+    key: key, top: [lean * h, -h], R: R, tox: tox, toy: h + pad,
+    trunk: _skyPalmSprite(Math.abs(lean) * h + 0.05 * h + 2 * pad, h + 2 * pad, tox, h + pad,
+      function (g, c) { _skyPalmTrunk(g, h, lean, c); }, look.trunk, look, look.k * 0.6),
+    crown: _skyPalmSprite(2 * R, 2 * R, R, R, function (g, c) { _skyPalmCrown(g, h, lean, c); }, look.frond, look, look.k)
+  };
+  s.palmCache[i] = hit;
+  return hit;
+}
+// The palms over the frame, each turned by the breeze (two slow waves, out
+// of step from palm to palm, leaning with the wind); still when motion is reduced.
+function _skyPaintPalms(ctx, s, ts) {
+  var light = _skyDaylight(s.eph.sunGeoAlt), band = s.H * (1 - SKY_HORIZON_Y), t = ts / 1000, still = _skyReduceMotion();
+  for (var i = 0; i < SKY_PALMS.length; i++) {
+    var p = SKY_PALMS[i], x = _skyX(s, p[0]);
+    if (!_skyInView(s, x, p[1] * s.H)) continue;
+    var sp = _skyPalmSprites(s, i, light), y = s.H - band * p[3];
+    var sway = still ? 0 : SKY_SWAY_RAD * (0.65 * Math.sin(t * 0.9 + i * 1.7) + 0.35 * Math.sin(t * 2.3 + i * 0.6) + 0.3);
+    var bend = sway * 0.25, cs = Math.cos(bend), sn = Math.sin(bend);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(bend);
+    ctx.drawImage(sp.trunk, -sp.tox, -sp.toy);
+    ctx.restore();
+    var cx = x + cs * sp.top[0] - sn * sp.top[1], cy = y + sn * sp.top[0] + cs * sp.top[1];
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(sway);
+    ctx.drawImage(sp.crown, -sp.R, -sp.R);
+    ctx.restore();
+  }
+}
+
+// ── A whale ──
+// Now and then, by day, one breaches: out of the sea, over, and back in a
+// splash, somewhere between the shore and the sea's edge.
+function _skyWhale(s) {
+  return { type: 'whale', start: performance.now(), dur: _skyRandIn(_skyRand, SKY_WHALE_S) * 1000, dir: _skyRand() < 0.5 ? 1 : -1,
+    az: s.center + (_skyRand() - 0.5) * SKY_SPAN_DEG * 0.6, d: 0.15 + 0.4 * _skyRand() };
+}
+function _skyPaintWhale(ctx, s, a, ts) {
+  var p = _skyActorAt(a, ts), x = _skyX(s, a.az), yh = s.H * SKY_HORIZON_Y, dpr = s.dpr;
+  if (!_skyInView(s, x, 30 * dpr) || !s.shoreY) return;
+  var wy = yh + (s.shoreY - yh) * a.d, k = s.scale * dpr * (0.7 + 1.4 * a.d), light = _skyDaylight(s.eph.sunGeoAlt);
+  var q = _skyClamp(p * 1.25, 0, 1), rise = Math.sin(Math.PI * q), ang = a.dir * (q - 0.5) * 1.6;
+  var bx = x + a.dir * (q - 0.4) * 10 * k, by = wy - rise * 7 * k;
+  if (q < 1) {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, s.W, wy); ctx.clip();
+    ctx.fillStyle = _skyRgb(_skyMix([14, 16, 22], [52, 58, 70], light));
+    ctx.beginPath(); ctx.ellipse(bx, by, 7 * k, 2.2 * k, ang, 0, Math.PI * 2); ctx.fill();
+    // The long pectoral fin, a humpback's.
+    ctx.beginPath(); ctx.ellipse(bx - a.dir * 1.5 * k, by + 1.8 * k, 3.4 * k, 0.7 * k, ang + a.dir * 0.9, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  // White water where it leaves and where it falls back.
+  var splash = Math.max(1 - p / 0.3, p > 0.6 ? Math.sin(Math.PI * (p - 0.6) / 0.4) : 0);
+  if (splash > 0) {
+    var sx = p < 0.5 ? x - a.dir * 4 * k : x + a.dir * 6 * k;
+    ctx.strokeStyle = 'rgba(240,246,250,' + (0.85 * splash * (0.4 + 0.6 * light)).toFixed(3) + ')';
+    ctx.lineWidth = Math.max(1, 0.9 * dpr);
+    ctx.beginPath();
+    for (var j = -3; j <= 3; j++) {
+      var tall = (5 - Math.abs(j)) * k * (0.6 + 0.6 * splash);
+      ctx.moveTo(sx + j * 1.6 * k, wy); ctx.lineTo(sx + j * 2.2 * k, wy - tall);
+    }
+    ctx.stroke();
+  }
+  s.bodies.push({ type: 'whale', x: x / dpr, y: (wy - 4 * k) / dpr, r: 10 });
+}
+
+// The sea and the beach, and the compass along the horizon.
+function _skyPaintGround(ctx, s) {
   var light = _skyDaylight(s.eph.sunGeoAlt);
-  if (s.sea) _skyPaintSea(ctx, s, light, ts); else _skyPaintLand(ctx, s, light);
+  _skyPaintSea(ctx, s, light, s.sea ? s.sea.frac : SKY_CALM_FRAC);
   var yh = s.H * SKY_HORIZON_Y, dpr = s.dpr;
   ctx.font = '600 ' + Math.round(10 * dpr) + 'px -apple-system, system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  var ink = light > 0.5 ? 'rgba(235,240,232,0.62)' : 'rgba(200,210,230,0.5)';
-  if (s.sea && light > 0.5) ink = 'rgba(20,28,40,0.55)';
+  var ink = light > 0.5 ? 'rgba(20,28,40,0.55)' : 'rgba(200,210,230,0.5)';
   for (var az = 0; az < 360; az += 45) {
     var cx = _skyX(s, az);
     if (!_skyInView(s, cx, -6 * dpr)) continue;
@@ -1184,7 +1339,7 @@ function _skyPaintActors(ctx, s, ts) {
     var a = s.actors[i];
     if (ts - a.start > a.dur) { if (a.type === 'meteor') s.lastMeteor = a; continue; }
     keep.push(a);
-    _skyPaintActor(ctx, s, a, ts);
+    if (a.type !== 'whale') _skyPaintActor(ctx, s, a, ts);
   }
   s.actors = keep;
   // The ISS, on the page's clock (live: now, this frame).
@@ -1203,7 +1358,8 @@ function _skyPaintActors(ctx, s, ts) {
 function _skySpawnPlane() { _skySpawn('plane'); }
 function _skySpawnBirds() { _skySpawn('birds'); }
 function _skySpawnMeteor() { _skySpawn('meteor'); }
-var SKY_SPAWNERS = { plane: _skySpawnPlane, birds: _skySpawnBirds, meteor: _skySpawnMeteor };
+function _skySpawnWhale() { _skySpawn('whale'); }
+var SKY_SPAWNERS = { plane: _skySpawnPlane, birds: _skySpawnBirds, meteor: _skySpawnMeteor, whale: _skySpawnWhale };
 function _skySpawn(kind) {
   var s = _skyState;
   _skyTimers[kind] = 0;
@@ -1215,6 +1371,9 @@ function _skySpawn(kind) {
   } else if (kind === 'birds') {
     if (g > 2) { var b = _skyCrossing(s, 'birds', SKY_BIRD_S, SKY_BIRD_ALT); b.n = 3 + Math.floor(_skyRand() * 5); s.actors.push(b); }
     gap = _skyRandIn(_skyRand, SKY_BIRD_GAP_S) * 1000;
+  } else if (kind === 'whale') {
+    if (g > 0) s.actors.push(_skyWhale(s));
+    gap = _skyRandIn(_skyRand, SKY_WHALE_GAP_S) * 1000;
   } else {
     if (g < SKY_NAUTICAL_ALT + 2) s.actors.push(_skyMeteor(s));
     // Exponential gaps at the shown rate (sped up; the tap says by how much).
@@ -1243,7 +1402,7 @@ function _skyPaintBase(s, ts) {
   _skyPaintPlanets(ctx, s);
   _skyPaintSun(ctx, s);
   _skyPaintMoon(ctx, s, _skyMoonAt(s, ts));
-  _skyPaintGround(ctx, s, ts);
+  _skyPaintGround(ctx, s);
   s.baseBodies = s.bodies;
   s.baseDirty = !!s.moonAnim;
 }
@@ -1255,12 +1414,15 @@ function _skyPaint(ts) {
   ctx.clearRect(0, 0, s.W, s.H);
   ctx.drawImage(s.base, 0, 0);
   s.bodies = s.baseBodies.slice();
-  // The moving things stay in the sky, never over the ground.
+  // The moving things stay in the sky, never over the sea; a whale in the
+  // sea; the palms in front of everything.
   ctx.save();
-  ctx.beginPath(); ctx.rect(0, 0, s.W, s.H * SKY_HORIZON_Y - _skyRidge(s, s.center, false) * 0.3); ctx.clip();
+  ctx.beginPath(); ctx.rect(0, 0, s.W, s.H * SKY_HORIZON_Y); ctx.clip();
   _skyPaintActors(ctx, s, ts);
   _skyPaintMuons(ctx, s, ts);
   ctx.restore();
+  for (var i = 0; i < s.actors.length; i++) if (s.actors[i].type === 'whale') _skyPaintWhale(ctx, s, s.actors[i], ts);
+  _skyPaintPalms(ctx, s, ts);
 }
 
 function _skyReduceMotion() { return typeof _almReduceMotion === 'function' && _almReduceMotion(); }
@@ -1306,19 +1468,21 @@ function _skyKick() {
   if (!_almanacSkyRAF && _skyState) _almanacSkyRAF = requestAnimationFrame(_skyLoop);
 }
 
-var _skyTimers = { live: 0, twinkle: 0, muon: 0, fade: 0, plane: 0, birds: 0, meteor: 0 };
-var SKY_FIRST_SPAWN_MS = { plane: 4000, birds: 9000, meteor: 2500 };
+var _skyTimers = { live: 0, twinkle: 0, muon: 0, fade: 0, sway: 0, plane: 0, birds: 0, meteor: 0, whale: 0 };
+var SKY_FIRST_SPAWN_MS = { plane: 4000, birds: 9000, meteor: 2500, whale: 20000 };
 function _skyDisarm() {
   for (var k in _skyTimers) { clearTimeout(_skyTimers[k]); _skyTimers[k] = 0; }
 }
 // The timers a still sky needs while it is seen: live, the clock's drift;
-// unless motion is reduced, the twinkle (only with stars out) and the muons.
+// unless motion is reduced, the palms' breeze, the twinkle (only with stars
+// out) and the muons.
 function _skyArm() {
   _skyDisarm();
   var s = _skyState;
   if (!_skyAwake(s) || !s.eph) return;
   if (_skyLive()) _skyTimers.live = setTimeout(_skyLiveTick, SKY_LIVE_MS);
   if (_skyReduceMotion()) return;
+  _skyTimers.sway = setTimeout(_skySwayTick, SKY_SWAY_MS);
   if (s.eph.sunGeoAlt < -3) _skyTimers.twinkle = setTimeout(_skyTwinkleTick, SKY_TWINKLE_MS);
   var gap = s.muonCount ? SKY_MUON_GAP_MS[0] + Math.random() * (SKY_MUON_GAP_MS[1] - SKY_MUON_GAP_MS[0]) : SKY_MUON_FIRST_MS;
   _skyTimers.muon = setTimeout(_skyMuonTick, gap);
@@ -1333,6 +1497,14 @@ function _skyLiveTick() {
   _skyCompute(s, new Date());
   _skyKick();
   _skyTimers.live = setTimeout(_skyLiveTick, SKY_LIVE_MS);
+}
+// The breeze: a frame (the still picture copied, the palms over it) twelve
+// times a second while the sky is seen.
+function _skySwayTick() {
+  _skyTimers.sway = 0;
+  if (!_skyAwake(_skyState) || _skyReduceMotion()) return;
+  _skyKick();
+  _skyTimers.sway = setTimeout(_skySwayTick, SKY_SWAY_MS);
 }
 function _skyTwinkleTick() {
   _skyTimers.twinkle = 0;
@@ -1536,7 +1708,7 @@ function _skySegDist(px, py, x0, y0, x1, y1) {
 }
 // What a tap at (x, y) CSS px lands on: the nearest body within reach of its
 // edge, the Sun, Moon and planets before the stars, then a muon's streak.
-var SKY_TAP_RANK = { sun: 0, moon: 0, planet: 0, iss: 0, plane: 1, birds: 1, meteor: 1, boat: 1, star: 2, muon: 3, aurora: 4, sea: 5 };
+var SKY_TAP_RANK = { sun: 0, moon: 0, planet: 0, iss: 0, plane: 1, birds: 1, meteor: 1, boat: 1, whale: 1, star: 2, muon: 3, aurora: 4, sea: 5 };
 function _skyHitTest(x, y) {
   var s = _skyState;
   if (!s) return null;
@@ -1564,7 +1736,7 @@ function _skyBodyKey(b) {
   return null;
 }
 var SKY_NAME_KEYS = { sun: 'alm_sun', moon: 'alm_the_moon', muon: 'alm_sky_muon', iss: 'alm_earth_iss_name', sea: 'alm_sky_sea',
-  boat: 'alm_sky_boat', plane: 'alm_sky_plane', birds: 'alm_sky_birds', meteor: 'alm_sky_meteor', aurora: 'alm_sky_aurora' };
+  boat: 'alm_sky_boat', whale: 'alm_sky_whale', plane: 'alm_sky_plane', birds: 'alm_sky_birds', meteor: 'alm_sky_meteor', aurora: 'alm_sky_aurora' };
 function _skyBodyName(b) {
   if (b.type === 'planet') return _tp(b.name);
   if (b.type === 'star') return _STAR_NAMES[b.idx];
@@ -1579,6 +1751,7 @@ function _skyLifeLines(b) {
     return [t('alm_sky_boat_line', { d: _orrNum(km, 'kilometer', 0) }), t('alm_sky_boat_lights')];
   }
   if (b.type === 'plane') return [t('alm_sky_plane_line')];
+  if (b.type === 'whale') return [t('alm_sky_whale_line')];
   if (b.type === 'birds') return [t('alm_sky_birds_line')];
   if (b.type === 'meteor') {
     var r = _skyMeteorRate(s), n = _orrNum(Math.round(r.perHour), null, 0);

@@ -2453,6 +2453,8 @@
   "alm_sky_boat": "A boat",
   "alm_sky_boat_line": "On the sea's edge, about {d} out: from eye height, that is as far as the sea goes before the Earth curves away.",
   "alm_sky_boat_lights": "By night only its lights show: white at the masthead, red to port, green to starboard.",
+  "alm_sky_whale": "A whale",
+  "alm_sky_whale_line": "A humpback breaching: some thirty tonnes clear of the water, and the splash seen for miles. No one is sure why they do it.",
   "alm_sky_plane": "An airliner",
   "alm_sky_plane_line": "Some 11 km up at about 900 km/h. Red light on the left wing, green on the right, white strobes, a red beacon.",
   "alm_sky_birds": "Birds",
