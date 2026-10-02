@@ -397,8 +397,7 @@ var _at = {
   tideId: null,     // a station picked over the nearest, for this place
   picking: null,    // 'tide' while the station list is open
   query: '',
-  results: null,
-  sheetMonth: null  // {y, m} while the month table is open
+  results: null
 };
 
 function _atEl(id) { return document.getElementById(id); }
@@ -414,7 +413,6 @@ function _atUnits() {
 function _atSetUnits(u) {
   try { localStorage.setItem(AT_UNITS_KEY, u); } catch (e) {}
   _atRender();
-  if (_at.sheetMonth) _atSheetRender();
 }
 
 var _atNumCache = {};
@@ -716,7 +714,7 @@ function _atTideHtml(st, far) {
     _atWhyHtml(st, focus) +
     _atStationLine('tide', _atTideName(st), st.km, true) +
     (_at.picking === 'tide' ? _atPickerHtml('tide') : '') +
-    '<p class="at-note">' + _almEsc(note) + ' <button type="button" class="at-link" onclick="_atSheetOpen()">' + _almEsc(t('alm_tide_month')) + '</button></p>';
+    '<p class="at-note">' + _almEsc(note) + ' <button type="button" class="at-link" onclick="_almRefOpen(\'tides\')">' + _almEsc(t('alm_tide_month')) + '</button></p>';
   return _atSection(t('alm_tide_title'), body, 'at-tides');
 }
 
@@ -1016,84 +1014,4 @@ function _atBindCurve() {
       if (host && host.clientWidth && Math.round(host.clientWidth) !== _atDrawnW) _atRender();
     }, 150);
   });
-}
-
-// ── The month, as a printable table ─────────────────────────────────────────
-function _atSheetOpen() {
-  var st = _atTideStation();
-  if (!st) return;
-  var tz = _atTideTz(st);
-  var parts = _tzFmt(tz, { year: 'numeric', month: 'numeric' }, 'en-US').formatToParts(_almFocusInstant());
-  var p = {};
-  parts.forEach(function(x) { p[x.type] = +x.value; });
-  _at.sheetMonth = { y: p.year, m: p.month - 1 };
-  var sheet = _atEl('at-sheet');
-  if (!sheet) {
-    sheet = document.createElement('div');
-    sheet.id = 'at-sheet';
-    sheet.setAttribute('role', 'dialog');
-    sheet.setAttribute('aria-modal', 'true');
-    document.body.appendChild(sheet);
-    sheet.addEventListener('keydown', function(e) { if (e.key === 'Escape') _atSheetClose(); });
-  }
-  document.body.classList.add('at-sheet-open');
-  _atSheetRender();
-  var close = sheet.querySelector('.at-sheet-close');
-  if (close) close.focus({ preventScroll: true });
-}
-function _atSheetClose() {
-  _at.sheetMonth = null;
-  var s = _atEl('at-sheet');
-  if (s) s.remove();
-  document.body.classList.remove('at-sheet-open');
-}
-function _atSheetStep(dir) {
-  var m = _at.sheetMonth;
-  m.m += dir;
-  if (m.m < 0) { m.m = 11; m.y--; } else if (m.m > 11) { m.m = 0; m.y++; }
-  _atSheetRender();
-}
-
-function _atSheetRender() {
-  var sheet = _atEl('at-sheet'), st = _atTideStation();
-  if (!sheet || !st || !_at.sheetMonth) return;
-  var tz = _atTideTz(st), p = _atPredictor(st), y = _at.sheetMonth.y, m = _at.sheetMonth.m;
-  var first = _atMidnight(y, m, 1, tz);
-  var monthName = _tzFmt(tz, { month: 'long', year: 'numeric' }).format(new Date(first + 12 * AT_MS_HOUR));
-  var wd = _tzFmt(tz, { weekday: 'short' });
-  var rows = '', d = 1;
-  for (;;) {
-    var s = _atMidnight(y, m, d, tz);
-    var mo = +_tzFmt(tz, { month: 'numeric' }, 'en-US').format(new Date(s + 12 * AT_MS_HOUR)) - 1;
-    if (mo !== m) break;
-    var e = _atMidnight(y, m, d + 1, tz);
-    var turns = p.extremes(s, e);
-    var jdn = Math.floor((s + 12 * AT_MS_HOUR) / AT_MS_DAY) + 2440588;
-    var phase = typeof _principalPhaseOnDay === 'function' ? _principalPhaseOnDay(jdn, tz) : null;
-    var moon = phase ? '<span class="at-moon" title="' + _almEsc(_localMoonName(phase.name)) + '">' + _moonGlyphSVG(phase.p, 12) + '</span>' : '';
-    var cells = '';
-    for (var i = 0; i < 4; i++) {
-      var tn = turns[i];
-      cells += tn ? '<td class="' + (tn.high ? 'hi' : 'lo') + '"><span class="at-c-t">' + _almEsc(_atTime(tn.t, tz)) + '</span> <span class="at-c-h">' + _almEsc(_atHeight(tn.h, true)) + '</span></td>' : '<td></td>';
-    }
-    rows += '<tr><th scope="row"><span class="at-d">' + d + '</span> <span class="at-wd">' + _almEsc(wd.format(new Date(s + 12 * AT_MS_HOUR))) + '</span>' + moon + '</th>' + cells + '</tr>';
-    d++;
-  }
-  var unit = t(_atUnits() === 'ft' ? 'alm_unit_ft' : 'alm_unit_m');
-  sheet.innerHTML =
-    '<div class="at-sheet-bar">' +
-      '<button type="button" class="at-btn at-sheet-nav" onclick="_atSheetStep(-1)" aria-label="' + _almEsc(t('alm_tide_prev_month')) + '">‹</button>' +
-      '<button type="button" class="at-btn at-sheet-nav" onclick="_atSheetStep(1)" aria-label="' + _almEsc(t('alm_tide_next_month')) + '">›</button>' +
-      '<span class="at-sheet-gap"></span>' +
-      '<button type="button" class="at-btn" onclick="window.print()">' + _almEsc(t('alm_tide_print')) + '</button>' +
-      '<button type="button" class="at-btn at-sheet-close" onclick="_atSheetClose()">' + _almEsc(t('alm_tm_close')) + '</button>' +
-    '</div>' +
-    '<div class="at-sheet-page">' +
-      '<h2 class="at-sheet-title">' + _almEsc(t('alm_tide_month_title', { station: _atTideName(st) })) + '</h2>' +
-      '<div class="at-sheet-sub">' + _almEsc(monthName) + ' · ' + _almEsc(t('alm_tide_sheet_units', { unit: unit })) + '</div>' +
-      '<table class="at-table"><thead><tr><th scope="col">' + _almEsc(t('alm_tide_col_day')) + '</th>' +
-      '<th scope="col" colspan="4">' + _almEsc(t('alm_tide_col_turns')) + '</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-      '<p class="at-sheet-note">' + _almEsc(st.refrec ? t('alm_tide_note_sub', { ref: _atTitle(st.refrec.n) }) : t('alm_tide_note')) + ' ' +
-      _almEsc(t('alm_tide_sheet_source', { lat: st.la.toFixed(3), lon: st.lo.toFixed(3), id: st.id })) + '</p>' +
-    '</div>';
 }

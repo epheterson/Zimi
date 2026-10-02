@@ -5693,12 +5693,13 @@ var _almanacLoaded = false;
 var _ALM_TIDES_JS = '/static/almanac-tides.js?v=1';
 var _ALM_TIDES_CSS = '/static/almanac-tides.css?v=1';
 
-// The Almanac's long-haul reference sheets, loaded on first use from
+// The Almanac's tables and calculations, loaded on first use from
 // almanac.js (_almRefOpen). Listed here so their ?v= is the content hash.
 var _ALMANAC_REF_ASSETS = [
   '/static/almanac-reference.css?v=1',
   '/static/almanac-navdata.js?v=1',
-  '/static/almanac-reference.js?v=1'
+  '/static/almanac-reference.js?v=1',
+  '/static/almanac-tables.js?v=1'
 ];
 
 function openAlmanac(replaceState) {

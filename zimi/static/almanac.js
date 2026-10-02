@@ -1750,17 +1750,49 @@ function _almSec(titleHtml, bodyHtml) {
   return '<div class="almanac-section"><div class="almanac-section-title">' + titleHtml + '</div>' + bodyHtml + '</div>';
 }
 
-// The sheets to print (almanac-reference.js, with its data and styles, loaded
-// on first use: none of it is on the Almanac's first paint), each offered
-// beside what it is about: the star calendar, the daily pages and sight
-// reduction under the star chart; the year and sun time under the place; the
-// calendars under the month.
+// Tables and calculations: the almanac's back matter, for any time. Two rows
+// of tiles, each opening its table or calculation over the page
+// (almanac-tables.js, with almanac-reference.js's sums and their styles,
+// loaded on first use: none of it is on the Almanac's first paint). The
+// tiles' order is the view's tabs'.
+var ALM_TB_TABLES = ['sunmoon', 'twilight', 'phases', 'tides', 'nav', 'stars', 'seasons', 'eclipses', 'calendars', 'suntime'];
+var ALM_TB_CALCS = ['sight', 'sundial', 'convert', 'days', 'zones', 'distance', 'units', 'sunmoonday'];
+// One line drawing each, on a 24 grid, in the stroke of the Almanac's other icons.
+var ALM_TB_ICONS = {
+  sunmoon: '<path d="M3 18h18M7 18a5 5 0 0 1 10 0M12 6v3M5.6 9.6l2 2M18.4 9.6l-2 2"/>',
+  twilight: '<path d="M3 15h18M6 19h12M7 15a5 5 0 0 1 10 0M12 3v6M9.5 6.5L12 9l2.5-2.5"/>',
+  phases: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/>',
+  tides: '<path d="M3 9c2-2 4-2 6 0s4 2 6 0 4-2 6 0M3 14c2-2 4-2 6 0s4 2 6 0 4-2 6 0M3 19c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/>',
+  nav: '<circle cx="12" cy="12" r="9"/><path d="M12 6.5l2.2 5.5-2.2 5.5-2.2-5.5z"/>',
+  stars: '<path d="M12 3.5l2.4 5.2 5.6.6-4.2 3.8 1.2 5.6L12 15.8l-5 2.9 1.2-5.6L4 9.3l5.6-.6z"/>',
+  seasons: '<circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/>',
+  eclipses: '<circle cx="10" cy="12" r="6"/><circle cx="14.5" cy="12" r="6" fill="currentColor" stroke="none" opacity="0.85"/>',
+  calendars: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14h2M12 14h2M8 17h2M12 17h2"/>',
+  suntime: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/>',
+  sight: '<path d="M4 20L12 4l8 16"/><path d="M6.8 14.5a7 7 0 0 0 10.4 0"/>',
+  sundial: '<path d="M3 19h18M6 19l9-11v11M15 12l4-2"/>',
+  convert: '<path d="M4 8h15l-3.5-3.5M20 16H5l3.5 3.5"/>',
+  days: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M8.5 15.5h7M13 13l2.5 2.5-2.5 2.5"/>',
+  zones: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/>',
+  distance: '<circle cx="5.5" cy="17.5" r="2"/><circle cx="18.5" cy="6.5" r="2"/><path d="M7 16c2.5-5.5 5.5-8.5 9.6-9.3" stroke-dasharray="2 2.5"/>',
+  units: '<rect x="2.5" y="8" width="19" height="8" rx="1.5"/><path d="M6.5 8v3M10.5 8v4.5M14.5 8v3M18.5 8v4.5"/>',
+  sunmoonday: '<path d="M19.5 14.5A7.5 7.5 0 1 1 9.5 4.5a6 6 0 0 0 10 10z"/>'
+};
 var ALM_PRINT_SVG = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg>';
-function _almSheetsHtml(names) {
-  return '<div class="alm-sheets">' + names.map(function (k) {
-    return '<button type="button" class="alm-sheet" onclick="_almRefOpen(\'' + k + '\')" title="' + _almEsc(t('ref_' + k + '_sub')) + '">' +
-      ALM_PRINT_SVG + '<span>' + _almEsc(t('ref_' + k)) + '</span></button>';
-  }).join('') + '</div>';
+function _almTbIcon(k, px) {
+  return '<svg aria-hidden="true" width="' + px + '" height="' + px + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + ALM_TB_ICONS[k] + '</svg>';
+}
+function _almTilesRow(key, ids) {
+  return '<h3 class="alm-tiles-h" id="alm-tiles-' + key + '">' + _almEsc(t('tb_' + key)) + '</h3>' +
+    '<div class="alm-tiles" role="list" aria-labelledby="alm-tiles-' + key + '">' + ids.map(function (k) {
+      return '<button type="button" role="listitem" class="alm-tile" data-tb="' + k + '" onclick="_almRefOpen(\'' + k + '\')">' +
+        '<span class="alm-tile-icon">' + _almTbIcon(k, 22) + '</span>' +
+        '<span class="alm-tile-name">' + _almEsc(t('tb_' + k)) + '</span>' +
+        '<span class="alm-tile-sub">' + _almEsc(t('tb_' + k + '_sub')) + '</span></button>';
+    }).join('') + '</div>';
+}
+function _almTablesHtml() {
+  return _almGroupOpen('tables') + _almTilesRow('tables', ALM_TB_TABLES) + _almTilesRow('calcs', ALM_TB_CALCS) + '</section>';
 }
 var _almRefLoading = false;
 var _ALM_REF_LOAD_TIMEOUT_MS = 15000, _ALM_REF_POLL_MS = 50;
@@ -1943,8 +1975,8 @@ function _renderAlmanacContent() {
   if (typeof _aePrepareWhenIdle === 'function') _aePrepareWhenIdle();
 
   // The page reads outward in time from the moment at the top: the sky now,
-  // here (the place, its clocks, its tide), this month, this year, deep time.
-  // The sheets to print sit beside what they are about.
+  // here (the place, its clocks, its tide), this month, this year, deep time,
+  // and then any time: the tables and calculations.
   //
   // The sky now. Its clock is the page's (the time machine); almanac-sky.js.
   html += _almGroupOpen('now');
@@ -1964,8 +1996,7 @@ function _renderAlmanacContent() {
   html += _almSec(t('alm_star_chart'),
     '<div class="alm-starchart-wrap"><canvas id="almanac-starchart" onclick="_starChartClick(event)"></canvas></div>' +
     '<div id="alm-sc-info" class="alm-sc-info"></div>' +
-    '<div id="almanac-starchart-caption" class="alm-starchart-caption"></div>' +
-    _almSheetsHtml(['stars', 'daily', 'sight']));
+    '<div id="almanac-starchart-caption" class="alm-starchart-caption"></div>');
   html += '</section>';
 
   // Here: the place (the map, the way to choose it), its clocks, its tide
@@ -1973,14 +2004,12 @@ function _renderAlmanacContent() {
   html += _almGroupOpen('here');
   html += '<div id="almanac-sunmap"></div>';
   html += '<div id="almanac-place"></div>';
-  html += _almSheetsHtml(['year', 'suntime']);
   html += '</section>';
 
   // This month: the calendar (and every other calendar's day), the showers,
   // the planets' meetings, this day in history.
   html += _almGroupOpen('month');
   html += '<div id="almanac-calendar"></div>';
-  html += _almSheetsHtml(['calendars']);
   html += _almSec(_lterm('meteor_shower', t('alm_meteor_showers')), '<div id="almanac-meteors"></div>');
   html += _almSec(t('alm_celestial_events'), '<div id="almanac-events"></div>');
   // On this day — curated space & science milestones (only rendered when today has some)
@@ -2029,6 +2058,8 @@ function _renderAlmanacContent() {
   html += '<div id="almanac-deeptime"></div>';
   html += _almSec(t('alm_messages_across_time'), '<div id="almanac-rosetta"></div>');
   html += '</section>';
+  // Any time: the tables and the sums, the almanac's back matter.
+  html += _almTablesHtml();
   html += _almAboutDataHtml();
 
 
@@ -3638,24 +3669,9 @@ function _renderSunMap(now) {
   var resultsDiv = document.getElementById('almanac-city-results');
   if (searchInput && resultsDiv) {
     searchInput.oninput = function() {
-      var q = searchInput.value.toLowerCase().trim();
+      var q = searchInput.value.trim();
       if (q.length < 2) { resultsDiv.style.display = 'none'; return; }
-      // Search the plotted cities plus the wider search-only set (no dots).
-      var pool = _MAP_CITIES.concat(_SEARCH_CITIES);
-      var all = [], seen = {};
-      for (var i = 0; i < pool.length; i++) {
-        var name = pool[i].name.toLowerCase();
-        if (seen[name]) continue; seen[name] = 1;   // dedup overlap between lists
-        var idx = name.indexOf(q);
-        if (idx === -1) continue;
-        // Rank: 0 = city name starts with query, 1 = any part starts with, 2 = substring
-        var rank = 2;
-        if (idx === 0) rank = 0;
-        else if (name.charAt(idx - 1) === ' ' || name.charAt(idx - 1) === ',') rank = 1;
-        all.push({ city: pool[i], rank: rank });
-      }
-      all.sort(function(a, b) { return a.rank - b.rank; });
-      var matches = all.slice(0, 8).map(function(m) { return m.city; });
+      var matches = _almFindCities(q, 8);
       if (matches.length === 0) { resultsDiv.style.display = 'none'; return; }
       var rhtml = '';
       for (var i = 0; i < matches.length; i++) {
@@ -4499,22 +4515,44 @@ function _almPlaceFind() {
   _almShowCitySearch();
 }
 
+// The Almanac's cities whose names hold q (the plotted ones and the wider
+// search-only set), best first: a name that starts with it, then any word of
+// one, then anywhere in it. Shared by the map's search and the tables' place.
+function _almFindCities(q, n) {
+  q = String(q || '').toLowerCase().trim();
+  if (!q) return [];
+  var pool = _MAP_CITIES.concat(_SEARCH_CITIES);
+  var all = [], seen = {};
+  for (var i = 0; i < pool.length; i++) {
+    var name = pool[i].name.toLowerCase();
+    if (seen[name]) continue; seen[name] = 1;   // dedup overlap between lists
+    var idx = name.indexOf(q);
+    if (idx === -1) continue;
+    var rank = idx === 0 ? 0 : (name.charAt(idx - 1) === ' ' || name.charAt(idx - 1) === ',') ? 1 : 2;
+    all.push({ city: pool[i], rank: rank, i: all.length });
+  }
+  all.sort(function(a, b) { return a.rank - b.rank || a.i - b.i; });
+  return all.slice(0, n).map(function(m) { return m.city; });
+}
+// The nearest plotted city's name, when one is within about two degrees.
+var _ALM_NEAR_CITY_DEG2 = 4;
+function _almNearestCityName(lat, lon) {
+  var best = null, bestDist = Infinity;
+  for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
+    var dlat = lat - _MAP_CITIES[ci].lat;
+    var dlon = (lon - _MAP_CITIES[ci].lon) * Math.cos(lat * DEG_TO_RAD);
+    var d = dlat * dlat + dlon * dlon;
+    if (d < bestDist) { bestDist = d; best = _MAP_CITIES[ci].name; }
+  }
+  return bestDist > _ALM_NEAR_CITY_DEG2 ? '' : best;
+}
+
 function _shareAlmanacLocation() {
   // Try GPS first (works in browsers, fails silently in pywebview/desktop)
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(function(pos) {
       var lat = pos.coords.latitude, lon = pos.coords.longitude;
-      // Find nearest city for a descriptive name
-      var locData = { lat: lat, lon: lon };
-      var bestDist = Infinity;
-      for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
-        var dlat = lat - _MAP_CITIES[ci].lat;
-        var dlon = (lon - _MAP_CITIES[ci].lon) * Math.cos(lat * DEG_TO_RAD);
-        var d = dlat * dlat + dlon * dlon;
-        if (d < bestDist) { bestDist = d; locData.name = _MAP_CITIES[ci].name; }
-      }
-      // Only use city name if reasonably close (within ~2 degrees)
-      if (bestDist > 4) delete locData.name;
+      var locData = { lat: lat, lon: lon, name: _almNearestCityName(lat, lon) };
       _saveLocation(locData.lat, locData.lon, locData.name);
       _almRepaintFocus();   // location-only refresh, preserves scroll
     }, function() {

@@ -85,8 +85,6 @@
 .at-unit:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
 .at-note { font-size: 11px; color: var(--text3); line-height: 1.5; margin: 12px 0 0; }
 .at-note .at-link { font-size: 11px; color: var(--text2); }
-.at-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 7px; color: var(--text2); font: inherit; font-size: 12px; padding: 8px 12px; cursor: pointer; white-space: nowrap; min-height: 34px; }
-.at-btn:hover, .at-btn:focus-visible { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
 
 /* Search and station lists. */
 .at-search { margin: 6px 0 8px; }
@@ -100,43 +98,3 @@
 .at-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .at-row-kind { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3); }
 .at-row-km { font-size: 12px; color: var(--text3); font-variant-numeric: tabular-nums; }
-
-/* The month table: a sheet over the Almanac on screen, the only thing on paper. */
-#at-sheet { position: fixed; inset: 0; z-index: 260; background: var(--bg); overflow-y: auto; -webkit-overflow-scrolling: touch; }
-.at-sheet-bar { position: sticky; top: 0; display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: var(--bg); border-bottom: 1px solid var(--border); }
-.at-sheet-gap { flex: 1; }
-.at-sheet-nav { font-size: 18px; line-height: 1; padding: 6px 12px; }
-[dir="rtl"] .at-sheet-nav { transform: scaleX(-1); }
-.at-sheet-page { max-width: 640px; margin: 0 auto; padding: 18px 16px 40px; }
-.at-sheet-title { font-size: 18px; font-weight: 600; color: var(--text); margin: 0 0 2px; }
-.at-sheet-sub { font-size: 13px; color: var(--text2); margin-bottom: 14px; }
-.at-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 12px; }
-.at-table th, .at-table td { padding: 5px 4px; border-bottom: 1px solid var(--border); text-align: start; white-space: nowrap; }
-.at-table thead th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3); font-weight: 500; }
-.at-table tbody th { font-weight: 500; color: var(--text2); width: 1%; padding-inline-end: 10px; }
-.at-d { display: inline-block; min-width: 1.6em; color: var(--text); font-weight: 600; }
-.at-wd { color: var(--text3); }
-.at-moon { display: inline-block; vertical-align: -2px; margin-inline-start: 4px; }
-.at-table td.hi .at-c-t { font-weight: 600; color: var(--text); }
-.at-table td.lo .at-c-t { color: var(--text2); }
-.at-c-h { color: var(--text3); }
-.at-sheet-note { font-size: 11px; color: var(--text3); line-height: 1.5; margin-top: 14px; }
-@media (max-width: 420px) {
-  .at-table { font-size: 11px; }
-  .at-table th, .at-table td { padding: 5px 2px; }
-  .at-wd { display: none; }
-}
-@media print {
-  body.at-sheet-open > *:not(#at-sheet) { display: none !important; }
-  html, body.at-sheet-open { background: #fff !important; }
-  #at-sheet { position: static; overflow: visible; background: #fff; color: #000; }
-  .at-sheet-bar { display: none; }
-  .at-sheet-page { max-width: none; padding: 0; }
-  .at-sheet-title, .at-d, .at-table td.hi .at-c-t { color: #000; }
-  .at-sheet-sub, .at-table tbody th, .at-wd, .at-table td.lo .at-c-t, .at-c-h, .at-sheet-note, .at-table thead th { color: #333; }
-  .at-table th, .at-table td { border-bottom-color: #ccc; padding: 3px 4px; }
-  .at-table { font-size: 10.5pt; }
-  .at-wd { display: inline; }
-  .at-moon svg { filter: grayscale(1) contrast(1.4); }
-  @page { margin: 14mm; }
-}

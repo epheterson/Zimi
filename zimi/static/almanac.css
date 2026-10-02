@@ -148,13 +148,29 @@
 .alm-tz-add { position: relative; display: flex; align-items: center; justify-content: center; min-height: 52px; border: 1px dashed var(--border); border-radius: 8px; color: var(--text2); font-size: 12px; cursor: pointer; }
 .alm-tz-add:hover, .alm-tz-add:focus-within { color: var(--amber); border-color: var(--amber-border); }
 .alm-tz-add select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
-/* The sheets to print, beside what they are about: quiet chips. */
-.alm-sheets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
-/* One chip for the page's small actions: the sheets, and the invite to choose a place. */
-.alm-sheet, .alm-invite-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: 16px; background: none; color: var(--text2); font: inherit; font-size: 12px; cursor: pointer; }
-.alm-invite-btn { background: var(--surface); color: var(--text); }
-.alm-sheet:hover, .alm-sheet:focus-visible, .alm-invite-btn:hover, .alm-invite-btn:focus-visible { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
-.alm-sheet svg, .alm-invite-btn svg { flex: none; width: 14px; height: 14px; }
+/* The invite to choose a place: a chip. */
+.alm-invite-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
+.alm-invite-btn:hover, .alm-invite-btn:focus-visible { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+.alm-invite-btn svg { flex: none; width: 14px; height: 14px; }
+/* Tables and calculations: two rows of tiles, each a scroller that runs to
+   the screen's edges (the page itself never scrolls sideways). A tile is
+   what opens: its mark, its name, and one line of what it gives. */
+.alm-tiles-h { margin: 22px 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text2); }
+.alm-group-title + .alm-tiles-h { margin-top: 4px; }
+.alm-tiles {
+  display: flex; gap: 10px; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch;
+  margin: 0 -16px; padding: 2px 16px 10px; scroll-snap-type: x proximity; scroll-padding-inline: 16px; scrollbar-width: thin;
+}
+.alm-tile {
+  flex: 0 0 152px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-height: 124px; padding: 14px 12px 12px;
+  border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text);
+  font: inherit; text-align: start; cursor: pointer; scroll-snap-align: start; transition: border-color .15s, background .15s;
+}
+.alm-tile:hover, .alm-tile:focus-visible { border-color: var(--amber-border); background: var(--amber-glow); }
+.alm-tile:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.alm-tile-icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; background: var(--amber-glow); color: var(--amber); margin-bottom: 2px; }
+.alm-tile-name { font-size: 14px; font-weight: 600; line-height: 1.25; }
+.alm-tile-sub { font-size: 12px; line-height: 1.35; color: var(--text2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .almanac-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .almanac-info-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
 .almanac-info-val { font-size: 16px; font-weight: 600; color: var(--text); }
